@@ -5,7 +5,7 @@ import { calculateDistance } from '../utils/distance.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { logger } from '../utils/logger.js';
 import { getEnvironmentConfig } from '../server/config/environment.js';
-import { UserModel } from '../server/models/User.js';
+
 import { registry } from '../db/migrations.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 // Drizzle ORM imports for dual-database support
@@ -256,7 +256,7 @@ export interface ThemeDefinition {
 class DatabaseService {
   public db: BetterSqlite3Database.Database;
   private isInitialized = false;
-  public userModel: UserModel;
+
 
   // Cache for telemetry types per node (expensive GROUP BY query)
   private telemetryTypesCache: Map<string, string[]> | null = null;
@@ -507,9 +507,7 @@ class DatabaseService {
         },
       });
 
-      // Models will not work with PostgreSQL/MySQL - they need to be migrated to use repositories
-      // For now, create them with the proxy db - they'll throw errors if used
-      this.userModel = new UserModel(this.db);
+      // All user operations now route through AuthRepository (async)
 
       // Initialize Drizzle repositories (async) - this will create the schema
       // The readyPromise will be resolved when this completes
@@ -581,8 +579,7 @@ class DatabaseService {
     // Now attempt to open the database with better error handling
     this.db = this.openSqliteDatabase(dbPath, dbDir);
 
-    // Initialize models
-    this.userModel = new UserModel(this.db);
+    // All user operations now route through AuthRepository (async)
 
     // Initialize Drizzle ORM and repositories
     // This uses the same database file but through Drizzle for async operations

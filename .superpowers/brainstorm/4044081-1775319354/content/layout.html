@@ -1,0 +1,289 @@
+<h2>Dashboard Layout Options</h2>
+<p class="subtitle">Which layout feels right for the MeshMonitor home page?</p>
+
+<style>
+.mock-shell {
+  border: 1px solid #444;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  font-size: 11px;
+  height: 220px;
+  display: flex;
+  flex-direction: column;
+}
+.mock-topbar {
+  background: #181825;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #89b4fa;
+  border-bottom: 1px solid #313244;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mock-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.mock-left {
+  background: #181825;
+  border-right: 1px solid #313244;
+  padding: 6px 0;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+.mock-source-item {
+  padding: 5px 10px;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.mock-source-item.active {
+  background: #313244;
+  color: #89b4fa;
+}
+.mock-source-item .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-green { background: #a6e3a1; }
+.dot-yellow { background: #f9e2af; }
+.dot-gray { background: #6c7086; }
+.mock-map {
+  flex: 1;
+  background: #2a3d2a;
+  position: relative;
+  overflow: hidden;
+}
+.mock-map-bg {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 20px, rgba(255,255,255,0.03) 20px, rgba(255,255,255,0.03) 21px
+  ),
+  repeating-linear-gradient(
+    90deg, transparent, transparent 20px, rgba(255,255,255,0.03) 20px, rgba(255,255,255,0.03) 21px
+  );
+}
+.mock-node-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #89b4fa;
+  border: 1px solid #cdd6f4;
+}
+.mock-node-label {
+  position: absolute;
+  font-size: 8px;
+  color: #cdd6f4;
+  white-space: nowrap;
+  background: rgba(24,24,37,0.8);
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+.mock-login-bar {
+  background: #313244;
+  padding: 4px 8px;
+  font-size: 10px;
+  color: #a6adc8;
+  border-top: 1px solid #45475a;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.mock-login-btn {
+  background: #89b4fa;
+  color: #1e1e2e;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 600;
+}
+.mock-source-header {
+  padding: 4px 10px;
+  font-size: 9px;
+  color: #6c7086;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+.mock-topbar-tabs {
+  display: flex;
+  gap: 4px;
+}
+.mock-tab {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  cursor: pointer;
+  color: #a6adc8;
+}
+.mock-tab.active {
+  background: #313244;
+  color: #89b4fa;
+}
+.mock-source-card {
+  background: #313244;
+  border-radius: 4px;
+  margin: 4px 6px;
+  padding: 5px 7px;
+  font-size: 9px;
+}
+.mock-overlay-panel {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(24,24,37,0.92);
+  border: 1px solid #313244;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 9px;
+  width: 100px;
+}
+</style>
+
+<div class="cards">
+
+  <!-- Option A -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mock-shell">
+        <div class="mock-topbar">
+          🗺 MeshMonitor
+          <span style="margin-left:auto;font-size:9px;color:#a6e3a1">● Connected</span>
+          <span style="font-size:9px;background:#313244;padding:2px 6px;border-radius:3px">Sign In</span>
+        </div>
+        <div class="mock-body">
+          <div class="mock-left" style="width:130px">
+            <div class="mock-source-header">Sources</div>
+            <div class="mock-source-item active">
+              <span class="dot dot-green"></span> Yeraze Sandbox
+            </div>
+            <div class="mock-source-item">
+              <span class="dot dot-yellow"></span> Home Node
+            </div>
+            <div class="mock-source-item">
+              <span class="dot dot-gray"></span> MQTT Feed
+            </div>
+            <div style="border-top:1px solid #313244;margin:6px 0"></div>
+            <div class="mock-source-header">Views</div>
+            <div class="mock-source-item">💬 Messages</div>
+            <div class="mock-source-item">📡 Telemetry</div>
+          </div>
+          <div class="mock-map">
+            <div class="mock-map-bg"></div>
+            <div class="mock-node-dot" style="top:40px;left:60px"></div>
+            <div class="mock-node-label" style="top:50px;left:65px">KD4ABC</div>
+            <div class="mock-node-dot" style="top:80px;left:120px;background:#a6e3a1"></div>
+            <div class="mock-node-label" style="top:90px;left:125px">W4XYZ</div>
+            <div class="mock-node-dot" style="top:120px;left:80px"></div>
+            <div class="mock-node-label" style="top:130px;left:85px">N4DEF</div>
+          </div>
+        </div>
+        <div class="mock-login-bar">
+          Not signed in — some sources may be hidden
+          <span class="mock-login-btn">Sign In</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Sidebar + Full Map</h3>
+      <p>Left sidebar lists sources and cross-source links. Full-width map shows nodes for the selected source. Login prompt at the bottom. Closest to existing UX — just adds the source list to the left.</p>
+    </div>
+  </div>
+
+  <!-- Option B -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mock-shell">
+        <div class="mock-topbar">
+          🗺 MeshMonitor
+          <div class="mock-topbar-tabs" style="margin-left:auto">
+            <div class="mock-tab active">Yeraze Sandbox</div>
+            <div class="mock-tab">Home Node</div>
+            <div class="mock-tab">MQTT Feed</div>
+            <div class="mock-tab" style="color:#89b4fa">+ Add</div>
+          </div>
+          <span style="font-size:9px;background:#313244;padding:2px 6px;border-radius:3px;margin-left:8px">Sign In</span>
+        </div>
+        <div class="mock-body">
+          <div class="mock-map" style="flex:1">
+            <div class="mock-map-bg"></div>
+            <div class="mock-node-dot" style="top:40px;left:80px"></div>
+            <div class="mock-node-label" style="top:50px;left:85px">KD4ABC</div>
+            <div class="mock-node-dot" style="top:70px;left:160px;background:#a6e3a1"></div>
+            <div class="mock-node-label" style="top:80px;left:165px">W4XYZ</div>
+            <div class="mock-node-dot" style="top:110px;left:100px"></div>
+            <div class="mock-node-label" style="top:120px;left:105px">N4DEF</div>
+            <div class="mock-overlay-panel">
+              <div style="font-weight:600;color:#89b4fa;margin-bottom:3px">Yeraze Sandbox</div>
+              <div>● Connected</div>
+              <div>3 nodes</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Tab Bar Source Switcher</h3>
+      <p>Sources as tabs across the top bar. Map fills the full screen. Compact — but tabs get crowded with many sources, and there's less room for cross-source links.</p>
+    </div>
+  </div>
+
+  <!-- Option C -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mock-shell">
+        <div class="mock-topbar">
+          🗺 MeshMonitor
+          <span style="margin-left:auto;font-size:9px;background:#313244;padding:2px 6px;border-radius:3px">Sign In</span>
+        </div>
+        <div class="mock-body">
+          <div class="mock-left" style="width:110px;overflow-y:auto">
+            <div class="mock-source-header">Sources</div>
+            <div class="mock-source-card">
+              <div style="color:#89b4fa;font-weight:600">Yeraze Sandbox</div>
+              <div style="color:#a6e3a1">● Connected · 3 nodes</div>
+            </div>
+            <div class="mock-source-card" style="opacity:0.7">
+              <div style="font-weight:600">Home Node</div>
+              <div style="color:#f9e2af">● Connecting</div>
+            </div>
+            <div class="mock-source-card" style="opacity:0.5">
+              <div style="font-weight:600">MQTT Feed</div>
+              <div style="color:#6c7086">● Disabled</div>
+            </div>
+            <div style="margin:6px;border-top:1px solid #313244;padding-top:6px">
+              <div style="color:#6c7086;padding:2px 4px;font-size:9px">💬 Unified Messages</div>
+              <div style="color:#6c7086;padding:2px 4px;font-size:9px">📡 Unified Telemetry</div>
+            </div>
+          </div>
+          <div class="mock-map" style="flex:1">
+            <div class="mock-map-bg"></div>
+            <div class="mock-node-dot" style="top:40px;left:60px"></div>
+            <div class="mock-node-label" style="top:50px;left:65px">KD4ABC</div>
+            <div class="mock-node-dot" style="top:80px;left:110px;background:#a6e3a1"></div>
+            <div class="mock-node-label" style="top:90px;left:115px">W4XYZ</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Source Cards + Map</h3>
+      <p>Left sidebar shows full source cards with status badges, node counts, and quick stats. Map shows selected source. More information density than A, but the sidebar takes more horizontal space.</p>
+    </div>
+  </div>
+
+</div>
