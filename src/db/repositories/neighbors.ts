@@ -199,7 +199,17 @@ export class NeighborsRepository extends BaseRepository {
         FROM neighbor_info
         ORDER BY "nodeNum", "neighborNodeNum", timestamp DESC
       `);
-      return this.normalizeBigInts(result.rows) as DbNeighborInfo[];
+      // PG driver returns BIGINT as strings — coerce explicitly
+      return (result.rows as any[]).map(r => ({
+        id: r.id != null ? Number(r.id) : null,
+        nodeNum: Number(r.nodeNum),
+        neighborNodeNum: Number(r.neighborNodeNum),
+        snr: r.snr != null ? Number(r.snr) : null,
+        lastRxTime: r.lastRxTime != null ? Number(r.lastRxTime) : null,
+        timestamp: Number(r.timestamp),
+        createdAt: r.createdAt != null ? Number(r.createdAt) : null,
+        sourceId: r.sourceId,
+      })) as DbNeighborInfo[];
     }
 
     if (this.dbType === 'mysql') {
@@ -216,7 +226,17 @@ export class NeighborsRepository extends BaseRepository {
           AND ni.neighborNodeNum = latest.neighborNodeNum
           AND ni.timestamp = latest.maxTimestamp
       `);
-      return this.normalizeBigInts((result as any)[0]) as DbNeighborInfo[];
+      // MySQL driver returns BIGINT as strings — coerce explicitly
+      return ((result as any)[0] as any[]).map(r => ({
+        id: r.id != null ? Number(r.id) : null,
+        nodeNum: Number(r.nodeNum),
+        neighborNodeNum: Number(r.neighborNodeNum),
+        snr: r.snr != null ? Number(r.snr) : null,
+        lastRxTime: r.lastRxTime != null ? Number(r.lastRxTime) : null,
+        timestamp: Number(r.timestamp),
+        createdAt: r.createdAt != null ? Number(r.createdAt) : null,
+        sourceId: r.sourceId,
+      })) as DbNeighborInfo[];
     }
 
     // SQLite: same subquery approach (no DISTINCT ON support)
