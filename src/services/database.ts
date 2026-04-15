@@ -4083,60 +4083,20 @@ class DatabaseService {
       return;
     }
 
-    // SQLite path
-    let existingChannel: DbChannel | null = null;
-
-    // If we have an ID, check by ID FIRST
-    if (channelData.id !== undefined) {
-      existingChannel = this.getChannelById(channelData.id);
-      logger.info(`📝 getChannelById(${channelData.id}) returned: ${existingChannel ? `"${existingChannel.name}"` : 'null'}`);
+    // SQLite path — route through ChannelsRepository
+    if (channelData.id === undefined) {
+      logger.error(`❌ Cannot upsert channel without ID. Name: "${channelData.name}"`);
+      throw new Error('Channel ID is required for upsert operation');
     }
-
-    if (existingChannel) {
-      // Update existing channel (by name match or ID match)
-      logger.info(`📝 Updating channel ${existingChannel.id} from "${existingChannel.name}" to "${channelData.name}"`);
-      const stmt = this.db.prepare(`
-        UPDATE channels SET
-          name = ?,
-          psk = COALESCE(?, psk),
-          role = COALESCE(?, role),
-          uplinkEnabled = COALESCE(?, uplinkEnabled),
-          downlinkEnabled = COALESCE(?, downlinkEnabled),
-          positionPrecision = COALESCE(?, positionPrecision),
-          updatedAt = ?
-        WHERE id = ?
-      `);
-      const result = stmt.run(
-        channelData.name,
-        channelData.psk,
-        channelData.role !== undefined ? channelData.role : null,
-        channelData.uplinkEnabled !== undefined ? (channelData.uplinkEnabled ? 1 : 0) : null,
-        channelData.downlinkEnabled !== undefined ? (channelData.downlinkEnabled ? 1 : 0) : null,
-        channelData.positionPrecision !== undefined ? channelData.positionPrecision : null,
-        now,
-        existingChannel.id
-      );
-      logger.info(`✅ Updated channel ${existingChannel.id}, changes: ${result.changes}`);
-    } else {
-      // Create new channel
-      logger.debug(`📝 Creating new channel with ID: ${channelData.id !== undefined ? channelData.id : null}`);
-      const stmt = this.db.prepare(`
-        INSERT INTO channels (id, name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      const result = stmt.run(
-        channelData.id !== undefined ? channelData.id : null,
-        channelData.name,
-        channelData.psk || null,
-        channelData.role !== undefined ? channelData.role : null,
-        channelData.uplinkEnabled !== undefined ? (channelData.uplinkEnabled ? 1 : 0) : 1,
-        channelData.downlinkEnabled !== undefined ? (channelData.downlinkEnabled ? 1 : 0) : 1,
-        channelData.positionPrecision !== undefined ? channelData.positionPrecision : null,
-        now,
-        now
-      );
-      logger.debug(`Created channel: ${channelData.name} (ID: ${channelData.id !== undefined ? channelData.id : 'auto'}), lastInsertRowid: ${result.lastInsertRowid}`);
-    }
+    this.channelsRepo!.upsertChannelSync({
+      id: channelData.id,
+      name: channelData.name,
+      psk: channelData.psk,
+      role: channelData.role,
+      uplinkEnabled: channelData.uplinkEnabled,
+      downlinkEnabled: channelData.downlinkEnabled,
+      positionPrecision: channelData.positionPrecision,
+    });
   }
 
   getChannelById(id: number): DbChannel | null {
@@ -4152,12 +4112,11 @@ class DatabaseService {
       }
       return channel;
     }
-    const stmt = this.db.prepare('SELECT * FROM channels WHERE id = ?');
-    const channel = stmt.get(id) as DbChannel | null;
+    const channel = this.channelsRepo!.getChannelByIdSync(id);
     if (id === 0) {
       logger.info(`🔍 getChannelById(0) - RAW from DB: ${channel ? `name="${channel.name}" (length: ${channel.name?.length || 0})` : 'null'}`);
     }
-    return channel ? this.normalizeBigInts(channel) : null;
+    return channel;
   }
 
   getAllChannels(): DbChannel[] {
@@ -4169,9 +4128,7 @@ class DatabaseService {
       }
       return Array.from(this.channelsCache.values()).sort((a, b) => a.id - b.id);
     }
-    const stmt = this.db.prepare('SELECT * FROM channels ORDER BY id ASC');
-    const channels = stmt.all() as DbChannel[];
-    return channels.map(channel => this.normalizeBigInts(channel));
+    return this.channelsRepo!.getAllChannelsSync();
   }
 
   getChannelCount(): number {
@@ -4183,9 +4140,7 @@ class DatabaseService {
       }
       return this.channelsCache.size;
     }
-    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM channels');
-    const result = stmt.get() as { count: number };
-    return Number(result.count);
+    return this.channelsRepo!.getChannelCountSync();
   }
 
   // Clean up invalid channels that shouldn't have been created
@@ -4209,10 +4164,9 @@ class DatabaseService {
       logger.debug(`🧹 Cleaned up ${count} invalid channels (outside 0-7 range)`);
       return count;
     }
-    const stmt = this.db.prepare(`DELETE FROM channels WHERE id < 0 OR id > 7`);
-    const result = stmt.run();
-    logger.debug(`🧹 Cleaned up ${result.changes} invalid channels (outside 0-7 range)`);
-    return Number(result.changes);
+    const deleted = this.channelsRepo!.cleanupInvalidChannelsSync();
+    logger.debug(`🧹 Cleaned up ${deleted} invalid channels (outside 0-7 range)`);
+    return deleted;
   }
 
   // Clean up channels that appear to be empty/unused
@@ -4237,15 +4191,9 @@ class DatabaseService {
       logger.debug(`🧹 Cleaned up ${count} empty channels (ID > 1, no PSK/role)`);
       return count;
     }
-    const stmt = this.db.prepare(`
-      DELETE FROM channels
-      WHERE id > 1
-      AND psk IS NULL
-      AND role IS NULL
-    `);
-    const result = stmt.run();
-    logger.debug(`🧹 Cleaned up ${result.changes} empty channels (ID > 1, no PSK/role)`);
-    return Number(result.changes);
+    const deleted = this.channelsRepo!.cleanupEmptyChannelsSync();
+    logger.debug(`🧹 Cleaned up ${deleted} empty channels (ID > 1, no PSK/role)`);
+    return deleted;
   }
 
   // Telemetry operations
@@ -10163,22 +10111,7 @@ class DatabaseService {
   async cleanupInvalidChannelsAsync(sourceId?: string): Promise<number> {
     if (sourceId) {
       // Channels with no name and no PSK scoped to a source
-      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-        const result = await this.postgresPool.query(
-          `DELETE FROM channels WHERE ("name" IS NULL OR "name" = '') AND ("psk" IS NULL OR "psk" = '') AND "sourceId" = $1`,
-          [sourceId]
-        );
-        return result.rowCount ?? 0;
-      }
-      if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-        const [result] = await this.mysqlPool.query(
-          `DELETE FROM channels WHERE (name IS NULL OR name = '') AND (psk IS NULL OR psk = '') AND sourceId = ?`,
-          [sourceId]
-        ) as any;
-        return result.affectedRows ?? 0;
-      }
-      const stmt = this.db.prepare(`DELETE FROM channels WHERE (name IS NULL OR name = '') AND (psk IS NULL OR psk = '') AND sourceId = ?`);
-      return Number(stmt.run(sourceId).changes);
+      return this.channelsRepo!.cleanupEmptyChannelsForSource(sourceId);
     }
     return this.cleanupInvalidChannels();
   }
