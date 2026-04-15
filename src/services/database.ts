@@ -1096,6 +1096,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS telemetry (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1127,6 +1128,7 @@ class DatabaseService {
     // ROUTING TABLES
     // ============================================================
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS traceroutes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1144,6 +1146,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS route_segments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1474,6 +1477,7 @@ class DatabaseService {
     // AUTOMATION TABLES
     // ============================================================
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS auto_traceroute_nodes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1483,6 +1487,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS auto_time_sync_nodes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1492,6 +1497,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS auto_traceroute_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1681,6 +1687,7 @@ class DatabaseService {
     `);
 
     // Create index for efficient traceroute queries
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_traceroutes_nodes
       ON traceroutes(fromNodeNum, toNodeNum, timestamp DESC);
@@ -1697,6 +1704,7 @@ class DatabaseService {
   }
 
   private createIndexes(): void {
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_nodes_nodeId ON nodes(nodeId);
       CREATE INDEX IF NOT EXISTS idx_nodes_lastHeard ON nodes(lastHeard);
@@ -1732,9 +1740,8 @@ class DatabaseService {
     logger.debug('🔄 Running route segments migration...');
 
     try {
-      // Get ALL traceroutes from the database
-      const stmt = this.db.prepare('SELECT * FROM traceroutes ORDER BY timestamp ASC');
-      const allTraceroutes = stmt.all() as DbTraceroute[];
+      // Get ALL traceroutes from the database (bootstrap: runDataMigrations)
+      const allTraceroutes = this.traceroutes.getAllTraceroutesSync() as unknown as DbTraceroute[];
 
       logger.debug(`📊 Processing ${allTraceroutes.length} traceroutes for distance calculation...`);
 
@@ -2882,71 +2889,7 @@ class DatabaseService {
     // (nodes without GPS/NTP often report 0 or boot-relative seconds)
     const MIN_VALID_TIMESTAMP_MS = 1577836800000;
 
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      const sourceFilter = sourceId ? ' AND "sourceId" = $2' : '';
-      const params: any[] = [MIN_VALID_TIMESTAMP_MS];
-      if (sourceId) params.push(sourceId);
-      const result = await this.postgresPool.query(`
-        SELECT DISTINCT ON ("nodeNum") "nodeNum", "timestamp", "packetTimestamp"
-        FROM telemetry
-        WHERE "packetTimestamp" IS NOT NULL AND "packetTimestamp" > $1${sourceFilter}
-        ORDER BY "nodeNum", "timestamp" DESC
-      `, params);
-      return result.rows.map((r: any) => ({
-        nodeNum: Number(r.nodeNum),
-        timestamp: Number(r.timestamp),
-        packetTimestamp: Number(r.packetTimestamp)
-      }));
-    }
-
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      const sourceFilter = sourceId ? ' AND t.sourceId = ?' : '';
-      const innerFilter = sourceId ? ' AND sourceId = ?' : '';
-      const params: any[] = [MIN_VALID_TIMESTAMP_MS];
-      if (sourceId) params.push(sourceId);
-      params.push(MIN_VALID_TIMESTAMP_MS);
-      if (sourceId) params.push(sourceId);
-      const [rows] = await this.mysqlPool.query(`
-        SELECT t.nodeNum, t.timestamp, t.packetTimestamp
-        FROM telemetry t
-        INNER JOIN (
-          SELECT nodeNum, MAX(timestamp) as maxTs
-          FROM telemetry
-          WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ?${innerFilter}
-          GROUP BY nodeNum
-        ) latest ON t.nodeNum = latest.nodeNum AND t.timestamp = latest.maxTs
-        WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ?${sourceFilter}
-      `, params) as any;
-      return (rows as any[]).map((r: any) => ({
-        nodeNum: Number(r.nodeNum),
-        timestamp: Number(r.timestamp),
-        packetTimestamp: Number(r.packetTimestamp)
-      }));
-    }
-
-    // SQLite
-    const sourceFilter = sourceId ? ' AND t.sourceId = ?' : '';
-    const innerFilter = sourceId ? ' AND sourceId = ?' : '';
-    const params: any[] = [MIN_VALID_TIMESTAMP_MS];
-    if (sourceId) params.push(sourceId);
-    params.push(MIN_VALID_TIMESTAMP_MS);
-    if (sourceId) params.push(sourceId);
-    const stmt = this.db.prepare(`
-      SELECT t.nodeNum, t.timestamp, t.packetTimestamp
-      FROM telemetry t
-      INNER JOIN (
-        SELECT nodeNum, MAX(timestamp) as maxTs
-        FROM telemetry
-        WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ?${innerFilter}
-        GROUP BY nodeNum
-      ) latest ON t.nodeNum = latest.nodeNum AND t.timestamp = latest.maxTs
-      WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ?${sourceFilter}
-    `);
-    return (stmt.all(...params) as any[]).map((r: any) => ({
-      nodeNum: Number(r.nodeNum),
-      timestamp: Number(r.timestamp),
-      packetTimestamp: Number(r.packetTimestamp)
-    }));
+    return this.telemetry.getLatestPacketTimestampsPerNode(MIN_VALID_TIMESTAMP_MS, sourceId);
   }
 
   // Message operations
@@ -3251,9 +3194,7 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return 0;
     }
-    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM telemetry');
-    const result = stmt.get() as { count: number };
-    return Number(result.count);
+    return this.telemetry.getTelemetryCountSync();
   }
 
   /** @deprecated Use databaseService.telemetry.getTelemetryCount() instead */
@@ -3266,28 +3207,7 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return 0;
     }
-
-    let query = 'SELECT COUNT(*) as count FROM telemetry WHERE nodeId = ?';
-    const params: any[] = [nodeId];
-
-    if (sinceTimestamp !== undefined) {
-      query += ' AND timestamp >= ?';
-      params.push(sinceTimestamp);
-    }
-
-    if (beforeTimestamp !== undefined) {
-      query += ' AND timestamp < ?';
-      params.push(beforeTimestamp);
-    }
-
-    if (telemetryType !== undefined) {
-      query += ' AND telemetryType = ?';
-      params.push(telemetryType);
-    }
-
-    const stmt = this.db.prepare(query);
-    const result = stmt.get(...params) as { count: number };
-    return Number(result.count);
+    return this.telemetry.getTelemetryCountByNodeSync(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
   }
 
   /** @deprecated Use databaseService.telemetry.getTelemetryCountByNode() instead */
@@ -3604,12 +3524,7 @@ class DatabaseService {
     }
 
     // Delete all traceroutes involving this node (either as source or destination)
-    const stmt = this.db.prepare(`
-      DELETE FROM traceroutes
-      WHERE fromNodeNum = ? OR toNodeNum = ?
-    `);
-    const result = stmt.run(nodeNum, nodeNum);
-    return Number(result.changes);
+    return this.traceroutes.deleteTraceroutesInvolvingNodeSync(nodeNum);
   }
 
   purgeNodeTelemetry(nodeNum: number): number {
@@ -3624,9 +3539,7 @@ class DatabaseService {
     }
 
     // Delete all telemetry data for this node
-    const stmt = this.db.prepare('DELETE FROM telemetry WHERE nodeNum = ?');
-    const result = stmt.run(nodeNum);
-    return Number(result.changes);
+    return this.telemetry.deleteTelemetryByNodeSync(nodeNum);
   }
 
   deleteNode(nodeNum: number, sourceId: string): {
@@ -3680,11 +3593,7 @@ class DatabaseService {
     const telemetryDeleted = this.purgeNodeTelemetry(nodeNum);
 
     // Delete route segments where this node is involved
-    const routeSegmentsStmt = this.db.prepare(`
-      DELETE FROM route_segments
-      WHERE fromNodeNum = ? OR toNodeNum = ?
-    `);
-    routeSegmentsStmt.run(nodeNum, nodeNum);
+    this.traceroutes.deleteRouteSegmentsInvolvingNodeSync(nodeNum);
 
     // Delete neighbor_info records where this node is involved (either as source or neighbor)
     if (this.neighborsRepo) {
@@ -4087,22 +3996,7 @@ class DatabaseService {
       return;
     }
 
-    const stmt = this.db.prepare(`
-      INSERT INTO telemetry (
-        nodeId, nodeNum, telemetryType, timestamp, value, unit, createdAt, packetTimestamp
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      telemetryData.nodeId,
-      telemetryData.nodeNum,
-      telemetryData.telemetryType,
-      telemetryData.timestamp,
-      telemetryData.value,
-      telemetryData.unit || null,
-      telemetryData.createdAt,
-      telemetryData.packetTimestamp || null
-    );
+    this.telemetry.insertTelemetrySync(telemetryData);
 
     // Invalidate the telemetry types cache since we may have added a new type
     this.invalidateTelemetryTypesCache();
@@ -4117,36 +4011,7 @@ class DatabaseService {
   }
 
   getTelemetryByNode(nodeId: string, limit: number = 100, sinceTimestamp?: number, beforeTimestamp?: number, offset: number = 0, telemetryType?: string): DbTelemetry[] {
-    let query = `
-      SELECT * FROM telemetry
-      WHERE nodeId = ?
-    `;
-    const params: any[] = [nodeId];
-
-    if (sinceTimestamp !== undefined) {
-      query += ` AND timestamp >= ?`;
-      params.push(sinceTimestamp);
-    }
-
-    if (beforeTimestamp !== undefined) {
-      query += ` AND timestamp < ?`;
-      params.push(beforeTimestamp);
-    }
-
-    if (telemetryType !== undefined) {
-      query += ` AND telemetryType = ?`;
-      params.push(telemetryType);
-    }
-
-    query += `
-      ORDER BY timestamp DESC
-      LIMIT ? OFFSET ?
-    `;
-    params.push(limit, offset);
-
-    const stmt = this.db.prepare(query);
-    const telemetry = stmt.all(...params) as DbTelemetry[];
-    return telemetry.map(t => this.normalizeBigInts(t));
+    return this.telemetry.getTelemetryByNodeSync(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType) as unknown as DbTelemetry[];
   }
 
   /** @deprecated Use databaseService.telemetry.getTelemetryByNode() instead */
@@ -4385,22 +4250,7 @@ class DatabaseService {
       return [];
     }
 
-    const query = `
-      SELECT id, fromNodeNum, toNodeNum, route, snrTowards, timestamp
-      FROM traceroutes
-      WHERE route IS NOT NULL AND route != '[]'
-      ORDER BY timestamp ASC
-    `;
-
-    const stmt = this.db.prepare(query);
-    return stmt.all() as Array<{
-      id: number;
-      fromNodeNum: number;
-      toNodeNum: number;
-      route: string | null;
-      snrTowards: string | null;
-      timestamp: number;
-    }>;
+    return this.traceroutesRepo!.getCompletedTraceroutesForMigrationSync();
   }
 
   /**
@@ -4408,12 +4258,7 @@ class DatabaseService {
    * Used during migration to force recalculation with new algorithm.
    */
   deleteAllEstimatedPositions(): number {
-    const stmt = this.db.prepare(`
-      DELETE FROM telemetry
-      WHERE telemetryType IN ('estimated_latitude', 'estimated_longitude')
-    `);
-    const result = stmt.run();
-    return result.changes;
+    return this.telemetry.deleteAllEstimatedPositionsSync();
   }
 
   // Cache for PostgreSQL telemetry data
@@ -4723,127 +4568,13 @@ class DatabaseService {
       return;
     }
 
-    // SQLite: Wrap in transaction to prevent race conditions
-    const transaction = this.db.transaction(() => {
-      const now = Date.now();
-      const pendingTimeoutAgo = now - PENDING_TRACEROUTE_TIMEOUT_MS;
-
-      // Check if there's a pending traceroute request (with null route) within the timeout window
-      // NOTE: When a traceroute response comes in, fromNum is the destination (responder) and toNum is the local node (requester)
-      // But when we created the pending record, fromNodeNum was the local node and toNodeNum was the destination
-      // So we need to check the REVERSE direction (toNum -> fromNum instead of fromNum -> toNum)
-      const findPendingStmt = this.db.prepare(
-        sourceId !== undefined
-          ? `SELECT id FROM traceroutes
-             WHERE fromNodeNum = ? AND toNodeNum = ?
-             AND route IS NULL
-             AND timestamp >= ?
-             AND sourceId = ?
-             ORDER BY timestamp DESC
-             LIMIT 1`
-          : `SELECT id FROM traceroutes
-             WHERE fromNodeNum = ? AND toNodeNum = ?
-             AND route IS NULL
-             AND timestamp >= ?
-             ORDER BY timestamp DESC
-             LIMIT 1`
-      );
-
-      const pendingRecord = (sourceId !== undefined
-        ? findPendingStmt.get(
-            tracerouteData.toNodeNum,
-            tracerouteData.fromNodeNum,
-            pendingTimeoutAgo,
-            sourceId
-          )
-        : findPendingStmt.get(
-            tracerouteData.toNodeNum,
-            tracerouteData.fromNodeNum,
-            pendingTimeoutAgo
-          )) as { id: number } | undefined;
-
-      if (pendingRecord) {
-        // Update the existing pending record with the response data
-        const updateStmt = this.db.prepare(`
-          UPDATE traceroutes
-          SET route = ?, routeBack = ?, snrTowards = ?, snrBack = ?, timestamp = ?
-          WHERE id = ?
-        `);
-
-        updateStmt.run(
-          tracerouteData.route || null,
-          tracerouteData.routeBack || null,
-          tracerouteData.snrTowards || null,
-          tracerouteData.snrBack || null,
-          tracerouteData.timestamp,
-          pendingRecord.id
-        );
-      } else {
-        // No pending request found, insert a new traceroute record
-        const insertStmt = this.db.prepare(`
-          INSERT INTO traceroutes (
-            fromNodeNum, toNodeNum, fromNodeId, toNodeId, route, routeBack, snrTowards, snrBack, timestamp, createdAt, sourceId
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-
-        insertStmt.run(
-          tracerouteData.fromNodeNum,
-          tracerouteData.toNodeNum,
-          tracerouteData.fromNodeId,
-          tracerouteData.toNodeId,
-          tracerouteData.route || null,
-          tracerouteData.routeBack || null,
-          tracerouteData.snrTowards || null,
-          tracerouteData.snrBack || null,
-          tracerouteData.timestamp,
-          tracerouteData.createdAt,
-          sourceId ?? null
-        );
-      }
-
-      // Keep only the last N traceroutes for this source-destination pair
-      // Delete older traceroutes beyond the limit
-      const deleteOldStmt = this.db.prepare(
-        sourceId !== undefined
-          ? `DELETE FROM traceroutes
-             WHERE fromNodeNum = ? AND toNodeNum = ? AND sourceId = ?
-             AND id NOT IN (
-               SELECT id FROM traceroutes
-               WHERE fromNodeNum = ? AND toNodeNum = ? AND sourceId = ?
-               ORDER BY timestamp DESC
-               LIMIT ?
-             )`
-          : `DELETE FROM traceroutes
-             WHERE fromNodeNum = ? AND toNodeNum = ?
-             AND id NOT IN (
-               SELECT id FROM traceroutes
-               WHERE fromNodeNum = ? AND toNodeNum = ?
-               ORDER BY timestamp DESC
-               LIMIT ?
-             )`
-      );
-      if (sourceId !== undefined) {
-        deleteOldStmt.run(
-          tracerouteData.fromNodeNum,
-          tracerouteData.toNodeNum,
-          sourceId,
-          tracerouteData.fromNodeNum,
-          tracerouteData.toNodeNum,
-          sourceId,
-          TRACEROUTE_HISTORY_LIMIT
-        );
-      } else {
-        deleteOldStmt.run(
-          tracerouteData.fromNodeNum,
-          tracerouteData.toNodeNum,
-          tracerouteData.fromNodeNum,
-          tracerouteData.toNodeNum,
-          TRACEROUTE_HISTORY_LIMIT
-        );
-      }
-    });
-
-    transaction();
+    // SQLite: delegate to repository sync upsert (runs in a transaction)
+    this.traceroutes.upsertTracerouteSync(
+      tracerouteData,
+      PENDING_TRACEROUTE_TIMEOUT_MS,
+      TRACEROUTE_HISTORY_LIMIT,
+      sourceId
+    );
   }
 
   getTraceroutesByNodes(fromNodeNum: number, toNodeNum: number, limit: number = 10): DbTraceroute[] {
@@ -4868,16 +4599,7 @@ class DatabaseService {
     }
 
     // Search bidirectionally to capture traceroutes initiated from either direction
-    // This is especially important for 3rd party traceroutes (e.g., via Virtual Node)
-    // where the stored direction might be reversed from what's being queried
-    const stmt = this.db.prepare(`
-      SELECT * FROM traceroutes
-      WHERE (fromNodeNum = ? AND toNodeNum = ?) OR (fromNodeNum = ? AND toNodeNum = ?)
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `);
-    const traceroutes = stmt.all(fromNodeNum, toNodeNum, toNodeNum, fromNodeNum, limit) as DbTraceroute[];
-    return traceroutes.map(t => this.normalizeBigInts(t));
+    return this.traceroutes.getTraceroutesByNodesSync(fromNodeNum, toNodeNum, limit) as unknown as DbTraceroute[];
   }
 
   getAllTraceroutes(limit: number = 100): DbTraceroute[] {
@@ -4902,13 +4624,7 @@ class DatabaseService {
       return this._traceroutesCache || [];
     }
 
-    const stmt = this.db.prepare(`
-      SELECT * FROM traceroutes
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `);
-    const traceroutes = stmt.all(limit) as DbTraceroute[];
-    return traceroutes.map(t => this.normalizeBigInts(t));
+    return this.traceroutes.getAllTraceroutesRecentSync(limit) as unknown as DbTraceroute[];
   }
 
   getNodeNeedingTraceroute(localNodeNum: number): DbNode | null {
@@ -4958,40 +4674,12 @@ class DatabaseService {
     // Two categories:
     // 1. Nodes with no successful traceroute: retry every 3 hours
     // 2. Nodes with successful traceroute: retry every 24 hours
-    const stmt = this.db.prepare(`
-      SELECT n.*,
-        (SELECT COUNT(*) FROM traceroutes t
-         WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) as hasTraceroute
-      FROM nodes n
-      WHERE n.nodeNum != ?
-        AND n.lastHeard > ?
-        AND (
-          -- Category 1: No traceroute exists, and (never requested OR requested > 3 hours ago)
-          (
-            (SELECT COUNT(*) FROM traceroutes t
-             WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) = 0
-            AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ?)
-          )
-          OR
-          -- Category 2: Traceroute exists, and (never requested OR requested > expiration hours ago)
-          (
-            (SELECT COUNT(*) FROM traceroutes t
-             WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) > 0
-            AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ?)
-          )
-        )
-      ORDER BY n.lastHeard DESC
-    `);
-
-    let eligibleNodes = stmt.all(
-      localNodeNum,
+    let eligibleNodes = this.traceroutesRepo!.getEligibleTracerouteCandidatesSync(
       localNodeNum,
       activeNodeCutoff,
-      localNodeNum,
       now - THREE_HOURS_MS,
-      localNodeNum,
       now - EXPIRATION_MS
-    ) as DbNode[];
+    ) as unknown as DbNode[];
 
     // Apply last-heard filter (AND logic — applied before OR union filters)
     if (filterLastHeardEnabled) {
@@ -5391,51 +5079,26 @@ class DatabaseService {
     const fromNodeId = `!${fromNodeNum.toString(16).padStart(8, '0')}`;
     const toNodeId = `!${toNodeNum.toString(16).padStart(8, '0')}`;
 
-    const insertStmt = this.db.prepare(`
-      INSERT INTO traceroutes (
-        fromNodeNum, toNodeNum, fromNodeId, toNodeId, route, routeBack, snrTowards, snrBack, timestamp, createdAt, sourceId
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    insertStmt.run(
-      fromNodeNum,
-      toNodeNum,
-      fromNodeId,
-      toNodeId,
-      null, // route will be null until response received
-      null, // routeBack will be null until response received
-      null, // snrTowards will be null until response received
-      null, // snrBack will be null until response received
-      now,
-      now,
-      sourceId ?? null
+    // upsertTracerouteSync handles insert + history prune in a transaction.
+    // Using a pending timeout of 0 guarantees no "pending match" occurs so
+    // we always insert a new pending record (matching legacy behavior).
+    this.traceroutes.upsertTracerouteSync(
+      {
+        fromNodeNum,
+        toNodeNum,
+        fromNodeId,
+        toNodeId,
+        route: null as unknown as string,
+        routeBack: null as unknown as string,
+        snrTowards: null as unknown as string,
+        snrBack: null as unknown as string,
+        timestamp: now,
+        createdAt: now,
+      } as DbTraceroute,
+      0,
+      TRACEROUTE_HISTORY_LIMIT,
+      sourceId
     );
-
-    // Keep only the last N traceroutes for this source-destination pair
-    const deleteOldStmt = this.db.prepare(
-      sourceId !== undefined
-        ? `DELETE FROM traceroutes
-           WHERE fromNodeNum = ? AND toNodeNum = ? AND sourceId = ?
-           AND id NOT IN (
-             SELECT id FROM traceroutes
-             WHERE fromNodeNum = ? AND toNodeNum = ? AND sourceId = ?
-             ORDER BY timestamp DESC
-             LIMIT ?
-           )`
-        : `DELETE FROM traceroutes
-           WHERE fromNodeNum = ? AND toNodeNum = ?
-           AND id NOT IN (
-             SELECT id FROM traceroutes
-             WHERE fromNodeNum = ? AND toNodeNum = ?
-             ORDER BY timestamp DESC
-             LIMIT ?
-           )`
-    );
-    if (sourceId !== undefined) {
-      deleteOldStmt.run(fromNodeNum, toNodeNum, sourceId, fromNodeNum, toNodeNum, sourceId, TRACEROUTE_HISTORY_LIMIT);
-    } else {
-      deleteOldStmt.run(fromNodeNum, toNodeNum, fromNodeNum, toNodeNum, TRACEROUTE_HISTORY_LIMIT);
-    }
   }
 
   // Auto-traceroute node filter methods
@@ -5443,42 +5106,14 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       throw new Error(`SQLite method 'getAutoTracerouteNodes' called but using ${this.drizzleDbType} database. Use getAutoTracerouteNodesAsync() instead.`);
     }
-    const stmt = this.db.prepare(`
-      SELECT nodeNum FROM auto_traceroute_nodes
-      ORDER BY createdAt ASC
-    `);
-    const nodes = stmt.all() as { nodeNum: number }[];
-    return nodes.map(n => Number(n.nodeNum));
+    return this.misc!.getAutoTracerouteNodesSync();
   }
 
   setAutoTracerouteNodes(nodeNums: number[]): void {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       throw new Error(`SQLite method 'setAutoTracerouteNodes' called but using ${this.drizzleDbType} database. Use setAutoTracerouteNodesAsync() instead.`);
     }
-    const now = Date.now();
-
-    // Use a transaction for atomic operation
-    const deleteStmt = this.db.prepare('DELETE FROM auto_traceroute_nodes');
-    const insertStmt = this.db.prepare(`
-      INSERT INTO auto_traceroute_nodes (nodeNum, createdAt)
-      VALUES (?, ?)
-    `);
-
-    this.db.transaction(() => {
-      // Clear existing entries
-      deleteStmt.run();
-
-      // Insert new entries
-      for (const nodeNum of nodeNums) {
-        try {
-          insertStmt.run(nodeNum, now);
-        } catch (error) {
-          // Ignore duplicate entries or foreign key violations
-          logger.debug(`Skipping invalid nodeNum: ${nodeNum}`, error);
-        }
-      }
-    })();
-
+    this.misc!.setAutoTracerouteNodesSync(nodeNums);
     logger.debug(`✅ Set auto-traceroute filter to ${nodeNums.length} nodes`);
   }
 
@@ -5938,47 +5573,16 @@ class DatabaseService {
 
   // Auto-traceroute log methods
   logAutoTracerouteAttempt(toNodeNum: number, toNodeName: string | null, sourceId?: string): number {
-    const now = Date.now();
-    const stmt = this.db.prepare(`
-      INSERT INTO auto_traceroute_log (timestamp, to_node_num, to_node_name, success, created_at, sourceId)
-      VALUES (?, ?, ?, NULL, ?, ?)
-    `);
-    const result = stmt.run(now, toNodeNum, toNodeName, now, sourceId ?? null);
-
-    // Clean up old entries (keep last 100)
-    const cleanupStmt = this.db.prepare(`
-      DELETE FROM auto_traceroute_log
-      WHERE id NOT IN (
-        SELECT id FROM auto_traceroute_log
-        ORDER BY timestamp DESC
-        LIMIT 100
-      )
-    `);
-    cleanupStmt.run();
-
-    return result.lastInsertRowid as number;
+    return this.misc!.logAutoTracerouteAttemptSync(toNodeNum, toNodeName, sourceId);
   }
 
   updateAutoTracerouteResult(logId: number, success: boolean): void {
-    const stmt = this.db.prepare(`
-      UPDATE auto_traceroute_log SET success = ? WHERE id = ?
-    `);
-    stmt.run(success ? 1 : 0, logId);
+    this.misc!.updateAutoTracerouteResultSync(logId, success);
   }
 
   // Update the most recent pending auto-traceroute for a given destination
   updateAutoTracerouteResultByNode(toNodeNum: number, success: boolean): void {
-    const stmt = this.db.prepare(`
-      UPDATE auto_traceroute_log
-      SET success = ?
-      WHERE id = (
-        SELECT id FROM auto_traceroute_log
-        WHERE to_node_num = ? AND success IS NULL
-        ORDER BY timestamp DESC
-        LIMIT 1
-      )
-    `);
-    stmt.run(success ? 1 : 0, toNodeNum);
+    this.misc!.updateAutoTracerouteResultByNodeSync(toNodeNum, success);
   }
 
   getAutoTracerouteLog(limit: number = 10, sourceId?: string): {
@@ -5992,33 +5596,7 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return [];
     }
-
-    const stmt = sourceId
-      ? this.db.prepare(`
-          SELECT id, timestamp, to_node_num as toNodeNum, to_node_name as toNodeName, success
-          FROM auto_traceroute_log
-          WHERE sourceId = ?
-          ORDER BY timestamp DESC
-          LIMIT ?
-        `)
-      : this.db.prepare(`
-          SELECT id, timestamp, to_node_num as toNodeNum, to_node_name as toNodeName, success
-          FROM auto_traceroute_log
-          ORDER BY timestamp DESC
-          LIMIT ?
-        `);
-    const results = (sourceId ? stmt.all(sourceId, limit) : stmt.all(limit)) as {
-      id: number;
-      timestamp: number;
-      toNodeNum: number;
-      toNodeName: string | null;
-      success: number | null;
-    }[];
-
-    return results.map(r => ({
-      ...r,
-      success: r.success === null ? null : r.success === 1
-    }));
+    return this.misc!.getAutoTracerouteLogSync(limit, sourceId);
   }
 
   /**
@@ -6035,45 +5613,7 @@ class DatabaseService {
       // Fallback to sync for SQLite
       return this.getAutoTracerouteLog(limit, sourceId);
     }
-
-    try {
-      let results: any[] = [];
-
-      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-        const result = sourceId
-          ? await this.postgresPool.query(
-              `SELECT id, timestamp, to_node_num, to_node_name, success FROM auto_traceroute_log WHERE "sourceId" = $1 ORDER BY timestamp DESC LIMIT $2`,
-              [sourceId, limit]
-            )
-          : await this.postgresPool.query(
-              `SELECT id, timestamp, to_node_num, to_node_name, success FROM auto_traceroute_log ORDER BY timestamp DESC LIMIT $1`,
-              [limit]
-            );
-        results = result.rows || [];
-      } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-        const [rows] = sourceId
-          ? await this.mysqlPool.query(
-              `SELECT id, timestamp, to_node_num, to_node_name, success FROM auto_traceroute_log WHERE sourceId = ? ORDER BY timestamp DESC LIMIT ?`,
-              [sourceId, limit]
-            )
-          : await this.mysqlPool.query(
-              `SELECT id, timestamp, to_node_num, to_node_name, success FROM auto_traceroute_log ORDER BY timestamp DESC LIMIT ?`,
-              [limit]
-            );
-        results = rows as any[] || [];
-      }
-
-      return results.map((r: any) => ({
-        id: Number(r.id),
-        timestamp: Number(r.timestamp),
-        toNodeNum: Number(r.to_node_num),
-        toNodeName: r.to_node_name,
-        success: r.success === null ? null : Boolean(r.success)
-      }));
-    } catch (error) {
-      logger.error(`[DatabaseService] Failed to get auto traceroute log async: ${error}`);
-      return [];
-    }
+    return this.misc!.getAutoTracerouteLog(limit, sourceId);
   }
 
   /**
@@ -6084,55 +5624,7 @@ class DatabaseService {
       // Fallback to sync for SQLite
       return this.logAutoTracerouteAttempt(toNodeNum, toNodeName, sourceId);
     }
-
-    const now = Date.now();
-
-    try {
-      let insertedId = 0;
-
-      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-        const result = await this.postgresPool.query(
-          `INSERT INTO auto_traceroute_log (timestamp, to_node_num, to_node_name, success, created_at, "sourceId")
-           VALUES ($1, $2, $3, NULL, $4, $5) RETURNING id`,
-          [now, toNodeNum, toNodeName, now, sourceId ?? null]
-        );
-        insertedId = result.rows[0]?.id || 0;
-
-        // Clean up old entries (keep last 100)
-        await this.postgresPool.query(`
-          DELETE FROM auto_traceroute_log
-          WHERE id NOT IN (
-            SELECT id FROM auto_traceroute_log
-            ORDER BY timestamp DESC
-            LIMIT 100
-          )
-        `);
-      } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-        const [result] = await this.mysqlPool.query(
-          `INSERT INTO auto_traceroute_log (timestamp, to_node_num, to_node_name, success, created_at, sourceId)
-           VALUES (?, ?, ?, NULL, ?, ?)`,
-          [now, toNodeNum, toNodeName, now, sourceId ?? null]
-        ) as any;
-        insertedId = result.insertId || 0;
-
-        // Clean up old entries (keep last 100)
-        await this.mysqlPool.query(`
-          DELETE FROM auto_traceroute_log
-          WHERE id NOT IN (
-            SELECT id FROM (
-              SELECT id FROM auto_traceroute_log
-              ORDER BY timestamp DESC
-              LIMIT 100
-            ) AS keep_ids
-          )
-        `);
-      }
-
-      return insertedId;
-    } catch (error) {
-      logger.error(`[DatabaseService] Failed to log auto traceroute attempt async: ${error}`);
-      return 0;
-    }
+    return this.misc!.logAutoTracerouteAttempt(toNodeNum, toNodeName, sourceId);
   }
 
   /**
@@ -6144,36 +5636,7 @@ class DatabaseService {
       this.updateAutoTracerouteResultByNode(toNodeNum, success);
       return;
     }
-
-    try {
-      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-        await this.postgresPool.query(`
-          UPDATE auto_traceroute_log
-          SET success = $1
-          WHERE id = (
-            SELECT id FROM auto_traceroute_log
-            WHERE to_node_num = $2 AND success IS NULL
-            ORDER BY timestamp DESC
-            LIMIT 1
-          )
-        `, [success ? 1 : 0, toNodeNum]);
-      } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-        await this.mysqlPool.query(`
-          UPDATE auto_traceroute_log
-          SET success = ?
-          WHERE id = (
-            SELECT id FROM (
-              SELECT id FROM auto_traceroute_log
-              WHERE to_node_num = ? AND success IS NULL
-              ORDER BY timestamp DESC
-              LIMIT 1
-            ) AS subq
-          )
-        `, [success ? 1 : 0, toNodeNum]);
-      }
-    } catch (error) {
-      logger.error(`[DatabaseService] Failed to update auto traceroute result async: ${error}`);
-    }
+    await this.misc!.updateAutoTracerouteResultByNode(toNodeNum, success);
   }
 
   // Auto key repair state methods
@@ -6778,14 +6241,7 @@ class DatabaseService {
       return [];
     }
 
-    const stmt = this.db.prepare(`
-      SELECT * FROM telemetry
-      WHERE telemetryType = ?
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `);
-    const telemetry = stmt.all(telemetryType, limit) as DbTelemetry[];
-    return telemetry.map(t => this.normalizeBigInts(t));
+    return this.telemetry.getTelemetryByTypeSync(telemetryType, limit) as unknown as DbTelemetry[];
   }
 
   /** @deprecated Use databaseService.telemetry.getTelemetryByType() instead */
@@ -6800,16 +6256,7 @@ class DatabaseService {
       return [];
     }
 
-    const stmt = this.db.prepare(`
-      SELECT * FROM telemetry t1
-      WHERE nodeId = ? AND timestamp = (
-        SELECT MAX(timestamp) FROM telemetry t2
-        WHERE t2.nodeId = t1.nodeId AND t2.telemetryType = t1.telemetryType
-      )
-      ORDER BY telemetryType ASC
-    `);
-    const telemetry = stmt.all(nodeId) as DbTelemetry[];
-    return telemetry.map(t => this.normalizeBigInts(t));
+    return this.telemetry.getLatestTelemetryByNodeSync(nodeId) as unknown as DbTelemetry[];
   }
 
   getLatestTelemetryForType(nodeId: string, telemetryType: string): DbTelemetry | null {
@@ -6820,14 +6267,7 @@ class DatabaseService {
       // The actual data will be fetched via API endpoints which can be async
       return null;
     }
-    const stmt = this.db.prepare(`
-      SELECT * FROM telemetry
-      WHERE nodeId = ? AND telemetryType = ?
-      ORDER BY timestamp DESC
-      LIMIT 1
-    `);
-    const telemetry = stmt.get(nodeId, telemetryType) as DbTelemetry | null;
-    return telemetry ? this.normalizeBigInts(telemetry) : null;
+    return this.telemetry.getLatestTelemetryForTypeSync(nodeId, telemetryType) as unknown as DbTelemetry | null;
   }
 
   /**
@@ -6864,12 +6304,7 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return [];
     }
-    const stmt = this.db.prepare(`
-      SELECT DISTINCT telemetryType FROM telemetry
-      WHERE nodeId = ?
-    `);
-    const results = stmt.all(nodeId) as Array<{ telemetryType: string }>;
-    return results.map(r => r.telemetryType);
+    return this.telemetry.getNodeTelemetryTypesSync(nodeId);
   }
 
   // Get all nodes with their telemetry types (cached for performance)
@@ -6899,16 +6334,7 @@ class DatabaseService {
     }
 
     // SQLite: query the database and update cache
-    const stmt = this.db.prepare(`
-      SELECT nodeId, GROUP_CONCAT(DISTINCT telemetryType) as types
-      FROM telemetry
-      GROUP BY nodeId
-    `);
-    const results = stmt.all() as Array<{ nodeId: string; types: string }>;
-    const map = new Map<string, string[]>();
-    results.forEach(r => {
-      map.set(r.nodeId, r.types ? r.types.split(',') : []);
-    });
+    const map = this.telemetry.getAllNodesTelemetryTypesSync();
 
     this.telemetryTypesCache = map;
     this.telemetryTypesCacheTime = now;
@@ -6937,16 +6363,7 @@ class DatabaseService {
     }
 
     // SQLite: query the database and update cache
-    const stmt = this.db.prepare(`
-      SELECT nodeId, GROUP_CONCAT(DISTINCT telemetryType) as types
-      FROM telemetry
-      GROUP BY nodeId
-    `);
-    const results = stmt.all() as Array<{ nodeId: string; types: string }>;
-    const map = new Map<string, string[]>();
-    results.forEach(r => {
-      map.set(r.nodeId, r.types ? r.types.split(',') : []);
-    });
+    const map = this.telemetry.getAllNodesTelemetryTypesSync();
 
     this.telemetryTypesCache = map;
     this.telemetryTypesCacheTime = now;
@@ -6981,9 +6398,9 @@ class DatabaseService {
     // Delete in order to respect foreign key constraints
     // First delete all child records that reference nodes
     this.db.exec('DELETE FROM messages');
-    this.db.exec('DELETE FROM telemetry');
-    this.db.exec('DELETE FROM traceroutes');
-    this.db.exec('DELETE FROM route_segments');
+    this.telemetry.deleteAllTelemetrySync();
+    this.traceroutes.deleteAllTraceroutesSync();
+    this.traceroutes.deleteAllRouteSegmentsSync();
     if (this.neighborsRepo) {
       // Use Drizzle repo for all backends (including SQLite)
       this.neighborsRepo.deleteAllNeighborInfo().catch(err =>
@@ -6992,6 +6409,8 @@ class DatabaseService {
     }
     // Finally delete the nodes themselves
     this.db.exec('DELETE FROM nodes');
+    // Telemetry cache invalidation after bulk purge
+    this.invalidateTelemetryTypesCache();
     logger.debug('✅ Successfully purged all nodes and related data');
   }
 
@@ -7003,6 +6422,7 @@ class DatabaseService {
       if (this.telemetryRepo) {
         this.telemetryRepo.deleteAllTelemetry().then(() => {
           logger.debug('✅ Successfully purged all telemetry');
+          this.invalidateTelemetryTypesCache();
         }).catch(err => {
           logger.error('Failed to purge all telemetry:', err);
         });
@@ -7012,7 +6432,8 @@ class DatabaseService {
       return;
     }
 
-    this.db.exec('DELETE FROM telemetry');
+    this.telemetry.deleteAllTelemetrySync();
+    this.invalidateTelemetryTypesCache();
   }
 
   purgeOldTelemetry(hoursToKeep: number, favoriteDaysToKeep?: number): number {
@@ -7064,10 +6485,10 @@ class DatabaseService {
 
     // If no favorite storage duration specified, purge all telemetry older than hoursToKeep
     if (!favoriteDaysToKeep) {
-      const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
-      const result = stmt.run(regularCutoffTime);
-      logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours)`);
-      return Number(result.changes);
+      const deleted = this.telemetry.deleteOldTelemetrySync(regularCutoffTime);
+      logger.debug(`🧹 Purged ${deleted} old telemetry records (keeping last ${hoursToKeep} hours)`);
+      if (deleted > 0) this.invalidateTelemetryTypesCache();
+      return deleted;
     }
 
     // Get the list of favorited telemetry from settings
@@ -7083,42 +6504,28 @@ class DatabaseService {
 
     // If no favorites, just purge everything older than hoursToKeep
     if (favorites.length === 0) {
-      const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
-      const result = stmt.run(regularCutoffTime);
-      logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours, no favorites)`);
-      return Number(result.changes);
+      const deleted = this.telemetry.deleteOldTelemetrySync(regularCutoffTime);
+      logger.debug(`🧹 Purged ${deleted} old telemetry records (keeping last ${hoursToKeep} hours, no favorites)`);
+      if (deleted > 0) this.invalidateTelemetryTypesCache();
+      return deleted;
     }
 
     // Calculate the cutoff time for favorited telemetry
     const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
 
-    // Build a query to purge old telemetry, exempting favorited telemetry
-    // Purge non-favorited telemetry older than hoursToKeep
-    // Purge favorited telemetry older than favoriteDaysToKeep
-    let totalDeleted = 0;
-
-    // First, delete non-favorited telemetry older than regularCutoffTime
-    const conditions = favorites.map(() => '(nodeId = ? AND telemetryType = ?)').join(' OR ');
-    const params = favorites.flatMap(f => [f.nodeId, f.telemetryType]);
-
-    const deleteNonFavoritesStmt = this.db.prepare(
-      `DELETE FROM telemetry WHERE timestamp < ? AND NOT (${conditions})`
+    const { nonFavoritesDeleted, favoritesDeleted } = this.telemetry.deleteOldTelemetryWithFavoritesSync(
+      regularCutoffTime,
+      favoriteCutoffTime,
+      favorites
     );
-    const nonFavoritesResult = deleteNonFavoritesStmt.run(regularCutoffTime, ...params);
-    totalDeleted += Number(nonFavoritesResult.changes);
-
-    // Then, delete favorited telemetry older than favoriteCutoffTime
-    const deleteFavoritesStmt = this.db.prepare(
-      `DELETE FROM telemetry WHERE timestamp < ? AND (${conditions})`
-    );
-    const favoritesResult = deleteFavoritesStmt.run(favoriteCutoffTime, ...params);
-    totalDeleted += Number(favoritesResult.changes);
+    const totalDeleted = nonFavoritesDeleted + favoritesDeleted;
 
     logger.debug(
       `🧹 Purged ${totalDeleted} old telemetry records ` +
-      `(${nonFavoritesResult.changes} non-favorites older than ${hoursToKeep}h, ` +
-      `${favoritesResult.changes} favorites older than ${favoriteDaysToKeep}d)`
+      `(${nonFavoritesDeleted} non-favorites older than ${hoursToKeep}h, ` +
+      `${favoritesDeleted} favorites older than ${favoriteDaysToKeep}d)`
     );
+    if (totalDeleted > 0) this.invalidateTelemetryTypesCache();
     return totalDeleted;
   }
 
@@ -7130,11 +6537,13 @@ class DatabaseService {
 
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       await this.telemetry.deleteAllTelemetry();
+      this.invalidateTelemetryTypesCache();
       logger.debug('✅ Successfully purged all telemetry');
       return;
     }
 
-    this.db.exec('DELETE FROM telemetry');
+    this.telemetry.deleteAllTelemetrySync();
+    this.invalidateTelemetryTypesCache();
     logger.debug('✅ Successfully purged all telemetry');
   }
 
@@ -7178,12 +6587,12 @@ class DatabaseService {
       return totalDeleted;
     }
 
-    // SQLite: synchronous path
+    // SQLite: synchronous path via repository
     if (!favoriteDaysToKeep) {
-      const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
-      const result = stmt.run(regularCutoffTime);
-      logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours)`);
-      return Number(result.changes);
+      const deleted = this.telemetry.deleteOldTelemetrySync(regularCutoffTime);
+      logger.debug(`🧹 Purged ${deleted} old telemetry records (keeping last ${hoursToKeep} hours)`);
+      if (deleted > 0) this.invalidateTelemetryTypesCache();
+      return deleted;
     }
 
     const favoritesStr = this.getSetting('telemetryFavorites');
@@ -7197,35 +6606,27 @@ class DatabaseService {
     }
 
     if (favorites.length === 0) {
-      const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
-      const result = stmt.run(regularCutoffTime);
-      logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours, no favorites)`);
-      return Number(result.changes);
+      const deleted = this.telemetry.deleteOldTelemetrySync(regularCutoffTime);
+      logger.debug(`🧹 Purged ${deleted} old telemetry records (keeping last ${hoursToKeep} hours, no favorites)`);
+      if (deleted > 0) this.invalidateTelemetryTypesCache();
+      return deleted;
     }
 
     const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
-    let totalDeleted = 0;
 
-    const conditions = favorites.map(() => '(nodeId = ? AND telemetryType = ?)').join(' OR ');
-    const params = favorites.flatMap(f => [f.nodeId, f.telemetryType]);
-
-    const deleteNonFavoritesStmt = this.db.prepare(
-      `DELETE FROM telemetry WHERE timestamp < ? AND NOT (${conditions})`
+    const { nonFavoritesDeleted, favoritesDeleted } = this.telemetry.deleteOldTelemetryWithFavoritesSync(
+      regularCutoffTime,
+      favoriteCutoffTime,
+      favorites
     );
-    const nonFavoritesResult = deleteNonFavoritesStmt.run(regularCutoffTime, ...params);
-    totalDeleted += Number(nonFavoritesResult.changes);
-
-    const deleteFavoritesStmt = this.db.prepare(
-      `DELETE FROM telemetry WHERE timestamp < ? AND (${conditions})`
-    );
-    const favoritesResult = deleteFavoritesStmt.run(favoriteCutoffTime, ...params);
-    totalDeleted += Number(favoritesResult.changes);
+    const totalDeleted = nonFavoritesDeleted + favoritesDeleted;
 
     logger.debug(
       `🧹 Purged ${totalDeleted} old telemetry records ` +
-      `(${nonFavoritesResult.changes} non-favorites older than ${hoursToKeep}h, ` +
-      `${favoritesResult.changes} favorites older than ${favoriteDaysToKeep}d)`
+      `(${nonFavoritesDeleted} non-favorites older than ${hoursToKeep}h, ` +
+      `${favoritesDeleted} favorites older than ${favoriteDaysToKeep}d)`
     );
+    if (totalDeleted > 0) this.invalidateTelemetryTypesCache();
     return totalDeleted;
   }
 
@@ -7439,23 +6840,7 @@ class DatabaseService {
     }
 
     // SQLite path
-    const stmt = this.db.prepare(`
-      INSERT INTO route_segments (
-        fromNodeNum, toNodeNum, fromNodeId, toNodeId, distanceKm, isRecordHolder, timestamp, createdAt, sourceId
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      segmentData.fromNodeNum,
-      segmentData.toNodeNum,
-      segmentData.fromNodeId,
-      segmentData.toNodeId,
-      segmentData.distanceKm,
-      segmentData.isRecordHolder ? 1 : 0,
-      segmentData.timestamp,
-      segmentData.createdAt,
-      sourceId ?? null,
-    );
+    this.traceroutesRepo!.insertRouteSegmentSync(segmentData, sourceId);
   }
 
   getLongestActiveRouteSegment(sourceId?: string): DbRouteSegment | null {
@@ -7463,25 +6848,7 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return null;
     }
-    // Get the longest segment from recent traceroutes (within last 7 days)
-    const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
-    const stmt = sourceId !== undefined
-      ? this.db.prepare(`
-          SELECT * FROM route_segments
-          WHERE timestamp > ? AND sourceId IS ?
-          ORDER BY distanceKm DESC
-          LIMIT 1
-        `)
-      : this.db.prepare(`
-          SELECT * FROM route_segments
-          WHERE timestamp > ?
-          ORDER BY distanceKm DESC
-          LIMIT 1
-        `);
-    const segment = (sourceId !== undefined
-      ? stmt.get(cutoff, sourceId)
-      : stmt.get(cutoff)) as DbRouteSegment | null;
-    return segment ? this.normalizeBigInts(segment) : null;
+    return this.traceroutesRepo!.getLongestActiveRouteSegmentSync(sourceId) as unknown as DbRouteSegment | null;
   }
 
   getRecordHolderRouteSegment(sourceId?: string): DbRouteSegment | null {
@@ -7489,23 +6856,7 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return null;
     }
-    const stmt = sourceId !== undefined
-      ? this.db.prepare(`
-          SELECT * FROM route_segments
-          WHERE isRecordHolder = 1 AND sourceId IS ?
-          ORDER BY distanceKm DESC
-          LIMIT 1
-        `)
-      : this.db.prepare(`
-          SELECT * FROM route_segments
-          WHERE isRecordHolder = 1
-          ORDER BY distanceKm DESC
-          LIMIT 1
-        `);
-    const segment = (sourceId !== undefined
-      ? stmt.get(sourceId)
-      : stmt.get()) as DbRouteSegment | null;
-    return segment ? this.normalizeBigInts(segment) : null;
+    return this.traceroutesRepo!.getRecordHolderRouteSegmentSync(sourceId) as unknown as DbRouteSegment | null;
   }
 
   updateRecordHolderSegment(newSegment: DbRouteSegment, sourceId?: string): void {
@@ -7535,11 +6886,7 @@ class DatabaseService {
     if (!currentRecord || newSegment.distanceKm > currentRecord.distanceKm) {
       // Clear existing record holders for this source (IS NULL when scope is
       // global, exact match when scoped — keeps per-source records independent).
-      if (sourceId !== undefined) {
-        this.db.prepare('UPDATE route_segments SET isRecordHolder = 0 WHERE sourceId IS ?').run(sourceId);
-      } else {
-        this.db.exec('UPDATE route_segments SET isRecordHolder = 0');
-      }
+      this.traceroutesRepo!.clearRecordHolderSegmentSync(sourceId);
 
       // Insert new record holder
       this.insertRouteSegment({
@@ -7563,11 +6910,7 @@ class DatabaseService {
       return;
     }
 
-    if (sourceId !== undefined) {
-      this.db.prepare('UPDATE route_segments SET isRecordHolder = 0 WHERE sourceId IS ?').run(sourceId);
-    } else {
-      this.db.exec('UPDATE route_segments SET isRecordHolder = 0');
-    }
+    this.traceroutesRepo!.clearRecordHolderSegmentSync(sourceId);
     logger.debug('🗑️ Cleared record holder route segment');
   }
 
@@ -7582,22 +6925,7 @@ class DatabaseService {
       return 0;
     }
 
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-    if (sourceId !== undefined) {
-      const stmt = this.db.prepare(`
-        DELETE FROM route_segments
-        WHERE timestamp < ? AND isRecordHolder = 0 AND sourceId IS ?
-      `);
-      const result = stmt.run(cutoff, sourceId);
-      return Number(result.changes);
-    }
-
-    const stmt = this.db.prepare(`
-      DELETE FROM route_segments
-      WHERE timestamp < ? AND isRecordHolder = 0
-    `);
-    const result = stmt.run(cutoff);
-    return Number(result.changes);
+    return this.traceroutesRepo!.cleanupOldRouteSegmentsSync(days, sourceId);
   }
 
   /**
@@ -7614,10 +6942,7 @@ class DatabaseService {
       return 0;
     }
 
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-    const stmt = this.db.prepare('DELETE FROM traceroutes WHERE timestamp < ?');
-    const result = stmt.run(cutoff);
-    return Number(result.changes);
+    return this.traceroutesRepo!.cleanupOldTraceroutesSync(days);
   }
 
   /**

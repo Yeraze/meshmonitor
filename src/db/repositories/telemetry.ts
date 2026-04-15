@@ -9,6 +9,30 @@ import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbTelemetry } from '../types.js';
 
 /**
+ * Favorite telemetry entry: (nodeId, telemetryType) pair that should be
+ * retained longer than regular telemetry during purge operations.
+ */
+export interface TelemetryFavorite {
+  nodeId: string;
+  telemetryType: string;
+}
+
+/**
+ * Normalize a telemetry row from a sync SQLite Drizzle query to the legacy
+ * DbTelemetry shape expected by facade callers: converts `null` fields back
+ * to `undefined` and returns the same object reference when possible.
+ */
+function normalizeSyncTelemetryRow(row: any): any {
+  if (row == null) return row;
+  // Convert known nullable columns from null to undefined to match DbTelemetry
+  const nullable = ['unit', 'packetTimestamp', 'packetId', 'channel', 'precisionBits', 'gpsAccuracy', 'sourceId'] as const;
+  for (const k of nullable) {
+    if (row[k] === null) row[k] = undefined;
+  }
+  return row;
+}
+
+/**
  * Repository for telemetry operations
  */
 export class TelemetryRepository extends BaseRepository {
@@ -397,7 +421,7 @@ export class TelemetryRepository extends BaseRepository {
    * Build a SQL condition that matches any of the favorited (nodeId, telemetryType) pairs.
    * Returns null if favorites array is empty.
    */
-  private buildFavoritesCondition(
+  protected buildFavoritesCondition(
     favorites: Array<{ nodeId: string; telemetryType: string }>
   ): SQL | null {
     if (favorites.length === 0) return null;
@@ -834,5 +858,380 @@ export class TelemetryRepository extends BaseRepository {
     });
 
     return [...averagedRows.map(toDbTelemetry), ...rawRows.map(toDbTelemetry)];
+  }
+
+  /**
+   * Get latest telemetry record with non-null packetTimestamp per node.
+   * Used by time-offset diagnostics. SQLite/MySQL use INNER JOIN on MAX,
+   * PostgreSQL uses DISTINCT ON for efficiency.
+   */
+  async getLatestPacketTimestampsPerNode(
+    minValidTimestampMs: number,
+    sourceId?: string
+  ): Promise<Array<{ nodeNum: number; timestamp: number; packetTimestamp: number }>> {
+    if (this.isPostgres()) {
+      const db = this.getPostgresDb();
+      const sourceFilter = sourceId
+        ? sql` AND "sourceId" = ${sourceId}`
+        : sql``;
+      const result = await db.execute(sql`
+        SELECT DISTINCT ON ("nodeNum") "nodeNum", "timestamp", "packetTimestamp"
+        FROM telemetry
+        WHERE "packetTimestamp" IS NOT NULL AND "packetTimestamp" > ${minValidTimestampMs}${sourceFilter}
+        ORDER BY "nodeNum", "timestamp" DESC
+      `);
+      return result.rows.map((r: any) => ({
+        nodeNum: Number(r.nodeNum),
+        timestamp: Number(r.timestamp),
+        packetTimestamp: Number(r.packetTimestamp),
+      }));
+    }
+
+    if (this.isMySQL()) {
+      const db = this.getMysqlDb();
+      const sourceFilterOuter = sourceId ? sql` AND t.sourceId = ${sourceId}` : sql``;
+      const sourceFilterInner = sourceId ? sql` AND sourceId = ${sourceId}` : sql``;
+      const [rows] = await (db as any).execute(sql`
+        SELECT t.nodeNum, t.timestamp, t.packetTimestamp
+        FROM telemetry t
+        INNER JOIN (
+          SELECT nodeNum, MAX(timestamp) as maxTs
+          FROM telemetry
+          WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ${minValidTimestampMs}${sourceFilterInner}
+          GROUP BY nodeNum
+        ) latest ON t.nodeNum = latest.nodeNum AND t.timestamp = latest.maxTs
+        WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ${minValidTimestampMs}${sourceFilterOuter}
+      `);
+      return (rows as any[]).map((r: any) => ({
+        nodeNum: Number(r.nodeNum),
+        timestamp: Number(r.timestamp),
+        packetTimestamp: Number(r.packetTimestamp),
+      }));
+    }
+
+    // SQLite
+    const db = this.getSqliteDb();
+    const sourceFilterOuter = sourceId ? sql` AND t.sourceId = ${sourceId}` : sql``;
+    const sourceFilterInner = sourceId ? sql` AND sourceId = ${sourceId}` : sql``;
+    const rows = await db.all<{ nodeNum: number | bigint; timestamp: number; packetTimestamp: number }>(
+      sql`SELECT t.nodeNum, t.timestamp, t.packetTimestamp
+          FROM telemetry t
+          INNER JOIN (
+            SELECT nodeNum, MAX(timestamp) as maxTs
+            FROM telemetry
+            WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ${minValidTimestampMs}${sourceFilterInner}
+            GROUP BY nodeNum
+          ) latest ON t.nodeNum = latest.nodeNum AND t.timestamp = latest.maxTs
+          WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ${minValidTimestampMs}${sourceFilterOuter}`
+    );
+    return rows.map((r: any) => ({
+      nodeNum: Number(r.nodeNum),
+      timestamp: Number(r.timestamp),
+      packetTimestamp: Number(r.packetTimestamp),
+    }));
+  }
+
+  /**
+   * Delete all estimated position telemetry (estimated_latitude, estimated_longitude).
+   * Used during migration to force recalculation with a new algorithm.
+   * Returns the number of rows deleted.
+   */
+  async deleteAllEstimatedPositions(): Promise<number> {
+    const { telemetry } = this.tables;
+    const types = ['estimated_latitude', 'estimated_longitude'];
+    const condition = inArray(telemetry.telemetryType, types);
+
+    if (this.isMySQL()) {
+      const countRows = await this.db
+        .select({ id: telemetry.id })
+        .from(telemetry)
+        .where(condition);
+      const cnt = countRows.length;
+      await this.db.delete(telemetry).where(condition);
+      return cnt;
+    }
+    const deleted = await (this.db as any)
+      .delete(telemetry)
+      .where(condition)
+      .returning({ id: telemetry.id });
+    return deleted.length;
+  }
+
+  // ============ SQLite-only sync methods ============
+  // These exist because facade methods on DatabaseService have legacy sync
+  // signatures that non-test callers still depend on. For PG/MySQL callers
+  // use the async equivalents above.
+
+  /**
+   * Synchronously get total telemetry count (SQLite only).
+   */
+  getTelemetryCountSync(): number {
+    const db = this.getSqliteDb();
+    const { telemetry } = this.tables;
+    const rows = db.select({ count: count() }).from(telemetry).all();
+    return Number((rows[0] as any).count);
+  }
+
+  /**
+   * Synchronously count telemetry for a node with optional filters (SQLite only).
+   */
+  getTelemetryCountByNodeSync(
+    nodeId: string,
+    sinceTimestamp?: number,
+    beforeTimestamp?: number,
+    telemetryType?: string
+  ): number {
+    const db = this.getSqliteDb();
+    const { telemetry } = this.tables;
+    const conditions = [eq(telemetry.nodeId, nodeId)];
+    if (sinceTimestamp !== undefined) {
+      conditions.push(gte(telemetry.timestamp, sinceTimestamp));
+    }
+    if (beforeTimestamp !== undefined) {
+      conditions.push(lt(telemetry.timestamp, beforeTimestamp));
+    }
+    if (telemetryType !== undefined) {
+      conditions.push(eq(telemetry.telemetryType, telemetryType));
+    }
+    const rows = db
+      .select({ count: count() })
+      .from(telemetry)
+      .where(and(...conditions))
+      .all();
+    return Number((rows[0] as any).count);
+  }
+
+  /**
+   * Synchronously delete ALL telemetry for a given node (SQLite only).
+   * Returns the number of rows deleted.
+   */
+  deleteTelemetryByNodeSync(nodeNum: number): number {
+    const db = this.getSqliteDb();
+    const { telemetry } = this.tables;
+    const result = db
+      .delete(telemetry)
+      .where(eq(telemetry.nodeNum, nodeNum))
+      .run();
+    return Number((result as any).changes ?? 0);
+  }
+
+  /**
+   * Synchronously delete all telemetry rows (SQLite only).
+   * Returns the number of rows deleted.
+   */
+  deleteAllTelemetrySync(): number {
+    const db = this.getSqliteDb();
+    const { telemetry } = this.tables;
+    const result = db.delete(telemetry).run();
+    return Number((result as any).changes ?? 0);
+  }
+
+  /**
+   * Synchronously delete telemetry older than a cutoff timestamp (SQLite only).
+   * Returns the number of rows deleted.
+   */
+  deleteOldTelemetrySync(cutoffTimestamp: number): number {
+    const db = this.getSqliteDb();
+    const { telemetry } = this.tables;
+    const result = db
+      .delete(telemetry)
+      .where(lt(telemetry.timestamp, cutoffTimestamp))
+      .run();
+    return Number((result as any).changes ?? 0);
+  }
+
+  /**
+   * Synchronously insert a telemetry row via Drizzle query builder (SQLite only).
+   * Does NOT apply the unique-on-packetId suppression from insertTelemetry; this
+   * matches the legacy facade sync behavior which always inserts.
+   */
+  insertTelemetrySync(telemetryData: DbTelemetry, sourceId?: string): void {
+    const db = this.getSqliteDb();
+    const { telemetry } = this.tables;
+    const values: any = {
+      nodeId: telemetryData.nodeId,
+      nodeNum: telemetryData.nodeNum,
+      telemetryType: telemetryData.telemetryType,
+      timestamp: telemetryData.timestamp,
+      value: telemetryData.value,
+      unit: telemetryData.unit ?? null,
+      createdAt: telemetryData.createdAt,
+      packetTimestamp: telemetryData.packetTimestamp ?? null,
+      packetId: telemetryData.packetId ?? null,
+      channel: telemetryData.channel ?? null,
+      precisionBits: telemetryData.precisionBits ?? null,
+      gpsAccuracy: telemetryData.gpsAccuracy ?? null,
+    };
+    if (sourceId) {
+      values.sourceId = sourceId;
+    }
+    db.insert(telemetry).values(values).run();
+  }
+
+  /**
+   * Synchronously fetch telemetry for a node with optional filters (SQLite only).
+   */
+  getTelemetryByNodeSync(
+    nodeId: string,
+    limit: number = 100,
+    sinceTimestamp?: number,
+    beforeTimestamp?: number,
+    offset: number = 0,
+    telemetryType?: string
+  ): DbTelemetry[] {
+    const db = this.getSqliteDb();
+    const { telemetry } = this.tables;
+    const conditions = [eq(telemetry.nodeId, nodeId)];
+    if (sinceTimestamp !== undefined) conditions.push(gte(telemetry.timestamp, sinceTimestamp));
+    if (beforeTimestamp !== undefined) conditions.push(lt(telemetry.timestamp, beforeTimestamp));
+    if (telemetryType !== undefined) conditions.push(eq(telemetry.telemetryType, telemetryType));
+
+    const rows = db
+      .select()
+      .from(telemetry)
+      .where(and(...conditions))
+      .orderBy(desc(telemetry.timestamp))
+      .limit(limit)
+      .offset(offset)
+      .all();
+    return (rows as any[]).map((r) => normalizeSyncTelemetryRow(this.normalizeBigInts(r))) as DbTelemetry[];
+  }
+
+  /**
+   * Synchronously fetch telemetry by type (SQLite only).
+   */
+  getTelemetryByTypeSync(telemetryType: string, limit: number = 100): DbTelemetry[] {
+    const db = this.getSqliteDb();
+    const { telemetry } = this.tables;
+    const rows = db
+      .select()
+      .from(telemetry)
+      .where(eq(telemetry.telemetryType, telemetryType))
+      .orderBy(desc(telemetry.timestamp))
+      .limit(limit)
+      .all();
+    return (rows as any[]).map((r) => normalizeSyncTelemetryRow(this.normalizeBigInts(r))) as DbTelemetry[];
+  }
+
+  /**
+   * Synchronously get the latest record for each telemetry type for a node (SQLite only).
+   */
+  getLatestTelemetryByNodeSync(nodeId: string): DbTelemetry[] {
+    const db = this.getSqliteDb();
+    const { telemetry } = this.tables;
+    // Correlated subquery: latest row per (nodeId, telemetryType)
+    const rows = db
+      .select()
+      .from(telemetry)
+      .where(
+        and(
+          eq(telemetry.nodeId, nodeId),
+          sql`${telemetry.timestamp} = (
+            SELECT MAX(t2.timestamp) FROM ${telemetry} t2
+            WHERE t2.nodeId = ${telemetry.nodeId} AND t2.telemetryType = ${telemetry.telemetryType}
+          )`
+        )
+      )
+      .orderBy(telemetry.telemetryType)
+      .all();
+    return (rows as any[]).map((r) => normalizeSyncTelemetryRow(this.normalizeBigInts(r))) as DbTelemetry[];
+  }
+
+  /**
+   * Synchronously get the latest record for a specific telemetry type (SQLite only).
+   */
+  getLatestTelemetryForTypeSync(nodeId: string, telemetryType: string): DbTelemetry | null {
+    const db = this.getSqliteDb();
+    const { telemetry } = this.tables;
+    const rows = db
+      .select()
+      .from(telemetry)
+      .where(and(eq(telemetry.nodeId, nodeId), eq(telemetry.telemetryType, telemetryType)))
+      .orderBy(desc(telemetry.timestamp))
+      .limit(1)
+      .all();
+    if (rows.length === 0) return null;
+    return normalizeSyncTelemetryRow(this.normalizeBigInts(rows[0])) as DbTelemetry;
+  }
+
+  /**
+   * Synchronously get distinct telemetry types for a node (SQLite only).
+   */
+  getNodeTelemetryTypesSync(nodeId: string): string[] {
+    const db = this.getSqliteDb();
+    const { telemetry } = this.tables;
+    const rows = db
+      .selectDistinct({ telemetryType: telemetry.telemetryType })
+      .from(telemetry)
+      .where(eq(telemetry.nodeId, nodeId))
+      .all();
+    return (rows as any[]).map((r) => r.telemetryType);
+  }
+
+  /**
+   * Synchronously get all nodes with their telemetry types (SQLite only).
+   * Returns Map<nodeId, string[]>.
+   */
+  getAllNodesTelemetryTypesSync(): Map<string, string[]> {
+    const db = this.getSqliteDb();
+    const { telemetry } = this.tables;
+    const rows = db
+      .selectDistinct({ nodeId: telemetry.nodeId, telemetryType: telemetry.telemetryType })
+      .from(telemetry)
+      .all();
+    const map = new Map<string, string[]>();
+    for (const r of rows as any[]) {
+      const types = map.get(r.nodeId) || [];
+      if (!types.includes(r.telemetryType)) types.push(r.telemetryType);
+      map.set(r.nodeId, types);
+    }
+    return map;
+  }
+
+  /**
+   * Synchronously delete all estimated position telemetry (SQLite only).
+   * Returns rows deleted.
+   */
+  deleteAllEstimatedPositionsSync(): number {
+    const db = this.getSqliteDb();
+    const { telemetry } = this.tables;
+    const types = ['estimated_latitude', 'estimated_longitude'];
+    const result = db.delete(telemetry).where(inArray(telemetry.telemetryType, types)).run();
+    return Number((result as any).changes ?? 0);
+  }
+
+  /**
+   * Synchronously delete old telemetry with favorites retention (SQLite only).
+   * Non-favorited telemetry older than regularCutoffTimestamp is deleted.
+   * Favorited telemetry older than favoriteCutoffTimestamp is deleted.
+   * Returns { nonFavoritesDeleted, favoritesDeleted }.
+   */
+  deleteOldTelemetryWithFavoritesSync(
+    regularCutoffTimestamp: number,
+    favoriteCutoffTimestamp: number,
+    favorites: TelemetryFavorite[]
+  ): { nonFavoritesDeleted: number; favoritesDeleted: number } {
+    if (favorites.length === 0) {
+      const nonFavoritesDeleted = this.deleteOldTelemetrySync(regularCutoffTimestamp);
+      return { nonFavoritesDeleted, favoritesDeleted: 0 };
+    }
+
+    const db = this.getSqliteDb();
+    const { telemetry } = this.tables;
+    const favoritesCondition = this.buildFavoritesCondition(favorites)!;
+
+    const nonFavoritesResult = db
+      .delete(telemetry)
+      .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition)))
+      .run();
+    const nonFavoritesDeleted = Number((nonFavoritesResult as any).changes ?? 0);
+
+    const favoritesResult = db
+      .delete(telemetry)
+      .where(and(lt(telemetry.timestamp, favoriteCutoffTimestamp), favoritesCondition))
+      .run();
+    const favoritesDeleted = Number((favoritesResult as any).changes ?? 0);
+
+    return { nonFavoritesDeleted, favoritesDeleted };
   }
 }
