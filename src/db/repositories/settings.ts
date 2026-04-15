@@ -232,4 +232,85 @@ export class SettingsRepository extends BaseRepository {
       }
     }
   }
+
+  // ─── Synchronous SQLite variants ────────────────────────────────────────
+  // These use drizzle's sync query builder on better-sqlite3, which is truly
+  // synchronous. Needed because DatabaseService exposes sync getSetting/
+  // setSetting used during migrations (before async cache hydration completes).
+  // Only valid on SQLite — throw if called on PG/MySQL.
+
+  /**
+   * Synchronously get a single setting value (SQLite only).
+   */
+  getSettingSync(key: string): string | null {
+    const db = this.getSqliteDb();
+    const { settings } = this.tables;
+    const rows = db
+      .select({ value: settings.value })
+      .from(settings)
+      .where(eq(settings.key, key))
+      .limit(1)
+      .all();
+    return rows.length > 0 ? (rows[0] as any).value : null;
+  }
+
+  /**
+   * Synchronously get all settings (SQLite only).
+   */
+  getAllSettingsSync(): Record<string, string> {
+    const db = this.getSqliteDb();
+    const { settings } = this.tables;
+    const rows = db
+      .select({ key: settings.key, value: settings.value })
+      .from(settings)
+      .all();
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      result[(row as any).key] = (row as any).value;
+    }
+    return result;
+  }
+
+  /**
+   * Synchronously upsert a single setting (SQLite only).
+   */
+  setSettingSync(key: string, value: string): void {
+    const db = this.getSqliteDb();
+    const { settings } = this.tables;
+    const now = this.now();
+    db
+      .insert(settings)
+      .values({ key, value, createdAt: now, updatedAt: now })
+      .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: now } })
+      .run();
+  }
+
+  /**
+   * Synchronously upsert multiple settings in a transaction (SQLite only).
+   */
+  setSettingsSync(settings: Record<string, string>): void {
+    const db = this.getSqliteDb();
+    const entries = Object.entries(settings);
+    if (entries.length === 0) return;
+    const { settings: settingsTable } = this.tables;
+    const now = this.now();
+    db.transaction((tx) => {
+      for (const [key, value] of entries) {
+        tx
+          .insert(settingsTable)
+          .values({ key, value, createdAt: now, updatedAt: now })
+          .onConflictDoUpdate({ target: settingsTable.key, set: { value, updatedAt: now } })
+          .run();
+      }
+    });
+  }
+
+  /**
+   * Synchronously delete all settings (SQLite only).
+   */
+  deleteAllSettingsSync(): void {
+    const db = this.getSqliteDb();
+    const { settings } = this.tables;
+    db.delete(settings).run();
+  }
 }
