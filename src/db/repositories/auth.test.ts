@@ -624,6 +624,160 @@ function runAuthTests(getBackend: () => TestBackend) {
     expect(remaining[0].action).toBe('recent_action');
   });
 
+  // ---- getAuditLogsFiltered ----
+
+  it('getAuditLogsFiltered - returns all entries unfiltered', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const now = Date.now();
+    await repo.createAuditLogEntry({ userId: null, action: 'login_success', resource: 'auth', details: 'ok', ipAddress: null, userAgent: null, timestamp: now });
+    await repo.createAuditLogEntry({ userId: null, action: 'logout', resource: 'auth', details: null, ipAddress: null, userAgent: null, timestamp: now + 100 });
+
+    const { logs, total } = await repo.getAuditLogsFiltered();
+    expect(total).toBe(2);
+    expect(logs).toHaveLength(2);
+    // ordered by timestamp DESC
+    expect(logs[0].action).toBe('logout');
+    expect(logs[1].action).toBe('login_success');
+  });
+
+  it('getAuditLogsFiltered - filters by action', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const now = Date.now();
+    await repo.createAuditLogEntry({ userId: null, action: 'login_success', resource: null, details: null, ipAddress: null, userAgent: null, timestamp: now });
+    await repo.createAuditLogEntry({ userId: null, action: 'logout', resource: null, details: null, ipAddress: null, userAgent: null, timestamp: now + 100 });
+
+    const { logs, total } = await repo.getAuditLogsFiltered({ action: 'login_success' });
+    expect(total).toBe(1);
+    expect(logs[0].action).toBe('login_success');
+  });
+
+  it('getAuditLogsFiltered - filters by excludeAction', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const now = Date.now();
+    await repo.createAuditLogEntry({ userId: null, action: 'login_success', resource: null, details: null, ipAddress: null, userAgent: null, timestamp: now });
+    await repo.createAuditLogEntry({ userId: null, action: 'logout', resource: null, details: null, ipAddress: null, userAgent: null, timestamp: now + 100 });
+    await repo.createAuditLogEntry({ userId: null, action: 'settings_change', resource: null, details: null, ipAddress: null, userAgent: null, timestamp: now + 200 });
+
+    const { logs, total } = await repo.getAuditLogsFiltered({ excludeAction: 'logout' });
+    expect(total).toBe(2);
+    expect(logs.map((l: any) => l.action)).not.toContain('logout');
+  });
+
+  it('getAuditLogsFiltered - filters by resource', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const now = Date.now();
+    await repo.createAuditLogEntry({ userId: null, action: 'view', resource: 'map', details: null, ipAddress: null, userAgent: null, timestamp: now });
+    await repo.createAuditLogEntry({ userId: null, action: 'login', resource: 'auth', details: null, ipAddress: null, userAgent: null, timestamp: now + 100 });
+
+    const { logs, total } = await repo.getAuditLogsFiltered({ resource: 'map' });
+    expect(total).toBe(1);
+    expect(logs[0].resource).toBe('map');
+  });
+
+  it('getAuditLogsFiltered - filters by startDate and endDate', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const base = Date.now();
+    await repo.createAuditLogEntry({ userId: null, action: 'old', resource: null, details: null, ipAddress: null, userAgent: null, timestamp: base - 10000 });
+    await repo.createAuditLogEntry({ userId: null, action: 'mid', resource: null, details: null, ipAddress: null, userAgent: null, timestamp: base });
+    await repo.createAuditLogEntry({ userId: null, action: 'new', resource: null, details: null, ipAddress: null, userAgent: null, timestamp: base + 10000 });
+
+    const { logs, total } = await repo.getAuditLogsFiltered({ startDate: base - 1, endDate: base + 1 });
+    expect(total).toBe(1);
+    expect(logs[0].action).toBe('mid');
+  });
+
+  it('getAuditLogsFiltered - search across details, action, resource', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const now = Date.now();
+    await repo.createAuditLogEntry({ userId: null, action: 'login_success', resource: 'auth', details: 'theme updated', ipAddress: null, userAgent: null, timestamp: now });
+    await repo.createAuditLogEntry({ userId: null, action: 'logout', resource: 'auth', details: 'goodbye', ipAddress: null, userAgent: null, timestamp: now + 100 });
+
+    const { logs, total } = await repo.getAuditLogsFiltered({ search: 'theme' });
+    expect(total).toBe(1);
+    expect((logs[0] as any).details).toBe('theme updated');
+  });
+
+  it('getAuditLogsFiltered - respects limit and offset', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const base = Date.now();
+    for (let i = 0; i < 5; i++) {
+      await repo.createAuditLogEntry({ userId: null, action: `act_${i}`, resource: null, details: null, ipAddress: null, userAgent: null, timestamp: base + i });
+    }
+
+    const page1 = await repo.getAuditLogsFiltered({ limit: 2, offset: 0 });
+    expect(page1.logs).toHaveLength(2);
+    expect(page1.total).toBe(5);
+
+    const page2 = await repo.getAuditLogsFiltered({ limit: 2, offset: 2 });
+    expect(page2.logs).toHaveLength(2);
+    expect(page2.total).toBe(5);
+  });
+
+  // ---- getAuditStats ----
+
+  it('getAuditStats - returns action, user, daily breakdown', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const now = Date.now();
+    await repo.createAuditLogEntry({ userId: null, action: 'login_success', resource: null, details: null, ipAddress: null, userAgent: null, timestamp: now });
+    await repo.createAuditLogEntry({ userId: null, action: 'login_success', resource: null, details: null, ipAddress: null, userAgent: null, timestamp: now + 100 });
+    await repo.createAuditLogEntry({ userId: null, action: 'logout', resource: null, details: null, ipAddress: null, userAgent: null, timestamp: now + 200 });
+
+    const stats = await repo.getAuditStats(30);
+    expect(stats).toHaveProperty('actionStats');
+    expect(stats).toHaveProperty('userStats');
+    expect(stats).toHaveProperty('dailyStats');
+    expect(stats).toHaveProperty('totalEvents');
+    expect(stats.totalEvents).toBe(3);
+
+    const loginStat = stats.actionStats.find((s: any) => s.action === 'login_success');
+    expect(loginStat).toBeDefined();
+    expect(loginStat!.count).toBe(2);
+  });
+
+  it('getAuditStats - totalEvents is sum of actionStats counts', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const now = Date.now();
+    for (let i = 0; i < 4; i++) {
+      await repo.createAuditLogEntry({ userId: null, action: 'x', resource: null, details: null, ipAddress: null, userAgent: null, timestamp: now + i });
+    }
+
+    const stats = await repo.getAuditStats(30);
+    const sumFromActionStats = stats.actionStats.reduce((s: number, a: any) => s + a.count, 0);
+    expect(stats.totalEvents).toBe(sumFromActionStats);
+  });
+
+  it('getAuditStats - excludes entries older than days', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const now = Date.now();
+    const old = now - (200 * 24 * 60 * 60 * 1000); // 200 days ago
+    await repo.createAuditLogEntry({ userId: null, action: 'old_action', resource: null, details: null, ipAddress: null, userAgent: null, timestamp: old });
+    await repo.createAuditLogEntry({ userId: null, action: 'recent_action', resource: null, details: null, ipAddress: null, userAgent: null, timestamp: now });
+
+    const stats = await repo.getAuditStats(30);
+    expect(stats.totalEvents).toBe(1);
+    expect(stats.actionStats[0].action).toBe('recent_action');
+  });
+
   // ============ SESSIONS ============
 
   it('setSession and getSession - create and retrieve', async () => {

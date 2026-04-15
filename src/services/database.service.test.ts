@@ -74,6 +74,9 @@ const mockAuthRepo = vi.hoisted(() => ({
   findUserByUsername: vi.fn().mockResolvedValue(null),
   createAuditLogEntry: vi.fn().mockResolvedValue(undefined),
   getAuditLogs: vi.fn().mockResolvedValue([]),
+  getAuditLogsFiltered: vi.fn().mockResolvedValue({ logs: [], total: 0 }),
+  getAuditStats: vi.fn().mockResolvedValue({ actionStats: [], userStats: [], dailyStats: [], totalEvents: 0 }),
+  cleanupOldAuditLogs: vi.fn().mockResolvedValue(0),
   getUserPreferences: vi.fn().mockResolvedValue(null),
   setUserPreferences: vi.fn().mockResolvedValue(undefined),
 }));
@@ -169,7 +172,7 @@ vi.mock('../db/repositories/index.js', () => ({
   NodesRepository: class { getAllNodes = mockNodesRepo.getAllNodes; getNodeByNum = mockNodesRepo.getNodeByNum; upsertNode = mockNodesRepo.upsertNode; deleteNode = mockNodesRepo.deleteNode; getNodesWithKeySecurityIssues = mockNodesRepo.getNodesWithKeySecurityIssues; },
   MessagesRepository: class { getMessage = mockMessagesRepo.getMessage; getMessages = mockMessagesRepo.getMessages; searchMessages = mockMessagesRepo.searchMessages; insertMessage = mockMessagesRepo.insertMessage; deleteMessage = mockMessagesRepo.deleteMessage; },
   TelemetryRepository: class { getTelemetryCount = mockTelemetryRepo.getTelemetryCount; getTelemetryCountByNode = mockTelemetryRepo.getTelemetryCountByNode; insertTelemetry = mockTelemetryRepo.insertTelemetry; getTelemetryByNode = mockTelemetryRepo.getTelemetryByNode; getPositionTelemetryByNode = mockTelemetryRepo.getPositionTelemetryByNode; getRecentEstimatedPositions = mockTelemetryRepo.getRecentEstimatedPositions; getSmartHopsStats = mockTelemetryRepo.getSmartHopsStats; getLinkQualityHistory = mockTelemetryRepo.getLinkQualityHistory; getAllNodesTelemetryTypes = mockTelemetryRepo.getAllNodesTelemetryTypes; deleteAllTelemetry = mockTelemetryRepo.deleteAllTelemetry; deleteOldTelemetry = mockTelemetryRepo.deleteOldTelemetry; deleteOldTelemetryWithFavorites = mockTelemetryRepo.deleteOldTelemetryWithFavorites; getLatestTelemetryForType = mockTelemetryRepo.getLatestTelemetryForType; getTelemetryByType = mockTelemetryRepo.getTelemetryByType; getLatestTelemetryValueForAllNodes = mockTelemetryRepo.getLatestTelemetryValueForAllNodes; },
-  AuthRepository: class { getAllUsers = mockAuthRepo.getAllUsers; createUser = mockAuthRepo.createUser; findUserById = mockAuthRepo.findUserById; findUserByUsername = mockAuthRepo.findUserByUsername; createAuditLogEntry = mockAuthRepo.createAuditLogEntry; getAuditLogs = mockAuthRepo.getAuditLogs; getUserPreferences = mockAuthRepo.getUserPreferences; setUserPreferences = mockAuthRepo.setUserPreferences; },
+  AuthRepository: class { getAllUsers = mockAuthRepo.getAllUsers; createUser = mockAuthRepo.createUser; findUserById = mockAuthRepo.findUserById; findUserByUsername = mockAuthRepo.findUserByUsername; createAuditLogEntry = mockAuthRepo.createAuditLogEntry; getAuditLogs = mockAuthRepo.getAuditLogs; getAuditLogsFiltered = mockAuthRepo.getAuditLogsFiltered; getAuditStats = mockAuthRepo.getAuditStats; cleanupOldAuditLogs = mockAuthRepo.cleanupOldAuditLogs; getUserPreferences = mockAuthRepo.getUserPreferences; setUserPreferences = mockAuthRepo.setUserPreferences; },
   TraceroutesRepository: class { getTraceroutes = mockTraceroutesRepo.getTraceroutes; insertTraceroute = mockTraceroutesRepo.insertTraceroute; },
   NeighborsRepository: class { getNeighbors = mockNeighborsRepo.getNeighbors; upsertNeighbor = mockNeighborsRepo.upsertNeighbor; },
   NotificationsRepository: class { getUserPreferences = mockNotificationsRepo.getUserPreferences; saveUserPreferences = mockNotificationsRepo.saveUserPreferences; getUsersWithServiceEnabled = mockNotificationsRepo.getUsersWithServiceEnabled; },
@@ -468,8 +471,8 @@ describe('DatabaseService — getAuditLogsAsync', () => {
     (databaseService as any).authRepo = mockAuthRepo;
   });
 
-  it('returns result from getAuditLogsAsync (SQLite falls back to sync)', async () => {
-    // SQLite path calls getAuditLogs() which uses raw SQLite
+  it('returns result from getAuditLogsAsync via authRepo.getAuditLogsFiltered', async () => {
+    // Delegates unconditionally to authRepo.getAuditLogsFiltered across all backends
     const result = await databaseService.getAuditLogsAsync();
     // Result should be an object with logs array
     expect(result).toBeDefined();

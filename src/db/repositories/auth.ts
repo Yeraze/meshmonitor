@@ -5,7 +5,7 @@
  * Includes: users, permissions, sessions, audit_log, api_tokens
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, lt, desc, and, isNull } from 'drizzle-orm';
+import { eq, lt, desc, and, isNull, gte, lte, ne, count, sql } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import {
@@ -689,6 +689,199 @@ export class AuthRepository extends BaseRepository {
       .limit(limit)
       .offset(offset);
     return this.normalizeBigInts(result) as DbAuditLogEntry[];
+  }
+
+  /**
+   * Get audit log entries with full filter support (replaces getAuditLogs / getAuditLogsAsync).
+   * LEFT JOINs the users table so callers receive a username alongside each entry.
+   * Works across SQLite, PostgreSQL, and MySQL via Drizzle query builders + sql`` only
+   * where a builder primitive does not exist (case-insensitive LIKE).
+   */
+  async getAuditLogsFiltered(options: {
+    limit?: number;
+    offset?: number;
+    userId?: number;
+    action?: string;
+    excludeAction?: string;
+    resource?: string;
+    startDate?: number;
+    endDate?: number;
+    search?: string;
+  } = {}): Promise<{ logs: Array<Record<string, unknown>>; total: number }> {
+    const {
+      limit = 100,
+      offset = 0,
+      userId,
+      action,
+      excludeAction,
+      resource,
+      startDate,
+      endDate,
+      search,
+    } = options;
+
+    const { auditLog, users } = this.tables;
+
+    // Build WHERE conditions using Drizzle primitives
+    const conditions: any[] = [];
+
+    if (userId !== undefined) conditions.push(eq(auditLog.userId, userId));
+    if (action) conditions.push(eq(auditLog.action, action));
+    if (excludeAction) conditions.push(ne(auditLog.action, excludeAction));
+    if (resource) conditions.push(eq(auditLog.resource, resource));
+    if (startDate !== undefined) conditions.push(gte(auditLog.timestamp, startDate));
+    if (endDate !== undefined) conditions.push(lte(auditLog.timestamp, endDate));
+
+    if (search) {
+      const pattern = `%${search}%`;
+      // Case-insensitive search: use ilike (PG) or LOWER()...LIKE LOWER() (SQLite/MySQL)
+      if (this.isPostgres()) {
+        conditions.push(
+          sql`(${auditLog.details} ILIKE ${pattern} OR ${auditLog.action} ILIKE ${pattern} OR ${auditLog.resource} ILIKE ${pattern})`
+        );
+      } else {
+        conditions.push(
+          sql`(LOWER(${auditLog.details}) LIKE LOWER(${pattern}) OR LOWER(${auditLog.action}) LIKE LOWER(${pattern}) OR LOWER(${auditLog.resource}) LIKE LOWER(${pattern}))`
+        );
+      }
+    }
+
+    const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
+
+    // COUNT query
+    const countResult = await this.db
+      .select({ total: count() })
+      .from(auditLog)
+      .where(whereCondition);
+    const total = Number(countResult[0]?.total ?? 0);
+
+    // Paginated SELECT with LEFT JOIN users for username
+    const rows = await this.db
+      .select({
+        id: auditLog.id,
+        userId: auditLog.userId,
+        username: auditLog.username,
+        action: auditLog.action,
+        resource: auditLog.resource,
+        details: auditLog.details,
+        ipAddress: auditLog.ipAddress,
+        userAgent: auditLog.userAgent,
+        timestamp: auditLog.timestamp,
+        joinedUsername: users.username,
+      })
+      .from(auditLog)
+      .leftJoin(users, eq(auditLog.userId, users.id))
+      .where(whereCondition)
+      .orderBy(desc(auditLog.timestamp))
+      .limit(limit)
+      .offset(offset);
+
+    const logs = (this.normalizeBigInts(rows) as any[]).map((r: any) => ({
+      id: r.id,
+      userId: r.userId,
+      // Prefer joined username from users table, fall back to stored username on audit_log
+      username: r.joinedUsername ?? r.username ?? null,
+      action: r.action,
+      resource: r.resource,
+      details: r.details,
+      ipAddress: r.ipAddress,
+      userAgent: r.userAgent,
+      timestamp: r.timestamp,
+    }));
+
+    return { logs, total };
+  }
+
+  /**
+   * Get audit log statistics (replaces getAuditStats / getAuditStatsAsync).
+   * Returns action breakdown, user breakdown, and daily breakdown for the given
+   * number of past days. Backend-specific date truncation is handled inline.
+   */
+  async getAuditStats(days: number = 30): Promise<{
+    actionStats: Array<{ action: string; count: number }>;
+    userStats: Array<{ username: string | null; count: number }>;
+    dailyStats: Array<{ date: string; count: number }>;
+    totalEvents: number;
+  }> {
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    // tables not used directly — raw SQL uses table names; void suppresses unused warnings
+    const { users } = this.tables;
+
+    // --- Action stats ---
+    const actionRows = await this.executeQuery(
+      sql`SELECT ${this.col('action')} AS action, COUNT(*) AS cnt
+          FROM audit_log
+          WHERE ${this.col('timestamp')} >= ${cutoff}
+          GROUP BY ${this.col('action')}
+          ORDER BY cnt DESC`
+    );
+    const actionStats = actionRows.map((r: any) => ({
+      action: r.action,
+      count: Number(r.cnt ?? r.count ?? 0),
+    }));
+
+    // --- User stats (LEFT JOIN users for username) ---
+    const userRows: any[] = await this.executeQuery(
+      this.isPostgres()
+        ? sql`SELECT u.username, COUNT(*) AS cnt
+              FROM audit_log al
+              LEFT JOIN users u ON al."userId" = u.id
+              WHERE al.timestamp >= ${cutoff}
+              GROUP BY al."userId", u.username
+              ORDER BY cnt DESC
+              LIMIT 10`
+        : sql`SELECT u.username, COUNT(*) AS cnt
+              FROM audit_log al
+              LEFT JOIN users u ON al.${sql.raw(this.isSQLite() ? 'user_id' : 'userId')} = u.id
+              WHERE al.timestamp >= ${cutoff}
+              GROUP BY al.${sql.raw(this.isSQLite() ? 'user_id' : 'userId')}
+              ORDER BY cnt DESC
+              LIMIT 10`
+    );
+    const userStats = userRows.map((r: any) => ({
+      username: r.username ?? null,
+      count: Number(r.cnt ?? r.count ?? 0),
+    }));
+
+    // --- Daily stats (date-truncation differs per backend) ---
+    let dailyRows: any[];
+    if (this.isPostgres()) {
+      dailyRows = await this.executeQuery(
+        sql`SELECT to_char(to_timestamp(timestamp / 1000), 'YYYY-MM-DD') AS date, COUNT(*) AS cnt
+            FROM audit_log
+            WHERE timestamp >= ${cutoff}
+            GROUP BY to_char(to_timestamp(timestamp / 1000), 'YYYY-MM-DD')
+            ORDER BY date DESC`
+      );
+    } else if (this.isMySQL()) {
+      dailyRows = await this.executeQuery(
+        sql`SELECT DATE_FORMAT(FROM_UNIXTIME(timestamp / 1000), '%Y-%m-%d') AS date, COUNT(*) AS cnt
+            FROM audit_log
+            WHERE timestamp >= ${cutoff}
+            GROUP BY DATE_FORMAT(FROM_UNIXTIME(timestamp / 1000), '%Y-%m-%d')
+            ORDER BY date DESC`
+      );
+    } else {
+      // SQLite
+      dailyRows = await this.executeQuery(
+        sql`SELECT date(timestamp / 1000, 'unixepoch') AS date, COUNT(*) AS cnt
+            FROM audit_log
+            WHERE timestamp >= ${cutoff}
+            GROUP BY date(timestamp / 1000, 'unixepoch')
+            ORDER BY date DESC`
+      );
+    }
+    const dailyStats = dailyRows.map((r: any) => ({
+      date: r.date,
+      count: Number(r.cnt ?? r.count ?? 0),
+    }));
+
+    const totalEvents = actionStats.reduce((sum, s) => sum + s.count, 0);
+
+    // Suppress unused import warning — users table is referenced in raw SQL above
+    void users;
+
+    return { actionStats, userStats, dailyStats, totalEvents };
   }
 
   /**
