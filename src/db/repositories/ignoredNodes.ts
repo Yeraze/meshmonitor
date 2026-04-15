@@ -108,4 +108,27 @@ export class IgnoredNodesRepository extends BaseRepository {
       .where(eq(ignoredNodes.nodeNum, nodeNum));
     return rows.length > 0;
   }
+
+  /**
+   * SQLite-only synchronous check — used by upsertNode legacy sync path
+   * to decide whether to restore the `isIgnored` flag on a returning node.
+   * Returns false if the table doesn't exist yet (initial setup).
+   */
+  isNodeIgnoredSqlite(nodeNum: number): boolean {
+    if (!this.sqliteDb) throw new Error('isNodeIgnoredSqlite is SQLite-only');
+    const db = this.sqliteDb;
+    const { ignoredNodes } = this.tables;
+    try {
+      const rows = db
+        .select({ nodeNum: ignoredNodes.nodeNum })
+        .from(ignoredNodes)
+        .where(eq(ignoredNodes.nodeNum, nodeNum))
+        .limit(1)
+        .all();
+      return rows.length > 0;
+    } catch {
+      // Table may not exist yet during initial setup
+      return false;
+    }
+  }
 }
