@@ -180,32 +180,6 @@ vi.mock('../db/repositories/index.js', () => ({
 }));
 
 // ─── Mock models ──────────────────────────────────────────────────────────────
-
-vi.mock('../server/models/User.js', () => ({
-  UserModel: class {
-    getUser = vi.fn().mockReturnValue(null);
-    getAllUsers = vi.fn().mockReturnValue([]);
-    createUser = vi.fn().mockReturnValue(1);
-    updateUser = vi.fn().mockReturnValue(true);
-    deleteUser = vi.fn().mockReturnValue(true);
-    validatePassword = vi.fn().mockReturnValue(false);
-    findByUsername = vi.fn().mockReturnValue(null);
-    findById = vi.fn().mockReturnValue(null);
-  },
-}));
-
-// ─── Mock migrations ──────────────────────────────────────────────────────────
-
-vi.mock('../db/migrations.js', () => ({
-  registry: {
-    migrate: vi.fn(),
-    getAll: vi.fn().mockReturnValue([]),
-    getAppliedMigrations: vi.fn().mockReturnValue([]),
-  },
-}));
-
-// ─── Mock utilities ───────────────────────────────────────────────────────────
-
 vi.mock('../utils/logger.js', () => ({
   logger: {
     debug: vi.fn(),

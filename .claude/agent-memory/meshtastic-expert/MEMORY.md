@@ -1,0 +1,6 @@
+- [PhoneAPI Heartbeat Reply Mechanism](project_phoneapi_heartbeat_reply.md) — ToRadio.heartbeat triggers FromRadio.queueStatus as a deterministic reply; use as liveness pong
+- [PhoneAPI Connection Timeouts](reference_phoneapi_timeouts.md) — Serial = 15min inactivity; TCP relies on socket state not lastContactMsec
+- [Firmware PhoneAPI Source Locations](reference_firmware_phoneapi_files.md) — Key file paths and functions for PhoneAPI/StreamAPI investigation
+- [NodeInfo.channel field semantics](reference_nodeinfo_channel_field.md) — field 7 is local-only "channel index we heard this node on", NOT a shared-channel hint
+- [Store and Forward Module Reference](reference_store_forward_module.md) — S&F protocol: PortNum 65, message types, PSRAM storage, replay format, server eligibility, config
+- [Two Ignore Mechanisms](reference_ignored_nodes_two_mechanisms.md) — config.lora.ignore_incoming (persists across node delete) vs NodeInfoLite.is_ignored (destroyed by remove_by_nodenum)

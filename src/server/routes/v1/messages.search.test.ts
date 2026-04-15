@@ -38,9 +38,6 @@ const searchResults = [
 vi.mock('../../../services/database.js', () => ({
   default: {
     db: null,
-    userModel: {
-      findById: vi.fn((id: number) => id === TEST_USER_ID ? testUser : null)
-    },
     permissionModel: {
       check: vi.fn(() => true)
     },
