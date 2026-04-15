@@ -4,7 +4,7 @@
  * Handles neighbor info database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, and, gte, lt, sql, count } from 'drizzle-orm';
+import { eq, desc, and, or, gte, lt, sql, count, max } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbNeighborInfo } from '../types.js';
 
@@ -166,6 +166,103 @@ export class NeighborsRepository extends BaseRepository {
       await this.db.delete(neighborInfo).where(lt(neighborInfo.timestamp, cutoff));
     }
     return total;
+  }
+
+  /**
+   * Delete neighbor info records where this node is involved as either
+   * the source node (nodeNum) OR the neighbor node (neighborNodeNum).
+   * Used by deleteNode() to fully remove a node from the neighbor graph.
+   */
+  async deleteNeighborInfoInvolvingNode(nodeNum: number, sourceId?: string): Promise<void> {
+    const { neighborInfo } = this.tables;
+    await this.db
+      .delete(neighborInfo)
+      .where(
+        and(
+          or(eq(neighborInfo.nodeNum, nodeNum), eq(neighborInfo.neighborNodeNum, nodeNum)),
+          this.withSourceScope(neighborInfo, sourceId)
+        )
+      );
+  }
+
+  /**
+   * Get the latest neighbor info record per unique (nodeNum, neighborNodeNum) pair.
+   * Returns one row per edge — the row with the highest timestamp for each pair.
+   */
+  async getLatestNeighborInfoPerNode(): Promise<DbNeighborInfo[]> {
+    const { neighborInfo } = this.tables;
+
+    if (this.dbType === 'postgres') {
+      // PostgreSQL: use DISTINCT ON for clean latest-per-group
+      const result = await this.db.execute(sql`
+        SELECT DISTINCT ON ("nodeNum", "neighborNodeNum") *
+        FROM neighbor_info
+        ORDER BY "nodeNum", "neighborNodeNum", timestamp DESC
+      `);
+      // PG driver returns BIGINT as strings — coerce explicitly
+      return (result.rows as any[]).map(r => ({
+        id: r.id != null ? Number(r.id) : null,
+        nodeNum: Number(r.nodeNum),
+        neighborNodeNum: Number(r.neighborNodeNum),
+        snr: r.snr != null ? Number(r.snr) : null,
+        lastRxTime: r.lastRxTime != null ? Number(r.lastRxTime) : null,
+        timestamp: Number(r.timestamp),
+        createdAt: r.createdAt != null ? Number(r.createdAt) : null,
+        sourceId: r.sourceId,
+      })) as DbNeighborInfo[];
+    }
+
+    if (this.dbType === 'mysql') {
+      // MySQL: subquery to find MAX(timestamp) per pair, then join back
+      const result = await this.db.execute(sql`
+        SELECT ni.*
+        FROM neighbor_info ni
+        INNER JOIN (
+          SELECT nodeNum, neighborNodeNum, MAX(timestamp) AS maxTimestamp
+          FROM neighbor_info
+          GROUP BY nodeNum, neighborNodeNum
+        ) latest
+        ON ni.nodeNum = latest.nodeNum
+          AND ni.neighborNodeNum = latest.neighborNodeNum
+          AND ni.timestamp = latest.maxTimestamp
+      `);
+      // MySQL driver returns BIGINT as strings — coerce explicitly
+      return ((result as any)[0] as any[]).map(r => ({
+        id: r.id != null ? Number(r.id) : null,
+        nodeNum: Number(r.nodeNum),
+        neighborNodeNum: Number(r.neighborNodeNum),
+        snr: r.snr != null ? Number(r.snr) : null,
+        lastRxTime: r.lastRxTime != null ? Number(r.lastRxTime) : null,
+        timestamp: Number(r.timestamp),
+        createdAt: r.createdAt != null ? Number(r.createdAt) : null,
+        sourceId: r.sourceId,
+      })) as DbNeighborInfo[];
+    }
+
+    // SQLite: same subquery approach (no DISTINCT ON support)
+    const subquery = this.db
+      .select({
+        nodeNum: neighborInfo.nodeNum,
+        neighborNodeNum: neighborInfo.neighborNodeNum,
+        maxTimestamp: max(neighborInfo.timestamp).as('maxTimestamp'),
+      })
+      .from(neighborInfo)
+      .groupBy(neighborInfo.nodeNum, neighborInfo.neighborNodeNum)
+      .as('latest');
+
+    const result = await this.db
+      .select({ ni: neighborInfo })
+      .from(neighborInfo)
+      .innerJoin(
+        subquery,
+        and(
+          eq(neighborInfo.nodeNum, subquery.nodeNum),
+          eq(neighborInfo.neighborNodeNum, subquery.neighborNodeNum),
+          eq(neighborInfo.timestamp, subquery.maxTimestamp)
+        )
+      );
+
+    return this.normalizeBigInts(result.map((r: { ni: typeof neighborInfo.$inferSelect }) => r.ni)) as DbNeighborInfo[];
   }
 
   /**

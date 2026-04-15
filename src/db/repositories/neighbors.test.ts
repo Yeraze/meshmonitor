@@ -318,6 +318,76 @@ function runNeighborsTests(getBackend: () => TestBackend) {
     expect(all[0].snr).toBeNull();
     expect(all[0].lastRxTime).toBeNull();
   });
+
+  it('deleteNeighborInfoInvolvingNode - deletes rows where node is source OR neighbor', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // node 100 is the source in one row and the neighbor in another
+    await repo.insertNeighborInfoBatch([
+      makeNeighbor({ nodeNum: 100, neighborNodeNum: 200 }), // node 100 as source
+      makeNeighbor({ nodeNum: 300, neighborNodeNum: 100 }), // node 100 as neighbor
+      makeNeighbor({ nodeNum: 300, neighborNodeNum: 400 }), // unrelated row
+    ]);
+
+    await repo.deleteNeighborInfoInvolvingNode(100);
+
+    const remaining = await repo.getAllNeighborInfo();
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].nodeNum).toBe(300);
+    expect(remaining[0].neighborNodeNum).toBe(400);
+  });
+
+  it('deleteNeighborInfoInvolvingNode - no-op when node not present', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.insertNeighborInfo(makeNeighbor({ nodeNum: 100, neighborNodeNum: 200 }));
+    await repo.deleteNeighborInfoInvolvingNode(999);
+
+    const remaining = await repo.getAllNeighborInfo();
+    expect(remaining).toHaveLength(1);
+  });
+
+  it('getLatestNeighborInfoPerNode - returns one row per (nodeNum, neighborNodeNum) pair', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const now = Date.now();
+    // Insert two rows for the same pair with different timestamps
+    await repo.insertNeighborInfo(makeNeighbor({ nodeNum: 100, neighborNodeNum: 200, timestamp: now - 5000 }));
+    await repo.insertNeighborInfo(makeNeighbor({ nodeNum: 100, neighborNodeNum: 200, timestamp: now }));
+    // Insert a different pair
+    await repo.insertNeighborInfo(makeNeighbor({ nodeNum: 100, neighborNodeNum: 300, timestamp: now }));
+
+    const latest = await repo.getLatestNeighborInfoPerNode();
+    // Should return exactly 2 rows (one per unique pair)
+    expect(latest).toHaveLength(2);
+    const pair = latest.find(r => r.nodeNum === 100 && r.neighborNodeNum === 200);
+    expect(pair).toBeDefined();
+    // Should be the newest row
+    expect(pair!.timestamp).toBe(now);
+  });
+
+  it('getLatestNeighborInfoPerNode - returns empty array when no data', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const latest = await repo.getLatestNeighborInfoPerNode();
+    expect(latest).toHaveLength(0);
+  });
 }
 
 // --- SQLite Backend ---
