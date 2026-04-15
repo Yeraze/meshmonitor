@@ -10240,6 +10240,24 @@ class DatabaseService {
     await this.auth.updateUser(userId, { mfaBackupCodes: remainingCodes });
   }
 
+  // ============ SESSION METHODS ============
+
+  async getSessionAsync(sid: string): Promise<{ sid: string; sess: string; expire: number } | null> {
+    return this.auth.getSession(sid);
+  }
+
+  async setSessionAsync(sid: string, sess: string, expire: number): Promise<void> {
+    return this.auth.setSession(sid, sess, expire);
+  }
+
+  async deleteSessionAsync(sid: string): Promise<void> {
+    return this.auth.deleteSession(sid);
+  }
+
+  async cleanupExpiredSessionsAsync(): Promise<number> {
+    return this.auth.cleanupExpiredSessions();
+  }
+
   // ============ ASYNC CHANNEL DATABASE METHODS ============
   // ============ CHANNEL DATABASE (business logic only) ============
 

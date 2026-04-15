@@ -6,12 +6,10 @@
  */
 
 import session from 'express-session';
-import Database from 'better-sqlite3';
 import { createRequire } from 'node:module';
-import path from 'path';
 import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
-import { SqliteSessionStore } from './sqliteSessionStore.js';
+import { DrizzleSessionStore } from './sessionStore.js';
 import { parseMySQLUrl } from '../../db/drivers/mysql.js';
 
 // createRequire allows loading CJS modules (connect-pg-simple, express-mysql-session) from ESM
@@ -94,16 +92,11 @@ function createMySQLStore(databaseUrl: string, databasePath: string): session.St
 }
 
 /**
- * Create an SQLite session store.
+ * Create an SQLite session store backed by the main database via Drizzle.
  */
-function createSqliteStore(databasePath: string): session.Store {
-  const sessionDbPath = path.join(path.dirname(databasePath), 'sessions.db');
-  const sessionDb = new Database(sessionDbPath);
-  logger.info('🔐 Session store: SQLite (custom store)');
-  return new SqliteSessionStore({
-    db: sessionDb,
-    clearInterval: 900000, // 15 minutes
-  });
+function createSqliteStore(_databasePath: string): session.Store {
+  logger.info('🔐 Session store: SQLite (DrizzleSessionStore via main DB)');
+  return new DrizzleSessionStore({ clearInterval: 900000 });
 }
 
 /**
