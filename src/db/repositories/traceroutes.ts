@@ -416,4 +416,91 @@ export class TraceroutesRepository extends BaseRepository {
     }
     return total;
   }
+
+  // ============ SQLite-only sync methods ============
+
+  /**
+   * Synchronously delete all traceroutes (SQLite only).
+   * Returns the number of rows deleted.
+   */
+  deleteAllTraceroutesSync(): number {
+    const db = this.getSqliteDb();
+    const { traceroutes } = this.tables;
+    const result = db.delete(traceroutes).run();
+    return Number((result as any).changes ?? 0);
+  }
+
+  /**
+   * Synchronously delete all route segments (SQLite only).
+   * Returns the number of rows deleted.
+   */
+  deleteAllRouteSegmentsSync(): number {
+    const db = this.getSqliteDb();
+    const { routeSegments } = this.tables;
+    const result = db.delete(routeSegments).run();
+    return Number((result as any).changes ?? 0);
+  }
+
+  /**
+   * Synchronously delete traceroutes older than cutoffTimestamp (SQLite only).
+   * Returns the number of rows deleted.
+   */
+  deleteOldTraceroutesSync(cutoffTimestamp: number): number {
+    const db = this.getSqliteDb();
+    const { traceroutes } = this.tables;
+    const result = db
+      .delete(traceroutes)
+      .where(lt(traceroutes.timestamp, cutoffTimestamp))
+      .run();
+    return Number((result as any).changes ?? 0);
+  }
+
+  /**
+   * Synchronously delete all traceroutes where this node appears as source OR
+   * destination (SQLite only). Returns the number of rows deleted.
+   */
+  deleteTraceroutesInvolvingNodeSync(nodeNum: number): number {
+    const db = this.getSqliteDb();
+    const { traceroutes } = this.tables;
+    const result = db
+      .delete(traceroutes)
+      .where(or(eq(traceroutes.fromNodeNum, nodeNum), eq(traceroutes.toNodeNum, nodeNum))!)
+      .run();
+    return Number((result as any).changes ?? 0);
+  }
+
+  /**
+   * Synchronously delete all route segments where this node appears as source OR
+   * destination (SQLite only). Returns the number of rows deleted.
+   */
+  deleteRouteSegmentsInvolvingNodeSync(nodeNum: number): number {
+    const db = this.getSqliteDb();
+    const { routeSegments } = this.tables;
+    const result = db
+      .delete(routeSegments)
+      .where(or(eq(routeSegments.fromNodeNum, nodeNum), eq(routeSegments.toNodeNum, nodeNum))!)
+      .run();
+    return Number((result as any).changes ?? 0);
+  }
+
+  /**
+   * Synchronously get all traceroutes for the legacy runDataMigrations
+   * bootstrap flow (SQLite only).
+   */
+  getAllTraceroutesSync(): DbTraceroute[] {
+    const db = this.getSqliteDb();
+    const { traceroutes } = this.tables;
+    const rows = db
+      .select()
+      .from(traceroutes)
+      .orderBy(traceroutes.timestamp)
+      .all();
+    return (rows as any[]).map((r) => {
+      const n = this.normalizeBigInts(r) as any;
+      if (n.channel === null) n.channel = undefined;
+      if (n.routePositions === null) n.routePositions = undefined;
+      if (n.sourceId === null) n.sourceId = undefined;
+      return n as DbTraceroute;
+    });
+  }
 }

@@ -1096,6 +1096,7 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS telemetry (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2882,71 +2883,7 @@ class DatabaseService {
     // (nodes without GPS/NTP often report 0 or boot-relative seconds)
     const MIN_VALID_TIMESTAMP_MS = 1577836800000;
 
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      const sourceFilter = sourceId ? ' AND "sourceId" = $2' : '';
-      const params: any[] = [MIN_VALID_TIMESTAMP_MS];
-      if (sourceId) params.push(sourceId);
-      const result = await this.postgresPool.query(`
-        SELECT DISTINCT ON ("nodeNum") "nodeNum", "timestamp", "packetTimestamp"
-        FROM telemetry
-        WHERE "packetTimestamp" IS NOT NULL AND "packetTimestamp" > $1${sourceFilter}
-        ORDER BY "nodeNum", "timestamp" DESC
-      `, params);
-      return result.rows.map((r: any) => ({
-        nodeNum: Number(r.nodeNum),
-        timestamp: Number(r.timestamp),
-        packetTimestamp: Number(r.packetTimestamp)
-      }));
-    }
-
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      const sourceFilter = sourceId ? ' AND t.sourceId = ?' : '';
-      const innerFilter = sourceId ? ' AND sourceId = ?' : '';
-      const params: any[] = [MIN_VALID_TIMESTAMP_MS];
-      if (sourceId) params.push(sourceId);
-      params.push(MIN_VALID_TIMESTAMP_MS);
-      if (sourceId) params.push(sourceId);
-      const [rows] = await this.mysqlPool.query(`
-        SELECT t.nodeNum, t.timestamp, t.packetTimestamp
-        FROM telemetry t
-        INNER JOIN (
-          SELECT nodeNum, MAX(timestamp) as maxTs
-          FROM telemetry
-          WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ?${innerFilter}
-          GROUP BY nodeNum
-        ) latest ON t.nodeNum = latest.nodeNum AND t.timestamp = latest.maxTs
-        WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ?${sourceFilter}
-      `, params) as any;
-      return (rows as any[]).map((r: any) => ({
-        nodeNum: Number(r.nodeNum),
-        timestamp: Number(r.timestamp),
-        packetTimestamp: Number(r.packetTimestamp)
-      }));
-    }
-
-    // SQLite
-    const sourceFilter = sourceId ? ' AND t.sourceId = ?' : '';
-    const innerFilter = sourceId ? ' AND sourceId = ?' : '';
-    const params: any[] = [MIN_VALID_TIMESTAMP_MS];
-    if (sourceId) params.push(sourceId);
-    params.push(MIN_VALID_TIMESTAMP_MS);
-    if (sourceId) params.push(sourceId);
-    const stmt = this.db.prepare(`
-      SELECT t.nodeNum, t.timestamp, t.packetTimestamp
-      FROM telemetry t
-      INNER JOIN (
-        SELECT nodeNum, MAX(timestamp) as maxTs
-        FROM telemetry
-        WHERE packetTimestamp IS NOT NULL AND packetTimestamp > ?${innerFilter}
-        GROUP BY nodeNum
-      ) latest ON t.nodeNum = latest.nodeNum AND t.timestamp = latest.maxTs
-      WHERE t.packetTimestamp IS NOT NULL AND t.packetTimestamp > ?${sourceFilter}
-    `);
-    return (stmt.all(...params) as any[]).map((r: any) => ({
-      nodeNum: Number(r.nodeNum),
-      timestamp: Number(r.timestamp),
-      packetTimestamp: Number(r.packetTimestamp)
-    }));
+    return this.telemetry.getLatestPacketTimestampsPerNode(MIN_VALID_TIMESTAMP_MS, sourceId);
   }
 
   // Message operations
@@ -3251,9 +3188,7 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return 0;
     }
-    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM telemetry');
-    const result = stmt.get() as { count: number };
-    return Number(result.count);
+    return this.telemetry.getTelemetryCountSync();
   }
 
   /** @deprecated Use databaseService.telemetry.getTelemetryCount() instead */
@@ -3266,28 +3201,7 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return 0;
     }
-
-    let query = 'SELECT COUNT(*) as count FROM telemetry WHERE nodeId = ?';
-    const params: any[] = [nodeId];
-
-    if (sinceTimestamp !== undefined) {
-      query += ' AND timestamp >= ?';
-      params.push(sinceTimestamp);
-    }
-
-    if (beforeTimestamp !== undefined) {
-      query += ' AND timestamp < ?';
-      params.push(beforeTimestamp);
-    }
-
-    if (telemetryType !== undefined) {
-      query += ' AND telemetryType = ?';
-      params.push(telemetryType);
-    }
-
-    const stmt = this.db.prepare(query);
-    const result = stmt.get(...params) as { count: number };
-    return Number(result.count);
+    return this.telemetry.getTelemetryCountByNodeSync(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
   }
 
   /** @deprecated Use databaseService.telemetry.getTelemetryCountByNode() instead */
@@ -3624,9 +3538,7 @@ class DatabaseService {
     }
 
     // Delete all telemetry data for this node
-    const stmt = this.db.prepare('DELETE FROM telemetry WHERE nodeNum = ?');
-    const result = stmt.run(nodeNum);
-    return Number(result.changes);
+    return this.telemetry.deleteTelemetryByNodeSync(nodeNum);
   }
 
   deleteNode(nodeNum: number, sourceId: string): {
@@ -4087,22 +3999,7 @@ class DatabaseService {
       return;
     }
 
-    const stmt = this.db.prepare(`
-      INSERT INTO telemetry (
-        nodeId, nodeNum, telemetryType, timestamp, value, unit, createdAt, packetTimestamp
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      telemetryData.nodeId,
-      telemetryData.nodeNum,
-      telemetryData.telemetryType,
-      telemetryData.timestamp,
-      telemetryData.value,
-      telemetryData.unit || null,
-      telemetryData.createdAt,
-      telemetryData.packetTimestamp || null
-    );
+    this.telemetry.insertTelemetrySync(telemetryData);
 
     // Invalidate the telemetry types cache since we may have added a new type
     this.invalidateTelemetryTypesCache();
@@ -4117,36 +4014,7 @@ class DatabaseService {
   }
 
   getTelemetryByNode(nodeId: string, limit: number = 100, sinceTimestamp?: number, beforeTimestamp?: number, offset: number = 0, telemetryType?: string): DbTelemetry[] {
-    let query = `
-      SELECT * FROM telemetry
-      WHERE nodeId = ?
-    `;
-    const params: any[] = [nodeId];
-
-    if (sinceTimestamp !== undefined) {
-      query += ` AND timestamp >= ?`;
-      params.push(sinceTimestamp);
-    }
-
-    if (beforeTimestamp !== undefined) {
-      query += ` AND timestamp < ?`;
-      params.push(beforeTimestamp);
-    }
-
-    if (telemetryType !== undefined) {
-      query += ` AND telemetryType = ?`;
-      params.push(telemetryType);
-    }
-
-    query += `
-      ORDER BY timestamp DESC
-      LIMIT ? OFFSET ?
-    `;
-    params.push(limit, offset);
-
-    const stmt = this.db.prepare(query);
-    const telemetry = stmt.all(...params) as DbTelemetry[];
-    return telemetry.map(t => this.normalizeBigInts(t));
+    return this.telemetry.getTelemetryByNodeSync(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType) as unknown as DbTelemetry[];
   }
 
   /** @deprecated Use databaseService.telemetry.getTelemetryByNode() instead */
@@ -4408,12 +4276,7 @@ class DatabaseService {
    * Used during migration to force recalculation with new algorithm.
    */
   deleteAllEstimatedPositions(): number {
-    const stmt = this.db.prepare(`
-      DELETE FROM telemetry
-      WHERE telemetryType IN ('estimated_latitude', 'estimated_longitude')
-    `);
-    const result = stmt.run();
-    return result.changes;
+    return this.telemetry.deleteAllEstimatedPositionsSync();
   }
 
   // Cache for PostgreSQL telemetry data
@@ -6778,14 +6641,7 @@ class DatabaseService {
       return [];
     }
 
-    const stmt = this.db.prepare(`
-      SELECT * FROM telemetry
-      WHERE telemetryType = ?
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `);
-    const telemetry = stmt.all(telemetryType, limit) as DbTelemetry[];
-    return telemetry.map(t => this.normalizeBigInts(t));
+    return this.telemetry.getTelemetryByTypeSync(telemetryType, limit) as unknown as DbTelemetry[];
   }
 
   /** @deprecated Use databaseService.telemetry.getTelemetryByType() instead */
@@ -6800,16 +6656,7 @@ class DatabaseService {
       return [];
     }
 
-    const stmt = this.db.prepare(`
-      SELECT * FROM telemetry t1
-      WHERE nodeId = ? AND timestamp = (
-        SELECT MAX(timestamp) FROM telemetry t2
-        WHERE t2.nodeId = t1.nodeId AND t2.telemetryType = t1.telemetryType
-      )
-      ORDER BY telemetryType ASC
-    `);
-    const telemetry = stmt.all(nodeId) as DbTelemetry[];
-    return telemetry.map(t => this.normalizeBigInts(t));
+    return this.telemetry.getLatestTelemetryByNodeSync(nodeId) as unknown as DbTelemetry[];
   }
 
   getLatestTelemetryForType(nodeId: string, telemetryType: string): DbTelemetry | null {
@@ -6820,14 +6667,7 @@ class DatabaseService {
       // The actual data will be fetched via API endpoints which can be async
       return null;
     }
-    const stmt = this.db.prepare(`
-      SELECT * FROM telemetry
-      WHERE nodeId = ? AND telemetryType = ?
-      ORDER BY timestamp DESC
-      LIMIT 1
-    `);
-    const telemetry = stmt.get(nodeId, telemetryType) as DbTelemetry | null;
-    return telemetry ? this.normalizeBigInts(telemetry) : null;
+    return this.telemetry.getLatestTelemetryForTypeSync(nodeId, telemetryType) as unknown as DbTelemetry | null;
   }
 
   /**
@@ -6864,12 +6704,7 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return [];
     }
-    const stmt = this.db.prepare(`
-      SELECT DISTINCT telemetryType FROM telemetry
-      WHERE nodeId = ?
-    `);
-    const results = stmt.all(nodeId) as Array<{ telemetryType: string }>;
-    return results.map(r => r.telemetryType);
+    return this.telemetry.getNodeTelemetryTypesSync(nodeId);
   }
 
   // Get all nodes with their telemetry types (cached for performance)
@@ -6899,16 +6734,7 @@ class DatabaseService {
     }
 
     // SQLite: query the database and update cache
-    const stmt = this.db.prepare(`
-      SELECT nodeId, GROUP_CONCAT(DISTINCT telemetryType) as types
-      FROM telemetry
-      GROUP BY nodeId
-    `);
-    const results = stmt.all() as Array<{ nodeId: string; types: string }>;
-    const map = new Map<string, string[]>();
-    results.forEach(r => {
-      map.set(r.nodeId, r.types ? r.types.split(',') : []);
-    });
+    const map = this.telemetry.getAllNodesTelemetryTypesSync();
 
     this.telemetryTypesCache = map;
     this.telemetryTypesCacheTime = now;
@@ -6937,16 +6763,7 @@ class DatabaseService {
     }
 
     // SQLite: query the database and update cache
-    const stmt = this.db.prepare(`
-      SELECT nodeId, GROUP_CONCAT(DISTINCT telemetryType) as types
-      FROM telemetry
-      GROUP BY nodeId
-    `);
-    const results = stmt.all() as Array<{ nodeId: string; types: string }>;
-    const map = new Map<string, string[]>();
-    results.forEach(r => {
-      map.set(r.nodeId, r.types ? r.types.split(',') : []);
-    });
+    const map = this.telemetry.getAllNodesTelemetryTypesSync();
 
     this.telemetryTypesCache = map;
     this.telemetryTypesCacheTime = now;
@@ -6981,9 +6798,9 @@ class DatabaseService {
     // Delete in order to respect foreign key constraints
     // First delete all child records that reference nodes
     this.db.exec('DELETE FROM messages');
-    this.db.exec('DELETE FROM telemetry');
-    this.db.exec('DELETE FROM traceroutes');
-    this.db.exec('DELETE FROM route_segments');
+    this.telemetry.deleteAllTelemetrySync();
+    this.traceroutes.deleteAllTraceroutesSync();
+    this.traceroutes.deleteAllRouteSegmentsSync();
     if (this.neighborsRepo) {
       // Use Drizzle repo for all backends (including SQLite)
       this.neighborsRepo.deleteAllNeighborInfo().catch(err =>
@@ -6992,6 +6809,8 @@ class DatabaseService {
     }
     // Finally delete the nodes themselves
     this.db.exec('DELETE FROM nodes');
+    // Telemetry cache invalidation after bulk purge
+    this.invalidateTelemetryTypesCache();
     logger.debug('✅ Successfully purged all nodes and related data');
   }
 
@@ -7003,6 +6822,7 @@ class DatabaseService {
       if (this.telemetryRepo) {
         this.telemetryRepo.deleteAllTelemetry().then(() => {
           logger.debug('✅ Successfully purged all telemetry');
+          this.invalidateTelemetryTypesCache();
         }).catch(err => {
           logger.error('Failed to purge all telemetry:', err);
         });
@@ -7012,7 +6832,8 @@ class DatabaseService {
       return;
     }
 
-    this.db.exec('DELETE FROM telemetry');
+    this.telemetry.deleteAllTelemetrySync();
+    this.invalidateTelemetryTypesCache();
   }
 
   purgeOldTelemetry(hoursToKeep: number, favoriteDaysToKeep?: number): number {
@@ -7064,10 +6885,10 @@ class DatabaseService {
 
     // If no favorite storage duration specified, purge all telemetry older than hoursToKeep
     if (!favoriteDaysToKeep) {
-      const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
-      const result = stmt.run(regularCutoffTime);
-      logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours)`);
-      return Number(result.changes);
+      const deleted = this.telemetry.deleteOldTelemetrySync(regularCutoffTime);
+      logger.debug(`🧹 Purged ${deleted} old telemetry records (keeping last ${hoursToKeep} hours)`);
+      if (deleted > 0) this.invalidateTelemetryTypesCache();
+      return deleted;
     }
 
     // Get the list of favorited telemetry from settings
@@ -7083,42 +6904,28 @@ class DatabaseService {
 
     // If no favorites, just purge everything older than hoursToKeep
     if (favorites.length === 0) {
-      const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
-      const result = stmt.run(regularCutoffTime);
-      logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours, no favorites)`);
-      return Number(result.changes);
+      const deleted = this.telemetry.deleteOldTelemetrySync(regularCutoffTime);
+      logger.debug(`🧹 Purged ${deleted} old telemetry records (keeping last ${hoursToKeep} hours, no favorites)`);
+      if (deleted > 0) this.invalidateTelemetryTypesCache();
+      return deleted;
     }
 
     // Calculate the cutoff time for favorited telemetry
     const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
 
-    // Build a query to purge old telemetry, exempting favorited telemetry
-    // Purge non-favorited telemetry older than hoursToKeep
-    // Purge favorited telemetry older than favoriteDaysToKeep
-    let totalDeleted = 0;
-
-    // First, delete non-favorited telemetry older than regularCutoffTime
-    const conditions = favorites.map(() => '(nodeId = ? AND telemetryType = ?)').join(' OR ');
-    const params = favorites.flatMap(f => [f.nodeId, f.telemetryType]);
-
-    const deleteNonFavoritesStmt = this.db.prepare(
-      `DELETE FROM telemetry WHERE timestamp < ? AND NOT (${conditions})`
+    const { nonFavoritesDeleted, favoritesDeleted } = this.telemetry.deleteOldTelemetryWithFavoritesSync(
+      regularCutoffTime,
+      favoriteCutoffTime,
+      favorites
     );
-    const nonFavoritesResult = deleteNonFavoritesStmt.run(regularCutoffTime, ...params);
-    totalDeleted += Number(nonFavoritesResult.changes);
-
-    // Then, delete favorited telemetry older than favoriteCutoffTime
-    const deleteFavoritesStmt = this.db.prepare(
-      `DELETE FROM telemetry WHERE timestamp < ? AND (${conditions})`
-    );
-    const favoritesResult = deleteFavoritesStmt.run(favoriteCutoffTime, ...params);
-    totalDeleted += Number(favoritesResult.changes);
+    const totalDeleted = nonFavoritesDeleted + favoritesDeleted;
 
     logger.debug(
       `🧹 Purged ${totalDeleted} old telemetry records ` +
-      `(${nonFavoritesResult.changes} non-favorites older than ${hoursToKeep}h, ` +
-      `${favoritesResult.changes} favorites older than ${favoriteDaysToKeep}d)`
+      `(${nonFavoritesDeleted} non-favorites older than ${hoursToKeep}h, ` +
+      `${favoritesDeleted} favorites older than ${favoriteDaysToKeep}d)`
     );
+    if (totalDeleted > 0) this.invalidateTelemetryTypesCache();
     return totalDeleted;
   }
 
@@ -7130,11 +6937,13 @@ class DatabaseService {
 
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       await this.telemetry.deleteAllTelemetry();
+      this.invalidateTelemetryTypesCache();
       logger.debug('✅ Successfully purged all telemetry');
       return;
     }
 
-    this.db.exec('DELETE FROM telemetry');
+    this.telemetry.deleteAllTelemetrySync();
+    this.invalidateTelemetryTypesCache();
     logger.debug('✅ Successfully purged all telemetry');
   }
 
@@ -7178,12 +6987,12 @@ class DatabaseService {
       return totalDeleted;
     }
 
-    // SQLite: synchronous path
+    // SQLite: synchronous path via repository
     if (!favoriteDaysToKeep) {
-      const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
-      const result = stmt.run(regularCutoffTime);
-      logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours)`);
-      return Number(result.changes);
+      const deleted = this.telemetry.deleteOldTelemetrySync(regularCutoffTime);
+      logger.debug(`🧹 Purged ${deleted} old telemetry records (keeping last ${hoursToKeep} hours)`);
+      if (deleted > 0) this.invalidateTelemetryTypesCache();
+      return deleted;
     }
 
     const favoritesStr = this.getSetting('telemetryFavorites');
@@ -7197,35 +7006,27 @@ class DatabaseService {
     }
 
     if (favorites.length === 0) {
-      const stmt = this.db.prepare('DELETE FROM telemetry WHERE timestamp < ?');
-      const result = stmt.run(regularCutoffTime);
-      logger.debug(`🧹 Purged ${result.changes} old telemetry records (keeping last ${hoursToKeep} hours, no favorites)`);
-      return Number(result.changes);
+      const deleted = this.telemetry.deleteOldTelemetrySync(regularCutoffTime);
+      logger.debug(`🧹 Purged ${deleted} old telemetry records (keeping last ${hoursToKeep} hours, no favorites)`);
+      if (deleted > 0) this.invalidateTelemetryTypesCache();
+      return deleted;
     }
 
     const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
-    let totalDeleted = 0;
 
-    const conditions = favorites.map(() => '(nodeId = ? AND telemetryType = ?)').join(' OR ');
-    const params = favorites.flatMap(f => [f.nodeId, f.telemetryType]);
-
-    const deleteNonFavoritesStmt = this.db.prepare(
-      `DELETE FROM telemetry WHERE timestamp < ? AND NOT (${conditions})`
+    const { nonFavoritesDeleted, favoritesDeleted } = this.telemetry.deleteOldTelemetryWithFavoritesSync(
+      regularCutoffTime,
+      favoriteCutoffTime,
+      favorites
     );
-    const nonFavoritesResult = deleteNonFavoritesStmt.run(regularCutoffTime, ...params);
-    totalDeleted += Number(nonFavoritesResult.changes);
-
-    const deleteFavoritesStmt = this.db.prepare(
-      `DELETE FROM telemetry WHERE timestamp < ? AND (${conditions})`
-    );
-    const favoritesResult = deleteFavoritesStmt.run(favoriteCutoffTime, ...params);
-    totalDeleted += Number(favoritesResult.changes);
+    const totalDeleted = nonFavoritesDeleted + favoritesDeleted;
 
     logger.debug(
       `🧹 Purged ${totalDeleted} old telemetry records ` +
-      `(${nonFavoritesResult.changes} non-favorites older than ${hoursToKeep}h, ` +
-      `${favoritesResult.changes} favorites older than ${favoriteDaysToKeep}d)`
+      `(${nonFavoritesDeleted} non-favorites older than ${hoursToKeep}h, ` +
+      `${favoritesDeleted} favorites older than ${favoriteDaysToKeep}d)`
     );
+    if (totalDeleted > 0) this.invalidateTelemetryTypesCache();
     return totalDeleted;
   }
 
