@@ -2066,7 +2066,6 @@ class DatabaseService {
       return;
     }
 
-    const now = Date.now();
     // Post-migration 029: existence check and UPDATE must be scoped per-source
     // when a sourceId is supplied. Omitting the scope would cause an upsert on
     // source A to overwrite source B's row for the same nodeNum.
@@ -2075,157 +2074,20 @@ class DatabaseService {
       ? this.getNode(nodeData.nodeNum, upsertSourceIdSqlite)
       : this.getNode(nodeData.nodeNum);
 
-    if (existingNode) {
-      const stmt = this.db.prepare(`
-        UPDATE nodes SET
-          nodeId = COALESCE(?, nodeId),
-          longName = COALESCE(?, longName),
-          shortName = COALESCE(?, shortName),
-          hwModel = COALESCE(?, hwModel),
-          role = COALESCE(?, role),
-          hopsAway = COALESCE(?, hopsAway),
-          viaMqtt = COALESCE(?, viaMqtt),
-          macaddr = COALESCE(?, macaddr),
-          latitude = COALESCE(?, latitude),
-          longitude = COALESCE(?, longitude),
-          altitude = COALESCE(?, altitude),
-          batteryLevel = COALESCE(?, batteryLevel),
-          voltage = COALESCE(?, voltage),
-          channelUtilization = COALESCE(?, channelUtilization),
-          airUtilTx = COALESCE(?, airUtilTx),
-          lastHeard = COALESCE(?, lastHeard),
-          snr = COALESCE(?, snr),
-          rssi = COALESCE(?, rssi),
-          firmwareVersion = COALESCE(?, firmwareVersion),
-          channel = COALESCE(?, channel),
-          isFavorite = COALESCE(?, isFavorite),
-          rebootCount = COALESCE(?, rebootCount),
-          publicKey = COALESCE(?, publicKey),
-          hasPKC = COALESCE(?, hasPKC),
-          lastPKIPacket = COALESCE(?, lastPKIPacket),
-          welcomedAt = COALESCE(?, welcomedAt),
-          keyIsLowEntropy = COALESCE(?, keyIsLowEntropy),
-          duplicateKeyDetected = COALESCE(?, duplicateKeyDetected),
-          keyMismatchDetected = COALESCE(?, keyMismatchDetected),
-          keySecurityIssueDetails = COALESCE(?, keySecurityIssueDetails),
-          positionChannel = COALESCE(?, positionChannel),
-          positionPrecisionBits = COALESCE(?, positionPrecisionBits),
-          positionTimestamp = COALESCE(?, positionTimestamp),
-          updatedAt = ?
-        WHERE nodeNum = ?${upsertSourceIdSqlite ? ' AND sourceId = ?' : ''}
-      `);
-
-      stmt.run(
-        nodeData.nodeId,
-        nodeData.longName,
-        nodeData.shortName,
-        nodeData.hwModel,
-        nodeData.role,
-        nodeData.hopsAway,
-        nodeData.viaMqtt !== undefined ? (nodeData.viaMqtt ? 1 : 0) : null,
-        nodeData.macaddr,
-        nodeData.latitude,
-        nodeData.longitude,
-        nodeData.altitude,
-        nodeData.batteryLevel,
-        nodeData.voltage,
-        nodeData.channelUtilization,
-        nodeData.airUtilTx,
-        nodeData.lastHeard,
-        nodeData.snr,
-        nodeData.rssi,
-        nodeData.firmwareVersion || null,
-        nodeData.channel !== undefined ? nodeData.channel : null,
-        nodeData.isFavorite !== undefined ? (nodeData.isFavorite ? 1 : 0) : null,
-        nodeData.rebootCount !== undefined ? nodeData.rebootCount : null,
-        nodeData.publicKey || null,
-        nodeData.hasPKC !== undefined ? (nodeData.hasPKC ? 1 : 0) : null,
-        nodeData.lastPKIPacket !== undefined ? nodeData.lastPKIPacket : null,
-        nodeData.welcomedAt !== undefined ? nodeData.welcomedAt : null,
-        nodeData.keyIsLowEntropy !== undefined ? (nodeData.keyIsLowEntropy ? 1 : 0) : null,
-        nodeData.duplicateKeyDetected !== undefined ? (nodeData.duplicateKeyDetected ? 1 : 0) : null,
-        nodeData.keyMismatchDetected !== undefined ? (nodeData.keyMismatchDetected ? 1 : 0) : null,
-        // For keySecurityIssueDetails, use empty string to explicitly clear (COALESCE will keep old value for null)
-        // If explicitly set to undefined, pass empty string to clear; if set to a value, use it; if not provided, pass null
-        'keySecurityIssueDetails' in nodeData ? (nodeData.keySecurityIssueDetails || '') : null,
-        nodeData.positionChannel !== undefined ? nodeData.positionChannel : null,
-        nodeData.positionPrecisionBits !== undefined ? nodeData.positionPrecisionBits : null,
-        nodeData.positionTimestamp !== undefined ? nodeData.positionTimestamp : null,
-        now,
-        nodeData.nodeNum,
-        ...(upsertSourceIdSqlite ? [upsertSourceIdSqlite] : [])
-      );
-    } else {
-      // Check if this node was previously ignored (persistent ignore list)
-      let wasIgnored = false;
-      try {
-        const ignoreCheck = this.db.prepare('SELECT nodeNum FROM ignored_nodes WHERE nodeNum = ?');
-        wasIgnored = !!ignoreCheck.get(nodeData.nodeNum);
-      } catch {
-        // Table may not exist yet during initial setup
+    let wasIgnored = false;
+    if (!existingNode) {
+      // Check if this node was previously ignored (persistent ignore list).
+      // Delegates to IgnoredNodesRepository so the raw SQL stays inside Drizzle-managed code.
+      if (this.ignoredNodesRepo) {
+        wasIgnored = this.ignoredNodesRepo.isNodeIgnoredSqlite(nodeData.nodeNum);
       }
+    }
 
-      // Post-migration 029: (nodeNum, sourceId) is the composite PK and sourceId is NOT NULL.
-      // Default to 'default' for callers that haven't been threaded through yet, matching
-      // the PG/MySQL cache path at upsertSourceId above.
-      const insertSourceId = (nodeData as any).sourceId ?? 'default';
-      const stmt = this.db.prepare(`
-        INSERT INTO nodes (
-          nodeNum, nodeId, longName, shortName, hwModel, role, hopsAway, viaMqtt, macaddr,
-          latitude, longitude, altitude, batteryLevel, voltage,
-          channelUtilization, airUtilTx, lastHeard, snr, rssi, firmwareVersion, channel,
-          isFavorite, rebootCount, publicKey, hasPKC, lastPKIPacket, welcomedAt,
-          keyIsLowEntropy, duplicateKeyDetected, keyMismatchDetected, keySecurityIssueDetails,
-          positionChannel, positionPrecisionBits, positionTimestamp,
-          isIgnored,
-          createdAt, updatedAt, sourceId
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
+    // Delegate to the repository's sync upsert — eliminates raw SQL.
+    this.nodesRepo!.upsertNodeSqlite(nodeData, wasIgnored);
 
-      stmt.run(
-        nodeData.nodeNum,
-        nodeData.nodeId,
-        nodeData.longName || null,
-        nodeData.shortName || null,
-        nodeData.hwModel || null,
-        nodeData.role || null,
-        nodeData.hopsAway !== undefined ? nodeData.hopsAway : null,
-        nodeData.viaMqtt !== undefined ? (nodeData.viaMqtt ? 1 : 0) : null,
-        nodeData.macaddr || null,
-        nodeData.latitude || null,
-        nodeData.longitude || null,
-        nodeData.altitude || null,
-        nodeData.batteryLevel || null,
-        nodeData.voltage || null,
-        nodeData.channelUtilization || null,
-        nodeData.airUtilTx || null,
-        nodeData.lastHeard || null,
-        nodeData.snr || null,
-        nodeData.rssi || null,
-        nodeData.firmwareVersion || null,
-        nodeData.channel !== undefined ? nodeData.channel : null,
-        nodeData.isFavorite ? 1 : 0,
-        nodeData.rebootCount || null,
-        nodeData.publicKey || null,
-        nodeData.hasPKC ? 1 : 0,
-        nodeData.lastPKIPacket || null,
-        nodeData.welcomedAt || null,
-        nodeData.keyIsLowEntropy ? 1 : 0,
-        nodeData.duplicateKeyDetected ? 1 : 0,
-        nodeData.keyMismatchDetected ? 1 : 0,
-        nodeData.keySecurityIssueDetails || null,
-        nodeData.positionChannel !== undefined ? nodeData.positionChannel : null,
-        nodeData.positionPrecisionBits !== undefined ? nodeData.positionPrecisionBits : null,
-        nodeData.positionTimestamp !== undefined ? nodeData.positionTimestamp : null,
-        wasIgnored ? 1 : 0,
-        now,
-        now,
-        insertSourceId
-      );
-
-      if (wasIgnored) {
-        logger.debug(`Restored ignored status for returning node ${nodeData.nodeNum}`);
-      }
+    if (!existingNode && wasIgnored) {
+      logger.debug(`Restored ignored status for returning node ${nodeData.nodeNum}`);
     }
 
     // Send new node notification when a node becomes complete (has longName, shortName, hwModel)
@@ -2282,14 +2144,8 @@ class DatabaseService {
       }
       return null;
     }
-    if (sourceId) {
-      const stmt = this.db.prepare('SELECT * FROM nodes WHERE nodeNum = ? AND sourceId = ?');
-      const node = stmt.get(nodeNum, sourceId) as DbNode | null;
-      return node ? this.normalizeBigInts(node) : null;
-    }
-    const stmt = this.db.prepare('SELECT * FROM nodes WHERE nodeNum = ?');
-    const node = stmt.get(nodeNum) as DbNode | null;
-    return node ? this.normalizeBigInts(node) : null;
+    // SQLite: delegate to Drizzle sync variant
+    return this.nodesRepo!.getNodeSqlite(nodeNum, sourceId) as unknown as DbNode | null;
   }
 
   getAllNodes(sourceId?: string): DbNode[] {
@@ -2301,15 +2157,8 @@ class DatabaseService {
       }
       return Array.from(this.iterateCache(sourceId));
     }
-    // Post-migration 029: when sourceId is provided, scope the query per-source.
-    if (sourceId) {
-      const stmt = this.db.prepare('SELECT * FROM nodes WHERE sourceId = ? ORDER BY updatedAt DESC');
-      const nodes = stmt.all(sourceId) as DbNode[];
-      return nodes.map(node => this.normalizeBigInts(node));
-    }
-    const stmt = this.db.prepare('SELECT * FROM nodes ORDER BY updatedAt DESC');
-    const nodes = stmt.all() as DbNode[];
-    return nodes.map(node => this.normalizeBigInts(node));
+    // SQLite: delegate to Drizzle sync variant
+    return this.nodesRepo!.getAllNodesSqlite(sourceId) as unknown as DbNode[];
   }
 
   /**
@@ -2332,11 +2181,8 @@ class DatabaseService {
         .sort((a, b) => (b.lastHeard ?? 0) - (a.lastHeard ?? 0));
     }
 
-    // lastHeard is stored in seconds (Unix timestamp), so convert cutoff to seconds
-    const cutoff = Math.floor(Date.now() / 1000) - (sinceDays * 24 * 60 * 60);
-    const stmt = this.db.prepare('SELECT * FROM nodes WHERE lastHeard > ? ORDER BY lastHeard DESC');
-    const nodes = stmt.all(cutoff) as DbNode[];
-    return nodes.map(node => this.normalizeBigInts(node));
+    // SQLite: delegate to Drizzle sync variant
+    return this.nodesRepo!.getActiveNodesSqlite(sinceDays) as unknown as DbNode[];
   }
 
   /**
@@ -2360,8 +2206,8 @@ class DatabaseService {
       }
       return;
     }
-    const stmt = this.db.prepare('UPDATE nodes SET lastMessageHops = ?, updatedAt = ? WHERE nodeNum = ? AND sourceId = ?');
-    stmt.run(hops, now, nodeNum, sourceId);
+    // SQLite: delegate to Drizzle sync variant
+    this.nodesRepo!.updateNodeMessageHopsSqlite(nodeNum, hops, sourceId);
   }
 
   /**
@@ -2388,14 +2234,8 @@ class DatabaseService {
       }
       return count;
     }
-    if (sourceId) {
-      const stmt = this.db.prepare('UPDATE nodes SET welcomedAt = ? WHERE welcomedAt IS NULL AND sourceId = ?');
-      const result = stmt.run(now, sourceId);
-      return result.changes;
-    }
-    const stmt = this.db.prepare('UPDATE nodes SET welcomedAt = ? WHERE welcomedAt IS NULL');
-    const result = stmt.run(now);
-    return result.changes;
+    void now;
+    return this.nodesRepo!.markAllNodesAsWelcomedSqlite(sourceId ?? null);
   }
 
   /**
@@ -2427,13 +2267,8 @@ class DatabaseService {
       }
       return false;
     }
-    const stmt = this.db.prepare(`
-      UPDATE nodes
-      SET welcomedAt = ?, updatedAt = ?
-      WHERE nodeNum = ? AND nodeId = ? AND sourceId = ? AND welcomedAt IS NULL
-    `);
-    const result = stmt.run(now, now, nodeNum, nodeId, sourceId);
-    return result.changes > 0;
+    void now;
+    return this.nodesRepo!.markNodeAsWelcomedIfNotAlreadySqlite(nodeNum, nodeId, sourceId);
   }
 
   /**
@@ -2477,23 +2312,8 @@ class DatabaseService {
       const nodes = await this.nodes.getNodesWithKeySecurityIssues(sourceId);
       return nodes as unknown as DbNode[];
     }
-    // SQLite fallback using raw SQL on main connection
-    if (sourceId) {
-      const stmt = this.db.prepare(`
-        SELECT * FROM nodes
-        WHERE (keyIsLowEntropy = 1 OR duplicateKeyDetected = 1) AND sourceId = ?
-        ORDER BY lastHeard DESC
-      `);
-      const nodes = stmt.all(sourceId) as DbNode[];
-      return nodes.map(node => this.normalizeBigInts(node));
-    }
-    const stmt = this.db.prepare(`
-      SELECT * FROM nodes
-      WHERE keyIsLowEntropy = 1 OR duplicateKeyDetected = 1
-      ORDER BY lastHeard DESC
-    `);
-    const nodes = stmt.all() as DbNode[];
-    return nodes.map(node => this.normalizeBigInts(node));
+    // SQLite fallback via repository
+    return this.nodesRepo!.getNodesWithKeySecurityIssuesSqlite(sourceId) as unknown as DbNode[];
   }
 
   /**
@@ -2511,11 +2331,7 @@ class DatabaseService {
       return result;
     }
 
-    const stmt = this.db.prepare(`
-      SELECT nodeNum, publicKey FROM nodes
-      WHERE publicKey IS NOT NULL AND publicKey != ''
-    `);
-    return stmt.all() as Array<{ nodeNum: number; publicKey: string | null }>;
+    return this.nodesRepo!.getNodesWithPublicKeysSqlite();
   }
 
   /**
@@ -2543,15 +2359,7 @@ class DatabaseService {
     }
 
     // SQLite: synchronous update, always scoped by sourceId per migration 029.
-    const now = Date.now();
-    const stmt = this.db.prepare(`
-      UPDATE nodes
-      SET duplicateKeyDetected = ?,
-          keySecurityIssueDetails = ?,
-          updatedAt = ?
-      WHERE nodeNum = ? AND sourceId = ?
-    `);
-    stmt.run(duplicateKeyDetected ? 1 : 0, keySecurityIssueDetails ?? null, now, nodeNum, sourceId);
+    this.nodesRepo!.updateNodeSecurityFlagsSqlite(nodeNum, duplicateKeyDetected, keySecurityIssueDetails, sourceId);
   }
 
   updateNodeLowEntropyFlag(nodeNum: number, keyIsLowEntropy: boolean, details: string | undefined, sourceId: string): void {
@@ -2606,15 +2414,7 @@ class DatabaseService {
     }
 
     // SQLite: synchronous update, scoped per-source.
-    const stmt = this.db.prepare(`
-      UPDATE nodes
-      SET keyIsLowEntropy = ?,
-          keySecurityIssueDetails = ?,
-          updatedAt = ?
-      WHERE nodeNum = ? AND sourceId = ?
-    `);
-    const now = Date.now();
-    stmt.run(keyIsLowEntropy ? 1 : 0, combinedDetails || null, now, nodeNum, sourceId);
+    this.nodesRepo!.updateNodeLowEntropyFlagSqlite(nodeNum, keyIsLowEntropy, combinedDetails || null, sourceId);
   }
 
   /**
@@ -2706,15 +2506,7 @@ class DatabaseService {
     }
 
     // SQLite: synchronous update
-    const stmt = this.db.prepare(`
-      UPDATE nodes
-      SET isExcessivePackets = ?,
-          packetRatePerHour = ?,
-          packetRateLastChecked = ?,
-          updatedAt = ?
-      WHERE nodeNum = ? AND sourceId = ?
-    `);
-    stmt.run(isExcessivePackets ? 1 : 0, packetRatePerHour, now, Date.now(), nodeNum, sourceId);
+    this.nodesRepo!.updateNodeSpamFlagsSqlite(nodeNum, isExcessivePackets, packetRatePerHour, now, sourceId);
   }
 
   /**
@@ -2748,15 +2540,8 @@ class DatabaseService {
     }
 
     // SQLite: synchronous update
-    const stmt = this.db.prepare(`
-      UPDATE nodes
-      SET isExcessivePackets = ?,
-          packetRatePerHour = ?,
-          packetRateLastChecked = ?,
-          updatedAt = ?
-      WHERE nodeNum = ? AND sourceId = ?
-    `);
-    stmt.run(isExcessivePackets ? 1 : 0, packetRatePerHour, lastChecked, now, nodeNum, sourceId);
+    void now;
+    this.nodesRepo!.updateNodeSpamFlagsSqlite(nodeNum, isExcessivePackets, packetRatePerHour, lastChecked, sourceId);
   }
 
   /**
@@ -2774,10 +2559,7 @@ class DatabaseService {
       return result;
     }
 
-    const stmt = this.db.prepare(`
-      SELECT * FROM nodes WHERE isExcessivePackets = 1
-    `);
-    return stmt.all() as DbNode[];
+    return this.nodesRepo!.getNodesWithExcessivePacketsSqlite() as unknown as DbNode[];
   }
 
   /**
@@ -2795,8 +2577,7 @@ class DatabaseService {
     }
 
     if (sourceId) {
-      const stmt = this.db.prepare(`SELECT * FROM nodes WHERE isExcessivePackets = 1 AND sourceId = ?`);
-      return stmt.all(sourceId) as DbNode[];
+      return this.nodesRepo!.getNodesWithExcessivePacketsSqlite(sourceId) as unknown as DbNode[];
     }
     return this.getNodesWithExcessivePackets();
   }
@@ -2823,14 +2604,7 @@ class DatabaseService {
     }
 
     // SQLite: synchronous update, scoped by sourceId
-    const stmt = this.db.prepare(`
-      UPDATE nodes
-      SET isTimeOffsetIssue = ?,
-          timeOffsetSeconds = ?,
-          updatedAt = ?
-      WHERE nodeNum = ? AND sourceId = ?
-    `);
-    stmt.run(isTimeOffsetIssue ? 1 : 0, timeOffsetSeconds, Date.now(), nodeNum, sourceId);
+    this.nodesRepo!.updateNodeTimeOffsetFlagsSqlite(nodeNum, isTimeOffsetIssue, timeOffsetSeconds, sourceId);
   }
 
   /**
@@ -2863,14 +2637,8 @@ class DatabaseService {
     }
 
     // SQLite
-    const stmt = this.db.prepare(`
-      UPDATE nodes
-      SET isTimeOffsetIssue = ?,
-          timeOffsetSeconds = ?,
-          updatedAt = ?
-      WHERE nodeNum = ? AND sourceId = ?
-    `);
-    stmt.run(isTimeOffsetIssue ? 1 : 0, timeOffsetSeconds, now, nodeNum, sourceId);
+    void now;
+    this.nodesRepo!.updateNodeTimeOffsetFlagsSqlite(nodeNum, isTimeOffsetIssue, timeOffsetSeconds, sourceId);
   }
 
   /**
@@ -2888,10 +2656,7 @@ class DatabaseService {
       return result;
     }
 
-    const stmt = this.db.prepare(`
-      SELECT * FROM nodes WHERE isTimeOffsetIssue = 1
-    `);
-    return stmt.all() as DbNode[];
+    return this.nodesRepo!.getNodesWithTimeOffsetIssuesSqlite() as unknown as DbNode[];
   }
 
   /**
@@ -2909,8 +2674,7 @@ class DatabaseService {
     }
 
     if (sourceId) {
-      const stmt = this.db.prepare(`SELECT * FROM nodes WHERE isTimeOffsetIssue = 1 AND sourceId = ?`);
-      return stmt.all(sourceId) as DbNode[];
+      return this.nodesRepo!.getNodesWithTimeOffsetIssuesSqlite(sourceId) as unknown as DbNode[];
     }
     return this.getNodesWithTimeOffsetIssues();
   }
@@ -3188,9 +2952,7 @@ class DatabaseService {
       }
       return this.nodesCache.size;
     }
-    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM nodes');
-    const result = stmt.get() as { count: number };
-    return Number(result.count);
+    return this.nodesRepo!.getNodeCountSqlite();
   }
 
   getTelemetryCount(): number {
@@ -3275,8 +3037,7 @@ class DatabaseService {
       }
 
       // Update the mobile flag in the database
-      const stmt = this.db.prepare('UPDATE nodes SET mobile = ? WHERE nodeId = ?');
-      stmt.run(isMobile, nodeId);
+      this.nodesRepo!.updateNodeMobilitySqlite(nodeId, isMobile);
 
       return isMobile;
     } catch (error) {
@@ -3403,9 +3164,7 @@ class DatabaseService {
 
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
     // Skip nodes that are ignored - they should persist even if inactive
-    const stmt = this.db.prepare('DELETE FROM nodes WHERE (lastHeard < ? OR lastHeard IS NULL) AND (isIgnored = 0 OR isIgnored IS NULL)');
-    const result = stmt.run(cutoff);
-    return Number(result.changes);
+    return this.nodesRepo!.deleteInactiveNodesSqlite(cutoff);
   }
 
   // Message deletion operations
@@ -3552,9 +3311,7 @@ class DatabaseService {
     }
 
     // Delete the node from the nodes table (scoped to sourceId)
-    const nodeStmt = this.db.prepare('DELETE FROM nodes WHERE nodeNum = ? AND sourceId = ?');
-    const nodeResult = nodeStmt.run(nodeNum, sourceId);
-    const nodeDeleted = Number(nodeResult.changes) > 0;
+    const nodeDeleted = this.nodesRepo!.deleteNodeSqlite(nodeNum, sourceId);
 
     return {
       messagesDeleted,
@@ -3696,26 +3453,11 @@ class DatabaseService {
       if (this.messagesRepo) {
         this.messagesRepo.deleteAllMessagesSqlite();
       }
-      this.db.exec('DELETE FROM nodes');
+      this.nodesRepo!.truncateNodesSqlite();
 
-      // Import nodes
-      const nodeStmt = this.db.prepare(`
-        INSERT INTO nodes (
-          nodeNum, nodeId, longName, shortName, hwModel, macaddr,
-          latitude, longitude, altitude, batteryLevel, voltage,
-          channelUtilization, airUtilTx, lastHeard, snr, rssi,
-          createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
+      // Import nodes via repository
       for (const node of data.nodes) {
-        nodeStmt.run(
-          node.nodeNum, node.nodeId, node.longName, node.shortName,
-          node.hwModel, node.macaddr, node.latitude, node.longitude,
-          node.altitude, node.batteryLevel, node.voltage,
-          node.channelUtilization, node.airUtilTx, node.lastHeard,
-          node.snr, node.rssi, node.createdAt, node.updatedAt
-        );
+        this.nodesRepo!.importNodeSqlite(node);
       }
 
       // Import messages — delegate to the Drizzle-backed sync variant so
@@ -4001,6 +3743,7 @@ class DatabaseService {
     `;
     params.push(limit);
 
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(query);
     const telemetry = stmt.all(...params) as DbTelemetry[];
     return telemetry.map(t => this.normalizeBigInts(t));
@@ -4041,6 +3784,7 @@ class DatabaseService {
         AND t.timestamp = le.maxTimestamp
     `;
 
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(query);
     const results = stmt.all() as Array<{ nodeId: string; telemetryType: string; value: number }>;
 
@@ -4315,6 +4059,7 @@ class DatabaseService {
 
     query += ` ORDER BY telemetryType, timestamp ASC`;
 
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(query);
     const rows = stmt.all(...params) as Array<{
       telemetryType: string;
@@ -5006,17 +4751,7 @@ class DatabaseService {
 
     // SQLite path
     // Update the nodes table with last request time (Phase 3C: scoped per-source when available).
-    if (sourceId) {
-      const updateStmt = this.db.prepare(`
-        UPDATE nodes SET lastTracerouteRequest = ? WHERE nodeNum = ? AND sourceId = ?
-      `);
-      updateStmt.run(now, toNodeNum, sourceId);
-    } else {
-      const updateStmt = this.db.prepare(`
-        UPDATE nodes SET lastTracerouteRequest = ? WHERE nodeNum = ?
-      `);
-      updateStmt.run(now, toNodeNum);
-    }
+    this.nodesRepo!.updateNodeLastTracerouteRequestSqlite(toNodeNum, now, sourceId);
 
     // Insert a traceroute record for the attempt (with null routes indicating pending)
     const fromNodeId = `!${fromNodeNum.toString(16).padStart(8, '0')}`;
@@ -5595,25 +5330,7 @@ class DatabaseService {
       return null;
     }
 
-    const stmt = this.db.prepare(`
-      SELECT nodeNum, attemptCount, lastAttemptTime, exhausted, startedAt
-      FROM auto_key_repair_state
-      WHERE nodeNum = ?
-    `);
-    const result = stmt.get(nodeNum) as {
-      nodeNum: number;
-      attemptCount: number;
-      lastAttemptTime: number | null;
-      exhausted: number;
-      startedAt: number;
-    } | undefined;
-
-    if (!result) return null;
-
-    return {
-      ...result,
-      exhausted: result.exhausted === 1
-    };
+    return this.miscRepo!.getKeyRepairStateSqlite(nodeNum);
   }
 
   async getKeyRepairStateAsync(nodeNum: number): Promise<{
@@ -5680,35 +5397,7 @@ class DatabaseService {
     }
 
     const existing = this.getKeyRepairState(nodeNum);
-    const now = Date.now();
-
-    if (existing) {
-      // Update existing state
-      const stmt = this.db.prepare(`
-        UPDATE auto_key_repair_state
-        SET attemptCount = ?, lastAttemptTime = ?, exhausted = ?
-        WHERE nodeNum = ?
-      `);
-      stmt.run(
-        state.attemptCount ?? existing.attemptCount,
-        state.lastAttemptTime ?? existing.lastAttemptTime,
-        (state.exhausted ?? existing.exhausted) ? 1 : 0,
-        nodeNum
-      );
-    } else {
-      // Insert new state
-      const stmt = this.db.prepare(`
-        INSERT INTO auto_key_repair_state (nodeNum, attemptCount, lastAttemptTime, exhausted, startedAt)
-        VALUES (?, ?, ?, ?, ?)
-      `);
-      stmt.run(
-        nodeNum,
-        state.attemptCount ?? 0,
-        state.lastAttemptTime ?? null,
-        (state.exhausted ?? false) ? 1 : 0,
-        state.startedAt ?? now
-      );
-    }
+    this.miscRepo!.setKeyRepairStateSqlite(nodeNum, state, existing);
   }
 
   async setKeyRepairStateAsync(nodeNum: number, state: {
@@ -5794,11 +5483,7 @@ class DatabaseService {
       return;
     }
 
-    const stmt = this.db.prepare(`
-      DELETE FROM auto_key_repair_state
-      WHERE nodeNum = ?
-    `);
-    stmt.run(nodeNum);
+    this.miscRepo!.clearKeyRepairStateSqlite(nodeNum);
   }
 
   getNodesNeedingKeyRepair(): {
@@ -5816,29 +5501,7 @@ class DatabaseService {
     }
 
     // Get nodes with keyMismatchDetected=true that are not exhausted
-    const stmt = this.db.prepare(`
-      SELECT
-        n.nodeNum,
-        n.nodeId,
-        n.longName,
-        n.shortName,
-        COALESCE(s.attemptCount, 0) as attemptCount,
-        s.lastAttemptTime,
-        s.startedAt
-      FROM nodes n
-      LEFT JOIN auto_key_repair_state s ON n.nodeNum = s.nodeNum
-      WHERE n.keyMismatchDetected = 1
-        AND (s.exhausted IS NULL OR s.exhausted = 0)
-    `);
-    return stmt.all() as {
-      nodeNum: number;
-      nodeId: string;
-      longName: string | null;
-      shortName: string | null;
-      attemptCount: number;
-      lastAttemptTime: number | null;
-      startedAt: number | null;
-    }[];
+    return this.miscRepo!.getNodesNeedingKeyRepairSqlite();
   }
 
   async getNodesNeedingKeyRepairAsync(): Promise<{
@@ -5919,25 +5582,7 @@ class DatabaseService {
       return 0;
     }
 
-    const now = Date.now();
-    const stmt = this.db.prepare(`
-      INSERT INTO auto_key_repair_log (timestamp, nodeNum, nodeName, action, success, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    const result = stmt.run(now, nodeNum, nodeName, action, success === null ? null : (success ? 1 : 0), now);
-
-    // Clean up old entries (keep last 100)
-    const cleanupStmt = this.db.prepare(`
-      DELETE FROM auto_key_repair_log
-      WHERE id NOT IN (
-        SELECT id FROM auto_key_repair_log
-        ORDER BY timestamp DESC
-        LIMIT 100
-      )
-    `);
-    cleanupStmt.run();
-
-    return result.lastInsertRowid as number;
+    return this.miscRepo!.logKeyRepairAttemptSqlite(nodeNum, nodeName, action, success, null, null, null);
   }
 
   getKeyRepairLog(limit: number = 50): {
@@ -5953,24 +5598,14 @@ class DatabaseService {
       return [];
     }
 
-    const stmt = this.db.prepare(`
-      SELECT id, timestamp, nodeNum, nodeName, action, success
-      FROM auto_key_repair_log
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `);
-    const results = stmt.all(limit) as {
-      id: number;
-      timestamp: number;
-      nodeNum: number;
-      nodeName: string | null;
-      action: string;
-      success: number | null;
-    }[];
-
-    return results.map(r => ({
-      ...r,
-      success: r.success === null ? null : r.success === 1
+    const rows = this.miscRepo!.getKeyRepairLogSqlite(limit, undefined, false, false);
+    return rows.map(r => ({
+      id: r.id,
+      timestamp: r.timestamp,
+      nodeNum: r.nodeNum,
+      nodeName: r.nodeName,
+      action: r.action,
+      success: r.success,
     }));
   }
 
@@ -6014,14 +5649,8 @@ class DatabaseService {
       );
       return (result as any).insertId || 0;
     }
-    // SQLite fallback - use existing sync method plus new columns
-    const stmt = this.db.prepare(`
-      INSERT INTO auto_key_repair_log (timestamp, nodeNum, nodeName, action, success, created_at, oldKeyFragment, newKeyFragment, sourceId)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    const info = stmt.run(Date.now(), nodeNum, nodeName, action, success === null ? null : (success ? 1 : 0), Date.now(), oldKeyFragment, newKeyFragment, sourceId);
-    this.db.prepare('DELETE FROM auto_key_repair_log WHERE id NOT IN (SELECT id FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT 100)').run();
-    return Number(info.lastInsertRowid);
+    // SQLite fallback - delegate to repo (uses raw better-sqlite3 for extended columns)
+    return this.miscRepo!.logKeyRepairAttemptSqlite(nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment, sourceId);
   }
 
   async getKeyRepairLogAsync(limit: number = 50, sourceId?: string): Promise<{
@@ -6120,44 +5749,10 @@ class DatabaseService {
         newKeyFragment: row.newKeyFragment || null,
       }));
     }
-    // SQLite — check if table exists first (may not exist if auto-key management was never enabled)
-    const hasTable = this.db.prepare(
-      "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name='auto_key_repair_log'"
-    ).get() as { count: number };
-    if (hasTable.count === 0) {
-      return [];
-    }
-
-    // Check if migration 084 columns exist
-    const hasOldKeyCol = this.db.prepare(
-      "SELECT COUNT(*) as count FROM pragma_table_info('auto_key_repair_log') WHERE name='oldKeyFragment'"
-    ).get() as { count: number };
-    const selectCols = hasOldKeyCol.count > 0
-      ? 'id, timestamp, nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment'
-      : 'id, timestamp, nodeNum, nodeName, action, success';
-
-    // Check if sourceId column exists (migration 027)
-    const hasSourceIdColSqlite = this.db.prepare(
-      "SELECT COUNT(*) as count FROM pragma_table_info('auto_key_repair_log') WHERE name='sourceId'"
-    ).get() as { count: number };
-    const useSourceFilter = !!sourceId && hasSourceIdColSqlite.count > 0;
-    const whereClauseSqlite = useSourceFilter ? 'WHERE sourceId = ?' : '';
-    const paramsSqlite: any[] = useSourceFilter ? [sourceId, limit] : [limit];
-
-    const rows = this.db.prepare(`
-      SELECT ${selectCols}
-      FROM auto_key_repair_log ${whereClauseSqlite} ORDER BY timestamp DESC LIMIT ?
-    `).all(...paramsSqlite) as any[];
-    return rows.map((row: any) => ({
-      id: row.id,
-      timestamp: Number(row.timestamp),
-      nodeNum: Number(row.nodeNum),
-      nodeName: row.nodeName,
-      action: row.action,
-      success: row.success === null ? null : Boolean(row.success),
-      oldKeyFragment: row.oldKeyFragment || null,
-      newKeyFragment: row.newKeyFragment || null,
-    }));
+    // SQLite — delegate to repository (introspection + fetch)
+    const { tableExists, hasOldKeyCol, hasSourceId } = this.miscRepo!.getKeyRepairLogIntrospectionSqlite();
+    if (!tableExists) return [];
+    return this.miscRepo!.getKeyRepairLogSqlite(limit, sourceId, hasOldKeyCol, hasSourceId);
   }
 
   // Distance delete log methods moved to MiscRepository (databaseService.misc.getDistanceDeleteLog / addDistanceDeleteLogEntry)
@@ -6353,7 +5948,7 @@ class DatabaseService {
       );
     }
     // Finally delete the nodes themselves
-    this.db.exec('DELETE FROM nodes');
+    this.nodesRepo!.truncateNodesSqlite();
     // Telemetry cache invalidation after bulk purge
     this.invalidateTelemetryTypesCache();
     logger.debug('✅ Successfully purged all nodes and related data');
@@ -6925,6 +6520,7 @@ class DatabaseService {
     }
 
     logger.info('🧹 Running VACUUM on database...');
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     this.db.exec('VACUUM');
     logger.info('✅ VACUUM complete');
   }
@@ -6944,6 +6540,7 @@ class DatabaseService {
       return 0;
     }
 
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare('SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()');
     const result = stmt.get() as { size: number } | undefined;
     return result?.size ?? 0;
@@ -7125,6 +6722,7 @@ class DatabaseService {
     // SQLite: synchronous update
     const now = Date.now();
     if (favoriteLocked !== undefined) {
+      // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
       const stmt = this.db.prepare(`
         UPDATE nodes SET
           isFavorite = ?,
@@ -7140,6 +6738,7 @@ class DatabaseService {
       }
       logger.debug(`${isFavorite ? '⭐' : '☆'} Node ${nodeNum}@${sourceId} favorite status set to: ${isFavorite}, locked: ${favoriteLocked} (${result.changes} row updated)`);
     } else {
+      // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
       const stmt = this.db.prepare(`
         UPDATE nodes SET
           isFavorite = ?,
@@ -7177,6 +6776,7 @@ class DatabaseService {
 
     // SQLite: synchronous update
     const now = Date.now();
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
       UPDATE nodes SET
         favoriteLocked = ?,
@@ -7233,6 +6833,7 @@ class DatabaseService {
 
     // SQLite: synchronous update
     const now = Date.now();
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
       UPDATE nodes SET
         isIgnored = ?,
@@ -7256,6 +6857,7 @@ class DatabaseService {
   // Geofence cooldown operations
   getGeofenceCooldownAsync(triggerId: string, nodeNum: number): Promise<number | null> {
     if (this.drizzleDbType === 'sqlite') {
+      // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
       const stmt = this.db.prepare('SELECT firedAt FROM geofence_cooldowns WHERE triggerId = ? AND nodeNum = ?');
       const row = stmt.get(triggerId, nodeNum) as { firedAt: number } | undefined;
       return Promise.resolve(row ? Number(row.firedAt) : null);
@@ -7274,6 +6876,7 @@ class DatabaseService {
 
   setGeofenceCooldownAsync(triggerId: string, nodeNum: number, firedAt: number): Promise<void> {
     if (this.drizzleDbType === 'sqlite') {
+      // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
       const stmt = this.db.prepare(
         'INSERT INTO geofence_cooldowns (triggerId, nodeNum, firedAt) VALUES (?, ?, ?) ON CONFLICT(triggerId, nodeNum) DO UPDATE SET firedAt = excluded.firedAt'
       );
@@ -7294,6 +6897,7 @@ class DatabaseService {
 
   clearGeofenceCooldownsAsync(triggerId: string): Promise<void> {
     if (this.drizzleDbType === 'sqlite') {
+      // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
       const stmt = this.db.prepare('DELETE FROM geofence_cooldowns WHERE triggerId = ?');
       stmt.run(triggerId);
       return Promise.resolve();
@@ -7312,6 +6916,7 @@ class DatabaseService {
 
   getAllGeofenceCooldownsAsync(): Promise<Array<{ triggerId: string; nodeNum: number; firedAt: number }>> {
     if (this.drizzleDbType === 'sqlite') {
+      // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
       const stmt = this.db.prepare('SELECT triggerId, nodeNum, firedAt FROM geofence_cooldowns');
       const rows = stmt.all() as Array<{ triggerId: string; nodeNum: number; firedAt: number }>;
       return Promise.resolve(rows.map(r => ({ triggerId: r.triggerId, nodeNum: Number(r.nodeNum), firedAt: Number(r.firedAt) })));
@@ -7365,6 +6970,7 @@ class DatabaseService {
     }
 
     // SQLite path
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
       UPDATE nodes SET
         positionOverrideEnabled = ?,
@@ -7419,6 +7025,7 @@ class DatabaseService {
     }
 
     // SQLite path
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
       SELECT positionOverrideEnabled, latitudeOverride, longitudeOverride, altitudeOverride, positionOverrideIsPrivate
       FROM nodes
@@ -7684,6 +7291,7 @@ class DatabaseService {
       return;
     }
 
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
       INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
       VALUES (?, ?, ?)
@@ -7700,6 +7308,7 @@ class DatabaseService {
       return;
     }
 
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
       INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
       VALUES (?, ?, ?)
@@ -7755,6 +7364,7 @@ class DatabaseService {
       params.push(beforeTimestamp);
     }
 
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(query);
     const result = stmt.run(...params);
     return Number(result.changes);
@@ -7791,6 +7401,7 @@ class DatabaseService {
       params.push(beforeTimestamp);
     }
 
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(query);
     const result = stmt.run(...params);
     return Number(result.changes);
@@ -7819,6 +7430,7 @@ class DatabaseService {
     `;
     const params: any[] = [userId, Date.now(), localNodeId, localNodeId];
 
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(query);
     const result = stmt.run(...params);
     return Number(result.changes);
@@ -7917,6 +7529,7 @@ class DatabaseService {
   }
 
   getUnreadMessageIds(userId: number | null): string[] {
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
       SELECT m.id FROM messages m
       LEFT JOIN read_messages rm ON m.id = rm.message_id AND rm.user_id ${userId === null ? 'IS NULL' : '= ?'}
@@ -7936,6 +7549,7 @@ class DatabaseService {
 
     // Only count incoming messages (exclude messages sent by our node)
     const excludeOutgoing = localNodeId ? 'AND m.fromNodeId != ?' : '';
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
       SELECT m.channel, COUNT(*) as count
       FROM messages m
@@ -7973,6 +7587,7 @@ class DatabaseService {
 
     // Only count incoming DMs (messages FROM remote node TO local node)
     // Exclude outgoing messages (messages FROM local node TO remote node)
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
       SELECT COUNT(*) as count
       FROM messages m
@@ -8210,6 +7825,7 @@ class DatabaseService {
       return {};
     }
 
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
       SELECT m.fromNodeId, COUNT(*) as count
       FROM messages m
@@ -8335,6 +7951,7 @@ class DatabaseService {
 
   cleanupOldReadMessages(days: number): number {
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare('DELETE FROM read_messages WHERE read_at < ?');
     const result = stmt.run(cutoff);
     logger.debug(`🧹 Cleaned up ${result.changes} read_messages entries older than ${days} days`);
@@ -9128,8 +8745,7 @@ class DatabaseService {
         const [result] = await this.mysqlPool.query(`DELETE FROM nodes WHERE lastHeard < ? AND sourceId = ?`, [cutoff, sourceId]) as any;
         return result.affectedRows ?? 0;
       }
-      const stmt = this.db.prepare('DELETE FROM nodes WHERE lastHeard < ? AND sourceId = ?');
-      return Number(stmt.run(cutoff, sourceId).changes);
+      return this.nodesRepo!.deleteInactiveNodesForSourceSqlite(cutoff, sourceId);
     }
     return this.cleanupInactiveNodes(days);
   }
