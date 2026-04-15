@@ -2950,45 +2950,12 @@ class DatabaseService {
       return true;
     }
 
-    // SQLite synchronous path - Use INSERT OR IGNORE to silently skip duplicate messages
-    // (mesh networks can retransmit packets or send duplicates during reconnections)
-    const stmt = this.db.prepare(`
-      INSERT OR IGNORE INTO messages (
-        id, fromNodeNum, toNodeNum, fromNodeId, toNodeId,
-        text, channel, portnum, timestamp, rxTime, hopStart, hopLimit, relayNode, replyId, emoji,
-        requestId, ackFailed, routingErrorReceived, deliveryState, wantAck, viaMqtt, rxSnr, rxRssi, createdAt, decrypted_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    const result = stmt.run(
-      messageData.id,
-      messageData.fromNodeNum,
-      messageData.toNodeNum,
-      messageData.fromNodeId,
-      messageData.toNodeId,
-      messageData.text,
-      messageData.channel,
-      messageData.portnum ?? null,
-      messageData.timestamp,
-      messageData.rxTime ?? null,
-      messageData.hopStart ?? null,
-      messageData.hopLimit ?? null,
-      messageData.relayNode ?? null,
-      messageData.replyId ?? null,
-      messageData.emoji ?? null,
-      (messageData as any).requestId ?? null,
-      (messageData as any).ackFailed ? 1 : 0,
-      (messageData as any).routingErrorReceived ? 1 : 0,
-      (messageData as any).deliveryState ?? null,
-      (messageData as any).wantAck ? 1 : 0,
-      messageData.viaMqtt ? 1 : 0,
-      messageData.rxSnr ?? null,
-      messageData.rxRssi ?? null,
-      messageData.createdAt,
-      messageData.decryptedBy ?? null
-    );
-    // result.changes is 0 when INSERT OR IGNORE skips a duplicate
-    return result.changes > 0;
+    // SQLite synchronous path - delegate to MessagesRepository Drizzle sync variant.
+    // INSERT OR IGNORE semantics preserved via onConflictDoNothing().
+    if (this.messagesRepo) {
+      return this.messagesRepo.insertMessageSqlite(messageData as any);
+    }
+    return false;
   }
 
   getMessage(id: string): DbMessage | null {
@@ -2996,9 +2963,12 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return this._messagesCache.find(m => m.id === id) ?? null;
     }
-    const stmt = this.db.prepare('SELECT * FROM messages WHERE id = ?');
-    const message = stmt.get(id) as DbMessage | null;
-    return message ? this.normalizeBigInts(message) : null;
+    // SQLite: delegate to Drizzle sync variant
+    if (this.messagesRepo) {
+      const msg = this.messagesRepo.getMessageSqlite(id);
+      return msg ? this.convertRepoMessage(msg as any) : null;
+    }
+    return null;
   }
 
   getMessageByRequestId(requestId: number): DbMessage | null {
@@ -3006,9 +2976,12 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return this._messagesCache.find(m => m.requestId === requestId) ?? null;
     }
-    const stmt = this.db.prepare('SELECT * FROM messages WHERE requestId = ?');
-    const message = stmt.get(requestId) as DbMessage | null;
-    return message ? this.normalizeBigInts(message) : null;
+    // SQLite: delegate to Drizzle sync variant
+    if (this.messagesRepo) {
+      const msg = this.messagesRepo.getMessageByRequestIdSqlite(requestId);
+      return msg ? this.convertRepoMessage(msg as any) : null;
+    }
+    return null;
   }
 
   async getMessageByRequestIdAsync(requestId: number): Promise<DbMessage | null> {
@@ -3107,13 +3080,12 @@ class DatabaseService {
       }
       return this._messagesCache;
     }
-    const stmt = this.db.prepare(`
-      SELECT * FROM messages
-      ORDER BY COALESCE(rxTime, timestamp) DESC
-      LIMIT ? OFFSET ?
-    `);
-    const messages = stmt.all(limit, offset) as DbMessage[];
-    return messages.map(message => this.normalizeBigInts(message));
+    // SQLite: delegate to Drizzle sync variant
+    if (this.messagesRepo) {
+      const rows = this.messagesRepo.getMessagesSqlite(limit, offset);
+      return rows.map(msg => this.convertRepoMessage(msg as any));
+    }
+    return [];
   }
 
   getMessagesByChannel(channel: number, limit: number = 100, offset: number = 0): DbMessage[] {
@@ -3151,14 +3123,12 @@ class DatabaseService {
       }
       return this._messagesCacheChannel.get(channel) || [];
     }
-    const stmt = this.db.prepare(`
-      SELECT * FROM messages
-      WHERE channel = ?
-      ORDER BY COALESCE(rxTime, timestamp) DESC
-      LIMIT ? OFFSET ?
-    `);
-    const messages = stmt.all(channel, limit, offset) as DbMessage[];
-    return messages.map(message => this.normalizeBigInts(message));
+    // SQLite: delegate to Drizzle sync variant
+    if (this.messagesRepo) {
+      const rows = this.messagesRepo.getMessagesByChannelSqlite(channel, limit, offset);
+      return rows.map(msg => this.convertRepoMessage(msg as any));
+    }
+    return [];
   }
 
   // Direct messages methods moved to MessagesRepository (databaseService.messages.getDirectMessages)
@@ -3170,13 +3140,12 @@ class DatabaseService {
         .filter(m => m.timestamp > timestamp)
         .sort((a, b) => a.timestamp - b.timestamp);
     }
-    const stmt = this.db.prepare(`
-      SELECT * FROM messages
-      WHERE timestamp > ?
-      ORDER BY timestamp ASC
-    `);
-    const messages = stmt.all(timestamp) as DbMessage[];
-    return messages.map(message => this.normalizeBigInts(message));
+    // SQLite: delegate to Drizzle sync variant
+    if (this.messagesRepo) {
+      const rows = this.messagesRepo.getMessagesAfterTimestampSqlite(timestamp);
+      return rows.map(msg => this.convertRepoMessage(msg as any));
+    }
+    return [];
   }
 
   async searchMessagesAsync(options: {
@@ -3203,9 +3172,11 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return this._messagesCache.length;
     }
-    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM messages');
-    const result = stmt.get() as { count: number };
-    return Number(result.count);
+    // SQLite: delegate to Drizzle sync variant
+    if (this.messagesRepo) {
+      return this.messagesRepo.getMessageCountSqlite();
+    }
+    return 0;
   }
 
   getNodeCount(): number {
@@ -3386,72 +3357,18 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return [];
     }
-
-    const stmt = this.db.prepare(`
-      SELECT
-        date(timestamp/1000, 'unixepoch') as date,
-        COUNT(*) as count
-      FROM messages
-      WHERE timestamp > ?
-      GROUP BY date(timestamp/1000, 'unixepoch')
-      ORDER BY date
-    `);
-
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-    const results = stmt.all(cutoff) as Array<{ date: string; count: number }>;
-    return results.map(row => ({
-      date: row.date,
-      count: Number(row.count)
-    }));
+    // SQLite: delegate to Drizzle sync variant
+    if (this.messagesRepo) {
+      return this.messagesRepo.getMessagesByDaySqlite(days);
+    }
+    return [];
   }
 
   async getMessagesByDayAsync(days: number = 7, sourceId?: string): Promise<Array<{ date: string; count: number }>> {
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-    const pgSourceClause = sourceId ? ` AND "sourceId" = $2` : '';
-    const mysqlSourceClause = sourceId ? ` AND sourceId = ?` : '';
-    const sqliteSourceClause = sourceId ? ` AND sourceId = ?` : '';
-
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const params: any[] = [cutoff];
-        if (sourceId) params.push(sourceId);
-        const result = await client.query(
-          `SELECT to_char(to_timestamp(timestamp/1000), 'YYYY-MM-DD') as date, COUNT(*) as count
-           FROM messages WHERE timestamp > $1${pgSourceClause}
-           GROUP BY to_char(to_timestamp(timestamp/1000), 'YYYY-MM-DD')
-           ORDER BY date`,
-          params
-        );
-        return result.rows.map((row: any) => ({ date: row.date, count: Number(row.count) }));
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const params: any[] = [cutoff];
-      if (sourceId) params.push(sourceId);
-      const [rows] = await pool.query(
-        `SELECT DATE_FORMAT(FROM_UNIXTIME(timestamp/1000), '%Y-%m-%d') as date, COUNT(*) as count
-         FROM messages WHERE timestamp > ?${mysqlSourceClause}
-         GROUP BY DATE_FORMAT(FROM_UNIXTIME(timestamp/1000), '%Y-%m-%d')
-         ORDER BY date`,
-        params
-      );
-      return (rows as any[]).map((row: any) => ({ date: row.date, count: Number(row.count) }));
+    if (this.messagesRepo) {
+      return this.messagesRepo.getMessagesByDay(days, sourceId);
     }
-
-    // SQLite
-    if (sourceId) {
-      const stmt = this.db.prepare(`
-        SELECT date(timestamp/1000, 'unixepoch') as date, COUNT(*) as count
-        FROM messages WHERE timestamp > ?${sqliteSourceClause}
-        GROUP BY date(timestamp/1000, 'unixepoch') ORDER BY date
-      `);
-      const results = stmt.all(cutoff, sourceId) as Array<{ date: string; count: number }>;
-      return results.map(row => ({ date: row.date, count: Number(row.count) }));
-    }
-    return this.getMessagesByDay(days);
+    return [];
   }
 
   // Cleanup operations
@@ -3465,11 +3382,11 @@ class DatabaseService {
       }
       return 0;
     }
-
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-    const stmt = this.db.prepare('DELETE FROM messages WHERE timestamp < ?');
-    const result = stmt.run(cutoff);
-    return Number(result.changes);
+    // SQLite: delegate to Drizzle sync variant
+    if (this.messagesRepo) {
+      return this.messagesRepo.cleanupOldMessagesSqlite(days);
+    }
+    return 0;
   }
 
   cleanupInactiveNodes(days: number = 30): number {
@@ -3502,10 +3419,11 @@ class DatabaseService {
       }
       return true;
     }
-
-    const stmt = this.db.prepare('DELETE FROM messages WHERE id = ?');
-    const result = stmt.run(id);
-    return Number(result.changes) > 0;
+    // SQLite: delegate to Drizzle sync variant
+    if (this.messagesRepo) {
+      return this.messagesRepo.deleteMessageSqlite(id);
+    }
+    return false;
   }
 
   purgeChannelMessages(channel: number, sourceId?: string): number {
@@ -3613,14 +3531,11 @@ class DatabaseService {
     const dmsDeleted = this.purgeDirectMessages(nodeNum);
 
     // Also delete broadcast/channel messages FROM this node
-    // (messages the deleted node sent to public channels)
-    const broadcastStmt = this.db.prepare(`
-      DELETE FROM messages
-      WHERE fromNodeNum = ?
-      AND toNodeId = '!ffffffff'
-    `);
-    const broadcastResult = broadcastStmt.run(nodeNum);
-    const broadcastDeleted = Number(broadcastResult.changes);
+    // (messages the deleted node sent to public channels).
+    // SQLite: delegate to Drizzle sync variant.
+    const broadcastDeleted = this.messagesRepo
+      ? this.messagesRepo.deleteBroadcastMessagesFromNodeSqlite(nodeNum)
+      : 0;
 
     const messagesDeleted = dmsDeleted + broadcastDeleted;
     const traceroutesDeleted = this.purgeNodeTraceroutes(nodeNum);
@@ -3778,7 +3693,9 @@ class DatabaseService {
 
     const transaction = this.db.transaction(() => {
       // Clear existing data
-      this.db.exec('DELETE FROM messages');
+      if (this.messagesRepo) {
+        this.messagesRepo.deleteAllMessagesSqlite();
+      }
       this.db.exec('DELETE FROM nodes');
 
       // Import nodes
@@ -3801,21 +3718,13 @@ class DatabaseService {
         );
       }
 
-      // Import messages
-      const msgStmt = this.db.prepare(`
-        INSERT INTO messages (
-          id, fromNodeNum, toNodeNum, fromNodeId, toNodeId,
-          text, channel, portnum, timestamp, rxTime, createdAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      for (const message of data.messages) {
-        msgStmt.run(
-          message.id, message.fromNodeNum, message.toNodeNum,
-          message.fromNodeId, message.toNodeId, message.text,
-          message.channel, message.portnum, message.timestamp,
-          message.rxTime, message.createdAt
-        );
+      // Import messages — delegate to the Drizzle-backed sync variant so
+      // column mapping matches the schema. insertMessageSqlite uses INSERT
+      // OR IGNORE which is safe on re-import (no duplicate-key failures).
+      if (this.messagesRepo) {
+        for (const message of data.messages) {
+          this.messagesRepo.insertMessageSqlite(message as any);
+        }
       }
     });
 
@@ -6431,7 +6340,9 @@ class DatabaseService {
     // SQLite: synchronous deletion
     // Delete in order to respect foreign key constraints
     // First delete all child records that reference nodes
-    this.db.exec('DELETE FROM messages');
+    if (this.messagesRepo) {
+      this.messagesRepo.deleteAllMessagesSqlite();
+    }
     this.telemetry.deleteAllTelemetrySync();
     this.traceroutes.deleteAllTraceroutesSync();
     this.traceroutes.deleteAllRouteSegmentsSync();
@@ -7924,15 +7835,11 @@ class DatabaseService {
       }
       return true; // Optimistically return true
     }
-    const stmt = this.db.prepare(`
-      UPDATE messages
-      SET ackFailed = ?, routingErrorReceived = ?, deliveryState = ?
-      WHERE requestId = ?
-    `);
-    // Set deliveryState based on whether ACK was successful or failed
-    const deliveryState = ackFailed ? 'failed' : 'delivered';
-    const result = stmt.run(ackFailed ? 1 : 0, ackFailed ? 1 : 0, deliveryState, requestId);
-    return Number(result.changes) > 0;
+    // SQLite: delegate to Drizzle sync variant
+    if (this.messagesRepo) {
+      return this.messagesRepo.updateMessageAckByRequestIdSqlite(requestId, ackFailed);
+    }
+    return false;
   }
 
   // Update message delivery state directly (undefined/delivered/confirmed)
@@ -7966,14 +7873,11 @@ class DatabaseService {
       }
       return true; // Optimistic return
     }
-    const stmt = this.db.prepare(`
-      UPDATE messages
-      SET deliveryState = ?, ackFailed = ?
-      WHERE requestId = ?
-    `);
-    const ackFailed = deliveryState === 'failed' ? 1 : 0;
-    const result = stmt.run(deliveryState, ackFailed, requestId);
-    return Number(result.changes) > 0;
+    // SQLite: delegate to Drizzle sync variant
+    if (this.messagesRepo) {
+      return this.messagesRepo.updateMessageDeliveryStateSqlite(requestId, deliveryState);
+    }
+    return false;
   }
 
   // Update message rxTime and timestamp when ACK is received (fixes outgoing message ordering)
@@ -8005,13 +7909,11 @@ class DatabaseService {
       }
       return true; // Optimistic return
     }
-    const stmt = this.db.prepare(`
-      UPDATE messages
-      SET rxTime = ?, timestamp = ?
-      WHERE requestId = ?
-    `);
-    const result = stmt.run(rxTime, rxTime, requestId);
-    return Number(result.changes) > 0;
+    // SQLite: delegate to Drizzle sync variant
+    if (this.messagesRepo) {
+      return this.messagesRepo.updateMessageTimestampsSqlite(requestId, rxTime);
+    }
+    return false;
   }
 
   getUnreadMessageIds(userId: number | null): string[] {
@@ -9184,20 +9086,12 @@ class DatabaseService {
 
   // Group 1: Cleanup/Maintenance
   async cleanupOldMessagesAsync(days: number = 30, sourceId?: string): Promise<number> {
-    if (sourceId) {
-      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-        const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-        const result = await this.postgresPool.query(`DELETE FROM messages WHERE timestamp < $1 AND "sourceId" = $2`, [cutoff, sourceId]);
-        return result.rowCount ?? 0;
-      }
-      if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-        const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-        const [result] = await this.mysqlPool.query(`DELETE FROM messages WHERE timestamp < ? AND sourceId = ?`, [cutoff, sourceId]) as any;
-        return result.affectedRows ?? 0;
-      }
-      const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-      const stmt = this.db.prepare('DELETE FROM messages WHERE timestamp < ? AND sourceId = ?');
-      return Number(stmt.run(cutoff, sourceId).changes);
+    if (sourceId && this.messagesRepo) {
+      return this.messagesRepo.cleanupOldMessagesForSource(days, sourceId);
+    }
+    // No sourceId: use the plain repo cleanup (PG/MySQL) or sync SQLite path.
+    if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.messagesRepo) {
+      return this.messagesRepo.cleanupOldMessages(days);
     }
     return this.cleanupOldMessages(days);
   }
