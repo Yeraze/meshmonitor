@@ -61,6 +61,40 @@ export default [
       ],
       'no-control-regex': 'off',
       'prefer-const': 'warn',
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.object.property.name='db'][callee.property.name='prepare']",
+          message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
+        },
+        {
+          selector: "CallExpression[callee.object.property.name='db'][callee.property.name='exec']",
+          message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
+        },
+        {
+          selector: "CallExpression[callee.object.property.name='postgresPool'][callee.property.name='query']",
+          message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
+        },
+        {
+          selector: "CallExpression[callee.object.property.name='mysqlPool'][callee.property.name='query']",
+          message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
+        },
+      ],
+    },
+  },
+  {
+    // Migrations are allowed to use raw SQL — they predate the schema/repos.
+    // Test files are allowed to use raw SQL for fixture setup/verification.
+    files: [
+      'src/server/migrations/**',
+      'src/db/migrations.ts',
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      '**/*.spec.ts',
+      '**/*.spec.tsx',
+    ],
+    rules: {
+      'no-restricted-syntax': 'off',
     },
   },
   {

@@ -346,12 +346,14 @@ class DatabaseService {
   async getDatabaseVersion(): Promise<string> {
     try {
       if (this.drizzleDbType === 'postgres' && this.postgresPool) {
+        // eslint-disable-next-line no-restricted-syntax -- system diagnostic query, not domain data
         const result = await this.postgresPool.query('SELECT version()');
         const fullVersion = result.rows?.[0]?.version || 'Unknown';
         // Extract just the version number from "PostgreSQL 16.2 (Debian 16.2-1.pgdg120+2) on x86_64-pc-linux-gnu..."
         const match = fullVersion.match(/PostgreSQL\s+([\d.]+)/);
         return match ? match[1] : fullVersion.split(' ').slice(0, 2).join(' ');
       } else if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
+        // eslint-disable-next-line no-restricted-syntax -- system diagnostic query, not domain data
         const [rows] = await this.mysqlPool.query('SELECT version() as version');
         return (rows as any[])?.[0]?.version || 'Unknown';
       } else if (this.db) {
@@ -2513,34 +2515,18 @@ class DatabaseService {
    * Update the spam detection flags for a node (async), scoped per-source.
    */
   async updateNodeSpamFlagsAsync(nodeNum: number, isExcessivePackets: boolean, packetRatePerHour: number, lastChecked: number, sourceId: string): Promise<void> {
-    const now = Date.now();
-
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      await this.postgresPool.query(`
-        UPDATE nodes
-        SET "isExcessivePackets" = $1,
-            "packetRatePerHour" = $2,
-            "packetRateLastChecked" = $3,
-            "updatedAt" = $4
-        WHERE "nodeNum" = $5 AND "sourceId" = $6
-      `, [isExcessivePackets, packetRatePerHour, lastChecked, now, nodeNum, sourceId]);
-      return;
-    }
-
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      await this.mysqlPool.query(`
-        UPDATE nodes
-        SET isExcessivePackets = ?,
-            packetRatePerHour = ?,
-            packetRateLastChecked = ?,
-            updatedAt = ?
-        WHERE nodeNum = ? AND sourceId = ?
-      `, [isExcessivePackets, packetRatePerHour, lastChecked, now, nodeNum, sourceId]);
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      await this.nodesRepo!.updateNodeExcessivePacketsAsync(
+        nodeNum,
+        isExcessivePackets,
+        packetRatePerHour,
+        lastChecked,
+        sourceId
+      );
       return;
     }
 
     // SQLite: synchronous update
-    void now;
     this.nodesRepo!.updateNodeSpamFlagsSqlite(nodeNum, isExcessivePackets, packetRatePerHour, lastChecked, sourceId);
   }
 
@@ -2612,32 +2598,17 @@ class DatabaseService {
    * sourceId is required post-migration 029.
    */
   async updateNodeTimeOffsetFlagsAsync(nodeNum: number, isTimeOffsetIssue: boolean, timeOffsetSeconds: number | null, sourceId: string): Promise<void> {
-    const now = Date.now();
-
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      await this.postgresPool.query(`
-        UPDATE nodes
-        SET "isTimeOffsetIssue" = $1,
-            "timeOffsetSeconds" = $2,
-            "updatedAt" = $3
-        WHERE "nodeNum" = $4 AND "sourceId" = $5
-      `, [isTimeOffsetIssue, timeOffsetSeconds, now, nodeNum, sourceId]);
-      return;
-    }
-
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      await this.mysqlPool.query(`
-        UPDATE nodes
-        SET isTimeOffsetIssue = ?,
-            timeOffsetSeconds = ?,
-            updatedAt = ?
-        WHERE nodeNum = ? AND sourceId = ?
-      `, [isTimeOffsetIssue, timeOffsetSeconds, now, nodeNum, sourceId]);
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      await this.nodesRepo!.updateNodeTimeOffsetAsync(
+        nodeNum,
+        isTimeOffsetIssue,
+        timeOffsetSeconds,
+        sourceId
+      );
       return;
     }
 
     // SQLite
-    void now;
     this.nodesRepo!.updateNodeTimeOffsetFlagsSqlite(nodeNum, isTimeOffsetIssue, timeOffsetSeconds, sourceId);
   }
 
@@ -7608,211 +7579,29 @@ class DatabaseService {
   }
 
   /**
-   * Async version of getUnreadCountsByChannel for PostgreSQL/MySQL
+   * Async version of getUnreadCountsByChannel for PostgreSQL/MySQL.
+   * Delegates to NotificationsRepository for Drizzle-based execution on all backends.
    */
   async getUnreadCountsByChannelAsync(userId: number | null, localNodeId?: string): Promise<{[channelId: number]: number}> {
-    // For SQLite, use sync version
+    // For SQLite, use sync version (legacy compatibility)
     if (this.drizzleDbType !== 'postgres' && this.drizzleDbType !== 'mysql') {
       return this.getUnreadCountsByChannel(userId, localNodeId);
     }
-
-    // PostgreSQL implementation using postgresPool
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        let query: string;
-        let params: any[];
-
-        if (userId === null) {
-          // Anonymous user - check for messages not in read_messages at all
-          query = `
-            SELECT m.channel, COUNT(*) as count
-            FROM messages m
-            LEFT JOIN read_messages rm ON m.id = rm."messageId"
-            WHERE rm."messageId" IS NULL
-              AND m.channel != -1
-              AND m.portnum = 1
-              ${localNodeId ? 'AND m."fromNodeId" != $1' : ''}
-            GROUP BY m.channel
-          `;
-          params = localNodeId ? [localNodeId] : [];
-        } else {
-          // Authenticated user - check for messages not read by this user
-          query = `
-            SELECT m.channel, COUNT(*) as count
-            FROM messages m
-            LEFT JOIN read_messages rm ON m.id = rm."messageId" AND rm."userId" = $1
-            WHERE rm."messageId" IS NULL
-              AND m.channel != -1
-              AND m.portnum = 1
-              ${localNodeId ? 'AND m."fromNodeId" != $2' : ''}
-            GROUP BY m.channel
-          `;
-          params = localNodeId ? [userId, localNodeId] : [userId];
-        }
-
-        const result = await this.postgresPool.query(query, params);
-        const counts: {[channelId: number]: number} = {};
-
-        result.rows.forEach((row: any) => {
-          counts[Number(row.channel)] = Number(row.count);
-        });
-
-        return counts;
-      } catch (error) {
-        logger.error('Error getting unread counts by channel:', error);
-        return {};
-      }
-    }
-
-    // MySQL implementation using mysqlPool
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        let query: string;
-        let params: any[];
-
-        if (userId === null) {
-          query = `
-            SELECT m.channel, COUNT(*) as count
-            FROM messages m
-            LEFT JOIN read_messages rm ON m.id = rm.messageId
-            WHERE rm.messageId IS NULL
-              AND m.channel != -1
-              AND m.portnum = 1
-              ${localNodeId ? 'AND m.fromNodeId != ?' : ''}
-            GROUP BY m.channel
-          `;
-          params = localNodeId ? [localNodeId] : [];
-        } else {
-          query = `
-            SELECT m.channel, COUNT(*) as count
-            FROM messages m
-            LEFT JOIN read_messages rm ON m.id = rm.messageId AND rm.userId = ?
-            WHERE rm.messageId IS NULL
-              AND m.channel != -1
-              AND m.portnum = 1
-              ${localNodeId ? 'AND m.fromNodeId != ?' : ''}
-            GROUP BY m.channel
-          `;
-          params = localNodeId ? [userId, localNodeId] : [userId];
-        }
-
-        const [rows] = await this.mysqlPool.query(query, params) as any;
-        const counts: {[channelId: number]: number} = {};
-
-        for (const row of rows) {
-          counts[Number(row.channel)] = Number(row.count);
-        }
-
-        return counts;
-      } catch (error) {
-        logger.error('Error getting unread counts by channel:', error);
-        return {};
-      }
-    }
-
-    return {};
+    if (!this.notificationsRepo) return {};
+    return this.notificationsRepo.getUnreadCountsByChannelAsync(userId, localNodeId);
   }
 
   /**
-   * Async version of getUnreadDMCount for PostgreSQL/MySQL
+   * Async version of getUnreadDMCount for PostgreSQL/MySQL.
+   * Delegates to NotificationsRepository for Drizzle-based execution on all backends.
    */
   async getUnreadDMCountAsync(localNodeId: string, remoteNodeId: string, userId: number | null): Promise<number> {
     // For SQLite, use sync version
     if (this.drizzleDbType !== 'postgres' && this.drizzleDbType !== 'mysql') {
       return this.getUnreadDMCount(localNodeId, remoteNodeId, userId);
     }
-
-    // PostgreSQL implementation using postgresPool
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        let query: string;
-        let params: any[];
-
-        if (userId === null) {
-          query = `
-            SELECT COUNT(*) as count
-            FROM messages m
-            LEFT JOIN read_messages rm ON m.id = rm."messageId"
-            WHERE rm."messageId" IS NULL
-              AND m.portnum = 1
-              AND m.channel = -1
-              AND m."fromNodeId" = $1
-              AND m."toNodeId" = $2
-          `;
-          params = [remoteNodeId, localNodeId];
-        } else {
-          query = `
-            SELECT COUNT(*) as count
-            FROM messages m
-            LEFT JOIN read_messages rm ON m.id = rm."messageId" AND rm."userId" = $1
-            WHERE rm."messageId" IS NULL
-              AND m.portnum = 1
-              AND m.channel = -1
-              AND m."fromNodeId" = $2
-              AND m."toNodeId" = $3
-          `;
-          params = [userId, remoteNodeId, localNodeId];
-        }
-
-        const result = await this.postgresPool.query(query, params);
-
-        if (result.rows.length > 0) {
-          return Number(result.rows[0].count);
-        }
-
-        return 0;
-      } catch (error) {
-        logger.error('Error getting unread DM count:', error);
-        return 0;
-      }
-    }
-
-    // MySQL implementation using mysqlPool
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        let query: string;
-        let params: any[];
-
-        if (userId === null) {
-          query = `
-            SELECT COUNT(*) as count
-            FROM messages m
-            LEFT JOIN read_messages rm ON m.id = rm.messageId
-            WHERE rm.messageId IS NULL
-              AND m.portnum = 1
-              AND m.channel = -1
-              AND m.fromNodeId = ?
-              AND m.toNodeId = ?
-          `;
-          params = [remoteNodeId, localNodeId];
-        } else {
-          query = `
-            SELECT COUNT(*) as count
-            FROM messages m
-            LEFT JOIN read_messages rm ON m.id = rm.messageId AND rm.userId = ?
-            WHERE rm.messageId IS NULL
-              AND m.portnum = 1
-              AND m.channel = -1
-              AND m.fromNodeId = ?
-              AND m.toNodeId = ?
-          `;
-          params = [userId, remoteNodeId, localNodeId];
-        }
-
-        const [rows] = await this.mysqlPool.query(query, params) as any;
-
-        if (rows.length > 0) {
-          return Number(rows[0].count);
-        }
-
-        return 0;
-      } catch (error) {
-        logger.error('Error getting unread DM count:', error);
-        return 0;
-      }
-    }
-
-    return 0;
+    if (!this.notificationsRepo) return 0;
+    return this.notificationsRepo.getUnreadDMCountAsync(localNodeId, remoteNodeId, userId);
   }
 
   /**
@@ -7851,102 +7640,15 @@ class DatabaseService {
 
   /**
    * Async version of getBatchUnreadDMCounts for PostgreSQL/MySQL support.
+   * Delegates to NotificationsRepository for Drizzle-based execution on all backends.
    */
   async getBatchUnreadDMCountsAsync(localNodeId: string, userId: number | null): Promise<{ [fromNodeId: string]: number }> {
     // For SQLite, use sync version
     if (this.drizzleDbType !== 'postgres' && this.drizzleDbType !== 'mysql') {
       return this.getBatchUnreadDMCounts(localNodeId, userId);
     }
-
-    // PostgreSQL implementation
-    if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-      try {
-        let query: string;
-        let params: any[];
-
-        if (userId === null) {
-          query = `
-            SELECT m."fromNodeId", COUNT(*) as count
-            FROM messages m
-            LEFT JOIN read_messages rm ON m.id = rm."messageId"
-            WHERE rm."messageId" IS NULL
-              AND m.portnum = 1
-              AND m.channel = -1
-              AND m."toNodeId" = $1
-            GROUP BY m."fromNodeId"
-          `;
-          params = [localNodeId];
-        } else {
-          query = `
-            SELECT m."fromNodeId", COUNT(*) as count
-            FROM messages m
-            LEFT JOIN read_messages rm ON m.id = rm."messageId" AND rm."userId" = $1
-            WHERE rm."messageId" IS NULL
-              AND m.portnum = 1
-              AND m.channel = -1
-              AND m."toNodeId" = $2
-            GROUP BY m."fromNodeId"
-          `;
-          params = [userId, localNodeId];
-        }
-
-        const result = await this.postgresPool.query(query, params);
-        const counts: { [fromNodeId: string]: number } = {};
-        for (const row of result.rows) {
-          counts[row.fromNodeId] = Number(row.count);
-        }
-        return counts;
-      } catch (error) {
-        logger.error('Error getting batch unread DM counts:', error);
-        return {};
-      }
-    }
-
-    // MySQL implementation using mysqlPool
-    if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-      try {
-        let query: string;
-        let params: any[];
-
-        if (userId === null) {
-          query = `
-            SELECT m.fromNodeId, COUNT(*) as count
-            FROM messages m
-            LEFT JOIN read_messages rm ON m.id = rm.messageId
-            WHERE rm.messageId IS NULL
-              AND m.portnum = 1
-              AND m.channel = -1
-              AND m.toNodeId = ?
-            GROUP BY m.fromNodeId
-          `;
-          params = [localNodeId];
-        } else {
-          query = `
-            SELECT m.fromNodeId, COUNT(*) as count
-            FROM messages m
-            LEFT JOIN read_messages rm ON m.id = rm.messageId AND rm.userId = ?
-            WHERE rm.messageId IS NULL
-              AND m.portnum = 1
-              AND m.channel = -1
-              AND m.toNodeId = ?
-            GROUP BY m.fromNodeId
-          `;
-          params = [userId, localNodeId];
-        }
-
-        const [rows] = await this.mysqlPool.query(query, params) as any;
-        const counts: { [fromNodeId: string]: number } = {};
-        for (const row of rows) {
-          counts[row.fromNodeId] = Number(row.count);
-        }
-        return counts;
-      } catch (error) {
-        logger.error('Error getting batch unread DM counts:', error);
-        return {};
-      }
-    }
-
-    return {};
+    if (!this.notificationsRepo) return {};
+    return this.notificationsRepo.getBatchUnreadDMCountsAsync(localNodeId, userId);
   }
 
   cleanupOldReadMessages(days: number): number {
@@ -8736,15 +8438,10 @@ class DatabaseService {
 
   async cleanupInactiveNodesAsync(days: number = 30, sourceId?: string): Promise<number> {
     if (sourceId) {
+      if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+        return this.nodesRepo!.cleanupInactiveNodesForSourceAsync(days, sourceId);
+      }
       const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-      if (this.drizzleDbType === 'postgres' && this.postgresPool) {
-        const result = await this.postgresPool.query(`DELETE FROM nodes WHERE "lastHeard" < $1 AND "sourceId" = $2`, [cutoff, sourceId]);
-        return result.rowCount ?? 0;
-      }
-      if (this.drizzleDbType === 'mysql' && this.mysqlPool) {
-        const [result] = await this.mysqlPool.query(`DELETE FROM nodes WHERE lastHeard < ? AND sourceId = ?`, [cutoff, sourceId]) as any;
-        return result.affectedRows ?? 0;
-      }
       return this.nodesRepo!.deleteInactiveNodesForSourceSqlite(cutoff, sourceId);
     }
     return this.cleanupInactiveNodes(days);

@@ -101,6 +101,13 @@ When adding a new user-configurable setting:
 - Schema definitions live in `src/db/schema/` — one file per domain, with separate table definitions per backend (SQLite/PostgreSQL/MySQL).
 - When modifying schema, ensure column names and types are consistent across all three backend definitions.
 
+### Raw SQL Ban
+
+- `src/services/database.ts` is raw-SQL-free. All domain queries live in `src/db/repositories/*`.
+- ESLint rule (`no-restricted-syntax`) forbids `this.db.prepare`, `this.db.exec`, `postgresPool.query`, `mysqlPool.query` outside `src/server/migrations/**` and test files.
+- Intentional exceptions (bootstrap, diagnostic, system metadata) must carry an `// eslint-disable-next-line no-restricted-syntax -- <reason>` comment.
+- When adding a query: add an async method to the appropriate repo, expose via DatabaseService facade with `Async` suffix.
+
 ### Migration Registry System
 
 Migrations use a centralized registry in `src/db/migrations.ts`. Each migration is registered with functions for all three backends.

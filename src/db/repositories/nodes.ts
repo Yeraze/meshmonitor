@@ -904,6 +904,77 @@ export class NodesRepository extends BaseRepository {
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
   }
 
+  /**
+   * Update spam detection flags for a node, scoped per-source (Drizzle, all backends).
+   * Used by DatabaseService.updateNodeSpamFlagsAsync for PG/MySQL paths.
+   */
+  async updateNodeExcessivePacketsAsync(
+    nodeNum: number,
+    isExcessivePackets: boolean,
+    packetRatePerHour: number,
+    lastChecked: number,
+    sourceId: string
+  ): Promise<void> {
+    const now = Date.now();
+    const { nodes } = this.tables;
+    await this.db
+      .update(nodes)
+      .set({
+        isExcessivePackets,
+        packetRatePerHour,
+        packetRateLastChecked: lastChecked,
+        updatedAt: now,
+      } as any)
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+  }
+
+  /**
+   * Update time offset detection flags for a node, scoped per-source (Drizzle, all backends).
+   * Used by DatabaseService.updateNodeTimeOffsetFlagsAsync for PG/MySQL paths.
+   */
+  async updateNodeTimeOffsetAsync(
+    nodeNum: number,
+    isTimeOffsetIssue: boolean,
+    timeOffsetSeconds: number | null,
+    sourceId: string
+  ): Promise<void> {
+    const now = Date.now();
+    const { nodes } = this.tables;
+    await this.db
+      .update(nodes)
+      .set({
+        isTimeOffsetIssue,
+        timeOffsetSeconds,
+        updatedAt: now,
+      } as any)
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+  }
+
+  /**
+   * Delete inactive nodes for a specific source (Drizzle, all backends).
+   * Returns the count of rows deleted. Mirrors deleteInactiveNodesForSourceSqlite,
+   * but works on Postgres/MySQL via Drizzle's async delete builder.
+   */
+  async cleanupInactiveNodesForSourceAsync(days: number, sourceId: string): Promise<number> {
+    const cutoff = this.now() - (days * 24 * 60 * 60 * 1000);
+    const { nodes } = this.tables;
+
+    // Pre-count rows that will match so we can return an accurate affected count
+    // across all backends (the per-driver result shape varies for delete()).
+    const matching = await this.db
+      .select({ nodeNum: nodes.nodeNum })
+      .from(nodes)
+      .where(and(lt(nodes.lastHeard, cutoff), eq(nodes.sourceId, sourceId)));
+
+    if (matching.length === 0) return 0;
+
+    await this.db
+      .delete(nodes)
+      .where(and(lt(nodes.lastHeard, cutoff), eq(nodes.sourceId, sourceId)));
+
+    return matching.length;
+  }
+
   // ===========================================================================
   // SQLite-only synchronous variants (for legacy sync facade delegations)
   // These mirror the async versions above but run on better-sqlite3 synchronously
