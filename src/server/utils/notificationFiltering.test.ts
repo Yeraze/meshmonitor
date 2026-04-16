@@ -40,6 +40,8 @@ const defaultPrefs: NotificationPreferences = {
   whitelist: [],
   blacklist: [],
   appriseUrls: [],
+  mutedChannels: [],
+  mutedDMs: [],
 };
 
 beforeEach(() => {
@@ -294,6 +296,168 @@ describe('shouldFilterNotificationAsync', () => {
       messageText: 'This is urgent',
     });
     expect(result).toBe(false); // whitelist saves it
+  });
+});
+
+// ─── Per-source isolation ─────────────────────────────────────────────────────
+
+describe('Per-source preference isolation', () => {
+  it('passes sourceId through to notifications repository', async () => {
+    await getUserNotificationPreferencesAsync(42, 'source-uuid-A');
+    expect(mockDb.notifications.getUserPreferences).toHaveBeenCalledWith(42, 'source-uuid-A');
+  });
+
+  it('different sourceIds get independent preference rows', async () => {
+    mockDb.notifications.getUserPreferences.mockImplementation(
+      async (_userId: number, sourceId?: string) => {
+        if (sourceId === 'source-A') return { ...defaultPrefs, enableApprise: true, enabledChannels: [1, 2] };
+        if (sourceId === 'source-B') return { ...defaultPrefs, enableApprise: false, enabledChannels: [9] };
+        return null;
+      }
+    );
+
+    const prefsA = await getUserNotificationPreferencesAsync(42, 'source-A');
+    const prefsB = await getUserNotificationPreferencesAsync(42, 'source-B');
+    const prefsC = await getUserNotificationPreferencesAsync(42, 'source-C');
+
+    expect(prefsA?.enableApprise).toBe(true);
+    expect(prefsA?.enabledChannels).toEqual([1, 2]);
+    expect(prefsB?.enableApprise).toBe(false);
+    expect(prefsB?.enabledChannels).toEqual([9]);
+    expect(prefsC).toBeNull();
+  });
+
+  it('cross-user isolation: same sourceId returns each user their own prefs', async () => {
+    mockDb.notifications.getUserPreferences.mockImplementation(
+      async (userId: number, _sourceId?: string) => {
+        if (userId === 1) return { ...defaultPrefs, enabledChannels: [1] };
+        if (userId === 2) return { ...defaultPrefs, enabledChannels: [2] };
+        return null;
+      }
+    );
+
+    const u1 = await getUserNotificationPreferencesAsync(1, 'source-A');
+    const u2 = await getUserNotificationPreferencesAsync(2, 'source-A');
+    expect(u1?.enabledChannels).toEqual([1]);
+    expect(u2?.enabledChannels).toEqual([2]);
+  });
+});
+
+// ─── shouldFilterNotificationAsync — permission gating ──────────────────────
+
+describe('shouldFilterNotificationAsync — permission gating', () => {
+  const baseContext: NotificationFilterContext = {
+    messageText: 'Hello world',
+    channelId: 1,
+    isDirectMessage: false,
+    viaMqtt: false,
+    sourceId: 'source-A',
+    sourceName: 'Source A',
+  };
+
+  it('filters when checkPermissionAsync returns false for the source', async () => {
+    mockDb.checkPermissionAsync.mockResolvedValue(false);
+    const result = await shouldFilterNotificationAsync(1, baseContext);
+    expect(result).toBe(true);
+  });
+
+  it('passes the sourceId through to checkPermissionAsync', async () => {
+    await shouldFilterNotificationAsync(1, { ...baseContext, sourceId: 'source-X' });
+    expect(mockDb.checkPermissionAsync).toHaveBeenCalledWith(1, 'messages', 'read', 'source-X');
+  });
+
+  it('admin bypass at db layer keeps notifications flowing for per-source events', async () => {
+    // Simulates the bypass: admin always returns true regardless of sourceId.
+    // Without this, admins with NULL-source perm rows are silently filtered.
+    mockDb.checkPermissionAsync.mockImplementation(async () => true);
+    const result = await shouldFilterNotificationAsync(1, baseContext);
+    expect(result).toBe(false);
+  });
+
+  it('non-admin without per-source perm is filtered (regression)', async () => {
+    mockDb.checkPermissionAsync.mockResolvedValue(false);
+    const result = await shouldFilterNotificationAsync(2, baseContext);
+    expect(result).toBe(true);
+  });
+
+  it('filters fail-closed when permission check throws', async () => {
+    mockDb.checkPermissionAsync.mockRejectedValue(new Error('db down'));
+    const result = await shouldFilterNotificationAsync(1, baseContext);
+    expect(result).toBe(true);
+  });
+});
+
+// ─── shouldFilterNotificationAsync — cross-source preferences ───────────────
+
+describe('shouldFilterNotificationAsync — cross-source preferences', () => {
+  it('user enabledChannels from source-A do not leak to source-B', async () => {
+    mockDb.notifications.getUserPreferences.mockImplementation(
+      async (_userId: number, sourceId?: string) => {
+        if (sourceId === 'source-A') return { ...defaultPrefs, enabledChannels: [1] };
+        if (sourceId === 'source-B') return { ...defaultPrefs, enabledChannels: [99] };
+        return null;
+      }
+    );
+
+    const baseCtx = {
+      messageText: 'Hello',
+      channelId: 1,
+      isDirectMessage: false,
+      viaMqtt: false,
+      sourceName: 'X',
+    };
+
+    const onA = await shouldFilterNotificationAsync(1, { ...baseCtx, sourceId: 'source-A' });
+    const onB = await shouldFilterNotificationAsync(1, { ...baseCtx, sourceId: 'source-B' });
+
+    expect(onA).toBe(false);
+    expect(onB).toBe(true);
+  });
+
+  it('blacklist on source-A does not affect source-B', async () => {
+    mockDb.notifications.getUserPreferences.mockImplementation(
+      async (_userId: number, sourceId?: string) => {
+        if (sourceId === 'source-A') return { ...defaultPrefs, blacklist: ['urgent'] };
+        if (sourceId === 'source-B') return { ...defaultPrefs, blacklist: [] };
+        return null;
+      }
+    );
+
+    const baseCtx = {
+      messageText: 'this is urgent',
+      channelId: 1,
+      isDirectMessage: false,
+      viaMqtt: false,
+      sourceName: 'X',
+    };
+
+    const onA = await shouldFilterNotificationAsync(1, { ...baseCtx, sourceId: 'source-A' });
+    const onB = await shouldFilterNotificationAsync(1, { ...baseCtx, sourceId: 'source-B' });
+
+    expect(onA).toBe(true);
+    expect(onB).toBe(false);
+  });
+
+  it('different users on the same source get different filter results', async () => {
+    mockDb.notifications.getUserPreferences.mockImplementation(
+      async (userId: number, _sourceId?: string) => {
+        if (userId === 1) return { ...defaultPrefs, enableDirectMessages: true };
+        if (userId === 2) return { ...defaultPrefs, enableDirectMessages: false };
+        return null;
+      }
+    );
+
+    const ctx = {
+      messageText: 'DM',
+      channelId: 0,
+      isDirectMessage: true,
+      viaMqtt: false,
+      sourceId: 'source-A',
+      sourceName: 'A',
+    };
+
+    expect(await shouldFilterNotificationAsync(1, ctx)).toBe(false);
+    expect(await shouldFilterNotificationAsync(2, ctx)).toBe(true);
   });
 });
 

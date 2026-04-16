@@ -401,11 +401,10 @@ class PushNotificationService {
     const localNodeInfo = meshtasticManager.getLocalNodeInfo();
     const localNodeName = localNodeInfo?.longName || null;
 
-    // Prefix title with source name
+    // Prefix title with source name (body kept clean — title already disambiguates source)
     const prefixedPayload: PushNotificationPayload = {
       ...payload,
       title: `[${filterContext.sourceName}] ${payload.title}`,
-      body: `[${filterContext.sourceName}] ${payload.body}`,
     };
 
     for (const subscription of subscriptions) {

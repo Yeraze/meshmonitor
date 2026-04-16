@@ -263,11 +263,10 @@ class AppriseNotificationService {
       return { sent: 0, failed: 0, filtered: 0 };
     }
 
-    // Prefix title + body with source name
+    // Prefix title with source name (body kept clean — title already disambiguates source)
     const prefixedPayload: AppriseNotificationPayload = {
       ...payload,
       title: `[${filterContext.sourceName}] ${payload.title}`,
-      body: `[${filterContext.sourceName}] ${payload.body}`,
     };
 
     // Get users who have Apprise enabled
@@ -298,8 +297,10 @@ class AppriseNotificationService {
         continue;
       }
 
-      // Get user's preferences to get their Apprise URLs
-      const prefs = await getUserNotificationPreferencesAsync(userId);
+      // Get user's preferences to get their Apprise URLs (per-source — must
+      // match the sourceId used by the filter check above so we don't pull URLs
+      // from a different source's prefs row).
+      const prefs = await getUserNotificationPreferencesAsync(userId, filterContext.sourceId);
       if (!prefs || !prefs.appriseUrls || prefs.appriseUrls.length === 0) {
         logger.debug(`⚠️  No Apprise URLs configured for user ${userId}, skipping`);
         filtered++;
