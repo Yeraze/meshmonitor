@@ -2951,12 +2951,14 @@ function App() {
       return;
     }
 
-    // Extract replyId from replyingTo message if present
+    // Extract replyId from replyingTo message if present.
+    // Message ID format is `${sourceId}_${nodeNum}_${packetId}` — the packetId
+    // is always the last segment, so use slice(-1) to be robust to format changes.
     let replyId: number | undefined = undefined;
     if (replyingTo) {
       const idParts = replyingTo.id.split('_');
-      if (idParts.length > 1) {
-        replyId = parseInt(idParts[1], 10);
+      if (idParts.length >= 2) {
+        replyId = parseInt(idParts[idParts.length - 1], 10);
       }
     }
 
@@ -3042,13 +3044,15 @@ function App() {
       return;
     }
 
-    // Extract replyId from original message
+    // Extract replyId from original message.
+    // Message ID format is `${sourceId}_${nodeNum}_${packetId}` — the packetId
+    // is always the last segment, so use slice(-1) to be robust to format changes.
     const idParts = originalMessage.id.split('_');
     if (idParts.length < 2) {
       setError('Cannot send reaction: invalid message format');
       return;
     }
-    const replyId = parseInt(idParts[1], 10);
+    const replyId = parseInt(idParts[idParts.length - 1], 10);
 
     // Validate replyId is a valid number
     if (isNaN(replyId) || replyId < 0) {
@@ -3478,12 +3482,14 @@ function App() {
     // Use channel ID directly - no mapping needed
     const messageChannel = channel;
 
-    // Extract replyId from replyingTo message if present
+    // Extract replyId from replyingTo message if present.
+    // Message ID format is `${sourceId}_${nodeNum}_${packetId}` — the packetId
+    // is always the last segment, so use slice(-1) to be robust to format changes.
     let replyId: number | undefined = undefined;
     if (replyingTo) {
       const idParts = replyingTo.id.split('_');
-      if (idParts.length > 1) {
-        replyId = parseInt(idParts[1], 10);
+      if (idParts.length >= 2) {
+        replyId = parseInt(idParts[idParts.length - 1], 10);
       }
     }
 
