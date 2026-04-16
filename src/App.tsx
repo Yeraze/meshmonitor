@@ -601,9 +601,26 @@ function App() {
 
     const isAdmin = authStatus?.user?.isAdmin || false;
     const isAuthenticated = authStatus?.authenticated || false;
+    const meshcoreEnabled = authStatus?.meshcoreEnabled || false;
+
+    // Mirrors Sidebar.tsx hasAnyChannelPermission — channels tab is reachable
+    // if the user can read at least one channel (channel_0..channel_7).
+    const hasAnyChannelPermission = () => {
+      for (let i = 0; i < 8; i++) {
+        if (hasPermission(`channel_${i}` as ResourceType, 'read')) {
+          return true;
+        }
+      }
+      return false;
+    };
 
     // Define permission requirements for each protected tab
     const tabPermissions: Record<string, () => boolean> = {
+      dashboard: () => hasPermission('dashboard', 'read'),
+      info: () => hasPermission('info', 'read'),
+      messages: () => hasPermission('messages', 'read'),
+      channels: hasAnyChannelPermission,
+      meshcore: () => meshcoreEnabled && hasPermission('meshcore', 'read'),
       settings: () => hasPermission('settings', 'read'),
       automation: () => hasPermission('automation', 'read'),
       configuration: () => hasPermission('configuration', 'read'),
@@ -612,7 +629,7 @@ function App() {
       admin: () => isAdmin,
       audit: () => hasPermission('audit', 'read'),
       security: () => hasPermission('security', 'read'),
-      packetmonitor: () => hasPermission('packetmonitor', 'read'),
+      packetmonitor: () => packetLogEnabled && hasPermission('packetmonitor', 'read'),
     };
 
     // Check if current tab requires permission
@@ -622,7 +639,7 @@ function App() {
       logger.info(`[Auth] Redirecting from '${activeTab}' tab - insufficient permissions`);
       setActiveTab('nodes');
     }
-  }, [activeTab, authStatus, authLoading, hasPermission, setActiveTab]);
+  }, [activeTab, authStatus, authLoading, hasPermission, setActiveTab, packetLogEnabled]);
 
   // Helper function to safely parse node IDs to node numbers
   const parseNodeId = useCallback((nodeId: string): number => {
