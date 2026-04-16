@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 35 migrations in sequential order for use by the migration runner.
+ * Registers all 37 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -48,6 +48,7 @@ import { migration as perSourcePermissionsMigration, runMigration033Postgres, ru
 import { migration as addViaStoreForwardMigration, runMigration034Postgres, runMigration034Mysql } from '../server/migrations/034_add_via_store_forward.js';
 import { migration as addIsStoreForwardServerMigration, runMigration035Postgres, runMigration035Mysql } from '../server/migrations/035_add_is_store_forward_server.js';
 import { migration as telemetryPerformanceIndexesMigration, runMigration036Postgres, runMigration036Mysql } from '../server/migrations/036_telemetry_performance_indexes.js';
+import { migration as userMapPrefsIdMigration, runMigration037Postgres, runMigration037Mysql } from '../server/migrations/037_add_id_to_user_map_preferences.js';
 
 // ============================================================================
 // Registry
@@ -537,4 +538,21 @@ registry.register({
   sqlite: (db) => telemetryPerformanceIndexesMigration.up(db),
   postgres: (client) => runMigration036Postgres(client),
   mysql: (pool) => runMigration036Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 037: Backfill missing user_map_preferences columns on PG/MySQL.
+// Pre-baseline (v3.7) deployments lacked `id`, `createdAt`, and `updatedAt`.
+// Drizzle's getMapPreferences (PR #2681) selects all schema columns, so PG
+// fails with `column "id" does not exist` on those legacy tables.
+// SQLite is unaffected (bootstrap creates the table with the right schema).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 37,
+  name: 'add_id_to_user_map_preferences',
+  settingsKey: 'migration_037_add_id_to_user_map_preferences',
+  sqlite: (db) => userMapPrefsIdMigration.up(db),
+  postgres: (client) => runMigration037Postgres(client),
+  mysql: (pool) => runMigration037Mysql(pool),
 });
