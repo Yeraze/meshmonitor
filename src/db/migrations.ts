@@ -47,6 +47,7 @@ import { migration as telemetryPacketDedupeMigration, runMigration032Postgres, r
 import { migration as perSourcePermissionsMigration, runMigration033Postgres, runMigration033Mysql } from '../server/migrations/033_per_source_permissions.js';
 import { migration as addViaStoreForwardMigration, runMigration034Postgres, runMigration034Mysql } from '../server/migrations/034_add_via_store_forward.js';
 import { migration as addIsStoreForwardServerMigration, runMigration035Postgres, runMigration035Mysql } from '../server/migrations/035_add_is_store_forward_server.js';
+import { migration as telemetryPerformanceIndexesMigration, runMigration036Postgres, runMigration036Mysql } from '../server/migrations/036_telemetry_performance_indexes.js';
 
 // ============================================================================
 // Registry
@@ -520,4 +521,20 @@ registry.register({
   sqlite: (db) => addIsStoreForwardServerMigration.up(db),
   postgres: (client) => runMigration035Postgres(client),
   mysql: (pool) => runMigration035Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 036: Add compound indexes to telemetry table.
+// PG/MySQL only had single-column indexes on nodeNum and timestamp. With 450k+
+// rows, queries degrade to full table scans. Adds (nodeId, telemetryType,
+// timestamp DESC) and (nodeNum, timestamp DESC) compound indexes.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 36,
+  name: 'telemetry_performance_indexes',
+  settingsKey: 'migration_036_telemetry_performance_indexes',
+  sqlite: (db) => telemetryPerformanceIndexesMigration.up(db),
+  postgres: (client) => runMigration036Postgres(client),
+  mysql: (pool) => runMigration036Mysql(pool),
 });

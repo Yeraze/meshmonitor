@@ -3546,9 +3546,6 @@ class DatabaseService {
       return channel;
     }
     const channel = this.channelsRepo!.getChannelByIdSync(id);
-    if (id === 0) {
-      logger.info(`🔍 getChannelById(0) - RAW from DB: ${channel ? `name="${channel.name}" (length: ${channel.name?.length || 0})` : 'null'}`);
-    }
     return channel;
   }
 

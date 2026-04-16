@@ -3789,8 +3789,7 @@ class MeshtasticManager implements ISourceManager {
             logger.info(`📡 Channel ${channel.index} arrived empty — normalizing role to DISABLED(0) (#2666)`);
           }
 
-          logger.info(`📡 Saving channel ${channel.index} (${displayName}) - role: ${channelRole}, positionPrecision: ${positionPrecision}`);
-          logger.info(`📡 Database will store name as: "${channelName}" (length: ${channelName.length})`);
+          logger.debug(`📡 Saving channel ${channel.index} (${displayName}) - role: ${channelRole}`);
 
           await databaseService.channels.upsertChannel({
             id: channel.index,

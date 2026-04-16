@@ -51,9 +51,6 @@ export class ChannelsRepository extends BaseRepository {
     if (result.length === 0) return null;
 
     const channel = result[0];
-    if (id === 0) {
-      logger.info(`getChannelById(0) - RAW from DB: ${channel ? `name="${channel.name}" (length: ${channel.name?.length || 0})` : 'null'}`);
-    }
     return this.normalizeBigInts(channel) as DbChannel;
   }
 
@@ -109,18 +106,17 @@ export class ChannelsRepository extends BaseRepository {
       data.role = 2;
     }
 
-    logger.info(`upsertChannel called with ID: ${data.id}, name: "${data.name}" (length: ${data.name.length})`);
+    logger.debug(`upsertChannel called with ID: ${data.id}, name: "${data.name}"`);
 
     // Look up existing channel using composite key when sourceId is available
     const existingChannel = await this.getChannelById(data.id, sourceId);
-    logger.info(`getChannelById(${data.id}, sourceId=${sourceId ?? 'none'}) returned: ${existingChannel ? `"${existingChannel.name}"` : 'null'}`);
 
     if (existingChannel) {
       // Update existing channel
       // Preserve existing non-empty name if incoming name is empty (fixes #1567)
       // This prevents device reconnections from wiping channel names
       const effectiveName = data.name || existingChannel.name;
-      logger.info(`Updating channel ${existingChannel.id}: name "${existingChannel.name}" -> "${effectiveName}" (incoming: "${data.name}")`);
+      logger.debug(`Updating channel ${existingChannel.id}: name "${existingChannel.name}" -> "${effectiveName}"`);
 
       const updateSet: any = {
         name: effectiveName,
@@ -151,7 +147,7 @@ export class ChannelsRepository extends BaseRepository {
         await this.db.update(channels).set(updateSet).where(updateWhere);
       }
 
-      logger.info(`Updated channel ${existingChannel.id}`);
+      logger.debug(`Updated channel ${existingChannel.id}`);
     } else {
       // Create new channel
       logger.debug(`Creating new channel with ID: ${data.id}`);
