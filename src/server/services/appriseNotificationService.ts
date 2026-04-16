@@ -263,11 +263,10 @@ class AppriseNotificationService {
       return { sent: 0, failed: 0, filtered: 0 };
     }
 
-    // Prefix title + body with source name
+    // Prefix title with source name (body kept clean — title already disambiguates source)
     const prefixedPayload: AppriseNotificationPayload = {
       ...payload,
       title: `[${filterContext.sourceName}] ${payload.title}`,
-      body: `[${filterContext.sourceName}] ${payload.body}`,
     };
 
     // Get users who have Apprise enabled

@@ -83,11 +83,10 @@ class DesktopNotificationService {
 
     let filtered = 0;
 
-    // Phase B: prefix title/body with source name
+    // Phase B: prefix title with source name (body kept clean — title already disambiguates source)
     const prefixedPayload: DesktopNotificationPayload = {
       ...payload,
       title: `[${filterContext.sourceName}] ${payload.title}`,
-      body: `[${filterContext.sourceName}] ${payload.body}`,
     };
 
     try {
