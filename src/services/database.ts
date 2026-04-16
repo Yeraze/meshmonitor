@@ -7918,6 +7918,13 @@ class DatabaseService {
    * Works with all database backends (SQLite, PostgreSQL, MySQL).
    */
   async checkPermissionAsync(userId: number, resource: string, action: string, sourceId?: string): Promise<boolean> {
+    // Admin bypass: matches the same shortcut used by requirePermission/hasPermission
+    // middleware. Without this, admin users (whose perm rows historically have
+    // sourceId=NULL) are silently denied by direct callers like the notification
+    // filter, since the per-source lookup below requires an exact sourceId match.
+    const user = await this.auth.getUserById(userId);
+    if (user?.isAdmin) return true;
+
     const permissions = await this.auth.getPermissionsForUser(userId);
 
     const check = (perm: (typeof permissions)[0]): boolean => {
