@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 37 migrations in sequential order for use by the migration runner.
+ * Registers all 38 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -49,6 +49,7 @@ import { migration as addViaStoreForwardMigration, runMigration034Postgres, runM
 import { migration as addIsStoreForwardServerMigration, runMigration035Postgres, runMigration035Mysql } from '../server/migrations/035_add_is_store_forward_server.js';
 import { migration as telemetryPerformanceIndexesMigration, runMigration036Postgres, runMigration036Mysql } from '../server/migrations/036_telemetry_performance_indexes.js';
 import { migration as userMapPrefsIdMigration, runMigration037Postgres, runMigration037Mysql } from '../server/migrations/037_add_id_to_user_map_preferences.js';
+import { migration as cleanupOrphanNotificationPrefsMigration, runMigration038Postgres, runMigration038Mysql } from '../server/migrations/038_cleanup_orphan_notification_prefs.js';
 
 // ============================================================================
 // Registry
@@ -555,4 +556,20 @@ registry.register({
   sqlite: (db) => userMapPrefsIdMigration.up(db),
   postgres: (client) => runMigration037Postgres(client),
   mysql: (pool) => runMigration037Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 038: Delete orphan source-scoped notification rows.
+// Source deletes don't cascade to user_notification_preferences /
+// push_subscriptions, leaving dangling rows that cause duplicate-notification
+// fan-out (one extra notification per orphan row per broadcast).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 38,
+  name: 'cleanup_orphan_notification_prefs',
+  settingsKey: 'migration_038_cleanup_orphan_notification_prefs',
+  sqlite: (db) => cleanupOrphanNotificationPrefsMigration.up(db),
+  postgres: (client) => runMigration038Postgres(client),
+  mysql: (pool) => runMigration038Mysql(pool),
 });

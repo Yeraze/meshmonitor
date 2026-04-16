@@ -1,3 +1,5 @@
+name: meshmonitor
+
 services:
   tileserver:
     image: maptiler/tileserver-gl-light:latest
