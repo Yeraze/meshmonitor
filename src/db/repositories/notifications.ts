@@ -322,7 +322,10 @@ export class NotificationsRepository extends BaseRepository {
         .from(userNotificationPreferences)
         .where(eq(column, true));
 
-      return rows.map((row: any) => row.userId);
+      // Dedup: a user with prefs rows for multiple sources would appear N times
+      // and produce N duplicate notifications during preference broadcasts.
+      const ids = rows.map((row: any) => row.userId as number);
+      return Array.from(new Set<number>(ids));
     } catch (error) {
       logger.debug('No user_notification_preferences table yet, returning empty array');
       return [];
