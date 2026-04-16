@@ -7,7 +7,7 @@
  *
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, sql, and, or, lte } from 'drizzle-orm';
+import { eq, desc, sql, and, or, lte, isNull, ne } from 'drizzle-orm';
 import {
   readMessagesSqlite,
 } from '../schema/notifications.js';
@@ -734,6 +734,145 @@ export class NotificationsRepository extends BaseRepository {
       }
     } catch (error) {
       logger.error(`Failed to mark messages as read by IDs:`, error);
+    }
+  }
+
+  // ============ UNREAD COUNTS (Drizzle, all backends) ============
+
+  /**
+   * Build a `read_messages` LEFT JOIN ON-clause that mirrors the legacy
+   * `m.id = rm.messageId AND rm.userId IS NULL` (anonymous) or
+   * `m.id = rm.messageId AND rm.userId = ?` (authenticated) pattern used by
+   * the unread-count queries.
+   *
+   * Note: the SQLite schema uses `messageId` as the PRIMARY KEY (no separate
+   * `userId` per row prior to multi-user). The PG/MySQL schemas use `userId`
+   * as a real column. Drizzle handles the column-name mapping per dialect.
+   */
+  private unreadJoinOn(userId: number | null) {
+    const messages = this.tables.messages;
+    const readMessages = this.tables.readMessages;
+    if (userId === null) {
+      // Anonymous: any read row at all blocks the message from showing as unread
+      return eq(messages.id, readMessages.messageId);
+    }
+    return and(
+      eq(messages.id, readMessages.messageId),
+      eq(readMessages.userId, userId)
+    );
+  }
+
+  /**
+   * Count unread channel messages grouped by channel (excludes DMs / channel = -1).
+   * Returns `{ [channelId]: number }`.
+   */
+  async getUnreadCountsByChannelAsync(
+    userId: number | null,
+    localNodeId?: string
+  ): Promise<{ [channelId: number]: number }> {
+    const messages = this.tables.messages;
+    const readMessages = this.tables.readMessages;
+
+    const conditions = [
+      isNull(readMessages.messageId),
+      ne(messages.channel, -1),
+      eq(messages.portnum, 1),
+    ];
+    if (localNodeId) {
+      conditions.push(ne(messages.fromNodeId, localNodeId));
+    }
+
+    try {
+      const rows: any[] = await this.db
+        .select({
+          channel: messages.channel,
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(messages)
+        .leftJoin(readMessages, this.unreadJoinOn(userId)!)
+        .where(and(...conditions))
+        .groupBy(messages.channel);
+
+      const counts: { [channelId: number]: number } = {};
+      for (const row of rows) {
+        counts[Number(row.channel)] = Number(row.count);
+      }
+      return counts;
+    } catch (error) {
+      logger.error('Error getting unread counts by channel:', error);
+      return {};
+    }
+  }
+
+  /**
+   * Count unread DMs from a single remote node to the local node.
+   */
+  async getUnreadDMCountAsync(
+    localNodeId: string,
+    remoteNodeId: string,
+    userId: number | null
+  ): Promise<number> {
+    const messages = this.tables.messages;
+    const readMessages = this.tables.readMessages;
+
+    try {
+      const rows: any[] = await this.db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(messages)
+        .leftJoin(readMessages, this.unreadJoinOn(userId)!)
+        .where(
+          and(
+            isNull(readMessages.messageId),
+            eq(messages.portnum, 1),
+            eq(messages.channel, -1),
+            eq(messages.fromNodeId, remoteNodeId),
+            eq(messages.toNodeId, localNodeId)
+          )
+        );
+      return Number(rows[0]?.count ?? 0);
+    } catch (error) {
+      logger.error('Error getting unread DM count:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Count unread DMs for the local node grouped by remote sender.
+   * Returns `{ [fromNodeId]: number }`.
+   */
+  async getBatchUnreadDMCountsAsync(
+    localNodeId: string,
+    userId: number | null
+  ): Promise<{ [fromNodeId: string]: number }> {
+    const messages = this.tables.messages;
+    const readMessages = this.tables.readMessages;
+
+    try {
+      const rows: any[] = await this.db
+        .select({
+          fromNodeId: messages.fromNodeId,
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(messages)
+        .leftJoin(readMessages, this.unreadJoinOn(userId)!)
+        .where(
+          and(
+            isNull(readMessages.messageId),
+            eq(messages.portnum, 1),
+            eq(messages.channel, -1),
+            eq(messages.toNodeId, localNodeId)
+          )
+        )
+        .groupBy(messages.fromNodeId);
+
+      const counts: { [fromNodeId: string]: number } = {};
+      for (const row of rows) {
+        counts[row.fromNodeId] = Number(row.count);
+      }
+      return counts;
+    } catch (error) {
+      logger.error('Error getting batch unread DM counts:', error);
+      return {};
     }
   }
 
