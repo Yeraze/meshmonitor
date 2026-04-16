@@ -49,8 +49,15 @@ export async function runMigration038Postgres(client: any): Promise<void> {
 }
 
 export async function runMigration038Mysql(pool: any): Promise<void> {
+  // Anti-join with explicit COLLATE on both sides — sourceId columns added by
+  // later migrations may carry a different collation (utf8mb4_unicode_ci) than
+  // sources.id (utf8mb4_0900_ai_ci on MySQL 8 defaults), which makes a plain
+  // IN-subquery throw "Illegal mix of collations".
   const [unpRes] = await pool.query(
-    `DELETE FROM user_notification_preferences WHERE sourceId NOT IN (SELECT id FROM sources)`
+    `DELETE unp FROM user_notification_preferences unp
+     LEFT JOIN sources s
+       ON unp.sourceId COLLATE utf8mb4_unicode_ci = s.id COLLATE utf8mb4_unicode_ci
+     WHERE s.id IS NULL`
   );
   const unpAffected = (unpRes as any).affectedRows ?? 0;
   if (unpAffected > 0) {
@@ -58,7 +65,10 @@ export async function runMigration038Mysql(pool: any): Promise<void> {
   }
 
   const [pushRes] = await pool.query(
-    `DELETE FROM push_subscriptions WHERE sourceId NOT IN (SELECT id FROM sources)`
+    `DELETE ps FROM push_subscriptions ps
+     LEFT JOIN sources s
+       ON ps.sourceId COLLATE utf8mb4_unicode_ci = s.id COLLATE utf8mb4_unicode_ci
+     WHERE s.id IS NULL`
   );
   const pushAffected = (pushRes as any).affectedRows ?? 0;
   if (pushAffected > 0) {
