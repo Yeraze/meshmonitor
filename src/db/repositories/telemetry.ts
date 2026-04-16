@@ -323,10 +323,10 @@ export class TelemetryRepository extends BaseRepository {
 
     if (this.isMySQL()) {
       const countResult = await this.db
-        .select({ id: telemetry.id })
+        .select({ cnt: count() })
         .from(telemetry)
         .where(condition);
-      if (countResult.length === 0) return false;
+      if (Number(countResult[0]?.cnt ?? 0) === 0) return false;
       await this.db.delete(telemetry).where(condition);
       return true;
     } else {
@@ -369,10 +369,10 @@ export class TelemetryRepository extends BaseRepository {
 
     if (this.isMySQL()) {
       const countResult = await this.db
-        .select({ id: telemetry.id })
+        .select({ cnt: count() })
         .from(telemetry)
         .where(condition);
-      const cnt = countResult.length;
+      const cnt = Number(countResult[0]?.cnt ?? 0);
       await this.db.delete(telemetry).where(condition);
       return cnt;
     } else {
@@ -402,10 +402,10 @@ export class TelemetryRepository extends BaseRepository {
 
     if (this.isMySQL()) {
       const countResult = await this.db
-        .select({ id: telemetry.id })
+        .select({ cnt: count() })
         .from(telemetry)
         .where(lt(telemetry.timestamp, cutoffTimestamp));
-      const cnt = countResult.length;
+      const cnt = Number(countResult[0]?.cnt ?? 0);
       await this.db.delete(telemetry).where(lt(telemetry.timestamp, cutoffTimestamp));
       return cnt;
     } else {
@@ -463,20 +463,20 @@ export class TelemetryRepository extends BaseRepository {
     if (this.isMySQL()) {
       // MySQL doesn't support .returning(), so count before deleting
       const nonFavoritesCount = await this.db
-        .select({ id: telemetry.id })
+        .select({ cnt: count() })
         .from(telemetry)
         .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition!)));
-      nonFavoritesDeleted = nonFavoritesCount.length;
+      nonFavoritesDeleted = Number(nonFavoritesCount[0]?.cnt ?? 0);
 
       await this.db
         .delete(telemetry)
         .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition!)));
 
       const favoritesCount = await this.db
-        .select({ id: telemetry.id })
+        .select({ cnt: count() })
         .from(telemetry)
         .where(and(lt(telemetry.timestamp, effectiveFavoriteCutoff), favoritesCondition!));
-      favoritesDeleted = favoritesCount.length;
+      favoritesDeleted = Number(favoritesCount[0]?.cnt ?? 0);
 
       await this.db
         .delete(telemetry)
@@ -512,10 +512,10 @@ export class TelemetryRepository extends BaseRepository {
 
     if (this.isMySQL()) {
       const countResult = await this.db
-        .select({ id: telemetry.id })
+        .select({ cnt: count() })
         .from(telemetry)
         .where(condition);
-      const cnt = countResult.length;
+      const cnt = Number(countResult[0]?.cnt ?? 0);
       await this.db.delete(telemetry).where(condition);
       return cnt;
     } else {
@@ -943,10 +943,10 @@ export class TelemetryRepository extends BaseRepository {
 
     if (this.isMySQL()) {
       const countRows = await this.db
-        .select({ id: telemetry.id })
+        .select({ cnt: count() })
         .from(telemetry)
         .where(condition);
-      const cnt = countRows.length;
+      const cnt = Number(countRows[0]?.cnt ?? 0);
       await this.db.delete(telemetry).where(condition);
       return cnt;
     }
