@@ -490,3 +490,178 @@ describe('DatabaseService — getAuditLogsAsync', () => {
     expect(Array.isArray(result.logs)).toBe(true);
   });
 });
+
+// ─── checkPermissionAsync ─────────────────────────────────────────────────────
+
+describe('DatabaseService — checkPermissionAsync', () => {
+  // Custom auth mock with the methods checkPermissionAsync depends on
+  const permsAuthMock = {
+    getUserById: vi.fn(),
+    getPermissionsForUser: vi.fn(),
+  };
+
+  beforeEach(() => {
+    permsAuthMock.getUserById.mockReset();
+    permsAuthMock.getPermissionsForUser.mockReset();
+    (databaseService as any).authRepo = permsAuthMock;
+  });
+
+  describe('admin bypass', () => {
+    beforeEach(() => {
+      permsAuthMock.getUserById.mockResolvedValue({ id: 1, isAdmin: true });
+      permsAuthMock.getPermissionsForUser.mockResolvedValue([]);
+    });
+
+    it('returns true for admin even with no perm rows', async () => {
+      const result = await databaseService.checkPermissionAsync(1, 'messages', 'read', 'src-A');
+      expect(result).toBe(true);
+      expect(permsAuthMock.getPermissionsForUser).not.toHaveBeenCalled();
+    });
+
+    it('returns true for admin on any sourceId', async () => {
+      const r1 = await databaseService.checkPermissionAsync(1, 'messages', 'read', 'src-A');
+      const r2 = await databaseService.checkPermissionAsync(1, 'messages', 'read', 'src-B');
+      const r3 = await databaseService.checkPermissionAsync(1, 'nodes', 'write', 'src-Z');
+      expect(r1).toBe(true);
+      expect(r2).toBe(true);
+      expect(r3).toBe(true);
+    });
+
+    it('returns true for admin without sourceId', async () => {
+      const result = await databaseService.checkPermissionAsync(1, 'messages', 'read');
+      expect(result).toBe(true);
+    });
+
+    it('returns true for admin even when perm rows have NULL sourceId (legacy)', async () => {
+      permsAuthMock.getPermissionsForUser.mockResolvedValue([
+        { resource: 'messages', sourceId: null, canRead: true, canWrite: true },
+      ]);
+      const result = await databaseService.checkPermissionAsync(1, 'messages', 'read', 'src-X');
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('non-admin per-source matching', () => {
+    beforeEach(() => {
+      permsAuthMock.getUserById.mockResolvedValue({ id: 5, isAdmin: false });
+    });
+
+    it('returns true when user has matching per-source canRead', async () => {
+      permsAuthMock.getPermissionsForUser.mockResolvedValue([
+        { resource: 'messages', sourceId: 'src-A', canRead: true, canWrite: false, canViewOnMap: false },
+      ]);
+      const result = await databaseService.checkPermissionAsync(5, 'messages', 'read', 'src-A');
+      expect(result).toBe(true);
+    });
+
+    it('returns false when matching row exists but action flag is false', async () => {
+      permsAuthMock.getPermissionsForUser.mockResolvedValue([
+        { resource: 'messages', sourceId: 'src-A', canRead: false, canWrite: true, canViewOnMap: false },
+      ]);
+      const result = await databaseService.checkPermissionAsync(5, 'messages', 'read', 'src-A');
+      expect(result).toBe(false);
+    });
+
+    it('returns false when only NULL-sourceId row exists (no fallback for non-admins)', async () => {
+      permsAuthMock.getPermissionsForUser.mockResolvedValue([
+        { resource: 'messages', sourceId: null, canRead: true, canWrite: true, canViewOnMap: false },
+      ]);
+      const result = await databaseService.checkPermissionAsync(5, 'messages', 'read', 'src-A');
+      expect(result).toBe(false);
+    });
+
+    it('returns false when user has perm on src-A but query is for src-B', async () => {
+      permsAuthMock.getPermissionsForUser.mockResolvedValue([
+        { resource: 'messages', sourceId: 'src-A', canRead: true, canWrite: true, canViewOnMap: false },
+      ]);
+      const result = await databaseService.checkPermissionAsync(5, 'messages', 'read', 'src-B');
+      expect(result).toBe(false);
+    });
+
+    it('returns false for unrelated resource', async () => {
+      permsAuthMock.getPermissionsForUser.mockResolvedValue([
+        { resource: 'nodes', sourceId: 'src-A', canRead: true, canWrite: true, canViewOnMap: false },
+      ]);
+      const result = await databaseService.checkPermissionAsync(5, 'messages', 'read', 'src-A');
+      expect(result).toBe(false);
+    });
+
+    it('correctly maps action=write to canWrite', async () => {
+      permsAuthMock.getPermissionsForUser.mockResolvedValue([
+        { resource: 'messages', sourceId: 'src-A', canRead: false, canWrite: true, canViewOnMap: false },
+      ]);
+      const result = await databaseService.checkPermissionAsync(5, 'messages', 'write', 'src-A');
+      expect(result).toBe(true);
+    });
+
+    it('correctly maps action=viewOnMap to canViewOnMap', async () => {
+      permsAuthMock.getPermissionsForUser.mockResolvedValue([
+        { resource: 'nodes', sourceId: 'src-A', canRead: false, canWrite: false, canViewOnMap: true },
+      ]);
+      const result = await databaseService.checkPermissionAsync(5, 'nodes', 'viewOnMap', 'src-A');
+      expect(result).toBe(true);
+    });
+
+    it('returns false for unknown action', async () => {
+      permsAuthMock.getPermissionsForUser.mockResolvedValue([
+        { resource: 'messages', sourceId: 'src-A', canRead: true, canWrite: true, canViewOnMap: true },
+      ]);
+      const result = await databaseService.checkPermissionAsync(5, 'messages', 'delete' as any, 'src-A');
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('non-admin without sourceId argument', () => {
+    beforeEach(() => {
+      permsAuthMock.getUserById.mockResolvedValue({ id: 5, isAdmin: false });
+    });
+
+    it('returns true if user has the permission on ANY source', async () => {
+      permsAuthMock.getPermissionsForUser.mockResolvedValue([
+        { resource: 'messages', sourceId: 'src-A', canRead: false, canWrite: false, canViewOnMap: false },
+        { resource: 'messages', sourceId: 'src-B', canRead: true, canWrite: false, canViewOnMap: false },
+      ]);
+      const result = await databaseService.checkPermissionAsync(5, 'messages', 'read');
+      expect(result).toBe(true);
+    });
+
+    it('returns false if user only has NULL-source rows (legacy non-admin)', async () => {
+      permsAuthMock.getPermissionsForUser.mockResolvedValue([
+        { resource: 'messages', sourceId: null, canRead: true, canWrite: true, canViewOnMap: false },
+      ]);
+      const result = await databaseService.checkPermissionAsync(5, 'messages', 'read');
+      expect(result).toBe(false);
+    });
+
+    it('returns false if user has no rows at all', async () => {
+      permsAuthMock.getPermissionsForUser.mockResolvedValue([]);
+      const result = await databaseService.checkPermissionAsync(5, 'messages', 'read');
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('cross-user isolation', () => {
+    it('different users get independent results', async () => {
+      permsAuthMock.getUserById.mockImplementation(async (id: number) =>
+        id === 1 ? { id: 1, isAdmin: true } : { id, isAdmin: false }
+      );
+      permsAuthMock.getPermissionsForUser.mockImplementation(async (id: number) => {
+        if (id === 5) return [{ resource: 'messages', sourceId: 'src-A', canRead: true, canWrite: false, canViewOnMap: false }];
+        if (id === 6) return [{ resource: 'messages', sourceId: 'src-B', canRead: true, canWrite: false, canViewOnMap: false }];
+        return [];
+      });
+
+      // Admin: always true
+      expect(await databaseService.checkPermissionAsync(1, 'messages', 'read', 'src-A')).toBe(true);
+      expect(await databaseService.checkPermissionAsync(1, 'messages', 'read', 'src-B')).toBe(true);
+      // User 5: only src-A
+      expect(await databaseService.checkPermissionAsync(5, 'messages', 'read', 'src-A')).toBe(true);
+      expect(await databaseService.checkPermissionAsync(5, 'messages', 'read', 'src-B')).toBe(false);
+      // User 6: only src-B
+      expect(await databaseService.checkPermissionAsync(6, 'messages', 'read', 'src-A')).toBe(false);
+      expect(await databaseService.checkPermissionAsync(6, 'messages', 'read', 'src-B')).toBe(true);
+      // User 7: nothing
+      expect(await databaseService.checkPermissionAsync(7, 'messages', 'read', 'src-A')).toBe(false);
+    });
+  });
+});
