@@ -944,15 +944,30 @@ export class FirmwareUpdateService {
         );
       }
 
-      this.appendLog('Firmware flashed successfully. Reconnecting to node...');
+      this.appendLog('Firmware flashed successfully. Waiting for node to reboot...');
       this.updateStatus({
         state: 'in-progress',
         step: 'flash',
-        message: 'Firmware flashed successfully. Reconnecting to node...',
+        message: 'Firmware flashed successfully. Waiting for node to reboot...',
       });
 
-      // Reconnect to the node now that flashing is complete
-      logger.info('[FirmwareUpdateService] OTA flash completed — reconnecting to node');
+      // The device just rebooted into new firmware — it takes ~10–30s to come
+      // back on :4403. Reconnecting before the port is open triggers the TCP
+      // transport's auto-reconnect loop which races with later reconnect calls
+      // (e.g. from completeUpdate) and leaves the source in a "connected but
+      // no config" limbo where handleConnected fires on a torn-down transport.
+      // Poll the API port ourselves first, then reconnect synchronously once.
+      const nodeHost = parseGateway(gatewayIp).host;
+      logger.info('[FirmwareUpdateService] OTA flash completed — waiting for node to finish reboot before reconnecting');
+      try {
+        await this.waitForNodeReady(nodeHost, DEFAULT_MESHTASTIC_TCP_PORT, 120_000);
+        this.appendLog('Node is back online. Reconnecting MeshMonitor...');
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        this.appendLog(`Node did not come back within 2 minutes (${m}). Reconnect will continue in the background.`);
+        logger.warn(`[FirmwareUpdateService] Post-flash reboot wait timed out: ${m}`);
+      }
+
       await meshtasticManager.userReconnect();
       this.appendLog('Reconnected to node.');
 
@@ -971,8 +986,16 @@ export class FirmwareUpdateService {
         message: `Flash failed: ${message}`,
         error: message,
       });
-      // Reconnect on failure so MeshMonitor isn't left disconnected
+      // Reconnect on failure so MeshMonitor isn't left disconnected. Wait for
+      // the node first — it may have been mid-reboot when the flash errored
+      // out, and reconnecting into an ECONNREFUSED kicks off the auto-retry
+      // race we're explicitly trying to avoid.
       logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after flash failure');
+      try {
+        await this.waitForNodeReady(parseGateway(gatewayIp).host, DEFAULT_MESHTASTIC_TCP_PORT, 30_000);
+      } catch {
+        // Best-effort — reconnect anyway and let the transport's retry handle it.
+      }
       await meshtasticManager.userReconnect();
       throw error;
     } finally {
