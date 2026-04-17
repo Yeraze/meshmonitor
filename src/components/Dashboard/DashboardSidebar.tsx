@@ -23,6 +23,8 @@ interface DashboardSidebarProps {
   mobileOpen?: boolean;
   /** Called to close the drawer on mobile (after selecting a source or tapping backdrop). */
   onMobileClose?: () => void;
+  /** Opens the News popup when the footer news button is clicked. */
+  onNewsClick?: () => void;
 }
 
 function getStatusInfo(
@@ -134,6 +136,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   onDeleteSource,
   mobileOpen = false,
   onMobileClose,
+  onNewsClick,
 }) => {
   const navigate = useNavigate();
 
@@ -282,7 +285,8 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           <button
             className="dashboard-sidebar-footer-btn"
             title="News"
-            disabled
+            onClick={onNewsClick}
+            disabled={!onNewsClick}
           >
             📰
           </button>
