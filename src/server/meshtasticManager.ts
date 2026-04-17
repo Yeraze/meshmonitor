@@ -710,7 +710,7 @@ class MeshtasticManager implements ISourceManager {
           createdAt: now,
           packetTimestamp,
           packetId
-        });
+        }, this.sourceId);
       }
     }
   }
@@ -1784,7 +1784,7 @@ class MeshtasticManager implements ISourceManager {
         value: Math.round(avg * 100) / 100,
         unit: 's',
         createdAt: now,
-      });
+      }, this.sourceId);
       logger.debug(`⏱️ Saved time-offset telemetry: avg=${avg.toFixed(2)}s (${sampleCount} samples)`);
     } catch (error) {
       logger.error('❌ Error saving time-offset telemetry:', error);
@@ -1840,7 +1840,7 @@ class MeshtasticManager implements ISourceManager {
         timestamp: now,
         value: nodeCount,
         createdAt: now,
-      });
+      }, this.sourceId);
       await databaseService.insertTelemetryAsync({
         nodeId: this.localNodeInfo.nodeId,
         nodeNum: this.localNodeInfo.nodeNum,
@@ -1848,7 +1848,7 @@ class MeshtasticManager implements ISourceManager {
         timestamp: now,
         value: directCount,
         createdAt: now,
-      });
+      }, this.sourceId);
 
       logger.debug(`📊 Saved system node metrics: ${nodeCount} active nodes, ${directCount} direct nodes`);
     } catch (error) {
@@ -4103,7 +4103,7 @@ class MeshtasticManager implements ISourceManager {
           unit: 'hops',
           createdAt: Date.now(),
           packetId: meshPacket.id ? Number(meshPacket.id) : undefined,
-        });
+        }, this.sourceId);
 
         // Update Link Quality based on hop count comparison (skip local node — our own echoed packets aren't meaningful)
         if (!this.localNodeInfo || fromNum !== this.localNodeInfo.nodeNum) {
@@ -4695,18 +4695,18 @@ class MeshtasticManager implements ISourceManager {
           nodeId, nodeNum: fromNum, telemetryType: 'latitude',
           timestamp, value: coords.latitude, unit: '°', createdAt: now, packetTimestamp, packetId,
           channel: channelIndex, precisionBits, gpsAccuracy
-        });
+        }, this.sourceId);
         await databaseService.telemetry.insertTelemetry({
           nodeId, nodeNum: fromNum, telemetryType: 'longitude',
           timestamp, value: coords.longitude, unit: '°', createdAt: now, packetTimestamp, packetId,
           channel: channelIndex, precisionBits, gpsAccuracy
-        });
+        }, this.sourceId);
         if (position.altitude !== undefined && position.altitude !== null) {
           await databaseService.telemetry.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'altitude',
             timestamp, value: position.altitude, unit: 'm', createdAt: now, packetTimestamp, packetId,
             channel: channelIndex
-          });
+          }, this.sourceId);
         }
 
         // Store satellites in view for GPS accuracy tracking
@@ -4716,7 +4716,7 @@ class MeshtasticManager implements ISourceManager {
             nodeId, nodeNum: fromNum, telemetryType: 'sats_in_view',
             timestamp, value: satsInView, unit: 'sats', createdAt: now, packetTimestamp, packetId,
             channel: channelIndex
-          });
+          }, this.sourceId);
         }
 
         // Store ground speed if available (in m/s)
@@ -4726,7 +4726,7 @@ class MeshtasticManager implements ISourceManager {
             nodeId, nodeNum: fromNum, telemetryType: 'ground_speed',
             timestamp, value: groundSpeed, unit: 'm/s', createdAt: now, packetTimestamp, packetId,
             channel: channelIndex
-          });
+          }, this.sourceId);
         }
 
         // Store ground track/heading if available (in 1/100 degrees, convert to degrees)
@@ -4738,7 +4738,7 @@ class MeshtasticManager implements ISourceManager {
             nodeId, nodeNum: fromNum, telemetryType: 'ground_track',
             timestamp, value: headingDegrees, unit: '°', createdAt: now, packetTimestamp, packetId,
             channel: channelIndex
-          });
+          }, this.sourceId);
         }
 
         // Skip overwriting the local node's position from mesh broadcast packets when fixedPosition is enabled.
@@ -5005,7 +5005,7 @@ class MeshtasticManager implements ISourceManager {
             unit: 'dB',
             createdAt: timestamp,
             packetId
-          });
+          }, this.sourceId);
           const reason = !latestSnrTelemetry ? 'initial' :
                         latestSnrTelemetry.value !== meshPacket.rxSnr ? 'changed' : 'periodic';
           logger.debug(`📊 Saved local SNR telemetry: ${meshPacket.rxSnr} dB (${reason}, previous: ${latestSnrTelemetry?.value || 'N/A'})`);
@@ -5032,7 +5032,7 @@ class MeshtasticManager implements ISourceManager {
             unit: 'dBm',
             createdAt: timestamp,
             packetId
-          });
+          }, this.sourceId);
           const reason = !latestRssiTelemetry ? 'initial' :
                         latestRssiTelemetry.value !== meshPacket.rxRssi ? 'changed' : 'periodic';
           logger.debug(`📊 Saved RSSI telemetry: ${meshPacket.rxRssi} dBm (${reason}, previous: ${latestRssiTelemetry?.value || 'N/A'})`);
@@ -5107,31 +5107,31 @@ class MeshtasticManager implements ISourceManager {
           await databaseService.telemetry.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'batteryLevel',
             timestamp, value: deviceMetrics.batteryLevel, unit: '%', createdAt: now, packetTimestamp, packetId
-          });
+          }, this.sourceId);
         }
         if (deviceMetrics.voltage !== undefined && deviceMetrics.voltage !== null && !isNaN(deviceMetrics.voltage)) {
           await databaseService.telemetry.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'voltage',
             timestamp, value: deviceMetrics.voltage, unit: 'V', createdAt: now, packetTimestamp, packetId
-          });
+          }, this.sourceId);
         }
         if (deviceMetrics.channelUtilization !== undefined && deviceMetrics.channelUtilization !== null && !isNaN(deviceMetrics.channelUtilization)) {
           await databaseService.telemetry.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'channelUtilization',
             timestamp, value: deviceMetrics.channelUtilization, unit: '%', createdAt: now, packetTimestamp, packetId
-          });
+          }, this.sourceId);
         }
         if (deviceMetrics.airUtilTx !== undefined && deviceMetrics.airUtilTx !== null && !isNaN(deviceMetrics.airUtilTx)) {
           await databaseService.telemetry.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'airUtilTx',
             timestamp, value: deviceMetrics.airUtilTx, unit: '%', createdAt: now, packetTimestamp, packetId
-          });
+          }, this.sourceId);
         }
         if (deviceMetrics.uptimeSeconds !== undefined && deviceMetrics.uptimeSeconds !== null && !isNaN(deviceMetrics.uptimeSeconds)) {
           await databaseService.telemetry.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'uptimeSeconds',
             timestamp, value: deviceMetrics.uptimeSeconds, unit: 's', createdAt: now, packetTimestamp, packetId
-          });
+          }, this.sourceId);
         }
       } else if (telemetry.environmentMetrics) {
         const envMetrics = telemetry.environmentMetrics;
@@ -5195,7 +5195,7 @@ class MeshtasticManager implements ISourceManager {
             await databaseService.telemetry.insertTelemetry({
               nodeId, nodeNum: fromNum, telemetryType: String(voltageKey),
               timestamp, value: Number(voltage), unit: 'V', createdAt: now, packetTimestamp, packetId
-            });
+            }, this.sourceId);
           }
 
           // Save current for this channel
@@ -5204,7 +5204,7 @@ class MeshtasticManager implements ISourceManager {
             await databaseService.telemetry.insertTelemetry({
               nodeId, nodeNum: fromNum, telemetryType: String(currentKey),
               timestamp, value: Number(current), unit: 'mA', createdAt: now, packetTimestamp, packetId
-            });
+            }, this.sourceId);
           }
         }
       } else if (telemetry.airQualityMetrics) {
@@ -5319,19 +5319,19 @@ class MeshtasticManager implements ISourceManager {
         await databaseService.telemetry.insertTelemetry({
           nodeId, nodeNum: fromNum, telemetryType: 'paxcounterWifi',
           timestamp, value: paxcount.wifi, unit: 'devices', createdAt: now, packetId
-        });
+        }, this.sourceId);
       }
       if (paxcount.ble !== undefined && paxcount.ble !== null && !isNaN(paxcount.ble)) {
         await databaseService.telemetry.insertTelemetry({
           nodeId, nodeNum: fromNum, telemetryType: 'paxcounterBle',
           timestamp, value: paxcount.ble, unit: 'devices', createdAt: now, packetId
-        });
+        }, this.sourceId);
       }
       if (paxcount.uptime !== undefined && paxcount.uptime !== null && !isNaN(paxcount.uptime)) {
         await databaseService.telemetry.insertTelemetry({
           nodeId, nodeNum: fromNum, telemetryType: 'paxcounterUptime',
           timestamp, value: paxcount.uptime, unit: 's', createdAt: now, packetId
-        });
+        }, this.sourceId);
       }
 
       await databaseService.nodes.upsertNode(nodeData, this.sourceId);
@@ -5776,7 +5776,7 @@ class MeshtasticManager implements ISourceManager {
         unit: 'hops',
         createdAt: Date.now(),
         packetId: meshPacket.id ? Number(meshPacket.id) : undefined,
-      });
+      }, this.sourceId);
 
       // Emit WebSocket event for traceroute completion
       dataEventEmitter.emitTracerouteComplete(tracerouteRecord as any, this.sourceId);
@@ -6271,7 +6271,7 @@ class MeshtasticManager implements ISourceManager {
           value: finalLat,
           unit: '° (est)',
           createdAt: now
-        });
+        }, this.sourceId);
 
         await databaseService.telemetry.insertTelemetry({
           nodeId,
@@ -6281,7 +6281,7 @@ class MeshtasticManager implements ISourceManager {
           value: finalLon,
           unit: '° (est)',
           createdAt: now
-        });
+        }, this.sourceId);
 
         logger.debug(`📍 Estimated position for ${nodeId} (${node.longName || nodeId}): ${finalLat.toFixed(6)}, ${finalLon.toFixed(6)} (${weightingMethod})`);
       }
@@ -6374,8 +6374,9 @@ class MeshtasticManager implements ISourceManager {
           }
         }
 
-        // Delete old neighbors then batch-insert new ones
-        await databaseService.neighbors.deleteNeighborInfoForNode(fromNum);
+        // Delete old neighbors then batch-insert new ones — scoped to this source so
+        // a NeighborInfo packet from one source doesn't wipe another source's rows.
+        await databaseService.neighbors.deleteNeighborInfoForNode(fromNum, this.sourceId);
 
         const records = validNeighbors.map(vn => ({
           nodeNum: fromNum,
@@ -6386,7 +6387,7 @@ class MeshtasticManager implements ISourceManager {
           createdAt: nowMs,
         }));
 
-        await databaseService.neighbors.insertNeighborInfoBatch(records);
+        await databaseService.neighbors.insertNeighborInfoBatch(records, this.sourceId);
 
         for (const vn of validNeighbors) {
           const neighborNodeId = `!${vn.nodeNum.toString(16).padStart(8, '0')}`;
@@ -6684,18 +6685,18 @@ class MeshtasticManager implements ISourceManager {
           nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'latitude',
           timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.latitude, unit: '°', createdAt: now,
           channel: positionTelemetryData.channel, precisionBits: positionTelemetryData.precisionBits
-        });
+        }, this.sourceId);
         await databaseService.telemetry.insertTelemetry({
           nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'longitude',
           timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.longitude, unit: '°', createdAt: now,
           channel: positionTelemetryData.channel, precisionBits: positionTelemetryData.precisionBits
-        });
+        }, this.sourceId);
         if (positionTelemetryData.altitude !== undefined && positionTelemetryData.altitude !== null) {
           await databaseService.telemetry.insertTelemetry({
             nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'altitude',
             timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.altitude, unit: 'm', createdAt: now,
             channel: positionTelemetryData.channel, precisionBits: positionTelemetryData.precisionBits
-          });
+          }, this.sourceId);
         }
         // Store ground speed if available (in m/s)
         if (positionTelemetryData.groundSpeed !== undefined && positionTelemetryData.groundSpeed > 0) {
@@ -6703,7 +6704,7 @@ class MeshtasticManager implements ISourceManager {
             nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'ground_speed',
             timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.groundSpeed, unit: 'm/s', createdAt: now,
             channel: positionTelemetryData.channel
-          });
+          }, this.sourceId);
         }
         // Store ground track/heading if available (in 1/100 degrees, convert to degrees)
         if (positionTelemetryData.groundTrack !== undefined && positionTelemetryData.groundTrack > 0) {
@@ -6712,7 +6713,7 @@ class MeshtasticManager implements ISourceManager {
             nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'ground_track',
             timestamp: positionTelemetryData.timestamp, value: headingDegrees, unit: '°', createdAt: now,
             channel: positionTelemetryData.channel
-          });
+          }, this.sourceId);
         }
 
         // Update mobility detection for this node (fire and forget)
@@ -6729,35 +6730,35 @@ class MeshtasticManager implements ISourceManager {
           await databaseService.telemetry.insertTelemetry({
             nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'batteryLevel',
             timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.batteryLevel, unit: '%', createdAt: now
-          });
+          }, this.sourceId);
         }
 
         if (deviceMetricsTelemetryData.voltage !== undefined && deviceMetricsTelemetryData.voltage !== null && !isNaN(deviceMetricsTelemetryData.voltage)) {
           await databaseService.telemetry.insertTelemetry({
             nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'voltage',
             timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.voltage, unit: 'V', createdAt: now
-          });
+          }, this.sourceId);
         }
 
         if (deviceMetricsTelemetryData.channelUtilization !== undefined && deviceMetricsTelemetryData.channelUtilization !== null && !isNaN(deviceMetricsTelemetryData.channelUtilization)) {
           await databaseService.telemetry.insertTelemetry({
             nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'channelUtilization',
             timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.channelUtilization, unit: '%', createdAt: now
-          });
+          }, this.sourceId);
         }
 
         if (deviceMetricsTelemetryData.airUtilTx !== undefined && deviceMetricsTelemetryData.airUtilTx !== null && !isNaN(deviceMetricsTelemetryData.airUtilTx)) {
           await databaseService.telemetry.insertTelemetry({
             nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'airUtilTx',
             timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.airUtilTx, unit: '%', createdAt: now
-          });
+          }, this.sourceId);
         }
 
         if (deviceMetricsTelemetryData.uptimeSeconds !== undefined && deviceMetricsTelemetryData.uptimeSeconds !== null && !isNaN(deviceMetricsTelemetryData.uptimeSeconds)) {
           await databaseService.telemetry.insertTelemetry({
             nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'uptimeSeconds',
             timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.uptimeSeconds, unit: 's', createdAt: now
-          });
+          }, this.sourceId);
         }
       }
 
@@ -6783,7 +6784,7 @@ class MeshtasticManager implements ISourceManager {
             value: nodeInfo.snr,
             unit: 'dB',
             createdAt: now
-          });
+          }, this.sourceId);
           const reason = !latestSnrTelemetry ? 'initial' :
                         latestSnrTelemetry.value !== nodeInfo.snr ? 'changed' : 'periodic';
           logger.debug(`📊 Saved remote SNR telemetry from NodeInfo: ${nodeInfo.snr} dB (${reason}, previous: ${latestSnrTelemetry?.value || 'N/A'})`);
@@ -12383,7 +12384,7 @@ class MeshtasticManager implements ISourceManager {
       value: quality,
       unit: 'quality',
       createdAt: Date.now(),
-    });
+    }, this.sourceId);
   }
 
   /**

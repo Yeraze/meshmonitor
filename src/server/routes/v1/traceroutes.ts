@@ -26,7 +26,7 @@ router.get('/', async (req: Request, res: Response) => {
     const sourceIdStr = typeof sourceId === 'string' ? sourceId : undefined;
     const maxLimit = parseInt(limit as string) || 100;
 
-    let traceroutes = databaseService.getAllTraceroutes();
+    let traceroutes = databaseService.getAllTraceroutes(maxLimit, sourceIdStr);
 
     // Apply filters
     if (fromNodeId) {
@@ -36,7 +36,7 @@ router.get('/', async (req: Request, res: Response) => {
       traceroutes = traceroutes.filter(t => t.toNodeId === toNodeId);
     }
 
-    // Apply limit
+    // Apply limit (redundant with the repo limit, but guards against fromNodeId/toNodeId pre-filtering)
     traceroutes = traceroutes.slice(0, maxLimit);
 
     // Mask traceroutes from channels the user cannot access
@@ -65,7 +65,7 @@ router.get('/:fromNodeId/:toNodeId', async (req: Request, res: Response) => {
   try {
     const { fromNodeId, toNodeId } = req.params;
     const sourceIdParam = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
-    const allTraceroutes = databaseService.getAllTraceroutes(100);
+    const allTraceroutes = databaseService.getAllTraceroutes(100, sourceIdParam);
     const traceroute = allTraceroutes.find(t => t.fromNodeId === fromNodeId && t.toNodeId === toNodeId);
 
     if (!traceroute) {

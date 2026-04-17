@@ -3627,14 +3627,14 @@ class DatabaseService {
   }
 
   // Telemetry operations
-  insertTelemetry(telemetryData: DbTelemetry): void {
+  insertTelemetry(telemetryData: DbTelemetry, sourceId?: string): void {
     // For PostgreSQL/MySQL, fire-and-forget async insert
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.telemetryRepo) {
         // Note: We removed the nodesCache check here because it was too aggressive -
         // it would skip telemetry for nodes that exist in the DB but not in the in-memory cache
         // (e.g., after server restart). The foreign key error handling below handles race conditions.
-        this.telemetryRepo.insertTelemetry(telemetryData).catch((error) => {
+        this.telemetryRepo.insertTelemetry(telemetryData, sourceId).catch((error) => {
           // Ignore foreign key violations - node might not be persisted yet
           const errorStr = String(error);
           if (errorStr.includes('foreign key') || errorStr.includes('violates')) {
@@ -3649,7 +3649,7 @@ class DatabaseService {
       return;
     }
 
-    this.telemetry.insertTelemetrySync(telemetryData);
+    this.telemetry.insertTelemetrySync(telemetryData, sourceId);
 
     // Invalidate the telemetry types cache since we may have added a new type
     this.invalidateTelemetryTypesCache();
@@ -3658,8 +3658,8 @@ class DatabaseService {
   /**
    * Async version of insertTelemetry - works with all database backends
    */
-  async insertTelemetryAsync(telemetryData: DbTelemetry): Promise<void> {
-    await this.telemetry.insertTelemetry(telemetryData);
+  async insertTelemetryAsync(telemetryData: DbTelemetry, sourceId?: string): Promise<void> {
+    await this.telemetry.insertTelemetry(telemetryData, sourceId);
     this.invalidateTelemetryTypesCache();
   }
 
@@ -4258,14 +4258,14 @@ class DatabaseService {
     return this.traceroutes.getTraceroutesByNodesSync(fromNodeNum, toNodeNum, limit) as unknown as DbTraceroute[];
   }
 
-  getAllTraceroutes(limit: number = 100): DbTraceroute[] {
+  getAllTraceroutes(limit: number = 100, sourceId?: string): DbTraceroute[] {
     // For PostgreSQL/MySQL, use cached traceroutes or return empty
     // Traceroute data is primarily real-time from mesh traffic
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       // Use traceroutesRepo if available - fire async and return cache
       if (this.traceroutesRepo) {
         // Fire async query and update cache in background
-        this.traceroutesRepo.getAllTraceroutes(limit).then(traceroutes => {
+        this.traceroutesRepo.getAllTraceroutes(limit, sourceId).then(traceroutes => {
           // Store in internal cache for next sync call (cast to local DbTraceroute type)
           this._traceroutesCache = traceroutes.map(t => ({
             ...t,
@@ -4280,7 +4280,7 @@ class DatabaseService {
       return this._traceroutesCache || [];
     }
 
-    return this.traceroutes.getAllTraceroutesRecentSync(limit) as unknown as DbTraceroute[];
+    return this.traceroutes.getAllTraceroutesRecentSync(limit, sourceId) as unknown as DbTraceroute[];
   }
 
   getNodeNeedingTraceroute(localNodeNum: number): DbNode | null {

@@ -408,7 +408,21 @@ describe('DatabaseService — insertTelemetryAsync', () => {
     mockTelemetryRepo.insertTelemetry.mockResolvedValue(undefined);
 
     await databaseService.insertTelemetryAsync(telemetryData as any);
-    expect(mockTelemetryRepo.insertTelemetry).toHaveBeenCalledWith(telemetryData);
+    expect(mockTelemetryRepo.insertTelemetry).toHaveBeenCalledWith(telemetryData, undefined);
+  });
+
+  it('forwards sourceId to telemetryRepo.insertTelemetry', async () => {
+    const telemetryData = {
+      nodeId: '!00003039',
+      telemetryType: 'device',
+      batteryLevel: 85,
+      timestamp: Date.now(),
+      createdAt: Date.now(),
+    };
+    mockTelemetryRepo.insertTelemetry.mockResolvedValue(undefined);
+
+    await databaseService.insertTelemetryAsync(telemetryData as any, 'src-abc');
+    expect(mockTelemetryRepo.insertTelemetry).toHaveBeenCalledWith(telemetryData, 'src-abc');
   });
 });
 
