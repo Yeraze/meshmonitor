@@ -206,6 +206,7 @@ export interface DbNeighborInfo {
   lastRxTime?: number | null;
   timestamp: number;
   createdAt: number;
+  sourceId?: string | null;
 }
 
 /**

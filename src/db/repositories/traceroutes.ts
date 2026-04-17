@@ -608,13 +608,15 @@ export class TraceroutesRepository extends BaseRepository {
 
   /**
    * Synchronously get recent traceroutes (all pairs) (SQLite only).
+   * When sourceId is provided, restricts the result to that source.
    */
-  getAllTraceroutesRecentSync(limit: number = 100): DbTraceroute[] {
+  getAllTraceroutesRecentSync(limit: number = 100, sourceId?: string): DbTraceroute[] {
     const db = this.getSqliteDb();
     const { traceroutes } = this.tables;
     const rows = db
       .select()
       .from(traceroutes)
+      .where(this.withSourceScope(traceroutes, sourceId))
       .orderBy(desc(traceroutes.timestamp))
       .limit(limit)
       .all();

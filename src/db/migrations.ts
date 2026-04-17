@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 38 migrations in sequential order for use by the migration runner.
+ * Registers all 40 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -50,6 +50,8 @@ import { migration as addIsStoreForwardServerMigration, runMigration035Postgres,
 import { migration as telemetryPerformanceIndexesMigration, runMigration036Postgres, runMigration036Mysql } from '../server/migrations/036_telemetry_performance_indexes.js';
 import { migration as userMapPrefsIdMigration, runMigration037Postgres, runMigration037Mysql } from '../server/migrations/037_add_id_to_user_map_preferences.js';
 import { migration as cleanupOrphanNotificationPrefsMigration, runMigration038Postgres, runMigration038Mysql } from '../server/migrations/038_cleanup_orphan_notification_prefs.js';
+import { migration as purgeNullSourceIdTelemetryMigration, runMigration039Postgres, runMigration039Mysql } from '../server/migrations/039_purge_null_sourceid_telemetry.js';
+import { migration as purgeNullSourceIdNeighborInfoMigration, runMigration040Postgres, runMigration040Mysql } from '../server/migrations/040_purge_null_sourceid_neighbor_info.js';
 
 // ============================================================================
 // Registry
@@ -572,4 +574,37 @@ registry.register({
   sqlite: (db) => cleanupOrphanNotificationPrefsMigration.up(db),
   postgres: (client) => runMigration038Postgres(client),
   mysql: (pool) => runMigration038Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 039: Purge telemetry rows with NULL sourceId.
+// Pre-beta4 write path never forwarded sourceId into telemetry inserts, so
+// every row since the sourceId column was added (021) was stranded — strict
+// source-scoped filtering made them invisible to TelemetryGraphs. Write path
+// is fixed; this discards the unreachable rows.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 39,
+  name: 'purge_null_sourceid_telemetry',
+  settingsKey: 'migration_039_purge_null_sourceid_telemetry',
+  sqlite: (db) => purgeNullSourceIdTelemetryMigration.up(db),
+  postgres: (client) => runMigration039Postgres(client),
+  mysql: (pool) => runMigration039Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 040: Purge neighbor_info rows with NULL sourceId.
+// Pre-fix, handleNeighborInfoApp didn't forward this.sourceId — the delete
+// wiped cross-source data and the insert wrote NULL-sourced rows invisible
+// to source-scoped reads. Write path is fixed; this discards stranded rows.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 40,
+  name: 'purge_null_sourceid_neighbor_info',
+  settingsKey: 'migration_040_purge_null_sourceid_neighbor_info',
+  sqlite: (db) => purgeNullSourceIdNeighborInfoMigration.up(db),
+  postgres: (client) => runMigration040Postgres(client),
+  mysql: (pool) => runMigration040Mysql(pool),
 });

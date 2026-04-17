@@ -206,6 +206,54 @@ function runNeighborsTests(getBackend: () => TestBackend) {
     expect(all[0].nodeNum).toBe(999);
   });
 
+  it('insertNeighborInfoBatch - persists sourceId when provided', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.insertNeighborInfoBatch(
+      [makeNeighbor({ nodeNum: 100, neighborNodeNum: 200 })],
+      'source-A'
+    );
+
+    const scoped = await repo.getAllNeighborInfo('source-A');
+    expect(scoped).toHaveLength(1);
+    expect(scoped[0].sourceId).toBe('source-A');
+
+    const otherScope = await repo.getAllNeighborInfo('source-B');
+    expect(otherScope).toHaveLength(0);
+  });
+
+  it('deleteNeighborInfoForNode - scoped delete leaves other sources intact', async () => {
+    // Regression test for the cross-source wipe bug in
+    // meshtasticManager.handleNeighborInfoApp. Prior to the fix, a delete
+    // without sourceId would drop every source's rows for the node.
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.insertNeighborInfoBatch(
+      [makeNeighbor({ nodeNum: 100, neighborNodeNum: 200 })],
+      'source-A'
+    );
+    await repo.insertNeighborInfoBatch(
+      [makeNeighbor({ nodeNum: 100, neighborNodeNum: 300 })],
+      'source-B'
+    );
+
+    await repo.deleteNeighborInfoForNode(100, 'source-A');
+
+    const aRows = await repo.getAllNeighborInfo('source-A');
+    const bRows = await repo.getAllNeighborInfo('source-B');
+    expect(aRows).toHaveLength(0);
+    expect(bRows).toHaveLength(1);
+    expect(bRows[0].neighborNodeNum).toBe(300);
+  });
+
   it('getNeighborCount - returns total count', async () => {
     const backend = getBackend();
     if (!backend.available) {
