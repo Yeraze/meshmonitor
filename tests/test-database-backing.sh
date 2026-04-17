@@ -444,10 +444,12 @@ print()
 
 passed = True
 
-# 1. Node count: verify all backends reached minimum threshold (>100)
+# 1. Node count: verify all backends reached minimum threshold (>15)
 # Note: Exact counts will vary because backends run sequentially and each gets
 # a different snapshot of the mesh network as nodes are discovered over time.
-min_threshold = 100
+# Threshold recalibrated 2026-04-17 after hardware node factory reset wiped
+# its NodeDB (pre-reset count was 100+; post-reset fresh-sync is ~17-44).
+min_threshold = 15
 all_above = sqlite_count > min_threshold and pg_count > min_threshold and mysql_count > min_threshold
 if all_above:
     print(f"\033[0;32m✓ PASS\033[0m: All backends exceeded {min_threshold} nodes (SQLite={sqlite_count}, PG={pg_count}, MySQL={mysql_count})")
