@@ -4453,8 +4453,12 @@ class DatabaseService {
   async getNodeNeedingTracerouteAsync(localNodeNum: number, sourceId?: string): Promise<DbNode | null> {
     const now = Date.now();
     const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
-    const expirationHours = this.getTracerouteExpirationHours();
-    const EXPIRATION_MS = expirationHours * 60 * 60 * 1000;
+
+    // Read ALL filter configuration per-source (falls back to global when
+    // no per-source override exists). This is what makes Auto-Traceroute
+    // filters honor the Source that the scheduler tick is running on.
+    const filterCfg = await this.getTracerouteFilterSettingsAsync(sourceId);
+    const EXPIRATION_MS = filterCfg.expirationHours * 60 * 60 * 1000;
 
     // Get maxNodeAgeHours setting to filter only active nodes
     // lastHeard is stored in seconds (Unix timestamp), so convert cutoff to seconds
@@ -4478,11 +4482,11 @@ class DatabaseService {
       );
 
       // Last heard and hop range filters (AND logic, applied before OR union filters)
-      const filterLastHeardEnabled = this.isTracerouteFilterLastHeardEnabled();
-      const filterLastHeardHours = this.getTracerouteFilterLastHeardHours();
-      const filterHopsEnabled = this.isTracerouteFilterHopsEnabled();
-      const filterHopsMin = this.getTracerouteFilterHopsMin();
-      const filterHopsMax = this.getTracerouteFilterHopsMax();
+      const filterLastHeardEnabled = filterCfg.filterLastHeardEnabled;
+      const filterLastHeardHours = filterCfg.filterLastHeardHours;
+      const filterHopsEnabled = filterCfg.filterHopsEnabled;
+      const filterHopsMin = filterCfg.filterHopsMin;
+      const filterHopsMax = filterCfg.filterHopsMax;
 
       // Apply last-heard filter (AND logic — applied before OR union filters)
       if (filterLastHeardEnabled) {
@@ -4502,23 +4506,21 @@ class DatabaseService {
         });
       }
 
-      // Check if node filter is enabled
-      const filterEnabled = this.isAutoTracerouteNodeFilterEnabled();
+      // Check if node filter is enabled (per-source when scoped)
+      const filterEnabled = filterCfg.enabled;
 
       if (filterEnabled) {
-        // Get all filter settings (use async for specificNodes; scope to source)
-        const specificNodes = await this.misc.getAutoTracerouteNodes(sourceId);
-        const filterChannels = this.getTracerouteFilterChannels();
-        const filterRoles = this.getTracerouteFilterRoles();
-        const filterHwModels = this.getTracerouteFilterHwModels();
-        const filterNameRegex = this.getTracerouteFilterNameRegex();
+        const specificNodes = filterCfg.nodeNums;
+        const filterChannels = filterCfg.filterChannels;
+        const filterRoles = filterCfg.filterRoles;
+        const filterHwModels = filterCfg.filterHwModels;
+        const filterNameRegex = filterCfg.filterNameRegex;
 
-        // Get individual filter enabled flags
-        const filterNodesEnabled = this.isTracerouteFilterNodesEnabled();
-        const filterChannelsEnabled = this.isTracerouteFilterChannelsEnabled();
-        const filterRolesEnabled = this.isTracerouteFilterRolesEnabled();
-        const filterHwModelsEnabled = this.isTracerouteFilterHwModelsEnabled();
-        const filterRegexEnabled = this.isTracerouteFilterRegexEnabled();
+        const filterNodesEnabled = filterCfg.filterNodesEnabled;
+        const filterChannelsEnabled = filterCfg.filterChannelsEnabled;
+        const filterRolesEnabled = filterCfg.filterRolesEnabled;
+        const filterHwModelsEnabled = filterCfg.filterHwModelsEnabled;
+        const filterRegexEnabled = filterCfg.filterRegexEnabled;
 
         // Build regex matcher if enabled
         let regexMatcher: RegExp | null = null;
@@ -4589,8 +4591,8 @@ class DatabaseService {
         return null;
       }
 
-      // Check if sort by hops is enabled
-      const sortByHops = this.isTracerouteSortByHopsEnabled();
+      // Check if sort by hops is enabled (per-source when scoped)
+      const sortByHops = filterCfg.sortByHops;
 
       if (sortByHops) {
         // Sort by hopsAway ascending (closer nodes first), with undefined hops at the end
@@ -5108,7 +5110,12 @@ class DatabaseService {
     logger.debug('✅ Updated all traceroute filter settings');
   }
 
-  // Async versions of traceroute filter settings methods
+  // Async versions of traceroute filter settings methods.
+  //
+  // When sourceId is provided, each filter field is read via
+  // settings.getSettingForSource(sourceId, key) so it falls back to the
+  // global value when no per-source override has been written. When
+  // sourceId is undefined, behavior matches the global sync getters.
   async getTracerouteFilterSettingsAsync(sourceId?: string): Promise<{
     enabled: boolean;
     nodeNums: number[];
@@ -5130,25 +5137,64 @@ class DatabaseService {
     filterHopsMax: number;
   }> {
     const nodeNums = await this.misc.getAutoTracerouteNodes(sourceId);
+    const read = (key: string) =>
+      this.settings.getSettingForSource(sourceId ?? null, key);
+    const [
+      enabledStr, channelsStr, rolesStr, hwModelsStr, regexStr,
+      nodesEnStr, channelsEnStr, rolesEnStr, hwModelsEnStr, regexEnStr,
+      expirationStr, sortByHopsStr,
+      lastHeardEnStr, lastHeardHoursStr,
+      hopsEnStr, hopsMinStr, hopsMaxStr,
+    ] = await Promise.all([
+      read('tracerouteNodeFilterEnabled'),
+      read('tracerouteFilterChannels'),
+      read('tracerouteFilterRoles'),
+      read('tracerouteFilterHwModels'),
+      read('tracerouteFilterNameRegex'),
+      read('tracerouteFilterNodesEnabled'),
+      read('tracerouteFilterChannelsEnabled'),
+      read('tracerouteFilterRolesEnabled'),
+      read('tracerouteFilterHwModelsEnabled'),
+      read('tracerouteFilterRegexEnabled'),
+      read('tracerouteExpirationHours'),
+      read('tracerouteSortByHops'),
+      read('tracerouteFilterLastHeardEnabled'),
+      read('tracerouteFilterLastHeardHours'),
+      read('tracerouteFilterHopsEnabled'),
+      read('tracerouteFilterHopsMin'),
+      read('tracerouteFilterHopsMax'),
+    ]);
+
+    const parseJsonArray = (s: string | null): number[] => {
+      if (!s) return [];
+      try { const p = JSON.parse(s); return Array.isArray(p) ? p.map((v) => Number(v)).filter((v) => !isNaN(v)) : []; } catch { return []; }
+    };
+    const parseIntBounded = (s: string | null, def: number, min = -Infinity, max = Infinity): number => {
+      if (s === null || s === undefined || s === '') return def;
+      const n = parseInt(s, 10);
+      if (isNaN(n) || n < min || n > max) return def;
+      return n;
+    };
+
     return {
-      enabled: this.isAutoTracerouteNodeFilterEnabled(),
+      enabled: enabledStr === 'true',
       nodeNums,
-      filterChannels: this.getTracerouteFilterChannels(),
-      filterRoles: this.getTracerouteFilterRoles(),
-      filterHwModels: this.getTracerouteFilterHwModels(),
-      filterNameRegex: this.getTracerouteFilterNameRegex(),
-      filterNodesEnabled: this.isTracerouteFilterNodesEnabled(),
-      filterChannelsEnabled: this.isTracerouteFilterChannelsEnabled(),
-      filterRolesEnabled: this.isTracerouteFilterRolesEnabled(),
-      filterHwModelsEnabled: this.isTracerouteFilterHwModelsEnabled(),
-      filterRegexEnabled: this.isTracerouteFilterRegexEnabled(),
-      expirationHours: this.getTracerouteExpirationHours(),
-      sortByHops: this.isTracerouteSortByHopsEnabled(),
-      filterLastHeardEnabled: this.isTracerouteFilterLastHeardEnabled(),
-      filterLastHeardHours: this.getTracerouteFilterLastHeardHours(),
-      filterHopsEnabled: this.isTracerouteFilterHopsEnabled(),
-      filterHopsMin: this.getTracerouteFilterHopsMin(),
-      filterHopsMax: this.getTracerouteFilterHopsMax(),
+      filterChannels: parseJsonArray(channelsStr),
+      filterRoles: parseJsonArray(rolesStr),
+      filterHwModels: parseJsonArray(hwModelsStr),
+      filterNameRegex: regexStr ?? '.*',
+      filterNodesEnabled: nodesEnStr !== 'false',
+      filterChannelsEnabled: channelsEnStr !== 'false',
+      filterRolesEnabled: rolesEnStr !== 'false',
+      filterHwModelsEnabled: hwModelsEnStr !== 'false',
+      filterRegexEnabled: regexEnStr !== 'false',
+      expirationHours: parseIntBounded(expirationStr, 24, 0, 168),
+      sortByHops: sortByHopsStr === 'true',
+      filterLastHeardEnabled: lastHeardEnStr === 'true',
+      filterLastHeardHours: parseIntBounded(lastHeardHoursStr, 168),
+      filterHopsEnabled: hopsEnStr === 'true',
+      filterHopsMin: parseIntBounded(hopsMinStr, 0),
+      filterHopsMax: parseIntBounded(hopsMaxStr, 10),
     };
   }
 
@@ -5172,6 +5218,35 @@ class DatabaseService {
     filterHopsMin?: number;
     filterHopsMax?: number;
   }, sourceId?: string): Promise<void> {
+    // When sourceId is provided, persist every filter field as a per-source
+    // override so each Source can hold its own Auto-Traceroute filter config.
+    // Legacy behavior (no sourceId) still writes to the shared global keys.
+    if (sourceId) {
+      const kv: Record<string, string> = {
+        tracerouteNodeFilterEnabled: settings.enabled ? 'true' : 'false',
+        tracerouteFilterChannels: JSON.stringify(settings.filterChannels),
+        tracerouteFilterRoles: JSON.stringify(settings.filterRoles),
+        tracerouteFilterHwModels: JSON.stringify(settings.filterHwModels),
+        tracerouteFilterNameRegex: settings.filterNameRegex,
+      };
+      if (settings.filterNodesEnabled !== undefined) kv.tracerouteFilterNodesEnabled = settings.filterNodesEnabled ? 'true' : 'false';
+      if (settings.filterChannelsEnabled !== undefined) kv.tracerouteFilterChannelsEnabled = settings.filterChannelsEnabled ? 'true' : 'false';
+      if (settings.filterRolesEnabled !== undefined) kv.tracerouteFilterRolesEnabled = settings.filterRolesEnabled ? 'true' : 'false';
+      if (settings.filterHwModelsEnabled !== undefined) kv.tracerouteFilterHwModelsEnabled = settings.filterHwModelsEnabled ? 'true' : 'false';
+      if (settings.filterRegexEnabled !== undefined) kv.tracerouteFilterRegexEnabled = settings.filterRegexEnabled ? 'true' : 'false';
+      if (settings.expirationHours !== undefined) kv.tracerouteExpirationHours = String(settings.expirationHours);
+      if (settings.sortByHops !== undefined) kv.tracerouteSortByHops = settings.sortByHops ? 'true' : 'false';
+      if (settings.filterLastHeardEnabled !== undefined) kv.tracerouteFilterLastHeardEnabled = settings.filterLastHeardEnabled ? 'true' : 'false';
+      if (settings.filterLastHeardHours !== undefined) kv.tracerouteFilterLastHeardHours = String(settings.filterLastHeardHours);
+      if (settings.filterHopsEnabled !== undefined) kv.tracerouteFilterHopsEnabled = settings.filterHopsEnabled ? 'true' : 'false';
+      if (settings.filterHopsMin !== undefined) kv.tracerouteFilterHopsMin = String(settings.filterHopsMin);
+      if (settings.filterHopsMax !== undefined) kv.tracerouteFilterHopsMax = String(settings.filterHopsMax);
+      await this.settings.setSourceSettings(sourceId, kv);
+      await this.misc.setAutoTracerouteNodes(settings.nodeNums, sourceId);
+      logger.debug(`✅ Updated per-source traceroute filter settings (source=${sourceId})`);
+      return;
+    }
+
     this.setAutoTracerouteNodeFilterEnabled(settings.enabled);
     await this.misc.setAutoTracerouteNodes(settings.nodeNums, sourceId);
     this.setTracerouteFilterChannels(settings.filterChannels);
