@@ -20,7 +20,10 @@ import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import DashboardMap from '../components/Dashboard/DashboardMap';
 import LoginModal from '../components/LoginModal';
 import UserMenu from '../components/UserMenu';
+import { NewsPopup } from '../components/NewsPopup';
 import { ToastProvider } from '../components/ToastContainer';
+import api from '../services/api';
+import { logger } from '../utils/logger';
 import { appBasename } from '../init';
 import '../styles/dashboard.css';
 
@@ -58,6 +61,10 @@ function DashboardInner() {
   // Mobile drawer state — hamburger toggles; source selection auto-closes.
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
+  // News popup state — auto-opens on unread news, can be reopened via sidebar footer button.
+  const [showNewsPopup, setShowNewsPopup] = useState(false);
+  const [forceShowAllNews, setForceShowAllNews] = useState(false);
+
   // Source add/edit modal state
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
@@ -83,6 +90,27 @@ function DashboardInner() {
     const firstEnabled = sources.find((s) => s.enabled);
     setSelectedSourceId(firstEnabled?.id ?? sources[0].id);
   }, [isSuccess, sources, selectedSourceId]);
+
+  // Auto-show news popup when authenticated user has unread news.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await api.getUnreadNews();
+        if (cancelled) return;
+        if (response.items && response.items.length > 0) {
+          setForceShowAllNews(false);
+          setShowNewsPopup(true);
+        }
+      } catch (err) {
+        logger.debug('Failed to fetch unread news:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
 
   // Build node-count map. Each source's count comes from its /status response
   // (added in sourceRoutes.ts), polled in parallel by useSourceStatuses. The
@@ -281,6 +309,10 @@ function DashboardInner() {
           onDeleteSource={onDeleteSource}
           mobileOpen={mobileSidebarOpen}
           onMobileClose={() => setMobileSidebarOpen(false)}
+          onNewsClick={() => {
+            setForceShowAllNews(true);
+            setShowNewsPopup(true);
+          }}
         />
 
         <DashboardMap
@@ -297,6 +329,17 @@ function DashboardInner() {
 
       {/* Login modal */}
       <LoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} />
+
+      {/* News popup — auto-opens on unread news, reopened via sidebar footer. */}
+      <NewsPopup
+        isOpen={showNewsPopup}
+        onClose={() => {
+          setShowNewsPopup(false);
+          setForceShowAllNews(false);
+        }}
+        forceShowAll={forceShowAllNews}
+        isAuthenticated={isAuthenticated}
+      />
 
       {/* Delete confirmation dialog */}
       {deleteConfirm && (
