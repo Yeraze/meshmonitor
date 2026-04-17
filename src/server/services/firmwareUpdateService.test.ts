@@ -810,65 +810,24 @@ describe('FirmwareUpdateService', () => {
     });
 
     describe('executeFlash', () => {
-      it('should add bootloader hint when flash fails quickly (under 20s)', async () => {
+      // The new executeFlash: (1) readiness-checks the node on :4403, (2) races the
+      // meshtastic CLI against a direct poll of :3232, (3) falls back to a loader
+      // reachability re-check if the CLI exits non-zero. Tests must mock the
+      // network primitives to avoid real TCP attempts against 192.168.1.100.
+      const stubNetwork = (svc: any) => {
+        // Pre-flash readiness check at :4403 — succeeds.
+        // Post-CLI-failure loader check at :3232 — fails.
+        svc.waitForNodeReady = vi.fn().mockImplementation((_host: string, port: number) => {
+          if (port === 3232) return Promise.reject(new Error('loader not reachable'));
+          return Promise.resolve();
+        });
+        // Parallel loader probe during CLI race — always fail so the CLI always wins.
+        svc.probePort = vi.fn().mockRejectedValue(new Error('no loader'));
+      };
+
+      it('should throw OTA race error when CLI output contains Connection refused', async () => {
         const svc = firmwareUpdateService as any;
-        // Mock runCliCommand to resolve quickly with a failure
-        svc.runCliCommand = vi.fn().mockResolvedValue({
-          stdout: '',
-          stderr: 'some error',
-          exitCode: 1,
-        });
-
-        svc.tempDir = '/tmp/test';
-        svc.cleanupTempDir = vi.fn();
-
-        try {
-          await svc.executeFlash('192.168.1.100', '/tmp/test/firmware.bin');
-          expect.fail('Should have thrown');
-        } catch (e: any) {
-          expect(e.message).toMatch(/OTA bootloader/i);
-          expect(e.message).toMatch(/rebooted before firmware/i);
-        }
-      });
-
-      it('should NOT add bootloader hint when flash fails slowly (over 20s) without Connection refused', async () => {
-        const svc = firmwareUpdateService as any;
-        // Mock Date.now to simulate slow failure — each call returns 25s more
-        let callCount = 0;
-        vi.spyOn(Date, 'now').mockImplementation(() => {
-          callCount++;
-          // Return increasing values: each call 25s apart so elapsed is always > 20s
-          return callCount * 25000;
-        });
-
-        svc.runCliCommand = vi.fn().mockResolvedValue({
-          stdout: '',
-          stderr: 'timeout error',
-          exitCode: 1,
-        });
-
-        svc.tempDir = '/tmp/test';
-        svc.cleanupTempDir = vi.fn();
-
-        try {
-          await svc.executeFlash('192.168.1.100', '/tmp/test/firmware.bin');
-          expect.fail('Should have thrown');
-        } catch (e: any) {
-          expect(e.message).not.toMatch(/OTA bootloader/i);
-          expect(e.message).toMatch(/Flash command failed.*Check the update logs/);
-        }
-
-        vi.restoreAllMocks();
-      });
-
-      it('should add bootloader hint when output contains Connection refused (even if slow)', async () => {
-        const svc = firmwareUpdateService as any;
-        // Mock Date.now to simulate slow failure (>20s) — retries take time
-        let callCount = 0;
-        vi.spyOn(Date, 'now').mockImplementation(() => {
-          callCount++;
-          return callCount * 30000;
-        });
+        stubNetwork(svc);
 
         svc.runCliCommand = vi.fn().mockResolvedValue({
           stdout: 'OTA update failed: [Errno 111] Connection refused\n' +
@@ -884,12 +843,51 @@ describe('FirmwareUpdateService', () => {
           await svc.executeFlash('192.168.1.100', '/tmp/test/firmware.bin');
           expect.fail('Should have thrown');
         } catch (e: any) {
-          // User-facing message should mention bootloader, not raw CLI output
-          expect(e.message).toMatch(/OTA bootloader/i);
+          // User-facing message should describe the OTA loader race, not leak raw CLI output.
+          expect(e.message).toMatch(/rebooted back to normal firmware/i);
+          expect(e.message).toMatch(/OTA loader/i);
           expect(e.message).not.toMatch(/Connection refused/);
         }
+      });
 
-        vi.restoreAllMocks();
+      it('should throw generic failure when CLI fails without Connection refused', async () => {
+        const svc = firmwareUpdateService as any;
+        stubNetwork(svc);
+
+        svc.runCliCommand = vi.fn().mockResolvedValue({
+          stdout: '',
+          stderr: 'timeout error',
+          exitCode: 1,
+        });
+
+        svc.tempDir = '/tmp/test';
+        svc.cleanupTempDir = vi.fn();
+
+        try {
+          await svc.executeFlash('192.168.1.100', '/tmp/test/firmware.bin');
+          expect.fail('Should have thrown');
+        } catch (e: any) {
+          expect(e.message).not.toMatch(/rebooted back to normal firmware/i);
+          expect(e.message).toMatch(/Flash command failed.*Check the update logs/);
+        }
+      });
+
+      it('should throw readiness error when the node cannot be reached before flashing', async () => {
+        const svc = firmwareUpdateService as any;
+        // Pre-flash readiness check fails — no CLI should ever run.
+        svc.waitForNodeReady = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
+        svc.probePort = vi.fn().mockRejectedValue(new Error('no loader'));
+        svc.runCliCommand = vi.fn();
+        svc.tempDir = '/tmp/test';
+        svc.cleanupTempDir = vi.fn();
+
+        try {
+          await svc.executeFlash('192.168.1.100', '/tmp/test/firmware.bin');
+          expect.fail('Should have thrown');
+        } catch (e: any) {
+          expect(e.message).toMatch(/Node readiness check failed/);
+          expect(svc.runCliCommand).not.toHaveBeenCalled();
+        }
       });
     });
 

@@ -11,7 +11,9 @@
  */
 
 import { spawn, ChildProcess } from 'child_process';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
+import * as net from 'net';
 import * as path from 'path';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
@@ -25,6 +27,21 @@ import {
 } from './firmwareHardwareMap.js';
 // Re-export for consumers
 export { getBoardName, getPlatformForBoard, isOtaCapable, getHardwareDisplayName };
+
+const DEFAULT_MESHTASTIC_TCP_PORT = 4403;
+// Port served by the MeshtasticOTA-WiFi loader in the ota_1 partition during OTA mode.
+const OTA_LOADER_PORT = 3232;
+
+function parseGateway(gateway: string): { host: string; port: number } {
+  const trimmed = gateway.trim();
+  // Support "host:port" but leave IPv6 literals alone — dev/prod only use IPv4 or hostnames.
+  const lastColon = trimmed.lastIndexOf(':');
+  if (lastColon > 0 && /^\d+$/.test(trimmed.slice(lastColon + 1))) {
+    const port = Number(trimmed.slice(lastColon + 1));
+    return { host: trimmed.slice(0, lastColon), port };
+  }
+  return { host: trimmed, port: DEFAULT_MESHTASTIC_TCP_PORT };
+}
 
 // ---- Types ----
 
@@ -473,14 +490,14 @@ export class FirmwareUpdateService {
       proc.stdout?.on('data', (data: Buffer) => {
         const text = data.toString();
         stdout += text;
-        logger.debug('[FirmwareUpdateService] CLI stdout: %s', text.trimEnd());
+        logger.debug(`[FirmwareUpdateService] CLI stdout: ${text.trimEnd()}`);
         options?.onOutput?.(text);
       });
 
       proc.stderr?.on('data', (data: Buffer) => {
         const text = data.toString();
         stderr += text;
-        logger.debug('[FirmwareUpdateService] CLI stderr: %s', text.trimEnd());
+        logger.debug(`[FirmwareUpdateService] CLI stderr: ${text.trimEnd()}`);
         options?.onOutput?.(text);
       });
 
@@ -647,7 +664,7 @@ export class FirmwareUpdateService {
 
       if (result.exitCode !== 0) {
         const combined = [result.stdout, result.stderr].filter(Boolean).join('\n');
-        logger.error('[FirmwareUpdateService] Backup CLI failed (exit %d): %s', result.exitCode, combined);
+        logger.error(`[FirmwareUpdateService] Backup CLI failed (exit ${result.exitCode}): ${combined}`);
         throw new Error(`Backup command failed (exit code ${result.exitCode}). Check server logs for details.`);
       }
 
@@ -788,6 +805,31 @@ export class FirmwareUpdateService {
     this.updateStatus({
       state: 'in-progress',
       step: 'flash',
+      message: `Verifying ${gatewayIp} is ready for OTA...`,
+      progress: 0,
+    });
+
+    const { host, port } = parseGateway(gatewayIp);
+    try {
+      await this.waitForNodeReady(host, port);
+      this.appendLog(`Node ${host}:${port} is accepting connections — starting OTA.`);
+    } catch (readyErr) {
+      const message = readyErr instanceof Error ? readyErr.message : String(readyErr);
+      this.updateStatus({
+        state: 'error',
+        step: 'flash',
+        message: `Node not ready for OTA: ${message}`,
+        error: message,
+      });
+      logger.error(`[FirmwareUpdateService] Readiness check failed before OTA: ${message}`);
+      logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after readiness failure');
+      await meshtasticManager.userReconnect();
+      throw new Error(`Node readiness check failed: ${message}`);
+    }
+
+    this.updateStatus({
+      state: 'in-progress',
+      step: 'flash',
       message: `Flashing firmware to ${gatewayIp}...`,
       progress: 0,
     });
@@ -796,7 +838,19 @@ export class FirmwareUpdateService {
     let lastProgressUpdate = 0;
 
     try {
-      const result = await this.runCliCommand('meshtastic', [
+      // The meshtastic-python CLI triggers the admin reboot into OTA mode cleanly
+      // but its built-in upload retry loop (fixed 5s sleep + 5 rapid attempts at
+      // :3232) routinely misses the loader's short listen window on fast devices
+      // like the Heltec V3 — by the time the CLI gives up, the loader has already
+      // timed out and the device is back in normal firmware.
+      //
+      // To avoid that: we start the CLI (which sends the admin request) and, in
+      // parallel, poll :3232 ourselves at 500ms intervals. As soon as the loader
+      // opens its socket we terminate the CLI and upload the firmware directly
+      // using the loader's documented protocol
+      // ("OTA <size> <hex-sha256>\n" + payload + "OK" response).
+      let cliExited = false;
+      const cliPromise = this.runCliCommand('meshtastic', [
         '--host', gatewayIp,
         '--timeout', '30',
         '--ota-update', firmwarePath,
@@ -805,7 +859,6 @@ export class FirmwareUpdateService {
           // Split on \r and \n — meshtastic CLI uses \r to overwrite progress lines in-place
           const lines = chunk.split(/[\r\n]+/).map(l => l.trimEnd()).filter(Boolean);
           for (const line of lines) {
-            // Parse OTA progress lines like "(45.23%)" — update progress bar, don't log each one
             const progressMatch = line.match(/\((\d+(?:\.\d+)?)%\)/);
             if (progressMatch) {
               const pct = Math.round(parseFloat(progressMatch[1]));
@@ -814,52 +867,107 @@ export class FirmwareUpdateService {
                 lastProgressUpdate = now;
                 this.updateStatus({ progress: pct, message: `Uploading firmware: ${pct}%` });
               }
-              continue; // Don't log individual progress lines
+              continue;
             }
-            // Show all other output lines to the user
             this.appendLog(line);
           }
         },
+      }).then(result => {
+        cliExited = true;
+        return result;
       });
 
-      if (result.exitCode !== 0) {
+      const loaderReadyPromise: Promise<boolean> = (async () => {
+        const deadline = Date.now() + 90_000;
+        while (Date.now() < deadline && !cliExited) {
+          try {
+            await this.probePort(host, OTA_LOADER_PORT, 1000);
+            return true;
+          } catch {
+            await new Promise(r => setTimeout(r, 500));
+          }
+        }
+        return false;
+      })();
+
+      const winner = await Promise.race([
+        loaderReadyPromise.then(ready => ({ kind: 'loader' as const, ready })),
+        cliPromise.then(result => ({ kind: 'cli' as const, result })),
+      ]);
+
+      if (winner.kind === 'loader' && winner.ready) {
+        this.appendLog(`OTA loader is listening on ${host}:${OTA_LOADER_PORT} — taking over upload from CLI.`);
+        logger.info(`[FirmwareUpdateService] Loader detected on ${host}:${OTA_LOADER_PORT}; terminating CLI and uploading directly`);
+        if (this.activeProcess) {
+          this.activeProcess.kill('SIGTERM');
+        }
+        // Give the CLI a moment to exit and release any half-open sockets.
+        await Promise.race([
+          cliPromise,
+          new Promise(r => setTimeout(r, 3000)),
+        ]);
+        await this.uploadOtaFirmware(host, OTA_LOADER_PORT, firmwarePath);
+      } else if (winner.kind === 'cli') {
+        const result = winner.result;
         const elapsed = Date.now() - startTime;
-        // Python logging writes INFO to stderr; actual errors may be in stdout
         const combined = [result.stdout, result.stderr].filter(Boolean).join('\n');
 
-        // Raw CLI output already logged via logger.debug in runCliCommand
-        logger.error('[FirmwareUpdateService] Flash failed (exit code %d, %ds): %s',
-          result.exitCode, Math.round(elapsed / 1000), combined);
-
-        // Detect missing OTA bootloader: either the process exited quickly (<20s)
-        // or the output contains "Connection refused" (device rebooted but OTA server
-        // never started because the bootloader isn't installed — the CLI retries
-        // internally so the total runtime may exceed 20s)
-        const looksLikeMissingBootloader =
-          elapsed < 20000 || /connection refused/i.test(combined);
-
-        let errorMessage: string;
-        if (looksLikeMissingBootloader) {
-          errorMessage = 'The node rebooted before firmware could be transferred. ' +
-            'This usually means the OTA bootloader has not been installed. ' +
-            'The OTA bootloader must be flashed once via USB before Wi-Fi OTA updates will work. ' +
-            'See the Firmware OTA Prerequisites documentation for instructions.';
+        if (result.exitCode === 0) {
+          // CLI handled the whole flow on its own.
         } else {
-          errorMessage = `Flash command failed (exit code ${result.exitCode}). Check the update logs for details.`;
-        }
+          logger.error(`[FirmwareUpdateService] Flash via CLI failed (exit code ${result.exitCode}, ${Math.round(elapsed / 1000)}s): ${combined}`);
+          // One last chance: the loader may have come up right as the CLI gave up.
+          this.appendLog('CLI exited without completing the upload. Checking whether the OTA loader is still reachable...');
+          let loaderReady = false;
+          try {
+            await this.waitForNodeReady(host, OTA_LOADER_PORT, 15_000);
+            loaderReady = true;
+          } catch { /* fall through */ }
 
-        throw new Error(errorMessage);
+          if (loaderReady) {
+            this.appendLog(`OTA loader is listening on ${host}:${OTA_LOADER_PORT} — uploading firmware directly.`);
+            await this.uploadOtaFirmware(host, OTA_LOADER_PORT, firmwarePath);
+          } else if (/connection refused/i.test(combined)) {
+            throw new Error(
+              'The device entered OTA mode but rebooted back to normal firmware before the upload could start. ' +
+              'This is a known timing race with the Meshtastic OTA loader on fast boards. Please retry the update.'
+            );
+          } else {
+            throw new Error(`Flash command failed (exit code ${result.exitCode}). Check the update logs for details.`);
+          }
+        }
+      } else {
+        throw new Error(
+          'The OTA loader never became reachable on ' + host + ':' + OTA_LOADER_PORT + '. ' +
+          'This usually means the OTA bootloader has not been installed (it must be flashed once via USB). ' +
+          'See the Firmware OTA Prerequisites documentation.'
+        );
       }
 
-      this.appendLog('Firmware flashed successfully. Reconnecting to node...');
+      this.appendLog('Firmware flashed successfully. Waiting for node to reboot...');
       this.updateStatus({
         state: 'in-progress',
         step: 'flash',
-        message: 'Firmware flashed successfully. Reconnecting to node...',
+        message: 'Firmware flashed successfully. Waiting for node to reboot...',
       });
 
-      // Reconnect to the node now that flashing is complete
-      logger.info('[FirmwareUpdateService] OTA flash completed — reconnecting to node');
+      // The device just rebooted into new firmware — it takes ~10–30s to come
+      // back on :4403. Reconnecting before the port is open triggers the TCP
+      // transport's auto-reconnect loop which races with later reconnect calls
+      // (e.g. from completeUpdate) and leaves the source in a "connected but
+      // no config" limbo where handleConnected fires on a torn-down transport.
+      // Poll the API port ourselves first, then reconnect synchronously once.
+      const nodeHost = parseGateway(gatewayIp).host;
+      logger.info('[FirmwareUpdateService] OTA flash completed — waiting for node to finish reboot before reconnecting');
+      try {
+        await this.waitForNodeReady(nodeHost, DEFAULT_MESHTASTIC_TCP_PORT, 120_000);
+        this.appendLog('Node is back online. Reconnecting MeshMonitor...');
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        this.appendLog(`Node did not come back within 2 minutes (${m}). Reconnect will continue in the background.`);
+        logger.warn(`[FirmwareUpdateService] Post-flash reboot wait timed out: ${m}`);
+      }
+
       await meshtasticManager.userReconnect();
       this.appendLog('Reconnected to node.');
 
@@ -878,8 +986,16 @@ export class FirmwareUpdateService {
         message: `Flash failed: ${message}`,
         error: message,
       });
-      // Reconnect on failure so MeshMonitor isn't left disconnected
+      // Reconnect on failure so MeshMonitor isn't left disconnected. Wait for
+      // the node first — it may have been mid-reboot when the flash errored
+      // out, and reconnecting into an ECONNREFUSED kicks off the auto-retry
+      // race we're explicitly trying to avoid.
       logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after flash failure');
+      try {
+        await this.waitForNodeReady(parseGateway(gatewayIp).host, DEFAULT_MESHTASTIC_TCP_PORT, 30_000);
+      } catch {
+        // Best-effort — reconnect anyway and let the transport's retry handle it.
+      }
       await meshtasticManager.userReconnect();
       throw error;
     } finally {
@@ -936,6 +1052,197 @@ export class FirmwareUpdateService {
   }
 
   // ---- Private helpers ----
+
+  /**
+   * Block until the node's API port accepts a new TCP connection, or throw.
+   * Used before OTA to confirm MeshMonitor has fully released its socket and
+   * the device is ready for the CLI to connect.
+   */
+  private async waitForNodeReady(host: string, port: number, timeoutMs: number = 15000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    let attempt = 0;
+    let lastError: string = 'unknown';
+    while (Date.now() < deadline) {
+      attempt++;
+      try {
+        await this.probePort(host, port, 2000);
+        logger.debug(`[FirmwareUpdateService] Readiness probe OK for ${host}:${port} on attempt ${attempt}`);
+        return;
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        logger.debug(`[FirmwareUpdateService] Readiness probe attempt ${attempt} failed for ${host}:${port}: ${lastError}`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+    throw new Error(`${host}:${port} did not accept a TCP connection within ${Math.round(timeoutMs / 1000)}s (last error: ${lastError})`);
+  }
+
+  /**
+   * Upload firmware directly to the MeshtasticOTA-WiFi loader on :3232.
+   *
+   * Protocol (matches meshtastic-python `ota.py ESP32WiFiOTA.update`):
+   *   1. Client → loader: `OTA <size> <hex-sha256>\n`
+   *   2. Loader → client: line-delimited status lines. May send `ERASING` first
+   *      while it wipes the OTA partition (several seconds). Client must wait
+   *      for a line whose stripped value is literally `OK` before streaming.
+   *      Any `ERR <reason>` line aborts.
+   *   3. Client → loader: raw firmware bytes in 1024-byte chunks, no framing.
+   *   4. Loader → client: after it hashes the received image, sends a second
+   *      literal `OK` on success (or `ERR <reason>`). Intermediate `ACK` lines
+   *      are logged and ignored. Only AFTER this second `OK` does the loader
+   *      commit + reboot.
+   *   5. Client closes the socket.
+   *
+   * Critical: substring-matching "OK" is wrong — the first `OK` must be a
+   * full line. Exiting after the first `OK` (before the second) leaves the
+   * device stranded in OTA loader mode.
+   */
+  private uploadOtaFirmware(host: string, port: number, firmwarePath: string): Promise<void> {
+    const fileBuffer = fs.readFileSync(firmwarePath);
+    const size = fileBuffer.length;
+    const sha256 = createHash('sha256').update(fileBuffer).digest('hex');
+    const header = `OTA ${size} ${sha256}\n`;
+
+    return new Promise((resolve, reject) => {
+      const socket = new net.Socket();
+      const OVERALL_TIMEOUT_MS = 5 * 60 * 1000;
+      const CHUNK_SIZE = 1024;
+
+      type Phase = 'handshake' | 'streaming' | 'commit' | 'done';
+      let phase: Phase = 'handshake';
+      let lineBuffer = '';
+      let bytesSent = 0;
+      let lastProgressUpdate = 0;
+      let finished = false;
+
+      const finish = (err?: Error) => {
+        if (finished) return;
+        finished = true;
+        phase = 'done';
+        clearTimeout(overallTimer);
+        socket.removeAllListeners();
+        socket.destroy();
+        if (err) reject(err); else resolve();
+      };
+
+      const overallTimer = setTimeout(() => {
+        finish(new Error(`Direct OTA upload timed out after ${OVERALL_TIMEOUT_MS / 1000}s (phase: ${phase})`));
+      }, OVERALL_TIMEOUT_MS);
+
+      const streamFirmware = () => {
+        phase = 'streaming';
+        this.updateStatus({ progress: 0, message: 'Uploading firmware: 0%' });
+        let offset = 0;
+        const writeNext = () => {
+          while (offset < size) {
+            if (finished) return;
+            const end = Math.min(offset + CHUNK_SIZE, size);
+            const chunk = fileBuffer.subarray(offset, end);
+            const okToContinue = socket.write(chunk);
+            offset = end;
+            bytesSent = offset;
+
+            const pct = Math.round((bytesSent / size) * 100);
+            const now = Date.now();
+            if (now - lastProgressUpdate >= 2000 || pct >= 100) {
+              lastProgressUpdate = now;
+              this.updateStatus({ progress: pct, message: `Uploading firmware: ${pct}%` });
+            }
+
+            if (!okToContinue) {
+              socket.once('drain', writeNext);
+              return;
+            }
+          }
+          // All bytes written. Now wait for the commit `OK`.
+          phase = 'commit';
+          this.updateStatus({ progress: 100, message: 'Waiting for loader to verify and commit firmware...' });
+          logger.debug(`[FirmwareUpdateService] Direct OTA: all ${size} bytes sent, awaiting commit OK`);
+        };
+        writeNext();
+      };
+
+      const handleLine = (line: string) => {
+        const trimmed = line.trim();
+        if (trimmed === '') return;
+        logger.debug(`[FirmwareUpdateService] Loader → ${trimmed} (phase=${phase})`);
+        if (trimmed.startsWith('ERR')) {
+          finish(new Error(`Loader reported error (phase=${phase}): ${trimmed}`));
+          return;
+        }
+        if (phase === 'handshake') {
+          if (trimmed === 'OK') {
+            logger.info('[FirmwareUpdateService] Loader accepted header, streaming firmware...');
+            streamFirmware();
+          } else if (trimmed === 'ERASING') {
+            this.updateStatus({ message: 'Loader erasing OTA partition...' });
+          }
+          // Any other line: ignore and keep waiting.
+          return;
+        }
+        if (phase === 'commit') {
+          if (trimmed === 'OK') {
+            logger.info('[FirmwareUpdateService] Loader confirmed commit — firmware accepted');
+            finish();
+          } else if (trimmed === 'ACK') {
+            // Per-chunk ACKs are advisory; ignore.
+          }
+          return;
+        }
+        // `streaming` / `done`: unexpected traffic, ignore.
+      };
+
+      socket.once('error', (err) => finish(err));
+      socket.once('close', () => {
+        if (finished) return;
+        finish(new Error(`Loader closed connection in phase "${phase}" before commit OK (last line buffer: "${lineBuffer.trim()}")`));
+      });
+
+      socket.on('data', (data: Buffer) => {
+        lineBuffer += data.toString('utf8');
+        let nl = lineBuffer.indexOf('\n');
+        while (nl !== -1 && !finished) {
+          const line = lineBuffer.slice(0, nl);
+          lineBuffer = lineBuffer.slice(nl + 1);
+          handleLine(line);
+          nl = lineBuffer.indexOf('\n');
+        }
+      });
+
+      socket.once('connect', () => {
+        logger.debug(`[FirmwareUpdateService] Direct OTA connected to ${host}:${port} (size=${size}, sha256=${sha256})`);
+        this.updateStatus({ message: 'Sending OTA header to loader...' });
+        socket.write(header);
+      });
+
+      socket.connect(port, host);
+    });
+  }
+
+  private probePort(host: string, port: number, timeoutMs: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const socket = new net.Socket();
+      const cleanup = () => {
+        socket.removeAllListeners();
+        socket.destroy();
+      };
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error(`TCP probe timeout after ${timeoutMs}ms`));
+      }, timeoutMs);
+      socket.once('connect', () => {
+        clearTimeout(timer);
+        cleanup();
+        resolve();
+      });
+      socket.once('error', (err) => {
+        clearTimeout(timer);
+        cleanup();
+        reject(err);
+      });
+      socket.connect(port, host);
+    });
+  }
 
   /**
    * Map a raw GitHub release object to our FirmwareRelease type.
