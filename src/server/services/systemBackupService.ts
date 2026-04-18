@@ -14,7 +14,11 @@ const SYSTEM_BACKUP_DIR = process.env.SYSTEM_BACKUP_DIR || '/data/system-backups
 
 // All tables that should be backed up
 // NOTE: Excluded tables per ARCHITECTURE_LESSONS.md: sessions, push_subscriptions, backup_history, sqlite_sequence
-const BACKUP_TABLES = [
+export const BACKUP_TABLES = [
+  // 'sources' must come first: every downstream table carries a sourceId
+  // foreign key, so a future restore must recreate source definitions
+  // before inserting any source-scoped rows.
+  'sources',
   'nodes',
   'messages',
   'channels',

@@ -43,7 +43,7 @@ vi.mock('../../services/database.js', () => ({
 
 // ─── Import service AFTER mocks ───────────────────────────────────────────────
 
-import { systemBackupService } from './systemBackupService.js';
+import { systemBackupService, BACKUP_TABLES } from './systemBackupService.js';
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
@@ -274,5 +274,27 @@ describe('systemBackupService.deleteBackup', () => {
 
     await systemBackupService.deleteBackup('test');
     expect(fsMock.rmSync).toHaveBeenCalled();
+  });
+});
+
+// ─── BACKUP_TABLES manifest ──────────────────────────────────────────────────
+// Regression: every downstream table carries a sourceId FK to `sources`. If
+// `sources` is missing from the manifest, restoring a backup into a clean
+// install orphans every source-scoped row and loses all Source definitions.
+
+describe('BACKUP_TABLES manifest', () => {
+  it('includes the sources table', () => {
+    expect(BACKUP_TABLES).toContain('sources');
+  });
+
+  it('lists sources before any source-scoped child table', () => {
+    const sourcesIdx = BACKUP_TABLES.indexOf('sources');
+    expect(sourcesIdx).toBeGreaterThanOrEqual(0);
+    // Child tables that carry a sourceId FK — sources must come first so a
+    // future restore can recreate source definitions before inserting children.
+    for (const child of ['nodes', 'messages', 'telemetry', 'traceroutes', 'neighbor_info']) {
+      const childIdx = BACKUP_TABLES.indexOf(child);
+      expect(childIdx).toBeGreaterThan(sourcesIdx);
+    }
   });
 });
