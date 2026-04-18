@@ -154,7 +154,7 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
   // Register with SaveBar
   useSaveBar({
     id: 'auto-key-management',
-    sectionName: t('automation.key_management.title'),
+    sectionName: t('automation.auto_key_management.title'),
     hasChanges,
     isSaving,
     onSave: handleSaveForSaveBar,

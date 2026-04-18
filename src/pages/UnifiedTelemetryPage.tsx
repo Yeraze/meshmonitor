@@ -7,8 +7,11 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { appBasename } from '../init';
 import '../styles/unified.css';
+
+type TFn = (key: string, options?: Record<string, unknown>) => string;
 
 interface TelemetryEntry {
   nodeId: string;
@@ -232,12 +235,12 @@ function formatValue(type: string, value: number): string {
 }
 
 /** Telemetry timestamps are stored in milliseconds (Unix ms). */
-function formatAge(timestampMs: number): string {
+function formatAge(timestampMs: number, t: TFn): string {
   const s = Math.max(0, Math.floor((Date.now() - timestampMs) / 1000));
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
+  if (s < 60) return t('unified.telemetry.age_seconds', { count: s });
+  if (s < 3600) return t('unified.telemetry.age_minutes', { count: Math.floor(s / 60) });
+  if (s < 86400) return t('unified.telemetry.age_hours', { count: Math.floor(s / 3600) });
+  return t('unified.telemetry.age_days', { count: Math.floor(s / 86400) });
 }
 
 type HoursOption = 1 | 6 | 24 | 72 | 168;
@@ -245,15 +248,17 @@ const HOURS_OPTIONS: HoursOption[] = [1, 6, 24, 72, 168];
 const HOURS_LABELS: Record<HoursOption, string> = { 1: '1h', 6: '6h', 24: '24h', 72: '3d', 168: '7d' };
 
 type SortKey = 'newest' | 'oldest' | 'name-asc' | 'name-desc';
-const SORT_LABELS: Record<SortKey, string> = {
-  newest: 'Newest first',
-  oldest: 'Oldest first',
-  'name-asc': 'Name (A→Z)',
-  'name-desc': 'Name (Z→A)',
+const SORT_KEYS: SortKey[] = ['newest', 'oldest', 'name-asc', 'name-desc'];
+const SORT_I18N_KEY: Record<SortKey, string> = {
+  newest: 'unified.telemetry.sort_newest',
+  oldest: 'unified.telemetry.sort_oldest',
+  'name-asc': 'unified.telemetry.sort_name_asc',
+  'name-desc': 'unified.telemetry.sort_name_desc',
 };
 
 export default function UnifiedTelemetryPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<TelemetryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -268,15 +273,15 @@ export default function UnifiedTelemetryPage() {
       const res = await fetch(`${appBasename}/api/unified/telemetry?hours=${hours}`, {
         credentials: 'include',
       });
-      if (!res.ok) { setError('Failed to load telemetry'); return; }
+      if (!res.ok) { setError(t('unified.telemetry.failed')); return; }
       setEntries(await res.json());
       setError('');
     } catch {
-      setError('Network error');
+      setError(t('unified.telemetry.network_error'));
     } finally {
       setLoading(false);
     }
-  }, [hours]);
+  }, [hours, t]);
 
   useEffect(() => {
     setLoading(true);
@@ -353,11 +358,11 @@ export default function UnifiedTelemetryPage() {
   return (
     <div className="unified-page">
       <div className="unified-header">
-        <button className="unified-header__back" onClick={() => navigate('/')}>← Sources</button>
+        <button className="unified-header__back" onClick={() => navigate('/')}>{t('unified.back_to_sources')}</button>
 
         <div className="unified-header__title">
-          <h1>Unified Telemetry</h1>
-          <p>Latest readings · all sources</p>
+          <h1>{t('unified.telemetry.title')}</h1>
+          <p>{t('unified.telemetry.subtitle')}</p>
         </div>
 
         <div className="unified-controls">
@@ -376,19 +381,19 @@ export default function UnifiedTelemetryPage() {
           <input
             className="unified-select unified-search"
             type="search"
-            placeholder="Search nodes…"
+            placeholder={t('unified.telemetry.search_placeholder')}
             value={search}
             onChange={e => setSearch(e.target.value)}
-            aria-label="Search nodes"
+            aria-label={t('unified.telemetry.search_aria')}
           />
 
           <select
             className="unified-select"
             value={sourceFilter}
             onChange={e => setSourceFilter(e.target.value)}
-            aria-label="Filter by source"
+            aria-label={t('unified.telemetry.filter_source_aria')}
           >
-            <option value="">All sources</option>
+            <option value="">{t('unified.telemetry.all_sources')}</option>
             {allSources.map(s => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
@@ -398,11 +403,11 @@ export default function UnifiedTelemetryPage() {
             className="unified-select"
             value={typeFilter}
             onChange={e => setTypeFilter(e.target.value)}
-            aria-label="Filter by type"
+            aria-label={t('unified.telemetry.filter_type_aria')}
           >
-            <option value="">All types</option>
-            {allTypes.map(t => (
-              <option key={t} value={t}>{TYPE_LABELS[t] ?? t}</option>
+            <option value="">{t('unified.telemetry.all_types')}</option>
+            {allTypes.map(tt => (
+              <option key={tt} value={tt}>{TYPE_LABELS[tt] ?? tt}</option>
             ))}
           </select>
 
@@ -410,10 +415,10 @@ export default function UnifiedTelemetryPage() {
             className="unified-select"
             value={sortKey}
             onChange={e => setSortKey(e.target.value as SortKey)}
-            aria-label="Sort nodes"
+            aria-label={t('unified.telemetry.sort_aria')}
           >
-            {(Object.keys(SORT_LABELS) as SortKey[]).map(k => (
-              <option key={k} value={k}>{SORT_LABELS[k]}</option>
+            {SORT_KEYS.map(k => (
+              <option key={k} value={k}>{t(SORT_I18N_KEY[k])}</option>
             ))}
           </select>
         </div>
@@ -436,15 +441,15 @@ export default function UnifiedTelemetryPage() {
       </div>
 
       <div className="unified-body unified-body--wide">
-        {loading && <div className="unified-empty">Loading telemetry…</div>}
+        {loading && <div className="unified-empty">{t('unified.telemetry.loading')}</div>}
         {error && <div className="unified-error">{error}</div>}
 
         {!loading && !error && Object.keys(bySource).length === 0 && (
-          <div className="unified-empty">No telemetry found in the selected time range.</div>
+          <div className="unified-empty">{t('unified.telemetry.empty_range')}</div>
         )}
 
         {!loading && !error && Object.keys(bySource).length === 0 && entries.length > 0 && (
-          <div className="unified-empty">No nodes match the current filters.</div>
+          <div className="unified-empty">{t('unified.telemetry.empty_filters')}</div>
         )}
 
         {Object.entries(bySource).map(([sourceId, nodeMap]) => {
@@ -458,7 +463,7 @@ export default function UnifiedTelemetryPage() {
                 <div className="unified-telem-source__bar" style={{ background: color }} />
                 <span className="unified-telem-source__name" style={{ color }}>{sourceName}</span>
                 <span className="unified-telem-source__count">
-                  {nodeEntries.length} node{nodeEntries.length !== 1 ? 's' : ''}
+                  {t(nodeEntries.length === 1 ? 'unified.telemetry.node_count_one' : 'unified.telemetry.node_count_other', { count: nodeEntries.length })}
                 </span>
               </div>
 
@@ -481,7 +486,7 @@ export default function UnifiedTelemetryPage() {
                     >
                       <div className="unified-node-card__header">
                         <span className="unified-node-card__name" title={nodeId}>{nodeName}</span>
-                        <span className="unified-node-card__age">{formatAge(latestTs)}</span>
+                        <span className="unified-node-card__age">{formatAge(latestTs, t)}</span>
                       </div>
                       <div className="unified-node-card__readings">
                         {readings.map(r => {

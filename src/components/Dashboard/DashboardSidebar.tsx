@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { version } from '../../../package.json';
 import type { DashboardSource, SourceStatus } from '../../hooks/useDashboardData';
 
@@ -30,17 +31,18 @@ interface DashboardSidebarProps {
 function getStatusInfo(
   source: DashboardSource,
   status: SourceStatus | null | undefined,
+  t: (key: string) => string,
 ): { dotClass: string; label: string } {
   if (!source.enabled) {
-    return { dotClass: 'disabled', label: 'Disabled' };
+    return { dotClass: 'disabled', label: t('source.status_disabled') };
   }
   if (!status) {
-    return { dotClass: 'disconnected', label: 'Connecting' };
+    return { dotClass: 'disconnected', label: t('source.status_connecting') };
   }
   if (status.connected) {
-    return { dotClass: 'connected', label: 'Connected' };
+    return { dotClass: 'connected', label: t('source.status_connected') };
   }
-  return { dotClass: 'connecting', label: 'Connecting' };
+  return { dotClass: 'connecting', label: t('source.status_connecting') };
 }
 
 interface KebabMenuProps {
@@ -58,6 +60,7 @@ const KebabMenu: React.FC<KebabMenuProps> = ({
   onToggle,
   onDelete,
 }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -76,7 +79,7 @@ const KebabMenu: React.FC<KebabMenuProps> = ({
     <div ref={menuRef} style={{ position: 'relative' }}>
       <button
         className="dashboard-kebab-btn"
-        aria-label="Source options"
+        aria-label={t('source.options')}
         onClick={(e) => {
           e.stopPropagation();
           setOpen((v) => !v);
@@ -94,7 +97,7 @@ const KebabMenu: React.FC<KebabMenuProps> = ({
               onEdit(sourceId);
             }}
           >
-            Edit
+            {t('source.kebab.edit')}
           </button>
           <button
             className="dashboard-kebab-item"
@@ -104,7 +107,7 @@ const KebabMenu: React.FC<KebabMenuProps> = ({
               onToggle(sourceId, !sourceEnabled);
             }}
           >
-            {sourceEnabled ? 'Disable' : 'Enable'}
+            {sourceEnabled ? t('source.kebab.disable') : t('source.kebab.enable')}
           </button>
           <button
             className="dashboard-kebab-item danger"
@@ -114,7 +117,7 @@ const KebabMenu: React.FC<KebabMenuProps> = ({
               onDelete(sourceId);
             }}
           >
-            Delete
+            {t('source.kebab.delete')}
           </button>
         </div>
       )}
@@ -139,6 +142,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   onNewsClick,
 }) => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   // On mobile, wrap source selection so the drawer auto-closes after tap.
   const handleSelectSource = (id: string) => {
@@ -156,21 +160,21 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
       />
       <aside className={`dashboard-sidebar${mobileOpen ? ' mobile-open' : ''}`}>
       <div className="dashboard-sidebar-header">
-        Sources
+        {t('source.header')}
         {isAdmin && (
           <button
             className="dashboard-add-source-btn"
             style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }}
             onClick={onAddSource}
           >
-            + Add
+            {t('source.add_short')}
           </button>
         )}
       </div>
 
       {sources.map((source) => {
         const status = statusMap.get(source.id);
-        const { dotClass, label } = getStatusInfo(source, status);
+        const { dotClass, label } = getStatusInfo(source, status, t);
         const nodeCount = nodeCounts.get(source.id) ?? 0;
         const isSelected = selectedSourceId === source.id;
 
@@ -204,7 +208,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
               {(() => {
                 const vn = (source.config as any)?.virtualNode;
                 return vn?.enabled ? (
-                  <span className="dashboard-source-card-badge" title="Virtual Node">
+                  <span className="dashboard-source-card-badge" title={t('source.virtual_node_badge_title')}>
                     VN:{vn.port}
                   </span>
                 ) : null;
@@ -227,7 +231,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
 
             <div className="dashboard-source-card-actions">
               {isAuthenticated ? (
-                <span className="dashboard-node-count">{nodeCount} nodes</span>
+                <span className="dashboard-node-count">{t('source.node_count', { count: nodeCount })}</span>
               ) : (
                 <span className="dashboard-lock-icon">🔒</span>
               )}
@@ -239,7 +243,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                   navigate(`/source/${source.id}`);
                 }}
               >
-                Open →
+                {t('source.open')}
               </button>
             </div>
           </div>
@@ -251,13 +255,13 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           className="dashboard-sidebar-link dashboard-sidebar-link--active"
           onClick={() => navigate('/unified/messages')}
         >
-          💬 Unified Messages
+          {t('source.sidebar.unified_messages')}
         </button>
         <button
           className="dashboard-sidebar-link dashboard-sidebar-link--active"
           onClick={() => navigate('/unified/telemetry')}
         >
-          📡 Unified Telemetry
+          {t('source.sidebar.unified_telemetry')}
         </button>
       </div>
 
@@ -268,14 +272,14 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             <>
               <button
                 className="dashboard-sidebar-footer-btn"
-                title="Users"
+                title={t('source.sidebar.users')}
                 onClick={() => navigate('/users')}
               >
                 👥
               </button>
               <button
                 className="dashboard-sidebar-footer-btn"
-                title="Settings"
+                title={t('source.sidebar.settings')}
                 onClick={() => navigate('/settings')}
               >
                 ⚙️
@@ -284,7 +288,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           )}
           <button
             className="dashboard-sidebar-footer-btn"
-            title="News"
+            title={t('source.sidebar.news')}
             onClick={onNewsClick}
             disabled={!onNewsClick}
           >
@@ -295,7 +299,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             href="https://github.com/Yeraze/meshmonitor"
             target="_blank"
             rel="noopener noreferrer"
-            title="GitHub"
+            title={t('source.sidebar.github')}
           >
             🐙
           </a>
@@ -304,7 +308,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             href="https://meshmonitor.org"
             target="_blank"
             rel="noopener noreferrer"
-            title="Website"
+            title={t('source.sidebar.website')}
           >
             🔗
           </a>

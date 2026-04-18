@@ -6,11 +6,13 @@
  */
 
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ToastProvider } from '../components/ToastContainer';
 import UsersTab from '../components/UsersTab';
 
 function UsersPageInner() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '1rem' }}>
@@ -26,7 +28,7 @@ function UsersPageInner() {
           padding: 0,
         }}
       >
-        ← Back to Dashboard
+        {t('admin.back_to_dashboard')}
       </button>
       <UsersTab />
     </div>
