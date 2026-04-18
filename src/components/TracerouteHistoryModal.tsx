@@ -37,21 +37,27 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
   const { timeFormat, dateFormat, distanceUnit } = useSettings();
 
   useEffect(() => {
+    const isMounted = { current: true };
     const fetchHistory = async () => {
       try {
         setLoading(true);
         const data = await ApiService.getTracerouteHistory(fromNodeNum, toNodeNum);
+        if (!isMounted.current) return;
         setTraceroutes(data);
         setError(null);
       } catch (err) {
+        if (!isMounted.current) return;
         console.error('Failed to fetch traceroute history:', err);
         setError(t('traceroute_history.load_error'));
       } finally {
-        setLoading(false);
+        if (isMounted.current) setLoading(false);
       }
     };
 
     fetchHistory();
+    return () => {
+      isMounted.current = false;
+    };
   }, [fromNodeNum, toNodeNum]);
 
   // Filter traceroutes based on the checkbox state

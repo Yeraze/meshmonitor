@@ -143,8 +143,10 @@ wait_for_ready() {
     done
     echo ""
 
-    # Wait for node sync: channels >= 3 AND nodes > 100
-    echo "Waiting for node sync (channels >= 3, nodes > 100, up to 90s)..."
+    # Wait for node sync: channels >= 3 AND nodes >= 15
+    # Threshold recalibrated 2026-04-17 after hardware node factory reset
+    # wiped its NodeDB (was >100, reflected pre-reset accumulated state).
+    echo "Waiting for node sync (channels >= 3, nodes >= 15, up to 90s)..."
 
     # Need to authenticate first to access channel/node APIs
     rm -f "$COOKIE_FILE" 2>/dev/null || true
@@ -196,7 +198,7 @@ wait_for_ready() {
             -b "$COOKIE_FILE" 2>/dev/null || echo "[]")
         NODE_COUNT=$(echo "$NODES_RESPONSE" | grep -o '"nodeNum"' | wc -l)
 
-        if [ "$CHANNEL_COUNT" -ge 3 ] && [ "$NODE_COUNT" -gt 100 ]; then
+        if [ "$CHANNEL_COUNT" -ge 3 ] && [ "$NODE_COUNT" -ge 15 ]; then
             echo -e "${GREEN}✓${NC} Node sync complete (channels: $CHANNEL_COUNT, nodes: $NODE_COUNT)"
             return 0
         fi
@@ -442,10 +444,12 @@ print()
 
 passed = True
 
-# 1. Node count: verify all backends reached minimum threshold (>100)
+# 1. Node count: verify all backends reached minimum threshold (>15)
 # Note: Exact counts will vary because backends run sequentially and each gets
 # a different snapshot of the mesh network as nodes are discovered over time.
-min_threshold = 100
+# Threshold recalibrated 2026-04-17 after hardware node factory reset wiped
+# its NodeDB (pre-reset count was 100+; post-reset fresh-sync is ~17-44).
+min_threshold = 15
 all_above = sqlite_count > min_threshold and pg_count > min_threshold and mysql_count > min_threshold
 if all_above:
     print(f"\033[0;32m✓ PASS\033[0m: All backends exceeded {min_threshold} nodes (SQLite={sqlite_count}, PG={pg_count}, MySQL={mysql_count})")

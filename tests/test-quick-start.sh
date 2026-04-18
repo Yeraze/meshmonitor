@@ -297,7 +297,11 @@ fi
 
 # Test 12: Wait for node connection and data sync
 echo "Test 12: Wait for Meshtastic node connection and data sync"
-echo "Waiting up to 30 seconds for channels (>=3) and nodes (>100)..."
+echo "Waiting up to 30 seconds for channels (>=3) and nodes (>=15)..."
+# Node threshold recalibrated 2026-04-17 after hardware node factory reset
+# wiped its NodeDB. Fresh-sync count now reflects active neighbors, not
+# the pre-reset accumulated NodeDB of 100+. Observed ~17-35 nodes post-reset;
+# 15 still catches a real ingest regression (we saw ~8 when broken).
 MAX_WAIT=30
 ELAPSED=0
 NODE_CONNECTED=false
@@ -314,7 +318,7 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
         -b /tmp/meshmonitor-cookies.txt)
     NODE_COUNT=$(echo "$NODES_RESPONSE" | grep -o '"id"' | wc -l)
 
-    if [ "$CHANNEL_COUNT" -ge 3 ] && [ "$NODE_COUNT" -gt 100 ]; then
+    if [ "$CHANNEL_COUNT" -ge 3 ] && [ "$NODE_COUNT" -ge 15 ]; then
         NODE_CONNECTED=true
         echo -e "${GREEN}✓ PASS${NC}: Node connected (channels: $CHANNEL_COUNT, nodes: $NODE_COUNT)"
         break
