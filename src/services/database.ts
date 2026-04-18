@@ -1439,10 +1439,16 @@ class DatabaseService {
     `);
 
     // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
+    // Column name must match baseline 001 (user_id, snake_case). Older bootstraps
+    // used camelCase `userId`, which diverged from the baseline once #2681 moved
+    // the repo to Drizzle — the Drizzle schema reads `user_id` (matching the
+    // baseline), so a legacy `userId NOT NULL` column makes inserts fail with
+    // `NOT NULL constraint failed: user_map_preferences.userId` on the first
+    // POST /api/user/map-preferences. See #2713.
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS user_map_preferences (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        userId INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
         centerLat REAL,
         centerLng REAL,
         zoom REAL,
@@ -1454,7 +1460,7 @@ class DatabaseService {
         sortDirection TEXT DEFAULT 'asc',
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
-        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       );
     `);
 

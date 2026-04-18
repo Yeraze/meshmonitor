@@ -90,7 +90,7 @@ export const customThemesPostgres = pgTable('custom_themes', {
 
 export const userMapPreferencesSqlite = sqliteTable('user_map_preferences', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  userId: integer('userId').notNull().references(() => usersSqlite.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => usersSqlite.id, { onDelete: 'cascade' }),
   centerLat: real('centerLat'),
   centerLng: real('centerLng'),
   zoom: real('zoom'),
