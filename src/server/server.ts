@@ -48,6 +48,7 @@ import { rewriteHtml } from './utils/htmlRewriter.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { PortNum } from './constants/meshtastic.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
+import { applyManagerSettings } from './applyManagerSettings.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -391,49 +392,10 @@ setTimeout(async () => {
     // Wait for database initialization (critical for PostgreSQL/MySQL where repos are async)
     await databaseService.waitForReady();
 
-    // Load saved traceroute interval from database before connecting
-    const savedInterval = await databaseService.settings.getSetting('tracerouteIntervalMinutes');
-    if (savedInterval !== null) {
-      const intervalMinutes = parseInt(savedInterval);
-      if (!isNaN(intervalMinutes) && intervalMinutes >= 0 && intervalMinutes <= 60) {
-        meshtasticManager.setTracerouteInterval(intervalMinutes);
-        logger.debug(
-          `✅ Loaded saved traceroute interval: ${intervalMinutes} minutes${intervalMinutes === 0 ? ' (disabled)' : ''}`
-        );
-      }
-    }
-
-    // Load auto key repair settings
-    const keyRepairEnabled = await databaseService.settings.getSetting('autoKeyManagementEnabled');
-    const keyRepairInterval = await databaseService.settings.getSetting('autoKeyManagementIntervalMinutes');
-    const keyRepairMaxExchanges = await databaseService.settings.getSetting('autoKeyManagementMaxExchanges');
-    const keyRepairAutoPurge = await databaseService.settings.getSetting('autoKeyManagementAutoPurge');
-    const keyRepairImmediatePurge = await databaseService.settings.getSetting('autoKeyManagementImmediatePurge');
-
-    meshtasticManager.setKeyRepairSettings({
-      enabled: keyRepairEnabled === 'true',
-      intervalMinutes: keyRepairInterval ? parseInt(keyRepairInterval) : 5,
-      maxExchanges: keyRepairMaxExchanges ? parseInt(keyRepairMaxExchanges) : 3,
-      autoPurge: keyRepairAutoPurge === 'true',
-      immediatePurge: keyRepairImmediatePurge === 'true'
-    });
-    logger.debug('✅ Loaded auto key repair settings');
-
-    // Remote admin scanner: per-source managers bootstrap themselves via
-    // startRemoteAdminScanner() on connect (reads remoteAdminScannerIntervalMinutes
-    // via getSettingForSource). No global init required.
-
-    // Load LocalStats collection interval
-    const localStatsInterval = await databaseService.settings.getSetting('localStatsIntervalMinutes');
-    if (localStatsInterval !== null) {
-      const intervalMinutes = parseInt(localStatsInterval);
-      if (!isNaN(intervalMinutes) && intervalMinutes >= 0 && intervalMinutes <= 60) {
-        meshtasticManager.setLocalStatsInterval(intervalMinutes);
-        logger.debug(
-          `✅ Loaded saved LocalStats interval: ${intervalMinutes} minutes${intervalMinutes === 0 ? ' (disabled)' : ''}`
-        );
-      }
-    }
+    // Per-source scheduler settings are applied to each manager inside the
+    // `for (const source of enabledSources)` loop below via applyManagerSettings().
+    // Globally-scoped schedulers (Announce, Timer, DistanceDelete, RemoteAdminScanner,
+    // TimeSync) self-bootstrap inside their start*Scheduler methods — no action here.
 
     // NOTE: We no longer mark existing nodes as welcomed on startup.
     // This is now handled when autoWelcomeEnabled is first changed to 'true'
@@ -490,6 +452,7 @@ setTimeout(async () => {
               port: cfg.port,
               heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
             }, source.id);
+            await applyManagerSettings(meshtasticManager, source.id, databaseService);
             await sourceManagerRegistry.addManager(meshtasticManager);
             firstTcpSourceConfigured = true;
             logger.debug(`Started primary source manager via singleton: ${source.id}`);
@@ -500,6 +463,7 @@ setTimeout(async () => {
               port: cfg.port,
               heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
             });
+            await applyManagerSettings(manager, source.id, databaseService);
             await sourceManagerRegistry.addManager(manager);
           }
         } catch (err) {
