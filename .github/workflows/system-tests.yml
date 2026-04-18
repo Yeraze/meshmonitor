@@ -14,9 +14,12 @@ on:
       - 'tests/test-*.sh'
       - '.github/workflows/system-tests.yml'
 
-# Only one system test at a time — hardware node is a shared resource
+# Scope concurrency per-PR/ref so different PRs don't cancel each other's runs.
+# The self-hosted hardware runner physically serializes execution, so runs from
+# distinct PRs will queue naturally. Only supersede in-progress runs on the SAME
+# branch (e.g. when a new commit is pushed to the same PR).
 concurrency:
-  group: system-tests
+  group: system-tests-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 permissions:
