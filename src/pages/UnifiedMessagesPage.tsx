@@ -24,9 +24,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { appBasename } from '../init';
 import '../styles/unified.css';
+
+type TFn = (key: string, options?: Record<string, unknown>) => string;
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -105,24 +108,24 @@ function formatTime(timestampMs: number): string {
   return new Date(timestampMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function formatDateDivider(timestampMs: number): string {
+function formatDateDivider(timestampMs: number, t: TFn): string {
   const d = new Date(timestampMs);
   const today = new Date();
-  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === today.toDateString()) return t('unified.messages.date_today');
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  if (d.toDateString() === yesterday.toDateString()) return t('unified.messages.date_yesterday');
   return d.toLocaleDateString();
 }
 
-function hopDisplay(start: number | null, limit: number | null): string {
+function hopDisplay(start: number | null, limit: number | null, t: TFn): string {
   if (start != null && limit != null) {
     const hops = start - limit;
-    if (hops <= 0) return 'direct';
-    return `${hops} hop${hops > 1 ? 's' : ''}`;
+    if (hops <= 0) return t('unified.messages.hop_direct');
+    return t(hops === 1 ? 'unified.messages.hop_count_one' : 'unified.messages.hop_count_other', { count: hops });
   }
-  if (start != null) return `start ${start}`;
-  if (limit != null) return `limit ${limit}`;
+  if (start != null) return t('unified.messages.hop_start_only', { value: start });
+  if (limit != null) return t('unified.messages.hop_limit_only', { value: limit });
   return '—';
 }
 
@@ -138,6 +141,7 @@ function shortSenderLabel(msg: UnifiedMessage): string {
 
 export default function UnifiedMessagesPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { authStatus } = useAuth();
   const isAuthenticated = authStatus?.authenticated ?? false;
 
@@ -373,12 +377,14 @@ export default function UnifiedMessagesPage() {
     <div className="unified-page unified-page--chat">
       <div className="unified-header">
         <button className="unified-header__back" onClick={() => navigate('/')}>
-          ← Sources
+          {t('unified.back_to_sources')}
         </button>
         <div className="unified-header__title">
-          <h1>Unified Messages</h1>
+          <h1>{t('unified.messages.title')}</h1>
           <p>
-            {selectedChannel ? `#${selectedChannel}` : 'Select a channel'} · across all accessible sources
+            {selectedChannel
+              ? t('unified.messages.subtitle_channel', { channel: selectedChannel })
+              : t('unified.messages.subtitle_none')}
           </p>
         </div>
 
@@ -388,12 +394,12 @@ export default function UnifiedMessagesPage() {
             value={selectedChannel}
             onChange={(e) => setSelectedChannel(e.target.value)}
             disabled={loadingChannels || channels.length === 0}
-            aria-label="Channel"
+            aria-label={t('unified.messages.channel_aria')}
           >
-            {channels.length === 0 && <option value="">No channels</option>}
+            {channels.length === 0 && <option value="">{t('unified.messages.no_channels')}</option>}
             {channels.map((c) => (
               <option key={c.name} value={c.name}>
-                #{c.name} ({c.sources.length})
+                {t('unified.messages.channel_option', { name: c.name, count: c.sources.length })}
               </option>
             ))}
           </select>
@@ -402,9 +408,9 @@ export default function UnifiedMessagesPage() {
             className="unified-select"
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}
-            aria-label="Source filter"
+            aria-label={t('unified.messages.source_filter_aria')}
           >
-            <option value="">All sources</option>
+            <option value="">{t('unified.messages.all_sources')}</option>
             {sourcesInView.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -416,7 +422,7 @@ export default function UnifiedMessagesPage() {
             className="unified-header__back"
             onClick={() => refetch()}
             disabled={loadingMessages}
-            title="Refresh"
+            title={t('unified.messages.refresh')}
           >
             ↻
           </button>
@@ -425,15 +431,15 @@ export default function UnifiedMessagesPage() {
 
       <div className="unified-scroll" ref={scrollRef} onScroll={handleScroll}>
       <div className="unified-body">
-        {!isAuthenticated && <div className="unified-empty">Sign in to view messages.</div>}
-        {isAuthenticated && channelsError && <div className="unified-error">Failed to load channels.</div>}
-        {isAuthenticated && messagesError && <div className="unified-error">Failed to load messages.</div>}
+        {!isAuthenticated && <div className="unified-empty">{t('unified.messages.sign_in_required')}</div>}
+        {isAuthenticated && channelsError && <div className="unified-error">{t('unified.messages.failed_channels')}</div>}
+        {isAuthenticated && messagesError && <div className="unified-error">{t('unified.messages.failed_messages')}</div>}
         {isAuthenticated && loadingMessages && feedMessages.length === 0 && (
-          <div className="unified-empty">Loading messages…</div>
+          <div className="unified-empty">{t('unified.messages.loading')}</div>
         )}
         {isAuthenticated && !loadingMessages && feedMessages.length === 0 && !messagesError && (
           <div className="unified-empty">
-            {selectedChannel ? 'No messages on this channel yet.' : 'Choose a channel to begin.'}
+            {selectedChannel ? t('unified.messages.empty_channel') : t('unified.messages.choose_channel')}
           </div>
         )}
 
@@ -444,15 +450,15 @@ export default function UnifiedMessagesPage() {
         {feedMessages.length > 0 && (
           <div ref={sentinelRef} className="unified-scroll-sentinel">
             {isFetchingNextPage
-              ? 'Loading older messages…'
+              ? t('unified.messages.loading_older')
               : hasNextPage
                 ? ''
-                : 'Beginning of history.'}
+                : t('unified.messages.history_start')}
           </div>
         )}
 
         {feedMessages.map((msg) => {
-          const dateLabel = formatDateDivider(msg.timestamp);
+          const dateLabel = formatDateDivider(msg.timestamp, t);
           const showDivider = dateLabel !== lastDateLabel;
           if (showDivider) lastDateLabel = dateLabel;
 
@@ -496,14 +502,14 @@ export default function UnifiedMessagesPage() {
                         color: sourceColor(r.sourceId),
                         border: `1px solid color-mix(in srgb, ${sourceColor(r.sourceId)} 35%, transparent)`,
                       }}
-                      title={`Heard by ${r.sourceName}`}
+                      title={t('unified.messages.heard_by_source', { name: r.sourceName })}
                     >
                       {r.sourceName}
                     </span>
                   ))}
                   {receptionCount > 1 && (
                     <span className="unified-msg-card__reception-count">
-                      heard by {receptionCount}
+                      {t('unified.messages.heard_by_count', { count: receptionCount })}
                     </span>
                   )}
                   <span className="unified-msg-card__sender">{senderLabel(msg)}</span>
@@ -514,12 +520,12 @@ export default function UnifiedMessagesPage() {
                   <div className="unified-reply-preview">
                     <span className="unified-reply-preview__arrow">↳</span>
                     <span className="unified-reply-preview__from">{shortSenderLabel(parent)}</span>
-                    <span className="unified-reply-preview__text">{parent.text || '(no text)'}</span>
+                    <span className="unified-reply-preview__text">{parent.text || t('unified.no_text')}</span>
                   </div>
                 )}
 
                 <div className="unified-msg-card__text">
-                  {msg.text || <em style={{ opacity: 0.4 }}>(no text)</em>}
+                  {msg.text || <em style={{ opacity: 0.4 }}>{t('unified.no_text')}</em>}
                 </div>
 
                 {reactions.length > 0 && (
@@ -544,17 +550,17 @@ export default function UnifiedMessagesPage() {
         <div className="unified-modal-overlay" onClick={closeStats}>
           <div className="unified-modal" onClick={(e) => e.stopPropagation()}>
             <div className="unified-modal__header">
-              <h3>Reception details</h3>
-              <button className="unified-modal__close" onClick={closeStats} aria-label="Close">
+              <h3>{t('unified.messages.modal.title')}</h3>
+              <button className="unified-modal__close" onClick={closeStats} aria-label={t('unified.close')}>
                 ×
               </button>
             </div>
             <div className="unified-modal__body">
               <div className="unified-modal__summary">
                 <div className="unified-modal__sender">{senderLabel(statsFor)}</div>
-                <div className="unified-modal__text">{statsFor.text || '(no text)'}</div>
+                <div className="unified-modal__text">{statsFor.text || t('unified.no_text')}</div>
                 <div className="unified-modal__meta">
-                  Request ID: <code>{statsFor.requestId ?? '—'}</code> · Channel:{' '}
+                  {t('unified.messages.modal.request_id')}: <code>{statsFor.requestId ?? '—'}</code> · {t('unified.messages.modal.channel')}:{' '}
                   <code>#{statsFor.channelName || statsFor.channel}</code>
                 </div>
               </div>
@@ -562,11 +568,11 @@ export default function UnifiedMessagesPage() {
               <table className="unified-modal__table">
                 <thead>
                   <tr>
-                    <th>Source</th>
-                    <th>Hops</th>
-                    <th>SNR</th>
-                    <th>RSSI</th>
-                    <th>Heard</th>
+                    <th>{t('unified.messages.modal.col_source')}</th>
+                    <th>{t('unified.messages.modal.col_hops')}</th>
+                    <th>{t('unified.messages.modal.col_snr')}</th>
+                    <th>{t('unified.messages.modal.col_rssi')}</th>
+                    <th>{t('unified.messages.modal.col_heard')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -579,7 +585,7 @@ export default function UnifiedMessagesPage() {
                         />
                         {r.sourceName}
                       </td>
-                      <td>{hopDisplay(r.hopStart, r.hopLimit)}</td>
+                      <td>{hopDisplay(r.hopStart, r.hopLimit, t)}</td>
                       <td>{r.rxSnr != null ? `${r.rxSnr.toFixed(1)} dB` : '—'}</td>
                       <td>{r.rxRssi != null ? `${r.rxRssi} dBm` : '—'}</td>
                       <td>{formatTime(r.timestamp)}</td>

@@ -7,6 +7,7 @@
  */
 
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { SettingsProvider, useSettings } from '../contexts/SettingsContext';
 import { UIProvider } from '../contexts/UIContext';
 import { SaveBarProvider } from '../contexts/SaveBarContext';
@@ -18,6 +19,7 @@ import '../styles/settings.css';
 
 function GlobalSettingsInner() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const {
     maxNodeAgeHours,
     inactiveNodeThresholdHours,
@@ -81,7 +83,7 @@ function GlobalSettingsInner() {
           padding: 0,
         }}
       >
-        ← Back to Dashboard
+        {t('admin.back_to_dashboard')}
       </button>
       <SettingsTab
         mode="global"

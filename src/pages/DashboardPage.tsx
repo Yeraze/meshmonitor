@@ -8,6 +8,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { SettingsProvider, useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useCsrf } from '../contexts/CsrfContext';
@@ -32,6 +33,7 @@ import '../styles/dashboard.css';
 // ---------------------------------------------------------------------------
 
 function DashboardInner() {
+  const { t } = useTranslation();
   const { authStatus } = useAuth();
   const { getToken } = useCsrf();
   const queryClient = useQueryClient();
@@ -157,17 +159,17 @@ function DashboardInner() {
   };
 
   const onSaveSource = async () => {
-    if (!formName.trim()) { setFormError('Name is required'); return; }
-    if (!formHost.trim()) { setFormError('Host is required'); return; }
+    if (!formName.trim()) { setFormError(t('source.form.error_name_required')); return; }
+    if (!formHost.trim()) { setFormError(t('source.form.error_host_required')); return; }
     const port = parseInt(formPort, 10);
-    if (isNaN(port) || port < 1 || port > 65535) { setFormError('Port must be 1–65535'); return; }
+    if (isNaN(port) || port < 1 || port > 65535) { setFormError(t('source.form.error_port_range')); return; }
 
     // Heartbeat interval (issue 2609): 0 = disabled, otherwise a positive
     // number of seconds. We clamp to a sane range to prevent pathological
     // configurations (sub-second floods or 24h naps that defeat the point).
     const heartbeatSeconds = parseInt(formHeartbeat, 10);
     if (isNaN(heartbeatSeconds) || heartbeatSeconds < 0 || heartbeatSeconds > 3600) {
-      setFormError('Heartbeat must be 0 (disabled) or 1–3600 seconds');
+      setFormError(t('source.form.error_heartbeat_range'));
       return;
     }
 
@@ -175,11 +177,11 @@ function DashboardInner() {
     if (formVnEnabled) {
       const vnPort = parseInt(formVnPort, 10);
       if (isNaN(vnPort) || vnPort < 1 || vnPort > 65535) {
-        setFormError('Virtual Node port must be 1–65535');
+        setFormError(t('source.form.error_vn_port_range'));
         return;
       }
       if (vnPort === port) {
-        setFormError('Virtual Node port cannot equal the source TCP port');
+        setFormError(t('source.form.error_vn_port_collision'));
         return;
       }
       vnConfig = { enabled: true, port: vnPort, allowAdminCommands: formVnAllowAdmin };
@@ -214,13 +216,13 @@ function DashboardInner() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        setFormError((err as any).error ?? 'Save failed');
+        setFormError((err as any).error ?? t('source.form.error_save_failed'));
         return;
       }
       setShowSourceModal(false);
       refreshSources();
     } catch {
-      setFormError('Network error');
+      setFormError(t('source.form.error_network'));
     } finally {
       setFormSaving(false);
     }
@@ -269,14 +271,14 @@ function DashboardInner() {
       <header className="dashboard-topbar">
         <button
           className="dashboard-topbar-hamburger"
-          aria-label={mobileSidebarOpen ? 'Close sources' : 'Open sources'}
+          aria-label={mobileSidebarOpen ? t('source.sidebar.close_sources') : t('source.sidebar.open_sources')}
           aria-expanded={mobileSidebarOpen}
           onClick={() => setMobileSidebarOpen((v) => !v)}
         >
           {mobileSidebarOpen ? '✕' : '☰'}
         </button>
         <div className="dashboard-topbar-logo">
-          <img src={`${appBasename}/logo.png`} alt="MeshMonitor Logo" className="dashboard-topbar-logo-img" />
+          <img src={`${appBasename}/logo.png`} alt={t('source.topbar.logo_alt')} className="dashboard-topbar-logo-img" />
           <span className="dashboard-topbar-title">MeshMonitor</span>
         </div>
         <div className="dashboard-topbar-actions">
@@ -287,7 +289,7 @@ function DashboardInner() {
               className="dashboard-signin-btn"
               onClick={() => setShowLogin(true)}
             >
-              🔒 Sign In
+              {t('source.topbar.sign_in')}
             </button>
           )}
         </div>
@@ -345,11 +347,11 @@ function DashboardInner() {
       {deleteConfirm && (
         <div className="dashboard-confirm-overlay">
           <div className="dashboard-confirm-dialog">
-            <h3>Delete Source</h3>
-            <p>Are you sure you want to delete this source? This will remove the source and all its data.</p>
+            <h3>{t('source.delete')}</h3>
+            <p>{t('source.delete_confirm')}</p>
             <div className="dashboard-confirm-actions">
-              <button onClick={() => setDeleteConfirm(null)}>Cancel</button>
-              <button onClick={confirmDelete}>Delete</button>
+              <button onClick={() => setDeleteConfirm(null)}>{t('common.cancel')}</button>
+              <button onClick={confirmDelete}>{t('source.kebab.delete')}</button>
             </div>
           </div>
         </div>
@@ -359,33 +361,33 @@ function DashboardInner() {
       {showSourceModal && (
         <div className="dashboard-confirm-overlay" onClick={() => setShowSourceModal(false)}>
           <div className="dashboard-confirm-dialog" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
-            <h3>{editingSourceId ? 'Edit Source' : 'Add Source'}</h3>
+            <h3>{editingSourceId ? t('source.edit') : t('source.add')}</h3>
 
             <label className="dashboard-form-field">
-              <span className="dashboard-form-label">Name</span>
+              <span className="dashboard-form-label">{t('source.form.name')}</span>
               <input
                 className="dashboard-form-input"
                 type="text"
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
-                placeholder="Home Node"
+                placeholder={t('source.form.name_placeholder')}
                 autoFocus
               />
             </label>
 
             <label className="dashboard-form-field">
-              <span className="dashboard-form-label">Host / IP</span>
+              <span className="dashboard-form-label">{t('source.form.host')}</span>
               <input
                 className="dashboard-form-input"
                 type="text"
                 value={formHost}
                 onChange={(e) => setFormHost(e.target.value)}
-                placeholder="192.168.1.100"
+                placeholder={t('source.form.host_placeholder')}
               />
             </label>
 
             <label className="dashboard-form-field">
-              <span className="dashboard-form-label">TCP Port</span>
+              <span className="dashboard-form-label">{t('source.form.tcp_port')}</span>
               <input
                 className="dashboard-form-input"
                 type="number"
@@ -396,7 +398,7 @@ function DashboardInner() {
             </label>
 
             <label className="dashboard-form-field">
-              <span className="dashboard-form-label">Heartbeat (seconds, 0 = off)</span>
+              <span className="dashboard-form-label">{t('source.form.heartbeat')}</span>
               <input
                 className="dashboard-form-input"
                 type="number"
@@ -407,24 +409,24 @@ function DashboardInner() {
                 placeholder="0"
               />
               <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
-                Sends a periodic keepalive to the node. Try 30–60s for CLIENT_MUTE or other quiet nodes that receive little mesh traffic, otherwise leave at 0.
+                {t('source.form.heartbeat_help')}
               </p>
             </label>
 
             <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
-              <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>Virtual Node</legend>
+              <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>{t('source.form.virtual_node')}</legend>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 4 }}>
                 <input
                   type="checkbox"
                   checked={formVnEnabled}
                   onChange={(e) => setFormVnEnabled(e.target.checked)}
                 />
-                Enable Virtual Node
+                {t('source.form.enable_virtual_node')}
               </label>
               {formVnEnabled && (
                 <>
                   <label className="dashboard-form-field" style={{ marginTop: 8 }}>
-                    <span className="dashboard-form-label">Virtual Node Port</span>
+                    <span className="dashboard-form-label">{t('source.form.virtual_node_port')}</span>
                     <input
                       className="dashboard-form-input"
                       type="number"
@@ -439,10 +441,10 @@ function DashboardInner() {
                       checked={formVnAllowAdmin}
                       onChange={(e) => setFormVnAllowAdmin(e.target.checked)}
                     />
-                    Allow admin commands
+                    {t('source.form.allow_admin_commands')}
                   </label>
                   <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
-                    Third-party clients connected to the virtual node can send admin commands to your Meshtastic node. Leave off unless you trust the clients.
+                    {t('source.form.allow_admin_help')}
                   </p>
                 </>
               )}
@@ -453,9 +455,9 @@ function DashboardInner() {
             )}
 
             <div className="dashboard-confirm-actions" style={{ marginTop: 16 }}>
-              <button onClick={() => setShowSourceModal(false)}>Cancel</button>
+              <button onClick={() => setShowSourceModal(false)}>{t('common.cancel')}</button>
               <button onClick={onSaveSource} disabled={formSaving} style={{ background: 'var(--ctp-blue)', color: 'var(--ctp-base)' }}>
-                {formSaving ? 'Saving...' : 'Save'}
+                {formSaving ? t('common.saving') : t('common.save')}
               </button>
             </div>
           </div>
