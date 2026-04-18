@@ -121,6 +121,10 @@ for profile in sqlite postgres mysql; do
         echo -e "${RED}✗ $profile: API exercise test FAILED${NC}"
         RESULTS+=("$profile: FAILED")
         TOTAL_FAIL=$((TOTAL_FAIL + 1))
+        # Dump container logs so CI can diagnose the failure
+        echo -e "${YELLOW}--- $CONTAINER logs (last 200 lines) ---${NC}"
+        docker logs --tail 200 "$CONTAINER" 2>&1 || true
+        echo -e "${YELLOW}--- end $CONTAINER logs ---${NC}"
     fi
 
     # Stop backend and clean volumes
