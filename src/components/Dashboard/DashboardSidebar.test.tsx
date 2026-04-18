@@ -78,37 +78,38 @@ describe('DashboardSidebar', () => {
 
   it('shows node count for authenticated users', () => {
     renderSidebar({ isAuthenticated: true });
-    expect(screen.getByText('5 nodes')).toBeInTheDocument();
-    expect(screen.getByText('3 nodes')).toBeInTheDocument();
+    // t() mock returns key with {{count}} interpolation stripped (pluralized key)
+    const counts = screen.getAllByText(/source\.node_count/);
+    expect(counts.length).toBeGreaterThanOrEqual(2);
   });
 
   it('shows lock icon and not node count for unauthenticated users', () => {
     renderSidebar({ isAuthenticated: false });
     const locks = screen.getAllByText('🔒');
     expect(locks.length).toBeGreaterThan(0);
-    expect(screen.queryByText('5 nodes')).not.toBeInTheDocument();
+    expect(screen.queryByText(/source\.node_count/)).not.toBeInTheDocument();
   });
 
   it('shows kebab menu button for admin users', () => {
     renderSidebar({ isAdmin: true });
-    const kebabBtns = screen.getAllByRole('button', { name: 'Source options' });
+    const kebabBtns = screen.getAllByRole('button', { name: 'source.options' });
     expect(kebabBtns).toHaveLength(3);
   });
 
   it('does NOT show kebab menu for non-admin users', () => {
     renderSidebar({ isAdmin: false });
-    expect(screen.queryByRole('button', { name: 'Source options' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'source.options' })).not.toBeInTheDocument();
   });
 
   it('shows sidebar navigation links', () => {
     renderSidebar();
-    expect(screen.getByRole('button', { name: /💬 Unified Messages/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /📡 Unified Telemetry/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /source\.sidebar\.unified_messages/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /source\.sidebar\.unified_telemetry/ })).toBeInTheDocument();
   });
 
   it('disables Open button for disabled sources', () => {
     renderSidebar();
-    const openButtons = screen.getAllByRole('button', { name: 'Open →' });
+    const openButtons = screen.getAllByRole('button', { name: 'source.open' });
     // src-1 (enabled) and src-2 (enabled) should NOT be disabled
     expect(openButtons[0]).not.toBeDisabled();
     expect(openButtons[1]).not.toBeDisabled();

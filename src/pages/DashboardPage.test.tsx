@@ -65,7 +65,7 @@ vi.mock('../components/Dashboard/DashboardSidebar', () => ({
     <div data-testid="dashboard-sidebar">
       {isAdmin && (
         <button type="button" onClick={onAddSource}>
-          + Add Source
+          source.add_short
         </button>
       )}
     </div>
@@ -167,7 +167,7 @@ describe('DashboardPage', () => {
 
   it('shows "Sign In" button when not authenticated', () => {
     renderPage();
-    expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /source\.topbar\.sign_in/i })).toBeInTheDocument();
   });
 
   it('shows username when authenticated', async () => {
@@ -238,16 +238,16 @@ describe('DashboardPage', () => {
       renderPage(client);
 
       // Open the add-source modal
-      fireEvent.click(screen.getByRole('button', { name: /\+ add source/i }));
+      fireEvent.click(screen.getByRole('button', { name: /source\.add_short/i }));
 
-      // Fill the minimum required fields via placeholders defined in the modal
-      const nameInput = screen.getByPlaceholderText('Home Node') as HTMLInputElement;
-      const hostInput = screen.getByPlaceholderText('192.168.1.100') as HTMLInputElement;
+      // Fill the minimum required fields via placeholders (translation keys in tests)
+      const nameInput = screen.getByPlaceholderText('source.form.name_placeholder') as HTMLInputElement;
+      const hostInput = screen.getByPlaceholderText('source.form.host_placeholder') as HTMLInputElement;
       fireEvent.change(nameInput, { target: { value: 'Test Source' } });
       fireEvent.change(hostInput, { target: { value: '10.0.0.1' } });
 
       // Save
-      fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /^common\.save$/i }));
 
       await waitFor(() => {
         expect(spy).toHaveBeenCalledWith({ queryKey: ['dashboard', 'sources'] });
@@ -267,10 +267,10 @@ describe('DashboardPage', () => {
       const { client, spy } = makeClientWithSpy();
 
       renderPage(client);
-      fireEvent.click(screen.getByRole('button', { name: /\+ add source/i }));
-      fireEvent.change(screen.getByPlaceholderText('Home Node'), { target: { value: 'X' } });
-      fireEvent.change(screen.getByPlaceholderText('192.168.1.100'), { target: { value: '1.2.3.4' } });
-      fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /source\.add_short/i }));
+      fireEvent.change(screen.getByPlaceholderText('source.form.name_placeholder'), { target: { value: 'X' } });
+      fireEvent.change(screen.getByPlaceholderText('source.form.host_placeholder'), { target: { value: '1.2.3.4' } });
+      fireEvent.click(screen.getByRole('button', { name: /^common\.save$/i }));
 
       await waitFor(() => {
         expect(global.fetch).toHaveBeenCalled();
