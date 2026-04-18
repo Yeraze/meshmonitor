@@ -8544,7 +8544,18 @@ class DatabaseService {
       return;
     }
     if (this.drizzleDbType === 'mysql') {
-      // MySQL auto-manages space; OPTIMIZE TABLE requires table names
+      // InnoDB doesn't reclaim space automatically after bulk deletes; run
+      // OPTIMIZE TABLE on each maintenance-cleaned table so the daily job
+      // actually shrinks the tablespace. OPTIMIZE TABLE on InnoDB is remapped
+      // to ALTER TABLE … FORCE which is an online DDL rebuild.
+      const optimizeTables = ['messages', 'traceroutes', 'route_segments', 'neighbor_info'];
+      for (const table of optimizeTables) {
+        try {
+          await this.mysqlPool!.query(`OPTIMIZE TABLE \`${table}\``);
+        } catch (err) {
+          logger.debug(`OPTIMIZE TABLE ${table} failed:`, err);
+        }
+      }
       return;
     }
     return this.vacuum();
