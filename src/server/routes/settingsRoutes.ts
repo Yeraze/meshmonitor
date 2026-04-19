@@ -120,9 +120,9 @@ export interface SettingsCallbacks {
   }) => void;
   restartInactiveNodeService?: (threshold: number, check: number, cooldown: number) => void;
   stopInactiveNodeService?: () => void;
-  restartAnnounceScheduler?: () => void;
-  restartTimerScheduler?: () => void;
-  restartGeofenceEngine?: () => void;
+  restartAnnounceScheduler?: (sourceId?: string | null) => void;
+  restartTimerScheduler?: (sourceId?: string | null) => void;
+  restartGeofenceEngine?: (sourceId?: string | null) => void;
   handleAutoWelcomeEnabled?: () => number;
   invalidateHtmlCache?: () => void;
   restartAutoDeleteByDistanceService?: (intervalHours: number, sourceId?: string | null) => void;
@@ -537,8 +537,28 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
 
     // Save to database
     if (sourceId) {
-      // Per-source: store with source: prefix, skip global side-effects
+      // Per-source: store with source: prefix
       await databaseService.settings.setSourceSettings(sourceId, filteredSettings);
+
+      // Per-source scheduler side-effects (announce / timer / geofence schedulers
+      // each read `getSettingForSource(this.sourceId, ...)`, so we must restart
+      // the scheduler on the matching source manager when its settings change).
+      const announceKeys = [
+        'autoAnnounceEnabled',
+        'autoAnnounceIntervalHours',
+        'autoAnnounceUseSchedule',
+        'autoAnnounceSchedule',
+      ];
+      if (announceKeys.some((key) => key in filteredSettings)) {
+        callbacks.restartAnnounceScheduler?.(sourceId);
+      }
+      if ('timerTriggers' in filteredSettings) {
+        callbacks.restartTimerScheduler?.(sourceId);
+      }
+      if ('geofenceTriggers' in filteredSettings) {
+        callbacks.restartGeofenceEngine?.(sourceId);
+      }
+
       return res.json({ success: true });
     }
 
@@ -675,15 +695,15 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
     ];
     const announceSettingsChanged = announceSettings.some((key) => key in filteredSettings);
     if (announceSettingsChanged) {
-      callbacks.restartAnnounceScheduler?.();
+      callbacks.restartAnnounceScheduler?.(null);
     }
 
     if ('timerTriggers' in filteredSettings) {
-      callbacks.restartTimerScheduler?.();
+      callbacks.restartTimerScheduler?.(null);
     }
 
     if ('geofenceTriggers' in filteredSettings) {
-      callbacks.restartGeofenceEngine?.();
+      callbacks.restartGeofenceEngine?.(null);
     }
 
     const distanceDeleteSettings = [
