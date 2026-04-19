@@ -6,6 +6,7 @@ import { Channel } from '../types/device';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSourceQuery } from '../hooks/useSourceQuery';
+import { useSource } from '../contexts/SourceContext';
 import { useSaveBar } from '../hooks/useSaveBar';
 
 interface AutoAnnounceSectionProps {
@@ -64,6 +65,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const sourceQuery = useSourceQuery();
+  const { sourceId: currentSourceId } = useSource();
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(enabled);
   const [localInterval, setLocalInterval] = useState(intervalHours || 6);
@@ -296,7 +298,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     try {
       const response = await csrfFetch(`${baseUrl}/api/announce/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentSourceId ? { sourceId: currentSourceId } : {})
       });
 
       if (!response.ok) {
