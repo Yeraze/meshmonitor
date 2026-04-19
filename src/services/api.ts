@@ -840,9 +840,10 @@ class ApiService {
     return response.json();
   }
 
-  async getLongestActiveRouteSegment() {
+  async getLongestActiveRouteSegment(sourceId?: string | null) {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/route-segments/longest-active`);
+    const qs = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+    const response = await fetch(`${this.baseUrl}/api/route-segments/longest-active${qs}`);
 
     if (!response.ok) {
       throw new Error('Failed to fetch longest active route segment');
@@ -851,9 +852,10 @@ class ApiService {
     return response.json();
   }
 
-  async getRecordHolderRouteSegment() {
+  async getRecordHolderRouteSegment(sourceId?: string | null) {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/route-segments/record-holder`);
+    const qs = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+    const response = await fetch(`${this.baseUrl}/api/route-segments/record-holder${qs}`);
 
     if (!response.ok) {
       throw new Error('Failed to fetch record holder route segment');
@@ -862,9 +864,10 @@ class ApiService {
     return response.json();
   }
 
-  async clearRecordHolderSegment() {
+  async clearRecordHolderSegment(sourceId?: string | null) {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/route-segments/record-holder`, {
+    const qs = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+    const response = await fetch(`${this.baseUrl}/api/route-segments/record-holder${qs}`, {
       method: 'DELETE',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
@@ -1272,9 +1275,10 @@ class ApiService {
     return response.json();
   }
 
-  async getSecurityKeys(): Promise<{ publicKey: string | null; privateKey: string | null }> {
+  async getSecurityKeys(sourceId?: string | null): Promise<{ publicKey: string | null; privateKey: string | null }> {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/device/security-keys`, {
+    const qs = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+    const response = await fetch(`${this.baseUrl}/api/device/security-keys${qs}`, {
       credentials: 'include'
     });
 
