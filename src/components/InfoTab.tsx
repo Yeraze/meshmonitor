@@ -17,6 +17,7 @@ import { getDeviceRoleName } from '../utils/deviceRole';
 import { getPacketDistributionStats } from '../services/packetApi';
 import { PacketDistributionStats } from '../types/packet';
 import PacketStatsChart, { ChartDataEntry, DISTRIBUTION_COLORS } from './PacketStatsChart';
+import { useSource } from '../contexts/SourceContext';
 
 interface RouteSegment {
   id: number;
@@ -71,6 +72,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
+  const { sourceId: activeSourceId } = useSource();
   const [longestActiveSegment, setLongestActiveSegment] = useState<RouteSegment | null>(null);
   const [recordHolderSegment, setRecordHolderSegment] = useState<RouteSegment | null>(null);
   const [loadingSegments, setLoadingSegments] = useState(false);
@@ -122,7 +124,8 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
     if (connectionStatus !== 'connected' || !currentNodeId) return;
 
     try {
-      const response = await fetch(`${baseUrl}/api/telemetry/${currentNodeId}?hours=1`);
+      const srcQs = activeSourceId ? `&sourceId=${encodeURIComponent(activeSourceId)}` : '';
+      const response = await fetch(`${baseUrl}/api/telemetry/${currentNodeId}?hours=1${srcQs}`);
       if (!response.ok) throw new Error('Failed to fetch local stats');
       const data = await response.json();
 
@@ -164,8 +167,8 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
     setLoadingSegments(true);
     try {
       const [longest, recordHolder] = await Promise.all([
-        apiService.getLongestActiveRouteSegment(),
-        apiService.getRecordHolderRouteSegment()
+        apiService.getLongestActiveRouteSegment(activeSourceId),
+        apiService.getRecordHolderRouteSegment(activeSourceId)
       ]);
       setLongestActiveSegment(longest);
       setRecordHolderSegment(recordHolder);
@@ -181,7 +184,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
 
     setLoadingSecurityKeys(true);
     try {
-      const keys = await apiService.getSecurityKeys();
+      const keys = await apiService.getSecurityKeys(activeSourceId);
       setSecurityKeys(keys);
     } catch (error) {
       logger.error('Error fetching security keys:', error);
@@ -205,14 +208,14 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
       }
       // 'all' = undefined (no since filter)
 
-      const distribution = await getPacketDistributionStats(since);
+      const distribution = await getPacketDistributionStats(since, undefined, undefined, activeSourceId ?? undefined);
       setPacketDistribution(distribution);
     } catch (error) {
       logger.error('Error fetching packet distribution:', error);
     } finally {
       setLoadingDistribution(false);
     }
-  }, [connectionStatus, distributionTimeRange]);
+  }, [connectionStatus, distributionTimeRange, activeSourceId]);
 
   const fetchPortnumNodeDistribution = useCallback(async () => {
     if (connectionStatus !== 'connected' || selectedPortnum === null) return;
@@ -227,14 +230,14 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
         since = now - 86400;
       }
 
-      const distribution = await getPacketDistributionStats(since, undefined, selectedPortnum);
+      const distribution = await getPacketDistributionStats(since, undefined, selectedPortnum, activeSourceId ?? undefined);
       setPortnumNodeDistribution(distribution);
     } catch (error) {
       logger.error('Error fetching portnum node distribution:', error);
     } finally {
       setLoadingPortnumNodes(false);
     }
-  }, [connectionStatus, selectedPortnum, distributionTimeRange]);
+  }, [connectionStatus, selectedPortnum, distributionTimeRange, activeSourceId]);
 
   const handleClearRecordHolder = async () => {
     setShowConfirmDialog(true);
@@ -243,7 +246,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   const confirmClearRecordHolder = async () => {
     setShowConfirmDialog(false);
     try {
-      await apiService.clearRecordHolderSegment();
+      await apiService.clearRecordHolderSegment(activeSourceId);
       setRecordHolderSegment(null);
       showToast(t('info.record_cleared'), 'success');
     } catch (error) {
@@ -260,7 +263,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
     fetchRouteSegments();
     const interval = setInterval(fetchRouteSegments, 60000); // Refresh every minute
     return () => clearInterval(interval);
-  }, [connectionStatus]);
+  }, [connectionStatus, activeSourceId]);
 
   useEffect(() => {
     fetchVirtualNodeStatus();
@@ -278,12 +281,12 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
     fetchLocalStats();
     const interval = setInterval(fetchLocalStats, 60000); // Refresh every minute
     return () => clearInterval(interval);
-  }, [connectionStatus, currentNodeId]);
+  }, [connectionStatus, currentNodeId, activeSourceId]);
 
   useEffect(() => {
     fetchSecurityKeys();
     // Only fetch once when connected and authenticated - keys don't change frequently
-  }, [connectionStatus, isAuthenticated]);
+  }, [connectionStatus, isAuthenticated, activeSourceId]);
 
   useEffect(() => {
     fetchPacketDistribution();
@@ -482,46 +485,53 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
         <div className="info-section">
           <h3>{t('info.virtual_node')}</h3>
           {loadingVirtualNode && <p>{t('common.loading_indicator')}</p>}
-          {!loadingVirtualNode && virtualNodeStatus && (
-            <>
-              <p><strong>{t('info.virtual_node_status')}</strong> {virtualNodeStatus.enabled ? t('common.enabled') : t('common.disabled')}</p>
-              {virtualNodeStatus.enabled && (
-                <>
-                  <p><strong>{t('info.server_running')}</strong> {virtualNodeStatus.isRunning ? t('common.yes') : t('common.no')}</p>
-                  <p><strong>{t('info.connected_clients')}</strong> {virtualNodeStatus.clientCount}</p>
+          {(() => {
+            if (loadingVirtualNode) return null;
+            const sources = Array.isArray(virtualNodeStatus?.sources) ? virtualNodeStatus.sources : [];
+            const source = activeSourceId
+              ? sources.find((s: any) => s.sourceId === activeSourceId)
+              : sources[0];
+            if (!source) {
+              return <p className="no-data">{t('info.virtual_node_unavailable')}</p>;
+            }
+            return (
+              <>
+                <p><strong>{t('info.virtual_node_status')}</strong> {source.enabled ? t('common.enabled') : t('common.disabled')}</p>
+                {source.enabled && (
+                  <>
+                    <p><strong>{t('info.server_running')}</strong> {source.isRunning ? t('common.yes') : t('common.no')}</p>
+                    <p><strong>{t('info.connected_clients')}</strong> {source.clientCount}</p>
 
-                  {virtualNodeStatus.clients && virtualNodeStatus.clients.length > 0 && (
-                    <div style={{ marginTop: '0.75rem', fontSize: '0.9em' }}>
-                      <strong>{t('info.client_details')}</strong>
-                      {virtualNodeStatus.clients.map((client: any) => (
-                        <div key={client.id} style={{
-                          marginTop: '0.5rem',
-                          padding: '0.5rem',
-                          backgroundColor: 'var(--ctp-surface0)',
-                          borderRadius: '4px'
-                        }}>
-                          <p style={{ margin: '0.25rem 0' }}><strong>{t('info.client_id')}</strong> {client.id}</p>
-                          <p style={{ margin: '0.25rem 0' }}><strong>{t('info.client_ip')}</strong> {client.ip}</p>
-                          <p style={{ margin: '0.25rem 0' }}><strong>{t('info.client_connected')}</strong> {formatDateTime(new Date(client.connectedAt), timeFormat, dateFormat)}</p>
-                          <p style={{ margin: '0.25rem 0' }}><strong>{t('info.client_last_activity')}</strong> {formatDateTime(new Date(client.lastActivity), timeFormat, dateFormat)}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
+                    {source.clients && source.clients.length > 0 && (
+                      <div style={{ marginTop: '0.75rem', fontSize: '0.9em' }}>
+                        <strong>{t('info.client_details')}</strong>
+                        {source.clients.map((client: any) => (
+                          <div key={client.id} style={{
+                            marginTop: '0.5rem',
+                            padding: '0.5rem',
+                            backgroundColor: 'var(--ctp-surface0)',
+                            borderRadius: '4px'
+                          }}>
+                            <p style={{ margin: '0.25rem 0' }}><strong>{t('info.client_id')}</strong> {client.id}</p>
+                            <p style={{ margin: '0.25rem 0' }}><strong>{t('info.client_ip')}</strong> {client.ip}</p>
+                            <p style={{ margin: '0.25rem 0' }}><strong>{t('info.client_connected')}</strong> {formatDateTime(new Date(client.connectedAt), timeFormat, dateFormat)}</p>
+                            <p style={{ margin: '0.25rem 0' }}><strong>{t('info.client_last_activity')}</strong> {formatDateTime(new Date(client.lastActivity), timeFormat, dateFormat)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
 
-              <p style={{ fontSize: '0.9em', color: '#888', marginTop: '0.75rem' }}>
-                {t('info.virtual_node_description')}
-              </p>
-              <p style={{ fontSize: '0.85em', color: '#999', marginTop: '0.5rem', fontStyle: 'italic' }}>
-                {t('info.virtual_node_note')}
-              </p>
-            </>
-          )}
-          {!loadingVirtualNode && !virtualNodeStatus && (
-            <p className="no-data">{t('info.virtual_node_unavailable')}</p>
-          )}
+                <p style={{ fontSize: '0.9em', color: '#888', marginTop: '0.75rem' }}>
+                  {t('info.virtual_node_description')}
+                </p>
+                <p style={{ fontSize: '0.85em', color: '#999', marginTop: '0.5rem', fontStyle: 'italic' }}>
+                  {t('info.virtual_node_note')}
+                </p>
+              </>
+            );
+          })()}
         </div>
 
         <div className="info-section">
