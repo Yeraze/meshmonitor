@@ -451,6 +451,7 @@ setTimeout(async () => {
               host: cfg.host,
               port: cfg.port,
               heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
+              virtualNode: cfg.virtualNode,
             }, source.id);
             await applyManagerSettings(meshtasticManager, source.id, databaseService);
             await sourceManagerRegistry.addManager(meshtasticManager);
@@ -462,6 +463,7 @@ setTimeout(async () => {
               host: cfg.host,
               port: cfg.port,
               heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
+              virtualNode: cfg.virtualNode,
             });
             await applyManagerSettings(manager, source.id, databaseService);
             await sourceManagerRegistry.addManager(manager);

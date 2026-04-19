@@ -459,8 +459,7 @@ export class VirtualNodeServer extends EventEmitter {
                     const targetNodeNum = Number(adminMsg.setFavoriteNode);
                     logger.info(`⭐ Virtual node: Intercepted setFavoriteNode for node ${targetNodeNum} from ${clientId}`);
 
-                    // Update database (virtual node server has no source context — default)
-                    await databaseService.nodes.setNodeFavorite(targetNodeNum, true, 'default');
+                    await databaseService.nodes.setNodeFavorite(targetNodeNum, true, this.config.meshtasticManager.sourceId);
                     logger.debug(`✅ Virtual node: Updated database - node ${targetNodeNum} is now favorite`);
 
                     // Don't block - let the command through to the physical node
@@ -471,8 +470,7 @@ export class VirtualNodeServer extends EventEmitter {
                     const targetNodeNum = Number(adminMsg.removeFavoriteNode);
                     logger.info(`☆ Virtual node: Intercepted removeFavoriteNode for node ${targetNodeNum} from ${clientId}`);
 
-                    // Update database (virtual node server has no source context — default)
-                    await databaseService.nodes.setNodeFavorite(targetNodeNum, false, 'default');
+                    await databaseService.nodes.setNodeFavorite(targetNodeNum, false, this.config.meshtasticManager.sourceId);
                     logger.debug(`✅ Virtual node: Updated database - node ${targetNodeNum} is no longer favorite`);
 
                     // Don't block - let the command through to the physical node
@@ -715,7 +713,8 @@ export class VirtualNodeServer extends EventEmitter {
    * (including disabled ones with role=0) are sent to match real firmware behavior.
    */
   private async sendChannelsFromDb(clientId: string): Promise<{ sent: number; disconnected: boolean }> {
-    const dbChannels = await databaseService.channels.getAllChannels();
+    const sourceId = this.config.meshtasticManager.sourceId;
+    const dbChannels = await databaseService.channels.getAllChannels(sourceId);
     let sent = 0;
     for (const ch of dbChannels) {
       const client = this.clients.get(clientId);
@@ -889,7 +888,7 @@ export class VirtualNodeServer extends EventEmitter {
       // --- STEP 1: MyNodeInfo (rebuilt from DB) ---
       const localNodeInfo = this.config.meshtasticManager.getLocalNodeInfo();
       if (localNodeInfo) {
-        const localNode = await databaseService.nodes.getNode(localNodeInfo.nodeNum);
+        const localNode = await databaseService.nodes.getNode(localNodeInfo.nodeNum, this.config.meshtasticManager.sourceId);
 
         let firmwareVersion = (localNodeInfo as any).firmwareVersion;
         if (!firmwareVersion && localNode?.firmwareVersion) {

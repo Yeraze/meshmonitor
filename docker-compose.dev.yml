@@ -54,6 +54,9 @@ services:
     ports:
       - "8081:3001"  # Changed to 8081 to avoid conflict with devcontainer
       - "4405:4404"  # Virtual Node Server on unique external port
+      - "4503:4503"  # Per-source VN
+      - "4504:4504"  # Per-source VN
+      - "4505:4505"  # Per-source VN
     restart: unless-stopped
     volumes:
       - meshmonitor-data:/data
@@ -97,6 +100,9 @@ services:
     ports:
       - "8081:3001"
       - "4405:4404"
+      - "4503:4503"  # Per-source VN
+      - "4504:4504"  # Per-source VN
+      - "4505:4505"  # Per-source VN
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -164,6 +170,9 @@ services:
     ports:
       - "8081:3001"
       - "4405:4404"
+      - "4503:4503"  # Per-source VN
+      - "4504:4504"  # Per-source VN
+      - "4505:4505"  # Per-source VN
     restart: unless-stopped
     volumes:
       - meshmonitor-mysql-data:/data
