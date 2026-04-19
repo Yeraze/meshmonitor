@@ -9632,8 +9632,9 @@ class MeshtasticManager implements ISourceManager {
   private async replaceWelcomeTokens(message: string, nodeNum: number, _nodeId: string): Promise<string> {
     let result = message;
 
-    // Get node info
-    const node = await databaseService.nodes.getNode(nodeNum);
+    // Get node info (scoped to this source — the same nodeNum can have a row
+    // per source, and createdAt differs per source)
+    const node = await databaseService.nodes.getNode(nodeNum, this.sourceId);
 
     // {LONG_NAME} - Node long name
     if (result.includes('{LONG_NAME}')) {

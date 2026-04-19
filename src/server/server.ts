@@ -882,9 +882,36 @@ setSettingsCallbacks({
   restartInactiveNodeService: (threshold, check, cooldown) =>
     inactiveNodeNotificationService.start(threshold, check, cooldown),
   stopInactiveNodeService: () => inactiveNodeNotificationService.stop(),
-  restartAnnounceScheduler: () => meshtasticManager.restartAnnounceScheduler(),
-  restartTimerScheduler: () => meshtasticManager.restartTimerScheduler(),
-  restartGeofenceEngine: () => meshtasticManager.restartGeofenceEngine(),
+  restartAnnounceScheduler: (sourceId?: string | null) => {
+    if (sourceId) {
+      const mgr = sourceManagerRegistry.getManager(sourceId) as typeof meshtasticManager | undefined;
+      mgr?.restartAnnounceScheduler();
+    } else {
+      for (const mgr of sourceManagerRegistry.getAllManagers() as (typeof meshtasticManager)[]) {
+        mgr.restartAnnounceScheduler();
+      }
+    }
+  },
+  restartTimerScheduler: (sourceId?: string | null) => {
+    if (sourceId) {
+      const mgr = sourceManagerRegistry.getManager(sourceId) as typeof meshtasticManager | undefined;
+      mgr?.restartTimerScheduler();
+    } else {
+      for (const mgr of sourceManagerRegistry.getAllManagers() as (typeof meshtasticManager)[]) {
+        mgr.restartTimerScheduler();
+      }
+    }
+  },
+  restartGeofenceEngine: (sourceId?: string | null) => {
+    if (sourceId) {
+      const mgr = sourceManagerRegistry.getManager(sourceId) as typeof meshtasticManager | undefined;
+      mgr?.restartGeofenceEngine();
+    } else {
+      for (const mgr of sourceManagerRegistry.getAllManagers() as (typeof meshtasticManager)[]) {
+        mgr.restartGeofenceEngine();
+      }
+    }
+  },
   handleAutoWelcomeEnabled: () => { databaseService.handleAutoWelcomeEnabledAsync().catch(() => {}); return 0; },
   invalidateHtmlCache,
   restartAutoDeleteByDistanceService: (intervalHours: number) =>
