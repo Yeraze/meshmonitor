@@ -424,9 +424,20 @@ class MeshtasticManager implements ISourceManager {
    * Apply a source config after construction.
    * Used to configure the legacy singleton when sources are loaded from DB at startup.
    */
-  configureSource(config: { host?: string; port?: number; heartbeatIntervalSeconds?: number }, sourceId?: string): void {
-    this.sourceConfigOverride = config;
+  configureSource(config: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig }, sourceId?: string): void {
+    this.sourceConfigOverride = {
+      host: config.host,
+      port: config.port,
+      heartbeatIntervalSeconds: config.heartbeatIntervalSeconds,
+    };
     if (sourceId) this.sourceId = sourceId;
+    if (config.virtualNode?.enabled && !this.virtualNodeServer) {
+      this.virtualNodeServer = new VirtualNodeServer({
+        port: config.virtualNode.port,
+        allowAdminCommands: config.virtualNode.allowAdminCommands,
+        meshtasticManager: this,
+      });
+    }
   }
 
   async start(): Promise<void> {
