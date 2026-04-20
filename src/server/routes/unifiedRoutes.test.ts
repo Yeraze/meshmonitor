@@ -321,7 +321,7 @@ describe('Unified Routes', () => {
       await request(app).get('/messages?limit=9999');
 
       // fetchLimit = limit * 2 = 1000
-      expect(mockDb.messages.getMessages).toHaveBeenCalledWith(1000, 0, SOURCE_A.id);
+      expect(mockDb.messages.getMessages).toHaveBeenCalledWith(1000, 0, SOURCE_A.id, [70]);
     });
 
     it('skips sources the user has no read permission for', async () => {
