@@ -179,4 +179,71 @@ describe('Migration 029 — nodes composite PK', () => {
     const pkCount = tableInfo.filter(c => c.pk > 0).length;
     expect(pkCount).toBe(2);
   });
+
+  // Regression: reported by MeshMATIC upgrading 3.12.0 → 4.0.0-beta6 (discussion #2619).
+  // Legacy databases carry FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum) on
+  // telemetry and route_segments (inherited from pre-baseline schema or an
+  // older Drizzle push). Rebuilding nodes to a composite PK leaves nodeNum
+  // alone no-longer-unique, which trips SQLite's RENAME-time FK compatibility
+  // check ("foreign key mismatch - telemetry referencing nodes") even with
+  // foreign_keys=OFF.
+  it('completes when child tables carry legacy FK to nodes(nodeNum)', () => {
+    db.exec(`
+      CREATE TABLE telemetry (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nodeNum INTEGER NOT NULL,
+        telemetryType TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        value REAL NOT NULL,
+        createdAt INTEGER NOT NULL,
+        FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum)
+      );
+
+      CREATE TABLE route_segments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fromNodeNum INTEGER NOT NULL,
+        toNodeNum INTEGER NOT NULL,
+        fromNodeId TEXT NOT NULL,
+        toNodeId TEXT NOT NULL,
+        distanceKm REAL NOT NULL,
+        isRecordHolder INTEGER DEFAULT 0,
+        timestamp INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL,
+        FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
+        FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
+      );
+
+      CREATE TABLE traceroutes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fromNodeNum INTEGER NOT NULL,
+        toNodeNum INTEGER NOT NULL,
+        timestamp INTEGER NOT NULL,
+        FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum) ON DELETE CASCADE,
+        FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum) ON DELETE CASCADE
+      );
+    `);
+
+    db.prepare(`INSERT INTO users (id, username) VALUES (1, 'admin')`).run();
+    insertLegacyNode(db, 100);
+    insertLegacyNode(db, 200);
+
+    db.prepare(
+      `INSERT INTO telemetry (nodeNum, telemetryType, timestamp, value, createdAt)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(100, 'voltage', 1, 3.7, 1);
+    db.prepare(
+      `INSERT INTO route_segments (fromNodeNum, toNodeNum, fromNodeId, toNodeId, distanceKm, timestamp, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(100, 200, '!00000064', '!000000c8', 1.2, 1, 1);
+
+    expect(() => migration.up(db)).not.toThrow();
+
+    const tableInfo = db.prepare(`PRAGMA table_info(nodes)`).all() as Array<{ name: string; pk: number }>;
+    const pkCols = tableInfo.filter(c => c.pk > 0).map(c => c.name).sort();
+    expect(pkCols).toEqual(['nodeNum', 'sourceId']);
+
+    // Child rows survive the rebuild.
+    expect((db.prepare(`SELECT COUNT(*) c FROM telemetry`).get() as { c: number }).c).toBe(1);
+    expect((db.prepare(`SELECT COUNT(*) c FROM route_segments`).get() as { c: number }).c).toBe(1);
+  });
 });
