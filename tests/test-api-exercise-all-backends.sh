@@ -22,15 +22,18 @@ NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-COMPOSE_FILE="docker-compose.dev.yml"
+# Use the API-test compose file, which defines test-scoped volume and container
+# names so `down -v` cleanup here cannot wipe the developer's live dev volumes.
+COMPOSE_FILE="docker-compose.api-test.yml"
 
 cd "$PROJECT_ROOT"
 
-# Backend definitions: profile -> compose service name
+# Backend definitions: profile -> compose container_name (must match the
+# container_name directives in docker-compose.api-test.yml).
 declare -A BACKENDS
-BACKENDS[sqlite]="meshmonitor-sqlite"
-BACKENDS[postgres]="meshmonitor"
-BACKENDS[mysql]="meshmonitor-mysql"
+BACKENDS[sqlite]="meshmonitor-api-test-sqlite"
+BACKENDS[postgres]="meshmonitor-api-test-postgres-app"
+BACKENDS[mysql]="meshmonitor-api-test-mysql-app"
 
 # Port for dev containers
 DEV_PORT=8081
