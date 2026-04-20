@@ -197,7 +197,23 @@ Scripts must print JSON to stdout:
 }
 ```
 
-**Optional fields** (reserved for future use):
+**Optional fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `responses` | `string[]` | Multiple response messages. If present, `response` is ignored. Each item is sent as its own mesh packet. |
+| `private` | `boolean` | Overrides the reply target. `true` forces a DM to the sender; `false` forces a reply on the channel where the trigger fired (even if the trigger was a DM). When omitted, the reply follows the original message (DM → DM, channel → channel). |
+
+**Example: force a DM reply**
+
+```python
+print(json.dumps({
+    "response": "Here is your private link",
+    "private": True,
+}))
+```
+
+**Reserved for future use:**
 ```json
 {
   "response": "Your response text",

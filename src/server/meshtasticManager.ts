@@ -8773,8 +8773,14 @@ class MeshtasticManager implements ISourceManager {
                 return;
               }
 
-              // Respond on the channel the message came from
-              const isDM = isDirectMessage;
+              // Respond on the channel the message came from, unless the script
+              // explicitly overrides the target via the "private" field:
+              //   - "private": true  -> force DM reply to the sender
+              //   - "private": false -> force channel reply even if the trigger was a DM
+              let isDM = isDirectMessage;
+              if (typeof scriptOutput.private === 'boolean') {
+                isDM = scriptOutput.private;
+              }
               // For DMs: use 3 attempts if verifyResponse is enabled, otherwise just 1 attempt
               const maxAttempts = isDM ? (trigger.verifyResponse ? 3 : 1) : 1;
               const target = isDM ? `!${message.fromNodeNum.toString(16).padStart(8, '0')}` : `channel ${message.channel}`;
