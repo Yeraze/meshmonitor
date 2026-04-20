@@ -35,8 +35,9 @@ BACKENDS[sqlite]="meshmonitor-api-test-sqlite"
 BACKENDS[postgres]="meshmonitor-api-test-postgres-app"
 BACKENDS[mysql]="meshmonitor-api-test-mysql-app"
 
-# Port for dev containers
-DEV_PORT=8081
+# Port for the API-test stack. Dedicated (8085) so tests never collide with
+# the developer's dev stack on 8081.
+DEV_PORT=8085
 BASE_URL="http://localhost:${DEV_PORT}/meshmonitor"
 
 # Track results
@@ -53,13 +54,14 @@ cleanup() {
 
 trap cleanup EXIT
 
-# Pre-flight: stop any running dev containers and clean up volumes
-echo -e "${BLUE}Stopping any running dev containers...${NC}"
+# Pre-flight: stop any stale api-test containers and clean api-test volumes.
+# This NEVER touches dev compose (docker-compose.dev.yml) or its volumes.
+echo -e "${BLUE}Stopping any stale api-test containers...${NC}"
 for profile in sqlite postgres mysql; do
     COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" down -v --remove-orphans 2>/dev/null || true
 done
-# Extra cleanup: kill any leftover containers on port 8081
-docker ps --filter "publish=8081" -q 2>/dev/null | xargs -r docker stop 2>/dev/null || true
+# Extra cleanup: kill any leftover containers on our dedicated test port
+docker ps --filter "publish=${DEV_PORT}" -q 2>/dev/null | xargs -r docker stop 2>/dev/null || true
 sleep 2
 
 for profile in sqlite postgres mysql; do
@@ -109,6 +111,11 @@ for profile in sqlite postgres mysql; do
         echo -e "${RED}✗ $profile backend failed to start${NC}"
         RESULTS+=("$profile: FAILED (startup)")
         TOTAL_FAIL=$((TOTAL_FAIL + 1))
+        echo -e "${YELLOW}--- docker compose ps ---${NC}"
+        COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" ps 2>&1 || true
+        echo -e "${YELLOW}--- $CONTAINER logs (last 200 lines) ---${NC}"
+        docker logs --tail 200 "$CONTAINER" 2>&1 || true
+        echo -e "${YELLOW}--- end $CONTAINER logs ---${NC}"
         COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
         continue
     fi

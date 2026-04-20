@@ -14,7 +14,7 @@ services:
     profiles:
       - postgres
     ports:
-      - "5432:5432"
+      - "5442:5432"
     restart: unless-stopped
     volumes:
       - postgres-api-test-data:/var/lib/postgresql/data
@@ -44,8 +44,8 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "8081:3001"
-      - "4405:4404"
+      - "8085:3001"
+      - "4415:4404"
     restart: unless-stopped
     volumes:
       - meshmonitor-api-test-postgres-data:/data
@@ -56,7 +56,7 @@ services:
       - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
       - BASE_URL=/meshmonitor
       - TZ=America/New_York
-      - ALLOWED_ORIGINS=http://localhost:8081
+      - ALLOWED_ORIGINS=http://localhost:8085
       - TRUST_PROXY=1
       - COOKIE_SECURE=false
       - DISABLE_ANONYMOUS=${DISABLE_ANONYMOUS:-false}
@@ -77,8 +77,8 @@ services:
     profiles:
       - sqlite
     ports:
-      - "8081:3001"
-      - "4405:4404"
+      - "8085:3001"
+      - "4415:4404"
     restart: unless-stopped
     volumes:
       - meshmonitor-api-test-sqlite-data:/data
@@ -89,7 +89,7 @@ services:
       - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
       - BASE_URL=/meshmonitor
       - TZ=America/New_York
-      - ALLOWED_ORIGINS=http://localhost:8081
+      - ALLOWED_ORIGINS=http://localhost:8085
       - TRUST_PROXY=1
       - COOKIE_SECURE=false
       - DISABLE_ANONYMOUS=${DISABLE_ANONYMOUS:-false}
@@ -104,7 +104,7 @@ services:
     profiles:
       - mysql
     ports:
-      - "3307:3306"
+      - "3317:3306"
     restart: unless-stopped
     volumes:
       - mysql-api-test-data:/var/lib/mysql
@@ -135,8 +135,8 @@ services:
       mysql:
         condition: service_healthy
     ports:
-      - "8081:3001"
-      - "4405:4404"
+      - "8085:3001"
+      - "4415:4404"
     restart: unless-stopped
     volumes:
       - meshmonitor-api-test-mysql-data:/data
@@ -147,7 +147,7 @@ services:
       - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
       - BASE_URL=/meshmonitor
       - TZ=America/New_York
-      - ALLOWED_ORIGINS=http://localhost:8081
+      - ALLOWED_ORIGINS=http://localhost:8085
       - TRUST_PROXY=1
       - COOKIE_SECURE=false
       - DISABLE_ANONYMOUS=${DISABLE_ANONYMOUS:-false}
