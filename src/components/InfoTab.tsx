@@ -18,6 +18,8 @@ import { getPacketDistributionStats } from '../services/packetApi';
 import { PacketDistributionStats } from '../types/packet';
 import PacketStatsChart, { ChartDataEntry, DISTRIBUTION_COLORS } from './PacketStatsChart';
 import { useSource } from '../contexts/SourceContext';
+import { useDashboardSources } from '../hooks/useDashboardData';
+import { getSourceEndpointLabel } from '../utils/sourceEndpoint';
 
 interface RouteSegment {
   id: number;
@@ -73,6 +75,11 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { sourceId: activeSourceId } = useSource();
+  const { data: dashboardSources = [] } = useDashboardSources();
+  const activeSource = activeSourceId
+    ? dashboardSources.find((s) => s.id === activeSourceId)
+    : undefined;
+  const displayNodeAddress = getSourceEndpointLabel(activeSource) ?? nodeAddress;
   const [longestActiveSegment, setLongestActiveSegment] = useState<RouteSegment | null>(null);
   const [recordHolderSegment, setRecordHolderSegment] = useState<RouteSegment | null>(null);
   const [loadingSegments, setLoadingSegments] = useState(false);
@@ -338,7 +345,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
         <div className="info-section">
           <h3>{t('info.connection_status')}</h3>
           {isAuthenticated && (
-            <p><strong>{t('info.node_address')}</strong> {nodeAddress}</p>
+            <p><strong>{t('info.node_address')}</strong> {displayNodeAddress}</p>
           )}
           {deviceConfig?.basic?.nodeId && (
             <p><strong>{t('info.node_id')}</strong> {deviceConfig.basic.nodeId}</p>
