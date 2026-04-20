@@ -497,6 +497,71 @@ function runNodesTests(getBackend: () => TestBackend) {
     expect(node!.favoriteLocked).toBe(true);
   });
 
+  it('upsertNode - preserves isFavorite when favoriteLocked=true (regression #2743)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertNode(makeNode(802), 'default');
+    await repo.setNodeFavorite(802, true, 'default', true);
+
+    // Simulate a NodeInfo sync from the device reporting isFavorite=false
+    await repo.upsertNode({ ...makeNode(802), isFavorite: false }, 'default');
+
+    const node = await repo.getNode(802);
+    expect(node!.isFavorite).toBe(true);
+    expect(node!.favoriteLocked).toBe(true);
+  });
+
+  it('upsertNode - allows isFavorite change when favoriteLocked=false', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertNode(makeNode(803), 'default');
+    await repo.setNodeFavorite(803, true, 'default', false);
+
+    await repo.upsertNode({ ...makeNode(803), isFavorite: false }, 'default');
+
+    const node = await repo.getNode(803);
+    expect(node!.isFavorite).toBe(false);
+  });
+
+  it('upsertNode - preserves positionOverride columns across updates (regression #2743)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertNode({
+      ...makeNode(804),
+      positionOverrideEnabled: true,
+      latitudeOverride: 12.34,
+      longitudeOverride: 56.78,
+      altitudeOverride: 100,
+      positionOverrideIsPrivate: false,
+    } as any, 'default');
+
+    // Simulate a mesh position packet that updates raw lat/lon but carries no override fields
+    await repo.upsertNode({
+      ...makeNode(804),
+      latitude: 1.0,
+      longitude: 2.0,
+      altitude: 50,
+    }, 'default');
+
+    const node = await repo.getNode(804) as any;
+    expect(node!.positionOverrideEnabled).toBe(true);
+    expect(Number(node!.latitudeOverride)).toBeCloseTo(12.34);
+    expect(Number(node!.longitudeOverride)).toBeCloseTo(56.78);
+    expect(Number(node!.altitudeOverride)).toBe(100);
+  });
+
   // --- setNodeIgnored ---
 
   it('setNodeIgnored - toggles ignored status', async () => {

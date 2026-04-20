@@ -6479,11 +6479,32 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // Always sync isFavorite from device to keep in sync with changes made while offline
-      // This ensures favorites are updated when reconnecting (fixes #213)
+      // This ensures favorites are updated when reconnecting (fixes #213).
+      // Exception: if favoriteLocked is set, the DB value wins and we re-push our
+      // locked flag to the device so it converges to what the user has pinned.
       if (nodeInfo.isFavorite !== undefined) {
-        nodeData.isFavorite = nodeInfo.isFavorite;
-        if (existingNode && existingNode.isFavorite !== nodeInfo.isFavorite) {
-          logger.debug(`⭐ Updating favorite status for node ${nodeId} from ${existingNode.isFavorite} to ${nodeInfo.isFavorite}`);
+        if (existingNode?.favoriteLocked) {
+          if (existingNode.isFavorite !== nodeInfo.isFavorite) {
+            logger.info(`🔒 Node ${nodeId} favoriteLocked — preserving DB isFavorite=${existingNode.isFavorite}, re-syncing to device (device reported ${nodeInfo.isFavorite})`);
+            nodeData.isFavorite = existingNode.isFavorite;
+            // Re-push the locked favorite state to the connected device
+            void (async () => {
+              try {
+                if (existingNode.isFavorite) {
+                  await this.sendFavoriteNode(nodeNum);
+                } else {
+                  await this.sendRemoveFavoriteNode(nodeNum);
+                }
+              } catch (err) {
+                logger.warn(`⚠️ Failed to re-sync locked favorite for node ${nodeId}:`, err);
+              }
+            })();
+          }
+        } else {
+          nodeData.isFavorite = nodeInfo.isFavorite;
+          if (existingNode && existingNode.isFavorite !== nodeInfo.isFavorite) {
+            logger.debug(`⭐ Updating favorite status for node ${nodeId} from ${existingNode.isFavorite} to ${nodeInfo.isFavorite}`);
+          }
         }
       }
 
