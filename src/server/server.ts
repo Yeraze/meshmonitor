@@ -407,9 +407,10 @@ setTimeout(async () => {
     await databaseService.settings.setSetting('meshtasticNodeIpOverride', '');
     await databaseService.settings.setSetting('meshtasticTcpPortOverride', '');
 
-    // Auto-create default source if none exist
+    // Auto-create default source if none exist (skippable for API-only test stacks)
+    const skipAutoSource = process.env.SKIP_AUTO_SOURCE === 'true';
     const sourceCount = await databaseService.sources.getSourceCount();
-    if (sourceCount === 0) {
+    if (sourceCount === 0 && !skipAutoSource) {
       const env = getEnvironmentConfig();
       if (env.meshtasticNodeIp) {
         await databaseService.sources.createSource({
@@ -421,6 +422,8 @@ setTimeout(async () => {
         });
         logger.info(`📡 Auto-created default source from environment config`);
       }
+    } else if (skipAutoSource) {
+      logger.info(`⏭️  SKIP_AUTO_SOURCE=true — not creating default source`);
     }
 
     // Assign legacy NULL sourceId rows to the default source (Phase 2 data migration).

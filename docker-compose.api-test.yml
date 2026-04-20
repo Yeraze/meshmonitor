@@ -64,16 +64,10 @@ services:
       - ACCESS_LOG_PATH=/data/logs/access.log
       - ACCESS_LOG_FORMAT=combined
       - ENABLE_VIRTUAL_NODE=false
-      # When MESHTASTIC_NODE_IP is set in the host .env (local dev, points at
-      # the real test node at 192.168.5.106), use it. On CI the workflow does
-      # `touch .env` producing an empty file, so fall back to loopback — the
-      # auto-created source fails fast with ECONNREFUSED instead of spending
-      # ~30s per cycle on EHOSTUNREACH trying to route to the hardcoded
-      # default 192.168.1.100 that is not reachable from the CI runner's
-      # Docker network. The api-exercise test exercises HTTP endpoints and
-      # does not require a live mesh connection.
-      - MESHTASTIC_NODE_IP=${MESHTASTIC_NODE_IP:-127.0.0.1}
-      - MESHTASTIC_TCP_PORT=${MESHTASTIC_TCP_PORT:-4403}
+      # API-exercise tests hit HTTP endpoints only; don't auto-create a
+      # Meshtastic source that would try to TCP-connect to a node that is
+      # unreachable from the CI runner's container network.
+      - SKIP_AUTO_SOURCE=true
 
   meshmonitor-sqlite:
     build:
@@ -107,16 +101,10 @@ services:
       - ACCESS_LOG_PATH=/data/logs/access.log
       - ACCESS_LOG_FORMAT=combined
       - ENABLE_VIRTUAL_NODE=false
-      # When MESHTASTIC_NODE_IP is set in the host .env (local dev, points at
-      # the real test node at 192.168.5.106), use it. On CI the workflow does
-      # `touch .env` producing an empty file, so fall back to loopback — the
-      # auto-created source fails fast with ECONNREFUSED instead of spending
-      # ~30s per cycle on EHOSTUNREACH trying to route to the hardcoded
-      # default 192.168.1.100 that is not reachable from the CI runner's
-      # Docker network. The api-exercise test exercises HTTP endpoints and
-      # does not require a live mesh connection.
-      - MESHTASTIC_NODE_IP=${MESHTASTIC_NODE_IP:-127.0.0.1}
-      - MESHTASTIC_TCP_PORT=${MESHTASTIC_TCP_PORT:-4403}
+      # API-exercise tests hit HTTP endpoints only; don't auto-create a
+      # Meshtastic source that would try to TCP-connect to a node that is
+      # unreachable from the CI runner's container network.
+      - SKIP_AUTO_SOURCE=true
 
   mysql:
     image: mysql:8
@@ -175,16 +163,10 @@ services:
       - ACCESS_LOG_PATH=/data/logs/access.log
       - ACCESS_LOG_FORMAT=combined
       - ENABLE_VIRTUAL_NODE=false
-      # When MESHTASTIC_NODE_IP is set in the host .env (local dev, points at
-      # the real test node at 192.168.5.106), use it. On CI the workflow does
-      # `touch .env` producing an empty file, so fall back to loopback — the
-      # auto-created source fails fast with ECONNREFUSED instead of spending
-      # ~30s per cycle on EHOSTUNREACH trying to route to the hardcoded
-      # default 192.168.1.100 that is not reachable from the CI runner's
-      # Docker network. The api-exercise test exercises HTTP endpoints and
-      # does not require a live mesh connection.
-      - MESHTASTIC_NODE_IP=${MESHTASTIC_NODE_IP:-127.0.0.1}
-      - MESHTASTIC_TCP_PORT=${MESHTASTIC_TCP_PORT:-4403}
+      # API-exercise tests hit HTTP endpoints only; don't auto-create a
+      # Meshtastic source that would try to TCP-connect to a node that is
+      # unreachable from the CI runner's container network.
+      - SKIP_AUTO_SOURCE=true
 
 volumes:
   meshmonitor-api-test-postgres-data:
