@@ -6,6 +6,7 @@ import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
 import { filterNodesByChannelPermission, maskNodeLocationByChannel } from '../utils/nodeEnhancer.js';
+import { PortNum } from '../constants/meshtastic.js';
 
 const router = Router();
 
@@ -373,7 +374,11 @@ router.get('/:id/messages', requirePermission('messages', 'read', { sourceIdFrom
 
     const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
     const offset = parseInt(req.query.offset as string) || 0;
-    const messages = await databaseService.messages.getMessages(limit, offset, source.id);
+    // Exclude traceroute responses from the per-source UI feed. The client
+    // filters them out anyway (they render from the `traceroutes` table);
+    // letting them occupy slots in the capped window evicts real DMs
+    // (issue #2741).
+    const messages = await databaseService.messages.getMessages(limit, offset, source.id, [PortNum.TRACEROUTE_APP]);
     res.json(messages);
   } catch (error) {
     logger.error('Error fetching messages for source:', error);

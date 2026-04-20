@@ -4346,9 +4346,13 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         // visibility belongs in the dedicated unified views (/unified/messages).
         // When no sourceId is provided (legacy single-source clients), fall
         // back to the global fetch.
+        // Exclude traceroute responses from the poll window. The UI filters
+        // them out of message lists (they render from the `traceroutes`
+        // table), so including them only wastes slots in the fixed-size
+        // window and evicts real DMs (issue #2741).
         const dbMessagesRaw = pollSourceId
-          ? await databaseService.messages.getMessages(100, 0, pollSourceId)
-          : await databaseService.messages.getMessages(100);
+          ? await databaseService.messages.getMessages(100, 0, pollSourceId, [PortNum.TRACEROUTE_APP])
+          : await databaseService.messages.getMessages(100, 0, undefined, [PortNum.TRACEROUTE_APP]);
 
         let messages: MeshMessage[] = dbMessagesRaw.map(
           msg => transformDbMessageToMeshMessage(msg as any as DbMessage)

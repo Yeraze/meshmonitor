@@ -9,6 +9,7 @@ import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
 import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
+import { PortNum } from '../constants/meshtastic.js';
 
 const router = Router();
 
@@ -279,7 +280,10 @@ router.get('/messages', async (req: Request, res: Response) => {
           );
         } else {
           // Legacy: no channel filter. Cursor-less offset fetch.
-          msgs = await databaseService.messages.getMessages(fetchLimit, 0, source.id);
+          // Exclude traceroute responses — the UI filters them out of message
+          // lists, so they'd only waste slots in the capped window and evict
+          // real DMs (issue #2741).
+          msgs = await databaseService.messages.getMessages(fetchLimit, 0, source.id, [PortNum.TRACEROUTE_APP]);
           if (before !== undefined) {
             msgs = msgs.filter((m) => (m.rxTime ?? m.timestamp) < before);
           }
