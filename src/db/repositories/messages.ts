@@ -4,7 +4,7 @@
  * Handles all message-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, gt, lt, gte, and, or, desc, sql, like, ilike, inArray, isNotNull, ne, SQL, count } from 'drizzle-orm';
+import { eq, gt, lt, gte, and, or, desc, sql, like, ilike, inArray, isNotNull, isNull, ne, notInArray, SQL, count } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbMessage } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -91,14 +91,30 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
-   * Get messages with pagination, ordered by rxTime/timestamp desc
+   * Get messages with pagination, ordered by rxTime/timestamp desc.
+   *
+   * `excludePortnums` drops rows whose portnum matches any in the list. NULL
+   * portnums are always retained (legacy rows predate the column). UI feeds
+   * pass `[PortNum.TRACEROUTE_APP]` so traceroute rows don't consume the
+   * fixed-size window the client filters down to text messages (issue #2741).
    */
-  async getMessages(limit: number = 100, offset: number = 0, sourceId?: string): Promise<DbMessage[]> {
+  async getMessages(
+    limit: number = 100,
+    offset: number = 0,
+    sourceId?: string,
+    excludePortnums?: number[],
+  ): Promise<DbMessage[]> {
     const { messages } = this.tables;
+    const whereClause = (excludePortnums && excludePortnums.length > 0)
+      ? and(
+          this.withSourceScope(messages, sourceId),
+          or(isNull(messages.portnum), notInArray(messages.portnum, excludePortnums)),
+        )
+      : this.withSourceScope(messages, sourceId);
     const result = await this.db
       .select()
       .from(messages)
-      .where(this.withSourceScope(messages, sourceId))
+      .where(whereClause)
       .orderBy(desc(sql`COALESCE(${messages.rxTime}, ${messages.timestamp})`))
       .limit(limit)
       .offset(offset);

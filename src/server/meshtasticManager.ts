@@ -12141,7 +12141,11 @@ class MeshtasticManager implements ISourceManager {
   }
 
   async getRecentMessages(limit: number = 50, sourceId?: string): Promise<MeshMessage[]> {
-    const dbMessages = await databaseService.messages.getMessages(limit, 0, sourceId);
+    // Exclude traceroute responses: the UI filters them out of message lists
+    // anyway (they render from the `traceroutes` table), so including them
+    // here only wastes slots in the fixed-size window and evicts real DMs
+    // (issue #2741).
+    const dbMessages = await databaseService.messages.getMessages(limit, 0, sourceId, [PortNum.TRACEROUTE_APP]);
     return dbMessages.map(msg => ({
       id: msg.id,
       from: msg.fromNodeId,
