@@ -142,6 +142,23 @@ export const migration = {
     const cols = db.prepare(`PRAGMA table_info(route_segments)`).all() as Array<{ name: string }>;
     const hasSourceId = cols.some((c) => c.name === 'sourceId');
 
+    // Legacy databases carry `route_segments.fromNodeNum/toNodeNum REFERENCES
+    // nodes(nodeNum)` FKs. Migration 029 swapped nodes to a composite PK
+    // (nodeNum, sourceId), so nodeNum alone is no longer unique and the FK is
+    // structurally broken. Any ALTER/DELETE/INSERT on route_segments then
+    // trips SQLite's FK compatibility check with "foreign key mismatch" —
+    // even with foreign_keys=OFF, ALTER TABLE still validates parent key
+    // matching unless legacy_alter_table=ON. Disable both for the rebuild
+    // and restore them in finally.
+    const prevForeignKeys = db.pragma('foreign_keys', { simple: true }) as number;
+    if (prevForeignKeys) {
+      db.pragma('foreign_keys = OFF');
+    }
+    const prevLegacyAlter = db.pragma('legacy_alter_table', { simple: true }) as number;
+    if (!prevLegacyAlter) {
+      db.pragma('legacy_alter_table = ON');
+    }
+
     const tx = db.transaction(() => {
       if (!hasSourceId) {
         db.exec(`ALTER TABLE route_segments ADD COLUMN sourceId TEXT`);
@@ -218,6 +235,13 @@ export const migration = {
         return;
       }
       throw err;
+    } finally {
+      if (prevForeignKeys) {
+        db.pragma('foreign_keys = ON');
+      }
+      if (!prevLegacyAlter) {
+        db.pragma('legacy_alter_table = OFF');
+      }
     }
 
     logger.info('Migration 030 complete (SQLite)');

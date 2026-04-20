@@ -165,6 +165,21 @@ export const migration = {
       db.pragma('foreign_keys = OFF');
     }
 
+    // Legacy databases (upgrades from pre-baseline v3 or early Drizzle pushes)
+    // carry FK declarations like `telemetry.nodeNum REFERENCES nodes(nodeNum)`
+    // and `route_segments.fromNodeNum REFERENCES nodes(nodeNum)`. When we
+    // rebuild nodes to a composite PK (nodeNum, sourceId), nodeNum alone is no
+    // longer unique, so SQLite's RENAME-time FK compatibility check raises
+    // "foreign key mismatch — <child> referencing nodes" even with FK
+    // enforcement disabled. Switching legacy_alter_table=ON tells SQLite to
+    // skip the rewrite/validation during RENAME, which is exactly what we
+    // want here: the child FKs are already unenforceable and the app doesn't
+    // rely on DB-level FK integrity to the nodes table.
+    const prevLegacyAlter = db.pragma('legacy_alter_table', { simple: true }) as number;
+    if (!prevLegacyAlter) {
+      db.pragma('legacy_alter_table = ON');
+    }
+
     const tx = db.transaction(() => {
       // Count nodes requiring backfill (rows with NULL sourceId).
       const nullNodesRow = db.prepare(`SELECT COUNT(*) as c FROM nodes WHERE sourceId IS NULL`).get() as { c: number };
@@ -239,16 +254,33 @@ export const migration = {
       // Per SQLite docs: after a table rebuild with FKs disabled, verify that
       // the rebuild didn't leave any orphaned rows. foreign_key_check returns
       // one row per violating row — empty result means the schema is healthy.
+      // foreign_key_check itself raises "foreign key mismatch" when a child
+      // FK references a now-non-unique parent column (legacy DBs with
+      // telemetry.nodeNum → nodes(nodeNum) hit this after the composite PK
+      // swap). Swallow that — the FK is unenforceable post-rebuild and the
+      // app doesn't depend on it.
       if (prevForeignKeys) {
-        const violations = db.prepare(`PRAGMA foreign_key_check`).all() as Array<{ table: string; rowid: number; parent: string; fkid: number }>;
-        if (violations.length > 0) {
-          // Log but don't fail — these violations pre-existed the migration
-          // and we don't want to prevent the upgrade from completing. The same
-          // rows were already being tolerated before the rebuild.
-          logger.warn(
-            `Migration 029 (SQLite): foreign_key_check reports ${violations.length} pre-existing orphan row(s); tolerating:`,
-            violations.slice(0, 5),
-          );
+        try {
+          const violations = db.prepare(`PRAGMA foreign_key_check`).all() as Array<{ table: string; rowid: number; parent: string; fkid: number }>;
+          if (violations.length > 0) {
+            // Log but don't fail — these violations pre-existed the migration
+            // and we don't want to prevent the upgrade from completing. The
+            // same rows were already being tolerated before the rebuild.
+            logger.warn(
+              `Migration 029 (SQLite): foreign_key_check reports ${violations.length} pre-existing orphan row(s); tolerating:`,
+              violations.slice(0, 5),
+            );
+          }
+        } catch (checkErr: any) {
+          const checkMsg = String(checkErr?.message || checkErr);
+          if (/foreign key mismatch/i.test(checkMsg)) {
+            logger.warn(
+              'Migration 029 (SQLite): legacy child FKs to nodes(nodeNum) no longer match composite PK; tolerating:',
+              checkMsg,
+            );
+          } else {
+            throw checkErr;
+          }
         }
       }
     } catch (err: any) {
@@ -259,10 +291,13 @@ export const migration = {
       }
       throw err;
     } finally {
-      // Always restore the original FK state — even on success, we must not
-      // leave the database in a looser mode than we found it.
+      // Always restore the original pragma state — even on success, we must
+      // not leave the database in a looser mode than we found it.
       if (prevForeignKeys) {
         db.pragma('foreign_keys = ON');
+      }
+      if (!prevLegacyAlter) {
+        db.pragma('legacy_alter_table = OFF');
       }
     }
 
