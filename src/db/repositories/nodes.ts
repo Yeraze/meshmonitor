@@ -177,7 +177,9 @@ export class NodesRepository extends BaseRepository {
           rssi: nodeData.rssi ?? existingNode.rssi,
           firmwareVersion: nodeData.firmwareVersion ?? existingNode.firmwareVersion,
           channel: nodeData.channel ?? existingNode.channel,
-          isFavorite: nodeData.isFavorite ?? existingNode.isFavorite,
+          isFavorite: existingNode.favoriteLocked
+            ? existingNode.isFavorite
+            : (nodeData.isFavorite ?? existingNode.isFavorite),
           mobile: nodeData.mobile ?? existingNode.mobile,
           rebootCount: nodeData.rebootCount ?? existingNode.rebootCount,
           publicKey: nodeData.publicKey ?? existingNode.publicKey,
@@ -192,6 +194,11 @@ export class NodesRepository extends BaseRepository {
           positionChannel: nodeData.positionChannel ?? existingNode.positionChannel,
           positionPrecisionBits: nodeData.positionPrecisionBits ?? existingNode.positionPrecisionBits,
           positionTimestamp: this.coerceBigintField(nodeData.positionTimestamp ?? existingNode.positionTimestamp),
+          positionOverrideEnabled: nodeData.positionOverrideEnabled ?? existingNode.positionOverrideEnabled,
+          latitudeOverride: nodeData.latitudeOverride ?? existingNode.latitudeOverride,
+          longitudeOverride: nodeData.longitudeOverride ?? existingNode.longitudeOverride,
+          altitudeOverride: nodeData.altitudeOverride ?? existingNode.altitudeOverride,
+          positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? existingNode.positionOverrideIsPrivate,
           updatedAt: now,
         })
         .where(and(eq(nodes.nodeNum, nodeData.nodeNum), eq(nodes.sourceId, effectiveSourceId)));
@@ -234,6 +241,11 @@ export class NodesRepository extends BaseRepository {
         positionChannel: nodeData.positionChannel ?? null,
         positionPrecisionBits: nodeData.positionPrecisionBits ?? null,
         positionTimestamp: this.coerceBigintField(nodeData.positionTimestamp),
+        positionOverrideEnabled: nodeData.positionOverrideEnabled ?? false,
+        latitudeOverride: nodeData.latitudeOverride ?? null,
+        longitudeOverride: nodeData.longitudeOverride ?? null,
+        altitudeOverride: nodeData.altitudeOverride ?? null,
+        positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? false,
         createdAt: now,
         updatedAt: now,
       } as any;
@@ -281,6 +293,11 @@ export class NodesRepository extends BaseRepository {
         positionChannel: nodeData.positionChannel ?? null,
         positionPrecisionBits: nodeData.positionPrecisionBits ?? null,
         positionTimestamp: this.coerceBigintField(nodeData.positionTimestamp),
+        positionOverrideEnabled: nodeData.positionOverrideEnabled ?? false,
+        latitudeOverride: nodeData.latitudeOverride ?? null,
+        longitudeOverride: nodeData.longitudeOverride ?? null,
+        altitudeOverride: nodeData.altitudeOverride ?? null,
+        positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? false,
         updatedAt: now,
       };
 
