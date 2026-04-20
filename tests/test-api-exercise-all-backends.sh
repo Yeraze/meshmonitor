@@ -4,6 +4,12 @@
 # Runs the API exercise test against SQLite, PostgreSQL, and MySQL backends
 # to verify response structure consistency across all databases.
 #
+# Pattern matches tests/test-database-backing.sh: each backend runs in its
+# own inline compose file with test-scoped volume names. This guarantees
+# `docker compose down -v` NEVER touches the developer's dev volumes
+# (`meshmonitor_meshmonitor-sqlite-data`, etc.) because the compose files
+# here do not reference them.
+#
 # Usage: tests/test-api-exercise-all-backends.sh
 
 set -e
@@ -22,19 +28,16 @@ NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-COMPOSE_FILE="docker-compose.dev.yml"
-
 cd "$PROJECT_ROOT"
 
-# Backend definitions: profile -> compose service name
-declare -A BACKENDS
-BACKENDS[sqlite]="meshmonitor-sqlite"
-BACKENDS[postgres]="meshmonitor"
-BACKENDS[mysql]="meshmonitor-mysql"
+# Test configuration
+TEST_NODE_IP="${TEST_NODE_IP:-192.168.5.106}"
+TEST_PORT="8085"
+BASE_URL="http://localhost:${TEST_PORT}/meshmonitor"
 
-# Port for dev containers
-DEV_PORT=8081
-BASE_URL="http://localhost:${DEV_PORT}/meshmonitor"
+SQLITE_COMPOSE="docker-compose.api-exercise-sqlite-test.yml"
+POSTGRES_COMPOSE="docker-compose.api-exercise-postgres-test.yml"
+MYSQL_COMPOSE="docker-compose.api-exercise-mysql-test.yml"
 
 # Track results
 TOTAL_PASS=0
@@ -42,96 +45,191 @@ TOTAL_FAIL=0
 RESULTS=()
 
 cleanup() {
-    echo -e "${BLUE}Cleaning up all backends...${NC}"
-    for profile in sqlite postgres mysql; do
-        COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
-    done
+    echo -e "${BLUE}Cleaning up api-exercise test artifacts...${NC}"
+    # These compose files reference only test-scoped volumes; safe to -v.
+    docker compose -f "$SQLITE_COMPOSE" down -v 2>/dev/null || true
+    docker compose -f "$POSTGRES_COMPOSE" down -v 2>/dev/null || true
+    docker compose -f "$MYSQL_COMPOSE" down -v 2>/dev/null || true
+    rm -f "$SQLITE_COMPOSE" "$POSTGRES_COMPOSE" "$MYSQL_COMPOSE" 2>/dev/null || true
 }
 
 trap cleanup EXIT
 
-# Pre-flight: stop any running dev containers and clean up volumes
-echo -e "${BLUE}Stopping any running dev containers...${NC}"
-for profile in sqlite postgres mysql; do
-    COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" down -v --remove-orphans 2>/dev/null || true
-done
-# Extra cleanup: kill any leftover containers on port 8081
-docker ps --filter "publish=8081" -q 2>/dev/null | xargs -r docker stop 2>/dev/null || true
-sleep 2
+wait_for_ready() {
+    local NAME="$1"
+    local CONTAINER="$2"
+    local MAX_WAIT="${3:-120}"
 
-for profile in sqlite postgres mysql; do
-    CONTAINER="${BACKENDS[$profile]}"
+    echo -e "${BLUE}Waiting for $NAME API (up to ${MAX_WAIT}s)...${NC}"
+    for i in $(seq 1 "$MAX_WAIT"); do
+        local HTTP_STATUS
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/csrf-token" 2>/dev/null || echo "000")
+        if [ "$HTTP_STATUS" = "200" ]; then
+            echo -e "${GREEN}✓${NC} $NAME API ready"
+            return 0
+        fi
+        sleep 1
+    done
+
+    echo -e "${RED}✗${NC} $NAME API did not become ready"
+    echo -e "${YELLOW}--- $CONTAINER logs (last 100 lines) ---${NC}"
+    docker logs --tail 100 "$CONTAINER" 2>&1 || true
+    echo -e "${YELLOW}--- end $CONTAINER logs ---${NC}"
+    return 1
+}
+
+run_backend() {
+    local NAME="$1"
+    local COMPOSE_FILE="$2"
+    local CONTAINER="$3"
+    local MAX_WAIT="$4"
 
     echo ""
     echo "=========================================="
-    echo -e "${BLUE}Testing $profile backend${NC}"
+    echo -e "${BLUE}Testing $NAME backend${NC}"
     echo "=========================================="
 
-    # Start backend
-    echo -e "${BLUE}Starting $profile...${NC}"
-    COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" up -d 2>/dev/null
+    docker compose -f "$COMPOSE_FILE" up -d
 
-    # MySQL needs extra time for database initialization
-    if [ "$profile" = "mysql" ]; then
-        echo -e "${BLUE}Waiting for MySQL database to be healthy...${NC}"
-        for i in $(seq 1 60); do
-            if COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep -q "healthy"; then
-                echo -e "${GREEN}✓ MySQL database healthy${NC}"
-                break
-            fi
-            sleep 3
-        done
-    fi
-
-    # Wait for container to be healthy (up to 3 minutes)
-    echo -e "${BLUE}Waiting for $CONTAINER to be ready...${NC}"
-    READY=false
-    for i in $(seq 1 90); do
-        if COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" ps "$CONTAINER" 2>/dev/null | grep -q "Up"; then
-            # Check if API responds
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/health" 2>/dev/null || echo "000")
-            if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "404" ]; then
-                # Also check auth endpoint (more reliable)
-                HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/csrf-token" 2>/dev/null || echo "000")
-                if [ "$HTTP_STATUS" = "200" ]; then
-                    READY=true
-                    break
-                fi
-            fi
-        fi
-        sleep 2
-    done
-
-    if [ "$READY" = false ]; then
-        echo -e "${RED}✗ $profile backend failed to start${NC}"
-        RESULTS+=("$profile: FAILED (startup)")
+    if ! wait_for_ready "$NAME" "$CONTAINER" "$MAX_WAIT"; then
+        RESULTS+=("$NAME: FAILED (startup)")
         TOTAL_FAIL=$((TOTAL_FAIL + 1))
-        COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
-        continue
+        docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
+        return
     fi
 
-    echo -e "${GREEN}✓ $profile backend ready${NC}"
-
-    # Run the API exercise test
     if bash "$SCRIPT_DIR/api-exercise-test.sh" "$BASE_URL"; then
-        echo -e "${GREEN}✓ $profile: API exercise test PASSED${NC}"
-        RESULTS+=("$profile: PASSED")
+        echo -e "${GREEN}✓ $NAME: API exercise test PASSED${NC}"
+        RESULTS+=("$NAME: PASSED")
         TOTAL_PASS=$((TOTAL_PASS + 1))
     else
-        echo -e "${RED}✗ $profile: API exercise test FAILED${NC}"
-        RESULTS+=("$profile: FAILED")
+        echo -e "${RED}✗ $NAME: API exercise test FAILED${NC}"
+        RESULTS+=("$NAME: FAILED")
         TOTAL_FAIL=$((TOTAL_FAIL + 1))
-        # Dump container logs so CI can diagnose the failure
         echo -e "${YELLOW}--- $CONTAINER logs (last 200 lines) ---${NC}"
         docker logs --tail 200 "$CONTAINER" 2>&1 || true
         echo -e "${YELLOW}--- end $CONTAINER logs ---${NC}"
     fi
 
-    # Stop backend and clean volumes
-    echo -e "${BLUE}Stopping $profile...${NC}"
-    COMPOSE_PROFILES="$profile" docker compose -f "$COMPOSE_FILE" down -v --remove-orphans 2>/dev/null || true
-    sleep 3
-done
+    docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
+}
+
+# ===== SQLite =====
+cat > "$SQLITE_COMPOSE" << EOF
+services:
+  meshmonitor-api-exercise-sqlite:
+    container_name: meshmonitor-api-exercise-sqlite-test
+    image: meshmonitor:test
+    ports:
+      - "$TEST_PORT:3001"
+    volumes:
+      - meshmonitor-api-exercise-sqlite-test-data:/data
+    environment:
+      - NODE_ENV=production
+      - MESHTASTIC_NODE_IP=$TEST_NODE_IP
+      - DATABASE_PATH=/data/meshmonitor.db
+      - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
+      - BASE_URL=/meshmonitor
+      - TZ=America/New_York
+      - ALLOWED_ORIGINS=http://localhost:$TEST_PORT
+      - TRUST_PROXY=1
+      - COOKIE_SECURE=false
+      - LOG_LEVEL=info
+
+volumes:
+  meshmonitor-api-exercise-sqlite-test-data:
+EOF
+
+run_backend "sqlite" "$SQLITE_COMPOSE" "meshmonitor-api-exercise-sqlite-test" 90
+
+# ===== PostgreSQL =====
+cat > "$POSTGRES_COMPOSE" << EOF
+services:
+  postgres:
+    container_name: meshmonitor-api-exercise-postgres-db
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=meshmonitor
+      - POSTGRES_USER=meshmonitor
+      - POSTGRES_PASSWORD=testpass123
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U meshmonitor -d meshmonitor"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  meshmonitor-api-exercise-postgres:
+    container_name: meshmonitor-api-exercise-postgres-test
+    image: meshmonitor:test
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "$TEST_PORT:3001"
+    volumes:
+      - meshmonitor-api-exercise-postgres-test-data:/data
+    environment:
+      - NODE_ENV=production
+      - MESHTASTIC_NODE_IP=$TEST_NODE_IP
+      - DATABASE_URL=postgres://meshmonitor:testpass123@postgres:5432/meshmonitor
+      - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
+      - BASE_URL=/meshmonitor
+      - TZ=America/New_York
+      - ALLOWED_ORIGINS=http://localhost:$TEST_PORT
+      - TRUST_PROXY=1
+      - COOKIE_SECURE=false
+      - LOG_LEVEL=info
+
+volumes:
+  meshmonitor-api-exercise-postgres-test-data:
+EOF
+
+run_backend "postgres" "$POSTGRES_COMPOSE" "meshmonitor-api-exercise-postgres-test" 120
+
+# ===== MySQL =====
+cat > "$MYSQL_COMPOSE" << EOF
+services:
+  mysql:
+    container_name: meshmonitor-api-exercise-mysql-db
+    image: mysql:8
+    environment:
+      - MYSQL_DATABASE=meshmonitor
+      - MYSQL_USER=meshmonitor
+      - MYSQL_PASSWORD=testpass123
+      - MYSQL_ROOT_PASSWORD=rootpass123
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  meshmonitor-api-exercise-mysql:
+    container_name: meshmonitor-api-exercise-mysql-test
+    image: meshmonitor:test
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "$TEST_PORT:3001"
+    volumes:
+      - meshmonitor-api-exercise-mysql-test-data:/data
+    environment:
+      - NODE_ENV=production
+      - MESHTASTIC_NODE_IP=$TEST_NODE_IP
+      - DATABASE_URL=mysql://meshmonitor:testpass123@mysql:3306/meshmonitor
+      - SESSION_SECRET=qlskjerhqlwkjehrlqkwejh
+      - BASE_URL=/meshmonitor
+      - TZ=America/New_York
+      - ALLOWED_ORIGINS=http://localhost:$TEST_PORT
+      - TRUST_PROXY=1
+      - COOKIE_SECURE=false
+      - LOG_LEVEL=info
+
+volumes:
+  meshmonitor-api-exercise-mysql-test-data:
+EOF
+
+run_backend "mysql" "$MYSQL_COMPOSE" "meshmonitor-api-exercise-mysql-test" 180
 
 # Summary
 echo ""
