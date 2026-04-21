@@ -15,6 +15,7 @@ import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as net from 'net';
 import * as path from 'path';
+import { assertSafeUrl, SsrfBlockedError } from '../utils/ssrfGuard.js';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import meshtasticManager from '../meshtasticManager.js';
@@ -716,6 +717,19 @@ export class FirmwareUpdateService {
     });
 
     try {
+      // Block SSRF targets (private IPs, link-local, loopback) and non-http(s)
+      // schemes before opening a fetch. Defense in depth — downloadUrl
+      // originates from release metadata but is user-influenced via release
+      // selection.
+      try {
+        await assertSafeUrl(downloadUrl);
+      } catch (ssrfError) {
+        if (ssrfError instanceof SsrfBlockedError) {
+          throw new Error(`Refusing to download firmware from disallowed URL (${ssrfError.reason})`);
+        }
+        throw ssrfError;
+      }
+
       const tempDir = fs.mkdtempSync(path.join(DATA_DIR, 'firmware-tmp-'));
       this.tempDir = tempDir;
 
@@ -725,10 +739,22 @@ export class FirmwareUpdateService {
       }
 
       const arrayBuffer = await response.arrayBuffer();
-      const zipPath = path.join(tempDir, 'firmware.zip');
-      fs.writeFileSync(zipPath, Buffer.from(arrayBuffer));
-
       const downloadSize = arrayBuffer.byteLength;
+
+      // Cap download size at 100 MB — largest legitimate Meshtastic firmware
+      // release is ~20 MB. Prevents an attacker-controlled URL from exhausting
+      // disk space.
+      const MAX_FIRMWARE_BYTES = 100 * 1024 * 1024;
+      if (downloadSize > MAX_FIRMWARE_BYTES) {
+        throw new Error(`Firmware download exceeds ${MAX_FIRMWARE_BYTES} byte limit (got ${downloadSize})`);
+      }
+
+      const zipPath = path.resolve(path.join(tempDir, 'firmware.zip'));
+      const resolvedTempDir = path.resolve(tempDir);
+      if (!zipPath.startsWith(resolvedTempDir + path.sep)) {
+        throw new Error('Refusing to write firmware zip outside of temp directory');
+      }
+      fs.writeFileSync(zipPath, Buffer.from(arrayBuffer));
 
       this.updateStatus({
         state: 'awaiting-confirm',
@@ -1114,7 +1140,16 @@ export class FirmwareUpdateService {
    * device stranded in OTA loader mode.
    */
   private uploadOtaFirmware(host: string, port: number, firmwarePath: string): Promise<void> {
-    const fileBuffer = fs.readFileSync(firmwarePath);
+    // Only allow reading firmware from paths rooted under DATA_DIR. This
+    // closes the file-access-to-http path where an attacker-influenced
+    // `firmwarePath` could exfiltrate arbitrary local files over the OTA
+    // socket.
+    const resolvedDataDir = path.resolve(DATA_DIR);
+    const resolvedFirmwarePath = path.resolve(firmwarePath);
+    if (!resolvedFirmwarePath.startsWith(resolvedDataDir + path.sep)) {
+      return Promise.reject(new Error('Refusing to upload firmware from outside data directory'));
+    }
+    const fileBuffer = fs.readFileSync(resolvedFirmwarePath);
     const size = fileBuffer.length;
     const sha256 = createHash('sha256').update(fileBuffer).digest('hex');
     const header = `OTA ${size} ${sha256}\n`;

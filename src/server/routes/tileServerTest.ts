@@ -233,7 +233,16 @@ function checkLayerCompatibility(foundLayers: string[]): {
 /**
  * Test a single tile URL
  */
-async function testTileUrl(url: string, timeout: number = 5000): Promise<TileTestResult> {
+// Cap user-supplied timeouts so a large value cannot hold a request / abort
+// controller open long enough to cause resource exhaustion.
+const MAX_TILE_TEST_TIMEOUT_MS = 30_000;
+function clampTimeout(raw: unknown): number {
+  const n = typeof raw === 'number' && Number.isFinite(raw) ? raw : 5000;
+  return Math.max(1000, Math.min(n, MAX_TILE_TEST_TIMEOUT_MS));
+}
+
+async function testTileUrl(url: string, rawTimeout: number = 5000): Promise<TileTestResult> {
+  const timeout = clampTimeout(rawTimeout);
   const startTime = Date.now();
   const result: TileTestResult = {
     success: false,

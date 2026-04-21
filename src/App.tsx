@@ -632,9 +632,14 @@ function App() {
       packetmonitor: () => packetLogEnabled && hasPermission('packetmonitor', 'read'),
     };
 
-    // Check if current tab requires permission
-    const permissionCheck = tabPermissions[activeTab];
-    if (permissionCheck && !permissionCheck()) {
+    // Check if current tab requires permission. `activeTab` is user-controllable
+    // (via URL hash) so only look it up when it is an own-property on the
+    // hard-coded `tabPermissions` object — this prevents walking the
+    // prototype chain into things like `toString`.
+    const permissionCheck = Object.prototype.hasOwnProperty.call(tabPermissions, activeTab)
+      ? (tabPermissions as Record<string, () => boolean>)[activeTab]
+      : undefined;
+    if (typeof permissionCheck === 'function' && !permissionCheck()) {
       // User doesn't have permission - redirect to nodes tab
       logger.info(`[Auth] Redirecting from '${activeTab}' tab - insufficient permissions`);
       setActiveTab('nodes');

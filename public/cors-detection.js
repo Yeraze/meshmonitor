@@ -2,6 +2,19 @@
 let corsErrorCount = 0;
 let appLoaded = false;
 
+// Strip ASCII C0/C1 control chars + DEL before logging untrusted input to
+// prevent log-injection (CWE-117). Built via RegExp() so this source file
+// never contains literal control characters.
+const CORS_CONTROL_CHAR_RE = new RegExp('[\\x00-\\x1F\\x7F-\\x9F]+', 'g');
+function sanitizeForLog(value) {
+  if (typeof value === 'string') return value.replace(CORS_CONTROL_CHAR_RE, ' ');
+  try {
+    return String(value).replace(CORS_CONTROL_CHAR_RE, ' ');
+  } catch (_e) {
+    return '[unprintable]';
+  }
+}
+
 // Detect PWA standalone mode (iOS and standard)
 const isStandalone = window.matchMedia('(display-mode: standalone)').matches
   || window.navigator.standalone === true;
@@ -47,7 +60,7 @@ window.fetch = function(...args) {
     if (errorMessage.includes('cors') || errorMessage.includes('access-control') ||
         errorMessage.includes('cross-origin') || errorName.includes('cors')) {
       corsErrorCount++;
-      console.log('[CORS Detection] CORS fetch error on', url, 'count:', corsErrorCount);
+      console.log('[CORS Detection] CORS fetch error on', sanitizeForLog(url), 'count:', corsErrorCount);
       if (corsErrorCount >= 2) {
         redirectToCorsError();
       }
@@ -59,7 +72,7 @@ window.fetch = function(...args) {
         const urlStr = typeof url === 'string' ? url : url.toString();
         if (urlStr.includes('/api/') || urlStr.includes('/auth/')) {
           corsErrorCount++;
-          console.log('[CORS Detection] Likely CORS error (failed to fetch API)', url, 'count:', corsErrorCount);
+          console.log('[CORS Detection] Likely CORS error (failed to fetch API)', sanitizeForLog(url), 'count:', corsErrorCount);
           if (corsErrorCount >= 2) {
             redirectToCorsError();
           }

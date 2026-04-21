@@ -71,7 +71,11 @@ class ApiService {
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase())) {
       const csrfToken = this.getCsrfToken();
       const tokenStatus = csrfToken ? `Found (${csrfToken.substring(0,8)}...)` : 'NOT FOUND';
-      console.log(`[API] ${method} ${endpoint} - CSRF token:`, tokenStatus);
+      // Pass method/endpoint as separate args rather than interpolating them
+      // into the format string — console.log treats the first arg as a format
+      // string under some runtimes and caller-controlled %s/%d can break
+      // formatting.
+      console.log('[API]', method, endpoint, '- CSRF token:', tokenStatus);
 
       // Also check sessionStorage directly
       const directCheck = sessionStorage.getItem('csrfToken');

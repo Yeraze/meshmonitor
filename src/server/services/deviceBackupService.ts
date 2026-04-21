@@ -93,10 +93,13 @@ class YAMLGenerator {
         return value;
       }
 
-      // Escape strings that need quoting (contains special YAML chars)
-      // Note: base64: values and tzdef are excluded above, so : in those won't trigger quoting
+      // Escape strings that need quoting (contains special YAML chars).
+      // Note: base64: values and tzdef are excluded above, so `:` in those
+      // won't trigger quoting here. We must escape backslashes BEFORE quotes
+      // so a value like `foo\\"` doesn't round-trip as an unterminated escape.
       if (value.includes(':') || value.includes('#') || value.includes('\n') || value.startsWith(' ') || value.endsWith(' ')) {
-        return `"${value.replace(/"/g, '\\"')}"`;
+        const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        return `"${escaped}"`;
       }
       return value;
     }
