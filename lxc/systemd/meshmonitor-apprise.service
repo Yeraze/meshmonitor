@@ -1,6 +1,7 @@
 [Unit]
 Description=MeshMonitor Apprise Notification Service
-Documentation=https://github.com/jeremiah-k/meshmonitor
+Documentation=https://meshmonitor.org/
+Documentation=https://github.com/Yeraze/meshmonitor
 After=network.target
 PartOf=meshmonitor.service
 
