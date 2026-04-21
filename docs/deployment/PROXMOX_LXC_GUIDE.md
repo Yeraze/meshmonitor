@@ -248,9 +248,12 @@ COOKIE_SAMESITE=lax
 # Optional - CORS
 ALLOWED_ORIGINS=http://localhost:8080
 
-# Optional - Virtual Node (for mobile apps)
-ENABLE_VIRTUAL_NODE=false
-VIRTUAL_NODE_PORT=4404
+# Virtual Node (for mobile apps)
+# NOTE: In MeshMonitor 4.0+ Virtual Node is configured per-source via
+# Dashboard → Sources → Edit Source → Virtual Node. The old
+# ENABLE_VIRTUAL_NODE / VIRTUAL_NODE_PORT env vars were removed.
+# If you want mobile apps to reach a source's Virtual Node, expose
+# the port you configure in the Source's Virtual Node settings.
 
 # Optional - Notifications
 VAPID_PUBLIC_KEY=

@@ -1,5 +1,15 @@
 # Docker Compose Configurator
 
+::: tip 4.0 Multi-Source
+This configurator sets up your **first / primary node only**. The `MESHTASTIC_NODE_IP` / `MESHTASTIC_TCP_PORT` values seed MeshMonitor's first source on initial boot.
+
+- **Add more Meshtastic nodes** — once running, use **Dashboard → Sources → Add Source** in the UI. No container restart, no compose edits.
+- **Virtual Node** — enable per-source from **Dashboard → Edit Source → Virtual Node**.
+- **Additional bridges or sidecars** (extra BLE Bridge, extra Serial Bridge, a second MQTT Proxy, etc.) — the configurator publishes **one** of each. If you need a second instance for a second node, you'll need to hand-edit the generated `docker-compose.yml` to add another bridge/sidecar service with its own container name, device mapping, and port.
+
+See [Multi-Source](/features/multi-source) for the full source model.
+:::
+
 <DockerComposeConfigurator />
 
 ## Need Help?
@@ -39,7 +49,7 @@ After deploying with the generated configuration:
 
 ### Security Options
 
-- **Virtual Node**: When enabled, allows multiple Meshtastic mobile apps to connect to MeshMonitor simultaneously without overwhelming your physical node. Highly recommended.
+- **Plan to use Virtual Node**: Publishes a host port so mobile apps (and the optional MQTT Proxy) can reach MeshMonitor's Virtual Node once you enable it. In 4.0 the Virtual Node is a **per-source** setting — enable it and choose an in-container port in **Dashboard → Edit Source → Virtual Node** after startup. The legacy `ENABLE_VIRTUAL_NODE` / `VIRTUAL_NODE_PORT` / `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` environment variables were removed.
 - **Disable Anonymous Access**: When enabled, users must authenticate before accessing MeshMonitor. Useful for deployments accessible from the internet.
 
 ### Additional Settings

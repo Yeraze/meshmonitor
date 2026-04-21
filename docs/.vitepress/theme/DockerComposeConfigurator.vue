@@ -8,8 +8,20 @@
 
     <!-- Connection Type -->
     <section class="config-section">
-      <h3>1. Connection Type</h3>
-      <p class="help-text">How is your Meshtastic node connected?</p>
+      <h3>1. Connection Type (Primary Node)</h3>
+      <p class="help-text">
+        How is your <strong>first / primary</strong> Meshtastic node connected? This configurator
+        bootstraps a single node — once MeshMonitor is running, add more nodes from
+        <strong>Dashboard &rarr; Sources &rarr; Add Source</strong> in the web UI.
+      </p>
+      <div class="info-box" style="margin-bottom: 1rem;">
+        <strong>&#9888; Multiple bridges/sidecars must be added by hand:</strong>
+        The configurator publishes <em>one</em> BLE Bridge, <em>one</em> Serial Bridge, and
+        <em>one</em> MQTT Proxy. If you need a second BLE/Serial node or a second sidecar
+        instance, hand-edit the generated <code>docker-compose.yml</code> to add another
+        container with its own name, device mapping, and port — then point it at MeshMonitor
+        as an additional source.
+      </div>
 
       <div class="radio-group">
         <label class="radio-option" :class="{ selected: config.connectionType === 'tcp' }">
@@ -180,14 +192,26 @@
 
     <!-- Security Settings -->
     <section class="config-section">
-      <h3>{{ config.deploymentMode === 'production-proxy' ? '6' : '5' }}. Security Settings</h3>
+      <h3>{{ config.deploymentMode === 'production-proxy' ? '6' : '5' }}. Security &amp; Virtual Node</h3>
+
+      <div class="info-box" style="margin-bottom: 1rem;">
+        <strong>🆕 4.0 Breaking Change — Virtual Node is now per-source</strong>
+        <p style="margin: 0.25rem 0 0 0; font-size: 0.9rem;">
+          The old <code>ENABLE_VIRTUAL_NODE</code>, <code>VIRTUAL_NODE_PORT</code>, and
+          <code>VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS</code> environment variables
+          <strong>were removed</strong> and are not emitted below. Enable Virtual Node
+          per source in <strong>Dashboard → Edit Source → Virtual Node</strong> after
+          your container starts. See
+          <a href="/features/multi-source#virtual-node">Multi-Source: Virtual Node</a>.
+        </p>
+      </div>
 
       <div class="checkbox-group">
         <label class="checkbox-option">
-          <input type="checkbox" v-model="config.enableVirtualNode" />
+          <input type="checkbox" v-model="config.planVirtualNode" />
           <div class="option-content">
-            <strong>Enable Virtual Node</strong>
-            <span class="option-desc">Allows multiple Meshtastic mobile apps to connect simultaneously</span>
+            <strong>Plan to use Virtual Node (publish host port)</strong>
+            <span class="option-desc">Exposes a host port so mobile apps and MQTT proxy can connect once you enable VN on a source</span>
           </div>
         </label>
 
@@ -200,8 +224,8 @@
         </label>
       </div>
 
-      <div v-if="config.enableVirtualNode" class="form-group">
-        <label for="virtualNodePort">Virtual Node Port</label>
+      <div v-if="config.planVirtualNode" class="form-group">
+        <label for="virtualNodePort">Virtual Node Host Port</label>
         <input
           id="virtualNodePort"
           v-model="config.virtualNodePort"
@@ -209,17 +233,10 @@
           placeholder="4404"
           class="text-input"
         />
-        <p class="field-help">Port for Meshtastic mobile apps to connect (default: 4404)</p>
-
-        <div class="checkbox-group" style="margin-top: 1rem;">
-          <label class="checkbox-option">
-            <input type="checkbox" v-model="config.allowVirtualNodeAdminCommands" />
-            <div class="option-content">
-              <strong>Allow Admin Commands</strong>
-              <span class="option-desc">⚠️ Allow admin commands through virtual node (reduces security, use only if multiple services need access)</span>
-            </div>
-          </label>
-        </div>
+        <p class="field-help">
+          Host port to publish. Match this value to the <strong>in-container port</strong>
+          you set in the Virtual Node section of the source's edit dialog (default: 4404).
+        </p>
       </div>
     </section>
 
@@ -485,8 +502,13 @@
         <strong>📡 MQTT Proxy Setup:</strong>
         <ol>
           <li>Configure MQTT on your node with <strong>Client Proxy mode enabled</strong></li>
-          <li>The proxy connects to MeshMonitor's Virtual Node (port {{ config.virtualNodePort }}) - Virtual Node is auto-enabled</li>
-          <li>It reads MQTT settings directly from your node - no duplicate configuration needed</li>
+          <li>
+            After the container starts, enable Virtual Node on the source in
+            <strong>Dashboard → Edit Source → Virtual Node</strong> using port
+            <code>{{ config.virtualNodePort }}</code> (the proxy talks to it over the
+            internal Docker network as <code>meshmonitor:{{ config.virtualNodePort }}</code>)
+          </li>
+          <li>The proxy reads MQTT settings from your node through the Virtual Node — no duplicate configuration needed</li>
           <li>Messages are forwarded bidirectionally between your mesh and the MQTT broker</li>
         </ol>
         <p style="margin-top: 1rem; font-size: 0.9rem;">
@@ -543,6 +565,24 @@
           </li>
           <li>Run <code>docker compose up -d</code> to start MeshMonitor<span v-if="config.enableAutoUpgrade"> (the upgrade watchdog script will be automatically deployed to the data volume)</span></li>
           <li>Access MeshMonitor at {{ accessUrl }}</li>
+          <li>
+            <strong>🆕 4.0 — Finish setup in the UI.</strong>
+            The <code>MESHTASTIC_NODE_IP</code> / <code>MESHTASTIC_TCP_PORT</code> values
+            above bootstrap the <em>first / primary</em> source only. To add more nodes,
+            rename the source, or change connection details, use
+            <strong>Dashboard → Sources</strong> — no container restart required.
+            <span v-if="config.planVirtualNode || config.enableMqttProxy">
+              Enable Virtual Node on the source in <strong>Dashboard → Edit Source → Virtual Node</strong>
+              using port <code>{{ config.virtualNodePort }}</code> to match the published host port.
+            </span>
+            See <a href="/features/multi-source">Multi-Source</a> for details.
+          </li>
+          <li>
+            <strong>Additional bridges &amp; sidecars are manual.</strong>
+            If a second node also needs BLE Bridge, Serial Bridge, or MQTT Proxy, hand-edit
+            this <code>docker-compose.yml</code> to add another container (unique name, unique
+            device mapping, unique port), then add it as a source in the UI.
+          </li>
         </ol>
       </div>
     </section>
@@ -563,9 +603,8 @@ const config = ref({
   hostname: '',
   useHttps: true,
   webPort: 8080,
-  enableVirtualNode: true,
+  planVirtualNode: true,
   virtualNodePort: 4404,
-  allowVirtualNodeAdminCommands: false,
   disableAnonymous: false,
   databaseType: 'sqlite',
   includePostgresContainer: true,
@@ -589,10 +628,11 @@ const config = ref({
 const copiedDockerCompose = ref(false)
 const copiedEnv = ref(false)
 
-// Auto-enable Virtual Node when MQTT Proxy is enabled (MQTT Proxy requires Virtual Node)
+// Auto-publish the Virtual Node host port when MQTT Proxy is enabled
+// (MQTT Proxy connects through the Virtual Node, which must be enabled per-source in the UI)
 watch(() => config.value.enableMqttProxy, (newValue) => {
-  if (newValue && !config.value.enableVirtualNode) {
-    config.value.enableVirtualNode = true
+  if (newValue && !config.value.planVirtualNode) {
+    config.value.planVirtualNode = true
   }
 })
 
@@ -694,7 +734,9 @@ const dockerComposeYaml = computed(() => {
   lines.push('    container_name: meshmonitor')
   lines.push('    ports:')
   lines.push(`      - "${config.value.webPort}:3001"`)
-  if (config.value.enableVirtualNode && config.value.connectionType !== 'ble') {
+  if (config.value.planVirtualNode && config.value.connectionType !== 'ble') {
+    // Publishes the host port for Virtual Node. The in-container port
+    // must match — configure it per-source in Dashboard → Edit Source → Virtual Node.
     lines.push(`      - "${config.value.virtualNodePort}:${config.value.virtualNodePort}"`)
   }
   lines.push('    restart: unless-stopped')
@@ -743,16 +785,10 @@ const dockerComposeYaml = computed(() => {
     lines.push(`      - ALLOWED_ORIGINS=http://localhost:${config.value.webPort}`)
   }
 
-  // Virtual Node
-  if (config.value.enableVirtualNode) {
-    lines.push('      - ENABLE_VIRTUAL_NODE=true')
-    if (config.value.virtualNodePort !== 4404) {
-      lines.push(`      - VIRTUAL_NODE_PORT=${config.value.virtualNodePort}`)
-    }
-    if (config.value.allowVirtualNodeAdminCommands) {
-      lines.push('      - VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS=true')
-    }
-  }
+  // Virtual Node is configured per-source in the UI starting in 4.0
+  // (ENABLE_VIRTUAL_NODE / VIRTUAL_NODE_PORT / VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS env vars were removed).
+  // The host port above is published so the in-container VN (set in Dashboard → Edit Source)
+  // is reachable from mobile apps and the MQTT Proxy.
 
   // Disable Anonymous
   if (config.value.disableAnonymous) {

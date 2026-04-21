@@ -2,6 +2,11 @@
 
 MeshMonitor supports two notification methods: **Web Push** notifications for browsers/PWAs and **Apprise** for external notification services. Choose the method that works best for your needs, or use both!
 
+::: tip 4.0 — notifications are scoped
+- **Per-user, per-source Apprise URLs** — set from **Settings → Notifications**; each user configures their own URLs for each source they subscribe to, so home-source alerts can go to your phone without spamming the warehouse-mesh Discord channel.
+- **Security Digest Apprise URL** — a single admin-set URL in **Settings → Security** that fires the weak-key / duplicate-key digest, independent of any user's preferences.
+:::
+
 ![Notifications](/images/features/notifications.png)
 
 ## Overview

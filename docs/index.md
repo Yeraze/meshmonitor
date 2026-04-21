@@ -3,11 +3,11 @@ layout: home
 
 hero:
   name: "MeshMonitor"
-  text: "Your mesh. Your data."
-  tagline: "Self-hosted Meshtastic monitoring with real-time maps, alerts, and full network awareness."
+  text: "One dashboard. Every mesh."
+  tagline: "Self-hosted Meshtastic monitoring for multi-source networks — real-time maps, alerts, per-source permissions, and full network awareness."
   image:
-    src: /images/main.png
-    alt: MeshMonitor interactive map view
+    src: /images/features/dashboard-multi-source.png
+    alt: MeshMonitor dashboard showing multiple Meshtastic sources
   actions:
     - theme: brand
       text: Get Started
@@ -16,65 +16,69 @@ hero:
       text: View on GitHub
       link: https://github.com/yeraze/meshmonitor
 features:
+  - icon: 🛰️
+    title: Multi-Source Networks
+    details: Connect to multiple Meshtastic nodes at once over TCP — including Serial or BLE nodes fronted by the Serial Bridge or BLE Bridge sidecars (MQTT and MeshCore source types coming soon). Unified map, messages, telemetry, and traceroute views stay scoped per-source with a single click. Ideal for multi-site deployments, backup gateways, and combining a home node with a repeater.
+
+  - icon: 🔐
+    title: Per-Source Permissions
+    details: Grant users access to specific sources, not the whole deployment. Shared dashboards, separate operators, and read-only guests all coexist. Admin-managed Users page, SSO support, and MFA round out the access model.
+
+  - icon: 🌐
+    title: Per-Source Virtual Node
+    details: Each TCP source can expose its own Virtual Node endpoint on its own port. Multiple Meshtastic mobile apps connect simultaneously through MeshMonitor, with message queuing, config caching, and stability for 3-5+ concurrent clients.
+
   - icon: 🗺️
     title: Interactive Map View
     details: Visualize your mesh network on an interactive map with real-time node positions, signal strength indicators, and network topology. Import GeoJSON, KML, and KMZ overlays to layer zone maps or emergency boundaries. Enable a polar grid overlay for RF coverage visualization.
 
   - icon: 📊
-    title: Comprehensive Analytics
-    details: Track message statistics, node health, signal quality (SNR), and network performance over time with detailed charts and graphs. Switch between chart, gauge, and numeric display modes for telemetry widgets.
-
-  - icon: 🔄
-    title: Real-time Updates
-    details: Monitor your network in real-time with automatic updates. See new messages, node status changes, and network events as they happen.
+    title: Analytics & Telemetry
+    details: Track message statistics, node health, signal quality (SNR), and network performance over time with detailed charts and graphs. Switch between chart, gauge, and numeric display modes for telemetry widgets. Unified telemetry view with search, sort, and source filtering.
 
   - icon: 💬
     title: Message Management
-    details: View, send, and manage messages across your mesh network. Support for multiple channels and message history. Drag and drop to reorder channels to match your workflow.
-
-  - icon: 🔐
-    title: Security Monitoring
-    details: Automatic detection of weak encryption keys and duplicate key issues. Built-in authentication with local accounts and SSO support for enterprise deployments.
-
-  - icon: 🐳
-    title: Easy Deployment
-    details: Deploy with Docker Compose or Kubernetes (Helm charts included). Simple configuration for both development and production environments.
-
-  - icon: 💻
-    title: Desktop Application
-    details: Run MeshMonitor as a native app on Windows or macOS — no server, no Docker, no dependencies. System tray integration keeps your network awareness one click away.
-
-  - icon: 🌐
-    title: Virtual Node Server
-    details: Connect multiple Meshtastic mobile apps simultaneously through MeshMonitor's Virtual Node proxy. Message queuing, config caching, and connection stability for 3-5+ concurrent mobile clients.
-
-  - icon: 🧩
-    title: Custom Map Tile Servers
-    details: Configure custom map tile servers with support for both vector (.pbf) and raster (.png) tiles. Enable offline operation, custom styling, and privacy-focused mapping. Works with TileServer GL, nginx caching proxy, and standard XYZ tile servers for complete independence from external services. Upload custom MapLibre style JSON for fully branded or offline-first map appearances.
-
-  - icon: 🎨
-    title: Customizable Themes
-    details: Choose from 15 built-in themes or create your own with the visual theme editor. Includes color-blind friendly options, WCAG AAA compliant high-contrast themes, and full import/export support for sharing custom themes.
-
-  - icon: 🔔
-    title: Push Notifications
-    details: Receive real-time alerts for new messages on iOS, Android, and desktop - even when the app is closed. Zero configuration, works with HTTPS.
-
-  - icon: ⚙️
-    title: Flexible Configuration
-    details: Configure reverse proxies, HTTPS, environment variables, and more. Adapt MeshMonitor to your infrastructure needs.
-
-  - icon: ☀️
-    title: Solar Monitoring
-    details: Integrate with forecast.solar to visualize expected solar production alongside telemetry data. Perfect for optimizing off-grid deployments and predicting power availability.
+    details: View, send, and manage messages across your mesh network. Unified cross-source messages view with per-source isolation. Multi-channel support, drag and drop channel reordering, tapbacks, replies, and full message search.
 
   - icon: ⚡
     title: Automation & Triggers
     details: Create powerful automations with Auto-Responders, Scheduled Messages, Auto-Traceroute, and Geofence Triggers. Define geographic zones and trigger responses when nodes enter, exit, or remain inside — perfect for arrival notifications, asset tracking, and proximity alerts. Extend further with custom Python or Bash scripts.
 
+  - icon: 📬
+    title: Store & Forward
+    details: Work with Store & Forward servers on your mesh — retrieve history from S&F peers, flag S&F server nodes on the map, and keep messages flowing across offline gaps.
+
+  - icon: 🔒
+    title: Security Monitoring
+    details: Automatic detection of weak encryption keys and duplicate key issues. Built-in authentication with local accounts, MFA/TOTP, SSO (OIDC), and a full audit log of admin actions.
+
+  - icon: 🔔
+    title: Push Notifications
+    details: Receive real-time alerts for new messages and per-source events on iOS, Android, and desktop — even when the app is closed. Apprise integration for email, Slack, Discord, Telegram, and more. Zero configuration, works with HTTPS.
+
   - icon: 🖥️
     title: Remote Administration
-    details: Change node connections on-the-fly without container restarts. Configure device settings, manage channels, and send admin commands directly from the web interface.
+    details: Change node connections on-the-fly without container restarts. Configure device settings, manage channels, run the Quick Node Configurator, and push OTA firmware updates through a connected gateway — all from the web interface.
+
+  - icon: 🧩
+    title: Custom Map Tile Servers
+    details: Configure custom map tile servers with support for both vector (.pbf) and raster (.png) tiles. Enable offline operation, custom styling, and privacy-focused mapping. Works with TileServer GL, nginx caching proxy, and standard XYZ tile servers. Upload custom MapLibre style JSON for fully branded or offline-first map appearances.
+
+  - icon: 🎨
+    title: Customizable Themes
+    details: Choose from 15 built-in themes or create your own with the visual theme editor. Includes color-blind friendly options, WCAG AAA compliant high-contrast themes, and full import/export support for sharing custom themes.
+
+  - icon: ☀️
+    title: Solar Monitoring
+    details: Integrate with forecast.solar to visualize expected solar production alongside telemetry data. Perfect for optimizing off-grid deployments and predicting power availability.
+
+  - icon: 💻
+    title: Desktop & Mobile
+    details: Native desktop app for Windows and macOS — no server, no Docker. Progressive Web App (PWA) for iOS and Android with a collapsible sidebar on small screens. System tray integration keeps your network awareness one click away.
+
+  - icon: 🐳
+    title: Flexible Deployment
+    details: Deploy with Docker Compose, Kubernetes (Helm charts included), Proxmox LXC, or bare metal. SQLite, PostgreSQL, or MySQL backends. System backup, one-click auto-upgrade, and reverse-proxy-friendly configuration out of the box.
 ---
 
 ## Quick Start
@@ -144,25 +148,50 @@ MeshMonitor supports multiple deployment scenarios:
 
 ## Screenshots
 
+### Multi-Source Dashboard
+Every source your deployment touches shows up in the sidebar with its own health, map pin colour, and unified or source-scoped views. TCP today (with Serial/BLE via the bridge sidecars); MQTT and MeshCore source types coming soon.
+
+![Multi-Source Dashboard](/images/features/dashboard-multi-source.png)
+
+### Sources Management
+Add, edit, restart, or delete any upstream connection from the dashboard. No env-var edits, no container restarts.
+
+![Source options menu](/images/features/sources-options-menu.png)
+
+### Edit Source with Virtual Node
+Each TCP source gets its own Virtual Node endpoint, its own auto-responder, its own scheduler — all in one Edit Source dialog.
+
+![Edit Source dialog](/images/features/edit-source-dialog.png)
+
+### Per-Source Permissions
+Grant a user admin rights on one source, read-only on another, and hide a third. Per-channel controls sit right alongside the source scope dropdown.
+
+![Per-source permissions](/images/features/per-source-permissions.png)
+
+### Global Settings
+Theme, language, map defaults, push keys, backup schedule — the things that apply to the whole deployment — live on one screen.
+
+![Global Settings](/images/features/global-settings.png)
+
+### Unified Messages
+Read and search messages across every source from a single view, with an optional per-source filter.
+
+![Unified Messages](/images/features/unified-messages.png)
+
+### Unified Telemetry
+Telemetry charts, gauges, and tables aggregated across every connected source.
+
+![Unified Telemetry](/images/features/unified-telemetry.png)
+
 ### Interactive Map
 Track your entire mesh network at a glance with the interactive map and real-time node positions.
 
 ![Interactive Map](/images/main.png)
 
-### Channel Messaging
-Communicate across your mesh network with multi-channel messaging and real-time updates.
+### Mobile
+Collapsible sidebar and responsive layout for iOS and Android PWAs.
 
-![Channel Messaging](/images/channels.png)
-
-### Message History
-Browse and search the full history of messages across all your channels.
-
-![Message History](/images/messages.png)
-
-### User Management
-Manage user accounts, permissions, and access control for your MeshMonitor instance.
-
-![User Management](/images/users.png)
+![Mobile sidebar](/images/features/mobile-sidebar-expanded.png)
 
 ## Community & Support
 

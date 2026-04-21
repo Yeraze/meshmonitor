@@ -117,6 +117,14 @@ On first launch, MeshMonitor creates a default admin account:
 2. Select "Change Password"
 3. Set a strong, unique password
 
+### 5. Manage Sources (new in 4.0)
+
+The `MESHTASTIC_NODE_IP` / `MESHTASTIC_TCP_PORT` values bootstrap MeshMonitor's **first source** on first boot. Everything after that — adding nodes, renaming sources, enabling Virtual Node, or switching connection type — happens in **Dashboard → Sources**.
+
+::: tip Multi-Source
+MeshMonitor 4.0 can talk to multiple nodes at once (TCP, Serial, BLE, MQTT, MeshCore). Each source has its own Virtual Node, auto-responder, scheduler, and permissions. See [Multi-Source](/features/multi-source).
+:::
+
 ## What Just Happened?
 
 MeshMonitor's **Quick Start** is optimized for **simple local/home use**:

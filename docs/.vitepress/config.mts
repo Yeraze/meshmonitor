@@ -25,6 +25,7 @@ export default defineConfig({
       {
         text: 'Docs',
         items: [
+          { text: '🆕 4.0 Highlights', link: '/features/multi-source' },
           { text: 'Features', link: '/features/settings' },
           { text: 'Configuration', link: '/configuration/' },
           { text: 'Add-ons', link: '/add-ons/' },
@@ -36,6 +37,16 @@ export default defineConfig({
 
     sidebar: {
       '/features/': [
+        {
+          text: '🆕 4.0 Highlights',
+          items: [
+            { text: 'Multi-Source', link: '/features/multi-source' },
+            { text: 'Per-Source Permissions', link: '/features/per-source-permissions' },
+            { text: 'Global Settings', link: '/features/global-settings' },
+            { text: 'Store & Forward', link: '/features/store-forward' },
+            { text: 'Geofence Triggers', link: '/features/geofence-triggers' }
+          ]
+        },
         {
           text: 'Features',
           items: [
@@ -52,6 +63,7 @@ export default defineConfig({
             { text: 'Embed Maps', link: '/features/embed-maps' },
             { text: 'Link Quality & Smart Hops', link: '/features/link-quality' },
             { text: 'Analytics', link: '/features/analytics' },
+            { text: 'Telemetry Widgets', link: '/features/telemetry-widgets' },
             { text: 'MeshCore (Experimental)', link: '/features/meshcore' },
             { text: '🌍 Translations', link: '/features/translations' },
             { text: '🎨 Theme Gallery', link: '/THEME_GALLERY' },
