@@ -15,6 +15,11 @@ import { MapStyleService } from '../services/mapStyleService.js';
 import { createMapStyleRouter } from './mapStyleRoutes.js';
 import databaseService from '../../services/database.js';
 
+// Mock DNS lookup so the SSRF guard treats the fake tileserver hostname as public.
+vi.mock('node:dns/promises', () => ({
+  lookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]),
+}));
+
 // Mock DatabaseService for authMiddleware's requirePermission
 vi.mock('../../services/database.js', () => ({
   default: {

@@ -168,7 +168,12 @@ router.get('/script-content', optionalAuth(), async (req, res) => {
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const response = await fetch(url, {
+      // Reconstruct the request URL from a hardcoded origin plus the validated path.
+      // At this point `path` has passed `validateGitHubPath`, and the host check above
+      // rejected anything that wasn't raw.githubusercontent.com. Building the URL from
+      // a literal origin gives CodeQL's SSRF tracker a clean, untainted host.
+      const safeRequestUrl = new URL(`/${path}${validatedUrl.search}`, 'https://raw.githubusercontent.com');
+      const response = await fetch(safeRequestUrl, {
         signal: controller.signal,
         headers: {
           'User-Agent': 'MeshMonitor-ScriptContent/1.0',
