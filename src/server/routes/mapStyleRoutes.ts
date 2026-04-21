@@ -10,6 +10,7 @@ import { MapStyleService } from '../services/mapStyleService.js';
 import { logger } from '../../utils/logger.js';
 import { requirePermission } from '../auth/authMiddleware.js';
 import { generateStyleFromTileJson, type TileJsonResponse } from '../utils/tileStyleGenerator.js';
+import { safeFetch, SsrfBlockedError } from '../utils/ssrfGuard.js';
 
 export function createMapStyleRouter(service: MapStyleService): Router {
   const router = Router();
@@ -87,7 +88,7 @@ export function createMapStyleRouter(service: MapStyleService): Router {
 
         let content: string;
         try {
-          const response = await fetch(url, {
+          const response = await safeFetch(url, {
             signal: controller.signal,
             headers: { 'User-Agent': 'MeshMonitor/1.0' },
           });
@@ -98,6 +99,10 @@ export function createMapStyleRouter(service: MapStyleService): Router {
           content = await response.text();
         } catch (fetchError) {
           clearTimeout(timeoutId);
+          if (fetchError instanceof SsrfBlockedError) {
+            logger.warn(`[MapStyleRoutes] Style URL blocked by SSRF guard (${fetchError.reason}): ${url}`);
+            return res.status(400).json({ error: 'URL target not allowed' });
+          }
           const msg = fetchError instanceof Error ? fetchError.message : String(fetchError);
           return res.status(400).json({ error: `Failed to fetch URL: ${msg}` });
         }
@@ -222,7 +227,7 @@ export function createMapStyleRouter(service: MapStyleService): Router {
 
         let tileJson: TileJsonResponse;
         try {
-          const response = await fetch(tileJsonUrl, {
+          const response = await safeFetch(tileJsonUrl, {
             signal: controller.signal,
             headers: { 'User-Agent': 'MeshMonitor/1.0' },
           });
@@ -233,6 +238,10 @@ export function createMapStyleRouter(service: MapStyleService): Router {
           tileJson = (await response.json()) as TileJsonResponse;
         } catch (fetchError) {
           clearTimeout(timeoutId);
+          if (fetchError instanceof SsrfBlockedError) {
+            logger.warn(`[MapStyleRoutes] TileJSON URL blocked by SSRF guard (${fetchError.reason}): ${tileJsonUrl}`);
+            return res.status(400).json({ error: 'URL target not allowed' });
+          }
           const msg = fetchError instanceof Error ? fetchError.message : String(fetchError);
           return res.status(400).json({ error: `Failed to fetch TileJSON: ${msg}` });
         }

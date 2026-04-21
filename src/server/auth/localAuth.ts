@@ -4,6 +4,7 @@
  * Handles username/password authentication
  */
 
+import { randomInt } from 'node:crypto';
 import { User } from '../../types/auth.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
@@ -273,24 +274,31 @@ export async function setUserPassword(
 }
 
 /**
- * Generate a random password
+ * Generate a cryptographically random password.
+ * Uses node:crypto.randomInt for unbiased selection and Fisher-Yates shuffle.
  */
 function generateRandomPassword(): string {
   const length = 16;
-  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
-  let password = '';
+  const lowers = 'abcdefghijklmnopqrstuvwxyz';
+  const uppers = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const digits = '0123456789';
+  const symbols = '!@#$%^&*';
+  const charset = lowers + uppers + digits + symbols;
 
-  // Ensure at least one of each type
-  password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)];
-  password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)];
-  password += '0123456789'[Math.floor(Math.random() * 10)];
-  password += '!@#$%^&*'[Math.floor(Math.random() * 8)];
-
-  // Fill the rest
-  for (let i = password.length; i < length; i++) {
-    password += charset[Math.floor(Math.random() * charset.length)];
+  const chars: string[] = [
+    lowers[randomInt(lowers.length)],
+    uppers[randomInt(uppers.length)],
+    digits[randomInt(digits.length)],
+    symbols[randomInt(symbols.length)],
+  ];
+  while (chars.length < length) {
+    chars.push(charset[randomInt(charset.length)]);
   }
 
-  // Shuffle the password
-  return password.split('').sort(() => Math.random() - 0.5).join('');
+  // Fisher-Yates shuffle with crypto-randomness.
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
 }

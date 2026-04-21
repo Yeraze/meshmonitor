@@ -168,7 +168,9 @@ router.get('/script-content', optionalAuth(), async (req, res) => {
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const response = await fetch(url, {
+      // Pass the parsed URL (already constrained to https://raw.githubusercontent.com
+      // with validated path) — avoids routing the tainted raw string through fetch.
+      const response = await fetch(validatedUrl, {
         signal: controller.signal,
         headers: {
           'User-Agent': 'MeshMonitor-ScriptContent/1.0',

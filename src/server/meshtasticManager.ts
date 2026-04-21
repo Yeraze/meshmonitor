@@ -9945,7 +9945,10 @@ class MeshtasticManager implements ISourceManager {
   }
 
   private async replaceAnnouncementTokens(message: string, urlEncode: boolean = false): Promise<string> {
-    let result = message;
+    // Defensive coercion: callers come from settings/DB and protobuf paths where the static type
+    // is `string` but the runtime value isn't always proven to be one. CodeQL flagged every
+    // `result.includes('{TOKEN}')` below as type-confusion-through-parameter-tampering without this.
+    let result: string = typeof message === 'string' ? message : String(message);
     const encode = (v: string) => urlEncode ? encodeURIComponent(v) : v;
 
     // {VERSION} - MeshMonitor version

@@ -9,6 +9,7 @@ import net from 'net';
 import dns from 'dns';
 import { promisify } from 'util';
 import { logger } from '../../utils/logger.js';
+import { safeFetch, SsrfBlockedError } from '../utils/ssrfGuard.js';
 
 const dnsLookup = promisify(dns.lookup);
 
@@ -262,7 +263,7 @@ async function testTileUrl(url: string, timeout: number = 5000): Promise<TileTes
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    const response = await fetch(testUrl, {
+    const response = await safeFetch(testUrl, {
       method: 'GET',
       signal: controller.signal
     });
@@ -355,7 +356,10 @@ async function testTileUrl(url: string, timeout: number = 5000): Promise<TileTes
   } catch (error) {
     result.details.responseTime = Date.now() - startTime;
 
-    if (error instanceof Error) {
+    if (error instanceof SsrfBlockedError) {
+      result.errors.push(`Target not allowed: ${error.reason}`);
+      result.message = 'URL target not allowed';
+    } else if (error instanceof Error) {
       if (error.name === 'AbortError') {
         result.errors.push(`Request timed out after ${timeout}ms`);
         result.message = 'Timeout';

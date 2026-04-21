@@ -46,6 +46,7 @@ import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dyn
 import { generateAnalyticsScript, AnalyticsProvider } from './utils/analyticsScriptGenerator.js';
 import { rewriteHtml } from './utils/htmlRewriter.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
+import { safeFetch, SsrfBlockedError } from './utils/ssrfGuard.js';
 import { PortNum } from './constants/meshtastic.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 import { applyManagerSettings } from './applyManagerSettings.js';
@@ -9420,7 +9421,7 @@ apiRouter.post('/http/test', requirePermission('settings', 'read'), async (req, 
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const response = await fetch(url, {
+      const response = await safeFetch(url, {
         method: 'GET',
         headers: {
           Accept: 'text/plain, text/*, application/json',
@@ -9446,6 +9447,11 @@ apiRouter.post('/http/test', requirePermission('settings', 'read'), async (req, 
       });
     } catch (fetchError: any) {
       clearTimeout(timeoutId);
+
+      if (fetchError instanceof SsrfBlockedError) {
+        logger.warn(`HTTP test blocked by SSRF guard (${fetchError.reason}): ${url}`);
+        return res.status(400).json({ error: 'URL target not allowed' });
+      }
 
       if (fetchError.name === 'AbortError') {
         return res.status(408).json({ error: 'Request timed out after 10 seconds' });

@@ -1,6 +1,7 @@
 import express from 'express';
 import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
+import { safeFetch, SsrfBlockedError } from '../utils/ssrfGuard.js';
 
 const router = express.Router();
 
@@ -93,14 +94,18 @@ router.get('/link-preview', optionalAuth(), async (req, res) => {
     const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
     try {
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'MeshMonitor-LinkPreview/1.0',
+      const response = await safeFetch(
+        url,
+        {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'MeshMonitor-LinkPreview/1.0',
+          },
+          // Only fetch the first 50KB to avoid large downloads
+          // @ts-ignore - TypeError is expected for size limit
         },
-        // Only fetch the first 50KB to avoid large downloads
-        // @ts-ignore - TypeError is expected for size limit
-      });
+        { strict: true } // public URLs only — block RFC1918, loopback, metadata, etc.
+      );
 
       clearTimeout(timeoutId);
 
@@ -140,6 +145,11 @@ router.get('/link-preview', optionalAuth(), async (req, res) => {
 
     } catch (fetchError: any) {
       clearTimeout(timeoutId);
+
+      if (fetchError instanceof SsrfBlockedError) {
+        logger.warn(`Link preview blocked by SSRF guard (${fetchError.reason}): ${url}`);
+        return res.status(400).json({ error: 'URL target not allowed' });
+      }
 
       if (fetchError.name === 'AbortError') {
         logger.warn(`Link preview fetch timeout for: ${url}`);
