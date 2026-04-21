@@ -69,10 +69,14 @@ MeshMonitor can be configured using environment variables. Here are the most imp
 
 ### Meshtastic Connection Variables
 
+::: warning 4.0 — bootstrap only
+`MESHTASTIC_NODE_IP` and `MESHTASTIC_TCP_PORT` only **bootstrap the first source** on a fresh deployment. They are ignored after first boot. All subsequent source management — adding nodes, changing IPs/ports, switching connection type — happens in **Dashboard → Sources**. See [Multi-Source](/features/multi-source).
+:::
+
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MESHTASTIC_NODE_IP` | IP address of your Meshtastic node | `192.168.1.100` |
-| `MESHTASTIC_TCP_PORT` | TCP port for Meshtastic connection | `4403` |
+| `MESHTASTIC_NODE_IP` | IP address used to seed the first TCP source on first boot | `192.168.1.100` |
+| `MESHTASTIC_TCP_PORT` | TCP port used to seed the first TCP source on first boot | `4403` |
 | `MESHTASTIC_STALE_CONNECTION_TIMEOUT` | Connection timeout in milliseconds before reconnecting if no data received | `300000` (5 minutes) |
 | `MESHTASTIC_CONNECT_TIMEOUT_MS` | Initial TCP connection timeout in milliseconds | `10000` (10 seconds) |
 | `MESHTASTIC_RECONNECT_INITIAL_DELAY_MS` | Initial delay before first reconnect attempt (base for exponential backoff) | `1000` (1 second) |

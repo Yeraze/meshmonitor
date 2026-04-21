@@ -1,7 +1,16 @@
 {
   "version": "1",
-  "lastUpdated": "2026-04-02T20:00:00Z",
+  "lastUpdated": "2026-04-21T18:00:00Z",
   "items": [
+    {
+      "minVersion": "3.12.0",
+      "id": "news-2026-04-21-v4.0-coming-soon",
+      "title": "Heads-up: MeshMonitor 4.0 is coming soon",
+      "content": "MeshMonitor **4.0** is on the horizon. The headline change is **Multi-Source** support — a single MeshMonitor will be able to connect to **multiple Meshtastic nodes at once**, each with its own Virtual Node, auto-responder, scheduler, and per-source permissions.\n\nPreview what's changing at [meshmonitor.org/features/multi-source](https://meshmonitor.org/features/multi-source).\n\n## Before you upgrade\n\n4.0 ships extensive schema migrations and a reorganized permission model. **Plan to review:**\n\n- **Configuration** — several environment variables (including the Virtual Node env vars) are removed in 4.0; per-source settings move to the UI (see [Multi-Source](https://meshmonitor.org/features/multi-source))\n- **Security / Permissions** — the permission matrix becomes per-source; every user's access on every source will need a fresh review (see [Per-Source Permissions](https://meshmonitor.org/features/per-source-permissions))\n\n**Back up your system before upgrading.** Use Settings → System Backup or copy your `/data` volume.",
+      "date": "2026-04-21T18:00:00Z",
+      "category": "release",
+      "priority": "important"
+    },
     {
       "minVersion": "3.12.0",
       "id": "news-2026-04-02-v3.12.0",
