@@ -20,11 +20,28 @@ import { logger } from '../../utils/logger.js';
 
 export const migration = {
   up(db: Database): void {
-    const res = db
-      .prepare(`DELETE FROM neighbor_info WHERE sourceId IS NULL`)
-      .run();
-    if (res.changes > 0) {
-      logger.info(`Migration 040: purged ${res.changes} neighbor_info rows with NULL sourceId`);
+    // Legacy v3.x databases carry `neighbor_info.nodeNum REFERENCES nodes(nodeNum)`
+    // and `neighbor_info.neighborNodeNum REFERENCES nodes(nodeNum)`. Migration 029
+    // rebuilt nodes with composite PK (nodeNum, sourceId), so these FKs are
+    // structurally invalid and DELETE on neighbor_info raises
+    // "foreign key mismatch" with foreign_keys=ON. Disable FK enforcement for
+    // this migration and restore in finally. See 029/030/032/039 for the same
+    // pattern.
+    const prevForeignKeys = db.pragma('foreign_keys', { simple: true }) as number;
+    if (prevForeignKeys) {
+      db.pragma('foreign_keys = OFF');
+    }
+    try {
+      const res = db
+        .prepare(`DELETE FROM neighbor_info WHERE sourceId IS NULL`)
+        .run();
+      if (res.changes > 0) {
+        logger.info(`Migration 040: purged ${res.changes} neighbor_info rows with NULL sourceId`);
+      }
+    } finally {
+      if (prevForeignKeys) {
+        db.pragma('foreign_keys = ON');
+      }
     }
   },
 };
