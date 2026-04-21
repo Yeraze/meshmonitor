@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { registry } from './migrations.js';
 
 describe('migrations registry', () => {
-  it('has all 41 migrations registered', () => {
-    expect(registry.count()).toBe(41);
+  it('has all 44 migrations registered', () => {
+    expect(registry.count()).toBe(44);
   });
 
   it('first migration is v37 baseline', () => {
@@ -12,14 +12,14 @@ describe('migrations registry', () => {
     expect(all[0].name).toContain('v37_baseline');
   });
 
-  it('last migration is drop_legacy_telemetry_nodes_fk', () => {
+  it('last migration is drop_legacy_traceroutes_nodes_fk', () => {
     const all = registry.getAll();
     const last = all[all.length - 1];
-    expect(last.number).toBe(41);
-    expect(last.name).toContain('drop_legacy_telemetry_nodes_fk');
+    expect(last.number).toBe(44);
+    expect(last.name).toContain('drop_legacy_traceroutes_nodes_fk');
   });
 
-  it('migrations are sequentially numbered from 1 to 35', () => {
+  it('migrations are sequentially numbered from 1 to 44', () => {
     const all = registry.getAll();
     for (let i = 0; i < all.length; i++) {
       expect(all[i].number).toBe(i + 1);

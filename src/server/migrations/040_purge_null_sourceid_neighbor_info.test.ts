@@ -73,4 +73,54 @@ describe('Migration 040 — purge NULL-sourceId neighbor_info', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].sourceId).toBe('source-A');
   });
+
+  it('succeeds on legacy schema: neighbor_info FK to nodes(nodeNum) + composite nodes PK', () => {
+    // Reproduces the 4.0-beta8 upgrade failure:
+    //   - Pre-029: nodes PK was (nodeNum); neighbor_info.nodeNum FK → nodes(nodeNum)
+    //   - Migration 029 rebuilt nodes with composite PK (nodeNum, sourceId)
+    //   - neighbor_info FK is now structurally invalid (nodeNum alone not unique)
+    //   - With foreign_keys=ON, DELETE raises "foreign key mismatch"
+    const legacyDb = new Database(':memory:');
+    try {
+      // Seed with FKs off — the broken FK otherwise blocks even INSERT.
+      legacyDb.pragma('foreign_keys = OFF');
+      legacyDb.exec(`
+        CREATE TABLE nodes (
+          nodeNum INTEGER NOT NULL,
+          sourceId TEXT NOT NULL,
+          PRIMARY KEY (nodeNum, sourceId)
+        );
+        CREATE TABLE neighbor_info (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          nodeNum INTEGER NOT NULL REFERENCES nodes(nodeNum) ON DELETE CASCADE,
+          neighborNodeNum INTEGER NOT NULL REFERENCES nodes(nodeNum) ON DELETE CASCADE,
+          snr REAL,
+          lastRxTime INTEGER,
+          timestamp INTEGER NOT NULL,
+          createdAt INTEGER NOT NULL,
+          sourceId TEXT
+        );
+      `);
+      const now = Date.now();
+      legacyDb
+        .prepare(
+          `INSERT INTO neighbor_info (nodeNum, neighborNodeNum, snr, lastRxTime, timestamp, createdAt, sourceId)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(1, 2, 5.5, now, now, now, null);
+
+      // Mirror the production state at migration time: FK enforcement on,
+      // structurally-invalid FK still declared in the schema.
+      legacyDb.pragma('foreign_keys = ON');
+
+      expect(() => migration.up(legacyDb)).not.toThrow();
+
+      expect(
+        (legacyDb.prepare(`SELECT COUNT(*) c FROM neighbor_info`).get() as any).c
+      ).toBe(0);
+      expect(legacyDb.pragma('foreign_keys', { simple: true })).toBe(1);
+    } finally {
+      legacyDb.close();
+    }
+  });
 });

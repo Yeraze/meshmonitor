@@ -1,7 +1,7 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 40 migrations in sequential order for use by the migration runner.
+ * Registers all 44 migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
@@ -53,6 +53,9 @@ import { migration as cleanupOrphanNotificationPrefsMigration, runMigration038Po
 import { migration as purgeNullSourceIdTelemetryMigration, runMigration039Postgres, runMigration039Mysql } from '../server/migrations/039_purge_null_sourceid_telemetry.js';
 import { migration as purgeNullSourceIdNeighborInfoMigration, runMigration040Postgres, runMigration040Mysql } from '../server/migrations/040_purge_null_sourceid_neighbor_info.js';
 import { migration as dropLegacyTelemetryFkMigration, runMigration041Postgres, runMigration041Mysql } from '../server/migrations/041_drop_legacy_telemetry_nodes_fk.js';
+import { migration as dropLegacyMessagesFkMigration, runMigration042Postgres, runMigration042Mysql } from '../server/migrations/042_drop_legacy_messages_nodes_fk.js';
+import { migration as dropLegacyNeighborInfoFkMigration, runMigration043Postgres, runMigration043Mysql } from '../server/migrations/043_drop_legacy_neighbor_info_nodes_fk.js';
+import { migration as dropLegacyTraceroutesFkMigration, runMigration044Postgres, runMigration044Mysql } from '../server/migrations/044_drop_legacy_traceroutes_nodes_fk.js';
 
 // ============================================================================
 // Registry
@@ -628,4 +631,41 @@ registry.register({
   sqlite: (db) => dropLegacyTelemetryFkMigration.up(db),
   postgres: (client) => runMigration041Postgres(client),
   mysql: (pool) => runMigration041Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migrations 042-044: Drop remaining legacy child-table FKs to nodes(nodeNum).
+// Same shape as 041: legacy Drizzle-push databases declared FKs on messages,
+// neighbor_info, and traceroutes pointing at nodes(nodeNum), which became
+// structurally invalid once 029 moved nodes to a composite PK. Rebuilding
+// these tables once drops the broken FKs permanently so future DML migrations
+// don't have to toggle foreign_keys=OFF. PG/MySQL baselines never declared
+// these FKs; no-op there.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 42,
+  name: 'drop_legacy_messages_nodes_fk',
+  settingsKey: 'migration_042_drop_legacy_messages_nodes_fk',
+  sqlite: (db) => dropLegacyMessagesFkMigration.up(db),
+  postgres: (client) => runMigration042Postgres(client),
+  mysql: (pool) => runMigration042Mysql(pool),
+});
+
+registry.register({
+  number: 43,
+  name: 'drop_legacy_neighbor_info_nodes_fk',
+  settingsKey: 'migration_043_drop_legacy_neighbor_info_nodes_fk',
+  sqlite: (db) => dropLegacyNeighborInfoFkMigration.up(db),
+  postgres: (client) => runMigration043Postgres(client),
+  mysql: (pool) => runMigration043Mysql(pool),
+});
+
+registry.register({
+  number: 44,
+  name: 'drop_legacy_traceroutes_nodes_fk',
+  settingsKey: 'migration_044_drop_legacy_traceroutes_nodes_fk',
+  sqlite: (db) => dropLegacyTraceroutesFkMigration.up(db),
+  postgres: (client) => runMigration044Postgres(client),
+  mysql: (pool) => runMigration044Mysql(pool),
 });
