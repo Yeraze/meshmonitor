@@ -37,28 +37,46 @@ export const migration = {
   up: (db: Database): void => {
     logger.info('Running migration 032 (SQLite): telemetry packet dedupe...');
 
-    // Dedupe existing rows: keep lowest id per (sourceId, nodeNum, packetId, telemetryType)
-    // where packetId IS NOT NULL. NULL packetId rows are left alone.
-    const deleteStmt = db.prepare(`
-      DELETE FROM telemetry
-      WHERE packetId IS NOT NULL
-        AND id NOT IN (
-          SELECT MIN(id) FROM telemetry
-          WHERE packetId IS NOT NULL
-          GROUP BY sourceId, nodeNum, packetId, telemetryType
-        )
-    `);
-    const result = deleteStmt.run();
-    if (result.changes > 0) {
-      logger.info(`Migration 032 (SQLite): deduped ${result.changes} duplicate telemetry rows`);
+    // Legacy v3.x databases carry `telemetry.nodeNum REFERENCES nodes(nodeNum)`.
+    // Migration 029 rebuilt nodes with composite PK (nodeNum, sourceId), which
+    // makes that FK structurally invalid (parent column no longer unique).
+    // With foreign_keys=ON any DELETE on telemetry then raises
+    // "foreign key mismatch - telemetry referencing nodes". Disable FK
+    // enforcement for this migration and restore it in finally. See 029/030
+    // for the same pattern.
+    const prevForeignKeys = db.pragma('foreign_keys', { simple: true }) as number;
+    if (prevForeignKeys) {
+      db.pragma('foreign_keys = OFF');
     }
 
-    // Partial unique index (idempotent via IF NOT EXISTS)
-    db.exec(`
-      CREATE UNIQUE INDEX IF NOT EXISTS ${INDEX_NAME}
-        ON telemetry(sourceId, nodeNum, packetId, telemetryType)
+    try {
+      // Dedupe existing rows: keep lowest id per (sourceId, nodeNum, packetId, telemetryType)
+      // where packetId IS NOT NULL. NULL packetId rows are left alone.
+      const deleteStmt = db.prepare(`
+        DELETE FROM telemetry
         WHERE packetId IS NOT NULL
-    `);
+          AND id NOT IN (
+            SELECT MIN(id) FROM telemetry
+            WHERE packetId IS NOT NULL
+            GROUP BY sourceId, nodeNum, packetId, telemetryType
+          )
+      `);
+      const result = deleteStmt.run();
+      if (result.changes > 0) {
+        logger.info(`Migration 032 (SQLite): deduped ${result.changes} duplicate telemetry rows`);
+      }
+
+      // Partial unique index (idempotent via IF NOT EXISTS)
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS ${INDEX_NAME}
+          ON telemetry(sourceId, nodeNum, packetId, telemetryType)
+          WHERE packetId IS NOT NULL
+      `);
+    } finally {
+      if (prevForeignKeys) {
+        db.pragma('foreign_keys = ON');
+      }
+    }
 
     logger.info('Migration 032 complete (SQLite)');
   },

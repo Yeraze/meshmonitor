@@ -18,11 +18,26 @@ import { logger } from '../../utils/logger.js';
 
 export const migration = {
   up(db: Database): void {
-    const res = db
-      .prepare(`DELETE FROM telemetry WHERE sourceId IS NULL`)
-      .run();
-    if (res.changes > 0) {
-      logger.info(`Migration 039: purged ${res.changes} telemetry rows with NULL sourceId`);
+    // Legacy v3.x databases carry `telemetry.nodeNum REFERENCES nodes(nodeNum)`.
+    // Migration 029 rebuilt nodes with composite PK, so the FK is structurally
+    // invalid and DELETE on telemetry raises "foreign key mismatch" with
+    // foreign_keys=ON. Disable FK enforcement for this migration and restore
+    // in finally. See 029/030/032 for the same pattern.
+    const prevForeignKeys = db.pragma('foreign_keys', { simple: true }) as number;
+    if (prevForeignKeys) {
+      db.pragma('foreign_keys = OFF');
+    }
+    try {
+      const res = db
+        .prepare(`DELETE FROM telemetry WHERE sourceId IS NULL`)
+        .run();
+      if (res.changes > 0) {
+        logger.info(`Migration 039: purged ${res.changes} telemetry rows with NULL sourceId`);
+      }
+    } finally {
+      if (prevForeignKeys) {
+        db.pragma('foreign_keys = ON');
+      }
     }
   },
 };
