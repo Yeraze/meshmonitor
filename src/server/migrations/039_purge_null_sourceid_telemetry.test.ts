@@ -80,3 +80,65 @@ describe('Migration 039 — purge NULL-sourceId telemetry', () => {
     expect(rows[0].sourceId).toBe('source-A');
   });
 });
+
+/**
+ * Regression for 4.0.0-beta7 bootloop: legacy v3.x databases carry
+ * `telemetry.nodeNum REFERENCES nodes(nodeNum)`. After migration 029 swaps
+ * nodes to a composite PK, that FK is structurally invalid and any DELETE
+ * on telemetry with foreign_keys=ON raises "foreign key mismatch -
+ * telemetry referencing nodes". 039 must tolerate this.
+ */
+describe('Migration 039 — legacy FK regression', () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(`
+      CREATE TABLE nodes (
+        nodeNum INTEGER NOT NULL,
+        sourceId TEXT NOT NULL,
+        PRIMARY KEY (nodeNum, sourceId)
+      );
+      CREATE TABLE telemetry (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nodeId TEXT NOT NULL,
+        nodeNum INTEGER NOT NULL,
+        telemetryType TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        value REAL NOT NULL,
+        unit TEXT,
+        createdAt INTEGER NOT NULL,
+        packetTimestamp INTEGER,
+        packetId INTEGER,
+        channel INTEGER,
+        precisionBits INTEGER,
+        gpsAccuracy REAL,
+        sourceId TEXT,
+        FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum)
+      );
+    `);
+  });
+
+  it('runs without raising "foreign key mismatch" even with legacy FK + composite PK', () => {
+    // Seed with FKs off — the broken FK would block the INSERT itself otherwise.
+    db.pragma('foreign_keys = OFF');
+    insert(db, null);
+    insert(db, 'source-A');
+    db.pragma('foreign_keys = ON');
+
+    expect(() => migration.up(db)).not.toThrow();
+
+    const rows = db.prepare(`SELECT sourceId FROM telemetry`).all() as any[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].sourceId).toBe('source-A');
+  });
+
+  it('restores foreign_keys=ON after running', () => {
+    db.pragma('foreign_keys = OFF');
+    insert(db, null);
+    db.pragma('foreign_keys = ON');
+    migration.up(db);
+    expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+  });
+});

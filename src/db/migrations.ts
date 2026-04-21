@@ -52,6 +52,7 @@ import { migration as userMapPrefsIdMigration, runMigration037Postgres, runMigra
 import { migration as cleanupOrphanNotificationPrefsMigration, runMigration038Postgres, runMigration038Mysql } from '../server/migrations/038_cleanup_orphan_notification_prefs.js';
 import { migration as purgeNullSourceIdTelemetryMigration, runMigration039Postgres, runMigration039Mysql } from '../server/migrations/039_purge_null_sourceid_telemetry.js';
 import { migration as purgeNullSourceIdNeighborInfoMigration, runMigration040Postgres, runMigration040Mysql } from '../server/migrations/040_purge_null_sourceid_neighbor_info.js';
+import { migration as dropLegacyTelemetryFkMigration, runMigration041Postgres, runMigration041Mysql } from '../server/migrations/041_drop_legacy_telemetry_nodes_fk.js';
 
 // ============================================================================
 // Registry
@@ -607,4 +608,24 @@ registry.register({
   sqlite: (db) => purgeNullSourceIdNeighborInfoMigration.up(db),
   postgres: (client) => runMigration040Postgres(client),
   mysql: (pool) => runMigration040Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 041: Drop legacy telemetry→nodes(nodeNum) FK on SQLite.
+// Legacy v3.x databases carry a FK `telemetry.nodeNum REFERENCES
+// nodes(nodeNum)` that became structurally invalid once 029 swapped nodes to
+// a composite PK. Every DML on telemetry raises
+// `foreign key mismatch - "telemetry" referencing "nodes"` with FKs enabled.
+// This migration rebuilds the SQLite telemetry table without the FK so
+// future migrations don't have to toggle foreign_keys=OFF. PG/MySQL baselines
+// never declared this FK; no-op there.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 41,
+  name: 'drop_legacy_telemetry_nodes_fk',
+  settingsKey: 'migration_041_drop_legacy_telemetry_nodes_fk',
+  sqlite: (db) => dropLegacyTelemetryFkMigration.up(db),
+  postgres: (client) => runMigration041Postgres(client),
+  mysql: (pool) => runMigration041Mysql(pool),
 });
