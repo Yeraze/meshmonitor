@@ -212,9 +212,17 @@ export class SettingsRepository extends BaseRepository {
    */
   async setSourceSettings(sourceId: string, kv: Record<string, string>): Promise<void> {
     const prefix = this.sourcePrefix(sourceId);
-    const prefixed: Record<string, string> = {};
+    const prefixed: Record<string, string> = Object.create(null);
     for (const [k, v] of Object.entries(kv)) {
-      prefixed[`${prefix}${k}`] = v;
+      // Only accept simple setting key names to prevent property-injection
+      // on the in-memory record we build here.
+      if (!/^[A-Za-z0-9_.-]+$/.test(k)) continue;
+      Object.defineProperty(prefixed, `${prefix}${k}`, {
+        value: v,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
     }
     await this.setSettings(prefixed);
   }

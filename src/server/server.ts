@@ -5387,6 +5387,13 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
       if (typeof filterNameRegex !== 'string') {
         return res.status(400).json({ error: 'Invalid filterNameRegex value. Must be a string.' });
       }
+      // Length cap + catastrophic-backtracking pattern check to prevent ReDoS
+      if (filterNameRegex.length > 200) {
+        return res.status(400).json({ error: 'filterNameRegex too long (max 200 characters).' });
+      }
+      if (/(\.\*){2,}|(\+.*\+)|(\*.*\*)|(\{[0-9]{3,}\})|(\{[0-9]+,\})/.test(filterNameRegex)) {
+        return res.status(400).json({ error: 'filterNameRegex too complex or may cause performance issues.' });
+      }
       // Test that regex is valid
       try {
         new RegExp(filterNameRegex);
@@ -8981,9 +8988,9 @@ const scriptsEndpoint = (_req: any, res: any) => {
 };
 
 if (BASE_URL) {
-  app.get(`${BASE_URL}/api/scripts`, scriptsEndpoint);
+  app.get(`${BASE_URL}/api/scripts`, apiLimiter, scriptsEndpoint);
 }
-app.get('/api/scripts', scriptsEndpoint);
+app.get('/api/scripts', apiLimiter, scriptsEndpoint);
 
 // Script test endpoint - allows testing script execution with sample parameters
 // Supports triggerType: 'auto-responder' (default), 'geofence', or 'timer'
@@ -9048,10 +9055,24 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
 
     // Auto-responder: Extract parameters from test message using trigger pattern
     if (triggerType === 'auto-responder') {
-      const patterns = normalizeTriggerPatterns(trigger);
+      const allPatterns = normalizeTriggerPatterns(trigger);
+      // Cap the number of candidate patterns to prevent user input from
+      // driving an unbounded match loop.
+      const MAX_PATTERNS = 100;
+      const patterns = allPatterns.slice(0, MAX_PATTERNS);
 
       // Try each pattern until one matches
       for (const patternStr of patterns) {
+        // ReDoS guard: reject overly long patterns and classic catastrophic-
+        // backtracking shapes before compiling. Script-trigger patterns are
+        // admin-authored but CodeQL flags the regex compile below as
+        // user-controlled, so we enforce the same bounds the UI does.
+        if (patternStr.length > 500) {
+          return res.status(400).json({ error: 'Trigger pattern too long (max 500 characters).' });
+        }
+        if (/(\.\*){2,}|(\+.*\+)|(\*.*\*)|(\{[0-9]{3,}\})|(\{[0-9]+,\})/.test(patternStr)) {
+          return res.status(400).json({ error: 'Trigger pattern too complex or may cause performance issues.' });
+        }
         interface ParamSpec {
           name: string;
           pattern?: string;
@@ -9161,7 +9182,17 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
         if (triggerMatch) {
           extractedParams = {};
           params.forEach((param, index) => {
-            extractedParams[param.name] = triggerMatch[index + 1];
+            // Guard against prototype-pollution / remote-property-injection:
+            // only accept simple identifier-style names, never `__proto__` etc.
+            if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(param.name)) {
+              return;
+            }
+            Object.defineProperty(extractedParams, param.name, {
+              value: triggerMatch[index + 1],
+              enumerable: true,
+              writable: true,
+              configurable: true,
+            });
           });
           matchedPattern = patternStr;
           break;

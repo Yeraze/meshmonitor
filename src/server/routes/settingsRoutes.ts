@@ -737,14 +737,20 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
       }
     }
 
-    // Audit log with before/after values
+    // Audit log with before/after values.
+    // Allowlist check is explicit here so static analyzers can see that
+    // `key` cannot be an attacker-controlled property name like `__proto__`.
+    const validKeySet = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
     const changedSettings: Record<string, { before: string | undefined; after: string }> = {};
     Object.keys(filteredSettings).forEach((key) => {
+      if (!validKeySet.has(key)) return;
       if (currentSettings[key] !== filteredSettings[key]) {
-        changedSettings[key] = {
-          before: currentSettings[key],
-          after: filteredSettings[key],
-        };
+        Object.defineProperty(changedSettings, key, {
+          value: { before: currentSettings[key], after: filteredSettings[key] },
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
       }
     });
 

@@ -66,13 +66,25 @@ setCatchHandler(async ({ request }) => {
 // Use includes() instead of startsWith() to work with BASE_URL prefixes (e.g., /meshmonitor/api/)
 registerRoute(({ url }) => url.pathname.includes('/api/'), new NetworkOnly());
 
-// Handle map tiles from all supported providers (cache first)
+// Handle map tiles from all supported providers (cache first).
+// Use an exact-host allowlist (with optional subdomain match) instead of
+// substring .includes() so that hostnames like
+// "tile.openstreetmap.org.attacker.example" are NOT matched.
+const MAP_TILE_HOSTS = new Set([
+  'tile.openstreetmap.org',
+  'basemaps.cartocdn.com',
+  'tile.opentopomap.org',
+  'server.arcgisonline.com',
+]);
+function isAllowedTileHost(hostname: string): boolean {
+  if (MAP_TILE_HOSTS.has(hostname)) return true;
+  for (const allowed of MAP_TILE_HOSTS) {
+    if (hostname.endsWith('.' + allowed)) return true;
+  }
+  return false;
+}
 registerRoute(
-  ({ url }) =>
-    url.hostname.includes('tile.openstreetmap.org') ||
-    url.hostname.includes('basemaps.cartocdn.com') ||
-    url.hostname.includes('tile.opentopomap.org') ||
-    url.hostname.includes('server.arcgisonline.com'),
+  ({ url }) => isAllowedTileHost(url.hostname),
   new CacheFirst({
     cacheName: 'map-tiles',
     plugins: [

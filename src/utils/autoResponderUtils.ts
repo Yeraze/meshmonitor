@@ -13,17 +13,25 @@
  * splitTriggerPatterns("hello,hi {name}") // ["hello", "hi {name}"]
  * splitTriggerPatterns("weather {city, state}") // ["weather {city, state}"]
  */
+const MAX_TRIGGER_STR_LENGTH = 10000;
+
 export function splitTriggerPatterns(triggerStr: string): string[] {
   if (!triggerStr.trim()) {
     return [];
   }
-  
+
+  // Clamp to a sane upper bound so a user-supplied value can't drive
+  // an unbounded loop here.
+  const bounded = triggerStr.length > MAX_TRIGGER_STR_LENGTH
+    ? triggerStr.slice(0, MAX_TRIGGER_STR_LENGTH)
+    : triggerStr;
+
   const patterns: string[] = [];
   let currentPattern = '';
   let braceDepth = 0;
-  
-  for (let i = 0; i < triggerStr.length; i++) {
-    const char = triggerStr[i];
+
+  for (let i = 0; i < bounded.length; i++) {
+    const char = bounded[i];
     
     if (char === '{') {
       braceDepth++;
