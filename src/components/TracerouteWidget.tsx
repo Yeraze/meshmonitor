@@ -137,6 +137,9 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
 
   const getNodeName = useCallback(
     (nodeNum: number): string => {
+      // BROADCAST_ADDR (0xffffffff) is a firmware placeholder for a relay-role
+      // hop that refused to self-identify — render as "Unknown".
+      if (nodeNum === 4294967295) return 'Unknown';
       const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
       const node = nodes.get(nodeId);
       return node?.user?.longName || node?.user?.shortName || nodeId;
@@ -150,13 +153,13 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
     return date.toLocaleString();
   };
 
-  // Filter function to remove invalid/reserved node numbers from route arrays
+  // Filter function to remove invalid/reserved node numbers from route arrays.
+  // BROADCAST_ADDR (0xffffffff) is kept — it's the firmware placeholder for a
+  // relay-role hop that refused to self-identify and is rendered as "Unknown".
   const isValidRouteNode = (nodeNum: number): boolean => {
-    const BROADCAST_ADDR = 4294967295;
     if (nodeNum <= 3) return false;  // Reserved
     if (nodeNum === 255) return false;  // 0xff reserved
     if (nodeNum === 65535) return false;  // 0xffff invalid placeholder
-    if (nodeNum === BROADCAST_ADDR) return false;  // Broadcast
     return true;
   };
 

@@ -399,7 +399,10 @@ describe('MeshtasticManager — traceroute intermediate hop handling (issues 261
     });
 
     const packet = makeTraceroutePacket(0xdddddddd, 0x11111111);
-    // Reserved: 0-3, 255, 65535, 4294967295 — must never be upserted as hops
+    // Reserved: 0-3, 255, 65535 — must never be upserted as hops.
+    // BROADCAST (4294967295) is KEPT in the route array (firmware inserts it
+    // as a placeholder for relay-role hops that refuse to self-identify) but
+    // must NOT be stub-upserted into the nodes table.
     const routeDiscovery = {
       route: [0, 1, 2, 3, 255, 65535, 4294967295, 0xaaaa7777],
       routeBack: [],
@@ -414,10 +417,39 @@ describe('MeshtasticManager — traceroute intermediate hop handling (issues 261
     // for this hop carried a `lastHeard` field.
     expect(upsertCallsFor(0xaaaa7777).length).toBeGreaterThanOrEqual(1);
     expect(upsertCallsWithLastHeardFor(0xaaaa7777)).toEqual([]);
-    // Reserved values must never have been upserted via the hop loop.
+    // Reserved values and BROADCAST must never have been upserted via the
+    // hop loop (BROADCAST is rendered as "Unknown" but never stored as a node).
     for (const reserved of [0, 1, 2, 3, 255, 65535, 4294967295]) {
       expect(upsertCallsFor(reserved)).toEqual([]);
     }
+  });
+
+  it('preserves BROADCAST_ADDR hops in the stored route without stub-creating them', async () => {
+    const stale = Math.floor(Date.now() / 1000) - 86_400;
+    mockGetNode.mockImplementation((nodeNum: number) => ({
+      nodeNum, nodeId: `!${nodeNum.toString(16)}`, longName: 'Node', shortName: 'ND', lastHeard: stale,
+    }));
+
+    const packet = makeTraceroutePacket(0xdddddddd, 0x11111111);
+    // Firmware placeholder (0xffffffff) for a relay-role hop — must be kept
+    // in the persisted route so the UI can render it as "Unknown".
+    const routeDiscovery = {
+      route: [0xaaaa1111, 4294967295, 0xaaaa2222],
+      routeBack: [],
+      snrTowards: [40, 30, 20, 10],
+      snrBack: [],
+    };
+
+    await (manager as any).processTracerouteMessage(packet, routeDiscovery);
+
+    // BROADCAST must NOT have been upserted as a node.
+    expect(upsertCallsFor(4294967295)).toEqual([]);
+
+    // The persisted route (first arg to insertTraceroute) must include BROADCAST.
+    expect(mockInsertTraceroute).toHaveBeenCalled();
+    const insertedRoute = mockInsertTraceroute.mock.calls[0][0].route;
+    const parsedRoute = JSON.parse(insertedRoute);
+    expect(parsedRoute).toEqual([0xaaaa1111, 4294967295, 0xaaaa2222]);
   });
 
   it('does not double-upsert the from/to nodes via the hop loop', async () => {

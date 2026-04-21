@@ -5419,12 +5419,15 @@ class MeshtasticManager implements ISourceManager {
       // - 0-3: Reserved per Meshtastic protocol
       // - 255 (0xff): Reserved for broadcast in some contexts
       // - 65535 (0xffff): Invalid placeholder value reported by users (Issue #1128)
-      // - 4294967295 (0xffffffff): Broadcast address
+      //
+      // NOTE: BROADCAST_ADDR (0xffffffff) is intentionally kept — the firmware
+      // inserts it as a placeholder when a REPEATER or CLIENT_HIDDEN/relay-role
+      // node refuses to add its own nodeNum to the route. Dropping it loses
+      // the knowledge that a hop occurred; we render it as "Unknown" instead.
       const isValidRouteNode = (nodeNum: number): boolean => {
         if (nodeNum <= 3) return false;  // Reserved
         if (nodeNum === 255) return false;  // 0xff reserved
         if (nodeNum === 65535) return false;  // 0xffff invalid placeholder
-        if (nodeNum === BROADCAST_ADDR) return false;  // Broadcast
         return true;
       };
 
@@ -5493,6 +5496,10 @@ class MeshtasticManager implements ISourceManager {
       for (const hopNum of routeBack) intermediateHops.add(hopNum);
       intermediateHops.delete(fromNum);
       intermediateHops.delete(toNum);
+      // BROADCAST_ADDR is a firmware placeholder for a relay-role hop that
+      // refused to self-identify. It is not a real node — do not create a
+      // stub row for it.
+      intermediateHops.delete(BROADCAST_ADDR);
       for (const hopNum of intermediateHops) {
         const hopId = `!${hopNum.toString(16).padStart(8, '0')}`;
         const existing = await databaseService.nodes.getNode(hopNum, this.sourceId ?? undefined);

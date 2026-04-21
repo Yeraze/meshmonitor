@@ -114,13 +114,15 @@ export function formatTracerouteRoute(
     return '(No response received)';
   }
 
-  // Filter function to remove invalid/reserved node numbers from route arrays
+  // Filter function to remove invalid/reserved node numbers from route arrays.
+  // BROADCAST_ADDR (0xffffffff) is intentionally NOT filtered — the firmware
+  // uses it as a placeholder for relay-role hops that refused to self-identify.
+  // It is rendered as "Unknown" below so the user knows a hop occurred.
   const BROADCAST_ADDR = 4294967295;
   const isValidRouteNode = (nodeNum: number): boolean => {
     if (nodeNum <= 3) return false;  // Reserved
     if (nodeNum === 255) return false;  // 0xff reserved
     if (nodeNum === 65535) return false;  // 0xffff invalid placeholder
-    if (nodeNum === BROADCAST_ADDR) return false;  // Broadcast
     return true;
   };
 
@@ -160,7 +162,7 @@ export function formatTracerouteRoute(
       if (renderedIndices.has(idx)) return;
 
       const node = nodes.find(n => n.nodeNum === nodeNum);
-      const nodeName = formatNodeName(nodeNum, nodes);
+      const nodeName = nodeNum === BROADCAST_ADDR ? 'Unknown' : formatNodeName(nodeNum, nodes);
 
       // Get SNR for this hop (SNR array corresponds to hops between nodes)
       const snrValue = snrArray[idx] !== undefined ? snrArray[idx] : null;
@@ -180,7 +182,8 @@ export function formatTracerouteRoute(
 
       // Highlight the segment if requested
       if (isSegmentStart) {
-        const nextNodeName = formatNodeName(fullPath[idx + 1], nodes);
+        const nextNodeNum = fullPath[idx + 1];
+        const nextNodeName = nextNodeNum === BROADCAST_ADDR ? 'Unknown' : formatNodeName(nextNodeNum, nodes);
         const nextSnrValue = snrArray[idx + 1] !== undefined ? snrArray[idx + 1] : null;
 
         pathElements.push(
