@@ -76,7 +76,7 @@ function DashboardInner() {
   const [formVnEnabled, setFormVnEnabled] = useState(false);
   const [formVnPort, setFormVnPort] = useState('');
   const [formVnAllowAdmin, setFormVnAllowAdmin] = useState(false);
-  const [formHeartbeat, setFormHeartbeat] = useState('0'); // seconds, 0 = disabled (issue 2609)
+  const [formHeartbeat, setFormHeartbeat] = useState('30'); // seconds, 0 = disabled (issue 2609)
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
 
@@ -136,7 +136,7 @@ function DashboardInner() {
     setFormVnEnabled(false);
     setFormVnPort('');
     setFormVnAllowAdmin(false);
-    setFormHeartbeat('0');
+    setFormHeartbeat('30');
     setFormError('');
     setShowSourceModal(true);
   };
