@@ -669,7 +669,15 @@ export class FirmwareUpdateService {
       }
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const backupPath = path.join(BACKUP_DIR, `config-${nodeId}-${timestamp}.yaml`);
+      // Sanitize nodeId: strip any characters that could escape BACKUP_DIR.
+      const safeNodeId = String(nodeId).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'unknown';
+      const candidatePath = path.join(BACKUP_DIR, `config-${safeNodeId}-${timestamp}.yaml`);
+      // Defense-in-depth: verify resolved path is still under BACKUP_DIR.
+      const resolvedBackupDir = path.resolve(BACKUP_DIR);
+      const backupPath = path.resolve(candidatePath);
+      if (!backupPath.startsWith(resolvedBackupDir + path.sep)) {
+        throw new Error('Refusing to write backup outside of backup directory');
+      }
       fs.writeFileSync(backupPath, result.stdout, 'utf-8');
 
       this.updateStatus({
@@ -1035,13 +1043,21 @@ export class FirmwareUpdateService {
    * Throws if the backup file does not exist or the CLI command fails.
    */
   async restoreBackup(gatewayIp: string, backupPath: string): Promise<void> {
-    if (!fs.existsSync(backupPath)) {
-      throw new Error(`Backup file not found: ${backupPath}`);
+    // Restrict restorable paths to files inside BACKUP_DIR. Without this a
+    // caller could pass an arbitrary path (e.g. /etc/passwd) and use the
+    // existsSync check as a filesystem-probe oracle.
+    const resolvedBackupDir = path.resolve(BACKUP_DIR);
+    const resolvedBackup = path.resolve(backupPath);
+    if (!resolvedBackup.startsWith(resolvedBackupDir + path.sep)) {
+      throw new Error('Backup path is outside the allowed backup directory');
+    }
+    if (!fs.existsSync(resolvedBackup)) {
+      throw new Error(`Backup file not found: ${resolvedBackup}`);
     }
 
     const result = await this.runCliCommand('meshtastic', [
       '--host', gatewayIp,
-      '--configure', backupPath,
+      '--configure', resolvedBackup,
     ]);
 
     if (result.exitCode !== 0) {

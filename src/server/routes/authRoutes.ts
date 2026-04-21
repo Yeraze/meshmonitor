@@ -491,6 +491,15 @@ router.get('/oidc/login', async (req: Request, res: Response) => {
     const codeVerifier = generateRandomString(128);
     const nonce = generateRandomString(32);
 
+    // Regenerate session before storing OIDC flow state to prevent
+    // session-fixation attacks where an attacker pre-seeds a session id.
+    try {
+      await regenerateSession(req);
+    } catch (err) {
+      logger.error('Session regeneration failed:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+
     // Store in session
     req.session.oidcState = state;
     req.session.oidcCodeVerifier = codeVerifier;

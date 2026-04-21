@@ -6,12 +6,8 @@
 
 import express from 'express';
 import net from 'net';
-import dns from 'dns';
-import { promisify } from 'util';
 import { logger } from '../../utils/logger.js';
-import { safeFetch, SsrfBlockedError } from '../utils/ssrfGuard.js';
-
-const dnsLookup = promisify(dns.lookup);
+import { assertSafeUrl, safeFetch, SsrfBlockedError } from '../utils/ssrfGuard.js';
 
 const router = express.Router();
 
@@ -506,13 +502,16 @@ router.post('/autodetect', async (req, res) => {
   // This prevents hanging when the server is completely unreachable
   const testPort = parseInt(port || '80', 10);
 
-  // First verify DNS resolution works
+  // SSRF guard: validate that host resolves to a non-blocked IP (metadata,
+  // loopback, link-local etc.) before we TCP-connect to it below.
   try {
-    await Promise.race([
-      dnsLookup(host),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('DNS timeout')), 2000))
-    ]);
+    await assertSafeUrl(`http://${host}:${testPort}/`);
   } catch (error) {
+    if (error instanceof SsrfBlockedError) {
+      logger.warn(`[TileServerTest] Autodetect host blocked by SSRF guard (${error.reason}): ${host}`);
+      result.errors.push('Target address is not allowed.');
+      return res.json(result);
+    }
     logger.warn(`DNS lookup failed for ${host}: ${error instanceof Error ? error.message : 'unknown'}`);
     result.errors.push(`Cannot resolve hostname "${host}". Check the server address.`);
     return res.json(result);
