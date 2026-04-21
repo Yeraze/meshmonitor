@@ -34,6 +34,21 @@ function shouldLog(level: LogLevel): boolean {
   return LOG_LEVEL_ORDER.indexOf(level) >= LOG_LEVEL_ORDER.indexOf(currentLevel);
 }
 
+// Match ASCII C0 controls (incl. \r and \n), DEL, and C1 controls.
+// Used to defang untrusted strings before they reach console.log so an
+// attacker can't inject new log lines (CWE-117). Built via new RegExp to
+// avoid literal control characters in this source file.
+const CONTROL_CHAR_RE = new RegExp('[\\x00-\\x1F\\x7F-\\x9F]+', 'g');
+
+function sanitizeForLog(arg: unknown): unknown {
+  if (typeof arg !== 'string') return arg;
+  return arg.replace(CONTROL_CHAR_RE, ' ');
+}
+
+function sanitizeArgs(args: unknown[]): unknown[] {
+  return args.map(sanitizeForLog);
+}
+
 export const logger = {
   /**
    * Debug logging - only shown when log level is debug
@@ -41,7 +56,7 @@ export const logger = {
    */
   debug: (...args: any[]) => {
     if (shouldLog('debug')) {
-      console.log('[DEBUG]', ...args);
+      console.log('[DEBUG]', ...sanitizeArgs(args));
     }
   },
 
@@ -51,7 +66,7 @@ export const logger = {
    */
   info: (...args: any[]) => {
     if (shouldLog('info')) {
-      console.log('[INFO]', ...args);
+      console.log('[INFO]', ...sanitizeArgs(args));
     }
   },
 
@@ -61,7 +76,7 @@ export const logger = {
    */
   warn: (...args: any[]) => {
     if (shouldLog('warn')) {
-      console.warn('[WARN]', ...args);
+      console.warn('[WARN]', ...sanitizeArgs(args));
     }
   },
 
@@ -71,7 +86,7 @@ export const logger = {
    */
   error: (...args: any[]) => {
     if (shouldLog('error')) {
-      console.error('[ERROR]', ...args);
+      console.error('[ERROR]', ...sanitizeArgs(args));
     }
   }
 };

@@ -8860,8 +8860,16 @@ interface ScriptMetadata {
  * Strips HTML tags and limits length
  */
 const sanitizeMetadataValue = (value: string, maxLength: number = 100): string => {
-  // Strip HTML tags
-  const stripped = value.replace(/<[^>]*>/g, '');
+  // Strip HTML tags. A single pass is not enough because a stripped tag can
+  // leave a new tag behind (e.g. `<scr<script>ipt>` → `<script>`), so loop
+  // until the replacement is a fixed point.
+  let stripped = value;
+  // Bound the loop so a pathological input can't keep us iterating forever.
+  for (let i = 0; i < 10; i++) {
+    const next = stripped.replace(/<[^>]*>/g, '');
+    if (next === stripped) break;
+    stripped = next;
+  }
   // Limit length
   return stripped.substring(0, maxLength).trim();
 };
@@ -9526,7 +9534,15 @@ apiRouter.post(
       }
 
       const scriptsDir = getScriptsDirectory();
-      const filePath = path.join(scriptsDir, sanitizedFilename);
+      const resolvedScriptsDir = path.resolve(scriptsDir);
+      const filePath = path.resolve(path.join(scriptsDir, sanitizedFilename));
+
+      // Defense in depth: reject any filename that, after resolution, would
+      // escape the scripts directory (e.g. symlink tricks or odd basename edge
+      // cases). path.basename() already stripped path components above.
+      if (!filePath.startsWith(resolvedScriptsDir + path.sep)) {
+        return res.status(400).json({ error: 'Invalid filename' });
+      }
 
       // Ensure scripts directory exists
       if (!fs.existsSync(scriptsDir)) {

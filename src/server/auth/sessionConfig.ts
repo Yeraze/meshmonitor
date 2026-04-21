@@ -116,6 +116,11 @@ export function getSessionConfig(): session.SessionOptions {
   logger.info(`   - Cookie sameSite: ${env.cookieSameSite}`);
   logger.info(`   - Environment: ${env.nodeEnv}`);
 
+  // `secure: env.cookieSecure` is intentionally runtime-configurable so
+  // installations running behind HTTP-terminating reverse proxies can still
+  // keep sessions working. Operators deploying over HTTPS must set
+  // COOKIE_SECURE=true — the environment loader emits a loud warning in
+  // production when it is left unset. See src/server/config/environment.ts.
   return {
     store,
     secret: env.sessionSecret,

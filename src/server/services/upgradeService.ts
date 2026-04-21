@@ -51,12 +51,20 @@ class UpgradeService {
    * This prevents race conditions and partial writes
    */
   private atomicWriteFile(filePath: string, content: string): void {
-    const tempPath = `${filePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+    // Defense in depth: all callers pass compile-time constants (UPGRADE_TRIGGER_FILE
+    // or UPGRADE_STATUS_FILE), but enforce prefix check so a future caller with
+    // a tainted filePath can never escape DATA_DIR.
+    const resolvedDataDir = path.resolve(DATA_DIR);
+    const resolvedFilePath = path.resolve(filePath);
+    if (!resolvedFilePath.startsWith(resolvedDataDir + path.sep)) {
+      throw new Error('Refusing to write upgrade file outside data directory');
+    }
+    const tempPath = `${resolvedFilePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`;
     try {
       // Write to temporary file first
       fs.writeFileSync(tempPath, content, { mode: 0o644 });
       // Atomic rename (replaces target file if it exists)
-      fs.renameSync(tempPath, filePath);
+      fs.renameSync(tempPath, resolvedFilePath);
     } catch (error) {
       // Clean up temp file if rename failed
       try {

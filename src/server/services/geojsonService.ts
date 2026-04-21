@@ -192,8 +192,15 @@ export class GeoJsonService {
       updatedAt: now,
     };
 
-    // Write GeoJSON file
-    fs.writeFileSync(path.join(this.dataDir, filename), content, 'utf-8');
+    // Write GeoJSON file — resolve both paths and enforce prefix match so an
+    // adversarial future `filename` (e.g. from refactoring) can never escape
+    // the data directory.
+    const resolvedDataDir = path.resolve(this.dataDir);
+    const filePath = path.resolve(path.join(this.dataDir, filename));
+    if (!filePath.startsWith(resolvedDataDir + path.sep)) {
+      throw new Error('Refusing to write GeoJSON file outside data directory');
+    }
+    fs.writeFileSync(filePath, content, 'utf-8');
 
     // Update manifest
     manifest.layers.push(layer);
