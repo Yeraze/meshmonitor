@@ -1,0 +1,12 @@
+name: "MeshMonitor CodeQL config"
+
+queries:
+  - uses: security-extended
+
+paths-ignore:
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
+  - "**/*.spec.tsx"
+  - "tests/**"
+  - "generate-vapid-keys.js"
