@@ -205,13 +205,17 @@ When a user logs in via OIDC for the first time:
 
 ### Admin Privileges
 
-The first user to log in via OIDC is automatically made an admin. Subsequent users are created as regular users.
+OIDC users are created as regular (non-admin) accounts. Admin access must be granted explicitly by an existing admin — SSO login does not elevate privileges automatically, even for the first user.
 
-To promote additional users to admin:
+To grant admin to an OIDC user:
 
-1. Log in as an admin
-2. Navigate to User Management
-3. Select the user and click "Toggle Admin"
+1. Log in as an existing admin (e.g. the built-in `admin` local account)
+2. Navigate to **Settings → Users**
+3. Select the user and grant admin / per-source permissions as needed
+
+::: tip
+Keep at least one local admin account available as a break-glass login in case your OIDC provider is unreachable.
+:::
 
 ### Disabling Local Authentication
 
