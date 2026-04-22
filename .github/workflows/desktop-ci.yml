@@ -202,8 +202,10 @@ jobs:
           cp dist/cors-error.html desktop/resources/dist/
           cp package.json desktop/resources/
           cp package.json desktop/resources/dist/
-          # Copy node_modules (may take a while)
-          cp -r node_modules desktop/resources/dist/
+          cp package-lock.json desktop/resources/dist/
+          # Install production-only dependencies into the bundle (matches Windows step).
+          # Excludes dev deps — shrinks the debug build proportionally to the release build.
+          (cd desktop/resources/dist && npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund)
 
       - name: Download Node.js binary for bundling
         run: |
@@ -308,8 +310,10 @@ jobs:
           cp dist/cors-error.html desktop/resources/dist/
           cp package.json desktop/resources/
           cp package.json desktop/resources/dist/
-          # Copy node_modules (may take a while)
-          cp -r node_modules desktop/resources/dist/
+          cp package-lock.json desktop/resources/dist/
+          # Install production-only dependencies into the bundle (matches Windows step).
+          # Excludes dev deps — shrinks the debug build proportionally to the release build.
+          (cd desktop/resources/dist && npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund)
 
       - name: Download Node.js binary for bundling (x64)
         run: |

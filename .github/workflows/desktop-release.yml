@@ -328,8 +328,10 @@ jobs:
           cp dist/cors-error.html desktop/resources/dist/
           cp package.json desktop/resources/
           cp package.json desktop/resources/dist/
-          # Copy node_modules
-          cp -r node_modules desktop/resources/dist/
+          cp package-lock.json desktop/resources/dist/
+          # Install production-only dependencies into the bundle (matches Windows step).
+          # Excludes dev deps (vitest, esbuild, drizzle-kit, tsx, etc) — shrinks the DMG by hundreds of MB.
+          (cd desktop/resources/dist && npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund)
 
       # Sign all native binaries in node_modules for notarization
       # Native addons with JIT also need the entitlements
@@ -676,8 +678,10 @@ jobs:
           cp dist/cors-error.html desktop/resources/dist/
           cp package.json desktop/resources/
           cp package.json desktop/resources/dist/
-          # Copy node_modules
-          cp -r node_modules desktop/resources/dist/
+          cp package-lock.json desktop/resources/dist/
+          # Install production-only dependencies into the bundle (matches Windows step).
+          # Excludes dev deps (vitest, esbuild, drizzle-kit, tsx, etc) — shrinks the DMG by hundreds of MB.
+          (cd desktop/resources/dist && npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund)
 
       # Sign all native binaries in node_modules for notarization
       # Native addons with JIT also need the entitlements
