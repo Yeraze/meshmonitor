@@ -8389,12 +8389,24 @@ class DatabaseService {
     intervalMinutes: number;
   }> {
     const nodeNums = await this.misc.getAutoTimeSyncNodes(sourceId);
+    const read = (key: string) => this.settings.getSettingForSource(sourceId ?? null, key);
+    const [enabledStr, filterEnabledStr, expirationStr, intervalStr] = await Promise.all([
+      read('autoTimeSyncEnabled'),
+      read('autoTimeSyncNodeFilterEnabled'),
+      read('autoTimeSyncExpirationHours'),
+      read('autoTimeSyncIntervalMinutes'),
+    ]);
+    const parseIntDefault = (s: string | null, def: number): number => {
+      if (s === null || s === undefined || s === '') return def;
+      const n = parseInt(s, 10);
+      return isNaN(n) ? def : n;
+    };
     return {
-      enabled: this.isAutoTimeSyncEnabled(),
+      enabled: enabledStr === 'true',
       nodeNums,
-      filterEnabled: this.isAutoTimeSyncNodeFilterEnabled(),
-      expirationHours: this.getAutoTimeSyncExpirationHours(),
-      intervalMinutes: this.getAutoTimeSyncIntervalMinutes(),
+      filterEnabled: filterEnabledStr === 'true',
+      expirationHours: parseIntDefault(expirationStr, 24),
+      intervalMinutes: parseIntDefault(intervalStr, 15),
     };
   }
 
@@ -8408,6 +8420,22 @@ class DatabaseService {
     expirationHours?: number;
     intervalMinutes?: number;
   }, sourceId?: string): Promise<void> {
+    if (sourceId) {
+      const kv: Record<string, string> = {};
+      if (settings.enabled !== undefined) kv.autoTimeSyncEnabled = settings.enabled ? 'true' : 'false';
+      if (settings.filterEnabled !== undefined) kv.autoTimeSyncNodeFilterEnabled = settings.filterEnabled ? 'true' : 'false';
+      if (settings.expirationHours !== undefined) kv.autoTimeSyncExpirationHours = String(settings.expirationHours);
+      if (settings.intervalMinutes !== undefined) kv.autoTimeSyncIntervalMinutes = String(settings.intervalMinutes);
+      if (Object.keys(kv).length > 0) {
+        await this.settings.setSourceSettings(sourceId, kv);
+      }
+      if (settings.nodeNums !== undefined) {
+        await this.misc.setAutoTimeSyncNodes(settings.nodeNums, sourceId);
+      }
+      logger.debug(`✅ Updated per-source time sync filter settings (source=${sourceId})`);
+      return;
+    }
+
     if (settings.enabled !== undefined) {
       this.setAutoTimeSyncEnabled(settings.enabled);
     }
@@ -8433,13 +8461,23 @@ class DatabaseService {
     const activeHours = 48; // Only consider nodes heard in last 48 hours
     // lastHeard is stored in seconds, so convert cutoff to seconds
     const activeNodeCutoff = Math.floor((Date.now() - (activeHours * 60 * 60 * 1000)) / 1000);
-    const expirationHours = this.getAutoTimeSyncExpirationHours();
+
+    const read = (key: string) => this.settings.getSettingForSource(sourceId ?? null, key);
+    const [expirationStr, filterEnabledStr] = await Promise.all([
+      read('autoTimeSyncExpirationHours'),
+      read('autoTimeSyncNodeFilterEnabled'),
+    ]);
+    const expirationHours = (() => {
+      if (!expirationStr) return 24;
+      const n = parseInt(expirationStr, 10);
+      return isNaN(n) ? 24 : n;
+    })();
     // lastTimeSync is stored in milliseconds
     const expirationMsAgo = Date.now() - (expirationHours * 60 * 60 * 1000);
 
     // Get filter settings
     let filterNodeNums: number[] | undefined;
-    if (this.isAutoTimeSyncNodeFilterEnabled()) {
+    if (filterEnabledStr === 'true') {
       filterNodeNums = await this.misc.getAutoTimeSyncNodes(sourceId);
       if (filterNodeNums.length === 0) {
         // Filter is enabled but no nodes selected - skip

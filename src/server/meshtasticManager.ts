@@ -1397,21 +1397,28 @@ class MeshtasticManager implements ISourceManager {
       this.timeSyncInterval = null;
     }
 
+    // Per-source reads: when saved via /api/settings/time-sync-nodes?sourceId=,
+    // these live at source:<id>:autoTimeSync* and fall back to global keys.
+    const enabledStr = await databaseService.settings.getSettingForSource(this.sourceId, 'autoTimeSyncEnabled');
+    const isEnabled = enabledStr === 'true';
+
     // Load settings from database if not already set
     if (this.timeSyncIntervalMinutes === 0) {
-      if (await databaseService.isAutoTimeSyncEnabledAsync()) {
-        this.timeSyncIntervalMinutes = await databaseService.getAutoTimeSyncIntervalMinutesAsync();
+      if (isEnabled) {
+        const intervalStr = await databaseService.settings.getSettingForSource(this.sourceId, 'autoTimeSyncIntervalMinutes');
+        const parsed = intervalStr ? parseInt(intervalStr, 10) : NaN;
+        this.timeSyncIntervalMinutes = isNaN(parsed) ? 15 : parsed;
       }
     }
 
     // If interval is 0 or time sync is disabled, scheduler is disabled
-    if (this.timeSyncIntervalMinutes === 0 || !await databaseService.isAutoTimeSyncEnabledAsync()) {
-      logger.info('🕐 Time sync scheduler is disabled');
+    if (this.timeSyncIntervalMinutes === 0 || !isEnabled) {
+      logger.info(`🕐 Time sync scheduler is disabled for source ${this.sourceId}`);
       return;
     }
 
     const intervalMs = this.timeSyncIntervalMinutes * 60 * 1000;
-    logger.info(`🕐 Starting time sync scheduler with ${this.timeSyncIntervalMinutes} minute interval`);
+    logger.info(`🕐 Starting time sync scheduler for source ${this.sourceId} with ${this.timeSyncIntervalMinutes} minute interval`);
 
     this.timeSyncInterval = setInterval(async () => {
       if (this.isConnected && this.localNodeInfo) {
@@ -9417,7 +9424,7 @@ class MeshtasticManager implements ISourceManager {
 
   private async checkAutoFavorite(nodeNum: number, nodeId: string): Promise<void> {
     try {
-      const autoFavoriteEnabled = await databaseService.settings.getSetting('autoFavoriteEnabled');
+      const autoFavoriteEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteEnabled');
       if (autoFavoriteEnabled !== 'true') {
         return;
       }
@@ -9450,7 +9457,7 @@ class MeshtasticManager implements ISourceManager {
       if (targetNode.favoriteLocked) return;
 
       // Check if already in auto-favorite list (backward compat belt-and-suspenders)
-      const autoFavoriteNodesJson = await databaseService.settings.getSetting('autoFavoriteNodes') || '[]';
+      const autoFavoriteNodesJson = await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteNodes') || '[]';
       const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
       if (autoFavoriteNodes.includes(nodeNum)) {
         return; // Already auto-managed
@@ -9474,9 +9481,9 @@ class MeshtasticManager implements ISourceManager {
           logger.warn(`⚠️ Auto-favorited node ${nodeId} in DB but device sync failed:`, error);
         }
 
-        // Add to auto-favorite tracking list
+        // Add to auto-favorite tracking list (per-source)
         autoFavoriteNodes.push(nodeNum);
-        await databaseService.settings.setSetting('autoFavoriteNodes', JSON.stringify(autoFavoriteNodes));
+        await databaseService.settings.setSourceSetting(this.sourceId, 'autoFavoriteNodes', JSON.stringify(autoFavoriteNodes));
       } finally {
         this.autoFavoritingNodes.delete(nodeNum);
       }
@@ -9489,8 +9496,8 @@ class MeshtasticManager implements ISourceManager {
     if (this.autoFavoriteSweepRunning) return;
     this.autoFavoriteSweepRunning = true;
     try {
-      const autoFavoriteEnabled = await databaseService.settings.getSetting('autoFavoriteEnabled');
-      const autoFavoriteNodesJson = await databaseService.settings.getSetting('autoFavoriteNodes') || '[]';
+      const autoFavoriteEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteEnabled');
+      const autoFavoriteNodesJson = await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteNodes') || '[]';
       const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
 
       if (autoFavoriteNodes.length === 0) {
@@ -9515,13 +9522,13 @@ class MeshtasticManager implements ISourceManager {
             logger.warn(`⚠️ Failed to unfavorite node ${nodeNum} during cleanup:`, error);
           }
         }
-        await databaseService.settings.setSetting('autoFavoriteNodes', '[]');
+        await databaseService.settings.setSourceSetting(this.sourceId, 'autoFavoriteNodes', '[]');
         return;
       }
 
       if (!this.supportsFavorites()) return;
 
-      const staleHours = parseInt(await databaseService.settings.getSetting('autoFavoriteStaleHours') || '72');
+      const staleHours = parseInt(await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteStaleHours') || '72');
       const staleThreshold = Date.now() / 1000 - (staleHours * 3600);
 
       // Get local node role for re-evaluation
@@ -9587,11 +9594,11 @@ class MeshtasticManager implements ISourceManager {
         }
       }
 
-      // Update the tracking list
+      // Update the tracking list (per-source)
       if (nodesToRemove.length > 0) {
         const removeSet = new Set(nodesToRemove);
         const remaining = autoFavoriteNodes.filter(n => !removeSet.has(n));
-        await databaseService.settings.setSetting('autoFavoriteNodes', JSON.stringify(remaining));
+        await databaseService.settings.setSourceSetting(this.sourceId, 'autoFavoriteNodes', JSON.stringify(remaining));
         logger.info(`🧹 Auto-favorite sweep: removed ${nodesToRemove.length}, remaining ${remaining.length}`);
       }
     } catch (error) {
@@ -9606,10 +9613,10 @@ class MeshtasticManager implements ISourceManager {
    * Called after each LocalStats telemetry packet from the local node.
    */
   private async checkAutoHeapManagement(heapFreeBytes: number | undefined, fromNum: number): Promise<void> {
-    const enabled = await databaseService.settings.getSetting('autoHeapManagementEnabled');
+    const enabled = await databaseService.settings.getSettingForSource(this.sourceId, 'autoHeapManagementEnabled');
     if (enabled !== 'true') return;
 
-    const thresholdStr = await databaseService.settings.getSetting('autoHeapManagementThresholdBytes');
+    const thresholdStr = await databaseService.settings.getSettingForSource(this.sourceId, 'autoHeapManagementThresholdBytes');
     const threshold = parseInt(thresholdStr || '20000');
 
     if (heapFreeBytes === undefined || heapFreeBytes >= threshold) return;
