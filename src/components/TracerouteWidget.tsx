@@ -517,10 +517,12 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
                             <Polyline
                               key={`forward-segment-${idx}`}
                               positions={curvedPath}
-                              color="#4CAF50"
-                              weight={weight}
-                              opacity={isHighlighted ? 0.9 : 0.2}
-                              dashArray={snr === undefined ? '5, 10' : undefined}
+                              pathOptions={{
+                                color: '#4CAF50',
+                                weight,
+                                opacity: isHighlighted ? 0.9 : 0.2,
+                                dashArray: snr === undefined ? '5, 10' : undefined,
+                              }}
                             />
                           );
                         })}
@@ -549,10 +551,12 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
                             <Polyline
                               key={`back-segment-${idx}`}
                               positions={curvedPath}
-                              color="#2196F3"
-                              weight={weight}
-                              opacity={isHighlighted ? 0.9 : 0.2}
-                              dashArray={snr === undefined ? '5, 10' : undefined}
+                              pathOptions={{
+                                color: '#2196F3',
+                                weight,
+                                opacity: isHighlighted ? 0.9 : 0.2,
+                                dashArray: snr === undefined ? '5, 10' : undefined,
+                              }}
                             />
                           );
                         })}

@@ -55,10 +55,14 @@ export const darkOverlayColors: OverlayColors = {
 };
 
 export const lightOverlayColors: OverlayColors = {
-  tracerouteForward: '#ea76cb', // Catppuccin Latte pink — distinct from hop gradient and MQTT
-  tracerouteReturn: '#ea76cb', // Same as forward; direction shown by arrows
-  mqttSegment: '#7287fd',      // Catppuccin Latte lavender — distinct from traceroute pink
-  neighborLine: '#fe640b', // Catppuccin Latte peach — distinct from hop gradient
+  // Colors tuned for WCAG AA (≥4.0) contrast on warm cream light tilesets
+  // (e.g. OSM HOT ~#F2EFE9). Catppuccin Latte hues darkened — the stock
+  // Latte palette is designed to harmonize with cream backgrounds, so its
+  // default saturations render washed-out for map overlay lines.
+  tracerouteForward: '#b83a8d', // darkened Latte pink — distinct from hop gradient and MQTT
+  tracerouteReturn: '#b83a8d', // Same as forward; direction shown by arrows
+  mqttSegment: '#4556b8',      // darkened Latte lavender — distinct from traceroute pink
+  neighborLine: '#b84604', // darkened Latte peach — distinct from hop gradient
   positionHistoryOld: { r: 0, g: 103, b: 165 },
   positionHistoryNew: { r: 196, g: 32, b: 10 },
   hopColors: {
@@ -68,10 +72,10 @@ export const lightOverlayColors: OverlayColors = {
     gradient: ['#1d4ed8', '#4338ca', '#6d28d9', '#a21caf', '#be123c', '#b91c1c'],
   },
   snrColors: {
-    good: '#40a02b',    // Catppuccin Latte green (--ctp-green)
-    medium: '#df8e1d',  // Catppuccin Latte yellow (--ctp-yellow)
-    poor: '#d20f39',    // Catppuccin Latte red (--ctp-red)
-    noData: '#9ca0b0',  // Catppuccin Latte overlay0 (--ctp-overlay0)
+    good: '#2f7a1e',    // darkened Latte green — AA on cream (contrast 4.7)
+    medium: '#8f5200',  // darkened Latte amber — AA on cream (contrast 5.4)
+    poor: '#d20f39',    // Catppuccin Latte red — AA on cream (contrast 4.7)
+    noData: '#6c6f7e',  // darkened Latte overlay0 — AA on cream (contrast 4.3)
   },
   polarGrid: {
     rings: 'rgba(0, 80, 130, 0.3)',
