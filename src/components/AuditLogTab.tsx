@@ -234,7 +234,7 @@ const AuditLogTab: React.FC = () => {
   const uniqueActions = Array.from(new Set(stats?.actionStats.map(s => s.action) || []));
   const uniqueResources = ['auth', 'users', 'permissions', 'settings', 'nodes', 'messages', 'telemetry', 'connection', 'audit'];
 
-  if (!authStatus?.permissions?.audit?.read) {
+  if (!authStatus?.permissions?.global?.audit?.read) {
     return (
       <div className="audit-log-tab">
         <div className="error-message">

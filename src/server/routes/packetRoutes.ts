@@ -73,9 +73,11 @@ const requirePacketPermissions: RequestHandler = async (req, res, next) => {
     const sourceIdQ = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
     (req as any).scopedSourceId = sourceIdQ;
 
-    // Get user permissions (works for both authenticated and anonymous users)
+    // Get user permissions scoped to the requested source (null sourceId falls
+    // back to the legacy merged map — callers without a source get the same
+    // behavior as before).
     const permissions = userId !== null
-      ? await databaseService.getUserPermissionSetAsync(userId)
+      ? await databaseService.getUserPermissionSetAsync(userId, sourceIdQ)
       : {};
 
     // Check if user is admin (admins have all permissions)

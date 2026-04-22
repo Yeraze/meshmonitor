@@ -9,7 +9,7 @@ import { requireAdmin } from '../auth/authMiddleware.js';
 import { createLocalUser, resetUserPassword, setUserPassword } from '../auth/localAuth.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
-import { PermissionSet } from '../../types/permission.js';
+import { PermissionSet, isSourceyResource, ResourceType } from '../../types/permission.js';
 const router = Router();
 
 // All routes require admin
@@ -363,7 +363,18 @@ router.get('/:id/permissions', async (req: Request, res: Response) => {
     }
 
     const sourceId = (req.query.sourceId as string | undefined) || undefined;
-    const permissions = await databaseService.getUserPermissionSetAsync(userId, sourceId);
+
+    // Merge the user's global (non-sourcey) grants on top of their per-source
+    // grants so the admin UI can edit both in one form. The PUT handler routes
+    // each resource back to the correct scope.
+    const { global, bySource } = await databaseService.getUserPermissionSetsBySourceAsync(userId);
+    const perSource = sourceId ? (bySource[sourceId] ?? {}) : {};
+    const permissions: PermissionSet = { ...perSource };
+    for (const [resource, perms] of Object.entries(global)) {
+      if (!isSourceyResource(resource as ResourceType)) {
+        (permissions as any)[resource] = perms;
+      }
+    }
 
     return res.json({ permissions });
   } catch (error) {
@@ -399,26 +410,53 @@ router.put('/:id/permissions', async (req: Request, res: Response) => {
       }
     }
 
-    // All permissions are per-source — sourceId is required
-    if (!sourceId) {
+    // Split the incoming map by resource type:
+    //   - sourcey resources (channels, messages, nodes, etc.) → require sourceId,
+    //     stored with that sourceId.
+    //   - non-sourcey resources (dashboard, audit, security, themes, sources,
+    //     settings, info, meshcore) → stored globally with sourceId = NULL,
+    //     regardless of whatever sourceId the admin UI had in scope.
+    const sourceyEntries = Object.entries(permissions).filter(([r]) => isSourceyResource(r as ResourceType));
+    const globalEntries = Object.entries(permissions).filter(([r]) => !isSourceyResource(r as ResourceType));
+
+    if (sourceyEntries.length > 0 && !sourceId) {
       return res.status(400).json({
-        error: 'sourceId is required — all permissions are per-source'
+        error: 'sourceId is required when updating per-source permissions'
       });
     }
 
-    // Delete only permissions in the given scope, then recreate
-    await databaseService.auth.deletePermissionsForUserByScope(userId, sourceId ?? null);
-    for (const [resource, perms] of Object.entries(permissions)) {
-      await databaseService.auth.createPermission({
-        userId,
-        resource,
-        canViewOnMap: perms.viewOnMap ?? false,
-        canRead: perms.read,
-        canWrite: perms.write,
-        grantedBy: req.user!.id,
-        grantedAt: Date.now(),
-        sourceId: sourceId ?? null,
-      });
+    // Replace the per-source scope if we're touching sourcey resources
+    if (sourceId) {
+      await databaseService.auth.deletePermissionsForUserByScope(userId, sourceId);
+      for (const [resource, perms] of sourceyEntries) {
+        await databaseService.auth.createPermission({
+          userId,
+          resource,
+          canViewOnMap: perms.viewOnMap ?? false,
+          canRead: perms.read,
+          canWrite: perms.write,
+          grantedBy: req.user!.id,
+          grantedAt: Date.now(),
+          sourceId,
+        });
+      }
+    }
+
+    // Replace the global (sourceId IS NULL) scope for non-sourcey resources
+    if (globalEntries.length > 0) {
+      await databaseService.auth.deletePermissionsForUserByScope(userId, null);
+      for (const [resource, perms] of globalEntries) {
+        await databaseService.auth.createPermission({
+          userId,
+          resource,
+          canViewOnMap: perms.viewOnMap ?? false,
+          canRead: perms.read,
+          canWrite: perms.write,
+          grantedBy: req.user!.id,
+          grantedAt: Date.now(),
+          sourceId: null,
+        });
+      }
     }
 
     // Audit log

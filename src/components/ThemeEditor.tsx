@@ -220,7 +220,7 @@ export const ThemeEditor: React.FC<ThemeEditorProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const canSave = authStatus?.permissions?.themes?.write && validationErrors.length === 0 && name.trim().length > 0;
+  const canSave = authStatus?.permissions?.global?.themes?.write && validationErrors.length === 0 && name.trim().length > 0;
 
   return (
     <div className="theme-editor">

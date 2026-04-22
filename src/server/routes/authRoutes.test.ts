@@ -69,6 +69,10 @@ describe('Authentication Routes', () => {
     (DatabaseService as any).findUserByUsernameAsync = async (username: string) => userModel.findByUsername(username);
     (DatabaseService as any).authenticateAsync = async (username: string, password: string) => userModel.authenticate(username, password);
     (DatabaseService as any).getUserPermissionSetAsync = async (userId: number) => permissionModel.getUserPermissionSet(userId);
+    (DatabaseService as any).getUserPermissionSetsBySourceAsync = async (userId: number) => ({
+      global: await permissionModel.getUserPermissionSet(userId),
+      bySource: {},
+    });
     (DatabaseService as any).drizzleDbType = 'sqlite';
     (DatabaseService as any).updatePasswordAsync = async (userId: number, newPassword: string) => userModel.updatePassword(userId, newPassword);
 
@@ -245,8 +249,8 @@ describe('Authentication Routes', () => {
         .get('/api/auth/status')
         .expect(200);
 
-      expect(response.body.permissions.dashboard).toBeDefined();
-      expect(response.body.permissions.dashboard.read).toBe(true);
+      expect(response.body.permissions.global.dashboard).toBeDefined();
+      expect(response.body.permissions.global.dashboard.read).toBe(true);
     });
   });
 
@@ -667,7 +671,7 @@ describe('Authentication Routes', () => {
         .expect(200);
 
       expect(response.body.authenticated).toBe(false);
-      expect(response.body.permissions).toEqual({});
+      expect(response.body.permissions).toEqual({ global: {}, bySource: {} });
       expect(response.body.anonymousDisabled).toBe(true);
     });
 
@@ -743,7 +747,7 @@ describe('Authentication Routes', () => {
       expect(response.body.authenticated).toBe(true);
       expect(response.body.user.username).toBe('testuser');
       expect(response.body.permissions).toBeTruthy();
-      expect(response.body.permissions.dashboard).toBeDefined();
+      expect(response.body.permissions.global.dashboard).toBeDefined();
     });
 
     it('should work with both DISABLE_ANONYMOUS and DISABLE_LOCAL_AUTH', async () => {
@@ -759,7 +763,7 @@ describe('Authentication Routes', () => {
       expect(response.body.anonymousDisabled).toBe(true);
       expect(response.body.localAuthDisabled).toBe(true);
       expect(response.body.authenticated).toBe(false);
-      expect(response.body.permissions).toEqual({});
+      expect(response.body.permissions).toEqual({ global: {}, bySource: {} });
     });
   });
 

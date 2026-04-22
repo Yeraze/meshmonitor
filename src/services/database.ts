@@ -8,6 +8,7 @@ import { getEnvironmentConfig } from '../server/config/environment.js';
 
 import { registry } from '../db/migrations.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
+import { isSourceyResource } from '../types/permission.js';
 // Drizzle ORM imports for dual-database support
 import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3';
 import * as drizzleSchema from '../db/schema/index.js';
@@ -8015,19 +8016,35 @@ class DatabaseService {
       return false;
     };
 
-    // All resources are now sourcey (per-source).
-    // When sourceId is provided, check for an exact match.
-    // When sourceId is omitted, grant access if the user has the permission on ANY source.
-    if (sourceId) {
+    const sourcey = isSourceyResource(resource as any);
+
+    if (sourcey) {
+      // Per-source resource. With sourceId → exact-match. Without sourceId →
+      // union across sources (legacy callers that don't scope their lookup).
+      if (sourceId) {
+        for (const perm of permissions) {
+          if (perm.resource === resource && (perm as any).sourceId === sourceId) {
+            return check(perm);
+          }
+        }
+        return false;
+      }
       for (const perm of permissions) {
-        if (perm.resource === resource && (perm as any).sourceId === sourceId) {
-          return check(perm);
+        if (perm.resource === resource && (perm as any).sourceId) {
+          if (check(perm)) return true;
         }
       }
       return false;
     }
 
-    // No sourceId — check if user has this permission on any source
+    // Non-sourcey (global) resource. Prefer the canonical sourceId=NULL row,
+    // then fall back to any per-source row — covers databases where the admin
+    // PUT endpoint historically saved global grants under a sourceId.
+    for (const perm of permissions) {
+      if (perm.resource === resource && !(perm as any).sourceId) {
+        if (check(perm)) return true;
+      }
+    }
     for (const perm of permissions) {
       if (perm.resource === resource && (perm as any).sourceId) {
         if (check(perm)) return true;
@@ -8071,6 +8088,37 @@ class DatabaseService {
     }
 
     return permissionSet;
+  }
+
+  /**
+   * Return the user's permissions split into `global` (non-sourcey rows where
+   * sourceId IS NULL) and `bySource` (per-source rows keyed by sourceId).
+   * Does NOT OR-merge across sources. Callers that need to answer a permission
+   * question must pick a specific source or use the global map.
+   */
+  async getUserPermissionSetsBySourceAsync(userId: number): Promise<{
+    global: Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }>;
+    bySource: Record<string, Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }>>;
+  }> {
+    const permissions = await this.auth.getPermissionsForUser(userId);
+    const global: Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }> = {};
+    const bySource: Record<string, Record<string, { viewOnMap?: boolean; read: boolean; write: boolean }>> = {};
+
+    for (const perm of permissions) {
+      const entry = {
+        viewOnMap: (perm as any).canViewOnMap ?? false,
+        read: perm.canRead,
+        write: perm.canWrite,
+      };
+      const sid = (perm as any).sourceId as string | null | undefined;
+      if (sid) {
+        (bySource[sid] ??= {})[perm.resource] = entry;
+      } else {
+        global[perm.resource] = entry;
+      }
+    }
+
+    return { global, bySource };
   }
 
   /**

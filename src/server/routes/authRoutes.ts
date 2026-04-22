@@ -66,8 +66,8 @@ router.get('/status', async (req: Request, res: Response) => {
       // Return anonymous user permissions for unauthenticated users (if anonymous is enabled)
       const anonymousUser = await databaseService.findUserByUsernameAsync('anonymous');
       const anonymousPermissions = anonymousUser && anonymousUser.isActive && !anonymousDisabled
-        ? await databaseService.getUserPermissionSetAsync(anonymousUser.id)
-        : {};
+        ? await databaseService.getUserPermissionSetsBySourceAsync(anonymousUser.id)
+        : { global: {}, bySource: {} };
 
       return res.json({
         authenticated: false,
@@ -92,8 +92,8 @@ router.get('/status', async (req: Request, res: Response) => {
       // Return anonymous user permissions (if anonymous is enabled)
       const anonymousUser = await databaseService.findUserByUsernameAsync('anonymous');
       const anonymousPermissions = anonymousUser && anonymousUser.isActive && !anonymousDisabled
-        ? await databaseService.getUserPermissionSetAsync(anonymousUser.id)
-        : {};
+        ? await databaseService.getUserPermissionSetsBySourceAsync(anonymousUser.id)
+        : { global: {}, bySource: {} };
 
       return res.json({
         authenticated: false,
@@ -106,8 +106,8 @@ router.get('/status', async (req: Request, res: Response) => {
       });
     }
 
-    // Get user permissions
-    const permissions = await databaseService.getUserPermissionSetAsync(user.id);
+    // Get user permissions split global vs per-source (no cross-source merge)
+    const permissions = await databaseService.getUserPermissionSetsBySourceAsync(user.id);
 
     // Don't send sensitive fields to client
     const { passwordHash, mfaSecret, mfaBackupCodes, ...safeUser } = user;

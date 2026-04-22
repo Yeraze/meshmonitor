@@ -17,7 +17,7 @@ export const CustomThemeManagement: React.FC = () => {
   const [editingTheme, setEditingTheme] = useState<CustomTheme | null>(null);
   const [baseTheme, setBaseTheme] = useState<BuiltInTheme | CustomTheme | undefined>(undefined);
 
-  const canWrite = authStatus?.permissions?.themes?.write || false;
+  const canWrite = authStatus?.permissions?.global?.themes?.write || false;
 
   const handleCreateNew = () => {
     setEditingTheme(null);
