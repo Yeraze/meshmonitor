@@ -142,8 +142,17 @@ function shortSenderLabel(msg: UnifiedMessage): string {
 export default function UnifiedMessagesPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { authStatus } = useAuth();
+  const { authStatus, hasPermission } = useAuth();
   const isAuthenticated = authStatus?.authenticated ?? false;
+  // Unified Messages is cross-source: allow whenever the user (including
+  // anonymous) has read on messages or any channel on ANY source.
+  const canReadAnyMessages =
+    isAuthenticated && authStatus?.user?.isAdmin
+      ? true
+      : hasPermission('messages', 'read', { anySource: true }) ||
+        [0, 1, 2, 3, 4, 5, 6, 7].some((n) =>
+          hasPermission(`channel_${n}` as keyof import('../types/permission').PermissionSet, 'read', { anySource: true })
+        );
 
   const [selectedChannel, setSelectedChannel] = useState<string>('');
   const [sourceFilter, setSourceFilter] = useState<string>('');
@@ -202,7 +211,7 @@ export default function UnifiedMessagesPage() {
       if (!lastPage || lastPage.length < PAGE_SIZE) return undefined;
       return lastPage[lastPage.length - 1].timestamp;
     },
-    enabled: !!selectedChannel && isAuthenticated,
+    enabled: !!selectedChannel && canReadAnyMessages,
     refetchInterval: POLL_INTERVAL_MS,
     refetchOnWindowFocus: false,
     // Only poll the first page (newest messages). Don't re-fetch old pages
@@ -431,13 +440,13 @@ export default function UnifiedMessagesPage() {
 
       <div className="unified-scroll" ref={scrollRef} onScroll={handleScroll}>
       <div className="unified-body">
-        {!isAuthenticated && <div className="unified-empty">{t('unified.messages.sign_in_required')}</div>}
-        {isAuthenticated && channelsError && <div className="unified-error">{t('unified.messages.failed_channels')}</div>}
-        {isAuthenticated && messagesError && <div className="unified-error">{t('unified.messages.failed_messages')}</div>}
-        {isAuthenticated && loadingMessages && feedMessages.length === 0 && (
+        {!canReadAnyMessages && <div className="unified-empty">{t('unified.messages.sign_in_required')}</div>}
+        {canReadAnyMessages && channelsError && <div className="unified-error">{t('unified.messages.failed_channels')}</div>}
+        {canReadAnyMessages && messagesError && <div className="unified-error">{t('unified.messages.failed_messages')}</div>}
+        {canReadAnyMessages && loadingMessages && feedMessages.length === 0 && (
           <div className="unified-empty">{t('unified.messages.loading')}</div>
         )}
-        {isAuthenticated && !loadingMessages && feedMessages.length === 0 && !messagesError && (
+        {canReadAnyMessages && !loadingMessages && feedMessages.length === 0 && !messagesError && (
           <div className="unified-empty">
             {selectedChannel ? t('unified.messages.empty_channel') : t('unified.messages.choose_channel')}
           </div>

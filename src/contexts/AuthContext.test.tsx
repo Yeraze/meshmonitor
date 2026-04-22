@@ -48,12 +48,19 @@ const mockUser = {
   lastLoginAt: null,
 };
 
+const TEST_SOURCE_ID = 'src-a';
+
 const mockAuthStatus = {
   authenticated: true,
   user: mockUser,
   permissions: {
-    nodes: { read: true, write: false },
-    messages: { read: true, write: true },
+    global: {},
+    bySource: {
+      [TEST_SOURCE_ID]: {
+        nodes: { read: true, write: false },
+        messages: { read: true, write: true },
+      },
+    },
   },
   channelDbPermissions: {
     1: { viewOnMap: true, read: true },
@@ -179,7 +186,7 @@ describe('hasPermission', () => {
     const adminStatus = {
       ...mockAuthStatus,
       user: { ...mockUser, isAdmin: true },
-      permissions: {},
+      permissions: { global: {}, bySource: {} },
     };
     mockApi.get.mockImplementation((url: string) => {
       if (url === '/api/auth/status') return Promise.resolve(adminStatus);
@@ -194,18 +201,28 @@ describe('hasPermission', () => {
     expect(result.current.hasPermission('messages', 'write')).toBe(true);
   });
 
-  it('returns true for resource with read permission', async () => {
+  it('returns true for resource with read permission (sourcey — pass sourceId)', async () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(result.current.hasPermission('nodes', 'read')).toBe(true);
+    expect(result.current.hasPermission('nodes', 'read', { sourceId: TEST_SOURCE_ID })).toBe(true);
+  });
+
+  it('returns false for sourcey resource without sourceId (no cross-source leak)', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // `nodes` is granted on TEST_SOURCE_ID only. Without an explicit sourceId
+    // and outside a SourceProvider, the check must return false — this is the
+    // fix for the cross-source permission leak.
+    expect(result.current.hasPermission('nodes', 'read')).toBe(false);
   });
 
   it('returns false for resource without write permission', async () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(result.current.hasPermission('nodes', 'write')).toBe(false);
+    expect(result.current.hasPermission('nodes', 'write', { sourceId: TEST_SOURCE_ID })).toBe(false);
   });
 
   it('returns false for unknown resource', async () => {

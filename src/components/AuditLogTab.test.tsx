@@ -113,7 +113,7 @@ describe('AuditLogTab', () => {
   const createAuthStatus = (overrides: any = {}) => ({
     authenticated: true,
     user: { id: 1, username: 'admin', email: null, displayName: null, authProvider: 'local' as const, isAdmin: true, isActive: true, createdAt: Date.now(), lastLoginAt: Date.now() },
-    permissions: { audit: { read: true, write: true } },
+    permissions: { global: { audit: { read: true, write: true } }, bySource: {} },
     oidcEnabled: false,
     localAuthDisabled: false,
     ...overrides
@@ -149,7 +149,7 @@ describe('AuditLogTab', () => {
     it('should show error message when user lacks audit read permission', () => {
       const authStatus = createAuthStatus({
         user: { id: 1, username: 'user', email: null, displayName: null, authProvider: 'local' as const, isAdmin: false, isActive: true, createdAt: Date.now(), lastLoginAt: Date.now() },
-        permissions: { audit: { read: false, write: false } }
+        permissions: { global: { audit: { read: false, write: false } }, bySource: {} }
       });
 
       render(

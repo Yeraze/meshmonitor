@@ -146,6 +146,10 @@ describe('User Management Routes', () => {
     (DatabaseService as any).getUserPermissionSetAsync = async (userId: number) => {
       return permissionModel.getUserPermissionSet(userId);
     };
+    (DatabaseService as any).getUserPermissionSetsBySourceAsync = async (userId: number) => ({
+      global: await permissionModel.getUserPermissionSet(userId),
+      bySource: {},
+    });
     (DatabaseService as any).clearUserMfaAsync = async (userId: number) => {
       return await userModel.update(userId, { mfaEnabled: false, mfaSecret: null, mfaBackupCodes: null } as any);
     };

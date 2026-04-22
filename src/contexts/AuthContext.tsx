@@ -4,10 +4,12 @@
  * Manages user authentication state, login/logout, and permissions
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../services/api';
 import { logger } from '../utils/logger';
-import type { PermissionSet } from '../types/permission';
+import type { PermissionSet, SourcedPermissionSet } from '../types/permission';
+import { isSourceyResource } from '../types/permission';
+import { useSource } from './SourceContext';
 
 export interface User {
   id: number;
@@ -30,7 +32,12 @@ export interface ChannelDbPermissionSet {
 export interface AuthStatus {
   authenticated: boolean;
   user: User | null;
-  permissions: PermissionSet;
+  /**
+   * Permissions split into non-sourcey (`global`) and per-source (`bySource`).
+   * No cross-source union — callers must ask about a specific source via
+   * `hasPermission(resource, action, { sourceId })` or via SourceContext.
+   */
+  permissions: SourcedPermissionSet;
   channelDbPermissions: ChannelDbPermissionSet;
   oidcEnabled: boolean;
   localAuthDisabled: boolean;
@@ -51,7 +58,22 @@ interface AuthContextType {
   loginWithOIDC: () => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
-  hasPermission: (resource: keyof PermissionSet, action: 'read' | 'write') => boolean;
+  /**
+   * Check if the user has a permission.
+   *   - For global (non-sourcey) resources: checked against permissions.global.
+   *   - For sourcey resources: checked against permissions.bySource[targetSourceId]
+   *     where targetSourceId = opts.sourceId ?? current SourceContext sourceId.
+   *     If no sourceId is available, the check returns false (no cross-source
+   *     union — prevents grant leaks across sources).
+   *   - Pass `{ anySource: true }` for cross-source aggregators (unified views):
+   *     for sourcey resources the check returns true if ANY source has the
+   *     grant. Only use this on views that are intentionally source-agnostic.
+   */
+  hasPermission: (
+    resource: keyof PermissionSet,
+    action: 'read' | 'write',
+    opts?: { sourceId?: string | null; anySource?: boolean }
+  ) => boolean;
   hasChannelDbPermission: (channelDbId: number, action: 'viewOnMap' | 'read') => boolean;
 }
 
@@ -97,7 +119,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAuthStatus({
         authenticated: false,
         user: null,
-        permissions: {},
+        permissions: { global: {}, bySource: {} },
         channelDbPermissions: {},
         oidcEnabled: false,
         localAuthDisabled: false,
@@ -214,26 +236,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [refreshAuth]);
 
-  // Check if user has specific permission
-  const hasPermission = useCallback((resource: keyof PermissionSet, action: 'read' | 'write'): boolean => {
-    // If authenticated and admin, grant all permissions
-    if (authStatus?.authenticated && authStatus.user?.isAdmin) {
-      return true;
-    }
+  // Check if user has specific permission.
+  // Callers may pass an explicit sourceId via `opts.sourceId`. When omitted,
+  // `useAuth()` fills it in from the active SourceContext (see useAuth below).
+  // For sourcey resources with no resolved sourceId, returns false — there is
+  // intentionally no cross-source OR-union here.
+  const hasPermission = useCallback(
+    (
+      resource: keyof PermissionSet,
+      action: 'read' | 'write',
+      opts?: { sourceId?: string | null; anySource?: boolean }
+    ): boolean => {
+      // If authenticated and admin, grant all permissions
+      if (authStatus?.authenticated && authStatus.user?.isAdmin) {
+        return true;
+      }
 
-    // Check permissions (works for both authenticated and anonymous users)
-    // Anonymous user permissions are returned in authStatus.permissions when not authenticated
-    if (!authStatus) {
+      // Check permissions (works for both authenticated and anonymous users)
+      // Anonymous user permissions are returned in authStatus.permissions when not authenticated
+      if (!authStatus) {
+        return false;
+      }
+
+      if (isSourceyResource(resource)) {
+        if (opts?.anySource) {
+          for (const sourceMap of Object.values(authStatus.permissions.bySource)) {
+            if (sourceMap[resource]?.[action] === true) return true;
+          }
+          return false;
+        }
+        const targetSourceId = opts?.sourceId ?? null;
+        if (!targetSourceId) return false;
+        const sourceMap = authStatus.permissions.bySource[targetSourceId];
+        const resourcePermissions = sourceMap?.[resource];
+        return resourcePermissions?.[action] === true;
+      }
+
+      // Non-sourcey (global) resources: prefer the global map, but fall back
+      // to any per-source row as well. This covers databases where global
+      // grants (security, audit, themes, …) were historically saved under a
+      // sourceId by the admin PUT endpoint before it learned to split.
+      const resourcePermissions = authStatus.permissions.global[resource];
+      if (resourcePermissions?.[action] === true) return true;
+      for (const sourceMap of Object.values(authStatus.permissions.bySource)) {
+        if (sourceMap[resource]?.[action] === true) return true;
+      }
       return false;
-    }
-
-    const resourcePermissions = authStatus.permissions[resource];
-    if (!resourcePermissions) {
-      return false;
-    }
-
-    return resourcePermissions[action] === true;
-  }, [authStatus]);
+    },
+    [authStatus]
+  );
 
   // Check if user has specific channel database (virtual channel) permission
   const hasChannelDbPermission = useCallback((channelDbId: number, action: 'viewOnMap' | 'read'): boolean => {
@@ -278,5 +329,22 @@ export const useAuth = (): AuthContextType => {
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
-  return context;
+
+  // Resolve "current source" from SourceContext at the call site so components
+  // inside <SourceProvider sourceId={X}> get their permission checks scoped to
+  // X automatically. Outside a SourceProvider, `currentSourceId` is null and
+  // sourcey permission checks (without an explicit sourceId) return false.
+  const { sourceId: currentSourceId } = useSource();
+
+  const boundHasPermission: AuthContextType['hasPermission'] = useMemo(
+    () =>
+      (resource, action, opts) =>
+        context.hasPermission(resource, action, {
+          sourceId: opts?.sourceId !== undefined ? opts.sourceId : currentSourceId,
+          anySource: opts?.anySource,
+        }),
+    [context, currentSourceId]
+  );
+
+  return { ...context, hasPermission: boundHasPermission };
 };

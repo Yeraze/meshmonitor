@@ -10,32 +10,45 @@ import { ResourceType } from '../../types/permission.js';
 const router = express.Router();
 
 /**
- * Permission middleware - require messages:write for DM deletions
+ * Permission middleware - require messages:write for DM / node-scoped deletions.
+ * Scoped to a source: caller must supply sourceId via body or query.
  */
 const requireMessagesWrite: RequestHandler = async (req, res, next) => {
   const user = (req as any).user;
   const userId = user?.id ?? null;
-
-  // Get user permissions (async for multi-database support)
-  const permissions = userId !== null
-    ? await databaseService.getUserPermissionSetAsync(userId)
-    : {};
-
-  // Check if user is admin
   const isAdmin = user?.isAdmin ?? false;
+
+  // Resolve sourceId from body or query — required for messages:write
+  const rawSourceId = (req.body && req.body.sourceId) ?? (req.query && req.query.sourceId);
+  if (rawSourceId === undefined || rawSourceId === null || rawSourceId === '') {
+    return res.status(400).json({
+      error: 'Bad request',
+      message: 'sourceId is required'
+    });
+  }
+  if (typeof rawSourceId !== 'string') {
+    return res.status(400).json({
+      error: 'Bad request',
+      message: 'Invalid sourceId'
+    });
+  }
+  const sourceId: string = rawSourceId;
+  (req as any).scopedSourceId = sourceId;
 
   if (isAdmin) {
     return next();
   }
 
-  // Check messages:write permission
-  const hasMessagesWrite = permissions.messages?.write === true;
+  // Check messages:write permission scoped to source
+  const hasMessagesWrite = userId !== null
+    ? await databaseService.checkPermissionAsync(userId, 'messages', 'write', sourceId)
+    : false;
 
   if (!hasMessagesWrite) {
-    logger.warn(`❌ Permission denied for message deletion - messages:write=${hasMessagesWrite}`);
+    logger.warn(`❌ Permission denied for message deletion - messages:write source=${sourceId}`);
     return res.status(403).json({
       error: 'Forbidden',
-      message: 'You need messages:write permission to delete messages'
+      message: `You need messages:write permission for source ${sourceId} to delete messages`
     });
   }
 
@@ -101,7 +114,8 @@ router.get('/search', async (req: Request, res: Response) => {
     const userId = user?.id ?? null;
     const isAdmin = user?.isAdmin ?? false;
 
-    const { q, caseSensitive, scope, channels, fromNodeId, startDate, endDate, limit, offset } = req.query;
+    const { q, caseSensitive, scope, channels, fromNodeId, startDate, endDate, limit, offset, sourceId } = req.query;
+    const sourceIdStr = typeof sourceId === 'string' && sourceId.length > 0 ? sourceId : undefined;
 
     if (!q || typeof q !== 'string' || q.trim().length === 0) {
       return res.status(400).json({
@@ -125,11 +139,14 @@ router.get('/search', async (req: Request, res: Response) => {
     const startDateNum = startDate ? parseInt(startDate as string) : undefined;
     const endDateNum = endDate ? parseInt(endDate as string) : undefined;
 
-    // Get accessible channels for permission filtering
+    // Get accessible channels for permission filtering. When sourceId is given,
+    // scope strictly to that source (no cross-source leak). When absent, union
+    // across sources — caller then sees whatever the union allows. Results are
+    // further filtered to sourceIdStr below when provided.
     let accessibleChannels: Set<number> | null = null;
     if (!isAdmin) {
       const permissions = userId !== null
-        ? await databaseService.getUserPermissionSetAsync(userId)
+        ? await databaseService.getUserPermissionSetAsync(userId, sourceIdStr)
         : {};
 
       accessibleChannels = new Set<number>();
@@ -172,8 +189,13 @@ router.get('/search', async (req: Request, res: Response) => {
         offset: searchOffset
       });
 
-      results.push(...searchResult.messages.map(m => ({ ...m, source: 'standard' })));
-      total += searchResult.total;
+      // When sourceId is specified, restrict results to that source.
+      const filtered = sourceIdStr
+        ? searchResult.messages.filter((m: any) => m.sourceId === sourceIdStr)
+        : searchResult.messages;
+
+      results.push(...filtered.map(m => ({ ...m, source: 'standard' })));
+      total += sourceIdStr ? filtered.length : searchResult.total;
     }
 
     // Search MeshCore messages (in-memory filter)
@@ -228,17 +250,19 @@ router.delete('/:id', async (req, res) => {
     const userId = user?.id ?? null;
     const isAdmin = user?.isAdmin ?? false;
 
-    // Get permissions first (before checking message existence for security)
-    const permissions = userId !== null
-      ? await databaseService.getUserPermissionSetAsync(userId)
-      : {};
+    // Gate by "has any write grant" without cross-source leak: fetch the split
+    // permission set and check if the user has messages:write or any channel_N:write
+    // on ANY source. This preserves the pre-existing timing-safe "don't reveal
+    // message existence" behavior; the specific per-source permission check happens
+    // after we load the message and know its sourceId.
+    const sets = userId !== null
+      ? await databaseService.getUserPermissionSetsBySourceAsync(userId)
+      : { global: {}, bySource: {} };
 
-    // Check if user has any write permission at all (messages or any channel)
-    const hasMessagesWrite = permissions.messages?.write === true;
-    const hasAnyChannelWrite = Object.keys(permissions).some(key =>
-      key.startsWith('channel_') && permissions[key as keyof typeof permissions]?.write === true
-    );
-    const hasAnyWritePermission = isAdmin || hasMessagesWrite || hasAnyChannelWrite;
+    const sourceMaps = Object.values(sets.bySource);
+    const hasAnyWritePermission = isAdmin
+      || sourceMaps.some(m => m.messages?.write === true)
+      || sourceMaps.some(m => Object.keys(m).some(k => k.startsWith('channel_') && m[k as keyof typeof m]?.write === true));
 
     if (!hasAnyWritePermission) {
       return res.status(403).json({
@@ -258,24 +282,36 @@ router.delete('/:id', async (req, res) => {
 
     // Determine if this is a channel or DM message
     const isChannelMessage = message.channel !== 0;
+    const messageSourceId = (message as any).sourceId as string | undefined;
 
-    // Check specific permission for this message type
+    // Check specific permission for this message type, scoped to the message's source
     if (!isAdmin) {
+      if (!messageSourceId) {
+        // Legacy message without sourceId — deny for per-source callers
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Message has no source association; cannot be deleted by non-admin'
+        });
+      }
       if (isChannelMessage) {
         const channelResource = `channel_${message.channel}` as import('../../types/permission.js').ResourceType;
-        const hasChannelWrite = permissions[channelResource]?.write === true;
+        const hasChannelWrite = userId !== null
+          ? await databaseService.checkPermissionAsync(userId, channelResource, 'write', messageSourceId)
+          : false;
         if (!hasChannelWrite) {
           return res.status(403).json({
             error: 'Forbidden',
-            message: `You need ${channelResource}:write permission to delete messages from this channel`
+            message: `You need ${channelResource}:write permission for source ${messageSourceId} to delete messages from this channel`
           });
         }
       } else {
-        const hasMessagesWrite = permissions.messages?.write === true;
+        const hasMessagesWrite = userId !== null
+          ? await databaseService.checkPermissionAsync(userId, 'messages', 'write', messageSourceId)
+          : false;
         if (!hasMessagesWrite) {
           return res.status(403).json({
             error: 'Forbidden',
-            message: 'You need messages:write permission to delete direct messages'
+            message: `You need messages:write permission for source ${messageSourceId} to delete direct messages`
           });
         }
       }

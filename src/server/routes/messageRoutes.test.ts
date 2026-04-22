@@ -63,6 +63,14 @@ describe('Message Deletion Routes', () => {
       messages: { read: true, write: true, viewOnMap: false },
       dashboard: { read: true, write: true, viewOnMap: false },
     });
+    // Per-source split (default: messages:write granted on source-a so DELETE /:id
+    // passes the "has any write grant" gate). Individual tests override this.
+    (databaseService as any).getUserPermissionSetsBySourceAsync = vi.fn().mockResolvedValue({
+      global: {},
+      bySource: {
+        'source-a': { messages: { read: true, write: true, viewOnMap: false } },
+      },
+    });
     (databaseService as any).checkPermissionAsync = vi.fn().mockResolvedValue(true);
     // Set up traceroutes repo mock
     Object.defineProperty(databaseService, 'messages', {
@@ -134,9 +142,9 @@ describe('Message Deletion Routes', () => {
       };
 
       vi.spyOn(databaseService, 'getMessageAsync').mockResolvedValue(mockChannelMessage as any);
-      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
-        messages: { read: false, write: false },
-        channel_0: { read: false, write: false }
+      (databaseService as any).getUserPermissionSetsBySourceAsync = vi.fn().mockResolvedValue({
+        global: {},
+        bySource: {},
       });
 
       const response = await request(app).delete('/api/messages/msg-channel');
@@ -154,15 +162,15 @@ describe('Message Deletion Routes', () => {
       };
 
       vi.spyOn(databaseService, 'getMessageAsync').mockResolvedValue(mockDMMessage as any);
-      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
-        messages: { read: false, write: false },
-        channel_0: { read: false, write: false }
+      (databaseService as any).getUserPermissionSetsBySourceAsync = vi.fn().mockResolvedValue({
+        global: {},
+        bySource: {},
       });
 
       const response = await request(app).delete('/api/messages/msg-dm');
 
       expect(response.status).toBe(403);
-      expect(response.body.message).toContain('messages:write');
+      expect(response.body.message).toContain('write permission');
     });
 
     it('should allow user with channels:write to delete channel messages', async () => {
@@ -170,15 +178,20 @@ describe('Message Deletion Routes', () => {
       const mockChannelMessage = {
         id: 'msg-channel',
         channel: 5,
+        sourceId: 'source-a',
         text: 'Channel message'
       };
 
       vi.spyOn(databaseService, 'getMessageAsync').mockResolvedValue(mockChannelMessage as any);
       mockMessagesRepo.deleteMessage.mockResolvedValue(true);
       const auditLogSpy = vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
-      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
-        channel_5: { read: true, write: true }
+      (databaseService as any).getUserPermissionSetsBySourceAsync = vi.fn().mockResolvedValue({
+        global: {},
+        bySource: {
+          'source-a': { channel_5: { read: true, write: true } },
+        },
       });
+      (databaseService as any).checkPermissionAsync = vi.fn().mockResolvedValue(true);
 
       const response = await request(app).delete('/api/messages/msg-channel');
 
@@ -294,13 +307,11 @@ describe('Message Deletion Routes', () => {
   });
 
   describe('DELETE /api/messages/direct-messages/:nodeNum - DM purge', () => {
-    it('should return 403 for users without messages:write', async () => {
+    it('should return 403 for users without messages:write on this source', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
-        messages: { read: false, write: false }
-      });
+      (databaseService as any).checkPermissionAsync = vi.fn().mockResolvedValue(false);
 
-      const response = await request(app).delete('/api/messages/direct-messages/123456');
+      const response = await request(app).delete('/api/messages/direct-messages/123456?sourceId=source-a');
 
       expect(response.status).toBe(403);
       expect(response.body.message).toContain('messages:write');
@@ -308,7 +319,7 @@ describe('Message Deletion Routes', () => {
 
     it('should return 400 for invalid node number', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      const response = await request(app).delete('/api/messages/direct-messages/invalid');
+      const response = await request(app).delete('/api/messages/direct-messages/invalid?sourceId=source-a');
 
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('message', 'Invalid node number');
@@ -383,13 +394,13 @@ describe('Message Deletion Routes', () => {
   });
 
   describe('DELETE /api/messages/nodes/:nodeNum/traceroutes - Node traceroutes purge', () => {
-    it('should return 403 for users without messages:write', async () => {
+    it('should return 403 for users without messages:write on this source', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
-        messages: { read: false, write: false }
-      });
+      (databaseService as any).checkPermissionAsync = vi.fn().mockResolvedValue(false);
 
-      const response = await request(app).delete('/api/messages/nodes/123456/traceroutes');
+      const response = await request(app)
+        .delete('/api/messages/nodes/123456/traceroutes')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(403);
       expect(response.body.message).toContain('messages:write');
@@ -397,7 +408,9 @@ describe('Message Deletion Routes', () => {
 
     it('should return 400 for invalid node number', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      const response = await request(app).delete('/api/messages/nodes/invalid/traceroutes');
+      const response = await request(app)
+        .delete('/api/messages/nodes/invalid/traceroutes')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('message', 'Invalid node number');
@@ -474,13 +487,13 @@ describe('Message Deletion Routes', () => {
   });
 
   describe('DELETE /api/messages/nodes/:nodeNum/position-history - Node position history purge', () => {
-    it('should return 403 for users without messages:write', async () => {
+    it('should return 403 for users without messages:write on this source', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
-        messages: { read: false, write: false }
-      });
+      (databaseService as any).checkPermissionAsync = vi.fn().mockResolvedValue(false);
 
-      const response = await request(app).delete('/api/messages/nodes/123456/position-history');
+      const response = await request(app)
+        .delete('/api/messages/nodes/123456/position-history')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(403);
       expect(response.body.message).toContain('messages:write');
@@ -488,7 +501,9 @@ describe('Message Deletion Routes', () => {
 
     it('should return 400 for invalid node number', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      const response = await request(app).delete('/api/messages/nodes/invalid/position-history');
+      const response = await request(app)
+        .delete('/api/messages/nodes/invalid/position-history')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('message', 'Invalid node number');
@@ -549,20 +564,18 @@ describe('Message Deletion Routes', () => {
   });
 
   describe('DELETE /api/messages/nodes/:nodeNum - Delete entire node', () => {
-    it('should return 403 for users without messages:write', async () => {
+    it('should return 403 for users without messages:write on this source', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
-        messages: { read: false, write: false }
-      });
+      (databaseService as any).checkPermissionAsync = vi.fn().mockResolvedValue(false);
 
-      const response = await request(app).delete('/api/messages/nodes/123456');
+      const response = await request(app).delete('/api/messages/nodes/123456?sourceId=source-a');
 
       expect(response.status).toBe(403);
     });
 
     it('should return 400 for invalid node number', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      const response = await request(app).delete('/api/messages/nodes/invalid');
+      const response = await request(app).delete('/api/messages/nodes/invalid?sourceId=source-a');
 
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('message', 'Invalid node number');
@@ -610,13 +623,13 @@ describe('Message Deletion Routes', () => {
   });
 
   describe('DELETE /api/messages/nodes/:nodeNum/telemetry - Node telemetry purge', () => {
-    it('should return 403 for users without messages:write', async () => {
+    it('should return 403 for users without messages:write on this source', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      vi.spyOn(databaseService, 'getUserPermissionSetAsync').mockResolvedValue({
-        messages: { read: false, write: false }
-      });
+      (databaseService as any).checkPermissionAsync = vi.fn().mockResolvedValue(false);
 
-      const response = await request(app).delete('/api/messages/nodes/123456/telemetry');
+      const response = await request(app)
+        .delete('/api/messages/nodes/123456/telemetry')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(403);
       expect(response.body.message).toContain('messages:write');
@@ -624,7 +637,9 @@ describe('Message Deletion Routes', () => {
 
     it('should return 400 for invalid node number', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      const response = await request(app).delete('/api/messages/nodes/invalid/telemetry');
+      const response = await request(app)
+        .delete('/api/messages/nodes/invalid/telemetry')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('message', 'Invalid node number');
@@ -827,7 +842,9 @@ describe('Message Deletion Routes', () => {
       const originalManager = (global as any).meshtasticManager;
       delete (global as any).meshtasticManager;
 
-      const response = await request(app).post('/api/messages/nodes/123456/purge-from-device');
+      const response = await request(app)
+        .post('/api/messages/nodes/123456/purge-from-device')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Internal server error');
@@ -843,7 +860,9 @@ describe('Message Deletion Routes', () => {
         sendRemoveNode: vi.fn().mockResolvedValue(undefined),
       };
 
-      const response = await request(app).post('/api/messages/nodes/invalid/purge-from-device');
+      const response = await request(app)
+        .post('/api/messages/nodes/invalid/purge-from-device')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('Invalid node number');
@@ -858,7 +877,9 @@ describe('Message Deletion Routes', () => {
         sendRemoveNode: vi.fn(),
       };
 
-      const response = await request(app).post('/api/messages/nodes/123456/purge-from-device');
+      const response = await request(app)
+        .post('/api/messages/nodes/123456/purge-from-device')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('Cannot purge the local node');
@@ -866,13 +887,13 @@ describe('Message Deletion Routes', () => {
       delete (global as any).meshtasticManager;
     });
 
-    it('should return 403 when user lacks messages:write permission', async () => {
+    it('should return 403 when user lacks messages:write permission on this source', async () => {
       const app = createApp({ id: 2, username: 'user', isAdmin: false });
-      (databaseService as any).getUserPermissionSetAsync = vi.fn().mockResolvedValue({
-        messages: { read: true, write: false },
-      });
+      (databaseService as any).checkPermissionAsync = vi.fn().mockResolvedValue(false);
 
-      const response = await request(app).post('/api/messages/nodes/123456/purge-from-device');
+      const response = await request(app)
+        .post('/api/messages/nodes/123456/purge-from-device')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(403);
     });
@@ -888,7 +909,9 @@ describe('Message Deletion Routes', () => {
         configurable: true,
       });
 
-      const response = await request(app).post('/api/messages/nodes/123456/purge-from-device');
+      const response = await request(app)
+        .post('/api/messages/nodes/123456/purge-from-device')
+        .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Device communication error');

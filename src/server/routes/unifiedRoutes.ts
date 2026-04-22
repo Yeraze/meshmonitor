@@ -106,21 +106,32 @@ router.get('/channels', async (req: Request, res: Response) => {
 
     await Promise.all(
       sources.map(async (source) => {
-        const canRead = isAdmin || (user
+        // Check messages:read once per source (covers DMs and acts as "broad
+        // read" grant). Per-channel read is checked individually below.
+        const canReadMessages = isAdmin || (user
           ? await databaseService.checkPermissionAsync(user.id, 'messages', 'read', source.id)
           : false);
-        if (!canRead) return;
 
         try {
           const chans = await databaseService.channels.getAllChannels(source.id);
           for (const c of chans) {
             const name = unifiedChannelDisplayName(c as any);
             if (!name) continue; // disabled or unused slot
+            const channelNum = (c as any).id as number;
+            const canReadChannel = canReadMessages || (user
+              ? await databaseService.checkPermissionAsync(
+                  user.id,
+                  `channel_${channelNum}`,
+                  'read',
+                  source.id,
+                )
+              : false);
+            if (!canReadChannel) continue;
             const list = byName.get(name) ?? [];
             list.push({
               sourceId: source.id,
               sourceName: source.name,
-              channelNumber: (c as any).id,
+              channelNumber: channelNum,
             });
             byName.set(name, list);
           }
@@ -222,10 +233,9 @@ router.get('/messages', async (req: Request, res: Response) => {
 
     await Promise.all(
       sources.map(async (source) => {
-        const canRead = isAdmin || (user
+        const canReadMessages = isAdmin || (user
           ? await databaseService.checkPermissionAsync(user.id, 'messages', 'read', source.id)
           : false);
-        if (!canRead) return;
 
         // Resolve channel name → channel number AND build node-name map in
         // parallel. Both are independent reads against this source's DB slice
@@ -233,6 +243,9 @@ router.get('/messages', async (req: Request, res: Response) => {
         // instead of running them back-to-back.
         const nodeMap = new Map<number, { longName?: string; shortName?: string }>();
         let channelNumber: number | undefined;
+        // Channels on this source the user can read. Populated only when
+        // needed (no channelName → we have to filter per channel).
+        let allowedChannelsOnSource: Set<number> | null = null;
 
         const [chansResult, nodesResult] = await Promise.allSettled([
           channelName
@@ -255,6 +268,33 @@ router.get('/messages', async (req: Request, res: Response) => {
           );
           if (!match) return; // source has no matching channel → skip
           channelNumber = (match as any).id;
+
+          // Gate: either broad messages:read or specific channel_N:read grant.
+          const canReadChannel = canReadMessages || (user
+            ? await databaseService.checkPermissionAsync(
+                user.id,
+                `channel_${channelNumber}`,
+                'read',
+                source.id,
+              )
+            : false);
+          if (!canReadChannel) return;
+        } else {
+          // No channel filter: build the set of channels on this source the
+          // user can actually read. Skip the source entirely if empty.
+          allowedChannelsOnSource = new Set<number>();
+          for (let n = 0; n <= 7; n++) {
+            const allow = canReadMessages || (user
+              ? await databaseService.checkPermissionAsync(
+                  user.id,
+                  `channel_${n}`,
+                  'read',
+                  source.id,
+                )
+              : false);
+            if (allow) allowedChannelsOnSource.add(n);
+          }
+          if (allowedChannelsOnSource.size === 0 && !canReadMessages) return;
         }
 
         if (nodesResult.status === 'fulfilled') {
@@ -286,6 +326,15 @@ router.get('/messages', async (req: Request, res: Response) => {
           msgs = await databaseService.messages.getMessages(fetchLimit, 0, source.id, [PortNum.TRACEROUTE_APP]);
           if (before !== undefined) {
             msgs = msgs.filter((m) => (m.rxTime ?? m.timestamp) < before);
+          }
+          // Filter to channels the user can read on this source. DMs (no
+          // channel or explicitly -1) require the broader messages:read grant.
+          if (allowedChannelsOnSource) {
+            msgs = msgs.filter((m) => {
+              const ch = (m as any).channel;
+              if (ch == null || ch === -1) return canReadMessages;
+              return allowedChannelsOnSource!.has(ch);
+            });
           }
         }
 

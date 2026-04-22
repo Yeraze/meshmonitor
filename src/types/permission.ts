@@ -58,6 +58,33 @@ export type PermissionSet = Partial<{
   };
 }>;
 
+/**
+ * Resources whose permissions are scoped per-source. Matches the SOURCEY_RESOURCES
+ * set used by migration 033. Grants on these resources always carry a sourceId.
+ */
+export const SOURCEY_RESOURCES: readonly ResourceType[] = [
+  'channel_0', 'channel_1', 'channel_2', 'channel_3',
+  'channel_4', 'channel_5', 'channel_6', 'channel_7',
+  'messages', 'nodes', 'nodes_private', 'traceroute',
+  'packetmonitor', 'configuration', 'connection', 'automation',
+] as const;
+
+const SOURCEY_RESOURCE_SET = new Set<ResourceType>(SOURCEY_RESOURCES);
+
+export function isSourceyResource(resource: ResourceType): boolean {
+  return SOURCEY_RESOURCE_SET.has(resource);
+}
+
+/**
+ * Response shape for the split permission model: non-sourcey grants live in
+ * `global`; per-source grants are keyed by sourceId in `bySource`. Replaces
+ * the old OR-merged single map that leaked grants across sources.
+ */
+export interface SourcedPermissionSet {
+  global: PermissionSet;
+  bySource: Record<string, PermissionSet>;
+}
+
 export interface ResourceDefinition {
   id: ResourceType;
   name: string;
