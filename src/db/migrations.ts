@@ -56,6 +56,8 @@ import { migration as dropLegacyTelemetryFkMigration, runMigration041Postgres, r
 import { migration as dropLegacyMessagesFkMigration, runMigration042Postgres, runMigration042Mysql } from '../server/migrations/042_drop_legacy_messages_nodes_fk.js';
 import { migration as dropLegacyNeighborInfoFkMigration, runMigration043Postgres, runMigration043Mysql } from '../server/migrations/043_drop_legacy_neighbor_info_nodes_fk.js';
 import { migration as dropLegacyTraceroutesFkMigration, runMigration044Postgres, runMigration044Mysql } from '../server/migrations/044_drop_legacy_traceroutes_nodes_fk.js';
+import { migration as dropLegacyRouteSegmentsFkMigration, runMigration045Postgres, runMigration045Mysql } from '../server/migrations/045_drop_legacy_route_segments_nodes_fk.js';
+import { migration as addUserMapPrefsIdSqliteMigration, runMigration046Postgres, runMigration046Mysql } from '../server/migrations/046_add_user_map_preferences_id_sqlite.js';
 
 // ============================================================================
 // Registry
@@ -668,4 +670,43 @@ registry.register({
   sqlite: (db) => dropLegacyTraceroutesFkMigration.up(db),
   postgres: (client) => runMigration044Postgres(client),
   mysql: (pool) => runMigration044Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 045: Drop legacy route_segments→nodes(nodeNum) FK on SQLite.
+// Same shape as 041-044: legacy Drizzle-push databases declared a FK on
+// route_segments pointing at nodes(nodeNum), which became structurally
+// invalid once 029 moved nodes to a composite PK. Migration 030 had to
+// toggle foreign_keys=OFF to work around this; since then the broken FK
+// has caused every DELETE on route_segments (node purge, auto-delete, and
+// maintenance cleanup) to fail with "foreign key mismatch". This rebuild
+// drops the FK permanently. PG/MySQL baselines never declared it; no-op.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 45,
+  name: 'drop_legacy_route_segments_nodes_fk',
+  settingsKey: 'migration_045_drop_legacy_route_segments_nodes_fk',
+  sqlite: (db) => dropLegacyRouteSegmentsFkMigration.up(db),
+  postgres: (client) => runMigration045Postgres(client),
+  mysql: (pool) => runMigration045Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 046: Add missing id/createdAt/updatedAt to SQLite
+// user_map_preferences. Migration 037 added these columns on PG/MySQL but
+// its SQLite branch is a no-op because it assumes the bootstrap
+// `CREATE TABLE IF NOT EXISTS` block creates `id`. That block never updates
+// pre-existing legacy tables, so Drizzle's `.select()` in getMapPreferences
+// fails with `no such column: "id"`. This rebuilds the table to match the
+// current schema. PG/MySQL already covered by 037; no-op there.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 46,
+  name: 'add_user_map_preferences_id_sqlite',
+  settingsKey: 'migration_046_add_user_map_preferences_id_sqlite',
+  sqlite: (db) => addUserMapPrefsIdSqliteMigration.up(db),
+  postgres: (client) => runMigration046Postgres(client),
+  mysql: (pool) => runMigration046Mysql(pool),
 });
