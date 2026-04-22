@@ -58,6 +58,7 @@ import { migration as dropLegacyNeighborInfoFkMigration, runMigration043Postgres
 import { migration as dropLegacyTraceroutesFkMigration, runMigration044Postgres, runMigration044Mysql } from '../server/migrations/044_drop_legacy_traceroutes_nodes_fk.js';
 import { migration as dropLegacyRouteSegmentsFkMigration, runMigration045Postgres, runMigration045Mysql } from '../server/migrations/045_drop_legacy_route_segments_nodes_fk.js';
 import { migration as addUserMapPrefsIdSqliteMigration, runMigration046Postgres, runMigration046Mysql } from '../server/migrations/046_add_user_map_preferences_id_sqlite.js';
+import { migration as addSelectedLayerMigration, runMigration047Postgres, runMigration047Mysql } from '../server/migrations/047_add_selected_layer_to_user_map_preferences.js';
 
 // ============================================================================
 // Registry
@@ -709,4 +710,23 @@ registry.register({
   sqlite: (db) => addUserMapPrefsIdSqliteMigration.up(db),
   postgres: (client) => runMigration046Postgres(client),
   mysql: (pool) => runMigration046Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 047: Add `selectedLayer` column to user_map_preferences on
+// PostgreSQL/MySQL. Pre-baseline (v3.6) deployments created the table with
+// `selectedNodeNum` instead; `CREATE TABLE IF NOT EXISTS` in baseline 001 is
+// a no-op on legacy tables, and migration 007 missed this column. Drizzle's
+// getMapPreferences selects every schema column and fails with
+// `column "selectedLayer" does not exist`. SQLite unaffected (bootstrap +
+// migration 046 ensure the column).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 47,
+  name: 'add_selected_layer_to_user_map_preferences',
+  settingsKey: 'migration_047_add_selected_layer_to_user_map_preferences',
+  sqlite: (db) => addSelectedLayerMigration.up(db),
+  postgres: (client) => runMigration047Postgres(client),
+  mysql: (pool) => runMigration047Mysql(pool),
 });
