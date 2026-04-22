@@ -5602,8 +5602,10 @@ apiRouter.post('/settings/time-sync-nodes', requirePermission('settings', 'write
     if (intervalMinutes !== undefined) {
       timeSyncManager.setTimeSyncInterval(enabled ? Number(intervalMinutes) : 0);
     } else if (enabled !== undefined) {
-      // If only enabled/disabled changed, use existing interval
-      const currentInterval = await databaseService.getAutoTimeSyncIntervalMinutesAsync();
+      // If only enabled/disabled changed, use existing interval (per-source with global fallback)
+      const intervalStr = await databaseService.settings.getSettingForSource(timeSyncSourceId ?? null, 'autoTimeSyncIntervalMinutes');
+      const parsed = intervalStr ? parseInt(intervalStr, 10) : NaN;
+      const currentInterval = isNaN(parsed) ? 15 : parsed;
       timeSyncManager.setTimeSyncInterval(enabled ? currentInterval : 0);
     }
 
