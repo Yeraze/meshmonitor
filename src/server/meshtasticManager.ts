@@ -3166,8 +3166,12 @@ class MeshtasticManager implements ISourceManager {
         const nodeNum = parseInt(savedNodeNum);
         logger.debug(`📱 Found saved local node info: ${savedNodeId} (${nodeNum})`);
 
-        // Try to get full node info from database
-        const node = await databaseService.nodes.getNode(nodeNum);
+        // Try to get full node info from database. Scope to this manager's own
+        // sourceId so we pick the right row in multi-source deployments — node
+        // rows with the same nodeNum exist for every source since migration 029
+        // made (nodeNum, sourceId) the composite PK, and a source-agnostic
+        // lookup may return a stale row whose firmwareVersion is NULL.
+        const node = await databaseService.nodes.getNode(nodeNum, this.sourceId);
         if (node) {
           this.localNodeInfo = {
             nodeNum: nodeNum,
@@ -3175,6 +3179,7 @@ class MeshtasticManager implements ISourceManager {
             longName: node.longName || 'Unknown',
             shortName: node.shortName || 'UNK',
             hwModel: node.hwModel || undefined,
+            firmwareVersion: (node as any).firmwareVersion || null,
             rebootCount: (node as any).rebootCount !== undefined ? (node as any).rebootCount : undefined,
             isLocked: false // Allow updates if MyNodeInfo arrives later
           } as any;
@@ -3336,8 +3341,10 @@ class MeshtasticManager implements ISourceManager {
     await databaseService.settings.setSetting(this.localNodeSettingKey('localNodeId'), nodeId);
     logger.debug(`💾 Saved local node info to settings: ${nodeId} (${nodeNum})`);
 
-    // Check if we already have this node with actual names in the database
-    const existingNode = await databaseService.nodes.getNode(nodeNum);
+    // Check if we already have this node with actual names in the database.
+    // Scoped to this manager's sourceId so we pick this source's row rather
+    // than an unrelated source's row for the same nodeNum.
+    const existingNode = await databaseService.nodes.getNode(nodeNum, this.sourceId);
 
     // Clear any erroneous security flags on the local node — we can't have a key mismatch with ourselves
     if (existingNode?.keyMismatchDetected || existingNode?.keySecurityIssueDetails) {
