@@ -401,9 +401,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         <Polyline
           key={`position-history-segment-${i}`}
           positions={segmentPath}
-          color={color}
-          weight={3}
-          opacity={0.8}
+          pathOptions={{
+            color,
+            weight: 3,
+            opacity: 0.8,
+          }}
         >
           <Popup>
             <div className="route-popup">
@@ -2318,10 +2320,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   <React.Fragment key={`neighbor-${idx}`}>
                     <Polyline
                       positions={positions}
-                      color={overlayColors.neighborLine}
-                      weight={lineWeight}
-                      opacity={lineOpacity}
-                      dashArray={isBidirectional ? undefined : '5, 5'}
+                      pathOptions={{
+                        color: overlayColors.neighborLine,
+                        weight: lineWeight,
+                        opacity: lineOpacity,
+                        dashArray: isBidirectional ? undefined : '5, 5',
+                      }}
                       className={`neighbor-line node-${ni.nodeNum} node-${ni.neighborNodeNum}`}
                     >
                       <Popup>

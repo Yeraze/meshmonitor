@@ -575,10 +575,12 @@ export function useTraceroutePaths({
         <Polyline
           key={segment.key}
           positions={segment.positions}
-          color={segmentColor}
-          weight={weight}
-          opacity={segmentOpacity}
-          dashArray={isMqttSegment ? '3,6' : undefined}
+          pathOptions={{
+            color: segmentColor,
+            weight,
+            opacity: segmentOpacity,
+            dashArray: isMqttSegment ? '3,6' : undefined,
+          }}
           className={`route-segment node-${segment.nodeNums[0]} node-${segment.nodeNums[1]}`}
         >
           <Popup>
@@ -808,10 +810,12 @@ export function useTraceroutePaths({
                <Polyline
                  key={`selected-traceroute-forward-seg-${i}`}
                  positions={segmentPoints}
-                 color={themeColors.tracerouteForward ?? themeColors.blue}
-                 weight={weight}
-                 opacity={0.9}
-                 dashArray="3,6"
+                 pathOptions={{
+                   color: themeColors.tracerouteForward ?? themeColors.blue,
+                   weight,
+                   opacity: 0.9,
+                   dashArray: '3,6',
+                 }}
                  className={`route-segment node-${forwardSequence[i]} node-${forwardSequence[i + 1]}`}
                >
                  <Popup>
@@ -911,10 +915,12 @@ export function useTraceroutePaths({
                <Polyline
                  key={`selected-traceroute-back-seg-${i}`}
                  positions={segmentPoints}
-                 color={themeColors.tracerouteReturn ?? themeColors.red}
-                 weight={weight}
-                 opacity={0.9}
-                 dashArray="3,6"
+                 pathOptions={{
+                   color: themeColors.tracerouteReturn ?? themeColors.red,
+                   weight,
+                   opacity: 0.9,
+                   dashArray: '3,6',
+                 }}
                  className={`route-segment node-${backSequence[i]} node-${backSequence[i + 1]}`}
                >
                  <Popup>
