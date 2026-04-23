@@ -20,6 +20,12 @@ interface DashboardSidebarProps {
   onEditSource: (id: string) => void;
   onToggleSource: (id: string, enabled: boolean) => void;
   onDeleteSource: (id: string) => void;
+  /** Called when user clicks Connect on a source with autoConnect=false (issue #2773). */
+  onConnectSource?: (id: string) => void;
+  /** Called when user clicks Disconnect (kebab) on a source with autoConnect=false. */
+  onDisconnectSource?: (id: string) => void;
+  /** Source IDs currently awaiting a /connect POST — used to show "Connecting..." feedback. */
+  connectingIds?: Set<string>;
   /** Mobile drawer state — on desktop the sidebar is always visible. */
   mobileOpen?: boolean;
   /** Called to close the drawer on mobile (after selecting a source or tapping backdrop). */
@@ -36,6 +42,13 @@ function getStatusInfo(
   if (!source.enabled) {
     return { dotClass: 'disabled', label: t('source.status_disabled') };
   }
+  const autoConnectDisabled = (source.config as any)?.autoConnect === false;
+  if (autoConnectDisabled && (!status || !status.connected)) {
+    // autoConnect=false → source is enabled but manager isn't running until the
+    // user explicitly connects (issue #2773). Show a distinct "idle" state
+    // instead of a misleading "connecting" dot.
+    return { dotClass: 'disabled', label: t('source.status_idle') };
+  }
   if (!status) {
     return { dotClass: 'disconnected', label: t('source.status_connecting') };
   }
@@ -48,17 +61,22 @@ function getStatusInfo(
 interface KebabMenuProps {
   sourceId: string;
   sourceEnabled: boolean;
+  /** When true, render a "Disconnect" item (manager running + autoConnect=false). */
+  canDisconnect?: boolean;
   onEdit: (id: string) => void;
   onToggle: (id: string, enabled: boolean) => void;
   onDelete: (id: string) => void;
+  onDisconnect?: (id: string) => void;
 }
 
 const KebabMenu: React.FC<KebabMenuProps> = ({
   sourceId,
   sourceEnabled,
+  canDisconnect,
   onEdit,
   onToggle,
   onDelete,
+  onDisconnect,
 }) => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -109,6 +127,18 @@ const KebabMenu: React.FC<KebabMenuProps> = ({
           >
             {sourceEnabled ? t('source.kebab.disable') : t('source.kebab.enable')}
           </button>
+          {canDisconnect && onDisconnect && (
+            <button
+              className="dashboard-kebab-item"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+                onDisconnect(sourceId);
+              }}
+            >
+              {t('source.kebab.disconnect')}
+            </button>
+          )}
           <button
             className="dashboard-kebab-item danger"
             onClick={(e) => {
@@ -137,6 +167,9 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   onEditSource,
   onToggleSource,
   onDeleteSource,
+  onConnectSource,
+  onDisconnectSource,
+  connectingIds,
   mobileOpen = false,
   onMobileClose,
   onNewsClick,
@@ -174,7 +207,10 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
 
       {sources.map((source) => {
         const status = statusMap.get(source.id);
-        const { dotClass, label } = getStatusInfo(source, status, t);
+        const isConnecting = connectingIds?.has(source.id) === true;
+        const { dotClass, label } = isConnecting
+          ? { dotClass: 'connecting', label: t('source.status_connecting') }
+          : getStatusInfo(source, status, t);
         const nodeCount = nodeCounts.get(source.id) ?? 0;
         const isSelected = selectedSourceId === source.id;
 
@@ -217,9 +253,14 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                 <KebabMenu
                   sourceId={source.id}
                   sourceEnabled={source.enabled}
+                  canDisconnect={
+                    (source.config as any)?.autoConnect === false &&
+                    status?.connected === true
+                  }
                   onEdit={onEditSource}
                   onToggle={onToggleSource}
                   onDelete={onDeleteSource}
+                  onDisconnect={onDisconnectSource}
                 />
               )}
             </div>
@@ -235,6 +276,25 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
               ) : (
                 <span className="dashboard-lock-icon">🔒</span>
               )}
+              {isAdmin && source.enabled &&
+                (source.config as any)?.autoConnect === false &&
+                !status?.connected &&
+                onConnectSource && (() => {
+                  const pending = connectingIds?.has(source.id) === true;
+                  return (
+                    <button
+                      className="dashboard-open-btn"
+                      disabled={pending}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!pending) onConnectSource(source.id);
+                      }}
+                      title={t('source.connect_help')}
+                    >
+                      {pending ? t('source.connecting') : t('source.connect')}
+                    </button>
+                  );
+                })()}
               <button
                 className="dashboard-open-btn"
                 disabled={!source.enabled}
