@@ -135,15 +135,17 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       createdBy: req.user?.id,
     });
 
-    // Start manager if source is enabled
-    if (source.enabled && source.type === 'meshtastic_tcp') {
+    // Start manager if source is enabled and autoConnect is not explicitly false.
+    // autoConnect=false means the source is registered but won't start monitoring
+    // until a user explicitly clicks Connect (issue #2773).
+    const cfgForStart = source.config as any;
+    if (source.enabled && source.type === 'meshtastic_tcp' && cfgForStart?.autoConnect !== false) {
       try {
-        const cfg = source.config as any;
         const manager = new MeshtasticManager(source.id, {
-          host: cfg.host,
-          port: cfg.port,
-          heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
-          virtualNode: cfg.virtualNode,
+          host: cfgForStart.host,
+          port: cfgForStart.port,
+          heartbeatIntervalSeconds: cfgForStart.heartbeatIntervalSeconds,
+          virtualNode: cfgForStart.virtualNode,
         });
         await sourceManagerRegistry.addManager(manager);
       } catch (err) {
@@ -203,9 +205,13 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
     // Handle enable/disable transitions
     const wasEnabled = existing.enabled;
     const isNowEnabled = source.enabled;
+    const oldAutoConnect = (existing.config as any)?.autoConnect !== false;
+    const newAutoConnect = (source.config as any)?.autoConnect !== false;
 
-    if (!wasEnabled && isNowEnabled && source.type === 'meshtastic_tcp') {
-      // Newly enabled: start manager if not already running
+    if (!wasEnabled && isNowEnabled && source.type === 'meshtastic_tcp' && newAutoConnect) {
+      // Newly enabled and autoConnect on: start manager if not already running.
+      // When autoConnect is false, the source stays enabled but idle until the
+      // user explicitly clicks Connect (issue #2773).
       if (!sourceManagerRegistry.getManager(source.id)) {
         try {
           const cfg = source.config as any;
@@ -223,6 +229,26 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
     } else if (wasEnabled && !isNowEnabled) {
       // Newly disabled: stop manager
       await sourceManagerRegistry.removeManager(source.id);
+    } else if (wasEnabled && isNowEnabled && source.type === 'meshtastic_tcp' && oldAutoConnect && !newAutoConnect) {
+      // autoConnect just turned off — stop the running manager. The source
+      // stays enabled so the user can manually reconnect.
+      await sourceManagerRegistry.removeManager(source.id);
+    } else if (wasEnabled && isNowEnabled && source.type === 'meshtastic_tcp' && !oldAutoConnect && newAutoConnect) {
+      // autoConnect just turned on — start the manager if not already running.
+      if (!sourceManagerRegistry.getManager(source.id)) {
+        try {
+          const cfg = source.config as any;
+          const manager = new MeshtasticManager(source.id, {
+            host: cfg.host,
+            port: cfg.port,
+            heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
+            virtualNode: cfg.virtualNode,
+          });
+          await sourceManagerRegistry.addManager(manager);
+        } catch (err) {
+          logger.warn(`Could not start manager for source ${source.id}:`, err);
+        }
+      }
     } else if (wasEnabled && isNowEnabled && source.type === 'meshtastic_tcp' && config !== undefined) {
       // Still enabled, config possibly changed. Detect what changed and act.
       const oldCfg = (existing.config as any) || {};
@@ -473,6 +499,54 @@ router.get('/:id/neighbor-info', requirePermission('nodes', 'read', { sourceIdFr
   } catch (error) {
     logger.error('Error fetching neighbor info for source:', error);
     res.status(500).json({ error: 'Failed to fetch neighbor info' });
+  }
+});
+
+// POST /api/sources/:id/connect — manually start the manager for a source.
+// Used when autoConnect is disabled (issue #2773) so a user can bring the
+// source online on demand without changing persisted config.
+router.post('/:id/connect', requirePermission('sources', 'write'), async (req: Request, res: Response) => {
+  try {
+    const source = await databaseService.sources.getSource(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Source not found' });
+    if (!source.enabled) {
+      return res.status(409).json({ error: 'Source is disabled; enable it first' });
+    }
+    if (source.type !== 'meshtastic_tcp') {
+      return res.status(400).json({ error: 'Manual connect is only supported for meshtastic_tcp sources' });
+    }
+    if (sourceManagerRegistry.getManager(source.id)) {
+      return res.json({ success: true, alreadyRunning: true });
+    }
+    const cfg = source.config as any;
+    const manager = new MeshtasticManager(source.id, {
+      host: cfg.host,
+      port: cfg.port,
+      heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
+      virtualNode: cfg.virtualNode,
+    });
+    await sourceManagerRegistry.addManager(manager);
+    res.json({ success: true });
+  } catch (err) {
+    logger.error('Error connecting source:', err);
+    res.status(500).json({ error: 'Failed to connect source' });
+  }
+});
+
+// POST /api/sources/:id/disconnect — manually stop the manager without disabling
+// the source. Paired with /connect for autoConnect=false workflows.
+router.post('/:id/disconnect', requirePermission('sources', 'write'), async (req: Request, res: Response) => {
+  try {
+    const source = await databaseService.sources.getSource(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Source not found' });
+    if (!sourceManagerRegistry.getManager(source.id)) {
+      return res.json({ success: true, alreadyStopped: true });
+    }
+    await sourceManagerRegistry.removeManager(source.id);
+    res.json({ success: true });
+  } catch (err) {
+    logger.error('Error disconnecting source:', err);
+    res.status(500).json({ error: 'Failed to disconnect source' });
   }
 });
 

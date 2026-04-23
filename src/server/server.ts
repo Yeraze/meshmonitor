@@ -443,6 +443,14 @@ setTimeout(async () => {
       if (source.type === 'meshtastic_tcp') {
         const cfg = source.config as any;
 
+        // Respect per-source autoConnect flag — when explicitly false, the
+        // source is enabled but should not connect automatically; the user
+        // must click the manual Connect button to start monitoring.
+        if (cfg?.autoConnect === false) {
+          logger.info(`Skipping auto-connect for source ${source.id} (${source.name}) — autoConnect disabled`);
+          continue;
+        }
+
         try {
           if (!firstTcpSourceConfigured) {
             // Configure the legacy singleton for the first source, then let the
@@ -4222,6 +4230,21 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), a
 apiRouter.get('/connection', optionalAuth(), async (req, res) => {
   try {
     const connSourceId = req.query.sourceId as string | undefined;
+    // When the caller explicitly names a sourceId but no manager is registered
+    // for it (e.g. autoConnect=false, or user manually disconnected via
+    // /api/sources/:id/disconnect — issue #2773), return a stable
+    // "not connected" response instead of silently falling back to the legacy
+    // singleton. The singleton is the primary source's manager and would
+    // otherwise leak its state across sources.
+    if (connSourceId && !sourceManagerRegistry.getManager(connSourceId)) {
+      res.json({
+        connected: false,
+        nodeResponsive: false,
+        configuring: false,
+        userDisconnected: false,
+      });
+      return;
+    }
     const connManager = (connSourceId ? (sourceManagerRegistry.getManager(connSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
     const status = await connManager.getConnectionStatus();
     // Hide nodeIp from anonymous users
@@ -4316,18 +4339,33 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     const canViewPrivate = checkPerm('nodes_private', 'read');
 
     // 1. Connection status (always available)
-    try {
-      const connectionStatus = await activeManager.getConnectionStatus();
-      // Hide nodeIp from anonymous users
-      if (!req.session.userId) {
-        const { nodeIp, ...statusWithoutNodeIp } = connectionStatus;
-        result.connection = statusWithoutNodeIp;
-      } else {
-        result.connection = connectionStatus;
+    // If the caller named a sourceId but the registry has no manager for it
+    // (autoConnect=false, or user manually disconnected via
+    // /api/sources/:id/disconnect — issue #2773), report a clean disconnected
+    // state rather than leaking the legacy singleton's status.
+    const sourceIdRequestedButNoManager =
+      !!pollSourceId && !sourceManagerRegistry.getManager(pollSourceId);
+    if (sourceIdRequestedButNoManager) {
+      result.connection = {
+        connected: false,
+        nodeResponsive: false,
+        configuring: false,
+        userDisconnected: false,
+      };
+    } else {
+      try {
+        const connectionStatus = await activeManager.getConnectionStatus();
+        // Hide nodeIp from anonymous users
+        if (!req.session.userId) {
+          const { nodeIp, ...statusWithoutNodeIp } = connectionStatus;
+          result.connection = statusWithoutNodeIp;
+        } else {
+          result.connection = connectionStatus;
+        }
+      } catch (error) {
+        logger.error('Error getting connection status in poll:', error);
+        result.connection = { error: 'Failed to get connection status' };
       }
-    } catch (error) {
-      logger.error('Error getting connection status in poll:', error);
-      result.connection = { error: 'Failed to get connection status' };
     }
 
     // 2. Nodes (always available with optionalAuth, filtered by channel permissions)

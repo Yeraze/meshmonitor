@@ -67,6 +67,10 @@ function DashboardInner() {
   const [showNewsPopup, setShowNewsPopup] = useState(false);
   const [forceShowAllNews, setForceShowAllNews] = useState(false);
 
+  // Source IDs with an in-flight /connect request — drives the "Connecting..."
+  // button label and status dot while the POST is outstanding (issue #2773).
+  const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set());
+
   // Source add/edit modal state
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
@@ -77,6 +81,7 @@ function DashboardInner() {
   const [formVnPort, setFormVnPort] = useState('');
   const [formVnAllowAdmin, setFormVnAllowAdmin] = useState(false);
   const [formHeartbeat, setFormHeartbeat] = useState('30'); // seconds, 0 = disabled (issue 2609)
+  const [formAutoConnect, setFormAutoConnect] = useState(true); // issue #2773
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
 
@@ -137,6 +142,7 @@ function DashboardInner() {
     setFormVnPort('');
     setFormVnAllowAdmin(false);
     setFormHeartbeat('30');
+    setFormAutoConnect(true);
     setFormError('');
     setShowSourceModal(true);
   };
@@ -154,6 +160,8 @@ function DashboardInner() {
     setFormVnPort(vn?.port != null ? String(vn.port) : '');
     setFormVnAllowAdmin(vn?.allowAdminCommands === true);
     setFormHeartbeat(String(cfg?.heartbeatIntervalSeconds ?? 0));
+    // Default to true when unset (legacy sources pre-#2773 auto-connected).
+    setFormAutoConnect(cfg?.autoConnect !== false);
     setFormError('');
     setShowSourceModal(true);
   };
@@ -194,6 +202,9 @@ function DashboardInner() {
       const cfg: Record<string, any> = { host: formHost.trim(), port };
       if (heartbeatSeconds > 0) cfg.heartbeatIntervalSeconds = heartbeatSeconds;
       if (vnConfig) cfg.virtualNode = vnConfig;
+      // Persist autoConnect explicitly so the server can distinguish legacy
+      // sources (undefined → treat as true) from ones the user opted out of.
+      cfg.autoConnect = formAutoConnect;
       const body = {
         name: formName.trim(),
         type: 'meshtastic_tcp',
@@ -225,6 +236,75 @@ function DashboardInner() {
       setFormError(t('source.form.error_network'));
     } finally {
       setFormSaving(false);
+    }
+  };
+
+  // Manually start the manager for a source whose autoConnect is disabled
+  // (issue #2773). The /connect POST returns as soon as the manager is
+  // registered, but the upstream TCP handshake happens asynchronously — so we
+  // keep `connectingIds` set (and aggressively poll /status) until the status
+  // endpoint reports connected=true, or a timeout elapses. Without this the
+  // dashboard would sit on "Connecting…" for up to DASHBOARD_POLL_INTERVAL
+  // (15s) before the next normal status poll fires.
+  const onConnectSource = async (id: string) => {
+    setConnectingIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+    try {
+      const csrfToken = getToken();
+      const res = await fetch(`${appBasename}/api/sources/${id}/connect`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken || '',
+        },
+      });
+      if (!res.ok) return;
+
+      refreshSources();
+
+      // Poll the per-source status endpoint up to 20s, bailing early on
+      // connect success. Uses refetchQueries (not invalidate) so the loop
+      // doesn't have to re-check cache state each tick — the refetched value
+      // lands in the cache and fuels the next iteration's check.
+      const deadlineMs = Date.now() + 20_000;
+      while (Date.now() < deadlineMs) {
+        await queryClient.refetchQueries({ queryKey: ['dashboard', 'status', id], type: 'active' });
+        const cached = queryClient.getQueriesData<{ connected?: boolean } | null>({ queryKey: ['dashboard', 'status', id] });
+        const connected = cached.some(([, data]) => data?.connected === true);
+        if (connected) break;
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    } finally {
+      setConnectingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  // Counterpart to onConnectSource — stops the manager without disabling the
+  // source. Exposed in the kebab menu when the source has autoConnect=false
+  // and is currently connected.
+  const onDisconnectSource = async (id: string) => {
+    const csrfToken = getToken();
+    const res = await fetch(`${appBasename}/api/sources/${id}/disconnect`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-csrf-token': csrfToken || '',
+      },
+    });
+    if (res.ok) {
+      refreshSources();
+      // Force an immediate status refetch so the "Connected" dot flips to
+      // "Idle" without waiting for the next 15s poll tick.
+      queryClient.refetchQueries({ queryKey: ['dashboard', 'status', id], type: 'active' });
     }
   };
 
@@ -309,6 +389,9 @@ function DashboardInner() {
           onEditSource={onEditSource}
           onToggleSource={onToggleSource}
           onDeleteSource={onDeleteSource}
+          onConnectSource={onConnectSource}
+          onDisconnectSource={onDisconnectSource}
+          connectingIds={connectingIds}
           mobileOpen={mobileSidebarOpen}
           onMobileClose={() => setMobileSidebarOpen(false)}
           onNewsClick={() => {
@@ -412,6 +495,18 @@ function DashboardInner() {
                 {t('source.form.heartbeat_help')}
               </p>
             </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '8px 0 4px' }}>
+              <input
+                type="checkbox"
+                checked={formAutoConnect}
+                onChange={(e) => setFormAutoConnect(e.target.checked)}
+              />
+              {t('source.form.auto_connect')}
+            </label>
+            <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '0 0 8px 24px' }}>
+              {t('source.form.auto_connect_help')}
+            </p>
 
             <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
               <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>{t('source.form.virtual_node')}</legend>
