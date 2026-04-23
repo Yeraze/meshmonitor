@@ -170,7 +170,11 @@ describe('MeshtasticManager — Virtual Node wiring', () => {
     expect(broadcastMock).not.toHaveBeenCalled();
   });
 
-  it('processMeshPacket broadcasts inbound packets when VN is enabled', async () => {
+  // Regression test for #2776: processMeshPacket MUST NOT broadcast to VN clients.
+  // processIncomingData already broadcasts the raw FromRadio bytes upstream.
+  // A second broadcast here caused every inbound meshPacket to be duplicated to
+  // clients like the Meshtastic Android app (and echoed VN-originated packets).
+  it('processMeshPacket does not broadcast (broadcast happens in processIncomingData)', async () => {
     const mgr = new MeshtasticManager('src-1', {
       host: '127.0.0.1',
       port: 4403,
@@ -182,8 +186,8 @@ describe('MeshtasticManager — Virtual Node wiring', () => {
     const pkt = { id: 1, from: 2, to: 0xffffffff, channel: 0, decoded: { portnum: 1, payload: new Uint8Array() } };
     await (mgr as any).processMeshPacket(pkt);
 
-    expect(createFromRadioWithPacketMock).toHaveBeenCalledWith(pkt);
-    expect(broadcastMock).toHaveBeenCalledWith(expect.any(Uint8Array));
+    expect(broadcastMock).not.toHaveBeenCalled();
+    expect(createFromRadioWithPacketMock).not.toHaveBeenCalled();
   });
 
   it('processMeshPacket does not throw when VN is disabled', async () => {

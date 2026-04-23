@@ -4215,19 +4215,6 @@ class MeshtasticManager implements ISourceManager {
       }
     }
 
-    // Phase 7: Mirror every accepted inbound MeshPacket to this source's
-    // virtual-node clients so VN consumers see live mesh traffic. Broadcast all
-    // PortNums — the whole point of a virtual node is to reflect the mesh.
-    if (this.virtualNodeServer) {
-      try {
-        const fromRadioData = await meshtasticProtobufService.createFromRadioWithPacket(meshPacket);
-        if (fromRadioData) {
-          await this.virtualNodeServer.broadcastToClients(fromRadioData);
-        }
-      } catch (error) {
-        logger.error(`Virtual node: Failed to broadcast inbound packet for source ${this.sourceId}:`, error);
-      }
-    }
   }
 
   /**
