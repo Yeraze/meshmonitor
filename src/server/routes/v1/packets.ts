@@ -4,7 +4,7 @@
  * Provides access to raw packet log data from the mesh network
  */
 
-import express from 'express';
+import express, { Request } from 'express';
 import packetLogService from '../../services/packetLogService.js';
 import { logger } from '../../../utils/logger.js';
 
@@ -14,7 +14,15 @@ function normalizeSinceToMs(value: string): number {
   return n < 10_000_000_000 ? n * 1000 : n;
 }
 
-const router = express.Router();
+/** Resolve sourceId from path or query. */
+function getScopedSourceId(req: Request): string | undefined {
+  const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+  if (fromPath) return fromPath;
+  const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+  return fromQuery;
+}
+
+const router = express.Router({ mergeParams: true });
 
 /**
  * GET /api/v1/packets
@@ -52,7 +60,8 @@ router.get('/', async (req, res) => {
     const encrypted = req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
     const since = req.query.since ? normalizeSinceToMs(req.query.since as string) : undefined;
 
-    const filterOptions = { portnum, from_node, to_node, channel, encrypted, since };
+    const sourceId = getScopedSourceId(req);
+    const filterOptions = { portnum, from_node, to_node, channel, encrypted, since, sourceId };
 
     const [packets, total] = await Promise.all([
       packetLogService.getPacketsAsync({

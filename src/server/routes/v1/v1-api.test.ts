@@ -367,24 +367,17 @@ describe('GET /api/v1/', () => {
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
-    expect(response.body).toEqual({
-      version: 'v1',
-      description: 'MeshMonitor REST API v1',
-      documentation: '/api/v1/docs',
-      endpoints: {
-        nodes: '/api/v1/nodes',
-        channels: '/api/v1/channels',
-        channelDatabase: '/api/v1/channel-database',
-        telemetry: '/api/v1/telemetry',
-        traceroutes: '/api/v1/traceroutes',
-        messages: '/api/v1/messages',
-        network: '/api/v1/network',
-        packets: '/api/v1/packets',
-        solar: '/api/v1/solar',
-        positionHistory: '/api/v1/nodes/{nodeId}/position-history',
-        status: '/api/v1/status'
-      }
-    });
+    // After the #2773 v1 reshape, per-source resources sit under
+    // /api/v1/sources/{sourceId}/... and the index surface reflects that.
+    expect(response.body.version).toBe('v1');
+    expect(response.body.endpoints.sources).toBe('/api/v1/sources');
+    expect(response.body.endpoints.nodes).toBe('/api/v1/sources/{sourceId}/nodes');
+    expect(response.body.endpoints.messages).toBe('/api/v1/sources/{sourceId}/messages');
+    expect(response.body.endpoints.status).toBe('/api/v1/sources/{sourceId}/status');
+    // Deployment-global resources stay at the root.
+    expect(response.body.endpoints.solar).toBe('/api/v1/solar');
+    expect(response.body.endpoints.channelDatabase).toBe('/api/v1/channel-database');
+    expect(response.body.note).toMatch(/Legacy root paths/i);
   });
 });
 
@@ -1400,7 +1393,8 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
     expect(databaseService.default.telemetry.getPositionTelemetryByNode).toHaveBeenCalledWith(
       '2882400001',
       5000, // 1000 * 5 internal limit
-      1500  // since parameter
+      1500, // since parameter
+      undefined // sourceId (no scope in legacy root call)
     );
   });
 
@@ -1426,5 +1420,26 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
       .expect(200);
 
     expect(response.body.limit).toBe(10000);
+  });
+});
+
+describe('V1 deprecation shim (legacy root paths — issue #2773)', () => {
+  it('adds a Warning: 299 header to legacy /api/v1/nodes', async () => {
+    const response = await request(app)
+      .get('/api/v1/nodes')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.warning).toBeDefined();
+    expect(response.headers.warning).toMatch(/^299 - /);
+    expect(response.headers.warning).toMatch(/\/api\/v1\/sources\/:sourceId\//);
+  });
+
+  it('adds a Warning: 299 header to legacy /api/v1/messages', async () => {
+    const response = await request(app)
+      .get('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
+
+    expect(response.headers.warning).toMatch(/^299 - /);
   });
 });

@@ -4,6 +4,36 @@ info:
   description: |
     MeshMonitor REST API v1 provides programmatic access to mesh network data.
 
+    ## Multi-source (breaking change — spec 2.0.0)
+    MeshMonitor 4.0 runs one installation against many Meshtastic/MQTT/MeshCore
+    sources. Per-resource endpoints are now canonical under
+    `/api/v1/sources/{sourceId}/...`:
+
+    | Resource | Canonical path |
+    |---|---|
+    | Nodes | `/api/v1/sources/{sourceId}/nodes` |
+    | Messages | `/api/v1/sources/{sourceId}/messages` |
+    | Channels | `/api/v1/sources/{sourceId}/channels` |
+    | Telemetry | `/api/v1/sources/{sourceId}/telemetry` |
+    | Traceroutes | `/api/v1/sources/{sourceId}/traceroutes` |
+    | Packets | `/api/v1/sources/{sourceId}/packets` |
+    | Network | `/api/v1/sources/{sourceId}/network` |
+    | Position history | `/api/v1/sources/{sourceId}/nodes/{nodeId}/position-history` |
+    | Status | `/api/v1/sources/{sourceId}/status` |
+
+    The literal string `default` may be used for `{sourceId}` — it resolves to
+    the first source the authenticated token has `read` permission on (or the
+    first enabled source for admin tokens). 404 if none is accessible.
+
+    `GET /api/v1/sources` lists the sources the token can read.
+
+    `/api/v1/solar` and `/api/v1/channel-database` remain deployment-global
+    (no source scope).
+
+    Legacy root paths (`/api/v1/nodes?sourceId=...`, etc.) still respond for
+    one release but attach a `Warning: 299` response header and will be
+    removed in a future release.
+
     ## Authentication
     All v1 API endpoints require API token authentication using Bearer tokens in the Authorization header.
 
@@ -20,7 +50,9 @@ info:
 
     ## API Versioning
     This API uses URL-based versioning. All endpoints are prefixed with `/api/v1/`.
-  version: 1.0.0
+    The spec version below reflects the multi-source reshape (2.0.0) while the
+    URL prefix stays `v1` to keep existing token formats intact.
+  version: 2.0.0
   contact:
     name: MeshMonitor Support
     url: https://github.com/aerospaceresearch/meshmonitor
@@ -37,6 +69,8 @@ servers:
 tags:
   - name: API Info
     description: API version and endpoint information
+  - name: Sources
+    description: Multi-source discovery (list sources the token can access)
   - name: Nodes
     description: Mesh network node information
   - name: Channels
@@ -67,6 +101,20 @@ components:
         API token authentication. Use format: `Bearer mm_v1_<token>`
 
         Generate tokens from your User Settings page.
+
+  parameters:
+    SourceIdParam:
+      name: sourceId
+      in: path
+      required: true
+      description: |
+        Source identifier. Either a UUID returned by `GET /api/v1/sources`, or
+        the literal string `default` to resolve the first source the
+        authenticated token has `read` permission on (admins get the first
+        enabled source). Returns 404 if no accessible source exists.
+      schema:
+        type: string
+        example: default
 
   schemas:
     Error:
@@ -1082,12 +1130,112 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /sources:
+    get:
+      tags:
+        - Sources
+      summary: List sources the token can read
+      description: |
+        Returns the set of enabled sources that the authenticated token has
+        read permission on (any of `nodes`, `messages`, or `channel_*:read`).
+        Admin tokens see every enabled source. The first entry (by
+        `createdAt`) is flagged `isPrimary: true` and is what the `default`
+        alias resolves to.
+      responses:
+        '200':
+          description: List of sources the token can read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  count:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          description: Source UUID
+                        name:
+                          type: string
+                        type:
+                          type: string
+                          enum: [meshtastic_tcp, mqtt, meshcore]
+                        enabled:
+                          type: boolean
+                        isPrimary:
+                          type: boolean
+                          description: True for the first source (resolves `default`)
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sources/{sourceId}/nodes:
+    parameters:
+      - $ref: '#/components/parameters/SourceIdParam'
+    get:
+      tags:
+        - Nodes
+      summary: Get nodes for a source (canonical)
+      description: |
+        Returns nodes visible for the given source, filtered by the token's
+        per-source channel read permissions. This is the canonical replacement
+        for the deprecated root-level `GET /api/v1/nodes?sourceId=...`.
+      parameters:
+        - name: active
+          in: query
+          description: Filter to only nodes active within the last `sinceDays` days
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: sinceDays
+          in: query
+          description: Activity window in days
+          required: false
+          schema:
+            type: integer
+            default: 7
+            minimum: 1
+      responses:
+        '200':
+          description: Nodes retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  count:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Node'
+        '403':
+          description: Insufficient permissions on the source
+        '404':
+          description: Source not found
+
   /nodes:
     get:
       tags:
         - Nodes
-      summary: Get all nodes
-      description: Retrieve all nodes in the mesh network
+      deprecated: true
+      summary: Get all nodes (DEPRECATED — use /sources/{sourceId}/nodes)
+      description: |
+        DEPRECATED. Returns `Warning: 299` header. Use
+        `GET /api/v1/sources/{sourceId}/nodes` instead.
+        Retrieve all nodes, optionally filtered by `?sourceId=`.
       parameters:
         - name: active
           in: query

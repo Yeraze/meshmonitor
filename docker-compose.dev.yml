@@ -83,6 +83,9 @@ services:
       - ACCESS_LOG_FORMAT=combined
       - ENABLE_VIRTUAL_NODE=${ENABLE_VIRTUAL_NODE:-true}  # Re-enabled on port 4405
       - VIRTUAL_NODE_PORT=${VIRTUAL_NODE_PORT:-4404}
+      - RATE_LIMIT_API=${RATE_LIMIT_API:-100}
+      - RATE_LIMIT_AUTH=${RATE_LIMIT_AUTH:-5}
+      - RATE_LIMIT_MESSAGES=${RATE_LIMIT_MESSAGES:-30}
 
   # SQLite service (default database)
   # Start with: docker compose -f docker-compose.dev.yml --profile sqlite up -d
@@ -128,6 +131,11 @@ services:
       - VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS=${VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS:-true}
       # News feed URL for testing - use host.docker.internal to access host machine
       - NEWS_FEED_URL=${NEWS_FEED_URL:-}
+      # Rate-limit overrides — bump during local testing to avoid 429s on
+      # repeated login / API calls. Defaults match production (100/5/30).
+      - RATE_LIMIT_API=${RATE_LIMIT_API:-100}
+      - RATE_LIMIT_AUTH=${RATE_LIMIT_AUTH:-5}
+      - RATE_LIMIT_MESSAGES=${RATE_LIMIT_MESSAGES:-30}
 
   # MySQL service for testing dual-database support
   # Start with: docker compose -f docker-compose.dev.yml --profile mysql up -d
