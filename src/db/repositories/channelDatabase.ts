@@ -329,6 +329,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       createdBy: row.createdBy,
       createdAt: Number(row.createdAt),
       updatedAt: Number(row.updatedAt),
+      sourceId: row.sourceId ?? null,
     });
   }
 

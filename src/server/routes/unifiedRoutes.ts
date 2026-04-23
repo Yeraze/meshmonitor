@@ -9,7 +9,8 @@ import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
 import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
-import { PortNum } from '../constants/meshtastic.js';
+import { PortNum, CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
+import type { DbChannelDatabase } from '../../db/types.js';
 
 const router = Router();
 
@@ -60,6 +61,51 @@ function unifiedChannelDisplayName(c: {
  *
  * Returns `null` when the id cannot be parsed to a valid packet id.
  */
+/**
+ * Virtual channel read access.
+ *
+ * Virtual channels (MeshMonitor server-side PSKs stored in `channel_database`)
+ * use a parallel permission table (`channel_database_permissions`) rather than
+ * the generic `checkPermissionAsync` resource/action system used by physical
+ * channels. Admins bypass the table; everyone else needs an explicit row with
+ * `canRead = true`. The sentinel `'all'` avoids building a full-id set for
+ * admins who can read every entry regardless.
+ */
+type ReadableVirtualIds = Set<number> | 'all';
+
+async function getUserReadableVirtualChannelIds(
+  user: { id: number } | undefined,
+  isAdmin: boolean,
+): Promise<ReadableVirtualIds> {
+  if (isAdmin) return 'all';
+  if (!user) return new Set();
+  try {
+    const perms = await databaseService.channelDatabase.getPermissionsForUserAsync(user.id);
+    return new Set(
+      perms
+        .filter((p) => p.canRead)
+        .map((p) => p.channelDatabaseId),
+    );
+  } catch (err) {
+    logger.warn('Failed to load virtual channel permissions:', err);
+    return new Set();
+  }
+}
+
+function canReadVirtualChannel(vcId: number, readable: ReadableVirtualIds): boolean {
+  return readable === 'all' || readable.has(vcId);
+}
+
+async function loadEnabledVirtualChannels(): Promise<DbChannelDatabase[]> {
+  try {
+    const all = await databaseService.channelDatabase.getAllAsync();
+    return all.filter((vc) => vc.isEnabled);
+  } catch (err) {
+    logger.warn('Failed to load virtual channels:', err);
+    return [];
+  }
+}
+
 const MAX_ROW_ID_LENGTH = 256;
 const MAX_PACKET_ID = 0xffffffff; // unsigned 32-bit
 export function extractPacketIdFromRowId(rowId: unknown): number | null {
@@ -99,7 +145,13 @@ router.get('/channels', async (req: Request, res: Response) => {
     const user = (req as any).user;
     const isAdmin = user?.isAdmin ?? false;
 
-    const sources = await databaseService.sources.getAllSources();
+    // Virtual channels and their permissions are global (not per-source), so
+    // load them once up front rather than per source in the loop below.
+    const [sources, virtualChannels, readableVirtualIds] = await Promise.all([
+      databaseService.sources.getAllSources(),
+      loadEnabledVirtualChannels(),
+      getUserReadableVirtualChannelIds(user, isAdmin),
+    ]);
 
     type ChannelSourceRef = { sourceId: string; sourceName: string; channelNumber: number };
     const byName = new Map<string, ChannelSourceRef[]>();
@@ -137,6 +189,29 @@ router.get('/channels', async (req: Request, res: Response) => {
           }
         } catch (err) {
           logger.warn(`Failed to load channels for source ${source.id}:`, err);
+        }
+
+        // Virtual channels belong to exactly one source (creator) and are
+        // surfaced to the unified picker under a synthetic channel number
+        // `CHANNEL_DB_OFFSET + vcId` — the same encoding used for the stored
+        // message rows (see meshtasticManager.ts dual-insert path). If a
+        // virtual channel shares a name with a physical slot on the same
+        // source, both entries collapse into the same `byName` group so the
+        // picker shows one option; the `/messages` endpoint will union both
+        // channel numbers when fetching.
+        for (const vc of virtualChannels) {
+          if (vc.sourceId !== source.id) continue;
+          if (vc.id == null) continue;
+          if (!canReadVirtualChannel(vc.id, readableVirtualIds)) continue;
+          const name = (vc.name ?? '').trim();
+          if (!name) continue;
+          const list = byName.get(name) ?? [];
+          list.push({
+            sourceId: source.id,
+            sourceName: source.name,
+            channelNumber: CHANNEL_DB_OFFSET + vc.id,
+          });
+          byName.set(name, list);
         }
       })
     );
@@ -194,7 +269,11 @@ router.get('/messages', async (req: Request, res: Response) => {
     const user = (req as any).user;
     const isAdmin = user?.isAdmin ?? false;
 
-    const sources = await databaseService.sources.getAllSources();
+    const [sources, virtualChannels, readableVirtualIds] = await Promise.all([
+      databaseService.sources.getAllSources(),
+      loadEnabledVirtualChannels(),
+      getUserReadableVirtualChannelIds(user, isAdmin),
+    ]);
 
     type Reception = {
       sourceId: string;
@@ -242,9 +321,14 @@ router.get('/messages', async (req: Request, res: Response) => {
         // and used only inside this per-source block, so we can fan them out
         // instead of running them back-to-back.
         const nodeMap = new Map<number, { longName?: string; shortName?: string }>();
-        let channelNumber: number | undefined;
+        // Channel numbers on THIS source to fetch messages from. For a named
+        // channel request this is the physical slot AND/OR any virtual channel
+        // on this source sharing that name. For the legacy "no filter" path
+        // it stays undefined and we fall back to `allowedChannelsOnSource`.
+        let channelNumbers: number[] | undefined;
         // Channels on this source the user can read. Populated only when
-        // needed (no channelName → we have to filter per channel).
+        // needed (no channelName → we have to filter per channel). Includes
+        // synthetic virtual channel numbers (CHANNEL_DB_OFFSET + vcId).
         let allowedChannelsOnSource: Set<number> | null = null;
 
         const [chansResult, nodesResult] = await Promise.allSettled([
@@ -253,6 +337,13 @@ router.get('/messages', async (req: Request, res: Response) => {
             : Promise.resolve(null),
           databaseService.nodes.getAllNodes(source.id),
         ]);
+
+        // Virtual channels scoped to THIS source that the user can read.
+        // Shared between the named-channel and legacy paths below.
+        const vcsOnSource = virtualChannels.filter(
+          (vc) => vc.sourceId === source.id && vc.id != null &&
+            canReadVirtualChannel(vc.id, readableVirtualIds),
+        );
 
         if (channelName) {
           if (chansResult.status === 'rejected') {
@@ -263,22 +354,36 @@ router.get('/messages', async (req: Request, res: Response) => {
             return;
           }
           const chans = chansResult.value;
+          const resolved: number[] = [];
+
+          // Physical slot match.
           const match = chans?.find(
             (c) => unifiedChannelDisplayName(c as any) === channelName
           );
-          if (!match) return; // source has no matching channel → skip
-          channelNumber = (match as any).id;
+          if (match) {
+            const physNum = (match as any).id as number;
+            const canReadChannel = canReadMessages || (user
+              ? await databaseService.checkPermissionAsync(
+                  user.id,
+                  `channel_${physNum}`,
+                  'read',
+                  source.id,
+                )
+              : false);
+            if (canReadChannel) resolved.push(physNum);
+          }
 
-          // Gate: either broad messages:read or specific channel_N:read grant.
-          const canReadChannel = canReadMessages || (user
-            ? await databaseService.checkPermissionAsync(
-                user.id,
-                `channel_${channelNumber}`,
-                'read',
-                source.id,
-              )
-            : false);
-          if (!canReadChannel) return;
+          // Virtual channel matches on this source. Same name → same group:
+          // we union the stored channel numbers (physical slot and synthetic
+          // CHANNEL_DB_OFFSET+vcId) so the unified stream includes both.
+          for (const vc of vcsOnSource) {
+            if ((vc.name ?? '').trim() === channelName && vc.id != null) {
+              resolved.push(CHANNEL_DB_OFFSET + vc.id);
+            }
+          }
+
+          if (resolved.length === 0) return; // source has no matching readable channel
+          channelNumbers = resolved;
         } else {
           // No channel filter: build the set of channels on this source the
           // user can actually read. Skip the source entirely if empty.
@@ -293,6 +398,12 @@ router.get('/messages', async (req: Request, res: Response) => {
                 )
               : false);
             if (allow) allowedChannelsOnSource.add(n);
+          }
+          // Virtual channels the user can read on this source.
+          for (const vc of vcsOnSource) {
+            if (vc.id != null) {
+              allowedChannelsOnSource.add(CHANNEL_DB_OFFSET + vc.id);
+            }
           }
           if (allowedChannelsOnSource.size === 0 && !canReadMessages) return;
         }
@@ -309,15 +420,24 @@ router.get('/messages', async (req: Request, res: Response) => {
         }
 
         // Fetch messages. Kept sequential after the channel lookup because the
-        // query depends on `channelNumber`.
+        // query depends on `channelNumbers`.
         let msgs: Awaited<ReturnType<typeof databaseService.messages.getMessages>>;
-        if (channelNumber !== undefined) {
-          msgs = await databaseService.messages.getMessagesBeforeInChannel(
-            channelNumber,
-            before,
-            fetchLimit,
-            source.id
+        if (channelNumbers !== undefined && channelNumbers.length > 0) {
+          // Named channel: may map to a physical slot, a virtual slot, or
+          // both on this source. Fan out the per-channel queries and merge —
+          // packet-id dedup later collapses any overlap for the rare case
+          // where a packet somehow lands in both.
+          const perChannel = await Promise.all(
+            channelNumbers.map((cn) =>
+              databaseService.messages.getMessagesBeforeInChannel(
+                cn,
+                before,
+                fetchLimit,
+                source.id,
+              ),
+            ),
           );
+          msgs = perChannel.flat();
         } else {
           // Legacy: no channel filter. Cursor-less offset fetch.
           // Exclude traceroute responses — the UI filters them out of message
