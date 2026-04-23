@@ -28,8 +28,8 @@ interface AutoDeleteByDistanceSectionProps {
 interface LogEntry {
   id: number;
   timestamp: number;
-  nodes_deleted: number;
-  threshold_km: number;
+  nodesDeleted: number;
+  thresholdKm: number;
   details: Array<{ nodeId: string; nodeName: string; distanceKm: number }>;
 }
 
@@ -448,10 +448,10 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
                         {new Date(Number(entry.timestamp)).toLocaleString()}
                       </td>
                       <td style={{ padding: '0.5rem', textAlign: 'center' }}>
-                        {entry.nodes_deleted}
+                        {entry.nodesDeleted}
                       </td>
                       <td style={{ padding: '0.5rem', textAlign: 'center' }}>
-                        {Math.round(toDisplayUnit(entry.threshold_km))}
+                        {Math.round(toDisplayUnit(entry.thresholdKm))}
                       </td>
                     </tr>
                   ))}
