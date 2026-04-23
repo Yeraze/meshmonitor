@@ -30,6 +30,10 @@ vi.mock('../../services/database.js', () => ({
     telemetry: {
       getLatestTelemetryByNode: vi.fn(),
     },
+    channelDatabase: {
+      getAllAsync: vi.fn(),
+      getPermissionsForUserAsync: vi.fn(),
+    },
     checkPermissionAsync: vi.fn(),
     findUserByIdAsync: vi.fn(),
     findUserByUsernameAsync: vi.fn(),
@@ -127,6 +131,10 @@ describe('Unified Routes', () => {
     mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: false });
     mockDb.checkPermissionAsync.mockResolvedValue(true);
     mockDb.nodes.getAllNodes.mockResolvedValue([NODE_ONE, NODE_TWO]);
+    // Default: no virtual channels / no virtual channel permissions. Tests
+    // covering virtual channel behavior override these per-case.
+    mockDb.channelDatabase.getAllAsync.mockResolvedValue([]);
+    mockDb.channelDatabase.getPermissionsForUserAsync.mockResolvedValue([]);
   });
 
   // ── /channels ─────────────────────────────────────────────────────────────
@@ -232,6 +240,109 @@ describe('Unified Routes', () => {
       const app = createApp(adminUser);
       const res = await request(app).get('/channels');
       expect(res.status).toBe(500);
+    });
+  });
+
+  // ── /channels (virtual channels) ─────────────────────────────────────────
+
+  describe('GET /channels (virtual channels)', () => {
+    // Virtual channel number encoding: CHANNEL_DB_OFFSET (100) + vcId. Kept
+    // as a local constant to mirror the production contract — any drift in
+    // the offset should break these tests loudly.
+    const VC_OFFSET = 100;
+
+    it('includes enabled virtual channels scoped to the owning source', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
+      mockDb.channels.getAllChannels.mockResolvedValue([]);
+      mockDb.channelDatabase.getAllAsync.mockResolvedValue([
+        { id: 5, name: 'SecretOps', isEnabled: true, sourceId: 'src-a' },
+        { id: 6, name: 'Crew', isEnabled: true, sourceId: 'src-b' },
+      ]);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/channels');
+
+      expect(res.status).toBe(200);
+      const secret = res.body.find((c: any) => c.name === 'SecretOps');
+      expect(secret).toBeDefined();
+      expect(secret.sources).toEqual([
+        { sourceId: 'src-a', sourceName: 'Source A', channelNumber: VC_OFFSET + 5 },
+      ]);
+      const crew = res.body.find((c: any) => c.name === 'Crew');
+      expect(crew.sources).toEqual([
+        { sourceId: 'src-b', sourceName: 'Source B', channelNumber: VC_OFFSET + 6 },
+      ]);
+    });
+
+    it('hides virtual channels the non-admin user has no canRead permission for', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.channels.getAllChannels.mockResolvedValue([]);
+      mockDb.channelDatabase.getAllAsync.mockResolvedValue([
+        { id: 5, name: 'Allowed', isEnabled: true, sourceId: 'src-a' },
+        { id: 6, name: 'Forbidden', isEnabled: true, sourceId: 'src-a' },
+      ]);
+      mockDb.channelDatabase.getPermissionsForUserAsync.mockResolvedValue([
+        { channelDatabaseId: 5, canRead: true, canViewOnMap: false },
+        { channelDatabaseId: 6, canRead: false, canViewOnMap: false },
+      ]);
+
+      const app = createApp(regularUser);
+      const res = await request(app).get('/channels');
+
+      expect(res.status).toBe(200);
+      const names = res.body.map((c: any) => c.name);
+      expect(names).toContain('Allowed');
+      expect(names).not.toContain('Forbidden');
+    });
+
+    it('admins see every enabled virtual channel without explicit grants', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.channels.getAllChannels.mockResolvedValue([]);
+      mockDb.channelDatabase.getAllAsync.mockResolvedValue([
+        { id: 9, name: 'AdminOnly', isEnabled: true, sourceId: 'src-a' },
+      ]);
+      // Deliberately no permissions row — admin bypass should still surface it.
+      mockDb.channelDatabase.getPermissionsForUserAsync.mockResolvedValue([]);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/channels');
+
+      expect(res.status).toBe(200);
+      expect(res.body.map((c: any) => c.name)).toContain('AdminOnly');
+    });
+
+    it('skips disabled virtual channels entirely', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.channels.getAllChannels.mockResolvedValue([]);
+      mockDb.channelDatabase.getAllAsync.mockResolvedValue([
+        { id: 5, name: 'Retired', isEnabled: false, sourceId: 'src-a' },
+      ]);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/channels');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(0);
+    });
+
+    it('collapses a physical channel and a same-name virtual channel into one group on the same source', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.channels.getAllChannels.mockResolvedValue([
+        { id: 2, name: 'LongFast', role: 1 },
+      ]);
+      mockDb.channelDatabase.getAllAsync.mockResolvedValue([
+        { id: 7, name: 'LongFast', isEnabled: true, sourceId: 'src-a' },
+      ]);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/channels');
+
+      expect(res.status).toBe(200);
+      const longfast = res.body.find((c: any) => c.name === 'LongFast');
+      expect(longfast).toBeDefined();
+      expect(longfast.sources).toHaveLength(2);
+      const channelNumbers = longfast.sources.map((s: any) => s.channelNumber).sort((a: number, b: number) => a - b);
+      expect(channelNumbers).toEqual([2, VC_OFFSET + 7]);
     });
   });
 
@@ -452,6 +563,122 @@ describe('Unified Routes', () => {
       // Both source names present.
       const names = res.body[0].receptions.map((r: any) => r.sourceName).sort();
       expect(names).toEqual(['Source A', 'Source B']);
+    });
+
+    it('resolves a virtual channel name to its synthetic channel number (CHANNEL_DB_OFFSET + vcId)', async () => {
+      // Virtual channel messages are stored at `channel = CHANNEL_DB_OFFSET + vcId`.
+      // A named-channel query for a pure virtual channel must hit that slot,
+      // NOT a physical 0-7 slot.
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.channels.getAllChannels.mockResolvedValue([]); // no physical match
+      mockDb.channelDatabase.getAllAsync.mockResolvedValue([
+        { id: 4, name: 'SecretOps', isEnabled: true, sourceId: 'src-a' },
+      ]);
+      mockDb.messages.getMessagesBeforeInChannel.mockResolvedValue([
+        mkMsg({ id: 'a1', text: 'covert', channel: 104, requestId: 1, fromNodeNum: NODE_ONE.nodeNum }),
+      ]);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/messages?channel=SecretOps');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].text).toBe('covert');
+      expect(mockDb.messages.getMessagesBeforeInChannel).toHaveBeenCalledWith(
+        104, // 100 + 4
+        undefined,
+        expect.any(Number),
+        SOURCE_A.id,
+      );
+    });
+
+    it('skips a virtual-channel-named request when the user lacks canRead', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.channels.getAllChannels.mockResolvedValue([]);
+      mockDb.channelDatabase.getAllAsync.mockResolvedValue([
+        { id: 4, name: 'SecretOps', isEnabled: true, sourceId: 'src-a' },
+      ]);
+      mockDb.channelDatabase.getPermissionsForUserAsync.mockResolvedValue([
+        { channelDatabaseId: 4, canRead: false, canViewOnMap: false },
+      ]);
+      // Regular user with messages:read denied too, so no fallback path.
+      mockDb.checkPermissionAsync.mockResolvedValue(false);
+
+      const app = createApp(regularUser);
+      const res = await request(app).get('/messages?channel=SecretOps');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(0);
+      expect(mockDb.messages.getMessagesBeforeInChannel).not.toHaveBeenCalled();
+    });
+
+    it('unions physical + virtual channel numbers on the same source when names collide', async () => {
+      // Same-name collision on one source: physical slot 2 AND virtual id 7.
+      // The endpoint must fetch messages from BOTH channel numbers so the
+      // unified stream includes messages tagged under either.
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.channels.getAllChannels.mockResolvedValue([
+        { id: 2, name: 'LongFast', role: 1 },
+      ]);
+      mockDb.channelDatabase.getAllAsync.mockResolvedValue([
+        { id: 7, name: 'LongFast', isEnabled: true, sourceId: 'src-a' },
+      ]);
+      mockDb.messages.getMessagesBeforeInChannel.mockImplementation(
+        (ch: number) =>
+          Promise.resolve([
+            mkMsg({
+              id: `src-a_${NODE_ONE.nodeNum}_${ch}`,
+              text: `on-${ch}`,
+              channel: ch,
+              requestId: ch, // distinct → no dedup collapse
+              fromNodeNum: NODE_ONE.nodeNum,
+              timestamp: 1000 + ch,
+              rxTime: 1000 + ch,
+            }),
+          ])
+      );
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/messages?channel=LongFast');
+
+      expect(res.status).toBe(200);
+      const texts = res.body.map((m: any) => m.text).sort();
+      expect(texts).toEqual(['on-107', 'on-2']);
+      expect(mockDb.messages.getMessagesBeforeInChannel).toHaveBeenCalledTimes(2);
+      const calls = mockDb.messages.getMessagesBeforeInChannel.mock.calls
+        .map((c: any[]) => c[0])
+        .sort((a: number, b: number) => a - b);
+      expect(calls).toEqual([2, 107]);
+    });
+
+    it('includes virtual channel numbers in the legacy no-filter allow-list', async () => {
+      // When the user has messages:read denied but canRead on a virtual
+      // channel, the /messages (no channel filter) path must still surface
+      // messages stored at `CHANNEL_DB_OFFSET + vcId` and exclude everything
+      // else on that source.
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.channelDatabase.getAllAsync.mockResolvedValue([
+        { id: 3, name: 'OpsChan', isEnabled: true, sourceId: 'src-a' },
+      ]);
+      mockDb.channelDatabase.getPermissionsForUserAsync.mockResolvedValue([
+        { channelDatabaseId: 3, canRead: true, canViewOnMap: false },
+      ]);
+      // Deny ALL checkPermissionAsync checks (messages:read, channel_*:read).
+      mockDb.checkPermissionAsync.mockResolvedValue(false);
+      mockDb.messages.getMessages.mockResolvedValue([
+        // Physical-slot message — user has NO read on physical slots, must be filtered out.
+        mkMsg({ id: 'p1', text: 'physical', channel: 0, requestId: 1, fromNodeNum: NODE_ONE.nodeNum, timestamp: 2000, rxTime: 2000 }),
+        // Virtual-slot message at CHANNEL_DB_OFFSET + 3 = 103 — must pass.
+        mkMsg({ id: 'v1', text: 'virtual', channel: 103, requestId: 2, fromNodeNum: NODE_ONE.nodeNum, timestamp: 3000, rxTime: 3000 }),
+      ]);
+
+      const app = createApp(regularUser);
+      const res = await request(app).get('/messages');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].text).toBe('virtual');
+      expect(res.body[0].channel).toBe(103);
     });
 
     it('resolves "Primary" to channel 0 even when the source has a blank name for it', async () => {
