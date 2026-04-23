@@ -9,7 +9,15 @@ import databaseService from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
 import { checkNodeChannelAccess, maskTelemetryByChannel } from '../../utils/nodeEnhancer.js';
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
+
+/** Resolve sourceId from path or query. */
+function getScopedSourceId(req: Request): string | undefined {
+  const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+  if (fromPath) return fromPath;
+  const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+  return fromQuery;
+}
 
 /**
  * GET /api/v1/telemetry
@@ -25,8 +33,8 @@ const router = express.Router();
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { nodeId, type, since, before, limit, offset, sourceId } = req.query;
-    const sourceIdStr = typeof sourceId === 'string' ? sourceId : undefined;
+    const { nodeId, type, since, before, limit, offset } = req.query;
+    const sourceIdStr = getScopedSourceId(req);
 
     const maxLimit = Math.min(parseInt(limit as string) || 1000, 10000);
     const offsetNum = parseInt(offset as string) || 0;
@@ -57,8 +65,9 @@ router.get('/', async (req: Request, res: Response) => {
       // Mask records from channels the user cannot access
       telemetry = await maskTelemetryByChannel(telemetry, (req as any).user, sourceIdStr);
     } else {
-      // Get all telemetry by getting all nodes and their telemetry
-      const nodes = await databaseService.nodes.getAllNodes();
+      // Get all telemetry by getting all nodes and their telemetry — scoped
+      // to the requested source so cross-source rows don't mix.
+      const nodes = await databaseService.nodes.getAllNodes(sourceIdStr);
       telemetry = [];
       const perNodeLimit = Math.max(1, Math.floor(maxLimit / 10));
       for (const node of nodes.slice(0, 10)) { // Limit to first 10 nodes to avoid huge response
@@ -123,7 +132,7 @@ router.get('/count', async (_req: Request, res: Response) => {
 router.get('/:nodeId', async (req: Request, res: Response) => {
   try {
     const { nodeId } = req.params;
-    const sourceIdParam = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+    const sourceIdParam = getScopedSourceId(req);
 
     // Check channel-based access for this node
     if (!await checkNodeChannelAccess(nodeId, (req as any).user, sourceIdParam)) {

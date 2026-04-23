@@ -8,17 +8,26 @@ import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
+
+/** Resolve sourceId from path or query. */
+function getScopedSourceId(req: Request): string | undefined {
+  const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+  if (fromPath) return fromPath;
+  const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+  return fromQuery;
+}
 
 /**
  * GET /api/v1/network
  * Get network-wide statistics and summary information
  */
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
-    const allNodes = await databaseService.nodes.getAllNodes();
-    const activeNodes = await databaseService.nodes.getActiveNodes(7);
-    const traceroutes = await databaseService.traceroutes.getAllTraceroutes();
+    const sourceId = getScopedSourceId(req);
+    const allNodes = await databaseService.nodes.getAllNodes(sourceId);
+    const activeNodes = await databaseService.nodes.getActiveNodes(7, sourceId);
+    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(100, sourceId);
 
     const stats = {
       totalNodes: allNodes.length,
@@ -49,6 +58,11 @@ router.get('/', async (_req: Request, res: Response) => {
 router.get('/direct-neighbors', async (req: Request, res: Response) => {
   try {
     const hoursBack = parseInt(req.query.hours as string) || 24;
+    // TODO(#2773 follow-up): getDirectNeighborStatsAsync does not yet accept
+    // sourceId — neighbor stats are aggregated across all sources. Extend the
+    // repo to scope by sourceId when this endpoint stabilises on the scoped
+    // URL shape.
+    void getScopedSourceId(req);
     const stats = await databaseService.getDirectNeighborStatsAsync(hoursBack);
 
     res.json({
@@ -70,10 +84,11 @@ router.get('/direct-neighbors', async (req: Request, res: Response) => {
  * GET /api/v1/network/topology
  * Get network topology data (nodes and their connections)
  */
-router.get('/topology', async (_req: Request, res: Response) => {
+router.get('/topology', async (req: Request, res: Response) => {
   try {
-    const nodes = await databaseService.nodes.getAllNodes();
-    const traceroutes = await databaseService.traceroutes.getAllTraceroutes();
+    const sourceId = getScopedSourceId(req);
+    const nodes = await databaseService.nodes.getAllNodes(sourceId);
+    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(500, sourceId);
 
     const topology = {
       nodes: nodes.map(n => ({

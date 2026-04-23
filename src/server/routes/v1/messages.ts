@@ -66,7 +66,17 @@ async function getAccessibleChannels(userId: number | null, isAdmin: boolean, so
   return accessibleChannels;
 }
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
+
+/** Resolve sourceId from path (new /sources/:sourceId mount) or query/body (legacy). */
+function getScopedSourceId(req: Request): string | undefined {
+  const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+  if (fromPath) return fromPath;
+  const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+  if (fromQuery) return fromQuery;
+  const fromBody = typeof req.body?.sourceId === 'string' ? req.body.sourceId : undefined;
+  return fromBody;
+}
 
 /**
  * GET /api/v1/messages
@@ -86,8 +96,8 @@ router.get('/', async (req: Request, res: Response) => {
     const userId = user?.id ?? null;
     const isAdmin = user?.isAdmin ?? false;
 
-    const { channel, fromNodeId, toNodeId, since, limit, sourceId } = req.query;
-    const sourceIdStr = typeof sourceId === 'string' ? sourceId : undefined;
+    const { channel, fromNodeId, toNodeId, since, limit } = req.query;
+    const sourceIdStr = getScopedSourceId(req);
 
     const maxLimit = parseInt(limit as string) || 100;
     const sinceTimestamp = since ? parseInt(since as string) : undefined;
@@ -111,11 +121,9 @@ router.get('/', async (req: Request, res: Response) => {
     let messages;
 
     if (channelNum !== undefined) {
-      messages = await databaseService.messages.getMessagesByChannel(channelNum, maxLimit);
-      if (sourceIdStr) messages = messages.filter((m: any) => m.sourceId === sourceIdStr);
+      messages = await databaseService.messages.getMessagesByChannel(channelNum, maxLimit, 0, sourceIdStr);
     } else if (sinceTimestamp) {
-      messages = await databaseService.messages.getMessagesAfterTimestamp(sinceTimestamp);
-      if (sourceIdStr) messages = messages.filter((m: any) => m.sourceId === sourceIdStr);
+      messages = await databaseService.messages.getMessagesAfterTimestamp(sinceTimestamp, sourceIdStr);
       messages = messages.slice(0, maxLimit);
     } else {
       messages = await databaseService.messages.getMessages(maxLimit, 0, sourceIdStr);
@@ -197,7 +205,11 @@ router.get('/search', async (req: Request, res: Response) => {
     const startDateNum = startDate ? parseInt(startDate as string) : undefined;
     const endDateNum = endDate ? parseInt(endDate as string) : undefined;
 
-    const accessibleChannels = await getAccessibleChannels(userId, isAdmin);
+    // Scope search to the requesting source (path or query). TODO: extend
+    // searchMessagesAsync() to accept sourceId so we can push the filter down
+    // to SQL instead of post-filtering (see getAccessibleChannels comment).
+    const searchSourceId = getScopedSourceId(req);
+    const accessibleChannels = await getAccessibleChannels(userId, isAdmin, searchSourceId);
 
     const results: any[] = [];
     let total = 0;
@@ -227,8 +239,14 @@ router.get('/search', async (req: Request, res: Response) => {
         offset: searchOffset
       });
 
-      results.push(...searchResult.messages.map(m => ({ ...m, source: 'standard' })));
-      total += searchResult.total;
+      // Post-filter by sourceId until searchMessagesAsync gains a sourceId
+      // option. Result windows are small (bounded by `limit`), so this is
+      // acceptable for now.
+      const scopedMessages = searchSourceId
+        ? searchResult.messages.filter((m: any) => m.sourceId === searchSourceId)
+        : searchResult.messages;
+      results.push(...scopedMessages.map(m => ({ ...m, source: 'standard' })));
+      total += scopedMessages.length;
     }
 
     // Search MeshCore messages (in-memory filter)
@@ -283,7 +301,8 @@ router.get('/:messageId', async (req: Request, res: Response) => {
     const isAdmin = user?.isAdmin ?? false;
 
     const { messageId } = req.params;
-    const allMessages = await databaseService.messages.getMessages(10000); // Get recent messages
+    const msgLookupSourceId = getScopedSourceId(req);
+    const allMessages = await databaseService.messages.getMessages(10000, 0, msgLookupSourceId);
     const message = allMessages.find(m => m.id === messageId);
 
     if (!message) {
@@ -296,7 +315,7 @@ router.get('/:messageId', async (req: Request, res: Response) => {
 
     // Check permission for the message's channel (unless admin)
     if (!isAdmin) {
-      const accessibleChannels = await getAccessibleChannels(userId, isAdmin);
+      const accessibleChannels = await getAccessibleChannels(userId, isAdmin, msgLookupSourceId);
       const msgChannel = message.channel ?? -1; // DMs have channel -1 or undefined
 
       if (accessibleChannels !== null && !accessibleChannels.has(msgChannel)) {
@@ -350,7 +369,9 @@ router.get('/:messageId', async (req: Request, res: Response) => {
  */
 router.post('/', messageLimiter, async (req: Request, res: Response) => {
   try {
-    const { text, channel, toNodeId, replyId, sourceId: msgSourceId } = req.body;
+    const { text, channel, toNodeId, replyId } = req.body;
+    // Scope priority: path (:sourceId) → query → body.sourceId.
+    const msgSourceId = getScopedSourceId(req);
     const activeManager = (msgSourceId
       ? (sourceManagerRegistry.getManager(msgSourceId) as typeof meshtasticManager ?? meshtasticManager)
       : meshtasticManager);

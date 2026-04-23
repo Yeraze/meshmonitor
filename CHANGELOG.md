@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+- **BREAKING (v1 REST API)**: Per-source data endpoints moved under `/api/v1/sources/{sourceId}/...` to mirror the 4.0 multi-source architecture. The reshape affects nodes, messages, channels, telemetry, traceroutes, packets, network, position history, and status. The literal string `default` is accepted in place of a UUID — it resolves to the first source the token has read permission on (admins get the first enabled source by `createdAt`). New `GET /api/v1/sources` lists the sources a token can read. Deployment-global endpoints (`/api/v1/solar`, `/api/v1/channel-database`) stay unscoped.
+  - Legacy root paths (`/api/v1/nodes?sourceId=...`, etc.) still respond but now emit a `Warning: 299` response header and will be removed in a future release.
+  - Bumps OpenAPI `info.version` to `2.0.0` while keeping the URL prefix `/api/v1/` so existing `mm_v1_` tokens keep working.
+  - Also fixes an arbitrary-source node-lookup bug in `GET /api/v1/nodes/:nodeId` (composite PK `(nodeNum, sourceId)` from migration 029) — lookups are now correctly scoped to the requested source.
+  - Kills a fetch-all-then-filter anti-pattern in several v1 routes that pulled every row across all sources into memory before filtering; every relevant repo call now receives `sourceId` directly.
+
 - **Multi-Source Architecture (4.0)**: Connect MeshMonitor to multiple Meshtastic gateways simultaneously and manage them from a unified dashboard.
   - **Multiple sources**: Add TCP or MQTT sources via the Sources API; each source runs its own `MeshtasticManager` instance with independent connection lifecycle
   - **Data isolation**: All data tables (`nodes`, `messages`, `telemetry`, `traceroutes`, `channels`, `neighbors`, `packets`, `ignored_nodes`, `channel_database`) carry a `sourceId` column for per-source scoping (migrations 020–022)

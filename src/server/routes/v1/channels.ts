@@ -10,7 +10,15 @@ import databaseService from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
 import { ResourceType } from '../../../types/permission.js';
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
+
+/** Resolve sourceId from path (new /sources/:sourceId mount) or query (legacy). */
+function getScopedSourceId(req: Request): string | undefined {
+  const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+  if (fromPath) return fromPath;
+  const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+  return fromQuery;
+}
 
 /**
  * Helper to convert role number to human-readable name
@@ -53,7 +61,7 @@ router.get('/', async (req: Request, res: Response) => {
     const user = (req as any).user;
     const userId = user?.id ?? null;
     const isAdmin = user?.isAdmin ?? false;
-    const sourceIdQ = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+    const sourceIdQ = getScopedSourceId(req);
 
     // Get all channels (scoped to source if provided)
     const allChannels = await databaseService.channels.getAllChannels(sourceIdQ);
@@ -113,7 +121,7 @@ router.get('/:channelId', async (req: Request, res: Response) => {
     const user = (req as any).user;
     const userId = user?.id ?? null;
     const isAdmin = user?.isAdmin ?? false;
-    const sourceIdQ = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+    const sourceIdQ = getScopedSourceId(req);
 
     // Check permission (unless admin), scoped to source if provided
     if (!isAdmin) {

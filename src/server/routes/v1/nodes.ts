@@ -10,7 +10,21 @@ import databaseService, { DbNode } from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
 import { filterNodesByChannelPermission, maskNodeLocationByChannel } from '../../utils/nodeEnhancer.js';
 
-const router = express.Router();
+// mergeParams so this router picks up :sourceId when mounted under
+// /sources/:sourceId (new shape). At the root /nodes mount it's undefined
+// and the handlers fall back to ?sourceId= for backward compat.
+const router = express.Router({ mergeParams: true });
+
+/**
+ * Resolve the effective source scope for a request. Path param wins over
+ * query param; both undefined means "no scope" (legacy cross-source view).
+ */
+function getScopedSourceId(req: Request): string | undefined {
+  const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+  if (fromPath) return fromPath;
+  const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+  return fromQuery;
+}
 
 /**
  * Check if user has nodes:read permission
@@ -47,10 +61,10 @@ router.get('/', async (req: Request, res: Response) => {
     const userId = user?.id ?? null;
     const isAdmin = user?.isAdmin ?? false;
 
-    const sourceIdQ = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+    const sourceId = getScopedSourceId(req);
 
     // Check permission (scoped to source if provided)
-    if (!await hasNodesReadPermission(userId, isAdmin, sourceIdQ)) {
+    if (!await hasNodesReadPermission(userId, isAdmin, sourceId)) {
       return res.status(403).json({
         success: false,
         error: 'Forbidden',
@@ -62,21 +76,17 @@ router.get('/', async (req: Request, res: Response) => {
     const active = req.query.active === 'true';
     const sinceDays = req.query.sinceDays ? parseInt(req.query.sinceDays as string) : 7;
 
-    let nodes;
-    if (active) {
-      nodes = databaseService.getActiveNodes(sinceDays);
-    } else {
-      nodes = await databaseService.nodes.getAllNodes() as unknown as DbNode[];
-    }
-    if (sourceIdQ) {
-      nodes = nodes.filter((n: any) => n.sourceId === sourceIdQ);
-    }
+    // DB-level sourceId filtering — repo accepts it directly, no more
+    // fetch-all-then-filter.
+    const nodes = active
+      ? (await databaseService.nodes.getActiveNodes(sinceDays, sourceId)) as unknown as DbNode[]
+      : (await databaseService.nodes.getAllNodes(sourceId)) as unknown as DbNode[];
 
     // Filter nodes based on channel read permissions
-    const filteredNodes = await filterNodesByChannelPermission(nodes, user);
+    const filteredNodes = await filterNodesByChannelPermission(nodes, user, sourceId);
 
     // Strip location fields for nodes whose position came from an inaccessible channel
-    const locationMaskedNodes = await maskNodeLocationByChannel(filteredNodes, user);
+    const locationMaskedNodes = await maskNodeLocationByChannel(filteredNodes, user, sourceId);
 
     // Enrich nodes with uptime data from telemetry
     const enrichedNodes = await enrichNodesWithUptime(locationMaskedNodes);
@@ -107,10 +117,10 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
     const userId = user?.id ?? null;
     const isAdmin = user?.isAdmin ?? false;
 
-    const sourceIdQ = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+    const sourceId = getScopedSourceId(req);
 
     // Check permission (scoped to source if provided)
-    if (!await hasNodesReadPermission(userId, isAdmin, sourceIdQ)) {
+    if (!await hasNodesReadPermission(userId, isAdmin, sourceId)) {
       return res.status(403).json({
         success: false,
         error: 'Forbidden',
@@ -120,19 +130,24 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
     }
 
     const { nodeId } = req.params;
-    const allNodes = await databaseService.nodes.getAllNodes() as unknown as DbNode[];
-    const node = allNodes.find(n => n.nodeId === nodeId);
+    // Scope the lookup to the requested source so the same nodeNum seen on
+    // two sources resolves independently (migration 029 made nodes PK
+    // composite (nodeNum, sourceId)).
+    const sourceNodes = (await databaseService.nodes.getAllNodes(sourceId)) as unknown as DbNode[];
+    const node = sourceNodes.find(n => n.nodeId === nodeId);
 
     if (!node) {
       return res.status(404).json({
         success: false,
         error: 'Not Found',
-        message: `Node ${nodeId} not found`
+        message: sourceId
+          ? `Node ${nodeId} not found in source ${sourceId}`
+          : `Node ${nodeId} not found`
       });
     }
 
     // Check if user has permission to view this node based on its channel
-    const [filteredNode] = await filterNodesByChannelPermission([node], user);
+    const [filteredNode] = await filterNodesByChannelPermission([node], user, sourceId);
     if (!filteredNode) {
       return res.status(403).json({
         success: false,
@@ -143,7 +158,7 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
     }
 
     // Strip location fields if the position came from an inaccessible channel
-    const [locationMaskedNode] = await maskNodeLocationByChannel([filteredNode], user);
+    const [locationMaskedNode] = await maskNodeLocationByChannel([filteredNode], user, sourceId);
 
     // Enrich with uptime data from telemetry
     const [enrichedNode] = await enrichNodesWithUptime([locationMaskedNode]);

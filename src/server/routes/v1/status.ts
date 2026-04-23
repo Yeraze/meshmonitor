@@ -5,17 +5,20 @@
  * Used by API clients to identify the "self" node.
  */
 
-import express from 'express';
+import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import meshtasticManager from '../../meshtasticManager.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { logger } from '../../../utils/logger.js';
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
 
-router.get('/', async (req, res) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
-    const statusSourceId = req.query.sourceId as string | undefined;
+    // Scope priority: path (:sourceId via mergeParams) → query (legacy).
+    const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+    const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+    const statusSourceId = fromPath ?? fromQuery;
     const statusManager = statusSourceId ? (sourceManagerRegistry.getManager(statusSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
 
     const localNodeNum = await databaseService.settings.getSetting('localNodeNum');

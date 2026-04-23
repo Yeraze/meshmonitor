@@ -11,7 +11,15 @@ import databaseService from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
 import { checkNodeChannelAccess } from '../../utils/nodeEnhancer.js';
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
+
+/** Resolve sourceId from path or query. */
+function getScopedSourceId(req: Request): string | undefined {
+  const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+  if (fromPath) return fromPath;
+  const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+  return fromQuery;
+}
 
 /**
  * Check if user has nodes:read permission
@@ -49,7 +57,7 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
     const userId = user?.id ?? null;
     const isAdmin = user?.isAdmin ?? false;
 
-    const sourceIdQ = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+    const sourceIdQ = getScopedSourceId(req);
 
     // Check nodes:read permission (scoped to source)
     if (!await hasNodesReadPermission(userId, isAdmin, sourceIdQ)) {
@@ -101,7 +109,8 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
     const positionTelemetry = await databaseService.telemetry.getPositionTelemetryByNode(
       nodeId,
       internalLimit,
-      sinceTimestamp
+      sinceTimestamp,
+      sourceIdQ
     );
 
     // Group by timestamp to build position objects

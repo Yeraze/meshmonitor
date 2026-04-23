@@ -9,7 +9,15 @@ import databaseService from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
 import { maskTraceroutesByChannel } from '../../utils/nodeEnhancer.js';
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
+
+/** Resolve sourceId from path or query. */
+function getScopedSourceId(req: Request): string | undefined {
+  const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+  if (fromPath) return fromPath;
+  const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+  return fromQuery;
+}
 
 /**
  * GET /api/v1/traceroutes
@@ -22,8 +30,8 @@ const router = express.Router();
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { fromNodeId, toNodeId, limit, sourceId } = req.query;
-    const sourceIdStr = typeof sourceId === 'string' ? sourceId : undefined;
+    const { fromNodeId, toNodeId, limit } = req.query;
+    const sourceIdStr = getScopedSourceId(req);
     const maxLimit = parseInt(limit as string) || 100;
 
     let traceroutes = databaseService.getAllTraceroutes(maxLimit, sourceIdStr);
@@ -64,7 +72,7 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/:fromNodeId/:toNodeId', async (req: Request, res: Response) => {
   try {
     const { fromNodeId, toNodeId } = req.params;
-    const sourceIdParam = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+    const sourceIdParam = getScopedSourceId(req);
     const allTraceroutes = databaseService.getAllTraceroutes(100, sourceIdParam);
     const traceroute = allTraceroutes.find(t => t.fromNodeId === fromNodeId && t.toNodeId === toNodeId);
 
