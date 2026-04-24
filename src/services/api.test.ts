@@ -821,4 +821,67 @@ describe('ApiService BASE_URL Support', () => {
       }));
     });
   });
+
+  describe('ApiError handling', () => {
+    const createErrorResponse = (status: number, body: any, headers: Record<string, string> = {}) => ({
+      ok: false,
+      status,
+      headers: {
+        get: (name: string) => headers[name.toLowerCase()] ?? null,
+      },
+      json: async () => body,
+    });
+
+    beforeEach(() => {
+      (apiService as any).baseUrl = '';
+      (apiService as any).configFetched = true;
+      mockFetch.mockClear();
+    });
+
+    it('throws ApiError with status and code on 429 rate-limit response', async () => {
+      const { ApiError } = await import('./api');
+      mockFetch.mockResolvedValueOnce(createErrorResponse(429, {
+        error: 'Too many login attempts, please try again later',
+        code: 'AUTH_RATE_LIMITED',
+        retryAfter: '15 minutes',
+        retryAfterSeconds: 30,
+      }, { 'retry-after': '30' }));
+
+      const err = await apiService.post('/api/auth/login', { username: 'x', password: 'y' })
+        .catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as any).status).toBe(429);
+      expect((err as any).code).toBe('AUTH_RATE_LIMITED');
+      expect((err as any).retryAfterSeconds).toBe(30);
+      expect((err as Error).message).toBe('Too many login attempts, please try again later');
+    });
+
+    it('throws ApiError with status 401 on credential failure', async () => {
+      const { ApiError } = await import('./api');
+      mockFetch.mockResolvedValueOnce(createErrorResponse(401, {
+        error: 'Invalid username or password',
+      }));
+
+      const err = await apiService.post('/api/auth/login', { username: 'x', password: 'y' })
+        .catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as any).status).toBe(401);
+      expect((err as any).code).toBeUndefined();
+      expect((err as Error).message).toBe('Invalid username or password');
+    });
+
+    it('falls back to Retry-After header when body lacks retryAfterSeconds', async () => {
+      const { ApiError } = await import('./api');
+      mockFetch.mockResolvedValueOnce(createErrorResponse(429, {
+        error: 'Too many requests',
+      }, { 'retry-after': '42' }));
+
+      const err = await apiService.post('/api/x').catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as any).retryAfterSeconds).toBe(42);
+    });
+  });
 });
