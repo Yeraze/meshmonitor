@@ -171,3 +171,123 @@ describe('MiscRepository - Packet Log Queries', () => {
     });
   });
 });
+
+/**
+ * Regression tests for #2794 — getPacketCountsByNode must not multiply COUNT(*)
+ * by the number of sources when the same nodeNum appears in multiple rows of
+ * the nodes table (per-source composite PK since migration 029).
+ */
+describe('MiscRepository - getPacketCountsByNode multi-source regression (#2794)', () => {
+  let db: Database.Database;
+  let drizzleDb: BetterSQLite3Database<typeof schema>;
+  let repo: MiscRepository;
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+
+    // Mirror production composite PK (nodeNum, sourceId) so the same nodeNum
+    // can exist once per source.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS nodes (
+        nodeNum INTEGER NOT NULL,
+        sourceId TEXT NOT NULL,
+        nodeId TEXT,
+        longName TEXT,
+        shortName TEXT,
+        lastHeard INTEGER,
+        hopsAway INTEGER,
+        PRIMARY KEY (nodeNum, sourceId)
+      )
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS packet_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        packet_id INTEGER,
+        timestamp INTEGER NOT NULL,
+        from_node INTEGER NOT NULL,
+        from_node_id TEXT,
+        to_node INTEGER,
+        to_node_id TEXT,
+        channel INTEGER,
+        portnum INTEGER NOT NULL,
+        portnum_name TEXT,
+        encrypted INTEGER DEFAULT 0,
+        snr REAL,
+        rssi INTEGER,
+        hop_limit INTEGER,
+        hop_start INTEGER,
+        relay_node INTEGER,
+        payload_size INTEGER,
+        want_ack INTEGER DEFAULT 0,
+        priority INTEGER,
+        payload_preview TEXT,
+        metadata TEXT,
+        direction TEXT DEFAULT 'rx',
+        created_at INTEGER,
+        transport_mechanism TEXT,
+        decrypted_by TEXT,
+        decrypted_channel_id INTEGER,
+        sourceId TEXT
+      )
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      )
+    `);
+
+    drizzleDb = drizzle(db, { schema });
+    repo = new MiscRepository(drizzleDb as any, 'sqlite');
+
+    // Same node heard on two sources — produces two rows with the same nodeNum.
+    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName) VALUES (100, 'srcA', '!00000064', 'Node Alpha (A)', 'ALPH')`);
+    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName) VALUES (100, 'srcB', '!00000064', 'Node Alpha (B)', 'ALPH')`);
+    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName) VALUES (200, 'srcA', '!000000c8', 'Node Beta', 'BETA')`);
+
+    const now = Date.now();
+    // Three packets from nodeNum 100 on srcA
+    for (let i = 1; i <= 3; i++) {
+      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, portnum, direction, created_at, sourceId) VALUES (${i}, ${now - i * 1000}, 100, '!00000064', 1, 'rx', ${now}, 'srcA')`);
+    }
+    // One packet from nodeNum 200 on srcA
+    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, portnum, direction, created_at, sourceId) VALUES (10, ${now}, 200, '!000000c8', 1, 'rx', ${now}, 'srcA')`);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('does not double-count packets when a nodeNum exists in multiple sources (unscoped)', async () => {
+    const counts = await repo.getPacketCountsByNode({});
+    const alpha = counts.find(c => c.from_node === 100);
+    expect(alpha).toBeDefined();
+    // 3 packets — NOT 6 (which would be 3 × 2 sources via the old JOIN).
+    expect(alpha!.count).toBe(3);
+  });
+
+  it('scopes to a single source when sourceId is provided', async () => {
+    const counts = await repo.getPacketCountsByNode({ sourceId: 'srcA' });
+    const alpha = counts.find(c => c.from_node === 100);
+    expect(alpha).toBeDefined();
+    expect(alpha!.count).toBe(3);
+    // When scoped, longName comes from the matching source
+    expect(alpha!.from_node_longName).toBe('Node Alpha (A)');
+  });
+
+  it('returns zero rows for a source that has no packets', async () => {
+    const counts = await repo.getPacketCountsByNode({ sourceId: 'srcB' });
+    expect(counts.length).toBe(0);
+  });
+
+  it('percentages against sum of counts stay <= 100%', async () => {
+    const counts = await repo.getPacketCountsByNode({});
+    const sum = counts.reduce((s, c) => s + c.count, 0);
+    expect(sum).toBe(4); // 3 from alpha + 1 from beta
+    for (const c of counts) {
+      expect(c.count / sum).toBeLessThanOrEqual(1);
+    }
+  });
+});

@@ -4000,7 +4000,8 @@ class DatabaseService {
   getPacketRates(
     nodeId: string,
     types: string[],
-    sinceTimestamp?: number
+    sinceTimestamp?: number,
+    sourceId?: string
   ): Record<string, Array<{ timestamp: number; ratePerMinute: number }>> {
     const result: Record<string, Array<{ timestamp: number; ratePerMinute: number }>> = {};
 
@@ -4030,6 +4031,11 @@ class DatabaseService {
     if (sinceTimestamp !== undefined) {
       query += ` AND timestamp >= ?`;
       params.push(sinceTimestamp);
+    }
+
+    if (sourceId !== undefined) {
+      query += ` AND sourceId = ?`;
+      params.push(sourceId);
     }
 
     query += ` ORDER BY telemetryType, timestamp ASC`;
@@ -4101,7 +4107,8 @@ class DatabaseService {
   async getPacketRatesAsync(
     nodeId: string,
     types: string[],
-    sinceTimestamp?: number
+    sinceTimestamp?: number,
+    sourceId?: string
   ): Promise<Record<string, Array<{ timestamp: number; ratePerMinute: number }>>> {
     const result: Record<string, Array<{ timestamp: number; ratePerMinute: number }>> = {};
     for (const type of types) {
@@ -4119,6 +4126,10 @@ class DatabaseService {
           params.push(sinceTimestamp);
           query += ` AND timestamp >= $${params.length}`;
         }
+        if (sourceId !== undefined) {
+          params.push(sourceId);
+          query += ` AND "sourceId" = $${params.length}`;
+        }
         query += ` ORDER BY "telemetryType", timestamp ASC`;
         const queryResult = await client.query(query, params);
         return this.calculatePacketRates(queryResult.rows, types);
@@ -4135,11 +4146,15 @@ class DatabaseService {
         params.push(sinceTimestamp);
         query += ` AND timestamp >= ?`;
       }
+      if (sourceId !== undefined) {
+        params.push(sourceId);
+        query += ` AND sourceId = ?`;
+      }
       query += ` ORDER BY telemetryType, timestamp ASC`;
       const [rows] = await pool.query(query, params);
       return this.calculatePacketRates(rows as any[], types);
     }
-    return this.getPacketRates(nodeId, types, sinceTimestamp);
+    return this.getPacketRates(nodeId, types, sinceTimestamp, sourceId);
   }
 
   private calculatePacketRates(

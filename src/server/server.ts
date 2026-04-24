@@ -4029,6 +4029,7 @@ apiRouter.get('/telemetry/:nodeId/rates', optionalAuth(), async (req, res) => {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
+    const ratesSourceId = req.query.sourceId as string | undefined;
 
     // Calculate cutoff timestamp for filtering
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
@@ -4056,7 +4057,7 @@ apiRouter.get('/telemetry/:nodeId/rates', optionalAuth(), async (req, res) => {
       // Fetch telemetry for each packet type and calculate rates
       for (const type of packetTypes) {
         const telemetry = await databaseService.telemetry.getTelemetryByNode(
-          nodeId, 5000, cutoffTime, undefined, 0, type
+          nodeId, 5000, cutoffTime, undefined, 0, type, ratesSourceId
         );
 
         // Sort by timestamp ascending for rate calculation
@@ -4080,7 +4081,7 @@ apiRouter.get('/telemetry/:nodeId/rates', optionalAuth(), async (req, res) => {
         }
       }
     } else {
-      rates = await databaseService.getPacketRatesAsync(nodeId, packetTypes, cutoffTime);
+      rates = await databaseService.getPacketRatesAsync(nodeId, packetTypes, cutoffTime, ratesSourceId);
     }
 
     res.json(rates);

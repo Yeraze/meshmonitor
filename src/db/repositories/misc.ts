@@ -1583,14 +1583,29 @@ export class MiscRepository extends BaseRepository {
       const longName = this.col('longName');
       const nodeNum = this.col('nodeNum');
 
+      // Aggregate on packet_log alone — joining `nodes` here would multiply
+      // COUNT(*) by the number of sources because `nodes` has composite PK
+      // (nodeNum, sourceId) since migration 029, so the same nodeNum appears
+      // once per source (#2794). Resolve longName via a scalar subquery that
+      // prefers the requested sourceId and otherwise picks one deterministically.
+      const nameConditions: any[] = [sql`n.${nodeNum} = agg.from_node`];
+      if (sourceId !== undefined) {
+        nameConditions.push(sql`n.${sql.identifier('sourceId')} = ${sourceId}`);
+      }
+      const nameWhere = this.combineConditions(nameConditions);
+
       const query = sql`
-        SELECT pl.from_node, pl.from_node_id, n.${longName} as from_node_longName, COUNT(*) as count
-        FROM packet_log pl
-        LEFT JOIN nodes n ON pl.from_node = n.${nodeNum}
-        WHERE ${whereClause}
-        GROUP BY pl.from_node, pl.from_node_id, n.${longName}
-        ORDER BY count DESC
-        LIMIT ${limit}
+        SELECT agg.from_node, agg.from_node_id,
+          (SELECT n.${longName} FROM nodes n WHERE ${nameWhere} LIMIT 1) as from_node_longName,
+          agg.count
+        FROM (
+          SELECT pl.from_node, pl.from_node_id, COUNT(*) as count
+          FROM packet_log pl
+          WHERE ${whereClause}
+          GROUP BY pl.from_node, pl.from_node_id
+          ORDER BY COUNT(*) DESC
+          LIMIT ${limit}
+        ) agg
       `;
 
       const rows = await this.executeQuery(query);
