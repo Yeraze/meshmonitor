@@ -9427,8 +9427,9 @@ class MeshtasticManager implements ISourceManager {
         return;
       }
 
-      // Skip local node
-      const localNodeNum = await databaseService.settings.getSetting('localNodeNum');
+      // Skip local node (read the per-source identity key so named sources don't
+      // read another source's local node and short-circuit incorrectly).
+      const localNodeNum = await databaseService.settings.getSetting(this.localNodeSettingKey('localNodeNum'));
       if (localNodeNum && parseInt(localNodeNum) === nodeNum) {
         return;
       }
@@ -9438,13 +9439,13 @@ class MeshtasticManager implements ISourceManager {
         return;
       }
 
-      // Get local node role
+      // Get local node role (scoped to this source — nodes table has composite PK (nodeNum, sourceId))
       const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : this.localNodeInfo?.nodeNum;
       if (!localNodeNumInt) return;
-      const localNode = await databaseService.nodes.getNode(localNodeNumInt);
+      const localNode = await databaseService.nodes.getNode(localNodeNumInt, this.sourceId);
       if (!localNode) return;
 
-      const targetNode = await databaseService.nodes.getNode(nodeNum);
+      const targetNode = await databaseService.nodes.getNode(nodeNum, this.sourceId);
       if (!targetNode) return;
 
       // Skip nodes where favoriteLocked is true — user has manually managed this node
@@ -9503,7 +9504,7 @@ class MeshtasticManager implements ISourceManager {
         logger.info(`🧹 Auto-favorite disabled, cleaning up ${autoFavoriteNodes.length} auto-favorited nodes`);
         for (const nodeNum of autoFavoriteNodes) {
           try {
-            const node = await databaseService.nodes.getNode(nodeNum);
+            const node = await databaseService.nodes.getNode(nodeNum, this.sourceId);
             if (node?.favoriteLocked) {
               logger.debug(`Skipping locked node ${nodeNum} during auto-favorite cleanup`);
               continue;
@@ -9525,15 +9526,16 @@ class MeshtasticManager implements ISourceManager {
       const staleHours = parseInt(await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteStaleHours') || '72');
       const staleThreshold = Date.now() / 1000 - (staleHours * 3600);
 
-      // Get local node role for re-evaluation
-      const localNodeNum = await databaseService.settings.getSetting('localNodeNum');
+      // Get local node role for re-evaluation (scoped to this source — both the
+      // identity key and the node lookup are per-source).
+      const localNodeNum = await databaseService.settings.getSetting(this.localNodeSettingKey('localNodeNum'));
       const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : this.localNodeInfo?.nodeNum;
-      const localNode = localNodeNumInt ? await databaseService.nodes.getNode(localNodeNumInt) : null;
+      const localNode = localNodeNumInt ? await databaseService.nodes.getNode(localNodeNumInt, this.sourceId) : null;
 
       const nodesToRemove: number[] = [];
 
       for (const nodeNum of autoFavoriteNodes) {
-        const node = await databaseService.nodes.getNode(nodeNum);
+        const node = await databaseService.nodes.getNode(nodeNum, this.sourceId);
         if (!node) {
           nodesToRemove.push(nodeNum);
           continue;

@@ -1176,13 +1176,16 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write', { 
     // Update favorite status in database — manual action always locks
     await databaseService.nodes.setNodeFavorite(nodeNum, isFavorite, favSourceId, true);
 
-    // If manually unfavoriting, remove from auto-favorite tracking list
+    // If manually unfavoriting, remove from the per-source auto-favorite tracking list.
+    // The per-source manager reads/writes this list via settings.{get,set}SettingForSource
+    // scoped to its own sourceId — touching the global key here would leave the per-source
+    // list stale and let the sweep re-process the node.
     if (!isFavorite) {
-      const autoFavoriteNodesJson = await databaseService.settings.getSetting('autoFavoriteNodes') || '[]';
+      const autoFavoriteNodesJson = await databaseService.settings.getSettingForSource(favSourceId, 'autoFavoriteNodes') || '[]';
       const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
       if (autoFavoriteNodes.includes(nodeNum)) {
         const updated = autoFavoriteNodes.filter(n => n !== nodeNum);
-        await databaseService.settings.setSetting('autoFavoriteNodes', JSON.stringify(updated));
+        await databaseService.settings.setSourceSetting(favSourceId, 'autoFavoriteNodes', JSON.stringify(updated));
       }
     }
 
@@ -1298,17 +1301,17 @@ apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write
 
     await databaseService.nodes.setNodeFavoriteLocked(nodeNum, locked, lockSourceId);
 
-    // If unlocking, also add to auto-favorite tracking list if node is currently favorited
-    // so that automation can manage it going forward (scoped to the same source that owns
-    // the lock flag — same nodeNum may have different favorite state on other sources).
+    // If unlocking, also add to the per-source auto-favorite tracking list if the node is
+    // currently favorited on this source, so automation on this source can manage it going
+    // forward. Must read/write the per-source key that the sweep actually consults.
     if (!locked) {
       const node = await databaseService.nodes.getNode(nodeNum, lockSourceId);
       if (node?.isFavorite) {
-        const autoFavoriteNodesJson = await databaseService.settings.getSetting('autoFavoriteNodes') || '[]';
+        const autoFavoriteNodesJson = await databaseService.settings.getSettingForSource(lockSourceId, 'autoFavoriteNodes') || '[]';
         const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
         if (!autoFavoriteNodes.includes(nodeNum)) {
           autoFavoriteNodes.push(nodeNum);
-          await databaseService.settings.setSetting('autoFavoriteNodes', JSON.stringify(autoFavoriteNodes));
+          await databaseService.settings.setSourceSetting(lockSourceId, 'autoFavoriteNodes', JSON.stringify(autoFavoriteNodes));
         }
       }
     }
@@ -1336,20 +1339,22 @@ apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), async
   try {
     const afSourceId = req.query.sourceId as string | undefined;
     const afManager = afSourceId ? (sourceManagerRegistry.getManager(afSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
-    const localNodeNum = await databaseService.settings.getSetting('localNodeNum');
-    const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : afManager.getLocalNodeInfo()?.nodeNum;
-    // Scope node lookups to afSourceId so auto-favorite status reflects the caller's source
-    const localNode = localNodeNumInt ? await databaseService.nodes.getNode(localNodeNumInt, afSourceId) : null;
+    // Prefer the manager's in-memory local node (populated at connect time). This avoids
+    // the legacy global 'localNodeNum' settings key, which is clobbered across sources.
+    const localNodeNumInt = afManager.getLocalNodeInfo()?.nodeNum;
+    const localNode = localNodeNumInt ? await databaseService.nodes.getNode(localNodeNumInt, afManager.sourceId) : null;
     const firmwareVersion = afManager.getLocalNodeInfo()?.firmwareVersion || null;
     const supportsFavorites = afManager.supportsFavorites();
 
-    const autoFavoriteNodesJson = await databaseService.settings.getSetting('autoFavoriteNodes') || '[]';
+    // Read the per-source tracking list (manager writes via setSourceSetting on
+    // the same key — global getSetting would return stale/empty data here).
+    const autoFavoriteNodesJson = await databaseService.settings.getSettingForSource(afManager.sourceId, 'autoFavoriteNodes') || '[]';
     const autoFavoriteNodeNums: number[] = JSON.parse(autoFavoriteNodesJson);
 
     // Get node details for each auto-favorited node (scoped to this source)
     const autoFavoriteNodes = (await Promise.all(autoFavoriteNodeNums
       .map(async nodeNum => {
-        const node = await databaseService.nodes.getNode(nodeNum, afSourceId);
+        const node = await databaseService.nodes.getNode(nodeNum, afManager.sourceId);
         if (!node) return null;
         return {
           nodeNum: node.nodeNum,
