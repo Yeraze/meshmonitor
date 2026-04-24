@@ -76,3 +76,6 @@ test-results.txt
 
 # Git worktrees
 .worktrees/
+
+# Scratch/local-only test harnesses
+scratch/

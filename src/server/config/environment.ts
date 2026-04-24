@@ -174,6 +174,8 @@ export interface EnvironmentConfig {
   baseUrlProvided: boolean;
   allowedOrigins: string[];
   allowedOriginsProvided: boolean;
+  iframeAllowedOrigins: string[];
+  iframeAllowedOriginsProvided: boolean;
   trustProxy: boolean | number | string;
   trustProxyProvided: boolean;
   versionCheckDisabled: boolean;
@@ -353,6 +355,13 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
       ? allowedOriginsRaw.split(',').map(o => o.trim()).filter(o => o.length > 0)
       : ['http://localhost:8080', 'http://localhost:3001'],
     wasProvided: allowedOriginsRaw !== undefined
+  };
+  const iframeAllowedOriginsRaw = process.env.IFRAME_ALLOWED_ORIGINS;
+  const iframeAllowedOrigins = {
+    value: iframeAllowedOriginsRaw
+      ? iframeAllowedOriginsRaw.split(',').map(o => o.trim()).filter(o => o.length > 0)
+      : [],
+    wasProvided: iframeAllowedOriginsRaw !== undefined
   };
   const trustProxy = parseTrustProxy('TRUST_PROXY', process.env.TRUST_PROXY, false);
 
@@ -643,6 +652,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   logger.info(`   LOG_LEVEL: ${logLevel.value} (${src(logLevel.wasProvided)})`);
   logger.info(`   TZ: ${timezone.value} (${src(timezone.wasProvided)})`);
   logger.info(`   ALLOWED_ORIGINS: ${allowedOrigins.value || '*'} (${src(allowedOrigins.wasProvided)})`);
+  logger.info(`   IFRAME_ALLOWED_ORIGINS: ${iframeAllowedOrigins.value.length > 0 ? iframeAllowedOrigins.value.join(',') : '(not set - iframe embedding blocked)'} (${src(iframeAllowedOrigins.wasProvided)})`);
   logger.info(`   TRUST_PROXY: ${trustProxy.value} (${src(trustProxy.wasProvided)})`);
   logger.info(`   VERSION_CHECK_DISABLED: ${versionCheckDisabled}`);
   logger.info('   --- Session/Security ---');
@@ -721,6 +731,8 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     baseUrlProvided,
     allowedOrigins: allowedOrigins.value,
     allowedOriginsProvided: allowedOrigins.wasProvided,
+    iframeAllowedOrigins: iframeAllowedOrigins.value,
+    iframeAllowedOriginsProvided: iframeAllowedOrigins.wasProvided,
     trustProxy: trustProxy.value,
     trustProxyProvided: trustProxy.wasProvided,
     versionCheckDisabled: versionCheckDisabled,

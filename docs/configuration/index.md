@@ -100,6 +100,21 @@ See the [Virtual Node Server guide](/configuration/virtual-node) for details.
 | `SESSION_MAX_AGE` | Session cookie lifetime in milliseconds | `86400000` (24 hours) |
 | `SESSION_ROLLING` | Reset session expiry on each request (keeps active users logged in) | `true` |
 | `ALLOWED_ORIGINS` | **REQUIRED for HTTPS/reverse proxy**: Comma-separated list of allowed CORS origins | `http://localhost:8080, http://localhost:3001` |
+| `IFRAME_ALLOWED_ORIGINS` | Comma-separated list of origins allowed to embed MeshMonitor in an `<iframe>` (e.g. a Node-RED dashboard). Use `*` to allow any origin. When unset, iframe embedding is blocked. | *(unset - iframe blocked)* |
+
+::: tip Embedding MeshMonitor in an iframe
+By default MeshMonitor sends `X-Frame-Options: DENY`, which blocks browsers from rendering it inside an `<iframe>`. To embed MeshMonitor in another page (for example a Node-RED dashboard, Home Assistant panel, or internal portal), set `IFRAME_ALLOWED_ORIGINS` to the origin(s) that will host the frame:
+```yaml
+environment:
+  # Allow a single Node-RED dashboard
+  - IFRAME_ALLOWED_ORIGINS=http://192.168.1.50:1880
+  # Or multiple origins
+  - IFRAME_ALLOWED_ORIGINS=http://192.168.1.50:1880,https://portal.example.com
+  # Or any origin (not recommended for production)
+  - IFRAME_ALLOWED_ORIGINS=*
+```
+When set, MeshMonitor drops the `X-Frame-Options` header and enforces the same policy via CSP `frame-ancestors`. Only origins in the list (plus the server's own origin) can embed the UI.
+:::
 
 ::: tip Running Multiple Instances
 If you're running multiple MeshMonitor instances on the same host (different ports), set `SESSION_COOKIE_NAME` to a unique value for each instance to avoid session cookie conflicts:

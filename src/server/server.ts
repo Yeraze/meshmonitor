@@ -162,6 +162,13 @@ if (env.trustProxyProvided) {
 // For Quick Start: default to HTTP-friendly (no HSTS) even in production
 // Only enable HSTS when COOKIE_SECURE explicitly set to 'true'
 // CSP is handled dynamically by dynamicCspMiddleware to support custom tile servers
+// frameguard (X-Frame-Options) is disabled when IFRAME_ALLOWED_ORIGINS is set;
+// iframe embedding policy is then enforced via CSP frame-ancestors instead.
+const iframeEmbeddingEnabled = env.iframeAllowedOrigins.length > 0;
+const frameguardConfig = iframeEmbeddingEnabled
+  ? false as const
+  : { action: 'deny' as const };
+
 const helmetConfig =
   env.isProduction && env.cookieSecure
     ? {
@@ -171,9 +178,7 @@ const helmetConfig =
           includeSubDomains: true,
           preload: true,
         },
-        frameguard: {
-          action: 'deny' as const,
-        },
+        frameguard: frameguardConfig,
         noSniff: true,
         xssFilter: true,
         // Send origin as Referer for cross-origin requests (e.g. map tile fetches).
@@ -185,9 +190,7 @@ const helmetConfig =
         contentSecurityPolicy: false, // Handled by dynamicCspMiddleware
         hsts: false, // Disable HSTS when not using secure cookies or in development
         crossOriginOpenerPolicy: false, // Disable COOP for HTTP - browser ignores it on non-HTTPS anyway
-        frameguard: {
-          action: 'deny' as const,
-        },
+        frameguard: frameguardConfig,
         noSniff: true,
         xssFilter: true,
         referrerPolicy: { policy: 'strict-origin-when-cross-origin' as const },
@@ -195,8 +198,9 @@ const helmetConfig =
 
 app.use(helmet(helmetConfig));
 
-// Dynamic CSP middleware - adds custom tile server hostnames from database
-app.use(dynamicCspMiddleware(env.isProduction, env.cookieSecure));
+// Dynamic CSP middleware - adds custom tile server hostnames from database,
+// and sets frame-ancestors from IFRAME_ALLOWED_ORIGINS when configured.
+app.use(dynamicCspMiddleware(env.isProduction, env.cookieSecure, env.iframeAllowedOrigins));
 
 // Security: CORS configuration with allowed origins
 const getAllowedOrigins = () => {

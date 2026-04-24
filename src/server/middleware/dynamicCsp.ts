@@ -136,7 +136,11 @@ async function getAnalyticsCspFromSettings(): Promise<{ scriptSrc: string[]; con
 /**
  * Build the full CSP header value
  */
-export async function buildCspHeader(isProduction: boolean, cookieSecure: boolean): Promise<string> {
+export async function buildCspHeader(
+  isProduction: boolean,
+  cookieSecure: boolean,
+  iframeAllowedOrigins: string[] = []
+): Promise<string> {
   const connectSrc = await buildConnectSrcDirective(isProduction, cookieSecure);
   const analyticsCsp = await getAnalyticsCspFromSettings();
 
@@ -178,6 +182,13 @@ export async function buildCspHeader(isProduction: boolean, cookieSecure: boolea
     'form-action': ["'self'"],
   };
 
+  if (iframeAllowedOrigins.length > 0) {
+    const hasWildcard = iframeAllowedOrigins.includes('*');
+    directives['frame-ancestors'] = hasWildcard
+      ? ['*']
+      : ["'self'", ...iframeAllowedOrigins];
+  }
+
   return Object.entries(directives)
     .map(([key, values]) => `${key} ${values.join(' ')}`)
     .join('; ');
@@ -187,7 +198,11 @@ export async function buildCspHeader(isProduction: boolean, cookieSecure: boolea
  * Middleware to set dynamic CSP header
  * This replaces helmet's static CSP with a dynamic one that includes custom tile servers
  */
-export function dynamicCspMiddleware(isProduction: boolean, cookieSecure: boolean) {
+export function dynamicCspMiddleware(
+  isProduction: boolean,
+  cookieSecure: boolean,
+  iframeAllowedOrigins: string[] = []
+) {
   // Initialize cache on first call (fire-and-forget)
   if (cacheTimestamp === 0) {
     refreshTileHostnameCache().catch(err =>
@@ -197,7 +212,7 @@ export function dynamicCspMiddleware(isProduction: boolean, cookieSecure: boolea
 
   return async (_req: Request, res: Response, next: NextFunction) => {
     try {
-      const cspHeader = await buildCspHeader(isProduction, cookieSecure);
+      const cspHeader = await buildCspHeader(isProduction, cookieSecure, iframeAllowedOrigins);
       res.setHeader('Content-Security-Policy', cspHeader);
       next();
     } catch (error) {
