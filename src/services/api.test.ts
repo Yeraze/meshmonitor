@@ -883,5 +883,35 @@ describe('ApiService BASE_URL Support', () => {
       expect(err).toBeInstanceOf(ApiError);
       expect((err as any).retryAfterSeconds).toBe(42);
     });
+
+    it('preserves CSRF code on 403 after a failed retry (#2783)', async () => {
+      const { ApiError } = await import('./api');
+      // First call: 403 with non-CSRF error -> NOT triggering refresh path,
+      // should throw ApiError directly with CSRF code for the UI to branch.
+      // Simulate the post-refresh retry throwing 403 CSRF_TOKEN_INVALID as it
+      // would if the retry also failed (request() only retries once).
+      mockFetch
+        .mockResolvedValueOnce(createErrorResponse(403, {
+          error: 'Invalid CSRF token. Please refresh the page and try again.',
+          code: 'CSRF_TOKEN_INVALID',
+        }))
+        // Refresh succeeds, but the retry fails again with CSRF error
+        .mockResolvedValueOnce({
+          ok: true,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ csrfToken: 'new-token' }),
+        })
+        .mockResolvedValueOnce(createErrorResponse(403, {
+          error: 'Invalid CSRF token. Please refresh the page and try again.',
+          code: 'CSRF_TOKEN_INVALID',
+        }));
+
+      const err = await apiService.post('/api/auth/login', { username: 'x', password: 'y' })
+        .catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as any).status).toBe(403);
+      expect((err as any).code).toBe('CSRF_TOKEN_INVALID');
+    });
   });
 });

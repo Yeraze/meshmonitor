@@ -184,6 +184,7 @@
   "auth.invalid_credentials": "Invalid username or password",
   "auth.rate_limited": "Too many login attempts. Please try again in {{minutes}} minute(s).",
   "auth.rate_limited_generic": "Too many login attempts. Please try again later.",
+  "auth.session_expired": "Your session has expired. Please refresh the page and try again.",
   "auth.local_auth_disabled": "Local authentication is disabled and OIDC is not configured. Please contact your administrator.",
   "auth.login_divider": "OR",
   "auth.logout": "Logout",

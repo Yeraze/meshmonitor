@@ -57,6 +57,11 @@ const LoginPage: React.FC = () => {
         setError(minutes !== null
           ? t('auth.rate_limited', { minutes })
           : t('auth.rate_limited_generic'));
+      } else if (err instanceof ApiError && err.status === 403 && err.code?.startsWith('CSRF_')) {
+        // CSRF token is stale (e.g. server restarted, session rotated). The
+        // old "Session cookie" message pointed users at the wrong causes
+        // (#2783). Direct them at the real fix: reload the page.
+        setError(t('auth.session_expired'));
       } else if (err instanceof Error && err.message.includes('Session cookie')) {
         setError(err.message);
       } else {
