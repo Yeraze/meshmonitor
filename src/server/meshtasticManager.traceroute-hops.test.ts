@@ -66,6 +66,7 @@ vi.mock('../services/database.js', () => ({
     },
     telemetry: {
       insertTelemetry: mockInsertTelemetry,
+      insertTelemetryBatch: vi.fn().mockResolvedValue(0),
       getLatestTelemetryForType: vi.fn().mockResolvedValue(null),
     },
     messages: {

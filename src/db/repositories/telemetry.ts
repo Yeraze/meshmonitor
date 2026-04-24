@@ -77,6 +77,59 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
+   * Insert multiple telemetry rows in a single statement. Reduces pool
+   * acquires during bursts like NodeInfo (position + device metrics + SNR
+   * can be ≥10 rows per packet). Uses multi-row VALUES with
+   * onConflictDoNothing on SQLite/PostgreSQL; MySQL falls back to serial
+   * inserts since our Drizzle version lacks multi-row ignore.
+   */
+  async insertTelemetryBatch(
+    rows: DbTelemetry[],
+    sourceId?: string
+  ): Promise<number> {
+    if (rows.length === 0) return 0;
+
+    const { telemetry } = this.tables;
+    const valuesArray = rows.map((r) => {
+      const v: any = {
+        nodeId: r.nodeId,
+        nodeNum: r.nodeNum,
+        telemetryType: r.telemetryType,
+        timestamp: r.timestamp,
+        value: r.value,
+        unit: r.unit ?? null,
+        createdAt: r.createdAt,
+        packetTimestamp: r.packetTimestamp ?? null,
+        packetId: r.packetId ?? null,
+        channel: r.channel ?? null,
+        precisionBits: r.precisionBits ?? null,
+        gpsAccuracy: r.gpsAccuracy ?? null,
+      };
+      if (sourceId) v.sourceId = sourceId;
+      return v;
+    });
+
+    if (this.isMySQL()) {
+      let inserted = 0;
+      for (const v of valuesArray) {
+        try {
+          const r = await this.db.insert(telemetry).values(v);
+          inserted += this.getAffectedRows(r);
+        } catch {
+          // Duplicate key — swallow, matches single insertIgnore semantics
+        }
+      }
+      return inserted;
+    }
+
+    const result = await (this.db as any)
+      .insert(telemetry)
+      .values(valuesArray)
+      .onConflictDoNothing();
+    return this.getAffectedRows(result);
+  }
+
+  /**
    * Get telemetry count
    */
   async getTelemetryCount(): Promise<number> {

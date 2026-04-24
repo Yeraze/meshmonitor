@@ -82,14 +82,18 @@ export function getDatabaseConfig(): DatabaseConfig {
   const config = getEnvironmentConfig();
   const type = detectDatabaseType();
 
+  const poolSizeRaw = process.env.DATABASE_POOL_SIZE;
+  const parsedPoolSize = poolSizeRaw ? parseInt(poolSizeRaw, 10) : NaN;
+  const maxConnections = Number.isFinite(parsedPoolSize) && parsedPoolSize > 0 ? parsedPoolSize : 10;
+
   return {
     type,
     sqlitePath: config.databasePath,
     postgresUrl: type === 'postgres' ? config.databaseUrl : undefined,
-    postgresMaxConnections: 10,
+    postgresMaxConnections: maxConnections,
     postgresSsl: false,
     mysqlUrl: type === 'mysql' ? config.databaseUrl : undefined,
-    mysqlMaxConnections: 10,
+    mysqlMaxConnections: maxConnections,
   };
 }
 
