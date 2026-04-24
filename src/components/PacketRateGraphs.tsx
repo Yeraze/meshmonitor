@@ -15,6 +15,7 @@ import { usePacketRates, type PacketRatesResponse } from '../hooks/usePacketRate
 import { formatChartAxisTimestamp } from '../utils/datetime';
 import { useFavorites, useToggleFavorite } from '../hooks/useFavorites';
 import { useToast } from './ToastContainer';
+import { useSource } from '../contexts/SourceContext';
 
 // Telemetry type constants for favorites
 export const PACKET_RATE_RX_TYPE = 'packetRateRx';
@@ -118,12 +119,14 @@ const PacketRateGraphs: React.FC<PacketRateGraphsProps> = React.memo(
   ({ nodeId, telemetryHours = 24, baseUrl = '' }) => {
     const { t } = useTranslation();
     const { showToast } = useToast();
+    const { sourceId } = useSource();
 
     // Fetch packet rate data
     const { data: rateData, isLoading, error } = usePacketRates({
       nodeId,
       hours: telemetryHours,
       baseUrl,
+      sourceId,
     });
 
     // Favorites management

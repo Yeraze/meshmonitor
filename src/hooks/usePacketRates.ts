@@ -40,6 +40,8 @@ interface UsePacketRatesOptions {
   hours?: number;
   /** Base URL for API requests (default: '') */
   baseUrl?: string;
+  /** Source ID to scope the query to (optional) */
+  sourceId?: string | null;
   /** Whether to enable the query (default: true) */
   enabled?: boolean;
 }
@@ -68,12 +70,16 @@ export function usePacketRates({
   nodeId,
   hours = 24,
   baseUrl = '',
+  sourceId,
   enabled = true,
 }: UsePacketRatesOptions) {
   return useQuery({
-    queryKey: ['packetRates', nodeId, hours],
+    queryKey: ['packetRates', nodeId, hours, sourceId ?? null],
     queryFn: async (): Promise<PacketRatesResponse> => {
-      const response = await fetch(`${baseUrl}/api/telemetry/${nodeId}/rates?hours=${hours}`);
+      const params = new URLSearchParams();
+      params.set('hours', String(hours));
+      if (sourceId) params.set('sourceId', sourceId);
+      const response = await fetch(`${baseUrl}/api/telemetry/${nodeId}/rates?${params.toString()}`);
 
       if (!response.ok) {
         throw new Error(`Failed to fetch packet rates: ${response.status} ${response.statusText}`);
