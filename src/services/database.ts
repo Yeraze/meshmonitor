@@ -2028,13 +2028,13 @@ class DatabaseService {
           logger.error('Failed to upsert node:', err);
         });
 
-        // For newly discovered nodes, check persistent ignore list and restore status
+        // For newly discovered nodes, check per-source ignore list and restore status
         if (!existingNode && nodeData.nodeNum !== 4294967295) {
-          // Check if this node was previously ignored
+          // Check if this node was previously ignored on this source
           if (this.ignoredNodesRepo) {
-            this.ignoredNodes.isNodeIgnoredAsync(nodeData.nodeNum).then(wasIgnored => {
+            this.ignoredNodes.isNodeIgnoredAsync(nodeData.nodeNum, upsertSourceId).then(wasIgnored => {
               if (wasIgnored) {
-                logger.debug(`Restoring ignored status for returning node ${nodeData.nodeNum}`);
+                logger.debug(`Restoring ignored status for returning node ${nodeData.nodeNum} on source ${upsertSourceId}`);
                 updatedNode.isIgnored = true;
                 this.nodesCache.set(this.cacheKey(nodeData.nodeNum!, upsertSourceId), updatedNode);
                 if (this.nodesRepo) {
@@ -2043,7 +2043,7 @@ class DatabaseService {
                   });
                 }
               }
-            }).catch(err => logger.error('Failed to check persistent ignore list:', err));
+            }).catch(err => logger.error('Failed to check per-source ignore list:', err));
           }
         }
 
@@ -2085,10 +2085,10 @@ class DatabaseService {
 
     let wasIgnored = false;
     if (!existingNode) {
-      // Check if this node was previously ignored (persistent ignore list).
+      // Check if this node was previously ignored on this source (per-source blocklist).
       // Delegates to IgnoredNodesRepository so the raw SQL stays inside Drizzle-managed code.
-      if (this.ignoredNodesRepo) {
-        wasIgnored = this.ignoredNodesRepo.isNodeIgnoredSqlite(nodeData.nodeNum);
+      if (this.ignoredNodesRepo && upsertSourceIdSqlite) {
+        wasIgnored = this.ignoredNodesRepo.isNodeIgnoredSqlite(nodeData.nodeNum, upsertSourceIdSqlite);
       }
     }
 
@@ -6850,16 +6850,16 @@ class DatabaseService {
     const node = this.getNode(nodeNum, sourceId);
     const nodeId = node?.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`;
 
-    // Persist to/remove from the ignored_nodes table
+    // Persist to/remove from the per-source ignored_nodes table (migration 048).
     if (isIgnored) {
       this.ignoredNodes.addIgnoredNodeAsync(
-        nodeNum, nodeId, node?.longName, node?.shortName
+        nodeNum, sourceId, nodeId, node?.longName, node?.shortName
       ).catch(err => {
-        logger.error('Failed to add node to persistent ignore list:', err);
+        logger.error('Failed to add node to per-source ignore list:', err);
       });
     } else {
-      this.ignoredNodes.removeIgnoredNodeAsync(nodeNum).catch(err => {
-        logger.error('Failed to remove node from persistent ignore list:', err);
+      this.ignoredNodes.removeIgnoredNodeAsync(nodeNum, sourceId).catch(err => {
+        logger.error('Failed to remove node from per-source ignore list:', err);
       });
     }
 

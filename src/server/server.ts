@@ -47,6 +47,7 @@ import { generateAnalyticsScript, AnalyticsProvider } from './utils/analyticsScr
 import { rewriteHtml } from './utils/htmlRewriter.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { safeFetch, SsrfBlockedError } from './utils/ssrfGuard.js';
+import { resolveRequestSourceId } from './utils/sourceResolver.js';
 import { PortNum } from './constants/meshtastic.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 import { applyManagerSettings } from './applyManagerSettings.js';
@@ -1390,7 +1391,7 @@ apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), async
 apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write', { sourceIdFrom: 'body' }), async (req, res) => {
   try {
     const { nodeId } = req.params;
-    const { isIgnored, syncToDevice = true, destinationNodeNum, sourceId: ignoreSourceId } = req.body;
+    const { isIgnored, syncToDevice = true, destinationNodeNum } = req.body;
 
     if (typeof isIgnored !== 'boolean') {
       const errorResponse: ApiErrorResponse = {
@@ -1402,11 +1403,14 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write', { s
       return;
     }
 
-    if (typeof ignoreSourceId !== 'string' || ignoreSourceId.length === 0) {
+    // Per-source blocklist: accept sourceId from body, else fall back to the
+    // first source this caller has nodes:write on.
+    const ignoreSourceId = await resolveRequestSourceId(req, 'nodes', 'write');
+    if (!ignoreSourceId) {
       const errorResponse: ApiErrorResponse = {
-        error: 'sourceId is required',
+        error: 'No permitted source',
         code: 'MISSING_SOURCE_ID',
-        details: 'Request body must include a sourceId string',
+        details: 'Provide a sourceId, or ensure your account has nodes:write on at least one enabled source',
       };
       res.status(400).json(errorResponse);
       return;
@@ -1500,10 +1504,21 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write', { s
   }
 });
 
-// Get persistent ignored nodes list
-apiRouter.get('/ignored-nodes', requirePermission('nodes', 'read'), async (_req, res) => {
+// Get per-source ignored nodes list. If `?sourceId=X` is omitted, returns the
+// first enabled source the caller has nodes:read on.
+apiRouter.get('/ignored-nodes', requirePermission('nodes', 'read'), async (req, res) => {
   try {
-    const ignoredNodes = await databaseService.ignoredNodes.getIgnoredNodesAsync();
+    const listSourceId = await resolveRequestSourceId(req, 'nodes', 'read');
+    if (!listSourceId) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'No permitted source',
+        code: 'MISSING_SOURCE_ID',
+        details: 'Provide ?sourceId=, or ensure your account has nodes:read on at least one enabled source',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+    const ignoredNodes = await databaseService.ignoredNodes.getIgnoredNodesAsync(listSourceId);
     res.json(ignoredNodes);
   } catch (error) {
     logger.error('Error fetching ignored nodes:', error);
@@ -1516,7 +1531,8 @@ apiRouter.get('/ignored-nodes', requirePermission('nodes', 'read'), async (_req,
   }
 });
 
-// Remove node from persistent ignore list and un-ignore it
+// Remove a node from the per-source ignore list. If `?sourceId=X` is omitted,
+// operates on the first enabled source the caller has nodes:write on.
 apiRouter.delete('/ignored-nodes/:nodeId', requirePermission('nodes', 'write'), async (req, res) => {
   try {
     const { nodeId } = req.params;
@@ -1535,29 +1551,29 @@ apiRouter.delete('/ignored-nodes/:nodeId', requirePermission('nodes', 'write'), 
       return;
     }
 
-    const nodeNum = parseInt(nodeNumStr, 16);
-
-    // Remove from persistent ignore list
-    await databaseService.ignoredNodes.removeIgnoredNodeAsync(nodeNum);
-
-    // Also un-ignore the node record if it still exists across all sources
-    // (the persistent ignore table is not source-scoped, so we sweep every source)
-    try {
-      const allNodes = await databaseService.nodes.getAllNodes();
-      for (const n of allNodes) {
-        if (Number(n.nodeNum) !== nodeNum) continue;
-        const sId = (n as any).sourceId || 'default';
-        try {
-          await databaseService.setNodeIgnoredAsync(nodeNum, false, sId);
-        } catch {
-          // Node may not exist in nodes table for this source — OK
-        }
-      }
-    } catch {
-      // Node may not exist in nodes table - that's OK
+    const deleteSourceId = await resolveRequestSourceId(req, 'nodes', 'write');
+    if (!deleteSourceId) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'No permitted source',
+        code: 'MISSING_SOURCE_ID',
+        details: 'Provide ?sourceId=, or ensure your account has nodes:write on at least one enabled source',
+      };
+      res.status(400).json(errorResponse);
+      return;
     }
 
-    res.json({ success: true, nodeNum });
+    const nodeNum = parseInt(nodeNumStr, 16);
+
+    // Remove from the per-source blocklist + clear the live mirror flag on
+    // the matching nodes row. Other sources' blocklists are untouched by design.
+    await databaseService.ignoredNodes.removeIgnoredNodeAsync(nodeNum, deleteSourceId);
+    try {
+      await databaseService.setNodeIgnoredAsync(nodeNum, false, deleteSourceId);
+    } catch {
+      // Node may not exist in nodes table for this source — OK, table-level removal already succeeded.
+    }
+
+    res.json({ success: true, nodeNum, sourceId: deleteSourceId });
   } catch (error) {
     logger.error('Error removing ignored node:', error);
     const errorResponse: ApiErrorResponse = {

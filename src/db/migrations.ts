@@ -59,6 +59,7 @@ import { migration as dropLegacyTraceroutesFkMigration, runMigration044Postgres,
 import { migration as dropLegacyRouteSegmentsFkMigration, runMigration045Postgres, runMigration045Mysql } from '../server/migrations/045_drop_legacy_route_segments_nodes_fk.js';
 import { migration as addUserMapPrefsIdSqliteMigration, runMigration046Postgres, runMigration046Mysql } from '../server/migrations/046_add_user_map_preferences_id_sqlite.js';
 import { migration as addSelectedLayerMigration, runMigration047Postgres, runMigration047Mysql } from '../server/migrations/047_add_selected_layer_to_user_map_preferences.js';
+import { migration as rebuildIgnoredNodesPerSourceMigration, runMigration048Postgres, runMigration048Mysql } from '../server/migrations/048_rebuild_ignored_nodes_per_source.js';
 
 // ============================================================================
 // Registry
@@ -729,4 +730,19 @@ registry.register({
   sqlite: (db) => addSelectedLayerMigration.up(db),
   postgres: (client) => runMigration047Postgres(client),
   mysql: (pool) => runMigration047Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 048: Rebuild ignored_nodes as per-source ((nodeNum, sourceId) PK
+// with FK to sources ON DELETE CASCADE). Drops the legacy global table and
+// backfills from nodes.isIgnored=1 so each source owns its own blocklist.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 48,
+  name: 'rebuild_ignored_nodes_per_source',
+  settingsKey: 'migration_048_rebuild_ignored_nodes_per_source',
+  sqlite: (db) => rebuildIgnoredNodesPerSourceMigration.up(db),
+  postgres: (client) => runMigration048Postgres(client),
+  mysql: (pool) => runMigration048Mysql(pool),
 });
