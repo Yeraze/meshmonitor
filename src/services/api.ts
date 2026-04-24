@@ -9,6 +9,28 @@ import {
 } from '../utils/validation';
 import { logger } from '../utils/logger.js';
 
+/**
+ * Error thrown by ApiService.request when the server returns a non-OK response.
+ * Callers can distinguish by `status` (e.g. 429 for rate limit) and `code`
+ * (machine-readable identifier from the server body) to pick a UX-appropriate
+ * message instead of collapsing every failure to a single generic string.
+ */
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  body?: unknown;
+  retryAfterSeconds?: number;
+
+  constructor(message: string, status: number, options?: { code?: string; body?: unknown; retryAfterSeconds?: number }) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = options?.code;
+    this.body = options?.body;
+    this.retryAfterSeconds = options?.retryAfterSeconds;
+  }
+}
+
 class ApiService {
   private baseUrl = '';
   private configFetched = false;
@@ -112,8 +134,20 @@ class ApiService {
     }
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || `Request failed with status ${response.status}`);
+      const body = await response.json().catch(() => ({ error: 'Request failed' })) as {
+        error?: string;
+        code?: string;
+        retryAfterSeconds?: number;
+      };
+      const message = body.error || `Request failed with status ${response.status}`;
+      const retryAfterHeader = response.headers.get('Retry-After');
+      const retryAfterSeconds = body.retryAfterSeconds
+        ?? (retryAfterHeader ? Number(retryAfterHeader) : undefined);
+      throw new ApiError(message, response.status, {
+        code: body.code,
+        body,
+        retryAfterSeconds: Number.isFinite(retryAfterSeconds) ? retryAfterSeconds : undefined,
+      });
     }
 
     return response.json();

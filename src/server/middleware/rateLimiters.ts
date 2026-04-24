@@ -76,8 +76,11 @@ export const apiLimiter = rateLimit({
 // Strict rate limiting for authentication endpoints
 // Configurable via RATE_LIMIT_AUTH environment variable
 // Default: 5 attempts per 15 minutes in production, 100 in development
+const AUTH_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_WINDOW_SECONDS = Math.floor(AUTH_WINDOW_MS / 1000);
+
 export const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: AUTH_WINDOW_MS,
   max: env.rateLimitAuth,
   skipSuccessfulRequests: true, // Don't count successful auth attempts
   message: 'Too many login attempts, please try again later',
@@ -85,9 +88,18 @@ export const authLimiter = rateLimit({
     const ip = req.ip || 'unknown';
     const username = req.body?.username || 'unknown';
     logger.warn(`🚫 Rate limit exceeded for AUTH - IP: ${ip}, Username: ${username}`);
+    // Prefer the RateLimit-Reset header (seconds remaining) set by express-rate-limit
+    // so the UI can show an accurate retry window rather than the full windowMs.
+    const resetHeader = res.getHeader('RateLimit-Reset');
+    const retryAfterSeconds = typeof resetHeader === 'string' || typeof resetHeader === 'number'
+      ? Number(resetHeader) || AUTH_WINDOW_SECONDS
+      : AUTH_WINDOW_SECONDS;
+    res.setHeader('Retry-After', retryAfterSeconds);
     res.status(429).json({
       error: 'Too many login attempts, please try again later',
-      retryAfter: '15 minutes'
+      code: 'AUTH_RATE_LIMITED',
+      retryAfter: '15 minutes',
+      retryAfterSeconds
     });
   },
   ...rateLimitConfig,

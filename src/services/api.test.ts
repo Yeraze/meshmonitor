@@ -821,4 +821,97 @@ describe('ApiService BASE_URL Support', () => {
       }));
     });
   });
+
+  describe('ApiError handling', () => {
+    const createErrorResponse = (status: number, body: any, headers: Record<string, string> = {}) => ({
+      ok: false,
+      status,
+      headers: {
+        get: (name: string) => headers[name.toLowerCase()] ?? null,
+      },
+      json: async () => body,
+    });
+
+    beforeEach(() => {
+      (apiService as any).baseUrl = '';
+      (apiService as any).configFetched = true;
+      mockFetch.mockClear();
+    });
+
+    it('throws ApiError with status and code on 429 rate-limit response', async () => {
+      const { ApiError } = await import('./api');
+      mockFetch.mockResolvedValueOnce(createErrorResponse(429, {
+        error: 'Too many login attempts, please try again later',
+        code: 'AUTH_RATE_LIMITED',
+        retryAfter: '15 minutes',
+        retryAfterSeconds: 30,
+      }, { 'retry-after': '30' }));
+
+      const err = await apiService.post('/api/auth/login', { username: 'x', password: 'y' })
+        .catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as any).status).toBe(429);
+      expect((err as any).code).toBe('AUTH_RATE_LIMITED');
+      expect((err as any).retryAfterSeconds).toBe(30);
+      expect((err as Error).message).toBe('Too many login attempts, please try again later');
+    });
+
+    it('throws ApiError with status 401 on credential failure', async () => {
+      const { ApiError } = await import('./api');
+      mockFetch.mockResolvedValueOnce(createErrorResponse(401, {
+        error: 'Invalid username or password',
+      }));
+
+      const err = await apiService.post('/api/auth/login', { username: 'x', password: 'y' })
+        .catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as any).status).toBe(401);
+      expect((err as any).code).toBeUndefined();
+      expect((err as Error).message).toBe('Invalid username or password');
+    });
+
+    it('falls back to Retry-After header when body lacks retryAfterSeconds', async () => {
+      const { ApiError } = await import('./api');
+      mockFetch.mockResolvedValueOnce(createErrorResponse(429, {
+        error: 'Too many requests',
+      }, { 'retry-after': '42' }));
+
+      const err = await apiService.post('/api/x').catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as any).retryAfterSeconds).toBe(42);
+    });
+
+    it('preserves CSRF code on 403 after a failed retry (#2783)', async () => {
+      const { ApiError } = await import('./api');
+      // First call: 403 with non-CSRF error -> NOT triggering refresh path,
+      // should throw ApiError directly with CSRF code for the UI to branch.
+      // Simulate the post-refresh retry throwing 403 CSRF_TOKEN_INVALID as it
+      // would if the retry also failed (request() only retries once).
+      mockFetch
+        .mockResolvedValueOnce(createErrorResponse(403, {
+          error: 'Invalid CSRF token. Please refresh the page and try again.',
+          code: 'CSRF_TOKEN_INVALID',
+        }))
+        // Refresh succeeds, but the retry fails again with CSRF error
+        .mockResolvedValueOnce({
+          ok: true,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ csrfToken: 'new-token' }),
+        })
+        .mockResolvedValueOnce(createErrorResponse(403, {
+          error: 'Invalid CSRF token. Please refresh the page and try again.',
+          code: 'CSRF_TOKEN_INVALID',
+        }));
+
+      const err = await apiService.post('/api/auth/login', { username: 'x', password: 'y' })
+        .catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as any).status).toBe(403);
+      expect((err as any).code).toBe('CSRF_TOKEN_INVALID');
+    });
+  });
 });

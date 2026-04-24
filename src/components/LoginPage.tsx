@@ -10,6 +10,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { logger } from '../utils/logger';
+import { ApiError } from '../services/api';
 import { version } from '../../package.json';
 import './LoginPage.css';
 
@@ -47,8 +48,21 @@ const LoginPage: React.FC = () => {
       setPassword('');
     } catch (err) {
       logger.error('Login error:', err);
-      // Check if this is a cookie configuration error
-      if (err instanceof Error && err.message.includes('Session cookie')) {
+      // Rate limit: surface as a distinct, non-credential-specific message so the
+      // user knows to wait rather than keep trying passwords (#2784).
+      if (err instanceof ApiError && err.status === 429) {
+        const minutes = err.retryAfterSeconds
+          ? Math.max(1, Math.ceil(err.retryAfterSeconds / 60))
+          : null;
+        setError(minutes !== null
+          ? t('auth.rate_limited', { minutes })
+          : t('auth.rate_limited_generic'));
+      } else if (err instanceof ApiError && err.status === 403 && err.code?.startsWith('CSRF_')) {
+        // CSRF token is stale (e.g. server restarted, session rotated). The
+        // old "Session cookie" message pointed users at the wrong causes
+        // (#2783). Direct them at the real fix: reload the page.
+        setError(t('auth.session_expired'));
+      } else if (err instanceof Error && err.message.includes('Session cookie')) {
         setError(err.message);
       } else {
         setError(t('auth.invalid_credentials'));
