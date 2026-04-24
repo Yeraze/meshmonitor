@@ -1,34 +1,31 @@
 /**
  * Ignored Nodes Repository
  *
- * Handles persistence of node ignored status independently of the nodes table.
- * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
+ * Handles persistence of node ignored status per source. Supports SQLite,
+ * PostgreSQL, and MySQL through Drizzle ORM.
  *
- * **IMPORTANT — scoping model**
+ * **Scoping model (migration 048)**
  *
- * The `ignored_nodes` table is intentionally GLOBAL, not per-source. Ignoring a
- * node hides it across every source the user has access to. The rationale:
- * node identity (nodeNum) is globally unique on the mesh, so a spammer or
- * misbehaving device should be silenced regardless of which transport surfaced
- * them.
+ * The `ignored_nodes` table is PER-SOURCE. Keyed on composite `(nodeNum,
+ * sourceId)`, with `sourceId` as a foreign key to `sources(id)` ON DELETE
+ * CASCADE. Each source has its own independent blocklist. Ignoring a node on
+ * source A does NOT affect the same nodeNum's state on source B. This matches
+ * the per-source node identity model introduced by migration 029.
  *
- * The `sourceId` column on this table is informational only — it records which
- * source first flagged the node. The upsert conflict target is `nodeNum` alone,
- * so re-ignoring the same node from a different source updates the existing row
- * in place and does NOT create a second record. Callers must treat lookup,
- * removal, and iteration as global operations.
- *
- * When a node is un-ignored via the API, `server.ts` sweeps every source's
- * `nodes` row for that nodeNum to clear per-source ignore flags — see the
- * `DELETE /api/ignored-nodes/:nodeId` handler for the full pattern.
+ * The table persists ignored status independently of `nodes.isIgnored` so
+ * that when a node is pruned by `cleanupInactiveNodes` on a given source and
+ * later reappears on THAT SAME source, its ignored flag is restored. Cross-
+ * source propagation is intentionally absent — callers that want to ignore a
+ * node on every source must iterate sources themselves.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 import { logger } from '../../utils/logger.js';
 
 export interface IgnoredNodeRecord {
   nodeNum: number;
+  sourceId: string;
   nodeId: string;
   longName: string | null;
   shortName: string | null;
@@ -37,7 +34,9 @@ export interface IgnoredNodeRecord {
 }
 
 /**
- * Repository for ignored nodes operations
+ * Repository for ignored nodes operations. All lookup/mutation methods are
+ * scoped to a `sourceId`, matching the per-source PK introduced by
+ * migration 048.
  */
 export class IgnoredNodesRepository extends BaseRepository {
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
@@ -45,15 +44,15 @@ export class IgnoredNodesRepository extends BaseRepository {
   }
 
   /**
-   * Add a node to the persistent ignore list (upsert)
+   * Add a node to the per-source ignore list (upsert on (nodeNum, sourceId)).
    */
   async addIgnoredNodeAsync(
     nodeNum: number,
+    sourceId: string,
     nodeId: string,
     longName?: string | null,
     shortName?: string | null,
     ignoredBy?: string | null,
-    sourceId?: string,
   ): Promise<void> {
     const now = Date.now();
     const { ignoredNodes } = this.tables;
@@ -64,48 +63,51 @@ export class IgnoredNodesRepository extends BaseRepository {
       ignoredAt: now,
       ignoredBy: ignoredBy ?? null,
     };
-    const insertData: any = { nodeNum, ...setData };
-    if (sourceId) {
-      insertData.sourceId = sourceId;
-    }
+    const insertData: any = { nodeNum, sourceId, ...setData };
 
     await this.upsert(
       ignoredNodes,
       insertData,
-      ignoredNodes.nodeNum,
+      [ignoredNodes.nodeNum, ignoredNodes.sourceId],
       setData,
     );
 
-    logger.debug(`Added node ${nodeNum} (${nodeId}) to persistent ignore list`);
+    logger.debug(`Added node ${nodeNum} (${nodeId}) to ignore list for source ${sourceId}`);
   }
 
   /**
-   * Remove a node from the persistent ignore list
+   * Remove a node from the per-source ignore list.
    */
-  async removeIgnoredNodeAsync(nodeNum: number): Promise<void> {
+  async removeIgnoredNodeAsync(nodeNum: number, sourceId: string): Promise<void> {
     const { ignoredNodes } = this.tables;
-    await this.db.delete(ignoredNodes).where(eq(ignoredNodes.nodeNum, nodeNum));
-    logger.debug(`Removed node ${nodeNum} from persistent ignore list`);
+    await this.db
+      .delete(ignoredNodes)
+      .where(and(eq(ignoredNodes.nodeNum, nodeNum), eq(ignoredNodes.sourceId, sourceId)));
+    logger.debug(`Removed node ${nodeNum} from ignore list for source ${sourceId}`);
   }
 
   /**
-   * Get all persistently ignored nodes
+   * Get persistently ignored nodes. If `sourceId` is provided, scopes to that
+   * source; otherwise returns all entries across every source (for admin
+   * dashboards / aggregated views).
    */
-  async getIgnoredNodesAsync(): Promise<IgnoredNodeRecord[]> {
+  async getIgnoredNodesAsync(sourceId?: string): Promise<IgnoredNodeRecord[]> {
     const { ignoredNodes } = this.tables;
-    const rows = await this.db.select().from(ignoredNodes);
+    const rows = sourceId
+      ? await this.db.select().from(ignoredNodes).where(eq(ignoredNodes.sourceId, sourceId))
+      : await this.db.select().from(ignoredNodes);
     return this.normalizeBigInts(rows) as IgnoredNodeRecord[];
   }
 
   /**
-   * Check if a node is in the persistent ignore list
+   * Check if a node is in the ignore list for a given source.
    */
-  async isNodeIgnoredAsync(nodeNum: number): Promise<boolean> {
+  async isNodeIgnoredAsync(nodeNum: number, sourceId: string): Promise<boolean> {
     const { ignoredNodes } = this.tables;
     const rows = await this.db
       .select({ nodeNum: ignoredNodes.nodeNum })
       .from(ignoredNodes)
-      .where(eq(ignoredNodes.nodeNum, nodeNum));
+      .where(and(eq(ignoredNodes.nodeNum, nodeNum), eq(ignoredNodes.sourceId, sourceId)));
     return rows.length > 0;
   }
 
@@ -114,7 +116,7 @@ export class IgnoredNodesRepository extends BaseRepository {
    * to decide whether to restore the `isIgnored` flag on a returning node.
    * Returns false if the table doesn't exist yet (initial setup).
    */
-  isNodeIgnoredSqlite(nodeNum: number): boolean {
+  isNodeIgnoredSqlite(nodeNum: number, sourceId: string): boolean {
     if (!this.sqliteDb) throw new Error('isNodeIgnoredSqlite is SQLite-only');
     const db = this.sqliteDb;
     const { ignoredNodes } = this.tables;
@@ -122,7 +124,7 @@ export class IgnoredNodesRepository extends BaseRepository {
       const rows = db
         .select({ nodeNum: ignoredNodes.nodeNum })
         .from(ignoredNodes)
-        .where(eq(ignoredNodes.nodeNum, nodeNum))
+        .where(and(eq(ignoredNodes.nodeNum, nodeNum), eq(ignoredNodes.sourceId, sourceId)))
         .limit(1)
         .all();
       return rows.length > 0;

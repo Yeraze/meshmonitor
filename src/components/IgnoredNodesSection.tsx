@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSource } from '../contexts/SourceContext';
 
 interface IgnoredNodesSectionProps {
   baseUrl: string;
@@ -9,6 +10,7 @@ interface IgnoredNodesSectionProps {
 
 interface IgnoredNode {
   nodeNum: number;
+  sourceId: string;
   nodeId: string;
   longName: string | null;
   shortName: string | null;
@@ -20,14 +22,20 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
+  // sourceId is optional — when null/undefined the backend falls back to the
+  // caller's first permitted source. Explicit per-source lists live under this
+  // section once a source is active in <SourceProvider>.
+  const { sourceId: currentSourceId } = useSource();
 
   const [ignoredNodes, setIgnoredNodes] = useState<IgnoredNode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [removingNodeNum, setRemovingNodeNum] = useState<number | null>(null);
 
+  const sourceQuery = currentSourceId ? `?sourceId=${encodeURIComponent(currentSourceId)}` : '';
+
   const fetchIgnoredNodes = useCallback(async () => {
     try {
-      const response = await csrfFetch(`${baseUrl}/api/ignored-nodes`);
+      const response = await csrfFetch(`${baseUrl}/api/ignored-nodes${sourceQuery}`);
       if (response.ok) {
         const data = await response.json();
         setIgnoredNodes(data);
@@ -37,7 +45,7 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
     } finally {
       setIsLoading(false);
     }
-  }, [baseUrl, csrfFetch]);
+  }, [baseUrl, csrfFetch, sourceQuery]);
 
   useEffect(() => {
     fetchIgnoredNodes();
@@ -46,7 +54,11 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
   const handleRemove = async (node: IgnoredNode) => {
     setRemovingNodeNum(node.nodeNum);
     try {
-      const response = await csrfFetch(`${baseUrl}/api/ignored-nodes/${node.nodeId}`, {
+      // Always target the row's own source — an aggregated list may mix rows
+      // from different sources, and we must not collapse that back to the
+      // "active" source on delete.
+      const deleteQuery = `?sourceId=${encodeURIComponent(node.sourceId)}`;
+      const response = await csrfFetch(`${baseUrl}/api/ignored-nodes/${node.nodeId}${deleteQuery}`, {
         method: 'DELETE',
       });
 
