@@ -74,7 +74,9 @@ export async function createMySQLDriver(options: MySQLDriverOptions): Promise<{
   // Create Drizzle ORM instance
   const db = drizzle(pool, { schema, mode: 'default' });
 
-  logger.info('[MySQL Driver] Database initialized successfully');
+  logger.info(
+    `[MySQL Driver] Database initialized successfully (pool max=${maxConnections}, idle=${idleTimeoutMs}ms, connect=${connectionTimeoutMs}ms)`
+  );
 
   return {
     db,

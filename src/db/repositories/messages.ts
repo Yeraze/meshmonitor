@@ -915,27 +915,41 @@ export class MessagesRepository extends BaseRepository {
       }
     }
 
-    // Execute all operations in a transaction
+    // Execute all operations inside a Drizzle transaction so BEGIN/COMMIT
+    // land on the same pinned pool client. The previous implementation ran
+    // `executeRun(BEGIN)` through `db.execute()`, which grabs a fresh pool
+    // client per call on node-postgres — BEGIN would run on client A and
+    // release A back to the pool in "idle in transaction" state while
+    // subsequent statements ran on different clients. That leaked a pool
+    // slot per invocation (#2780).
+    //
+    // SQLite uses better-sqlite3 (sync). Drizzle's sqlite-core transaction
+    // refuses Promise-returning callbacks, so we branch on dialect: sync
+    // txn for SQLite, async for PG/MySQL.
     try {
-      await this.executeRun(sql`BEGIN`);
-
-      for (const op of operations) {
-        const result = await this.executeRun(op.sql);
-        const rows = this.getAffectedRows(result);
-        totalRowsAffected += rows;
-        logger.info(`📦 Message migration: ${op.description} (${rows} rows)`);
+      if (this.isSQLite()) {
+        (this.db as any).transaction((tx: any) => {
+          for (const op of operations) {
+            const result = tx.run(op.sql);
+            const rows = this.getAffectedRows(result);
+            totalRowsAffected += rows;
+            logger.info(`📦 Message migration: ${op.description} (${rows} rows)`);
+          }
+        });
+      } else {
+        await (this.db as any).transaction(async (tx: any) => {
+          for (const op of operations) {
+            const result = await tx.execute(op.sql);
+            const rows = this.getAffectedRows(result);
+            totalRowsAffected += rows;
+            logger.info(`📦 Message migration: ${op.description} (${rows} rows)`);
+          }
+        });
       }
-
-      await this.executeRun(sql`COMMIT`);
       logger.info(`📦 Message migration complete: ${moves.length} move(s), ${totalRowsAffected} total rows affected`);
       return { success: true, totalRowsAffected };
     } catch (error) {
-      logger.error('📦 Message migration failed, rolling back:', error);
-      try {
-        await this.executeRun(sql`ROLLBACK`);
-      } catch (rollbackError) {
-        logger.error('📦 Rollback also failed:', rollbackError);
-      }
+      logger.error('📦 Message migration failed, transaction rolled back:', error);
       throw error;
     }
   }

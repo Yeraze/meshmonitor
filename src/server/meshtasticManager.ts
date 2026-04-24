@@ -334,6 +334,18 @@ class MeshtasticManager implements ISourceManager {
   private keyRepairAutoPurge: boolean = false;   // Default: don't auto-purge
   private keyRepairImmediatePurge: boolean = false; // Default: don't immediately purge on detection
   private serverStartTime: number = Date.now();
+  // Bounded concurrency for inbound packet processing. Prevents pool
+  // starvation during NodeInfo/config-sync bursts (#2780): each handler does
+  // many serial DB awaits, and the transport emits packets without awaiting,
+  // so unbounded concurrency × serial pool checkouts would saturate pg-pool.
+  // Limit is read from PACKET_CONCURRENCY_LIMIT env var once (default 4).
+  private packetConcurrencyLimit: number = (() => {
+    const raw = process.env.PACKET_CONCURRENCY_LIMIT;
+    const parsed = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 4;
+  })();
+  private packetActiveCount: number = 0;
+  private packetWaiters: Array<() => void> = [];
   private localNodeInfo: {
     nodeNum: number;
     nodeId: string;
@@ -2814,7 +2826,40 @@ class MeshtasticManager implements ISourceManager {
     }
   }
 
+  /**
+   * Acquire a slot in the packet-processing semaphore. Resolves immediately
+   * if capacity is available; otherwise queues until a prior handler finishes.
+   * Pairs with releasePacketSlot() in a try/finally — see processIncomingData.
+   */
+  private acquirePacketSlot(): Promise<void> {
+    if (this.packetActiveCount < this.packetConcurrencyLimit) {
+      this.packetActiveCount++;
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      this.packetWaiters.push(() => {
+        this.packetActiveCount++;
+        resolve();
+      });
+    });
+  }
+
+  private releasePacketSlot(): void {
+    this.packetActiveCount--;
+    const next = this.packetWaiters.shift();
+    if (next) next();
+  }
+
   public async processIncomingData(data: Uint8Array, context?: ProcessingContext): Promise<void> {
+    await this.acquirePacketSlot();
+    try {
+      await this._processIncomingDataImpl(data, context);
+    } finally {
+      this.releasePacketSlot();
+    }
+  }
+
+  private async _processIncomingDataImpl(data: Uint8Array, context?: ProcessingContext): Promise<void> {
     try {
       if (data.length === 0) {
         return;
@@ -6543,7 +6588,6 @@ class MeshtasticManager implements ISourceManager {
           // from the node itself and are authoritative. The local node's own key from
           // device sync IS authoritative since the device knows its own key.
           const isLocalNode = this.localNodeInfo?.nodeNum === Number(nodeInfo.num);
-          const existingNode = await databaseService.nodes.getNode(Number(nodeInfo.num));
 
           // --- Check if device sync resolves a key mismatch ---
           let mismatchResolved = false;
@@ -6718,97 +6762,74 @@ class MeshtasticManager implements ISourceManager {
 
       logger.debug(`🏠 Updated node info: ${nodeData.longName || nodeId}`);
 
-      // Now insert position telemetry if we have it (after node exists in database)
+      // Collect all telemetry rows into one batch to minimize pool acquires.
+      // Before the fix for #2780 each of these was a separate await → separate
+      // pool checkout; a single NodeInfo with position + deviceMetrics + SNR
+      // could take ~11 checkouts and drain the pool under config-sync bursts.
+      const telemetryBatch: Array<any> = [];
+      const nodeNumForTelemetry = Number(nodeInfo.num);
+
+      // Position telemetry (requires node row to already exist — upsert above guarantees that)
       if (positionTelemetryData) {
         const now = Date.now();
-        await databaseService.telemetry.insertTelemetry({
-          nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'latitude',
+        telemetryBatch.push({
+          nodeId, nodeNum: nodeNumForTelemetry, telemetryType: 'latitude',
           timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.latitude, unit: '°', createdAt: now,
           channel: positionTelemetryData.channel, precisionBits: positionTelemetryData.precisionBits
-        }, this.sourceId);
-        await databaseService.telemetry.insertTelemetry({
-          nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'longitude',
+        });
+        telemetryBatch.push({
+          nodeId, nodeNum: nodeNumForTelemetry, telemetryType: 'longitude',
           timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.longitude, unit: '°', createdAt: now,
           channel: positionTelemetryData.channel, precisionBits: positionTelemetryData.precisionBits
-        }, this.sourceId);
+        });
         if (positionTelemetryData.altitude !== undefined && positionTelemetryData.altitude !== null) {
-          await databaseService.telemetry.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'altitude',
+          telemetryBatch.push({
+            nodeId, nodeNum: nodeNumForTelemetry, telemetryType: 'altitude',
             timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.altitude, unit: 'm', createdAt: now,
             channel: positionTelemetryData.channel, precisionBits: positionTelemetryData.precisionBits
-          }, this.sourceId);
+          });
         }
-        // Store ground speed if available (in m/s)
         if (positionTelemetryData.groundSpeed !== undefined && positionTelemetryData.groundSpeed > 0) {
-          await databaseService.telemetry.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'ground_speed',
+          telemetryBatch.push({
+            nodeId, nodeNum: nodeNumForTelemetry, telemetryType: 'ground_speed',
             timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.groundSpeed, unit: 'm/s', createdAt: now,
             channel: positionTelemetryData.channel
-          }, this.sourceId);
+          });
         }
-        // Store ground track/heading if available (in 1/100 degrees, convert to degrees)
         if (positionTelemetryData.groundTrack !== undefined && positionTelemetryData.groundTrack > 0) {
           const headingDegrees = positionTelemetryData.groundTrack / 100;
-          await databaseService.telemetry.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'ground_track',
+          telemetryBatch.push({
+            nodeId, nodeNum: nodeNumForTelemetry, telemetryType: 'ground_track',
             timestamp: positionTelemetryData.timestamp, value: headingDegrees, unit: '°', createdAt: now,
             channel: positionTelemetryData.channel
-          }, this.sourceId);
+          });
         }
-
-        // Update mobility detection for this node (fire and forget)
-        databaseService.updateNodeMobilityAsync(nodeId).catch(err =>
-          logger.error(`Failed to update mobility for ${nodeId}:`, err)
-        );
       }
 
-      // Insert device metrics telemetry if we have it (after node exists in database)
+      // Device metrics telemetry
       if (deviceMetricsTelemetryData) {
         const now = Date.now();
-
-        if (deviceMetricsTelemetryData.batteryLevel !== undefined && deviceMetricsTelemetryData.batteryLevel !== null && !isNaN(deviceMetricsTelemetryData.batteryLevel)) {
-          await databaseService.telemetry.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'batteryLevel',
-            timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.batteryLevel, unit: '%', createdAt: now
-          }, this.sourceId);
-        }
-
-        if (deviceMetricsTelemetryData.voltage !== undefined && deviceMetricsTelemetryData.voltage !== null && !isNaN(deviceMetricsTelemetryData.voltage)) {
-          await databaseService.telemetry.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'voltage',
-            timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.voltage, unit: 'V', createdAt: now
-          }, this.sourceId);
-        }
-
-        if (deviceMetricsTelemetryData.channelUtilization !== undefined && deviceMetricsTelemetryData.channelUtilization !== null && !isNaN(deviceMetricsTelemetryData.channelUtilization)) {
-          await databaseService.telemetry.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'channelUtilization',
-            timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.channelUtilization, unit: '%', createdAt: now
-          }, this.sourceId);
-        }
-
-        if (deviceMetricsTelemetryData.airUtilTx !== undefined && deviceMetricsTelemetryData.airUtilTx !== null && !isNaN(deviceMetricsTelemetryData.airUtilTx)) {
-          await databaseService.telemetry.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'airUtilTx',
-            timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.airUtilTx, unit: '%', createdAt: now
-          }, this.sourceId);
-        }
-
-        if (deviceMetricsTelemetryData.uptimeSeconds !== undefined && deviceMetricsTelemetryData.uptimeSeconds !== null && !isNaN(deviceMetricsTelemetryData.uptimeSeconds)) {
-          await databaseService.telemetry.insertTelemetry({
-            nodeId, nodeNum: Number(nodeInfo.num), telemetryType: 'uptimeSeconds',
-            timestamp: deviceMetricsTelemetryData.timestamp, value: deviceMetricsTelemetryData.uptimeSeconds, unit: 's', createdAt: now
-          }, this.sourceId);
-        }
+        const dm = deviceMetricsTelemetryData;
+        const maybePush = (type: string, value: any, unit: string) => {
+          if (value !== undefined && value !== null && !isNaN(value)) {
+            telemetryBatch.push({
+              nodeId, nodeNum: nodeNumForTelemetry, telemetryType: type,
+              timestamp: dm.timestamp, value, unit, createdAt: now
+            });
+          }
+        };
+        maybePush('batteryLevel', dm.batteryLevel, '%');
+        maybePush('voltage', dm.voltage, 'V');
+        maybePush('channelUtilization', dm.channelUtilization, '%');
+        maybePush('airUtilTx', dm.airUtilTx, '%');
+        maybePush('uptimeSeconds', dm.uptimeSeconds, 's');
       }
 
-      // Save SNR as telemetry if present in NodeInfo
+      // SNR telemetry — preserve "save only if changed OR ≥10 min" throttle.
+      // This must remain conditional on the existing latest row to avoid DB bloat.
       if (nodeInfo.snr != null && nodeInfo.snr !== -128) {
         const timestamp = nodeInfo.lastHeard ? Number(nodeInfo.lastHeard) * 1000 : Date.now();
         const now = Date.now();
-
-        // Save SNR telemetry with same logic as packet processing:
-        // Save if it has changed OR if 10+ minutes have passed since last save
         const latestSnrTelemetry = await databaseService.getLatestTelemetryForTypeAsync(nodeId, 'snr_remote');
         const tenMinutesMs = 10 * 60 * 1000;
         const shouldSaveSnr = !latestSnrTelemetry ||
@@ -6816,19 +6837,30 @@ class MeshtasticManager implements ISourceManager {
                               (now - latestSnrTelemetry.timestamp) >= tenMinutesMs;
 
         if (shouldSaveSnr) {
-          await databaseService.telemetry.insertTelemetry({
+          telemetryBatch.push({
             nodeId,
-            nodeNum: Number(nodeInfo.num),
+            nodeNum: nodeNumForTelemetry,
             telemetryType: 'snr_remote',
             timestamp,
             value: nodeInfo.snr,
             unit: 'dB',
             createdAt: now
-          }, this.sourceId);
+          });
           const reason = !latestSnrTelemetry ? 'initial' :
                         latestSnrTelemetry.value !== nodeInfo.snr ? 'changed' : 'periodic';
           logger.debug(`📊 Saved remote SNR telemetry from NodeInfo: ${nodeInfo.snr} dB (${reason}, previous: ${latestSnrTelemetry?.value || 'N/A'})`);
         }
+      }
+
+      if (telemetryBatch.length > 0) {
+        await databaseService.telemetry.insertTelemetryBatch(telemetryBatch, this.sourceId);
+      }
+
+      // Update mobility detection once position was persisted (fire and forget)
+      if (positionTelemetryData) {
+        databaseService.updateNodeMobilityAsync(nodeId).catch(err =>
+          logger.error(`Failed to update mobility for ${nodeId}:`, err)
+        );
       }
     } catch (error) {
       logger.error('❌ Error processing NodeInfo protobuf:', error);

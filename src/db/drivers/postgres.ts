@@ -81,7 +81,9 @@ export async function createPostgresDriver(options: PostgresDriverOptions): Prom
   // Create Drizzle ORM instance
   const db = drizzle(pool, { schema });
 
-  logger.info('[PostgreSQL Driver] Database initialized successfully');
+  logger.info(
+    `[PostgreSQL Driver] Database initialized successfully (pool max=${maxConnections}, idle=${idleTimeoutMs}ms, connect=${connectionTimeoutMs}ms)`
+  );
 
   return {
     db,
