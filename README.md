@@ -37,7 +37,7 @@ services:
     volumes:
       - meshmonitor-data:/data
     environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100  # Change to your node's IP
+      - MESHTASTIC_NODE_IP=192.168.1.100  # Seeds the first source on first boot; manage more from Dashboard → Sources
     restart: unless-stopped
 
 volumes:
@@ -216,6 +216,7 @@ MeshMonitor supports multiple deployment methods:
 
 ## Key Features
 
+- **Multi-Source (4.0)** - Monitor multiple Meshtastic nodes from a single deployment; per-source permissions, schedulers, and Virtual Nodes
 - **Real-time Mesh Monitoring** - Live node discovery, telemetry, and message tracking
 - **Modern UI** - Catppuccin theme with message reactions and threading
 - **Interactive Maps** - Node positions and network topology visualization
@@ -253,7 +254,7 @@ npm install
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your Meshtastic node's IP address
+# Edit .env to seed the first source (MESHTASTIC_NODE_IP / MESHTASTIC_TCP_PORT); additional nodes are added later via Dashboard → Sources
 
 # Start development servers
 npm run dev:full

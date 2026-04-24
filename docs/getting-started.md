@@ -80,7 +80,7 @@ services:
     volumes:
       - meshmonitor-data:/data
     environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100  # Change to your node's IP
+      - MESHTASTIC_NODE_IP=192.168.1.100  # Seeds the first source on first boot; add more nodes from Dashboard → Sources
       - ALLOWED_ORIGINS=http://localhost:8080  # Required for CORS
 
 volumes:
@@ -145,14 +145,16 @@ This configuration is ideal for:
 
 ## Optional Configuration
 
-### Different Node IP
+### Change the Bootstrap Source Address
 
-If your Meshtastic node is at a different IP:
+`MESHTASTIC_NODE_IP` only seeds the **first** source on initial install. To change where that first source points _before_ the database is initialized, set a different IP:
 
 ```bash
 export MESHTASTIC_NODE_IP=192.168.5.25
 docker compose up -d
 ```
+
+After first boot, edit the source from **Dashboard → Sources → Edit** instead. Changing the env var post-bootstrap has no effect on an existing source.
 
 ### Custom Timezone
 

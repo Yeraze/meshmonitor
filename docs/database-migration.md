@@ -1,23 +1,23 @@
 # Database Migration Guide
 
-This guide explains how to migrate your MeshMonitor data from SQLite (v2.x) to PostgreSQL or MySQL (v3.x).
+This guide explains how to migrate your MeshMonitor data from SQLite to PostgreSQL or MySQL. Applies to MeshMonitor 3.x and 4.x.
 
 ## Overview
 
-MeshMonitor 3.x supports three database backends:
+MeshMonitor supports three database backends (since 3.x):
 - **SQLite** (default) - Great for small to medium deployments
 - **PostgreSQL** - Recommended for larger deployments or high availability
 - **MySQL/MariaDB** - Alternative for environments already running MySQL
 
 ## Prerequisites
 
-- MeshMonitor 3.x Docker image (v3.0.0-beta7 or later)
+- MeshMonitor Docker image v3.0.0-beta7 or later (4.x recommended)
 - Access to your existing SQLite database file
 - PostgreSQL or MySQL server (can be a Docker container)
 
 ## Migration Steps
 
-### Step 1: Stop and Backup Your v2.x Instance
+### Step 1: Stop and Backup Your Existing Instance
 
 ```bash
 # Stop the existing MeshMonitor container
@@ -103,7 +103,7 @@ Start MeshMonitor temporarily to create the database schema:
 # Add to your docker-compose.yml
 services:
   meshmonitor:
-    image: ghcr.io/yeraze/meshmonitor:3.0.0-beta7
+    image: ghcr.io/yeraze/meshmonitor:latest
     container_name: meshmonitor
     environment:
       # For PostgreSQL:
@@ -242,8 +242,8 @@ services:
       - "3000:3001"
     environment:
       DATABASE_URL: postgres://meshmonitor:${POSTGRES_PASSWORD:-changeme}@postgres:5432/meshmonitor
-      MESHTASTIC_NODE_HOST: ${MESHTASTIC_NODE_HOST}
-      MESHTASTIC_NODE_PORT: ${MESHTASTIC_NODE_PORT:-4403}
+      MESHTASTIC_NODE_IP: ${MESHTASTIC_NODE_IP}
+      MESHTASTIC_TCP_PORT: ${MESHTASTIC_TCP_PORT:-4403}
       BASE_URL: ${BASE_URL:-/}
     depends_on:
       postgres:

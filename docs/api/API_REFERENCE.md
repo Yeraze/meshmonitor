@@ -8,8 +8,15 @@ This document provides comprehensive documentation for all MeshMonitor API endpo
 
 **Content Type:** `application/json`
 
+::: warning MeshMonitor 4.0 — Per-Source API
+Endpoints listed in this reference without a `sourceId` segment (e.g. `GET /api/nodes`, `GET /api/messages`) are **legacy root-path endpoints**. They still work but now emit an HTTP `Warning: 299` header: `"v1 root-path scoping is deprecated; use /api/v1/sources/:sourceId/... instead"` and will be removed in a future release.
+
+New integrations should use the **per-source v1 API**: `/api/v1/sources/{sourceId}/nodes`, `/api/v1/sources/{sourceId}/messages`, `/api/v1/sources/{sourceId}/telemetry`, etc. Get the list of sources from `GET /api/v1/sources`.
+:::
+
 ## Table of Contents
 
+- [Per-Source v1 API (recommended)](#per-source-v1-api-recommended)
 - [Health & Status](#health--status)
 - [Node Management](#node-management)
 - [Message Operations](#message-operations)
@@ -20,6 +27,47 @@ This document provides comprehensive documentation for all MeshMonitor API endpo
 - [Data Management](#data-management)
 - [Statistics](#statistics)
 - [Authentication](#authentication)
+
+---
+
+## Per-Source v1 API (recommended)
+
+The v1 API scopes every mesh resource by the source (mesh node connection) it belongs to. Most listing endpoints have a per-source equivalent under `/api/v1/sources/{sourceId}/...`.
+
+### GET /api/v1/sources
+List all configured sources. Authentication required.
+
+**Response:**
+```json
+{
+  "sources": [
+    {
+      "id": "01J3ABCDEFG...",
+      "name": "Home Base",
+      "type": "meshtastic_tcp",
+      "enabled": true,
+      "host": "192.168.1.100",
+      "port": 4403
+    }
+  ]
+}
+```
+
+### Per-source resource endpoints
+
+Replace `{sourceId}` with the `id` returned above.
+
+| Legacy (deprecated)   | Per-source v1 (recommended)                    |
+| --------------------- | ---------------------------------------------- |
+| `GET /api/nodes`      | `GET /api/v1/sources/{sourceId}/nodes`         |
+| `GET /api/messages`   | `GET /api/v1/sources/{sourceId}/messages`      |
+| `GET /api/channels`   | `GET /api/v1/sources/{sourceId}/channels`      |
+| `GET /api/telemetry`  | `GET /api/v1/sources/{sourceId}/telemetry`     |
+| `GET /api/traceroutes`| `GET /api/v1/sources/{sourceId}/traceroutes`   |
+| `GET /api/network`    | `GET /api/v1/sources/{sourceId}/network`       |
+| `GET /api/packets`    | `GET /api/v1/sources/{sourceId}/packets`       |
+
+Legacy endpoints return the above `Warning: 299` header and will be removed in a future release.
 
 ---
 
@@ -43,7 +91,7 @@ Comprehensive system status including database, memory, and version information.
 **Response:**
 ```json
 {
-  "version": "2.0.0",
+  "version": "4.0.0",
   "nodeVersion": "v22.0.0",
   "platform": "linux",
   "architecture": "x64",
