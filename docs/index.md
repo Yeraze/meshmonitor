@@ -100,7 +100,7 @@ services:
     volumes:
       - meshmonitor-data:/data
     environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100  # Change to your node's IP
+      - MESHTASTIC_NODE_IP=192.168.1.100  # Seeds the first source on first boot; add more from Dashboard → Sources
       - ALLOWED_ORIGINS=http://localhost:8080  # Required for CORS
     restart: unless-stopped
 

@@ -10,7 +10,27 @@ The MeshMonitor API provides RESTful endpoints for managing Meshtastic mesh netw
 
 ## Authentication
 
-Currently, the API does not require authentication. All endpoints are publicly accessible when the application is running.
+Most endpoints require authentication. MeshMonitor supports:
+
+- **Session cookies** — from a browser login (`POST /api/auth/login`)
+- **Bearer tokens** — long-lived API tokens issued from the Settings UI; send as `Authorization: Bearer <token>`
+
+Public endpoints are limited to health checks and the optional anonymous read-only mode (`DISABLE_ANONYMOUS=false`).
+
+## API Versioning & Per-Source Scoping (4.0)
+
+MeshMonitor 4.0 reshaped the REST API to scope resources by **source** (a mesh node connection). New code should use the v1 per-source paths:
+
+- `GET /api/v1/sources` — list sources
+- `GET /api/v1/sources/{sourceId}/nodes` — nodes for a specific source
+- `GET /api/v1/sources/{sourceId}/messages` — messages for a specific source
+- `GET /api/v1/sources/{sourceId}/telemetry` — telemetry for a specific source
+- `GET /api/v1/sources/{sourceId}/traceroutes` — traceroutes for a specific source
+- `GET /api/v1/sources/{sourceId}/channels` — channels for a specific source
+
+::: warning Deprecated root-path endpoints
+The legacy root-scoped endpoints below (`GET /api/nodes`, `GET /api/messages`, `GET /api/channels`, `GET /api/telemetry`, `GET /api/traceroutes`, `GET /api/network`, `GET /api/packets`) still work but respond with an HTTP `Warning: 299` header: `"v1 root-path scoping is deprecated; use /api/v1/sources/:sourceId/... instead"`. They will be removed in a future release.
+:::
 
 ## Error Handling
 

@@ -33,12 +33,14 @@ ingress:
     #     - meshmonitor.local
 
 # Environment variables
-# Required configuration for Meshtastic node connection
+# Seed values for the first Meshtastic source on first boot.
+# MeshMonitor 4.0 manages additional sources via the Dashboard → Sources UI;
+# changing these values after bootstrap does NOT reconfigure the existing source.
 env:
-  # IP address of your Meshtastic node (REQUIRED)
+  # IP address of the bootstrap source (seeds the first source on a fresh install)
   meshtasticNodeIp: "192.168.1.100"
 
-  # Enable HTTPS connection to node (REQUIRED)
+  # Enable HTTPS connection to node (optional)
   meshtasticUseTls: "false"
 
   # Environment mode (optional)
