@@ -44,11 +44,16 @@ vi.mock('../../config/tilesets', () => ({
 // Test data
 // ---------------------------------------------------------------------------
 
+const nowSeconds = Math.floor(Date.now() / 1000);
+const recent = nowSeconds - 60; // 1 minute ago — well inside 24h window
+const stale = nowSeconds - 60 * 60 * 48; // 48h ago — outside default 24h window
+
 const nodeWithPosition = {
   user: { id: 'node-1', shortName: 'N1', longName: 'Node One' },
   position: { latitude: 35.0, longitude: -80.0 },
   hopsAway: 1,
   role: 1,
+  lastHeard: recent,
 };
 
 const nodeWithoutPosition = {
@@ -56,6 +61,7 @@ const nodeWithoutPosition = {
   position: null,
   hopsAway: 2,
   role: 1,
+  lastHeard: recent,
 };
 
 const nodeWithZeroPosition = {
@@ -63,6 +69,33 @@ const nodeWithZeroPosition = {
   position: { latitude: 0, longitude: 0 },
   hopsAway: 3,
   role: 1,
+  lastHeard: recent,
+};
+
+const ignoredNodeWithPosition = {
+  user: { id: 'node-4', shortName: 'N4', longName: 'Ignored Node' },
+  position: { latitude: 36.5, longitude: -81.5 },
+  hopsAway: 1,
+  role: 1,
+  lastHeard: recent,
+  isIgnored: true,
+};
+
+const staleNodeWithPosition = {
+  user: { id: 'node-5', shortName: 'N5', longName: 'Stale Node' },
+  position: { latitude: 36.0, longitude: -81.0 },
+  hopsAway: 1,
+  role: 1,
+  lastHeard: stale,
+};
+
+const staleFavoriteNodeWithPosition = {
+  user: { id: 'node-6', shortName: 'N6', longName: 'Stale Favorite' },
+  position: { latitude: 36.2, longitude: -81.2 },
+  hopsAway: 1,
+  role: 1,
+  lastHeard: stale,
+  isFavorite: true,
 };
 
 const neighborLinkWithPositions = {
@@ -91,6 +124,8 @@ const defaultProps = {
   tilesetId: 'osm',
   customTilesets: [],
   defaultCenter: { lat: 35.0, lng: -80.0 },
+  sourceId: null,
+  maxNodeAgeHours: 24,
 };
 
 // ---------------------------------------------------------------------------
@@ -163,5 +198,48 @@ describe('DashboardMap', () => {
       />,
     );
     expect(screen.queryByText('No node positions')).not.toBeInTheDocument();
+  });
+
+  it('does not render markers for ignored nodes even when they have a position', () => {
+    render(
+      <DashboardMap
+        {...defaultProps}
+        nodes={[nodeWithPosition, ignoredNodeWithPosition]}
+      />,
+    );
+    const markers = screen.getAllByTestId('map-marker');
+    expect(markers.length).toBe(1);
+  });
+
+  it('shows empty state when the only positioned node is ignored', () => {
+    render(
+      <DashboardMap
+        {...defaultProps}
+        nodes={[ignoredNodeWithPosition]}
+      />,
+    );
+    expect(screen.getByText('No node positions')).toBeInTheDocument();
+  });
+
+  it('does not render markers for stale (inactive) nodes outside the maxNodeAgeHours window', () => {
+    render(
+      <DashboardMap
+        {...defaultProps}
+        nodes={[nodeWithPosition, staleNodeWithPosition]}
+      />,
+    );
+    const markers = screen.getAllByTestId('map-marker');
+    expect(markers.length).toBe(1);
+  });
+
+  it('renders markers for stale nodes that are favorites (favorites bypass age filter)', () => {
+    render(
+      <DashboardMap
+        {...defaultProps}
+        nodes={[staleFavoriteNodeWithPosition]}
+      />,
+    );
+    const markers = screen.getAllByTestId('map-marker');
+    expect(markers.length).toBe(1);
   });
 });

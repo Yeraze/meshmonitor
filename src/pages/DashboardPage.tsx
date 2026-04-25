@@ -16,7 +16,10 @@ import {
   useDashboardSources,
   useSourceStatuses,
   useDashboardSourceData,
+  useDashboardUnifiedData,
+  UNIFIED_SOURCE_ID,
 } from '../hooks/useDashboardData';
+import type { DashboardSource } from '../hooks/useDashboardData';
 import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import DashboardMap from '../components/Dashboard/DashboardMap';
 import LoginModal from '../components/LoginModal';
@@ -37,7 +40,7 @@ function DashboardInner() {
   const { authStatus } = useAuth();
   const { getToken } = useCsrf();
   const queryClient = useQueryClient();
-  const { mapTileset, customTilesets, defaultMapCenterLat, defaultMapCenterLon } = useSettings();
+  const { mapTileset, customTilesets, defaultMapCenterLat, defaultMapCenterLon, maxNodeAgeHours } = useSettings();
 
   /**
    * Invalidate the source list cache after a mutation so the sidebar
@@ -89,14 +92,42 @@ function DashboardInner() {
   const { data: sources = [], isSuccess } = useDashboardSources();
   const sourceIds = sources.map((s) => s.id);
   const statusMap = useSourceStatuses(sourceIds);
-  const sourceData = useDashboardSourceData(selectedSourceId);
 
-  // Auto-select first enabled source when list loads
+  // Show a synthetic "Unified" entry in the sidebar only when the user has
+  // configured 2+ sources — otherwise it would just duplicate the single
+  // source's data and add UI noise.
+  const showUnified = sources.length >= 2;
+  const isUnifiedSelected = selectedSourceId === UNIFIED_SOURCE_ID;
+
+  // Run both data hooks but disable whichever is not active so we don't fan
+  // out N parallel fetches when the user is on a single-source view.
+  const singleSourceData = useDashboardSourceData(isUnifiedSelected ? null : selectedSourceId);
+  const unifiedSourceData = useDashboardUnifiedData(sourceIds, isUnifiedSelected);
+  const sourceData = isUnifiedSelected ? unifiedSourceData : singleSourceData;
+
+  // Synthetic Unified pseudo-source for the sidebar. Recognized by its sentinel ID
+  // so DashboardSidebar can hide admin/open controls that don't apply.
+  const unifiedSource: DashboardSource | null = showUnified
+    ? {
+        id: UNIFIED_SOURCE_ID,
+        name: t('source.unified', 'Unified'),
+        type: '__unified__',
+        enabled: true,
+      }
+    : null;
+  const sidebarSources: DashboardSource[] = unifiedSource ? [unifiedSource, ...sources] : sources;
+
+  // Auto-select first enabled source when list loads. Default to Unified when
+  // the user has multiple sources — that's the most useful at-a-glance view.
   useEffect(() => {
     if (!isSuccess || sources.length === 0 || selectedSourceId !== null) return;
+    if (showUnified) {
+      setSelectedSourceId(UNIFIED_SOURCE_ID);
+      return;
+    }
     const firstEnabled = sources.find((s) => s.enabled);
     setSelectedSourceId(firstEnabled?.id ?? sources[0].id);
-  }, [isSuccess, sources, selectedSourceId]);
+  }, [isSuccess, sources, selectedSourceId, showUnified]);
 
   // Auto-show news popup when authenticated user has unread news.
   useEffect(() => {
@@ -123,7 +154,9 @@ function DashboardInner() {
   // (added in sourceRoutes.ts), polled in parallel by useSourceStatuses. The
   // currently-selected source uses the live `sourceData.nodes.length` so the
   // counter updates immediately as new nodes arrive instead of waiting for the
-  // next status poll.
+  // next status poll. The Unified entry uses the de-duped merged count when
+  // selected, otherwise the sum of all source statuses (a reasonable estimate
+  // before fan-out fetches happen).
   const nodeCounts = new Map<string, number>(
     sources.map((s) => {
       if (s.id === selectedSourceId) return [s.id, sourceData.nodes.length];
@@ -131,6 +164,14 @@ function DashboardInner() {
       return [s.id, status?.nodeCount ?? 0];
     }),
   );
+  if (unifiedSource) {
+    if (isUnifiedSelected) {
+      nodeCounts.set(UNIFIED_SOURCE_ID, unifiedSourceData.nodes.length);
+    } else {
+      const sum = sources.reduce((acc, s) => acc + (statusMap.get(s.id)?.nodeCount ?? 0), 0);
+      nodeCounts.set(UNIFIED_SOURCE_ID, sum);
+    }
+  }
 
   // ----- admin actions -----
   const onAddSource = () => {
@@ -378,7 +419,7 @@ function DashboardInner() {
       {/* Body */}
       <div className="dashboard-body">
         <DashboardSidebar
-          sources={sources}
+          sources={sidebarSources}
           statusMap={statusMap}
           nodeCounts={nodeCounts}
           selectedSourceId={selectedSourceId}
@@ -409,6 +450,7 @@ function DashboardInner() {
           customTilesets={customTilesets}
           defaultCenter={defaultCenter}
           sourceId={selectedSourceId}
+          maxNodeAgeHours={maxNodeAgeHours}
         />
       </div>
 

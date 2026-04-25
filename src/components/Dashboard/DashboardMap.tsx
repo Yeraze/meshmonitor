@@ -23,6 +23,8 @@ export interface DashboardMapProps {
   customTilesets: CustomTileset[];
   defaultCenter: { lat: number; lng: number };
   sourceId: string | null;
+  /** Hours since lastHeard to count a node as "active". Favorites bypass this gate. */
+  maxNodeAgeHours: number;
 }
 
 /** Extract lat/lng from a node — handles both flat (API) and nested (position) shapes. */
@@ -74,11 +76,18 @@ export default function DashboardMap({
   customTilesets,
   defaultCenter,
   sourceId,
+  maxNodeAgeHours,
 }: DashboardMapProps) {
   const tileset = getTilesetById(tilesetId, customTilesets);
 
-  // Build array of nodes that have valid positions, with their resolved lat/lng
+  // Build array of nodes that have valid positions, with their resolved lat/lng.
+  // Mirrors NodesTab's processedNodes pipeline (App.tsx): ignored hidden, age cutoff
+  // bypassed by favorites. Dashboard has no "show ignored" / "show stale" toggle,
+  // so both filters apply unconditionally.
+  const cutoffTime = Date.now() / 1000 - maxNodeAgeHours * 60 * 60;
   const nodesWithPosition = nodes
+    .filter((n) => !n.isIgnored)
+    .filter((n) => n.isFavorite || (n.lastHeard != null && n.lastHeard >= cutoffTime))
     .map((n) => ({ node: n, pos: getNodeLatLng(n) }))
     .filter((entry): entry is { node: any; pos: { lat: number; lng: number } } => entry.pos !== null);
 

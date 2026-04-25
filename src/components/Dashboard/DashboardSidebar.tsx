@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { version } from '../../../package.json';
 import type { DashboardSource, SourceStatus } from '../../hooks/useDashboardData';
+import { UNIFIED_SOURCE_ID } from '../../hooks/useDashboardData';
 
 interface DashboardSidebarProps {
   sources: DashboardSource[];
@@ -206,11 +207,21 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
       </div>
 
       {sources.map((source) => {
+        const isUnified = source.id === UNIFIED_SOURCE_ID;
         const status = statusMap.get(source.id);
-        const isConnecting = connectingIds?.has(source.id) === true;
-        const { dotClass, label } = isConnecting
-          ? { dotClass: 'connecting', label: t('source.status_connecting') }
-          : getStatusInfo(source, status, t);
+        const isConnecting = !isUnified && connectingIds?.has(source.id) === true;
+        // Unified is a virtual aggregate — show "connected" dot whenever any
+        // backing source is connected. There's nothing to connect to directly.
+        const unifiedConnected = isUnified
+          ? Array.from(statusMap.values()).some((s) => s?.connected === true)
+          : false;
+        const { dotClass, label } = isUnified
+          ? unifiedConnected
+            ? { dotClass: 'connected', label: t('source.status_connected') }
+            : { dotClass: 'disconnected', label: t('source.status_disconnected') }
+          : isConnecting
+            ? { dotClass: 'connecting', label: t('source.status_connecting') }
+            : getStatusInfo(source, status, t);
         const nodeCount = nodeCounts.get(source.id) ?? 0;
         const isSelected = selectedSourceId === source.id;
 
@@ -238,10 +249,10 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
               <span className="dashboard-source-card-name" title={source.name}>
                 {source.name}
               </span>
-              {source.type !== 'meshtastic_tcp' && source.type !== 'meshtastic_mqtt' && (
+              {!isUnified && source.type !== 'meshtastic_tcp' && source.type !== 'meshtastic_mqtt' && (
                 <span className="dashboard-source-card-badge">{source.type}</span>
               )}
-              {(() => {
+              {!isUnified && (() => {
                 const vn = (source.config as any)?.virtualNode;
                 return vn?.enabled ? (
                   <span className="dashboard-source-card-badge" title={t('source.virtual_node_badge_title')}>
@@ -249,7 +260,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                   </span>
                 ) : null;
               })()}
-              {isAdmin && (
+              {!isUnified && isAdmin && (
                 <KebabMenu
                   sourceId={source.id}
                   sourceEnabled={source.enabled}
@@ -276,7 +287,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
               ) : (
                 <span className="dashboard-lock-icon">🔒</span>
               )}
-              {isAdmin && source.enabled &&
+              {!isUnified && isAdmin && source.enabled &&
                 (source.config as any)?.autoConnect === false &&
                 !status?.connected &&
                 onConnectSource && (() => {
@@ -295,16 +306,18 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                     </button>
                   );
                 })()}
-              <button
-                className="dashboard-open-btn"
-                disabled={!source.enabled}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/source/${source.id}`);
-                }}
-              >
-                {t('source.open')}
-              </button>
+              {!isUnified && (
+                <button
+                  className="dashboard-open-btn"
+                  disabled={!source.enabled}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/source/${source.id}`);
+                  }}
+                >
+                  {t('source.open')}
+                </button>
+              )}
             </div>
           </div>
         );
