@@ -531,6 +531,47 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
     }
   };
 
+  const handleExportChannels = () => {
+    try {
+      if (channels.length === 0) {
+        showToast(t('channel_database.toast_export_empty'), 'error');
+        return;
+      }
+
+      const exportData = channels
+        .slice()
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((ch) => ({
+          name: ch.name,
+          psk: ch.psk ?? '',
+          description: ch.description ?? '',
+          isEnabled: ch.isEnabled,
+          enforceNameValidation: ch.enforceNameValidation ?? false,
+        }));
+
+      const json = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `meshmonitor-channels-${timestamp}.json`;
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast(t('channel_database.toast_export_success', { count: exportData.length }), 'success');
+    } catch (error) {
+      logger.error('Error exporting channels:', error);
+      const errorMsg = error instanceof Error ? error.message : t('channel_database.toast_export_failed');
+      showToast(errorMsg, 'error');
+    }
+  };
+
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -716,6 +757,22 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
             }}
           >
             {t('common.import')}
+          </button>
+          <button
+            onClick={handleExportChannels}
+            disabled={channels.length === 0}
+            style={{
+              padding: '0.5rem 1rem',
+              backgroundColor: 'var(--ctp-sapphire)',
+              color: 'var(--ctp-base)',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: channels.length === 0 ? 'not-allowed' : 'pointer',
+              opacity: channels.length === 0 ? 0.6 : 1
+            }}
+            title={t('channel_database.export_title')}
+          >
+            {t('common.export')}
           </button>
         </div>
 
