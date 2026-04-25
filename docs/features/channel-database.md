@@ -53,6 +53,87 @@ Channels in the database are tried in **sort order** during decryption. The firs
 If multiple channels could potentially decrypt the same packet (e.g., same PSK with different names), only the first matching channel in sort order will be credited with the decryption.
 :::
 
+## Importing and Exporting Channels
+
+The Channel Database supports bulk import and export via JSON files. This is useful for:
+
+- **Backup and restore** — save your channel configurations before reinstalling
+- **Sharing** — distribute a regional channel list to other operators
+- **Migration** — copy channels between MeshMonitor instances
+- **Bootstrapping** — pre-populate a fresh install with a known set of channels
+
+### Exporting Channels
+
+1. Navigate to **Configuration** > **Channel Database**
+2. Click the **Export** button
+3. A file named `meshmonitor-channels-<timestamp>.json` is downloaded to your browser's default download location
+
+The export contains every channel currently in the database, in sort order, with full PSKs.
+
+::: danger Exports Contain Secrets
+Exported JSON files contain your raw PSKs in Base64 form. Treat them like passwords — store them encrypted, do not commit them to public repositories, and avoid sharing them in untrusted channels.
+:::
+
+### Importing Channels
+
+1. Navigate to **Configuration** > **Channel Database**
+2. Click the **Import** button
+3. Select a `.json` file with one or more channel entries
+4. Review the preview and click **Import**
+
+Each entry is added as a **new** channel — import never overwrites or merges with existing entries. If you want to replace your channel list, delete the old entries first.
+
+### JSON File Format
+
+The import/export format is a JSON array of channel objects (a single object is also accepted on import for convenience):
+
+```json
+[
+  {
+    "name": "LongFast",
+    "psk": "AQ==",
+    "description": "Default Meshtastic primary channel",
+    "isEnabled": true,
+    "enforceNameValidation": false
+  },
+  {
+    "name": "Regional Emergency",
+    "psk": "1PG7OiApBgr0G/+rz05pAVHc1xPJD9C2c8RNJYBoqjE=",
+    "description": "Regional emergency coordination",
+    "isEnabled": true,
+    "enforceNameValidation": true
+  }
+]
+```
+
+#### Field Reference
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | **Yes** | Human-readable channel name. Used for display and (when `enforceNameValidation` is true) for channel-hash matching. |
+| `psk` | string | **Yes** | Pre-Shared Key as a Base64-encoded string. Accepted lengths when decoded: **1 byte** (Meshtastic shorthand: `AQ==` = default key, `Ag==`–`Cg==` = simple1–simple9), **16 bytes** (AES-128), or **32 bytes** (AES-256). PSK value `0` (no encryption) is rejected. |
+| `description` | string | No | Free-form notes. Defaults to empty string. |
+| `isEnabled` | boolean | No | When `true`, MeshMonitor uses this channel for decryption. Defaults to `true` on import. |
+| `enforceNameValidation` | boolean | No | When `true`, only attempt decryption if the packet's channel hash matches this channel's name. Useful when multiple channels share the same PSK. Defaults to `false`. |
+
+#### Notes
+
+- **Sort order is not preserved on import.** New channels are appended to the end of the existing list. You can reorder them after import using drag-and-drop.
+- **`pskLength` is derived automatically** from the decoded PSK and does not need to be specified.
+- **Duplicate detection is not performed on import.** If you import the same file twice you will get duplicate entries.
+- **The `id`, `decryptedPacketCount`, `lastDecryptedAt`, `createdBy`, `createdAt`, and `updatedAt` fields** present on exports are ignored on import — the server assigns fresh values.
+
+#### Example: Minimal Import
+
+If you only have channel names and PSKs, this is the smallest valid file:
+
+```json
+[
+  { "name": "MediumFast", "psk": "AQ==" },
+  { "name": "Mesh-NYC", "psk": "1PG7OiApBgr0G/+rz05pAVHc1xPJD9C2c8RNJYBoqjE=" }
+]
+```
+
 ## How Server-Side Decryption Works
 
 When MeshMonitor receives an encrypted packet:
