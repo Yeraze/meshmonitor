@@ -29,6 +29,16 @@ vi.mock('../hooks/useDashboardData', () => ({
     isLoading: false,
     isError: false,
   })),
+  useDashboardUnifiedData: vi.fn(() => ({
+    nodes: [],
+    traceroutes: [],
+    neighborInfo: [],
+    channels: [],
+    status: null,
+    isLoading: false,
+    isError: false,
+  })),
+  UNIFIED_SOURCE_ID: '__unified__',
 }));
 
 vi.mock('../contexts/AuthContext', () => ({

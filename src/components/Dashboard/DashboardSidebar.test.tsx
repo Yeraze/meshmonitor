@@ -6,6 +6,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import DashboardSidebar from './DashboardSidebar';
 import type { DashboardSource, SourceStatus } from '../../hooks/useDashboardData';
+import { UNIFIED_SOURCE_ID } from '../../hooks/useDashboardData';
 
 const makeSources = (): DashboardSource[] => [
   { id: 'src-1', name: 'Source Alpha', type: 'tcp', enabled: true },
@@ -115,5 +116,81 @@ describe('DashboardSidebar', () => {
     expect(openButtons[1]).not.toBeDisabled();
     // src-3 (disabled) should be disabled
     expect(openButtons[2]).toBeDisabled();
+  });
+
+  describe('Unified pseudo-source', () => {
+    const unifiedSource: DashboardSource = {
+      id: UNIFIED_SOURCE_ID,
+      name: 'Unified',
+      type: '__unified__',
+      enabled: true,
+    };
+
+    const renderWithUnified = (props: Partial<typeof defaultProps> = {}) => {
+      const sourcesWithUnified = [unifiedSource, ...makeSources()];
+      const nodeCounts = new Map<string, number>([
+        [UNIFIED_SOURCE_ID, 7],
+        ['src-1', 5],
+        ['src-2', 3],
+        ['src-3', 0],
+      ]);
+      return renderSidebar({
+        sources: sourcesWithUnified,
+        nodeCounts,
+        ...props,
+      });
+    };
+
+    it('renders the Unified card when the synthetic source is in the list', () => {
+      renderWithUnified();
+      expect(screen.getByText('Unified')).toBeInTheDocument();
+    });
+
+    it('does NOT render an Open button for the Unified card', () => {
+      renderWithUnified();
+      // Three real sources still get Open buttons; the Unified card adds none.
+      const openButtons = screen.getAllByRole('button', { name: 'source.open' });
+      expect(openButtons).toHaveLength(3);
+    });
+
+    it('does NOT render a kebab menu for the Unified card even for admin users', () => {
+      renderWithUnified({ isAdmin: true });
+      // Three real sources keep their kebabs; Unified gets none.
+      const kebabs = screen.getAllByRole('button', { name: 'source.options' });
+      expect(kebabs).toHaveLength(3);
+    });
+
+    it('does NOT render a type/VN badge for the Unified card', () => {
+      renderWithUnified();
+      // The synthetic type token must never surface as a visible badge.
+      expect(screen.queryByText('__unified__')).not.toBeInTheDocument();
+    });
+
+    it('shows connected status when at least one backing source is connected', () => {
+      renderWithUnified();
+      const unifiedCard = screen.getByText('Unified').closest('.dashboard-source-card')!;
+      const dot = unifiedCard.querySelector('.dashboard-status-dot');
+      expect(dot).not.toBeNull();
+      expect(dot?.classList.contains('connected')).toBe(true);
+    });
+
+    it('shows disconnected status when no backing source is connected', () => {
+      const allDown: Map<string, SourceStatus | null> = new Map([
+        ['src-1', { sourceId: 'src-1', connected: false }],
+        ['src-2', { sourceId: 'src-2', connected: false }],
+        ['src-3', null],
+      ]);
+      renderWithUnified({ statusMap: allDown });
+      const unifiedCard = screen.getByText('Unified').closest('.dashboard-source-card')!;
+      const dot = unifiedCard.querySelector('.dashboard-status-dot');
+      expect(dot?.classList.contains('disconnected')).toBe(true);
+    });
+
+    it('selects Unified when its card is clicked', () => {
+      const onSelectSource = vi.fn();
+      renderWithUnified({ onSelectSource });
+      fireEvent.click(screen.getByText('Unified').closest('.dashboard-source-card')!);
+      expect(onSelectSource).toHaveBeenCalledWith(UNIFIED_SOURCE_ID);
+    });
   });
 });
