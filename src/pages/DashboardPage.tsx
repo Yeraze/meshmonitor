@@ -17,6 +17,7 @@ import {
   useSourceStatuses,
   useDashboardSourceData,
   useDashboardUnifiedData,
+  useUnifiedStatus,
   UNIFIED_SOURCE_ID,
 } from '../hooks/useDashboardData';
 import type { DashboardSource } from '../hooks/useDashboardData';
@@ -92,6 +93,7 @@ function DashboardInner() {
   const { data: sources = [], isSuccess } = useDashboardSources();
   const sourceIds = sources.map((s) => s.id);
   const statusMap = useSourceStatuses(sourceIds);
+  const unifiedStatus = useUnifiedStatus();
 
   // Show a synthetic "Unified" entry in the sidebar only when the user has
   // configured 2+ sources — otherwise it would just duplicate the single
@@ -154,9 +156,10 @@ function DashboardInner() {
   // (added in sourceRoutes.ts), polled in parallel by useSourceStatuses. The
   // currently-selected source uses the live `sourceData.nodes.length` so the
   // counter updates immediately as new nodes arrive instead of waiting for the
-  // next status poll. The Unified entry uses the de-duped merged count when
-  // selected, otherwise the sum of all source statuses (a reasonable estimate
-  // before fan-out fetches happen).
+  // next status poll. The Unified entry uses the deduped count from
+  // /api/unified/status — a single source of truth that stays stable as the
+  // user clicks between sources (issue #2805). Falls back to the live merged
+  // count when Unified is selected and the polled value hasn't arrived yet.
   const nodeCounts = new Map<string, number>(
     sources.map((s) => {
       if (s.id === selectedSourceId) return [s.id, sourceData.nodes.length];
@@ -165,12 +168,9 @@ function DashboardInner() {
     }),
   );
   if (unifiedSource) {
-    if (isUnifiedSelected) {
-      nodeCounts.set(UNIFIED_SOURCE_ID, unifiedSourceData.nodes.length);
-    } else {
-      const sum = sources.reduce((acc, s) => acc + (statusMap.get(s.id)?.nodeCount ?? 0), 0);
-      nodeCounts.set(UNIFIED_SOURCE_ID, sum);
-    }
+    const polled = unifiedStatus?.nodeCount;
+    const fallback = isUnifiedSelected ? unifiedSourceData.nodes.length : 0;
+    nodeCounts.set(UNIFIED_SOURCE_ID, polled ?? fallback);
   }
 
   // ----- admin actions -----
@@ -421,6 +421,7 @@ function DashboardInner() {
         <DashboardSidebar
           sources={sidebarSources}
           statusMap={statusMap}
+          unifiedStatus={unifiedStatus}
           nodeCounts={nodeCounts}
           selectedSourceId={selectedSourceId}
           onSelectSource={setSelectedSourceId}

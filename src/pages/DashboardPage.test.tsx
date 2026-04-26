@@ -38,6 +38,7 @@ vi.mock('../hooks/useDashboardData', () => ({
     isLoading: false,
     isError: false,
   })),
+  useUnifiedStatus: vi.fn(() => ({ nodeCount: 0, connected: false })),
   UNIFIED_SOURCE_ID: '__unified__',
 }));
 

@@ -6,12 +6,18 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { version } from '../../../package.json';
-import type { DashboardSource, SourceStatus } from '../../hooks/useDashboardData';
+import type { DashboardSource, SourceStatus, UnifiedStatus } from '../../hooks/useDashboardData';
 import { UNIFIED_SOURCE_ID } from '../../hooks/useDashboardData';
 
 interface DashboardSidebarProps {
   sources: DashboardSource[];
   statusMap: Map<string, SourceStatus | null>;
+  /**
+   * Aggregate status from /api/unified/status. When present, drives the
+   * Unified card's connection dot. Reachable for unauthenticated viewers,
+   * unlike the per-source statusMap which is gated by `sources:read`.
+   */
+  unifiedStatus?: UnifiedStatus | null;
   nodeCounts: Map<string, number>;
   selectedSourceId: string | null;
   onSelectSource: (id: string) => void;
@@ -159,6 +165,7 @@ const KebabMenu: React.FC<KebabMenuProps> = ({
 const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   sources,
   statusMap,
+  unifiedStatus,
   nodeCounts,
   selectedSourceId,
   onSelectSource,
@@ -211,9 +218,15 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         const status = statusMap.get(source.id);
         const isConnecting = !isUnified && connectingIds?.has(source.id) === true;
         // Unified is a virtual aggregate — show "connected" dot whenever any
-        // backing source is connected. There's nothing to connect to directly.
+        // backing source is connected. Prefer the server-computed
+        // `unifiedStatus.connected` (reachable to anonymous viewers) and fall
+        // back to scanning the per-source statusMap when the poll hasn't
+        // landed yet. The statusMap fallback alone would always read
+        // disconnected for unauthenticated users since /api/sources/:id/status
+        // requires sources:read.
         const unifiedConnected = isUnified
-          ? Array.from(statusMap.values()).some((s) => s?.connected === true)
+          ? unifiedStatus?.connected ??
+            Array.from(statusMap.values()).some((s) => s?.connected === true)
           : false;
         const { dotClass, label } = isUnified
           ? unifiedConnected

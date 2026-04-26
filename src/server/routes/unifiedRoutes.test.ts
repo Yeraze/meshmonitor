@@ -26,6 +26,7 @@ vi.mock('../../services/database.js', () => ({
     },
     nodes: {
       getAllNodes: vi.fn(),
+      getDistinctNodeCount: vi.fn(),
     },
     telemetry: {
       getLatestTelemetryByNode: vi.fn(),
@@ -872,6 +873,52 @@ describe('Unified Routes', () => {
       expect(res.body).toHaveLength(1);
       expect(res.body[0].receptions).toHaveLength(2);
       expect(res.body[0].fromNodeLongName).toBe('Node One'); // src-b's node map won
+    });
+  });
+
+  // ── /status (deduped Unified node count, issue #2805) ────────────────────
+
+  describe('GET /status', () => {
+    it('returns the deduped distinct node count across readable sources', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
+      mockDb.nodes.getDistinctNodeCount.mockResolvedValue(42);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/status');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ nodeCount: 42, connected: false });
+      // Admin gets every source's id passed through.
+      expect(mockDb.nodes.getDistinctNodeCount).toHaveBeenCalledWith(['src-a', 'src-b']);
+    });
+
+    it('limits the count to sources the user has read permission on', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
+      mockDb.checkPermissionAsync.mockImplementation(
+        (_uid: number, _res: string, _act: string, sourceId: string) =>
+          Promise.resolve(sourceId === 'src-a'),
+      );
+      mockDb.nodes.getDistinctNodeCount.mockResolvedValue(7);
+
+      const app = createApp(regularUser);
+      const res = await request(app).get('/status');
+
+      expect(res.status).toBe(200);
+      expect(res.body.nodeCount).toBe(7);
+      expect(mockDb.nodes.getDistinctNodeCount).toHaveBeenCalledWith(['src-a']);
+    });
+
+    it('returns 0 when the user has no readable sources', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
+      mockDb.checkPermissionAsync.mockResolvedValue(false);
+      mockDb.nodes.getDistinctNodeCount.mockResolvedValue(0);
+
+      const app = createApp(regularUser);
+      const res = await request(app).get('/status');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ nodeCount: 0, connected: false });
+      expect(mockDb.nodes.getDistinctNodeCount).toHaveBeenCalledWith([]);
     });
   });
 

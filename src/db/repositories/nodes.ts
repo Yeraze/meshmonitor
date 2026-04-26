@@ -4,7 +4,7 @@
  * Handles all node-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, gt, lt, isNull, or, desc, asc, and, isNotNull, ne, sql, inArray, count } from 'drizzle-orm';
+import { eq, gt, lt, isNull, or, desc, asc, and, isNotNull, ne, sql, inArray, count, countDistinct } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -129,6 +129,28 @@ export class NodesRepository extends BaseRepository {
     const { nodes } = this.tables;
     const result = await this.db.select({ count: count() }).from(nodes)
       .where(this.withSourceScope(nodes, sourceId));
+    return Number(result[0].count);
+  }
+
+  /**
+   * Count distinct nodeNums across the given source IDs.
+   *
+   * Used by the Unified source card so the displayed count reflects the
+   * deduped merged view (a node present in multiple sources counts once),
+   * matching what the user sees when Unified is selected. The previous
+   * fallback summed per-source counts, which over-counted shared nodes and
+   * made the Unified count drift as the user clicked between sources
+   * (issue #2805).
+   *
+   * Returns 0 when sourceIds is empty.
+   */
+  async getDistinctNodeCount(sourceIds: string[]): Promise<number> {
+    if (sourceIds.length === 0) return 0;
+    const { nodes } = this.tables;
+    const result = await this.db
+      .select({ count: countDistinct(nodes.nodeNum) })
+      .from(nodes)
+      .where(inArray(nodes.sourceId, sourceIds));
     return Number(result[0].count);
   }
 

@@ -398,6 +398,37 @@ function runNodesTests(getBackend: () => TestBackend) {
     expect(await repo.getNodeCount()).toBe(2);
   });
 
+  it('getDistinctNodeCount - dedupes nodes shared across sources (issue #2805)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    expect(await repo.getDistinctNodeCount(['src-a', 'src-b'])).toBe(0);
+
+    // Two sources with one node in common (610) — distinct count must be 3,
+    // not 4. The previous Unified card formula summed per-source counts and
+    // would have returned 4 here.
+    await repo.upsertNode(makeNode(610), 'src-a');
+    await repo.upsertNode(makeNode(611), 'src-a');
+    await repo.upsertNode(makeNode(610), 'src-b');
+    await repo.upsertNode(makeNode(612), 'src-b');
+
+    expect(await repo.getDistinctNodeCount(['src-a'])).toBe(2);
+    expect(await repo.getDistinctNodeCount(['src-b'])).toBe(2);
+    expect(await repo.getDistinctNodeCount(['src-a', 'src-b'])).toBe(3);
+  });
+
+  it('getDistinctNodeCount - returns 0 for empty source list', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    expect(await repo.getDistinctNodeCount([])).toBe(0);
+  });
+
   // --- updateNodeSecurityFlags ---
 
   it('updateNodeSecurityFlags - sets duplicate key flag and details', async () => {

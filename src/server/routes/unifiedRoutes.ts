@@ -626,6 +626,52 @@ router.get('/telemetry', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/unified/status
+ *
+ * Returns the deduped node count and aggregate connection state across every
+ * source the authenticated user can read. The dashboard sidebar polls this so
+ * the Unified card displays a stable count regardless of which individual
+ * source is currently selected (issue #2805). Previously the sidebar fell
+ * back to a raw sum of per-source counts when Unified wasn't selected, which
+ * over-counted nodes shared between sources and made the value drift as the
+ * user switched between sources.
+ */
+router.get('/status', async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const isAdmin = user?.isAdmin ?? false;
+    const sources = await databaseService.sources.getAllSources();
+
+    // `connected` reflects whether *any* source is currently up. It is not
+    // permission-scoped — same approach as /api/unified/sources-status, since
+    // connection state is operational signal, not user-scoped data. This also
+    // ensures the Unified card shows the correct connection dot for
+    // unauthenticated viewers.
+    const { sourceManagerRegistry } = await import('../sourceManagerRegistry.js');
+    const anyConnected = sources.some((source) => {
+      const manager = sourceManagerRegistry.getManager(source.id);
+      return manager?.getStatus().connected === true;
+    });
+
+    // nodeCount stays permission-scoped so an unauthenticated viewer can't
+    // infer the size of sources they aren't allowed to read.
+    const allowedIds: string[] = [];
+    for (const source of sources) {
+      const canRead = isAdmin || (user
+        ? await databaseService.checkPermissionAsync(user.id, 'nodes', 'read', source.id)
+        : false);
+      if (canRead) allowedIds.push(source.id);
+    }
+    const nodeCount = await databaseService.nodes.getDistinctNodeCount(allowedIds);
+
+    res.json({ nodeCount, connected: anyConnected });
+  } catch (error) {
+    logger.error('Error fetching unified status:', error);
+    res.status(500).json({ error: 'Failed to fetch unified status' });
+  }
+});
+
+/**
  * GET /api/unified/sources-status
  *
  * Returns connection status for all sources the user can access.
