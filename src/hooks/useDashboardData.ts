@@ -100,6 +100,37 @@ export function useSourceStatuses(sourceIds: string[]): Map<string, SourceStatus
 }
 
 /**
+ * Aggregate status returned by GET /api/unified/status — a deduped count of
+ * nodes across every readable source plus a flag indicating whether at least
+ * one source is currently connected.
+ */
+export interface UnifiedStatus {
+  /** Distinct nodeNum count across every source the user can read. */
+  nodeCount: number;
+  /** True when any readable source is currently connected. */
+  connected: boolean;
+}
+
+/**
+ * Hook for the deduped Unified node count.
+ *
+ * The dashboard sidebar uses this so the Unified card displays a stable,
+ * accurate count regardless of which individual source is selected. It
+ * polls on the same cadence as the per-source status calls.
+ */
+export function useUnifiedStatus(): UnifiedStatus | null {
+  const { authStatus } = useAuth();
+  const isAuthenticated = authStatus?.authenticated ?? false;
+  const result = useQuery<UnifiedStatus>({
+    queryKey: ['dashboard', 'unified-status', isAuthenticated],
+    queryFn: () => fetchJson<UnifiedStatus>(`${appBasename}/api/unified/status`),
+    refetchInterval: DASHBOARD_POLL_INTERVAL,
+    retry: false,
+  });
+  return result.data ?? null;
+}
+
+/**
  * Return type for useDashboardSourceData
  */
 export interface DashboardSourceData {
