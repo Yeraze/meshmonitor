@@ -49,7 +49,7 @@
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
     "express-mysql-session": "^3.0.3",
-    "express-rate-limit": "^8.3.2",
+    "express-rate-limit": "^8.4.1",
     "express-session": "^1.19.0",
     "helmet": "^8.1.0",
     "i18next": "^26.0.8",
