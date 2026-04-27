@@ -594,6 +594,9 @@ setTimeout(async () => {
 const TELEMETRY_RETENTION_HOURS = 168; // 7 days
 setInterval(async () => {
   try {
+    // Long migrations (e.g. on big MySQL telemetry tables) can keep the DB
+    // unready well past the first tick — wait before touching repos.
+    await databaseService.waitForReady();
     // Get favorite telemetry storage days from settings (defaults to 7 if not set)
     const favoriteDaysStr = await databaseService.settings.getSetting('favoriteTelemetryStorageDays');
     const favoriteDays = favoriteDaysStr ? parseInt(favoriteDaysStr) : 7;
@@ -609,6 +612,10 @@ setInterval(async () => {
 // Run initial purge on startup
 setTimeout(async () => {
   try {
+    // Wait for DB ready: on a fresh upgrade, schema migrations (e.g. 032 dedupe
+    // on a large MySQL telemetry table) can run longer than this 5s delay,
+    // and accessing databaseService.settings before init throws.
+    await databaseService.waitForReady();
     // Get favorite telemetry storage days from settings (defaults to 7 if not set)
     const favoriteDaysStr = await databaseService.settings.getSetting('favoriteTelemetryStorageDays');
     const favoriteDays = favoriteDaysStr ? parseInt(favoriteDaysStr) : 7;
@@ -9903,10 +9910,7 @@ process.on('SIGINT', () => {
 function gracefulShutdown(reason: string): void {
   logger.info(`🛑 Initiating graceful shutdown: ${reason}`);
 
-  // Stop accepting new connections
-  server.close(() => {
-    logger.debug('✅ HTTP server closed');
-
+  const shutdownDependencies = (): void => {
     // Disconnect from Meshtastic
     try {
       meshtasticManager.disconnect();
@@ -9925,7 +9929,20 @@ function gracefulShutdown(reason: string): void {
 
     logger.info('✅ Graceful shutdown complete');
     process.exit(0);
-  });
+  };
+
+  // SIGTERM can arrive during startup (e.g. while long migrations run on a
+  // big MySQL telemetry table) before app.listen() has assigned `server`.
+  // Don't crash on undefined here — just close the rest and exit.
+  if (server) {
+    server.close(() => {
+      logger.debug('✅ HTTP server closed');
+      shutdownDependencies();
+    });
+  } else {
+    logger.info('HTTP server not yet started — skipping server.close()');
+    shutdownDependencies();
+  }
 
   // Force shutdown after 10 seconds if graceful shutdown hangs
   setTimeout(() => {
