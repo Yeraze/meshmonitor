@@ -3288,6 +3288,16 @@ class DatabaseService {
       );
     }
 
+    // Delete packet log entries for this node (#2637) so Packet Monitor
+    // doesn't keep showing history for a deleted node
+    if (this.miscRepo) {
+      try {
+        this.miscRepo.deletePacketLogsForNodeSync(nodeNum, sourceId);
+      } catch (err) {
+        logger.error(`Failed to delete packet logs for node ${nodeNum}@${sourceId}:`, err);
+      }
+    }
+
     // Delete the node from the nodes table (scoped to sourceId)
     const nodeDeleted = this.nodesRepo!.deleteNodeSqlite(nodeNum, sourceId);
 
@@ -6384,6 +6394,16 @@ class DatabaseService {
       // Delete neighbor info for this node (scoped to this source)
       if (this.neighborsRepo) {
         await this.neighborsRepo.deleteNeighborInfoForNode(nodeNum, sourceId);
+      }
+
+      // Delete packet log entries for this node (#2637) so Packet Monitor
+      // doesn't keep showing history for a deleted node
+      if (this.miscRepo) {
+        try {
+          await this.miscRepo.deletePacketLogsForNode(nodeNum, sourceId);
+        } catch (err) {
+          logger.error(`Failed to delete packet logs for node ${nodeNum}@${sourceId}:`, err);
+        }
       }
 
       // Delete the node itself (scoped to sourceId)

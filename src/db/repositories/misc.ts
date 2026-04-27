@@ -4,7 +4,7 @@
  * Handles solar estimates and auto-traceroute nodes database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, asc, and, gte, lte, lt, inArray, notInArray, sql, isNull } from 'drizzle-orm';
+import { eq, desc, asc, and, or, gte, lte, lt, inArray, notInArray, sql, isNull } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbCustomTheme, DbPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -1073,6 +1073,59 @@ export class MiscRepository extends BaseRepository {
       logger.error('[MiscRepository] Failed to clear packet logs:', error);
       throw error;
     }
+  }
+
+  /**
+   * Delete packet log rows that reference a node (as from_node or to_node),
+   * optionally scoped to a sourceId. Used when a single node is deleted so
+   * the Packet Monitor doesn't keep showing the node's history (#2637).
+   */
+  async deletePacketLogsForNode(nodeNum: number, sourceId?: string): Promise<number> {
+    const { packetLog } = this.tables;
+    const condition = sourceId
+      ? and(
+          or(eq(packetLog.from_node, nodeNum), eq(packetLog.to_node, nodeNum)),
+          eq(packetLog.sourceId, sourceId)
+        )
+      : or(eq(packetLog.from_node, nodeNum), eq(packetLog.to_node, nodeNum));
+
+    try {
+      const results = await this.executeRun(
+        (this.db as any).delete(packetLog).where(condition)
+      );
+      const deletedCount = this.getAffectedRows(results);
+      if (deletedCount > 0) {
+        logger.debug(
+          `[MiscRepository] Deleted ${deletedCount} packet log entries for node ${nodeNum}${sourceId ? `@${sourceId}` : ''}`
+        );
+      }
+      return deletedCount;
+    } catch (error) {
+      logger.error('[MiscRepository] Failed to delete packet logs for node:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Synchronously delete packet log rows for a node (SQLite only).
+   */
+  deletePacketLogsForNodeSync(nodeNum: number, sourceId?: string): number {
+    const db = this.getSqliteDb();
+    const { packetLog } = this.tables;
+    const condition = sourceId
+      ? and(
+          or(eq(packetLog.from_node, nodeNum), eq(packetLog.to_node, nodeNum)),
+          eq(packetLog.sourceId, sourceId)
+        )
+      : or(eq(packetLog.from_node, nodeNum), eq(packetLog.to_node, nodeNum));
+    const result = (db as any).delete(packetLog).where(condition).run() as any;
+    const changes = Number(result?.changes ?? 0);
+    if (changes > 0) {
+      logger.debug(
+        `[MiscRepository] Deleted ${changes} packet log entries for node ${nodeNum}${sourceId ? `@${sourceId}` : ''} (sync)`
+      );
+    }
+    return changes;
   }
 
   /**

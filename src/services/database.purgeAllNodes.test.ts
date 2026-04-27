@@ -104,3 +104,49 @@ describe('DatabaseService.purgeAllNodesAsync — packet_log integration (#2637)'
     expect(remainingNodes.find((n: any) => n.nodeNum === 1002)).toBeUndefined();
   });
 });
+
+describe('DatabaseService.deleteNodeAsync — packet_log integration (#2637)', () => {
+  beforeAll(async () => {
+    await databaseService.waitForReady();
+    for (let i = 0; i < 50 && !databaseService.miscRepo; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  });
+
+  it('clears packet_log entries for a deleted single node, scoped to its source', async () => {
+    // Reset packet_log + nodes between tests (singleton state leaks across describes)
+    const rawDb = (databaseService as any).db;
+    rawDb.exec('DELETE FROM packet_log');
+    rawDb.exec('DELETE FROM nodes WHERE nodeNum != 0');
+
+    // Seed two nodes on different sources, plus a third unrelated node
+    databaseService.upsertNode({ nodeNum: 2001, nodeId: '!000007d1', longName: 'Scrub Daddy', shortName: 'SD', sourceId: 'srcA' } as any);
+    databaseService.upsertNode({ nodeNum: 2001, nodeId: '!000007d1', longName: 'Scrub Daddy', shortName: 'SD', sourceId: 'srcB' } as any);
+    databaseService.upsertNode({ nodeNum: 2002, nodeId: '!000007d2', longName: 'Other', shortName: 'OT', sourceId: 'srcA' } as any);
+
+    const now = Date.now();
+    // 2 packets from Scrub Daddy on srcA (should be deleted)
+    // 1 packet from Scrub Daddy on srcB (should survive — different source)
+    // 1 packet from Other on srcA (should survive — different node)
+    rawDb.exec(`
+      INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, to_node_id, portnum, encrypted, direction, created_at, sourceId)
+      VALUES
+        (101, ${now},     2001, '!000007d1', 2002, '!000007d2', 1, 0, 'rx', ${now},     'srcA'),
+        (102, ${now + 1}, 2002, '!000007d2', 2001, '!000007d1', 1, 0, 'rx', ${now + 1}, 'srcA'),
+        (103, ${now + 2}, 2001, '!000007d1', 2002, '!000007d2', 1, 0, 'rx', ${now + 2}, 'srcB'),
+        (104, ${now + 3}, 2002, '!000007d2', 4294967295, '!ffffffff', 3, 0, 'rx', ${now + 3}, 'srcA');
+    `);
+
+    const beforeCount = await databaseService.getPacketLogCountAsync();
+    expect(beforeCount).toBe(4);
+
+    // Exercise the path under test: delete node 2001 from srcA only
+    await databaseService.deleteNodeAsync(2001, 'srcA');
+
+    // The 2 packets that involved Scrub Daddy on srcA are gone (101, 102).
+    // The packet on srcB (103) and the unrelated packet (104) remain.
+    const remaining = await databaseService.getPacketLogsAsync({ limit: 100, offset: 0 });
+    const remainingIds = remaining.map((r: any) => r.packet_id).sort();
+    expect(remainingIds).toEqual([103, 104]);
+  });
+});
