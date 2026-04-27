@@ -27,9 +27,6 @@ async function validateVirtualNodeConfig(
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     return { status: 400, error: 'virtualNode.port must be an integer between 1 and 65535' };
   }
-  if (typeof config.port === 'number' && port === config.port) {
-    return { status: 400, error: 'virtualNode.port cannot equal the source TCP port' };
-  }
   const all = await databaseService.sources.getAllSources();
   for (const s of all) {
     if (s.id === excludeSourceId) continue;
