@@ -16,6 +16,7 @@
  */
 
 import Database from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
 import mysql from 'mysql2/promise';
 import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres';
@@ -26,6 +27,10 @@ import * as schema from '../db/schema/index.js';
 // Table migration order (respects foreign key dependencies)
 // Tables not in this list will be migrated at the end
 const TABLE_ORDER = [
+  // 4.0 multi-source: sources MUST come first — every other data table either
+  // FKs to it or carries a sourceId backfilled from the default source seeded
+  // immediately after this table is migrated.
+  'sources',
   // Core tables (no dependencies)
   'nodes',
   'channels',
@@ -36,12 +41,19 @@ const TABLE_ORDER = [
   'neighbor_info',
   'traceroutes',
   'route_segments',
-  // Auth tables
+  // 4.0: ignored_nodes is per-source but has no FK to users.
+  'ignored_nodes',
+  // Auth tables (must come before channel_database — channel_database
+  // FKs to users for createdBy and channel_database_permissions FKs to users
+  // for userId/grantedBy).
   'users',
   'permissions',
   'sessions',
   'audit_log',
   'api_tokens',
+  // 4.0 per-source tables that depend on users
+  'channel_database',
+  'channel_database_permissions',
   // Notification tables
   'push_subscriptions',
   'user_notification_preferences',
@@ -54,12 +66,27 @@ const TABLE_ORDER = [
   'upgrade_history',
   'auto_traceroute_log',
   'auto_traceroute_nodes',
+  'auto_time_sync_nodes',
+  'auto_distance_delete_log',
   'key_repair_state',
   'auto_key_repair_state',
   'auto_key_repair_log',
   'solar_estimates',
   'system_backup_history',
 ];
+
+// Tables in the 4.0 schema that carry a `sourceId` column. When the source
+// SQLite database is pre-4.0 the rows arrive without this column; we backfill
+// it with the target's default source so the NOT NULL / FK constraints (e.g.
+// nodes' composite PK) are satisfied. The `nodes` table is the strict-NOT-NULL
+// case; the others tolerate NULL but populating them keeps source-scoped views
+// working immediately on first boot.
+const SOURCE_SCOPED_TABLES = new Set([
+  'nodes', 'messages', 'telemetry', 'traceroutes', 'route_segments',
+  'channels', 'neighbor_info', 'packet_log', 'ignored_nodes', 'channel_database',
+  'channel_database_permissions', 'push_subscriptions', 'user_notification_preferences',
+  'auto_distance_delete_log', 'auto_key_repair_log', 'auto_time_sync_nodes',
+]);
 
 // Column name mappings from SQLite (snake_case) to PostgreSQL (camelCase)
 // Only needed for tables where SQLite uses different naming conventions
@@ -147,6 +174,26 @@ const COLUMN_MAPPINGS: Record<string, Record<string, string>> = {
   sessions: {
     // Sessions use different column names
   },
+  // 4.0 channel_database table — SQLite snake_case → PG/MySQL camelCase.
+  channel_database: {
+    psk_length: 'pskLength',
+    is_enabled: 'isEnabled',
+    enforce_name_validation: 'enforceNameValidation',
+    sort_order: 'sortOrder',
+    decrypted_packet_count: 'decryptedPacketCount',
+    last_decrypted_at: 'lastDecryptedAt',
+    created_by: 'createdBy',
+    created_at: 'createdAt',
+    updated_at: 'updatedAt',
+  },
+  channel_database_permissions: {
+    user_id: 'userId',
+    channel_database_id: 'channelDatabaseId',
+    can_view_on_map: 'canViewOnMap',
+    can_read: 'canRead',
+    granted_by: 'grantedBy',
+    granted_at: 'grantedAt',
+  },
 };
 
 // Columns to skip during migration (removed or incompatible)
@@ -189,6 +236,14 @@ function transformValue(tableName: string, column: string, value: unknown): unkn
   // Transform auth_provider 'local' to authMethod 'local', 'oidc' to 'oidc'
   if (tableName === 'users' && column === 'authMethod' && value === 'oidc') {
     return 'oidc';
+  }
+
+  // SQLite v3 users.updated_at could be NULL (column was added late and never
+  // backfilled). PG/MySQL 4.0 schema makes updatedAt NOT NULL. Coerce to now()
+  // so the row inserts and the cascade into permissions/audit_log/api_tokens
+  // can complete.
+  if (tableName === 'users' && column === 'updatedAt' && (value === null || value === undefined)) {
+    return Date.now();
   }
 
   // Transform enabled_channels JSON array to notifyOnChannelMessage boolean
@@ -528,7 +583,86 @@ function sanitizeValue(value: unknown, pgType: string): unknown {
   return value;
 }
 
-async function insertIntoPostgres(pool: Pool, table: string, rows: unknown[]): Promise<number> {
+/**
+ * Build a default source row for the v3.x → v4.0 migration. Mirrors the
+ * `_legacyDefaultSource.ts` helper used by the runtime migrations so that
+ * databases produced by this CLI are indistinguishable from databases an
+ * upgraded MeshMonitor would create on its first run.
+ */
+function buildDefaultSource(): {
+  id: string;
+  name: string;
+  type: string;
+  config: string;
+  createdAt: number;
+  updatedAt: number;
+} {
+  const now = Date.now();
+  const host = process.env.MESHTASTIC_NODE_IP || 'meshtastic.local';
+  const port = parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10) || 4403;
+  return {
+    id: randomUUID(),
+    name: 'Default',
+    type: 'meshtastic_tcp',
+    config: JSON.stringify({ host, port }),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/**
+ * After the sources table is migrated (or skipped because the source DB has
+ * no sources table at all), make sure the target DB has at least one row in
+ * `sources`. Returns the id of the oldest sources row — this is the value
+ * we'll backfill into NULL `sourceId` columns on legacy data so they pass
+ * the 4.0 schema constraints.
+ */
+async function ensureDefaultSourcePostgres(pool: Pool): Promise<string> {
+  const client = await pool.connect();
+  try {
+    const existing = await client.query(
+      `SELECT id FROM sources ORDER BY "createdAt" ASC, id ASC LIMIT 1`
+    );
+    if (existing.rows[0]?.id) {
+      return existing.rows[0].id;
+    }
+    const legacy = buildDefaultSource();
+    await client.query(
+      `INSERT INTO sources (id, name, type, config, enabled, "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, true, $5, $6)`,
+      [legacy.id, legacy.name, legacy.type, legacy.config, legacy.createdAt, legacy.updatedAt]
+    );
+    console.log(`  ✅ Seeded default source '${legacy.id}' for legacy v3.x data`);
+    return legacy.id;
+  } finally {
+    client.release();
+  }
+}
+
+async function ensureDefaultSourceMysql(pool: mysql.Pool): Promise<string> {
+  const conn = await pool.getConnection();
+  try {
+    const [existingRows] = await conn.query(
+      `SELECT id FROM sources ORDER BY createdAt ASC, id ASC LIMIT 1`
+    );
+    const existing = (existingRows as Array<{ id: string }>)[0];
+    if (existing?.id) {
+      return existing.id;
+    }
+    const legacy = buildDefaultSource();
+    await conn.query(
+      `INSERT INTO sources (id, name, type, config, enabled, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, 1, ?, ?)`,
+      [legacy.id, legacy.name, legacy.type, legacy.config, legacy.createdAt, legacy.updatedAt]
+    );
+    console.log(`  ✅ Seeded default source '${legacy.id}' for legacy v3.x data`);
+    return legacy.id;
+  } finally {
+    conn.release();
+  }
+}
+
+async function insertIntoPostgres(pool: Pool, table: string, rows: unknown[], defaultSourceId: string | null = null): Promise<number> {
   if (rows.length === 0) return 0;
 
   const client = await pool.connect();
@@ -626,6 +760,20 @@ async function insertIntoPostgres(pool: Pool, table: string, rows: unknown[]): P
         }
       }
 
+      // 4.0: backfill sourceId on legacy v3.x rows. Source DB doesn't carry
+      // the column; target requires it (NOT NULL on nodes via composite PK,
+      // strict equality elsewhere). If the row already supplied a sourceId,
+      // leave it alone — that's the 4.0 → 4.0 case.
+      if (
+        defaultSourceId &&
+        SOURCE_SCOPED_TABLES.has(table) &&
+        columnTypes?.has('sourceId') &&
+        !mappedColumns.has('sourceId')
+      ) {
+        mappedData.push({ targetCol: 'sourceId', value: defaultSourceId });
+        mappedColumns.add('sourceId');
+      }
+
       if (mappedData.length === 0) continue;
 
       const placeholders = mappedData.map((_, i) => `$${i + 1}`).join(', ');
@@ -700,7 +848,7 @@ function sanitizeMySQLValue(value: unknown, mysqlType: string): unknown {
   return value;
 }
 
-async function insertIntoMySQL(pool: mysql.Pool, table: string, rows: unknown[], database: string): Promise<number> {
+async function insertIntoMySQL(pool: mysql.Pool, table: string, rows: unknown[], database: string, defaultSourceId: string | null = null): Promise<number> {
   if (rows.length === 0) return 0;
 
   const connection = await pool.getConnection();
@@ -750,6 +898,18 @@ async function insertIntoMySQL(pool: mysql.Pool, table: string, rows: unknown[],
             mappedData.push({ targetCol: col, value: defaultFn() });
           }
         }
+      }
+
+      // 4.0: backfill sourceId on legacy v3.x rows. See insertIntoPostgres for
+      // the rationale.
+      if (
+        defaultSourceId &&
+        SOURCE_SCOPED_TABLES.has(table) &&
+        columnTypes?.has('sourceId') &&
+        !mappedColumns.has('sourceId')
+      ) {
+        mappedData.push({ targetCol: 'sourceId', value: defaultSourceId });
+        mappedColumns.add('sourceId');
       }
 
       if (mappedData.length === 0) continue;
@@ -931,6 +1091,22 @@ async function migrate(options: MigrationOptions): Promise<void> {
     const remainingTables = allTableNames.filter((t) => !TABLE_ORDER.includes(t) && !SKIP_TABLES.has(t));
     const tablesToMigrate = [...orderedTables, ...remainingTables];
 
+    // Default sourceId for legacy v3.x rows that arrive without one. Resolved
+    // immediately after the `sources` table is processed (or on first source-
+    // scoped table if the source DB is pre-4.0 and lacks a sources table).
+    let defaultSourceId: string | null = null;
+    let defaultEnsured = false;
+
+    const ensureDefault = async (): Promise<void> => {
+      if (defaultEnsured || options.dryRun) return;
+      if (isPostgresTarget && targetPgDb) {
+        defaultSourceId = await ensureDefaultSourcePostgres(targetPgDb.pool);
+      } else if (isMySQLTarget && targetMySQLDb) {
+        defaultSourceId = await ensureDefaultSourceMysql(targetMySQLDb.pool);
+      }
+      defaultEnsured = true;
+    };
+
     // Migrate each table
     for (const table of tablesToMigrate) {
       const startTime = Date.now();
@@ -938,6 +1114,12 @@ async function migrate(options: MigrationOptions): Promise<void> {
 
       if (sourceCount === 0) {
         log(`  ⏭️  ${table}: 0 rows (skipped)`, false);
+        // Even when the source DB has no `sources` table at all (pre-4.0
+        // upgrade), we still need a default source seeded before any
+        // source-scoped table is written.
+        if (table === 'sources') {
+          await ensureDefault();
+        }
         continue;
       }
 
@@ -954,13 +1136,21 @@ async function migrate(options: MigrationOptions): Promise<void> {
         continue;
       }
 
+      // Source-scoped tables need the default sourceId resolved before insert.
+      // This covers the case where the source DB is pre-4.0 and has no
+      // `sources` table — in that scenario `tablesToMigrate` won't contain
+      // 'sources' at all, so we lazy-init on the first scoped table.
+      if (SOURCE_SCOPED_TABLES.has(table)) {
+        await ensureDefault();
+      }
+
       const rows = await getTableData(sourceDb.rawDb, table);
       let migratedCount = 0;
 
       if (isPostgresTarget && targetPgDb) {
-        migratedCount = await insertIntoPostgres(targetPgDb.pool, table, rows);
+        migratedCount = await insertIntoPostgres(targetPgDb.pool, table, rows, defaultSourceId);
       } else if (isMySQLTarget && targetMySQLDb) {
-        migratedCount = await insertIntoMySQL(targetMySQLDb.pool, table, rows, mysqlDatabase);
+        migratedCount = await insertIntoMySQL(targetMySQLDb.pool, table, rows, mysqlDatabase, defaultSourceId);
       }
 
       const duration = Date.now() - startTime;
@@ -973,6 +1163,13 @@ async function migrate(options: MigrationOptions): Promise<void> {
         migratedCount,
         duration,
       });
+
+      // After the sources table is migrated, lock in the default sourceId for
+      // remaining tables. If the source DB carried sources rows, the oldest
+      // becomes the default; otherwise we synthesize one.
+      if (table === 'sources') {
+        await ensureDefault();
+      }
     }
 
     // Reset PostgreSQL sequences to prevent primary key conflicts
