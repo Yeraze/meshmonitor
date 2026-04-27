@@ -3288,6 +3288,16 @@ class DatabaseService {
       );
     }
 
+    // Delete packet log entries for this node (#2637) so Packet Monitor
+    // doesn't keep showing history for a deleted node
+    if (this.miscRepo) {
+      try {
+        this.miscRepo.deletePacketLogsForNodeSync(nodeNum, sourceId);
+      } catch (err) {
+        logger.error(`Failed to delete packet logs for node ${nodeNum}@${sourceId}:`, err);
+      }
+    }
+
     // Delete the node from the nodes table (scoped to sourceId)
     const nodeDeleted = this.nodesRepo!.deleteNodeSqlite(nodeNum, sourceId);
 
@@ -6012,6 +6022,14 @@ class DatabaseService {
         logger.debug('Failed to delete all neighbor info:', err)
       );
     }
+    // Clear packet log so Packet Monitor doesn't show ghost entries from purged nodes (issue #2637)
+    if (this.miscRepo) {
+      try {
+        this.miscRepo.clearPacketLogsSync();
+      } catch (err) {
+        logger.error('Failed to clear packet logs during purge:', err);
+      }
+    }
     // Finally delete the nodes themselves
     this.nodesRepo!.truncateNodesSqlite();
     // Telemetry cache invalidation after bulk purge
@@ -6378,6 +6396,16 @@ class DatabaseService {
         await this.neighborsRepo.deleteNeighborInfoForNode(nodeNum, sourceId);
       }
 
+      // Delete packet log entries for this node (#2637) so Packet Monitor
+      // doesn't keep showing history for a deleted node
+      if (this.miscRepo) {
+        try {
+          await this.miscRepo.deletePacketLogsForNode(nodeNum, sourceId);
+        } catch (err) {
+          logger.error(`Failed to delete packet logs for node ${nodeNum}@${sourceId}:`, err);
+        }
+      }
+
       // Delete the node itself (scoped to sourceId)
       if (this.nodesRepo) {
         nodeDeleted = await this.nodesRepo.deleteNodeRecord(nodeNum, sourceId);
@@ -6416,6 +6444,14 @@ class DatabaseService {
       }
       if (this.neighborsRepo) {
         await this.neighborsRepo.deleteAllNeighborInfo();
+      }
+      // Clear packet log so Packet Monitor doesn't show ghost entries from purged nodes (issue #2637)
+      if (this.miscRepo) {
+        try {
+          await this.miscRepo.clearPacketLogs();
+        } catch (err) {
+          logger.error('Failed to clear packet logs during purge:', err);
+        }
       }
       // Finally delete the nodes themselves
       if (this.nodesRepo) {
