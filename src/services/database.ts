@@ -6012,6 +6012,14 @@ class DatabaseService {
         logger.debug('Failed to delete all neighbor info:', err)
       );
     }
+    // Clear packet log so Packet Monitor doesn't show ghost entries from purged nodes (issue #2637)
+    if (this.miscRepo) {
+      try {
+        this.miscRepo.clearPacketLogsSync();
+      } catch (err) {
+        logger.error('Failed to clear packet logs during purge:', err);
+      }
+    }
     // Finally delete the nodes themselves
     this.nodesRepo!.truncateNodesSqlite();
     // Telemetry cache invalidation after bulk purge
@@ -6416,6 +6424,14 @@ class DatabaseService {
       }
       if (this.neighborsRepo) {
         await this.neighborsRepo.deleteAllNeighborInfo();
+      }
+      // Clear packet log so Packet Monitor doesn't show ghost entries from purged nodes (issue #2637)
+      if (this.miscRepo) {
+        try {
+          await this.miscRepo.clearPacketLogs();
+        } catch (err) {
+          logger.error('Failed to clear packet logs during purge:', err);
+        }
       }
       // Finally delete the nodes themselves
       if (this.nodesRepo) {

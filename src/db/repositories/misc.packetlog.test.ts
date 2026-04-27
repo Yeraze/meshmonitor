@@ -170,6 +170,33 @@ describe('MiscRepository - Packet Log Queries', () => {
       expect(relay100!.matching_nodes[0].longName).toBe('Node Alpha');
     });
   });
+
+  // Regression: #2637 — purgeAllNodes must also clear packet_log so the
+  // Packet Monitor doesn't show ghost entries from purged nodes. These
+  // tests pin the building-block deletion methods that purgeAllNodes calls.
+  describe('clearPacketLogs (#2637)', () => {
+    it('removes every packet_log row (async)', async () => {
+      const before = await repo.getPacketLogCount();
+      expect(before).toBe(3);
+
+      const deleted = await repo.clearPacketLogs();
+      expect(deleted).toBe(3);
+
+      const after = await repo.getPacketLogCount();
+      expect(after).toBe(0);
+    });
+
+    it('removes every packet_log row (sync, SQLite)', async () => {
+      const before = await repo.getPacketLogCount();
+      expect(before).toBe(3);
+
+      const deleted = repo.clearPacketLogsSync();
+      expect(deleted).toBe(3);
+
+      const after = await repo.getPacketLogCount();
+      expect(after).toBe(0);
+    });
+  });
 });
 
 /**
