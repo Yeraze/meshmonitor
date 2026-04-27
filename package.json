@@ -57,7 +57,7 @@
     "i18next-http-backend": "^3.0.6",
     "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
-    "lucide-react": "^1.8.0",
+    "lucide-react": "^1.11.0",
     "maplibre-gl": "^5.24.0",
     "morgan": "^1.10.1",
     "mysql2": "^3.22.3",
