@@ -952,12 +952,6 @@ function App() {
             }
           }
 
-          if (settings.tracerouteIntervalMinutes) {
-            const value = parseInt(settings.tracerouteIntervalMinutes);
-            setTracerouteIntervalMinutes(value);
-            localStorage.setItem('tracerouteIntervalMinutes', value.toString());
-          }
-
           if (settings.temperatureUnit) {
             setTemperatureUnit(settings.temperatureUnit as TemperatureUnit);
             localStorage.setItem('temperatureUnit', settings.temperatureUnit);

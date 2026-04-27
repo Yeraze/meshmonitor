@@ -1011,6 +1011,14 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
+          if (settings.tracerouteIntervalMinutes !== undefined) {
+            const value = parseInt(settings.tracerouteIntervalMinutes);
+            if (!isNaN(value)) {
+              setTracerouteIntervalMinutesState(value);
+              localStorage.setItem('tracerouteIntervalMinutes', value.toString());
+            }
+          }
+
           if (settings.preferredSortField) {
             setPreferredSortFieldState(settings.preferredSortField as SortField);
             localStorage.setItem('preferredSortField', settings.preferredSortField);
