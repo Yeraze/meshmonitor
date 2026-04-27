@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import AutoFavoriteSection from './AutoFavoriteSection';
+import { SourceProvider } from '../contexts/SourceContext';
 
 // Mock the useCsrfFetch hook
 const mockCsrfFetch = vi.fn();
@@ -101,6 +102,30 @@ describe('AutoFavoriteSection Component', () => {
       const checkbox = screen.getByRole('checkbox');
       expect(checkbox).toBeInTheDocument();
       expect(checkbox).not.toBeChecked();
+    });
+  });
+
+  it('passes the active sourceId to /api/auto-favorite/status', async () => {
+    // Regression for #2826: the role/firmware status was always read from the
+    // legacy first source, so switching sources kept showing the wrong role.
+    render(
+      <SourceProvider sourceId="src-active" sourceName="Active">
+        <AutoFavoriteSection {...defaultProps} />
+      </SourceProvider>
+    );
+    await waitFor(() => {
+      expect(mockCsrfFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/auto-favorite\/status\?sourceId=src-active$/)
+      );
+    });
+  });
+
+  it('omits sourceId when no source is active (legacy single-source)', async () => {
+    render(<AutoFavoriteSection {...defaultProps} />);
+    await waitFor(() => {
+      expect(mockCsrfFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/auto-favorite\/status$/)
+      );
     });
   });
 });

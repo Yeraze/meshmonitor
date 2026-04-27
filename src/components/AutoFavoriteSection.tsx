@@ -46,7 +46,7 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
     try {
       const [settingsRes, statusRes] = await Promise.all([
         csrfFetch(`${baseUrl}/api/settings${sourceQuery}`),
-        csrfFetch(`${baseUrl}/api/auto-favorite/status`),
+        csrfFetch(`${baseUrl}/api/auto-favorite/status${sourceQuery}`),
       ]);
       if (settingsRes.ok) {
         const settings = await settingsRes.json();
@@ -62,7 +62,7 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
     } catch (error) {
       console.error('Failed to fetch auto-favorite data:', error);
     }
-  }, [baseUrl, csrfFetch]);
+  }, [baseUrl, csrfFetch, sourceQuery]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
