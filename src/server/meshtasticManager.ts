@@ -4390,8 +4390,21 @@ class MeshtasticManager implements ISourceManager {
           // This prevents database channels from "shadowing" device channels with the same key (#2375, #2413)
           const dbChannel = await databaseService.channelDatabase.getByIdAsync(context.decryptedChannelId);
           const deviceChannels = await databaseService.channels.getAllChannels(this.sourceId);
+          // Match by BOTH psk AND name. Channels share PSK by default — Meshtastic
+          // ships with the sentinel `AQ==` (single byte 0x01) on every preset
+          // slot. Matching on PSK alone would route every default-PSK packet to
+          // whatever slot scans first (typically slot 0 = primary), no matter
+          // which named slot actually originated the packet. The on-wire channel
+          // hash is `xorHash(name) ^ xorHash(psk)`, so name participates in the
+          // identity — two slots with the same PSK but different names are
+          // genuinely different channels and must not be conflated.
+          const dbName = (dbChannel?.name ?? '').trim();
           const matchingDeviceChannel = dbChannel?.psk
-            ? deviceChannels.find(dc => dc.psk === dbChannel.psk && dc.role !== 0)
+            ? deviceChannels.find(dc =>
+                dc.psk === dbChannel.psk
+                && (dc.name ?? '').trim() === dbName
+                && dc.role !== 0,
+              )
             : null;
 
           if (matchingDeviceChannel) {

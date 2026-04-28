@@ -88,8 +88,18 @@ export class ChannelsRepository extends BaseRepository {
    *
    * When sourceId is provided the lookup uses (id, sourceId) so each source
    * manages its own independent set of channel slots.
+   *
+   * `opts.allowBlankName` distinguishes user-driven saves (where blank truly
+   * means "clear the name") from device-config ingest (where blank typically
+   * means "the device transmitted an empty name slot, don't wipe what we
+   * already had" — see #1567). The PUT /api/channels/:id route should pass
+   * `true`; the channel-info ingest path should pass `false`/omit.
    */
-  async upsertChannel(channelData: ChannelInput, sourceId?: string): Promise<void> {
+  async upsertChannel(
+    channelData: ChannelInput,
+    sourceId?: string,
+    opts?: { allowBlankName?: boolean },
+  ): Promise<void> {
     const now = this.now();
     let data = { ...channelData };
     const { channels } = this.tables;
@@ -113,9 +123,14 @@ export class ChannelsRepository extends BaseRepository {
 
     if (existingChannel) {
       // Update existing channel
-      // Preserve existing non-empty name if incoming name is empty (fixes #1567)
-      // This prevents device reconnections from wiping channel names
-      const effectiveName = data.name || existingChannel.name;
+      // For ingest paths: preserve existing non-empty name when incoming name
+      // is blank (fixes #1567 — device reconnects sometimes report empty names
+      // for slots whose names we already learned).
+      // For user-driven saves (`opts.allowBlankName`): blank means blank.
+      const incomingName = data.name ?? '';
+      const effectiveName = (opts?.allowBlankName || incomingName !== '')
+        ? incomingName
+        : existingChannel.name;
       logger.debug(`Updating channel ${existingChannel.id}: name "${existingChannel.name}" -> "${effectiveName}"`);
 
       const updateSet: any = {
