@@ -519,6 +519,43 @@ describe('TelemetryRepository (expanded)', () => {
       const map = await repo.getLatestTelemetryValueForAllNodes('battery');
       expect(map.size).toBe(0);
     });
+
+    it('scopes results to the requested sourceId (issue #2831)', async () => {
+      // Same node has telemetry from two different sources. Without sourceId,
+      // we'd see whichever source has the most recent record. With sourceId,
+      // we should get exactly that source's most recent record.
+      const SOURCE_A = 'src-a';
+      const SOURCE_B = 'src-b';
+
+      await repo.insertTelemetry({
+        nodeId: NODE1,
+        nodeNum: NODE1_NUM,
+        telemetryType: 'battery',
+        timestamp: NOW - 2 * HOUR,
+        value: 70,
+        unit: '%',
+        createdAt: NOW - 2 * HOUR,
+      }, SOURCE_A);
+      await repo.insertTelemetry({
+        nodeId: NODE1,
+        nodeNum: NODE1_NUM,
+        telemetryType: 'battery',
+        timestamp: NOW - 1 * HOUR, // newest overall — would dominate without scope
+        value: 90,
+        unit: '%',
+        createdAt: NOW - 1 * HOUR,
+      }, SOURCE_B);
+
+      const mapA = await repo.getLatestTelemetryValueForAllNodes('battery', SOURCE_A);
+      expect(mapA.get(NODE1)).toBe(70);
+
+      const mapB = await repo.getLatestTelemetryValueForAllNodes('battery', SOURCE_B);
+      expect(mapB.get(NODE1)).toBe(90);
+
+      // Unfiltered behaviour preserved (latest across all sources).
+      const mapAll = await repo.getLatestTelemetryValueForAllNodes('battery');
+      expect(mapAll.get(NODE1)).toBe(90);
+    });
   });
 
   // -------------------------------------------------------------------------
