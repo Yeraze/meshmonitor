@@ -7854,17 +7854,23 @@ class DatabaseService {
   }
 
   cleanupOldPacketLogs(): number {
+    // The packet-log cleanup timer (PacketLogService) starts on a fixed
+    // schedule and can fire while the database is still initializing —
+    // especially during the long PG/MySQL upgrade migrations (#2836). Bail
+    // out cleanly if the repository hasn't been wired up yet so the upgrade
+    // path doesn't crash with `Cannot read properties of null`.
+    if (!this.miscRepo) return 0;
     const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
     const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
     const cutoffTimestamp = Date.now() - (maxAgeHours * 60 * 60 * 1000);
-    return this.miscRepo!.cleanupOldPacketLogsSync(cutoffTimestamp);
+    return this.miscRepo.cleanupOldPacketLogsSync(cutoffTimestamp);
   }
 
   async cleanupOldPacketLogsAsync(): Promise<number> {
+    if (!this.miscRepo) return 0;
     const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
     const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
-    if (this.miscRepo) return this.miscRepo.cleanupOldPacketLogs(maxAgeHours);
-    return this.cleanupOldPacketLogs();
+    return this.miscRepo.cleanupOldPacketLogs(maxAgeHours);
   }
 
   async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string }): Promise<DbPacketCountByNode[]> {

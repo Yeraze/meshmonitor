@@ -90,6 +90,35 @@ export async function runMigration037Mysql(pool: any): Promise<void> {
          AND CONSTRAINT_TYPE = 'PRIMARY KEY'`
     );
     if ((pkRows as any[]).length > 0) {
+      // Issue #2836: legacy MySQL deployments primary-key the table on a
+      // single column (typically `userId`) that is also referenced by an FK
+      // back to `users.id`. MySQL backs the FK with the PK's index; dropping
+      // the PK without first creating a non-PK index over the FK column
+      // leaves the FK "incorrectly formed" and ALTER fails with errno 150.
+      // Pre-create non-PK indexes covering every FK column on this table so
+      // each FK retains a backing index when the PK is dropped. Idempotent
+      // via information_schema check.
+      const [fkRows] = await pool.query(
+        `SELECT COLUMN_NAME, CONSTRAINT_NAME
+         FROM information_schema.KEY_COLUMN_USAGE
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_map_preferences'
+           AND REFERENCED_TABLE_NAME IS NOT NULL`
+      );
+      for (const fk of (fkRows as any[])) {
+        const colName: string = fk.COLUMN_NAME;
+        const indexName = `idx_ump_${colName}`;
+        const [existingIdx] = await pool.query(
+          `SELECT INDEX_NAME FROM information_schema.STATISTICS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_map_preferences'
+             AND COLUMN_NAME = ? AND INDEX_NAME != 'PRIMARY' LIMIT 1`,
+          [colName]
+        );
+        if ((existingIdx as any[]).length === 0) {
+          await pool.query(
+            `ALTER TABLE user_map_preferences ADD INDEX \`${indexName}\` (\`${colName}\`)`
+          );
+        }
+      }
       await pool.query(`ALTER TABLE user_map_preferences DROP PRIMARY KEY`);
     }
     await pool.query(`ALTER TABLE user_map_preferences ADD COLUMN id INT AUTO_INCREMENT PRIMARY KEY FIRST`);
