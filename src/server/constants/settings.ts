@@ -144,3 +144,127 @@ export const VALID_SETTINGS_KEYS = [
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];
+
+/**
+ * Settings keys that are scoped per-source.
+ *
+ * These are read by per-source MeshtasticManager instances via
+ * `databaseService.settings.getSettingForSource(this.sourceId, key)`. After
+ * removing the global fallback (issue #2839), reads of these keys for a
+ * source that has no per-source override return null — the caller's own
+ * default kicks in, which is the correct behaviour for multi-source setups.
+ *
+ * The list is derived by grepping `getSettingForSource(...)` call sites in
+ * the server. Update when adding a new per-source setting.
+ *
+ * Used by:
+ *   - Migration 050 — promotes legacy global values into the default source's
+ *     namespace on upgrade so single-source v3.x users don't lose config.
+ *   - Future audit / lint rules that may want to assert that all per-source
+ *     reads target a registered key.
+ */
+export const PER_SOURCE_SETTINGS_KEYS = [
+  // Auto-ack
+  'autoAckChannels',
+  'autoAckCooldownSeconds',
+  'autoAckDirectEnabled',
+  'autoAckDirectMessages',
+  'autoAckDirectReplyEnabled',
+  'autoAckDirectTapbackEnabled',
+  'autoAckEnabled',
+  'autoAckIgnoredNodes',
+  'autoAckMessage',
+  'autoAckMessageDirect',
+  'autoAckMultihopEnabled',
+  'autoAckMultihopReplyEnabled',
+  'autoAckMultihopTapbackEnabled',
+  'autoAckRegex',
+  'autoAckSkipIncompleteNodes',
+  'autoAckUseDM',
+  // Auto-announce
+  'autoAnnounceChannelIndexes',
+  'autoAnnounceEnabled',
+  'autoAnnounceIntervalHours',
+  'autoAnnounceMessage',
+  'autoAnnounceNodeInfoChannels',
+  'autoAnnounceNodeInfoDelaySeconds',
+  'autoAnnounceNodeInfoEnabled',
+  'autoAnnounceOnStart',
+  'autoAnnounceSchedule',
+  'autoAnnounceUseSchedule',
+  // Auto-delete by distance
+  'autoDeleteByDistanceAction',
+  'autoDeleteByDistanceEnabled',
+  'autoDeleteByDistanceIntervalHours',
+  'autoDeleteByDistanceLat',
+  'autoDeleteByDistanceLon',
+  'autoDeleteByDistanceThresholdKm',
+  // Auto-favorite
+  'autoFavoriteEnabled',
+  'autoFavoriteNodes',
+  'autoFavoriteStaleHours',
+  // Auto-heap-management
+  'autoHeapManagementEnabled',
+  'autoHeapManagementThresholdBytes',
+  // Auto-key-management
+  'autoKeyManagementEnabled',
+  // Auto-ping
+  'autoPingEnabled',
+  'autoPingIntervalSeconds',
+  'autoPingMaxPings',
+  'autoPingTimeoutSeconds',
+  // Auto-responder (the feature the screenshots in #2839 call "Automations")
+  'autoResponderEnabled',
+  'autoResponderSkipIncompleteNodes',
+  'autoResponderTriggers',
+  // Auto-time-sync
+  'autoTimeSyncEnabled',
+  'autoTimeSyncIntervalMinutes',
+  // Auto-welcome
+  'autoWelcomeEnabled',
+  'autoWelcomeMaxHops',
+  'autoWelcomeMessage',
+  'autoWelcomeTarget',
+  'autoWelcomeWaitForName',
+  // Misc per-source
+  'externalUrl',
+  'geofenceTriggers',
+  'lastAnnouncementTime',
+  'localNodeNum',
+  'localStatsIntervalMinutes',
+  'timerTriggers',
+  // Remote admin
+  'remoteAdminScannerIntervalMinutes',
+  'remoteAdminScheduleEnabled',
+  'remoteAdminScheduleEnd',
+  'remoteAdminScheduleStart',
+  // Security digest
+  'securityDigestAppriseUrl',
+  'securityDigestFormat',
+  'securityDigestReportType',
+  'securityDigestSuppressEmpty',
+  // Traceroute scheduler / filters
+  'tracerouteIntervalMinutes',
+  'tracerouteScheduleEnabled',
+  'tracerouteScheduleEnd',
+  'tracerouteScheduleStart',
+  'tracerouteNodeFilterEnabled',
+  'tracerouteFilterChannels',
+  'tracerouteFilterRoles',
+  'tracerouteFilterHwModels',
+  'tracerouteFilterNameRegex',
+  'tracerouteFilterNodesEnabled',
+  'tracerouteFilterChannelsEnabled',
+  'tracerouteFilterRolesEnabled',
+  'tracerouteFilterHwModelsEnabled',
+  'tracerouteFilterRegexEnabled',
+  'tracerouteExpirationHours',
+  'tracerouteSortByHops',
+  'tracerouteFilterLastHeardEnabled',
+  'tracerouteFilterLastHeardHours',
+  'tracerouteFilterHopsEnabled',
+  'tracerouteFilterHopsMin',
+  'tracerouteFilterHopsMax',
+] as const;
+
+export type PerSourceSettingKey = typeof PER_SOURCE_SETTINGS_KEYS[number];

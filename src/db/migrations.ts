@@ -61,6 +61,7 @@ import { migration as addUserMapPrefsIdSqliteMigration, runMigration046Postgres,
 import { migration as addSelectedLayerMigration, runMigration047Postgres, runMigration047Mysql } from '../server/migrations/047_add_selected_layer_to_user_map_preferences.js';
 import { migration as rebuildIgnoredNodesPerSourceMigration, runMigration048Postgres, runMigration048Mysql } from '../server/migrations/048_rebuild_ignored_nodes_per_source.js';
 import { migration as perfCompositeIndexesMigration, runMigration049Postgres, runMigration049Mysql } from '../server/migrations/049_perf_composite_indexes.js';
+import { migration as promoteGlobalsToDefaultSourceMigration, runMigration050Postgres, runMigration050Mysql } from '../server/migrations/050_promote_globals_to_default_source.js';
 
 // ============================================================================
 // Registry
@@ -762,4 +763,20 @@ registry.register({
   sqlite: (db) => perfCompositeIndexesMigration.up(db),
   postgres: (client) => runMigration049Postgres(client),
   mysql: (pool) => runMigration049Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 050: Promote legacy global per-source settings (and orphan
+// NULL-sourceId rows in auto_traceroute_nodes / auto_time_sync_nodes) to the
+// default source's namespace, so single-source pre-4.x users don't lose
+// configuration after the global-fallback in getSettingForSource is removed.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 50,
+  name: 'promote_globals_to_default_source',
+  settingsKey: 'migration_050_promote_globals_to_default_source',
+  sqlite: (db) => promoteGlobalsToDefaultSourceMigration.up(db),
+  postgres: (client) => runMigration050Postgres(client),
+  mysql: (pool) => runMigration050Mysql(pool),
 });
