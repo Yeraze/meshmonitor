@@ -60,6 +60,7 @@ import { migration as dropLegacyRouteSegmentsFkMigration, runMigration045Postgre
 import { migration as addUserMapPrefsIdSqliteMigration, runMigration046Postgres, runMigration046Mysql } from '../server/migrations/046_add_user_map_preferences_id_sqlite.js';
 import { migration as addSelectedLayerMigration, runMigration047Postgres, runMigration047Mysql } from '../server/migrations/047_add_selected_layer_to_user_map_preferences.js';
 import { migration as rebuildIgnoredNodesPerSourceMigration, runMigration048Postgres, runMigration048Mysql } from '../server/migrations/048_rebuild_ignored_nodes_per_source.js';
+import { migration as perfCompositeIndexesMigration, runMigration049Postgres, runMigration049Mysql } from '../server/migrations/049_perf_composite_indexes.js';
 
 // ============================================================================
 // Registry
@@ -745,4 +746,20 @@ registry.register({
   sqlite: (db) => rebuildIgnoredNodesPerSourceMigration.up(db),
   postgres: (client) => runMigration048Postgres(client),
   mysql: (pool) => runMigration048Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 049: Composite indexes for hot query patterns (issue #2831)
+// telemetry (telemetryType, nodeId, timestamp DESC), telemetry (sourceId,
+// nodeId, telemetryType), messages (sourceId, timestamp DESC),
+// neighbor_info (sourceId, nodeNum).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 49,
+  name: 'perf_composite_indexes',
+  settingsKey: 'migration_049_perf_composite_indexes',
+  sqlite: (db) => perfCompositeIndexesMigration.up(db),
+  postgres: (client) => runMigration049Postgres(client),
+  mysql: (pool) => runMigration049Mysql(pool),
 });
