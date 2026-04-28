@@ -78,6 +78,18 @@ export async function createPostgresDriver(options: PostgresDriverOptions): Prom
     logger.debug('[PostgreSQL Driver] New client connected to pool');
   });
 
+  // Issue #2831: warn when the pool is saturated so operators can spot
+  // starvation without enabling debug logging.
+  const POOL_WATCH_INTERVAL_MS = 30_000;
+  const poolWatcher = setInterval(() => {
+    if (pool.waitingCount > 0) {
+      logger.warn(
+        `[PostgreSQL Driver] Pool saturated: ${pool.waitingCount} waiter(s), ${pool.totalCount}/${maxConnections} connections, ${pool.idleCount} idle. Consider raising DATABASE_POOL_SIZE.`
+      );
+    }
+  }, POOL_WATCH_INTERVAL_MS);
+  poolWatcher.unref?.();
+
   // Create Drizzle ORM instance
   const db = drizzle(pool, { schema });
 
@@ -90,6 +102,7 @@ export async function createPostgresDriver(options: PostgresDriverOptions): Prom
     pool,
     close: async () => {
       logger.debug('[PostgreSQL Driver] Closing connection pool');
+      clearInterval(poolWatcher);
       await pool.end();
     },
   };

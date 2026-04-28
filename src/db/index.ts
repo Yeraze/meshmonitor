@@ -84,7 +84,9 @@ export function getDatabaseConfig(): DatabaseConfig {
 
   const poolSizeRaw = process.env.DATABASE_POOL_SIZE;
   const parsedPoolSize = poolSizeRaw ? parseInt(poolSizeRaw, 10) : NaN;
-  const maxConnections = Number.isFinite(parsedPoolSize) && parsedPoolSize > 0 ? parsedPoolSize : 10;
+  // Default raised from 10 → 20 (issue #2831): the previous default starved
+  // PG/MySQL pools under modest concurrent load (dashboard fan-out + schedulers).
+  const maxConnections = Number.isFinite(parsedPoolSize) && parsedPoolSize > 0 ? parsedPoolSize : 20;
 
   return {
     type,
