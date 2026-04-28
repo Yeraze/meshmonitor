@@ -139,11 +139,14 @@ describe('per-source isolation (Phase 2a–2f)', () => {
       expect(a).toBe('true');
     });
 
-    it('falls back to global when no per-source override exists', async () => {
+    it('returns null when no per-source override exists, even if global is set', async () => {
+      // Issue #2839 / #2840: previous fallback to the global value caused
+      // multi-source automation spam and post-upgrade UI/runtime mismatches.
+      // Each source must own its config independently.
       await h.settings.setSetting('autoPingEnabled', 'false');
 
       const a = await h.settings.getSettingForSource('A', 'autoPingEnabled');
-      expect(a).toBe('false');
+      expect(a).toBeNull();
     });
 
     it('returns global when sourceId is null/undefined', async () => {

@@ -133,8 +133,10 @@ describe('DatabaseService - per-source auto-traceroute filters', () => {
     expect(b.filterHopsMax).toBe(9);
   });
 
-  it('falls back to global values when a source has no override', async () => {
-    // Write a global config (no sourceId). Legacy path.
+  it('returns defaults (no global fallback) when a source has no override', async () => {
+    // Issue #2839 / #2840: each source must own its config independently.
+    // A legacy global value must NOT leak into a per-source read; the
+    // upgrade path is handled by migration 050, not by silent fallback.
     await dbService.setTracerouteFilterSettingsAsync({
       enabled: true,
       nodeNums: [],
@@ -157,12 +159,12 @@ describe('DatabaseService - per-source auto-traceroute filters', () => {
     });
 
     const scoped = await dbService.getTracerouteFilterSettingsAsync(SOURCE_A);
-    expect(scoped.filterChannels).toEqual([4]);
-    expect(scoped.filterNameRegex).toBe('global-regex');
-    expect(scoped.expirationHours).toBe(36);
-    expect(scoped.filterLastHeardHours).toBe(72);
-    expect(scoped.filterHopsMin).toBe(2);
-    expect(scoped.filterHopsMax).toBe(8);
+    expect(scoped.filterChannels).toEqual([]);
+    expect(scoped.filterNameRegex).toBe('.*');
+    expect(scoped.expirationHours).toBe(24);
+    expect(scoped.filterLastHeardHours).toBe(168);
+    expect(scoped.filterHopsMin).toBe(0);
+    expect(scoped.filterHopsMax).toBe(10);
   });
 
   it('changing source A does not leak into source B', async () => {

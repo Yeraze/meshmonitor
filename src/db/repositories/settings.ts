@@ -188,14 +188,19 @@ export class SettingsRepository extends BaseRepository {
   }
 
   /**
-   * Get a setting for a specific source, falling back to the global value when
-   * no per-source override exists. Pass `null`/`undefined` for sourceId to get
-   * the plain global setting.
+   * Get a setting for a specific source. Returns ONLY the per-source value
+   * (null if no per-source override exists). Pass `null`/`undefined` for
+   * sourceId to read the un-namespaced global setting.
+   *
+   * The previous behaviour fell back to the global value when no per-source
+   * override existed; that fallback was the root cause of issue #2839
+   * (multi-source automation spam) and #2840 (auto-traceroute UI mismatch
+   * after upgrade). Migration 050 promotes legacy globals into the default
+   * source's namespace so single-source pre-4.x users keep their config.
    */
   async getSettingForSource(sourceId: string | null | undefined, key: string): Promise<string | null> {
     if (sourceId) {
-      const prefixed = await this.getSetting(`${this.sourcePrefix(sourceId)}${key}`);
-      if (prefixed !== null && prefixed !== undefined) return prefixed;
+      return await this.getSetting(`${this.sourcePrefix(sourceId)}${key}`);
     }
     return await this.getSetting(key);
   }
