@@ -8,6 +8,7 @@
 import React, { useRef, useCallback, useState, useMemo, useEffect } from 'react';
 import '../styles/messages.css';
 import { useResizable } from '../hooks/useResizable';
+import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useTranslation, Trans } from 'react-i18next';
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
@@ -443,7 +444,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   });
 
   // Refs
-  const dmMessageInputRef = useRef<HTMLInputElement>(null);
+  const dmMessageInputRef = useRef<HTMLTextAreaElement>(null);
+
+  useAutoResizeTextarea(dmMessageInputRef, newMessage);
 
   // Helper functions
   const getNodeName = useCallback(
@@ -1523,15 +1526,23 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 {hasPermission('messages', 'write') && (
                   <div className="message-input-container">
                     <div className="input-with-counter">
-                      <input
+                      <textarea
                         ref={dmMessageInputRef}
-                        type="text"
                         value={newMessage}
                         onChange={e => setNewMessage(e.target.value)}
                         placeholder={t('messages.dm_placeholder', { name: getNodeName(selectedDMNode) })}
                         className="message-input"
-                        onKeyPress={e => {
-                          if (e.key === 'Enter') {
+                        rows={1}
+                        onKeyDown={e => {
+                          if (
+                            e.key === 'Enter' &&
+                            !e.shiftKey &&
+                            !e.ctrlKey &&
+                            !e.metaKey &&
+                            !e.altKey &&
+                            !e.nativeEvent.isComposing
+                          ) {
+                            e.preventDefault();
                             handleSendDirectMessage(selectedDMNode);
                           }
                         }}
