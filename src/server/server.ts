@@ -2404,6 +2404,7 @@ apiRouter.get('/virtual-node/status', requireAuth(), (_req, res) => {
           sourceName,
           enabled: false,
           isRunning: false,
+          allowAdminCommands: false,
           clientCount: 0,
           clients: [],
         };
@@ -2413,6 +2414,7 @@ apiRouter.get('/virtual-node/status', requireAuth(), (_req, res) => {
         sourceName,
         enabled: true,
         isRunning: vn.isRunning(),
+        allowAdminCommands: vn.isAdminCommandsAllowed(),
         clientCount: vn.getClientCount(),
         clients: vn.getClientDetails(),
       };

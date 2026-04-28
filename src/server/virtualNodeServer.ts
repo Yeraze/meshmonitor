@@ -1180,4 +1180,8 @@ export class VirtualNodeServer extends EventEmitter {
   public isRunning(): boolean {
     return this.server !== null;
   }
+
+  public isAdminCommandsAllowed(): boolean {
+    return this.allowAdminCommands;
+  }
 }
