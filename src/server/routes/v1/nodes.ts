@@ -38,8 +38,14 @@ async function hasNodesReadPermission(userId: number | null, isAdmin: boolean, s
 /**
  * Enrich node data with latest uptime from telemetry (async - works with all DB backends)
  */
-async function enrichNodesWithUptime(nodes: DbNode[]): Promise<(DbNode & { uptimeSeconds?: number })[]> {
-  const uptimeMap = await databaseService.telemetry.getLatestTelemetryValueForAllNodes('uptimeSeconds');
+async function enrichNodesWithUptime(
+  nodes: DbNode[],
+  sourceId?: string,
+): Promise<(DbNode & { uptimeSeconds?: number })[]> {
+  const uptimeMap = await databaseService.telemetry.getLatestTelemetryValueForAllNodes(
+    'uptimeSeconds',
+    sourceId,
+  );
   return nodes.map(node => ({
     ...node,
     uptimeSeconds: uptimeMap.get(node.nodeId)
@@ -88,8 +94,8 @@ router.get('/', async (req: Request, res: Response) => {
     // Strip location fields for nodes whose position came from an inaccessible channel
     const locationMaskedNodes = await maskNodeLocationByChannel(filteredNodes, user, sourceId);
 
-    // Enrich nodes with uptime data from telemetry
-    const enrichedNodes = await enrichNodesWithUptime(locationMaskedNodes);
+    // Enrich nodes with uptime data from telemetry (scoped to the requested source)
+    const enrichedNodes = await enrichNodesWithUptime(locationMaskedNodes, sourceId);
 
     res.json({
       success: true,

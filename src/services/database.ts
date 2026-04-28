@@ -5907,8 +5907,11 @@ class DatabaseService {
   }
 
   /** @deprecated Use databaseService.telemetry.getLatestTelemetryValueForAllNodes() instead */
-  async getLatestTelemetryValueForAllNodesAsync(telemetryType: string): Promise<Map<string, number>> {
-    return this.telemetry.getLatestTelemetryValueForAllNodes(telemetryType);
+  async getLatestTelemetryValueForAllNodesAsync(
+    telemetryType: string,
+    sourceId?: string,
+  ): Promise<Map<string, number>> {
+    return this.telemetry.getLatestTelemetryValueForAllNodes(telemetryType, sourceId);
   }
 
   // Get distinct telemetry types per node (efficient for checking capabilities)
