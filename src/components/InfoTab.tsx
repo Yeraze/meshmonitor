@@ -507,6 +507,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
                 {source.enabled && (
                   <>
                     <p><strong>{t('info.server_running')}</strong> {source.isRunning ? t('common.yes') : t('common.no')}</p>
+                    <p><strong>{t('info.virtual_node_admin_commands')}</strong> {source.allowAdminCommands ? t('info.virtual_node_admin_allowed') : t('info.virtual_node_admin_blocked')}</p>
                     <p><strong>{t('info.connected_clients')}</strong> {source.clientCount}</p>
 
                     {source.clients && source.clients.length > 0 && (
@@ -532,9 +533,6 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
 
                 <p style={{ fontSize: '0.9em', color: '#888', marginTop: '0.75rem' }}>
                   {t('info.virtual_node_description')}
-                </p>
-                <p style={{ fontSize: '0.85em', color: '#999', marginTop: '0.5rem', fontStyle: 'italic' }}>
-                  {t('info.virtual_node_note')}
                 </p>
               </>
             );

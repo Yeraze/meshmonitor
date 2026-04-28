@@ -1683,7 +1683,9 @@
   "info.client_connected": "Connected:",
   "info.client_last_activity": "Last Activity:",
   "info.virtual_node_description": "The Virtual Node Server allows multiple Meshtastic mobile apps to connect simultaneously, reducing load on your physical node.",
-  "info.virtual_node_note": "Note: Admin commands are blocked for security. See .env.example for configuration details.",
+  "info.virtual_node_admin_commands": "Admin Commands:",
+  "info.virtual_node_admin_allowed": "Allowed",
+  "info.virtual_node_admin_blocked": "Blocked",
   "info.virtual_node_unavailable": "Virtual Node status unavailable",
 
   "info.network_stats": "Network Statistics",
