@@ -18,6 +18,7 @@ import { formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } f
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
+import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
 import RelayNodeModal from './RelayNodeModal';
@@ -184,7 +185,9 @@ export default function ChannelsTab({
   };
 
   // Refs
-  const channelMessageInputRef = useRef<HTMLInputElement>(null);
+  const channelMessageInputRef = useRef<HTMLTextAreaElement>(null);
+
+  useAutoResizeTextarea(channelMessageInputRef, newMessage);
 
   // State for "Jump to Bottom" button
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
@@ -951,13 +954,13 @@ export default function ChannelsTab({
                       {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
                         <div className="message-input-container">
                           <div className="input-with-counter">
-                            <input
+                            <textarea
                               ref={channelMessageInputRef}
-                              type="text"
                               value={newMessage}
                               onChange={e => setNewMessage(e.target.value)}
                               placeholder={t('channels.send_placeholder', { name: getChannelName(selectedChannel) })}
                               className="message-input"
+                              rows={1}
                               onFocus={e => {
                                 // On mobile, prevent iOS from scrolling the page excessively
                                 // Use a small delay to let iOS do its thing, then reset scroll
@@ -965,8 +968,16 @@ export default function ChannelsTab({
                                   e.target.scrollIntoView({ block: 'end', behavior: 'smooth' });
                                 }, 100);
                               }}
-                              onKeyPress={e => {
-                                if (e.key === 'Enter') {
+                              onKeyDown={e => {
+                                if (
+                                  e.key === 'Enter' &&
+                                  !e.shiftKey &&
+                                  !e.ctrlKey &&
+                                  !e.metaKey &&
+                                  !e.altKey &&
+                                  !e.nativeEvent.isComposing
+                                ) {
+                                  e.preventDefault();
                                   handleSendMessage(selectedChannel);
                                 }
                               }}

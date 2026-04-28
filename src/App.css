@@ -1549,6 +1549,7 @@ body {
   .byte-counter {
     font-size: 0.65rem;
     right: 4px;
+    bottom: 4px;
     padding: 2px 4px;
   }
 
@@ -1765,11 +1766,12 @@ body {
 .message-input-container {
   display: flex;
   gap: 1rem;
-  align-items: center;
+  align-items: flex-end;
 }
 
 .message-input {
   flex: 1;
+  width: 100%;
   padding: 0.75rem 1rem;
   border: 2px solid var(--ctp-surface1);
   border-radius: var(--radius-lg);
@@ -1777,6 +1779,11 @@ body {
   background: var(--ctp-base);
   color: var(--ctp-text);
   transition: border-color 0.2s;
+  resize: none;
+  min-height: 2.75rem;
+  line-height: 1.4;
+  font-family: inherit;
+  box-sizing: border-box;
 }
 
 .message-input:focus {
@@ -2528,7 +2535,7 @@ body {
   position: relative;
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: stretch;
 }
 
 .input-with-counter .message-input {
@@ -2538,8 +2545,7 @@ body {
 .byte-counter {
   position: absolute;
   right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
+  bottom: 8px;
   font-size: 0.75rem;
   color: var(--ctp-subtext0);
   font-family: var(--font-mono);
