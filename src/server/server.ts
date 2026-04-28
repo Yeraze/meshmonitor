@@ -2678,8 +2678,15 @@ apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (r
           : existingChannel.positionPrecision,
     };
 
-    // Update channel in database
-    await databaseService.channels.upsertChannel(updatedChannelData);
+    // Update channel in database. Scope to the requesting source so each
+    // source's channel row is independent. `allowBlankName: true` lets the
+    // user clear a stored channel name — without it, the ingest-protection
+    // coalesce in upsertChannel silently keeps the old name (#1567 backfire).
+    await databaseService.channels.upsertChannel(
+      updatedChannelData,
+      typeof chanSourceId === 'string' && chanSourceId.length > 0 ? chanSourceId : undefined,
+      { allowBlankName: true },
+    );
 
     // Send channel configuration to Meshtastic device
     const chanUpdateManager = (chanSourceId

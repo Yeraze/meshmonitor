@@ -262,6 +262,24 @@ fi
 
 echo -e "${GREEN}✓ API Token generated: ${API_TOKEN:0:15}...${NC}"
 
+# Resolve the gauntlet channel slot dynamically. Project rule: use the
+# "gauntlet" channel for testing, never primary. Hardcoding a slot index
+# (e.g. `channel: 3`) drifts every time channels get reordered on the test
+# device — and a wrong index can land the message on the wrong channel
+# entirely if the test device's slot N happens to share a PSK (notably the
+# default `AQ==`) with another slot.
+GAUNTLET_SLOT=$(curl -sS -H "Authorization: Bearer $API_TOKEN" \
+    "${BASE_URL}/api/v1/channels" \
+    | jq -r '.data[]? | select((.name // "") | ascii_downcase == "gauntlet") | .id' \
+    | head -n1)
+
+if [ -z "$GAUNTLET_SLOT" ] || ! [[ "$GAUNTLET_SLOT" =~ ^[0-9]+$ ]]; then
+    echo -e "${YELLOW}⚠ No 'gauntlet' channel found on the test device — falling back to slot 3${NC}"
+    GAUNTLET_SLOT=3
+else
+    echo -e "${GREEN}✓ Resolved gauntlet channel to slot ${GAUNTLET_SLOT}${NC}"
+fi
+
 echo ""
 echo "=========================================="
 echo "Step 2: Test V1 API Endpoints"
@@ -372,13 +390,14 @@ echo ""
 # do NOT require CSRF tokens (which would be needed for session auth)
 
 # Test: POST to messages endpoint without CSRF token (should work with Bearer)
-# Uses channel 3 (gauntlet) for testing per project rules
+# Uses the gauntlet channel for testing per project rules. Slot is resolved
+# dynamically above so this stays correct even when channels get reordered.
 run_test "POST /api/v1/messages without CSRF token succeeds with Bearer auth" \
     "RESPONSE=\$(curl -sS -w '\\n%{http_code}' \
         -H 'Authorization: Bearer $API_TOKEN' \
         -H 'Content-Type: application/json' \
         -X POST '${BASE_URL}/api/v1/messages' \
-        -d '{\"text\": \"API v1 test message\", \"channel\": 3}')
+        -d '{\"text\": \"API v1 test message\", \"channel\": ${GAUNTLET_SLOT}}')
     HTTP_CODE=\$(echo \"\$RESPONSE\" | tail -n1)
     BODY=\$(echo \"\$RESPONSE\" | head -n -1)
     # Should NOT get 403 CSRF error - expect 201 (created) or 503 (not connected)

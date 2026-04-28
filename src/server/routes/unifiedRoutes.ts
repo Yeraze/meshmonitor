@@ -154,7 +154,27 @@ router.get('/channels', async (req: Request, res: Response) => {
     ]);
 
     type ChannelSourceRef = { sourceId: string; sourceName: string; channelNumber: number };
-    const byName = new Map<string, ChannelSourceRef[]>();
+    // Group case-insensitively so cross-device casing drift (e.g. one source
+    // stores "primary", another stores "" → "Primary") doesn't split the
+    // unified picker into two entries that each show only half the messages.
+    // Key is `name.toLowerCase()`; we keep the first-seen casing for display
+    // but upgrade to a non-synthesized casing when one shows up later, so a
+    // device-set name wins over the synthetic `Primary` fallback.
+    const byName = new Map<string, { displayName: string; sources: ChannelSourceRef[] }>();
+    const upsert = (name: string, ref: ChannelSourceRef) => {
+      const key = name.toLowerCase();
+      const entry = byName.get(key);
+      if (entry) {
+        entry.sources.push(ref);
+        // Prefer a device-stored casing over the synthetic "Primary" fallback;
+        // otherwise keep first-seen.
+        if (entry.displayName === PRIMARY_CHANNEL_NAME && name !== PRIMARY_CHANNEL_NAME) {
+          entry.displayName = name;
+        }
+      } else {
+        byName.set(key, { displayName: name, sources: [ref] });
+      }
+    };
 
     await Promise.all(
       sources.map(async (source) => {
@@ -179,13 +199,11 @@ router.get('/channels', async (req: Request, res: Response) => {
                 )
               : false);
             if (!canReadChannel) continue;
-            const list = byName.get(name) ?? [];
-            list.push({
+            upsert(name, {
               sourceId: source.id,
               sourceName: source.name,
               channelNumber: channelNum,
             });
-            byName.set(name, list);
           }
         } catch (err) {
           logger.warn(`Failed to load channels for source ${source.id}:`, err);
@@ -205,19 +223,17 @@ router.get('/channels', async (req: Request, res: Response) => {
           if (!canReadVirtualChannel(vc.id, readableVirtualIds)) continue;
           const name = (vc.name ?? '').trim();
           if (!name) continue;
-          const list = byName.get(name) ?? [];
-          list.push({
+          upsert(name, {
             sourceId: source.id,
             sourceName: source.name,
             channelNumber: CHANNEL_DB_OFFSET + vc.id,
           });
-          byName.set(name, list);
         }
       })
     );
 
-    const result = Array.from(byName.entries())
-      .map(([name, srcs]) => ({ name, sources: srcs }))
+    const result = Array.from(byName.values())
+      .map(({ displayName, sources: srcs }) => ({ name: displayName, sources: srcs }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
     res.json(result);
@@ -356,9 +372,16 @@ router.get('/messages', async (req: Request, res: Response) => {
           const chans = chansResult.value;
           const resolved: number[] = [];
 
+          // Match channel name case-insensitively. The unified picker groups
+          // names case-insensitively (see `/channels` upsert helper), so the
+          // resolver here must too — otherwise a source whose stored name
+          // differs only in casing (e.g. "primary" vs "Primary") returns zero
+          // messages even though the picker showed a single entry.
+          const channelNameLower = channelName.toLowerCase();
+
           // Physical slot match.
           const match = chans?.find(
-            (c) => unifiedChannelDisplayName(c as any) === channelName
+            (c) => (unifiedChannelDisplayName(c as any) ?? '').toLowerCase() === channelNameLower
           );
           if (match) {
             const physNum = (match as any).id as number;
@@ -377,7 +400,7 @@ router.get('/messages', async (req: Request, res: Response) => {
           // we union the stored channel numbers (physical slot and synthetic
           // CHANNEL_DB_OFFSET+vcId) so the unified stream includes both.
           for (const vc of vcsOnSource) {
-            if ((vc.name ?? '').trim() === channelName && vc.id != null) {
+            if ((vc.name ?? '').trim().toLowerCase() === channelNameLower && vc.id != null) {
               resolved.push(CHANNEL_DB_OFFSET + vc.id);
             }
           }
