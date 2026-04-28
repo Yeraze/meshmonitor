@@ -4221,7 +4221,6 @@
   "source.form.error_port_range": "Port must be 1–65535",
   "source.form.error_heartbeat_range": "Heartbeat must be 0 (disabled) or 1–3600 seconds",
   "source.form.error_vn_port_range": "Virtual Node port must be 1–65535",
-  "source.form.error_vn_port_collision": "Virtual Node port cannot equal the source TCP port",
   "source.form.error_save_failed": "Save failed",
   "source.form.error_network": "Network error",
   "source.virtual_node_badge_title": "Virtual Node",
