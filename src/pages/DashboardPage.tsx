@@ -229,10 +229,6 @@ function DashboardInner() {
         setFormError(t('source.form.error_vn_port_range'));
         return;
       }
-      if (vnPort === port) {
-        setFormError(t('source.form.error_vn_port_collision'));
-        return;
-      }
       vnConfig = { enabled: true, port: vnPort, allowAdminCommands: formVnAllowAdmin };
     }
 
