@@ -62,6 +62,7 @@ import { migration as addSelectedLayerMigration, runMigration047Postgres, runMig
 import { migration as rebuildIgnoredNodesPerSourceMigration, runMigration048Postgres, runMigration048Mysql } from '../server/migrations/048_rebuild_ignored_nodes_per_source.js';
 import { migration as perfCompositeIndexesMigration, runMigration049Postgres, runMigration049Mysql } from '../server/migrations/049_perf_composite_indexes.js';
 import { migration as promoteGlobalsToDefaultSourceMigration, runMigration050Postgres, runMigration050Mysql } from '../server/migrations/050_promote_globals_to_default_source.js';
+import { migration as dropLegacyNotifPrefsUserIdUniqueMigration, runMigration051Postgres, runMigration051Mysql } from '../server/migrations/051_drop_legacy_notif_prefs_userid_unique.js';
 
 // ============================================================================
 // Registry
@@ -779,4 +780,21 @@ registry.register({
   sqlite: (db) => promoteGlobalsToDefaultSourceMigration.up(db),
   postgres: (client) => runMigration050Postgres(client),
   mysql: (pool) => runMigration050Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 051: Drop legacy single-column UNIQUE on
+// user_notification_preferences.userId. Migration 028 only dropped one of the
+// two possible constraint names; PostgreSQL deployments where the constraint
+// was originally auto-named with a `_key` suffix still block per-source
+// notification preference upserts. Defensive across PG/MySQL/SQLite.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 51,
+  name: 'drop_legacy_notif_prefs_userid_unique',
+  settingsKey: 'migration_051_drop_legacy_notif_prefs_userid_unique',
+  sqlite: (db) => dropLegacyNotifPrefsUserIdUniqueMigration.up(db),
+  postgres: (client) => runMigration051Postgres(client),
+  mysql: (pool) => runMigration051Mysql(pool),
 });

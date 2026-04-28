@@ -97,9 +97,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   useEffect(() => {
     checkNotificationStatus();
     loadVapidStatus();
+  }, []);
+
+  // Reload source-scoped data whenever the active source changes
+  useEffect(() => {
     loadChannels();
     loadNodes();
-  }, []);
+  }, [currentSourceId]);
 
   // Fetch available nodes
   const loadNodes = async () => {
@@ -167,7 +171,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
   const loadChannels = async () => {
     try {
-      const response = await api.get<Channel[]>('/api/channels');
+      const channelsQs = currentSourceId ? `?sourceId=${encodeURIComponent(currentSourceId)}` : '';
+      const response = await api.get<Channel[]>(`/api/channels${channelsQs}`);
       const channelList = Array.isArray(response) ? response : [];
       setChannels(channelList);
 
