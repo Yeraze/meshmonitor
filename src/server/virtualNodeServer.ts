@@ -6,6 +6,7 @@ import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService from './protobufService.js';
 import { MeshtasticManager } from './meshtasticManager.js';
 import databaseService from '../services/database.js';
+import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -781,6 +782,10 @@ export class VirtualNodeServer extends EventEmitter {
         return { sent, disconnected: true };
       }
 
+      // Surface the effective position (override if enabled) so virtual node
+      // clients see the user-set custom location instead of stale device GPS
+      // (issue #2847).
+      const effPos = getEffectiveDbNodePosition(node);
       const nodeInfoMessage = await meshtasticProtobufService.createNodeInfo({
         nodeNum: node.nodeNum,
         user: {
@@ -791,10 +796,10 @@ export class VirtualNodeServer extends EventEmitter {
           role: node.role ?? undefined,
           publicKey: node.publicKey ?? undefined,
         },
-        position: (node.latitude && node.longitude) ? {
-          latitude: node.latitude,
-          longitude: node.longitude,
-          altitude: node.altitude || 0,
+        position: (effPos.latitude != null && effPos.longitude != null) ? {
+          latitude: effPos.latitude,
+          longitude: effPos.longitude,
+          altitude: effPos.altitude ?? 0,
           time: node.lastHeard || Math.floor(Date.now() / 1000),
         } : undefined,
         deviceMetrics: (node.batteryLevel != null || node.voltage != null ||

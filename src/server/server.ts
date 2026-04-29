@@ -41,7 +41,7 @@ import { serverEventNotificationService } from './services/serverEventNotificati
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
 import { getUserNotificationPreferencesAsync, saveUserNotificationPreferencesAsync, applyNodeNamePrefixAsync } from './utils/notificationFiltering.js';
 import { upgradeService } from './services/upgradeService.js';
-import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess } from './utils/nodeEnhancer.js';
+import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess, getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 import { generateAnalyticsScript, AnalyticsProvider } from './utils/analyticsScriptGenerator.js';
 import { rewriteHtml } from './utils/htmlRewriter.js';
@@ -3854,20 +3854,10 @@ apiRouter.delete('/route-segments/record-holder', requirePermission('info', 'wri
   }
 });
 
-// Helper to get effective position (respecting overrides)
-const getEffectivePosition = (node: Awaited<ReturnType<typeof databaseService.nodes.getNode>>) => {
-  if (!node) return { latitude: undefined, longitude: undefined };
-
-  // Check for position override first
-  // Note: SQLite returns 1 for boolean true, PostgreSQL/MySQL return true via Drizzle
-  // Using truthy check handles both cases (1 and true are both truthy)
-  if (node.positionOverrideEnabled && node.latitudeOverride != null && node.longitudeOverride != null) {
-    return { latitude: node.latitudeOverride, longitude: node.longitudeOverride };
-  }
-
-  // Fall back to regular position
-  return { latitude: node.latitude, longitude: node.longitude };
-};
+// Helper to get effective position (respecting overrides) — see
+// `getEffectiveDbNodePosition` in utils/nodeEnhancer for the canonical impl.
+const getEffectivePosition = (node: Awaited<ReturnType<typeof databaseService.nodes.getNode>>) =>
+  getEffectiveDbNodePosition(node);
 
 // Get all neighbor info (latest per node pair)
 apiRouter.get('/neighbor-info', requirePermission('info', 'read'), async (req, res) => {
@@ -4231,10 +4221,12 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), a
           nodesWithWeather.push(node.nodeId);
         }
 
-        // Check if node has estimated position telemetry AND doesn't have real GPS coordinates
-        // Only show uncertainty circle for nodes currently using estimated position
+        // Check if node has estimated position telemetry AND doesn't have a known position.
+        // A user-set override counts as a known position — we don't want to draw an
+        // uncertainty circle on a node the user has explicitly placed (issue #2847).
         const hasEstimatedPosition = telemetryTypes.some(t => estimatedPositionTypes.has(t));
-        const hasRealPosition = !!(node.latitude && node.longitude);
+        const eff = getEffectiveDbNodePosition(node);
+        const hasRealPosition = eff.latitude != null && eff.longitude != null;
         if (hasEstimatedPosition && !hasRealPosition) {
           nodesWithEstimatedPosition.push(node.nodeId);
         }
@@ -4577,9 +4569,11 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
               nodesWithWeather.push(node.nodeId);
             }
 
-            // Only show uncertainty circle for nodes currently using estimated position
+            // Only show uncertainty circle for nodes currently using estimated position.
+            // A user-set override counts as a known position (issue #2847).
             const hasEstimatedPosition = telemetryTypes.some(t => estimatedPositionTypes.has(t));
-            const hasRealPosition = !!(node.latitude && node.longitude);
+            const eff = getEffectiveDbNodePosition(node);
+            const hasRealPosition = eff.latitude != null && eff.longitude != null;
             if (hasEstimatedPosition && !hasRealPosition) {
               nodesWithEstimatedPosition.push(node.nodeId);
             }
@@ -6661,14 +6655,18 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               // Scope to adminLoadSourceId so multi-source deployments resolve the correct
               // copy of the local node — otherwise we might pull fixedPosition coords from a
               // stale row on a different source that shares the same nodeNum.
+              // Use the effective position so a user-set override takes precedence over the
+              // device-reported lat/lon — that's the position the user wants displayed and
+              // pushed back to the device when saving the config (issue #2847).
               if (finalConfig.deviceConfig.position.fixedPosition && localNodeNum) {
                 const nodeData = await databaseService.nodes.getNode(localNodeNum, adminLoadSourceId);
-                if (nodeData?.latitude && nodeData?.longitude) {
-                  config.fixedLatitude = nodeData.latitude;
-                  config.fixedLongitude = nodeData.longitude;
+                const eff = getEffectiveDbNodePosition(nodeData);
+                if (eff.latitude != null && eff.longitude != null) {
+                  config.fixedLatitude = eff.latitude;
+                  config.fixedLongitude = eff.longitude;
                 }
-                if (nodeData?.altitude) {
-                  config.fixedAltitude = nodeData.altitude;
+                if (eff.altitude != null) {
+                  config.fixedAltitude = eff.altitude;
                 }
               }
             } else {
@@ -6871,15 +6869,18 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
             };
             // If fixedPosition is enabled, get the coordinates from the node's stored position.
             // Scope to adminLoadSourceId so the remote node lookup resolves the row
-            // belonging to the source the admin is operating on.
+            // belonging to the source the admin is operating on. Honor any user-set
+            // position override so the displayed/saved fixed coords match the user's
+            // intent rather than the device's stale value (issue #2847).
             if (remoteConfig.fixedPosition) {
               const nodeData = await databaseService.nodes.getNode(destinationNodeNum, adminLoadSourceId);
-              if (nodeData?.latitude && nodeData?.longitude) {
-                config.fixedLatitude = nodeData.latitude;
-                config.fixedLongitude = nodeData.longitude;
+              const eff = getEffectiveDbNodePosition(nodeData);
+              if (eff.latitude != null && eff.longitude != null) {
+                config.fixedLatitude = eff.latitude;
+                config.fixedLongitude = eff.longitude;
               }
-              if (nodeData?.altitude) {
-                config.fixedAltitude = nodeData.altitude;
+              if (eff.altitude != null) {
+                config.fixedAltitude = eff.altitude;
               }
             }
             break;

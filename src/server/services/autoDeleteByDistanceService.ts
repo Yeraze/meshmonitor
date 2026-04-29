@@ -3,6 +3,7 @@ import databaseService from '../../services/database.js';
 import { calculateDistance } from '../../utils/distance.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import meshtasticManager from '../meshtasticManager.js';
+import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 
 type DistanceAction = 'delete' | 'ignore';
 
@@ -114,13 +115,15 @@ class AutoDeleteByDistanceService {
           continue;
         }
 
-        // Skip nodes without position
-        if (node.latitude == null || node.longitude == null) {
+        // Skip nodes without position. Use effective position so a user-set
+        // override is what the distance check sees (issue #2847).
+        const eff = getEffectiveDbNodePosition(node);
+        if (eff.latitude == null || eff.longitude == null) {
           continue;
         }
 
         // Calculate distance
-        const distance = calculateDistance(homeLat, homeLon, node.latitude, node.longitude);
+        const distance = calculateDistance(homeLat, homeLon, eff.latitude, eff.longitude);
 
         if (distance > thresholdKm) {
           const nodeSourceId = (node as any).sourceId || sourceId || 'default';

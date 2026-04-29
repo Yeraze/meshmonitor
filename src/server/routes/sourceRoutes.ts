@@ -5,7 +5,7 @@ import { requirePermission, optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
-import { filterNodesByChannelPermission, maskNodeLocationByChannel } from '../utils/nodeEnhancer.js';
+import { filterNodesByChannelPermission, maskNodeLocationByChannel, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { PortNum } from '../constants/meshtastic.js';
 
 const router = Router();
@@ -38,14 +38,9 @@ async function validateVirtualNodeConfig(
   return null;
 }
 
-// Pure utility — no request-specific state
-const getEffectivePosition = (node: any) => {
-  if (!node) return { latitude: undefined, longitude: undefined };
-  if (node.positionOverrideEnabled && node.latitudeOverride != null && node.longitudeOverride != null) {
-    return { latitude: node.latitudeOverride, longitude: node.longitudeOverride };
-  }
-  return { latitude: node.latitude, longitude: node.longitude };
-};
+// Pure utility — no request-specific state. Delegates to the shared helper
+// so override behaviour matches the rest of the API surface (issue #2847).
+const getEffectivePosition = (node: any) => getEffectiveDbNodePosition(node);
 
 // List all sources — public so the landing page can redirect unauthenticated users
 // to the single-source view (or show the login button on the source list page).

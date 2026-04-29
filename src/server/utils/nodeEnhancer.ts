@@ -6,6 +6,73 @@ import databaseService from '../../services/database.js';
 import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 
 /**
+ * Effective position fields for a database node row.
+ *
+ * `latitude`/`longitude`/`altitude` are the device-reported GPS columns;
+ * `latitudeOverride`/`longitudeOverride`/`altitudeOverride` are the user-set
+ * override that takes precedence when `positionOverrideEnabled` is true.
+ */
+type DbNodePositionFields = {
+  latitude?: number | null;
+  longitude?: number | null;
+  altitude?: number | null;
+  positionOverrideEnabled?: boolean | number | null;
+  latitudeOverride?: number | null;
+  longitudeOverride?: number | null;
+  altitudeOverride?: number | null;
+};
+
+export interface EffectivePosition {
+  latitude: number | null | undefined;
+  longitude: number | null | undefined;
+  altitude: number | null | undefined;
+  isOverride: boolean;
+}
+
+/**
+ * Get the effective position for a raw database node row, respecting any
+ * user-set position override.
+ *
+ * Both the device-reported GPS (latitude/longitude) and the user override
+ * (latitudeOverride/longitudeOverride) are stored together so the historical
+ * GPS trail is preserved, but every read-side surface should consult this
+ * helper so the user's override is what's actually displayed/used downstream
+ * (issue #2847).
+ *
+ * Returns the override coords when `positionOverrideEnabled` is truthy AND
+ * both override coords are non-null; otherwise falls back to the device GPS
+ * columns. SQLite returns 1/0 for booleans; PostgreSQL/MySQL return real
+ * booleans — both are handled via truthy check.
+ */
+export function getEffectiveDbNodePosition(
+  node: DbNodePositionFields | null | undefined,
+): EffectivePosition {
+  if (!node) {
+    return { latitude: undefined, longitude: undefined, altitude: undefined, isOverride: false };
+  }
+
+  if (
+    node.positionOverrideEnabled &&
+    node.latitudeOverride != null &&
+    node.longitudeOverride != null
+  ) {
+    return {
+      latitude: node.latitudeOverride,
+      longitude: node.longitudeOverride,
+      altitude: node.altitudeOverride ?? node.altitude,
+      isOverride: true,
+    };
+  }
+
+  return {
+    latitude: node.latitude,
+    longitude: node.longitude,
+    altitude: node.altitude,
+    isOverride: false,
+  };
+}
+
+/**
  * Helper to enhance a node with position priority logic and privacy masking
  */
 export async function enhanceNodeForClient(
