@@ -32,6 +32,7 @@ import {
   IgnoredNodesRepository,
   EmbedProfileRepository,
   SourcesRepository,
+  AnalysisRepository,
 } from '../db/repositories/index.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 
@@ -403,6 +404,7 @@ class DatabaseService {
   public ignoredNodesRepo: IgnoredNodesRepository | null = null;
   public embedProfileRepo: EmbedProfileRepository | null = null;
   public sourcesRepo: SourcesRepository | null = null;
+  public analysisRepo: AnalysisRepository | null = null;
 
   /**
    * Typed repository accessors — throw if database not initialized.
@@ -476,6 +478,11 @@ class DatabaseService {
   get sources(): SourcesRepository {
     if (!this.sourcesRepo) throw new Error('Database not initialized');
     return this.sourcesRepo;
+  }
+
+  get analysis(): AnalysisRepository {
+    if (!this.analysisRepo) throw new Error('Database not initialized');
+    return this.analysisRepo;
   }
 
   constructor() {
@@ -699,6 +706,7 @@ class DatabaseService {
       this.ignoredNodesRepo = new IgnoredNodesRepository(drizzleDb, this.drizzleDbType);
       this.embedProfileRepo = new EmbedProfileRepository(drizzleDb, this.drizzleDbType);
       this.sourcesRepo = new SourcesRepository(drizzleDb, this.drizzleDbType);
+      this.analysisRepo = new AnalysisRepository(drizzleDb as any, this.drizzleDbType);
 
       logger.info('[DatabaseService] Drizzle repositories initialized successfully');
 
