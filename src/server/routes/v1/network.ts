@@ -7,6 +7,7 @@
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
+import { getEffectiveDbNodePosition } from '../../utils/nodeEnhancer.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -91,17 +92,23 @@ router.get('/topology', async (req: Request, res: Response) => {
     const traceroutes = await databaseService.traceroutes.getAllTraceroutes(500, sourceId);
 
     const topology = {
-      nodes: nodes.map(n => ({
-        nodeId: n.nodeId,
-        nodeNum: n.nodeNum,
-        longName: n.longName,
-        shortName: n.shortName,
-        role: n.role,
-        hopsAway: n.hopsAway,
-        latitude: n.latitude,
-        longitude: n.longitude,
-        lastHeard: n.lastHeard
-      })),
+      nodes: nodes.map(n => {
+        // Surface effective position (override if enabled, else device GPS) so
+        // topology consumers see the same lat/lon as the rest of the API
+        // (issue #2847).
+        const eff = getEffectiveDbNodePosition(n);
+        return {
+          nodeId: n.nodeId,
+          nodeNum: n.nodeNum,
+          longName: n.longName,
+          shortName: n.shortName,
+          role: n.role,
+          hopsAway: n.hopsAway,
+          latitude: eff.latitude,
+          longitude: eff.longitude,
+          lastHeard: n.lastHeard
+        };
+      }),
       edges: traceroutes.map(t => ({
         from: t.fromNodeId,
         to: t.toNodeId,

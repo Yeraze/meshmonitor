@@ -5,6 +5,7 @@
 
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 
 /**
  * Simple YAML generator for device backup
@@ -313,20 +314,24 @@ class DeviceBackupService {
 
       if (localNodeInfo?.nodeNum) {
         const localNode = await databaseService.nodes.getNode(localNodeInfo.nodeNum);
+        // Honor a user-set position override so the backup captures the location
+        // the user has asserted as authoritative (issue #2847).
+        const eff = getEffectiveDbNodePosition(localNode);
         logger.debug('Database lookup result:', {
           foundNode: !!localNode,
-          hasLatitude: !!localNode?.latitude,
-          hasLongitude: !!localNode?.longitude,
-          latitude: localNode?.latitude,
-          longitude: localNode?.longitude,
-          altitude: localNode?.altitude
+          hasLatitude: eff.latitude != null,
+          hasLongitude: eff.longitude != null,
+          latitude: eff.latitude,
+          longitude: eff.longitude,
+          altitude: eff.altitude,
+          isOverride: eff.isOverride,
         });
 
-        if (localNode && (localNode.latitude || localNode.longitude)) {
+        if (localNode && (eff.latitude != null || eff.longitude != null)) {
           locationData = {
-            lat: localNode.latitude || 0,
-            lon: localNode.longitude || 0,
-            alt: localNode.altitude || 0
+            lat: eff.latitude ?? 0,
+            lon: eff.longitude ?? 0,
+            alt: eff.altitude ?? 0,
           };
           logger.debug('Found location in database:', locationData);
         }

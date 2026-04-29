@@ -13,6 +13,7 @@ import { Router, Request, Response } from 'express';
 import { createEmbedCspMiddleware } from '../middleware/embedMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 
 const router = Router();
 
@@ -76,25 +77,29 @@ router.get('/:profileId/nodes', createEmbedCspMiddleware(), async (req: Request,
 
     // Filter by the profile's configured channels
     const profileChannels = new Set(profile.channels as number[]);
-    const filtered = allNodes.filter(node => {
-      // Must have a position
-      if (!node.latitude || !node.longitude) return false;
-      if (node.latitude === 0 && node.longitude === 0) return false;
+    // Resolve effective position once per node so the override (if set) is the
+    // value used for both filtering and display (issue #2847).
+    const filtered = allNodes
+      .map(node => ({ node, eff: getEffectiveDbNodePosition(node) }))
+      .filter(({ node, eff }) => {
+        // Must have a position (override or device-reported)
+        if (eff.latitude == null || eff.longitude == null) return false;
+        if (eff.latitude === 0 && eff.longitude === 0) return false;
 
-      // Filter by channels
-      if (profileChannels.size > 0) {
-        const ch = node.channel ?? 0;
-        if (!profileChannels.has(ch)) return false;
-      }
+        // Filter by channels
+        if (profileChannels.size > 0) {
+          const ch = node.channel ?? 0;
+          if (!profileChannels.has(ch)) return false;
+        }
 
-      // Filter out MQTT nodes if configured
-      if (!profile.showMqttNodes && node.viaMqtt) return false;
+        // Filter out MQTT nodes if configured
+        if (!profile.showMqttNodes && node.viaMqtt) return false;
 
-      return true;
-    });
+        return true;
+      });
 
     // Return public-safe fields for map display
-    const nodes = filtered.map(node => ({
+    const nodes = filtered.map(({ node, eff }) => ({
       nodeNum: node.nodeNum,
       nodeId: node.nodeId,
       user: {
@@ -103,9 +108,9 @@ router.get('/:profileId/nodes', createEmbedCspMiddleware(), async (req: Request,
         hwModel: node.hwModel,
       },
       position: {
-        latitude: node.latitude,
-        longitude: node.longitude,
-        altitude: node.altitude,
+        latitude: eff.latitude,
+        longitude: eff.longitude,
+        altitude: eff.altitude,
       },
       lastHeard: node.lastHeard,
       snr: node.snr,
@@ -134,19 +139,21 @@ router.get('/:profileId/neighborinfo', createEmbedCspMiddleware(), async (req: R
     const allNodes = await databaseService.nodes.getActiveNodes(7);
     const profileChannels = new Set(profile.channels as number[]);
 
-    // Build a lookup of nodes that pass the embed's filters
+    // Build a lookup of nodes that pass the embed's filters. Use effective
+    // position so a user-set override is what's drawn on the map (issue #2847).
     const nodeMap = new Map<number, { latitude: number; longitude: number; name: string }>();
     for (const node of allNodes) {
-      if (!node.latitude || !node.longitude) continue;
-      if (node.latitude === 0 && node.longitude === 0) continue;
+      const eff = getEffectiveDbNodePosition(node);
+      if (eff.latitude == null || eff.longitude == null) continue;
+      if (eff.latitude === 0 && eff.longitude === 0) continue;
       if (!profile.showMqttNodes && node.viaMqtt) continue;
       if (profileChannels.size > 0) {
         const ch = node.channel ?? 0;
         if (!profileChannels.has(ch)) continue;
       }
       nodeMap.set(node.nodeNum, {
-        latitude: node.latitude,
-        longitude: node.longitude,
+        latitude: eff.latitude,
+        longitude: eff.longitude,
         name: node.longName || node.shortName || `!${node.nodeNum.toString(16)}`,
       });
     }
@@ -191,19 +198,21 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Re
     const allNodes = await databaseService.nodes.getActiveNodes(7);
     const profileChannels = new Set(profile.channels as number[]);
 
-    // Build position lookup for visible nodes
+    // Build position lookup for visible nodes. Use effective position so a
+    // user-set override is what anchors traceroute path segments (issue #2847).
     const nodePositions = new Map<number, { lat: number; lng: number; name: string }>();
     for (const node of allNodes) {
-      if (!node.latitude || !node.longitude) continue;
-      if (node.latitude === 0 && node.longitude === 0) continue;
+      const eff = getEffectiveDbNodePosition(node);
+      if (eff.latitude == null || eff.longitude == null) continue;
+      if (eff.latitude === 0 && eff.longitude === 0) continue;
       if (!profile.showMqttNodes && node.viaMqtt) continue;
       if (profileChannels.size > 0) {
         const ch = node.channel ?? 0;
         if (!profileChannels.has(ch)) continue;
       }
       nodePositions.set(node.nodeNum, {
-        lat: node.latitude,
-        lng: node.longitude,
+        lat: eff.latitude,
+        lng: eff.longitude,
         name: node.longName || node.shortName || `!${node.nodeNum.toString(16)}`,
       });
     }

@@ -22,6 +22,7 @@ import { MessageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
+import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { detectChannelMoves } from './utils/channelMoveDetection.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
@@ -2153,11 +2154,14 @@ class MeshtasticManager implements ISourceManager {
     // Compute initial state from current node positions (no events fired).
     // Scope to this manager's source so a two-source deployment doesn't mix node
     // positions from a different mesh into this geofence engine's state.
+    // Use effective position so a user-set override is what the geofence engine
+    // tests against (issue #2847).
     const allNodes = await databaseService.nodes.getAllNodes(this.sourceId);
     for (const trigger of enabledTriggers) {
       const insideSet = new Set<number>();
       for (const node of allNodes) {
-        if (node.latitude == null || node.longitude == null) continue;
+        const eff = getEffectiveDbNodePosition(node);
+        if (eff.latitude == null || eff.longitude == null) continue;
         const nodeNum = Number(node.nodeNum);
 
         // Check node filter
@@ -2166,7 +2170,7 @@ class MeshtasticManager implements ISourceManager {
           continue;
         }
 
-        if (isPointInGeofence(node.latitude, node.longitude, trigger.shape)) {
+        if (isPointInGeofence(eff.latitude, eff.longitude, trigger.shape)) {
           insideSet.add(nodeNum);
         }
       }
@@ -2500,10 +2504,13 @@ class MeshtasticManager implements ISourceManager {
 
     for (const nodeNum of stateSet) {
       const node = await databaseService.nodes.getNode(nodeNum, this.sourceId);
-      if (!node || node.latitude == null || node.longitude == null) continue;
+      // Honor a user-set override so the geofence reads the same coordinates
+      // surfaced everywhere else (issue #2847).
+      const eff = getEffectiveDbNodePosition(node);
+      if (!node || eff.latitude == null || eff.longitude == null) continue;
 
       // Re-validate position is still inside
-      if (!isPointInGeofence(node.latitude, node.longitude, trigger.shape)) {
+      if (!isPointInGeofence(eff.latitude, eff.longitude, trigger.shape)) {
         stateSet.delete(nodeNum);
         logger.debug(`📍 Geofence "${trigger.name}": node ${nodeNum} no longer inside (stale position)`);
         continue;
@@ -2515,7 +2522,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       logger.info(`📍 Geofence "${trigger.name}": while_inside tick for node ${nodeNum}`);
-      this.executeGeofenceTrigger(trigger, nodeNum, node.latitude, node.longitude, 'while_inside');
+      this.executeGeofenceTrigger(trigger, nodeNum, eff.latitude, eff.longitude, 'while_inside');
     }
   }
 
@@ -4273,6 +4280,10 @@ class MeshtasticManager implements ISourceManager {
     try {
       const node = await databaseService.nodes.getNode(nodeNum);
       if (!node) return;
+      // Honor a user-set position override when broadcasting NodeInfo so the
+      // mesh sees the same coordinates the user has asserted as authoritative
+      // (issue #2847).
+      const effPos = getEffectiveDbNodePosition(node);
       const nodeInfoMessage = await meshtasticProtobufService.createNodeInfo({
         nodeNum: node.nodeNum,
         user: {
@@ -4284,11 +4295,11 @@ class MeshtasticManager implements ISourceManager {
           publicKey: node.publicKey ?? undefined,
         },
         position:
-          node.latitude && node.longitude
+          effPos.latitude != null && effPos.longitude != null
             ? {
-                latitude: node.latitude,
-                longitude: node.longitude,
-                altitude: node.altitude || 0,
+                latitude: effPos.latitude,
+                longitude: effPos.longitude,
+                altitude: effPos.altitude ?? 0,
                 time: node.lastHeard || Math.floor(Date.now() / 1000),
               }
             : undefined,
@@ -4867,8 +4878,13 @@ class MeshtasticManager implements ISourceManager {
             logger.error(`Failed to update mobility for ${nodeId}:`, err)
           );
 
-          // Check geofence triggers for this node's new position
-          this.checkGeofencesForNode(fromNum, coords.latitude, coords.longitude).catch(err => logger.error('Error checking geofences:', err));
+          // Check geofence triggers for this node's new position. Skip when
+          // a user-set override is in effect — the override is the authoritative
+          // location for that node and doesn't change with incoming packets, so
+          // device GPS shouldn't drive geofence transitions (issue #2847).
+          if (existingNode?.positionOverrideEnabled !== true) {
+            this.checkGeofencesForNode(fromNum, coords.latitude, coords.longitude).catch(err => logger.error('Error checking geofences:', err));
+          }
 
           logger.debug(`🗺️ Updated node position: ${nodeId} -> ${coords.latitude}, ${coords.longitude} (precision: ${precisionBits ?? 'unknown'} bits, channel: ${channelIndex})`);
         }
@@ -5808,11 +5824,14 @@ class MeshtasticManager implements ISourceManager {
 
       for (const nodeNum of allUniqueNodes) {
         const node = await databaseService.nodes.getNode(nodeNum, tracerouteScopeSourceId);
-        if (node?.latitude && node?.longitude) {
+        // Snapshot the effective position so historical traceroute renders
+        // anchor on the user-set override when one is configured (issue #2847).
+        const eff = getEffectiveDbNodePosition(node);
+        if (eff.latitude != null && eff.longitude != null) {
           routePositions[nodeNum] = {
-            lat: node.latitude,
-            lng: node.longitude,
-            ...(node.altitude ? { alt: node.altitude } : {}),
+            lat: eff.latitude,
+            lng: eff.longitude,
+            ...(eff.altitude != null ? { alt: eff.altitude } : {}),
           };
         }
       }
@@ -6246,16 +6265,21 @@ class MeshtasticManager implements ISourceManager {
           node = await databaseService.nodes.getNode(nodeNum);
         }
 
-        // Skip if node doesn't exist or has actual GPS position data
-        if (!node || (node.latitude && node.longitude)) {
+        // Skip if node doesn't exist or already has a known effective position.
+        // A user-set override counts as a known position — we shouldn't estimate
+        // for nodes the user has explicitly placed (issue #2847).
+        const nodeEff = getEffectiveDbNodePosition(node);
+        if (!node || (nodeEff.latitude != null && nodeEff.longitude != null)) {
           continue;
         }
 
         // Use immediate neighbors in the traceroute as anchor points
         // prevNode is the neighbor at index i-1 (toward start of route)
         // nextNode is the neighbor at index i+1 (toward end of route)
-        const prevHasPosition = prevNode?.latitude && prevNode?.longitude;
-        const nextHasPosition = nextNode?.latitude && nextNode?.longitude;
+        const prevEff = getEffectiveDbNodePosition(prevNode);
+        const nextEff = getEffectiveDbNodePosition(nextNode);
+        const prevHasPosition = prevEff.latitude != null && prevEff.longitude != null;
+        const nextHasPosition = nextEff.latitude != null && nextEff.longitude != null;
 
         // Need both neighbors to have positions for estimation
         if (!prevHasPosition || !nextHasPosition) {
@@ -6282,18 +6306,18 @@ class MeshtasticManager implements ISourceManager {
           const totalWeight = weightA + weightB;
 
           if (totalWeight > 0) {
-            newEstimateLat = (prevNode.latitude! * weightA + nextNode.latitude! * weightB) / totalWeight;
-            newEstimateLon = (prevNode.longitude! * weightA + nextNode.longitude! * weightB) / totalWeight;
+            newEstimateLat = (prevEff.latitude! * weightA + nextEff.latitude! * weightB) / totalWeight;
+            newEstimateLon = (prevEff.longitude! * weightA + nextEff.longitude! * weightB) / totalWeight;
             weightingMethod = `SNR-weighted (prev: ${snrADb.toFixed(1)}dB, next: ${snrBDb.toFixed(1)}dB)`;
           } else {
             // Fall back to midpoint if weights are invalid
-            newEstimateLat = (prevNode.latitude! + nextNode.latitude!) / 2;
-            newEstimateLon = (prevNode.longitude! + nextNode.longitude!) / 2;
+            newEstimateLat = (prevEff.latitude! + nextEff.latitude!) / 2;
+            newEstimateLon = (prevEff.longitude! + nextEff.longitude!) / 2;
           }
         } else {
           // Fall back to simple midpoint if no SNR data available
-          newEstimateLat = (prevNode.latitude! + nextNode.latitude!) / 2;
-          newEstimateLon = (prevNode.longitude! + nextNode.longitude!) / 2;
+          newEstimateLat = (prevEff.latitude! + nextEff.latitude!) / 2;
+          newEstimateLon = (prevEff.longitude! + nextEff.longitude!) / 2;
         }
 
         // Get previous estimates for time-weighted averaging
