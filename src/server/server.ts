@@ -762,6 +762,7 @@ import embedPublicRoutes from './routes/embedPublicRoutes.js';
 import firmwareUpdateRoutes from './routes/firmwareUpdateRoutes.js';
 import sourceRoutes from './routes/sourceRoutes.js';
 import unifiedRoutes from './routes/unifiedRoutes.js';
+import analysisRoutes from './routes/analysisRoutes.js';
 import { firmwareUpdateService } from './services/firmwareUpdateService.js';
 import { createGeoJsonRouter } from './routes/geojsonRoutes.js';
 import { GeoJsonService } from './services/geojsonService.js';
@@ -875,6 +876,9 @@ apiRouter.use('/sources', sourceRoutes);
 
 // Unified cross-source views
 apiRouter.use('/unified', unifiedRoutes);
+
+// Cross-source analysis workspace
+apiRouter.use('/analysis', analysisRoutes);
 
 // GeoJSON overlay layer routes
 const geojsonDataDir = path.join(process.env.DATA_DIR || '/data', 'geojson');
