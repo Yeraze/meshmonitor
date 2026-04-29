@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import MapAnalysisToolbar from './MapAnalysisToolbar';
 import { MapAnalysisProvider } from './MapAnalysisContext';
 
@@ -15,7 +16,9 @@ const wrapper = ({ children }: { children: React.ReactNode }) => {
   const qc = new QueryClient();
   return (
     <QueryClientProvider client={qc}>
-      <MapAnalysisProvider>{children}</MapAnalysisProvider>
+      <MemoryRouter>
+        <MapAnalysisProvider>{children}</MapAnalysisProvider>
+      </MemoryRouter>
     </QueryClientProvider>
   );
 };

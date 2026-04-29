@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import LayerToggleButton from './LayerToggleButton';
 import SourceMultiSelect from './SourceMultiSelect';
@@ -25,6 +26,7 @@ const UNTIMED_LAYERS: { key: LayerKey; label: string }[] = [
 ];
 
 export default function MapAnalysisToolbar() {
+  const navigate = useNavigate();
   const { config, setLayerEnabled, setLayerLookback, setSources, setTimeSlider, reset } = useMapAnalysisCtx();
   const { data: sources = [] } = useDashboardSources();
 
@@ -75,6 +77,14 @@ export default function MapAnalysisToolbar() {
 
   return (
     <div className="map-analysis-toolbar-row">
+      <button
+        type="button"
+        className="map-analysis-back"
+        onClick={() => navigate('/')}
+        title="Back to Sources"
+      >
+        ← Sources
+      </button>
       <SourceMultiSelect
         sources={sources.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name }))}
         value={config.sources}

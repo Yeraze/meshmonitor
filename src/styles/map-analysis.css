@@ -389,3 +389,21 @@
   border-radius: 3px;
   border: 1px solid #444;
 }
+
+/* ===== Back to Sources ===== */
+.map-analysis-back {
+  background: transparent;
+  color: #ddd;
+  border: 1px solid #3a3a3a;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.map-analysis-back:hover {
+  background: #262626;
+  color: #fff;
+  border-color: #555;
+}
