@@ -38,3 +38,38 @@
 .map-analysis-source-row {
   display: flex; align-items: center; gap: 8px; cursor: pointer;
 }
+.map-analysis-layer-btn-wrap { position: relative; display: inline-flex; }
+.map-analysis-layer-btn {
+  background: #1f1f1f; color: #eee; border: 1px solid #444;
+  padding: 4px 10px; cursor: pointer; font-size: 14px;
+  border-radius: 4px 0 0 4px;
+}
+.map-analysis-layer-btn.active {
+  background: #2563eb; color: #fff; border-color: #2563eb;
+}
+.map-analysis-layer-chevron {
+  background: #1f1f1f; color: #eee; border: 1px solid #444;
+  border-left: none; padding: 4px 6px; cursor: pointer;
+  border-radius: 0 4px 4px 0;
+}
+.map-analysis-layer-popover {
+  position: absolute; top: 100%; left: 0; margin-top: 4px;
+  background: #222; border: 1px solid #444; border-radius: 6px;
+  padding: 8px; min-width: 120px; z-index: 1000;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.map-analysis-layer-popover button {
+  background: transparent; color: #eee; border: 1px solid #444;
+  padding: 4px 8px; cursor: pointer; border-radius: 4px;
+}
+.map-analysis-layer-popover button.selected {
+  background: #2563eb; border-color: #2563eb;
+}
+.map-analysis-layer-spinner {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: #fbbf24; margin-left: 6px; animation: pulse 1s infinite;
+}
+@keyframes pulse { 50% { opacity: 0.4; } }
+.map-analysis-layer-btn-wrap.errored .map-analysis-layer-btn {
+  border-color: #ef4444;
+}
