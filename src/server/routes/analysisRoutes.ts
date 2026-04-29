@@ -116,4 +116,39 @@ router.get('/neighbors', async (req: Request, res: Response) => {
   }
 });
 
+// In-memory cache for coverage-grid responses. Coverage grids are expensive
+// to compute (binning thousands of pivoted fixes) and rarely change at
+// minute-scale, so we cache by (sourceIds, since, zoom) for 5 minutes.
+const coverageCache = new Map<string, { at: number; data: unknown }>();
+const COVERAGE_TTL_MS = 5 * 60_000;
+
+router.get('/coverage-grid', async (req: Request, res: Response) => {
+  try {
+    const permitted = await resolvePermittedSourceIds(req);
+    const requested = parseSourcesParam(req.query.sources);
+    const sourceIds = requested
+      ? permitted.filter((id) => requested.includes(id))
+      : permitted;
+    const sinceMs = parseSinceMs(req.query.since);
+    const zoom = parseInt(String(req.query.zoom ?? '12'), 10) || 12;
+
+    const key = `${sourceIds.slice().sort().join(',')}|${sinceMs}|${zoom}`;
+    const cached = coverageCache.get(key);
+    if (cached && Date.now() - cached.at < COVERAGE_TTL_MS) {
+      res.json(cached.data);
+      return;
+    }
+    const result = await databaseService.analysis.getCoverageGrid({
+      sourceIds,
+      sinceMs,
+      zoom,
+    });
+    coverageCache.set(key, { at: Date.now(), data: result });
+    res.json(result);
+  } catch (error) {
+    logger.error('Error in GET /api/analysis/coverage-grid:', error);
+    res.status(500).json({ error: 'Failed to fetch coverage grid' });
+  }
+});
+
 export default router;

@@ -209,3 +209,62 @@ describe('AnalysisRepository.getNeighbors', () => {
     expect(r.items).toEqual([]);
   });
 });
+
+describe('AnalysisRepository.getCoverageGrid', () => {
+  let repo: AnalysisRepository;
+  let sqlite: Database.Database;
+
+  beforeEach(() => {
+    sqlite = new Database(':memory:');
+    const db = drizzle(sqlite);
+    sqlite.exec(`
+      CREATE TABLE telemetry (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nodeId TEXT NOT NULL,
+        nodeNum INTEGER NOT NULL,
+        telemetryType TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        value REAL NOT NULL,
+        unit TEXT,
+        createdAt INTEGER NOT NULL,
+        packetTimestamp INTEGER,
+        packetId INTEGER,
+        channel INTEGER,
+        precisionBits INTEGER,
+        gpsAccuracy REAL,
+        sourceId TEXT
+      );
+    `);
+    const insert = sqlite.prepare(
+      'INSERT INTO telemetry (nodeId, nodeNum, telemetryType, timestamp, value, createdAt, sourceId) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    );
+    const now = Date.now();
+    // Three position fixes clustered near (30.0, -90.0) — different timestamps
+    // so each is a distinct pivoted fix, but all fall in the same coarse bin.
+    for (let i = 0; i < 3; i++) {
+      const ts = now - i * 1000;
+      insert.run('!00000001', 1, 'latitude', ts, 30.0 + i * 0.0001, ts, 'src-a');
+      insert.run('!00000001', 1, 'longitude', ts, -90.0 + i * 0.0001, ts, 'src-a');
+    }
+    // One fix far away at (45.0, -100.0) — distinct bin.
+    const ts2 = now - 10_000;
+    insert.run('!00000002', 2, 'latitude', ts2, 45.0, ts2, 'src-a');
+    insert.run('!00000002', 2, 'longitude', ts2, -100.0, ts2, 'src-a');
+
+    repo = new AnalysisRepository(db, 'sqlite');
+  });
+
+  it('groups position fixes into lat/lon cells with correct counts', async () => {
+    const r = await repo.getCoverageGrid({ sourceIds: ['src-a'], sinceMs: 0, zoom: 12 });
+    expect(r.cells.length).toBeGreaterThanOrEqual(2);
+    const maxCount = Math.max(...r.cells.map((c) => c.count));
+    expect(maxCount).toBeGreaterThanOrEqual(3);
+    expect(r.binSizeDeg).toBeGreaterThan(0);
+  });
+
+  it('returns empty cells when no sources given', async () => {
+    const r = await repo.getCoverageGrid({ sourceIds: [], sinceMs: 0, zoom: 12 });
+    expect(r.cells).toEqual([]);
+    expect(r.binSizeDeg).toBeGreaterThan(0);
+  });
+});

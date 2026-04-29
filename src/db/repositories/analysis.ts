@@ -125,6 +125,35 @@ export interface GetNeighborsArgs {
   sinceMs: number;
 }
 
+export interface GridCell {
+  latBin: number;
+  lonBin: number;
+  centerLat: number;
+  centerLon: number;
+  count: number;
+}
+
+export interface CoverageGridResult {
+  cells: GridCell[];
+  binSizeDeg: number;
+}
+
+export interface GetCoverageGridArgs {
+  sourceIds: string[];
+  sinceMs: number;
+  zoom: number;
+}
+
+/**
+ * Convert a slippy-map zoom level to a bin size in degrees. Lower zoom →
+ * larger bins (coarser overview); higher zoom → finer bins. Clamped to
+ * [1, 20]; the default zoom of 12 yields ~0.04° bins.
+ */
+function binSizeForZoom(zoom: number): number {
+  const z = Math.max(1, Math.min(20, zoom));
+  return Math.pow(2, 8 - z) * 0.01;
+}
+
 const MAX_PAGE_SIZE = 2000;
 const MIN_PAGE_SIZE = 1;
 
@@ -483,5 +512,52 @@ export class AnalysisRepository {
     }));
 
     return { items };
+  }
+
+  /**
+   * Build a coverage grid by binning position fixes into lat/lon cells. The
+   * grid reuses `getPositions` (the telemetry pivot) and groups in JS to
+   * avoid duplicating the lat/lon pivot logic at the SQL layer. Walks at
+   * most 5 pages (~10k positions) as a guardrail against runaway scans.
+   */
+  async getCoverageGrid(args: GetCoverageGridArgs): Promise<CoverageGridResult> {
+    const binSize = binSizeForZoom(args.zoom);
+    if (args.sourceIds.length === 0) {
+      return { cells: [], binSizeDeg: binSize };
+    }
+
+    const pageSize = 2000;
+    let cursor: string | null = null;
+    const cellMap = new Map<string, GridCell>();
+
+    for (let i = 0; i < 5; i++) {
+      const page = await this.getPositions({
+        sourceIds: args.sourceIds,
+        sinceMs: args.sinceMs,
+        pageSize,
+        cursor,
+      });
+      for (const p of page.items) {
+        const latBin = Math.floor(p.latitude / binSize);
+        const lonBin = Math.floor(p.longitude / binSize);
+        const key = `${latBin}:${lonBin}`;
+        let cell = cellMap.get(key);
+        if (!cell) {
+          cell = {
+            latBin,
+            lonBin,
+            centerLat: latBin * binSize + binSize / 2,
+            centerLon: lonBin * binSize + binSize / 2,
+            count: 0,
+          };
+          cellMap.set(key, cell);
+        }
+        cell.count++;
+      }
+      if (!page.hasMore) break;
+      cursor = page.nextCursor;
+    }
+
+    return { cells: Array.from(cellMap.values()), binSizeDeg: binSize };
   }
 }

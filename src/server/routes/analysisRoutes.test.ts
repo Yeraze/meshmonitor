@@ -176,3 +176,32 @@ describe('GET /neighbors', () => {
     );
   });
 });
+
+describe('GET /coverage-grid', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
+    mockDb.analysis.getCoverageGrid = vi.fn().mockResolvedValue({
+      cells: [], binSizeDeg: 0.04,
+    });
+  });
+
+  it('admin: queries all enabled sources and forwards zoom', async () => {
+    const app = createApp(adminUser);
+    const res = await request(app).get('/coverage-grid?since=0&zoom=10');
+    expect(res.status).toBe(200);
+    expect(mockDb.analysis.getCoverageGrid).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceIds: ['src-a', 'src-b'], zoom: 10 }),
+    );
+  });
+
+  it('serves second request from cache (within TTL)', async () => {
+    const app = createApp(adminUser);
+    // Use a unique cache key (different sinceMs) to avoid cache pollution
+    // from any prior test.
+    const url = '/coverage-grid?since=42&zoom=8';
+    await request(app).get(url);
+    await request(app).get(url);
+    expect(mockDb.analysis.getCoverageGrid).toHaveBeenCalledTimes(1);
+  });
+});
