@@ -14,6 +14,7 @@ import { formatDistance } from '../utils/distance';
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
 import { getDeviceRoleName } from '../utils/deviceRole';
+import { getHardwareModelName } from '../utils/hardwareModel';
 import { getPacketDistributionStats } from '../services/packetApi';
 import { PacketDistributionStats } from '../types/packet';
 import PacketStatsChart, { ChartDataEntry, DISTRIBUTION_COLORS } from './PacketStatsChart';
@@ -557,6 +558,52 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
             </p>
           )}
         </div>
+
+        {(() => {
+          const counts = new Map<string, number>();
+          for (const n of nodes) {
+            const hw = n.user?.hwModel;
+            if (hw === undefined || hw === 0) continue;
+            const name = getHardwareModelName(hw);
+            counts.set(name, (counts.get(name) ?? 0) + 1);
+          }
+          if (counts.size === 0) return null;
+
+          const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+          const TOP_N = 10;
+          const top = sorted.slice(0, TOP_N);
+          const rest = sorted.slice(TOP_N);
+
+          const hwData: ChartDataEntry[] = top.map(([name, value], i) => ({
+            name,
+            value,
+            color: DISTRIBUTION_COLORS[i % DISTRIBUTION_COLORS.length],
+          }));
+          const otherCount = rest.reduce((sum, [, v]) => sum + v, 0);
+          if (otherCount > 0) {
+            hwData.push({
+              name: t('info.other_devices'),
+              value: otherCount,
+              color: DISTRIBUTION_COLORS[10],
+            });
+          }
+
+          const total = sorted.reduce((sum, [, v]) => sum + v, 0);
+
+          return (
+            <div className="info-section">
+              <h3>{t('info.hw_model_distribution', 'Hardware Models')}</h3>
+              <PacketStatsChart
+                title={t('info.hw_model_breakdown', 'Nodes by hardware model')}
+                data={hwData}
+                total={total}
+                chartId="hw-model"
+                bare
+                stacked
+              />
+            </div>
+          );
+        })()}
 
         {(localStats?.numPacketsRx > 0 || localStats?.numPacketsTx > 0) && (() => {
           const rxTotal = localStats.numPacketsRx || 0;

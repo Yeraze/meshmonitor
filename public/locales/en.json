@@ -1804,6 +1804,8 @@
   "info.packets_by_type_nodes": "Nodes by Packet Type",
   "info.nodes_sending_type": "Nodes Sending {{type}}",
   "info.no_packets_for_type": "No packets found for this type in the selected time range",
+  "info.hw_model_distribution": "Hardware Models",
+  "info.hw_model_breakdown": "Nodes by hardware model",
 
   "config.loading": "Loading configuration...",
   "config.warning_title": "WARNING",
