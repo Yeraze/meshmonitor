@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createRef } from 'react';
+import { createRef, useRef } from 'react';
 import { MessageEmojiButton } from './MessageEmojiButton';
 
 vi.mock('../../hooks/useIsDesktop', () => ({
@@ -86,6 +86,84 @@ describe('MessageEmojiButton — popover behaviour', () => {
 
     fireEvent.mouseDown(screen.getByTestId('outside'));
 
+    await waitFor(() => {
+      expect(screen.queryByTestId('emoji-picker-mock')).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe('MessageEmojiButton — insertion', () => {
+  beforeEach(() => {
+    (useIsDesktop as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
+  });
+
+  it('inserts emoji at end when textarea ref is null', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const ref = createRef<HTMLTextAreaElement>();
+    render(
+      <MessageEmojiButton textareaRef={ref} value="hello" onChange={onChange} />
+    );
+    await user.click(screen.getByRole('button', { name: 'messages.insert_emoji_button_title' }));
+    await user.click(await screen.findByTestId('mock-emoji-thumbs-up'));
+    expect(onChange).toHaveBeenCalledWith('hello👍');
+  });
+
+  it('inserts emoji at the cursor position', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const Wrapper = () => {
+      const ref = useRef<HTMLTextAreaElement>(null);
+      return (
+        <>
+          <textarea ref={ref} defaultValue="hello world" data-testid="ta" />
+          <MessageEmojiButton textareaRef={ref} value="hello world" onChange={onChange} />
+        </>
+      );
+    };
+    render(<Wrapper />);
+
+    const ta = screen.getByTestId('ta') as HTMLTextAreaElement;
+    ta.focus();
+    ta.setSelectionRange(5, 5); // cursor between "hello" and " world"
+
+    await user.click(screen.getByRole('button', { name: 'messages.insert_emoji_button_title' }));
+    await user.click(await screen.findByTestId('mock-emoji-thumbs-up'));
+
+    expect(onChange).toHaveBeenCalledWith('hello👍 world');
+  });
+
+  it('replaces selected range with emoji', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const Wrapper = () => {
+      const ref = useRef<HTMLTextAreaElement>(null);
+      return (
+        <>
+          <textarea ref={ref} defaultValue="hello WORLD" data-testid="ta" />
+          <MessageEmojiButton textareaRef={ref} value="hello WORLD" onChange={onChange} />
+        </>
+      );
+    };
+    render(<Wrapper />);
+
+    const ta = screen.getByTestId('ta') as HTMLTextAreaElement;
+    ta.focus();
+    ta.setSelectionRange(6, 11); // select "WORLD"
+
+    await user.click(screen.getByRole('button', { name: 'messages.insert_emoji_button_title' }));
+    await user.click(await screen.findByTestId('mock-emoji-thumbs-up'));
+
+    expect(onChange).toHaveBeenCalledWith('hello 👍');
+  });
+
+  it('closes picker after selection', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const ref = createRef<HTMLTextAreaElement>();
+    render(<MessageEmojiButton textareaRef={ref} value="" onChange={onChange} />);
+    await user.click(screen.getByRole('button', { name: 'messages.insert_emoji_button_title' }));
+    await user.click(await screen.findByTestId('mock-emoji-thumbs-up'));
     await waitFor(() => {
       expect(screen.queryByTestId('emoji-picker-mock')).not.toBeInTheDocument();
     });

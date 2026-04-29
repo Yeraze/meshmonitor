@@ -12,9 +12,9 @@ export interface MessageEmojiButtonProps {
 }
 
 export const MessageEmojiButton: React.FC<MessageEmojiButtonProps> = ({
-  textareaRef: _textareaRef,
-  value: _value,
-  onChange: _onChange,
+  textareaRef,
+  value,
+  onChange,
 }) => {
   const { t } = useTranslation();
   const isDesktop = useIsDesktop();
@@ -23,6 +23,32 @@ export const MessageEmojiButton: React.FC<MessageEmojiButtonProps> = ({
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   const close = useCallback(() => setOpen(false), []);
+
+  const handleSelect = useCallback(
+    (emoji: string) => {
+      const ta = textareaRef.current;
+      if (!ta) {
+        onChange(value + emoji);
+        setOpen(false);
+        return;
+      }
+      const start = ta.selectionStart ?? value.length;
+      const end = ta.selectionEnd ?? value.length;
+      const next = value.slice(0, start) + emoji + value.slice(end);
+      onChange(next);
+      setOpen(false);
+      requestAnimationFrame(() => {
+        ta.focus();
+        const pos = start + emoji.length;
+        try {
+          ta.setSelectionRange(pos, pos);
+        } catch {
+          /* setSelectionRange can throw on disabled inputs; ignore */
+        }
+      });
+    },
+    [textareaRef, value, onChange]
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -64,7 +90,7 @@ export const MessageEmojiButton: React.FC<MessageEmojiButtonProps> = ({
       {open && (
         <div className="emoji-insert-popover" role="dialog" aria-label={t('messages.insert_emoji_button_title', 'Insert emoji')}>
           <Suspense fallback={null}>
-            <EmojiPicker />
+            <EmojiPicker onEmojiClick={(e: { emoji: string }) => handleSelect(e.emoji)} />
           </Suspense>
         </div>
       )}
