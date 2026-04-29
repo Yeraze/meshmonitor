@@ -4811,14 +4811,23 @@ class MeshtasticManager implements ISourceManager {
           }, this.sourceId);
         }
 
-        // Skip overwriting the local node's position from mesh broadcast packets when fixedPosition is enabled.
-        // When fixedPosition=true, the position is set explicitly by the user (via config or CLI).
-        // The device's firmware may broadcast stale position data before the new fixed position takes effect,
-        // which would otherwise overwrite the correct position in the database.
+        // Skip overwriting position from mesh broadcasts in two cases:
+        // 1. Local node with fixedPosition=true — firmware may broadcast stale position
+        //    data before the new fixed position takes effect.
+        // 2. Any node with a user-set position override (positionOverrideEnabled=true) —
+        //    the user has explicitly told MeshMonitor to treat their custom coordinates
+        //    as authoritative, so incoming telemetry must not overwrite them. Without
+        //    this guard, fixedPosition base stations would constantly revert the
+        //    map/Position-config UI to the device-reported coordinates (issue #2847).
         const isLocalNode = this.localNodeInfo && fromNum === this.localNodeInfo.nodeNum;
         const hasFixedPositionEnabled = this.actualDeviceConfig?.position?.fixedPosition === true;
-        if (isLocalNode && hasFixedPositionEnabled && shouldUpdatePosition) {
-          logger.info(`🗺️ Skipping position update for local node ${nodeId}: fixedPosition is enabled, position should only be set via config. Received: ${coords.latitude}, ${coords.longitude}`);
+        const hasPositionOverride = existingNode?.positionOverrideEnabled === true;
+        const shouldPreservePosition = (isLocalNode && hasFixedPositionEnabled) || hasPositionOverride;
+        if (shouldPreservePosition && shouldUpdatePosition) {
+          const reason = hasPositionOverride
+            ? 'position override is enabled (user-set custom location)'
+            : 'fixedPosition is enabled, position should only be set via config';
+          logger.info(`🗺️ Skipping position update for node ${nodeId}: ${reason}. Received: ${coords.latitude}, ${coords.longitude}`);
           // Still update lastHeard and technical fields, just not lat/lon/alt
           const technicalData: any = {
             nodeNum: fromNum,
@@ -6683,9 +6692,21 @@ class MeshtasticManager implements ISourceManager {
 
         // Validate coordinates before saving
         if (this.isValidPosition(coords.latitude, coords.longitude)) {
-          nodeData.latitude = coords.latitude;
-          nodeData.longitude = coords.longitude;
-          nodeData.altitude = nodeInfo.position.altitude;
+          // Respect user-set position override: when positionOverrideEnabled=true,
+          // device-sync NodeInfo must not overwrite the lat/lon/altitude columns.
+          // The `latitude`/`longitude` columns are surfaced in the Position config
+          // UI as the "fixed lat/lng" for fixedPosition nodes, so allowing config
+          // sync to clobber them effectively reverts the user's custom location
+          // every refresh (issue #2847). Telemetry history is still recorded below
+          // so the historical position trail isn't lost.
+          const hasPositionOverride = existingNode?.positionOverrideEnabled === true;
+          if (!hasPositionOverride) {
+            nodeData.latitude = coords.latitude;
+            nodeData.longitude = coords.longitude;
+            nodeData.altitude = nodeInfo.position.altitude;
+          } else {
+            logger.info(`🗺️ NodeInfo for ${nodeId}: skipping lat/lon update — position override is enabled (issue #2847)`);
+          }
 
           // Extract position precision if available in NodeInfo
           // NodeInfo.position may have precisionBits from the original Position packet
@@ -6703,8 +6724,10 @@ class MeshtasticManager implements ISourceManager {
             }
           }
 
-          // Save position precision metadata
-          if (precisionBits !== undefined) {
+          // Save position precision metadata only when we actually accept the
+          // device-reported lat/lon — these fields describe the freshness/quality
+          // of the regular position columns we just wrote.
+          if (precisionBits !== undefined && !hasPositionOverride) {
             nodeData.positionPrecisionBits = precisionBits;
             nodeData.positionChannel = channelIndex;
             nodeData.positionTimestamp = Date.now();
