@@ -4,6 +4,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
 import NodeMarkersLayer from './layers/NodeMarkersLayer';
 import TraceroutePathsLayer from './layers/TraceroutePathsLayer';
+import NeighborLinksLayer from './layers/NeighborLinksLayer';
 
 const FALLBACK_CENTER: [number, number] = [30, -90];
 const FALLBACK_ZOOM = 10;
@@ -30,6 +31,9 @@ export default function MapAnalysisCanvas() {
         </Pane>
         <Pane name="paths" style={{ zIndex: 500 }}>
           {config.layers.traceroutes.enabled && <TraceroutePathsLayer />}
+        </Pane>
+        <Pane name="neighbors" style={{ zIndex: 450 }}>
+          {config.layers.neighbors.enabled && <NeighborLinksLayer />}
         </Pane>
       </MapContainer>
     </div>
