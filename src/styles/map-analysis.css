@@ -89,3 +89,18 @@
 }
 .map-analysis-time-slider input[type="range"] { width: 100%; }
 .map-analysis-time-slider-label { text-align: center; }
+
+.map-analysis-progress {
+  flex: 1 1 80px;
+  max-width: 200px;
+  height: 6px;
+  background: #222;
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0 8px;
+}
+.map-analysis-progress > div {
+  height: 100%;
+  background: #2563eb;
+  transition: width 0.2s;
+}

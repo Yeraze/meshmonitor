@@ -154,3 +154,21 @@ export function useHopCounts(args: { enabled: boolean; sources: string[] }) {
       fetchHopCounts({ sources: args.sources, signal }),
   });
 }
+
+/**
+ * Aggregate progress across multiple paginated/loading hooks. Returns null
+ * when nothing is currently loading, or the average percent (0-100) of all
+ * hooks reporting `isLoading: true`. Hooks without a `progress` field are
+ * treated as 0%.
+ */
+export function useAggregateProgress(
+  states: Array<{ isLoading: boolean; progress?: { percent: number } }>,
+): number | null {
+  const loading = states.filter((s) => s.isLoading);
+  if (loading.length === 0) return null;
+  const sum = loading.reduce(
+    (acc: number, s) => acc + (s.progress?.percent ?? 0),
+    0,
+  );
+  return Math.round(sum / loading.length);
+}
