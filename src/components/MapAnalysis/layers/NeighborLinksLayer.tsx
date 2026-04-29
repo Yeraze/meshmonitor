@@ -6,6 +6,7 @@ import {
 } from '../../../hooks/useDashboardData';
 import { useNeighbors } from '../../../hooks/useMapAnalysisData';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
+import { resolveNodeLatLng, type MaybePositionedNode } from '../nodePositionUtil';
 
 function snrToOpacity(snr: number | null): number {
   if (snr === null) return 0.4;
@@ -21,10 +22,9 @@ interface NeighborEdge {
   timestamp?: number;
 }
 
-interface NodeRecord {
+interface NodeRecord extends MaybePositionedNode {
   nodeNum: number;
   sourceId?: string;
-  position?: { latitude?: number | null; longitude?: number | null } | null;
 }
 
 /**
@@ -49,11 +49,8 @@ export default function NeighborLinksLayer() {
   const positionByKey = useMemo(() => {
     const map = new Map<string, [number, number]>();
     for (const n of (nodes ?? []) as NodeRecord[]) {
-      const lat = n.position?.latitude;
-      const lon = n.position?.longitude;
-      if (lat != null && lon != null) {
-        map.set(`${n.sourceId ?? ''}:${Number(n.nodeNum)}`, [lat, lon]);
-      }
+      const ll = resolveNodeLatLng(n);
+      if (ll) map.set(`${n.sourceId ?? ''}:${Number(n.nodeNum)}`, ll);
     }
     return map;
   }, [nodes]);

@@ -7,13 +7,13 @@ import {
 } from '../../../hooks/useDashboardData';
 import { useHopCounts } from '../../../hooks/useMapAnalysisData';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
+import { resolveNodeLatLng, type MaybePositionedNode } from '../nodePositionUtil';
 
-interface NodeRecord {
+interface NodeRecord extends MaybePositionedNode {
   nodeNum: number;
   sourceId?: string;
   longName?: string | null;
   shortName?: string | null;
-  position?: { latitude?: number | null; longitude?: number | null } | null;
 }
 
 interface HopEntry {
@@ -61,20 +61,19 @@ export default function NodeMarkersLayer() {
     return m;
   }, [hop.data]);
 
-  const filteredNodes = ((nodes ?? []) as NodeRecord[]).filter((n) => {
-    const lat = n.position?.latitude;
-    const lon = n.position?.longitude;
-    if (lat == null || lon == null) return false;
-    if (config.sources.length === 0) return true;
-    if (!n.sourceId) return false;
-    return config.sources.includes(n.sourceId);
-  });
+  const filteredNodes = ((nodes ?? []) as NodeRecord[])
+    .map((n) => ({ node: n, latLng: resolveNodeLatLng(n) }))
+    .filter(({ node, latLng }) => {
+      if (!latLng) return false;
+      if (config.sources.length === 0) return true;
+      if (!node.sourceId) return false;
+      return config.sources.includes(node.sourceId);
+    });
 
   return (
     <>
-      {filteredNodes.map((n) => {
-        const lat = n.position!.latitude as number;
-        const lon = n.position!.longitude as number;
+      {filteredNodes.map(({ node: n, latLng }) => {
+        const [lat, lon] = latLng!;
         const sourceId = n.sourceId ?? '';
         const hops = hopByKey.get(`${sourceId}:${Number(n.nodeNum)}`);
         const tinted = config.layers.hopShading.enabled;

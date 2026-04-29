@@ -4,11 +4,11 @@ import {
   useDashboardUnifiedData,
 } from '../../../hooks/useDashboardData';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
+import { resolveNodeLatLng, type MaybePositionedNode } from '../nodePositionUtil';
 
-interface NodeRecord {
+interface NodeRecord extends MaybePositionedNode {
   nodeNum: number;
   sourceId?: string;
-  position?: { latitude?: number | null; longitude?: number | null } | null;
 }
 
 /**
@@ -26,21 +26,21 @@ export default function RangeRingsLayer() {
       : config.sources;
   const { nodes } = useDashboardUnifiedData(sourceIds, sourceIds.length > 0);
 
-  const filtered = ((nodes ?? []) as NodeRecord[]).filter((n) => {
-    const lat = n.position?.latitude;
-    const lon = n.position?.longitude;
-    if (lat == null || lon == null) return false;
-    if (config.sources.length === 0) return true;
-    if (!n.sourceId) return false;
-    return config.sources.includes(n.sourceId);
-  });
+  const filtered = ((nodes ?? []) as NodeRecord[])
+    .map((n) => ({ node: n, latLng: resolveNodeLatLng(n) }))
+    .filter(({ node, latLng }) => {
+      if (!latLng) return false;
+      if (config.sources.length === 0) return true;
+      if (!node.sourceId) return false;
+      return config.sources.includes(node.sourceId);
+    });
 
   return (
     <>
-      {filtered.map((n) => (
+      {filtered.map(({ node: n, latLng }) => (
         <Circle
           key={`${n.sourceId ?? ''}:${n.nodeNum}`}
-          center={[n.position!.latitude as number, n.position!.longitude as number]}
+          center={latLng!}
           radius={radiusKm * 1000}
           pathOptions={{ color: '#a855f7', fillOpacity: 0.05, weight: 1 }}
         />

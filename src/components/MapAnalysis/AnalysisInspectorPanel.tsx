@@ -4,13 +4,13 @@ import {
 } from '../../hooks/useDashboardData';
 import { useHopCounts } from '../../hooks/useMapAnalysisData';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
+import { resolveNodeLatLng, type MaybePositionedNode } from './nodePositionUtil';
 
-interface NodeRecord {
+interface NodeRecord extends MaybePositionedNode {
   nodeNum: number;
   sourceId?: string;
   longName?: string | null;
   shortName?: string | null;
-  position?: { latitude?: number | null; longitude?: number | null } | null;
 }
 
 interface HopEntry {
@@ -74,8 +74,10 @@ export default function AnalysisInspectorPanel() {
           <dd>{hops ?? '—'}</dd>
           <dt>Last position</dt>
           <dd>
-            {node.position?.latitude?.toFixed(5)},{' '}
-            {node.position?.longitude?.toFixed(5)}
+            {(() => {
+              const ll = resolveNodeLatLng(node);
+              return ll ? `${ll[0].toFixed(5)}, ${ll[1].toFixed(5)}` : '—';
+            })()}
           </dd>
         </dl>
       </aside>
