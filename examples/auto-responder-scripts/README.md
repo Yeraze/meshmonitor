@@ -158,6 +158,32 @@ Complete Pirate Weather API integration with Nominatim geocoding. Supports flexi
    - **Response**: `/data/scripts/PirateWeather.py` (or select from script dropdown if available)
    - Click **"Save Changes"**
 
+### PirateWeatherADV.py (Python)
+Advanced Pirate Weather integration with two separate triggers: current conditions and 7-day forecast. Uses Nominatim for geocoding/reverse-geocoding, accepts city/zip/coordinates, and falls back to GPS from the requesting node (or the local node) when no location is supplied. Outputs temperatures in both Fahrenheit and Celsius. The 7-day forecast splits across multiple 200-char messages automatically.
+
+**Requirements:**
+- `PIRATE_WEATHER_API_KEY` environment variable (get free key from https://pirateweather.net/)
+- `LOCAL_LAT` / `LOCAL_LON` env vars (optional GPS fallback)
+- Python 3.6+
+
+**Triggers:**
+- `weather, w, weather {location:.+}, w {location:.+}` — current conditions (single message)
+- `forecast, f, forecast {location:.+}, f {location:.+}` — 7-day forecast (multi-message)
+
+**Example messages:**
+- `weather` — uses requesting node's GPS (or LOCAL_LAT/LOCAL_LON)
+- `weather Peterborough, Ontario, Canada`
+- `forecast 90210`
+- `f Paris, France`
+
+**Setup:**
+1. Get API key from https://pirateweather.net/
+2. Add `PIRATE_WEATHER_API_KEY=your_key` (and optionally `LOCAL_LAT` / `LOCAL_LON`) to docker-compose.yaml
+3. Copy `PirateWeatherADV.py` to your `./scripts/` directory and `chmod +x` it
+4. Configure two triggers in MeshMonitor UI (Settings → Automation → Auto Responder):
+   - Pattern `weather, w, weather {location:.+}, w {location:.+}` → Script `/data/scripts/PirateWeatherADV.py`
+   - Pattern `forecast, f, forecast {location:.+}, f {location:.+}` → Script `/data/scripts/PirateWeatherADV.py`
+
 ### info.sh (Shell)
 System information script showing uptime.
 
