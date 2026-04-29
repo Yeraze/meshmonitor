@@ -48,6 +48,7 @@
     "croner": "^10.0.1",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
+    "emoji-picker-react": "^4.19.1",
     "express": "^5.2.1",
     "express-mysql-session": "^3.0.3",
     "express-rate-limit": "^8.4.1",

@@ -75,3 +75,29 @@ if (typeof window !== 'undefined') {
     })),
   });
 }
+
+// Mock emoji-picker-react so tests don't depend on the full Unicode dataset.
+vi.mock('emoji-picker-react', () => {
+  const React = require('react');
+  const Picker = ({ onEmojiClick }: { onEmojiClick?: (e: { emoji: string }) => void }) => {
+    return React.createElement(
+      'div',
+      { 'data-testid': 'emoji-picker-mock' },
+      React.createElement(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'mock-emoji-thumbs-up',
+          onClick: () => onEmojiClick?.({ emoji: '👍' }),
+        },
+        '👍'
+      )
+    );
+  };
+  return {
+    __esModule: true,
+    default: Picker,
+    Theme: { LIGHT: 'light', DARK: 'dark', AUTO: 'auto' },
+    EmojiStyle: { NATIVE: 'native' },
+  };
+});

@@ -41,6 +41,7 @@ import PacketStatsChart, { ChartDataEntry, DISTRIBUTION_COLORS } from './PacketS
 import { getPacketDistributionStats } from '../services/packetApi';
 import { PacketDistributionStats } from '../types/packet';
 
+import { MessageEmojiButton } from './MessageEmojiButton';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
 import RelayNodeModal from './RelayNodeModal';
 import TelemetryRequestModal, { TelemetryType } from './TelemetryRequestModal';
@@ -1551,6 +1552,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         {byteCountDisplay.text}
                       </div>
                     </div>
+                    <MessageEmojiButton
+                      textareaRef={dmMessageInputRef}
+                      value={newMessage}
+                      onChange={setNewMessage}
+                    />
                     <button
                       onClick={() => { onSendBell?.(selectedDMNode, newMessage); setNewMessage(''); }}
                       className="send-btn channel-action-btn"

@@ -21,6 +21,7 @@ import { renderMessageWithLinks } from '../utils/linkRenderer';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
+import { MessageEmojiButton } from './MessageEmojiButton';
 import RelayNodeModal from './RelayNodeModal';
 import { logger } from '../utils/logger';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
@@ -986,6 +987,11 @@ export default function ChannelsTab({
                               {byteCountDisplay.text}
                             </div>
                           </div>
+                          <MessageEmojiButton
+                            textareaRef={channelMessageInputRef}
+                            value={newMessage}
+                            onChange={setNewMessage}
+                          />
                           <button
                             onClick={() => { onSendBell?.(selectedChannel, newMessage); setNewMessage(''); }}
                             className="send-btn channel-action-btn"
