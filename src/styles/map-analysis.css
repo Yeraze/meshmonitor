@@ -73,3 +73,10 @@
 .map-analysis-layer-btn-wrap.errored .map-analysis-layer-btn {
   border-color: #ef4444;
 }
+.map-analysis-toolbar-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.map-analysis-reset {
+  background: transparent; color: #aaa; border: 1px solid #444;
+  padding: 4px 10px; cursor: pointer; border-radius: 4px;
+}

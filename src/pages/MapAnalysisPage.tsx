@@ -8,19 +8,22 @@ import { ToastProvider } from '../components/ToastContainer';
 import MapAnalysisToolbar from '../components/MapAnalysis/MapAnalysisToolbar';
 import MapAnalysisCanvas from '../components/MapAnalysis/MapAnalysisCanvas';
 import AnalysisInspectorPanel from '../components/MapAnalysis/AnalysisInspectorPanel';
+import { MapAnalysisProvider } from '../components/MapAnalysis/MapAnalysisContext';
 import '../styles/map-analysis.css';
 
 export default function MapAnalysisPage() {
   return (
     <ToastProvider>
       <SettingsProvider>
-        <div className="map-analysis-page">
-          <MapAnalysisToolbar />
-          <div className="map-analysis-body">
-            <MapAnalysisCanvas />
-            <AnalysisInspectorPanel />
+        <MapAnalysisProvider>
+          <div className="map-analysis-page">
+            <MapAnalysisToolbar />
+            <div className="map-analysis-body">
+              <MapAnalysisCanvas />
+              <AnalysisInspectorPanel />
+            </div>
           </div>
-        </div>
+        </MapAnalysisProvider>
       </SettingsProvider>
     </ToastProvider>
   );
