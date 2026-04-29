@@ -144,6 +144,20 @@ export interface GetCoverageGridArgs {
   zoom: number;
 }
 
+export interface HopEntry {
+  sourceId: string;
+  nodeNum: number;
+  hops: number;
+}
+
+export interface HopCountsResult {
+  entries: HopEntry[];
+}
+
+export interface GetHopCountsArgs {
+  sourceIds: string[];
+}
+
 /**
  * Convert a slippy-map zoom level to a bin size in degrees. Lower zoom →
  * larger bins (coarser overview); higher zoom → finer bins. Clamped to
@@ -559,5 +573,51 @@ export class AnalysisRepository {
     }
 
     return { cells: Array.from(cellMap.values()), binSizeDeg: binSize };
+  }
+
+  /**
+   * Compute the hop count from each source's local node to every other
+   * node, taken from the most recent traceroute reaching that node. The
+   * `route` JSON column holds the array of intermediate node hops; its
+   * length is the hop count. Nodes never reached by a traceroute do not
+   * appear in the result.
+   */
+  async getHopCounts(args: GetHopCountsArgs): Promise<HopCountsResult> {
+    if (args.sourceIds.length === 0) {
+      return { entries: [] };
+    }
+
+    const traceroutes = pickTraceroutesTable(this.dbType);
+
+    /* eslint-disable @typescript-eslint/no-explicit-any -- Drizzle cross-dialect union */
+    const rows: any[] = await (this.db as any)
+      .select({
+        sourceId: traceroutes.sourceId,
+        toNodeNum: traceroutes.toNodeNum,
+        route: traceroutes.route,
+        timestamp: traceroutes.timestamp,
+      })
+      .from(traceroutes)
+      .where(inArray(traceroutes.sourceId, args.sourceIds))
+      .orderBy(desc(traceroutes.timestamp));
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    const seen = new Map<string, HopEntry>();
+    for (const r of rows) {
+      const sourceId = r.sourceId ?? '';
+      if (!sourceId) continue;
+      const nodeNum = Number(r.toNodeNum);
+      const key = `${sourceId}:${nodeNum}`;
+      if (seen.has(key)) continue;
+      let hops = 0;
+      try {
+        const arr = JSON.parse(r.route ?? '[]');
+        hops = Array.isArray(arr) ? arr.length : 0;
+      } catch {
+        hops = 0;
+      }
+      seen.set(key, { sourceId, nodeNum, hops });
+    }
+    return { entries: Array.from(seen.values()) };
   }
 }

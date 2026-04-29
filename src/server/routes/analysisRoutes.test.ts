@@ -205,3 +205,33 @@ describe('GET /coverage-grid', () => {
     expect(mockDb.analysis.getCoverageGrid).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('GET /hop-counts', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
+    mockDb.analysis.getHopCounts = vi.fn().mockResolvedValue({ entries: [] });
+  });
+
+  it('admin: queries all enabled sources', async () => {
+    const app = createApp(adminUser);
+    const res = await request(app).get('/hop-counts');
+    expect(res.status).toBe(200);
+    expect(mockDb.analysis.getHopCounts).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceIds: ['src-a', 'src-b'] }),
+    );
+  });
+
+  it('regular user: filters by nodes:read permission', async () => {
+    mockDb.checkPermissionAsync.mockImplementation(
+      (_uid: number, resource: string, _a: string, sid: string) =>
+        Promise.resolve(resource === 'nodes' && sid === 'src-a'),
+    );
+    const app = createApp(regularUser);
+    const res = await request(app).get('/hop-counts');
+    expect(res.status).toBe(200);
+    expect(mockDb.analysis.getHopCounts).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceIds: ['src-a'] }),
+    );
+  });
+});

@@ -257,7 +257,7 @@ describe('AnalysisRepository.getCoverageGrid', () => {
   it('groups position fixes into lat/lon cells with correct counts', async () => {
     const r = await repo.getCoverageGrid({ sourceIds: ['src-a'], sinceMs: 0, zoom: 12 });
     expect(r.cells.length).toBeGreaterThanOrEqual(2);
-    const maxCount = Math.max(...r.cells.map((c) => c.count));
+    const maxCount = Math.max(...r.cells.map((c: { count: number }) => c.count));
     expect(maxCount).toBeGreaterThanOrEqual(3);
     expect(r.binSizeDeg).toBeGreaterThan(0);
   });
@@ -266,5 +266,83 @@ describe('AnalysisRepository.getCoverageGrid', () => {
     const r = await repo.getCoverageGrid({ sourceIds: [], sinceMs: 0, zoom: 12 });
     expect(r.cells).toEqual([]);
     expect(r.binSizeDeg).toBeGreaterThan(0);
+  });
+});
+
+describe('AnalysisRepository.getHopCounts', () => {
+  it('returns hop count per (sourceId, nodeNum) from latest traceroute', async () => {
+    const sqlite = new Database(':memory:');
+    const db = drizzle(sqlite);
+    sqlite.exec(`
+      CREATE TABLE traceroutes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fromNodeNum INTEGER NOT NULL,
+        toNodeNum INTEGER NOT NULL,
+        fromNodeId TEXT,
+        toNodeId TEXT,
+        route TEXT,
+        routeBack TEXT,
+        snrTowards TEXT,
+        snrBack TEXT,
+        routePositions TEXT,
+        channel INTEGER,
+        timestamp INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL,
+        sourceId TEXT
+      );
+    `);
+    const now = Date.now();
+    const ins = sqlite.prepare(
+      'INSERT INTO traceroutes (fromNodeNum, toNodeNum, sourceId, route, timestamp, createdAt) VALUES (?,?,?,?,?,?)',
+    );
+    // Older traceroute: 3 hops — should be ignored, newer wins.
+    ins.run(1, 99, 'src-a', '[10,20,30]', now - 1000, now - 1000);
+    // Newest traceroute: 2 hops — wins for (src-a, 99).
+    ins.run(1, 99, 'src-a', '[10,20]', now, now);
+
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    const hop = r.entries.find((e: { nodeNum: number; sourceId: string }) => e.nodeNum === 99 && e.sourceId === 'src-a');
+    expect(hop?.hops).toBe(2);
+  });
+
+  it('returns empty entries when no sources given', async () => {
+    const sqlite = new Database(':memory:');
+    const db = drizzle(sqlite);
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: [] });
+    expect(r.entries).toEqual([]);
+  });
+
+  it('handles malformed JSON route by treating as 0 hops', async () => {
+    const sqlite = new Database(':memory:');
+    const db = drizzle(sqlite);
+    sqlite.exec(`
+      CREATE TABLE traceroutes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fromNodeNum INTEGER NOT NULL,
+        toNodeNum INTEGER NOT NULL,
+        fromNodeId TEXT,
+        toNodeId TEXT,
+        route TEXT,
+        routeBack TEXT,
+        snrTowards TEXT,
+        snrBack TEXT,
+        routePositions TEXT,
+        channel INTEGER,
+        timestamp INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL,
+        sourceId TEXT
+      );
+    `);
+    const now = Date.now();
+    sqlite
+      .prepare(
+        'INSERT INTO traceroutes (fromNodeNum, toNodeNum, sourceId, route, timestamp, createdAt) VALUES (?,?,?,?,?,?)',
+      )
+      .run(1, 50, 'src-a', 'not-json', now, now);
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getHopCounts({ sourceIds: ['src-a'] });
+    expect(r.entries.find((e: { nodeNum: number; hops: number }) => e.nodeNum === 50)?.hops).toBe(0);
   });
 });

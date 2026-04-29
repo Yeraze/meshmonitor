@@ -151,4 +151,19 @@ router.get('/coverage-grid', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/hop-counts', async (req: Request, res: Response) => {
+  try {
+    const permitted = await resolvePermittedSourceIds(req);
+    const requested = parseSourcesParam(req.query.sources);
+    const sourceIds = requested
+      ? permitted.filter((id) => requested.includes(id))
+      : permitted;
+    const result = await databaseService.analysis.getHopCounts({ sourceIds });
+    res.json(result);
+  } catch (error) {
+    logger.error('Error in GET /api/analysis/hop-counts:', error);
+    res.status(500).json({ error: 'Failed to fetch hop counts' });
+  }
+});
+
 export default router;
