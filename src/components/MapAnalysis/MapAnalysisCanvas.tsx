@@ -8,6 +8,7 @@ import NeighborLinksLayer from './layers/NeighborLinksLayer';
 import PositionTrailsLayer from './layers/PositionTrailsLayer';
 import CoverageHeatmapLayer from './layers/CoverageHeatmapLayer';
 import RangeRingsLayer from './layers/RangeRingsLayer';
+import SnrOverlayLayer from './layers/SnrOverlayLayer';
 
 const FALLBACK_CENTER: [number, number] = [30, -90];
 const FALLBACK_ZOOM = 10;
@@ -40,6 +41,9 @@ export default function MapAnalysisCanvas() {
         </Pane>
         <Pane name="neighbors" style={{ zIndex: 450 }}>
           {config.layers.neighbors.enabled && <NeighborLinksLayer />}
+        </Pane>
+        <Pane name="snrOverlay" style={{ zIndex: 420 }}>
+          {config.layers.snrOverlay.enabled && <SnrOverlayLayer />}
         </Pane>
         <Pane name="trails" style={{ zIndex: 400 }}>
           {config.layers.trails.enabled && <PositionTrailsLayer />}
