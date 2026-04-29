@@ -64,6 +64,13 @@ export default function TraceroutePathsLayer() {
     return map;
   }, [nodes]);
 
+  const ts = config.timeSlider;
+  const inWindow = (t: number): boolean =>
+    !ts.enabled ||
+    ts.windowStartMs === undefined ||
+    ts.windowEndMs === undefined ||
+    (t >= ts.windowStartMs && t <= ts.windowEndMs);
+
   const segments = useMemo(() => {
     const out: Array<{
       key: string;
@@ -72,7 +79,10 @@ export default function TraceroutePathsLayer() {
       from: number;
       to: number;
     }> = [];
-    for (const tr of items as TracerouteRecord[]) {
+    const filtered = (items as TracerouteRecord[]).filter((tr) =>
+      inWindow(tr.timestamp ?? 0),
+    );
+    for (const tr of filtered) {
       let route: number[] = [];
       try {
         route = JSON.parse(tr.route ?? '[]');
@@ -101,7 +111,8 @@ export default function TraceroutePathsLayer() {
       }
     }
     return out;
-  }, [items, positionByKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, positionByKey, ts.enabled, ts.windowStartMs, ts.windowEndMs]);
 
   return (
     <>

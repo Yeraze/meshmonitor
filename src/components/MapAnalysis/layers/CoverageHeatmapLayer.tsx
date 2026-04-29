@@ -17,6 +17,7 @@ interface GridCell {
 interface PositionRecord {
   latitude: number;
   longitude: number;
+  timestamp: number;
 }
 
 /**
@@ -47,9 +48,20 @@ export default function CoverageHeatmapLayer() {
     lookbackHours: layer.lookbackHours ?? 24,
   });
 
+  const ts = config.timeSlider;
+  const inWindow = (t: number): boolean =>
+    !ts.enabled ||
+    ts.windowStartMs === undefined ||
+    ts.windowEndMs === undefined ||
+    (t >= ts.windowStartMs && t <= ts.windowEndMs);
+
   useEffect(() => {
     if (!layer.enabled) return;
     const gridData = grid.data as { cells?: GridCell[] } | undefined;
+    // Note: at low zoom (< 13) the heatmap uses the server-binned coverage
+    // grid which has no per-fix timestamps; the time-slider has no effect on
+    // the cell counts. At high zoom (>= 13) the layer uses raw positions and
+    // the slider filters them client-side.
     const points: Array<[number, number, number]> =
       zoom < ZOOM_THRESHOLD
         ? (gridData?.cells ?? []).map((c) => [
@@ -57,11 +69,9 @@ export default function CoverageHeatmapLayer() {
             c.centerLon,
             Math.min(1, c.count / 50),
           ])
-        : (positions.items as PositionRecord[]).map((p) => [
-            p.latitude,
-            p.longitude,
-            0.4,
-          ]);
+        : (positions.items as PositionRecord[])
+            .filter((p) => inWindow(p.timestamp))
+            .map((p) => [p.latitude, p.longitude, 0.4]);
     if (points.length === 0) return;
     const heat = (L as unknown as {
       heatLayer: (
@@ -73,7 +83,8 @@ export default function CoverageHeatmapLayer() {
     return () => {
       map.removeLayer(heat);
     };
-  }, [map, layer.enabled, zoom, grid.data, positions.items]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, layer.enabled, zoom, grid.data, positions.items, ts.enabled, ts.windowStartMs, ts.windowEndMs]);
 
   return null;
 }

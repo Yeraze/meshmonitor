@@ -58,17 +58,26 @@ export default function NeighborLinksLayer() {
     return map;
   }, [nodes]);
 
+  const ts = config.timeSlider;
+  const inWindow = (t: number): boolean =>
+    !ts.enabled ||
+    ts.windowStartMs === undefined ||
+    ts.windowEndMs === undefined ||
+    (t >= ts.windowStartMs && t <= ts.windowEndMs);
+
   const edges = useMemo(() => {
     const out: Array<{ key: string; positions: [number, number][]; opacity: number }> = [];
     const items = (data as { items?: NeighborEdge[] } | undefined)?.items ?? [];
-    for (const e of items) {
+    const filtered = items.filter((e) => inWindow(e.timestamp ?? 0));
+    for (const e of filtered) {
       const a = positionByKey.get(`${e.sourceId}:${Number(e.nodeNum)}`);
       const b = positionByKey.get(`${e.sourceId}:${Number(e.neighborNum)}`);
       if (!a || !b) continue;
       out.push({ key: String(e.id), positions: [a, b], opacity: snrToOpacity(e.snr) });
     }
     return out;
-  }, [data, positionByKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, positionByKey, ts.enabled, ts.windowStartMs, ts.windowEndMs]);
 
   return (
     <>

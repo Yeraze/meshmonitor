@@ -37,9 +37,17 @@ export default function PositionTrailsLayer() {
     lookbackHours: layer.lookbackHours ?? 24,
   });
 
+  const tsCfg = config.timeSlider;
+  const inWindow = (t: number): boolean =>
+    !tsCfg.enabled ||
+    tsCfg.windowStartMs === undefined ||
+    tsCfg.windowEndMs === undefined ||
+    (t >= tsCfg.windowStartMs && t <= tsCfg.windowEndMs);
+
   const trails = useMemo(() => {
     const grouped = new Map<string, Array<{ ts: number; pos: [number, number] }>>();
-    for (const p of items as PositionRecord[]) {
+    const filtered = (items as PositionRecord[]).filter((p) => inWindow(p.timestamp));
+    for (const p of filtered) {
       const key = `${p.sourceId}:${Number(p.nodeNum)}`;
       const arr = grouped.get(key) ?? [];
       arr.push({ ts: p.timestamp, pos: [p.latitude, p.longitude] });
@@ -52,7 +60,8 @@ export default function PositionTrailsLayer() {
       out.push({ key, positions: arr.map((x) => x.pos), color: colorForKey(key) });
     }
     return out;
-  }, [items]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, tsCfg.enabled, tsCfg.windowStartMs, tsCfg.windowEndMs]);
 
   return (
     <>

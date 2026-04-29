@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MapAnalysisProvider } from '../MapAnalysisContext';
@@ -25,6 +25,8 @@ vi.mock('../../../hooks/useDashboardData', () => ({
 }));
 
 describe('SnrOverlayLayer', () => {
+  beforeEach(() => localStorage.clear());
+
   it('renders one CircleMarker per position', () => {
     const qc = new QueryClient();
     render(
@@ -35,5 +37,37 @@ describe('SnrOverlayLayer', () => {
       </QueryClientProvider>,
     );
     expect(screen.getAllByTestId('snr-dot')).toHaveLength(2);
+  });
+
+  it('excludes positions outside the time slider window when slider is enabled', () => {
+    localStorage.setItem(
+      'mapAnalysis.config.v1',
+      JSON.stringify({
+        version: 1,
+        layers: {
+          markers: { enabled: false, lookbackHours: null },
+          traceroutes: { enabled: false, lookbackHours: 24 },
+          neighbors: { enabled: false, lookbackHours: 24 },
+          heatmap: { enabled: false, lookbackHours: 24 },
+          trails: { enabled: false, lookbackHours: 24 },
+          rangeRings: { enabled: false, lookbackHours: null },
+          hopShading: { enabled: false, lookbackHours: null },
+          snrOverlay: { enabled: true, lookbackHours: 24 },
+        },
+        sources: [],
+        // Window [10, 20] excludes the mock positions at timestamp 0
+        timeSlider: { enabled: true, windowStartMs: 10, windowEndMs: 20 },
+        inspectorOpen: true,
+      }),
+    );
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <MapAnalysisProvider>
+          <SnrOverlayLayer />
+        </MapAnalysisProvider>
+      </QueryClientProvider>,
+    );
+    expect(screen.queryAllByTestId('snr-dot')).toHaveLength(0);
   });
 });

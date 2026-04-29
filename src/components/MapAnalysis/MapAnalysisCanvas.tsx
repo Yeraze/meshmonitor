@@ -9,6 +9,7 @@ import PositionTrailsLayer from './layers/PositionTrailsLayer';
 import CoverageHeatmapLayer from './layers/CoverageHeatmapLayer';
 import RangeRingsLayer from './layers/RangeRingsLayer';
 import SnrOverlayLayer from './layers/SnrOverlayLayer';
+import TimeSliderControl from './TimeSliderControl';
 
 const FALLBACK_CENTER: [number, number] = [30, -90];
 const FALLBACK_ZOOM = 10;
@@ -24,7 +25,7 @@ export default function MapAnalysisCanvas() {
   const zoom = defaultMapCenterZoom ?? FALLBACK_ZOOM;
 
   return (
-    <div className="map-analysis-canvas">
+    <div className="map-analysis-canvas" style={{ position: 'relative' }}>
       <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }}>
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -52,6 +53,7 @@ export default function MapAnalysisCanvas() {
           {config.layers.heatmap.enabled && <CoverageHeatmapLayer />}
         </Pane>
       </MapContainer>
+      <TimeSliderControl />
     </div>
   );
 }

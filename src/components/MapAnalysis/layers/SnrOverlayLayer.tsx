@@ -31,9 +31,17 @@ export default function SnrOverlayLayer() {
     lookbackHours: layer.lookbackHours ?? 24,
   });
 
+  const ts = config.timeSlider;
+  const inWindow = (t: number): boolean =>
+    !ts.enabled ||
+    ts.windowStartMs === undefined ||
+    ts.windowEndMs === undefined ||
+    (t >= ts.windowStartMs && t <= ts.windowEndMs);
+  const filtered = (items as PositionRecord[]).filter((p) => inWindow(p.timestamp));
+
   return (
     <>
-      {(items as PositionRecord[]).map((p, i) => (
+      {filtered.map((p, i) => (
         <CircleMarker
           key={`${p.sourceId}:${p.nodeNum}:${p.timestamp}:${i}`}
           center={[p.latitude, p.longitude]}
