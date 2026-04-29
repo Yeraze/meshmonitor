@@ -31,6 +31,24 @@ vi.mock('react-leaflet', () => ({
   Pane: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 
+vi.mock('../../hooks/useMapAnalysisData', () => ({
+  useTraceroutes: () => ({
+    items: [],
+    isLoading: false,
+    isError: false,
+    error: null,
+    progress: { loaded: 0, estimatedTotal: 0, percent: 100 },
+  }),
+  useNeighbors: () => ({ data: { items: [] }, isLoading: false }),
+  usePositions: () => ({
+    items: [],
+    isLoading: false,
+    progress: { loaded: 0, estimatedTotal: 0, percent: 100 },
+  }),
+  useCoverageGrid: () => ({ data: { cells: [], binSizeDeg: 0.01 }, isLoading: false }),
+  useHopCounts: () => ({ data: { entries: [] }, isLoading: false }),
+}));
+
 vi.mock('../../hooks/useDashboardData', () => ({
   useDashboardSources: () => ({ data: [{ id: 'a', name: 'A' }] }),
   useDashboardUnifiedData: () => ({
