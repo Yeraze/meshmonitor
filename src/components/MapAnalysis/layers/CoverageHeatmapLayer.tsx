@@ -62,23 +62,52 @@ export default function CoverageHeatmapLayer() {
     // grid which has no per-fix timestamps; the time-slider has no effect on
     // the cell counts. At high zoom (>= 13) the layer uses raw positions and
     // the slider filters them client-side.
-    const points: Array<[number, number, number]> =
-      zoom < ZOOM_THRESHOLD
-        ? (gridData?.cells ?? []).map((c) => [
-            c.centerLat,
-            c.centerLon,
-            Math.min(1, c.count / 50),
-          ])
-        : (positions.items as PositionRecord[])
-            .filter((p) => inWindow(p.timestamp))
-            .map((p) => [p.latitude, p.longitude, 0.4]);
+    let points: Array<[number, number, number]>;
+    if (zoom < ZOOM_THRESHOLD) {
+      const cells = gridData?.cells ?? [];
+      // Normalize against the max cell count so the busiest cell always
+      // hits 1.0 (red on the default gradient). A fixed divisor (e.g. /50)
+      // means tiny meshes never produce visible heat, and busy meshes
+      // saturate everywhere.
+      const maxCount = cells.reduce((m, c) => Math.max(m, c.count), 0);
+      const denom = Math.max(1, maxCount);
+      points = cells.map((c) => [c.centerLat, c.centerLon, c.count / denom]);
+    } else {
+      points = (positions.items as PositionRecord[])
+        .filter((p) => inWindow(p.timestamp))
+        .map((p) => [p.latitude, p.longitude, 1.0]);
+    }
     if (points.length === 0) return;
+
+    // Custom gradient: more saturated at the low end so isolated fixes are
+    // still readable instead of nearly transparent. Default leaflet.heat
+    // gradient has a long faint blue ramp that disappears against dark tiles.
+    const gradient = {
+      0.2: '#3b82f6', // blue
+      0.4: '#22d3ee', // cyan
+      0.6: '#84cc16', // lime
+      0.8: '#fbbf24', // amber
+      1.0: '#ef4444', // red
+    };
+
     const heat = (L as unknown as {
       heatLayer: (
         pts: Array<[number, number, number]>,
-        opts: { radius: number; blur: number; maxZoom: number },
+        opts: {
+          radius: number;
+          blur: number;
+          maxZoom: number;
+          minOpacity?: number;
+          gradient?: Record<number, string>;
+        },
       ) => L.Layer;
-    }).heatLayer(points, { radius: 25, blur: 15, maxZoom: 17 });
+    }).heatLayer(points, {
+      radius: 35,
+      blur: 25,
+      maxZoom: 17,
+      minOpacity: 0.4,
+      gradient,
+    });
     heat.addTo(map);
     return () => {
       map.removeLayer(heat);

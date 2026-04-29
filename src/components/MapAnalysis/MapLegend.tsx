@@ -102,9 +102,9 @@ export default function MapLegend() {
             <section>
               <h4>Coverage Heatmap</h4>
               <div className="row">
-                <GradientBar stops={['#1e3a8a', '#06b6d4', '#84cc16', '#fbbf24', '#ef4444']} />
+                <GradientBar stops={['#3b82f6', '#22d3ee', '#84cc16', '#fbbf24', '#ef4444']} />
               </div>
-              <div className="row caption">Density of position fixes per cell</div>
+              <div className="row caption">Density of position fixes (low → high)</div>
             </section>
           )}
           {showTrails && (
