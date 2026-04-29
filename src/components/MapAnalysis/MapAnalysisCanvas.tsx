@@ -5,6 +5,7 @@ import { useMapAnalysisCtx } from './MapAnalysisContext';
 import NodeMarkersLayer from './layers/NodeMarkersLayer';
 import TraceroutePathsLayer from './layers/TraceroutePathsLayer';
 import NeighborLinksLayer from './layers/NeighborLinksLayer';
+import PositionTrailsLayer from './layers/PositionTrailsLayer';
 
 const FALLBACK_CENTER: [number, number] = [30, -90];
 const FALLBACK_ZOOM = 10;
@@ -34,6 +35,9 @@ export default function MapAnalysisCanvas() {
         </Pane>
         <Pane name="neighbors" style={{ zIndex: 450 }}>
           {config.layers.neighbors.enabled && <NeighborLinksLayer />}
+        </Pane>
+        <Pane name="trails" style={{ zIndex: 400 }}>
+          {config.layers.trails.enabled && <PositionTrailsLayer />}
         </Pane>
       </MapContainer>
     </div>
