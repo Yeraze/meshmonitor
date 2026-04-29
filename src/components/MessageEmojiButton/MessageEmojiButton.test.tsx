@@ -3,7 +3,7 @@
  *
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createRef, useRef } from 'react';
@@ -167,5 +167,33 @@ describe('MessageEmojiButton — insertion', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('emoji-picker-mock')).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('MessageEmojiButton — theme detection', () => {
+  beforeEach(() => {
+    (useIsDesktop as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    document.documentElement.removeAttribute('data-theme');
+  });
+
+  it('renders without crashing for dark themes', async () => {
+    document.documentElement.setAttribute('data-theme', 'mocha');
+    const user = userEvent.setup();
+    const ref = createRef<HTMLTextAreaElement>();
+    render(<MessageEmojiButton textareaRef={ref} value="" onChange={() => {}} />);
+    await user.click(screen.getByRole('button', { name: 'messages.insert_emoji_button_title' }));
+    expect(await screen.findByTestId('emoji-picker-mock')).toBeInTheDocument();
+  });
+
+  it('renders without crashing for light themes', async () => {
+    document.documentElement.setAttribute('data-theme', 'latte');
+    const user = userEvent.setup();
+    const ref = createRef<HTMLTextAreaElement>();
+    render(<MessageEmojiButton textareaRef={ref} value="" onChange={() => {}} />);
+    await user.click(screen.getByRole('button', { name: 'messages.insert_emoji_button_title' }));
+    expect(await screen.findByTestId('emoji-picker-mock')).toBeInTheDocument();
   });
 });

@@ -5,6 +5,20 @@ import './MessageEmojiButton.css';
 
 const EmojiPicker = React.lazy(() => import('emoji-picker-react'));
 
+const LIGHT_THEMES = new Set([
+  'latte',
+  'solarized-light',
+  'gruvbox-light',
+  'high-contrast-light',
+]);
+
+function detectPickerTheme(): 'light' | 'dark' {
+  if (typeof document === 'undefined') return 'dark';
+  const attr = document.documentElement.getAttribute('data-theme');
+  if (attr && LIGHT_THEMES.has(attr)) return 'light';
+  return 'dark';
+}
+
 export interface MessageEmojiButtonProps {
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   value: string;
@@ -90,7 +104,10 @@ export const MessageEmojiButton: React.FC<MessageEmojiButtonProps> = ({
       {open && (
         <div className="emoji-insert-popover" role="dialog" aria-label={t('messages.insert_emoji_button_title', 'Insert emoji')}>
           <Suspense fallback={null}>
-            <EmojiPicker onEmojiClick={(e: { emoji: string }) => handleSelect(e.emoji)} />
+            <EmojiPicker
+              onEmojiClick={(e: { emoji: string }) => handleSelect(e.emoji)}
+              theme={detectPickerTheme() as never}
+            />
           </Suspense>
         </div>
       )}
