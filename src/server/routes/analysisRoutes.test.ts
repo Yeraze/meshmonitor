@@ -150,3 +150,29 @@ describe('GET /traceroutes', () => {
     );
   });
 });
+
+describe('GET /neighbors', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
+    mockDb.analysis.getNeighbors = vi.fn().mockResolvedValue({ items: [] });
+  });
+
+  it('admin: returns merged neighbors across all sources', async () => {
+    const app = createApp(adminUser);
+    const res = await request(app).get('/neighbors?since=0');
+    expect(res.status).toBe(200);
+    expect(mockDb.analysis.getNeighbors).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceIds: ['src-a', 'src-b'] }),
+    );
+  });
+
+  it('respects intersection with requested sources', async () => {
+    mockDb.checkPermissionAsync.mockResolvedValue(true);
+    const app = createApp(regularUser);
+    await request(app).get('/neighbors?sources=src-a&since=0');
+    expect(mockDb.analysis.getNeighbors).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceIds: ['src-a'] }),
+    );
+  });
+});

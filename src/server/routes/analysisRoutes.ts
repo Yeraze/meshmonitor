@@ -98,4 +98,22 @@ router.get('/traceroutes', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/neighbors', async (req: Request, res: Response) => {
+  try {
+    const permitted = await resolvePermittedSourceIds(req);
+    const requested = parseSourcesParam(req.query.sources);
+    const sourceIds = requested
+      ? permitted.filter((id) => requested.includes(id))
+      : permitted;
+    const result = await databaseService.analysis.getNeighbors({
+      sourceIds,
+      sinceMs: parseSinceMs(req.query.since),
+    });
+    res.json(result);
+  } catch (error) {
+    logger.error('Error in GET /api/analysis/neighbors:', error);
+    res.status(500).json({ error: 'Failed to fetch neighbors' });
+  }
+});
+
 export default router;

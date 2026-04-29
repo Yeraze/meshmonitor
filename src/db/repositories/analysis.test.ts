@@ -171,3 +171,41 @@ describe('AnalysisRepository.getTraceroutes', () => {
     expect(r.nextCursor).not.toBeNull();
   });
 });
+
+describe('AnalysisRepository.getNeighbors', () => {
+  it('returns neighbor edges for given sources within sinceMs', async () => {
+    const sqlite = new Database(':memory:');
+    const db = drizzle(sqlite);
+    sqlite.exec(`
+      CREATE TABLE neighbor_info (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nodeNum INTEGER NOT NULL,
+        neighborNodeNum INTEGER NOT NULL,
+        snr REAL,
+        lastRxTime INTEGER,
+        timestamp INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL,
+        sourceId TEXT
+      );
+    `);
+    const now = Date.now();
+    sqlite
+      .prepare(
+        'INSERT INTO neighbor_info (nodeNum, neighborNodeNum, sourceId, snr, timestamp, createdAt) VALUES (?,?,?,?,?,?)',
+      )
+      .run(1, 2, 'src-a', 5.5, now, now);
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getNeighbors({ sourceIds: ['src-a'], sinceMs: 0 });
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0]).toMatchObject({ nodeNum: 1, neighborNum: 2, sourceId: 'src-a' });
+    expect(r.items[0].snr).toBeCloseTo(5.5);
+  });
+
+  it('returns empty when no sources given', async () => {
+    const sqlite = new Database(':memory:');
+    const db = drizzle(sqlite);
+    const repo = new AnalysisRepository(db, 'sqlite');
+    const r = await repo.getNeighbors({ sourceIds: [], sinceMs: 0 });
+    expect(r.items).toEqual([]);
+  });
+});

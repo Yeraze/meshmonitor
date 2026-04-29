@@ -31,6 +31,11 @@ import {
   traceroutesPostgres,
   traceroutesMysql,
 } from '../schema/traceroutes.js';
+import {
+  neighborInfoSqlite,
+  neighborInfoPostgres,
+  neighborInfoMysql,
+} from '../schema/neighbors.js';
 
 export type DrizzleDb =
   | BetterSQLite3Database<Record<string, never>>
@@ -102,6 +107,24 @@ export interface GetTraceroutesArgs {
   cursor?: string | null;
 }
 
+export interface NeighborRow {
+  id: number;
+  nodeNum: number;
+  neighborNum: number;
+  sourceId: string;
+  snr: number | null;
+  timestamp: number;
+}
+
+export interface NeighborsResult {
+  items: NeighborRow[];
+}
+
+export interface GetNeighborsArgs {
+  sourceIds: string[];
+  sinceMs: number;
+}
+
 const MAX_PAGE_SIZE = 2000;
 const MIN_PAGE_SIZE = 1;
 
@@ -160,6 +183,17 @@ function pickTraceroutesTable(dbType: AnalysisDbType) {
       return traceroutesPostgres;
     case 'mysql':
       return traceroutesMysql;
+  }
+}
+
+function pickNeighborsTable(dbType: AnalysisDbType) {
+  switch (dbType) {
+    case 'sqlite':
+      return neighborInfoSqlite;
+    case 'postgres':
+      return neighborInfoPostgres;
+    case 'mysql':
+      return neighborInfoMysql;
   }
 }
 
@@ -405,5 +439,49 @@ export class AnalysisRepository {
         : null;
 
     return { items, pageSize, hasMore, nextCursor };
+  }
+
+  /**
+   * Get neighbor edges across the given sources within `sinceMs`. No
+   * pagination — neighbor tables are small per source and the consumer is
+   * a topology renderer that wants the full set at once.
+   */
+  async getNeighbors(args: GetNeighborsArgs): Promise<NeighborsResult> {
+    if (args.sourceIds.length === 0) {
+      return { items: [] };
+    }
+
+    const neighbors = pickNeighborsTable(this.dbType);
+
+    /* eslint-disable @typescript-eslint/no-explicit-any -- Drizzle cross-dialect union */
+    const rows: any[] = await (this.db as any)
+      .select({
+        id: neighbors.id,
+        nodeNum: neighbors.nodeNum,
+        neighborNodeNum: neighbors.neighborNodeNum,
+        sourceId: neighbors.sourceId,
+        snr: neighbors.snr,
+        timestamp: neighbors.timestamp,
+      })
+      .from(neighbors)
+      .where(
+        and(
+          inArray(neighbors.sourceId, args.sourceIds),
+          gte(neighbors.timestamp, args.sinceMs),
+        ),
+      )
+      .orderBy(desc(neighbors.timestamp));
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    const items: NeighborRow[] = rows.map((r) => ({
+      id: Number(r.id),
+      nodeNum: Number(r.nodeNum),
+      neighborNum: Number(r.neighborNodeNum),
+      sourceId: r.sourceId ?? '',
+      snr: r.snr == null ? null : Number(r.snr),
+      timestamp: Number(r.timestamp),
+    }));
+
+    return { items };
   }
 }
