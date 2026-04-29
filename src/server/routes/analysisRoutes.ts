@@ -19,7 +19,10 @@ import { logger } from '../../utils/logger.js';
 const router = Router();
 router.use(optionalAuth());
 
-async function resolvePermittedSourceIds(req: Request): Promise<string[]> {
+async function resolvePermittedSourceIds(
+  req: Request,
+  resource: string = 'nodes',
+): Promise<string[]> {
   const user = (req as any).user;
   const isAdmin = user?.isAdmin ?? false;
   const allSources = await databaseService.sources.getAllSources();
@@ -30,8 +33,8 @@ async function resolvePermittedSourceIds(req: Request): Promise<string[]> {
   const checks = await Promise.all(
     enabled.map(async (s: any) => {
       const ok = user
-        ? await databaseService.checkPermissionAsync(user.id, 'nodes', 'read', s.id)
-        : await databaseService.checkPermissionAsync(0, 'nodes', 'read', s.id);
+        ? await databaseService.checkPermissionAsync(user.id, resource, 'read', s.id)
+        : await databaseService.checkPermissionAsync(0, resource, 'read', s.id);
       return ok ? s.id : null;
     }),
   );
@@ -72,6 +75,26 @@ router.get('/positions', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error in GET /api/analysis/positions:', error);
     res.status(500).json({ error: 'Failed to fetch positions' });
+  }
+});
+
+router.get('/traceroutes', async (req: Request, res: Response) => {
+  try {
+    const permitted = await resolvePermittedSourceIds(req, 'traceroute');
+    const requested = parseSourcesParam(req.query.sources);
+    const sourceIds = requested
+      ? permitted.filter((id) => requested.includes(id))
+      : permitted;
+    const result = await databaseService.analysis.getTraceroutes({
+      sourceIds,
+      sinceMs: parseSinceMs(req.query.since),
+      pageSize: clampPageSize(req.query.pageSize),
+      cursor: typeof req.query.cursor === 'string' ? req.query.cursor : null,
+    });
+    res.json(result);
+  } catch (error) {
+    logger.error('Error in GET /api/analysis/traceroutes:', error);
+    res.status(500).json({ error: 'Failed to fetch traceroutes' });
   }
 });
 

@@ -108,3 +108,66 @@ describe('AnalysisRepository.getPositions', () => {
     expect(result.items.some((r: { timestamp: number }) => r.timestamp === orphanTs)).toBe(false);
   });
 });
+
+describe('AnalysisRepository.getTraceroutes', () => {
+  let repo: AnalysisRepository;
+  let sqlite: Database.Database;
+
+  beforeEach(() => {
+    sqlite = new Database(':memory:');
+    const db = drizzle(sqlite);
+    // Mirror the SQLite shape of `traceroutes` from src/db/schema/traceroutes.ts.
+    sqlite.exec(`
+      CREATE TABLE traceroutes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fromNodeNum INTEGER NOT NULL,
+        toNodeNum INTEGER NOT NULL,
+        fromNodeId TEXT,
+        toNodeId TEXT,
+        route TEXT,
+        routeBack TEXT,
+        snrTowards TEXT,
+        snrBack TEXT,
+        routePositions TEXT,
+        channel INTEGER,
+        timestamp INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL,
+        sourceId TEXT
+      );
+    `);
+    const now = Date.now();
+    sqlite
+      .prepare(
+        'INSERT INTO traceroutes (fromNodeNum, toNodeNum, sourceId, route, routeBack, snrTowards, snrBack, timestamp, createdAt) VALUES (?,?,?,?,?,?,?,?,?)',
+      )
+      .run(1, 2, 'src-a', '[]', '[]', '[10]', '[12]', now, now);
+    repo = new AnalysisRepository(db, 'sqlite');
+  });
+
+  it('returns traceroutes for given sources, newest first', async () => {
+    const r = await repo.getTraceroutes({ sourceIds: ['src-a'], sinceMs: 0, pageSize: 10 });
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0]).toMatchObject({ fromNodeNum: 1, toNodeNum: 2, sourceId: 'src-a' });
+    expect(r.hasMore).toBe(false);
+    expect(r.nextCursor).toBeNull();
+  });
+
+  it('returns empty when no sources given', async () => {
+    const r = await repo.getTraceroutes({ sourceIds: [], sinceMs: 0, pageSize: 10 });
+    expect(r.items).toEqual([]);
+    expect(r.hasMore).toBe(false);
+  });
+
+  it('honors pageSize and emits a cursor when more rows remain', async () => {
+    const now = Date.now();
+    sqlite
+      .prepare(
+        'INSERT INTO traceroutes (fromNodeNum, toNodeNum, sourceId, route, routeBack, snrTowards, snrBack, timestamp, createdAt) VALUES (?,?,?,?,?,?,?,?,?)',
+      )
+      .run(3, 4, 'src-a', '[]', '[]', '[]', '[]', now + 10, now + 10);
+    const r = await repo.getTraceroutes({ sourceIds: ['src-a'], sinceMs: 0, pageSize: 1 });
+    expect(r.items).toHaveLength(1);
+    expect(r.hasMore).toBe(true);
+    expect(r.nextCursor).not.toBeNull();
+  });
+});

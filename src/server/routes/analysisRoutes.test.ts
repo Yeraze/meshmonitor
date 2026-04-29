@@ -110,3 +110,43 @@ describe('GET /positions', () => {
     );
   });
 });
+
+describe('GET /traceroutes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
+    mockDb.analysis.getTraceroutes = vi.fn().mockResolvedValue({
+      items: [], pageSize: 500, hasMore: false, nextCursor: null,
+    });
+  });
+
+  it('admin queries all enabled sources', async () => {
+    const app = createApp(adminUser);
+    const res = await request(app).get('/traceroutes?since=0');
+    expect(res.status).toBe(200);
+    expect(mockDb.analysis.getTraceroutes).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceIds: ['src-a', 'src-b'] }),
+    );
+  });
+
+  it('regular user: filters by traceroute:read permission per source', async () => {
+    mockDb.checkPermissionAsync.mockImplementation(
+      (_uid: number, resource: string, _a: string, sid: string) =>
+        Promise.resolve(resource === 'traceroute' && sid === 'src-a'),
+    );
+    const app = createApp(regularUser);
+    const res = await request(app).get('/traceroutes?since=0');
+    expect(res.status).toBe(200);
+    expect(mockDb.analysis.getTraceroutes).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceIds: ['src-a'] }),
+    );
+  });
+
+  it('passes through cursor and pageSize', async () => {
+    const app = createApp(adminUser);
+    await request(app).get('/traceroutes?since=0&cursor=xyz&pageSize=10');
+    expect(mockDb.analysis.getTraceroutes).toHaveBeenCalledWith(
+      expect.objectContaining({ cursor: 'xyz', pageSize: 10 }),
+    );
+  });
+});

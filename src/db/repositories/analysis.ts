@@ -26,6 +26,11 @@ import {
   telemetryPostgres,
   telemetryMysql,
 } from '../schema/telemetry.js';
+import {
+  traceroutesSqlite,
+  traceroutesPostgres,
+  traceroutesMysql,
+} from '../schema/traceroutes.js';
 
 export type DrizzleDb =
   | BetterSQLite3Database<Record<string, never>>
@@ -64,6 +69,39 @@ interface Cursor {
   nodeNum: number;
 }
 
+/** Cursor for `(timestamp DESC, id DESC)` keyed pagination. */
+interface IdCursor {
+  ts: number;
+  id: number;
+}
+
+export interface TracerouteRow {
+  id: number;
+  fromNodeNum: number;
+  toNodeNum: number;
+  sourceId: string;
+  route: string | null;
+  routeBack: string | null;
+  snrTowards: string | null;
+  snrBack: string | null;
+  timestamp: number;
+  createdAt: number;
+}
+
+export interface PaginatedTraceroutes {
+  items: TracerouteRow[];
+  pageSize: number;
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
+export interface GetTraceroutesArgs {
+  sourceIds: string[];
+  sinceMs: number;
+  pageSize: number;
+  cursor?: string | null;
+}
+
 const MAX_PAGE_SIZE = 2000;
 const MIN_PAGE_SIZE = 1;
 
@@ -85,6 +123,24 @@ function decodeCursor(s: string | null | undefined): Cursor | null {
   }
 }
 
+function encodeIdCursor(c: IdCursor): string {
+  return Buffer.from(`${c.ts}:${c.id}`, 'utf8').toString('base64url');
+}
+
+function decodeIdCursor(s: string | null | undefined): IdCursor | null {
+  if (!s) return null;
+  try {
+    const decoded = Buffer.from(s, 'base64url').toString('utf8');
+    const [tsStr, idStr] = decoded.split(':');
+    const ts = Number(tsStr);
+    const id = Number(idStr);
+    if (!Number.isFinite(ts) || !Number.isFinite(id)) return null;
+    return { ts, id };
+  } catch {
+    return null;
+  }
+}
+
 function pickTelemetryTable(dbType: AnalysisDbType) {
   switch (dbType) {
     case 'sqlite':
@@ -93,6 +149,17 @@ function pickTelemetryTable(dbType: AnalysisDbType) {
       return telemetryPostgres;
     case 'mysql':
       return telemetryMysql;
+  }
+}
+
+function pickTraceroutesTable(dbType: AnalysisDbType) {
+  switch (dbType) {
+    case 'sqlite':
+      return traceroutesSqlite;
+    case 'postgres':
+      return traceroutesPostgres;
+    case 'mysql':
+      return traceroutesMysql;
   }
 }
 
@@ -252,6 +319,89 @@ export class AnalysisRepository {
     const nextCursor =
       hasMore && last
         ? encodeCursor({ ts: last.timestamp, nodeNum: last.nodeNum })
+        : null;
+
+    return { items, pageSize, hasMore, nextCursor };
+  }
+
+  /**
+   * Get a paginated list of traceroute records across given sources, newest
+   * first. Cursor pagination keyed on `(timestamp DESC, id DESC)` — the
+   * traceroutes table has a single `id` PK so the (ts, id) tuple is a stable
+   * cursor.
+   */
+  async getTraceroutes(args: GetTraceroutesArgs): Promise<PaginatedTraceroutes> {
+    const pageSize = Math.max(
+      MIN_PAGE_SIZE,
+      Math.min(args.pageSize, MAX_PAGE_SIZE),
+    );
+
+    if (args.sourceIds.length === 0) {
+      return { items: [], pageSize, hasMore: false, nextCursor: null };
+    }
+
+    const traceroutes = pickTraceroutesTable(this.dbType);
+    const cursor = decodeIdCursor(args.cursor ?? null);
+
+    const baseConditions = [
+      inArray(traceroutes.sourceId, args.sourceIds),
+      gte(traceroutes.timestamp, args.sinceMs),
+    ];
+
+    if (cursor) {
+      const cursorClause = or(
+        lt(traceroutes.timestamp, cursor.ts),
+        and(
+          eq(traceroutes.timestamp, cursor.ts),
+          lt(traceroutes.id, cursor.id),
+        ),
+      );
+      if (cursorClause) {
+        baseConditions.push(cursorClause);
+      }
+    }
+
+    const fetchLimit = pageSize + 1;
+
+    /* eslint-disable @typescript-eslint/no-explicit-any -- Drizzle cross-dialect union */
+    const rows: any[] = await (this.db as any)
+      .select({
+        id: traceroutes.id,
+        fromNodeNum: traceroutes.fromNodeNum,
+        toNodeNum: traceroutes.toNodeNum,
+        sourceId: traceroutes.sourceId,
+        route: traceroutes.route,
+        routeBack: traceroutes.routeBack,
+        snrTowards: traceroutes.snrTowards,
+        snrBack: traceroutes.snrBack,
+        timestamp: traceroutes.timestamp,
+        createdAt: traceroutes.createdAt,
+      })
+      .from(traceroutes)
+      .where(and(...baseConditions))
+      .orderBy(desc(traceroutes.timestamp), desc(traceroutes.id))
+      .limit(fetchLimit);
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    const mapped: TracerouteRow[] = rows.map((r) => ({
+      id: Number(r.id),
+      fromNodeNum: Number(r.fromNodeNum),
+      toNodeNum: Number(r.toNodeNum),
+      sourceId: r.sourceId ?? '',
+      route: r.route ?? null,
+      routeBack: r.routeBack ?? null,
+      snrTowards: r.snrTowards ?? null,
+      snrBack: r.snrBack ?? null,
+      timestamp: Number(r.timestamp),
+      createdAt: Number(r.createdAt),
+    }));
+
+    const hasMore = mapped.length > pageSize;
+    const items = mapped.slice(0, pageSize);
+    const last = items[items.length - 1];
+    const nextCursor =
+      hasMore && last
+        ? encodeIdCursor({ ts: last.timestamp, id: last.id })
         : null;
 
     return { items, pageSize, hasMore, nextCursor };
