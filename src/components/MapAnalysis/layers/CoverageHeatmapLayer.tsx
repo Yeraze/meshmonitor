@@ -15,6 +15,8 @@ interface GridCell {
 }
 
 interface PositionRecord {
+  sourceId: string;
+  nodeNum: number;
   latitude: number;
   longitude: number;
   timestamp: number;
@@ -73,9 +75,21 @@ export default function CoverageHeatmapLayer() {
       const denom = Math.max(1, maxCount);
       points = cells.map((c) => [c.centerLat, c.centerLon, c.count / denom]);
     } else {
-      points = (positions.items as PositionRecord[])
-        .filter((p) => inWindow(p.timestamp))
-        .map((p) => [p.latitude, p.longitude, 1.0]);
+      // High-zoom equivalent of "unique nodes per cell": dedupe by (sourceId,
+      // nodeNum) at ~11m precision (4 decimal places). A stationary node that
+      // reports 200 times from the same spot contributes 1 dot, not 200.
+      const seen = new Set<string>();
+      const dedupedPoints: Array<[number, number, number]> = [];
+      for (const p of positions.items as PositionRecord[]) {
+        if (!inWindow(p.timestamp)) continue;
+        const lat4 = Math.round(p.latitude * 1e4) / 1e4;
+        const lon4 = Math.round(p.longitude * 1e4) / 1e4;
+        const key = `${p.sourceId}:${p.nodeNum}:${lat4}:${lon4}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        dedupedPoints.push([p.latitude, p.longitude, 1.0]);
+      }
+      points = dedupedPoints;
     }
     if (points.length === 0) return;
 

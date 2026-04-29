@@ -239,26 +239,36 @@ describe('AnalysisRepository.getCoverageGrid', () => {
       'INSERT INTO telemetry (nodeId, nodeNum, telemetryType, timestamp, value, createdAt, sourceId) VALUES (?, ?, ?, ?, ?, ?, ?)',
     );
     const now = Date.now();
-    // Three position fixes clustered near (30.0, -90.0) — different timestamps
-    // so each is a distinct pivoted fix, but all fall in the same coarse bin.
-    for (let i = 0; i < 3; i++) {
+    // Five fixes from node 1 clustered near (30.5001, -90.5001) — all well
+    // inside one bin (zoom 12 binSize ≈ 0.000625°). Coverage-area semantics:
+    // node 1 should contribute 1 to that cell, not 5.
+    for (let i = 0; i < 5; i++) {
       const ts = now - i * 1000;
-      insert.run('!00000001', 1, 'latitude', ts, 30.0 + i * 0.0001, ts, 'src-a');
-      insert.run('!00000001', 1, 'longitude', ts, -90.0 + i * 0.0001, ts, 'src-a');
+      const lat = 30.5001 + i * 0.00005;
+      const lon = -90.5001 - i * 0.00005;
+      insert.run('!00000001', 1, 'latitude', ts, lat, ts, 'src-a');
+      insert.run('!00000001', 1, 'longitude', ts, lon, ts, 'src-a');
     }
-    // One fix far away at (45.0, -100.0) — distinct bin.
+    // Node 2 also reports from the same coarse bin once. Cell count for
+    // that bin should be 2 (unique nodes), not 6 (raw fixes).
+    const ts3 = now - 500;
+    insert.run('!00000002', 2, 'latitude', ts3, 30.5002, ts3, 'src-a');
+    insert.run('!00000002', 2, 'longitude', ts3, -90.5002, ts3, 'src-a');
+    // Node 2 also reported once from a far-away bin near (45.5, -100.5).
     const ts2 = now - 10_000;
-    insert.run('!00000002', 2, 'latitude', ts2, 45.0, ts2, 'src-a');
-    insert.run('!00000002', 2, 'longitude', ts2, -100.0, ts2, 'src-a');
+    insert.run('!00000002', 2, 'latitude', ts2, 45.5001, ts2, 'src-a');
+    insert.run('!00000002', 2, 'longitude', ts2, -100.5001, ts2, 'src-a');
 
     repo = new AnalysisRepository(db, 'sqlite');
   });
 
-  it('groups position fixes into lat/lon cells with correct counts', async () => {
+  it('counts unique nodes per cell (not raw fix count)', async () => {
     const r = await repo.getCoverageGrid({ sourceIds: ['src-a'], sinceMs: 0, zoom: 12 });
-    expect(r.cells.length).toBeGreaterThanOrEqual(2);
-    const maxCount = Math.max(...r.cells.map((c: { count: number }) => c.count));
-    expect(maxCount).toBeGreaterThanOrEqual(3);
+    expect(r.cells.length).toBe(2);
+    const counts = r.cells.map((c: { count: number }) => c.count).sort();
+    // Cell near (30,-90): nodes 1 + 2 → count 2.
+    // Cell near (45,-100): node 2 only → count 1.
+    expect(counts).toEqual([1, 2]);
     expect(r.binSizeDeg).toBeGreaterThan(0);
   });
 

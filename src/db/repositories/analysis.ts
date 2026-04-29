@@ -533,6 +533,11 @@ export class AnalysisRepository {
    * grid reuses `getPositions` (the telemetry pivot) and groups in JS to
    * avoid duplicating the lat/lon pivot logic at the SQL layer. Walks at
    * most 5 pages (~10k positions) as a guardrail against runaway scans.
+   *
+   * Each cell counts the number of UNIQUE nodes (`(sourceId, nodeNum)`) that
+   * have ever reported a fix from inside it — not raw fix count. This means a
+   * stationary high-frequency reporter contributes 1 to its cell instead of
+   * dominating, while a mobile node lights up every cell it has visited.
    */
   async getCoverageGrid(args: GetCoverageGridArgs): Promise<CoverageGridResult> {
     const binSize = binSizeForZoom(args.zoom);
@@ -543,6 +548,9 @@ export class AnalysisRepository {
     const pageSize = 2000;
     let cursor: string | null = null;
     const cellMap = new Map<string, GridCell>();
+    // De-dup key per (sourceId, nodeNum, cell) — second+ fixes from the same
+    // node into the same cell don't increment the count.
+    const seen = new Set<string>();
 
     for (let i = 0; i < 5; i++) {
       const page = await this.getPositions({
@@ -554,8 +562,11 @@ export class AnalysisRepository {
       for (const p of page.items) {
         const latBin = Math.floor(p.latitude / binSize);
         const lonBin = Math.floor(p.longitude / binSize);
-        const key = `${latBin}:${lonBin}`;
-        let cell = cellMap.get(key);
+        const dedupeKey = `${p.sourceId}:${p.nodeNum}:${latBin}:${lonBin}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        const cellKey = `${latBin}:${lonBin}`;
+        let cell = cellMap.get(cellKey);
         if (!cell) {
           cell = {
             latBin,
@@ -564,7 +575,7 @@ export class AnalysisRepository {
             centerLon: lonBin * binSize + binSize / 2,
             count: 0,
           };
-          cellMap.set(key, cell);
+          cellMap.set(cellKey, cell);
         }
         cell.count++;
       }
