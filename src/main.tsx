@@ -12,7 +12,7 @@ import { queryClient } from './config/queryClient.ts';
 import App from './App.tsx';
 import PacketMonitorPage from './pages/PacketMonitorPage.tsx';
 import DashboardPage from './pages/DashboardPage.tsx';
-import AnalysisPage from './pages/AnalysisPage.tsx';
+import MapAnalysisPage from './pages/MapAnalysisPage.tsx';
 import UnifiedMessagesPage from './pages/UnifiedMessagesPage.tsx';
 import UnifiedTelemetryPage from './pages/UnifiedTelemetryPage.tsx';
 import GlobalSettingsPage from './pages/GlobalSettingsPage.tsx';
@@ -86,10 +86,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               element={sharedProviders(<UnifiedTelemetryPage />)}
             />
 
-            {/* Analysis workspace — coming soon */}
+            {/* Analysis workspace */}
             <Route
               path="analysis"
-              element={sharedProviders(<AnalysisPage />)}
+              element={sharedProviders(<MapAnalysisPage />)}
             />
 
             {/* Global settings */}

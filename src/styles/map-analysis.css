@@ -1,0 +1,26 @@
+.map-analysis-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #111;
+  color: #eee;
+}
+.map-analysis-toolbar {
+  flex: 0 0 auto;
+  border-bottom: 1px solid #333;
+  padding: 8px 12px;
+}
+.map-analysis-body {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+.map-analysis-canvas {
+  flex: 1 1 auto;
+  position: relative;
+}
+.map-analysis-inspector {
+  flex: 0 0 320px;
+  border-left: 1px solid #333;
+  overflow: auto;
+}
