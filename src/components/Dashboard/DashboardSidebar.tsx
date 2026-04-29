@@ -349,6 +349,12 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         >
           {t('source.sidebar.unified_telemetry')}
         </button>
+        <button
+          className="dashboard-sidebar-link dashboard-sidebar-link--active"
+          onClick={() => navigate('/analysis')}
+        >
+          {t('source.sidebar.map_analysis')}
+        </button>
       </div>
 
       <div className="dashboard-sidebar-footer">
