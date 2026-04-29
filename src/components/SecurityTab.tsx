@@ -227,13 +227,33 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
 
   const formatTimeOffset = (seconds: number | null | undefined): string => {
     if (seconds === null || seconds === undefined) return t('security.unknown');
-    const abs = Math.abs(seconds);
-    const sign = seconds >= 0 ? '+' : '-';
-    if (abs < 60) return `${sign}${abs}s`;
-    if (abs < 3600) return `${sign}${Math.floor(abs / 60)}m ${abs % 60}s`;
-    const hours = Math.floor(abs / 3600);
-    const mins = Math.floor((abs % 3600) / 60);
-    return `${sign}${hours}h ${mins}m`;
+    const abs = Math.abs(Math.round(seconds));
+    if (abs < 1) return t('security.offset_synchronized');
+
+    const days = Math.floor(abs / 86400);
+    const hours = Math.floor((abs % 86400) / 3600);
+    const minutes = Math.floor((abs % 3600) / 60);
+    const secs = abs % 60;
+
+    const parts: string[] = [];
+    if (days > 0) {
+      parts.push(t('security.offset_days', { count: days }));
+      if (hours > 0) parts.push(t('security.offset_hours', { count: hours }));
+    } else if (hours > 0) {
+      parts.push(t('security.offset_hours', { count: hours }));
+      if (minutes > 0) parts.push(t('security.offset_minutes', { count: minutes }));
+    } else if (minutes > 0) {
+      parts.push(t('security.offset_minutes', { count: minutes }));
+      if (secs > 0) parts.push(t('security.offset_seconds', { count: secs }));
+    } else {
+      parts.push(t('security.offset_seconds', { count: secs }));
+    }
+
+    const value = parts.join(', ');
+    // Convention: positive timeOffsetSeconds = node behind server, negative = ahead
+    return seconds >= 0
+      ? t('security.offset_behind', { value })
+      : t('security.offset_ahead', { value });
   };
 
   const groupDuplicateKeyNodes = (nodes: SecurityNode[]): DuplicateKeyGroup[] => {
