@@ -6,7 +6,7 @@ import './MessageEmojiButton.css';
 const EmojiPicker = React.lazy(() => import('emoji-picker-react'));
 
 export interface MessageEmojiButtonProps {
-  textareaRef: React.RefObject<HTMLTextAreaElement>;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   value: string;
   onChange: (next: string) => void;
 }
