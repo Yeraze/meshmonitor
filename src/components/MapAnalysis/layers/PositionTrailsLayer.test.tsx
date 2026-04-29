@@ -56,7 +56,6 @@ describe('PositionTrailsLayer', () => {
           neighbors: { enabled: false, lookbackHours: 24 },
           heatmap: { enabled: false, lookbackHours: 24 },
           trails: { enabled: true, lookbackHours: 24 },
-          rangeRings: { enabled: false, lookbackHours: null },
           hopShading: { enabled: false, lookbackHours: null },
           snrOverlay: { enabled: false, lookbackHours: 24 },
         },

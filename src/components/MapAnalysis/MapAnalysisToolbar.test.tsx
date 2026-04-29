@@ -23,9 +23,9 @@ const wrapper = ({ children }: { children: React.ReactNode }) => {
 describe('MapAnalysisToolbar', () => {
   beforeEach(() => localStorage.clear());
 
-  it('renders all 8 layer toggles', () => {
+  it('renders all 7 layer toggles', () => {
     render(<MapAnalysisToolbar />, { wrapper });
-    for (const label of ['Markers', 'Traceroutes', 'Neighbors', 'Heatmap', 'Trails', 'Range Rings', 'Hop Shading', 'SNR Overlay']) {
+    for (const label of ['Markers', 'Traceroutes', 'Neighbors', 'Heatmap', 'Trails', 'Hop Shading', 'SNR Overlay']) {
       expect(screen.getByRole('button', { name: new RegExp(label, 'i') })).toBeInTheDocument();
     }
   });

@@ -49,7 +49,6 @@ beforeEach(() => {
         neighbors: { enabled: false, lookbackHours: 24 },
         heatmap: { enabled: true, lookbackHours: 24 },
         trails: { enabled: false, lookbackHours: 24 },
-        rangeRings: { enabled: false, lookbackHours: null, options: { radiusKm: 5 } },
         hopShading: { enabled: false, lookbackHours: null },
         snrOverlay: { enabled: false, lookbackHours: 24 },
       },

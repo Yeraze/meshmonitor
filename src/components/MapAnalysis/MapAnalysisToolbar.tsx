@@ -21,7 +21,6 @@ const TIMED_LAYERS: { key: LayerKey; label: string }[] = [
 ];
 const UNTIMED_LAYERS: { key: LayerKey; label: string }[] = [
   { key: 'markers',     label: 'Markers' },
-  { key: 'rangeRings',  label: 'Range Rings' },
   { key: 'hopShading',  label: 'Hop Shading' },
 ];
 

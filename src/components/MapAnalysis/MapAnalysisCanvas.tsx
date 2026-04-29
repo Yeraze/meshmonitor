@@ -7,9 +7,9 @@ import TraceroutePathsLayer from './layers/TraceroutePathsLayer';
 import NeighborLinksLayer from './layers/NeighborLinksLayer';
 import PositionTrailsLayer from './layers/PositionTrailsLayer';
 import CoverageHeatmapLayer from './layers/CoverageHeatmapLayer';
-import RangeRingsLayer from './layers/RangeRingsLayer';
 import SnrOverlayLayer from './layers/SnrOverlayLayer';
 import TimeSliderControl from './TimeSliderControl';
+import MapLegend from './MapLegend';
 
 const FALLBACK_CENTER: [number, number] = [30, -90];
 const FALLBACK_ZOOM = 10;
@@ -37,9 +37,6 @@ export default function MapAnalysisCanvas() {
         <Pane name="paths" style={{ zIndex: 500 }}>
           {config.layers.traceroutes.enabled && <TraceroutePathsLayer />}
         </Pane>
-        <Pane name="rangeRings" style={{ zIndex: 480 }}>
-          {config.layers.rangeRings.enabled && <RangeRingsLayer />}
-        </Pane>
         <Pane name="neighbors" style={{ zIndex: 450 }}>
           {config.layers.neighbors.enabled && <NeighborLinksLayer />}
         </Pane>
@@ -54,6 +51,7 @@ export default function MapAnalysisCanvas() {
         </Pane>
       </MapContainer>
       <TimeSliderControl />
+      <MapLegend />
     </div>
   );
 }
