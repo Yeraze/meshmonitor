@@ -3,10 +3,18 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 import DashboardSidebar from './DashboardSidebar';
 import type { DashboardSource, SourceStatus } from '../../hooks/useDashboardData';
 import { UNIFIED_SOURCE_ID } from '../../hooks/useDashboardData';
+
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: vi.fn(actual.useNavigate),
+  };
+});
 
 const makeSources = (): DashboardSource[] => [
   { id: 'src-1', name: 'Source Alpha', type: 'tcp', enabled: true },
@@ -106,6 +114,19 @@ describe('DashboardSidebar', () => {
     renderSidebar();
     expect(screen.getByRole('button', { name: /source\.sidebar\.unified_messages/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /source\.sidebar\.unified_telemetry/ })).toBeInTheDocument();
+  });
+
+  it('renders Map Analysis link below the unified links and navigates to /analysis on click', async () => {
+    const navigate = vi.fn();
+    vi.mocked(useNavigate).mockReturnValue(navigate);
+
+    renderSidebar(); // existing helper from this file
+
+    const link = await screen.findByRole('button', { name: /source\.sidebar\.map_analysis/i });
+    expect(link).toBeInTheDocument();
+
+    fireEvent.click(link);
+    expect(navigate).toHaveBeenCalledWith('/analysis');
   });
 
   it('disables Open button for disabled sources', () => {

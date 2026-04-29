@@ -4,3 +4,4 @@
 - [NodeInfo.channel field semantics](reference_nodeinfo_channel_field.md) — field 7 is local-only "channel index we heard this node on", NOT a shared-channel hint
 - [Store and Forward Module Reference](reference_store_forward_module.md) — S&F protocol: PortNum 65, message types, PSRAM storage, replay format, server eligibility, config
 - [Two Ignore Mechanisms](reference_ignored_nodes_two_mechanisms.md) — config.lora.ignore_incoming (persists across node delete) vs NodeInfoLite.is_ignored (destroyed by remove_by_nodenum)
+- [Channel Hash Generation](reference_channel_hash_generation.md) — generateHash = xor(name) XOR xor(PSK); blank name substitutes to modem preset display name (e.g. "LongFast")
