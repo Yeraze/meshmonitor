@@ -5669,7 +5669,7 @@ class MeshtasticManager implements ISourceManager {
           const node = await databaseService.nodes.getNode(nodeNum, tracerouteScopeSourceId);
           const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' : (node?.longName || nodeId);
           const rawSnr = snrTowards[index];
-          const snr = rawSnr === undefined ? 'N/A' : rawSnr === -128 ? 'MQTT' : `${(rawSnr / 4).toFixed(1)}dB`;
+          const snr = rawSnr === undefined ? 'N/A' : rawSnr === -128 ? '?' : `${(rawSnr / 4).toFixed(1)}dB`;
           const dist = await calcDistance(fullPath[index], nodeNum);
           if (dist) {
             routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}, Distance: ${dist}\n`;
@@ -5745,7 +5745,7 @@ class MeshtasticManager implements ISourceManager {
           const node = await databaseService.nodes.getNode(nodeNum, tracerouteScopeSourceId);
           const nodeName = nodeNum === BROADCAST_ADDR ? '(unknown)' : (node?.longName || nodeId);
           const rawSnr = snrBack[index];
-          const snr = rawSnr === undefined ? 'N/A' : rawSnr === -128 ? 'MQTT' : `${(rawSnr / 4).toFixed(1)}dB`;
+          const snr = rawSnr === undefined ? 'N/A' : rawSnr === -128 ? '?' : `${(rawSnr / 4).toFixed(1)}dB`;
           const dist = await calcDistanceReturn(fullReturnPath[index], nodeNum);
           if (dist) {
             routeText += `  ${index + 2}. ${nodeName} (${nodeId}) - SNR: ${snr}, Distance: ${dist}\n`;

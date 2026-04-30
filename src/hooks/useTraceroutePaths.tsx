@@ -14,7 +14,7 @@ import React, { useMemo, useState } from 'react';
 import { Popup, Polyline } from 'react-leaflet';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { calculateDistance, formatDistance } from '../utils/distance';
-import { generateCurvedArrowMarkers, generateCurvedPath, getLineWeight, getSegmentSnrColor, getSegmentSnrOpacity, getTemporalOpacityMultiplier, isMqttSnr } from '../utils/mapHelpers';
+import { generateCurvedArrowMarkers, generateCurvedPath, getLineWeight, getSegmentSnrColor, getSegmentSnrOpacity, getTemporalOpacityMultiplier, isUnknownSnr } from '../utils/mapHelpers';
 import { logger } from '../utils/logger';
 import type { DistanceUnit } from '../contexts/SettingsContext';
 
@@ -389,7 +389,7 @@ export function useTraceroutePaths({
               segmentSNRs.set(segmentKey, []);
             }
             segmentSNRs.get(segmentKey)!.push({ snr: snrValue, timestamp });
-            if (isMqttSnr(snrValue)) {
+            if (isUnknownSnr(snrValue)) {
               segmentHasMqtt.set(segmentKey, true);
             }
           }
@@ -436,7 +436,7 @@ export function useTraceroutePaths({
               segmentSNRs.set(segmentKey, []);
             }
             segmentSNRs.get(segmentKey)!.push({ snr: snrValue, timestamp });
-            if (isMqttSnr(snrValue)) {
+            if (isUnknownSnr(snrValue)) {
               segmentHasMqtt.set(segmentKey, true);
             }
           }
@@ -474,7 +474,7 @@ export function useTraceroutePaths({
         const segKey = segment.nodeNums.slice().sort().join('-');
         const snrData = segmentSNRs.get(segKey);
         if (!snrData || snrData.length === 0) return false; // Hide unknown segments at low zoom
-        const rfSnrs = snrData.filter(d => !isMqttSnr(d.snr)).map(d => d.snr);
+        const rfSnrs = snrData.filter(d => !isUnknownSnr(d.snr)).map(d => d.snr);
         if (rfSnrs.length === 0) return false; // Hide pure MQTT at low zoom
         const avgSnr = rfSnrs.reduce((sum, val) => sum + val, 0) / rfSnrs.length;
         return avgSnr >= -10; // Only good + medium quality links
@@ -804,7 +804,7 @@ export function useTraceroutePaths({
              );
              
              const weight = getLineWeight(forwardSegmentSnrs[i]);
-             const isMqtt = isMqttSnr(forwardSegmentSnrs[i]);
+             const isMqtt = isUnknownSnr(forwardSegmentSnrs[i]);
 
              allElements.push(
                <Polyline
@@ -909,7 +909,7 @@ export function useTraceroutePaths({
              );
              
              const weight = getLineWeight(backSegmentSnrs[i]);
-             const isMqtt = isMqttSnr(backSegmentSnrs[i]);
+             const isMqtt = isUnknownSnr(backSegmentSnrs[i]);
 
              allElements.push(
                <Polyline
