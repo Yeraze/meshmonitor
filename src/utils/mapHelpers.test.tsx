@@ -5,8 +5,33 @@ import { describe, it, expect } from 'vitest';
 import { getRoleName } from './nodeHelpers';
 import { ROLE_NAMES } from '../constants/index.js';
 import { convertSpeed } from './speedConversion';
+import { isUnknownSnr, UNKNOWN_SNR_SENTINEL } from './mapHelpers';
 
 describe('mapHelpers', () => {
+  describe('isUnknownSnr (issue #2859)', () => {
+    it('returns true for the firmware INT8_MIN sentinel (-32 after /4 scaling)', () => {
+      expect(isUnknownSnr(UNKNOWN_SNR_SENTINEL)).toBe(true);
+      expect(isUnknownSnr(-32)).toBe(true);
+    });
+
+    it('returns false for SNR=0 (protobuf default — was a false positive in 4.1.0)', () => {
+      // Regression: PR #2302 treated 0 as MQTT, but 0 is just the protobuf default
+      // and appears for any unpopulated SNR slot, not only MQTT-bridged hops.
+      expect(isUnknownSnr(0)).toBe(false);
+    });
+
+    it('returns false for typical RF SNR values', () => {
+      expect(isUnknownSnr(5)).toBe(false);
+      expect(isUnknownSnr(-5)).toBe(false);
+      expect(isUnknownSnr(-15)).toBe(false);
+      expect(isUnknownSnr(10)).toBe(false);
+    });
+
+    it('returns false for undefined', () => {
+      expect(isUnknownSnr(undefined)).toBe(false);
+    });
+  });
+
   describe('getRoleName', () => {
     it('should return correct role names for all valid roles', () => {
       expect(getRoleName(0)).toBe('Client');

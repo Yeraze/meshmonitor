@@ -6,22 +6,18 @@ import { convertSpeed } from './speedConversion';
 export { convertSpeed };
 
 /**
- * Scaled SNR sentinel for MQTT/unknown hops.
- * Raw Meshtastic value is -128 (INT8_MIN), divided by 4 = -32.
- * Indicates the hop used MQTT gateway or firmware too old to report SNR.
+ * Scaled SNR sentinel for unknown hops.
+ * Raw Meshtastic value is INT8_MIN (-128), divided by 4 = -32.
+ * Firmware writes this in TraceRouteModule::insertUnknownHops when a hop's
+ * SNR can't be filled in: MQTT-bridged leg, decrypt failure, relay-role node,
+ * or pre-snr-array firmware. It is NOT specifically an MQTT marker — the
+ * firmware uses it as a generic "unknown SNR" sentinel.
  */
-export const MQTT_SNR_SENTINEL = -32;
+export const UNKNOWN_SNR_SENTINEL = -32;
 
-/**
- * Scaled SNR zero sentinel for MQTT hops.
- * Many MQTT gateways leave SNR at protobuf default (0) instead of setting -128.
- * Raw 0 / 4 = 0.0 dB — treated as MQTT since real RF SNR of exactly 0 is rare.
- */
-export const MQTT_SNR_ZERO = 0;
-
-/** Returns true if the scaled SNR value indicates an MQTT/unknown hop */
-export const isMqttSnr = (snr: number | undefined): boolean =>
-  snr === MQTT_SNR_SENTINEL || snr === MQTT_SNR_ZERO;
+/** Returns true if the scaled SNR value is the firmware unknown-hop sentinel */
+export const isUnknownSnr = (snr: number | undefined): boolean =>
+  snr === UNKNOWN_SNR_SENTINEL;
 
 // Constants for arrow generation
 const ARROW_DISTANCE_THRESHOLD = 0.05; // One arrow per 0.05 degrees
@@ -171,7 +167,7 @@ export const getSegmentSnrColor = (
   defaultColor: string
 ): string => {
   if (!snrData || snrData.length === 0) return defaultColor;
-  const rfSnrs = snrData.filter(d => !isMqttSnr(d.snr)).map(d => d.snr);
+  const rfSnrs = snrData.filter(d => !isUnknownSnr(d.snr)).map(d => d.snr);
   if (rfSnrs.length === 0) return defaultColor;
   const avgSnr = rfSnrs.reduce((sum, val) => sum + val, 0) / rfSnrs.length;
   if (avgSnr > 0) return snrColors.good;
@@ -189,7 +185,7 @@ export const getSegmentSnrOpacity = (
 ): number => {
   if (isMqtt) return 0.5;
   if (!snrData || snrData.length === 0) return 0.5;
-  const rfSnrs = snrData.filter(d => !isMqttSnr(d.snr)).map(d => d.snr);
+  const rfSnrs = snrData.filter(d => !isUnknownSnr(d.snr)).map(d => d.snr);
   if (rfSnrs.length === 0) return 0.5;
   const avgSnr = rfSnrs.reduce((sum, val) => sum + val, 0) / rfSnrs.length;
   // Map from -20..+15 to 0.4..0.85
@@ -255,7 +251,7 @@ export const generateCurvedArrowMarkers = (
       <Marker key={`${pathKey}-arrow-${i}`} position={midPoint} icon={createArrowIcon(angle, color)}>
         {snr !== undefined && (
           <Tooltip permanent={false} direction="top" offset={[0, -10]}>
-            {snr.toFixed(1)} dB{isMqttSnr(snr) ? ' (IP)' : ''}
+            {isUnknownSnr(snr) ? '?' : `${snr.toFixed(1)} dB`}
           </Tooltip>
         )}
       </Marker>

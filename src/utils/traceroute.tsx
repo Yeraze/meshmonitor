@@ -3,34 +3,35 @@ import { DeviceInfo } from '../types/device';
 import { calculateDistance, formatDistance } from './distance';
 
 /**
- * INT8_MIN (-128) is the Meshtastic sentinel value for unknown SNR.
- * This is used for MQTT gateways, older firmware, or nodes that couldn't decrypt.
- * When scaled by 4 (as stored in protobuf), this becomes -32 dB.
+ * INT8_MIN (-128) is the firmware sentinel for an unknown-SNR hop.
+ * TraceRouteModule::insertUnknownHops writes this when a hop's SNR can't
+ * be filled: MQTT-bridged leg, decrypt failure, relay-role node, or older
+ * firmware without snr arrays. It is NOT specifically an MQTT marker.
  */
 const INT8_MIN_SNR = -128;
 
 /**
- * Formats SNR value for display, showing "IP" for non-LoRa links
+ * Formats SNR value for display, showing "?" for unknown-SNR hops.
  */
 function formatSnrDisplay(snrValue: number | null): string {
   if (snrValue === null) return '';
-  // INT8_MIN (-128) or 0 (protobuf default) indicates IP gateway or unknown SNR
-  if (snrValue === INT8_MIN_SNR || snrValue === 0) {
-    return ' (IP)';
+  if (snrValue === INT8_MIN_SNR) {
+    return ' (?)';
   }
   return ` (${(snrValue / 4).toFixed(1)} dB)`;
 }
 
 /**
- * Formats SNR value for display as a React element, with MQTT styling
+ * Formats SNR value for display as a React element. Renders a "?" badge
+ * for unknown-SNR hops (firmware INT8_MIN sentinel).
  */
 function formatSnrElement(snrValue: number | null, key: string): React.ReactNode {
   if (snrValue === null) return null;
-  // INT8_MIN (-128) or 0 (protobuf default) indicates MQTT gateway or unknown SNR
-  if (snrValue === INT8_MIN_SNR || snrValue === 0) {
+  if (snrValue === INT8_MIN_SNR) {
     return (
       <span
         key={key}
+        title="Unknown SNR (MQTT-bridged hop, decrypt failure, or old firmware)"
         style={{
           marginLeft: '0.25rem',
           padding: '0.1rem 0.3rem',
@@ -41,7 +42,7 @@ function formatSnrElement(snrValue: number | null, key: string): React.ReactNode
           fontWeight: 500,
         }}
       >
-        MQTT
+        ?
       </span>
     );
   }
