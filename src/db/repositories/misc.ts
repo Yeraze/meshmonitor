@@ -970,18 +970,27 @@ export class MiscRepository extends BaseRepository {
    */
   async enforcePacketLogMaxCount(maxCount: number): Promise<void> {
     try {
+      const { packetLog } = this.tables;
       const countResult = await this.db
         .select({ count: sql<number>`count(*)` })
-        .from(this.tables.packetLog);
+        .from(packetLog);
       const currentCount = Number(countResult[0]?.count ?? 0);
 
       if (currentCount > maxCount) {
         const deleteCount = currentCount - maxCount;
-        // Use raw SQL for the DELETE with subquery — Drizzle doesn't support DELETE ... WHERE id IN (SELECT ...)
-        await this.executeRun(
-          sql`DELETE FROM packet_log WHERE id IN (SELECT id FROM packet_log ORDER BY timestamp ASC LIMIT ${deleteCount})`
-        );
-        logger.debug(`[MiscRepository] Deleted ${deleteCount} old packets to enforce max count of ${maxCount}`);
+        // Two-step delete: MariaDB rejects `DELETE ... WHERE id IN (SELECT ... LIMIT ?)`
+        // (ER_NOT_SUPPORTED_YET). Select oldest IDs first, then delete by ID list.
+        const oldest = await this.db
+          .select({ id: packetLog.id })
+          .from(packetLog)
+          .orderBy(asc(packetLog.timestamp))
+          .limit(deleteCount);
+
+        if (oldest.length > 0) {
+          const ids = oldest.map((row: { id: number }) => row.id);
+          await this.db.delete(packetLog).where(inArray(packetLog.id, ids));
+        }
+        logger.debug(`[MiscRepository] Deleted ${oldest.length} old packets to enforce max count of ${maxCount}`);
       }
     } catch (error) {
       logger.error('[MiscRepository] Failed to enforce packet log max count:', error);
