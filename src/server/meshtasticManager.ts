@@ -4870,8 +4870,20 @@ class MeshtasticManager implements ISourceManager {
           // Save position to nodes table (current position)
           await databaseService.nodes.upsertNode(nodeData, this.sourceId);
 
-          // Emit node update event to notify frontend via WebSocket
-          dataEventEmitter.emitNodeUpdate(fromNum, nodeData, this.sourceId);
+          // Emit node update event to notify frontend via WebSocket. When a
+          // user-set override is active for this node, strip the GPS coords
+          // from the payload so clients (which rebuild node.position from these
+          // fields) don't overwrite the override on the map (issue #2847).
+          const hasPositionOverride = existingNode?.positionOverrideEnabled === true
+            && existingNode?.latitudeOverride != null
+            && existingNode?.longitudeOverride != null;
+          if (hasPositionOverride) {
+            const { latitude: _lat, longitude: _lng, altitude: _alt, ...emitData } = nodeData;
+            void _lat; void _lng; void _alt;
+            dataEventEmitter.emitNodeUpdate(fromNum, emitData, this.sourceId);
+          } else {
+            dataEventEmitter.emitNodeUpdate(fromNum, nodeData, this.sourceId);
+          }
 
           // Update mobility detection for this node (fire and forget)
           databaseService.updateNodeMobilityAsync(nodeId).catch(err =>
