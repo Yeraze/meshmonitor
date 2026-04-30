@@ -1,4 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import {
+  MODEM_PRESET_CHANNEL_NAMES,
+  getPrimaryChannelNameFallback,
+} from './virtualNodeServer.js';
 
 /**
  * Unit tests for Virtual Node Server
@@ -631,5 +635,50 @@ describe('Virtual Node Server - MQTT Proxy Message Handling', () => {
     // When proxyMsg.data is empty, should log warning and still forward
     const data = new Uint8Array(0);
     expect(data.length).toBe(0);
+  });
+});
+
+describe('Virtual Node Server - Primary Channel Name Fallback', () => {
+  describe('MODEM_PRESET_CHANNEL_NAMES', () => {
+    it('should map LongFast (0) to "LongFast"', () => {
+      expect(MODEM_PRESET_CHANNEL_NAMES[0]).toBe('LongFast');
+    });
+
+    it('should map MediumFast (4) to "MediumFast"', () => {
+      // This is the firmware-emitted topic name when the primary channel
+      // has no explicit name and the modem preset is MEDIUM_FAST.
+      expect(MODEM_PRESET_CHANNEL_NAMES[4]).toBe('MediumFast');
+    });
+
+    it('should cover all nine canonical preset values', () => {
+      expect(MODEM_PRESET_CHANNEL_NAMES[0]).toBe('LongFast');
+      expect(MODEM_PRESET_CHANNEL_NAMES[1]).toBe('LongSlow');
+      expect(MODEM_PRESET_CHANNEL_NAMES[2]).toBe('VeryLongSlow');
+      expect(MODEM_PRESET_CHANNEL_NAMES[3]).toBe('MediumSlow');
+      expect(MODEM_PRESET_CHANNEL_NAMES[4]).toBe('MediumFast');
+      expect(MODEM_PRESET_CHANNEL_NAMES[5]).toBe('ShortSlow');
+      expect(MODEM_PRESET_CHANNEL_NAMES[6]).toBe('ShortFast');
+      expect(MODEM_PRESET_CHANNEL_NAMES[7]).toBe('LongModerate');
+      expect(MODEM_PRESET_CHANNEL_NAMES[8]).toBe('ShortTurbo');
+    });
+  });
+
+  describe('getPrimaryChannelNameFallback', () => {
+    it('should return the canonical name for a known preset enum', () => {
+      expect(getPrimaryChannelNameFallback(4)).toBe('MediumFast');
+    });
+
+    it('should return undefined when modem preset is not a number', () => {
+      // Proto3 default-undefined or missing-config case
+      expect(getPrimaryChannelNameFallback(undefined)).toBeUndefined();
+      expect(getPrimaryChannelNameFallback(null)).toBeUndefined();
+      expect(getPrimaryChannelNameFallback('MediumFast')).toBeUndefined();
+    });
+
+    it('should return undefined for an unknown preset enum value', () => {
+      // Future presets we haven't mapped should not silently produce
+      // an incorrect topic-name match.
+      expect(getPrimaryChannelNameFallback(99)).toBeUndefined();
+    });
   });
 });
