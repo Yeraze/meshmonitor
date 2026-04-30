@@ -129,6 +129,33 @@ services:
       # News feed URL for testing - use host.docker.internal to access host machine
       - NEWS_FEED_URL=${NEWS_FEED_URL:-}
 
+  # LN4CY MQTT Proxy - sidecar for testing MQTT uplink via Virtual Node
+  # Connects to source 2's VN on port 4504. Bring up alongside sqlite profile.
+  # Credit: https://github.com/LN4CY/mqtt-proxy
+  mqtt-proxy:
+    image: ghcr.io/ln4cy/mqtt-proxy:master
+    container_name: meshmonitor-mqtt-proxy
+    profiles:
+      - sqlite
+    restart: unless-stopped
+    depends_on:
+      - meshmonitor-sqlite
+    environment:
+      - INTERFACE_TYPE=tcp
+      - TCP_NODE_HOST=meshmonitor-sqlite
+      - TCP_NODE_PORT=4503
+      - LOG_LEVEL=INFO
+      - TCP_TIMEOUT=300
+      - CONFIG_WAIT_TIMEOUT=60
+      - HEALTH_CHECK_ACTIVITY_TIMEOUT=300
+      - TZ=America/New_York
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/healthy && find /tmp/healthy -mmin -1 | grep -q healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   # MySQL service for testing dual-database support
   # Start with: docker compose -f docker-compose.dev.yml --profile mysql up -d
   mysql:

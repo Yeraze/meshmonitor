@@ -28,6 +28,34 @@ export interface VirtualNodeConfig {
   allowAdminCommands: boolean;
 }
 
+/**
+ * Map LoRa modem preset enum value -> CamelCase preset name used by firmware
+ * as the topic-channel-name fallback when slot 0 has no explicit name.
+ *
+ * Meshtastic firmware emits MQTT topics like `…/MediumFast/!nodeId` for the
+ * primary channel when its `settings.name` is empty. mqtt-proxy clients then
+ * look up the topic-channel-name in the channel list they were sent during
+ * config; if it's not present, they default `uplink_enabled=false` and drop
+ * the packet. We mirror the firmware fallback here so VN-supplied channels
+ * carry a name that matches the topic.
+ */
+export const MODEM_PRESET_CHANNEL_NAMES: Record<number, string> = {
+  0: 'LongFast',
+  1: 'LongSlow',
+  2: 'VeryLongSlow',
+  3: 'MediumSlow',
+  4: 'MediumFast',
+  5: 'ShortSlow',
+  6: 'ShortFast',
+  7: 'LongModerate',
+  8: 'ShortTurbo',
+};
+
+export function getPrimaryChannelNameFallback(modemPreset: unknown): string | undefined {
+  if (typeof modemPreset !== 'number') return undefined;
+  return MODEM_PRESET_CHANNEL_NAMES[modemPreset];
+}
+
 interface ConnectedClient {
   socket: Socket;
   id: string;
@@ -716,6 +744,15 @@ export class VirtualNodeServer extends EventEmitter {
   private async sendChannelsFromDb(clientId: string): Promise<{ sent: number; disconnected: boolean }> {
     const sourceId = this.config.meshtasticManager.sourceId;
     const dbChannels = await databaseService.channels.getAllChannels(sourceId);
+
+    // When slot 0 has an empty name in our DB, the firmware uses the LoRa
+    // modem preset (e.g. "MediumFast") as the MQTT topic channel name.
+    // Mirror that fallback so mqtt-proxy clients can match topics to
+    // channel entries (otherwise uplink_enabled defaults to false and every
+    // packet is dropped).
+    const deviceConfig = this.config.meshtasticManager.getActualDeviceConfig?.();
+    const presetFallback = getPrimaryChannelNameFallback(deviceConfig?.lora?.modemPreset);
+
     let sent = 0;
     for (const ch of dbChannels) {
       const client = this.clients.get(clientId);
@@ -723,10 +760,12 @@ export class VirtualNodeServer extends EventEmitter {
         return { sent, disconnected: true };
       }
 
+      const effectiveName = ch.name || (ch.id === 0 ? presetFallback : undefined);
+
       const channelMessage = await meshtasticProtobufService.createChannel({
         index: ch.id,
         settings: {
-          name: ch.name || undefined,
+          name: effectiveName,
           psk: ch.psk ? Buffer.from(ch.psk, 'base64') : undefined,
           uplinkEnabled: ch.uplinkEnabled ? true : undefined,
           downlinkEnabled: ch.downlinkEnabled ? true : undefined,
@@ -738,7 +777,7 @@ export class VirtualNodeServer extends EventEmitter {
       if (channelMessage) {
         await this.sendToClient(clientId, channelMessage);
         sent++;
-        logger.debug(`Virtual node: Sent rebuilt channel ${ch.id} (${ch.name || 'unnamed'}) role=${ch.role}`);
+        logger.debug(`Virtual node: Sent rebuilt channel ${ch.id} (${effectiveName || 'unnamed'}) role=${ch.role}`);
       }
     }
     return { sent, disconnected: false };
