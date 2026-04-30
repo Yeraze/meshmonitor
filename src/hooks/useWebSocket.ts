@@ -9,6 +9,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useQueryClient } from '@tanstack/react-query';
 import { sourcePollQueryKey, type PollData, type RawMessage } from './usePoll';
+import { mergeNodeUpdate } from './mergeNodeUpdate';
 import type { DeviceInfo, Channel } from '../types/device';
 import { appBasename } from '../init';
 import { useSource } from '../contexts/SourceContext';
@@ -91,23 +92,9 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
     queryClient.setQueryData<PollData>(key, (old) => {
       if (!old?.nodes) return old;
 
-      const updatedNodes = old.nodes.map((node) => {
-        if (node.nodeNum === nodeNum) {
-          const merged = { ...node, ...nodeUpdate };
-          // Rebuild nested position object from flat DB fields sent via WebSocket
-          const lat = (nodeUpdate as any).latitude;
-          const lng = (nodeUpdate as any).longitude;
-          if (lat != null && lng != null) {
-            merged.position = {
-              latitude: lat,
-              longitude: lng,
-              altitude: (nodeUpdate as any).altitude ?? node.position?.altitude,
-            };
-          }
-          return merged;
-        }
-        return node;
-      });
+      const updatedNodes = old.nodes.map((node) =>
+        node.nodeNum === nodeNum ? mergeNodeUpdate(node, nodeUpdate) : node
+      );
 
       return { ...old, nodes: updatedNodes };
     });
