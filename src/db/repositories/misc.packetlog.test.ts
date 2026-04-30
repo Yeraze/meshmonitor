@@ -197,6 +197,41 @@ describe('MiscRepository - Packet Log Queries', () => {
       expect(after).toBe(0);
     });
   });
+
+  // Regression: discussion #2846 — MariaDB rejects
+  // `DELETE ... WHERE id IN (SELECT ... LIMIT ?)` with ER_NOT_SUPPORTED_YET.
+  // The implementation must be a portable two-step delete (select ids, then
+  // delete by id list), not a DELETE-with-LIMIT-subquery.
+  describe('enforcePacketLogMaxCount (#2846)', () => {
+    it('deletes the oldest rows down to maxCount', async () => {
+      const before = await repo.getPacketLogCount();
+      expect(before).toBe(3);
+
+      // Seed packet timestamps: pkt 3 is oldest (now - 60000), pkt 1 & 2 are newer.
+      await repo.enforcePacketLogMaxCount(2);
+
+      const after = await repo.getPacketLogCount();
+      expect(after).toBe(2);
+
+      // The oldest packet (packet_id 3) must be the one removed.
+      const remaining = await repo.getPacketLogs({});
+      const remainingIds = remaining.map((p) => p.packet_id).sort();
+      expect(remainingIds).toEqual([1, 2]);
+    });
+
+    it('is a no-op when row count is at or below maxCount', async () => {
+      await repo.enforcePacketLogMaxCount(3);
+      expect(await repo.getPacketLogCount()).toBe(3);
+
+      await repo.enforcePacketLogMaxCount(10);
+      expect(await repo.getPacketLogCount()).toBe(3);
+    });
+
+    it('handles a maxCount of 0 by deleting every row', async () => {
+      await repo.enforcePacketLogMaxCount(0);
+      expect(await repo.getPacketLogCount()).toBe(0);
+    });
+  });
 });
 
 /**
