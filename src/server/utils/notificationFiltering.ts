@@ -96,30 +96,37 @@ export async function getUserNotificationPreferencesAsync(userId: number, source
       return prefs;
     }
 
-    // Fall back to old settings table for backward compatibility
+    // Fall back to old settings table for backward compatibility.
+    // Migration 028 deletes per-source rows that predate the per-source schema,
+    // so any user who hasn't re-saved preferences in 4.0+ relies entirely on
+    // this path. Hardcoding the notify* toggles to `true` here silently
+    // re-enabled push categories that the user had explicitly turned off in
+    // the legacy blob (issue #2867 — traceroute audio firing despite the
+    // toggle being off). Respect every saved value; only fall back to defaults
+    // when a field isn't present at all.
     const prefsJson = await databaseService.getSettingAsync(`push_prefs_${userId}`);
     if (prefsJson) {
       const oldPrefs = JSON.parse(prefsJson);
+      const boolOr = (value: unknown, fallback: boolean): boolean =>
+        typeof value === 'boolean' ? value : fallback;
       return {
-        enableWebPush: true, // Old users had push enabled
-        enableApprise: false, // New feature, default to disabled
+        enableWebPush: boolOr(oldPrefs.enableWebPush, true),
+        enableApprise: boolOr(oldPrefs.enableApprise, false),
         enabledChannels: oldPrefs.enabledChannels || [],
-        enableDirectMessages: oldPrefs.enableDirectMessages !== undefined
-          ? oldPrefs.enableDirectMessages
-          : true,
-        notifyOnEmoji: true, // Default to enabled for backward compatibility
-        notifyOnMqtt: true, // Default to enabled for backward compatibility
-        notifyOnNewNode: true, // Default to enabled for backward compatibility
-        notifyOnTraceroute: true, // Default to enabled for backward compatibility
-        notifyOnInactiveNode: false, // Default to disabled
-        notifyOnServerEvents: false, // Default to disabled
-        prefixWithNodeName: false, // Default to disabled
-        monitoredNodes: [], // Default to empty array
+        enableDirectMessages: boolOr(oldPrefs.enableDirectMessages, true),
+        notifyOnEmoji: boolOr(oldPrefs.notifyOnEmoji, true),
+        notifyOnMqtt: boolOr(oldPrefs.notifyOnMqtt, true),
+        notifyOnNewNode: boolOr(oldPrefs.notifyOnNewNode, true),
+        notifyOnTraceroute: boolOr(oldPrefs.notifyOnTraceroute, true),
+        notifyOnInactiveNode: boolOr(oldPrefs.notifyOnInactiveNode, false),
+        notifyOnServerEvents: boolOr(oldPrefs.notifyOnServerEvents, false),
+        prefixWithNodeName: boolOr(oldPrefs.prefixWithNodeName, false),
+        monitoredNodes: oldPrefs.monitoredNodes || [],
         whitelist: oldPrefs.whitelist || [],
         blacklist: oldPrefs.blacklist || [],
-        appriseUrls: [], // Default to empty array
-        mutedChannels: [],
-        mutedDMs: [],
+        appriseUrls: oldPrefs.appriseUrls || [],
+        mutedChannels: oldPrefs.mutedChannels || [],
+        mutedDMs: oldPrefs.mutedDMs || [],
       };
     }
 
