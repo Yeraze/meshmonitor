@@ -116,6 +116,42 @@ The following are generally out of scope:
 - Issues requiring physical access to the server
 - Vulnerabilities in upstream dependencies (report those to the respective projects, but do let us know so we can update)
 
+## Operating System and Kernel CVEs
+
+MeshMonitor is a userspace Node.js application and does not patch host kernel
+vulnerabilities. Keeping the host kernel current is the operator's
+responsibility.
+
+For example, [CVE-2026-31431 ("Copy Fail")](https://nvd.nist.gov/vuln/detail/CVE-2026-31431)
+is a Linux kernel local privilege-escalation in the `authencesn` AEAD template
+that affects every Linux distribution shipping kernels ≥ 4.13. MeshMonitor's
+codebase does not invoke the kernel crypto API (`AF_ALG`/`algif`); the
+application itself is not directly susceptible. However, an unpatched host
+kernel can still be exploited by any local code execution — including any
+shell access that a future application-level vulnerability might grant inside
+the container. Patch host kernels promptly and track your distribution's
+advisories ([Debian](https://security-tracker.debian.org/), [SUSE](https://www.suse.com/security/),
+[Red Hat](https://access.redhat.com/security/security-updates/), [Ubuntu](https://ubuntu.com/security/cves)).
+
+### Container hardening recommendations
+
+For deployments on shared or multi-tenant hosts, apply these container-runtime
+defenses (the project's Helm chart and Dockerfile already enable most of them):
+
+- **Run with the runtime's default seccomp profile.** Do not pass
+  `--security-opt seccomp=unconfined` to `docker run` or set
+  `securityContext.seccompProfile.type: Unconfined` in Kubernetes. The Helm
+  chart now sets `seccompProfile.type: RuntimeDefault` by default
+  (`helm/meshmonitor/values.yaml`).
+- **Run as non-root.** The chart sets `runAsNonRoot: true` and `runAsUser: 1000`.
+- **Drop all Linux capabilities.** The chart sets `capabilities.drop: [ALL]`.
+- **Disallow privilege escalation.** The chart sets
+  `allowPrivilegeEscalation: false`.
+
+Operators using a custom seccomp profile should ensure it does not grant
+syscalls beyond the runtime default — in particular, the `socket(AF_ALG, ...)`
+syscall path used by CVE-2026-31431 is blocked under most strict profiles.
+
 ## Supported Versions
 
 Security updates are applied to the latest release only. We recommend always running the most recent version.
