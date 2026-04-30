@@ -319,6 +319,11 @@ export default function ChannelsTab({
     // First check device channels (0-7)
     const channel = channels.find(ch => ch.id === channelNum);
     if (channel) {
+      // Slot 0 with blank name displays as "Primary" — matches unifiedChannelDisplayName
+      // and the Meshtastic client convention of falling back to the modem preset label.
+      if (!channel.name?.trim() && channelNum === 0) {
+        return t('channels.primary');
+      }
       return channel.name;
     }
     // For channels >= CHANNEL_DB_OFFSET, check Channel Database entries

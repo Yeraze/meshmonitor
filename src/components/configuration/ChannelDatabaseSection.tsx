@@ -384,11 +384,6 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
   const handleSaveChannel = async () => {
     if (!editingChannel) return;
 
-    if (!editingChannel.name.trim()) {
-      showToast(t('channel_database.toast_name_required'), 'error');
-      return;
-    }
-
     if (!editingChannel.psk.trim()) {
       showToast(t('channel_database.toast_psk_required'), 'error');
       return;

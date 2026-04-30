@@ -2770,9 +2770,10 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channel_0', 'write
 
     const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision } = channel;
 
-    // Validate required fields
-    if (!name || typeof name !== 'string') {
-      return res.status(400).json({ error: 'Channel name is required' });
+    // Validate name type/length but allow empty string (parity with PUT /channels/:id;
+    // Meshtastic protocol allows blank slot-0 names — display falls back to "Primary").
+    if (typeof name !== 'string') {
+      return res.status(400).json({ error: 'Channel name must be a string' });
     }
 
     if (name.length > 11) {
