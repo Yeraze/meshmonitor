@@ -75,7 +75,9 @@ describe('AnalysisInspectorPanel', () => {
         <AnalysisInspectorPanel />
       </Wrapper>,
     );
-    expect(screen.getByText(/click a node or route segment/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/click a node, route segment, neighbor link, or trail/i),
+    ).toBeInTheDocument();
   });
 
   it('renders node detail when a node is selected', () => {
