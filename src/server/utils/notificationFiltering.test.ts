@@ -105,6 +105,75 @@ describe('getUserNotificationPreferencesAsync', () => {
     const result = await getUserNotificationPreferencesAsync(1);
     expect(result).toBeNull();
   });
+
+  // Regression coverage for issue #2867 — the legacy push_prefs fallback was
+  // hardcoding 7 fields to literal defaults, silently re-enabling push
+  // categories that the user had turned off pre-4.0. Migration 028 deletes
+  // user_notification_preferences rows with NULL sourceId, so users who
+  // haven't re-saved per-source rely entirely on this fallback.
+  describe('legacy push_prefs fallback respects saved values', () => {
+    beforeEach(() => {
+      mockDb.notifications.getUserPreferences.mockResolvedValue(null);
+    });
+
+    it('honors notifyOnTraceroute=false from the legacy blob', async () => {
+      mockDb.getSettingAsync.mockResolvedValue(JSON.stringify({
+        enableWebPush: true,
+        notifyOnTraceroute: false,
+      }));
+      const result = await getUserNotificationPreferencesAsync(7);
+      expect(result?.notifyOnTraceroute).toBe(false);
+    });
+
+    it('honors all notify* toggles when explicitly set in the legacy blob', async () => {
+      mockDb.getSettingAsync.mockResolvedValue(JSON.stringify({
+        enableWebPush: false,
+        enableDirectMessages: false,
+        notifyOnEmoji: false,
+        notifyOnMqtt: false,
+        notifyOnNewNode: false,
+        notifyOnTraceroute: false,
+        notifyOnInactiveNode: true,
+        notifyOnServerEvents: true,
+        prefixWithNodeName: true,
+      }));
+      const result = await getUserNotificationPreferencesAsync(7);
+      expect(result).toMatchObject({
+        enableWebPush: false,
+        enableDirectMessages: false,
+        notifyOnEmoji: false,
+        notifyOnMqtt: false,
+        notifyOnNewNode: false,
+        notifyOnTraceroute: false,
+        notifyOnInactiveNode: true,
+        notifyOnServerEvents: true,
+        prefixWithNodeName: true,
+      });
+    });
+
+    it('falls back to defaults only for fields absent from the legacy blob', async () => {
+      mockDb.getSettingAsync.mockResolvedValue(JSON.stringify({
+        notifyOnTraceroute: false,
+        // every other field is missing — must use defaults
+      }));
+      const result = await getUserNotificationPreferencesAsync(7);
+      expect(result?.notifyOnTraceroute).toBe(false);
+      expect(result?.notifyOnNewNode).toBe(true);   // default true
+      expect(result?.notifyOnEmoji).toBe(true);     // default true
+      expect(result?.notifyOnMqtt).toBe(true);      // default true
+      expect(result?.enableWebPush).toBe(true);     // default true
+      expect(result?.notifyOnInactiveNode).toBe(false); // default false
+    });
+
+    it('treats non-boolean stored values as missing and uses defaults', async () => {
+      mockDb.getSettingAsync.mockResolvedValue(JSON.stringify({
+        notifyOnTraceroute: 'no', // bad data — must NOT be coerced to true
+      }));
+      const result = await getUserNotificationPreferencesAsync(7);
+      // String 'no' is truthy but not a boolean — fall back to default true
+      expect(result?.notifyOnTraceroute).toBe(true);
+    });
+  });
 });
 
 // ─── saveUserNotificationPreferencesAsync ────────────────────────────────────
