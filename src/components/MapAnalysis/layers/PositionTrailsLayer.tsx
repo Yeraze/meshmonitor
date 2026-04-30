@@ -24,7 +24,7 @@ interface PositionRecord {
  * Nodes with fewer than 2 fixes are skipped.
  */
 export default function PositionTrailsLayer() {
-  const { config } = useMapAnalysisCtx();
+  const { config, setSelected } = useMapAnalysisCtx();
   const layer = config.layers.trails;
   const { data: sources = [] } = useDashboardSources();
   const sourceIds =
@@ -53,11 +53,32 @@ export default function PositionTrailsLayer() {
       arr.push({ ts: p.timestamp, pos: [p.latitude, p.longitude] });
       grouped.set(key, arr);
     }
-    const out: Array<{ key: string; positions: [number, number][]; color: string }> = [];
+    const out: Array<{
+      key: string;
+      positions: [number, number][];
+      color: string;
+      sourceId: string;
+      nodeNum: number;
+      pointCount: number;
+      startMs: number;
+      endMs: number;
+    }> = [];
     for (const [key, arr] of grouped) {
       if (arr.length < 2) continue;
       arr.sort((a, b) => a.ts - b.ts);
-      out.push({ key, positions: arr.map((x) => x.pos), color: colorForKey(key) });
+      const colonIdx = key.indexOf(':');
+      const sourceId = colonIdx >= 0 ? key.slice(0, colonIdx) : '';
+      const nodeNum = colonIdx >= 0 ? Number(key.slice(colonIdx + 1)) : 0;
+      out.push({
+        key,
+        positions: arr.map((x) => x.pos),
+        color: colorForKey(key),
+        sourceId,
+        nodeNum,
+        pointCount: arr.length,
+        startMs: arr[0].ts,
+        endMs: arr[arr.length - 1].ts,
+      });
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -70,6 +91,17 @@ export default function PositionTrailsLayer() {
           key={t.key}
           positions={t.positions}
           pathOptions={{ color: t.color, weight: 2, opacity: 0.7 }}
+          eventHandlers={{
+            click: () =>
+              setSelected({
+                type: 'trail',
+                sourceId: t.sourceId,
+                nodeNum: t.nodeNum,
+                pointCount: t.pointCount,
+                startMs: t.startMs,
+                endMs: t.endMs,
+              }),
+          }}
         />
       ))}
     </>

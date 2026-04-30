@@ -2,11 +2,19 @@ import { createContext, useContext, useState, ReactNode } from 'react';
 import { useMapAnalysisConfig } from '../../hooks/useMapAnalysisConfig';
 
 export interface SelectedTarget {
-  type: 'node' | 'segment';
+  type: 'node' | 'segment' | 'neighbor' | 'trail';
   nodeNum?: number;
   sourceId?: string;
   fromNodeNum?: number;
   toNodeNum?: number;
+  // neighbor-specific
+  neighborNum?: number;
+  snr?: number | null;
+  timestamp?: number;
+  // trail-specific
+  pointCount?: number;
+  startMs?: number;
+  endMs?: number;
 }
 
 type CtxShape = ReturnType<typeof useMapAnalysisConfig> & {

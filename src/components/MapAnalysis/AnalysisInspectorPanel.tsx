@@ -40,10 +40,15 @@ export default function AnalysisInspectorPanel() {
   if (!selected) {
     return (
       <aside className="map-analysis-inspector">
-        <div className="empty">Click a node or route segment</div>
+        <div className="empty">Click a node, route segment, neighbor link, or trail</div>
       </aside>
     );
   }
+
+  const formatTime = (ms: number | undefined): string => {
+    if (!ms) return '—';
+    return new Date(ms).toLocaleString();
+  };
 
   const sourceName = (id: string | undefined): string => {
     if (!id) return '—';
@@ -99,6 +104,75 @@ export default function AnalysisInspectorPanel() {
           <dd>{hops ?? '—'}</dd>
           <dt>Position</dt>
           <dd>{ll ? `${ll[0].toFixed(5)}, ${ll[1].toFixed(5)}` : '—'}</dd>
+        </dl>
+      </aside>
+    );
+  }
+
+  if (selected.type === 'neighbor') {
+    const fromNode = findNode(selected.nodeNum ?? 0, selected.sourceId);
+    const toNode = findNode(selected.neighborNum ?? 0, selected.sourceId);
+    const fromName = nodeName(fromNode, selected.nodeNum ?? 0);
+    const toName = nodeName(toNode, selected.neighborNum ?? 0);
+    const snr = selected.snr;
+    return (
+      <aside className="map-analysis-inspector">
+        <h3>Neighbor Link</h3>
+        <div className="subtitle">
+          !{(selected.nodeNum ?? 0).toString(16)} ↔ !{(selected.neighborNum ?? 0).toString(16)}
+        </div>
+        <hr />
+        <dl>
+          <dt>Node</dt>
+          <dd>{fromName}</dd>
+          <dt>Neighbor</dt>
+          <dd>{toName}</dd>
+          <dt>Source</dt>
+          <dd>{sourceName(selected.sourceId)}</dd>
+          <dt>SNR</dt>
+          <dd>{snr === null || snr === undefined ? '—' : `${snr.toFixed(2)} dB`}</dd>
+          <dt>Reported</dt>
+          <dd>{formatTime(selected.timestamp)}</dd>
+        </dl>
+      </aside>
+    );
+  }
+
+  if (selected.type === 'trail') {
+    const node = findNode(selected.nodeNum ?? 0, selected.sourceId);
+    const name = nodeName(node, selected.nodeNum ?? 0);
+    const durationMs =
+      selected.endMs !== undefined && selected.startMs !== undefined
+        ? selected.endMs - selected.startMs
+        : undefined;
+    const durationStr =
+      durationMs === undefined
+        ? '—'
+        : durationMs < 60_000
+          ? `${Math.round(durationMs / 1000)}s`
+          : durationMs < 3_600_000
+            ? `${Math.round(durationMs / 60_000)}m`
+            : `${(durationMs / 3_600_000).toFixed(1)}h`;
+    return (
+      <aside className="map-analysis-inspector">
+        <h3>Position Trail</h3>
+        <div className="subtitle">
+          !{(selected.nodeNum ?? 0).toString(16)} · {selected.nodeNum}
+        </div>
+        <hr />
+        <dl>
+          <dt>Node</dt>
+          <dd>{name}</dd>
+          <dt>Source</dt>
+          <dd>{sourceName(selected.sourceId)}</dd>
+          <dt>Points</dt>
+          <dd>{selected.pointCount ?? '—'}</dd>
+          <dt>Start</dt>
+          <dd>{formatTime(selected.startMs)}</dd>
+          <dt>End</dt>
+          <dd>{formatTime(selected.endMs)}</dd>
+          <dt>Duration</dt>
+          <dd>{durationStr}</dd>
         </dl>
       </aside>
     );
