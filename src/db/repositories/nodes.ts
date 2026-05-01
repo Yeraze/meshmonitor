@@ -10,11 +10,102 @@ import { DatabaseType, DbNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
 
 /**
+ * Hook for keeping an external in-memory node cache coherent with PG/MySQL writes.
+ *
+ * Background: DatabaseService maintains a `nodesCache` (PG/MySQL only) for sync-method
+ * compatibility. The cache is loaded once at startup, but production writes flow
+ * through this repository directly — bypassing the DatabaseService facade — so without
+ * this hook the cache goes stale after every new node discovery (issue #2858).
+ *
+ * The repository fetches authoritative rows from the DB before invoking the hook so
+ * the cache always reflects DB state, not the repo's pre-write inputs.
+ *
+ * SQLite paths skip the hook entirely (the SQLite cache is structured differently
+ * and reads from DB directly).
+ */
+export interface NodesCacheHook {
+  /** Replace or remove a single (nodeNum, sourceId) cache entry. node=null removes. */
+  setNode(nodeNum: number, sourceId: string, node: DbNode | null): void;
+  /** Replace all cache entries for nodeNum. Removes entries not present in `nodes`. */
+  setNodeAcrossSources(nodeNum: number, nodes: DbNode[]): void;
+  /** Replace all cache entries matching nodeId. Removes entries not present in `nodes`. */
+  setNodeByNodeId(nodeId: string, nodes: DbNode[]): void;
+  /** Clear the entire cache. */
+  clear(): void;
+}
+
+/**
  * Repository for node operations
  */
 export class NodesRepository extends BaseRepository {
+  private cacheHook: NodesCacheHook | null = null;
+
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
     super(db, dbType);
+  }
+
+  /**
+   * Register a cache hook to be notified of node writes (PG/MySQL only).
+   * Pass null to detach. See {@link NodesCacheHook} for semantics.
+   */
+  setCacheHook(hook: NodesCacheHook | null): void {
+    this.cacheHook = hook;
+  }
+
+  private cacheEnabled(): boolean {
+    return this.cacheHook !== null && (this.dbType === 'postgres' || this.dbType === 'mysql');
+  }
+
+  private async syncCacheNode(nodeNum: number, sourceId: string): Promise<void> {
+    if (!this.cacheEnabled()) return;
+    try {
+      const fresh = await this.getNode(nodeNum, sourceId);
+      this.cacheHook!.setNode(nodeNum, sourceId, fresh);
+    } catch (err) {
+      logger.error('NodesRepository cache sync (single) failed:', err);
+    }
+  }
+
+  private async syncCacheAcrossSources(nodeNum: number): Promise<void> {
+    if (!this.cacheEnabled()) return;
+    try {
+      const { nodes } = this.tables;
+      const rows = await this.db.select().from(nodes).where(eq(nodes.nodeNum, nodeNum));
+      const fresh = (this.normalizeBigInts(rows) ?? []) as DbNode[];
+      this.cacheHook!.setNodeAcrossSources(nodeNum, fresh);
+    } catch (err) {
+      logger.error('NodesRepository cache sync (cross-source) failed:', err);
+    }
+  }
+
+  private async syncCacheByNodeId(nodeId: string): Promise<void> {
+    if (!this.cacheEnabled()) return;
+    try {
+      const { nodes } = this.tables;
+      const rows = await this.db.select().from(nodes).where(eq(nodes.nodeId, nodeId));
+      const fresh = (this.normalizeBigInts(rows) ?? []) as DbNode[];
+      this.cacheHook!.setNodeByNodeId(nodeId, fresh);
+    } catch (err) {
+      logger.error('NodesRepository cache sync (by-nodeId) failed:', err);
+    }
+  }
+
+  private removeCacheNode(nodeNum: number, sourceId: string): void {
+    if (!this.cacheEnabled()) return;
+    try {
+      this.cacheHook!.setNode(nodeNum, sourceId, null);
+    } catch (err) {
+      logger.error('NodesRepository cache remove failed:', err);
+    }
+  }
+
+  private clearCacheAll(): void {
+    if (!this.cacheEnabled()) return;
+    try {
+      this.cacheHook!.clear();
+    } catch (err) {
+      logger.error('NodesRepository cache clear failed:', err);
+    }
   }
 
   /**
@@ -325,6 +416,8 @@ export class NodesRepository extends BaseRepository {
 
       await this.upsert(nodes, newNode, [nodes.nodeNum, nodes.sourceId], upsertSet);
     }
+
+    await this.syncCacheNode(nodeData.nodeNum, effectiveSourceId);
   }
 
   /**
@@ -336,6 +429,8 @@ export class NodesRepository extends BaseRepository {
       .update(nodes)
       .set(updates as any)
       .where(eq(nodes.nodeNum, nodeNum));
+
+    await this.syncCacheAcrossSources(nodeNum);
   }
 
   /**
@@ -352,6 +447,8 @@ export class NodesRepository extends BaseRepository {
       .update(nodes)
       .set({ lastMessageHops: hops, updatedAt: now })
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    await this.syncCacheNode(nodeNum, sourceId);
   }
 
   /**
@@ -377,6 +474,7 @@ export class NodesRepository extends BaseRepository {
         .update(nodes)
         .set({ welcomedAt: now })
         .where(eq(nodes.nodeNum, node.nodeNum));
+      await this.syncCacheAcrossSources(node.nodeNum);
     }
     return toUpdate.length;
   }
@@ -407,6 +505,7 @@ export class NodesRepository extends BaseRepository {
         .update(nodes)
         .set({ welcomedAt: now, updatedAt: now })
         .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+      await this.syncCacheNode(nodeNum, sourceId);
       return true;
     }
     return false;
@@ -476,6 +575,8 @@ export class NodesRepository extends BaseRepository {
         updatedAt: now,
       })
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    await this.syncCacheNode(nodeNum, sourceId);
   }
 
   /**
@@ -526,6 +627,8 @@ export class NodesRepository extends BaseRepository {
         updatedAt: now,
       })
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    await this.syncCacheNode(nodeNum, sourceId);
   }
 
   /**
@@ -543,6 +646,8 @@ export class NodesRepository extends BaseRepository {
     await this.db
       .delete(nodes)
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    this.removeCacheNode(nodeNum, sourceId);
     return true;
   }
 
@@ -554,7 +659,7 @@ export class NodesRepository extends BaseRepository {
     const { nodes } = this.tables;
 
     const toDelete = await this.db
-      .select({ nodeNum: nodes.nodeNum })
+      .select({ nodeNum: nodes.nodeNum, sourceId: nodes.sourceId })
       .from(nodes)
       .where(
         and(
@@ -571,6 +676,7 @@ export class NodesRepository extends BaseRepository {
 
     for (const node of toDelete) {
       await this.db.delete(nodes).where(eq(nodes.nodeNum, node.nodeNum));
+      this.removeCacheNode(node.nodeNum, node.sourceId);
     }
     return toDelete.length;
   }
@@ -591,6 +697,8 @@ export class NodesRepository extends BaseRepository {
       .update(nodes)
       .set(setData)
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    await this.syncCacheNode(nodeNum, sourceId);
   }
 
   /**
@@ -604,6 +712,8 @@ export class NodesRepository extends BaseRepository {
       .update(nodes)
       .set({ favoriteLocked, updatedAt: now })
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    await this.syncCacheNode(nodeNum, sourceId);
   }
 
   /**
@@ -617,6 +727,8 @@ export class NodesRepository extends BaseRepository {
       .update(nodes)
       .set({ isIgnored, updatedAt: now })
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    await this.syncCacheNode(nodeNum, sourceId);
   }
 
   /**
@@ -628,6 +740,8 @@ export class NodesRepository extends BaseRepository {
       .update(nodes)
       .set({ mobile })
       .where(eq(nodes.nodeId, nodeId));
+
+    await this.syncCacheByNodeId(nodeId);
   }
 
   /**
@@ -641,6 +755,8 @@ export class NodesRepository extends BaseRepository {
       .update(nodes)
       .set({ lastTracerouteRequest: timestamp, updatedAt: now })
       .where(eq(nodes.nodeNum, nodeNum));
+
+    await this.syncCacheAcrossSources(nodeNum);
   }
 
   /**
@@ -649,7 +765,7 @@ export class NodesRepository extends BaseRepository {
   async deleteInactiveNodes(cutoffTimestamp: number): Promise<number> {
     const { nodes } = this.tables;
     const toDelete = await this.db
-      .select({ nodeNum: nodes.nodeNum })
+      .select({ nodeNum: nodes.nodeNum, sourceId: nodes.sourceId })
       .from(nodes)
       .where(
         and(
@@ -660,6 +776,7 @@ export class NodesRepository extends BaseRepository {
 
     for (const node of toDelete) {
       await this.db.delete(nodes).where(eq(nodes.nodeNum, node.nodeNum));
+      this.removeCacheNode(node.nodeNum, node.sourceId);
     }
     return toDelete.length;
   }
@@ -673,6 +790,7 @@ export class NodesRepository extends BaseRepository {
       .select({ nodeNum: nodes.nodeNum })
       .from(nodes);
     await this.db.delete(nodes);
+    this.clearCacheAll();
     return result.length;
   }
 
@@ -685,6 +803,8 @@ export class NodesRepository extends BaseRepository {
       .update(nodes)
       .set({ lastTracerouteRequest: timestamp })
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    await this.syncCacheNode(nodeNum, sourceId);
   }
 
   /**
@@ -884,6 +1004,8 @@ export class NodesRepository extends BaseRepository {
       .update(nodes)
       .set(updateData as any)
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    await this.syncCacheNode(nodeNum, sourceId);
   }
 
   /**
@@ -941,6 +1063,8 @@ export class NodesRepository extends BaseRepository {
       .update(nodes)
       .set({ lastTimeSync: timestamp, updatedAt: now })
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    await this.syncCacheNode(nodeNum, sourceId);
   }
 
   /**
@@ -965,6 +1089,8 @@ export class NodesRepository extends BaseRepository {
         updatedAt: now,
       } as any)
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    await this.syncCacheNode(nodeNum, sourceId);
   }
 
   /**
@@ -987,6 +1113,8 @@ export class NodesRepository extends BaseRepository {
         updatedAt: now,
       } as any)
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    await this.syncCacheNode(nodeNum, sourceId);
   }
 
   /**
@@ -1010,6 +1138,10 @@ export class NodesRepository extends BaseRepository {
     await this.db
       .delete(nodes)
       .where(and(lt(nodes.lastHeard, cutoff), eq(nodes.sourceId, sourceId)));
+
+    for (const row of matching) {
+      this.removeCacheNode(row.nodeNum, sourceId);
+    }
 
     return matching.length;
   }

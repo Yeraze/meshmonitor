@@ -821,6 +821,120 @@ function runNodesTests(getBackend: () => TestBackend) {
     expect(node).not.toBeNull();
     expect(node!.nodeNum).toBe(largeNum);
   });
+
+  // --- Cache hook (regression for issue #2858) ---
+  // PG/MySQL only — SQLite paths skip the hook by design (no in-memory cache).
+
+  it('cache hook - upsertNode notifies setNode for PG/MySQL', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const calls: Array<{ method: string; nodeNum: number; sourceId?: string; node: any | null }> = [];
+    repo.setCacheHook({
+      setNode: (nodeNum, sourceId, node) => calls.push({ method: 'setNode', nodeNum, sourceId, node }),
+      setNodeAcrossSources: (nodeNum, nodes) => calls.push({ method: 'setNodeAcrossSources', nodeNum, node: nodes }),
+      setNodeByNodeId: (_nodeId, nodes) => calls.push({ method: 'setNodeByNodeId', nodeNum: -1, node: nodes }),
+      clear: () => calls.push({ method: 'clear', nodeNum: -1, node: null }),
+    });
+
+    await repo.upsertNode(makeNode(2000), 'src-A');
+
+    if (backend.dbType === 'sqlite') {
+      // SQLite skips the hook by design — cache is PG/MySQL-only.
+      expect(calls.length).toBe(0);
+    } else {
+      const setCall = calls.find(c => c.method === 'setNode' && c.nodeNum === 2000);
+      expect(setCall).toBeDefined();
+      expect(setCall!.sourceId).toBe('src-A');
+      expect(setCall!.node).not.toBeNull();
+      expect(setCall!.node.nodeNum).toBe(2000);
+      expect(setCall!.node.longName).toBe('Node 2000');
+    }
+  });
+
+  it('cache hook - deleteNodeRecord notifies setNode with null', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertNode(makeNode(2100), 'src-A');
+
+    const calls: Array<{ nodeNum: number; sourceId: string; node: any | null }> = [];
+    repo.setCacheHook({
+      setNode: (nodeNum, sourceId, node) => calls.push({ nodeNum, sourceId, node }),
+      setNodeAcrossSources: () => {},
+      setNodeByNodeId: () => {},
+      clear: () => {},
+    });
+
+    const removed = await repo.deleteNodeRecord(2100, 'src-A');
+    expect(removed).toBe(true);
+
+    if (backend.dbType === 'sqlite') {
+      expect(calls.length).toBe(0);
+    } else {
+      const removalCall = calls.find(c => c.nodeNum === 2100 && c.node === null);
+      expect(removalCall).toBeDefined();
+      expect(removalCall!.sourceId).toBe('src-A');
+    }
+  });
+
+  it('cache hook - setNodeFavorite notifies setNode with refreshed row (PG/MySQL only)', async () => {
+    const backend = getBackend();
+    if (!backend.available || backend.dbType === 'sqlite') {
+      console.log(`⚠ Skipped: SQLite skips cache hook (PG/MySQL only feature)`);
+      return;
+    }
+
+    await repo.upsertNode(makeNode(2200), 'src-A');
+
+    const calls: any[] = [];
+    repo.setCacheHook({
+      setNode: (nodeNum, sourceId, node) => calls.push({ nodeNum, sourceId, node }),
+      setNodeAcrossSources: () => {},
+      setNodeByNodeId: () => {},
+      clear: () => {},
+    });
+
+    await repo.setNodeFavorite(2200, true, 'src-A');
+
+    expect(calls.length).toBeGreaterThan(0);
+    const fav = calls.find(c => c.nodeNum === 2200);
+    expect(fav).toBeDefined();
+    expect(fav.node).not.toBeNull();
+    expect(fav.node.isFavorite).toBe(true);
+  });
+
+  it('cache hook - deleteAllNodes triggers clear', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertNode(makeNode(2300), 'src-A');
+
+    let cleared = 0;
+    repo.setCacheHook({
+      setNode: () => {},
+      setNodeAcrossSources: () => {},
+      setNodeByNodeId: () => {},
+      clear: () => { cleared++; },
+    });
+
+    await repo.deleteAllNodes();
+
+    if (backend.dbType === 'sqlite') {
+      expect(cleared).toBe(0);
+    } else {
+      expect(cleared).toBe(1);
+    }
+  });
 }
 
 // --- SQLite Backend ---
