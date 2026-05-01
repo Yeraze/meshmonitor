@@ -293,6 +293,70 @@ class DatabaseService {
   }
 
   /**
+   * Convert a repository-shaped node row (with `null` for missing fields and a
+   * `sourceId` column) into the local DatabaseService cache shape (with
+   * `undefined` for optional fields). Mirrors the conversion in
+   * loadCachesFromDatabase so cache writes from the repo cache hook stay
+   * structurally identical to the startup-loaded entries.
+   */
+  private repoNodeToCacheNode(node: any, sourceId: string): DbNode {
+    return {
+      nodeNum: node.nodeNum,
+      nodeId: node.nodeId,
+      longName: node.longName ?? '',
+      shortName: node.shortName ?? '',
+      hwModel: node.hwModel ?? 0,
+      role: node.role ?? undefined,
+      hopsAway: node.hopsAway ?? undefined,
+      lastMessageHops: node.lastMessageHops ?? undefined,
+      viaMqtt: node.viaMqtt ?? undefined,
+      macaddr: node.macaddr ?? undefined,
+      latitude: node.latitude ?? undefined,
+      longitude: node.longitude ?? undefined,
+      altitude: node.altitude ?? undefined,
+      batteryLevel: node.batteryLevel ?? undefined,
+      voltage: node.voltage ?? undefined,
+      channelUtilization: node.channelUtilization ?? undefined,
+      airUtilTx: node.airUtilTx ?? undefined,
+      lastHeard: node.lastHeard ?? undefined,
+      snr: node.snr ?? undefined,
+      rssi: node.rssi ?? undefined,
+      lastTracerouteRequest: node.lastTracerouteRequest ?? undefined,
+      firmwareVersion: node.firmwareVersion ?? undefined,
+      channel: node.channel ?? undefined,
+      isFavorite: node.isFavorite ?? undefined,
+      favoriteLocked: node.favoriteLocked ?? undefined,
+      isIgnored: node.isIgnored ?? undefined,
+      mobile: node.mobile ?? undefined,
+      rebootCount: node.rebootCount ?? undefined,
+      publicKey: node.publicKey ?? undefined,
+      hasPKC: node.hasPKC ?? undefined,
+      lastPKIPacket: node.lastPKIPacket ?? undefined,
+      keyIsLowEntropy: node.keyIsLowEntropy ?? undefined,
+      duplicateKeyDetected: node.duplicateKeyDetected ?? undefined,
+      keyMismatchDetected: node.keyMismatchDetected ?? undefined,
+      keySecurityIssueDetails: node.keySecurityIssueDetails ?? undefined,
+      welcomedAt: node.welcomedAt ?? undefined,
+      positionChannel: node.positionChannel ?? undefined,
+      positionPrecisionBits: node.positionPrecisionBits ?? undefined,
+      positionGpsAccuracy: node.positionGpsAccuracy ?? undefined,
+      positionHdop: node.positionHdop ?? undefined,
+      positionTimestamp: node.positionTimestamp ?? undefined,
+      positionOverrideEnabled: node.positionOverrideEnabled ?? undefined,
+      latitudeOverride: node.latitudeOverride ?? undefined,
+      longitudeOverride: node.longitudeOverride ?? undefined,
+      altitudeOverride: node.altitudeOverride ?? undefined,
+      positionOverrideIsPrivate: node.positionOverrideIsPrivate ?? undefined,
+      hasRemoteAdmin: node.hasRemoteAdmin ?? undefined,
+      lastRemoteAdminCheck: node.lastRemoteAdminCheck ?? undefined,
+      remoteAdminMetadata: node.remoteAdminMetadata ?? undefined,
+      sourceId: node.sourceId ?? sourceId,
+      createdAt: node.createdAt,
+      updatedAt: node.updatedAt,
+    } as DbNode;
+  }
+
+  /**
    * Phase 3B: Iterate cache, optionally filtered by sourceId.
    */
   private *iterateCache(sourceId?: string): IterableIterator<DbNode> {
@@ -694,6 +758,54 @@ class DatabaseService {
       this.settingsRepo = new SettingsRepository(drizzleDb, this.drizzleDbType);
       this.channelsRepo = new ChannelsRepository(drizzleDb, this.drizzleDbType);
       this.nodesRepo = new NodesRepository(drizzleDb, this.drizzleDbType);
+      // Wire the in-memory nodesCache to repository writes so PG/MySQL caches
+      // stay coherent with DB state — fixes #2858 where bypassing the facade
+      // (e.g. via `databaseService.nodes.upsertNode(...)`) left newly-discovered
+      // nodes invisible to sync cache readers like setNodePositionOverride.
+      this.nodesRepo.setCacheHook({
+        setNode: (nodeNum, sourceId, node) => {
+          const key = this.cacheKey(nodeNum, sourceId);
+          if (!node) {
+            this.nodesCache.delete(key);
+            return;
+          }
+          this.nodesCache.set(key, this.repoNodeToCacheNode(node, sourceId));
+        },
+        setNodeAcrossSources: (nodeNum, freshNodes) => {
+          // Remove existing cache entries for this nodeNum that aren't in freshNodes,
+          // then upsert each fresh row.
+          const keepSourceIds = new Set(freshNodes.map(n => (n as any).sourceId ?? 'default'));
+          for (const key of Array.from(this.nodesCache.keys())) {
+            const cached = this.nodesCache.get(key);
+            if (cached && cached.nodeNum === nodeNum && !keepSourceIds.has(cached.sourceId ?? 'default')) {
+              this.nodesCache.delete(key);
+            }
+          }
+          for (const fresh of freshNodes) {
+            const sid = (fresh as any).sourceId ?? 'default';
+            this.nodesCache.set(this.cacheKey(nodeNum, sid), this.repoNodeToCacheNode(fresh, sid));
+          }
+        },
+        setNodeByNodeId: (nodeId, freshNodes) => {
+          // Replace all cache entries for this nodeId with the fresh set.
+          const keepKeys = new Set(
+            freshNodes.map(n => this.cacheKey(n.nodeNum, (n as any).sourceId ?? 'default'))
+          );
+          for (const key of Array.from(this.nodesCache.keys())) {
+            const cached = this.nodesCache.get(key);
+            if (cached && cached.nodeId === nodeId && !keepKeys.has(key)) {
+              this.nodesCache.delete(key);
+            }
+          }
+          for (const fresh of freshNodes) {
+            const sid = (fresh as any).sourceId ?? 'default';
+            this.nodesCache.set(this.cacheKey(fresh.nodeNum, sid), this.repoNodeToCacheNode(fresh, sid));
+          }
+        },
+        clear: () => {
+          this.nodesCache.clear();
+        },
+      });
       this.messagesRepo = new MessagesRepository(drizzleDb, this.drizzleDbType);
       this.telemetryRepo = new TelemetryRepository(drizzleDb, this.drizzleDbType);
       // Auth repo for all backends - Migration 012 aligned SQLite schema with Drizzle definitions
