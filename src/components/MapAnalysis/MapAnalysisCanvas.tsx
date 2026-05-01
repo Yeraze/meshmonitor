@@ -2,6 +2,8 @@ import { MapContainer, TileLayer, Pane } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
+import { getTilesetById } from '../../config/tilesets';
+import { TilesetSelector } from '../TilesetSelector';
 import NodeMarkersLayer from './layers/NodeMarkersLayer';
 import TraceroutePathsLayer from './layers/TraceroutePathsLayer';
 import NeighborLinksLayer from './layers/NeighborLinksLayer';
@@ -15,7 +17,14 @@ const FALLBACK_CENTER: [number, number] = [30, -90];
 const FALLBACK_ZOOM = 10;
 
 export default function MapAnalysisCanvas() {
-  const { defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom } = useSettings();
+  const {
+    defaultMapCenterLat,
+    defaultMapCenterLon,
+    defaultMapCenterZoom,
+    mapTileset,
+    customTilesets,
+    setMapTileset,
+  } = useSettings();
   const { config } = useMapAnalysisCtx();
 
   const center: [number, number] = [
@@ -24,12 +33,15 @@ export default function MapAnalysisCanvas() {
   ];
   const zoom = defaultMapCenterZoom ?? FALLBACK_ZOOM;
 
+  const tileset = getTilesetById(mapTileset, customTilesets);
+
   return (
     <div className="map-analysis-canvas" style={{ position: 'relative' }}>
       <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }}>
         <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution="&copy; OpenStreetMap"
+          url={tileset.url}
+          attribution={tileset.attribution}
+          maxZoom={tileset.maxZoom}
         />
         <Pane name="markers" style={{ zIndex: 600 }}>
           {config.layers.markers.enabled && <NodeMarkersLayer />}
@@ -50,6 +62,7 @@ export default function MapAnalysisCanvas() {
           {config.layers.heatmap.enabled && <CoverageHeatmapLayer />}
         </Pane>
       </MapContainer>
+      <TilesetSelector selectedTilesetId={mapTileset} onTilesetChange={setMapTileset} />
       <TimeSliderControl />
       <MapLegend />
     </div>

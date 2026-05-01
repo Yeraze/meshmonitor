@@ -76,6 +76,9 @@ vi.mock('../../contexts/SettingsContext', () => ({
     defaultMapCenterLat: 30,
     defaultMapCenterLon: -90,
     defaultMapCenterZoom: 10,
+    mapTileset: 'osm',
+    customTilesets: [],
+    setMapTileset: vi.fn(),
   }),
 }));
 
