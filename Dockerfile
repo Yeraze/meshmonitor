@@ -46,6 +46,7 @@ WORKDIR /app
 # Create python symlink for user scripts that use #!/usr/bin/env python
 RUN apk add --no-cache \
     curl \
+    tzdata \
     unzip \
     python3 \
     py3-pip \
