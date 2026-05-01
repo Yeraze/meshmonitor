@@ -28,6 +28,7 @@ export interface EmbedProfile {
   showMqttNodes: boolean;
   pollIntervalSeconds: number;
   allowedOrigins: string[];
+  sourceId: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -58,6 +59,7 @@ function deserializeRow(row: any): EmbedProfile {
     showMqttNodes: Boolean(row.showMqttNodes),
     pollIntervalSeconds: Number(row.pollIntervalSeconds),
     allowedOrigins: typeof row.allowedOrigins === 'string' ? JSON.parse(row.allowedOrigins) : row.allowedOrigins,
+    sourceId: row.sourceId ?? null,
     createdAt: Number(row.createdAt),
     updatedAt: Number(row.updatedAt),
   };
@@ -116,6 +118,7 @@ export class EmbedProfileRepository extends BaseRepository {
       showMqttNodes: input.showMqttNodes,
       pollIntervalSeconds: input.pollIntervalSeconds,
       allowedOrigins: JSON.stringify(input.allowedOrigins),
+      sourceId: input.sourceId ?? null,
       createdAt: now,
       updatedAt: now,
     };
@@ -148,6 +151,7 @@ export class EmbedProfileRepository extends BaseRepository {
     if (input.showMqttNodes !== undefined) updateValues.showMqttNodes = input.showMqttNodes;
     if (input.pollIntervalSeconds !== undefined) updateValues.pollIntervalSeconds = input.pollIntervalSeconds;
     if (input.allowedOrigins !== undefined) updateValues.allowedOrigins = JSON.stringify(input.allowedOrigins);
+    if (input.sourceId !== undefined) updateValues.sourceId = input.sourceId;
 
     await this.db.update(embedProfiles).set(updateValues).where(eq(embedProfiles.id, id));
 

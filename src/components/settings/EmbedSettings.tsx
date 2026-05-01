@@ -8,6 +8,7 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { getAllTilesets } from '../../config/tilesets';
 import { useSettings } from '../../contexts/SettingsContext';
+import { useDashboardSources } from '../../hooks/useDashboardData';
 import './EmbedSettings.css';
 
 // Fix default marker icon for Leaflet in bundled builds
@@ -40,6 +41,7 @@ interface EmbedProfile {
   showMqttNodes: boolean;
   pollIntervalSeconds: number;
   allowedOrigins: string[];
+  sourceId: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -62,6 +64,7 @@ const DEFAULT_FORM: ProfileFormData = {
   showMqttNodes: true,
   pollIntervalSeconds: 30,
   allowedOrigins: [],
+  sourceId: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -110,6 +113,7 @@ const EmbedSettings = () => {
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
   const { customTilesets } = useSettings();
+  const { data: sources = [] } = useDashboardSources();
 
   const [profiles, setProfiles] = useState<EmbedProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -200,6 +204,7 @@ const EmbedSettings = () => {
       showMqttNodes: profile.showMqttNodes,
       pollIntervalSeconds: profile.pollIntervalSeconds,
       allowedOrigins: [...profile.allowedOrigins],
+      sourceId: profile.sourceId ?? null,
     });
     setOriginsText(profile.allowedOrigins.join(', '));
     setEditingId(profile.id);
@@ -431,6 +436,33 @@ const EmbedSettings = () => {
                     </label>
                   ))}
                 </div>
+              </div>
+
+              {/* Source filter — null = all sources */}
+              <div className="setting-item">
+                <label htmlFor="embed-source">
+                  {t('settings.embed.source', 'Source')}
+                </label>
+                <select
+                  id="embed-source"
+                  className="setting-input embed-input-wide"
+                  value={form.sourceId ?? ''}
+                  onChange={e =>
+                    setForm(prev => ({
+                      ...prev,
+                      sourceId: e.target.value === '' ? null : e.target.value,
+                    }))
+                  }
+                >
+                  <option value="">
+                    {t('settings.embed.source_all', 'All sources')}
+                  </option>
+                  {sources.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Tileset */}

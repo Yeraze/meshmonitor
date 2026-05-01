@@ -63,6 +63,7 @@ import { migration as rebuildIgnoredNodesPerSourceMigration, runMigration048Post
 import { migration as perfCompositeIndexesMigration, runMigration049Postgres, runMigration049Mysql } from '../server/migrations/049_perf_composite_indexes.js';
 import { migration as promoteGlobalsToDefaultSourceMigration, runMigration050Postgres, runMigration050Mysql } from '../server/migrations/050_promote_globals_to_default_source.js';
 import { migration as dropLegacyNotifPrefsUserIdUniqueMigration, runMigration051Postgres, runMigration051Mysql } from '../server/migrations/051_drop_legacy_notif_prefs_userid_unique.js';
+import { migration as addSourceIdToEmbedProfilesMigration, runMigration052Postgres, runMigration052Mysql } from '../server/migrations/052_add_source_id_to_embed_profiles.js';
 
 // ============================================================================
 // Registry
@@ -797,4 +798,19 @@ registry.register({
   sqlite: (db) => dropLegacyNotifPrefsUserIdUniqueMigration.up(db),
   postgres: (client) => runMigration051Postgres(client),
   mysql: (pool) => runMigration051Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 052: Add nullable sourceId column to embed_profiles. NULL = "all
+// sources" (preserves pre-migration behaviour where embed routes returned
+// data unfiltered across sources).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 52,
+  name: 'add_source_id_to_embed_profiles',
+  settingsKey: 'migration_052_add_source_id_to_embed_profiles',
+  sqlite: (db) => addSourceIdToEmbedProfilesMigration.up(db),
+  postgres: (client) => runMigration052Postgres(client),
+  mysql: (pool) => runMigration052Mysql(pool),
 });

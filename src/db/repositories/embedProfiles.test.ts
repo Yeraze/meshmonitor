@@ -37,6 +37,7 @@ describe('EmbedProfileRepository', () => {
         showMqttNodes INTEGER NOT NULL DEFAULT 1,
         pollIntervalSeconds INTEGER NOT NULL DEFAULT 30,
         allowedOrigins TEXT NOT NULL DEFAULT '[]',
+        sourceId TEXT,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       )
@@ -78,6 +79,7 @@ describe('EmbedProfileRepository', () => {
       showMqttNodes: true,
       pollIntervalSeconds: 30,
       allowedOrigins: ['https://example.com'],
+      sourceId: null,
     };
 
     const created = await repo.createAsync(input);
@@ -119,6 +121,7 @@ describe('EmbedProfileRepository', () => {
       showMqttNodes: true,
       pollIntervalSeconds: 30,
       allowedOrigins: [],
+      sourceId: null,
     };
 
     await repo.createAsync(input);
@@ -161,6 +164,7 @@ describe('EmbedProfileRepository', () => {
       showMqttNodes: true,
       pollIntervalSeconds: 30,
       allowedOrigins: [],
+      sourceId: null,
     };
 
     await repo.createAsync(input);
@@ -174,6 +178,37 @@ describe('EmbedProfileRepository', () => {
   it('should return false when deleting non-existent profile', async () => {
     const result = await repo.deleteAsync('nonexistent');
     expect(result).toBe(false);
+  });
+
+  it('should persist and roundtrip sourceId', async () => {
+    const input: EmbedProfileInput = {
+      id: 'src-test',
+      name: 'Source Scoped',
+      enabled: true,
+      channels: [0],
+      tileset: 'osm',
+      defaultLat: 0,
+      defaultLng: 0,
+      defaultZoom: 10,
+      showTooltips: true,
+      showPopups: true,
+      showLegend: true,
+      showPaths: false,
+      showNeighborInfo: false,
+      showMqttNodes: true,
+      pollIntervalSeconds: 30,
+      allowedOrigins: [],
+      sourceId: 'source-abc',
+    };
+
+    const created = await repo.createAsync(input);
+    expect(created.sourceId).toBe('source-abc');
+
+    const fetched = await repo.getByIdAsync('src-test');
+    expect(fetched!.sourceId).toBe('source-abc');
+
+    const cleared = await repo.updateAsync('src-test', { sourceId: null });
+    expect(cleared!.sourceId).toBeNull();
   });
 
   it('should deserialize boolean fields correctly from SQLite integers', async () => {

@@ -85,6 +85,7 @@ const sampleProfile = {
   showMqttNodes: true,
   pollIntervalSeconds: 30,
   allowedOrigins: ['https://example.com'],
+  sourceId: null,
   createdAt: 1700000000000,
   updatedAt: 1700000000000,
 };
@@ -252,6 +253,32 @@ describe('Embed Profile Admin Routes', () => {
         expect.objectContaining({
           allowedOrigins: [],
         })
+      );
+    });
+
+    it('persists sourceId when provided', async () => {
+      mockDb.embedProfiles.createAsync.mockResolvedValue(sampleProfile);
+      const app = createApp();
+
+      await request(app)
+        .post('/api/embed-profiles')
+        .send({ name: 'With Source', sourceId: 'src-abc' });
+
+      expect(mockDb.embedProfiles.createAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceId: 'src-abc' })
+      );
+    });
+
+    it('coerces empty/missing sourceId to null', async () => {
+      mockDb.embedProfiles.createAsync.mockResolvedValue(sampleProfile);
+      const app = createApp();
+
+      await request(app)
+        .post('/api/embed-profiles')
+        .send({ name: 'No Source', sourceId: '' });
+
+      expect(mockDb.embedProfiles.createAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceId: null })
       );
     });
 

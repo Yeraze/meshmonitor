@@ -98,6 +98,10 @@ router.post('/', async (req: Request, res: Response) => {
       ? req.body.allowedOrigins.filter(isValidOrigin)
       : [];
     const enabled = req.body.enabled !== false;
+    const sourceId =
+      typeof req.body.sourceId === 'string' && req.body.sourceId.trim().length > 0
+        ? req.body.sourceId
+        : null;
 
     const profile = await databaseService.embedProfiles.createAsync({
       id,
@@ -116,6 +120,7 @@ router.post('/', async (req: Request, res: Response) => {
       showMqttNodes,
       pollIntervalSeconds,
       allowedOrigins,
+      sourceId,
     });
 
     databaseService.auditLogAsync(
@@ -156,6 +161,12 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (req.body.pollIntervalSeconds !== undefined) updates.pollIntervalSeconds = clampPollInterval(req.body.pollIntervalSeconds);
     if (req.body.allowedOrigins !== undefined) updates.allowedOrigins = Array.isArray(req.body.allowedOrigins)
       ? req.body.allowedOrigins.filter(isValidOrigin) : [];
+    if (req.body.sourceId !== undefined) {
+      updates.sourceId =
+        typeof req.body.sourceId === 'string' && req.body.sourceId.trim().length > 0
+          ? req.body.sourceId
+          : null;
+    }
 
     const profile = await databaseService.embedProfiles.updateAsync(id, updates);
 

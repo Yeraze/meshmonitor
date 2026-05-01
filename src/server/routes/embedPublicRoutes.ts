@@ -73,7 +73,7 @@ router.get('/:profileId/nodes', createEmbedCspMiddleware(), async (req: Request,
   }
 
   try {
-    const allNodes = await databaseService.nodes.getActiveNodes(7);
+    const allNodes = await databaseService.nodes.getActiveNodes(7, profile.sourceId ?? undefined);
 
     // Filter by the profile's configured channels
     const profileChannels = new Set(profile.channels as number[]);
@@ -136,7 +136,7 @@ router.get('/:profileId/neighborinfo', createEmbedCspMiddleware(), async (req: R
   }
 
   try {
-    const allNodes = await databaseService.nodes.getActiveNodes(7);
+    const allNodes = await databaseService.nodes.getActiveNodes(7, profile.sourceId ?? undefined);
     const profileChannels = new Set(profile.channels as number[]);
 
     // Build a lookup of nodes that pass the embed's filters. Use effective
@@ -158,7 +158,7 @@ router.get('/:profileId/neighborinfo', createEmbedCspMiddleware(), async (req: R
       });
     }
 
-    const rawNeighbors = await databaseService.neighbors.getAllNeighborInfo();
+    const rawNeighbors = await databaseService.neighbors.getAllNeighborInfo(profile.sourceId ?? undefined);
 
     // Enrich with positions — only include pairs where both nodes are in the filtered set
     const segments = rawNeighbors
@@ -195,7 +195,7 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Re
   }
 
   try {
-    const allNodes = await databaseService.nodes.getActiveNodes(7);
+    const allNodes = await databaseService.nodes.getActiveNodes(7, profile.sourceId ?? undefined);
     const profileChannels = new Set(profile.channels as number[]);
 
     // Build position lookup for visible nodes. Use effective position so a
@@ -218,7 +218,7 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Re
     }
 
     // Get recent traceroutes and decompose into point-to-point segments
-    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(100);
+    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(100, profile.sourceId ?? undefined);
     // Traceroute timestamps can be in ms or seconds — normalize to ms
     const cutoffMs = Date.now() - (24 * 60 * 60 * 1000); // last 24h
 

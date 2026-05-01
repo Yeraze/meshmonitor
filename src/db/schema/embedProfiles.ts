@@ -24,6 +24,7 @@ export const embedProfilesSqlite = sqliteTable('embed_profiles', {
   showMqttNodes: integer('showMqttNodes', { mode: 'boolean' }).notNull().default(true),
   pollIntervalSeconds: integer('pollIntervalSeconds').notNull().default(30),
   allowedOrigins: text('allowedOrigins').notNull().default('[]'),
+  sourceId: text('sourceId'),
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
 });
@@ -46,6 +47,7 @@ export const embedProfilesPostgres = pgTable('embed_profiles', {
   showMqttNodes: pgBoolean('showMqttNodes').notNull().default(true),
   pollIntervalSeconds: pgInteger('pollIntervalSeconds').notNull().default(30),
   allowedOrigins: pgText('allowedOrigins').notNull().default('[]'),
+  sourceId: pgText('sourceId'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
 });
@@ -68,6 +70,7 @@ export const embedProfilesMysql = mysqlTable('embed_profiles', {
   showMqttNodes: myBoolean('showMqttNodes').notNull().default(true),
   pollIntervalSeconds: myInt('pollIntervalSeconds').notNull().default(30),
   allowedOrigins: myText('allowedOrigins').notNull(),
+  sourceId: myVarchar('sourceId', { length: 36 }),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
 });
