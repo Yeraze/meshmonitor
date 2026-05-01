@@ -140,6 +140,8 @@ function App() {
   const [upgradeStatus, setUpgradeStatus] = useState('');
   const [upgradeProgress, setUpgradeProgress] = useState(0);
   const [_upgradeId, setUpgradeId] = useState<string | null>(null);
+  const [autoUpgradeBlocked, setAutoUpgradeBlocked] = useState(false);
+  const [autoUpgradeBlockedReason, setAutoUpgradeBlockedReason] = useState<string | null>(null);
   const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
   const [showPsk, setShowPsk] = useState(false);
   const [showRebootModal, setShowRebootModal] = useState(false);
@@ -1308,6 +1310,10 @@ function App() {
         if (response.ok) {
           const data = await response.json();
           setUpgradeEnabled(data.enabled && data.deploymentMethod === 'docker');
+          if (data.autoUpgradeBlock) {
+            setAutoUpgradeBlocked(Boolean(data.autoUpgradeBlock.blocked));
+            setAutoUpgradeBlockedReason(data.autoUpgradeBlock.reason ?? null);
+          }
 
           // If an upgrade is already in progress (e.g., auto-upgrade was triggered),
           // set the upgrade state and start polling for status
@@ -1380,6 +1386,25 @@ function App() {
       showToast?.('Failed to trigger upgrade', 'error');
       setUpgradeInProgress(false);
       setUpgradeStatus('');
+    }
+  };
+
+  // Acknowledge and clear the auto-upgrade circuit breaker
+  const handleClearAutoUpgradeBlock = async () => {
+    try {
+      const response = await authFetch(`${baseUrl}/api/upgrade/clear-block`, {
+        method: 'POST',
+      });
+      if (response.ok) {
+        setAutoUpgradeBlocked(false);
+        setAutoUpgradeBlockedReason(null);
+        showToast?.('Auto-upgrade unblocked. Scheduled upgrades will resume.', 'success');
+      } else {
+        showToast?.('Failed to clear auto-upgrade block', 'error');
+      }
+    } catch (error) {
+      logger.error('Error clearing auto-upgrade block:', error);
+      showToast?.('Failed to clear auto-upgrade block', 'error');
     }
   };
 
@@ -4532,6 +4557,9 @@ function App() {
         upgradeProgress={upgradeProgress}
         onUpgrade={handleUpgrade}
         onDismissUpdate={() => setUpdateAvailable(false)}
+        autoUpgradeBlocked={autoUpgradeBlocked}
+        autoUpgradeBlockedReason={autoUpgradeBlockedReason}
+        onClearAutoUpgradeBlock={handleClearAutoUpgradeBlock}
       />
 
       <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />

@@ -14,6 +14,13 @@ const UPGRADE_TRIGGER_FILE = path.join(DATA_DIR, '.upgrade-trigger');
 const UPGRADE_STATUS_FILE = path.join(DATA_DIR, '.upgrade-status');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 
+// Circuit-breaker threshold: trip after this many consecutive failed upgrades
+// to halt unattended retries when something is structurally wrong (e.g. a
+// pinned image tag in docker-compose.yml — see issue #2871).
+const PARSED_THRESHOLD = parseInt(process.env.AUTO_UPGRADE_FAILURE_THRESHOLD || '', 10);
+export const AUTO_UPGRADE_FAILURE_THRESHOLD =
+  Number.isFinite(PARSED_THRESHOLD) && PARSED_THRESHOLD > 0 ? PARSED_THRESHOLD : 3;
+
 export interface UpgradeStatus {
   upgradeId: string;
   status: 'pending' | 'backing_up' | 'downloading' | 'restarting' | 'health_check' | 'complete' | 'failed' | 'rolled_back';
@@ -153,6 +160,20 @@ class UpgradeService {
         };
       }
 
+      // Circuit breaker: refuse system-initiated upgrades when blocked.
+      // Manual user-initiated upgrades (initiatedBy not starting with 'system-')
+      // and force=true bypass the block so the user can investigate / retry.
+      if (this.isSystemInitiated(initiatedBy) && !request.force) {
+        const blocked = await this.getAutoUpgradeBlock();
+        if (blocked.blocked) {
+          logger.warn(`🛑 Auto-upgrade blocked by circuit breaker — refusing scheduled trigger. Reason: ${blocked.reason}`);
+          return {
+            success: false,
+            message: `Auto-upgrade is blocked after ${AUTO_UPGRADE_FAILURE_THRESHOLD} consecutive failed attempts. ${blocked.reason || ''} Acknowledge from the UI to resume.`.trim()
+          };
+        }
+      }
+
       // Check if upgrade already in progress
       const inProgress = await this.isUpgradeInProgress();
       if (inProgress && !request.force) {
@@ -250,12 +271,12 @@ class UpgradeService {
             const fileStatus = fs.readFileSync(UPGRADE_STATUS_FILE, 'utf-8').trim().toLowerCase();
             if (fileStatus === 'complete' || fileStatus === 'ready') {
               logger.info(`🔄 Syncing upgrade ${upgradeId} status from file: ${row.status} -> complete`);
-              await databaseService.miscRepo.markUpgradeComplete(row.id);
+              await this.markCompleteAndClear(row.id);
               const updated = await databaseService.miscRepo.getUpgradeById(upgradeId);
               if (updated) row = updated;
             } else if (fileStatus === 'failed') {
               logger.info(`🔄 Syncing upgrade ${upgradeId} status from file: ${row.status} -> failed`);
-              await databaseService.miscRepo.markUpgradeFailed(row.id, 'Upgrade failed (detected from watchdog status)');
+              await this.markFailedAndEvaluate(row.id, 'Upgrade failed (detected from watchdog status)');
               const updated = await databaseService.miscRepo.getUpgradeById(upgradeId);
               if (updated) row = updated;
             }
@@ -380,7 +401,7 @@ class UpgradeService {
           const minutesStuck = Math.round((Date.now() - (staleUpgrade.startedAt || 0)) / 60000);
           logger.warn(`⚠️ Upgrade ${staleUpgrade.id} stuck at "${staleUpgrade.currentStep}" for ${minutesStuck} minutes`);
 
-          await databaseService.miscRepo.markUpgradeFailed(
+          await this.markFailedAndEvaluate(
             staleUpgrade.id,
             `Upgrade timed out after ${minutesStuck} minutes (stuck at: ${staleUpgrade.currentStep})`
           );
@@ -443,7 +464,7 @@ class UpgradeService {
           // If the watchdog has marked the upgrade complete or ready, sync to database
           if (fileStatus === 'complete' || fileStatus === 'ready') {
             logger.info(`🔄 Syncing upgrade status from file: ${row.status} -> complete`);
-            await databaseService.miscRepo.markUpgradeComplete(row.id);
+            await this.markCompleteAndClear(row.id);
 
             // No active upgrade anymore
             return null;
@@ -452,7 +473,7 @@ class UpgradeService {
           // If the watchdog has marked it failed, sync to database
           if (fileStatus === 'failed') {
             logger.info(`🔄 Syncing upgrade status from file: ${row.status} -> failed`);
-            await databaseService.miscRepo.markUpgradeFailed(
+            await this.markFailedAndEvaluate(
               row.id,
               'Upgrade failed (detected from watchdog status)'
             );
@@ -540,6 +561,89 @@ class UpgradeService {
       safe: issues.length === 0,
       issues
     };
+  }
+
+  /**
+   * Identify scheduled/immediate auto-upgrades vs manual user-initiated ones.
+   * Used to scope circuit-breaker effects to unattended attempts only.
+   */
+  private isSystemInitiated(initiatedBy: string): boolean {
+    return typeof initiatedBy === 'string' && initiatedBy.startsWith('system-');
+  }
+
+  /**
+   * Read circuit-breaker state. Blocked when a previous run tripped the
+   * threshold and no successful upgrade has cleared it since.
+   */
+  async getAutoUpgradeBlock(): Promise<{
+    blocked: boolean;
+    reason: string | null;
+    consecutiveFailures: number;
+    threshold: number;
+  }> {
+    let consecutiveFailures = 0;
+    if (databaseService.miscRepo) {
+      try {
+        consecutiveFailures = await databaseService.miscRepo.countConsecutiveFailedUpgrades();
+      } catch (error) {
+        logger.warn('Failed to count consecutive upgrade failures:', error);
+      }
+    }
+    let blocked = false;
+    let reason: string | null = null;
+    try {
+      blocked = (await databaseService.settings.getSetting('autoUpgradeBlocked')) === 'true';
+      reason = (await databaseService.settings.getSetting('autoUpgradeBlockedReason')) ?? null;
+    } catch (error) {
+      logger.warn('Failed to read auto-upgrade block state:', error);
+    }
+    return { blocked, reason, consecutiveFailures, threshold: AUTO_UPGRADE_FAILURE_THRESHOLD };
+  }
+
+  /**
+   * Mark an upgrade failed and evaluate the circuit breaker.
+   * Trips the breaker when consecutive failures reach the threshold.
+   */
+  private async markFailedAndEvaluate(id: string, errorMessage: string): Promise<void> {
+    if (!databaseService.miscRepo) return;
+    await databaseService.miscRepo.markUpgradeFailed(id, errorMessage);
+
+    try {
+      const consecutiveFailures = await databaseService.miscRepo.countConsecutiveFailedUpgrades();
+      if (consecutiveFailures >= AUTO_UPGRADE_FAILURE_THRESHOLD) {
+        const reason = `${consecutiveFailures} consecutive upgrade attempts failed. Last error: ${errorMessage}`;
+        await databaseService.settings.setSetting('autoUpgradeBlocked', 'true');
+        await databaseService.settings.setSetting('autoUpgradeBlockedReason', reason);
+        logger.warn(`🛑 Auto-upgrade circuit breaker tripped after ${consecutiveFailures} failures: ${errorMessage}`);
+      }
+    } catch (error) {
+      logger.warn('Failed to evaluate auto-upgrade circuit breaker:', error);
+    }
+  }
+
+  /**
+   * Mark an upgrade complete and clear any tripped circuit breaker.
+   * Called instead of miscRepo.markUpgradeComplete from internal sync paths.
+   */
+  private async markCompleteAndClear(id: string): Promise<void> {
+    if (!databaseService.miscRepo) return;
+    await databaseService.miscRepo.markUpgradeComplete(id);
+    await this.clearAutoUpgradeBlock('Cleared by successful upgrade');
+  }
+
+  /**
+   * Clear the circuit breaker (user acknowledgement or successful upgrade).
+   */
+  async clearAutoUpgradeBlock(reason?: string): Promise<void> {
+    try {
+      await databaseService.settings.setSetting('autoUpgradeBlocked', 'false');
+      await databaseService.settings.setSetting('autoUpgradeBlockedReason', '');
+      if (reason) {
+        logger.info(`✅ Auto-upgrade circuit breaker cleared: ${reason}`);
+      }
+    } catch (error) {
+      logger.warn('Failed to clear auto-upgrade block:', error);
+    }
   }
 
   /**

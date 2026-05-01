@@ -374,6 +374,30 @@ export class MiscRepository extends BaseRepository {
       .where(eq(upgradeHistory.id, id));
   }
 
+  /**
+   * Count consecutive failed upgrades from most recent backwards.
+   * Stops counting at the first non-failed (e.g. 'complete') row.
+   * Used by the auto-upgrade circuit breaker to halt repeated retries
+   * when something is structurally wrong (e.g. pinned image tag).
+   */
+  async countConsecutiveFailedUpgrades(): Promise<number> {
+    const { upgradeHistory } = this.tables;
+    const rows = await this.db
+      .select({ status: upgradeHistory.status })
+      .from(upgradeHistory)
+      .orderBy(desc(upgradeHistory.startedAt))
+      .limit(50);
+    let count = 0;
+    for (const row of rows) {
+      if (row.status === 'failed') {
+        count++;
+      } else {
+        break;
+      }
+    }
+    return count;
+  }
+
   // ============ NEWS CACHE ============
 
   /**

@@ -462,6 +462,54 @@ function runMiscTests(getBackend: () => TestBackend) {
     expect(count).toBe(1); // only 'pending' is an in-progress status
   });
 
+  it('countConsecutiveFailedUpgrades - returns 0 with no history', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const count = await repo.countConsecutiveFailedUpgrades();
+    expect(count).toBe(0);
+  });
+
+  it('countConsecutiveFailedUpgrades - counts run of failures from most recent', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const base = Date.now();
+    await repo.createUpgradeHistory({ id: 'u1', fromVersion: '1.0', toVersion: '1.1', deploymentMethod: 'docker', status: 'failed', startedAt: base });
+    await repo.createUpgradeHistory({ id: 'u2', fromVersion: '1.0', toVersion: '1.1', deploymentMethod: 'docker', status: 'failed', startedAt: base + 1000 });
+    await repo.createUpgradeHistory({ id: 'u3', fromVersion: '1.0', toVersion: '1.1', deploymentMethod: 'docker', status: 'failed', startedAt: base + 2000 });
+
+    const count = await repo.countConsecutiveFailedUpgrades();
+    expect(count).toBe(3);
+  });
+
+  it('countConsecutiveFailedUpgrades - stops at first non-failed row', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const base = Date.now();
+    // Older completed run, then 2 recent failures
+    await repo.createUpgradeHistory({ id: 'u1', fromVersion: '1.0', toVersion: '1.1', deploymentMethod: 'docker', status: 'failed', startedAt: base });
+    await repo.createUpgradeHistory({ id: 'u2', fromVersion: '1.0', toVersion: '1.1', deploymentMethod: 'docker', status: 'complete', startedAt: base + 1000 });
+    await repo.createUpgradeHistory({ id: 'u3', fromVersion: '1.0', toVersion: '1.1', deploymentMethod: 'docker', status: 'failed', startedAt: base + 2000 });
+    await repo.createUpgradeHistory({ id: 'u4', fromVersion: '1.0', toVersion: '1.1', deploymentMethod: 'docker', status: 'failed', startedAt: base + 3000 });
+
+    const count = await repo.countConsecutiveFailedUpgrades();
+    expect(count).toBe(2);
+  });
+
+  it('countConsecutiveFailedUpgrades - returns 0 when most recent succeeded', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const base = Date.now();
+    await repo.createUpgradeHistory({ id: 'u1', fromVersion: '1.0', toVersion: '1.1', deploymentMethod: 'docker', status: 'failed', startedAt: base });
+    await repo.createUpgradeHistory({ id: 'u2', fromVersion: '1.0', toVersion: '1.1', deploymentMethod: 'docker', status: 'complete', startedAt: base + 1000 });
+
+    const count = await repo.countConsecutiveFailedUpgrades();
+    expect(count).toBe(0);
+  });
+
   // ============ NEWS CACHE ============
 
   it('saveNewsCache and getNewsCache - save and retrieve', async () => {

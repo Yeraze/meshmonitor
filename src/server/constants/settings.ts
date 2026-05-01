@@ -81,6 +81,8 @@ export const VALID_SETTINGS_KEYS = [
   'inactiveNodeCheckIntervalMinutes',
   'inactiveNodeCooldownHours',
   'autoUpgradeImmediate',
+  'autoUpgradeBlocked',
+  'autoUpgradeBlockedReason',
   'maintenanceEnabled',
   'maintenanceTime',
   'messageRetentionDays',

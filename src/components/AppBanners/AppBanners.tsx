@@ -15,6 +15,9 @@ interface AppBannersProps {
   upgradeProgress: number;
   onUpgrade: () => void;
   onDismissUpdate: () => void;
+  autoUpgradeBlocked?: boolean;
+  autoUpgradeBlockedReason?: string | null;
+  onClearAutoUpgradeBlock?: () => void;
 }
 
 export const AppBanners: React.FC<AppBannersProps> = ({
@@ -29,6 +32,9 @@ export const AppBanners: React.FC<AppBannersProps> = ({
   upgradeProgress,
   onUpgrade,
   onDismissUpdate,
+  autoUpgradeBlocked = false,
+  autoUpgradeBlockedReason = null,
+  onClearAutoUpgradeBlock,
 }) => {
   const { t } = useTranslation();
 
@@ -83,6 +89,45 @@ export const AppBanners: React.FC<AppBannersProps> = ({
           </div>
         );
       })}
+
+      {/* Auto-Upgrade Blocked Banner (circuit breaker tripped) */}
+      {autoUpgradeBlocked && (() => {
+        const bannersAbove = [isTxDisabled].filter(Boolean).length + configIssues.length;
+        const topOffset =
+          bannersAbove === 0
+            ? 'var(--header-height)'
+            : `calc(var(--header-height) + (var(--banner-height) * ${bannersAbove}))`;
+        return (
+          <div
+            className="warning-banner"
+            style={{ top: topOffset, gap: '1rem' }}
+          >
+            <span>
+              ⚠️ {t('banners.auto_upgrade_blocked', {
+                defaultValue: 'Auto-upgrade halted after repeated failures.',
+              })}
+              {autoUpgradeBlockedReason ? ` ${autoUpgradeBlockedReason}` : ''}
+            </span>
+            {onClearAutoUpgradeBlock && (
+              <button
+                onClick={onClearAutoUpgradeBlock}
+                style={{
+                  marginLeft: '1rem',
+                  padding: '0.25rem 0.75rem',
+                  background: 'rgba(255,255,255,0.2)',
+                  color: 'inherit',
+                  border: '1px solid rgba(255,255,255,0.5)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                {t('banners.acknowledge', { defaultValue: 'Acknowledge' })}
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Update Available Banner */}
       {updateAvailable &&

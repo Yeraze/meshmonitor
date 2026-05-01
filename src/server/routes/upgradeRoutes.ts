@@ -26,16 +26,43 @@ router.use(requireAuth());
 router.get('/status', async (_req: Request, res: Response) => {
   try {
     const activeUpgrade = await upgradeService.getActiveUpgrade();
+    const block = await upgradeService.getAutoUpgradeBlock();
 
     return res.json({
       enabled: upgradeService.isEnabled(),
       deploymentMethod: upgradeService.getDeploymentMethod(),
       currentVersion: packageJson.version,
-      activeUpgrade: activeUpgrade || null
+      activeUpgrade: activeUpgrade || null,
+      autoUpgradeBlock: block,
     });
   } catch (error) {
     logger.error('Error checking upgrade status:', error);
     return res.status(500).json({ error: 'Failed to check upgrade status' });
+  }
+});
+
+/**
+ * POST /api/upgrade/clear-block
+ * Acknowledge and clear the auto-upgrade circuit breaker so scheduled
+ * upgrades resume. Use after the operator has remediated the underlying
+ * cause of the failures (e.g. unpinned image tag, fixed registry access).
+ */
+router.post('/clear-block', async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id || null;
+    await upgradeService.clearAutoUpgradeBlock(`Acknowledged by user ${userId ?? 'unknown'}`);
+    databaseService.auditLogAsync(
+      typeof userId === 'number' ? userId : null,
+      'auto_upgrade_block_cleared',
+      'system',
+      'Auto-upgrade circuit breaker cleared',
+      req.ip || null
+    );
+    const block = await upgradeService.getAutoUpgradeBlock();
+    return res.json({ success: true, autoUpgradeBlock: block });
+  } catch (error) {
+    logger.error('Error clearing auto-upgrade block:', error);
+    return res.status(500).json({ success: false, error: 'Failed to clear block' });
   }
 });
 
