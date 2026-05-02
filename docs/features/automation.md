@@ -704,6 +704,7 @@ You can specify custom regex patterns for parameters using `{paramName:regex}` s
 - Supports multiline text (automatically uses textarea for editing)
 - Can include extracted parameters using `{parameter}` syntax
 - **Multiline Support**: Enable to automatically split long responses into multiple messages
+- Can output single or multiple responses (see [Multiple Responses Support](#multiple-responses-support))
 - Example trigger: `hello {name}`
 - Example response: `Hi {name}! Welcome to the mesh.`
 
@@ -713,6 +714,7 @@ You can specify custom regex patterns for parameters using `{paramName:regex}` s
 - URL also supports all acknowledgement/announcement tokens (e.g., `{NODE_ID}`, `{SHORT_NAME}`, `{HOPS}`, `{SNR}`, `{RSSI}`, `{CHANNEL}`, `{VERSION}`, etc.) - token values are automatically URI-encoded for URL safety
 - Extracted parameters from regex capture groups take precedence over built-in tokens of the same name
 - **Multiline Support**: Enable to automatically split long responses into multiple messages
+- Can output single or multiple responses (see [Multiple Responses Support](#multiple-responses-support))
 - Useful for triggering webhooks, APIs, or external automation
 - Example trigger: `alert {message}`
 - Example response: `https://api.example.com/alert?msg={message}&node={NODE_ID}&snr={SNR}`
@@ -722,7 +724,7 @@ You can specify custom regex patterns for parameters using `{paramName:regex}` s
 - Scripts must be placed in `/data/scripts/` directory
 - Supports Node.js (`.js`, `.mjs`), Python (`.py`), and Shell (`.sh`) scripts
 - Scripts receive message data and parameters via environment variables
-- Can output single or multiple responses (see Script Response Details below)
+- Can output single or multiple responses (see [Script Response Details](#script-response-details) below)
 - 10-second execution timeout
 - **Script Arguments**: Optional command-line arguments with token expansion (see below)
 - Example trigger: `weather {location}`
@@ -831,6 +833,35 @@ This would be split into approximately 3 messages, each sent 30 seconds apart.
 - Time-sensitive responses
 - Single-line messages
 
+### Multiple Responses Support
+
+For **Text**, **HTTP** and **Script** response types, you can return single or multiple responses, using JSON.
+
+**JSON Output Format**:
+
+**Single Response:**
+```json
+{
+  "response": "Your response text (max 200 chars)"
+}
+```
+
+**Multiple Responses:**
+```json
+{
+  "responses": [
+    "First message (max 200 chars)",
+    "Second message (max 200 chars)",
+    "Third message (max 200 chars)"
+  ]
+}
+```
+
+When using multiple responses, each message is queued individually and sent with:
+- 30-second rate limiting between messages
+- Up to 3 retry attempts per message
+- Automatic ACK tracking for delivery confirmation
+
 ### Parameter Extraction
 
 Parameters are automatically extracted from the incoming message and can be used in responses:
@@ -881,7 +912,7 @@ Scripts provide the most powerful and flexible response type, allowing you to ex
 Scripts must:
 - Be located in `/data/scripts/` directory
 - Have a supported extension: `.js`, `.mjs`, `.py`, or `.sh`
-- Output valid JSON to stdout with a `response` field
+- Output valid JSON to stdout with a `response` or `responses` field (see details in [Multiple Responses Support](#multiple-responses-support) section)
 - Complete execution within 10 seconds (timeout)
 - Handle errors gracefully
 
@@ -906,33 +937,6 @@ All scripts receive these environment variables:
 - `MSG_*`: All message fields as individual variables
 
 See the [Auto Responder Scripting Guide](/developers/auto-responder-scripting#environment-variables) for the complete list.
-
-**JSON Output Format**:
-
-Scripts can return single or multiple responses:
-
-**Single Response:**
-```json
-{
-  "response": "Your response text (max 200 chars)"
-}
-```
-
-**Multiple Responses:**
-```json
-{
-  "responses": [
-    "First message (max 200 chars)",
-    "Second message (max 200 chars)",
-    "Third message (max 200 chars)"
-  ]
-}
-```
-
-When using multiple responses, each message is queued individually and sent with:
-- 30-second rate limiting between messages
-- Up to 3 retry attempts per message
-- Automatic ACK tracking for delivery confirmation
 
 **Example 1 - Node.js Weather Script**:
 ```javascript
