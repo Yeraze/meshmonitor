@@ -262,6 +262,33 @@
   padding: 18px 20px;
   font-size: 13px;
   line-height: 1.5;
+  position: relative;
+}
+.map-analysis-inspector-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #888;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  z-index: 1;
+}
+.map-analysis-inspector-close:hover,
+.map-analysis-inspector-close:focus-visible {
+  background: #2a2a2a;
+  border-color: #3a3a3a;
+  color: #fff;
+  outline: none;
 }
 .map-analysis-inspector .empty {
   color: #666;

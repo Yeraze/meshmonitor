@@ -13,10 +13,21 @@ vi.mock('../../hooks/useDashboardData', () => ({
     nodes: [
       {
         nodeNum: 1,
+        nodeId: '!00000001',
         sourceId: 'a',
         longName: 'Alpha',
         shortName: 'A',
         position: { latitude: 30, longitude: -90 },
+        snr: 7.25,
+        rssi: -82,
+        lastHeard: 1700000000,
+        deviceMetrics: {
+          batteryLevel: 85,
+          voltage: 4.12,
+          channelUtilization: 12.3,
+          airUtilTx: 1.45,
+          uptimeSeconds: 7200,
+        },
       },
     ],
   }),
@@ -24,6 +35,14 @@ vi.mock('../../hooks/useDashboardData', () => ({
 vi.mock('../../hooks/useMapAnalysisData', () => ({
   useHopCounts: () => ({
     data: { entries: [{ sourceId: 'a', nodeNum: 1, hops: 2 }] },
+  }),
+}));
+vi.mock('../../hooks/useLinkQuality', () => ({
+  useLinkQuality: () => ({
+    data: [
+      { timestamp: 1700000000000, quality: 6 },
+      { timestamp: 1700001000000, quality: 8 },
+    ],
   }),
 }));
 
@@ -101,5 +120,54 @@ describe('AnalysisInspectorPanel', () => {
     );
     fireEvent.click(screen.getByText('select-seg'));
     expect(screen.getByText(/Route segment/i)).toBeInTheDocument();
+  });
+
+  it('renders telemetry fields when a node is selected', () => {
+    render(
+      <Wrapper>
+        <SelectAlpha />
+        <AnalysisInspectorPanel />
+      </Wrapper>,
+    );
+    fireEvent.click(screen.getByText('select'));
+    expect(screen.getByText('Battery')).toBeInTheDocument();
+    expect(screen.getByText('85%')).toBeInTheDocument();
+    expect(screen.getByText('4.12 V')).toBeInTheDocument();
+    expect(screen.getByText('Uptime')).toBeInTheDocument();
+    expect(screen.getByText('2.0h')).toBeInTheDocument();
+    expect(screen.getByText('Air Util Tx')).toBeInTheDocument();
+    expect(screen.getByText('1.45%')).toBeInTheDocument();
+    expect(screen.getByText('Ch Util')).toBeInTheDocument();
+    expect(screen.getByText('12.30%')).toBeInTheDocument();
+    expect(screen.getByText('Link Q')).toBeInTheDocument();
+    expect(screen.getByText('8.0/10')).toBeInTheDocument();
+    expect(screen.getByText('SNR')).toBeInTheDocument();
+    expect(screen.getByText('7.25 dB')).toBeInTheDocument();
+  });
+
+  it('renders close button when a selection is active and clears selection on click', () => {
+    render(
+      <Wrapper>
+        <SelectAlpha />
+        <AnalysisInspectorPanel />
+      </Wrapper>,
+    );
+    fireEvent.click(screen.getByText('select'));
+    expect(screen.getByText('Alpha')).toBeInTheDocument();
+    const closeBtn = screen.getByLabelText(/close detail pane/i);
+    fireEvent.click(closeBtn);
+    expect(screen.queryByText('Alpha')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/click a node, route segment, neighbor link, or trail/i),
+    ).toBeInTheDocument();
+  });
+
+  it('does not render close button when no selection', () => {
+    render(
+      <Wrapper>
+        <AnalysisInspectorPanel />
+      </Wrapper>,
+    );
+    expect(screen.queryByLabelText(/close detail pane/i)).not.toBeInTheDocument();
   });
 });
