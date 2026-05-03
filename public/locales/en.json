@@ -4211,6 +4211,8 @@
   "source.status_connecting": "Connecting",
   "source.status_disabled": "Disabled",
   "source.status_idle": "Idle (manual)",
+  "source.node_activity": "{{active}}/{{total}} active",
+  "source.node_activity_title": "{{active}} of {{total}} nodes heard in the last 2 hours",
   "source.connect": "Connect",
   "source.connecting": "Connecting…",
   "source.connect_help": "Manually connect to this source. Auto-connect is disabled, so this source won't reconnect on its own.",

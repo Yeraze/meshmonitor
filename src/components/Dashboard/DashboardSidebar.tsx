@@ -41,6 +41,38 @@ interface DashboardSidebarProps {
   onNewsClick?: () => void;
 }
 
+/**
+ * Build the per-source mesh-activity badge shown beside the link-state badge.
+ *
+ * The link-state badge ("Connected"/"Connecting"/...) only reflects the
+ * MeshMonitor↔gateway TCP/serial link. Users on issue #2883 found that
+ * misleading because a gateway can be "Connected" while every mesh node it
+ * has heard is now stale. This badge complements link state with mesh
+ * liveness — total nodes vs. nodes heard in the last ~2h — colored by ratio
+ * so a glance tells you how lively the source is right now.
+ *
+ * Returns `null` when there's nothing useful to show (no nodes ever heard,
+ * server didn't include the count, or the source isn't enabled).
+ */
+function getActivityBadge(
+  total: number,
+  active: number | undefined,
+  t: (key: string, opts?: any) => string,
+): { text: string; tone: 'live' | 'partial' | 'idle'; title: string } | null {
+  if (active === undefined || total <= 0) return null;
+  // Live = >50% of heard nodes still active; partial = some but minority;
+  // idle = none heard recently. Picking a ratio rather than absolute count
+  // keeps small (<5 node) sources from constantly flipping to "idle" while
+  // still flagging large fleets where most nodes have gone quiet.
+  const tone: 'live' | 'partial' | 'idle' =
+    active === 0 ? 'idle' : active * 2 >= total ? 'live' : 'partial';
+  return {
+    text: t('source.node_activity', { active, total }),
+    tone,
+    title: t('source.node_activity_title', { active, total }),
+  };
+}
+
 function getStatusInfo(
   source: DashboardSource,
   status: SourceStatus | null | undefined,
@@ -219,11 +251,8 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         const isConnecting = !isUnified && connectingIds?.has(source.id) === true;
         // Unified is a virtual aggregate — show "connected" dot whenever any
         // backing source is connected. Prefer the server-computed
-        // `unifiedStatus.connected` (reachable to anonymous viewers) and fall
-        // back to scanning the per-source statusMap when the poll hasn't
-        // landed yet. The statusMap fallback alone would always read
-        // disconnected for unauthenticated users since /api/sources/:id/status
-        // requires sources:read.
+        // `unifiedStatus.connected` and fall back to scanning the per-source
+        // statusMap when the poll hasn't landed yet.
         const unifiedConnected = isUnified
           ? unifiedStatus?.connected ??
             Array.from(statusMap.values()).some((s) => s?.connected === true)
@@ -237,6 +266,16 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             : getStatusInfo(source, status, t);
         const nodeCount = nodeCounts.get(source.id) ?? 0;
         const isSelected = selectedSourceId === source.id;
+        // Mesh-activity badge — shown only for enabled sources with a known
+        // active count. Unified pulls from the aggregate endpoint so anonymous
+        // viewers also see it; per-source uses the gated /status response.
+        const activityBadge = source.enabled
+          ? isUnified
+            ? getActivityBadge(unifiedStatus?.nodeCount ?? nodeCount, unifiedStatus?.activeNodeCount, t)
+            : status
+              ? getActivityBadge(nodeCount, status.activeNodeCount as number | undefined, t)
+              : null
+          : null;
 
         // Show the Meshtastic logo as a faint watermark for any meshtastic-typed
         // source. Other source types render without a watermark.
@@ -292,6 +331,14 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             <div className="dashboard-source-card-status">
               <span className={`dashboard-status-dot ${dotClass}`} />
               <span>{label}</span>
+              {activityBadge && (
+                <span
+                  className={`dashboard-activity-badge dashboard-activity-${activityBadge.tone}`}
+                  title={activityBadge.title}
+                >
+                  {activityBadge.text}
+                </span>
+              )}
             </div>
 
             <div className="dashboard-source-card-actions">

@@ -224,6 +224,28 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * Count nodes whose `lastHeard` falls within the given window (default 2h).
+   *
+   * Powers the per-source "node activity" badge in the dashboard sidebar so
+   * users can tell at a glance whether a source is hearing live mesh traffic
+   * even when the gateway link itself is up (issue #2883). The link-state
+   * badge only reflects MeshMonitor↔gateway TCP/serial; this complements it
+   * with mesh-level liveness.
+   *
+   * `lastHeard` is stored in seconds (Unix epoch). Returns 0 for a source
+   * with no recently-heard nodes.
+   */
+  async getActiveNodeCount(sourceId?: string, sinceSeconds: number = 7200): Promise<number> {
+    const cutoff = Math.floor(Date.now() / 1000) - sinceSeconds;
+    const { nodes } = this.tables;
+    const result = await this.db
+      .select({ count: count() })
+      .from(nodes)
+      .where(and(gt(nodes.lastHeard, cutoff), this.withSourceScope(nodes, sourceId)));
+    return Number(result[0].count);
+  }
+
+  /**
    * Count distinct nodeNums across the given source IDs.
    *
    * Used by the Unified source card so the displayed count reflects the
@@ -242,6 +264,23 @@ export class NodesRepository extends BaseRepository {
       .select({ count: countDistinct(nodes.nodeNum) })
       .from(nodes)
       .where(inArray(nodes.sourceId, sourceIds));
+    return Number(result[0].count);
+  }
+
+  /**
+   * Count distinct nodeNums heard within the window across the given source
+   * IDs. Powers the Unified card's node-activity badge (issue #2883) so a
+   * single deduped active count is shown across the whole fleet, matching
+   * the deduped total. Returns 0 when sourceIds is empty.
+   */
+  async getDistinctActiveNodeCount(sourceIds: string[], sinceSeconds: number = 7200): Promise<number> {
+    if (sourceIds.length === 0) return 0;
+    const cutoff = Math.floor(Date.now() / 1000) - sinceSeconds;
+    const { nodes } = this.tables;
+    const result = await this.db
+      .select({ count: countDistinct(nodes.nodeNum) })
+      .from(nodes)
+      .where(and(inArray(nodes.sourceId, sourceIds), gt(nodes.lastHeard, cutoff)));
     return Number(result[0].count);
   }
 

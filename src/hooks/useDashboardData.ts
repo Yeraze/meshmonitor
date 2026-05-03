@@ -32,6 +32,11 @@ export interface SourceStatus {
   connected: boolean;
   /** Total nodes heard by this source — populated by GET /api/sources/:id/status. */
   nodeCount?: number;
+  /**
+   * Nodes heard by this source within the last ~2h. Powers the sidebar's
+   * mesh-activity badge alongside the link-state badge (issue #2883).
+   */
+  activeNodeCount?: number;
   [key: string]: unknown;
 }
 
@@ -107,6 +112,11 @@ export function useSourceStatuses(sourceIds: string[]): Map<string, SourceStatus
 export interface UnifiedStatus {
   /** Distinct nodeNum count across every source the user can read. */
   nodeCount: number;
+  /**
+   * Distinct count of nodes heard within the last ~2h across every readable
+   * source. Mirrors the per-source `activeNodeCount` (issue #2883).
+   */
+  activeNodeCount?: number;
   /** True when any readable source is currently connected. */
   connected: boolean;
 }

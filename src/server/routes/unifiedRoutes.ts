@@ -685,9 +685,15 @@ router.get('/status', async (req: Request, res: Response) => {
         : false);
       if (canRead) allowedIds.push(source.id);
     }
-    const nodeCount = await databaseService.nodes.getDistinctNodeCount(allowedIds);
+    // Distinct counts across permitted sources. `activeNodeCount` mirrors the
+    // per-source endpoint (issue #2883) using the same 2h window so the
+    // Unified card and individual source cards line up.
+    const [nodeCount, activeNodeCount] = await Promise.all([
+      databaseService.nodes.getDistinctNodeCount(allowedIds),
+      databaseService.nodes.getDistinctActiveNodeCount(allowedIds),
+    ]);
 
-    res.json({ nodeCount, connected: anyConnected });
+    res.json({ nodeCount, activeNodeCount, connected: anyConnected });
   } catch (error) {
     logger.error('Error fetching unified status:', error);
     res.status(500).json({ error: 'Failed to fetch unified status' });

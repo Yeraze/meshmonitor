@@ -110,6 +110,41 @@ describe('DashboardSidebar', () => {
     expect(screen.queryByRole('button', { name: 'source.options' })).not.toBeInTheDocument();
   });
 
+  it('renders mesh-activity badge with the live tone when most heard nodes are recent', () => {
+    const statusMap = new Map<string, SourceStatus | null>([
+      ['src-1', { sourceId: 'src-1', connected: true, activeNodeCount: 4 }],
+      ['src-2', { sourceId: 'src-2', connected: false }],
+      ['src-3', null],
+    ]);
+    renderSidebar({ statusMap });
+    const live = document.querySelector('.dashboard-activity-live');
+    expect(live).toBeInTheDocument();
+    // The i18n test mock returns keys verbatim — verify the mesh-activity
+    // key wires through (interpolation isn't exercised here).
+    expect(live?.textContent).toMatch(/source\.node_activity/);
+  });
+
+  it('renders mesh-activity badge with idle tone when zero nodes heard recently', () => {
+    const statusMap = new Map<string, SourceStatus | null>([
+      ['src-1', { sourceId: 'src-1', connected: true, activeNodeCount: 0 }],
+      ['src-2', { sourceId: 'src-2', connected: false }],
+      ['src-3', null],
+    ]);
+    renderSidebar({ statusMap });
+    expect(document.querySelector('.dashboard-activity-idle')).toBeInTheDocument();
+  });
+
+  it('omits mesh-activity badge when activeNodeCount is missing from server', () => {
+    // Older server / pre-migration deployment — graceful fallback
+    const statusMap = new Map<string, SourceStatus | null>([
+      ['src-1', { sourceId: 'src-1', connected: true }],
+      ['src-2', { sourceId: 'src-2', connected: false }],
+      ['src-3', null],
+    ]);
+    renderSidebar({ statusMap });
+    expect(document.querySelector('.dashboard-activity-badge')).not.toBeInTheDocument();
+  });
+
   it('shows sidebar navigation links', () => {
     renderSidebar();
     expect(screen.getByRole('button', { name: /source\.sidebar\.unified_messages/ })).toBeInTheDocument();

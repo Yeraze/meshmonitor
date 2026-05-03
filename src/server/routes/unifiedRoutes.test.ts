@@ -27,6 +27,7 @@ vi.mock('../../services/database.js', () => ({
     nodes: {
       getAllNodes: vi.fn(),
       getDistinctNodeCount: vi.fn(),
+      getDistinctActiveNodeCount: vi.fn().mockResolvedValue(0),
     },
     telemetry: {
       getLatestTelemetryByNode: vi.fn(),
@@ -887,9 +888,10 @@ describe('Unified Routes', () => {
       const res = await request(app).get('/status');
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ nodeCount: 42, connected: false });
+      expect(res.body).toEqual({ nodeCount: 42, activeNodeCount: 0, connected: false });
       // Admin gets every source's id passed through.
       expect(mockDb.nodes.getDistinctNodeCount).toHaveBeenCalledWith(['src-a', 'src-b']);
+      expect(mockDb.nodes.getDistinctActiveNodeCount).toHaveBeenCalledWith(['src-a', 'src-b']);
     });
 
     it('limits the count to sources the user has read permission on', async () => {
@@ -917,7 +919,7 @@ describe('Unified Routes', () => {
       const res = await request(app).get('/status');
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ nodeCount: 0, connected: false });
+      expect(res.body).toEqual({ nodeCount: 0, activeNodeCount: 0, connected: false });
       expect(mockDb.nodes.getDistinctNodeCount).toHaveBeenCalledWith([]);
     });
   });

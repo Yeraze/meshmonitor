@@ -230,6 +230,33 @@
   background: var(--ctp-surface2);
 }
 
+.dashboard-activity-badge {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  background: var(--ctp-surface1);
+  color: var(--ctp-subtext0);
+  white-space: nowrap;
+}
+
+.dashboard-activity-badge.dashboard-activity-live {
+  background: color-mix(in srgb, var(--ctp-green) 20%, transparent);
+  color: var(--ctp-green);
+}
+
+.dashboard-activity-badge.dashboard-activity-partial {
+  background: color-mix(in srgb, var(--ctp-yellow) 22%, transparent);
+  color: var(--ctp-yellow);
+}
+
+.dashboard-activity-badge.dashboard-activity-idle {
+  background: color-mix(in srgb, var(--ctp-red) 18%, transparent);
+  color: var(--ctp-red);
+}
+
 .dashboard-source-card-actions {
   display: flex;
   align-items: center;

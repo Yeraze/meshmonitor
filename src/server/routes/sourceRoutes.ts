@@ -309,7 +309,13 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
 // each source has heard without having to fetch every source's full node list
 // (the sidebar polls /status for every source on a 15s interval, but the
 // expensive /nodes endpoint is only fetched for the *selected* source).
-router.get('/:id/status', requirePermission('sources', 'read'), async (req: Request, res: Response) => {
+// `optionalAuth` (not requirePermission) so anonymous viewers see live
+// connection state — same approach as /api/unified/sources-status. The
+// sidebar badge is operational signal, not user-scoped data, and gating it
+// caused anonymous users to see "Connecting"/"Idle" forever (issue #2883).
+// Node counts remain permission-scoped: only included when the caller has
+// `nodes:read` for this source, mirroring the unified endpoint.
+router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const source = await databaseService.sources.getSource(req.params.id);
     if (!source) {
@@ -322,9 +328,26 @@ router.get('/:id/status', requirePermission('sources', 'read'), async (req: Requ
       sourceType: source.type,
       connected: false,
     };
-    // Cheap COUNT(*) — never throws on empty source.
-    const nodeCount = await databaseService.nodes.getNodeCount(source.id).catch(() => 0);
-    res.json({ ...status, nodeCount });
+
+    const user = (req as any).user;
+    const isAdmin = user?.isAdmin ?? false;
+    const canReadNodes = isAdmin || (user
+      ? await databaseService.checkPermissionAsync(user.id, 'nodes', 'read', source.id)
+      : false);
+
+    if (!canReadNodes) {
+      return res.json(status);
+    }
+
+    // Cheap COUNT(*) queries — never throw on empty source.
+    // `activeNodeCount` is the count of nodes heard in the last 2h, used by
+    // the sidebar's node-activity badge (issue #2883). Kept parallel with
+    // the total count so source status fans out in a single round-trip.
+    const [nodeCount, activeNodeCount] = await Promise.all([
+      databaseService.nodes.getNodeCount(source.id).catch(() => 0),
+      databaseService.nodes.getActiveNodeCount(source.id).catch(() => 0),
+    ]);
+    res.json({ ...status, nodeCount, activeNodeCount });
   } catch (error) {
     logger.error('Error fetching source status:', error);
     res.status(500).json({ error: 'Failed to fetch source status' });
