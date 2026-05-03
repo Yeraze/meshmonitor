@@ -11,14 +11,15 @@ import {
   useAggregateProgress,
 } from '../../hooks/useMapAnalysisData';
 
-const LOOKBACK_OPTIONS = [1, 6, 24, 72, 168, 720];
+const LOOKBACK_OPTIONS: Array<number | null> = [1, 6, 24, 72, 168, 720];
+const SNR_LOOKBACK_OPTIONS: Array<number | null> = [null, 1, 6, 24, 72, 168, 720];
 
-const TIMED_LAYERS: { key: LayerKey; label: string }[] = [
-  { key: 'traceroutes', label: 'Traceroutes' },
-  { key: 'neighbors',   label: 'Neighbors' },
-  { key: 'heatmap',     label: 'Heatmap' },
-  { key: 'trails',      label: 'Trails' },
-  { key: 'snrOverlay',  label: 'SNR Overlay' },
+const TIMED_LAYERS: { key: LayerKey; label: string; options: Array<number | null> }[] = [
+  { key: 'traceroutes', label: 'Traceroutes', options: LOOKBACK_OPTIONS },
+  { key: 'neighbors',   label: 'Neighbors',   options: LOOKBACK_OPTIONS },
+  { key: 'heatmap',     label: 'Heatmap',     options: LOOKBACK_OPTIONS },
+  { key: 'trails',      label: 'Trails',      options: LOOKBACK_OPTIONS },
+  { key: 'snrOverlay',  label: 'SNR Overlay', options: SNR_LOOKBACK_OPTIONS },
 ];
 const UNTIMED_LAYERS: { key: LayerKey; label: string }[] = [
   { key: 'markers',     label: 'Markers' },
@@ -38,11 +39,15 @@ export default function MapAnalysisToolbar() {
   // the toolbar's shared positions hook with the longest enabled lookback so
   // the global progress bar reflects whichever fetch will take longest. Layer
   // components fire their own usePositions calls with per-layer lookbacks;
-  // identical-args calls share React Query cache.
+  // identical-args calls share React Query cache. SNR overlay in "Last" mode
+  // (lookbackHours === null) skips the positions API entirely — it reads from
+  // the unified node table — so don't include it here.
+  const snrUsesPositions =
+    config.layers.snrOverlay.enabled && config.layers.snrOverlay.lookbackHours !== null;
   const positionsLookback = Math.max(
     config.layers.trails.enabled ? (config.layers.trails.lookbackHours ?? 24) : 0,
     config.layers.heatmap.enabled ? (config.layers.heatmap.lookbackHours ?? 24) : 0,
-    config.layers.snrOverlay.enabled ? (config.layers.snrOverlay.lookbackHours ?? 24) : 0,
+    snrUsesPositions ? (config.layers.snrOverlay.lookbackHours ?? 24) : 0,
   );
 
   const positions = usePositions({
@@ -67,12 +72,16 @@ export default function MapAnalysisToolbar() {
     { isLoading: neighbors.isLoading },
   ]);
 
+  // Spinner shows on a button only when that specific layer is enabled and
+  // its data fetch is in flight. Without the .enabled guard the shared
+  // positions.isLoading would flash on heatmap/trails/SNR buttons even when
+  // only one of them is the actual driver of the fetch (issue #2884 bug 3).
   const layerLoading: Partial<Record<LayerKey, boolean>> = {
-    traceroutes: traceroutes.isLoading,
-    neighbors: neighbors.isLoading,
-    trails: positions.isLoading,
-    heatmap: positions.isLoading,
-    snrOverlay: positions.isLoading,
+    traceroutes: config.layers.traceroutes.enabled && traceroutes.isLoading,
+    neighbors:   config.layers.neighbors.enabled   && neighbors.isLoading,
+    trails:      config.layers.trails.enabled      && positions.isLoading,
+    heatmap:     config.layers.heatmap.enabled     && positions.isLoading,
+    snrOverlay:  config.layers.snrOverlay.enabled  && snrUsesPositions && positions.isLoading,
   };
 
   return (
@@ -105,14 +114,14 @@ export default function MapAnalysisToolbar() {
           onToggle={(next) => setLayerEnabled(key, next)}
         />
       ))}
-      {TIMED_LAYERS.map(({ key, label }) => (
+      {TIMED_LAYERS.map(({ key, label, options }) => (
         <LayerToggleButton
           key={key}
           label={label}
           enabled={config.layers[key].enabled}
           onToggle={(next) => setLayerEnabled(key, next)}
           lookbackHours={config.layers[key].lookbackHours}
-          lookbackOptions={LOOKBACK_OPTIONS}
+          lookbackOptions={options}
           onLookbackChange={(h) => setLayerLookback(key, h)}
           loading={layerLoading[key] ?? false}
         />

@@ -36,7 +36,7 @@ export const DEFAULT_CONFIG: MapAnalysisConfig = {
     heatmap:    { enabled: false, lookbackHours: 24 },
     trails:     { enabled: false, lookbackHours: 24 },
     hopShading: { enabled: false, lookbackHours: null },
-    snrOverlay: { enabled: false, lookbackHours: 24 },
+    snrOverlay: { enabled: false, lookbackHours: null },
   },
   sources: [],
   timeSlider: { enabled: false },

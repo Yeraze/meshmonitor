@@ -5,7 +5,7 @@ export interface LayerToggleButtonProps {
   enabled: boolean;
   onToggle: (next: boolean) => void;
   lookbackHours?: number | null;
-  lookbackOptions?: number[];
+  lookbackOptions?: Array<number | null>;
   onLookbackChange?: (h: number | null) => void;
   loading?: boolean;
   errored?: boolean;
@@ -56,12 +56,12 @@ export default function LayerToggleButton({
           <div className="map-analysis-popover-label">Lookback</div>
           {lookbackOptions.map((h) => (
             <button
-              key={h}
+              key={h ?? 'last'}
               type="button"
               className={lookbackHours === h ? 'selected' : ''}
               onClick={() => { onLookbackChange(h); setPopOpen(false); }}
             >
-              {h}h
+              {h === null ? 'Last' : `${h}h`}
             </button>
           ))}
         </div>
