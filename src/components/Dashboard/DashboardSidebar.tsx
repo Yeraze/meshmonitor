@@ -402,6 +402,12 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         >
           {t('source.sidebar.map_analysis')}
         </button>
+        <button
+          className="dashboard-sidebar-link dashboard-sidebar-link--active"
+          onClick={() => navigate('/reports')}
+        >
+          {t('source.sidebar.reports', 'Analysis & Reports')}
+        </button>
       </div>
 
       <div className="dashboard-sidebar-footer">

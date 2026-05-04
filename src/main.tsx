@@ -13,6 +13,7 @@ import App from './App.tsx';
 import PacketMonitorPage from './pages/PacketMonitorPage.tsx';
 import DashboardPage from './pages/DashboardPage.tsx';
 import MapAnalysisPage from './pages/MapAnalysisPage.tsx';
+import ReportsPage from './pages/ReportsPage.tsx';
 import UnifiedMessagesPage from './pages/UnifiedMessagesPage.tsx';
 import UnifiedTelemetryPage from './pages/UnifiedTelemetryPage.tsx';
 import GlobalSettingsPage from './pages/GlobalSettingsPage.tsx';
@@ -90,6 +91,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route
               path="analysis"
               element={sharedProviders(<MapAnalysisPage />)}
+            />
+
+            {/* Reports workspace (cross-source analytical reports) */}
+            <Route
+              path="reports"
+              element={sharedProviders(<ReportsPage />)}
             />
 
             {/* Global settings */}

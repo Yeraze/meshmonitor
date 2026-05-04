@@ -261,6 +261,34 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
+   * Get all telemetry rows of any of the given types since a timestamp,
+   * optionally restricted to a set of sourceIds. Used by cross-node analytics
+   * (e.g. solar pattern detection) where we need to scan multiple metrics
+   * across many nodes within a lookback window.
+   */
+  async getTelemetryByTypesSince(
+    telemetryTypes: string[],
+    sinceTimestamp: number,
+    sourceIds?: string[],
+  ): Promise<DbTelemetry[]> {
+    if (telemetryTypes.length === 0) return [];
+    const { telemetry } = this.tables;
+    const conditions: SQL[] = [
+      inArray(telemetry.telemetryType, telemetryTypes),
+      gte(telemetry.timestamp, sinceTimestamp),
+    ];
+    if (sourceIds && sourceIds.length > 0) {
+      conditions.push(inArray(telemetry.sourceId, sourceIds));
+    }
+    const result = await this.db
+      .select()
+      .from(telemetry)
+      .where(and(...conditions))
+      .orderBy(telemetry.timestamp);
+    return this.normalizeBigInts(result) as DbTelemetry[];
+  }
+
+  /**
    * Get latest telemetry for each type for a node
    */
   async getLatestTelemetryByNode(nodeId: string): Promise<DbTelemetry[]> {

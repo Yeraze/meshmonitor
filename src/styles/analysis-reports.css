@@ -1,0 +1,524 @@
+/**
+ * Styles for the Analysis & Reports workspace.
+ * Uses --ctp-* CSS custom properties so the page respects the active theme.
+ */
+
+/* ── Page shell ──────────────────────────────────────────────────────────── */
+
+.reports-page {
+  min-height: 100vh;
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  font-family: var(--font-family, sans-serif);
+  display: flex;
+  flex-direction: column;
+}
+
+.reports-header {
+  background: var(--ctp-mantle);
+  border-bottom: 1px solid var(--ctp-surface0);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.reports-header__back {
+  background: var(--ctp-surface1);
+  color: var(--ctp-subtext0);
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.reports-header__back:hover {
+  background: var(--ctp-surface2);
+  color: var(--ctp-text);
+}
+
+.reports-header h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ctp-text);
+}
+
+.reports-body {
+  flex: 1 1 auto;
+  padding: 24px;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* ── Card grid (landing page) ────────────────────────────────────────────── */
+
+.reports-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.reports-grid__intro {
+  margin: 0 0 8px;
+  color: var(--ctp-subtext1, var(--ctp-subtext0));
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 720px;
+}
+
+.reports-card {
+  background: var(--ctp-mantle);
+  border: 1px solid var(--ctp-surface0);
+  border-radius: 12px;
+  padding: 22px;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--ctp-text);
+  transition:
+    border-color 0.15s,
+    transform 0.15s,
+    box-shadow 0.15s,
+    background 0.15s;
+  min-height: 160px;
+  font: inherit;
+}
+
+.reports-card:hover {
+  border-color: var(--ctp-blue);
+  background: var(--ctp-surface0);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.reports-card__icon {
+  font-size: 2.25rem;
+  line-height: 1;
+}
+
+.reports-card__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ctp-text);
+}
+
+.reports-card__desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ctp-subtext0);
+}
+
+/* ── Report shell (when a report is selected) ──────────────────────────── */
+
+.reports-section {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.reports-section__back {
+  align-self: flex-start;
+  background: var(--ctp-surface0);
+  color: var(--ctp-subtext0);
+  border: 1px solid var(--ctp-surface1);
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.reports-section__back:hover {
+  background: var(--ctp-surface1);
+  color: var(--ctp-text);
+}
+
+.reports-section__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ctp-text);
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.reports-section__subtitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ctp-subtext0);
+  max-width: 760px;
+}
+
+.reports-panel {
+  background: var(--ctp-mantle);
+  border: 1px solid var(--ctp-surface0);
+  border-radius: 12px;
+  padding: 18px;
+}
+
+/* ── Controls bar ───────────────────────────────────────────────────────── */
+
+.reports-controls {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.reports-controls__field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ctp-subtext0);
+}
+
+.reports-controls__field input[type='number'] {
+  width: 5.5rem;
+  padding: 6px 8px;
+  background: var(--ctp-base);
+  border: 1px solid var(--ctp-surface1);
+  color: var(--ctp-text);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.reports-controls__field input[type='number']:focus {
+  outline: none;
+  border-color: var(--ctp-blue);
+}
+
+.reports-btn {
+  padding: 7px 16px;
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  transition: filter 0.15s;
+}
+
+.reports-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.reports-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reports-btn--ghost {
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-surface1);
+}
+
+.reports-btn--ghost:hover:not(:disabled) {
+  background: var(--ctp-surface1);
+  filter: none;
+}
+
+/* ── Status banners (error / empty) ─────────────────────────────────────── */
+
+.reports-banner {
+  padding: 14px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.reports-banner--error {
+  background: color-mix(in srgb, var(--ctp-red) 18%, var(--ctp-mantle));
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-red);
+}
+
+.reports-banner--empty {
+  background: var(--ctp-mantle);
+  border: 1px dashed var(--ctp-surface1);
+  color: var(--ctp-subtext0);
+  text-align: center;
+  padding: 36px 16px;
+}
+
+/* ── Stat tiles (summary row) ───────────────────────────────────────────── */
+
+.reports-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.reports-stat {
+  background: var(--ctp-mantle);
+  border: 1px solid var(--ctp-surface0);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.reports-stat__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ctp-subtext0);
+  margin-bottom: 4px;
+}
+
+.reports-stat__value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ctp-text);
+}
+
+/* ── Node cards (per detected solar node) ──────────────────────────────── */
+
+.reports-node-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reports-node {
+  background: var(--ctp-mantle);
+  border: 1px solid var(--ctp-surface0);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.reports-node--insufficient {
+  border-color: var(--ctp-yellow);
+}
+
+.reports-node__header {
+  width: 100%;
+  padding: 14px 18px;
+  background: transparent;
+  border: none;
+  color: var(--ctp-text);
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  font: inherit;
+}
+
+.reports-node__header:hover {
+  background: var(--ctp-surface0);
+}
+
+.reports-node__name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ctp-text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reports-node__warning {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 2px 9px;
+  background: var(--ctp-yellow);
+  color: var(--ctp-base);
+  border-radius: 999px;
+}
+
+.reports-node__meta {
+  font-size: 12px;
+  color: var(--ctp-subtext0);
+  margin-top: 3px;
+}
+
+.reports-node__chevron {
+  font-size: 12px;
+  color: var(--ctp-subtext0);
+  flex-shrink: 0;
+}
+
+.reports-node__body {
+  padding: 16px 18px 18px;
+  border-top: 1px solid var(--ctp-surface0);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--ctp-base);
+}
+
+.reports-node__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  font-size: 12px;
+}
+
+.reports-node__field-label {
+  color: var(--ctp-subtext0);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-size: 10px;
+  margin-bottom: 3px;
+}
+
+.reports-node__field-value {
+  color: var(--ctp-text);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.reports-node__chart {
+  width: 100%;
+  height: 220px;
+  background: var(--ctp-mantle);
+  border: 1px solid var(--ctp-surface0);
+  border-radius: 8px;
+  padding: 8px 8px 8px 0;
+}
+
+.reports-node__patterns-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ctp-subtext0);
+  margin: 0 0 6px;
+}
+
+/* ── Patterns table ─────────────────────────────────────────────────────── */
+
+.reports-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--ctp-surface0);
+  border-radius: 8px;
+}
+
+.reports-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: var(--ctp-text);
+}
+
+.reports-table th {
+  background: var(--ctp-mantle);
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ctp-subtext0);
+  border-bottom: 1px solid var(--ctp-surface0);
+}
+
+.reports-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ctp-surface0);
+  white-space: nowrap;
+}
+
+.reports-table tr:last-child td {
+  border-bottom: none;
+}
+
+.reports-table tbody tr:hover {
+  background: var(--ctp-surface0);
+}
+
+/* ── Forecast section ───────────────────────────────────────────────────── */
+
+.reports-forecast {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.reports-forecast__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reports-forecast__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.reports-forecast__sub {
+  font-size: 12px;
+  color: var(--ctp-subtext0);
+  line-height: 1.5;
+}
+
+.reports-banner--warning {
+  background: color-mix(in srgb, var(--ctp-yellow) 15%, var(--ctp-mantle));
+  border: 1px solid var(--ctp-yellow);
+  color: var(--ctp-yellow);
+}
+
+.reports-pill {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.reports-pill--ok {
+  background: color-mix(in srgb, var(--ctp-green) 18%, transparent);
+  color: var(--ctp-green);
+}
+
+.reports-pill--warn {
+  background: color-mix(in srgb, var(--ctp-yellow) 22%, transparent);
+  color: var(--ctp-yellow);
+}
+
+.reports-at-risk {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ctp-text);
+}
+
+.reports-at-risk li {
+  padding: 8px 12px;
+  background: var(--ctp-base);
+  border: 1px solid var(--ctp-surface0);
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
