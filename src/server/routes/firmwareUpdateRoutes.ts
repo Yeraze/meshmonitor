@@ -267,9 +267,9 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
  * POST /api/firmware/update/cancel
  * Cancel an in-progress update
  */
-router.post('/update/cancel', (_req: Request, res: Response) => {
+router.post('/update/cancel', async (_req: Request, res: Response) => {
   try {
-    firmwareUpdateService.cancelUpdate();
+    await firmwareUpdateService.cancelUpdate();
     return res.json({ success: true, message: 'Update cancelled' });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

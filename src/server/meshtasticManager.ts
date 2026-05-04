@@ -3725,24 +3725,25 @@ class MeshtasticManager implements ISourceManager {
       logger.info(`[CONFIG] Returning StatusMessage config with nodeStatus="${statusMessageConfigWithDefaults.nodeStatus}"`);
     }
 
-    // Apply Proto3 defaults to TrafficManagement module config
+    // Apply Proto3 defaults to TrafficManagement module config (v2.7.22 schema)
     if (moduleConfig.trafficManagement) {
+      const tm = moduleConfig.trafficManagement;
       const trafficManagementConfigWithDefaults = {
-        ...moduleConfig.trafficManagement,
-        enabled: moduleConfig.trafficManagement.enabled !== undefined ? moduleConfig.trafficManagement.enabled : false,
-        positionDedupEnabled: moduleConfig.trafficManagement.positionDedupEnabled !== undefined ? moduleConfig.trafficManagement.positionDedupEnabled : false,
-        positionDedupTimeSecs: moduleConfig.trafficManagement.positionDedupTimeSecs !== undefined ? moduleConfig.trafficManagement.positionDedupTimeSecs : 0,
-        positionDedupDistanceMeters: moduleConfig.trafficManagement.positionDedupDistanceMeters !== undefined ? moduleConfig.trafficManagement.positionDedupDistanceMeters : 0,
-        nodeinfoDirectResponseEnabled: moduleConfig.trafficManagement.nodeinfoDirectResponseEnabled !== undefined ? moduleConfig.trafficManagement.nodeinfoDirectResponseEnabled : false,
-        nodeinfoDirectResponseMyNodeOnly: moduleConfig.trafficManagement.nodeinfoDirectResponseMyNodeOnly !== undefined ? moduleConfig.trafficManagement.nodeinfoDirectResponseMyNodeOnly : false,
-        rateLimitEnabled: moduleConfig.trafficManagement.rateLimitEnabled !== undefined ? moduleConfig.trafficManagement.rateLimitEnabled : false,
-        rateLimitMaxPerNode: moduleConfig.trafficManagement.rateLimitMaxPerNode !== undefined ? moduleConfig.trafficManagement.rateLimitMaxPerNode : 0,
-        rateLimitWindowSecs: moduleConfig.trafficManagement.rateLimitWindowSecs !== undefined ? moduleConfig.trafficManagement.rateLimitWindowSecs : 0,
-        unknownPacketDropEnabled: moduleConfig.trafficManagement.unknownPacketDropEnabled !== undefined ? moduleConfig.trafficManagement.unknownPacketDropEnabled : false,
-        unknownPacketGracePeriodSecs: moduleConfig.trafficManagement.unknownPacketGracePeriodSecs !== undefined ? moduleConfig.trafficManagement.unknownPacketGracePeriodSecs : 0,
-        hopExhaustionEnabled: moduleConfig.trafficManagement.hopExhaustionEnabled !== undefined ? moduleConfig.trafficManagement.hopExhaustionEnabled : false,
-        hopExhaustionMinHops: moduleConfig.trafficManagement.hopExhaustionMinHops !== undefined ? moduleConfig.trafficManagement.hopExhaustionMinHops : 0,
-        hopExhaustionMaxHops: moduleConfig.trafficManagement.hopExhaustionMaxHops !== undefined ? moduleConfig.trafficManagement.hopExhaustionMaxHops : 0
+        ...tm,
+        enabled: tm.enabled !== undefined ? tm.enabled : false,
+        positionDedupEnabled: tm.positionDedupEnabled !== undefined ? tm.positionDedupEnabled : false,
+        positionPrecisionBits: tm.positionPrecisionBits !== undefined ? tm.positionPrecisionBits : 0,
+        positionMinIntervalSecs: tm.positionMinIntervalSecs !== undefined ? tm.positionMinIntervalSecs : 0,
+        nodeinfoDirectResponse: tm.nodeinfoDirectResponse !== undefined ? tm.nodeinfoDirectResponse : false,
+        nodeinfoDirectResponseMaxHops: tm.nodeinfoDirectResponseMaxHops !== undefined ? tm.nodeinfoDirectResponseMaxHops : 0,
+        rateLimitEnabled: tm.rateLimitEnabled !== undefined ? tm.rateLimitEnabled : false,
+        rateLimitWindowSecs: tm.rateLimitWindowSecs !== undefined ? tm.rateLimitWindowSecs : 0,
+        rateLimitMaxPackets: tm.rateLimitMaxPackets !== undefined ? tm.rateLimitMaxPackets : 0,
+        dropUnknownEnabled: tm.dropUnknownEnabled !== undefined ? tm.dropUnknownEnabled : false,
+        unknownPacketThreshold: tm.unknownPacketThreshold !== undefined ? tm.unknownPacketThreshold : 0,
+        exhaustHopTelemetry: tm.exhaustHopTelemetry !== undefined ? tm.exhaustHopTelemetry : false,
+        exhaustHopPosition: tm.exhaustHopPosition !== undefined ? tm.exhaustHopPosition : false,
+        routerPreserveHops: tm.routerPreserveHops !== undefined ? tm.routerPreserveHops : false
       };
 
       moduleConfig = {
@@ -4013,6 +4014,8 @@ class MeshtasticManager implements ISourceManager {
                 telemetryType = 'Health';
               } else if (telemetry.hostMetrics || telemetry.host_metrics) {
                 telemetryType = 'Host';
+              } else if (telemetry.trafficManagementStats || telemetry.traffic_management_stats) {
+                telemetryType = 'TrafficManagement';
               }
               payloadPreview = `[Telemetry: ${telemetryType}]`;
             } else if (portnum === PortNum.PAXCOUNTER_APP) {
@@ -5367,6 +5370,19 @@ class MeshtasticManager implements ISourceManager {
           { type: 'hostLoad1', value: hostMetrics.load1, unit: 'load' },
           { type: 'hostLoad5', value: hostMetrics.load5, unit: 'load' },
           { type: 'hostLoad15', value: hostMetrics.load15, unit: 'load' }
+        ], nodeId, fromNum, timestamp, packetTimestamp, packetId);
+      } else if (telemetry.trafficManagementStats) {
+        const tmStats = telemetry.trafficManagementStats;
+        logger.debug(`🚦 TrafficManagementStats: inspected=${tmStats.packetsInspected}, dedup=${tmStats.positionDedupDrops}, rateLimit=${tmStats.rateLimitDrops}`);
+
+        await this.saveTelemetryMetrics([
+          { type: 'tmPacketsInspected', value: tmStats.packetsInspected, unit: 'packets' },
+          { type: 'tmPositionDedupDrops', value: tmStats.positionDedupDrops, unit: 'packets' },
+          { type: 'tmNodeinfoCacheHits', value: tmStats.nodeinfoCacheHits, unit: 'hits' },
+          { type: 'tmRateLimitDrops', value: tmStats.rateLimitDrops, unit: 'packets' },
+          { type: 'tmUnknownPacketDrops', value: tmStats.unknownPacketDrops, unit: 'packets' },
+          { type: 'tmHopExhaustedPackets', value: tmStats.hopExhaustedPackets, unit: 'packets' },
+          { type: 'tmRouterHopsPreserved', value: tmStats.routerHopsPreserved, unit: 'hops' }
         ], nodeId, fromNum, timestamp, packetTimestamp, packetId);
       }
 

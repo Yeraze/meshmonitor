@@ -339,7 +339,13 @@ export class FirmwareUpdateService {
    * Cancel an active update process.
    * Kills any active child process, cleans temp directory, resets to idle.
    */
-  cancelUpdate(): void {
+  async cancelUpdate(): Promise<void> {
+    // Capture step BEFORE resetting status so we know whether MM was
+    // already disconnected from the node. Steps 'backup' onwards run after
+    // disconnectFromNode(); cancelling there must reconnect.
+    const wasDisconnected = this.status.state === 'in-progress' &&
+      ['backup', 'download', 'extract', 'flash'].includes(this.status.step ?? '');
+
     if (this.activeProcess) {
       try {
         this.activeProcess.kill('SIGTERM');
@@ -352,6 +358,15 @@ export class FirmwareUpdateService {
     this.status = createIdleStatus();
     this.updateStatus({ message: 'Update cancelled' });
     logger.info('[FirmwareUpdateService] Update cancelled by user');
+
+    if (wasDisconnected) {
+      logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after cancel');
+      try {
+        await meshtasticManager.userReconnect();
+      } catch (reconnectError) {
+        logger.error('[FirmwareUpdateService] Reconnect after cancel errored:', reconnectError);
+      }
+    }
   }
 
   /**
@@ -741,10 +756,11 @@ export class FirmwareUpdateService {
       const arrayBuffer = await response.arrayBuffer();
       const downloadSize = arrayBuffer.byteLength;
 
-      // Cap download size at 100 MB — largest legitimate Meshtastic firmware
-      // release is ~20 MB. Prevents an attacker-controlled URL from exhausting
-      // disk space.
-      const MAX_FIRMWARE_BYTES = 100 * 1024 * 1024;
+      // Cap download size at 256 MB. Meshtastic firmware-esp32s3 zips have
+      // grown past 144 MB as of v2.7.22 (TFT/audio assets dominate). 256 MB
+      // gives headroom for further growth while still bounding an
+      // attacker-controlled URL from exhausting disk space.
+      const MAX_FIRMWARE_BYTES = 256 * 1024 * 1024;
       if (downloadSize > MAX_FIRMWARE_BYTES) {
         throw new Error(`Firmware download exceeds ${MAX_FIRMWARE_BYTES} byte limit (got ${downloadSize})`);
       }
@@ -774,6 +790,15 @@ export class FirmwareUpdateService {
         message: `Download failed: ${message}`,
         error: message,
       });
+      // Reconnect on failure so MeshMonitor isn't left disconnected. Backup
+      // already disconnected the node — without this, the user has to wait
+      // for the 60s auto-reconnect timer or manually reconnect.
+      logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after download failure');
+      try {
+        await meshtasticManager.userReconnect();
+      } catch (reconnectError) {
+        logger.error('[FirmwareUpdateService] Reconnect after download failure errored:', reconnectError);
+      }
       throw error;
     }
   }
@@ -828,6 +853,13 @@ export class FirmwareUpdateService {
         message: `Extraction failed: ${message}`,
         error: message,
       });
+      // Reconnect on failure — node is still disconnected from the backup step.
+      logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after extract failure');
+      try {
+        await meshtasticManager.userReconnect();
+      } catch (reconnectError) {
+        logger.error('[FirmwareUpdateService] Reconnect after extract failure errored:', reconnectError);
+      }
       throw error;
     }
   }
@@ -935,12 +967,42 @@ export class FirmwareUpdateService {
         if (this.activeProcess) {
           this.activeProcess.kill('SIGTERM');
         }
-        // Give the CLI a moment to exit and release any half-open sockets.
+        // The loader has a short listen window — waiting 3s here would
+        // routinely miss it on fast boards like the Heltec V3 (the loader
+        // times out and reboots before our upload connects, leaving the
+        // device half-flashed). SIGTERM frees the CLI's socket near-
+        // instantly; a 200ms buffer is enough for OS socket cleanup.
         await Promise.race([
           cliPromise,
-          new Promise(r => setTimeout(r, 3000)),
+          new Promise(r => setTimeout(r, 200)),
         ]);
-        await this.uploadOtaFirmware(host, OTA_LOADER_PORT, firmwarePath);
+        // If the first connection misses the window (loader already
+        // closing, or CLI socket not yet released), retry quickly. The
+        // loader stays open for a bounded time after detection — small
+        // retries beat a single late attempt.
+        const UPLOAD_RETRY_DELAYS_MS = [0, 250, 500, 1000];
+        let lastUploadError: unknown = null;
+        for (const delay of UPLOAD_RETRY_DELAYS_MS) {
+          if (delay > 0) await new Promise(r => setTimeout(r, delay));
+          try {
+            await this.uploadOtaFirmware(host, OTA_LOADER_PORT, firmwarePath);
+            lastUploadError = null;
+            break;
+          } catch (uploadErr) {
+            lastUploadError = uploadErr;
+            const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+            // Only retry on connection-level failures — protocol errors
+            // ("Loader reported error", commit failures) won't recover
+            // by retrying a connect.
+            if (!/ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH/i.test(msg)) {
+              throw uploadErr;
+            }
+            logger.warn(`[FirmwareUpdateService] OTA upload connect attempt failed (${msg}), retrying...`);
+          }
+        }
+        if (lastUploadError) {
+          throw lastUploadError;
+        }
       } else if (winner.kind === 'cli') {
         const result = winner.result;
         const elapsed = Date.now() - startTime;

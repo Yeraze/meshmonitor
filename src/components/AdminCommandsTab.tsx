@@ -627,18 +627,18 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         setTrafficManagementConfig({
           enabled: config.enabled ?? false,
           positionDedupEnabled: config.positionDedupEnabled ?? false,
-          positionDedupTimeSecs: config.positionDedupTimeSecs ?? 0,
-          positionDedupDistanceMeters: config.positionDedupDistanceMeters ?? 0,
-          nodeinfoDirectResponseEnabled: config.nodeinfoDirectResponseEnabled ?? false,
-          nodeinfoDirectResponseMyNodeOnly: config.nodeinfoDirectResponseMyNodeOnly ?? false,
+          positionPrecisionBits: config.positionPrecisionBits ?? 0,
+          positionMinIntervalSecs: config.positionMinIntervalSecs ?? 0,
+          nodeinfoDirectResponse: config.nodeinfoDirectResponse ?? false,
+          nodeinfoDirectResponseMaxHops: config.nodeinfoDirectResponseMaxHops ?? 0,
           rateLimitEnabled: config.rateLimitEnabled ?? false,
-          rateLimitMaxPerNode: config.rateLimitMaxPerNode ?? 0,
           rateLimitWindowSecs: config.rateLimitWindowSecs ?? 0,
-          unknownPacketDropEnabled: config.unknownPacketDropEnabled ?? false,
-          unknownPacketGracePeriodSecs: config.unknownPacketGracePeriodSecs ?? 0,
-          hopExhaustionEnabled: config.hopExhaustionEnabled ?? false,
-          hopExhaustionMinHops: config.hopExhaustionMinHops ?? 0,
-          hopExhaustionMaxHops: config.hopExhaustionMaxHops ?? 0
+          rateLimitMaxPackets: config.rateLimitMaxPackets ?? 0,
+          dropUnknownEnabled: config.dropUnknownEnabled ?? false,
+          unknownPacketThreshold: config.unknownPacketThreshold ?? 0,
+          exhaustHopTelemetry: config.exhaustHopTelemetry ?? false,
+          exhaustHopPosition: config.exhaustHopPosition ?? false,
+          routerPreserveHops: config.routerPreserveHops ?? false
         });
       });
       await new Promise(resolve => setTimeout(resolve, 200));
@@ -1858,18 +1858,18 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     const config: any = {
       enabled: configState.trafficManagement.enabled,
       positionDedupEnabled: configState.trafficManagement.positionDedupEnabled,
-      positionDedupTimeSecs: configState.trafficManagement.positionDedupTimeSecs,
-      positionDedupDistanceMeters: configState.trafficManagement.positionDedupDistanceMeters,
-      nodeinfoDirectResponseEnabled: configState.trafficManagement.nodeinfoDirectResponseEnabled,
-      nodeinfoDirectResponseMyNodeOnly: configState.trafficManagement.nodeinfoDirectResponseMyNodeOnly,
+      positionPrecisionBits: configState.trafficManagement.positionPrecisionBits,
+      positionMinIntervalSecs: configState.trafficManagement.positionMinIntervalSecs,
+      nodeinfoDirectResponse: configState.trafficManagement.nodeinfoDirectResponse,
+      nodeinfoDirectResponseMaxHops: configState.trafficManagement.nodeinfoDirectResponseMaxHops,
       rateLimitEnabled: configState.trafficManagement.rateLimitEnabled,
-      rateLimitMaxPerNode: configState.trafficManagement.rateLimitMaxPerNode,
       rateLimitWindowSecs: configState.trafficManagement.rateLimitWindowSecs,
-      unknownPacketDropEnabled: configState.trafficManagement.unknownPacketDropEnabled,
-      unknownPacketGracePeriodSecs: configState.trafficManagement.unknownPacketGracePeriodSecs,
-      hopExhaustionEnabled: configState.trafficManagement.hopExhaustionEnabled,
-      hopExhaustionMinHops: configState.trafficManagement.hopExhaustionMinHops,
-      hopExhaustionMaxHops: configState.trafficManagement.hopExhaustionMaxHops
+      rateLimitMaxPackets: configState.trafficManagement.rateLimitMaxPackets,
+      dropUnknownEnabled: configState.trafficManagement.dropUnknownEnabled,
+      unknownPacketThreshold: configState.trafficManagement.unknownPacketThreshold,
+      exhaustHopTelemetry: configState.trafficManagement.exhaustHopTelemetry,
+      exhaustHopPosition: configState.trafficManagement.exhaustHopPosition,
+      routerPreserveHops: configState.trafficManagement.routerPreserveHops
     };
 
     try {
@@ -3177,18 +3177,18 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         statusMessageIsDisabled={sectionLoadStatus.statusmessage === 'error'}
         trafficManagementEnabled={configState.trafficManagement.enabled}
         trafficManagementPositionDedupEnabled={configState.trafficManagement.positionDedupEnabled}
-        trafficManagementPositionDedupTimeSecs={configState.trafficManagement.positionDedupTimeSecs}
-        trafficManagementPositionDedupDistanceMeters={configState.trafficManagement.positionDedupDistanceMeters}
-        trafficManagementNodeinfoDirectResponseEnabled={configState.trafficManagement.nodeinfoDirectResponseEnabled}
-        trafficManagementNodeinfoDirectResponseMyNodeOnly={configState.trafficManagement.nodeinfoDirectResponseMyNodeOnly}
+        trafficManagementPositionPrecisionBits={configState.trafficManagement.positionPrecisionBits}
+        trafficManagementPositionMinIntervalSecs={configState.trafficManagement.positionMinIntervalSecs}
+        trafficManagementNodeinfoDirectResponse={configState.trafficManagement.nodeinfoDirectResponse}
+        trafficManagementNodeinfoDirectResponseMaxHops={configState.trafficManagement.nodeinfoDirectResponseMaxHops}
         trafficManagementRateLimitEnabled={configState.trafficManagement.rateLimitEnabled}
-        trafficManagementRateLimitMaxPerNode={configState.trafficManagement.rateLimitMaxPerNode}
         trafficManagementRateLimitWindowSecs={configState.trafficManagement.rateLimitWindowSecs}
-        trafficManagementUnknownPacketDropEnabled={configState.trafficManagement.unknownPacketDropEnabled}
-        trafficManagementUnknownPacketGracePeriodSecs={configState.trafficManagement.unknownPacketGracePeriodSecs}
-        trafficManagementHopExhaustionEnabled={configState.trafficManagement.hopExhaustionEnabled}
-        trafficManagementHopExhaustionMinHops={configState.trafficManagement.hopExhaustionMinHops}
-        trafficManagementHopExhaustionMaxHops={configState.trafficManagement.hopExhaustionMaxHops}
+        trafficManagementRateLimitMaxPackets={configState.trafficManagement.rateLimitMaxPackets}
+        trafficManagementDropUnknownEnabled={configState.trafficManagement.dropUnknownEnabled}
+        trafficManagementUnknownPacketThreshold={configState.trafficManagement.unknownPacketThreshold}
+        trafficManagementExhaustHopTelemetry={configState.trafficManagement.exhaustHopTelemetry}
+        trafficManagementExhaustHopPosition={configState.trafficManagement.exhaustHopPosition}
+        trafficManagementRouterPreserveHops={configState.trafficManagement.routerPreserveHops}
         onTrafficManagementConfigChange={handleTrafficManagementConfigChange}
         onSaveTrafficManagementConfig={handleSetTrafficManagementConfig}
         trafficManagementIsDisabled={sectionLoadStatus.trafficmanagement === 'error'}

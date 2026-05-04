@@ -81,7 +81,11 @@ export const MODEM_PRESET_OPTIONS: ModemPresetOption[] = [
   { value: 6, name: 'SHORT_FAST', description: 'Short Range - Fast', params: 'BW: 250kHz, SF: 7, CR: 4/5' },
   { value: 7, name: 'LONG_MODERATE', description: 'Long Range - Moderately Fast', params: 'BW: 125kHz, SF: 11, CR: 4/8' },
   { value: 8, name: 'SHORT_TURBO', description: 'Short Range - Turbo (Fastest, widest bandwidth)', params: 'BW: 500kHz, SF: 7, CR: 4/5' },
-  { value: 9, name: 'LONG_TURBO', description: 'Long Range - Turbo (Similar to LongFast)', params: 'BW: 500kHz, SF: 11, CR: 4/5' }
+  { value: 9, name: 'LONG_TURBO', description: 'Long Range - Turbo (Similar to LongFast)', params: 'BW: 500kHz, SF: 11, CR: 4/5' },
+  { value: 10, name: 'LITE_FAST', description: 'Lite Fast - EU 866MHz SRD (similar to MEDIUM_FAST)', params: 'BW: 125kHz' },
+  { value: 11, name: 'LITE_SLOW', description: 'Lite Slow - EU 866MHz SRD (similar to LONG_FAST)', params: 'BW: 125kHz' },
+  { value: 12, name: 'NARROW_FAST', description: 'Narrow Fast - EU 868MHz (similar to SHORT_SLOW, half rate)', params: 'BW: 62.5kHz' },
+  { value: 13, name: 'NARROW_SLOW', description: 'Narrow Slow - EU 868MHz (similar to LONG_FAST)', params: 'BW: 62.5kHz' }
 ];
 
 export const REGION_OPTIONS: RegionOption[] = [
@@ -111,7 +115,13 @@ export const REGION_OPTIONS: RegionOption[] = [
   { value: 23, label: 'KZ_433 - Kazakhstan 433MHz' },
   { value: 24, label: 'KZ_863 - Kazakhstan 863MHz' },
   { value: 25, label: 'NP_865 - Nepal 865MHz' },
-  { value: 26, label: 'BR_902 - Brazil 902MHz' }
+  { value: 26, label: 'BR_902 - Brazil 902MHz' },
+  { value: 27, label: 'ITU1_2M - ITU Region 1 Amateur 2m (144-146 MHz)' },
+  { value: 28, label: 'ITU23_2M - ITU Region 2/3 Amateur 2m (144-148 MHz)' },
+  { value: 29, label: 'EU_866 - European Union 866MHz SRD' },
+  { value: 30, label: 'EU_874 - European Union 874MHz SRD' },
+  { value: 31, label: 'EU_917 - European Union 917MHz SRD' },
+  { value: 32, label: 'EU_N_868 - European Union 868MHz Narrow' }
 ];
 
 // Mapping from string role names to numeric values
@@ -139,14 +149,23 @@ export const PRESET_MAP: Record<string, number> = {
   'SHORT_FAST': 6,
   'LONG_MODERATE': 7,
   'SHORT_TURBO': 8,
-  'LONG_TURBO': 9
+  'LONG_TURBO': 9,
+  'LITE_FAST': 10,
+  'LITE_SLOW': 11,
+  'NARROW_FAST': 12,
+  'NARROW_SLOW': 13
 };
 
 // Mapping from string region names to numeric values
 export const REGION_MAP: Record<string, number> = {
   'UNSET': 0, 'US': 1, 'EU_433': 2, 'EU_868': 3, 'CN': 4, 'JP': 5,
   'ANZ': 6, 'KR': 7, 'TW': 8, 'RU': 9, 'IN': 10, 'NZ_865': 11,
-  'TH': 12, 'LORA_24': 13, 'UA_433': 14, 'UA_868': 15
+  'TH': 12, 'LORA_24': 13, 'UA_433': 14, 'UA_868': 15,
+  'MY_433': 16, 'MY_919': 17, 'SG_923': 18, 'PH_433': 19,
+  'PH_868': 20, 'PH_915': 21, 'ANZ_433': 22, 'KZ_433': 23,
+  'KZ_863': 24, 'NP_865': 25, 'BR_902': 26, 'ITU1_2M': 27,
+  'ITU23_2M': 28, 'EU_866': 29, 'EU_874': 30, 'EU_917': 31,
+  'EU_N_868': 32
 };
 
 // Timezone presets in POSIX TZ format

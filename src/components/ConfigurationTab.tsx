@@ -253,18 +253,18 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   // Traffic Management Config State
   const [trafficManagementEnabled, setTrafficManagementEnabled] = useState(false);
   const [trafficManagementPositionDedupEnabled, setTrafficManagementPositionDedupEnabled] = useState(false);
-  const [trafficManagementPositionDedupTimeSecs, setTrafficManagementPositionDedupTimeSecs] = useState(0);
-  const [trafficManagementPositionDedupDistanceMeters, setTrafficManagementPositionDedupDistanceMeters] = useState(0);
-  const [trafficManagementNodeinfoDirectResponseEnabled, setTrafficManagementNodeinfoDirectResponseEnabled] = useState(false);
-  const [trafficManagementNodeinfoDirectResponseMyNodeOnly, setTrafficManagementNodeinfoDirectResponseMyNodeOnly] = useState(false);
+  const [trafficManagementPositionPrecisionBits, setTrafficManagementPositionPrecisionBits] = useState(0);
+  const [trafficManagementPositionMinIntervalSecs, setTrafficManagementPositionMinIntervalSecs] = useState(0);
+  const [trafficManagementNodeinfoDirectResponse, setTrafficManagementNodeinfoDirectResponse] = useState(false);
+  const [trafficManagementNodeinfoDirectResponseMaxHops, setTrafficManagementNodeinfoDirectResponseMaxHops] = useState(0);
   const [trafficManagementRateLimitEnabled, setTrafficManagementRateLimitEnabled] = useState(false);
-  const [trafficManagementRateLimitMaxPerNode, setTrafficManagementRateLimitMaxPerNode] = useState(0);
   const [trafficManagementRateLimitWindowSecs, setTrafficManagementRateLimitWindowSecs] = useState(0);
-  const [trafficManagementUnknownPacketDropEnabled, setTrafficManagementUnknownPacketDropEnabled] = useState(false);
-  const [trafficManagementUnknownPacketGracePeriodSecs, setTrafficManagementUnknownPacketGracePeriodSecs] = useState(0);
-  const [trafficManagementHopExhaustionEnabled, setTrafficManagementHopExhaustionEnabled] = useState(false);
-  const [trafficManagementHopExhaustionMinHops, setTrafficManagementHopExhaustionMinHops] = useState(0);
-  const [trafficManagementHopExhaustionMaxHops, setTrafficManagementHopExhaustionMaxHops] = useState(0);
+  const [trafficManagementRateLimitMaxPackets, setTrafficManagementRateLimitMaxPackets] = useState(0);
+  const [trafficManagementDropUnknownEnabled, setTrafficManagementDropUnknownEnabled] = useState(false);
+  const [trafficManagementUnknownPacketThreshold, setTrafficManagementUnknownPacketThreshold] = useState(0);
+  const [trafficManagementExhaustHopTelemetry, setTrafficManagementExhaustHopTelemetry] = useState(false);
+  const [trafficManagementExhaustHopPosition, setTrafficManagementExhaustHopPosition] = useState(false);
+  const [trafficManagementRouterPreserveHops, setTrafficManagementRouterPreserveHops] = useState(false);
 
   // Supported modules tracking (for unsupported firmware detection)
   const [supportedModules, setSupportedModules] = useState<{ statusmessage: boolean; trafficManagement: boolean } | null>(null);
@@ -654,18 +654,18 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           const tm = config.moduleConfig.trafficManagement;
           setTrafficManagementEnabled(tm.enabled || false);
           setTrafficManagementPositionDedupEnabled(tm.positionDedupEnabled || false);
-          setTrafficManagementPositionDedupTimeSecs(tm.positionDedupTimeSecs ?? 0);
-          setTrafficManagementPositionDedupDistanceMeters(tm.positionDedupDistanceMeters ?? 0);
-          setTrafficManagementNodeinfoDirectResponseEnabled(tm.nodeinfoDirectResponseEnabled || false);
-          setTrafficManagementNodeinfoDirectResponseMyNodeOnly(tm.nodeinfoDirectResponseMyNodeOnly || false);
+          setTrafficManagementPositionPrecisionBits(tm.positionPrecisionBits ?? 0);
+          setTrafficManagementPositionMinIntervalSecs(tm.positionMinIntervalSecs ?? 0);
+          setTrafficManagementNodeinfoDirectResponse(tm.nodeinfoDirectResponse || false);
+          setTrafficManagementNodeinfoDirectResponseMaxHops(tm.nodeinfoDirectResponseMaxHops ?? 0);
           setTrafficManagementRateLimitEnabled(tm.rateLimitEnabled || false);
-          setTrafficManagementRateLimitMaxPerNode(tm.rateLimitMaxPerNode ?? 0);
           setTrafficManagementRateLimitWindowSecs(tm.rateLimitWindowSecs ?? 0);
-          setTrafficManagementUnknownPacketDropEnabled(tm.unknownPacketDropEnabled || false);
-          setTrafficManagementUnknownPacketGracePeriodSecs(tm.unknownPacketGracePeriodSecs ?? 0);
-          setTrafficManagementHopExhaustionEnabled(tm.hopExhaustionEnabled || false);
-          setTrafficManagementHopExhaustionMinHops(tm.hopExhaustionMinHops ?? 0);
-          setTrafficManagementHopExhaustionMaxHops(tm.hopExhaustionMaxHops ?? 0);
+          setTrafficManagementRateLimitMaxPackets(tm.rateLimitMaxPackets ?? 0);
+          setTrafficManagementDropUnknownEnabled(tm.dropUnknownEnabled || false);
+          setTrafficManagementUnknownPacketThreshold(tm.unknownPacketThreshold ?? 0);
+          setTrafficManagementExhaustHopTelemetry(tm.exhaustHopTelemetry || false);
+          setTrafficManagementExhaustHopPosition(tm.exhaustHopPosition || false);
+          setTrafficManagementRouterPreserveHops(tm.routerPreserveHops || false);
         }
 
         // Store supported modules info
@@ -1359,18 +1359,18 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       await apiService.setModuleConfig('trafficmanagement', {
         enabled: trafficManagementEnabled,
         positionDedupEnabled: trafficManagementPositionDedupEnabled,
-        positionDedupTimeSecs: trafficManagementPositionDedupTimeSecs,
-        positionDedupDistanceMeters: trafficManagementPositionDedupDistanceMeters,
-        nodeinfoDirectResponseEnabled: trafficManagementNodeinfoDirectResponseEnabled,
-        nodeinfoDirectResponseMyNodeOnly: trafficManagementNodeinfoDirectResponseMyNodeOnly,
+        positionPrecisionBits: trafficManagementPositionPrecisionBits,
+        positionMinIntervalSecs: trafficManagementPositionMinIntervalSecs,
+        nodeinfoDirectResponse: trafficManagementNodeinfoDirectResponse,
+        nodeinfoDirectResponseMaxHops: trafficManagementNodeinfoDirectResponseMaxHops,
         rateLimitEnabled: trafficManagementRateLimitEnabled,
-        rateLimitMaxPerNode: trafficManagementRateLimitMaxPerNode,
         rateLimitWindowSecs: trafficManagementRateLimitWindowSecs,
-        unknownPacketDropEnabled: trafficManagementUnknownPacketDropEnabled,
-        unknownPacketGracePeriodSecs: trafficManagementUnknownPacketGracePeriodSecs,
-        hopExhaustionEnabled: trafficManagementHopExhaustionEnabled,
-        hopExhaustionMinHops: trafficManagementHopExhaustionMinHops,
-        hopExhaustionMaxHops: trafficManagementHopExhaustionMaxHops
+        rateLimitMaxPackets: trafficManagementRateLimitMaxPackets,
+        dropUnknownEnabled: trafficManagementDropUnknownEnabled,
+        unknownPacketThreshold: trafficManagementUnknownPacketThreshold,
+        exhaustHopTelemetry: trafficManagementExhaustHopTelemetry,
+        exhaustHopPosition: trafficManagementExhaustHopPosition,
+        routerPreserveHops: trafficManagementRouterPreserveHops
       }, sourceId);
       setStatusMessage(t('config.trafficmanagement_saved', 'Traffic Management config saved'));
       showToast(t('config.trafficmanagement_saved_toast', 'Traffic Management config saved successfully'), 'success');
@@ -2502,30 +2502,30 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setEnabled={setTrafficManagementEnabled}
             positionDedupEnabled={trafficManagementPositionDedupEnabled}
             setPositionDedupEnabled={setTrafficManagementPositionDedupEnabled}
-            positionDedupTimeSecs={trafficManagementPositionDedupTimeSecs}
-            setPositionDedupTimeSecs={setTrafficManagementPositionDedupTimeSecs}
-            positionDedupDistanceMeters={trafficManagementPositionDedupDistanceMeters}
-            setPositionDedupDistanceMeters={setTrafficManagementPositionDedupDistanceMeters}
-            nodeinfoDirectResponseEnabled={trafficManagementNodeinfoDirectResponseEnabled}
-            setNodeinfoDirectResponseEnabled={setTrafficManagementNodeinfoDirectResponseEnabled}
-            nodeinfoDirectResponseMyNodeOnly={trafficManagementNodeinfoDirectResponseMyNodeOnly}
-            setNodeinfoDirectResponseMyNodeOnly={setTrafficManagementNodeinfoDirectResponseMyNodeOnly}
+            positionPrecisionBits={trafficManagementPositionPrecisionBits}
+            setPositionPrecisionBits={setTrafficManagementPositionPrecisionBits}
+            positionMinIntervalSecs={trafficManagementPositionMinIntervalSecs}
+            setPositionMinIntervalSecs={setTrafficManagementPositionMinIntervalSecs}
+            nodeinfoDirectResponse={trafficManagementNodeinfoDirectResponse}
+            setNodeinfoDirectResponse={setTrafficManagementNodeinfoDirectResponse}
+            nodeinfoDirectResponseMaxHops={trafficManagementNodeinfoDirectResponseMaxHops}
+            setNodeinfoDirectResponseMaxHops={setTrafficManagementNodeinfoDirectResponseMaxHops}
             rateLimitEnabled={trafficManagementRateLimitEnabled}
             setRateLimitEnabled={setTrafficManagementRateLimitEnabled}
-            rateLimitMaxPerNode={trafficManagementRateLimitMaxPerNode}
-            setRateLimitMaxPerNode={setTrafficManagementRateLimitMaxPerNode}
             rateLimitWindowSecs={trafficManagementRateLimitWindowSecs}
             setRateLimitWindowSecs={setTrafficManagementRateLimitWindowSecs}
-            unknownPacketDropEnabled={trafficManagementUnknownPacketDropEnabled}
-            setUnknownPacketDropEnabled={setTrafficManagementUnknownPacketDropEnabled}
-            unknownPacketGracePeriodSecs={trafficManagementUnknownPacketGracePeriodSecs}
-            setUnknownPacketGracePeriodSecs={setTrafficManagementUnknownPacketGracePeriodSecs}
-            hopExhaustionEnabled={trafficManagementHopExhaustionEnabled}
-            setHopExhaustionEnabled={setTrafficManagementHopExhaustionEnabled}
-            hopExhaustionMinHops={trafficManagementHopExhaustionMinHops}
-            setHopExhaustionMinHops={setTrafficManagementHopExhaustionMinHops}
-            hopExhaustionMaxHops={trafficManagementHopExhaustionMaxHops}
-            setHopExhaustionMaxHops={setTrafficManagementHopExhaustionMaxHops}
+            rateLimitMaxPackets={trafficManagementRateLimitMaxPackets}
+            setRateLimitMaxPackets={setTrafficManagementRateLimitMaxPackets}
+            dropUnknownEnabled={trafficManagementDropUnknownEnabled}
+            setDropUnknownEnabled={setTrafficManagementDropUnknownEnabled}
+            unknownPacketThreshold={trafficManagementUnknownPacketThreshold}
+            setUnknownPacketThreshold={setTrafficManagementUnknownPacketThreshold}
+            exhaustHopTelemetry={trafficManagementExhaustHopTelemetry}
+            setExhaustHopTelemetry={setTrafficManagementExhaustHopTelemetry}
+            exhaustHopPosition={trafficManagementExhaustHopPosition}
+            setExhaustHopPosition={setTrafficManagementExhaustHopPosition}
+            routerPreserveHops={trafficManagementRouterPreserveHops}
+            setRouterPreserveHops={setTrafficManagementRouterPreserveHops}
             isDisabled={!supportedModules?.trafficManagement}
             isSaving={isSaving}
             onSave={handleSaveTrafficManagementConfig}

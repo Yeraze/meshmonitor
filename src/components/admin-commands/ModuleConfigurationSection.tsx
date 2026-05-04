@@ -55,21 +55,21 @@ interface ModuleConfigurationSectionProps {
   onSaveStatusMessageConfig: () => Promise<void>;
   statusMessageIsDisabled: boolean;
 
-  // Traffic Management Config
+  // Traffic Management Config (v2.7.22 schema)
   trafficManagementEnabled: boolean;
   trafficManagementPositionDedupEnabled: boolean;
-  trafficManagementPositionDedupTimeSecs: number;
-  trafficManagementPositionDedupDistanceMeters: number;
-  trafficManagementNodeinfoDirectResponseEnabled: boolean;
-  trafficManagementNodeinfoDirectResponseMyNodeOnly: boolean;
+  trafficManagementPositionPrecisionBits: number;
+  trafficManagementPositionMinIntervalSecs: number;
+  trafficManagementNodeinfoDirectResponse: boolean;
+  trafficManagementNodeinfoDirectResponseMaxHops: number;
   trafficManagementRateLimitEnabled: boolean;
-  trafficManagementRateLimitMaxPerNode: number;
   trafficManagementRateLimitWindowSecs: number;
-  trafficManagementUnknownPacketDropEnabled: boolean;
-  trafficManagementUnknownPacketGracePeriodSecs: number;
-  trafficManagementHopExhaustionEnabled: boolean;
-  trafficManagementHopExhaustionMinHops: number;
-  trafficManagementHopExhaustionMaxHops: number;
+  trafficManagementRateLimitMaxPackets: number;
+  trafficManagementDropUnknownEnabled: boolean;
+  trafficManagementUnknownPacketThreshold: number;
+  trafficManagementExhaustHopTelemetry: boolean;
+  trafficManagementExhaustHopPosition: boolean;
+  trafficManagementRouterPreserveHops: boolean;
   onTrafficManagementConfigChange: (field: string, value: any) => void;
   onSaveTrafficManagementConfig: () => Promise<void>;
   trafficManagementIsDisabled: boolean;
@@ -124,18 +124,18 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
   statusMessageIsDisabled,
   trafficManagementEnabled,
   trafficManagementPositionDedupEnabled,
-  trafficManagementPositionDedupTimeSecs,
-  trafficManagementPositionDedupDistanceMeters,
-  trafficManagementNodeinfoDirectResponseEnabled,
-  trafficManagementNodeinfoDirectResponseMyNodeOnly,
+  trafficManagementPositionPrecisionBits,
+  trafficManagementPositionMinIntervalSecs,
+  trafficManagementNodeinfoDirectResponse,
+  trafficManagementNodeinfoDirectResponseMaxHops,
   trafficManagementRateLimitEnabled,
-  trafficManagementRateLimitMaxPerNode,
   trafficManagementRateLimitWindowSecs,
-  trafficManagementUnknownPacketDropEnabled,
-  trafficManagementUnknownPacketGracePeriodSecs,
-  trafficManagementHopExhaustionEnabled,
-  trafficManagementHopExhaustionMinHops,
-  trafficManagementHopExhaustionMaxHops,
+  trafficManagementRateLimitMaxPackets,
+  trafficManagementDropUnknownEnabled,
+  trafficManagementUnknownPacketThreshold,
+  trafficManagementExhaustHopTelemetry,
+  trafficManagementExhaustHopPosition,
+  trafficManagementRouterPreserveHops,
   onTrafficManagementConfigChange,
   onSaveTrafficManagementConfig,
   trafficManagementIsDisabled,
@@ -714,7 +714,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
             fontStyle: 'italic',
             marginBottom: '1rem'
           }}>
-            {t('trafficmanagement_config.unsupported', 'Unsupported by device firmware — Not yet available in any firmware release')}
+            {t('trafficmanagement_config.unsupported', 'Unsupported by device firmware — Requires v2.7.20 alpha or newer (not yet in any stable release)')}
           </div>
         )}
         <div style={trafficManagementIsDisabled ? { opacity: 0.4, pointerEvents: 'none' } : undefined}>
@@ -748,12 +748,14 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                 {(trafficManagementPositionDedupEnabled || trafficManagementIsDisabled) && (
                   <>
                     <div className="setting-item">
-                      <label>{t('trafficmanagement_config.position_dedup_time', 'Time Window (seconds)')}</label>
-                      <input type="number" min="0" value={trafficManagementPositionDedupTimeSecs} onChange={(e) => onTrafficManagementConfigChange('positionDedupTimeSecs', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
+                      <label>{t('trafficmanagement_config.position_precision_bits', 'Precision Bits (0-32)')}</label>
+                      <input type="number" min="0" max="32" value={trafficManagementPositionPrecisionBits} onChange={(e) => onTrafficManagementConfigChange('positionPrecisionBits', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
+                      <span className="setting-description">{t('trafficmanagement_config.position_precision_bits_desc', 'Geohash precision for position dedup. More bits = finer granularity.')}</span>
                     </div>
                     <div className="setting-item">
-                      <label>{t('trafficmanagement_config.position_dedup_distance', 'Distance Threshold (meters)')}</label>
-                      <input type="number" min="0" value={trafficManagementPositionDedupDistanceMeters} onChange={(e) => onTrafficManagementConfigChange('positionDedupDistanceMeters', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
+                      <label>{t('trafficmanagement_config.position_min_interval_secs', 'Min Interval (seconds)')}</label>
+                      <input type="number" min="0" value={trafficManagementPositionMinIntervalSecs} onChange={(e) => onTrafficManagementConfigChange('positionMinIntervalSecs', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
+                      <span className="setting-description">{t('trafficmanagement_config.position_min_interval_secs_desc', 'Minimum seconds between position updates per node.')}</span>
                     </div>
                   </>
                 )}
@@ -764,16 +766,15 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                 <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.nodeinfo_direct_response', 'NodeInfo Direct Response')}</div>
                 <div className="setting-item">
                   <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-                    <input type="checkbox" checked={trafficManagementNodeinfoDirectResponseEnabled} onChange={(e) => onTrafficManagementConfigChange('nodeinfoDirectResponseEnabled', e.target.checked)} disabled={isExecuting || trafficManagementIsDisabled} style={{ width: 'auto', margin: 0, flexShrink: 0 }} />
+                    <input type="checkbox" checked={trafficManagementNodeinfoDirectResponse} onChange={(e) => onTrafficManagementConfigChange('nodeinfoDirectResponse', e.target.checked)} disabled={isExecuting || trafficManagementIsDisabled} style={{ width: 'auto', margin: 0, flexShrink: 0 }} />
                     <div style={{ flex: 1 }}><div>{t('trafficmanagement_config.nodeinfo_direct_response_enabled', 'Enable')}</div></div>
                   </label>
                 </div>
-                {(trafficManagementNodeinfoDirectResponseEnabled || trafficManagementIsDisabled) && (
+                {(trafficManagementNodeinfoDirectResponse || trafficManagementIsDisabled) && (
                   <div className="setting-item">
-                    <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-                      <input type="checkbox" checked={trafficManagementNodeinfoDirectResponseMyNodeOnly} onChange={(e) => onTrafficManagementConfigChange('nodeinfoDirectResponseMyNodeOnly', e.target.checked)} disabled={isExecuting || trafficManagementIsDisabled} style={{ width: 'auto', margin: 0, flexShrink: 0 }} />
-                      <div style={{ flex: 1 }}><div>{t('trafficmanagement_config.nodeinfo_my_node_only', 'My Node Only')}</div></div>
-                    </label>
+                    <label>{t('trafficmanagement_config.nodeinfo_max_hops', 'Max Hops')}</label>
+                    <input type="number" min="0" max="7" value={trafficManagementNodeinfoDirectResponseMaxHops} onChange={(e) => onTrafficManagementConfigChange('nodeinfoDirectResponseMaxHops', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
+                    <span className="setting-description">{t('trafficmanagement_config.nodeinfo_max_hops_desc', 'Min hop distance from requestor before responding from cache.')}</span>
                   </div>
                 )}
               </div>
@@ -790,55 +791,65 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                 {(trafficManagementRateLimitEnabled || trafficManagementIsDisabled) && (
                   <>
                     <div className="setting-item">
-                      <label>{t('trafficmanagement_config.rate_limit_max', 'Max Packets Per Node')}</label>
-                      <input type="number" min="0" value={trafficManagementRateLimitMaxPerNode} onChange={(e) => onTrafficManagementConfigChange('rateLimitMaxPerNode', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
-                    </div>
-                    <div className="setting-item">
                       <label>{t('trafficmanagement_config.rate_limit_window', 'Window (seconds)')}</label>
                       <input type="number" min="0" value={trafficManagementRateLimitWindowSecs} onChange={(e) => onTrafficManagementConfigChange('rateLimitWindowSecs', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
+                    </div>
+                    <div className="setting-item">
+                      <label>{t('trafficmanagement_config.rate_limit_max_packets', 'Max Packets Per Window')}</label>
+                      <input type="number" min="0" value={trafficManagementRateLimitMaxPackets} onChange={(e) => onTrafficManagementConfigChange('rateLimitMaxPackets', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
                     </div>
                   </>
                 )}
               </div>
 
-              {/* Unknown Packet Drop */}
+              {/* Drop Unknown */}
               <div style={{ marginLeft: '1rem', paddingLeft: '1rem', borderLeft: '2px solid var(--ctp-surface1)', marginBottom: '0.5rem' }}>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.unknown_packet_drop', 'Unknown Packet Drop')}</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.drop_unknown', 'Drop Unknown Packets')}</div>
                 <div className="setting-item">
                   <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-                    <input type="checkbox" checked={trafficManagementUnknownPacketDropEnabled} onChange={(e) => onTrafficManagementConfigChange('unknownPacketDropEnabled', e.target.checked)} disabled={isExecuting || trafficManagementIsDisabled} style={{ width: 'auto', margin: 0, flexShrink: 0 }} />
-                    <div style={{ flex: 1 }}><div>{t('trafficmanagement_config.unknown_packet_drop_enabled', 'Enable')}</div></div>
+                    <input type="checkbox" checked={trafficManagementDropUnknownEnabled} onChange={(e) => onTrafficManagementConfigChange('dropUnknownEnabled', e.target.checked)} disabled={isExecuting || trafficManagementIsDisabled} style={{ width: 'auto', margin: 0, flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}><div>{t('trafficmanagement_config.drop_unknown_enabled', 'Enable')}</div></div>
                   </label>
                 </div>
-                {(trafficManagementUnknownPacketDropEnabled || trafficManagementIsDisabled) && (
+                {(trafficManagementDropUnknownEnabled || trafficManagementIsDisabled) && (
                   <div className="setting-item">
-                    <label>{t('trafficmanagement_config.unknown_packet_grace_period', 'Grace Period (seconds)')}</label>
-                    <input type="number" min="0" value={trafficManagementUnknownPacketGracePeriodSecs} onChange={(e) => onTrafficManagementConfigChange('unknownPacketGracePeriodSecs', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
+                    <label>{t('trafficmanagement_config.unknown_packet_threshold', 'Unknown Packet Threshold')}</label>
+                    <input type="number" min="0" value={trafficManagementUnknownPacketThreshold} onChange={(e) => onTrafficManagementConfigChange('unknownPacketThreshold', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
+                    <span className="setting-description">{t('trafficmanagement_config.unknown_packet_threshold_desc', 'Number of unknown packets from a node before dropping further packets.')}</span>
                   </div>
                 )}
               </div>
 
-              {/* Hop Exhaustion */}
+              {/* Hop Limit Exhaustion */}
               <div style={{ marginLeft: '1rem', paddingLeft: '1rem', borderLeft: '2px solid var(--ctp-surface1)', marginBottom: '0.5rem' }}>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.hop_exhaustion', 'Hop Exhaustion')}</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--ctp-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.hop_exhaustion', 'Hop Limit Exhaustion')}</div>
                 <div className="setting-item">
                   <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-                    <input type="checkbox" checked={trafficManagementHopExhaustionEnabled} onChange={(e) => onTrafficManagementConfigChange('hopExhaustionEnabled', e.target.checked)} disabled={isExecuting || trafficManagementIsDisabled} style={{ width: 'auto', margin: 0, flexShrink: 0 }} />
-                    <div style={{ flex: 1 }}><div>{t('trafficmanagement_config.hop_exhaustion_enabled', 'Enable')}</div></div>
+                    <input type="checkbox" checked={trafficManagementExhaustHopTelemetry} onChange={(e) => onTrafficManagementConfigChange('exhaustHopTelemetry', e.target.checked)} disabled={isExecuting || trafficManagementIsDisabled} style={{ width: 'auto', margin: 0, flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div>{t('trafficmanagement_config.exhaust_hop_telemetry', 'Exhaust Hop Limit on Relayed Telemetry')}</div>
+                      <span className="setting-description">{t('trafficmanagement_config.exhaust_hop_telemetry_desc', 'Set hop_limit=0 on relayed telemetry broadcasts (own packets unaffected).')}</span>
+                    </div>
                   </label>
                 </div>
-                {(trafficManagementHopExhaustionEnabled || trafficManagementIsDisabled) && (
-                  <>
-                    <div className="setting-item">
-                      <label>{t('trafficmanagement_config.hop_exhaustion_min', 'Minimum Hops')}</label>
-                      <input type="number" min="0" max="7" value={trafficManagementHopExhaustionMinHops} onChange={(e) => onTrafficManagementConfigChange('hopExhaustionMinHops', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
+                <div className="setting-item">
+                  <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                    <input type="checkbox" checked={trafficManagementExhaustHopPosition} onChange={(e) => onTrafficManagementConfigChange('exhaustHopPosition', e.target.checked)} disabled={isExecuting || trafficManagementIsDisabled} style={{ width: 'auto', margin: 0, flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div>{t('trafficmanagement_config.exhaust_hop_position', 'Exhaust Hop Limit on Relayed Positions')}</div>
+                      <span className="setting-description">{t('trafficmanagement_config.exhaust_hop_position_desc', 'Set hop_limit=0 on relayed position broadcasts (own packets unaffected).')}</span>
                     </div>
-                    <div className="setting-item">
-                      <label>{t('trafficmanagement_config.hop_exhaustion_max', 'Maximum Hops')}</label>
-                      <input type="number" min="0" max="7" value={trafficManagementHopExhaustionMaxHops} onChange={(e) => onTrafficManagementConfigChange('hopExhaustionMaxHops', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
+                  </label>
+                </div>
+                <div className="setting-item">
+                  <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                    <input type="checkbox" checked={trafficManagementRouterPreserveHops} onChange={(e) => onTrafficManagementConfigChange('routerPreserveHops', e.target.checked)} disabled={isExecuting || trafficManagementIsDisabled} style={{ width: 'auto', margin: 0, flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div>{t('trafficmanagement_config.router_preserve_hops', 'Router Preserve Hops')}</div>
+                      <span className="setting-description">{t('trafficmanagement_config.router_preserve_hops_desc', 'Preserve hop_limit for router-to-router traffic.')}</span>
                     </div>
-                  </>
-                )}
+                  </label>
+                </div>
               </div>
             </>
           )}

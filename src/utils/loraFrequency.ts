@@ -71,7 +71,13 @@ export function calculateLoRaFrequency(
     23: [433.075, 434.775],  // KZ_433: 433.075-434.775 MHz
     24: [863.0, 868.0],      // KZ_863: 863-868 MHz
     25: [865.0, 868.0],      // NP_865: 865-868 MHz
-    26: [902.0, 907.5]       // BR_902: 902-907.5 MHz
+    26: [902.0, 907.5],      // BR_902: 902-907.5 MHz
+    27: [144.0, 146.0],      // ITU1_2M: ITU Region 1 Amateur 2m
+    28: [144.0, 148.0],      // ITU23_2M: ITU Region 2/3 Amateur 2m
+    29: [865.6, 867.6],      // EU_866: EU 866MHz SRD (2.5% duty)
+    30: [873.4, 876.0],      // EU_874: EU 874MHz SRD (Decision 2022/172 Band 1, awaiting firmware)
+    31: [917.4, 919.4],      // EU_917: EU 917MHz SRD (Decision 2022/172 Band 4, awaiting firmware)
+    32: [869.4, 869.65]      // EU_N_868: EU 868MHz Narrow (mandates LITE/NARROW preset)
   };
 
   if (!region || region === 0) {
@@ -145,6 +151,12 @@ const MODEM_PRESET_CHANNEL_NAMES: { [key: number]: string } = {
   5: 'ShortSlow',
   6: 'ShortFast',
   7: 'LongModerate',
+  8: 'ShortTurbo',
+  9: 'LongTurbo',
+  10: 'LiteFast',
+  11: 'LiteSlow',
+  12: 'NarrowFast',
+  13: 'NarrowSlow',
 };
 
 export function getModemPresetChannelName(modemPreset?: number): string | undefined {

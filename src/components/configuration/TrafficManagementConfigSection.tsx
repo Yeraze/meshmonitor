@@ -7,30 +7,30 @@ interface TrafficManagementConfigSectionProps {
   setEnabled: (value: boolean) => void;
   positionDedupEnabled: boolean;
   setPositionDedupEnabled: (value: boolean) => void;
-  positionDedupTimeSecs: number;
-  setPositionDedupTimeSecs: (value: number) => void;
-  positionDedupDistanceMeters: number;
-  setPositionDedupDistanceMeters: (value: number) => void;
-  nodeinfoDirectResponseEnabled: boolean;
-  setNodeinfoDirectResponseEnabled: (value: boolean) => void;
-  nodeinfoDirectResponseMyNodeOnly: boolean;
-  setNodeinfoDirectResponseMyNodeOnly: (value: boolean) => void;
+  positionPrecisionBits: number;
+  setPositionPrecisionBits: (value: number) => void;
+  positionMinIntervalSecs: number;
+  setPositionMinIntervalSecs: (value: number) => void;
+  nodeinfoDirectResponse: boolean;
+  setNodeinfoDirectResponse: (value: boolean) => void;
+  nodeinfoDirectResponseMaxHops: number;
+  setNodeinfoDirectResponseMaxHops: (value: number) => void;
   rateLimitEnabled: boolean;
   setRateLimitEnabled: (value: boolean) => void;
-  rateLimitMaxPerNode: number;
-  setRateLimitMaxPerNode: (value: number) => void;
   rateLimitWindowSecs: number;
   setRateLimitWindowSecs: (value: number) => void;
-  unknownPacketDropEnabled: boolean;
-  setUnknownPacketDropEnabled: (value: boolean) => void;
-  unknownPacketGracePeriodSecs: number;
-  setUnknownPacketGracePeriodSecs: (value: number) => void;
-  hopExhaustionEnabled: boolean;
-  setHopExhaustionEnabled: (value: boolean) => void;
-  hopExhaustionMinHops: number;
-  setHopExhaustionMinHops: (value: number) => void;
-  hopExhaustionMaxHops: number;
-  setHopExhaustionMaxHops: (value: number) => void;
+  rateLimitMaxPackets: number;
+  setRateLimitMaxPackets: (value: number) => void;
+  dropUnknownEnabled: boolean;
+  setDropUnknownEnabled: (value: boolean) => void;
+  unknownPacketThreshold: number;
+  setUnknownPacketThreshold: (value: number) => void;
+  exhaustHopTelemetry: boolean;
+  setExhaustHopTelemetry: (value: boolean) => void;
+  exhaustHopPosition: boolean;
+  setExhaustHopPosition: (value: boolean) => void;
+  routerPreserveHops: boolean;
+  setRouterPreserveHops: (value: boolean) => void;
   isDisabled: boolean;
   isSaving: boolean;
   onSave: () => Promise<void>;
@@ -41,110 +41,105 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
   setEnabled,
   positionDedupEnabled,
   setPositionDedupEnabled,
-  positionDedupTimeSecs,
-  setPositionDedupTimeSecs,
-  positionDedupDistanceMeters,
-  setPositionDedupDistanceMeters,
-  nodeinfoDirectResponseEnabled,
-  setNodeinfoDirectResponseEnabled,
-  nodeinfoDirectResponseMyNodeOnly,
-  setNodeinfoDirectResponseMyNodeOnly,
+  positionPrecisionBits,
+  setPositionPrecisionBits,
+  positionMinIntervalSecs,
+  setPositionMinIntervalSecs,
+  nodeinfoDirectResponse,
+  setNodeinfoDirectResponse,
+  nodeinfoDirectResponseMaxHops,
+  setNodeinfoDirectResponseMaxHops,
   rateLimitEnabled,
   setRateLimitEnabled,
-  rateLimitMaxPerNode,
-  setRateLimitMaxPerNode,
   rateLimitWindowSecs,
   setRateLimitWindowSecs,
-  unknownPacketDropEnabled,
-  setUnknownPacketDropEnabled,
-  unknownPacketGracePeriodSecs,
-  setUnknownPacketGracePeriodSecs,
-  hopExhaustionEnabled,
-  setHopExhaustionEnabled,
-  hopExhaustionMinHops,
-  setHopExhaustionMinHops,
-  hopExhaustionMaxHops,
-  setHopExhaustionMaxHops,
+  rateLimitMaxPackets,
+  setRateLimitMaxPackets,
+  dropUnknownEnabled,
+  setDropUnknownEnabled,
+  unknownPacketThreshold,
+  setUnknownPacketThreshold,
+  exhaustHopTelemetry,
+  setExhaustHopTelemetry,
+  exhaustHopPosition,
+  setExhaustHopPosition,
+  routerPreserveHops,
+  setRouterPreserveHops,
   isDisabled,
   isSaving,
   onSave
 }) => {
   const { t } = useTranslation();
 
-  // Track initial values for change detection
   const initialValuesRef = useRef({
-    enabled, positionDedupEnabled, positionDedupTimeSecs, positionDedupDistanceMeters,
-    nodeinfoDirectResponseEnabled, nodeinfoDirectResponseMyNodeOnly,
-    rateLimitEnabled, rateLimitMaxPerNode, rateLimitWindowSecs,
-    unknownPacketDropEnabled, unknownPacketGracePeriodSecs,
-    hopExhaustionEnabled, hopExhaustionMinHops, hopExhaustionMaxHops
+    enabled, positionDedupEnabled, positionPrecisionBits, positionMinIntervalSecs,
+    nodeinfoDirectResponse, nodeinfoDirectResponseMaxHops,
+    rateLimitEnabled, rateLimitWindowSecs, rateLimitMaxPackets,
+    dropUnknownEnabled, unknownPacketThreshold,
+    exhaustHopTelemetry, exhaustHopPosition, routerPreserveHops
   });
 
-  // Calculate if there are unsaved changes
   const hasChanges = useMemo(() => {
     const initial = initialValuesRef.current;
     return (
       enabled !== initial.enabled ||
       positionDedupEnabled !== initial.positionDedupEnabled ||
-      positionDedupTimeSecs !== initial.positionDedupTimeSecs ||
-      positionDedupDistanceMeters !== initial.positionDedupDistanceMeters ||
-      nodeinfoDirectResponseEnabled !== initial.nodeinfoDirectResponseEnabled ||
-      nodeinfoDirectResponseMyNodeOnly !== initial.nodeinfoDirectResponseMyNodeOnly ||
+      positionPrecisionBits !== initial.positionPrecisionBits ||
+      positionMinIntervalSecs !== initial.positionMinIntervalSecs ||
+      nodeinfoDirectResponse !== initial.nodeinfoDirectResponse ||
+      nodeinfoDirectResponseMaxHops !== initial.nodeinfoDirectResponseMaxHops ||
       rateLimitEnabled !== initial.rateLimitEnabled ||
-      rateLimitMaxPerNode !== initial.rateLimitMaxPerNode ||
       rateLimitWindowSecs !== initial.rateLimitWindowSecs ||
-      unknownPacketDropEnabled !== initial.unknownPacketDropEnabled ||
-      unknownPacketGracePeriodSecs !== initial.unknownPacketGracePeriodSecs ||
-      hopExhaustionEnabled !== initial.hopExhaustionEnabled ||
-      hopExhaustionMinHops !== initial.hopExhaustionMinHops ||
-      hopExhaustionMaxHops !== initial.hopExhaustionMaxHops
+      rateLimitMaxPackets !== initial.rateLimitMaxPackets ||
+      dropUnknownEnabled !== initial.dropUnknownEnabled ||
+      unknownPacketThreshold !== initial.unknownPacketThreshold ||
+      exhaustHopTelemetry !== initial.exhaustHopTelemetry ||
+      exhaustHopPosition !== initial.exhaustHopPosition ||
+      routerPreserveHops !== initial.routerPreserveHops
     );
-  }, [enabled, positionDedupEnabled, positionDedupTimeSecs, positionDedupDistanceMeters,
-    nodeinfoDirectResponseEnabled, nodeinfoDirectResponseMyNodeOnly,
-    rateLimitEnabled, rateLimitMaxPerNode, rateLimitWindowSecs,
-    unknownPacketDropEnabled, unknownPacketGracePeriodSecs,
-    hopExhaustionEnabled, hopExhaustionMinHops, hopExhaustionMaxHops]);
+  }, [enabled, positionDedupEnabled, positionPrecisionBits, positionMinIntervalSecs,
+    nodeinfoDirectResponse, nodeinfoDirectResponseMaxHops,
+    rateLimitEnabled, rateLimitWindowSecs, rateLimitMaxPackets,
+    dropUnknownEnabled, unknownPacketThreshold,
+    exhaustHopTelemetry, exhaustHopPosition, routerPreserveHops]);
 
-  // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
     const initial = initialValuesRef.current;
     setEnabled(initial.enabled);
     setPositionDedupEnabled(initial.positionDedupEnabled);
-    setPositionDedupTimeSecs(initial.positionDedupTimeSecs);
-    setPositionDedupDistanceMeters(initial.positionDedupDistanceMeters);
-    setNodeinfoDirectResponseEnabled(initial.nodeinfoDirectResponseEnabled);
-    setNodeinfoDirectResponseMyNodeOnly(initial.nodeinfoDirectResponseMyNodeOnly);
+    setPositionPrecisionBits(initial.positionPrecisionBits);
+    setPositionMinIntervalSecs(initial.positionMinIntervalSecs);
+    setNodeinfoDirectResponse(initial.nodeinfoDirectResponse);
+    setNodeinfoDirectResponseMaxHops(initial.nodeinfoDirectResponseMaxHops);
     setRateLimitEnabled(initial.rateLimitEnabled);
-    setRateLimitMaxPerNode(initial.rateLimitMaxPerNode);
     setRateLimitWindowSecs(initial.rateLimitWindowSecs);
-    setUnknownPacketDropEnabled(initial.unknownPacketDropEnabled);
-    setUnknownPacketGracePeriodSecs(initial.unknownPacketGracePeriodSecs);
-    setHopExhaustionEnabled(initial.hopExhaustionEnabled);
-    setHopExhaustionMinHops(initial.hopExhaustionMinHops);
-    setHopExhaustionMaxHops(initial.hopExhaustionMaxHops);
-  }, [setEnabled, setPositionDedupEnabled, setPositionDedupTimeSecs, setPositionDedupDistanceMeters,
-    setNodeinfoDirectResponseEnabled, setNodeinfoDirectResponseMyNodeOnly,
-    setRateLimitEnabled, setRateLimitMaxPerNode, setRateLimitWindowSecs,
-    setUnknownPacketDropEnabled, setUnknownPacketGracePeriodSecs,
-    setHopExhaustionEnabled, setHopExhaustionMinHops, setHopExhaustionMaxHops]);
+    setRateLimitMaxPackets(initial.rateLimitMaxPackets);
+    setDropUnknownEnabled(initial.dropUnknownEnabled);
+    setUnknownPacketThreshold(initial.unknownPacketThreshold);
+    setExhaustHopTelemetry(initial.exhaustHopTelemetry);
+    setExhaustHopPosition(initial.exhaustHopPosition);
+    setRouterPreserveHops(initial.routerPreserveHops);
+  }, [setEnabled, setPositionDedupEnabled, setPositionPrecisionBits, setPositionMinIntervalSecs,
+    setNodeinfoDirectResponse, setNodeinfoDirectResponseMaxHops,
+    setRateLimitEnabled, setRateLimitWindowSecs, setRateLimitMaxPackets,
+    setDropUnknownEnabled, setUnknownPacketThreshold,
+    setExhaustHopTelemetry, setExhaustHopPosition, setRouterPreserveHops]);
 
-  // Update initial values after successful save
   const handleSave = useCallback(async () => {
     await onSave();
     initialValuesRef.current = {
-      enabled, positionDedupEnabled, positionDedupTimeSecs, positionDedupDistanceMeters,
-      nodeinfoDirectResponseEnabled, nodeinfoDirectResponseMyNodeOnly,
-      rateLimitEnabled, rateLimitMaxPerNode, rateLimitWindowSecs,
-      unknownPacketDropEnabled, unknownPacketGracePeriodSecs,
-      hopExhaustionEnabled, hopExhaustionMinHops, hopExhaustionMaxHops
+      enabled, positionDedupEnabled, positionPrecisionBits, positionMinIntervalSecs,
+      nodeinfoDirectResponse, nodeinfoDirectResponseMaxHops,
+      rateLimitEnabled, rateLimitWindowSecs, rateLimitMaxPackets,
+      dropUnknownEnabled, unknownPacketThreshold,
+      exhaustHopTelemetry, exhaustHopPosition, routerPreserveHops
     };
-  }, [onSave, enabled, positionDedupEnabled, positionDedupTimeSecs, positionDedupDistanceMeters,
-    nodeinfoDirectResponseEnabled, nodeinfoDirectResponseMyNodeOnly,
-    rateLimitEnabled, rateLimitMaxPerNode, rateLimitWindowSecs,
-    unknownPacketDropEnabled, unknownPacketGracePeriodSecs,
-    hopExhaustionEnabled, hopExhaustionMinHops, hopExhaustionMaxHops]);
+  }, [onSave, enabled, positionDedupEnabled, positionPrecisionBits, positionMinIntervalSecs,
+    nodeinfoDirectResponse, nodeinfoDirectResponseMaxHops,
+    rateLimitEnabled, rateLimitWindowSecs, rateLimitMaxPackets,
+    dropUnknownEnabled, unknownPacketThreshold,
+    exhaustHopTelemetry, exhaustHopPosition, routerPreserveHops]);
 
-  // Register with SaveBar
   useSaveBar({
     id: 'trafficmanagement-config',
     sectionName: t('trafficmanagement_config.title', 'Traffic Management'),
@@ -184,7 +179,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
           fontStyle: 'italic',
           marginBottom: '1rem'
         }}>
-          {t('trafficmanagement_config.unsupported', 'Unsupported by device firmware — Not yet available in any firmware release')}
+          {t('trafficmanagement_config.unsupported', 'Unsupported by device firmware — Requires v2.7.20 alpha or newer (not yet in any stable release)')}
         </div>
       )}
 
@@ -202,7 +197,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
             />
             <div style={{ flex: 1 }}>
               <div>{t('trafficmanagement_config.enabled', 'Enable Traffic Management')}</div>
-              <span className="setting-description">{t('trafficmanagement_config.enabled_description', 'Enable traffic management features to control mesh network traffic')}</span>
+              <span className="setting-description">{t('trafficmanagement_config.enabled_description', 'Packet inspection and traffic shaping to reduce channel utilization')}</span>
             </div>
           </label>
         </div>
@@ -225,7 +220,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
                   />
                   <div style={{ flex: 1 }}>
                     <div>{t('trafficmanagement_config.position_dedup_enabled', 'Enable')}</div>
-                    <span className="setting-description">{t('trafficmanagement_config.position_dedup_enabled_description', 'Deduplicate position packets from the same node')}</span>
+                    <span className="setting-description">{t('trafficmanagement_config.position_dedup_enabled_description', 'Drop redundant position broadcasts')}</span>
                   </div>
                 </label>
               </div>
@@ -233,32 +228,37 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
               {(positionDedupEnabled || isDisabled) && (
                 <>
                   <div className="setting-item">
-                    <label htmlFor="positionDedupTimeSecs">
-                      {t('trafficmanagement_config.position_dedup_time', 'Time Window (seconds)')}
-                      <span className="setting-description">{t('trafficmanagement_config.position_dedup_time_description', 'Time window for deduplicating position packets')}</span>
+                    <label htmlFor="positionPrecisionBits">
+                      {t('trafficmanagement_config.position_precision_bits', 'Precision Bits (0-32)')}
+                      <span className="setting-description">{t('trafficmanagement_config.position_precision_bits_description', 'Number of bits of precision (geohash) for position dedup. More bits = finer granularity.')}</span>
                     </label>
                     <input
-                      id="positionDedupTimeSecs"
-                      type="number"
+                      id="positionPrecisionBits"
+                      type="range"
                       min="0"
-                      value={positionDedupTimeSecs}
-                      onChange={(e) => setPositionDedupTimeSecs(parseInt(e.target.value) || 0)}
+                      max="32"
+                      value={positionPrecisionBits}
+                      onChange={(e) => setPositionPrecisionBits(parseInt(e.target.value) || 0)}
                       disabled={isDisabled}
                       className="setting-input"
+                      style={{ width: '100%' }}
                     />
+                    <div style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+                      {t('trafficmanagement_config.position_precision_bits_value', '{{bits}} bits', { bits: positionPrecisionBits })}
+                    </div>
                   </div>
 
                   <div className="setting-item">
-                    <label htmlFor="positionDedupDistanceMeters">
-                      {t('trafficmanagement_config.position_dedup_distance', 'Distance Threshold (meters)')}
-                      <span className="setting-description">{t('trafficmanagement_config.position_dedup_distance_description', 'Minimum distance change to consider a new position')}</span>
+                    <label htmlFor="positionMinIntervalSecs">
+                      {t('trafficmanagement_config.position_min_interval_secs', 'Minimum Interval (seconds)')}
+                      <span className="setting-description">{t('trafficmanagement_config.position_min_interval_secs_description', 'Minimum seconds between position updates from the same node')}</span>
                     </label>
                     <input
-                      id="positionDedupDistanceMeters"
+                      id="positionMinIntervalSecs"
                       type="number"
                       min="0"
-                      value={positionDedupDistanceMeters}
-                      onChange={(e) => setPositionDedupDistanceMeters(parseInt(e.target.value) || 0)}
+                      value={positionMinIntervalSecs}
+                      onChange={(e) => setPositionMinIntervalSecs(parseInt(e.target.value) || 0)}
                       disabled={isDisabled}
                       className="setting-input"
                     />
@@ -272,38 +272,38 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
               <div style={subGroupTitleStyle}>{t('trafficmanagement_config.nodeinfo_direct_response', 'NodeInfo Direct Response')}</div>
 
               <div className="setting-item">
-                <label htmlFor="nodeinfoDirectResponseEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                <label htmlFor="nodeinfoDirectResponse" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
                   <input
-                    id="nodeinfoDirectResponseEnabled"
+                    id="nodeinfoDirectResponse"
                     type="checkbox"
-                    checked={nodeinfoDirectResponseEnabled}
-                    onChange={(e) => setNodeinfoDirectResponseEnabled(e.target.checked)}
+                    checked={nodeinfoDirectResponse}
+                    onChange={(e) => setNodeinfoDirectResponse(e.target.checked)}
                     disabled={isDisabled}
                     style={{ marginTop: '0.2rem', flexShrink: 0 }}
                   />
                   <div style={{ flex: 1 }}>
                     <div>{t('trafficmanagement_config.nodeinfo_direct_response_enabled', 'Enable')}</div>
-                    <span className="setting-description">{t('trafficmanagement_config.nodeinfo_direct_response_enabled_description', 'Respond directly to NodeInfo requests instead of broadcasting')}</span>
+                    <span className="setting-description">{t('trafficmanagement_config.nodeinfo_direct_response_enabled_description', 'Respond directly to NodeInfo requests from local cache')}</span>
                   </div>
                 </label>
               </div>
 
-              {(nodeinfoDirectResponseEnabled || isDisabled) && (
+              {(nodeinfoDirectResponse || isDisabled) && (
                 <div className="setting-item">
-                  <label htmlFor="nodeinfoDirectResponseMyNodeOnly" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-                    <input
-                      id="nodeinfoDirectResponseMyNodeOnly"
-                      type="checkbox"
-                      checked={nodeinfoDirectResponseMyNodeOnly}
-                      onChange={(e) => setNodeinfoDirectResponseMyNodeOnly(e.target.checked)}
-                      disabled={isDisabled}
-                      style={{ marginTop: '0.2rem', flexShrink: 0 }}
-                    />
-                    <div style={{ flex: 1 }}>
-                      <div>{t('trafficmanagement_config.nodeinfo_my_node_only', 'My Node Only')}</div>
-                      <span className="setting-description">{t('trafficmanagement_config.nodeinfo_my_node_only_description', 'Only respond to requests specifically addressed to this node')}</span>
-                    </div>
+                  <label htmlFor="nodeinfoDirectResponseMaxHops">
+                    {t('trafficmanagement_config.nodeinfo_max_hops', 'Max Hops')}
+                    <span className="setting-description">{t('trafficmanagement_config.nodeinfo_max_hops_description', 'Minimum hop distance from requestor before responding from cache')}</span>
                   </label>
+                  <input
+                    id="nodeinfoDirectResponseMaxHops"
+                    type="number"
+                    min="0"
+                    max="7"
+                    value={nodeinfoDirectResponseMaxHops}
+                    onChange={(e) => setNodeinfoDirectResponseMaxHops(parseInt(e.target.value) || 0)}
+                    disabled={isDisabled}
+                    className="setting-input"
+                  />
                 </div>
               )}
             </div>
@@ -324,7 +324,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
                   />
                   <div style={{ flex: 1 }}>
                     <div>{t('trafficmanagement_config.rate_limit_enabled', 'Enable')}</div>
-                    <span className="setting-description">{t('trafficmanagement_config.rate_limit_enabled_description', 'Limit packet rate per node to reduce congestion')}</span>
+                    <span className="setting-description">{t('trafficmanagement_config.rate_limit_enabled_description', 'Throttle chatty nodes')}</span>
                   </div>
                 </label>
               </div>
@@ -332,25 +332,9 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
               {(rateLimitEnabled || isDisabled) && (
                 <>
                   <div className="setting-item">
-                    <label htmlFor="rateLimitMaxPerNode">
-                      {t('trafficmanagement_config.rate_limit_max', 'Max Packets Per Node')}
-                      <span className="setting-description">{t('trafficmanagement_config.rate_limit_max_description', 'Maximum number of packets allowed per node within the time window')}</span>
-                    </label>
-                    <input
-                      id="rateLimitMaxPerNode"
-                      type="number"
-                      min="0"
-                      value={rateLimitMaxPerNode}
-                      onChange={(e) => setRateLimitMaxPerNode(parseInt(e.target.value) || 0)}
-                      disabled={isDisabled}
-                      className="setting-input"
-                    />
-                  </div>
-
-                  <div className="setting-item">
                     <label htmlFor="rateLimitWindowSecs">
                       {t('trafficmanagement_config.rate_limit_window', 'Window (seconds)')}
-                      <span className="setting-description">{t('trafficmanagement_config.rate_limit_window_description', 'Time window for rate limiting')}</span>
+                      <span className="setting-description">{t('trafficmanagement_config.rate_limit_window_description', 'Time window for rate limiting calculations')}</span>
                     </label>
                     <input
                       id="rateLimitWindowSecs"
@@ -362,43 +346,59 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
                       className="setting-input"
                     />
                   </div>
+
+                  <div className="setting-item">
+                    <label htmlFor="rateLimitMaxPackets">
+                      {t('trafficmanagement_config.rate_limit_max_packets', 'Max Packets Per Window')}
+                      <span className="setting-description">{t('trafficmanagement_config.rate_limit_max_packets_description', 'Maximum packets allowed per node within the window')}</span>
+                    </label>
+                    <input
+                      id="rateLimitMaxPackets"
+                      type="number"
+                      min="0"
+                      value={rateLimitMaxPackets}
+                      onChange={(e) => setRateLimitMaxPackets(parseInt(e.target.value) || 0)}
+                      disabled={isDisabled}
+                      className="setting-input"
+                    />
+                  </div>
                 </>
               )}
             </div>
 
-            {/* Unknown Packet Drop Group */}
+            {/* Drop Unknown Group */}
             <div style={subGroupStyle}>
-              <div style={subGroupTitleStyle}>{t('trafficmanagement_config.unknown_packet_drop', 'Unknown Packet Drop')}</div>
+              <div style={subGroupTitleStyle}>{t('trafficmanagement_config.drop_unknown', 'Drop Unknown Packets')}</div>
 
               <div className="setting-item">
-                <label htmlFor="unknownPacketDropEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                <label htmlFor="dropUnknownEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
                   <input
-                    id="unknownPacketDropEnabled"
+                    id="dropUnknownEnabled"
                     type="checkbox"
-                    checked={unknownPacketDropEnabled}
-                    onChange={(e) => setUnknownPacketDropEnabled(e.target.checked)}
+                    checked={dropUnknownEnabled}
+                    onChange={(e) => setDropUnknownEnabled(e.target.checked)}
                     disabled={isDisabled}
                     style={{ marginTop: '0.2rem', flexShrink: 0 }}
                   />
                   <div style={{ flex: 1 }}>
-                    <div>{t('trafficmanagement_config.unknown_packet_drop_enabled', 'Enable')}</div>
-                    <span className="setting-description">{t('trafficmanagement_config.unknown_packet_drop_enabled_description', 'Drop packets from nodes not in the node database')}</span>
+                    <div>{t('trafficmanagement_config.drop_unknown_enabled', 'Enable')}</div>
+                    <span className="setting-description">{t('trafficmanagement_config.drop_unknown_enabled_description', 'Drop unknown/undecryptable packets after threshold')}</span>
                   </div>
                 </label>
               </div>
 
-              {(unknownPacketDropEnabled || isDisabled) && (
+              {(dropUnknownEnabled || isDisabled) && (
                 <div className="setting-item">
-                  <label htmlFor="unknownPacketGracePeriodSecs">
-                    {t('trafficmanagement_config.unknown_packet_grace_period', 'Grace Period (seconds)')}
-                    <span className="setting-description">{t('trafficmanagement_config.unknown_packet_grace_period_description', 'Time to wait before dropping packets from unknown nodes')}</span>
+                  <label htmlFor="unknownPacketThreshold">
+                    {t('trafficmanagement_config.unknown_packet_threshold', 'Unknown Packet Threshold')}
+                    <span className="setting-description">{t('trafficmanagement_config.unknown_packet_threshold_description', 'Number of unknown packets from a node before dropping')}</span>
                   </label>
                   <input
-                    id="unknownPacketGracePeriodSecs"
+                    id="unknownPacketThreshold"
                     type="number"
                     min="0"
-                    value={unknownPacketGracePeriodSecs}
-                    onChange={(e) => setUnknownPacketGracePeriodSecs(parseInt(e.target.value) || 0)}
+                    value={unknownPacketThreshold}
+                    onChange={(e) => setUnknownPacketThreshold(parseInt(e.target.value) || 0)}
                     disabled={isDisabled}
                     className="setting-input"
                   />
@@ -406,64 +406,60 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
               )}
             </div>
 
-            {/* Hop Exhaustion Group */}
+            {/* Hop Limit Exhaustion Group */}
             <div style={subGroupStyle}>
-              <div style={subGroupTitleStyle}>{t('trafficmanagement_config.hop_exhaustion', 'Hop Exhaustion')}</div>
+              <div style={subGroupTitleStyle}>{t('trafficmanagement_config.hop_exhaustion', 'Hop Limit Exhaustion')}</div>
 
               <div className="setting-item">
-                <label htmlFor="hopExhaustionEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                <label htmlFor="exhaustHopTelemetry" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
                   <input
-                    id="hopExhaustionEnabled"
+                    id="exhaustHopTelemetry"
                     type="checkbox"
-                    checked={hopExhaustionEnabled}
-                    onChange={(e) => setHopExhaustionEnabled(e.target.checked)}
+                    checked={exhaustHopTelemetry}
+                    onChange={(e) => setExhaustHopTelemetry(e.target.checked)}
                     disabled={isDisabled}
                     style={{ marginTop: '0.2rem', flexShrink: 0 }}
                   />
                   <div style={{ flex: 1 }}>
-                    <div>{t('trafficmanagement_config.hop_exhaustion_enabled', 'Enable')}</div>
-                    <span className="setting-description">{t('trafficmanagement_config.hop_exhaustion_enabled_description', 'Reduce hop limit on rebroadcasted packets to prevent excessive flooding')}</span>
+                    <div>{t('trafficmanagement_config.exhaust_hop_telemetry', 'Exhaust Hop Limit on Relayed Telemetry')}</div>
+                    <span className="setting-description">{t('trafficmanagement_config.exhaust_hop_telemetry_description', 'Set hop_limit=0 on relayed telemetry broadcasts (own packets unaffected)')}</span>
                   </div>
                 </label>
               </div>
 
-              {(hopExhaustionEnabled || isDisabled) && (
-                <>
-                  <div className="setting-item">
-                    <label htmlFor="hopExhaustionMinHops">
-                      {t('trafficmanagement_config.hop_exhaustion_min', 'Minimum Hops')}
-                      <span className="setting-description">{t('trafficmanagement_config.hop_exhaustion_min_description', 'Minimum hop limit to set on rebroadcasted packets')}</span>
-                    </label>
-                    <input
-                      id="hopExhaustionMinHops"
-                      type="number"
-                      min="0"
-                      max="7"
-                      value={hopExhaustionMinHops}
-                      onChange={(e) => setHopExhaustionMinHops(parseInt(e.target.value) || 0)}
-                      disabled={isDisabled}
-                      className="setting-input"
-                    />
+              <div className="setting-item">
+                <label htmlFor="exhaustHopPosition" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                  <input
+                    id="exhaustHopPosition"
+                    type="checkbox"
+                    checked={exhaustHopPosition}
+                    onChange={(e) => setExhaustHopPosition(e.target.checked)}
+                    disabled={isDisabled}
+                    style={{ marginTop: '0.2rem', flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div>{t('trafficmanagement_config.exhaust_hop_position', 'Exhaust Hop Limit on Relayed Positions')}</div>
+                    <span className="setting-description">{t('trafficmanagement_config.exhaust_hop_position_description', 'Set hop_limit=0 on relayed position broadcasts (own packets unaffected)')}</span>
                   </div>
+                </label>
+              </div>
 
-                  <div className="setting-item">
-                    <label htmlFor="hopExhaustionMaxHops">
-                      {t('trafficmanagement_config.hop_exhaustion_max', 'Maximum Hops')}
-                      <span className="setting-description">{t('trafficmanagement_config.hop_exhaustion_max_description', 'Maximum hop limit before hop exhaustion is applied')}</span>
-                    </label>
-                    <input
-                      id="hopExhaustionMaxHops"
-                      type="number"
-                      min="0"
-                      max="7"
-                      value={hopExhaustionMaxHops}
-                      onChange={(e) => setHopExhaustionMaxHops(parseInt(e.target.value) || 0)}
-                      disabled={isDisabled}
-                      className="setting-input"
-                    />
+              <div className="setting-item">
+                <label htmlFor="routerPreserveHops" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                  <input
+                    id="routerPreserveHops"
+                    type="checkbox"
+                    checked={routerPreserveHops}
+                    onChange={(e) => setRouterPreserveHops(e.target.checked)}
+                    disabled={isDisabled}
+                    style={{ marginTop: '0.2rem', flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div>{t('trafficmanagement_config.router_preserve_hops', 'Router Preserve Hops')}</div>
+                    <span className="setting-description">{t('trafficmanagement_config.router_preserve_hops_description', 'Preserve hop_limit for router-to-router traffic')}</span>
                   </div>
-                </>
-              )}
+                </label>
+              </div>
             </div>
           </>
         )}

@@ -148,22 +148,22 @@ export interface StatusMessageConfigState {
   nodeStatus: string;
 }
 
-// Traffic Management Config State
+// Traffic Management Config State (v2.7.22 schema)
 export interface TrafficManagementConfigState {
   enabled: boolean;
   positionDedupEnabled: boolean;
-  positionDedupTimeSecs: number;
-  positionDedupDistanceMeters: number;
-  nodeinfoDirectResponseEnabled: boolean;
-  nodeinfoDirectResponseMyNodeOnly: boolean;
+  positionPrecisionBits: number;
+  positionMinIntervalSecs: number;
+  nodeinfoDirectResponse: boolean;
+  nodeinfoDirectResponseMaxHops: number;
   rateLimitEnabled: boolean;
-  rateLimitMaxPerNode: number;
   rateLimitWindowSecs: number;
-  unknownPacketDropEnabled: boolean;
-  unknownPacketGracePeriodSecs: number;
-  hopExhaustionEnabled: boolean;
-  hopExhaustionMinHops: number;
-  hopExhaustionMaxHops: number;
+  rateLimitMaxPackets: number;
+  dropUnknownEnabled: boolean;
+  unknownPacketThreshold: number;
+  exhaustHopTelemetry: boolean;
+  exhaustHopPosition: boolean;
+  routerPreserveHops: boolean;
 }
 
 // Combined Admin Commands State
@@ -326,18 +326,18 @@ const initialState: AdminCommandsState = {
   trafficManagement: {
     enabled: false,
     positionDedupEnabled: false,
-    positionDedupTimeSecs: 0,
-    positionDedupDistanceMeters: 0,
-    nodeinfoDirectResponseEnabled: false,
-    nodeinfoDirectResponseMyNodeOnly: false,
+    positionPrecisionBits: 0,
+    positionMinIntervalSecs: 0,
+    nodeinfoDirectResponse: false,
+    nodeinfoDirectResponseMaxHops: 0,
     rateLimitEnabled: false,
-    rateLimitMaxPerNode: 0,
     rateLimitWindowSecs: 0,
-    unknownPacketDropEnabled: false,
-    unknownPacketGracePeriodSecs: 0,
-    hopExhaustionEnabled: false,
-    hopExhaustionMinHops: 0,
-    hopExhaustionMaxHops: 0,
+    rateLimitMaxPackets: 0,
+    dropUnknownEnabled: false,
+    unknownPacketThreshold: 0,
+    exhaustHopTelemetry: false,
+    exhaustHopPosition: false,
+    routerPreserveHops: false,
   },
 };
 
