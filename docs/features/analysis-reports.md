@@ -77,7 +77,7 @@ The Reports workspace surfaces two endpoints under the existing `/api/analysis/*
 - `GET /api/analysis/solar-nodes?lookback_days=N&sources=…`
 - `GET /api/analysis/solar-forecast?lookback_days=N&sources=…`
 
-See the [REST API reference](../api/REST_API) for the full request/response shapes.
+See the [REST API reference](https://github.com/Yeraze/meshmonitor/blob/main/docs/api/REST_API.md) for the full request/response shapes.
 
 ## Related
 
