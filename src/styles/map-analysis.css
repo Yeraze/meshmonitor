@@ -290,6 +290,29 @@
   color: #fff;
   outline: none;
 }
+.map-analysis-inspector-expand {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 22px;
+  background: #161616;
+  border: none;
+  border-left: 1px solid #2a2a2a;
+  color: #888;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.12s, background 0.12s;
+}
+.map-analysis-inspector-expand:hover,
+.map-analysis-inspector-expand:focus-visible {
+  background: #1e1e1e;
+  color: #fff;
+  outline: none;
+}
 .map-analysis-inspector .empty {
   color: #666;
   font-style: italic;

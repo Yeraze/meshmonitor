@@ -17,6 +17,13 @@ interface NodeRecord extends MaybePositionedNode {
   snr?: number | null;
   rssi?: number | null;
   lastHeard?: number | null;
+  // Flat fields as returned by /api/sources/:id/nodes
+  batteryLevel?: number | null;
+  voltage?: number | null;
+  channelUtilization?: number | null;
+  airUtilTx?: number | null;
+  uptimeSeconds?: number | null;
+  // Nested fallback (DeviceInfo shape used by some hooks/mocks)
   deviceMetrics?: {
     batteryLevel?: number | null;
     voltage?: number | null;
@@ -38,7 +45,7 @@ interface HopEntry {
  * placeholder otherwise. Hidden entirely when `inspectorOpen` is false.
  */
 export default function AnalysisInspectorPanel() {
-  const { config, selected, setSelected } = useMapAnalysisCtx();
+  const { config, selected, setInspectorOpen } = useMapAnalysisCtx();
   const { data: sources = [] } = useDashboardSources();
   const sourceList = sources as Array<{ id: string; name: string }>;
   const sourceIds =
@@ -71,20 +78,29 @@ export default function AnalysisInspectorPanel() {
     enabled: selected?.type === 'node' && !!selectedNodeId,
   });
 
-  if (!config.inspectorOpen) return null;
+  if (!config.inspectorOpen) {
+    return (
+      <button
+        type="button"
+        className="map-analysis-inspector-expand"
+        aria-label="Expand detail pane"
+        onClick={() => setInspectorOpen(true)}
+      >
+        ‹
+      </button>
+    );
+  }
 
   const wrap = (body: ReactNode) => (
     <aside className="map-analysis-inspector">
-      {selected && (
-        <button
-          type="button"
-          className="map-analysis-inspector-close"
-          aria-label="Close detail pane"
-          onClick={() => setSelected(null)}
-        >
-          ×
-        </button>
-      )}
+      <button
+        type="button"
+        className="map-analysis-inspector-close"
+        aria-label="Collapse detail pane"
+        onClick={() => setInspectorOpen(false)}
+      >
+        ›
+      </button>
       {body}
     </aside>
   );
@@ -149,6 +165,11 @@ export default function AnalysisInspectorPanel() {
     const hex = (selected.nodeNum ?? 0).toString(16);
     const ll = resolveNodeLatLng(node);
     const dm = node.deviceMetrics ?? {};
+    const battery = node.batteryLevel ?? dm.batteryLevel;
+    const voltage = node.voltage ?? dm.voltage;
+    const chUtil = node.channelUtilization ?? dm.channelUtilization;
+    const airTx = node.airUtilTx ?? dm.airUtilTx;
+    const uptime = node.uptimeSeconds ?? dm.uptimeSeconds;
     const lqList = linkQualityQuery.data ?? [];
     const latestLq = lqList.length > 0 ? lqList[lqList.length - 1].quality : undefined;
     return wrap(
@@ -175,15 +196,15 @@ export default function AnalysisInspectorPanel() {
         <hr />
         <dl>
           <dt>Battery</dt>
-          <dd>{formatBattery(dm.batteryLevel)}</dd>
+          <dd>{formatBattery(battery)}</dd>
           <dt>Voltage</dt>
-          <dd>{formatNumber(dm.voltage, ' V', 2)}</dd>
+          <dd>{formatNumber(voltage, ' V', 2)}</dd>
           <dt>Uptime</dt>
-          <dd>{formatUptime(dm.uptimeSeconds)}</dd>
+          <dd>{formatUptime(uptime)}</dd>
           <dt>Air Util Tx</dt>
-          <dd>{formatNumber(dm.airUtilTx, '%', 2)}</dd>
+          <dd>{formatNumber(airTx, '%', 2)}</dd>
           <dt>Ch Util</dt>
-          <dd>{formatNumber(dm.channelUtilization, '%', 2)}</dd>
+          <dd>{formatNumber(chUtil, '%', 2)}</dd>
           <dt>Link Q</dt>
           <dd>{formatLinkQuality(latestLq)}</dd>
           <dt>SNR</dt>

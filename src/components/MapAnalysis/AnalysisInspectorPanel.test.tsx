@@ -7,6 +7,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AnalysisInspectorPanel from './AnalysisInspectorPanel';
 import { MapAnalysisProvider, useMapAnalysisCtx } from './MapAnalysisContext';
 
+// Real /api/sources/:id/nodes returns FLAT telemetry fields (no nested deviceMetrics).
+// Mock matches that shape so the test catches regressions if we ever revert to nested-only reads.
 vi.mock('../../hooks/useDashboardData', () => ({
   useDashboardSources: () => ({ data: [{ id: 'a', name: 'A' }] }),
   useDashboardUnifiedData: () => ({
@@ -21,13 +23,11 @@ vi.mock('../../hooks/useDashboardData', () => ({
         snr: 7.25,
         rssi: -82,
         lastHeard: 1700000000,
-        deviceMetrics: {
-          batteryLevel: 85,
-          voltage: 4.12,
-          channelUtilization: 12.3,
-          airUtilTx: 1.45,
-          uptimeSeconds: 7200,
-        },
+        batteryLevel: 85,
+        voltage: 4.12,
+        channelUtilization: 12.3,
+        airUtilTx: 1.45,
+        uptimeSeconds: 7200,
       },
     ],
   }),
@@ -145,7 +145,7 @@ describe('AnalysisInspectorPanel', () => {
     expect(screen.getByText('7.25 dB')).toBeInTheDocument();
   });
 
-  it('renders close button when a selection is active and clears selection on click', () => {
+  it('collapses the sidebar when the collapse arrow is clicked, then re-expands via the expand arrow', () => {
     render(
       <Wrapper>
         <SelectAlpha />
@@ -154,20 +154,19 @@ describe('AnalysisInspectorPanel', () => {
     );
     fireEvent.click(screen.getByText('select'));
     expect(screen.getByText('Alpha')).toBeInTheDocument();
-    const closeBtn = screen.getByLabelText(/close detail pane/i);
-    fireEvent.click(closeBtn);
+    fireEvent.click(screen.getByLabelText(/collapse detail pane/i));
     expect(screen.queryByText('Alpha')).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/click a node, route segment, neighbor link, or trail/i),
-    ).toBeInTheDocument();
+    const expandBtn = screen.getByLabelText(/expand detail pane/i);
+    fireEvent.click(expandBtn);
+    expect(screen.getByText('Alpha')).toBeInTheDocument();
   });
 
-  it('does not render close button when no selection', () => {
+  it('renders the collapse arrow even with no selection', () => {
     render(
       <Wrapper>
         <AnalysisInspectorPanel />
       </Wrapper>,
     );
-    expect(screen.queryByLabelText(/close detail pane/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/collapse detail pane/i)).toBeInTheDocument();
   });
 });
