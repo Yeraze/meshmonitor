@@ -9,7 +9,9 @@ import { MODEM_PRESET_OPTIONS } from './constants';
 describe('LoRaConfigSection', () => {
   describe('Modem Preset Constants', () => {
     it('should have correct number of modem presets', () => {
-      expect(MODEM_PRESET_OPTIONS).toHaveLength(9);
+      // 0-9 from earlier protobuf revisions, plus 10-13 added in v2.7.23
+      // (LITE_FAST, LITE_SLOW, NARROW_FAST, NARROW_SLOW)
+      expect(MODEM_PRESET_OPTIONS).toHaveLength(13);
     });
 
     it('should have LONG_FAST as first preset', () => {
@@ -21,9 +23,15 @@ describe('LoRaConfigSection', () => {
       });
     });
 
-    it('should have LONG_TURBO as last preset', () => {
+    it('should have NARROW_SLOW as last preset', () => {
       const lastPreset = MODEM_PRESET_OPTIONS[MODEM_PRESET_OPTIONS.length - 1];
-      expect(lastPreset).toEqual({
+      expect(lastPreset.name).toBe('NARROW_SLOW');
+      expect(lastPreset.value).toBe(13);
+    });
+
+    it('should include LONG_TURBO at value 9', () => {
+      const longTurbo = MODEM_PRESET_OPTIONS.find(p => p.name === 'LONG_TURBO');
+      expect(longTurbo).toEqual({
         value: 9,
         name: 'LONG_TURBO',
         description: 'Long Range - Turbo (Similar to LongFast)',
