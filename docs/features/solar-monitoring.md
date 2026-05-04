@@ -64,6 +64,7 @@ Solar overlays appear on:
 - **Node Details** page: Telemetry graphs for individual nodes
 - **Telemetry Dashboard**: All favorite telemetry charts
 - **Any time-series telemetry visualization**
+- **Analysis & Reports → Solar Monitoring Analysis**: cross-source report that auto-detects solar-powered nodes and overlays the solar production curve on each candidate's chart, with optional multi-day battery forecast simulation. See [Analysis & Reports](./analysis-reports).
 
 ### Visual Design
 

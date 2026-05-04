@@ -70,7 +70,7 @@ features:
 
   - icon: ☀️
     title: Solar Monitoring
-    details: Integrate with forecast.solar to visualize expected solar production alongside telemetry data. Perfect for optimizing off-grid deployments and predicting power availability.
+    details: Integrate with forecast.solar to visualize expected solar production alongside telemetry data. Run the cross-source Solar Monitoring Analysis report to auto-detect solar-powered nodes, project battery state across the forecast horizon, and surface nodes predicted at risk. Perfect for optimizing off-grid deployments.
 
   - icon: 💻
     title: Desktop & Mobile

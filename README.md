@@ -216,6 +216,7 @@ MeshMonitor supports multiple deployment methods:
 
 ## Key Features
 
+- **Analysis & Reports (4.2)** - Cross-source analytical workspace at `/reports`; first report is Solar Monitoring Analysis with auto-detection of solar-powered nodes, production overlay, healthy-level reference lines, and multi-day battery forecast simulation
 - **Multi-Source (4.0)** - Monitor multiple Meshtastic nodes from a single deployment; per-source permissions, schedulers, and Virtual Nodes
 - **Real-time Mesh Monitoring** - Live node discovery, telemetry, and message tracking
 - **Modern UI** - Catppuccin theme with message reactions and threading

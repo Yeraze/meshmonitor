@@ -25,7 +25,8 @@ export default defineConfig({
       {
         text: 'Docs',
         items: [
-          { text: '🆕 4.1 Highlights', link: '/features/map-analysis' },
+          { text: '🆕 4.2 Highlights', link: '/features/analysis-reports' },
+          { text: '4.1 Highlights', link: '/features/map-analysis' },
           { text: '4.0 Highlights', link: '/features/multi-source' },
           { text: 'Features', link: '/features/settings' },
           { text: 'Configuration', link: '/configuration/' },
@@ -39,7 +40,13 @@ export default defineConfig({
     sidebar: {
       '/features/': [
         {
-          text: '🆕 4.1 Highlights',
+          text: '🆕 4.2 Highlights',
+          items: [
+            { text: 'Analysis & Reports', link: '/features/analysis-reports' }
+          ]
+        },
+        {
+          text: '4.1 Highlights',
           items: [
             { text: 'Map Analysis', link: '/features/map-analysis' }
           ]

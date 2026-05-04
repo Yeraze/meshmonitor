@@ -985,6 +985,120 @@ Enable or disable Apprise notifications system-wide.
 
 ---
 
+## Analysis & Reports
+
+Cross-source analytical endpoints used by the **Analysis & Reports** workspace at `/reports`. All handlers resolve the requesting user's permitted source IDs (admin = all enabled; otherwise filtered via `nodes:read`) and intersect with the optional `sources` query parameter. Data is publicly routable but always filtered by permission.
+
+### Solar Nodes Analysis
+
+#### GET /api/analysis/solar-nodes
+
+Detects likely solar-powered nodes by analyzing battery and voltage telemetry over a lookback window. Returns the per-node solar score, recent daily charge/discharge patterns, and a chart-ready time series, alongside the hourly solar production overlay from the forecast.solar cache.
+
+**Query Parameters:**
+- `lookback_days` (optional, default `7`, range `1`–`90`) — days of history to analyze
+- `sources` (optional) — comma-separated source IDs to restrict the analysis (intersected with permitted sources)
+
+**Response:**
+```json
+{
+  "lookback_days": 7,
+  "total_nodes_analyzed": 119,
+  "solar_nodes_count": 8,
+  "avg_charging_hours_per_day": 10.2,
+  "avg_discharge_hours_per_day": 13.8,
+  "solar_nodes": [
+    {
+      "node_num": 3575252989,
+      "node_name": "KC4FSU Base",
+      "solar_score": 100,
+      "days_analyzed": 7,
+      "days_with_pattern": 7,
+      "metric_type": "batteryLevel",
+      "metrics_detected": ["battery"],
+      "avg_charge_rate_per_hour": 4.5,
+      "avg_discharge_rate_per_hour": 1.2,
+      "insufficient_solar": false,
+      "chart_data": [
+        { "timestamp": 1777316400000, "value": 87 }
+      ],
+      "recent_patterns": [
+        {
+          "date": "2026-05-03",
+          "sunrise": { "time": "07:12", "value": 72 },
+          "peak":    { "time": "14:48", "value": 99 },
+          "sunset":  { "time": "19:30", "value": 95 },
+          "rise": 27,
+          "fall": 4,
+          "charge_rate_per_hour": 3.5,
+          "discharge_rate_per_hour": 0.9
+        }
+      ]
+    }
+  ],
+  "solar_production": [
+    { "timestamp": 1777316400000, "wattHours": 427 }
+  ]
+}
+```
+
+**Example:**
+```bash
+curl -X GET "http://localhost:8080/api/analysis/solar-nodes?lookback_days=14"
+```
+
+### Solar Forecast Analysis
+
+#### GET /api/analysis/solar-forecast
+
+Compares forecast.solar projections to the lookback's historical average and simulates each detected solar node's battery state across the forecast horizon. Surfaces nodes whose simulated minimum drops below the at-risk threshold (50% for batteries, 3.5 V for voltage metrics).
+
+**Query Parameters:**
+- `lookback_days` (optional, default `7`, range `1`–`90`) — days of history to compute the historical average
+- `sources` (optional) — comma-separated source IDs (intersected with permitted sources)
+
+**Response:**
+```json
+{
+  "lookback_days": 7,
+  "historical_days_analyzed": 7,
+  "avg_historical_daily_wh": 4280.5,
+  "low_output_warning": true,
+  "forecast_days": [
+    { "date": "2026-05-04", "forecast_wh": 3950.0, "avg_historical_wh": 4280.5, "pct_of_average": 92.3, "is_low": false },
+    { "date": "2026-05-05", "forecast_wh": 2475.0, "avg_historical_wh": 4280.5, "pct_of_average": 57.8, "is_low": true }
+  ],
+  "nodes_at_risk_count": 2,
+  "nodes_at_risk": [
+    {
+      "node_num": 1128074052,
+      "node_name": "0day Roof 🤖",
+      "metric_type": "batteryLevel",
+      "current_battery": 78,
+      "min_simulated_battery": 41.5,
+      "simulation": [
+        { "timestamp": "2026-05-04T12:00:00Z", "simulated_battery": 62.4, "phase": "sunrise", "forecast_factor": 0.92 },
+        { "timestamp": "2026-05-04T19:00:00Z", "simulated_battery": 95.2, "phase": "peak",    "forecast_factor": 0.92 },
+        { "timestamp": "2026-05-04T23:00:00Z", "simulated_battery": 90.4, "phase": "sunset",  "forecast_factor": 0.92 }
+      ]
+    }
+  ],
+  "solar_simulations": [/* same shape as nodes_at_risk, but for every solar candidate */]
+}
+```
+
+**Notes:**
+- `forecast_factor` is `forecast_wh / avg_historical_wh`, clamped to `[0, 1.5]`. Each day's effective charge rate for a node is `node.avg_charge_rate_per_hour * forecast_factor`.
+- `low_output_warning` is `true` when any forecast day drops below 75% of the historical average.
+- The forecast horizon is bounded by the data available in the local forecast.solar cache (typically today + 1–2 days).
+
+**Example:**
+```bash
+curl -X GET "http://localhost:8080/api/analysis/solar-forecast?lookback_days=7"
+```
+
+---
+
 ## WebSocket API (Future)
 
 *Note: WebSocket endpoints are planned for future implementation to provide real-time updates.*

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+- **Analysis & Reports workspace** ([#2898](https://github.com/Yeraze/meshmonitor/pull/2898)): New global cross-source analytics page at `/reports`, linked from the dashboard sidebar. The first bundled report is **Solar Monitoring Analysis**, a port of MeshManager's algorithm that detects solar-powered nodes by scanning battery / voltage / INA-channel telemetry for the morning-low → afternoon-peak charging pattern and overnight discharge.
+  - **Two new endpoints** under `/api/analysis/*`, both gated by the existing per-source `nodes:read` permission filter:
+    - `GET /api/analysis/solar-nodes?lookback_days=N&sources=…` — solar candidates with daily patterns, chart data, and a hourly solar-production overlay sourced from the existing forecast.solar cache
+    - `GET /api/analysis/solar-forecast?lookback_days=N&sources=…` — forecast vs historical Wh per day, per-node battery simulation across the next ~5 days (sunrise / peak / sunset waypoints), low-output warning, and a "nodes predicted at risk" list (simulated min battery < 50% / 3.5 V)
+  - **Per-node chart** uses Recharts to render the actual battery / voltage line, the solar production area overlay, healthy-level reference lines (100/50/20% for battery; 4.2/3.7/3.3 V for voltage), and the forecast simulation as a mauve dashed extension
+  - **Permission-aware**: admins see all enabled sources, non-admins see only sources they hold `nodes:read` on; an optional `?sources=` query param scopes further
+  - **Telemetry repository**: new `getTelemetryByTypesSince(types, sinceMs, sourceIds?)` for efficient cross-node multi-type scans within a lookback window — works against SQLite, PostgreSQL, and MySQL via Drizzle
+
 - **BREAKING (v1 REST API)**: Per-source data endpoints moved under `/api/v1/sources/{sourceId}/...` to mirror the 4.0 multi-source architecture. The reshape affects nodes, messages, channels, telemetry, traceroutes, packets, network, position history, and status. The literal string `default` is accepted in place of a UUID — it resolves to the first source the token has read permission on (admins get the first enabled source by `createdAt`). New `GET /api/v1/sources` lists the sources a token can read. Deployment-global endpoints (`/api/v1/solar`, `/api/v1/channel-database`) stay unscoped.
   - Legacy root paths (`/api/v1/nodes?sourceId=...`, etc.) still respond but now emit a `Warning: 299` response header and will be removed in a future release.
   - Bumps OpenAPI `info.version` to `2.0.0` while keeping the URL prefix `/api/v1/` so existing `mm_v1_` tokens keep working.
