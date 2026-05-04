@@ -12,6 +12,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { Popup, Polyline } from 'react-leaflet';
+import { DraggablePopup } from '../components/DraggablePopup';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { calculateDistance, formatDistance } from '../utils/distance';
 import { generateCurvedArrowMarkers, generateCurvedPath, getLineWeight, getSegmentSnrColor, getSegmentSnrOpacity, getTemporalOpacityMultiplier, isUnknownSnr } from '../utils/mapHelpers';
@@ -818,7 +819,7 @@ export function useTraceroutePaths({
                  }}
                  className={`route-segment node-${forwardSequence[i]} node-${forwardSequence[i + 1]}`}
                >
-                 <Popup>
+                 <DraggablePopup>
                    <div className="route-popup">
                      <h4>Forward Path</h4>
                      <div className="route-endpoints">
@@ -845,7 +846,7 @@ export function useTraceroutePaths({
                         </div>
                      )}
                    </div>
-                 </Popup>
+                 </DraggablePopup>
                </Polyline>
              );
           }
@@ -923,7 +924,7 @@ export function useTraceroutePaths({
                  }}
                  className={`route-segment node-${backSequence[i]} node-${backSequence[i + 1]}`}
                >
-                 <Popup>
+                 <DraggablePopup>
                    <div className="route-popup">
                      <h4>Return Path</h4>
                      <div className="route-endpoints">
@@ -950,7 +951,7 @@ export function useTraceroutePaths({
                         </div>
                      )}
                    </div>
-                 </Popup>
+                 </DraggablePopup>
                </Polyline>
              );
           }
