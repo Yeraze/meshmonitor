@@ -2120,17 +2120,29 @@ apiRouter.get('/messages', optionalAuth(), async (req, res) => {
     const messagesSourceId = req.query.sourceId as string | undefined;
     let messages = await meshtasticManager.getRecentMessages(limit, messagesSourceId);
 
-    // Filter messages based on permissions
-    // If user only has channels permission, exclude direct messages (channel -1)
-    // If user only has messages permission, only include direct messages (channel -1)
-    if (hasChannelsRead && !hasMessagesRead) {
-      // Only channel messages
-      messages = messages.filter(msg => msg.channel !== -1);
-    } else if (hasMessagesRead && !hasChannelsRead) {
-      // Only direct messages
-      messages = messages.filter(msg => msg.channel === -1);
+    // MM-SEC-3: pre-compute the channels this caller may read so we can
+    // strip messages from hidden channels even when the caller has the
+    // generic `channel_0:read` permission.
+    const isAdmin = req.user?.isAdmin === true;
+    const authorizedChannelIds = new Set<number>();
+    if (isAdmin) {
+      for (let id = 0; id <= 7; id++) authorizedChannelIds.add(id);
+    } else if (req.user) {
+      for (let id = 0; id <= 7; id++) {
+        const channelResource = `channel_${id}` as import('../types/permission.js').ResourceType;
+        if (await hasPermission(req.user, channelResource, 'read')) authorizedChannelIds.add(id);
+      }
     }
-    // If both permissions, return all messages
+
+    // Filter messages based on permissions.
+    // - DMs (channel -1) require `messages:read`.
+    // - Channel messages require BOTH the legacy `channel_0:read` gate
+    //   above AND a per-channel `channel_${id}:read` for the message's
+    //   actual channel.
+    messages = messages.filter(msg => {
+      if (msg.channel === -1) return hasMessagesRead;
+      return hasChannelsRead && (isAdmin || authorizedChannelIds.has(msg.channel));
+    });
 
     res.json(messages);
   } catch (error) {
@@ -2360,12 +2372,22 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
     // Only count incoming messages (exclude messages sent by our node)
     if (hasChannelsRead) {
       const rawCounts = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId);
-      // Filter out muted channels
+
+      // MM-SEC-3: filter by per-channel read permission as well as mute prefs.
+      // The bare `channel_0:read` gate above lets a viewer reach this handler
+      // but they must not learn unread counts for channels they cannot read.
+      const isAdmin = req.user?.isAdmin === true;
       const channels: { [channelId: number]: number } = {};
-      for (const [channelId, count] of Object.entries(rawCounts)) {
-        if (!mutedChannelIds.has(Number(channelId))) {
-          channels[Number(channelId)] = count as number;
+      for (const [channelIdStr, count] of Object.entries(rawCounts)) {
+        const channelId = Number(channelIdStr);
+        if (mutedChannelIds.has(channelId)) continue;
+        if (!isAdmin && req.user) {
+          const channelResource = `channel_${channelId}` as import('../types/permission.js').ResourceType;
+          if (!(await hasPermission(req.user, channelResource, 'read'))) continue;
+        } else if (!req.user && !isAdmin) {
+          continue;
         }
+        channels[channelId] = count as number;
       }
       result.channels = channels;
     }
@@ -4442,12 +4464,28 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
           msg => transformDbMessageToMeshMessage(msg as any as DbMessage)
         );
 
-        // Filter messages based on permissions
-        if (hasChannelsRead && !hasMessagesRead) {
-          messages = messages.filter(msg => msg.channel !== -1);
-        } else if (hasMessagesRead && !hasChannelsRead) {
-          messages = messages.filter(msg => msg.channel === -1);
+        // MM-SEC-3: pre-compute the per-channel authorized set so a caller
+        // with `channel_0:read` no longer sees messages from hidden channels.
+        // Sibling sections (channels, unread-counts) already do this — bring
+        // messages in line.
+        const isAdminCaller = user?.isAdmin === true;
+        const authorizedChannelIds = new Set<number>();
+        if (isAdminCaller) {
+          for (let id = 0; id <= 7; id++) authorizedChannelIds.add(id);
+        } else if (user) {
+          for (let id = 0; id <= 7; id++) {
+            if (checkPerm(`channel_${id}`, 'read')) authorizedChannelIds.add(id);
+          }
         }
+
+        // Filter:
+        // - DMs (channel -1) require `messages:read`.
+        // - Channel messages require BOTH `hasChannelsRead` AND
+        //   per-channel `channel_${id}:read` for the message's actual channel.
+        messages = messages.filter(msg => {
+          if (msg.channel === -1) return hasMessagesRead;
+          return hasChannelsRead && (isAdminCaller || authorizedChannelIds.has(msg.channel));
+        });
 
         result.messages = messages;
       }
