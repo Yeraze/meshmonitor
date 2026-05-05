@@ -3109,8 +3109,10 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
     try {
       logger.info(`🔄 Beginning edit settings transaction for import`);
       await configImportManager.beginEditSettings();
-      // Allow device time to enter edit mode before sending config messages
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Allow device time to enter edit mode and ack back before sending config messages.
+      // Empirically: 500ms is too short — device firmware silently drops the first
+      // SetChannel that follows BeginEditSettings on TCP PhoneAPI under contention.
+      await new Promise((resolve) => setTimeout(resolve, 2000));
       logger.info(`✅ Edit settings transaction started`);
     } catch (error) {
       logger.error(`❌ Failed to begin edit settings transaction:`, error);
@@ -3146,7 +3148,7 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
           });
 
           // Allow device time to process channel config before sending the next message
-          await new Promise((resolve) => setTimeout(resolve, 300));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
           importedChannels.push({ index: i, name: channel.name || '(unnamed)' });
           logger.info(`✅ Imported channel ${i}`);
         } catch (error) {
@@ -3175,7 +3177,7 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
         await configImportManager.setLoRaConfig(loraConfigToImport);
         // LoRa config triggers heavier processing (frequency calculations, radio reconfiguration)
         // so allow extra time before committing
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 1500));
         loraImported = true;
         requiresReboot = true; // LoRa config requires reboot when committed
         logger.info(`✅ Imported LoRa config`);
