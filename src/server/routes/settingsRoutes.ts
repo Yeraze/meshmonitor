@@ -14,7 +14,7 @@ import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { securityDigestService } from '../services/securityDigestService.js';
-import { VALID_SETTINGS_KEYS } from '../constants/settings.js';
+import { VALID_SETTINGS_KEYS, stripSecretSettings } from '../constants/settings.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
 
@@ -141,9 +141,14 @@ const router = Router();
 
 // GET /settings — read settings (public)
 // ?sourceId=<id>  → global settings merged with per-source overrides (source wins)
+//
+// Secret-bearing keys (VAPID private key, apprise URLs, analytics tokens, etc.)
+// are stripped from the response for non-admin callers (MM-SEC-1) — see
+// `stripSecretSettings` and `SECRET_SETTINGS_KEYS` in `constants/settings.ts`.
 router.get('/', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const sourceId = typeof req.query.sourceId === 'string' ? req.query.sourceId : null;
+    const isAdmin = (req as any).user?.isAdmin === true;
 
     const globalSettings = await databaseService.settings.getAllSettings();
 
@@ -154,14 +159,15 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
         if (!k.startsWith('source:')) cleaned[k] = v;
       }
       const sourceSettings = await databaseService.settings.getSourceSettings(sourceId);
-      res.json({ ...cleaned, ...sourceSettings });
+      const merged = { ...cleaned, ...sourceSettings };
+      res.json(stripSecretSettings(merged, isAdmin));
     } else {
       // Return only non-namespaced keys for global view
       const cleaned: Record<string, string> = {};
       for (const [k, v] of Object.entries(globalSettings)) {
         if (!k.startsWith('source:')) cleaned[k] = v;
       }
-      res.json(cleaned);
+      res.json(stripSecretSettings(cleaned, isAdmin));
     }
   } catch (error) {
     logger.error('Error fetching settings:', error);

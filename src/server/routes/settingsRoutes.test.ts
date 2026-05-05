@@ -121,6 +121,68 @@ describe('settingsRoutes', () => {
 
       expect(res.body).toHaveProperty('error');
     });
+
+    // MM-SEC-1: secret-bearing keys must be stripped from non-admin responses.
+    describe('secret stripping (MM-SEC-1)', () => {
+      const populateSecrets = () => {
+        (databaseService as any).settings.getAllSettings.mockResolvedValue({
+          meshName: 'TestMesh',
+          vapid_public_key: 'BPUBLIC',
+          vapid_private_key: 'PRIVATE-must-not-leak',
+          vapid_subject: 'mailto:admin@x',
+          securityDigestAppriseUrl: 'mailto://user:pass@smtp/',
+          analyticsConfig: '{"token":"sekret"}',
+          custom_api_token: 'tok-fffff',
+          some_secret: 'shh',
+          some_private_key: 'pk',
+        });
+      };
+
+      it('strips secrets for unauthenticated callers', async () => {
+        populateSecrets();
+        const app = createApp(null);
+        (databaseService as any).findUserByIdAsync.mockResolvedValue(null);
+
+        const res = await request(app).get('/api/settings').expect(200);
+
+        expect(res.body.meshName).toBe('TestMesh');
+        expect(res.body.vapid_public_key).toBe('BPUBLIC');
+        expect(res.body).not.toHaveProperty('vapid_private_key');
+        expect(res.body).not.toHaveProperty('securityDigestAppriseUrl');
+        expect(res.body).not.toHaveProperty('analyticsConfig');
+        // Tail-pattern denylist
+        expect(res.body).not.toHaveProperty('custom_api_token');
+        expect(res.body).not.toHaveProperty('some_secret');
+        expect(res.body).not.toHaveProperty('some_private_key');
+      });
+
+      it('strips secrets for authenticated non-admin callers', async () => {
+        populateSecrets();
+        const nonAdmin = { id: 2, username: 'viewer', isActive: true, isAdmin: false };
+        // optionalAuth re-resolves the user from the session via findUserByIdAsync;
+        // mock that lookup so the middleware sees the non-admin identity.
+        (databaseService as any).findUserByIdAsync.mockResolvedValue(nonAdmin);
+        const app = createApp(nonAdmin);
+
+        const res = await request(app).get('/api/settings').expect(200);
+
+        expect(res.body).not.toHaveProperty('vapid_private_key');
+        expect(res.body).not.toHaveProperty('securityDigestAppriseUrl');
+        expect(res.body).not.toHaveProperty('analyticsConfig');
+      });
+
+      it('returns secrets for admin callers', async () => {
+        populateSecrets();
+        const app = createApp(adminUser);
+
+        const res = await request(app).get('/api/settings').expect(200);
+
+        expect(res.body.vapid_private_key).toBe('PRIVATE-must-not-leak');
+        expect(res.body.securityDigestAppriseUrl).toBe('mailto://user:pass@smtp/');
+        expect(res.body.analyticsConfig).toBe('{"token":"sekret"}');
+        expect(res.body.custom_api_token).toBe('tok-fffff');
+      });
+    });
   });
 
   describe('POST /api/settings', () => {

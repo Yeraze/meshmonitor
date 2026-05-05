@@ -270,3 +270,44 @@ export const PER_SOURCE_SETTINGS_KEYS = [
 ] as const;
 
 export type PerSourceSettingKey = typeof PER_SOURCE_SETTINGS_KEYS[number];
+
+/**
+ * Settings keys whose values are secret and must never be returned to
+ * non-admin callers from `GET /api/settings`. The plain VAPID public key
+ * is intentionally NOT included — browsers need it to subscribe.
+ *
+ * Auto-generated VAPID material lives under `vapid_*` keys (see
+ * `pushNotificationService`). Other historical keys live alongside the
+ * regular allowlist (e.g. `securityDigestAppriseUrl`, `analyticsConfig`).
+ */
+export const SECRET_SETTINGS_KEYS = new Set<string>([
+  'vapid_private_key',
+  'securityDigestAppriseUrl',
+  'analyticsConfig',
+]);
+
+/**
+ * Tail-pattern denylist used in addition to the explicit set above so that
+ * future secret-bearing keys are stripped by default. Anything matching
+ * `*_private_key`, `*_secret`, or `*_token` (case-insensitive) is dropped.
+ */
+export const SECRET_SETTINGS_KEY_PATTERN = /(_private_key|_secret|_token)$/i;
+
+/**
+ * Strip secret-bearing keys from a settings map. Admins receive the
+ * unmodified map; everyone else (including unauthenticated callers) gets
+ * the secret keys removed.
+ */
+export function stripSecretSettings<T extends Record<string, unknown>>(
+  settings: T,
+  isAdmin: boolean
+): Partial<T> {
+  if (isAdmin) return settings;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(settings)) {
+    if (SECRET_SETTINGS_KEYS.has(k)) continue;
+    if (SECRET_SETTINGS_KEY_PATTERN.test(k)) continue;
+    out[k] = v;
+  }
+  return out as Partial<T>;
+}
