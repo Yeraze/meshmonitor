@@ -2895,7 +2895,9 @@ apiRouter.post('/channels/reorder', requirePermission('channel_0', 'write'), asy
       : meshtasticManager);
     logger.info(`🔄 Beginning channel reorder: ${newOrder.join(',')}`);
     await reorderManager.beginEditSettings();
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // Pacing: device firmware silently drops admin packets that arrive too soon
+    // after BeginEditSettings on TCP PhoneAPI. See /channels/import-config for details.
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     for (let newSlot = 0; newSlot < 8; newSlot++) {
       const oldSlot = newOrder[newSlot];
@@ -2940,9 +2942,11 @@ apiRouter.post('/channels/reorder', requirePermission('channel_0', 'write'), asy
         });
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
+    // Pacing: leave time for the last SetChannel to be processed before commit.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
     // Commit to device
     await reorderManager.commitEditSettings();
     logger.info(`✅ Channel reorder committed`);
@@ -7495,6 +7499,9 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
       // Use existing local import logic
       try {
         await aicManager.beginEditSettings();
+        // Pacing: device firmware silently drops admin packets that arrive too soon
+        // after BeginEditSettings on TCP PhoneAPI. See /channels/import-config for details.
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       } catch (error) {
         logger.error(`❌ Failed to begin edit settings transaction:`, error);
         throw new Error('Failed to start configuration transaction');
@@ -7517,6 +7524,8 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
               downlinkEnabled: channel.downlinkEnabled,
               positionPrecision: channel.positionPrecision,
             });
+            // Pacing between admin packets — same firmware drop pattern.
+            await new Promise((resolve) => setTimeout(resolve, 1000));
             importedChannels.push({ index: i, name: channel.name || '(unnamed)' });
           } catch (error) {
             logger.error(`❌ Failed to import channel ${i}:`, error);
@@ -7532,6 +7541,9 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
             txEnabled: true,
           };
           await aicManager.setLoRaConfig(loraConfigToImport);
+          // Pacing: LoRa config triggers heavier device processing; allow extra time
+          // before commit so the device has finished applying it.
+          await new Promise((resolve) => setTimeout(resolve, 1500));
           loraImported = true;
           requiresReboot = true;
         } catch (error) {
@@ -7570,8 +7582,10 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
             }, sessionPasskey);
             await aicManager.sendAdminCommand(adminMessage, destinationNodeNum);
             importedChannels.push({ index: i, name: channel.name || '(unnamed)' });
-            // Small delay between channel updates for remote nodes
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Pacing between admin commands — remote node travels via radio so
+            // gaps are mostly airtime-bound, but the device-side admin handler
+            // exhibits the same drop pattern as local TCP under burst.
+            await new Promise(resolve => setTimeout(resolve, 1000));
           } catch (error) {
             logger.error(`❌ Failed to import channel ${i}:`, error);
           }
