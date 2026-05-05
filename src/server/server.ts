@@ -2560,11 +2560,23 @@ apiRouter.get('/channels', optionalAuth(), async (req, res) => {
 });
 
 // Export a specific channel configuration
-apiRouter.get('/channels/:id/export', requirePermission('channel_0', 'read'), async (req, res) => {
+apiRouter.get('/channels/:id/export', requireAuth(), async (req, res) => {
   try {
     const channelId = parseInt(req.params.id);
     if (isNaN(channelId)) {
       return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    // MM-SEC-4: gate per-channel. Export includes the raw PSK, so the caller
+    // must have read permission for the SPECIFIC channel they're exporting,
+    // not just channel_0.
+    const channelResource = `channel_${channelId}` as import('../types/permission.js').ResourceType;
+    if (!req.user?.isAdmin && !(req.user && await hasPermission(req.user, channelResource, 'read'))) {
+      return res.status(403).json({
+        error: 'Insufficient permissions',
+        code: 'FORBIDDEN',
+        required: { resource: channelResource, action: 'read' },
+      });
     }
 
     const channel = await databaseService.channels.getChannelById(channelId);
@@ -2667,11 +2679,22 @@ async function migrateMessagesIfChannelsMoved(beforeSnapshot: { id: number; psk?
 }
 
 // Update a channel configuration
-apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (req, res) => {
+apiRouter.put('/channels/:id', requireAuth(), async (req, res) => {
   try {
     const channelId = parseInt(req.params.id);
     if (isNaN(channelId) || channelId < 0 || channelId > 7) {
       return res.status(400).json({ error: 'Invalid channel ID. Must be between 0-7' });
+    }
+
+    // MM-SEC-4: per-channel write gate — caller needs write permission for
+    // the SPECIFIC channel they're modifying, not just channel_0.
+    const channelResource = `channel_${channelId}` as import('../types/permission.js').ResourceType;
+    if (!req.user?.isAdmin && !(req.user && await hasPermission(req.user, channelResource, 'write'))) {
+      return res.status(403).json({
+        error: 'Insufficient permissions',
+        code: 'FORBIDDEN',
+        required: { resource: channelResource, action: 'write' },
+      });
     }
 
     const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision, sourceId: chanSourceId } = req.body;
@@ -2770,7 +2793,7 @@ apiRouter.put('/channels/:id', requirePermission('channel_0', 'write'), async (r
 });
 
 // Delete a channel's messages and database record
-apiRouter.delete('/channels/:id', requirePermission('channel_0', 'write'), async (req, res) => {
+apiRouter.delete('/channels/:id', requireAuth(), async (req, res) => {
   try {
     const channelId = parseInt(req.params.id);
     if (isNaN(channelId) || channelId < 0 || channelId > 7) {
@@ -2778,6 +2801,16 @@ apiRouter.delete('/channels/:id', requirePermission('channel_0', 'write'), async
     }
     if (channelId === 0) {
       return res.status(400).json({ error: 'Cannot delete primary channel' });
+    }
+
+    // MM-SEC-4: per-channel write gate.
+    const channelResource = `channel_${channelId}` as import('../types/permission.js').ResourceType;
+    if (!req.user?.isAdmin && !(req.user && await hasPermission(req.user, channelResource, 'write'))) {
+      return res.status(403).json({
+        error: 'Insufficient permissions',
+        code: 'FORBIDDEN',
+        required: { resource: channelResource, action: 'write' },
+      });
     }
 
     // sourceId is required so the channel and its messages are removed from a single source
@@ -2801,11 +2834,22 @@ apiRouter.delete('/channels/:id', requirePermission('channel_0', 'write'), async
 });
 
 // Import a channel configuration to a specific slot
-apiRouter.post('/channels/:slotId/import', requirePermission('channel_0', 'write'), async (req, res) => {
+apiRouter.post('/channels/:slotId/import', requireAuth(), async (req, res) => {
   try {
     const slotId = parseInt(req.params.slotId);
     if (isNaN(slotId) || slotId < 0 || slotId > 7) {
       return res.status(400).json({ error: 'Invalid slot ID. Must be between 0-7' });
+    }
+
+    // MM-SEC-4: per-channel write gate. Importing a channel into slot N
+    // overwrites slot N — caller needs write permission for that slot.
+    const slotResource = `channel_${slotId}` as import('../types/permission.js').ResourceType;
+    if (!req.user?.isAdmin && !(req.user && await hasPermission(req.user, slotResource, 'write'))) {
+      return res.status(403).json({
+        error: 'Insufficient permissions',
+        code: 'FORBIDDEN',
+        required: { resource: slotResource, action: 'write' },
+      });
     }
 
     const { channel, sourceId: importSourceId } = req.body;
@@ -2910,7 +2954,7 @@ apiRouter.post('/channels/:slotId/import', requirePermission('channel_0', 'write
 });
 
 // Reorder device channel slots (drag-and-drop)
-apiRouter.post('/channels/reorder', requirePermission('channel_0', 'write'), async (req, res) => {
+apiRouter.post('/channels/reorder', requireAuth(), async (req, res) => {
   try {
     const { newOrder, sourceId: reorderSourceId } = req.body;
 
@@ -2927,6 +2971,31 @@ apiRouter.post('/channels/reorder', requirePermission('channel_0', 'write'), asy
     const isIdentity = newOrder.every((v: number, i: number) => v === i);
     if (isIdentity) {
       return res.json({ success: true, requiresReboot: false });
+    }
+
+    // MM-SEC-4: per-channel write gate. Reorder rewrites every slot whose
+    // contents change; for each one, the caller must have write permission.
+    // (Affected set is symmetric for permutations, so checking the destination
+    // slots covers the source slots too.)
+    if (!req.user?.isAdmin) {
+      const affectedSlots = new Set<number>();
+      for (let i = 0; i < newOrder.length; i++) {
+        if (newOrder[i] !== i) {
+          affectedSlots.add(i);
+          affectedSlots.add(newOrder[i] as number);
+        }
+      }
+      for (const slot of affectedSlots) {
+        const slotResource = `channel_${slot}` as import('../types/permission.js').ResourceType;
+        if (!(req.user && await hasPermission(req.user, slotResource, 'write'))) {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            code: 'FORBIDDEN',
+            required: { resource: slotResource, action: 'write' },
+            message: `Reorder requires write permission for every affected channel slot (missing: channel_${slot})`,
+          });
+        }
+      }
     }
 
     const allChannels = await databaseService.channels.getAllChannels();
