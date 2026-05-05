@@ -484,12 +484,21 @@ except: pass
             fi
         fi
 
-        # Verify PSK
-        ACTUAL_PSK=$(echo "$CHANNEL_DATA" | python3 -c "import sys,json; print(json.load(sys.stdin).get('psk', ''))" 2>/dev/null)
+        # Verify PSK is set. The actual key value is stripped from
+        # /api/channels for security (MM-SEC-2); use the derived `pskSet`
+        # boolean. Falls back to the raw `psk` field for compatibility with
+        # older builds that still emitted it.
+        ACTUAL_PSK_SET=$(echo "$CHANNEL_DATA" | python3 -c "
+import sys, json
+ch = json.load(sys.stdin)
+if 'pskSet' in ch:
+    print('true' if ch['pskSet'] else 'false')
+else:
+    print('true' if ch.get('psk') else 'false')
+" 2>/dev/null)
         echo "    PSK:"
         if [ "$psk_required" = "true" ]; then
-            if [ -n "$ACTUAL_PSK" ] && [ "$ACTUAL_PSK" != "null" ]; then
-                echo "      ${ACTUAL_PSK:0:20}... (truncated)"
+            if [ "$ACTUAL_PSK_SET" = "true" ]; then
                 echo -e "      ${GREEN}✓ PASS${NC}: PSK is set"
             else
                 echo "      (none)"

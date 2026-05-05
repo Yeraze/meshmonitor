@@ -48,8 +48,18 @@ describe('channelView', () => {
     it('whitelists exactly the expected fields', () => {
       const out = transformChannel(dbRow);
       expect(Object.keys(out).sort()).toEqual(
-        ['id', 'name', 'role', 'roleName', 'uplinkEnabled', 'downlinkEnabled', 'positionPrecision'].sort()
+        [
+          'id', 'name', 'role', 'roleName',
+          'uplinkEnabled', 'downlinkEnabled', 'positionPrecision', 'pskSet',
+        ].sort()
       );
+    });
+
+    it('exposes pskSet as a boolean derived from the underlying psk', () => {
+      expect(transformChannel({ ...dbRow, psk: 'AdxU...' }).pskSet).toBe(true);
+      expect(transformChannel({ ...dbRow, psk: '' }).pskSet).toBe(false);
+      expect(transformChannel({ ...dbRow, psk: null }).pskSet).toBe(false);
+      expect(transformChannel({ ...dbRow, psk: undefined }).pskSet).toBe(false);
     });
 
     it('annotates roleName from role', () => {

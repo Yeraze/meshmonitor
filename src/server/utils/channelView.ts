@@ -23,6 +23,9 @@ export function getRoleName(role: number | undefined): string {
 }
 
 export function transformChannel(channel: any) {
+  // `pskSet` is a derived boolean so callers (UI badges, system tests,
+  // configuration export flows) can answer "is a PSK configured on this
+  // channel?" without exposing the actual key material.
   return {
     id: channel.id,
     name: channel.name,
@@ -31,5 +34,6 @@ export function transformChannel(channel: any) {
     uplinkEnabled: channel.uplinkEnabled,
     downlinkEnabled: channel.downlinkEnabled,
     positionPrecision: channel.positionPrecision,
+    pskSet: !!channel.psk,
   };
 }
