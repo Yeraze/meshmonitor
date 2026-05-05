@@ -115,7 +115,7 @@ class ChannelUrlService {
             }
           }
 
-          if (ch.name) channel.name = ch.name;
+          if (ch.name !== undefined) channel.name = ch.name;
           if (ch.id !== undefined) channel.id = ch.id;
           if (ch.role !== undefined) channel.role = ch.role;
           if (ch.uplinkEnabled !== undefined) channel.uplinkEnabled = ch.uplinkEnabled;
