@@ -21,6 +21,7 @@ import { getSessionMiddleware } from './auth/sessionConfig.js';
 import { initializeWebSocket } from './services/webSocketService.js';
 import { initializeOIDC } from './auth/oidcAuth.js';
 import { optionalAuth, requireAuth, requirePermission, requireAdmin, hasPermission } from './auth/authMiddleware.js';
+import { transformChannel } from './utils/channelView.js';
 import { apiLimiter } from './middleware/rateLimiters.js';
 import { setupAccessLogger } from './middleware/accessLogger.js';
 import { getEnvironmentConfig, resetEnvironmentConfig } from './config/environment.js';
@@ -2444,29 +2445,60 @@ apiRouter.get('/channels/debug', requirePermission('messages', 'read'), async (_
 });
 
 // Get all channels (unfiltered, for export/config purposes)
-apiRouter.get('/channels/all', requirePermission('channel_0', 'read'), async (req, res) => {
+// MM-SEC-2: Per-row permission gate + transformChannel projection so the
+// raw `psk` column never appears in any HTTP response. Anonymous callers
+// only see channels they have `channel_${id}:read` for; admins see all.
+apiRouter.get('/channels/all', optionalAuth(), async (req, res) => {
   try {
     const allChannelsSourceId = req.query.sourceId as string | undefined;
     const allChannels = await databaseService.channels.getAllChannels(allChannelsSourceId);
-    logger.debug(`📡 Serving all ${allChannels.length} channels (unfiltered)`);
-    res.json(allChannels);
+    const isAdmin = req.user?.isAdmin === true;
+
+    const accessible: typeof allChannels = [];
+    for (const channel of allChannels) {
+      if (isAdmin) {
+        accessible.push(channel);
+        continue;
+      }
+      const channelResource = `channel_${channel.id}` as import('../types/permission.js').ResourceType;
+      if (req.user && await hasPermission(req.user, channelResource, 'read')) {
+        accessible.push(channel);
+      }
+    }
+
+    logger.debug(`📡 Serving ${accessible.length} channels (per-row filtered, of ${allChannels.length} total)`);
+    res.json(accessible.map(transformChannel));
   } catch (error) {
     logger.error('Error fetching all channels:', error);
     res.status(500).json({ error: 'Failed to fetch channels' });
   }
 });
 
-apiRouter.get('/channels', requirePermission('channel_0', 'read'), async (req, res) => {
+apiRouter.get('/channels', optionalAuth(), async (req, res) => {
   try {
     const channelsSourceId = req.query.sourceId as string | undefined;
     const allChannels = await databaseService.channels.getAllChannels(channelsSourceId);
+    const isAdmin = req.user?.isAdmin === true;
+
+    // Per-row permission gate (MM-SEC-2). Build the authorized set first.
+    const accessible: typeof allChannels = [];
+    for (const channel of allChannels) {
+      if (isAdmin) {
+        accessible.push(channel);
+        continue;
+      }
+      const channelResource = `channel_${channel.id}` as import('../types/permission.js').ResourceType;
+      if (req.user && await hasPermission(req.user, channelResource, 'read')) {
+        accessible.push(channel);
+      }
+    }
 
     // Channel 0 will be created automatically when device config syncs
     // It should have an empty name as per Meshtastic protocol
 
-    // Filter channels to only show configured ones
+    // Filter accessible channels to only show configured ones
     // Meshtastic supports channels 0-7 (8 total)
-    const filteredChannels = allChannels.filter(channel => {
+    const filteredChannels = accessible.filter(channel => {
       // Exclude disabled channels (role === 0)
       if (channel.role === 0) {
         return false;
@@ -2498,15 +2530,7 @@ apiRouter.get('/channels', requirePermission('channel_0', 'read'), async (req, r
     }
 
     logger.debug(`📡 Serving ${filteredChannels.length} filtered channels (from ${allChannels.length} total)`);
-    logger.debug(
-      `🔍 All channels in DB:`,
-      allChannels.map(ch => ({ id: ch.id, name: ch.name }))
-    );
-    logger.debug(
-      `🔍 Filtered channels:`,
-      filteredChannels.map(ch => ({ id: ch.id, name: ch.name }))
-    );
-    res.json(filteredChannels);
+    res.json(filteredChannels.map(transformChannel));
   } catch (error) {
     logger.error('Error fetching channels:', error);
     res.status(500).json({ error: 'Failed to fetch channels' });
@@ -4542,7 +4566,10 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         filteredChannels.unshift(primary);
       }
 
-      result.channels = filteredChannels;
+      // MM-SEC-2: project through transformChannel so the raw `psk` column
+      // never reaches the response, even though the per-channel permission
+      // gate above already filters out hidden channels.
+      result.channels = filteredChannels.map(transformChannel);
     } catch (error) {
       logger.error('Error fetching channels in poll:', error);
     }

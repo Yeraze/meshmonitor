@@ -9,6 +9,7 @@ import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
 import { ResourceType } from '../../../types/permission.js';
+import { transformChannel } from '../../utils/channelView.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -18,37 +19,6 @@ function getScopedSourceId(req: Request): string | undefined {
   if (fromPath) return fromPath;
   const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
   return fromQuery;
-}
-
-/**
- * Helper to convert role number to human-readable name
- */
-function getRoleName(role: number | undefined): string {
-  switch (role) {
-    case 0:
-      return 'Disabled';
-    case 1:
-      return 'Primary';
-    case 2:
-      return 'Secondary';
-    default:
-      return 'Unknown';
-  }
-}
-
-/**
- * Transform database channel to API response format
- */
-function transformChannel(channel: any) {
-  return {
-    id: channel.id,
-    name: channel.name,
-    role: channel.role,
-    roleName: getRoleName(channel.role),
-    uplinkEnabled: channel.uplinkEnabled,
-    downlinkEnabled: channel.downlinkEnabled,
-    positionPrecision: channel.positionPrecision
-  };
 }
 
 /**
