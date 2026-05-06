@@ -76,25 +76,24 @@ const env = getEnvironmentConfig();
 /**
  * Gets the scripts directory path.
  * In development, uses relative path from project root (data/scripts).
- * In production, uses absolute path (/data/scripts).
+ * In production, uses DATA_DIR env var (set by desktop sidecar) or defaults to /data.
  */
 const getScriptsDirectory = (): string => {
+  let scriptsDir: string;
+
   if (env.isDevelopment) {
-    // In development, use relative path from project root
     const projectRoot = path.resolve(__dirname, '../../');
-    const devScriptsDir = path.join(projectRoot, 'data', 'scripts');
-
-    // Ensure directory exists
-    if (!fs.existsSync(devScriptsDir)) {
-      fs.mkdirSync(devScriptsDir, { recursive: true });
-      logger.info(`📁 Created scripts directory: ${devScriptsDir}`);
-    }
-
-    return devScriptsDir;
+    scriptsDir = path.join(projectRoot, 'data', 'scripts');
+  } else {
+    scriptsDir = path.join(process.env.DATA_DIR || '/data', 'scripts');
   }
 
-  // In production, use absolute path
-  return '/data/scripts';
+  if (!fs.existsSync(scriptsDir)) {
+    fs.mkdirSync(scriptsDir, { recursive: true });
+    logger.info(`📁 Created scripts directory: ${scriptsDir}`);
+  }
+
+  return scriptsDir;
 };
 
 /**

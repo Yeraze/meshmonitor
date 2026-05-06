@@ -8026,7 +8026,7 @@ class MeshtasticManager implements ISourceManager {
    */
   /**
    * Resolves a script path from the stored format (/data/scripts/...) to the actual file system path.
-   * Handles both development (relative path) and production (absolute path) environments.
+   * In production, honors DATA_DIR env var (set by desktop sidecar) and falls back to /data.
    */
   private resolveScriptPath(scriptPath: string): string | null {
     // Validate script path (security check)
@@ -8034,26 +8034,23 @@ class MeshtasticManager implements ISourceManager {
       logger.error(`🚫 Invalid script path: ${scriptPath}`);
       return null;
     }
-    
+
     const env = getEnvironmentConfig();
-    
+
     let scriptsDir: string;
-    
+
     if (env.isDevelopment) {
-      // In development, use relative path from project root
       const projectRoot = path.resolve(process.cwd());
       scriptsDir = path.join(projectRoot, 'data', 'scripts');
-      
-      // Ensure directory exists
-      if (!fs.existsSync(scriptsDir)) {
-        fs.mkdirSync(scriptsDir, { recursive: true });
-        logger.debug(`📁 Created scripts directory: ${scriptsDir}`);
-      }
     } else {
-      // In production, use absolute path
-      scriptsDir = '/data/scripts';
+      scriptsDir = path.join(process.env.DATA_DIR || '/data', 'scripts');
     }
-    
+
+    if (!fs.existsSync(scriptsDir)) {
+      fs.mkdirSync(scriptsDir, { recursive: true });
+      logger.debug(`📁 Created scripts directory: ${scriptsDir}`);
+    }
+
     const filename = path.basename(scriptPath);
     const resolvedPath = path.join(scriptsDir, filename);
     

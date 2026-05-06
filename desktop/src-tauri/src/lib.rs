@@ -51,6 +51,7 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
     let config = Config::load()?;
 
     // Get paths
+    let data_path = config::get_data_path()?;
     let db_path = config::get_database_path()?;
     let logs_path = config::get_logs_path()?;
 
@@ -84,6 +85,7 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
     log_to_file(&logs_path, &format!("Server path: {:?}", server_path));
     log_to_file(&logs_path, &format!("Server dir: {:?}", server_dir));
     log_to_file(&logs_path, &format!("Database: {:?}", db_path));
+    log_to_file(&logs_path, &format!("Data dir: {:?}", data_path));
     log_to_file(&logs_path, &format!("Logs: {:?}", logs_path));
 
     // Check if required files exist
@@ -158,6 +160,7 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
         .env("MESHTASTIC_NODE_IP", &config.meshtastic_ip)
         .env("MESHTASTIC_TCP_PORT", config.meshtastic_port.to_string())
         .env("DATABASE_PATH", db_path.to_string_lossy().to_string())
+        .env("DATA_DIR", data_path.to_string_lossy().to_string())
         .env("SESSION_SECRET", &config.session_secret)
         .env("ALLOWED_ORIGINS", {
             // Always include localhost
