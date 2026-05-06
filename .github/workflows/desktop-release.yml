@@ -681,7 +681,16 @@ jobs:
           cp package-lock.json desktop/resources/dist/
           # Install production-only dependencies into the bundle (matches Windows step).
           # Excludes dev deps (vitest, esbuild, drizzle-kit, tsx, etc) — shrinks the DMG by hundreds of MB.
-          (cd desktop/resources/dist && npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund)
+          # IMPORTANT: this runner is macos-14 (arm64) but the bundle ships x64 binaries.
+          # Force prebuild-install (better-sqlite3 et al.) to fetch x64 prebuilds — without
+          # this, native .node files are downloaded for arm64 and the x64 DMG fails to load
+          # them at runtime (see issue #2901).
+          (cd desktop/resources/dist && \
+            npm_config_arch=x64 \
+            npm_config_target_arch=x64 \
+            npm_config_platform=darwin \
+            npm_config_target_platform=darwin \
+            npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund)
 
       # Sign all native binaries in node_modules for notarization
       # Native addons with JIT also need the entitlements
