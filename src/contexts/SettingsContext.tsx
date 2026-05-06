@@ -80,6 +80,7 @@ interface SettingsContextType {
   defaultMapCenterLat: number | null;
   defaultMapCenterLon: number | null;
   defaultMapCenterZoom: number | null;
+  defaultLandingPage: string;
   theme: Theme;
   language: string;
   customThemes: CustomTheme[];
@@ -121,6 +122,7 @@ interface SettingsContextType {
   setDefaultMapCenterLat: (lat: number | null) => void;
   setDefaultMapCenterLon: (lon: number | null) => void;
   setDefaultMapCenterZoom: (zoom: number | null) => void;
+  setDefaultLandingPage: (value: string) => void;
   setTheme: (theme: Theme) => void;
   setLanguage: (language: string) => void;
   loadCustomThemes: () => Promise<void>;
@@ -274,6 +276,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const [defaultMapCenterZoom, setDefaultMapCenterZoomState] = useState<number | null>(() => {
     const saved = localStorage.getItem('defaultMapCenterZoom');
     return saved ? parseInt(saved, 10) : null;
+  });
+
+  // Default landing page when visiting root URL: 'unified' or a sourceId UUID.
+  const [defaultLandingPage, setDefaultLandingPageState] = useState<string>(() => {
+    return localStorage.getItem('defaultLandingPage') || 'unified';
   });
 
   const [theme, setThemeState] = useState<Theme>(() => {
@@ -519,6 +526,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     } else {
       localStorage.removeItem('defaultMapCenterZoom');
     }
+  };
+
+  const setDefaultLandingPage = (value: string) => {
+    const normalized = value || 'unified';
+    setDefaultLandingPageState(normalized);
+    localStorage.setItem('defaultLandingPage', normalized);
   };
 
   /**
@@ -1102,6 +1115,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
+          if (typeof settings.defaultLandingPage === 'string' && settings.defaultLandingPage.length > 0) {
+            setDefaultLandingPageState(settings.defaultLandingPage);
+            localStorage.setItem('defaultLandingPage', settings.defaultLandingPage);
+          }
+
           if (settings.theme) {
             // Accept any theme (built-in or custom)
             setThemeState(settings.theme as Theme);
@@ -1302,6 +1320,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     defaultMapCenterLat,
     defaultMapCenterLon,
     defaultMapCenterZoom,
+    defaultLandingPage,
     theme,
     language,
     customThemes,
@@ -1343,6 +1362,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setDefaultMapCenterLat,
     setDefaultMapCenterLon,
     setDefaultMapCenterZoom,
+    setDefaultLandingPage,
     setTheme,
     setLanguage,
     loadCustomThemes,

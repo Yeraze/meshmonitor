@@ -385,7 +385,7 @@ export default function UnifiedMessagesPage() {
   return (
     <div className="unified-page unified-page--chat">
       <div className="unified-header">
-        <button className="unified-header__back" onClick={() => navigate('/')}>
+        <button className="unified-header__back" onClick={() => navigate('/', { state: { showList: true } })}>
           {t('unified.back_to_sources')}
         </button>
         <div className="unified-header__title">

@@ -11,6 +11,13 @@ import DashboardPage from './DashboardPage';
 // Mocks
 // ---------------------------------------------------------------------------
 
+// Module-scoped navigate spy so tests can verify default-landing-page redirects.
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return { ...actual, useNavigate: () => mockNavigate };
+});
+
 vi.mock('../hooks/useDashboardData', () => ({
   useDashboardSources: vi.fn(() => ({
     data: [{ id: 'src-1', name: 'Test Source', type: 'meshtastic_tcp', enabled: true }],
@@ -68,6 +75,7 @@ vi.mock('../contexts/SettingsContext', () => ({
     customTilesets: [],
     defaultMapCenterLat: 30.0,
     defaultMapCenterLon: -90.0,
+    defaultLandingPage: 'unified',
   })),
 }));
 
@@ -288,6 +296,68 @@ describe('DashboardPage', () => {
       });
       // Failed save must NOT invalidate the cache (avoid flapping UI on errors)
       expect(spy).not.toHaveBeenCalledWith({ queryKey: ['dashboard', 'sources'] });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Default landing page redirect (issue #2917). Admin sets a source as the
+  // default landing page; visiting `/` redirects to /source/:sourceId/.
+  // The Sources button passes location.state.showList=true to bypass.
+  // -------------------------------------------------------------------------
+  describe('default landing page redirect', () => {
+    async function setLanding(value: string) {
+      const { useSettings } = await import('../contexts/SettingsContext');
+      vi.mocked(useSettings).mockReturnValue({
+        mapTileset: 'openstreetmap',
+        customTilesets: [],
+        defaultMapCenterLat: 30.0,
+        defaultMapCenterLon: -90.0,
+        defaultLandingPage: value,
+      } as any);
+    }
+
+    function renderAt(initialEntries: any[]) {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      return render(
+        <QueryClientProvider client={client}>
+          <MemoryRouter initialEntries={initialEntries}>
+            <DashboardPage />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+    }
+
+    beforeEach(() => {
+      mockNavigate.mockClear();
+    });
+
+    it('redirects to /source/:sourceId/ when default landing page is a source', async () => {
+      await setLanding('src-1');
+      renderAt(['/']);
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/source/src-1/', { replace: true });
+      });
+    });
+
+    it('does NOT redirect when location.state.showList is true (Sources button)', async () => {
+      await setLanding('src-1');
+      renderAt([{ pathname: '/', state: { showList: true } }]);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it('does NOT redirect when default landing page is "unified"', async () => {
+      await setLanding('unified');
+      renderAt(['/']);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it('does NOT redirect when the configured source is missing', async () => {
+      await setLanding('does-not-exist');
+      renderAt(['/']);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(mockNavigate).not.toHaveBeenCalled();
     });
   });
 });

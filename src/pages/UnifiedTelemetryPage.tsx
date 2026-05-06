@@ -358,7 +358,7 @@ export default function UnifiedTelemetryPage() {
   return (
     <div className="unified-page">
       <div className="unified-header">
-        <button className="unified-header__back" onClick={() => navigate('/')}>{t('unified.back_to_sources')}</button>
+        <button className="unified-header__back" onClick={() => navigate('/', { state: { showList: true } })}>{t('unified.back_to_sources')}</button>
 
         <div className="unified-header__title">
           <h1>{t('unified.telemetry.title')}</h1>

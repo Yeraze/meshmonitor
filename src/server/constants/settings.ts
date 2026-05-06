@@ -143,6 +143,7 @@ export const VALID_SETTINGS_KEYS = [
   'tracerouteFilterHopsEnabled',
   'tracerouteFilterHopsMin',
   'tracerouteFilterHopsMax',
+  'defaultLandingPage',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];

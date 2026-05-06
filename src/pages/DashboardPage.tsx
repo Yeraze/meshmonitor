@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { SettingsProvider, useSettings } from '../contexts/SettingsContext';
@@ -41,7 +42,9 @@ function DashboardInner() {
   const { authStatus } = useAuth();
   const { getToken } = useCsrf();
   const queryClient = useQueryClient();
-  const { mapTileset, customTilesets, defaultMapCenterLat, defaultMapCenterLon, maxNodeAgeHours } = useSettings();
+  const { mapTileset, customTilesets, defaultMapCenterLat, defaultMapCenterLon, maxNodeAgeHours, defaultLandingPage } = useSettings();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   /**
    * Invalidate the source list cache after a mutation so the sidebar
@@ -92,6 +95,21 @@ function DashboardInner() {
   // ----- data -----
   const { data: sources = [], isSuccess } = useDashboardSources();
   const sourceIds = sources.map((s) => s.id);
+
+  // Apply admin-configured default landing page (issue #2917). When the
+  // user lands on `/`, redirect to /source/:sourceId/ if the setting points
+  // at a real source. The "Sources" button always passes
+  // location.state.showList=true so users can return to the unified view
+  // even if a default has been configured.
+  const skipDefaultLanding = (location.state as { showList?: boolean } | null)?.showList === true;
+  useEffect(() => {
+    if (skipDefaultLanding) return;
+    if (!isSuccess) return;
+    if (!defaultLandingPage || defaultLandingPage === 'unified') return;
+    const target = sources.find((s) => s.id === defaultLandingPage);
+    if (!target) return;
+    navigate(`/source/${target.id}/`, { replace: true });
+  }, [skipDefaultLanding, isSuccess, defaultLandingPage, sources, navigate]);
   const statusMap = useSourceStatuses(sourceIds);
   const unifiedStatus = useUnifiedStatus();
 
