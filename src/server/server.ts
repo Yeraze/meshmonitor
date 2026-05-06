@@ -9456,18 +9456,18 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
     const ext = script.split('.').pop()?.toLowerCase();
     let interpreter: string;
 
-    const isDev = process.env.NODE_ENV !== 'production';
+    const useSystemBin = process.env.NODE_ENV !== 'production' || process.env.IS_DESKTOP === 'true';
 
     switch (ext) {
       case 'js':
       case 'mjs':
-        interpreter = isDev ? 'node' : '/usr/local/bin/node';
+        interpreter = useSystemBin ? 'node' : '/usr/local/bin/node';
         break;
       case 'py':
-        interpreter = isDev ? 'python' : '/opt/apprise-venv/bin/python3';
+        interpreter = useSystemBin ? 'python3' : '/opt/apprise-venv/bin/python3';
         break;
       case 'sh':
-        interpreter = isDev ? 'sh' : '/bin/sh';
+        interpreter = useSystemBin ? 'sh' : '/bin/sh';
         break;
       default:
         return res.status(400).json({ error: `Unsupported script extension: ${ext}` });
