@@ -297,7 +297,11 @@ export class NodesRepository extends BaseRepository {
     }
     // Fall back to 'default' source for callers that predate multi-source.
     // After migration 029 the primary key is (nodeNum, sourceId) so a value is always needed.
-    const effectiveSourceId = sourceId ?? 'default';
+    // If the caller omits the sourceId arg but the node object itself carries a sourceId
+    // (e.g. cached node objects produced by DatabaseService), prefer that over 'default' —
+    // otherwise we'd silently insert a stray 'default' row and lose the update on the
+    // real source row (see issue #2902).
+    const effectiveSourceId = sourceId ?? (nodeData as { sourceId?: string }).sourceId ?? 'default';
 
     const now = this.now();
     const { nodes } = this.tables;

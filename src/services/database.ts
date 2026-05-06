@@ -2143,8 +2143,10 @@ class DatabaseService {
         this.nodesCache.set(this.cacheKey(nodeData.nodeNum, upsertSourceId), updatedNode);
 
         // Fire and forget async version - pass the full merged node to avoid race conditions
-        // where a subsequent update (like welcomedAt) could be overwritten
-        this.nodesRepo.upsertNode(updatedNode).catch(err => {
+        // where a subsequent update (like welcomedAt) could be overwritten. Pass sourceId
+        // explicitly so the upsert targets the right row even on the off chance the
+        // node object's sourceId field gets stripped somewhere in the cache update path.
+        this.nodesRepo.upsertNode(updatedNode, upsertSourceId).catch(err => {
           logger.error('Failed to upsert node:', err);
         });
 
@@ -7182,9 +7184,11 @@ class DatabaseService {
       existingNode.positionOverrideIsPrivate = enabled && isPrivate;
       existingNode.updatedAt = now;
 
-      // Fire and forget async update
+      // Fire and forget async update — pass sourceId explicitly so the upsert targets
+      // the live-source row (see issue #2902). Without this the repository fell back to
+      // 'default', creating a stray row that the map never reads from.
       if (this.nodesRepo) {
-        this.nodesRepo.upsertNode(existingNode).catch(err => {
+        this.nodesRepo.upsertNode(existingNode, sourceId).catch(err => {
           logger.error('Failed to update position override:', err);
         });
       }

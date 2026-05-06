@@ -278,6 +278,38 @@ function runNodesTests(getBackend: () => TestBackend) {
     expect(node!.longName).toBe('Updated');
   });
 
+  it('upsertNode - falls back to nodeData.sourceId when sourceId arg omitted (issue #2902)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // Simulate the cached-node path used by setNodePositionOverride: the caller passes
+    // a node object whose `sourceId` field is already set, but does NOT pass sourceId
+    // as the second argument. Before the fix this silently fell back to 'default',
+    // creating a stray row instead of updating the live-source row.
+    const liveSource = 'live-src-uuid';
+    const cachedNode = makeNode(250, {
+      sourceId: liveSource,
+      positionOverrideEnabled: true,
+      latitudeOverride: 36.629,
+      longitudeOverride: -87.387,
+    });
+
+    await repo.upsertNode(cachedNode); // intentionally no second arg
+
+    const liveRow = await repo.getNode(250, liveSource);
+    expect(liveRow).not.toBeNull();
+    expect(liveRow!.positionOverrideEnabled).toBe(true);
+    expect(liveRow!.latitudeOverride).toBeCloseTo(36.629);
+    expect(liveRow!.longitudeOverride).toBeCloseTo(-87.387);
+
+    // Crucially, no stray 'default' row should have been created.
+    const defaultRow = await repo.getNode(250, 'default');
+    expect(defaultRow).toBeNull();
+  });
+
   it('upsertNode - ignores missing nodeNum or nodeId', async () => {
     const backend = getBackend();
     if (!backend.available) {
