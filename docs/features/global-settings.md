@@ -18,6 +18,7 @@ Click the **gear / settings icon** in the dashboard sidebar (it collapses into a
 - Default map center and zoom (honored by embed maps and the dashboard)
 - Default map tileset (OSM, MapTiler, custom TileServer GL)
 - Date/time format applied to all logs and panels
+- **Default Landing Page** (admin-only) — what users see at the root URL: **Unified View** (default) or any configured source. See [Settings → Default Landing Page](/features/settings#default-landing-page).
 
 ### Localization
 

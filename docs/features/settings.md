@@ -427,6 +427,30 @@ Description: Offline OpenStreetMap tiles via TileServer GL
 
 ## Display Preferences
 
+### Default Landing Page {#default-landing-page}
+
+::: tip New in 4.2.2
+Admin-only setting that controls where users land at the root URL (`/`).
+:::
+
+**Description**: Choose what every user sees when they open MeshMonitor at the root URL — the unified multi-source dashboard, or one specific source's view.
+
+**Options**:
+- **Unified View** (default) — current behavior; the multi-source dashboard with all sources side-by-side
+- **Any configured source** — `/` redirects to `/source/:sourceId/` so the page opens straight into that source
+
+**Location**: **Settings → Appearance → Default Landing Page** (admin-only — non-admin users do not see this control).
+
+**Effect**: Sets a deployment-wide default. Users still have full navigation:
+
+- The **Sources** button in any source view always returns to the unified dashboard
+- The **Back to Sources** buttons on **Unified Messages** and **Unified Telemetry** always return to the unified dashboard
+- If the configured source is later deleted or otherwise unreachable, the redirect falls back to the unified view
+
+**Use Cases**:
+- **Single-source deployments** — bypass the unified dashboard and land users directly on the only source they care about
+- **Multi-source deployments with a primary node** — keep visitors focused on the main mesh while still allowing drill-down into others
+
 ### Preferred Node List Sorting
 
 **Field Options**: Long Name, Short Name, ID, Last Heard, SNR, Battery, Hardware Model, Hops
