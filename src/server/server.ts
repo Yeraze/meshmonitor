@@ -2458,17 +2458,14 @@ apiRouter.get('/virtual-node/status', requireAuth(), (_req, res) => {
   }
 });
 
-// Debug endpoint to see all channels
-apiRouter.get('/channels/debug', requirePermission('messages', 'read'), async (_req, res) => {
-  try {
-    const allChannels = await databaseService.channels.getAllChannels();
-    logger.debug('🔍 DEBUG: All channels in database:', allChannels);
-    res.json(allChannels);
-  } catch (error) {
-    logger.error('Error fetching debug channels:', error);
-    res.status(500).json({ error: 'Failed to fetch debug channels' });
-  }
-});
+// MM-SEC-6: legacy `/api/channels/debug` removed.
+// The route was a `SELECT *` pass-through gated on the unrelated
+// `messages:read` permission, so any user with `messages:read` (granted to
+// anonymous in the standard public-viewer config) received the raw `psk`
+// column for every channel — bypassing the per-channel `channel_${id}:read`
+// gate and `transformChannel` projection that MM-SEC-2 established as the
+// pattern for read-class channel endpoints. The route had no UI consumers;
+// `/api/channels` and `/api/channels/all` cover the legitimate use case.
 
 // Get all channels (unfiltered, for export/config purposes)
 // MM-SEC-2: Per-row permission gate + transformChannel projection so the
@@ -4438,9 +4435,11 @@ apiRouter.get('/device/tx-status', optionalAuth(), async (req, res) => {
   }
 });
 
-// Get security keys (public and private) for the local node
-// Private key is sensitive - requires authentication
-apiRouter.get('/device/security-keys', requireAuth(), async (req, res) => {
+// Get security keys (public and private) for the local node.
+// MM-SEC-5: gated on `requireAdmin()` because the response includes the
+// device's PKI private key. Any holder of that key can decrypt PKI DMs the
+// local node receives and forge signed packets from it.
+apiRouter.get('/device/security-keys', requireAdmin(), async (req, res) => {
   try {
     const skSourceId = req.query.sourceId as string | undefined;
     const skManager = (skSourceId ? (sourceManagerRegistry.getManager(skSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);

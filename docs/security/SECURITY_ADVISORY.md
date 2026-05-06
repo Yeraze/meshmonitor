@@ -127,18 +127,120 @@ Each endpoint now uses `requireAuth()` plus a per-row `hasPermission(req.user, c
 
 ---
 
+---
+
+## MM-SEC-5 — Authenticated disclosure of local-node PKI private key via `GET /api/device/security-keys`
+
+**Severity:** High.
+**Affected versions:** All releases up to and including v4.2.1.
+**Fixed in:** PR (this commit on `main`); shipping in next release.
+**Reporter:** External researcher (follow-on audit).
+
+### Issue
+
+`GET /api/device/security-keys` returned the local node's `actualDeviceConfig.security` blob — both the public key and the **base64-encoded private key** — to any authenticated caller. The route's gate was `requireAuth()` only; no resource permission was checked. The route source comment named the intended property ("Private key is sensitive - requires authentication") but the gate did not enforce admin scope.
+
+### Impact
+
+The local node's PKI private key permits the holder to decrypt PKI-encrypted DMs received by the local node, forge signed packets from the local node (NodeInfo, position broadcasts, channel-signed payloads, admin-channel responses), and impersonate the local node to any party that holds its public key. The device private key is broader-scoped than a channel PSK — a PSK authenticates one channel, the device key authenticates the device across every PKI interaction.
+
+### Operator mitigation (pre-patch)
+
+Audit user accounts and disable any non-admin account whose `is_active` is `true`. Block `GET /api/device/security-keys` at the reverse proxy for non-admin sessions until the patch is deployed.
+
+### Fix
+
+Replace `requireAuth()` with `requireAdmin()` on `apiRouter.get('/device/security-keys', …)` in `src/server/server.ts`. The route now matches the rest of the admin-only device surface (`/admin/*`, `/push/vapid-subject`).
+
+---
+
+## MM-SEC-6 — Cross-channel PSK disclosure via `GET /api/channels/debug`
+
+**Severity:** Medium.
+**Affected versions:** All releases up to and including v4.2.1.
+**Fixed in:** PR (this commit on `main`); shipping in next release.
+**Reporter:** External researcher (follow-on audit).
+
+### Issue
+
+`GET /api/channels/debug` was a `SELECT * FROM channels` pass-through (`databaseService.channels.getAllChannels()`) gated on the unrelated `messages:read` permission. Any caller holding `messages:read` received the raw 32-byte `psk` for every channel, bypassing both the per-channel `channel_${id}:read` gate and the `transformChannel` projection that MM-SEC-2 established as the canonical pattern for read-class channel endpoints. Deployments that grant `messages:read` to anonymous made it anonymous-exploitable.
+
+### Impact
+
+Same as MM-SEC-2: PSK disclosure permits decryption of on-air channel traffic and injection of signed traffic on every disclosed channel.
+
+### Operator mitigation (pre-patch)
+
+Block `GET /api/channels/debug` at the reverse proxy. The route had no UI consumers — `/api/channels` and `/api/channels/all` cover the legitimate use cases.
+
+### Fix
+
+Route deleted. Comment in `src/server/server.ts` records why; the api-exercise smoke test (`tests/api-exercise-test.sh`) drops its `/channels/debug` check.
+
+---
+
+## MM-SEC-7 — Cross-channel PSK disclosure via `GET /api/sources/:id/channels`
+
+**Severity:** Medium.
+**Affected versions:** All releases up to and including v4.2.1.
+**Fixed in:** PR (this commit on `main`); shipping in next release.
+**Reporter:** External researcher (follow-on audit).
+
+### Issue
+
+Same root cause as MM-SEC-2/MM-SEC-6 — `databaseService.channels.getAllChannels(sourceId)` was passed straight to `res.json()` with `psk` intact. The route's gate (`messages:read`, scoped to the URL's source) is unrelated to channel cryptographic material. PR #2905 patched the three sibling endpoints in `server.ts` but missed this one, which lives in `src/server/routes/sourceRoutes.ts`.
+
+### Impact
+
+Identical to MM-SEC-6.
+
+### Operator mitigation (pre-patch)
+
+Block `GET /api/sources/:id/channels` at the reverse proxy until the patch is deployed; non-source-aware clients should keep using `/api/channels`.
+
+### Fix
+
+The route now uses `optionalAuth()` plus a per-row `channel_${id}:read` check scoped to the URL's source, then projects through `transformChannel` so the raw PSK is never serialized. Admins still see all channels (no PSK in any case).
+
+---
+
+## MM-SEC-8 — Inconsistent credential strip on `GET /api/sources/:id`
+
+**Severity:** Low.
+**Affected versions:** All releases up to and including v4.2.1.
+**Fixed in:** PR (this commit on `main`); shipping in next release.
+**Reporter:** External researcher (follow-on audit).
+
+### Issue
+
+`GET /api/sources` (list) destructures `password` and `apiKey` out of each source's `config` blob before responding (`sourceRoutes.ts:54`). The adjacent `GET /api/sources/:id` (singular) returned the raw row, including credentials, to any caller with `sources:read`. The two routes treated the same data class differently.
+
+### Impact
+
+Low — `sources:read` is not granted to anonymous in the standard public-viewer config, and the resource description for `sources` (`src/types/permission.ts`) does not explicitly say credentials are out of scope. Filed because two adjacent routes in the same file disagreed on the strip; the list endpoint's `void password; void apiKey; // intentionally stripped` comment was the stronger signal, and the MM-SEC-1 pattern (secrets are admin-only regardless of resource grant) aligns with that.
+
+### Fix
+
+Both endpoints now route through a shared `stripSourceSecrets(source, isAdmin)` helper. Admins still receive the full record (the source-edit UI re-posts the same blob it loaded); everyone else gets `password` and `apiKey` removed from `config`. A single helper prevents the inconsistency from recurring.
+
+---
+
 ## Coverage that's locked in
 
 - `src/server/utils/channelView.test.ts` — asserts `transformChannel` never includes `psk`, exposes `pskSet`, and the whitelist is exact.
-- `src/server/routes/settingsRoutes.test.ts` — three new cases covering anonymous, non-admin, and admin paths through the secret strip.
+- `src/server/routes/settingsRoutes.test.ts` — three cases covering anonymous, non-admin, and admin paths through the secret strip.
 - `src/server/services/systemBackupService.tables.test.ts` — asserts `push_subscriptions`, `sessions`, and `backup_history` are never in the system-backup allowlist (lock-in for MM-SEC-1 footnote 1).
+- `src/server/routes/sourceRoutes.security.test.ts` — MM-SEC-7 (PSK never serialized; per-channel filter enforced for non-admins; admin still sees all channels) and MM-SEC-8 (admins receive `password`/`apiKey`, non-admins do not, on both list and singular endpoints).
+- `src/server/routes/sourceRoutes.permissions.test.ts` — updated for MM-SEC-7's new gate (`/sourceB/channels` returns `200 []`, not `403`).
+- MM-SEC-5 (`/api/device/security-keys`) and MM-SEC-6 (`/api/channels/debug` deletion) live in the `server.ts` monolith and are exercised by `tests/api-exercise-test.sh` plus the manual reproduction in this advisory; lifting them into Vitest is tracked under "Outstanding" below.
 
 ## Outstanding
 
 - Move VAPID + apprise + analytics secrets from the `settings` k/v table into a dedicated `secrets` table (structural follow-up to MM-SEC-1's defense-in-depth strip).
-- Extract the legacy `/api/messages*` and channel-mutator endpoints from the `server.ts` monolith into dedicated route files so the MM-SEC-3 / MM-SEC-4 patches can grow integration-test coverage without dragging the whole server into a Vitest harness.
+- Extract the legacy `/api/messages*` and channel-mutator endpoints from the `server.ts` monolith into dedicated route files so MM-SEC-3 / MM-SEC-4 / MM-SEC-5 / MM-SEC-6 patches can grow integration-test coverage without dragging the whole server into a Vitest harness.
 - Document the VAPID key rotation procedure in operator-facing docs.
+- Document `sources:read` scope explicitly in `src/types/permission.ts`'s resource description (ties off the ambiguity called out in MM-SEC-8).
 
 ## Credits
 
-Reported by an external security researcher who reviewed the MeshMonitor REST surface in May 2026 and provided actionable findings with references to the affected source lines. Validation, fixes, and this advisory were prepared in coordination with the researcher.
+Reported by an external security researcher who reviewed the MeshMonitor REST surface in May 2026 and provided actionable findings with references to the affected source lines. The follow-on audit (MM-SEC-5 through MM-SEC-8) was contributed by The Official Mesh Admin <officialmeshadmin@proton.me>. Validation, fixes, and this advisory were prepared in coordination with the researchers.

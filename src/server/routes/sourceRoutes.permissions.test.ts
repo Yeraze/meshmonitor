@@ -94,7 +94,11 @@ describe('sourceRoutes — per-source permission isolation', () => {
     );
   });
 
-  const endpoints = ['/messages', '/nodes', '/traceroutes', '/channels', '/neighbor-info'];
+  // /channels deliberately excluded from this loop — see MM-SEC-7.
+  // After MM-SEC-7 the route is `optionalAuth()` + per-row `channel_${id}:read`,
+  // so the "other source denied" case returns 200 with `[]` rather than 403.
+  // Dedicated coverage lives in `sourceRoutes.security.test.ts`.
+  const endpoints = ['/messages', '/nodes', '/traceroutes', '/neighbor-info'];
 
   for (const ep of endpoints) {
     it(`GET /sourceA${ep} → 200 (allowed source)`, async () => {
@@ -107,6 +111,12 @@ describe('sourceRoutes — per-source permission isolation', () => {
       expect(res.status).toBe(403);
     });
   }
+
+  it('GET /sourceB/channels → 200 with [] (MM-SEC-7: per-channel filter, not source-level 403)', async () => {
+    const res = await request(createApp()).get('/sourceB/channels');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
 });
 
 describe('sourceRoutes — cross-source channel filtering (regression)', () => {

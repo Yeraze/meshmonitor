@@ -354,7 +354,7 @@ echo -e "${BLUE}=== Channels ===${NC}"
 
 check_json "GET /api/channels" "GET" "/api/channels" "isinstance(data, list)"
 check_json "GET /api/channels/all" "GET" "/api/channels/all" "isinstance(data, list)"
-check "GET /api/channels/debug" "$(api GET /api/channels/debug)" 200
+# /api/channels/debug removed in MM-SEC-6 — leaked PSKs to messages:read holders.
 
 # ─── Packets ──────────────────────────────────────────────
 

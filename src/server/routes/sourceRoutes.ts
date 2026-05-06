@@ -1,12 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import databaseService from '../../services/database.js';
-import { requirePermission, optionalAuth } from '../auth/authMiddleware.js';
+import { requirePermission, optionalAuth, hasPermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
 import { filterNodesByChannelPermission, maskNodeLocationByChannel, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { PortNum } from '../constants/meshtastic.js';
+import { transformChannel } from '../utils/channelView.js';
+import type { ResourceType } from '../../types/permission.js';
 
 const router = Router();
 
@@ -42,28 +44,44 @@ async function validateVirtualNodeConfig(
 // so override behaviour matches the rest of the API surface (issue #2847).
 const getEffectivePosition = (node: any) => getEffectiveDbNodePosition(node);
 
+// MM-SEC-8: shared credential strip applied to source records leaving the
+// HTTP boundary. The `mqtt` and `meshcore` source types carry connection
+// credentials in their `config` blob; both the list and singular GET
+// endpoints must remove them for non-admin callers. Admins receive the
+// full record so the existing source-edit UI continues to round-trip
+// values (the form re-posts the same blob it loaded).
+function stripSourceSecrets<T extends { config?: unknown } | null | undefined>(
+  source: T,
+  isAdmin: boolean,
+): T {
+  if (!source || isAdmin) return source;
+  const { password, apiKey, ...safeConfig } = (source.config as any) ?? {};
+  void password;
+  void apiKey;
+  return { ...source, config: safeConfig };
+}
+
 // List all sources — public so the landing page can redirect unauthenticated users
 // to the single-source view (or show the login button on the source list page).
 // Sensitive config fields are not exposed.
-router.get('/', optionalAuth(), async (_req: Request, res: Response) => {
+router.get('/', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const sources = await databaseService.sources.getAllSources();
-    // Strip sensitive config (passwords, keys) before sending to unauthenticated callers
-    // Strip password/key fields from config before sending to clients
-    const safeSources = sources.map(s => {
-      const { password, apiKey, ...safeConfig } = (s.config as any) ?? {};
-      void password; void apiKey; // intentionally stripped
-      return {
-        id: s.id,
-        name: s.name,
-        type: s.type,
-        enabled: s.enabled,
-        createdAt: s.createdAt,
-        updatedAt: s.updatedAt,
-        config: safeConfig,
-      };
-    });
-    res.json(safeSources);
+    const isAdmin = req.user?.isAdmin === true;
+    // Project to public-safe metadata, then run through the shared
+    // credential strip so admins still receive `password`/`apiKey`
+    // (needed for the source-edit UI round-trip) and everyone else
+    // does not.
+    const projected = sources.map(s => stripSourceSecrets({
+      id: s.id,
+      name: s.name,
+      type: s.type,
+      enabled: s.enabled,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+      config: s.config,
+    }, isAdmin));
+    res.json(projected);
   } catch (error) {
     logger.error('Error listing sources:', error);
     res.status(500).json({ error: 'Failed to list sources' });
@@ -71,13 +89,19 @@ router.get('/', optionalAuth(), async (_req: Request, res: Response) => {
 });
 
 // Get single source
+//
+// MM-SEC-8: pass the row through the same `stripSourceSecrets` helper as the
+// list endpoint above. `sources:read` covers source metadata (name, type,
+// enabled, etc.); credentials embedded in the `config` blob are admin-only,
+// matching the MM-SEC-1 pattern for `GET /api/settings`.
 router.get('/:id', requirePermission('sources', 'read'), async (req: Request, res: Response) => {
   try {
     const source = await databaseService.sources.getSource(req.params.id);
     if (!source) {
       return res.status(404).json({ error: 'Source not found' });
     }
-    res.json(source);
+    const isAdmin = req.user?.isAdmin === true;
+    res.json(stripSourceSecrets(source, isAdmin));
   } catch (error) {
     logger.error('Error fetching source:', error);
     res.status(500).json({ error: 'Failed to fetch source' });
@@ -428,13 +452,33 @@ router.get('/:id/messages', requirePermission('messages', 'read', { sourceIdFrom
 });
 
 // GET /api/sources/:id/channels — channels for a source
-router.get('/:id/channels', requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+//
+// MM-SEC-7: same root cause as MM-SEC-2 — `getAllChannels(sourceId)` returns
+// the raw `psk` column for every slot, and the gate `messages:read` is
+// unrelated to channel cryptographic material. Apply the MM-SEC-2 pattern:
+// optionalAuth + per-row `channel_${id}:read` gate scoped to this source +
+// `transformChannel` projection so the raw PSK never reaches the response.
+router.get('/:id/channels', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const source = await databaseService.sources.getSource(req.params.id);
     if (!source) return res.status(404).json({ error: 'Source not found' });
 
-    const channels = await databaseService.channels.getAllChannels(source.id);
-    res.json(channels);
+    const allChannels = await databaseService.channels.getAllChannels(source.id);
+    const isAdmin = req.user?.isAdmin === true;
+
+    const accessible: typeof allChannels = [];
+    for (const channel of allChannels) {
+      if (isAdmin) {
+        accessible.push(channel);
+        continue;
+      }
+      const channelResource = `channel_${channel.id}` as ResourceType;
+      if (req.user && await hasPermission(req.user, channelResource, 'read', source.id)) {
+        accessible.push(channel);
+      }
+    }
+
+    res.json(accessible.map(transformChannel));
   } catch (error) {
     logger.error('Error fetching channels for source:', error);
     res.status(500).json({ error: 'Failed to fetch channels' });
