@@ -127,6 +127,8 @@ export interface SettingsCallbacks {
   invalidateHtmlCache?: () => void;
   restartAutoDeleteByDistanceService?: (intervalHours: number, sourceId?: string | null) => void;
   stopAutoDeleteByDistanceService?: (sourceId?: string | null) => void;
+  restartGeofenceTimezoneService?: (intervalMinutes: number) => void;
+  stopGeofenceTimezoneService?: () => void;
 }
 
 let callbacks: SettingsCallbacks = {};
@@ -740,6 +742,34 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
       } else {
         callbacks.stopAutoDeleteByDistanceService?.(sourceId);
         logger.info(`⏹️ Auto-delete-by-distance service stopped (source: ${sourceId ?? 'default'})`);
+      }
+    }
+
+    // Restart / stop geofence-timezone service when its settings change
+    const geofenceTzSettings = [
+      'geofenceTzEnabled',
+      'geofenceTzIntervalMinutes',
+      'geofenceTzSourceNodeId',
+      'geofenceTzThresholdMiles',
+    ];
+    const geofenceTzSettingsChanged = geofenceTzSettings.some((key) => key in filteredSettings);
+    if (geofenceTzSettingsChanged) {
+      const dbGfTzEnabled = await databaseService.settings.getSetting('geofenceTzEnabled');
+      const enabled =
+        filteredSettings.geofenceTzEnabled === 'true' ||
+        (filteredSettings.geofenceTzEnabled === undefined && dbGfTzEnabled === 'true');
+
+      if (enabled) {
+        const dbGfTzInterval = await databaseService.settings.getSetting('geofenceTzIntervalMinutes');
+        const intervalMinutes = parseInt(
+          filteredSettings.geofenceTzIntervalMinutes || dbGfTzInterval || '15',
+          10
+        );
+        callbacks.restartGeofenceTimezoneService?.(intervalMinutes);
+        logger.info(`✅ Geofence-timezone service restarted (interval: ${intervalMinutes}min)`);
+      } else {
+        callbacks.stopGeofenceTimezoneService?.();
+        logger.info('⏹️ Geofence-timezone service stopped');
       }
     }
 

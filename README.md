@@ -232,6 +232,7 @@ MeshMonitor supports multiple deployment methods:
 - **Docker Ready** - Pre-built multi-architecture images
 - **One-click Self-Upgrade** - Automatic upgrades from the UI with backup and rollback
 - **System Backup & Restore** - Complete disaster recovery with automated backups
+- **Geofence-Driven Timezone Detection** *(opt-in)* - For mobile deployments, designate a source node whose GPS position drives automatic detection of the local IANA timezone. Detected timezone is persisted to settings; applying it to the server's `TZ` env currently requires a restart (see issue #2924 for the full design discussion)
 
 For a complete feature list and technical details, visit **[meshmonitor.org](https://meshmonitor.org/)**.
 
