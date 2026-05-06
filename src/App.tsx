@@ -2829,7 +2829,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ destination: nodeNum, ...(channel !== undefined && { channel }) }),
+        body: JSON.stringify({ destination: nodeNum, sourceId: sourceId || undefined, ...(channel !== undefined && { channel }) }),
       });
 
       logger.debug(`📍 Position request sent to ${nodeId}`);
@@ -2875,7 +2875,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ destination: nodeNum }),
+        body: JSON.stringify({ destination: nodeNum, sourceId: sourceId || undefined }),
       });
 
       logger.debug(`🔑 NodeInfo request sent to ${nodeId}`);
@@ -2915,7 +2915,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ destination: nodeNum }),
+        body: JSON.stringify({ destination: nodeNum, sourceId: sourceId || undefined }),
       });
 
       logger.debug(`🏠 NeighborInfo request sent to ${nodeId}`);
