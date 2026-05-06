@@ -34,29 +34,25 @@ vi.mock('../../services/database.js', () => ({
 }));
 
 // fs is touched on import; provide enough to avoid touching the real disk.
+const fsMocks = vi.hoisted(() => ({
+  existsSync: vi.fn().mockReturnValue(false),
+  readFileSync: vi.fn().mockReturnValue(''),
+  writeFileSync: vi.fn(),
+  renameSync: vi.fn(),
+  unlinkSync: vi.fn(),
+  statfsSync: vi.fn().mockReturnValue({ bavail: 1_000_000, bsize: 4096 }),
+  mkdirSync: vi.fn(),
+  accessSync: vi.fn(),
+}));
+
 vi.mock('fs', () => {
-  const noop = () => {};
-  return {
-    default: {
-      existsSync: vi.fn().mockReturnValue(false),
-      readFileSync: vi.fn().mockReturnValue(''),
-      writeFileSync: noop,
-      renameSync: noop,
-      unlinkSync: noop,
-      statfsSync: vi.fn().mockReturnValue({ bavail: 1_000_000, bsize: 4096 }),
-      mkdirSync: noop,
-      accessSync: noop,
-      constants: { W_OK: 2 },
-    },
-    existsSync: vi.fn().mockReturnValue(false),
-    readFileSync: vi.fn().mockReturnValue(''),
-    writeFileSync: noop,
-    renameSync: noop,
-    unlinkSync: noop,
-    statfsSync: vi.fn().mockReturnValue({ bavail: 1_000_000, bsize: 4096 }),
-    mkdirSync: noop,
-    accessSync: noop,
+  const api = {
+    ...fsMocks,
     constants: { W_OK: 2 },
+  };
+  return {
+    default: api,
+    ...api,
   };
 });
 
@@ -69,6 +65,8 @@ describe('upgradeService circuit breaker', () => {
     mockDb.miscRepo.countConsecutiveFailedUpgrades.mockResolvedValue(0);
     mockDb.miscRepo.findStaleUpgrades.mockResolvedValue([]);
     mockDb.miscRepo.countInProgressUpgrades.mockResolvedValue(0);
+    fsMocks.existsSync.mockReturnValue(false);
+    fsMocks.readFileSync.mockReturnValue('');
   });
 
   it('exposes the configured threshold (default 3)', () => {
@@ -118,6 +116,52 @@ describe('upgradeService circuit breaker', () => {
     expect(result.success).toBe(false);
     expect(result.message).toMatch(/blocked/i);
     expect(mockDb.miscRepo.createUpgradeHistory).not.toHaveBeenCalled();
+  });
+
+  it('triggerUpgrade clears stale .upgrade-status before writing trigger', async () => {
+    // Regression: a previous failed run left "failed" in the watchdog status
+    // file. Without clearing it, getUpgradeStatus() / getActiveUpgrade() sync
+    // the new in-progress row to "failed" before the watchdog touches it,
+    // producing a spurious "Upgrade failed" toast and leaving the circuit
+    // breaker tripped after the watchdog quietly succeeds in the background.
+    Object.assign(upgradeService, { UPGRADE_ENABLED: true, DEPLOYMENT_METHOD: 'docker' });
+
+    const STATUS_FILE = '/data/.upgrade-status';
+    fsMocks.existsSync.mockImplementation((p: string) => p === STATUS_FILE);
+    fsMocks.readFileSync.mockReturnValue('failed');
+
+    const result = await upgradeService.triggerUpgrade(
+      { targetVersion: 'latest', force: true },
+      '1.0.0',
+      '42'
+    );
+
+    expect(result.success).toBe(true);
+    expect(fsMocks.unlinkSync).toHaveBeenCalledWith(STATUS_FILE);
+
+    // The clear must happen before the trigger file is written, otherwise the
+    // watchdog can race ahead of us.
+    const unlinkOrder = fsMocks.unlinkSync.mock.invocationCallOrder[0];
+    const renameOrder = fsMocks.renameSync.mock.invocationCallOrder[0];
+    expect(unlinkOrder).toBeDefined();
+    expect(renameOrder).toBeDefined();
+    expect(unlinkOrder).toBeLessThan(renameOrder);
+  });
+
+  it('triggerUpgrade tolerates missing .upgrade-status (no-op clear)', async () => {
+    // No prior run; status file does not exist. Clear must be a silent no-op.
+    Object.assign(upgradeService, { UPGRADE_ENABLED: true, DEPLOYMENT_METHOD: 'docker' });
+
+    fsMocks.existsSync.mockReturnValue(false);
+
+    const result = await upgradeService.triggerUpgrade(
+      { targetVersion: 'latest', force: true },
+      '1.0.0',
+      '42'
+    );
+
+    expect(result.success).toBe(true);
+    expect(fsMocks.unlinkSync).not.toHaveBeenCalled();
   });
 
   it('triggerUpgrade allows manual user attempt even when blocked', async () => {

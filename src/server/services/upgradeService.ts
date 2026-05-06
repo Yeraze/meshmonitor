@@ -222,6 +222,21 @@ class UpgradeService {
         rollbackAvailable: true,
       });
 
+      // Clear stale watchdog status from any prior run before kicking off this
+      // upgrade. Without this, the file-based sync paths in getUpgradeStatus()
+      // and getActiveUpgrade() would observe a leftover "failed" string and
+      // mark this brand-new row failed before the watchdog has even picked up
+      // the trigger — which both surfaces a spurious "Upgrade failed" toast
+      // and prevents markCompleteAndClear() from clearing the circuit
+      // breaker on success.
+      try {
+        if (fs.existsSync(UPGRADE_STATUS_FILE)) {
+          fs.unlinkSync(UPGRADE_STATUS_FILE);
+        }
+      } catch (clearError) {
+        logger.warn('Could not clear stale upgrade status file before trigger:', clearError);
+      }
+
       // Write trigger file for watchdog (using atomic write to prevent race conditions)
       const triggerData = {
         upgradeId,
