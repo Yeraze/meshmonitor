@@ -1886,7 +1886,11 @@ apiRouter.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings'
       return;
     }
 
-    const { sourceId: scanSourceId } = req.body;
+    const { sourceId: bodySourceId } = (req.body || {}) as { sourceId?: string };
+    const querySourceId = typeof req.query.sourceId === 'string' && req.query.sourceId
+      ? (req.query.sourceId as string)
+      : undefined;
+    const scanSourceId = querySourceId ?? bodySourceId;
     const scanManager = (scanSourceId
       ? (sourceManagerRegistry.getManager(scanSourceId) as typeof meshtasticManager ?? meshtasticManager)
       : meshtasticManager);
