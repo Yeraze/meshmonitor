@@ -120,6 +120,12 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   // Initial state tracking for change detection
   const [initialSettings, setInitialSettings] = useState<FilterSettings | null>(null);
 
+  // Per-source interval baseline (separate from the global `intervalMinutes` prop).
+  // The interval is stored as a per-source setting, so the global GET that powers
+  // the prop returns 0 even when a per-source value is set — using the prop alone
+  // makes the checkbox revert to "off" after reload (#2914).
+  const [initialInterval, setInitialInterval] = useState<number | null>(null);
+
   // Expanded sections state
   const [expandedSections, setExpandedSections] = useState({
     nodes: false,
@@ -131,11 +137,14 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     hops: false,
   });
 
-  // Update local state when props change
+  // Update local state when props change.
+  // Skip once the per-source GET has resolved — the per-source value is
+  // authoritative and may differ from the global prop (#2914).
   useEffect(() => {
+    if (initialInterval !== null) return;
     setLocalEnabled(intervalMinutes > 0);
     setLocalInterval(intervalMinutes > 0 ? intervalMinutes : 15);
-  }, [intervalMinutes]);
+  }, [intervalMinutes, initialInterval]);
 
   // Fetch available nodes
   useEffect(() => {
@@ -186,19 +195,33 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
           // Load sort by hops setting (default to false)
           setSortByHops(data.sortByHops || false);
 
-          // Load schedule settings from general settings
+          // Load schedule settings + per-source interval from general settings
           let schedEnabled = false;
           let schedStart = '00:00';
           let schedEnd = '00:00';
+          let persistedInterval: number | null = null;
           if (settingsResponse.ok) {
             const settingsData = await settingsResponse.json();
             schedEnabled = settingsData.tracerouteScheduleEnabled === 'true';
             schedStart = settingsData.tracerouteScheduleStart || '00:00';
             schedEnd = settingsData.tracerouteScheduleEnd || '00:00';
+            if (settingsData.tracerouteIntervalMinutes !== undefined) {
+              const parsed = parseInt(String(settingsData.tracerouteIntervalMinutes), 10);
+              if (!isNaN(parsed) && parsed >= 0) {
+                persistedInterval = parsed;
+              }
+            }
           }
           setScheduleEnabled(schedEnabled);
           setScheduleStart(schedStart);
           setScheduleEnd(schedEnd);
+
+          // Per-source interval is authoritative — apply it before unblocking
+          // the prop-sync effect (#2914).
+          const baselineInterval = persistedInterval ?? intervalMinutes;
+          setInitialInterval(baselineInterval);
+          setLocalEnabled(baselineInterval > 0);
+          setLocalInterval(baselineInterval > 0 ? baselineInterval : 15);
 
           // Set initial settings once with all data
           setInitialSettings({
@@ -219,6 +242,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   // SaveBar change-detection compares against the new source's baseline.
   useEffect(() => {
     setInitialSettings(null);
+    setInitialInterval(null);
   }, [sourceQuery]);
 
   // Fetch auto-traceroute log
@@ -253,7 +277,8 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     if (!initialSettings) return;
 
     const currentInterval = localEnabled ? localInterval : 0;
-    const intervalChanged = currentInterval !== intervalMinutes;
+    const baselineInterval = initialInterval ?? intervalMinutes;
+    const intervalChanged = currentInterval !== baselineInterval;
     const filterEnabledChanged = filterEnabled !== initialSettings.enabled;
     const nodesChanged = JSON.stringify([...selectedNodeNums].sort()) !== JSON.stringify([...(initialSettings.nodeNums || [])].sort());
     const channelsChanged = JSON.stringify([...filterChannels].sort()) !== JSON.stringify([...(initialSettings.filterChannels || [])].sort());
@@ -289,7 +314,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       filterLastHeardEnabledChanged || filterLastHeardHoursChanged || filterHopsEnabledChanged || filterHopsMinChanged || filterHopsMaxChanged ||
       expirationHoursChanged || sortByHopsChanged || scheduleEnabledChanged || scheduleStartChanged || scheduleEndChanged;
     setHasChanges(changed);
-  }, [localEnabled, localInterval, intervalMinutes, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, initialSettings,
+  }, [localEnabled, localInterval, intervalMinutes, initialInterval, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, initialSettings,
       filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled,
       filterLastHeardEnabled, filterLastHeardHours, filterHopsEnabled, filterHopsMin, filterHopsMax,
       expirationHours, sortByHops,
@@ -297,8 +322,9 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
 
   // Reset local state to initial settings (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
-    setLocalEnabled(intervalMinutes > 0);
-    setLocalInterval(intervalMinutes > 0 ? intervalMinutes : 15);
+    const baselineInterval = initialInterval ?? intervalMinutes;
+    setLocalEnabled(baselineInterval > 0);
+    setLocalInterval(baselineInterval > 0 ? baselineInterval : 15);
     if (initialSettings) {
       setFilterEnabled(initialSettings.enabled);
       setSelectedNodeNums(initialSettings.nodeNums || []);
@@ -322,7 +348,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
       setScheduleStart(initialSettings.scheduleStart || '00:00');
       setScheduleEnd(initialSettings.scheduleEnd || '00:00');
     }
-  }, [intervalMinutes, initialSettings]);
+  }, [intervalMinutes, initialInterval, initialSettings]);
 
   // Helper to get role from node (could be at top level or in user object)
   const getNodeRole = (node: Node): number | undefined => {
@@ -521,6 +547,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
 
       // Update parent state and local tracking after successful API calls
       onIntervalChange(intervalToSave);
+      setInitialInterval(intervalToSave);
       setInitialSettings({
         enabled: filterEnabled,
         nodeNums: selectedNodeNums,
