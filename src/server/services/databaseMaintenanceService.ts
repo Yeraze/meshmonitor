@@ -13,6 +13,7 @@
 
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { waypointService } from './waypointService.js';
 
 export interface MaintenanceStats {
   messagesDeleted: number;
@@ -249,6 +250,16 @@ class DatabaseMaintenanceService {
       stats.neighborInfoDeleted = await databaseService.cleanupOldNeighborInfoAsync(neighborInfoRetention);
       if (stats.neighborInfoDeleted > 0) {
         logger.info(`🗑️ Deleted ${stats.neighborInfoDeleted} old neighbor info records`);
+      }
+
+      // Sweep expired waypoints (24h grace by default).
+      try {
+        const expired = await waypointService.expireSweep();
+        if (expired > 0) {
+          logger.info(`🗑️ Removed ${expired} expired waypoint(s)`);
+        }
+      } catch (error) {
+        logger.error('Waypoint expire sweep failed:', error);
       }
 
       // Run VACUUM to reclaim space

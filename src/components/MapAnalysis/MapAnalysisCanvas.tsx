@@ -10,6 +10,7 @@ import NeighborLinksLayer from './layers/NeighborLinksLayer';
 import PositionTrailsLayer from './layers/PositionTrailsLayer';
 import CoverageHeatmapLayer from './layers/CoverageHeatmapLayer';
 import SnrOverlayLayer from './layers/SnrOverlayLayer';
+import WaypointsLayer from './layers/WaypointsLayer';
 import TimeSliderControl from './TimeSliderControl';
 import MapLegend from './MapLegend';
 
@@ -43,6 +44,9 @@ export default function MapAnalysisCanvas() {
           attribution={tileset.attribution}
           maxZoom={tileset.maxZoom}
         />
+        <Pane name="waypoints" style={{ zIndex: 650 }}>
+          {config.layers.waypoints.enabled && <WaypointsLayer />}
+        </Pane>
         <Pane name="markers" style={{ zIndex: 600 }}>
           {config.layers.markers.enabled && <NodeMarkersLayer />}
         </Pane>

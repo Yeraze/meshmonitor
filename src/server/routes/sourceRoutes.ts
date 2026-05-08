@@ -5,6 +5,7 @@ import { requirePermission, optionalAuth, hasPermission } from '../auth/authMidd
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
+import waypointRoutes from './waypoints.js';
 import { filterNodesByChannelPermission, maskNodeLocationByChannel, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { PortNum } from '../constants/meshtastic.js';
 import { transformChannel } from '../utils/channelView.js';
@@ -608,5 +609,9 @@ router.post('/:id/disconnect', requirePermission('sources', 'write'), async (req
     res.status(500).json({ error: 'Failed to disconnect source' });
   }
 });
+
+// Waypoints sub-router. Each handler runs `requirePermission('waypoints', …)`
+// scoped to the path's `:id` parameter.
+router.use('/:id/waypoints', waypointRoutes);
 
 export default router;

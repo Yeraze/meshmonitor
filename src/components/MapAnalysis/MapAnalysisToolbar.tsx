@@ -24,6 +24,7 @@ const TIMED_LAYERS: { key: LayerKey; label: string; options: Array<number | null
 const UNTIMED_LAYERS: { key: LayerKey; label: string }[] = [
   { key: 'markers',     label: 'Markers' },
   { key: 'hopShading',  label: 'Hop Shading' },
+  { key: 'waypoints',   label: 'Waypoints' },
 ];
 
 export default function MapAnalysisToolbar() {

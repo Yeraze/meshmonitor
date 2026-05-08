@@ -270,6 +270,19 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
       queryClient.setQueryData(['firmware', 'liveStatus'], data);
     });
 
+    // Waypoint events — invalidate any active waypoint queries for this source
+    // so the WaypointsLayer / map re-fetch and reconcile.
+    const invalidateWaypoints = () => {
+      if (sourceId) {
+        queryClient.invalidateQueries({ queryKey: ['waypoints', sourceId] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['waypoints'] });
+      }
+    };
+    socket.on('waypoint:upserted', invalidateWaypoints);
+    socket.on('waypoint:deleted', invalidateWaypoints);
+    socket.on('waypoint:expired', invalidateWaypoints);
+
     // Cleanup on unmount
     return () => {
       socket.disconnect();

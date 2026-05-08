@@ -481,6 +481,75 @@ export class MeshtasticProtobufService {
   }
 
   /**
+   * Create a Waypoint ToRadio using proper protobuf encoding.
+   *
+   * Caller passes already-validated waypoint fields. `expire === 0` is the
+   * Meshtastic convention for "delete this waypoint id" — the firmware
+   * removes the matching id from its store when it sees an expire-zero
+   * waypoint with the same id.
+   */
+  createWaypointMessage(waypoint: {
+    id: number;
+    latitude: number;
+    longitude: number;
+    expire: number; // epoch seconds, or 0 for delete
+    lockedTo?: number;
+    name?: string;
+    description?: string;
+    icon?: number; // unicode codepoint
+  }, options?: { destination?: number; channel?: number }): { data: Uint8Array; packetId: number } {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return { data: new Uint8Array(), packetId: 0 };
+    }
+
+    try {
+      const Waypoint = root.lookupType('meshtastic.Waypoint');
+      const waypointPayload: any = {
+        id: waypoint.id,
+        latitudeI: Math.round(waypoint.latitude * 1e7),
+        longitudeI: Math.round(waypoint.longitude * 1e7),
+        expire: waypoint.expire,
+        lockedTo: waypoint.lockedTo ?? 0,
+        name: waypoint.name ?? '',
+        description: waypoint.description ?? '',
+        icon: waypoint.icon ?? 0,
+      };
+      const wpMessage = Waypoint.create(waypointPayload);
+      const payload = Waypoint.encode(wpMessage).finish();
+
+      const Data = root.lookupType('meshtastic.Data');
+      const dataMessage = Data.create({
+        portnum: PortNum.WAYPOINT_APP,
+        payload,
+      });
+
+      const packetId = Math.floor(Math.random() * 0xffffffff);
+      const destination = options?.destination ?? 0xffffffff;
+      const validChannel = (options?.channel !== undefined && options.channel >= 0 && options.channel <= 7) ? options.channel : 0;
+      const isBroadcast = destination === 0xffffffff;
+
+      const MeshPacket = root.lookupType('meshtastic.MeshPacket');
+      const meshPacket = MeshPacket.create({
+        id: packetId,
+        to: destination,
+        channel: validChannel,
+        decoded: dataMessage,
+        wantAck: !isBroadcast,
+        hopLimit: 3,
+      });
+
+      const ToRadio = root.lookupType('meshtastic.ToRadio');
+      const toRadio = ToRadio.create({ packet: meshPacket });
+      return { data: ToRadio.encode(toRadio).finish(), packetId };
+    } catch (error) {
+      logger.error('❌ Failed to create waypoint message:', error);
+      return { data: new Uint8Array(), packetId: 0 };
+    }
+  }
+
+  /**
    * Parse multiple concatenated FromRadio messages from a buffer
    *
    * The HTTP API returns concatenated FromRadio messages without message-level length prefixes.
@@ -792,6 +861,11 @@ export class MeshtasticProtobufService {
           const StoreAndForward = root.lookupType('meshtastic.StoreAndForward');
           const sfMsg = StoreAndForward.decode(payload);
           return sfMsg;
+
+        case PortNum.WAYPOINT_APP:
+          const Waypoint = root.lookupType('meshtastic.Waypoint');
+          const waypoint = Waypoint.decode(payload);
+          return waypoint;
 
         default:
           logger.debug(`⚠️ Unhandled port number: ${portnum}`);

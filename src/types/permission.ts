@@ -26,7 +26,8 @@ export type ResourceType =
   | 'nodes_private'
   | 'meshcore'
   | 'packetmonitor'
-  | 'sources';
+  | 'sources'
+  | 'waypoints';
 
 export type PermissionAction = 'viewOnMap' | 'read' | 'write';
 
@@ -67,6 +68,7 @@ export const SOURCEY_RESOURCES: readonly ResourceType[] = [
   'channel_4', 'channel_5', 'channel_6', 'channel_7',
   'messages', 'nodes', 'nodes_private', 'traceroute',
   'packetmonitor', 'configuration', 'connection', 'automation',
+  'waypoints',
 ] as const;
 
 const SOURCEY_RESOURCE_SET = new Set<ResourceType>(SOURCEY_RESOURCES);
@@ -116,6 +118,7 @@ export const RESOURCES: readonly ResourceDefinition[] = [
   { id: 'meshcore', name: 'MeshCore', description: 'MeshCore protocol device management' },
   { id: 'packetmonitor', name: 'Packet Monitor', description: 'View real-time packet logs and statistics' },
   { id: 'sources', name: 'Sources', description: 'Manage data sources (Meshtastic TCP, MQTT, MeshCore)' },
+  { id: 'waypoints', name: 'Waypoints', description: 'View and manage map waypoints (Meshtastic WAYPOINT_APP)' },
 ] as const;
 
 // Default permissions for different user types
@@ -144,6 +147,7 @@ export const ADMIN_PERMISSIONS: PermissionSet = {
   meshcore: { read: true, write: true },
   packetmonitor: { read: true, write: true },
   sources: { read: true, write: true },
+  waypoints: { read: true, write: true },
 };
 
 export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
@@ -171,4 +175,5 @@ export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
   meshcore: { read: true, write: false },
   packetmonitor: { read: true, write: false },
   sources: { read: false, write: false },
+  waypoints: { read: true, write: false },
 };

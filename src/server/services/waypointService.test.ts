@@ -1,0 +1,207 @@
+/**
+ * waypointService unit tests
+ *
+ * Mocks the WaypointsRepository façade exposed via DatabaseService and
+ * verifies upsert/delete semantics, the expire-tombstone convention, icon
+ * decoding, locked-to enforcement, and the expire sweep.
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const { mockUpsert, mockGet, mockDelete, mockList, mockGetExistingIds, mockSweep, emit } =
+  vi.hoisted(() => ({
+    mockUpsert: vi.fn(),
+    mockGet: vi.fn(),
+    mockDelete: vi.fn(),
+    mockList: vi.fn(),
+    mockGetExistingIds: vi.fn(),
+    mockSweep: vi.fn(),
+    emit: vi.fn(),
+  }));
+
+vi.mock('../../services/database.js', () => ({
+  default: {
+    waypoints: {
+      upsertAsync: mockUpsert,
+      getAsync: mockGet,
+      deleteAsync: mockDelete,
+      listAsync: mockList,
+      getExistingIdsAsync: mockGetExistingIds,
+      sweepExpiredAsync: mockSweep,
+    },
+  },
+}));
+
+vi.mock('./dataEventEmitter.js', () => ({
+  dataEventEmitter: {
+    emitWaypointUpserted: (...args: unknown[]) => emit('upserted', args),
+    emitWaypointDeleted: (...args: unknown[]) => emit('deleted', args),
+    emitWaypointExpired: (...args: unknown[]) => emit('expired', args),
+  },
+}));
+
+import { waypointService, codepointToEmoji, emojiToCodepoint } from './waypointService.js';
+
+beforeEach(() => {
+  mockUpsert.mockReset();
+  mockGet.mockReset();
+  mockDelete.mockReset();
+  mockList.mockReset();
+  mockGetExistingIds.mockReset();
+  mockSweep.mockReset();
+  emit.mockReset();
+});
+
+describe('codepointToEmoji / emojiToCodepoint', () => {
+  it('round-trips a basic emoji', () => {
+    const cp = emojiToCodepoint('😀');
+    expect(cp).toBe(0x1f600);
+    expect(codepointToEmoji(cp)).toBe('😀');
+  });
+
+  it('returns null for 0 / invalid codepoints', () => {
+    expect(codepointToEmoji(0)).toBeNull();
+    expect(codepointToEmoji(0x110000)).toBeNull();
+    expect(codepointToEmoji(undefined)).toBeNull();
+  });
+});
+
+describe('upsertFromMesh', () => {
+  it('persists, decodes icon, and emits waypoint:upserted', async () => {
+    mockGet.mockResolvedValueOnce(null);
+    mockUpsert.mockResolvedValueOnce({ sourceId: 's1', waypointId: 42 });
+    const decoded = {
+      id: 42,
+      latitude_i: 300000000, // 30°
+      longitude_i: -900000000, // -90°
+      expire: 1234567890,
+      locked_to: 0,
+      name: 'Camp',
+      description: 'Hideout',
+      icon: 0x1f3d5, // 🏕️
+    };
+
+    const result = await waypointService.upsertFromMesh('s1', 555, decoded);
+
+    expect(result).toEqual({ sourceId: 's1', waypointId: 42 });
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceId: 's1',
+        waypointId: 42,
+        ownerNodeNum: 555,
+        latitude: 30,
+        longitude: -90,
+        expireAt: 1234567890,
+        lockedTo: null,
+        name: 'Camp',
+        description: 'Hideout',
+        iconCodepoint: 0x1f3d5,
+        iconEmoji: expect.any(String),
+        isVirtual: false,
+      }),
+    );
+    expect(emit.mock.calls[0]?.[0]).toBe('upserted');
+  });
+
+  it('falls back to 📍 when icon codepoint is 0 or invalid', async () => {
+    mockUpsert.mockResolvedValueOnce({ sourceId: 's1', waypointId: 1 });
+    await waypointService.upsertFromMesh('s1', 1, {
+      id: 1,
+      latitude_i: 0,
+      longitude_i: 0,
+      expire: 100,
+      icon: 0,
+    });
+    const args = mockUpsert.mock.calls[0]?.[0];
+    expect(args.iconEmoji).toBe('\u{1F4CD}');
+    expect(args.iconCodepoint).toBeNull();
+  });
+
+  it('treats expire=0 as a delete tombstone and emits waypoint:deleted', async () => {
+    mockDelete.mockResolvedValueOnce(true);
+    const result = await waypointService.upsertFromMesh('s1', 9, {
+      id: 7,
+      latitude_i: 1,
+      longitude_i: 1,
+      expire: 0,
+    });
+    expect(result).toBeNull();
+    expect(mockDelete).toHaveBeenCalledWith('s1', 7);
+    expect(mockUpsert).not.toHaveBeenCalled();
+    expect(emit.mock.calls[0]?.[0]).toBe('deleted');
+  });
+
+  it('ignores packets without an id', async () => {
+    const result = await waypointService.upsertFromMesh('s1', 1, { latitude_i: 0, longitude_i: 0 });
+    expect(result).toBeNull();
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
+  it('ignores packets without coordinates', async () => {
+    mockGet.mockResolvedValueOnce(null);
+    const result = await waypointService.upsertFromMesh('s1', 1, { id: 1, expire: 1 });
+    expect(result).toBeNull();
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('createLocal / update / deleteLocal', () => {
+  it('createLocal allocates an id and emits an upsert event', async () => {
+    mockGetExistingIds.mockResolvedValueOnce(new Set<number>());
+    mockGet.mockResolvedValueOnce(null);
+    mockUpsert.mockResolvedValueOnce({ sourceId: 's1', waypointId: 1234 });
+
+    const persisted = await waypointService.createLocal(
+      's1',
+      555,
+      { latitude: 30, longitude: -90, name: 'Local', icon: '🏠' },
+      { virtual: true },
+    );
+
+    expect(persisted.sourceId).toBe('s1');
+    expect(mockUpsert).toHaveBeenCalled();
+    const args = mockUpsert.mock.calls[0]?.[0];
+    expect(args.isVirtual).toBe(true);
+    expect(args.iconCodepoint).toBe(emojiToCodepoint('🏠'));
+    expect(emit.mock.calls[0]?.[0]).toBe('upserted');
+  });
+
+  it('update refuses to modify a waypoint locked to a different node', async () => {
+    mockGet.mockResolvedValueOnce({
+      sourceId: 's1', waypointId: 1, lockedTo: 999, name: '', description: '',
+      latitude: 0, longitude: 0, ownerNodeNum: 999, expireAt: null,
+      iconCodepoint: null, iconEmoji: null, isVirtual: false,
+      firstSeenAt: 1, lastUpdatedAt: 1, rebroadcastIntervalS: null, lastBroadcastAt: null,
+    });
+
+    await expect(
+      waypointService.update('s1', 1, 555, { name: 'edit' }),
+    ).rejects.toThrow(/locked to 999/);
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
+  it('deleteLocal honours lockedTo', async () => {
+    mockGet.mockResolvedValueOnce({
+      sourceId: 's1', waypointId: 1, lockedTo: 555, ownerNodeNum: 555,
+      latitude: 0, longitude: 0, expireAt: null, name: '', description: '',
+      iconCodepoint: null, iconEmoji: null, isVirtual: false,
+      firstSeenAt: 1, lastUpdatedAt: 1, rebroadcastIntervalS: null, lastBroadcastAt: null,
+    });
+    mockDelete.mockResolvedValueOnce(true);
+
+    const ok = await waypointService.deleteLocal('s1', 1, 555);
+    expect(ok).toBe(true);
+    expect(emit.mock.calls[0]?.[0]).toBe('deleted');
+  });
+});
+
+describe('expireSweep', () => {
+  it('emits waypoint:expired for each removed row and returns the count', async () => {
+    mockSweep.mockResolvedValueOnce([
+      { sourceId: 's1', waypointId: 1 },
+      { sourceId: 's2', waypointId: 2 },
+    ]);
+    const removed = await waypointService.expireSweep(3600);
+    expect(removed).toBe(2);
+    expect(emit.mock.calls.filter((c) => c[0] === 'expired').length).toBe(2);
+  });
+});

@@ -36,3 +36,6 @@ export * from './meshcoreMessages.js';
 
 // Embed Profiles table
 export * from './embedProfiles.js';
+
+// Waypoints table
+export * from './waypoints.js';

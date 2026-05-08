@@ -18,7 +18,10 @@ export type DataEventType =
   | 'connection:status'
   | 'traceroute:complete'
   | 'routing:update'
-  | 'auto-ping:update';
+  | 'auto-ping:update'
+  | 'waypoint:upserted'
+  | 'waypoint:deleted'
+  | 'waypoint:expired';
 
 export interface DataEvent {
   type: DataEventType;
@@ -204,6 +207,48 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Routing update: ${update.requestId} - ${update.status}`);
+  }
+
+  /**
+   * Emit a waypoint upserted (created or updated) event
+   */
+  emitWaypointUpserted(waypoint: unknown, sourceId?: string): void {
+    const event: DataEvent = {
+      type: 'waypoint:upserted',
+      data: waypoint,
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] Waypoint upserted (source: ${sourceId ?? 'unknown'})`);
+  }
+
+  /**
+   * Emit a waypoint deleted event. `data` carries `{ sourceId, waypointId }`.
+   */
+  emitWaypointDeleted(payload: { sourceId: string; waypointId: number }, sourceId?: string): void {
+    const event: DataEvent = {
+      type: 'waypoint:deleted',
+      data: payload,
+      timestamp: Date.now(),
+      sourceId: sourceId ?? payload.sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] Waypoint deleted: ${payload.waypointId} (source: ${event.sourceId})`);
+  }
+
+  /**
+   * Emit a waypoint expired event (sweep removed a stale row).
+   */
+  emitWaypointExpired(payload: { sourceId: string; waypointId: number }, sourceId?: string): void {
+    const event: DataEvent = {
+      type: 'waypoint:expired',
+      data: payload,
+      timestamp: Date.now(),
+      sourceId: sourceId ?? payload.sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] Waypoint expired: ${payload.waypointId} (source: ${event.sourceId})`);
   }
 
   /**

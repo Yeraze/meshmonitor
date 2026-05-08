@@ -10,6 +10,7 @@ export const SOURCEY_RESOURCES = new Set<string>([
   'messages', 'nodes', 'nodes_private', 'traceroute',
   'packetmonitor', 'configuration', 'connection', 'automation',
   'dashboard', 'settings', 'info', 'audit', 'security',
+  'waypoints',
 ]);
 
 export const isResourceSourcey = (resource: string): boolean =>

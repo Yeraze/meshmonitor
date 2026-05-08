@@ -98,6 +98,11 @@ import {
   embedProfilesSqlite, embedProfilesPostgres, embedProfilesMysql,
 } from './schema/embedProfiles.js';
 
+// Waypoints table
+import {
+  waypointsSqlite, waypointsPostgres, waypointsMysql,
+} from './schema/waypoints.js';
+
 // Sources table
 import {
   sourcesSqlite, sourcesPostgres, sourcesMysql,
@@ -167,6 +172,9 @@ export interface ActiveSchema {
   // Embed Profiles
   embedProfiles: any;
 
+  // Waypoints
+  waypoints: any;
+
   // Sources
   sources: any;
 
@@ -217,6 +225,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNodes: meshcoreNodesSqlite,
     meshcoreMessages: meshcoreMessagesSqlite,
     embedProfiles: embedProfilesSqlite,
+    waypoints: waypointsSqlite,
     sources: sourcesSqlite,
   },
   postgres: {
@@ -258,6 +267,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNodes: meshcoreNodesPostgres,
     meshcoreMessages: meshcoreMessagesPostgres,
     embedProfiles: embedProfilesPostgres,
+    waypoints: waypointsPostgres,
     sources: sourcesPostgres,
   },
   mysql: {
@@ -299,6 +309,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNodes: meshcoreNodesMysql,
     meshcoreMessages: meshcoreMessagesMysql,
     embedProfiles: embedProfilesMysql,
+    waypoints: waypointsMysql,
     sources: sourcesMysql,
   },
 };

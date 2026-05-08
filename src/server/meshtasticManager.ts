@@ -17,6 +17,7 @@ import { serverEventNotificationService } from './services/serverEventNotificati
 import packetLogService from './services/packetLogService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
+import { waypointService } from './services/waypointService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
 import { MessageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
@@ -4025,6 +4026,14 @@ class MeshtasticManager implements ISourceManager {
             } else if (portnum === PortNum.TRACEROUTE_APP) {
               // TRACEROUTE
               payloadPreview = '[Traceroute]';
+            } else if (portnum === PortNum.WAYPOINT_APP) {
+              // WAYPOINT
+              const wp = processedPayload as any;
+              if (wp?.expire === 0) {
+                payloadPreview = `[Waypoint delete: id=${wp.id}]`;
+              } else {
+                payloadPreview = `[Waypoint: id=${wp?.id ?? '?'} ${wp?.name ?? ''}]`.trim();
+              }
             } else if (portnum === PortNum.NEIGHBORINFO_APP) {
               // NEIGHBORINFO
               payloadPreview = '[NeighborInfo]';
@@ -4244,6 +4253,9 @@ class MeshtasticManager implements ISourceManager {
               decryptedBy,
               decryptedChannelId: decryptedChannelId ?? undefined,
             });
+            break;
+          case PortNum.WAYPOINT_APP:
+            await this.processWaypointMessage(meshPacket, processedPayload as any);
             break;
           default:
             logger.debug(`🤷 Unhandled portnum: ${normalizedPortNum} (${meshtasticProtobufService.getPortNumName(portnum)})`);
@@ -6417,6 +6429,90 @@ class MeshtasticManager implements ISourceManager {
     } catch (error) {
       logger.error('❌ Error estimating intermediate positions:', error);
     }
+  }
+
+  /**
+   * Process an inbound Waypoint protobuf message. Delegates the storage,
+   * tombstone (expire=0), and event emission rules to `waypointService` so
+   * the same path is used for all transports (TCP/MQTT/etc.).
+   */
+  private async processWaypointMessage(meshPacket: any, decoded: any): Promise<void> {
+    try {
+      const fromNum = Number(meshPacket.from ?? 0);
+      await waypointService.upsertFromMesh(this.sourceId, fromNum, decoded);
+    } catch (error) {
+      logger.error('Error processing waypoint message:', error);
+    }
+  }
+
+  /**
+   * Broadcast a waypoint over the mesh as a WAYPOINT_APP packet. Mirrors the
+   * pattern used by `sendPositionRequest` — build the protobuf, send via the
+   * active transport, fan out to virtual node clients, log to the packet
+   * monitor. Caller is responsible for persisting the local row first.
+   *
+   * Returns the packet id assigned by the protobuf service, or 0 if not
+   * connected / encoding failed.
+   */
+  async broadcastWaypoint(waypoint: {
+    id: number;
+    latitude: number;
+    longitude: number;
+    expire: number;
+    lockedTo?: number;
+    name?: string;
+    description?: string;
+    icon?: number;
+  }, options: { destination?: number; channel?: number } = {}): Promise<number> {
+    if (!this.isConnected || !this.transport) {
+      logger.warn(`[meshtasticManager] broadcastWaypoint skipped: not connected (source ${this.sourceId})`);
+      return 0;
+    }
+    try {
+      const { data, packetId } = meshtasticProtobufService.createWaypointMessage(waypoint, options);
+      if (data.length === 0) return 0;
+
+      await this.transport.send(data);
+
+      const virtualNodeServer = this.virtualNodeServer;
+      if (virtualNodeServer) {
+        try {
+          await virtualNodeServer.broadcastToClients(data);
+        } catch (error) {
+          logger.error('Virtual node: Failed to broadcast outgoing waypoint:', error);
+        }
+      }
+
+      const destination = options.destination ?? 0xffffffff;
+      const channel = options.channel ?? 0;
+      await this.logOutgoingPacket(
+        PortNum.WAYPOINT_APP,
+        destination,
+        channel,
+        `Waypoint id=${waypoint.id} ${waypoint.name ?? ''}`.trim(),
+        { destination, packetId, waypointId: waypoint.id, expire: waypoint.expire },
+      );
+
+      logger.info(`📍 Waypoint broadcast id=${waypoint.id} (${waypoint.name ?? ''}) packetId=${packetId}`);
+      return packetId;
+    } catch (error) {
+      logger.error('Error broadcasting waypoint:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Send a WAYPOINT_APP delete tombstone (`expire=0`) for the given id. The
+   * Meshtastic firmware removes the matching id from its store on receipt.
+   */
+  async broadcastWaypointDelete(
+    waypointId: number,
+    options: { destination?: number; channel?: number } = {},
+  ): Promise<number> {
+    return this.broadcastWaypoint(
+      { id: waypointId, latitude: 0, longitude: 0, expire: 0 },
+      options,
+    );
   }
 
   /**

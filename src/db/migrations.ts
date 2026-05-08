@@ -64,6 +64,8 @@ import { migration as perfCompositeIndexesMigration, runMigration049Postgres, ru
 import { migration as promoteGlobalsToDefaultSourceMigration, runMigration050Postgres, runMigration050Mysql } from '../server/migrations/050_promote_globals_to_default_source.js';
 import { migration as dropLegacyNotifPrefsUserIdUniqueMigration, runMigration051Postgres, runMigration051Mysql } from '../server/migrations/051_drop_legacy_notif_prefs_userid_unique.js';
 import { migration as addSourceIdToEmbedProfilesMigration, runMigration052Postgres, runMigration052Mysql } from '../server/migrations/052_add_source_id_to_embed_profiles.js';
+import { migration as createWaypointsMigration, runMigration053Postgres, runMigration053Mysql } from '../server/migrations/053_create_waypoints.js';
+import { migration as addWaypointsPermissionMigration, runMigration054Postgres, runMigration054Mysql } from '../server/migrations/054_add_waypoints_permission.js';
 
 // ============================================================================
 // Registry
@@ -813,4 +815,35 @@ registry.register({
   sqlite: (db) => addSourceIdToEmbedProfilesMigration.up(db),
   postgres: (client) => runMigration052Postgres(client),
   mysql: (pool) => runMigration052Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 053: Create the per-source `waypoints` table for Meshtastic
+// WAYPOINT_APP packets. Composite PK (source_id, waypoint_id) with a
+// CASCADE FK to sources(id) so removing a source clears its waypoints.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 53,
+  name: 'create_waypoints',
+  settingsKey: 'migration_053_create_waypoints',
+  sqlite: (db) => createWaypointsMigration.up(db),
+  postgres: (client) => runMigration053Postgres(client),
+  mysql: (pool) => runMigration053Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 054: Seed per-source `waypoints` permission grants by mirroring
+// each user's existing `messages` row for the same source. Lets existing
+// users see waypoints at the same level as their messages access without
+// granting access to users who had none.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 54,
+  name: 'add_waypoints_permission',
+  settingsKey: 'migration_054_add_waypoints_permission',
+  sqlite: (db) => addWaypointsPermissionMigration.up(db),
+  postgres: (client) => runMigration054Postgres(client),
+  mysql: (pool) => runMigration054Mysql(pool),
 });

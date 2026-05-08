@@ -7,7 +7,8 @@ export type LayerKey =
   | 'heatmap'
   | 'trails'
   | 'hopShading'
-  | 'snrOverlay';
+  | 'snrOverlay'
+  | 'waypoints';
 
 export interface LayerConfig {
   enabled: boolean;
@@ -37,6 +38,7 @@ export const DEFAULT_CONFIG: MapAnalysisConfig = {
     trails:     { enabled: false, lookbackHours: 24 },
     hopShading: { enabled: false, lookbackHours: null },
     snrOverlay: { enabled: false, lookbackHours: null },
+    waypoints:  { enabled: true,  lookbackHours: null },
   },
   sources: [],
   timeSlider: { enabled: false },
