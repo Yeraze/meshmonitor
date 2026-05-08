@@ -244,14 +244,19 @@ export async function handleOIDCCallback(
 
         logger.debug(`✅ User migrated to OIDC: ${user!.username}`);
       } else {
-        // Create new user
+        // First-OIDC-login bootstrap: if no OIDC user has been created yet,
+        // promote this one to admin so the deployment isn't locked out when
+        // local auth is disabled (issue #2749).
+        const allUsersForBootstrap = await databaseService.auth.getAllUsers();
+        const isFirstOidcUser = !allUsersForBootstrap.some(u => u.authMethod === 'oidc');
+
         const userId = await databaseService.auth.createUser({
           username,
           email: email || null,
           displayName: name || null,
           authMethod: 'oidc',
           oidcSubject: sub,
-          isAdmin: false,
+          isAdmin: isFirstOidcUser,
           isActive: true,
           passwordHash: null,
           passwordLocked: false,
@@ -260,27 +265,51 @@ export async function handleOIDCCallback(
         });
         user = await databaseService.findUserByIdAsync(userId) as User;
 
-        // Grant default permissions
-        const defaultResources = ['dashboard', 'nodes', 'messages', 'settings', 'info', 'traceroute'];
-        for (const resource of defaultResources) {
-          await databaseService.auth.createPermission({
-            userId,
-            resource,
-            canRead: true,
-            canWrite: false,
-            grantedBy: null,
-            grantedAt: Date.now()
-          });
+        if (isFirstOidcUser) {
+          // Grant full permissions to the bootstrap admin (mirrors the
+          // resource list used by createAdminIfNeeded).
+          const allResources = [
+            'dashboard', 'nodes', 'messages', 'settings', 'configuration', 'info',
+            'automation', 'connection', 'traceroute', 'audit', 'security', 'themes',
+            'channel_0', 'channel_1', 'channel_2', 'channel_3',
+            'channel_4', 'channel_5', 'channel_6', 'channel_7',
+            'nodes_private', 'meshcore', 'packetmonitor'
+          ];
+          for (const resource of allResources) {
+            await databaseService.auth.createPermission({
+              userId,
+              resource,
+              canRead: true,
+              canWrite: true,
+              canDelete: true,
+              grantedBy: null,
+              grantedAt: Date.now()
+            });
+          }
+          logger.warn(`🔐 First OIDC login bootstrap: '${user!.username}' granted admin rights`);
+        } else {
+          // Grant default permissions
+          const defaultResources = ['dashboard', 'nodes', 'messages', 'settings', 'info', 'traceroute'];
+          for (const resource of defaultResources) {
+            await databaseService.auth.createPermission({
+              userId,
+              resource,
+              canRead: true,
+              canWrite: false,
+              grantedBy: null,
+              grantedAt: Date.now()
+            });
+          }
         }
 
-        logger.debug(`✅ OIDC user auto-created: ${user!.username}`);
+        logger.debug(`✅ OIDC user auto-created: ${user!.username}${isFirstOidcUser ? ' (admin)' : ''}`);
 
         // Audit log
         databaseService.auditLogAsync(
           user!.id,
-          'oidc_user_created',
+          isFirstOidcUser ? 'oidc_user_created_admin' : 'oidc_user_created',
           'users',
-          JSON.stringify({ userId: user!.id, username, oidcSubject: sub }),
+          JSON.stringify({ userId: user!.id, username, oidcSubject: sub, isAdmin: isFirstOidcUser }),
           null
         );
       }
