@@ -13,6 +13,7 @@ This document captures critical insights learned during MeshMonitor development.
 6. [Testing Strategy](#testing-strategy)
 7. [Background Task Management](#background-task-management)
 8. [Multi-Database Architecture](#multi-database-architecture)
+9. [Multi-Source Architecture](#multi-source-architecture)
 
 ---
 
@@ -856,6 +857,95 @@ await this.sendNodeInfoRequest(nodeNum, 0);
 **Rule**: When adding any new setting key that gets saved via `POST /api/settings`, add it to `VALID_SETTINGS_KEYS` in `src/server/constants/settings.ts`.
 
 **Location**: `src/server/constants/settings.ts`
+
+---
+
+## Multi-Source Architecture
+
+MeshMonitor 4.0 (April 2026, PR #2611) replaced the singleton `meshtasticManager` with a **per-source manager registry**, letting one MeshMonitor instance run N concurrent Meshtastic node connections side-by-side.
+
+### Why Multi-Source
+
+A single user often runs multiple radios — a home base, a vehicle gateway, a remote site. Pre-4.0 you'd run a separate MeshMonitor instance per radio with separate databases. 4.0 unifies them into one instance with one database, where every row carries a `sourceId` foreign key and pages either render one source at a time (`SourceProvider` wrap) or aggregate across sources (`Unified*Page`).
+
+### Manager Registry
+
+`src/server/sourceManagerRegistry.ts` maps `sourceId → MeshtasticManager` (or `MeshcoreManager` for the Meshcore protocol). Every server-side caller looks up the right manager by `sourceId`:
+
+```ts
+const manager = sourceManagerRegistry.getManager(sourceId);
+const localNode = manager.getLocalNodeInfo();      // not meshtasticManager.getLocalNodeInfo()
+```
+
+The legacy `meshtasticManager` import is now a deprecated compatibility shim for callers that haven't been ported. `tsc` flags every reference as `[6385] deprecated`.
+
+### Source Lifecycle
+
+A source progresses through:
+
+1. **Registered** — row in `sources` table; user provided host/port/auth.
+2. **Connecting** — manager instantiated; TCP socket opened; protobuf config requested.
+3. **Configuring** — receiving `Config`, `ModuleConfig`, `Channel`, and node DB packets from the device.
+4. **Ready** — `localNodeInfo` populated; manager handling normal traffic.
+5. **Reconnecting** — exponential backoff on socket close. Initial=2s, max=60s. Configurable via env vars (see Asynchronous Operations §).
+
+The registry exposes `getStatus(sourceId)` to surface this state to the UI.
+
+### The "Default Source" Concept
+
+Pre-4.0 rows had no `sourceId`. Migration `050_promote_globals_to_default_source` back-fills every `NULL sourceId` to the first registered source (or creates a placeholder source if none exists). After 050, every row has a non-null `sourceId` and downstream queries can rely on the FK.
+
+### Migrations 020–052: the Source-Scoping Push
+
+Roughly two-thirds of all migrations are source-scoping work:
+
+- **020–028, 037, 048** — add `sourceId` columns to existing per-source tables (nodes, messages, telemetry, traceroutes, neighbor_info, channels, key_repair_log, ignored_nodes, distance_delete_log, time_sync_nodes, embed_profiles).
+- **022, 033** — per-source permissions (`permissions.sourceId`, then per-resource refinement).
+- **029** — composite PK `(nodeNum, sourceId)` on `nodes` so the same nodeNum heard by two sources doesn't collide.
+- **039–045** — `drop_legacy_*_nodes_fk`. These look alarming but are routine: each one drops a single-column FK that pointed at the old `nodes` PK, after the composite-PK refactor in 029. They had to land separately because each FK was created in a different earlier migration.
+- **050** — back-fill globals to default source (described above).
+- **051–052** — final source scoping for notification preferences and embed profiles.
+
+When you see a migration named `add_source_id_to_<table>` or `drop_legacy_<table>_nodes_fk`, this is the lineage.
+
+### Source-Scoped Query Convention
+
+Repositories that touch per-source data take an optional `sourceId?: string` parameter and apply it via `withSourceScope` (in `src/db/repositories/base.ts`):
+
+```ts
+async getMessagesByChannel(channel: number, limit = 100, offset = 0, sourceId?: string) {
+  return this.db.select().from(messages).where(
+    and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId))
+  ).limit(limit).offset(offset);
+}
+```
+
+`withSourceScope` returns `eq(table.sourceId, sourceId)` when `sourceId` is provided, else `undefined` (Drizzle `and(...)` ignores undefined entries). This keeps backward compatibility for legacy unscoped callers while letting new code opt in.
+
+**Counts and aggregations are the most common bug.** Per-source unread badges, pending-ACK counts, and node totals all need the `sourceId` predicate or they bleed across sources.
+
+### Permissions Are Per-Source
+
+`permissions.sourceId` is part of the row. `requirePermission(resource, action)` middleware looks up the calling user's permission set scoped to the route's `sourceId` (read from path params or body). A user can be admin on one source and have read-only on another.
+
+Tests that mock `getUserPermissionSetAsync` must mock the `(userId, sourceId)` signature, not the legacy `(userId)` signature, or the source-scoping branch silently falls through.
+
+### Frontend Source Awareness
+
+`src/contexts/SourceContext.tsx` exposes `useSource()` returning `{ sourceId, sourceName }`. Pages mounted under `/source/:sourceId/*` are wrapped in a `SourceProvider`, so any descendant calling `useSource()` gets the active source. Pages outside `SourceProvider` (Dashboard, Unified*) get `sourceId === null` and are expected to fan out across sources explicitly via `useSources()`.
+
+`Unified*Page` components are the cross-source view layer. Anything they render that says "messages" or "telemetry" is across-all-sources by design; the per-source view lives under `/source/:sourceId/...`.
+
+### Key Repair / NodeInfo Exchange Caveat
+
+Auto-key-management, immediate purge, and the manual key-repair button all send a NodeInfo exchange. This **must go on the node's channel**, not as a DM, because PKI-encrypted DMs use the stored (mismatched) key. Channel routing uses the shared PSK and works regardless. This is enforced in the `meshtasticManager.sendNodeInfoExchange` path.
+
+### Critical Design Principles
+
+- **Look up managers by sourceId; don't import `meshtasticManager` directly.**
+- **Pass `sourceId` through every layer** — frontend → route → service → repository → query.
+- **Multi-source is observable in tests.** Any feature that reads per-source data needs a `*.perSource.test.ts` file proving cross-source isolation.
+- **Cross-source aggregation is opt-in,** never the default.
 
 ---
 
