@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, ReactNode } fr
 import { MeshMessage } from '../types/message';
 import { useUnreadCounts, useMarkAsRead } from '../hooks/useUnreadCounts';
 import { useAuth } from './AuthContext';
+import { useSource } from './SourceContext';
 
 interface UnreadCounts {
   channels: { [channelId: number]: number };
@@ -41,6 +42,9 @@ interface MessagingProviderProps {
 export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, baseUrl = '' }) => {
   const { authStatus } = useAuth();
   const isAuthenticated = authStatus?.authenticated || false;
+  // Scope unread counts to the current source so per-source tabs don't show
+  // badges for messages other sources received but the current source did not.
+  const { sourceId } = useSource();
 
   const [selectedDMNode, setSelectedDMNode] = useState<string>('');
   const [selectedChannel, setSelectedChannel] = useState<number>(-1);
@@ -55,6 +59,7 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
   const { data: unreadCountsData, refetch: refetchUnreadCounts } = useUnreadCounts({
     baseUrl,
     enabled: isAuthenticated,
+    sourceId,
   });
   const { mutateAsync: markAsReadMutation } = useMarkAsRead({ baseUrl });
 

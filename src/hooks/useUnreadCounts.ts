@@ -29,6 +29,8 @@ interface UseUnreadCountsOptions {
   enabled?: boolean;
   /** Refetch interval in milliseconds (default: 10000) */
   refetchInterval?: number;
+  /** Optional source scope — when set, counts are filtered to this source */
+  sourceId?: string | null;
 }
 
 /**
@@ -55,11 +57,15 @@ export function useUnreadCounts({
   baseUrl = '',
   enabled = true,
   refetchInterval = 10000,
+  sourceId = null,
 }: UseUnreadCountsOptions = {}) {
   return useQuery({
-    queryKey: ['unreadCounts', baseUrl],
+    queryKey: ['unreadCounts', baseUrl, sourceId],
     queryFn: async (): Promise<UnreadCountsData> => {
-      const response = await fetch(`${baseUrl}/api/messages/unread-counts`, {
+      const url = sourceId
+        ? `${baseUrl}/api/messages/unread-counts?sourceId=${encodeURIComponent(sourceId)}`
+        : `${baseUrl}/api/messages/unread-counts`;
+      const response = await fetch(url, {
         credentials: 'include',
       });
 

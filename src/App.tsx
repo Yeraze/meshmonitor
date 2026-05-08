@@ -1765,7 +1765,12 @@ function App() {
     }
   }, [isScrolledNearBottom, isScrolledNearTop, loadMoreDirectMessages]);
 
-  // Attach scroll event listeners
+  // Attach scroll event listeners. The handler closures are stable now (they
+  // read state via refs), so we re-run this effect when navigation could have
+  // swapped the underlying DOM node — channel switch, DM switch, or tab
+  // switch — to be sure we attach to the freshly mounted container. Without
+  // this the very first scroll on the initial channel never fires the
+  // load-more handler.
   useEffect(() => {
     const channelContainer = channelMessagesContainerRef.current;
     const dmContainer = dmMessagesContainerRef.current;
@@ -1785,7 +1790,7 @@ function App() {
         dmContainer.removeEventListener('scroll', handleDMScroll);
       }
     };
-  }, [handleChannelScroll, handleDMScroll]);
+  }, [handleChannelScroll, handleDMScroll, activeTab, selectedChannel, selectedDMNode]);
 
   // Force scroll to bottom when channel changes OR when switching to channels tab
   // Note: We track initial scroll per channel to avoid re-scrolling when user manually scrolls

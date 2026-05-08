@@ -2344,7 +2344,17 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
     }
 
     const userId = req.user?.id ?? null;
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    // Optional sourceId scoping — multi-source views must only see unread
+    // counts for messages their own source ingested. Without this an inactive
+    // source can keep a badge lit for messages that aren't visible in the
+    // current source's tab.
+    const unreadSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? req.query.sourceId
+      : undefined;
+    const unreadManager = unreadSourceId
+      ? (sourceManagerRegistry.getManager(unreadSourceId) as typeof meshtasticManager ?? meshtasticManager)
+      : meshtasticManager;
+    const localNodeInfo = unreadManager.getLocalNodeInfo();
 
     const result: {
       channels?: { [channelId: number]: number };
@@ -2375,7 +2385,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
     // Get channel unread counts if user has channels permission
     // Only count incoming messages (exclude messages sent by our node)
     if (hasChannelsRead) {
-      const rawCounts = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId);
+      const rawCounts = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId, unreadSourceId);
 
       // MM-SEC-3: filter by per-channel read permission as well as mute prefs.
       // The bare `channel_0:read` gate above lets a viewer reach this handler
@@ -2398,8 +2408,8 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
 
     // Get DM unread counts if user has messages permission (batch query)
     if (hasMessagesRead && localNodeInfo) {
-      const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId);
-      const allNodes = await meshtasticManager.getAllNodesAsync();
+      const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId, unreadSourceId);
+      const allNodes = await unreadManager.getAllNodesAsync(unreadSourceId);
       const visibleNodes = await filterNodesByChannelPermission(allNodes, req.user);
       const visibleNodeIds = new Set(visibleNodes.map(n => n.user?.id).filter(Boolean));
       const directMessages: { [nodeId: string]: number } = {};
@@ -4596,8 +4606,11 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       } = {};
 
       // Get unread counts for all channels first
-      // Only count incoming messages (exclude messages sent by our node)
-      const allUnreadChannels = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId);
+      // Only count incoming messages (exclude messages sent by our node).
+      // Scope to the requesting source so per-source tabs only count messages
+      // their own source ingested (issue: badge stays lit for messages that
+      // aren't visible in the current tab).
+      const allUnreadChannels = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId, pollSourceId);
 
       // Filter channels based on per-channel read permission
       const filteredUnreadChannels: { [channelId: number]: number } = {};
@@ -4614,7 +4627,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
       // Batch DM unread counts (single query instead of N+1)
       if (hasMessagesRead && localNodeInfo) {
-        const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId);
+        const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId, pollSourceId);
         const visibleNodeIds = new Set(filteredMemoryNodes.map(n => n.user?.id).filter(Boolean));
         const directMessages: { [nodeId: string]: number } = {};
         for (const [nodeId, count] of Object.entries(allUnreadDMs)) {

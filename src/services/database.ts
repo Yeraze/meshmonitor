@@ -7519,9 +7519,10 @@ class DatabaseService {
       return;
     }
 
+    // INSERT OR REPLACE — see markChannelMessagesAsRead for rationale.
     // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
-      INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
+      INSERT OR REPLACE INTO read_messages (message_id, user_id, read_at)
       VALUES (?, ?, ?)
     `);
     stmt.run(messageId, userId, Date.now());
@@ -7536,9 +7537,10 @@ class DatabaseService {
       return;
     }
 
+    // INSERT OR REPLACE — see markChannelMessagesAsRead for rationale.
     // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
-      INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
+      INSERT OR REPLACE INTO read_messages (message_id, user_id, read_at)
       VALUES (?, ?, ?)
     `);
 
@@ -7579,8 +7581,13 @@ class DatabaseService {
       }
       return 0; // Return 0 since we don't wait for the async result
     }
+    // SQLite read_messages PK is message_id only — using INSERT OR IGNORE
+    // strands rows owned by an earlier user/anonymous session because the
+    // join in unread queries filters by user_id. INSERT OR REPLACE rewrites
+    // the row to the current reader so subsequent unread checks for that
+    // user actually find their read marker.
     let query = `
-      INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
+      INSERT OR REPLACE INTO read_messages (message_id, user_id, read_at)
       SELECT id, ?, ? FROM messages
       WHERE channel = ?
         AND portnum = 1
@@ -7615,8 +7622,9 @@ class DatabaseService {
       }
       return 0; // Return 0 since we don't wait for the async result
     }
+    // INSERT OR REPLACE — see markChannelMessagesAsRead for rationale.
     let query = `
-      INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
+      INSERT OR REPLACE INTO read_messages (message_id, user_id, read_at)
       SELECT id, ?, ? FROM messages
       WHERE ((fromNodeId = ? AND toNodeId = ?) OR (fromNodeId = ? AND toNodeId = ?))
         AND portnum = 1
@@ -7649,8 +7657,9 @@ class DatabaseService {
       }
       return 0; // Return 0 since we don't wait for the async result
     }
+    // INSERT OR REPLACE — see markChannelMessagesAsRead for rationale.
     const query = `
-      INSERT OR IGNORE INTO read_messages (message_id, user_id, read_at)
+      INSERT OR REPLACE INTO read_messages (message_id, user_id, read_at)
       SELECT id, ?, ? FROM messages
       WHERE (fromNodeId = ? OR toNodeId = ?)
         AND portnum = 1
@@ -7768,15 +7777,18 @@ class DatabaseService {
     return rows.map(row => row.id);
   }
 
-  getUnreadCountsByChannel(userId: number | null, localNodeId?: string): {[channelId: number]: number} {
+  getUnreadCountsByChannel(userId: number | null, localNodeId?: string, sourceId?: string): {[channelId: number]: number} {
     // For PostgreSQL/MySQL, use async method via cache or return empty for sync call
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       // Sync method can't do async DB query - return empty and let caller use async version
       return {};
     }
 
-    // Only count incoming messages (exclude messages sent by our node)
-    const excludeOutgoing = localNodeId ? 'AND m.fromNodeId != ?' : '';
+    // Only count incoming messages (exclude messages sent by our node) and
+    // optionally scope to a single source so multi-source views don't bleed
+    // counts from other sources into this tab.
+    const fromClause = localNodeId ? 'AND m.fromNodeId != ?' : '';
+    const sourceClause = sourceId ? 'AND m.sourceId = ?' : '';
     // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
       SELECT m.channel, COUNT(*) as count
@@ -7785,20 +7797,17 @@ class DatabaseService {
       WHERE rm.message_id IS NULL
         AND m.channel != -1
         AND m.portnum = 1
-        ${excludeOutgoing}
+        ${fromClause}
+        ${sourceClause}
       GROUP BY m.channel
     `);
 
-    let rows: Array<{ channel: number; count: number }>;
-    if (userId === null) {
-      rows = localNodeId
-        ? stmt.all(localNodeId) as Array<{ channel: number; count: number }>
-        : stmt.all() as Array<{ channel: number; count: number }>;
-    } else {
-      rows = localNodeId
-        ? stmt.all(userId, localNodeId) as Array<{ channel: number; count: number }>
-        : stmt.all(userId) as Array<{ channel: number; count: number }>;
-    }
+    const params: any[] = [];
+    if (userId !== null) params.push(userId);
+    if (localNodeId) params.push(localNodeId);
+    if (sourceId) params.push(sourceId);
+
+    const rows = stmt.all(...params) as Array<{ channel: number; count: number }>;
 
     const counts: {[channelId: number]: number} = {};
     rows.forEach(row => {
@@ -7807,7 +7816,7 @@ class DatabaseService {
     return counts;
   }
 
-  getUnreadDMCount(localNodeId: string, remoteNodeId: string, userId: number | null): number {
+  getUnreadDMCount(localNodeId: string, remoteNodeId: string, userId: number | null, sourceId?: string): number {
     // For PostgreSQL/MySQL, return 0 (unread tracking is complex and low priority)
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return 0;
@@ -7815,6 +7824,7 @@ class DatabaseService {
 
     // Only count incoming DMs (messages FROM remote node TO local node)
     // Exclude outgoing messages (messages FROM local node TO remote node)
+    const sourceClause = sourceId ? 'AND m.sourceId = ?' : '';
     // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
       SELECT COUNT(*) as count
@@ -7825,11 +7835,13 @@ class DatabaseService {
         AND m.channel = -1
         AND m.fromNodeId = ?
         AND m.toNodeId = ?
+        ${sourceClause}
     `);
 
-    const params = userId === null
-      ? [remoteNodeId, localNodeId]
-      : [userId, remoteNodeId, localNodeId];
+    const params: any[] = [];
+    if (userId !== null) params.push(userId);
+    params.push(remoteNodeId, localNodeId);
+    if (sourceId) params.push(sourceId);
 
     const result = stmt.get(...params) as { count: number };
     return Number(result.count);
@@ -7839,38 +7851,39 @@ class DatabaseService {
    * Async version of getUnreadCountsByChannel for PostgreSQL/MySQL.
    * Delegates to NotificationsRepository for Drizzle-based execution on all backends.
    */
-  async getUnreadCountsByChannelAsync(userId: number | null, localNodeId?: string): Promise<{[channelId: number]: number}> {
+  async getUnreadCountsByChannelAsync(userId: number | null, localNodeId?: string, sourceId?: string): Promise<{[channelId: number]: number}> {
     // For SQLite, use sync version (legacy compatibility)
     if (this.drizzleDbType !== 'postgres' && this.drizzleDbType !== 'mysql') {
-      return this.getUnreadCountsByChannel(userId, localNodeId);
+      return this.getUnreadCountsByChannel(userId, localNodeId, sourceId);
     }
     if (!this.notificationsRepo) return {};
-    return this.notificationsRepo.getUnreadCountsByChannelAsync(userId, localNodeId);
+    return this.notificationsRepo.getUnreadCountsByChannelAsync(userId, localNodeId, sourceId);
   }
 
   /**
    * Async version of getUnreadDMCount for PostgreSQL/MySQL.
    * Delegates to NotificationsRepository for Drizzle-based execution on all backends.
    */
-  async getUnreadDMCountAsync(localNodeId: string, remoteNodeId: string, userId: number | null): Promise<number> {
+  async getUnreadDMCountAsync(localNodeId: string, remoteNodeId: string, userId: number | null, sourceId?: string): Promise<number> {
     // For SQLite, use sync version
     if (this.drizzleDbType !== 'postgres' && this.drizzleDbType !== 'mysql') {
-      return this.getUnreadDMCount(localNodeId, remoteNodeId, userId);
+      return this.getUnreadDMCount(localNodeId, remoteNodeId, userId, sourceId);
     }
     if (!this.notificationsRepo) return 0;
-    return this.notificationsRepo.getUnreadDMCountAsync(localNodeId, remoteNodeId, userId);
+    return this.notificationsRepo.getUnreadDMCountAsync(localNodeId, remoteNodeId, userId, sourceId);
   }
 
   /**
    * Get all DM unread counts in a single batch query, grouped by remote node.
    * Returns { [fromNodeId: string]: number } for all nodes with unread DMs.
    */
-  getBatchUnreadDMCounts(localNodeId: string, userId: number | null): { [fromNodeId: string]: number } {
+  getBatchUnreadDMCounts(localNodeId: string, userId: number | null, sourceId?: string): { [fromNodeId: string]: number } {
     // For PostgreSQL/MySQL, return empty (handled by async version)
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return {};
     }
 
+    const sourceClause = sourceId ? 'AND m.sourceId = ?' : '';
     // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
       SELECT m.fromNodeId, COUNT(*) as count
@@ -7880,12 +7893,14 @@ class DatabaseService {
         AND m.portnum = 1
         AND m.channel = -1
         AND m.toNodeId = ?
+        ${sourceClause}
       GROUP BY m.fromNodeId
     `);
 
-    const params = userId === null
-      ? [localNodeId]
-      : [userId, localNodeId];
+    const params: any[] = [];
+    if (userId !== null) params.push(userId);
+    params.push(localNodeId);
+    if (sourceId) params.push(sourceId);
 
     const rows = stmt.all(...params) as { fromNodeId: string; count: number }[];
     const result: { [fromNodeId: string]: number } = {};
@@ -7899,13 +7914,13 @@ class DatabaseService {
    * Async version of getBatchUnreadDMCounts for PostgreSQL/MySQL support.
    * Delegates to NotificationsRepository for Drizzle-based execution on all backends.
    */
-  async getBatchUnreadDMCountsAsync(localNodeId: string, userId: number | null): Promise<{ [fromNodeId: string]: number }> {
+  async getBatchUnreadDMCountsAsync(localNodeId: string, userId: number | null, sourceId?: string): Promise<{ [fromNodeId: string]: number }> {
     // For SQLite, use sync version
     if (this.drizzleDbType !== 'postgres' && this.drizzleDbType !== 'mysql') {
-      return this.getBatchUnreadDMCounts(localNodeId, userId);
+      return this.getBatchUnreadDMCounts(localNodeId, userId, sourceId);
     }
     if (!this.notificationsRepo) return {};
-    return this.notificationsRepo.getBatchUnreadDMCountsAsync(localNodeId, userId);
+    return this.notificationsRepo.getBatchUnreadDMCountsAsync(localNodeId, userId, sourceId);
   }
 
   cleanupOldReadMessages(days: number): number {

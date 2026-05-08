@@ -7,7 +7,7 @@
  *
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, sql, and, or, lte, isNull, ne } from 'drizzle-orm';
+import { eq, desc, sql, and, or, lte, isNull, ne, type SQL } from 'drizzle-orm';
 import {
   readMessagesSqlite,
 } from '../schema/notifications.js';
@@ -771,15 +771,17 @@ export class NotificationsRepository extends BaseRepository {
    */
   async getUnreadCountsByChannelAsync(
     userId: number | null,
-    localNodeId?: string
+    localNodeId?: string,
+    sourceId?: string
   ): Promise<{ [channelId: number]: number }> {
     const messages = this.tables.messages;
     const readMessages = this.tables.readMessages;
 
-    const conditions = [
+    const conditions: (SQL | undefined)[] = [
       isNull(readMessages.messageId),
       ne(messages.channel, -1),
       eq(messages.portnum, 1),
+      this.withSourceScope(messages, sourceId),
     ];
     if (localNodeId) {
       conditions.push(ne(messages.fromNodeId, localNodeId));
@@ -813,7 +815,8 @@ export class NotificationsRepository extends BaseRepository {
   async getUnreadDMCountAsync(
     localNodeId: string,
     remoteNodeId: string,
-    userId: number | null
+    userId: number | null,
+    sourceId?: string
   ): Promise<number> {
     const messages = this.tables.messages;
     const readMessages = this.tables.readMessages;
@@ -829,7 +832,8 @@ export class NotificationsRepository extends BaseRepository {
             eq(messages.portnum, 1),
             eq(messages.channel, -1),
             eq(messages.fromNodeId, remoteNodeId),
-            eq(messages.toNodeId, localNodeId)
+            eq(messages.toNodeId, localNodeId),
+            this.withSourceScope(messages, sourceId)
           )
         );
       return Number(rows[0]?.count ?? 0);
@@ -845,7 +849,8 @@ export class NotificationsRepository extends BaseRepository {
    */
   async getBatchUnreadDMCountsAsync(
     localNodeId: string,
-    userId: number | null
+    userId: number | null,
+    sourceId?: string
   ): Promise<{ [fromNodeId: string]: number }> {
     const messages = this.tables.messages;
     const readMessages = this.tables.readMessages;
@@ -863,7 +868,8 @@ export class NotificationsRepository extends BaseRepository {
             isNull(readMessages.messageId),
             eq(messages.portnum, 1),
             eq(messages.channel, -1),
-            eq(messages.toNodeId, localNodeId)
+            eq(messages.toNodeId, localNodeId),
+            this.withSourceScope(messages, sourceId)
           )
         )
         .groupBy(messages.fromNodeId);
