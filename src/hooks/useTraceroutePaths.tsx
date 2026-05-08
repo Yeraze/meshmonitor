@@ -492,9 +492,14 @@ export function useTraceroutePaths({
       const node1 = nodesPositionDigest.find(n => n.nodeNum === segment.nodeNums[0]);
       const node2 = nodesPositionDigest.find(n => n.nodeNum === segment.nodeNums[1]);
 
-      // Check if this segment traversed MQTT: either SNR sentinel or either endpoint is an MQTT node
-      const isMqttSegment = (segmentHasMqtt.get(segmentKey) || false) ||
-        (node1?.viaMqtt === true) || (node2?.viaMqtt === true);
+      // A segment is MQTT/IP only when the firmware reported the unknown-SNR
+      // sentinel for that specific hop (issue #2931). Don't infer from
+      // `node.viaMqtt` — that flag tracks how the node's own NodeInfo last
+      // reached us, not how its radio segments work; a single MQTT/UDP
+      // bridge node would otherwise mark every adjacent segment as IP and
+      // cascade the dashed style across an entire route that's actually
+      // mostly radio.
+      const isMqttSegment = segmentHasMqtt.get(segmentKey) === true;
       const node1Name =
         segment.nodeNums[0] === BROADCAST_ADDR
           ? '(unknown)'
