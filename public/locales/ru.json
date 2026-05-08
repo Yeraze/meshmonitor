@@ -4062,7 +4062,7 @@
     "security.offset_days_other": "",
     "meshcore.radio": "",
     "automation.auto_ping.interval": "",
-    "automation.auto_heap.save_error": "",
+    "automation.auto_heap.save_error": "Не удалось сохранить настройки",
     "automation.auto_key_management.log_new_key": "",
     "settings.analytics_provider_plausible": "",
     "dashboard.widget.hop_distribution.hops_one": "",
