@@ -235,6 +235,12 @@ function App() {
   const channelMessagesContainerRef = useRef<HTMLDivElement>(null);
   const dmMessagesContainerRef = useRef<HTMLDivElement>(null);
   const lastScrollLoadTimeRef = useRef<number>(0); // Throttle scroll-triggered loads (200ms)
+  // Track latest channelMessages/messages via refs so the infinite-scroll loaders
+  // see current state without rebuilding their closure on every poll. Without
+  // this the first scroll-up uses a stale offset (0) captured at mount and the
+  // resulting fetch is filtered out by dedup, so the user sees nothing load.
+  const channelMessagesRef = useRef<{ [key: number]: MeshMessage[] }>({});
+  const messagesRef = useRef<MeshMessage[]>([]);
 
   // Detect base URL from pathname
   const detectBaseUrl = () => {
@@ -1590,13 +1596,23 @@ function App() {
     return container.scrollTop < 100;
   }, []);
 
+  // Keep refs in sync with the latest state so infinite-scroll loaders read
+  // current values instead of a stale closure. See comment at the ref decls.
+  useEffect(() => {
+    channelMessagesRef.current = channelMessages;
+  }, [channelMessages]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   // Load more channel messages (for infinite scroll)
   const loadMoreChannelMessages = useCallback(async () => {
     if (channelLoadingMore[selectedChannel] || channelHasMore[selectedChannel] === false) {
       return;
     }
 
-    const currentMessages = channelMessages[selectedChannel] || [];
+    const currentMessages = channelMessagesRef.current[selectedChannel] || [];
     const offset = currentMessages.length;
     const container = channelMessagesContainerRef.current;
 
@@ -1646,7 +1662,6 @@ function App() {
     selectedChannel,
     channelLoadingMore,
     channelHasMore,
-    channelMessages,
     setChannelMessages,
     setChannelHasMore,
     setChannelLoadingMore,
@@ -1663,7 +1678,7 @@ function App() {
     }
 
     // Get current DM messages from the messages array (channel -1 or direct messages)
-    const currentDMs = messages.filter(
+    const currentDMs = messagesRef.current.filter(
       msg =>
         (msg.fromNodeId === currentNodeId && msg.toNodeId === selectedDMNode) ||
         (msg.fromNodeId === selectedDMNode && msg.toNodeId === currentNodeId)
@@ -1715,7 +1730,6 @@ function App() {
     currentNodeId,
     dmLoadingMore,
     dmHasMore,
-    messages,
     setMessages,
     setDmHasMore,
     setDmLoadingMore,
