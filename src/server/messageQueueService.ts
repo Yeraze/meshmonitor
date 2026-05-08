@@ -21,6 +21,11 @@ export interface QueuedMessage {
   enqueuedAt: number;
   lastAttemptAt?: number;
   requestId?: number; // The message ID from the last send attempt
+  // Every requestId this message has used (current + all prior retries). Late
+  // ACKs on a prior attempt's requestId still satisfy the message, so we keep
+  // every attempt's id mapped to the same message in pendingAcks until it
+  // resolves (or the orphan-cleanup timeout expires).
+  priorRequestIds?: number[];
   pendingAckSince?: number; // Timestamp when added to pendingAcks (for cleanup)
   onSuccess?: () => void;
   onFailure?: (reason: string) => void;
@@ -31,7 +36,12 @@ export class MessageQueueService {
   private processing = false;
   private lastSendTime = 0;
   private readonly SEND_INTERVAL_MS = 30000; // 30 seconds between sends
-  private readonly RETRY_INTERVAL_MS = 30000; // 30 seconds between retry attempts
+  // Mesh ACK round-trip on LongFast with multi-hop + channel utilization
+  // routinely exceeds 30s. A 30s retry interval caused every verifyResponse=true
+  // DM auto-response to fire all 3 attempts even when the target ACK eventually
+  // arrived. 90s gives the firmware/mesh time to deliver the ACK before we
+  // assume failure and retransmit.
+  private readonly RETRY_INTERVAL_MS = 90000;
   private readonly MAX_ATTEMPTS = 3;
   private readonly PENDING_ACK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes - cleanup orphaned ACKs
 
@@ -154,13 +164,18 @@ export class MessageQueueService {
   private cleanupOrphanedAcks() {
     const now = Date.now();
     let cleanedCount = 0;
+    // Dedupe by message.id since retried messages have multiple requestIds
+    // mapped to the same QueuedMessage in pendingAcks.
+    const seen = new Set<string>();
 
     for (const [requestId, message] of this.pendingAcks.entries()) {
+      if (seen.has(message.id)) continue;
       if (message.pendingAckSince) {
         const age = now - message.pendingAckSince;
         if (age > this.PENDING_ACK_TIMEOUT_MS) {
+          seen.add(message.id);
           logger.warn(`🧹 Cleaning up orphaned ACK for message ${message.id} (requestId: ${requestId}, age: ${Math.round(age / 1000)}s)`);
-          this.pendingAcks.delete(requestId);
+          this.deleteAllRequestIds(message);
 
           // Call failure callback if present with error handling
           if (message.onFailure) {
@@ -242,7 +257,13 @@ export class MessageQueueService {
    * Find a message that needs retry
    */
   private findMessageForRetry(now: number): QueuedMessage | null {
+    // pendingAcks may map several requestIds to the same QueuedMessage when
+    // retries created additional ids; dedupe by message.id so we don't retry
+    // the same message twice on a single tick.
+    const seen = new Set<string>();
     for (const message of this.pendingAcks.values()) {
+      if (seen.has(message.id)) continue;
+      seen.add(message.id);
       if (message.attempts < message.maxAttempts) {
         const timeSinceLastAttempt = now - (message.lastAttemptAt || 0);
         if (timeSinceLastAttempt >= this.RETRY_INTERVAL_MS) {
@@ -251,6 +272,22 @@ export class MessageQueueService {
       }
     }
     return null;
+  }
+
+  /**
+   * Remove every requestId associated with this message from pendingAcks.
+   * Used when an ACK/failure resolves the message — late ACKs on prior
+   * retry attempts must clear the queue entry instead of being ignored.
+   */
+  private deleteAllRequestIds(message: QueuedMessage) {
+    if (message.requestId !== undefined) {
+      this.pendingAcks.delete(message.requestId);
+    }
+    if (message.priorRequestIds) {
+      for (const oldId of message.priorRequestIds) {
+        this.pendingAcks.delete(oldId);
+      }
+    }
   }
 
   /**
@@ -279,9 +316,13 @@ export class MessageQueueService {
         throw new Error(`Invalid requestId returned: ${requestId}`);
       }
 
-      // Clean up old pendingAcks entry from previous attempt (retry case)
-      if (message.requestId) {
-        this.pendingAcks.delete(message.requestId);
+      // Keep the prior attempt's requestId mapped in pendingAcks so a late ACK
+      // on it still resolves the message instead of being dropped.
+      if (message.requestId !== undefined && message.requestId !== requestId) {
+        if (!message.priorRequestIds) message.priorRequestIds = [];
+        if (!message.priorRequestIds.includes(message.requestId)) {
+          message.priorRequestIds.push(message.requestId);
+        }
       }
 
       message.requestId = requestId;
@@ -328,8 +369,9 @@ export class MessageQueueService {
   handleAck(requestId: number) {
     const message = this.pendingAcks.get(requestId);
     if (message) {
-      logger.info(`✅ ACK received for message ${message.id} (requestId: ${requestId})`);
-      this.pendingAcks.delete(requestId);
+      const isLateAck = message.requestId !== requestId;
+      logger.info(`✅ ACK received for message ${message.id} (requestId: ${requestId}${isLateAck ? ', late ACK on prior attempt' : ''})`);
+      this.deleteAllRequestIds(message);
 
       // Call success callback with error handling
       if (message.onSuccess) {
@@ -360,10 +402,8 @@ export class MessageQueueService {
     // Remove from queue if still there
     this.removeFromQueue(message);
 
-    // Remove from pending ACKs if there
-    if (message.requestId) {
-      this.pendingAcks.delete(message.requestId);
-    }
+    // Remove every requestId associated with this message from pendingAcks
+    this.deleteAllRequestIds(message);
 
     // Call failure callback with error handling
     if (message.onFailure) {

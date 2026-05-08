@@ -137,17 +137,39 @@ describe('MessageQueueService', () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(sentMessages).toHaveLength(1);
 
-      // Second attempt (after 30s)
-      await vi.advanceTimersByTimeAsync(30000);
+      // Second attempt (after 90s retry interval)
+      await vi.advanceTimersByTimeAsync(90000);
       expect(sentMessages).toHaveLength(2);
 
-      // Third attempt (after another 30s)
-      await vi.advanceTimersByTimeAsync(30000);
+      // Third attempt (after another 90s)
+      await vi.advanceTimersByTimeAsync(90000);
       expect(sentMessages).toHaveLength(3);
 
       // No fourth attempt - max 3 attempts reached
-      await vi.advanceTimersByTimeAsync(30000);
+      await vi.advanceTimersByTimeAsync(90000);
       expect(sentMessages).toHaveLength(3);
+    });
+
+    it('should clear retries when a late ACK arrives on a prior attempt', async () => {
+      const successCallback = vi.fn();
+      messageQueueService.enqueue('Test message', 12345678, undefined, successCallback);
+
+      // First attempt at T=0 with requestId 1000
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sentMessages).toHaveLength(1);
+
+      // Second attempt at T=90s with requestId 1001 (target ACK on 1000 still hasn't arrived)
+      await vi.advanceTimersByTimeAsync(90000);
+      expect(sentMessages).toHaveLength(2);
+
+      // Late ACK arrives for the FIRST attempt (requestId 1000) — should still
+      // resolve the message and prevent the third attempt.
+      messageQueueService.handleAck(1000);
+      expect(successCallback).toHaveBeenCalledTimes(1);
+
+      // Advance past where the third attempt would have fired — no new send.
+      await vi.advanceTimersByTimeAsync(90000);
+      expect(sentMessages).toHaveLength(2);
     });
 
     it('should call failure callback after max retries without ACK', async () => {
@@ -156,16 +178,16 @@ describe('MessageQueueService', () => {
 
       // Send all 3 attempts without ACK
       await vi.advanceTimersByTimeAsync(0);     // attempt 1 at T
-      await vi.advanceTimersByTimeAsync(30000); // attempt 2 at T+30s
-      await vi.advanceTimersByTimeAsync(30000); // attempt 3 at T+60s
+      await vi.advanceTimersByTimeAsync(90000); // attempt 2 at T+90s
+      await vi.advanceTimersByTimeAsync(90000); // attempt 3 at T+180s
 
       // After final attempt, still waiting for ACK
       expect(failureCallback).not.toHaveBeenCalled();
 
-      // pendingAckSince is T+60s (updated on last attempt). Cleanup runs every 60s.
+      // pendingAckSince is T+180s (updated on last attempt). Cleanup runs every 60s.
       // Need cleanup fire where age > 5 minutes (300000ms).
-      // At T+420s (7 min): age = 420000-60000 = 360000 > 300000 → cleanup fires.
-      // From T+60s, advance 360s to reach T+420s.
+      // At T+540s (9 min): age = 540000-180000 = 360000 > 300000 → cleanup fires.
+      // From T+180s, advance 360s to reach T+540s.
       await vi.advanceTimersByTimeAsync(360000);
 
       expect(failureCallback).toHaveBeenCalledTimes(1);
@@ -206,7 +228,7 @@ describe('MessageQueueService', () => {
       expect(sentMessages).toHaveLength(0);
 
       // Second attempt succeeds (message stays in queue after failed first attempt)
-      await vi.advanceTimersByTimeAsync(30000);
+      await vi.advanceTimersByTimeAsync(90000);
       expect(sentMessages).toHaveLength(1);
     });
 
@@ -219,8 +241,8 @@ describe('MessageQueueService', () => {
 
       // All 3 attempts fail
       await vi.advanceTimersByTimeAsync(0);
-      await vi.advanceTimersByTimeAsync(30000);
-      await vi.advanceTimersByTimeAsync(30000);
+      await vi.advanceTimersByTimeAsync(90000);
+      await vi.advanceTimersByTimeAsync(90000);
 
       expect(failureCallback).toHaveBeenCalledTimes(1);
       expect(failureCallback.mock.calls[0][0]).toContain('Send error after 3 attempts');
@@ -235,8 +257,8 @@ describe('MessageQueueService', () => {
       await vi.advanceTimersByTimeAsync(0);
 
       // Should retry due to error
-      await vi.advanceTimersByTimeAsync(30000);
-      await vi.advanceTimersByTimeAsync(30000);
+      await vi.advanceTimersByTimeAsync(90000);
+      await vi.advanceTimersByTimeAsync(90000);
 
       expect(failureCallback).toHaveBeenCalled();
     });
