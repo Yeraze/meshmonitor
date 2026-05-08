@@ -103,6 +103,16 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
   // Helper to add a new message to the cache
   // Messages are ordered newest-first, so new messages go at the beginning
   const addMessageToCache = useCallback((message: RawMessage) => {
+    // Skip traceroute messages — the /api/poll endpoint excludes them from
+    // `messages` (they live in `pollData.traceroutes` instead, refreshed on
+    // `traceroute:complete`). Inserting them here causes them to briefly
+    // become messages[0]; the next poll then evicts them, which makes the
+    // newest-message-id tracker in App.tsx think the previously-seen text
+    // message at the new messages[0] is "new" and play the chime. (#2867)
+    if (message.portnum === 70 /* TRACEROUTE_APP */) {
+      return;
+    }
+
     const key = sourcePollQueryKey(sourceId);
     queryClient.setQueryData<PollData>(key, (old) => {
       if (!old) {
