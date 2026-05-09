@@ -167,7 +167,19 @@ const SortableChannelCard: React.FC<SortableChannelCardProps> = ({
             </p>
           )}
           <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
-            <div>PSK: {channel.pskPreview} ({channel.pskLength === 16 ? 'AES-128' : 'AES-256'})</div>
+            <div>
+              {channel.pskLength === 0
+                ? 'PSK: (none) (None)'
+                : `PSK: ${channel.pskPreview} (${
+                    channel.pskLength === 1
+                      ? 'Shorthand (AES-128)'
+                      : channel.pskLength === 16
+                        ? 'AES-128'
+                        : channel.pskLength === 32
+                          ? 'AES-256'
+                          : 'Unknown'
+                  })`}
+            </div>
             <div>{t('channel_database.decrypted_count')}: {channel.decryptedPacketCount}</div>
             <div>{t('channel_database.last_decrypted')}: {formatTimestamp(channel.lastDecryptedAt)}</div>
           </div>

@@ -27,7 +27,7 @@ function transformChannelForResponse(channel: any, includeFullPsk: boolean = fal
     id: channel.id,
     name: channel.name,
     pskLength: channel.pskLength,
-    pskPreview: includeFullPsk ? channel.psk : `${channel.psk.substring(0, 8)}...`,
+    pskPreview: includeFullPsk ? channel.psk : (channel.psk ? `${channel.psk.substring(0, 8)}...` : '(none)'),
     psk: includeFullPsk ? channel.psk : undefined,
     description: channel.description,
     isEnabled: channel.isEnabled,
