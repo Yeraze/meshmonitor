@@ -10,6 +10,8 @@
   align-items: center;
   justify-content: center;
   z-index: 10001;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .filter-popup {

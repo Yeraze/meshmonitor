@@ -16,6 +16,8 @@
   align-items: center;
   justify-content: center;
   z-index: 10002;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* Modal content container */
