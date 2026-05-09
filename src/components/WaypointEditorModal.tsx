@@ -1,13 +1,14 @@
 /**
  * WaypointEditorModal — create/edit dialog for waypoints.
  *
- * Fields: lat/lon (text inputs, with optional map-pick callback), name (≤30),
- * description (≤100), emoji (a small quick-pick + free text), expire
- * (datetime-local or "never"), locked_to (self / open), virtual toggle,
- * rebroadcast interval (numeric, optional).
+ * Wraps the shared `<Modal />` component for consistent overlay/escape/focus
+ * behavior. In create mode pass `initial={null}` (or omit it); in edit mode
+ * pass the existing waypoint and the dialog pre-fills.
  */
 import { useEffect, useState } from 'react';
+import Modal from './common/Modal';
 import type { Waypoint, WaypointInput } from '../types/waypoint';
+import './WaypointEditorModal.css';
 
 const DEFAULT_EMOJIS = ['📍', '🏠', '🏕️', '⛺', '🚗', '🛟', '⚠️', '⭐', '🚩', '🛠️'];
 
@@ -20,6 +21,8 @@ export interface WaypointEditorModalProps {
   onSave: (input: WaypointInput) => Promise<void> | void;
   /** Local node's nodeNum, used when the user toggles "lock to me". */
   selfNodeNum?: number | null;
+  /** Coordinates to seed when opening in create mode (e.g. from a map click). */
+  defaultCoords?: { lat: number; lon: number } | null;
 }
 
 function expireSecondsToLocal(expire: number | null | undefined): string {
@@ -37,7 +40,7 @@ function localToExpireSeconds(local: string): number | null {
 }
 
 export default function WaypointEditorModal(props: WaypointEditorModalProps) {
-  const { isOpen, initial, onPickLocation, onClose, onSave, selfNodeNum } = props;
+  const { isOpen, initial, onPickLocation, onClose, onSave, selfNodeNum, defaultCoords } = props;
 
   const [lat, setLat] = useState('');
   const [lon, setLon] = useState('');
@@ -69,8 +72,8 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
       setVirtual(Boolean(initial.isVirtual));
       setRebroadcast(initial.rebroadcastIntervalS ? String(initial.rebroadcastIntervalS) : '');
     } else {
-      setLat('');
-      setLon('');
+      setLat(defaultCoords ? String(defaultCoords.lat) : '');
+      setLon(defaultCoords ? String(defaultCoords.lon) : '');
       setName('');
       setDescription('');
       setEmoji('📍');
@@ -81,9 +84,7 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
       setRebroadcast('');
     }
     setError(null);
-  }, [isOpen, initial, selfNodeNum]);
-
-  if (!isOpen) return null;
+  }, [isOpen, initial, selfNodeNum, defaultCoords]);
 
   function validate(): WaypointInput | null {
     const latN = Number(lat);
@@ -145,94 +146,113 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
       onClose();
     } catch (err: any) {
       setError(err?.message ?? 'Save failed');
-    } finally {
       setSaving(false);
+      return;
     }
+    setSaving(false);
   }
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
-      <div className="modal waypoint-editor" style={{ maxWidth: 480 }}>
-        <h3>{initial ? 'Edit Waypoint' : 'New Waypoint'}</h3>
-
-        <label>Latitude
-          <input
-            type="number"
-            step="0.000001"
-            value={lat}
-            onChange={(e) => setLat(e.target.value)}
-          />
-        </label>
-        <label>Longitude
-          <input
-            type="number"
-            step="0.000001"
-            value={lon}
-            onChange={(e) => setLon(e.target.value)}
-          />
-        </label>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={initial ? 'Edit Waypoint' : 'New Waypoint'}
+      maxWidth="500px"
+      className="waypoint-editor-modal"
+    >
+      <div className="waypoint-editor-form">
+        <div className="form-row">
+          <label className="form-label">
+            Latitude
+            <input
+              className="form-input"
+              type="number"
+              step="0.000001"
+              value={lat}
+              onChange={(e) => setLat(e.target.value)}
+            />
+          </label>
+          <label className="form-label">
+            Longitude
+            <input
+              className="form-input"
+              type="number"
+              step="0.000001"
+              value={lon}
+              onChange={(e) => setLon(e.target.value)}
+            />
+          </label>
+        </div>
         {onPickLocation && (
-          <button type="button" onClick={onPickLocation}>
-            Pick on map…
+          <button
+            type="button"
+            className="form-button form-button-secondary"
+            onClick={onPickLocation}
+          >
+            📍 Pick on map…
           </button>
         )}
 
-        <label>Name (≤30)
+        <label className="form-label">
+          Name (≤30)
           <input
+            className="form-input"
             type="text"
             maxLength={30}
             value={name}
             onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Trailhead"
           />
         </label>
-        <label>Description (≤100)
+
+        <label className="form-label">
+          Description (≤100)
           <textarea
+            className="form-input"
+            rows={2}
             maxLength={100}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
         </label>
 
-        <fieldset>
+        <fieldset className="waypoint-editor-icon-group">
           <legend>Icon</legend>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          <div className="waypoint-editor-icon-row">
             {DEFAULT_EMOJIS.map((e) => (
               <button
                 key={e}
                 type="button"
                 onClick={() => setEmoji(e)}
                 aria-pressed={emoji === e}
-                style={{
-                  padding: 6,
-                  background: emoji === e ? '#dde' : 'transparent',
-                  border: '1px solid #ccc',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                }}
+                className={`waypoint-editor-icon-pick${emoji === e ? ' selected' : ''}`}
               >
                 {e}
               </button>
             ))}
             <input
+              className="form-input waypoint-editor-icon-custom"
               type="text"
               value={emoji}
               onChange={(e) => setEmoji(e.target.value.slice(0, 4))}
-              style={{ width: 60 }}
               aria-label="Custom emoji"
             />
           </div>
         </fieldset>
 
-        <label>
+        <label className="form-checkbox">
           <input
             type="checkbox"
             checked={hasExpiry}
             onChange={(e) => setHasExpiry(e.target.checked)}
-          /> Expires
+          />
+          <span>Expires</span>
         </label>
         {hasExpiry && (
-          <label>Expire at
+          <label className="form-label">
+            Expire at
             <input
+              className="form-input"
               type="datetime-local"
               value={expireLocal}
               onChange={(e) => setExpireLocal(e.target.value)}
@@ -240,25 +260,32 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
           </label>
         )}
 
-        <label>
+        <label className="form-checkbox">
           <input
             type="checkbox"
             checked={lockToSelf}
             onChange={(e) => setLockToSelf(e.target.checked)}
             disabled={selfNodeNum == null}
-          /> Lock to this node ({selfNodeNum != null ? `!${selfNodeNum.toString(16).padStart(8, '0')}` : 'unknown'})
+          />
+          <span>
+            Lock to this node (
+            {selfNodeNum != null ? `!${selfNodeNum.toString(16).padStart(8, '0')}` : 'unknown'})
+          </span>
         </label>
 
-        <label>
+        <label className="form-checkbox">
           <input
             type="checkbox"
             checked={virtual}
             onChange={(e) => setVirtual(e.target.checked)}
-          /> Virtual (do not broadcast)
+          />
+          <span>Virtual (do not broadcast)</span>
         </label>
 
-        <label>Rebroadcast interval (seconds, optional)
+        <label className="form-label">
+          Rebroadcast interval (seconds, optional)
           <input
+            className="form-input"
             type="number"
             min={60}
             value={rebroadcast}
@@ -266,15 +293,31 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
           />
         </label>
 
-        {error && <div role="alert" style={{ color: '#c0392b' }}>{error}</div>}
+        {error && (
+          <div role="alert" className="form-error">
+            {error}
+          </div>
+        )}
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
-          <button type="button" onClick={onClose} disabled={saving}>Cancel</button>
-          <button type="button" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
+        <div className="waypoint-editor-actions">
+          <button
+            type="button"
+            className="form-button form-button-secondary"
+            onClick={onClose}
+            disabled={saving}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="form-button form-button-primary"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? 'Saving…' : initial ? 'Save' : 'Create'}
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

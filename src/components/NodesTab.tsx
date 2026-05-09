@@ -22,6 +22,9 @@ import { useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useSource } from '../contexts/SourceContext';
 import DashboardWaypoints from './Dashboard/DashboardWaypoints';
+import WaypointEditorModal from './WaypointEditorModal';
+import { useWaypoints } from '../hooks/useWaypoints';
+import type { Waypoint, WaypointInput } from '../types/waypoint';
 import { useResizable } from '../hooks/useResizable';
 import ZoomHandler from './ZoomHandler';
 import MapResizeHandler from './MapResizeHandler';
@@ -226,6 +229,53 @@ const TracerouteBoundsController: React.FC<{
   return null;
 };
 
+/**
+ * WaypointMapEventBridge — captures map clicks for waypoint authoring.
+ *
+ * - When `placing` is true, the next left-click drops a pin at the click
+ *   location and exits placement mode.
+ * - Right-click anywhere (when `canCreate`) opens the editor with that
+ *   location seeded as the new waypoint's coordinates.
+ *
+ * Toggles the `waypoint-placing` class on the leaflet container so CSS can
+ * change the cursor to a crosshair during placement.
+ */
+const WaypointMapEventBridge: React.FC<{
+  placing: boolean;
+  canCreate: boolean;
+  onPick: (lat: number, lon: number) => void;
+}> = ({ placing, canCreate, onPick }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+    if (placing) container.classList.add('waypoint-placing');
+    else container.classList.remove('waypoint-placing');
+    return () => container.classList.remove('waypoint-placing');
+  }, [placing, map]);
+
+  useEffect(() => {
+    if (!canCreate) return;
+    const handleClick = (e: any) => {
+      if (!placing) return;
+      const { lat, lng } = e.latlng;
+      onPick(lat, lng);
+    };
+    const handleContextMenu = (e: any) => {
+      const { lat, lng } = e.latlng;
+      onPick(lat, lng);
+    };
+    map.on('click', handleClick);
+    map.on('contextmenu', handleContextMenu);
+    return () => {
+      map.off('click', handleClick);
+      map.off('contextmenu', handleContextMenu);
+    };
+  }, [map, placing, canCreate, onPick]);
+
+  return null;
+};
+
 const NodesTabComponent: React.FC<NodesTabProps> = ({
   processedNodes,
   shouldShowData,
@@ -353,6 +403,93 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   const { hasPermission, authStatus } = useAuth();
   const csrfFetch = useCsrfFetch();
+
+  // ----- Waypoint authoring state -----
+  const canWriteWaypoints = hasPermission('waypoints', 'write');
+  const waypointMutations = useWaypoints(currentSourceId);
+  const [waypointEditorOpen, setWaypointEditorOpen] = useState(false);
+  const [waypointEditorInitial, setWaypointEditorInitial] = useState<Waypoint | null>(null);
+  const [waypointDefaultCoords, setWaypointDefaultCoords] = useState<
+    { lat: number; lon: number } | null
+  >(null);
+  const [placingWaypoint, setPlacingWaypoint] = useState(false);
+
+  const startCreateAtCoords = useCallback((lat: number, lon: number) => {
+    setWaypointEditorInitial(null);
+    setWaypointDefaultCoords({ lat, lon });
+    setWaypointEditorOpen(true);
+    setPlacingWaypoint(false);
+  }, []);
+
+  const startCreateBlank = useCallback(() => {
+    setPlacingWaypoint(true);
+  }, []);
+
+  const handleEditWaypoint = useCallback((wp: Waypoint) => {
+    setWaypointEditorInitial(wp);
+    setWaypointDefaultCoords(null);
+    setWaypointEditorOpen(true);
+    setPlacingWaypoint(false);
+  }, []);
+
+  const handleDeleteWaypoint = useCallback(
+    async (wp: Waypoint) => {
+      const label = wp.name || `Waypoint ${wp.waypointId}`;
+      if (!window.confirm(`Delete "${label}"? This will be broadcast to the mesh.`)) return;
+      try {
+        await waypointMutations.remove.mutateAsync(wp.waypointId);
+      } catch (err: any) {
+        window.alert(`Failed to delete waypoint: ${err?.message ?? 'unknown error'}`);
+      }
+    },
+    [waypointMutations.remove],
+  );
+
+  const handleSaveWaypoint = useCallback(
+    async (input: WaypointInput) => {
+      if (waypointEditorInitial) {
+        await waypointMutations.update.mutateAsync({
+          waypointId: waypointEditorInitial.waypointId,
+          input,
+        });
+      } else {
+        await waypointMutations.create.mutateAsync(input);
+      }
+    },
+    [waypointEditorInitial, waypointMutations.create, waypointMutations.update],
+  );
+
+  // Esc cancels waypoint placement mode (modal Esc handled by Modal component).
+  useEffect(() => {
+    if (!placingWaypoint) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPlacingWaypoint(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [placingWaypoint]);
+
+  const localNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
+  const lockedToOther = useCallback(
+    (wp: Waypoint) =>
+      Boolean(wp.lockedTo && localNodeNum != null && wp.lockedTo !== localNodeNum),
+    [localNodeNum],
+  );
+  const waypointActions = useMemo(
+    () => ({
+      canEdit: canWriteWaypoints,
+      canDelete: canWriteWaypoints,
+      onEdit: (wp: Waypoint) => {
+        if (lockedToOther(wp)) return;
+        handleEditWaypoint(wp);
+      },
+      onDelete: (wp: Waypoint) => {
+        if (lockedToOther(wp)) return;
+        handleDeleteWaypoint(wp);
+      },
+    }),
+    [canWriteWaypoints, lockedToOther, handleEditWaypoint, handleDeleteWaypoint],
+  );
 
   // Parse current node ID to get node number for effective hops calculation
   const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
@@ -1920,6 +2057,17 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       <span>Show Packet Monitor</span>
                     </label>
                   )}
+                  {canWriteWaypoints && (shouldShowData() || meshCoreNodes.length > 0) && (
+                    <button
+                      type="button"
+                      className="waypoint-create-button"
+                      onClick={startCreateBlank}
+                      disabled={placingWaypoint}
+                      title="Place a new waypoint by clicking on the map"
+                    >
+                      ➕ Waypoint
+                    </button>
+                  )}
                 </>
               )}
               </div>
@@ -1951,7 +2099,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               )}
               <ZoomHandler onZoomChange={setMapZoom} />
               <MapPositionHandler />
-              <DashboardWaypoints sourceId={currentSourceId ?? null} />
+              <WaypointMapEventBridge
+                placing={placingWaypoint}
+                canCreate={canWriteWaypoints}
+                onPick={(lat, lon) => startCreateAtCoords(lat, lon)}
+              />
+              <DashboardWaypoints sourceId={currentSourceId ?? null} actions={waypointActions} />
               <DefaultCenterController
                 lat={defaultMapCenterLat}
                 lon={defaultMapCenterLon}
@@ -2432,6 +2585,23 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       )}
       </div>
 
+      {placingWaypoint && (
+        <div className="waypoint-placement-hint" role="status">
+          <span>Click the map to place the waypoint</span>
+          <button type="button" onClick={() => setPlacingWaypoint(false)}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      <WaypointEditorModal
+        isOpen={waypointEditorOpen}
+        initial={waypointEditorInitial}
+        defaultCoords={waypointDefaultCoords}
+        selfNodeNum={localNodeNum ?? null}
+        onClose={() => setWaypointEditorOpen(false)}
+        onSave={handleSaveWaypoint}
+      />
     </div>
   );
 };

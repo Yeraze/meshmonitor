@@ -99,4 +99,55 @@ describe('WaypointsLayer', () => {
     expect(markers).toHaveLength(1);
     expect(markers[0].getAttribute('data-pos')).toBe('[30,-90]');
   });
+
+  it('does not render Edit/Delete buttons when no actions are provided', async () => {
+    const qc = new QueryClient();
+    const { queryByText } = render(
+      <QueryClientProvider client={qc}>
+        <MapAnalysisProvider>
+          <WaypointsLayer />
+        </MapAnalysisProvider>
+      </QueryClientProvider>,
+    );
+    expect(queryByText(/Edit$/)).toBeNull();
+    expect(queryByText(/Delete$/)).toBeNull();
+  });
+});
+
+describe('PerSourceWaypoints — popup actions', () => {
+  it('renders Edit and Delete buttons when canEdit/canDelete are true and wires them to callbacks', async () => {
+    const { PerSourceWaypoints } = await import('./WaypointsLayer');
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    const qc = new QueryClient();
+    const { getByText } = render(
+      <QueryClientProvider client={qc}>
+        <PerSourceWaypoints
+          source={{ id: 'src-1', name: 'Source One' }}
+          actions={{ canEdit: true, canDelete: true, onEdit, onDelete }}
+        />
+      </QueryClientProvider>,
+    );
+    const editBtn = getByText(/Edit/);
+    const deleteBtn = getByText(/Delete/);
+    editBtn.click();
+    expect(onEdit).toHaveBeenCalledWith(sample[0]);
+    deleteBtn.click();
+    expect(onDelete).toHaveBeenCalledWith(sample[0]);
+  });
+
+  it('hides Edit when canEdit is false but keeps Delete when canDelete is true', async () => {
+    const { PerSourceWaypoints } = await import('./WaypointsLayer');
+    const qc = new QueryClient();
+    const { queryByText, getByText } = render(
+      <QueryClientProvider client={qc}>
+        <PerSourceWaypoints
+          source={{ id: 'src-1', name: 'Source One' }}
+          actions={{ canEdit: false, canDelete: true, onEdit: vi.fn(), onDelete: vi.fn() }}
+        />
+      </QueryClientProvider>,
+    );
+    expect(queryByText(/Edit/)).toBeNull();
+    expect(getByText(/Delete/)).toBeTruthy();
+  });
 });

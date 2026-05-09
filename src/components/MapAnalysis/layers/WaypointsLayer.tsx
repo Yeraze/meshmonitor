@@ -81,7 +81,24 @@ export interface SourceInfo {
   name?: string;
 }
 
-export function PerSourceWaypoints({ source }: { source: SourceInfo }) {
+export interface WaypointPopupActions {
+  /** Allowed to edit (write perm + not locked-to-other). Edit button hidden when false. */
+  canEdit?: boolean;
+  /** Allowed to delete (write perm + not locked-to-other). Delete button hidden when false. */
+  canDelete?: boolean;
+  /** Caller invokes edit flow with the chosen waypoint. */
+  onEdit?: (wp: Waypoint) => void;
+  /** Caller invokes delete flow with the chosen waypoint. */
+  onDelete?: (wp: Waypoint) => void;
+}
+
+export function PerSourceWaypoints({
+  source,
+  actions,
+}: {
+  source: SourceInfo;
+  actions?: WaypointPopupActions;
+}) {
   const { waypoints } = useWaypoints(source.id);
 
   if (!waypoints || waypoints.length === 0) return null;
@@ -155,6 +172,28 @@ export function PerSourceWaypoints({ source }: { source: SourceInfo }) {
                       </div>
                     )}
                   </div>
+
+                  {(actions?.canEdit || actions?.canDelete) && (
+                    <div className="waypoint-popup-actions">
+                      {actions.canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => actions.onEdit?.(wp)}
+                        >
+                          ✏️ Edit
+                        </button>
+                      )}
+                      {actions.canDelete && (
+                        <button
+                          type="button"
+                          className="danger"
+                          onClick={() => actions.onDelete?.(wp)}
+                        >
+                          🗑 Delete
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </Popup>

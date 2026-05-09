@@ -1,0 +1,250 @@
+/* WaypointEditorModal — form styling layered on top of common/Modal.css */
+
+.waypoint-editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  color: var(--ctp-text);
+  font-size: 0.9rem;
+}
+
+.waypoint-editor-form .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.waypoint-editor-form .form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--ctp-subtext0);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.waypoint-editor-form .form-input {
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.55rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+.waypoint-editor-form textarea.form-input {
+  resize: vertical;
+  min-height: 2.5rem;
+}
+
+.waypoint-editor-form .form-input:focus {
+  outline: none;
+  border-color: var(--ctp-blue);
+}
+
+.waypoint-editor-form .form-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ctp-text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.waypoint-editor-form .form-checkbox input {
+  margin: 0;
+}
+
+.waypoint-editor-form .form-button {
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.waypoint-editor-form .form-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.waypoint-editor-form .form-button-primary {
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
+}
+
+.waypoint-editor-form .form-button-primary:hover:not(:disabled) {
+  background: var(--ctp-sapphire);
+}
+
+.waypoint-editor-form .form-button-secondary {
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+  border-color: var(--ctp-surface1);
+}
+
+.waypoint-editor-form .form-button-secondary:hover:not(:disabled) {
+  background: var(--ctp-surface1);
+}
+
+.waypoint-editor-form .form-error {
+  background: var(--ctp-surface0);
+  color: var(--ctp-red);
+  border: 1px solid var(--ctp-red);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.65rem;
+  font-size: 0.85rem;
+}
+
+.waypoint-editor-icon-group {
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.6rem 0.6rem;
+  margin: 0;
+}
+
+.waypoint-editor-icon-group legend {
+  color: var(--ctp-subtext0);
+  font-size: 0.8rem;
+  padding: 0 0.3rem;
+}
+
+.waypoint-editor-icon-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.waypoint-editor-icon-pick {
+  background: transparent;
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-sm);
+  padding: 0.25rem 0.4rem;
+  font-size: 1.05rem;
+  cursor: pointer;
+  font-family:
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', emoji,
+    sans-serif;
+}
+
+.waypoint-editor-icon-pick:hover {
+  background: var(--ctp-surface0);
+}
+
+.waypoint-editor-icon-pick.selected {
+  background: var(--ctp-surface0);
+  border-color: var(--ctp-blue);
+}
+
+.waypoint-editor-icon-custom {
+  width: 4rem;
+  text-align: center;
+  font-family:
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', emoji,
+    sans-serif;
+}
+
+.waypoint-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+/* Popup actions on the marker (Edit / Delete buttons) */
+.waypoint-popup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--ctp-surface0);
+}
+
+.waypoint-popup-actions button {
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.55rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.waypoint-popup-actions button:hover:not(:disabled) {
+  background: var(--ctp-surface1);
+}
+
+.waypoint-popup-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.waypoint-popup-actions button.danger {
+  color: var(--ctp-red);
+}
+
+/* "Create waypoint" button shown inside the Features panel on the per-source map */
+.waypoint-create-button {
+  display: block;
+  width: 100%;
+  margin-top: 0.4rem;
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-md);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+}
+
+.waypoint-create-button:hover:not(:disabled) {
+  background: var(--ctp-surface0);
+  border-color: var(--ctp-blue);
+}
+
+.waypoint-create-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* "Click the map" hint shown during waypoint placement mode */
+.waypoint-placement-hint {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-blue);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.85rem;
+  font-size: 0.85rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  pointer-events: auto;
+}
+
+.waypoint-placement-hint button {
+  background: transparent;
+  color: var(--ctp-subtext0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-sm);
+  padding: 0.2rem 0.45rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+/* Crosshair cursor on the map during placement */
+.leaflet-container.waypoint-placing,
+.leaflet-container.waypoint-placing .leaflet-interactive {
+  cursor: crosshair !important;
+}
