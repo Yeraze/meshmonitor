@@ -285,6 +285,21 @@
   outline-offset: 2px;
 }
 
+/* Touch devices have no hover — keep message actions always visible so
+   reply/emoji/delete buttons stay reachable on phones and tablets. */
+@media (hover: none) {
+  .message-actions {
+    opacity: 1;
+    position: static;
+    margin-top: 0.25rem;
+    justify-content: flex-end;
+  }
+
+  .message-bubble-container.mine .message-actions {
+    justify-content: flex-start;
+  }
+}
+
 .reply-button,
 .resend-button,
 .emoji-button,
