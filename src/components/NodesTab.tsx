@@ -2057,6 +2057,17 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       <span>Show Packet Monitor</span>
                     </label>
                   )}
+                  {canWriteWaypoints && (shouldShowData() || meshCoreNodes.length > 0) && (
+                    <button
+                      type="button"
+                      className="waypoint-create-button"
+                      onClick={startCreateBlank}
+                      disabled={placingWaypoint}
+                      title="Place a new waypoint by clicking on the map"
+                    >
+                      ➕ Waypoint
+                    </button>
+                  )}
                 </>
               )}
               </div>
@@ -2534,17 +2545,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             selectedTilesetId={activeTileset}
             onTilesetChange={setMapTileset}
           />
-          )}
-          {canWriteWaypoints && (shouldShowData() || meshCoreNodes.length > 0) && (
-            <button
-              type="button"
-              className="waypoint-create-button"
-              onClick={startCreateBlank}
-              disabled={placingWaypoint}
-              title="Place a new waypoint by clicking on the map"
-            >
-              ➕ Waypoint
-            </button>
           )}
           {(shouldShowData() || meshCoreNodes.length > 0) && nodesWithPosition.length === 0 && meshCoreNodes.filter(n => n.latitude && n.longitude).length === 0 && (
             <div className="map-overlay">
