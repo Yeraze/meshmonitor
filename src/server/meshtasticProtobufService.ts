@@ -483,16 +483,16 @@ export class MeshtasticProtobufService {
   /**
    * Create a Waypoint ToRadio using proper protobuf encoding.
    *
-   * Caller passes already-validated waypoint fields. `expire === 0` is the
-   * Meshtastic convention for "delete this waypoint id" — the firmware
-   * removes the matching id from its store when it sees an expire-zero
-   * waypoint with the same id.
+   * Caller passes already-validated waypoint fields. To send a delete
+   * tombstone, use a non-zero past epoch (e.g. `expire = 1`) — that matches
+   * the Meshtastic-Apple convention. `expire = 0` means "no expiration" and
+   * is NOT treated as a delete by other clients.
    */
   createWaypointMessage(waypoint: {
     id: number;
     latitude: number;
     longitude: number;
-    expire: number; // epoch seconds, or 0 for delete
+    expire: number; // epoch seconds; 0 = no expiry; non-zero past = delete tombstone
     lockedTo?: number;
     name?: string;
     description?: string;

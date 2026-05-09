@@ -13,6 +13,7 @@ import L from 'leaflet';
 import { createNodeIcon } from '../../utils/mapIcons';
 import { getTilesetById } from '../../config/tilesets';
 import type { CustomTileset } from '../../config/tilesets';
+import DashboardWaypoints from './DashboardWaypoints';
 
 export interface DashboardMapProps {
   nodes: any[];
@@ -110,6 +111,8 @@ export default function DashboardMap({
         />
 
         <MapBoundsUpdater positions={nodePositions} sourceId={sourceId} />
+
+        <DashboardWaypoints sourceId={sourceId} />
 
         {nodesWithPosition.map(({ node, pos }) => {
           const hops = node.hopsAway ?? 999;

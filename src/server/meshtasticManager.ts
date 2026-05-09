@@ -4029,7 +4029,9 @@ class MeshtasticManager implements ISourceManager {
             } else if (portnum === PortNum.WAYPOINT_APP) {
               // WAYPOINT
               const wp = processedPayload as any;
-              if (wp?.expire === 0) {
+              const wpExpire = Number(wp?.expire ?? 0);
+              const nowSec = Math.floor(Date.now() / 1000);
+              if (wpExpire > 0 && wpExpire <= nowSec) {
                 payloadPreview = `[Waypoint delete: id=${wp.id}]`;
               } else {
                 payloadPreview = `[Waypoint: id=${wp?.id ?? '?'} ${wp?.name ?? ''}]`.trim();
@@ -6502,15 +6504,17 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
-   * Send a WAYPOINT_APP delete tombstone (`expire=0`) for the given id. The
-   * Meshtastic firmware removes the matching id from its store on receipt.
+   * Send a WAYPOINT_APP delete tombstone (`expire=1`, a non-zero past epoch)
+   * for the given id, matching the Meshtastic-Apple delete convention.
+   * `expire=0` means "no expiration" and would NOT be treated as a delete by
+   * other clients.
    */
   async broadcastWaypointDelete(
     waypointId: number,
     options: { destination?: number; channel?: number } = {},
   ): Promise<number> {
     return this.broadcastWaypoint(
-      { id: waypointId, latitude: 0, longitude: 0, expire: 0 },
+      { id: waypointId, latitude: 0, longitude: 0, expire: 1 },
       options,
     );
   }

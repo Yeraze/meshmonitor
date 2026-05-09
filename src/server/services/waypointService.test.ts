@@ -69,11 +69,12 @@ describe('upsertFromMesh', () => {
   it('persists, decodes icon, and emits waypoint:upserted', async () => {
     mockGet.mockResolvedValueOnce(null);
     mockUpsert.mockResolvedValueOnce({ sourceId: 's1', waypointId: 42 });
+    const futureExpire = Math.floor(Date.now() / 1000) + 86400;
     const decoded = {
       id: 42,
       latitude_i: 300000000, // 30°
       longitude_i: -900000000, // -90°
-      expire: 1234567890,
+      expire: futureExpire,
       locked_to: 0,
       name: 'Camp',
       description: 'Hideout',
@@ -90,7 +91,7 @@ describe('upsertFromMesh', () => {
         ownerNodeNum: 555,
         latitude: 30,
         longitude: -90,
-        expireAt: 1234567890,
+        expireAt: futureExpire,
         lockedTo: null,
         name: 'Camp',
         description: 'Hideout',
@@ -108,7 +109,7 @@ describe('upsertFromMesh', () => {
       id: 1,
       latitude_i: 0,
       longitude_i: 0,
-      expire: 100,
+      expire: 0, // no expiration → upsert path
       icon: 0,
     });
     const args = mockUpsert.mock.calls[0]?.[0];
@@ -116,18 +117,34 @@ describe('upsertFromMesh', () => {
     expect(args.iconCodepoint).toBeNull();
   });
 
-  it('treats expire=0 as a delete tombstone and emits waypoint:deleted', async () => {
+  it('treats a non-zero past expire as a delete tombstone and emits waypoint:deleted', async () => {
     mockDelete.mockResolvedValueOnce(true);
     const result = await waypointService.upsertFromMesh('s1', 9, {
       id: 7,
       latitude_i: 1,
       longitude_i: 1,
-      expire: 0,
+      expire: 1, // Apple-style tombstone: any non-zero past epoch
     });
     expect(result).toBeNull();
     expect(mockDelete).toHaveBeenCalledWith('s1', 7);
     expect(mockUpsert).not.toHaveBeenCalled();
     expect(emit.mock.calls[0]?.[0]).toBe('deleted');
+  });
+
+  it('treats expire=0 as "no expiration" and upserts the waypoint', async () => {
+    mockGet.mockResolvedValueOnce(null);
+    mockUpsert.mockResolvedValueOnce({ sourceId: 's1', waypointId: 7 });
+    const result = await waypointService.upsertFromMesh('s1', 9, {
+      id: 7,
+      latitude_i: 100000000,
+      longitude_i: -800000000,
+      expire: 0,
+      name: 'No expiry',
+    });
+    expect(result).not.toBeNull();
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect(mockUpsert).toHaveBeenCalled();
+    expect(emit.mock.calls[0]?.[0]).toBe('upserted');
   });
 
   it('ignores packets without an id', async () => {

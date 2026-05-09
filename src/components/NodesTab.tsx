@@ -20,6 +20,8 @@ import { useTelemetryNodes, useDeviceConfig, useNodes } from '../hooks/useServer
 import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useSource } from '../contexts/SourceContext';
+import DashboardWaypoints from './Dashboard/DashboardWaypoints';
 import { useResizable } from '../hooks/useResizable';
 import ZoomHandler from './ZoomHandler';
 import MapResizeHandler from './MapResizeHandler';
@@ -325,6 +327,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setIsNodeListCollapsed,
     filterRemoteAdminOnly,
   } = useUI();
+
+  const { sourceId: currentSourceId } = useSource();
 
   const {
     timeFormat,
@@ -1947,6 +1951,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               )}
               <ZoomHandler onZoomChange={setMapZoom} />
               <MapPositionHandler />
+              <DashboardWaypoints sourceId={currentSourceId ?? null} />
               <DefaultCenterController
                 lat={defaultMapCenterLat}
                 lon={defaultMapCenterLon}

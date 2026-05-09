@@ -108,10 +108,9 @@ export interface UpdateInput {
 
 class WaypointService {
   /**
-   * Apply an inbound Meshtastic Waypoint packet. If the decoded `expire` field
-   * is 0, the waypoint is deleted (Meshtastic's tombstone convention) and a
-   * `waypoint:deleted` event is emitted; otherwise it's upserted and
-   * `waypoint:upserted` is emitted.
+   * Apply an inbound Meshtastic Waypoint packet. A non-zero `expire` in the
+   * past is the Meshtastic Apple-client tombstone convention (delete);
+   * `expire === 0` means "no expiration" and the waypoint is upserted.
    */
   async upsertFromMesh(
     sourceId: string,
@@ -126,8 +125,11 @@ class WaypointService {
 
     const expire = pickNumber(decoded.expire) ?? 0;
 
-    // Meshtastic delete convention: expire === 0 means "remove this waypoint"
-    if (expire === 0) {
+    // Meshtastic delete tombstone: a non-zero past epoch (Apple sends expire=1).
+    // expire === 0 means "no expiration" — Android/Apple both send 0 for waypoints
+    // with no expiry set, so we must NOT treat 0 as a delete.
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (expire > 0 && expire <= nowSec) {
       const removed = await databaseService.waypoints.deleteAsync(sourceId, waypointId);
       if (removed) {
         dataEventEmitter.emitWaypointDeleted({ sourceId, waypointId }, sourceId);

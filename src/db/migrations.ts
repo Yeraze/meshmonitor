@@ -66,6 +66,7 @@ import { migration as dropLegacyNotifPrefsUserIdUniqueMigration, runMigration051
 import { migration as addSourceIdToEmbedProfilesMigration, runMigration052Postgres, runMigration052Mysql } from '../server/migrations/052_add_source_id_to_embed_profiles.js';
 import { migration as createWaypointsMigration, runMigration053Postgres, runMigration053Mysql } from '../server/migrations/053_create_waypoints.js';
 import { migration as addWaypointsPermissionMigration, runMigration054Postgres, runMigration054Mysql } from '../server/migrations/054_add_waypoints_permission.js';
+import { migration as seedGlobalWaypointsPermissionMigration, runMigration055Postgres, runMigration055Mysql } from '../server/migrations/055_seed_global_waypoints_permission.js';
 
 // ============================================================================
 // Registry
@@ -846,4 +847,13 @@ registry.register({
   sqlite: (db) => addWaypointsPermissionMigration.up(db),
   postgres: (client) => runMigration054Postgres(client),
   mysql: (pool) => runMigration054Mysql(pool),
+});
+
+registry.register({
+  number: 55,
+  name: 'seed_global_waypoints_permission',
+  settingsKey: 'migration_055_seed_global_waypoints_permission',
+  sqlite: (db) => seedGlobalWaypointsPermissionMigration.up(db),
+  postgres: (client) => runMigration055Postgres(client),
+  mysql: (pool) => runMigration055Mysql(pool),
 });

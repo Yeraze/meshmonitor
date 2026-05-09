@@ -155,13 +155,13 @@ describe('MeshtasticManager — Waypoint wiring', () => {
     expect(transportSendMock.mock.calls[0]?.[0]).toEqual(new Uint8Array([0xab, 0xcd, 0xef]));
   });
 
-  it('broadcastWaypointDelete sends an expire=0 tombstone for the given id', async () => {
+  it('broadcastWaypointDelete sends an expire=1 tombstone for the given id', async () => {
     const mgr = makeManager();
 
     await mgr.broadcastWaypointDelete(7);
 
     const args = createWaypointMock.mock.calls[0]?.[0];
-    expect(args).toEqual(expect.objectContaining({ id: 7, expire: 0 }));
+    expect(args).toEqual(expect.objectContaining({ id: 7, expire: 1 }));
   });
 
   it('broadcastWaypoint returns 0 when the manager is not connected', async () => {

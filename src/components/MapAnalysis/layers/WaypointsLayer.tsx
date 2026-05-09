@@ -18,9 +18,24 @@ import { useWaypoints } from '../../../hooks/useWaypoints';
 import type { Waypoint } from '../../../types/waypoint';
 
 const FALLBACK_EMOJI = '\u{1F4CD}';
+const EMOJI_VS = '️'; // emoji-presentation variation selector
+
+/** Force emoji (color) presentation for codepoints that default to text glyphs
+ *  (e.g. ☠ U+2620). Appending VS-16 to a single-codepoint string is harmless
+ *  for codepoints that are already emoji-presentation by default. */
+function ensureEmojiPresentation(s: string): string {
+  if (!s) return s;
+  // Don't append if it's already there or if the string is multi-codepoint
+  // (e.g. ZWJ sequences manage their own selectors).
+  const cps = Array.from(s);
+  if (cps.length !== 1) return s;
+  if (s.endsWith(EMOJI_VS)) return s;
+  return s + EMOJI_VS;
+}
 
 function emojiDivIcon(emoji: string | null | undefined, isLocked: boolean): L.DivIcon {
-  const display = emoji && emoji.length > 0 ? emoji : FALLBACK_EMOJI;
+  const raw = emoji && emoji.length > 0 ? emoji : FALLBACK_EMOJI;
+  const display = ensureEmojiPresentation(raw);
   const ring = isLocked
     ? 'box-shadow: 0 0 0 2px rgba(220,80,80,0.85);'
     : 'box-shadow: 0 0 0 2px rgba(255,255,255,0.85);';
@@ -34,7 +49,8 @@ function emojiDivIcon(emoji: string | null | undefined, isLocked: boolean): L.Di
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 18px;
+      font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', emoji, sans-serif;
+      font-size: 20px;
       line-height: 1;
       pointer-events: auto;
     ">${display}</div>
@@ -60,12 +76,12 @@ function formatExpire(expireAt: number | null): string {
   return `${minutes}m`;
 }
 
-interface SourceInfo {
+export interface SourceInfo {
   id: string;
   name?: string;
 }
 
-function PerSourceWaypoints({ source }: { source: SourceInfo }) {
+export function PerSourceWaypoints({ source }: { source: SourceInfo }) {
   const { waypoints } = useWaypoints(source.id);
 
   if (!waypoints || waypoints.length === 0) return null;
@@ -85,21 +101,60 @@ function PerSourceWaypoints({ source }: { source: SourceInfo }) {
             icon={icon}
           >
             <Popup>
-              <div style={{ minWidth: 180 }}>
-                <strong>{wp.name || `Waypoint ${wp.waypointId}`}</strong>
-                {wp.description && (
-                  <div style={{ marginTop: 4, fontSize: '0.9em' }}>{wp.description}</div>
-                )}
-                <div style={{ marginTop: 6, fontSize: '0.85em', color: '#666' }}>
-                  <div>Source: {source.name ?? source.id}</div>
-                  <div>Owner: {ownerLabel}</div>
-                  <div>Expires: {formatExpire(wp.expireAt)}</div>
-                  {wp.lockedTo && (
-                    <div style={{ color: '#c0392b' }}>
-                      Locked to !{Number(wp.lockedTo).toString(16).padStart(8, '0')}
+              <div className="node-popup">
+                <div
+                  className="node-popup-header"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                  <div
+                    className="node-popup-title"
+                    style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  >
+                    {wp.name || `Waypoint ${wp.waypointId}`}
+                  </div>
+                  {wp.iconEmoji && (
+                    <div className="node-popup-subtitle" style={{ flexShrink: 0 }}>
+                      {wp.iconEmoji}
                     </div>
                   )}
-                  {wp.isVirtual && <div style={{ fontStyle: 'italic' }}>Virtual (local-only)</div>}
+                </div>
+
+                <div className="node-popup-content">
+                  {wp.description && (
+                    <div className="node-popup-item" style={{ gridColumn: '1 / -1' }}>
+                      <span className="node-popup-icon">📝</span>
+                      <span className="node-popup-value">{wp.description}</span>
+                    </div>
+                  )}
+
+                  <div className="node-popup-grid">
+                    <div className="node-popup-item">
+                      <span className="node-popup-icon">📡</span>
+                      <span className="node-popup-value">{source.name ?? source.id}</span>
+                    </div>
+                    <div className="node-popup-item">
+                      <span className="node-popup-icon">👤</span>
+                      <span className="node-popup-value">{ownerLabel}</span>
+                    </div>
+                    <div className="node-popup-item">
+                      <span className="node-popup-icon">⏳</span>
+                      <span className="node-popup-value">{formatExpire(wp.expireAt)}</span>
+                    </div>
+                    {wp.lockedTo && (
+                      <div className="node-popup-item">
+                        <span className="node-popup-icon">🔒</span>
+                        <span className="node-popup-value">
+                          !{Number(wp.lockedTo).toString(16).padStart(8, '0')}
+                        </span>
+                      </div>
+                    )}
+                    {wp.isVirtual && (
+                      <div className="node-popup-item">
+                        <span className="node-popup-icon">👻</span>
+                        <span className="node-popup-value">Virtual (local-only)</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </Popup>
