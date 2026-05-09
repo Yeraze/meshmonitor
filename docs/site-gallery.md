@@ -83,6 +83,13 @@ Running a public MeshMonitor instance? We'd love to feature it! **[File an issue
 
 ---
 
+### Canadaverse Mesh
+- **URL**: [meshmon.canadaverse.org](https://meshmon.canadaverse.org/)
+- **Notable**: Includes an [`/analysis`](https://meshmon.canadaverse.org/analysis) page with detailed mesh data analytics.
+- **Description**: Community-maintained MeshMonitor instance with extended analytics views.
+
+---
+
 ## About the Site Gallery
 
 The Site Gallery showcases MeshMonitor instances that are publicly accessible. These sites demonstrate:
