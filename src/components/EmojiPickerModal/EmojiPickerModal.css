@@ -46,6 +46,13 @@
   color: var(--ctp-text);
 }
 
+@media (hover: none) and (pointer: coarse) {
+  .emoji-picker-close {
+    width: 44px;
+    height: 44px;
+  }
+}
+
 .emoji-picker-grid {
   display: grid;
   grid-template-columns: repeat(8, 1fr);

@@ -1252,7 +1252,8 @@
 
   .sort-direction-btn {
     padding: 0.35rem 0.6rem;
-    min-width: 36px;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   /* Mobile: expanded sidebar overlays the map */
@@ -1374,7 +1375,8 @@
   .sort-direction-btn {
     padding: 0.3rem 0.5rem;
     font-size: 1rem;
-    min-width: 32px;
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 

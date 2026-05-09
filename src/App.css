@@ -1554,8 +1554,9 @@ body {
   }
 
   .send-btn {
-    min-width: 40px;
-    width: 40px;
+    min-width: 44px;
+    min-height: 44px;
+    width: 44px;
     padding: 0.6rem 0.3rem;
     font-size: 1.2rem;
     flex-shrink: 0;
