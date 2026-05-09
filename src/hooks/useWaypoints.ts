@@ -23,10 +23,13 @@ async function fetchWaypoints(sourceId: string): Promise<Waypoint[]> {
 }
 
 async function postJson<T>(url: string, method: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const csrfToken = sessionStorage.getItem('csrfToken');
+  if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
   const res = await fetch(url, {
     method,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) {
