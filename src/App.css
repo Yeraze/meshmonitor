@@ -506,6 +506,7 @@ body {
   margin: 0;
   padding: 0;
   padding-bottom: env(safe-area-inset-bottom); /* Account for iPhone home indicator */
+  overflow-x: hidden;
 }
 
 /* Skip to content link - hidden until focused via keyboard */
