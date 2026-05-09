@@ -200,6 +200,17 @@
   .backup-modal-content {
     padding: 1rem;
     width: 95%;
+    /* Drop the desktop 600px floor and the sidebar offset so the modal
+       fits inside narrow viewports. */
+    min-width: 0;
+    max-width: 100%;
+    margin-left: 0;
+  }
+
+  .modal-content.backup-modal {
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
   }
 
   /* Hide table headers on mobile */

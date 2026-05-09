@@ -259,7 +259,7 @@
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 450px), 1fr));
   gap: 20px;
   width: 100%;
 }
@@ -435,8 +435,25 @@
   }
 
   .dashboard-drag-handle {
-    font-size: 1rem;
-    padding: 0 2px;
+    /* Hide drag handle on mobile — dragging is awkward on touch and
+       it steals horizontal space from the title. */
+    display: none;
+  }
+}
+
+/* Touch devices: enlarge widget header controls to a usable tap size. */
+@media (hover: none) {
+  .dashboard-remove-btn,
+  .solar-toggle-btn,
+  .distance-settings-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 1.15rem;
+  }
+
+  .node-status-remove-node {
+    padding: 8px 10px;
+    font-size: 1.1rem;
   }
 }
 

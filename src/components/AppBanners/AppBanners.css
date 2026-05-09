@@ -5,6 +5,7 @@
   left: var(--sidebar-width);
   right: 0;
   padding: 8px 16px;
+  padding-top: calc(8px + env(safe-area-inset-top));
   text-align: center;
   font-size: 14px;
   font-weight: 500;
@@ -51,7 +52,7 @@
   .warning-banner,
   .update-banner {
     font-size: 13px;
-    padding-top: 6px;
+    padding-top: calc(6px + env(safe-area-inset-top));
     padding-bottom: 6px;
     padding-left: 12px;
   }

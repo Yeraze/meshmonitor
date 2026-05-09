@@ -54,3 +54,27 @@
 .modal-body {
   padding: 1.5rem;
 }
+
+@media (max-width: 768px) {
+  .modal-overlay .modal-content {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0;
+  }
+
+  .modal-overlay .modal-body {
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 768px) and (hover: none) {
+  .modal-overlay .modal-close {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}

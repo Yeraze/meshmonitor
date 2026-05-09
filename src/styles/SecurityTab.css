@@ -517,6 +517,13 @@
   transform: scale(1.05);
 }
 
+@media (hover: none) and (pointer: coarse) {
+  .send-notification-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 .send-notification-btn:active {
   transform: scale(0.95);
 }

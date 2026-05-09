@@ -5205,7 +5205,7 @@ function App() {
         {activeTab === 'meshcore' && <ErrorBoundary fallbackTitle="MeshCore failed to load"><MeshCoreTab baseUrl={baseUrl} /></ErrorBoundary>}
         {activeTab === 'packetmonitor' && (
           <ErrorBoundary fallbackTitle="Packet Monitor failed to load">
-            <div style={{ height: 'calc(100vh - var(--header-height, 60px) - 4rem)', overflow: 'hidden' }}>
+            <div style={{ height: 'calc(100dvh - var(--header-height, 60px) - 4rem)', overflow: 'hidden' }}>
               <PacketMonitorPanel onClose={() => setActiveTab('nodes')} />
             </div>
           </ErrorBoundary>

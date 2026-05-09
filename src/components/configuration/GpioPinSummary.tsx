@@ -116,7 +116,7 @@ const GpioPinSummary: React.FC<GpioPinSummaryProps> = (props) => {
         backgroundColor: 'var(--ctp-surface0)',
         borderRadius: '8px',
         border: '1px solid var(--ctp-surface2)',
-        maxHeight: 'calc(100vh - 2rem)',
+        maxHeight: 'calc(100dvh - 2rem)',
         overflowY: 'auto'
       }}>
         <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--ctp-text)' }}>
@@ -135,7 +135,7 @@ const GpioPinSummary: React.FC<GpioPinSummaryProps> = (props) => {
       backgroundColor: 'var(--ctp-surface0)',
       borderRadius: '8px',
       border: '1px solid var(--ctp-surface2)',
-      maxHeight: 'calc(100vh - 2rem)',
+      maxHeight: 'calc(100dvh - 2rem)',
       overflowY: 'auto'
     }}>
       <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--ctp-text)' }}>
