@@ -693,6 +693,16 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     return saved === 'true';
   });
 
+  const [showTileSelector, setShowTileSelector] = useState(() => {
+    const saved = localStorage.getItem('meshmonitor-showTileSelector');
+    return saved === null ? false : saved === 'true';
+  });
+
+  const [showLegend, setShowLegend] = useState(() => {
+    const saved = localStorage.getItem('meshmonitor-showLegend');
+    return saved === null ? false : saved === 'true';
+  });
+
   const sidebarRef = useRef<HTMLDivElement>(null);
 
   // Save packet monitor preference to localStorage
@@ -704,6 +714,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   useEffect(() => {
     localStorage.setItem('isMapControlsCollapsed', isMapControlsCollapsed.toString());
   }, [isMapControlsCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem('meshmonitor-showTileSelector', showTileSelector.toString());
+  }, [showTileSelector]);
+
+  useEffect(() => {
+    localStorage.setItem('meshmonitor-showLegend', showLegend.toString());
+  }, [showLegend]);
 
 
   // Map controls position state with localStorage persistence
@@ -1976,6 +1994,22 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       {t('map.showPolarGrid')}
                     </span>
                   </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
+                      checked={showTileSelector}
+                      onChange={(e) => setShowTileSelector(e.target.checked)}
+                    />
+                    <span>Show Tile Selection</span>
+                  </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
+                      checked={showLegend}
+                      onChange={(e) => setShowLegend(e.target.checked)}
+                    />
+                    <span>Show Legend</span>
+                  </label>
                   {geoJsonLayers.map(layer => (
                     <label key={layer.id} className="map-control-item">
                       <input
@@ -2112,9 +2146,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               />
               <MapResizeHandler trigger={`${showPacketMonitor}-${isNodeListCollapsed}-${packetMonitorHeight}`} />
               <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
+              {showLegend && (
               <MapLegend
                 positionHistory={positionHistoryLegendData}
               />
+              )}
               {nodesWithPosition
                 .filter(node => {
                   // Apply standard filters
@@ -2540,7 +2576,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               {positionHistoryElements}
 
           </MapContainer>
-          {(shouldShowData() || meshCoreNodes.length > 0) && (
+          {(shouldShowData() || meshCoreNodes.length > 0) && showTileSelector && (
           <TilesetSelector
             selectedTilesetId={activeTileset}
             onTilesetChange={setMapTileset}
