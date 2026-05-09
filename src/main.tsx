@@ -64,7 +64,7 @@ const sourceRouteProviders = (children: React.ReactNode) => (
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading...</div>}>
+    <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100dvh' }}>Loading...</div>}>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter basename={appBasename}>
           <Routes>

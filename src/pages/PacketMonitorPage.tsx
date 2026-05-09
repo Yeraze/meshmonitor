@@ -26,7 +26,7 @@ const PacketMonitorContent: React.FC = () => {
   return (
     <div style={{
       width: '100vw',
-      height: '100vh',
+      height: '100dvh',
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
