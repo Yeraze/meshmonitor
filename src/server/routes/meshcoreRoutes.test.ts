@@ -26,28 +26,35 @@ vi.mock('../../services/database.js', () => ({
   default: {}
 }));
 
+// Stub manager — every method the routes call is mocked. Slice 1 of the
+// MeshCore multi-source refactor moved the singleton into a per-source
+// registry, so the legacy `/api/meshcore/*` routes resolve their manager
+// via `meshcoreManagerRegistry.getOrCreateLegacyManager()`. We mock the
+// registry directly here.
+const meshcoreManager = {
+  getConnectionStatus: vi.fn().mockReturnValue({
+    connected: false,
+    deviceType: 0,
+    config: null,
+  }),
+  getLocalNode: vi.fn().mockReturnValue(null),
+  getEnvConfig: vi.fn().mockReturnValue(null),
+  getAllNodes: vi.fn().mockReturnValue([]),
+  getContacts: vi.fn().mockReturnValue([]),
+  getRecentMessages: vi.fn().mockReturnValue([]),
+  connect: vi.fn().mockResolvedValue(true),
+  disconnect: vi.fn().mockResolvedValue(undefined),
+  sendMessage: vi.fn().mockResolvedValue(true),
+  sendAdvert: vi.fn().mockResolvedValue(true),
+  refreshContacts: vi.fn().mockResolvedValue(new Map()),
+  loginToNode: vi.fn().mockResolvedValue(true),
+  requestNodeStatus: vi.fn().mockResolvedValue({ batteryMv: 4200, uptimeSecs: 3600 }),
+  setName: vi.fn().mockResolvedValue(true),
+  setRadio: vi.fn().mockResolvedValue(true),
+  isConnected: vi.fn().mockReturnValue(false),
+};
+
 vi.mock('../meshcoreManager.js', () => ({
-  default: {
-    getConnectionStatus: vi.fn().mockReturnValue({
-      connected: false,
-      deviceType: 0,
-      config: null,
-    }),
-    getLocalNode: vi.fn().mockReturnValue(null),
-    getEnvConfig: vi.fn().mockReturnValue(null),
-    getAllNodes: vi.fn().mockReturnValue([]),
-    getContacts: vi.fn().mockReturnValue([]),
-    getRecentMessages: vi.fn().mockReturnValue([]),
-    connect: vi.fn().mockResolvedValue(true),
-    disconnect: vi.fn().mockResolvedValue(undefined),
-    sendMessage: vi.fn().mockResolvedValue(true),
-    sendAdvert: vi.fn().mockResolvedValue(true),
-    refreshContacts: vi.fn().mockResolvedValue(new Map()),
-    loginToNode: vi.fn().mockResolvedValue(true),
-    requestNodeStatus: vi.fn().mockResolvedValue({ batteryMv: 4200, uptimeSecs: 3600 }),
-    setName: vi.fn().mockResolvedValue(true),
-    setRadio: vi.fn().mockResolvedValue(true),
-  },
   ConnectionType: {
     SERIAL: 'serial',
     TCP: 'tcp',
@@ -58,12 +65,21 @@ vi.mock('../meshcoreManager.js', () => ({
     2: 'Repeater',
     3: 'RoomServer',
   },
+  MeshCoreManager: class {},
+}));
+
+vi.mock('../meshcoreRegistry.js', () => ({
+  meshcoreManagerRegistry: {
+    getOrCreateLegacyManager: () => meshcoreManager,
+    list: () => [meshcoreManager],
+    get: () => meshcoreManager,
+  },
+  LEGACY_MESHCORE_SOURCE_ID: 'meshcore-legacy-default',
 }));
 
 import DatabaseService from '../../services/database.js';
 import meshcoreRoutes from './meshcoreRoutes.js';
 import authRoutes from './authRoutes.js';
-import meshcoreManager from '../meshcoreManager.js';
 
 describe('MeshCore Routes', () => {
   let app: Express;
