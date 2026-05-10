@@ -25,9 +25,6 @@ export default defineConfig({
       {
         text: 'Docs',
         items: [
-          { text: '🆕 4.2 Highlights', link: '/features/analysis-reports' },
-          { text: '4.1 Highlights', link: '/features/map-analysis' },
-          { text: '4.0 Highlights', link: '/features/multi-source' },
           { text: 'Features', link: '/features/settings' },
           { text: 'Configuration', link: '/configuration/' },
           { text: 'Add-ons', link: '/add-ons/' },
@@ -40,32 +37,14 @@ export default defineConfig({
     sidebar: {
       '/features/': [
         {
-          text: '🆕 4.2 Highlights',
-          items: [
-            { text: 'Analysis & Reports', link: '/features/analysis-reports' }
-          ]
-        },
-        {
-          text: '4.1 Highlights',
-          items: [
-            { text: 'Map Analysis', link: '/features/map-analysis' }
-          ]
-        },
-        {
-          text: '4.0 Highlights',
-          items: [
-            { text: 'Multi-Source', link: '/features/multi-source' },
-            { text: 'Per-Source Permissions', link: '/features/per-source-permissions' },
-            { text: 'Global Settings', link: '/features/global-settings' },
-            { text: 'Store & Forward', link: '/features/store-forward' },
-            { text: 'Geofence Triggers', link: '/features/geofence-triggers' }
-          ]
-        },
-        {
           text: 'Features',
           items: [
             { text: 'Settings', link: '/features/settings' },
+            { text: 'Global Settings', link: '/features/global-settings' },
+            { text: 'Multi-Source', link: '/features/multi-source' },
+            { text: 'Per-Source Permissions', link: '/features/per-source-permissions' },
             { text: 'Automation', link: '/features/automation' },
+            { text: 'Geofence Triggers', link: '/features/geofence-triggers' },
             { text: 'Auto Heap Management', link: '/features/auto-heap-management' },
             { text: 'Device Configuration', link: '/features/device' },
             { text: 'Admin Commands', link: '/features/admin-commands' },
@@ -74,9 +53,13 @@ export default defineConfig({
             { text: 'Channel Database', link: '/features/channel-database' },
             { text: 'Security', link: '/features/security' },
             { text: 'Message Search', link: '/features/message-search' },
+            { text: 'Store & Forward', link: '/features/store-forward' },
             { text: 'Embed Maps', link: '/features/embed-maps' },
+            { text: 'Map Analysis', link: '/features/map-analysis' },
+            { text: 'Waypoints', link: '/features/waypoints' },
             { text: 'Link Quality & Smart Hops', link: '/features/link-quality' },
             { text: 'Analytics', link: '/features/analytics' },
+            { text: 'Analysis & Reports', link: '/features/analysis-reports' },
             { text: 'Telemetry Widgets', link: '/features/telemetry-widgets' },
             { text: 'MeshCore (Experimental)', link: '/features/meshcore' },
             { text: '🌍 Translations', link: '/features/translations' },

@@ -84,6 +84,10 @@ When viewing traceroute data:
    - SNR indicators at each hop
    - Failed routes shown in red
 
+### Waypoints
+
+Waypoints — Meshtastic's `WAYPOINT_APP` pins — render directly on the per-source dashboard map and the Map Analysis canvas, using each waypoint's emoji as its icon. Users with `waypoints:write` can create, edit, and delete waypoints in place from the **Map Features** panel. See the dedicated [Waypoints](/features/waypoints) page for the full workflow, permissions, and REST API.
+
 ## Map Tilesets
 
 ### Built-in Tilesets
