@@ -252,9 +252,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           {hasPermission('dashboard', 'read') && (
             <NavItem id="dashboard" label={t('nav.dashboard')} icon={icon('dashboard')} />
           )}
-          {/* Slice 3 dropped the global `meshcore` permission; the legacy
-              standalone MeshCore tab is hidden until slice 4 lands the
-              per-source dashboards. */}
           {packetLogEnabled && hasPermission('packetmonitor', 'read') && (
             <NavItem id="packetmonitor" label={t('nav.packet_monitor', 'Packet Monitor')} icon={icon('packetmonitor')} />
           )}

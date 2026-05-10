@@ -627,10 +627,6 @@ function App() {
       info: () => hasPermission('info', 'read'),
       messages: () => hasPermission('messages', 'read'),
       channels: hasAnyChannelPermission,
-      // Slice 3 dropped the global `meshcore` permission resource; the
-      // standalone MeshCore tab is gated off until slice 4 rebuilds the
-      // surface as per-source dashboards under /api/sources/:id/meshcore.
-      meshcore: () => false,
       settings: () => hasPermission('settings', 'read'),
       automation: () => hasPermission('automation', 'read'),
       configuration: () => hasPermission('configuration', 'read'),

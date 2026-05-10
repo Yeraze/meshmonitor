@@ -18,6 +18,8 @@ import UnifiedMessagesPage from './pages/UnifiedMessagesPage.tsx';
 import UnifiedTelemetryPage from './pages/UnifiedTelemetryPage.tsx';
 import GlobalSettingsPage from './pages/GlobalSettingsPage.tsx';
 import UsersPage from './pages/UsersPage.tsx';
+import MeshCoreSourcePage from './pages/MeshCoreSourcePage.tsx';
+import { useDashboardSources } from './hooks/useDashboardData';
 import './index.css';
 import { AuthProvider } from './contexts/AuthContext';
 import { CsrfProvider } from './contexts/CsrfContext';
@@ -28,10 +30,41 @@ import { SourceProvider } from './contexts/SourceContext';
  * Wraps App with SourceProvider then WebSocketProvider so that useWebSocket()
  * can call useSource() and get the real sourceId for room subscription and
  * cache key targeting. WebSocketProvider must be INSIDE SourceProvider.
+ *
+ * Slice 4 of the MeshCore-as-source refactor: dispatch on `source.type`.
+ * Meshcore sources render the dedicated MeshCoreSourcePage, which talks to
+ * the `/api/sources/:id/meshcore/*` routes; everything else falls through to
+ * the legacy Meshtastic <App>.
  */
 function SourceApp() {
   const { sourceId } = useParams<{ sourceId: string }>();
+  const { data: sources, isLoading } = useDashboardSources();
+
   if (!sourceId) return <Navigate to="/" replace />;
+
+  const source = sources?.find((s) => s.id === sourceId);
+
+  // While the source list is in flight we don't yet know whether to render
+  // App or the meshcore page. Block both so we don't flash the wrong UI and
+  // immediately re-mount on switch — App is heavy and re-mount is costly.
+  if (isLoading && !source) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100dvh' }}>
+        Loading…
+      </div>
+    );
+  }
+
+  if (source?.type === 'meshcore') {
+    return (
+      <SourceProvider sourceId={sourceId} sourceName={source.name}>
+        {/* No WebSocketProvider: the per-source meshcore surface polls REST
+            today; live updates come via slice-N follow-up. */}
+        <MeshCoreSourcePage key={sourceId} />
+      </SourceProvider>
+    );
+  }
+
   return (
     <SourceProvider sourceId={sourceId}>
       <WebSocketProvider>
