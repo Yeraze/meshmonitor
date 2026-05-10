@@ -25,8 +25,7 @@ export default defineConfig({
       {
         text: 'Docs',
         items: [
-          { text: '🆕 4.3 Highlights', link: '/features/waypoints' },
-          { text: '4.2 Highlights', link: '/features/analysis-reports' },
+          { text: '🆕 4.2 Highlights', link: '/features/analysis-reports' },
           { text: '4.1 Highlights', link: '/features/map-analysis' },
           { text: '4.0 Highlights', link: '/features/multi-source' },
           { text: 'Features', link: '/features/settings' },
@@ -41,13 +40,7 @@ export default defineConfig({
     sidebar: {
       '/features/': [
         {
-          text: '🆕 4.3 Highlights',
-          items: [
-            { text: 'Waypoints', link: '/features/waypoints' }
-          ]
-        },
-        {
-          text: '4.2 Highlights',
+          text: '🆕 4.2 Highlights',
           items: [
             { text: 'Analysis & Reports', link: '/features/analysis-reports' }
           ]
@@ -82,6 +75,7 @@ export default defineConfig({
             { text: 'Security', link: '/features/security' },
             { text: 'Message Search', link: '/features/message-search' },
             { text: 'Embed Maps', link: '/features/embed-maps' },
+            { text: 'Waypoints', link: '/features/waypoints' },
             { text: 'Link Quality & Smart Hops', link: '/features/link-quality' },
             { text: 'Analytics', link: '/features/analytics' },
             { text: 'Telemetry Widgets', link: '/features/telemetry-widgets' },
