@@ -157,7 +157,27 @@ interface SettingsProviderProps {
   baseUrl?: string;
 }
 
-export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, baseUrl = '' }) => {
+// Detect BASE_URL from window.location when caller doesn't supply one.
+// Mirrors detectBaseUrl() in App.tsx / DashboardPage so providers mounted by
+// pages that don't thread baseUrl through (GlobalSettingsPage, ReportsPage,
+// MapAnalysisPage, PacketMonitorPage, DashboardPage) still POST to the
+// correct /<base>/api/... path.
+const detectBaseUrlFromLocation = (): string => {
+  if (typeof window === 'undefined') return '';
+  const pathname = window.location.pathname;
+  const pathParts = pathname.split('/').filter(Boolean);
+  if (pathParts.length === 0) return '';
+  const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard', 'source', 'unified', 'analysis', 'reports', 'users', 'packet-monitor'];
+  const baseSegments: string[] = [];
+  for (const segment of pathParts) {
+    if (appRoutes.includes(segment.toLowerCase())) break;
+    baseSegments.push(segment);
+  }
+  return baseSegments.length > 0 ? '/' + baseSegments.join('/') : '';
+};
+
+export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, baseUrl: baseUrlProp }) => {
+  const baseUrl = baseUrlProp ?? detectBaseUrlFromLocation();
   const { getToken: getCsrfToken } = useCsrf();
   const [isLoading, setIsLoading] = useState(true);
 
