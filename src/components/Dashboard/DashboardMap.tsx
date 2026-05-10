@@ -105,6 +105,7 @@ export default function DashboardMap({
         zoomControl
       >
         <TileLayer
+          key={tilesetId}
           url={tileset.url}
           attribution={tileset.attribution}
           maxZoom={tileset.maxZoom}
