@@ -32,6 +32,8 @@ export interface DbMeshCoreNode {
   hasAdminAccess?: boolean | null;
   lastAdminCheck?: number | null;
   isLocalNode?: boolean | null;
+  /** Owning source id; required on writes since slice 1 (migration 056). */
+  sourceId?: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -50,6 +52,8 @@ export interface DbMeshCoreMessage {
   messageType?: string | null;
   delivered?: boolean | null;
   deliveredAt?: number | null;
+  /** Owning source id; required on writes since slice 1 (migration 056). */
+  sourceId?: string | null;
   createdAt: number;
 }
 
@@ -102,9 +106,17 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
-   * Upsert a MeshCore node (insert or update)
+   * Upsert a MeshCore node (insert or update). `sourceId` is required so
+   * every row in `meshcore_nodes` is stamped with its owning source —
+   * non-negotiable since the multi-source MeshCore refactor (slice 1).
    */
-  async upsertNode(node: Partial<DbMeshCoreNode> & { publicKey: string }): Promise<void> {
+  async upsertNode(
+    node: Partial<DbMeshCoreNode> & { publicKey: string },
+    sourceId: string,
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.upsertNode requires a sourceId');
+    }
     const now = this.now();
     const { meshcoreNodes } = this.tables;
     const existing = await this.getNodeByPublicKey(node.publicKey);
@@ -112,13 +124,14 @@ export class MeshCoreRepository extends BaseRepository {
     if (existing) {
       await this.db
         .update(meshcoreNodes)
-        .set({ ...node, updatedAt: now })
+        .set({ ...node, sourceId, updatedAt: now })
         .where(eq(meshcoreNodes.publicKey, node.publicKey));
     } else {
       await this.db
         .insert(meshcoreNodes)
         .values({
           ...node,
+          sourceId,
           createdAt: now,
           updatedAt: now,
         });
@@ -199,11 +212,15 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
-   * Insert a message
+   * Insert a message. `sourceId` is required so every row in
+   * `meshcore_messages` is stamped with its owning source.
    */
-  async insertMessage(message: DbMeshCoreMessage): Promise<void> {
+  async insertMessage(message: DbMeshCoreMessage, sourceId: string): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.insertMessage requires a sourceId');
+    }
     const { meshcoreMessages } = this.tables;
-    await this.db.insert(meshcoreMessages).values(message);
+    await this.db.insert(meshcoreMessages).values({ ...message, sourceId });
   }
 
   /**

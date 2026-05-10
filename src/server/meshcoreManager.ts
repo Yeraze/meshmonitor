@@ -103,6 +103,12 @@ export interface MeshCoreMessage {
   timestamp: number;
   rssi?: number;
   snr?: number;
+  /**
+   * Owning source. Set by the MeshCoreManager that produced the message;
+   * persisted into meshcore_messages.sourceId so the row can be filtered
+   * per source.
+   */
+  sourceId?: string;
 }
 
 export interface MeshCoreStatus {
@@ -132,6 +138,14 @@ const __dirname = path.dirname(__filename);
  * Handles connection and communication with MeshCore devices
  */
 class MeshCoreManager extends EventEmitter {
+  /**
+   * The owning source this manager belongs to. Every write the manager
+   * performs into `meshcore_nodes` / `meshcore_messages` is stamped with
+   * this id. Required since slice 1 of the multi-source MeshCore refactor
+   * (migration 056).
+   */
+  public readonly sourceId: string;
+
   private config: MeshCoreConfig | null = null;
   private connected: boolean = false;
   private deviceType: MeshCoreDeviceType = MeshCoreDeviceType.UNKNOWN;
@@ -160,9 +174,13 @@ class MeshCoreManager extends EventEmitter {
   // Message limit to prevent unbounded growth
   private static readonly MAX_MESSAGES = 1000;
 
-  constructor() {
+  constructor(sourceId: string) {
     super();
-    logger.info('[MeshCore] Manager initialized');
+    if (!sourceId) {
+      throw new Error('MeshCoreManager requires a sourceId');
+    }
+    this.sourceId = sourceId;
+    logger.info(`[MeshCore:${sourceId}] Manager initialized`);
   }
 
   /**
@@ -462,10 +480,11 @@ class MeshCoreManager extends EventEmitter {
         text: data.text,
         timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
         snr: data.snr,
+        sourceId: this.sourceId,
       };
       this.addMessage(message);
       this.emit('message', message);
-      logger.info(`[MeshCore] Contact message from ${data.pubkey_prefix}: ${data.text}`);
+      logger.info(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix}: ${data.text}`);
     } else if (event_type === 'channel_message') {
       const message: MeshCoreMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
@@ -473,6 +492,7 @@ class MeshCoreManager extends EventEmitter {
         text: data.text,
         timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
         snr: data.snr,
+        sourceId: this.sourceId,
       };
       this.addMessage(message);
       this.emit('message', message);
@@ -575,6 +595,7 @@ class MeshCoreManager extends EventEmitter {
         fromPublicKey: match[1],
         text: match[2],
         timestamp: Date.now(),
+        sourceId: this.sourceId,
       };
       this.addMessage(message);
       this.emit('message', message);
@@ -813,6 +834,7 @@ class MeshCoreManager extends EventEmitter {
           toPublicKey: toPublicKey || undefined,
           text: text,
           timestamp: Date.now(),
+          sourceId: this.sourceId,
         };
         this.addMessage(sentMessage);
         this.emit('message', sentMessage);
@@ -1023,7 +1045,4 @@ class MeshCoreManager extends EventEmitter {
   }
 }
 
-// Export singleton instance
-const meshcoreManager = new MeshCoreManager();
-export default meshcoreManager;
 export { MeshCoreManager };
