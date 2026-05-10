@@ -887,17 +887,12 @@ apiRouter.use('/upgrade', upgradeRoutes);
 // Message routes (requires appropriate write permissions)
 apiRouter.use('/messages', optionalAuth(), messageRoutes);
 
-// MeshCore routes (for MeshCore device monitoring)
-// Authentication handled per-route in meshcoreRoutes.ts
-// Slice 2: routes are nested under `/api/sources/:id/meshcore/*` so each
+// MeshCore routes — nested under `/api/sources/:id/meshcore/*` so each
 // request resolves the manager bound to a specific source. The legacy
-// un-nested `/api/meshcore/*` mount is retained for backward compat with
-// the existing UI/scripts and routes through the legacy registry helper —
-// it goes away once the UI migrates (slice 2 follow-up).
+// un-nested `/api/meshcore/*` mount was dropped in slice 3 along with
+// the global `meshcore` permission resource; the new frontend talks to
+// the per-source surface only.
 apiRouter.use('/sources/:id/meshcore', meshcoreRoutes);
-if (process.env.MESHCORE_ENABLED === 'true') {
-  apiRouter.use('/meshcore', meshcoreRoutes);
-}
 
 // Link preview routes
 apiRouter.use('/', linkPreviewRoutes);

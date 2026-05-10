@@ -94,7 +94,7 @@ export async function createLocalUser(
     }
     // Admin gets additional permissions
     if (isAdmin) {
-      const adminResources = ['configuration', 'automation', 'connection', 'audit', 'security', 'themes', 'nodes_private', 'meshcore', 'packetmonitor'];
+      const adminResources = ['configuration', 'automation', 'connection', 'audit', 'security', 'themes', 'nodes_private', 'packetmonitor'];
       for (const resource of adminResources) {
         await databaseService.auth.createPermission({
           userId,

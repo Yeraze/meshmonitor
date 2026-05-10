@@ -26,11 +26,10 @@ vi.mock('../../services/database.js', () => ({
   default: {}
 }));
 
-// Stub manager — every method the routes call is mocked. Slice 1 of the
-// MeshCore multi-source refactor moved the singleton into a per-source
-// registry, so the legacy `/api/meshcore/*` routes resolve their manager
-// via `meshcoreManagerRegistry.getOrCreateLegacyManager()`. We mock the
-// registry directly here.
+// Stub manager — every method the routes call is mocked. The MeshCore
+// multi-source refactor put the manager behind a per-source registry; we
+// mock the registry directly here so requests under
+// `/api/sources/test-source/meshcore/*` resolve to this stub.
 const meshcoreManager = {
   getConnectionStatus: vi.fn().mockReturnValue({
     connected: false,
@@ -139,24 +138,27 @@ describe('MeshCore Routes', () => {
       return permissionModel.getUserPermissionSet(userId);
     };
 
-    // Create anonymous user with meshcore read permission for unauthenticated access
+    // Create anonymous user with read permissions on the sourcey resources
+    // the MeshCore routes check (slice 3 collapsed the global `meshcore`
+    // resource into per-source connection/nodes/messages/configuration).
     const anonymousUser = await userModel.create({
       username: 'anonymous',
       password: 'anonymous123',
       authProvider: 'local',
     });
-    await permissionModel.grant({
-      userId: anonymousUser.id,
-      resource: 'meshcore',
-      canRead: true,
-      canWrite: false,
-    });
+    for (const resource of ['connection', 'nodes', 'messages', 'configuration'] as const) {
+      await permissionModel.grant({
+        userId: anonymousUser.id,
+        resource,
+        canRead: true,
+        canWrite: false,
+      });
+    }
 
-    // Mount routes — both the legacy un-nested form and the slice-2
-    // nested form share the same router so we can exercise both shapes.
+    // Mount routes. Slice 3 dropped the un-nested `/api/meshcore` mount,
+    // so the tests below all hit `/api/sources/test-source/meshcore/*`.
     app.use('/api/auth', authRoutes);
     app.use('/api/sources/:id/meshcore', meshcoreRoutes);
-    app.use('/api/meshcore', meshcoreRoutes);
   });
 
   let testUserCounter = 0;
@@ -174,12 +176,14 @@ describe('MeshCore Routes', () => {
     });
     testUserId = user.id;
 
-    await permissionModel.grant({
-      userId: user.id,
-      resource: 'meshcore',
-      canRead: true,
-      canWrite: true
-    });
+    for (const resource of ['connection', 'nodes', 'messages', 'configuration'] as const) {
+      await permissionModel.grant({
+        userId: user.id,
+        resource,
+        canRead: true,
+        canWrite: true,
+      });
+    }
 
     // Login
     authenticatedAgent = request.agent(app);
@@ -195,9 +199,9 @@ describe('MeshCore Routes', () => {
     db.close();
   });
 
-  describe('GET /api/meshcore/status', () => {
+  describe('GET /api/sources/test-source/meshcore/status', () => {
     it('should return status without authentication', async () => {
-      const response = await request(app).get('/api/meshcore/status');
+      const response = await request(app).get('/api/sources/test-source/meshcore/status');
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
     });
@@ -218,17 +222,17 @@ describe('MeshCore Routes', () => {
     });
   });
 
-  describe('POST /api/meshcore/connect', () => {
+  describe('POST /api/sources/test-source/meshcore/connect', () => {
     it('should require authentication', async () => {
       const response = await request(app)
-        .post('/api/meshcore/connect')
+        .post('/api/sources/test-source/meshcore/connect')
         .send({ connectionType: 'serial', serialPort: 'COM3' });
       expect(response.status).toBe(401);
     });
 
     it('should connect with valid parameters', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/connect')
+        .post('/api/sources/test-source/meshcore/connect')
         .send({ connectionType: 'serial', serialPort: 'COM3' });
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -236,7 +240,7 @@ describe('MeshCore Routes', () => {
 
     it('should reject invalid connection type', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/connect')
+        .post('/api/sources/test-source/meshcore/connect')
         .send({ connectionType: 'invalid', serialPort: 'COM3' });
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('Connection type');
@@ -244,7 +248,7 @@ describe('MeshCore Routes', () => {
 
     it('should reject invalid baud rate', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/connect')
+        .post('/api/sources/test-source/meshcore/connect')
         .send({ connectionType: 'serial', serialPort: 'COM3', baudRate: 12345 });
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('Baud rate');
@@ -252,24 +256,24 @@ describe('MeshCore Routes', () => {
 
     it('should reject invalid TCP port', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/connect')
+        .post('/api/sources/test-source/meshcore/connect')
         .send({ connectionType: 'tcp', tcpHost: '192.168.1.1', tcpPort: 70000 });
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('port');
     });
   });
 
-  describe('POST /api/meshcore/messages/send', () => {
+  describe('POST /api/sources/test-source/meshcore/messages/send', () => {
     it('should require authentication', async () => {
       const response = await request(app)
-        .post('/api/meshcore/messages/send')
+        .post('/api/sources/test-source/meshcore/messages/send')
         .send({ text: 'Hello' });
       expect(response.status).toBe(401);
     });
 
     it('should send message with valid text', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/messages/send')
+        .post('/api/sources/test-source/meshcore/messages/send')
         .send({ text: 'Hello world' });
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -277,7 +281,7 @@ describe('MeshCore Routes', () => {
 
     it('should reject empty message', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/messages/send')
+        .post('/api/sources/test-source/meshcore/messages/send')
         .send({ text: '' });
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('Message');
@@ -286,7 +290,7 @@ describe('MeshCore Routes', () => {
     it('should reject message exceeding max length', async () => {
       const longMessage = 'a'.repeat(300);
       const response = await authenticatedAgent
-        .post('/api/meshcore/messages/send')
+        .post('/api/sources/test-source/meshcore/messages/send')
         .send({ text: longMessage });
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('maximum length');
@@ -294,7 +298,7 @@ describe('MeshCore Routes', () => {
 
     it('should reject invalid public key format', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/messages/send')
+        .post('/api/sources/test-source/meshcore/messages/send')
         .send({ text: 'Hello', toPublicKey: 'invalid-key' });
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('public key');
@@ -303,24 +307,24 @@ describe('MeshCore Routes', () => {
     it('should accept valid public key', async () => {
       const validKey = 'a'.repeat(64);
       const response = await authenticatedAgent
-        .post('/api/meshcore/messages/send')
+        .post('/api/sources/test-source/meshcore/messages/send')
         .send({ text: 'Hello', toPublicKey: validKey });
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
     });
   });
 
-  describe('POST /api/meshcore/admin/login', () => {
+  describe('POST /api/sources/test-source/meshcore/admin/login', () => {
     it('should require authentication', async () => {
       const response = await request(app)
-        .post('/api/meshcore/admin/login')
+        .post('/api/sources/test-source/meshcore/admin/login')
         .send({ publicKey: 'a'.repeat(64), password: 'admin' });
       expect(response.status).toBe(401);
     });
 
     it('should reject invalid public key format', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/admin/login')
+        .post('/api/sources/test-source/meshcore/admin/login')
         .send({ publicKey: 'invalid', password: 'admin' });
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('public key');
@@ -329,17 +333,17 @@ describe('MeshCore Routes', () => {
     it('should accept valid login request', async () => {
       const validKey = 'a'.repeat(64);
       const response = await authenticatedAgent
-        .post('/api/meshcore/admin/login')
+        .post('/api/sources/test-source/meshcore/admin/login')
         .send({ publicKey: validKey, password: 'admin123' });
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
     });
   });
 
-  describe('GET /api/meshcore/admin/status/:publicKey', () => {
+  describe('GET /api/sources/test-source/meshcore/admin/status/:publicKey', () => {
     it('should reject invalid public key format', async () => {
       const response = await authenticatedAgent
-        .get('/api/meshcore/admin/status/invalid-key');
+        .get('/api/sources/test-source/meshcore/admin/status/invalid-key');
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('public key');
     });
@@ -347,23 +351,23 @@ describe('MeshCore Routes', () => {
     it('should accept valid public key', async () => {
       const validKey = 'a'.repeat(64);
       const response = await authenticatedAgent
-        .get(`/api/meshcore/admin/status/${validKey}`);
+        .get(`/api/sources/test-source/meshcore/admin/status/${validKey}`);
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
     });
   });
 
-  describe('POST /api/meshcore/config/name', () => {
+  describe('POST /api/sources/test-source/meshcore/config/name', () => {
     it('should require authentication', async () => {
       const response = await request(app)
-        .post('/api/meshcore/config/name')
+        .post('/api/sources/test-source/meshcore/config/name')
         .send({ name: 'TestNode' });
       expect(response.status).toBe(401);
     });
 
     it('should reject empty name', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/config/name')
+        .post('/api/sources/test-source/meshcore/config/name')
         .send({ name: '' });
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('Name');
@@ -371,7 +375,7 @@ describe('MeshCore Routes', () => {
 
     it('should reject whitespace-only name', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/config/name')
+        .post('/api/sources/test-source/meshcore/config/name')
         .send({ name: '   ' });
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('empty');
@@ -380,7 +384,7 @@ describe('MeshCore Routes', () => {
     it('should reject name exceeding max length', async () => {
       const longName = 'a'.repeat(50);
       const response = await authenticatedAgent
-        .post('/api/meshcore/config/name')
+        .post('/api/sources/test-source/meshcore/config/name')
         .send({ name: longName });
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('maximum length');
@@ -388,24 +392,24 @@ describe('MeshCore Routes', () => {
 
     it('should accept valid name', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/config/name')
+        .post('/api/sources/test-source/meshcore/config/name')
         .send({ name: 'MyNode' });
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
     });
   });
 
-  describe('POST /api/meshcore/config/radio', () => {
+  describe('POST /api/sources/test-source/meshcore/config/radio', () => {
     it('should require authentication', async () => {
       const response = await request(app)
-        .post('/api/meshcore/config/radio')
+        .post('/api/sources/test-source/meshcore/config/radio')
         .send({ freq: 915.0, bw: 125, sf: 7, cr: 5 });
       expect(response.status).toBe(401);
     });
 
     it('should reject missing parameters', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/config/radio')
+        .post('/api/sources/test-source/meshcore/config/radio')
         .send({ freq: 915.0 });
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('required');
@@ -413,7 +417,7 @@ describe('MeshCore Routes', () => {
 
     it('should reject frequency out of range', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/config/radio')
+        .post('/api/sources/test-source/meshcore/config/radio')
         .send({ freq: 2000.0, bw: 125, sf: 7, cr: 5 });
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('Frequency');
@@ -421,7 +425,7 @@ describe('MeshCore Routes', () => {
 
     it('should reject invalid bandwidth', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/config/radio')
+        .post('/api/sources/test-source/meshcore/config/radio')
         .send({ freq: 915.0, bw: 100, sf: 7, cr: 5 });
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('Bandwidth');
@@ -429,7 +433,7 @@ describe('MeshCore Routes', () => {
 
     it('should reject spreading factor out of range', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/config/radio')
+        .post('/api/sources/test-source/meshcore/config/radio')
         .send({ freq: 915.0, bw: 125, sf: 15, cr: 5 });
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('Spreading factor');
@@ -437,7 +441,7 @@ describe('MeshCore Routes', () => {
 
     it('should reject coding rate out of range', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/config/radio')
+        .post('/api/sources/test-source/meshcore/config/radio')
         .send({ freq: 915.0, bw: 125, sf: 7, cr: 10 });
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('Coding rate');
@@ -445,23 +449,23 @@ describe('MeshCore Routes', () => {
 
     it('should accept valid radio parameters', async () => {
       const response = await authenticatedAgent
-        .post('/api/meshcore/config/radio')
+        .post('/api/sources/test-source/meshcore/config/radio')
         .send({ freq: 915.0, bw: 125, sf: 7, cr: 5 });
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
     });
   });
 
-  describe('GET /api/meshcore/messages', () => {
+  describe('GET /api/sources/test-source/meshcore/messages', () => {
     it('should return messages without authentication', async () => {
-      const response = await request(app).get('/api/meshcore/messages');
+      const response = await request(app).get('/api/sources/test-source/meshcore/messages');
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(Array.isArray(response.body.data)).toBe(true);
     });
 
     it('should limit messages to max allowed', async () => {
-      const response = await request(app).get('/api/meshcore/messages?limit=5000');
+      const response = await request(app).get('/api/sources/test-source/meshcore/messages?limit=5000');
       expect(response.status).toBe(200);
       // Should clamp to max limit (1000) without error
       expect(meshcoreManager.getRecentMessages).toHaveBeenCalledWith(1000);

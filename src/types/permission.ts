@@ -24,7 +24,6 @@ export type ResourceType =
   | 'security'
   | 'themes'
   | 'nodes_private'
-  | 'meshcore'
   | 'packetmonitor'
   | 'sources'
   | 'waypoints';
@@ -115,7 +114,6 @@ export const RESOURCES: readonly ResourceDefinition[] = [
   { id: 'security', name: 'Security', description: 'View security scan results and key management' },
   { id: 'themes', name: 'Custom Themes', description: 'Create and manage custom color themes' },
   { id: 'nodes_private', name: 'Private Positions', description: 'View private node position overrides' },
-  { id: 'meshcore', name: 'MeshCore', description: 'MeshCore protocol device management' },
   { id: 'packetmonitor', name: 'Packet Monitor', description: 'View real-time packet logs and statistics' },
   { id: 'sources', name: 'Sources', description: 'Manage data sources (Meshtastic TCP, MQTT, MeshCore)' },
   { id: 'waypoints', name: 'Waypoints', description: 'View and manage map waypoints (Meshtastic WAYPOINT_APP)' },
@@ -144,7 +142,6 @@ export const ADMIN_PERMISSIONS: PermissionSet = {
   security: { read: true, write: true },
   themes: { read: true, write: true },
   nodes_private: { read: true, write: true },
-  meshcore: { read: true, write: true },
   packetmonitor: { read: true, write: true },
   sources: { read: true, write: true },
   waypoints: { read: true, write: true },
@@ -172,7 +169,6 @@ export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
   security: { read: false, write: false },
   themes: { read: true, write: false },
   nodes_private: { read: false, write: false },
-  meshcore: { read: true, write: false },
   packetmonitor: { read: true, write: false },
   sources: { read: false, write: false },
   waypoints: { read: true, write: false },
