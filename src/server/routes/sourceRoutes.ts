@@ -479,7 +479,19 @@ router.get('/:id/channels', optionalAuth(), async (req: Request, res: Response) 
       }
     }
 
-    res.json(accessible.map(transformChannel));
+    // Issue #2951: include the raw `psk` only for admins or callers with
+    // write permission on the specific channel — otherwise the channel
+    // configuration UI cannot display the existing key for the operator
+    // who is allowed to change it.
+    const projected = await Promise.all(accessible.map(async (channel) => {
+      const channelResource = `channel_${channel.id}` as ResourceType;
+      const includePsk = isAdmin || (req.user
+        ? await hasPermission(req.user, channelResource, 'write', source.id)
+        : false);
+      return transformChannel(channel, { includePsk });
+    }));
+
+    res.json(projected);
   } catch (error) {
     logger.error('Error fetching channels for source:', error);
     res.status(500).json({ error: 'Failed to fetch channels' });

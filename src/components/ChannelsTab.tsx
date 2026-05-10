@@ -38,7 +38,8 @@ const CHANNEL_DB_OFFSET = 100;
 // Encryption status types
 type EncryptionStatus = 'none' | 'default' | 'secure';
 
-// Helper to determine encryption status
+// Helper to determine encryption status from a raw PSK (used for virtual /
+// channel-database entries where we have the key locally).
 const getEncryptionStatus = (psk: string | undefined | null): EncryptionStatus => {
   if (!psk || psk === '') {
     return 'none'; // No encryption
@@ -47,6 +48,16 @@ const getEncryptionStatus = (psk: string | undefined | null): EncryptionStatus =
     return 'default'; // Default/public key - not secure
   }
   return 'secure'; // Custom key - encrypted
+};
+
+// Resolve encryption status for a Channel: prefer the server-derived
+// `encryptionStatus` field (always present and safe to expose) and fall
+// back to deriving from `psk` when only that is available (e.g. legacy
+// payloads or virtual channel objects). Issue #2951.
+const channelEncryptionStatus = (channel: Pick<Channel, 'encryptionStatus' | 'psk'> | null | undefined): EncryptionStatus => {
+  if (!channel) return 'none';
+  if (channel.encryptionStatus) return channel.encryptionStatus;
+  return getEncryptionStatus(channel.psk);
 };
 
 export interface ChannelsTabProps {
@@ -462,7 +473,7 @@ export default function ChannelsTab({
                   const channelConfig = channels.find(ch => ch.id === channelId);
                   const displayName = channelConfig?.name || getChannelName(channelId);
                   const unread = unreadCounts[channelId] || 0;
-                  const encryptionStatus = getEncryptionStatus(channelConfig?.psk);
+                  const encryptionStatus = channelEncryptionStatus(channelConfig);
                   const uplink = channelConfig?.uplinkEnabled ? '↑' : '';
                   const downlink = channelConfig?.downlinkEnabled ? '↓' : '';
                   const encryptionIcon = encryptionStatus === 'secure' ? '🔒' : encryptionStatus === 'default' ? '🔐' : '🔓';
@@ -510,7 +521,7 @@ export default function ChannelsTab({
                         </div>
                         <div className="channel-button-indicators">
                           {(() => {
-                            const status = getEncryptionStatus(channelConfig?.psk);
+                            const status = channelEncryptionStatus(channelConfig);
                             if (status === 'secure') {
                               return (
                                 <span className="encryption-icon secure" title={t('channels.encrypted_secure')}>
@@ -1072,7 +1083,7 @@ export default function ChannelsTab({
                       <span className="info-label">{t('channels.encryption')}</span>
                       <span className="info-value">
                         {(() => {
-                          const status = getEncryptionStatus(selectedChannelConfig.psk);
+                          const status = channelEncryptionStatus(selectedChannelConfig);
                           if (status === 'secure') {
                             return <span className="status-secure">{t('channels.status_secure')}</span>;
                           } else if (status === 'default') {
@@ -1230,7 +1241,7 @@ export default function ChannelsTab({
                   <span className="info-label">{t('channels.encryption')}</span>
                   <span className="info-value">
                     {(() => {
-                      const status = getEncryptionStatus(virtualChannelInfoModal.psk);
+                      const status = channelEncryptionStatus(virtualChannelInfoModal as any);
                       if (status === 'secure') {
                         return <span className="status-secure">{t('channels.status_secure')}</span>;
                       } else if (status === 'default') {
