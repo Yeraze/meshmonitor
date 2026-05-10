@@ -32,7 +32,8 @@ const DEFAULT_PUBLIC_PSK = 'AQ==';
 
 type EncryptionStatus = 'none' | 'default' | 'secure';
 
-// Helper to determine encryption status
+// Helper to determine encryption status from a raw PSK (fallback for cases
+// where only the key is available locally).
 const getEncryptionStatus = (psk: string | undefined | null): EncryptionStatus => {
   if (!psk || psk === '') {
     return 'none'; // No encryption
@@ -41,6 +42,17 @@ const getEncryptionStatus = (psk: string | undefined | null): EncryptionStatus =
     return 'default'; // Default/public key - not secure
   }
   return 'secure'; // Custom key - encrypted
+}
+
+// Resolve encryption status for a Channel: prefer the server-derived
+// `encryptionStatus` field (always present on API responses) and fall back
+// to deriving from `psk`. The API only sends `psk` to authorized writers
+// (issue #2951), so unauthorized callers MUST rely on `encryptionStatus`
+// to render the correct icon.
+const channelEncryptionStatus = (channel: Pick<Channel, 'encryptionStatus' | 'psk'> | null | undefined): EncryptionStatus => {
+  if (!channel) return 'none';
+  if (channel.encryptionStatus) return channel.encryptionStatus;
+  return getEncryptionStatus(channel.psk);
 };
 
 interface ChannelsConfigSectionProps {
@@ -505,7 +517,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                   {channel && (
                     <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--ctp-subtext1)' }}>
                       {(() => {
-                        const status = getEncryptionStatus(channel.psk);
+                        const status = channelEncryptionStatus(channel);
                         if (status === 'secure') {
                           return <div title={t('channels.encrypted_secure')}>🔒 {t('channels_config.encrypted_secure')}</div>;
                         } else if (status === 'default') {

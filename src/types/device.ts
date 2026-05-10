@@ -57,13 +57,23 @@ export interface DeviceInfo {
 export interface Channel {
   id: number;
   name: string;
-  psk?: string;
+  /**
+   * Raw base64 PSK. Only populated by the API for admins or callers with
+   * `channel_${id}:write` permission for this channel (MM-SEC-2 / #2951).
+   * Read-only consumers should rely on `encryptionStatus` / `pskSet` instead.
+   */
+  psk?: string | null;
+  /** Server-derived: whether a PSK is configured (safe for all viewers). */
+  pskSet?: boolean;
+  /** Server-derived encryption status (safe for all viewers). */
+  encryptionStatus?: 'none' | 'default' | 'secure';
   role?: number; // 0=Disabled, 1=Primary, 2=Secondary
+  roleName?: string;
   uplinkEnabled: boolean;
   downlinkEnabled: boolean;
   positionPrecision?: number; // Location precision bits (0-32)
-  createdAt: number;
-  updatedAt: number;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 /**

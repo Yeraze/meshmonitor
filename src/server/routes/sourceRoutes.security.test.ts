@@ -6,8 +6,13 @@
  *           channels rows (including the `psk` column) to any caller with
  *           `messages:read` on the source. The fix moves the route to
  *           `optionalAuth()` plus a per-row `channel_${id}:read` gate, then
- *           projects through `transformChannel` so the PSK never reaches
- *           the response.
+ *           projects through `transformChannel`.
+ *
+ *           Issue #2951 follow-up: the actual `psk` is now intentionally
+ *           included for admins and callers with `channel_${id}:write`
+ *           permission so the channel-configuration UI can show the
+ *           existing key to the operator who is allowed to change it.
+ *           Read-only callers must still never see the key.
  *
  * MM-SEC-8: `GET /api/sources/:id` previously returned the raw source row,
  *           skipping the `password` / `apiKey` strip applied to the list
@@ -122,37 +127,71 @@ describe('MM-SEC-7 — /api/sources/:id/channels does not leak PSKs', () => {
     expect(JSON.stringify(res.body)).not.toContain('WklET0VOX0NIQU5fMl9TRUNSRVRfUFNLX0NIQU5fMjI=');
   });
 
-  it('authenticated viewer with channel_0:read sees only channel 0, no psk field', async () => {
+  it('authenticated viewer with channel_0:read (no write) sees channel 0 but no psk field', async () => {
     mockDb.findUserByIdAsync.mockResolvedValue(regularUser);
     mockDb.findUserByUsernameAsync.mockResolvedValue(null);
     mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: false });
-    // Per-channel: grant channel_0 only.
+    // Per-channel: grant channel_0:read only — NOT write.
     mockDb.checkPermissionAsync.mockImplementation(
-      (_uid: number, resource: string) => Promise.resolve(resource === 'channel_0')
+      (_uid: number, resource: string, action: string) =>
+        Promise.resolve(resource === 'channel_0' && action === 'read')
     );
 
     const res = await request(createApp(regularUser.id)).get('/src-1/channels');
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0].id).toBe(0);
+    // Read-only viewer must not receive the actual key.
     expect(res.body[0]).not.toHaveProperty('psk');
     expect(res.body[0].pskSet).toBe(true);
+    // But the derived encryption status is safe to expose.
+    expect(res.body[0].encryptionStatus).toBe('secure');
     // The hidden channel must not appear at all — neither its name nor PSK.
     expect(JSON.stringify(res.body)).not.toContain('hidden');
+    expect(JSON.stringify(res.body)).not.toContain('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
     expect(JSON.stringify(res.body)).not.toContain('WklET0VOX0NIQU5fMl9TRUNSRVRfUFNLX0NIQU5fMjI=');
   });
 
-  it('admin sees all channels, no raw psk in response (transformChannel still strips it)', async () => {
+  it('authenticated writer with channel_0:write sees channel 0 PSK in the response (issue #2951)', async () => {
+    mockDb.findUserByIdAsync.mockResolvedValue(regularUser);
+    mockDb.findUserByUsernameAsync.mockResolvedValue(null);
+    mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: false });
+    // Grant channel_0 read + write; channel_2 read only.
+    mockDb.checkPermissionAsync.mockImplementation(
+      (_uid: number, resource: string, action: string) => {
+        if (resource === 'channel_0') return Promise.resolve(true); // read + write
+        if (resource === 'channel_2' && action === 'read') return Promise.resolve(true);
+        return Promise.resolve(false);
+      }
+    );
+
+    const res = await request(createApp(regularUser.id)).get('/src-1/channels');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    const ch0 = res.body.find((c: any) => c.id === 0);
+    const ch2 = res.body.find((c: any) => c.id === 2);
+    // Channel 0: writer sees the PSK so the edit dialog can prefill it.
+    expect(ch0.psk).toBe('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
+    expect(ch0.pskSet).toBe(true);
+    expect(ch0.encryptionStatus).toBe('secure');
+    // Channel 2: read-only — no PSK exposed.
+    expect(ch2).not.toHaveProperty('psk');
+    expect(ch2.pskSet).toBe(true);
+  });
+
+  it('admin sees all channels including PSK (issue #2951 — needed for channel config UI)', async () => {
     mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
     mockDb.getUserPermissionSetAsync.mockResolvedValue({});
 
     const res = await request(createApp(adminUser.id)).get('/src-1/channels');
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
-    expect(res.body.every((c: any) => !('psk' in c))).toBe(true);
+    // Admin can see PSKs to configure channels.
+    expect(res.body.every((c: any) => 'psk' in c)).toBe(true);
+    expect(res.body.find((c: any) => c.id === 0).psk).toBe('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
+    expect(res.body.find((c: any) => c.id === 2).psk).toBe('WklET0VOX0NIQU5fMl9TRUNSRVRfUFNLX0NIQU5fMjI=');
     expect(res.body.every((c: any) => typeof c.pskSet === 'boolean')).toBe(true);
-    // Sanity: even for admins, the actual PSK string never appears.
-    expect(JSON.stringify(res.body)).not.toContain('WklET0VOX0NIQU5fMl9TRUNSRVRfUFNLX0NIQU5fMjI=');
+    expect(res.body.every((c: any) => typeof c.encryptionStatus === 'string')).toBe(true);
   });
 });
 

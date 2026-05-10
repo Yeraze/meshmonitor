@@ -36,16 +36,19 @@ router.get('/', async (req: Request, res: Response) => {
     // Get all channels (scoped to source if provided)
     const allChannels = await databaseService.channels.getAllChannels(sourceIdQ);
 
-    // If admin, return all channels
+    // If admin, return all channels with PSKs included (admin can configure them)
     if (isAdmin) {
       return res.json({
         success: true,
         count: allChannels.length,
-        data: allChannels.map(transformChannel)
+        data: allChannels.map((c) => transformChannel(c, { includePsk: true }))
       });
     }
 
-    // Filter channels by read permission (scoped to source)
+    // Filter channels by read permission (scoped to source). The actual `psk`
+    // is included only when the caller has write permission for that specific
+    // channel — see issue #2951 (the channel-config UI needs to show the
+    // existing key to operators who are allowed to change it).
     const accessibleChannels: any[] = [];
     for (const channel of allChannels) {
       const channelResource = `channel_${channel.id}` as ResourceType;
@@ -55,10 +58,18 @@ router.get('/', async (req: Request, res: Response) => {
       if (allowed) accessibleChannels.push(channel);
     }
 
+    const projected = await Promise.all(accessibleChannels.map(async (channel) => {
+      const channelResource = `channel_${channel.id}` as ResourceType;
+      const includePsk = userId !== null
+        ? await databaseService.checkPermissionAsync(userId, channelResource, 'write', sourceIdQ)
+        : false;
+      return transformChannel(channel, { includePsk });
+    }));
+
     res.json({
       success: true,
-      count: accessibleChannels.length,
-      data: accessibleChannels.map(transformChannel)
+      count: projected.length,
+      data: projected
     });
   } catch (error) {
     logger.error('Error getting channels:', error);
@@ -119,9 +130,16 @@ router.get('/:channelId', async (req: Request, res: Response) => {
       });
     }
 
+    // Include the raw `psk` only for admins or callers with write permission
+    // to this channel (issue #2951).
+    const channelResource = `channel_${channelId}` as ResourceType;
+    const includePsk = isAdmin || (userId !== null
+      ? await databaseService.checkPermissionAsync(userId, channelResource, 'write', sourceIdQ)
+      : false);
+
     res.json({
       success: true,
-      data: transformChannel(channel)
+      data: transformChannel(channel, { includePsk })
     });
   } catch (error) {
     logger.error('Error getting channel:', error);

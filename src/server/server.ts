@@ -2498,8 +2498,20 @@ apiRouter.get('/channels/all', optionalAuth(), async (req, res) => {
       }
     }
 
+    // MM-SEC-2 follow-up: include the raw `psk` only for callers with write
+    // permission to the specific channel (or admins). Without this, the
+    // channel-config edit dialog and Info popup can't display the existing
+    // key for the operator who is allowed to change it. See issue #2951.
+    const projected = await Promise.all(accessible.map(async (channel) => {
+      const channelResource = `channel_${channel.id}` as import('../types/permission.js').ResourceType;
+      const includePsk = isAdmin || (req.user
+        ? await hasPermission(req.user, channelResource, 'write', allChannelsSourceId)
+        : false);
+      return transformChannel(channel, { includePsk });
+    }));
+
     logger.debug(`📡 Serving ${accessible.length} channels (per-row filtered, of ${allChannels.length} total)`);
-    res.json(accessible.map(transformChannel));
+    res.json(projected);
   } catch (error) {
     logger.error('Error fetching all channels:', error);
     res.status(500).json({ error: 'Failed to fetch channels' });
@@ -2561,8 +2573,20 @@ apiRouter.get('/channels', optionalAuth(), async (req, res) => {
       filteredChannels.unshift(primary);
     }
 
+    // MM-SEC-2 follow-up: include the raw `psk` only for callers with write
+    // permission to the specific channel (or admins). Without this, the
+    // channel-config edit dialog can't display the existing key for the
+    // operator who is allowed to change it. See issue #2951.
+    const projected = await Promise.all(filteredChannels.map(async (channel) => {
+      const channelResource = `channel_${channel.id}` as import('../types/permission.js').ResourceType;
+      const includePsk = isAdmin || (req.user
+        ? await hasPermission(req.user, channelResource, 'write', channelsSourceId)
+        : false);
+      return transformChannel(channel, { includePsk });
+    }));
+
     logger.debug(`📡 Serving ${filteredChannels.length} filtered channels (from ${allChannels.length} total)`);
-    res.json(filteredChannels.map(transformChannel));
+    res.json(projected);
   } catch (error) {
     logger.error('Error fetching channels:', error);
     res.status(500).json({ error: 'Failed to fetch channels' });
@@ -4689,9 +4713,15 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       }
 
       // MM-SEC-2: project through transformChannel so the raw `psk` column
-      // never reaches the response, even though the per-channel permission
-      // gate above already filters out hidden channels.
-      result.channels = filteredChannels.map(transformChannel);
+      // is gated. The per-channel permission gate above already filters out
+      // hidden channels; here we additionally include the actual key only
+      // for callers with write permission to that specific channel (admins
+      // automatically). See issue #2951 — the channel-config UI needs the
+      // existing PSK to display in the edit dialog for authorized operators.
+      result.channels = filteredChannels.map((channel) => {
+        const includePsk = checkPerm(`channel_${channel.id}`, 'write');
+        return transformChannel(channel, { includePsk });
+      });
     } catch (error) {
       logger.error('Error fetching channels in poll:', error);
     }

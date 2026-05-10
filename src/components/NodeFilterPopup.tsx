@@ -30,12 +30,16 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
   // Get unique channel numbers from available channels
   const availableChannels = (channels || []).map(ch => ch.id).sort((a, b) => a - b);
 
-  // Check if the selected channel has a custom PSK (is secure/encrypted)
+  // Check if the selected channel has a custom PSK (is secure/encrypted).
+  // Prefer the server-derived `encryptionStatus` field — non-admin viewers
+  // do not receive `psk` from the API (issue #2951), so the legacy `psk`
+  // check would mis-classify their channels as insecure.
   const isSecureChannel = (channelId: number | 'all'): boolean => {
     if (channelId === 'all') return false;
     const channel = channels.find(ch => ch.id === channelId);
-    // A channel is secure if it has a PSK that's not the default unencrypted one
-    return !!(channel?.psk && channel.psk !== DEFAULT_UNENCRYPTED_PSK);
+    if (!channel) return false;
+    if (channel.encryptionStatus) return channel.encryptionStatus === 'secure';
+    return !!(channel.psk && channel.psk !== DEFAULT_UNENCRYPTED_PSK);
   };
 
   // Auto-hide incomplete nodes when switching to a secure channel
