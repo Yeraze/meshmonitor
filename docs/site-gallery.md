@@ -90,6 +90,14 @@ Running a public MeshMonitor instance? We'd love to feature it! **[File an issue
 
 ---
 
+### LZMesh / LZARC
+- **URL**: [meshmonitor.lzmesh.com](https://meshmonitor.lzmesh.com/)
+- **Network**: [LZMesh](https://lzmesh.com)
+- **Location**: Southwest Missouri / 4-State Area, US
+- **Description**: Monitoring the LZMesh / LZARC Meshtastic network covering Southwest Missouri and the surrounding 4-State area.
+
+---
+
 ## About the Site Gallery
 
 The Site Gallery showcases MeshMonitor instances that are publicly accessible. These sites demonstrate:
