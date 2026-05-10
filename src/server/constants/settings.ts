@@ -144,6 +144,16 @@ export const VALID_SETTINGS_KEYS = [
   'tracerouteFilterHopsMin',
   'tracerouteFilterHopsMax',
   'defaultLandingPage',
+  // Geofence-timezone (auto-update server TZ from source node GPS) — issue #2924
+  'geofenceTzEnabled',
+  'geofenceTzSourceNodeId',
+  'geofenceTzThresholdMiles',
+  'geofenceTzIntervalMinutes',
+  // Service-managed (written by GeofenceTimezoneService, surfaced read-only in UI)
+  'geofenceTzDetected',
+  'geofenceTzLastLat',
+  'geofenceTzLastLon',
+  'geofenceTzLastCheckedAt',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];

@@ -40,6 +40,7 @@ import { newsService } from './services/newsService.js';
 import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
+import { geofenceTimezoneService } from './services/geofenceTimezoneService.js';
 import { getUserNotificationPreferencesAsync, saveUserNotificationPreferencesAsync, applyNodeNamePrefixAsync } from './utils/notificationFiltering.js';
 import { upgradeService } from './services/upgradeService.js';
 import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess, getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
@@ -576,6 +577,24 @@ setTimeout(async () => {
     inactiveNodeNotificationService.start(inactiveThresholdHours, inactiveCheckIntervalMinutes, inactiveCooldownHours);
     logger.info('✅ Inactive node notification service started');
 
+    // Start geofence-timezone service (opt-in, default off) — see issue #2924
+    try {
+      const gfTzEnabled = await databaseService.settings.getSettingAsBoolean('geofenceTzEnabled', false);
+      if (gfTzEnabled) {
+        const gfTzIntervalRaw = parseInt(
+          (await databaseService.settings.getSetting('geofenceTzIntervalMinutes')) || '15',
+          10
+        );
+        const gfTzInterval = !isNaN(gfTzIntervalRaw) && gfTzIntervalRaw >= 1 && gfTzIntervalRaw <= 1440 ? gfTzIntervalRaw : 15;
+        geofenceTimezoneService.start(gfTzInterval);
+        logger.info('✅ Geofence-timezone service started');
+      } else {
+        logger.debug('Geofence-timezone service disabled (geofenceTzEnabled=false)');
+      }
+    } catch (err) {
+      logger.warn('⚠️  Failed to start geofence-timezone service:', err);
+    }
+
     // Auto-delete-by-distance scheduler is now started per-source inside
     // MeshtasticManager.startDistanceDeleteScheduler() as part of the normal
     // scheduler stagger after configComplete.
@@ -942,6 +961,11 @@ setSettingsCallbacks({
   restartAutoDeleteByDistanceService: (intervalHours: number) =>
     autoDeleteByDistanceService.start(intervalHours),
   stopAutoDeleteByDistanceService: () => autoDeleteByDistanceService.stop(),
+  restartGeofenceTimezoneService: (intervalMinutes: number) => {
+    geofenceTimezoneService.stop();
+    geofenceTimezoneService.start(intervalMinutes);
+  },
+  stopGeofenceTimezoneService: () => geofenceTimezoneService.stop(),
 });
 
 // API Routes
