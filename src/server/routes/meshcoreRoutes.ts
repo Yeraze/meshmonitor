@@ -159,9 +159,10 @@ function isValidConnectionParams(params: {
  */
 router.get('/status', optionalAuth(), requirePermission('meshcore', 'read'), async (req: Request, res: Response) => {
   try {
-    const status = managerFor(req).getConnectionStatus();
-    const localNode = managerFor(req).getLocalNode();
-    const envConfig = managerFor(req).getEnvConfig();
+    const manager = managerFor(req);
+    const status = manager.getConnectionStatus();
+    const localNode = manager.getLocalNode();
+    const envConfig = manager.getEnvConfig();
 
     res.json({
       success: true,
@@ -214,15 +215,16 @@ router.post('/connect', meshcoreDeviceLimiter, requireAuth(), requirePermission(
       firmwareType,
     };
 
-    const success = await managerFor(req).connect(config);
+    const manager = managerFor(req);
+    const success = await manager.connect(config);
 
     if (success) {
       res.json({
         success: true,
         message: 'Connected successfully',
         data: {
-          localNode: managerFor(req).getLocalNode(),
-          deviceType: MeshCoreDeviceType[managerFor(req).getConnectionStatus().deviceType],
+          localNode: manager.getLocalNode(),
+          deviceType: MeshCoreDeviceType[manager.getConnectionStatus().deviceType],
         },
       });
     } else {
@@ -273,8 +275,9 @@ router.get('/nodes', optionalAuth(), requirePermission('meshcore', 'read'), asyn
  */
 router.get('/contacts', optionalAuth(), requirePermission('meshcore', 'read'), async (req: Request, res: Response) => {
   try {
-    const contacts = managerFor(req).getContacts();
-    const localNode = managerFor(req).getLocalNode();
+    const manager = managerFor(req);
+    const contacts = manager.getContacts();
+    const localNode = manager.getLocalNode();
 
     // Include local node in contacts list if it has coordinates
     const allContacts = [...contacts];

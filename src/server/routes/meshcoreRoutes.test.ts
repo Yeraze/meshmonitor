@@ -68,11 +68,14 @@ vi.mock('../meshcoreManager.js', () => ({
   MeshCoreManager: class {},
 }));
 
+// Only `test-source` is registered; unknown ids return undefined so the
+// router-level guard returns 404.
+const REGISTERED_SOURCE_IDS = new Set(['test-source']);
 vi.mock('../meshcoreRegistry.js', () => ({
   meshcoreManagerRegistry: {
     getOrCreateLegacyManager: () => meshcoreManager,
     list: () => [meshcoreManager],
-    get: () => meshcoreManager,
+    get: (sourceId: string) => (REGISTERED_SOURCE_IDS.has(sourceId) ? meshcoreManager : undefined),
   },
   LEGACY_MESHCORE_SOURCE_ID: 'meshcore-legacy-default',
 }));
@@ -205,6 +208,13 @@ describe('MeshCore Routes', () => {
       const response = await request(app).get('/api/sources/test-source/meshcore/status');
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
+    });
+
+    it('returns 404 when :id has no registered manager', async () => {
+      const response = await request(app).get('/api/sources/does-not-exist/meshcore/status');
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toMatch(/does-not-exist/);
     });
   });
 
