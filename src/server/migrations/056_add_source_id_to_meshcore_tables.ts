@@ -43,7 +43,9 @@ export const migration = {
         if (e.message?.includes('duplicate column')) {
           logger.debug(`${LABEL} (SQLite): ${table}.sourceId already exists, skipping`);
         } else {
-          logger.warn(`${LABEL} (SQLite): could not add sourceId to ${table}:`, e.message);
+          // Don't swallow — silent failure leaves rows without sourceId at runtime.
+          logger.error(`${LABEL} (SQLite): could not add sourceId to ${table}:`, e.message);
+          throw e;
         }
       }
     }

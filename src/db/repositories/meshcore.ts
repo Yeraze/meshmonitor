@@ -4,7 +4,7 @@
  * Handles MeshCore node and message database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, sql, isNull } from 'drizzle-orm';
+import { eq, desc, sql, isNull, and, lt } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -80,7 +80,10 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
-   * Get a specific node by public key
+   * Get a specific node by public key, ignoring source ownership.
+   * Prefer `getNodeByPublicKeyAndSource` for write paths — this variant
+   * exists for cross-source read paths that legitimately don't care which
+   * source owns the row.
    */
   async getNodeByPublicKey(publicKey: string): Promise<DbMeshCoreNode | null> {
     const { meshcoreNodes } = this.tables;
@@ -88,6 +91,25 @@ export class MeshCoreRepository extends BaseRepository {
       .select()
       .from(meshcoreNodes)
       .where(eq(meshcoreNodes.publicKey, publicKey))
+      .limit(1);
+    return result[0] ? this.normalizeBigInts(result[0]) as unknown as DbMeshCoreNode : null;
+  }
+
+  /**
+   * Get a node scoped by both publicKey and sourceId. Required for any
+   * write path: looking up by publicKey alone would let one source's
+   * upsert clobber another source's row when both happen to advertise
+   * the same key.
+   */
+  async getNodeByPublicKeyAndSource(
+    publicKey: string,
+    sourceId: string,
+  ): Promise<DbMeshCoreNode | null> {
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)))
       .limit(1);
     return result[0] ? this.normalizeBigInts(result[0]) as unknown as DbMeshCoreNode : null;
   }
@@ -119,13 +141,13 @@ export class MeshCoreRepository extends BaseRepository {
     }
     const now = this.now();
     const { meshcoreNodes } = this.tables;
-    const existing = await this.getNodeByPublicKey(node.publicKey);
+    const existing = await this.getNodeByPublicKeyAndSource(node.publicKey, sourceId);
 
     if (existing) {
       await this.db
         .update(meshcoreNodes)
         .set({ ...node, sourceId, updatedAt: now })
-        .where(eq(meshcoreNodes.publicKey, node.publicKey));
+        .where(and(eq(meshcoreNodes.publicKey, node.publicKey), eq(meshcoreNodes.sourceId, sourceId)));
     } else {
       await this.db
         .insert(meshcoreNodes)
@@ -252,11 +274,13 @@ export class MeshCoreRepository extends BaseRepository {
     const toDelete = await this.db
       .select({ id: meshcoreMessages.id })
       .from(meshcoreMessages)
-      .where(sql`${meshcoreMessages.timestamp} < ${timestamp}`);
+      .where(lt(meshcoreMessages.timestamp, timestamp));
 
-    for (const msg of toDelete) {
-      await this.db.delete(meshcoreMessages).where(eq(meshcoreMessages.id, msg.id));
-    }
+    if (toDelete.length === 0) return 0;
+
+    await this.db
+      .delete(meshcoreMessages)
+      .where(lt(meshcoreMessages.timestamp, timestamp));
     return toDelete.length;
   }
 
