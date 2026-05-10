@@ -889,7 +889,12 @@ apiRouter.use('/messages', optionalAuth(), messageRoutes);
 
 // MeshCore routes (for MeshCore device monitoring)
 // Authentication handled per-route in meshcoreRoutes.ts
-// Enable with MESHCORE_ENABLED=true in .env
+// Slice 2: routes are nested under `/api/sources/:id/meshcore/*` so each
+// request resolves the manager bound to a specific source. The legacy
+// un-nested `/api/meshcore/*` mount is retained for backward compat with
+// the existing UI/scripts and routes through the legacy registry helper —
+// it goes away once the UI migrates (slice 2 follow-up).
+apiRouter.use('/sources/:id/meshcore', meshcoreRoutes);
 if (process.env.MESHCORE_ENABLED === 'true') {
   apiRouter.use('/meshcore', meshcoreRoutes);
 }

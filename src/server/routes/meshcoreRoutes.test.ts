@@ -149,8 +149,10 @@ describe('MeshCore Routes', () => {
       canWrite: false,
     });
 
-    // Mount routes
+    // Mount routes — both the legacy un-nested form and the slice-2
+    // nested form share the same router so we can exercise both shapes.
     app.use('/api/auth', authRoutes);
+    app.use('/api/sources/:id/meshcore', meshcoreRoutes);
     app.use('/api/meshcore', meshcoreRoutes);
   });
 
@@ -193,6 +195,14 @@ describe('MeshCore Routes', () => {
   describe('GET /api/meshcore/status', () => {
     it('should return status without authentication', async () => {
       const response = await request(app).get('/api/meshcore/status');
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+    });
+  });
+
+  describe('Nested mount /api/sources/:id/meshcore', () => {
+    it('resolves the manager via :id and serves status', async () => {
+      const response = await request(app).get('/api/sources/test-source/meshcore/status');
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
     });

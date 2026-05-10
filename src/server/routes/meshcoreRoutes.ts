@@ -9,23 +9,51 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { ConnectionType, MeshCoreDeviceType } from '../meshcoreManager.js';
+import { ConnectionType, MeshCoreDeviceType, MeshCoreManager } from '../meshcoreManager.js';
 import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
 import { logger } from '../../utils/logger.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiters.js';
 
 /**
- * Resolve the manager for the legacy un-nested `/api/meshcore/*` routes.
+ * Resolve the manager for a request. Slice 2 nests these routes under
+ * `/api/sources/:id/meshcore/*`, so when `req.params.id` is present we
+ * resolve the manager bound to that source. The un-nested
+ * `/api/meshcore/*` mount is kept for backward compatibility (UI, scripts)
+ * and falls back to the legacy registry helper.
  *
- * TODO(slice-2): these routes will be re-mounted under
- * `/api/sources/:id/meshcore/*` and the manager will come from the URL.
- * Until then, every endpoint lazy-creates / reuses one manager keyed by
- * the legacy default source id so behaviour matches the old singleton.
+ * Returns `null` when the URL carried a sourceId that has no registered
+ * manager — the caller should respond 404. Never returns null on the
+ * legacy path.
  */
-const meshcoreManager = () => meshcoreManagerRegistry.getOrCreateLegacyManager();
+function managerFor(req: Request): MeshCoreManager {
+  const sourceId = (req.params as { id?: string }).id;
+  if (sourceId) {
+    // Presence is enforced by the router-level guard below, so a missing
+    // manager here would be a logic bug; assert rather than re-check.
+    return meshcoreManagerRegistry.get(sourceId)!;
+  }
+  return meshcoreManagerRegistry.getOrCreateLegacyManager();
+}
 
-const router = Router();
+const router = Router({ mergeParams: true });
+
+/**
+ * Router-level guard: when the URL carries a `:id`, the source must
+ * have a registered manager. This lets every handler call `managerFor`
+ * without null-checking at each call-site.
+ */
+router.use((req, res, next) => {
+  const sourceId = (req.params as { id?: string }).id;
+  if (!sourceId) return next();
+  if (!meshcoreManagerRegistry.get(sourceId)) {
+    return res.status(404).json({
+      success: false,
+      error: `No MeshCore manager for source ${sourceId}`,
+    });
+  }
+  next();
+});
 
 /**
  * Input Validation Constants
@@ -129,11 +157,11 @@ function isValidConnectionParams(params: {
  * GET /api/meshcore/status
  * Get connection status and local node info
  */
-router.get('/status', optionalAuth(), requirePermission('meshcore', 'read'), async (_req: Request, res: Response) => {
+router.get('/status', optionalAuth(), requirePermission('meshcore', 'read'), async (req: Request, res: Response) => {
   try {
-    const status = meshcoreManager().getConnectionStatus();
-    const localNode = meshcoreManager().getLocalNode();
-    const envConfig = meshcoreManager().getEnvConfig();
+    const status = managerFor(req).getConnectionStatus();
+    const localNode = managerFor(req).getLocalNode();
+    const envConfig = managerFor(req).getEnvConfig();
 
     res.json({
       success: true,
@@ -186,15 +214,15 @@ router.post('/connect', meshcoreDeviceLimiter, requireAuth(), requirePermission(
       firmwareType,
     };
 
-    const success = await meshcoreManager().connect(config);
+    const success = await managerFor(req).connect(config);
 
     if (success) {
       res.json({
         success: true,
         message: 'Connected successfully',
         data: {
-          localNode: meshcoreManager().getLocalNode(),
-          deviceType: MeshCoreDeviceType[meshcoreManager().getConnectionStatus().deviceType],
+          localNode: managerFor(req).getLocalNode(),
+          deviceType: MeshCoreDeviceType[managerFor(req).getConnectionStatus().deviceType],
         },
       });
     } else {
@@ -211,9 +239,9 @@ router.post('/connect', meshcoreDeviceLimiter, requireAuth(), requirePermission(
  * Disconnect from the device
  * Requires authentication - disconnects hardware
  */
-router.post('/disconnect', meshcoreDeviceLimiter, requireAuth(), requirePermission('meshcore', 'write'), async (_req: Request, res: Response) => {
+router.post('/disconnect', meshcoreDeviceLimiter, requireAuth(), requirePermission('meshcore', 'write'), async (req: Request, res: Response) => {
   try {
-    await meshcoreManager().disconnect();
+    await managerFor(req).disconnect();
     res.json({ success: true, message: 'Disconnected' });
   } catch (error) {
     logger.error('[API] Error disconnecting:', error);
@@ -225,9 +253,9 @@ router.post('/disconnect', meshcoreDeviceLimiter, requireAuth(), requirePermissi
  * GET /api/meshcore/nodes
  * Get all known nodes (local + contacts)
  */
-router.get('/nodes', optionalAuth(), requirePermission('meshcore', 'read'), async (_req: Request, res: Response) => {
+router.get('/nodes', optionalAuth(), requirePermission('meshcore', 'read'), async (req: Request, res: Response) => {
   try {
-    const nodes = meshcoreManager().getAllNodes();
+    const nodes = managerFor(req).getAllNodes();
     res.json({
       success: true,
       data: nodes,
@@ -243,10 +271,10 @@ router.get('/nodes', optionalAuth(), requirePermission('meshcore', 'read'), asyn
  * GET /api/meshcore/contacts
  * Get contacts list
  */
-router.get('/contacts', optionalAuth(), requirePermission('meshcore', 'read'), async (_req: Request, res: Response) => {
+router.get('/contacts', optionalAuth(), requirePermission('meshcore', 'read'), async (req: Request, res: Response) => {
   try {
-    const contacts = meshcoreManager().getContacts();
-    const localNode = meshcoreManager().getLocalNode();
+    const contacts = managerFor(req).getContacts();
+    const localNode = managerFor(req).getLocalNode();
 
     // Include local node in contacts list if it has coordinates
     const allContacts = [...contacts];
@@ -280,9 +308,9 @@ router.get('/contacts', optionalAuth(), requirePermission('meshcore', 'read'), a
  * Refresh contacts from device
  * Requires authentication - triggers device communication
  */
-router.post('/contacts/refresh', meshcoreDeviceLimiter, requireAuth(), requirePermission('meshcore', 'write'), async (_req: Request, res: Response) => {
+router.post('/contacts/refresh', meshcoreDeviceLimiter, requireAuth(), requirePermission('meshcore', 'write'), async (req: Request, res: Response) => {
   try {
-    const contacts = await meshcoreManager().refreshContacts();
+    const contacts = await managerFor(req).refreshContacts();
     res.json({
       success: true,
       data: Array.from(contacts.values()),
@@ -307,7 +335,7 @@ router.get('/messages', optionalAuth(), requirePermission('meshcore', 'read'), a
     } else if (limit > VALIDATION.MAX_MESSAGE_LIMIT) {
       limit = VALIDATION.MAX_MESSAGE_LIMIT;
     }
-    const messages = meshcoreManager().getRecentMessages(limit);
+    const messages = managerFor(req).getRecentMessages(limit);
     res.json({
       success: true,
       data: messages,
@@ -341,7 +369,7 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
       }
     }
 
-    const success = await meshcoreManager().sendMessage(text, toPublicKey);
+    const success = await managerFor(req).sendMessage(text, toPublicKey);
 
     if (success) {
       res.json({ success: true, message: 'Message sent' });
@@ -359,9 +387,9 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
  * Send an advertisement
  * Requires authentication - broadcasts on mesh network
  */
-router.post('/advert', meshcoreDeviceLimiter, requireAuth(), requirePermission('meshcore', 'write'), async (_req: Request, res: Response) => {
+router.post('/advert', meshcoreDeviceLimiter, requireAuth(), requirePermission('meshcore', 'write'), async (req: Request, res: Response) => {
   try {
-    const success = await meshcoreManager().sendAdvert();
+    const success = await managerFor(req).sendAdvert();
 
     if (success) {
       res.json({ success: true, message: 'Advert sent' });
@@ -392,7 +420,7 @@ router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
       return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
     }
 
-    const success = await meshcoreManager().loginToNode(publicKey, password);
+    const success = await managerFor(req).loginToNode(publicKey, password);
 
     if (success) {
       res.json({ success: true, message: 'Login successful' });
@@ -419,7 +447,7 @@ router.get('/admin/status/:publicKey', requireAuth(), requirePermission('meshcor
       return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
     }
 
-    const status = await meshcoreManager().requestNodeStatus(publicKey);
+    const status = await managerFor(req).requestNodeStatus(publicKey);
 
     if (status) {
       res.json({ success: true, data: status });
@@ -447,7 +475,7 @@ router.post('/config/name', meshcoreDeviceLimiter, requireAuth(), requirePermiss
       return res.status(400).json({ success: false, error: nameValidation.error });
     }
 
-    const success = await meshcoreManager().setName(name.trim());
+    const success = await managerFor(req).setName(name.trim());
 
     if (success) {
       res.json({ success: true, message: 'Name updated' });
@@ -488,7 +516,7 @@ router.post('/config/radio', meshcoreDeviceLimiter, requireAuth(), requirePermis
       return res.status(400).json({ success: false, error: radioValidation.error });
     }
 
-    const success = await meshcoreManager().setRadio(parsedFreq, parsedBw, parsedSf, parsedCr);
+    const success = await managerFor(req).setRadio(parsedFreq, parsedBw, parsedSf, parsedCr);
 
     if (success) {
       res.json({ success: true, message: 'Radio config updated' });
