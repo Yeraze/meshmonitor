@@ -58,6 +58,9 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   // Local node indicator
   isLocalNode: integer('isLocalNode', { mode: 'boolean' }).default(false),
 
+  // Owning source (nullable for legacy single-source rows; backfilled by migration 056)
+  sourceId: text('sourceId'),
+
   // Timestamps
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
@@ -95,6 +98,8 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
 
   isLocalNode: pgBoolean('isLocalNode').default(false),
 
+  sourceId: pgText('sourceId'),
+
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
 });
@@ -130,6 +135,8 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   lastAdminCheck: myBigint('lastAdminCheck', { mode: 'number' }),
 
   isLocalNode: myBoolean('isLocalNode').default(false),
+
+  sourceId: myVarchar('sourceId', { length: 64 }),
 
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),

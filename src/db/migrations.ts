@@ -67,6 +67,7 @@ import { migration as addSourceIdToEmbedProfilesMigration, runMigration052Postgr
 import { migration as createWaypointsMigration, runMigration053Postgres, runMigration053Mysql } from '../server/migrations/053_create_waypoints.js';
 import { migration as addWaypointsPermissionMigration, runMigration054Postgres, runMigration054Mysql } from '../server/migrations/054_add_waypoints_permission.js';
 import { migration as seedGlobalWaypointsPermissionMigration, runMigration055Postgres, runMigration055Mysql } from '../server/migrations/055_seed_global_waypoints_permission.js';
+import { migration as addSourceIdToMeshcoreTablesMigration, runMigration056Postgres, runMigration056Mysql } from '../server/migrations/056_add_source_id_to_meshcore_tables.js';
 
 // ============================================================================
 // Registry
@@ -856,4 +857,20 @@ registry.register({
   sqlite: (db) => seedGlobalWaypointsPermissionMigration.up(db),
   postgres: (client) => runMigration055Postgres(client),
   mysql: (pool) => runMigration055Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 056: Add nullable sourceId to meshcore_nodes / meshcore_messages
+// (mirrors migration 021 for Meshtastic) and synthesise a legacy default
+// MeshCore source for any pre-existing rows. First slice of the MeshCore
+// per-source refactor — the manager registry now keys on sourceId.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 56,
+  name: 'add_source_id_to_meshcore_tables',
+  settingsKey: 'migration_056_add_source_id_to_meshcore_tables',
+  sqlite: (db) => addSourceIdToMeshcoreTablesMigration.up(db),
+  postgres: (client) => runMigration056Postgres(client),
+  mysql: (pool) => runMigration056Mysql(pool),
 });
