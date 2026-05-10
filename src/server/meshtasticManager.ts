@@ -4175,10 +4175,14 @@ class MeshtasticManager implements ISourceManager {
         }
       }
 
-      // Track message hops (hopStart - hopLimit) for "All messages" hop calculation mode
+      // Track message hops (hopStart - hopLimit) for "All messages" hop calculation mode.
+      // hop_start is a proto3 uint32 scalar (not optional), so an unset field decodes as 0
+      // — indistinguishable from "really started at 0". Require hopStart > 0 so we don't
+      // record bogus 0-hop telemetry for packets where the sender never populated hop_start
+      // (older firmware, some MQTT-bridged paths, transports that strip the LoRa header bits).
       const hopStart = meshPacket.hopStart ?? meshPacket.hop_start;
       const hopLimit = meshPacket.hopLimit ?? meshPacket.hop_limit;
-      if (hopStart !== undefined && hopStart !== null &&
+      if (hopStart !== undefined && hopStart !== null && hopStart > 0 &&
           hopLimit !== undefined && hopLimit !== null &&
           hopStart >= hopLimit) {
         const messageHops = hopStart - hopLimit;
