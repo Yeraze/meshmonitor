@@ -4,7 +4,7 @@
  * Per-source storage for Meshtastic waypoints (PortNum.WAYPOINT_APP).
  * Composite primary key (sourceId, waypointId).
  */
-import { and, eq, gte, lte, lt, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, lte, lt, isNull, or, sql } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -196,6 +196,68 @@ export class WaypointsRepository extends BaseRepository {
       .from(waypoints)
       .where(eq(waypoints.sourceId, sourceId));
     return new Set(rows.map((r: any) => Number(r.id)));
+  }
+
+  /**
+   * Pick the single oldest waypoint that is eligible to be rebroadcast right
+   * now. Eligibility:
+   *   - `rebroadcastIntervalS` is non-null and > 0
+   *   - `isVirtual` is false (virtual waypoints never go out on the mesh)
+   *   - waypoint is not expired (`expireAt` null/0, or in the future)
+   *   - either `lastBroadcastAt` is NULL, or
+   *     `now - lastBroadcastAt >= rebroadcastIntervalS`
+   *
+   * Ordering: NULL `lastBroadcastAt` first (never broadcast = highest priority),
+   * then by ascending `lastBroadcastAt` so rotation is fair. `LIMIT 1` keeps
+   * the airtime floor strict — the scheduler picks at most one per tick.
+   *
+   * Times are in epoch seconds to match `rebroadcastIntervalS` and `expireAt`.
+   */
+  async findOldestEligibleForRebroadcastAsync(nowSec: number): Promise<Waypoint | null> {
+    const { waypoints } = this.tables;
+
+    const rows = await this.db
+      .select()
+      .from(waypoints)
+      .where(
+        and(
+          eq(waypoints.isVirtual, 0),
+          sql`${waypoints.rebroadcastIntervalS} IS NOT NULL`,
+          sql`${waypoints.rebroadcastIntervalS} > 0`,
+          or(
+            isNull(waypoints.expireAt),
+            eq(waypoints.expireAt, 0),
+            gte(waypoints.expireAt, nowSec),
+          )!,
+          or(
+            isNull(waypoints.lastBroadcastAt),
+            sql`${nowSec} - ${waypoints.lastBroadcastAt} >= ${waypoints.rebroadcastIntervalS}`,
+          )!,
+        ),
+      )
+      // NULL lastBroadcastAt sorts first in SQLite/PostgreSQL by default;
+      // MySQL also puts NULLs first under ASC. Then fall back to oldest.
+      .orderBy(asc(waypoints.lastBroadcastAt))
+      .limit(1);
+
+    return rows.length > 0 ? deserializeRow(rows[0]) : null;
+  }
+
+  /**
+   * Stamp `lastBroadcastAt = nowSec` for a single waypoint. Returns true if a
+   * row was updated. Used by the rebroadcast scheduler immediately after a
+   * successful mesh send so the same waypoint is not picked again on the next
+   * tick.
+   */
+  async markRebroadcastedAsync(sourceId: string, waypointId: number, nowSec: number): Promise<boolean> {
+    const { waypoints } = this.tables;
+    const result = await this.executeRun(
+      this.db
+        .update(waypoints)
+        .set({ lastBroadcastAt: nowSec })
+        .where(and(eq(waypoints.sourceId, sourceId), eq(waypoints.waypointId, waypointId))),
+    );
+    return this.getAffectedRows(result) > 0;
   }
 
   /**
