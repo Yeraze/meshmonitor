@@ -168,6 +168,22 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
       });
     }
 
+    // Reject double-submits while a step is mid-flight. Without this the user
+    // can re-click Confirm during a slow backup and trigger a parallel run.
+    if (firmwareUpdateService.isStepRunning()) {
+      return res.status(409).json({
+        success: false,
+        error: 'A firmware update step is already running',
+      });
+    }
+
+    // Long-running steps are kicked off async and the HTTP response returns
+    // immediately. The frontend tracks progress via Socket.IO `firmware:status`
+    // events on every updateStatus() call — it never relied on this response
+    // body for anything other than current state. Synchronous awaits here
+    // routinely tripped reverse-proxy idle timeouts (60–100s) on slow
+    // backups, leaving the wizard convinced the step hung while the server
+    // kept running.
     switch (status.step) {
       case 'preflight': {
         // Advance to backup step
@@ -177,9 +193,26 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
             error: 'gatewayIp and nodeId are required to confirm preflight',
           });
         }
+        // Safety rail 5: refuse OTA on a device flagged half-flashed.
+        // Operators must clear the marker (typically after a USB-tethered
+        // recovery) before another OTA attempt.
+        if (firmwareUpdateService.hasFlashIncompleteMarker(nodeId)) {
+          return res.status(409).json({
+            success: false,
+            error:
+              `Node "${nodeId}" is flagged as half-flashed from a previous OTA attempt. ` +
+              `Recover via USB, then DELETE /api/firmware/recovery-marker/${encodeURIComponent(nodeId)} to clear the flag.`,
+          });
+        }
         // Visibly disconnect from node before backup — stays disconnected through entire flash
-        await firmwareUpdateService.disconnectFromNode();
-        await firmwareUpdateService.executeBackup(gatewayIp, nodeId);
+        void (async () => {
+          try {
+            await firmwareUpdateService.disconnectFromNode();
+            await firmwareUpdateService.executeBackup(gatewayIp, nodeId);
+          } catch (err) {
+            logger.error('[FirmwareRoutes] Backup step failed:', err);
+          }
+        })();
         break;
       }
 
@@ -198,23 +231,26 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
           });
         }
 
-        // Download
-        await firmwareUpdateService.executeDownload(status.downloadUrl);
-
-        // Extract immediately after download (no user prompt needed)
-        const tempDir = firmwareUpdateService.getTempDir();
-        if (!tempDir) {
-          return res.status(500).json({
-            success: false,
-            error: 'Temp directory not available. Download may have failed.',
-          });
-        }
-        const zipPath = path.join(tempDir, 'firmware.zip');
-        await firmwareUpdateService.executeExtract(
-          zipPath,
-          status.preflightInfo.boardName,
-          status.preflightInfo.targetVersion
-        );
+        const downloadUrl = status.downloadUrl;
+        const preflightInfo = status.preflightInfo;
+        void (async () => {
+          try {
+            await firmwareUpdateService.executeDownload(downloadUrl);
+            const tempDir = firmwareUpdateService.getTempDir();
+            if (!tempDir) {
+              logger.error('[FirmwareRoutes] Temp directory missing after download');
+              return;
+            }
+            const zipPath = path.join(tempDir, 'firmware.zip');
+            await firmwareUpdateService.executeExtract(
+              zipPath,
+              preflightInfo.boardName,
+              preflightInfo.targetVersion
+            );
+          } catch (err) {
+            logger.error('[FirmwareRoutes] Download/extract step failed:', err);
+          }
+        })();
         break;
       }
 
@@ -234,16 +270,42 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
           });
         }
         const firmwarePath = path.join(extractTempDir, 'extracted', status.matchedFile);
-        await firmwareUpdateService.executeFlash(status.preflightInfo.gatewayIp, firmwarePath);
+        const gatewayForFlash = status.preflightInfo.gatewayIp;
+        void (async () => {
+          try {
+            await firmwareUpdateService.executeFlash(gatewayForFlash, firmwarePath);
+          } catch (err) {
+            logger.error('[FirmwareRoutes] Flash step failed:', err);
+          }
+        })();
         break;
       }
 
       case 'flash': {
-        // After flash, move to verify step (waiting for reconnect)
-        firmwareUpdateService.verifyUpdate(
-          status.targetVersion ?? '',
-          status.preflightInfo?.targetVersion ?? ''
-        );
+        // Read the firmware version the device is actually running now —
+        // not the target. Otherwise verifyUpdate is comparing target against
+        // target and trivially "succeeds" regardless of what flashed.
+        // Wait for MyNodeInfo to arrive after the post-flash reconnect; the
+        // TCP connect event fires before the node sends its metadata, and
+        // getLocalNodeInfo() can also return the pre-flash cached version
+        // until MyNodeInfo is re-emitted.
+        const preFlashVersion = status.preflightInfo?.currentVersion ?? '';
+        const verifyGatewayIp = status.preflightInfo?.gatewayIp;
+        firmwareUpdateService.markVerifyInProgress();
+        void (async () => {
+          try {
+            const actualVersion = await firmwareUpdateService.waitForFirmwareVersion({
+              staleVersion: preFlashVersion,
+              gatewayIp: verifyGatewayIp,
+            });
+            firmwareUpdateService.verifyUpdate(
+              actualVersion,
+              status.targetVersion ?? ''
+            );
+          } catch (err) {
+            logger.error('[FirmwareRoutes] Verify step failed:', err);
+          }
+        })();
         break;
       }
 
@@ -360,6 +422,27 @@ router.post('/restore', async (req: Request, res: Response) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('[FirmwareRoutes] Error restoring backup:', error);
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * DELETE /api/firmware/recovery-marker/:nodeId
+ * Clear the half-flashed marker for a node. Should only be called after
+ * a USB-tethered recovery has been performed.
+ */
+router.delete('/recovery-marker/:nodeId', (req: Request, res: Response) => {
+  try {
+    const nodeId = req.params.nodeId;
+    if (!nodeId) {
+      return res.status(400).json({ success: false, error: 'nodeId is required' });
+    }
+    const removed = firmwareUpdateService.clearFlashIncompleteMarker(nodeId);
+    logger.info(`[FirmwareRoutes] Cleared ${removed} half-flash marker(s) for node ${nodeId}`);
+    return res.json({ success: true, removed });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error('[FirmwareRoutes] Error clearing recovery marker:', error);
     return res.status(500).json({ success: false, error: message });
   }
 });

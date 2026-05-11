@@ -34,6 +34,12 @@ import { createRequire } from 'module';
 import { validateCron, scheduleCron, type CronJob } from './utils/cronScheduler.js';
 import fs from 'fs';
 import path from 'path';
+import * as net from 'net';
+
+const POST_RESET_COOLDOWN_MS = 5000;
+const TCP_READY_TIMEOUT_MS = 15000;
+const TCP_READY_INTERVAL_MS = 500;
+const TCP_READY_CONNECT_TIMEOUT_MS = 1500;
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
 
@@ -290,6 +296,7 @@ interface AutoPingSession {
 class MeshtasticManager implements ISourceManager {
   public sourceId: string;
   private sourceConfigOverride: { host?: string; port?: number; heartbeatIntervalSeconds?: number } | null = null;
+  private postResetCooldownUntil: number = 0;
   private virtualNodeServer?: VirtualNodeServer;
   private transport: ITransport | null = null;
   private isConnected = false;
@@ -795,6 +802,33 @@ class MeshtasticManager implements ISourceManager {
         logger.error('❌ TCP transport error:', error.message);
       });
 
+      // Only honor cooldown + probe when handleConnected has flagged a
+      // post-OTA half-open recovery. On cold/normal connects we skip both
+      // so the 15s TCP probe doesn't eat the caller's connection budget.
+      const cooldownActive = this.postResetCooldownUntil > 0;
+      if (cooldownActive) {
+        // Honor post-reset cooldown — after a transient post-OTA half-open
+        // connect we deliberately wait before re-attempting so the node's
+        // WiFi stack can finish settling and we don't loop on the same race.
+        const cooldownRemaining = this.postResetCooldownUntil - Date.now();
+        if (cooldownRemaining > 0) {
+          logger.debug(`⏸️ Post-reset cooldown active, waiting ${cooldownRemaining}ms before reconnect`);
+          await new Promise((r) => setTimeout(r, cooldownRemaining));
+        }
+
+        // Best-effort TCP-readiness probe — confirm the node is actually
+        // accepting sockets before we hand off to the @meshtastic/js transport.
+        try {
+          await this.waitForTcpReady(config.nodeIp, config.tcpPort);
+        } catch (probeErr) {
+          const msg = probeErr instanceof Error ? probeErr.message : String(probeErr);
+          logger.warn(`⚠️ TCP readiness probe to ${config.nodeIp}:${config.tcpPort} failed (${msg}) — proceeding anyway`);
+        }
+
+        // Clear the flag so subsequent normal connects skip this path.
+        this.postResetCooldownUntil = 0;
+      }
+
       // Connect to node
       // Note: isConnected will be set to true in handleConnected() callback
       // when the connection is actually established
@@ -806,6 +840,43 @@ class MeshtasticManager implements ISourceManager {
       logger.error('Failed to connect to Meshtastic node:', error);
       throw error;
     }
+  }
+
+  /**
+   * Poll the node's TCP port until it accepts a connection, or the overall
+   * deadline elapses. Used after an OTA reboot (or any transient half-open
+   * connect) to avoid racing the @meshtastic/js transport against a node
+   * whose WiFi stack hasn't finished coming up yet.
+   */
+  private async waitForTcpReady(host: string, port: number): Promise<void> {
+    const deadline = Date.now() + TCP_READY_TIMEOUT_MS;
+    let lastErr: Error | null = null;
+    while (Date.now() < deadline) {
+      const attemptStart = Date.now();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const socket = net.connect({ host, port });
+          let settled = false;
+          const finish = (err?: Error) => {
+            if (settled) return;
+            settled = true;
+            try { socket.destroy(); } catch { /* ignore */ }
+            if (err) reject(err); else resolve();
+          };
+          const timer = setTimeout(() => finish(new Error('TCP readiness probe timeout')), TCP_READY_CONNECT_TIMEOUT_MS);
+          socket.once('connect', () => { clearTimeout(timer); finish(); });
+          socket.once('error', (err) => { clearTimeout(timer); finish(err); });
+        });
+        return;
+      } catch (err) {
+        lastErr = err instanceof Error ? err : new Error(String(err));
+        const elapsed = Date.now() - attemptStart;
+        const wait = Math.max(0, TCP_READY_INTERVAL_MS - elapsed);
+        if (Date.now() + wait >= deadline) break;
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
+    throw lastErr ?? new Error(`TCP readiness probe to ${host}:${port} exceeded ${TCP_READY_TIMEOUT_MS}ms`);
   }
 
   private async handleConnected(): Promise<void> {
@@ -844,8 +915,28 @@ class MeshtasticManager implements ISourceManager {
 
       logger.info('📸 Starting init config capture for virtual node server');
 
-      // Send want_config_id to request full node DB and config
-      await this.sendWantConfigId();
+      // Send want_config_id to request full node DB and config.
+      // If the node resets the socket between our 'connect' event and this
+      // first send (common right after an OTA reboot), transport.send throws
+      // "Not connected to TCP server". Treat that as a transient half-open
+      // connect and force-clean state so the reconnect path starts fresh
+      // — otherwise isConnected stays true while the transport is gone and
+      // every later operation fails with the same error.
+      try {
+        await this.sendWantConfigId();
+      } catch (sendErr) {
+        const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+        logger.warn(`⚠️ Initial sendWantConfigId failed (${msg}) — treating as transient post-connect reset, clearing state for clean reconnect`);
+        this.postResetCooldownUntil = Date.now() + POST_RESET_COOLDOWN_MS;
+        this.isConnected = false;
+        try { await this.transport?.disconnect(); } catch { /* ignore */ }
+        dataEventEmitter.emitConnectionStatus({
+          connected: false,
+          reason: `Transport reset immediately after connect: ${msg}`,
+        }, this.sourceId);
+        this.handleDisconnected().catch((e) => logger.error('Error in handleDisconnected (post-connect-reset cleanup):', e));
+        return;
+      }
 
       logger.debug('⏳ Waiting for configuration data from node...');
 
