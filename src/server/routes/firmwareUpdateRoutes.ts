@@ -8,7 +8,6 @@
 import { Router, Request, Response } from 'express';
 import { requireAdmin } from '../auth/authMiddleware.js';
 import { firmwareUpdateService } from '../services/firmwareUpdateService.js';
-import meshtasticManager from '../meshtasticManager.js';
 import { logger } from '../../utils/logger.js';
 import path from 'path';
 
@@ -286,11 +285,27 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
         // Read the firmware version the device is actually running now —
         // not the target. Otherwise verifyUpdate is comparing target against
         // target and trivially "succeeds" regardless of what flashed.
-        const actualVersion = meshtasticManager.getLocalNodeInfo()?.firmwareVersion ?? '';
-        firmwareUpdateService.verifyUpdate(
-          actualVersion,
-          status.targetVersion ?? ''
-        );
+        // Wait for MyNodeInfo to arrive after the post-flash reconnect; the
+        // TCP connect event fires before the node sends its metadata, and
+        // getLocalNodeInfo() can also return the pre-flash cached version
+        // until MyNodeInfo is re-emitted.
+        const preFlashVersion = status.preflightInfo?.currentVersion ?? '';
+        const verifyGatewayIp = status.preflightInfo?.gatewayIp;
+        firmwareUpdateService.markVerifyInProgress();
+        void (async () => {
+          try {
+            const actualVersion = await firmwareUpdateService.waitForFirmwareVersion({
+              staleVersion: preFlashVersion,
+              gatewayIp: verifyGatewayIp,
+            });
+            firmwareUpdateService.verifyUpdate(
+              actualVersion,
+              status.targetVersion ?? ''
+            );
+          } catch (err) {
+            logger.error('[FirmwareRoutes] Verify step failed:', err);
+          }
+        })();
         break;
       }
 

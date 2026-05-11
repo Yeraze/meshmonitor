@@ -513,6 +513,42 @@ export class FirmwareUpdateService {
    * Run a CLI command and capture output.
    * Appends stdout/stderr to status logs.
    */
+  /**
+   * Wait for the node's TCP port to accept a fresh connection before invoking
+   * the meshtastic CLI. After `userDisconnect()`, the JS-side socket closes
+   * immediately but the firmware may take a moment to free its single TCP
+   * client slot. Without this wait, the CLI silently hangs trying to connect
+   * to a still-busy slot and only fails when the outer timeout fires.
+   */
+  async waitForNodeTcpReady(
+    host: string,
+    port = 4403,
+    opts?: { timeoutMs?: number; intervalMs?: number; connectTimeoutMs?: number }
+  ): Promise<void> {
+    const timeoutMs = opts?.timeoutMs ?? 15_000;
+    const intervalMs = opts?.intervalMs ?? 500;
+    const connectTimeoutMs = opts?.connectTimeoutMs ?? 1500;
+    const deadline = Date.now() + timeoutMs;
+    let lastErr: unknown;
+    while (Date.now() < deadline) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const sock = net.connect({ host, port });
+          const cleanup = () => { sock.removeAllListeners(); sock.destroy(); };
+          const timer = setTimeout(() => { cleanup(); reject(new Error('connect timeout')); }, connectTimeoutMs);
+          sock.once('connect', () => { clearTimeout(timer); cleanup(); resolve(); });
+          sock.once('error', (err) => { clearTimeout(timer); cleanup(); reject(err); });
+        });
+        return;
+      } catch (err) {
+        lastErr = err;
+        await new Promise((r) => setTimeout(r, intervalMs));
+      }
+    }
+    const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+    throw new Error(`Node ${host}:${port} did not accept CLI connection within ${timeoutMs}ms: ${msg}`);
+  }
+
   runCliCommand(
     command: string,
     args: string[],
@@ -728,6 +764,10 @@ export class FirmwareUpdateService {
     try {
 
       this.ensureBackupDir();
+
+      // Wait for the firmware to release its TCP slot from the prior
+      // MeshMonitor connection — otherwise the CLI silently hangs on connect.
+      await this.waitForNodeTcpReady(gatewayIp);
 
       const result = await this.runCliCommand('meshtastic', [
         '--host', gatewayIp,
@@ -1197,6 +1237,97 @@ export class FirmwareUpdateService {
   }
 
   /**
+   * Poll meshtasticManager.getLocalNodeInfo()?.firmwareVersion until it
+   * populates after a post-flash reconnect. The TCP connect event fires
+   * well before the node sends MyNodeInfo/metadata, so verify must not
+   * read the version immediately or it sees an empty string. We also
+   * ignore the value if it still matches `staleVersion` — that means the
+   * cached info is from before the flash and a fresh MyNodeInfo hasn't
+   * arrived yet.
+   */
+  async waitForFirmwareVersion(
+    opts?: {
+      timeoutMs?: number;
+      intervalMs?: number;
+      staleVersion?: string;
+      gatewayIp?: string;
+    }
+  ): Promise<string> {
+    const timeoutMs = opts?.timeoutMs ?? 30_000;
+    const intervalMs = opts?.intervalMs ?? 500;
+    const stale = opts?.staleVersion ?? '';
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const v = meshtasticManager.getLocalNodeInfo()?.firmwareVersion;
+      if (v && v !== stale) return v;
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    // MeshMonitor's transport never repopulated MyNodeInfo (typically because
+    // of the post-OTA `@meshtastic/js` reconnect flap). Fall back to the
+    // meshtastic CLI to read the version straight from the node — this is the
+    // same path we use elsewhere and is independent of MM's transport state.
+    const fallback = meshtasticManager.getLocalNodeInfo()?.firmwareVersion ?? '';
+    if (fallback && fallback !== stale) return fallback;
+    if (!opts?.gatewayIp) return fallback;
+    try {
+      logger.info('[FirmwareUpdateService] Verify wait expired — falling back to CLI to read firmware version directly');
+      // Temporarily release MM's TCP slot so the CLI can connect cleanly.
+      await meshtasticManager.userDisconnect().catch(() => { /* best-effort */ });
+      await this.waitForNodeTcpReady(opts.gatewayIp).catch(() => { /* best-effort */ });
+      // Post-OTA, the node passes the TCP probe but its meshtastic protocol
+      // layer may still be initializing — the first --info attempt often times
+      // out or returns partial JSON. Retry up to 3 times with backoff, and log
+      // each failure with enough detail to diagnose later.
+      const delaysMs = [0, 2_000, 5_000, 10_000];
+      let cliVersion = '';
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        if (delaysMs[attempt - 1] > 0) {
+          await new Promise((r) => setTimeout(r, delaysMs[attempt - 1]));
+        }
+        const result = await this.runCliCommand('meshtastic', [
+          '--host', opts.gatewayIp,
+          '--timeout', '15',
+          '--info',
+        ], { timeoutMs: 30_000 });
+        const match = result.stdout.match(/"firmwareVersion"\s*:\s*"([^"]+)"/);
+        if (match && result.exitCode === 0) {
+          cliVersion = match[1];
+          logger.info(`[FirmwareUpdateService] CLI fallback read firmware version: ${cliVersion} (attempt ${attempt})`);
+          return cliVersion;
+        }
+        logger.warn(
+          `[FirmwareUpdateService] CLI fallback attempt ${attempt}/3 failed (exitCode=${result.exitCode}): ` +
+          `stdout="${result.stdout.slice(0, 500)}" stderr="${result.stderr.slice(0, 500)}"`
+        );
+      }
+      logger.warn('[FirmwareUpdateService] CLI fallback exhausted 3 attempts without parsing firmwareVersion from --info output');
+      return cliVersion;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[FirmwareUpdateService] CLI fallback for firmware version failed: ${msg}`);
+      return fallback;
+    } finally {
+      // Hand the TCP slot back to MM so the rest of the app stays connected.
+      meshtasticManager.userReconnect().catch((e) =>
+        logger.warn(`[FirmwareUpdateService] userReconnect after CLI fallback failed: ${e instanceof Error ? e.message : String(e)}`)
+      );
+    }
+  }
+
+  /**
+   * Flip status to in-progress: verify so the UI shows a working state
+   * instead of leaving the "Confirm & Proceed" button on screen while
+   * waitForFirmwareVersion polls (up to 30s).
+   */
+  markVerifyInProgress(): void {
+    this.updateStatus({
+      state: 'in-progress',
+      step: 'verify',
+      message: 'Waiting for node to report new firmware version…',
+    });
+  }
+
+  /**
    * Step 6: Verify that the firmware version matches the target after reboot.
    */
   verifyUpdate(newFirmwareVersion: string, targetVersion: string): void {
@@ -1407,6 +1538,11 @@ export class FirmwareUpdateService {
       let bytesSent = 0;
       let lastProgressUpdate = 0;
       let finished = false;
+      // Set to true once the loader sends `OK` in the commit phase. The
+      // device-side loader immediately closes the TCP socket after that,
+      // which surfaces in Node as ECONNRESET on 'error' or a bare 'close'.
+      // Neither should be treated as an upload failure.
+      let commitConfirmed = false;
 
       const setPhase = (p: Phase) => {
         phase = p;
@@ -1481,6 +1617,7 @@ export class FirmwareUpdateService {
         if (phase === 'commit') {
           if (trimmed === 'OK') {
             logger.info('[FirmwareUpdateService] Loader confirmed commit — firmware accepted');
+            commitConfirmed = true;
             finish();
           } else if (trimmed === 'ACK') {
             // Per-chunk ACKs are advisory; ignore.
@@ -1490,9 +1627,54 @@ export class FirmwareUpdateService {
         // `streaming` / `done`: unexpected traffic, ignore.
       };
 
-      socket.once('error', (err) => finish(err));
+      // Drain any buffered un-parsed lines for a trailing commit `OK`. The
+      // Heltec loader can send `OK\n` and reset the socket so fast that Node
+      // surfaces the 'error'/'close' event before the 'data' callback has a
+      // chance to run handleLine on the buffered bytes. Without this drain,
+      // `commitConfirmed` stays false and the error path falsely trips the
+      // half-flash marker for a successful upload.
+      const drainBufferForCommitOk = (): boolean => {
+        if (phase !== 'commit' || commitConfirmed) return commitConfirmed;
+        const pending = lineBuffer;
+        let nl = pending.indexOf('\n');
+        let remaining = pending;
+        while (nl !== -1) {
+          const line = remaining.slice(0, nl).trim();
+          remaining = remaining.slice(nl + 1);
+          if (line === 'OK') {
+            commitConfirmed = true;
+            logger.info('[FirmwareUpdateService] Loader confirmed commit (drained from buffer on socket close) — firmware accepted');
+            return true;
+          }
+          nl = remaining.indexOf('\n');
+        }
+        // Last partial line — loader may have closed before sending the newline.
+        if (remaining.trim() === 'OK') {
+          commitConfirmed = true;
+          logger.info('[FirmwareUpdateService] Loader confirmed commit (drained partial buffer on socket close) — firmware accepted');
+          return true;
+        }
+        return false;
+      };
+
+      socket.once('error', (err) => {
+        // The loader drops the TCP connection immediately after sending the
+        // commit OK, which Node reports as ECONNRESET. If we've already seen
+        // the commit OK — directly or after draining the read buffer — the
+        // upload succeeded; don't reject.
+        if (commitConfirmed || drainBufferForCommitOk()) {
+          logger.debug(`[FirmwareUpdateService] Direct OTA: ignoring post-commit socket error: ${err.message}`);
+          finish();
+          return;
+        }
+        finish(err);
+      });
       socket.once('close', () => {
         if (finished) return;
+        if (commitConfirmed || drainBufferForCommitOk()) {
+          finish();
+          return;
+        }
         finish(new Error(`Loader closed connection in phase "${phase}" before commit OK (last line buffer: "${lineBuffer.trim()}")`));
       });
 
