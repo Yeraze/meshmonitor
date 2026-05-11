@@ -70,7 +70,11 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
         initial.lockedTo != null && selfNodeNum != null && initial.lockedTo === selfNodeNum,
       );
       setVirtual(Boolean(initial.isVirtual));
-      setRebroadcast(initial.rebroadcastIntervalS ? String(initial.rebroadcastIntervalS) : '');
+      setRebroadcast(
+        initial.rebroadcastIntervalS
+          ? String(Math.max(10, Math.round(initial.rebroadcastIntervalS / 60)))
+          : '',
+      );
     } else {
       setLat(defaultCoords ? String(defaultCoords.lat) : '');
       setLon(defaultCoords ? String(defaultCoords.lon) : '');
@@ -116,12 +120,12 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
     }
     let rebroadcastIntervalS: number | null = null;
     if (rebroadcast.trim().length > 0) {
-      const r = Number(rebroadcast);
-      if (!Number.isFinite(r) || r < 60) {
-        setError('Rebroadcast interval must be at least 60 seconds');
+      const minutes = Number(rebroadcast);
+      if (!Number.isFinite(minutes) || !Number.isInteger(minutes) || minutes < 10) {
+        setError('Rebroadcast interval must be at least 10 minutes');
         return null;
       }
-      rebroadcastIntervalS = Math.floor(r);
+      rebroadcastIntervalS = minutes * 60;
     }
     return {
       lat: latN,
@@ -283,14 +287,18 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
         </label>
 
         <label className="form-label">
-          Rebroadcast interval (seconds, optional)
+          Rebroadcast every (minutes, optional)
           <input
             className="form-input"
             type="number"
-            min={60}
+            min={10}
+            step={1}
             value={rebroadcast}
             onChange={(e) => setRebroadcast(e.target.value)}
           />
+          <span className="form-hint">
+            Minimum 10 minutes. The scheduler rebroadcasts at most one waypoint per minute across the whole mesh.
+          </span>
         </label>
 
         {error && (

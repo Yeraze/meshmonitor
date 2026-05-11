@@ -194,6 +194,34 @@ describe('Waypoint routes', () => {
         .send({ lat: 30, lon: -90 });
       expect(res.status).toBe(403);
     });
+
+    it('rejects a rebroadcast interval below the 600s (10-min) airtime floor', async () => {
+      const app = createApp();
+      const res = await request(app)
+        .post('/api/sources/src-1/waypoints')
+        .send({ lat: 30, lon: -90, rebroadcast_interval_s: 300 });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/at least 600 seconds/);
+    });
+
+    it('rejects a non-integer rebroadcast interval', async () => {
+      const app = createApp();
+      const res = await request(app)
+        .post('/api/sources/src-1/waypoints')
+        .send({ lat: 30, lon: -90, rebroadcast_interval_s: 700.5 });
+      expect(res.status).toBe(400);
+    });
+
+    it('accepts a rebroadcast interval at the 10-min floor', async () => {
+      mockWaypointService.createLocal.mockResolvedValue({
+        sourceId: 'src-1', waypointId: 1, latitude: 30, longitude: -90,
+      });
+      const app = createApp();
+      const res = await request(app)
+        .post('/api/sources/src-1/waypoints')
+        .send({ lat: 30, lon: -90, rebroadcast_interval_s: 600 });
+      expect(res.status).toBe(201);
+    });
   });
 
   describe('PATCH /api/sources/:id/waypoints/:waypointId', () => {

@@ -18,6 +18,7 @@ import crypto from 'crypto';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { dataEventEmitter } from './dataEventEmitter.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import type { Waypoint } from '../../db/repositories/waypoints.js';
 
 /** Default emoji shown when a waypoint arrives without a valid icon codepoint. */
@@ -295,6 +296,86 @@ class WaypointService {
       dataEventEmitter.emitWaypointDeleted({ sourceId, waypointId }, sourceId);
     }
     return removed;
+  }
+
+  /**
+   * Rebroadcast scheduler tick. Picks at most ONE eligible waypoint across all
+   * sources, re-broadcasts it through its source manager, and stamps
+   * `lastBroadcastAt` on success. This enforces a hard global airtime floor:
+   * the caller invokes this every 60 seconds, so at worst one waypoint per
+   * minute goes out regardless of how many waypoints are configured.
+   *
+   * Returns the waypoint that was rebroadcast, or `null` when nothing was
+   * eligible or the send failed.
+   */
+  async rebroadcastTick(): Promise<Waypoint | null> {
+    const nowSec = Math.floor(Date.now() / 1000);
+    let candidate: Waypoint | null;
+    try {
+      candidate = await databaseService.waypoints.findOldestEligibleForRebroadcastAsync(nowSec);
+    } catch (error) {
+      logger.error('[waypointService] rebroadcastTick: eligibility query failed:', error);
+      return null;
+    }
+
+    if (!candidate) return null;
+
+    const manager = sourceManagerRegistry.getManager(candidate.sourceId) as any;
+    if (!manager || typeof manager.broadcastWaypoint !== 'function') {
+      // Source manager isn't reachable (e.g. disconnected). Skip this tick;
+      // we'll retry next minute. Do NOT stamp lastBroadcastAt — the waypoint
+      // should remain eligible so it gets sent as soon as the manager is back.
+      logger.debug(
+        `[waypointService] rebroadcastTick: no manager for source ${candidate.sourceId}, skipping`,
+      );
+      return null;
+    }
+
+    try {
+      const packetId = await manager.broadcastWaypoint({
+        id: candidate.waypointId,
+        latitude: candidate.latitude,
+        longitude: candidate.longitude,
+        expire: candidate.expireAt ?? 0,
+        lockedTo: candidate.lockedTo ?? 0,
+        name: candidate.name,
+        description: candidate.description,
+        icon: candidate.iconCodepoint ?? 0,
+      });
+
+      if (!packetId) {
+        // Manager refused (e.g. not connected). Same rationale as above —
+        // leave lastBroadcastAt alone so we retry next tick.
+        logger.debug(
+          `[waypointService] rebroadcastTick: broadcastWaypoint returned 0 for ${candidate.sourceId}/${candidate.waypointId}`,
+        );
+        return null;
+      }
+
+      await databaseService.waypoints.markRebroadcastedAsync(
+        candidate.sourceId,
+        candidate.waypointId,
+        nowSec,
+      );
+
+      // Surface the updated row to listeners so the UI's lastBroadcastAt
+      // refreshes without a polling round-trip.
+      const refreshed = await databaseService.waypoints.getAsync(
+        candidate.sourceId,
+        candidate.waypointId,
+      );
+      if (refreshed) {
+        dataEventEmitter.emitWaypointUpserted(refreshed, refreshed.sourceId);
+      }
+
+      logger.info(
+        `[waypointService] Rebroadcast waypoint ${candidate.waypointId} on source ${candidate.sourceId} (packetId=${packetId})`,
+      );
+      return refreshed ?? candidate;
+    } catch (error) {
+      logger.error('[waypointService] rebroadcastTick: broadcast failed:', error);
+      return null;
+    }
   }
 
   /** Periodic sweep — removes waypoints whose `expire_at` is older than now-grace. */
