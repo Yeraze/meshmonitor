@@ -302,7 +302,10 @@ describe('MeshtasticProtobufService', () => {
       const decoded = decodeFromRadio(result!);
       expect(decoded).not.toBeNull();
       expect(decoded.nodeInfo).toBeDefined();
-      expect(decoded.nodeInfo.viaMqtt).toBe(false);
+      // protobufjs >= 8.2 omits proto3 scalar defaults from toObject() output
+      // (upstream #2208). `viaMqtt: false` is the proto3 default for bool, so
+      // it is correctly absent after decode. Treat missing as the default.
+      expect(decoded.nodeInfo.viaMqtt ?? false).toBe(false);
       expect(decoded.nodeInfo.isFavorite).toBe(true);
     });
 
