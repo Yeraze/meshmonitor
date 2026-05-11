@@ -7,16 +7,29 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockUpsert, mockGet, mockDelete, mockList, mockGetExistingIds, mockSweep, emit } =
-  vi.hoisted(() => ({
-    mockUpsert: vi.fn(),
-    mockGet: vi.fn(),
-    mockDelete: vi.fn(),
-    mockList: vi.fn(),
-    mockGetExistingIds: vi.fn(),
-    mockSweep: vi.fn(),
-    emit: vi.fn(),
-  }));
+const {
+  mockUpsert,
+  mockGet,
+  mockDelete,
+  mockList,
+  mockGetExistingIds,
+  mockSweep,
+  mockFindOldestEligible,
+  mockMarkRebroadcasted,
+  mockGetManager,
+  emit,
+} = vi.hoisted(() => ({
+  mockUpsert: vi.fn(),
+  mockGet: vi.fn(),
+  mockDelete: vi.fn(),
+  mockList: vi.fn(),
+  mockGetExistingIds: vi.fn(),
+  mockSweep: vi.fn(),
+  mockFindOldestEligible: vi.fn(),
+  mockMarkRebroadcasted: vi.fn(),
+  mockGetManager: vi.fn(),
+  emit: vi.fn(),
+}));
 
 vi.mock('../../services/database.js', () => ({
   default: {
@@ -27,7 +40,15 @@ vi.mock('../../services/database.js', () => ({
       listAsync: mockList,
       getExistingIdsAsync: mockGetExistingIds,
       sweepExpiredAsync: mockSweep,
+      findOldestEligibleForRebroadcastAsync: mockFindOldestEligible,
+      markRebroadcastedAsync: mockMarkRebroadcasted,
     },
+  },
+}));
+
+vi.mock('../sourceManagerRegistry.js', () => ({
+  sourceManagerRegistry: {
+    getManager: (...args: unknown[]) => mockGetManager(...args),
   },
 }));
 
@@ -48,8 +69,33 @@ beforeEach(() => {
   mockList.mockReset();
   mockGetExistingIds.mockReset();
   mockSweep.mockReset();
+  mockFindOldestEligible.mockReset();
+  mockMarkRebroadcasted.mockReset();
+  mockGetManager.mockReset();
   emit.mockReset();
 });
+
+function eligibleRow(overrides: Record<string, unknown> = {}) {
+  return {
+    sourceId: 's1',
+    waypointId: 7,
+    latitude: 1.23,
+    longitude: 4.56,
+    name: 'Camp',
+    description: '',
+    iconCodepoint: 0,
+    iconEmoji: null,
+    isVirtual: false,
+    expireAt: null,
+    lockedTo: 0,
+    ownerNodeNum: 0,
+    firstSeenAt: 1,
+    lastUpdatedAt: 1,
+    rebroadcastIntervalS: 600,
+    lastBroadcastAt: null,
+    ...overrides,
+  };
+}
 
 describe('codepointToEmoji / emojiToCodepoint', () => {
   it('round-trips a basic emoji', () => {
@@ -208,6 +254,58 @@ describe('createLocal / update / deleteLocal', () => {
     const ok = await waypointService.deleteLocal('s1', 1, 555);
     expect(ok).toBe(true);
     expect(emit.mock.calls[0]?.[0]).toBe('deleted');
+  });
+});
+
+describe('rebroadcastTick', () => {
+  it('returns null when nothing is eligible', async () => {
+    mockFindOldestEligible.mockResolvedValueOnce(null);
+    const result = await waypointService.rebroadcastTick();
+    expect(result).toBeNull();
+    expect(mockMarkRebroadcasted).not.toHaveBeenCalled();
+  });
+
+  it('does NOT stamp lastBroadcastAt when no source manager is available', async () => {
+    mockFindOldestEligible.mockResolvedValueOnce(eligibleRow());
+    mockGetManager.mockReturnValueOnce(null);
+    const result = await waypointService.rebroadcastTick();
+    expect(result).toBeNull();
+    expect(mockMarkRebroadcasted).not.toHaveBeenCalled();
+  });
+
+  it('does NOT stamp lastBroadcastAt when the manager returns a falsy packetId', async () => {
+    mockFindOldestEligible.mockResolvedValueOnce(eligibleRow());
+    mockGetManager.mockReturnValueOnce({ broadcastWaypoint: vi.fn().mockResolvedValue(0) });
+    const result = await waypointService.rebroadcastTick();
+    expect(result).toBeNull();
+    expect(mockMarkRebroadcasted).not.toHaveBeenCalled();
+  });
+
+  it('does NOT stamp lastBroadcastAt when broadcastWaypoint throws', async () => {
+    mockFindOldestEligible.mockResolvedValueOnce(eligibleRow());
+    mockGetManager.mockReturnValueOnce({
+      broadcastWaypoint: vi.fn().mockRejectedValue(new Error('boom')),
+    });
+    const result = await waypointService.rebroadcastTick();
+    expect(result).toBeNull();
+    expect(mockMarkRebroadcasted).not.toHaveBeenCalled();
+  });
+
+  it('stamps lastBroadcastAt and emits upserted on a successful broadcast', async () => {
+    const row = eligibleRow();
+    mockFindOldestEligible.mockResolvedValueOnce(row);
+    const broadcastWaypoint = vi.fn().mockResolvedValue(42);
+    mockGetManager.mockReturnValueOnce({ broadcastWaypoint });
+    mockMarkRebroadcasted.mockResolvedValueOnce(true);
+    const refreshed = { ...row, lastBroadcastAt: 1234 };
+    mockGet.mockResolvedValueOnce(refreshed);
+
+    const result = await waypointService.rebroadcastTick();
+
+    expect(broadcastWaypoint).toHaveBeenCalledOnce();
+    expect(mockMarkRebroadcasted).toHaveBeenCalledWith('s1', 7, expect.any(Number));
+    expect(result).toEqual(refreshed);
+    expect(emit.mock.calls.find((c) => c[0] === 'upserted')).toBeTruthy();
   });
 });
 
