@@ -34,6 +34,35 @@ function badRequest(res: Response, message: string) {
   return res.status(400).json({ error: message, code: 'BAD_REQUEST' });
 }
 
+/**
+ * Minimum allowed rebroadcast interval in seconds. The UI surfaces this in
+ * minutes (10 min); we enforce server-side too so direct API callers cannot
+ * blow past the airtime floor.
+ */
+export const MIN_REBROADCAST_INTERVAL_S = 600;
+
+/**
+ * Parse the rebroadcast_interval_s body field. Returns:
+ *   - `undefined` when the caller omitted the field (no change on PATCH)
+ *   - `null` when the caller explicitly cleared it
+ *   - a positive integer >= MIN_REBROADCAST_INTERVAL_S when valid
+ *   - a string error message when the value is invalid
+ */
+function parseRebroadcastIntervalS(raw: unknown): number | null | undefined | { error: string } {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || Math.floor(n) !== n) {
+    return { error: 'rebroadcast_interval_s must be an integer number of seconds' };
+  }
+  if (n < MIN_REBROADCAST_INTERVAL_S) {
+    return {
+      error: `rebroadcast_interval_s must be at least ${MIN_REBROADCAST_INTERVAL_S} seconds (10 minutes)`,
+    };
+  }
+  return n;
+}
+
 // GET /api/sources/:id/waypoints?includeExpired=&bbox=minLat,minLon,maxLat,maxLon
 router.get(
   '/',
@@ -96,9 +125,14 @@ router.post(
         ? null
         : Number(body.locked_to);
       const virtual = Boolean(body.virtual);
-      const rebroadcastIntervalS = body.rebroadcast_interval_s === undefined || body.rebroadcast_interval_s === null
-        ? null
-        : Number(body.rebroadcast_interval_s);
+      const parsedRebroadcast = parseRebroadcastIntervalS(body.rebroadcast_interval_s);
+      if (parsedRebroadcast && typeof parsedRebroadcast === 'object' && 'error' in parsedRebroadcast) {
+        return badRequest(res, parsedRebroadcast.error);
+      }
+      // POST treats `undefined` (omitted) and `null` (explicit) the same: no
+      // rebroadcast scheduled. PATCH preserves the distinction.
+      const rebroadcastIntervalS =
+        parsedRebroadcast === undefined ? null : (parsedRebroadcast as number | null);
 
       // Best-effort: use the source's local node as the owner. Fallback to 0
       // when the manager isn't reachable (still records, owner_node_num NULL).
@@ -185,8 +219,11 @@ router.patch(
         fields.lockedTo = body.locked_to === null ? null : Number(body.locked_to);
       }
       if (body.rebroadcast_interval_s !== undefined) {
-        fields.rebroadcastIntervalS =
-          body.rebroadcast_interval_s === null ? null : Number(body.rebroadcast_interval_s);
+        const parsed = parseRebroadcastIntervalS(body.rebroadcast_interval_s);
+        if (parsed && typeof parsed === 'object' && 'error' in parsed) {
+          return badRequest(res, parsed.error);
+        }
+        fields.rebroadcastIntervalS = parsed as number | null;
       }
 
       let persisted;
