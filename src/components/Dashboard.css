@@ -553,6 +553,45 @@
   line-height: 1.4;
 }
 
+.add-widget-option-more {
+  border-style: dashed;
+}
+
+.add-widget-help-intro {
+  margin: 0;
+  color: var(--ctp-text);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.add-widget-help-steps {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--ctp-text);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.add-widget-help-back {
+  align-self: flex-start;
+  background-color: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  color: var(--ctp-text);
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.add-widget-help-back:hover {
+  background-color: var(--ctp-surface1);
+  border-color: var(--ctp-blue);
+}
+
 /* Node Status Widget */
 .node-status-widget {
   min-height: 200px;
