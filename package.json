@@ -39,7 +39,7 @@
     "@types/leaflet.heat": "^0.2.5",
     "@types/pbf": "^3.0.5",
     "@xmldom/xmldom": "^0.9.10",
-    "archiver": "^7.0.1",
+    "archiver": "^8.0.0",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.9.0",
     "connect-pg-simple": "^10.0.0",
