@@ -194,6 +194,17 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
             error: 'gatewayIp and nodeId are required to confirm preflight',
           });
         }
+        // Safety rail 5: refuse OTA on a device flagged half-flashed.
+        // Operators must clear the marker (typically after a USB-tethered
+        // recovery) before another OTA attempt.
+        if (firmwareUpdateService.hasFlashIncompleteMarker(nodeId)) {
+          return res.status(409).json({
+            success: false,
+            error:
+              `Node "${nodeId}" is flagged as half-flashed from a previous OTA attempt. ` +
+              `Recover via USB, then DELETE /api/firmware/recovery-marker/${encodeURIComponent(nodeId)} to clear the flag.`,
+          });
+        }
         // Visibly disconnect from node before backup — stays disconnected through entire flash
         void (async () => {
           try {
@@ -396,6 +407,27 @@ router.post('/restore', async (req: Request, res: Response) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('[FirmwareRoutes] Error restoring backup:', error);
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * DELETE /api/firmware/recovery-marker/:nodeId
+ * Clear the half-flashed marker for a node. Should only be called after
+ * a USB-tethered recovery has been performed.
+ */
+router.delete('/recovery-marker/:nodeId', (req: Request, res: Response) => {
+  try {
+    const nodeId = req.params.nodeId;
+    if (!nodeId) {
+      return res.status(400).json({ success: false, error: 'nodeId is required' });
+    }
+    const removed = firmwareUpdateService.clearFlashIncompleteMarker(nodeId);
+    logger.info(`[FirmwareRoutes] Cleared ${removed} half-flash marker(s) for node ${nodeId}`);
+    return res.json({ success: true, removed });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error('[FirmwareRoutes] Error clearing recovery marker:', error);
     return res.status(500).json({ success: false, error: message });
   }
 });

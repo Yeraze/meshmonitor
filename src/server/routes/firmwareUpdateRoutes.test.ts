@@ -26,6 +26,8 @@ const {
   mockGetTempDir,
   mockRetryFlash,
   mockIsStepRunning,
+  mockHasFlashIncompleteMarker,
+  mockClearFlashIncompleteMarker,
 } = vi.hoisted(() => ({
   mockGetStatus: vi.fn(),
   mockGetChannel: vi.fn(),
@@ -49,6 +51,8 @@ const {
   mockGetTempDir: vi.fn(),
   mockRetryFlash: vi.fn(),
   mockIsStepRunning: vi.fn().mockReturnValue(false),
+  mockHasFlashIncompleteMarker: vi.fn().mockReturnValue(false),
+  mockClearFlashIncompleteMarker: vi.fn().mockReturnValue(0),
 }));
 
 // Mock auth middleware to inject admin user
@@ -104,6 +108,8 @@ vi.mock('../services/firmwareUpdateService.js', () => ({
     getTempDir: mockGetTempDir,
     retryFlash: (...args: unknown[]) => mockRetryFlash(...args),
     isStepRunning: mockIsStepRunning,
+    hasFlashIncompleteMarker: mockHasFlashIncompleteMarker,
+    clearFlashIncompleteMarker: mockClearFlashIncompleteMarker,
   },
   FirmwareChannel: {},
 }));
@@ -358,6 +364,25 @@ describe('firmwareUpdateRoutes', () => {
       expect(mockExecuteBackup).toHaveBeenCalledWith('192.168.1.100', 'node123');
     });
 
+    it('should return 409 when nodeId has a half-flash recovery marker', async () => {
+      mockGetStatus.mockReturnValue({
+        state: 'awaiting-confirm',
+        step: 'preflight',
+        message: 'Preflight complete',
+        logs: [],
+      });
+      mockHasFlashIncompleteMarker.mockReturnValueOnce(true);
+
+      const res = await request(app)
+        .post('/api/firmware/update/confirm')
+        .send({ gatewayIp: '192.168.1.100', nodeId: 'node123' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/half-flashed/i);
+      expect(mockDisconnectFromNode).not.toHaveBeenCalled();
+    });
+
     it('should return 409 when a step is already running', async () => {
       mockGetStatus.mockReturnValue({
         state: 'awaiting-confirm',
@@ -498,6 +523,19 @@ describe('firmwareUpdateRoutes', () => {
       expect(res.status).toBe(500);
       expect(res.body.success).toBe(false);
       expect(res.body.error).toMatch(/Backup file not found/);
+    });
+  });
+
+  describe('DELETE /api/firmware/recovery-marker/:nodeId', () => {
+    it('should clear markers and return count removed', async () => {
+      mockClearFlashIncompleteMarker.mockReturnValueOnce(2);
+
+      const res = await request(app).delete('/api/firmware/recovery-marker/!abcdef12');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.removed).toBe(2);
+      expect(mockClearFlashIncompleteMarker).toHaveBeenCalledWith('!abcdef12');
     });
   });
 });

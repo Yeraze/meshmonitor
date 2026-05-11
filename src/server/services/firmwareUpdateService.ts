@@ -142,6 +142,15 @@ export class FirmwareUpdateService {
   // In-flight executeXxx catch blocks observe this and bail out instead of
   // racing cancelUpdate on status writes / reconnects.
   private cancelling: boolean = false;
+  // Mirrors the local phase variable inside uploadOtaFirmware so the outer
+  // retry loop in executeFlash can decide whether a re-attempt is safe.
+  // Once we've entered 'streaming' the partition is mid-write — retrying
+  // would corrupt it.
+  private uploadPhase: 'handshake' | 'streaming' | 'commit' | 'done' = 'handshake';
+  // Tracks the nodeId of the device currently being flashed. Set when
+  // executeBackup is called, used in executeFlash to write the half-flash
+  // marker file under BACKUP_DIR if streaming/commit fails.
+  private currentNodeId: string | null = null;
 
   private pollingInterval: ReturnType<typeof setInterval> | null = null;
   private initialCheckTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -706,6 +715,10 @@ export class FirmwareUpdateService {
   }
 
   async executeBackup(gatewayIp: string, nodeId: string): Promise<string> {
+    // Remember the device we're updating so executeFlash can mark it
+    // half-flashed if the OTA streaming/commit path fails.
+    this.currentNodeId = nodeId;
+
     this.updateStatus({
       state: 'in-progress',
       step: 'backup',
@@ -1020,23 +1033,28 @@ export class FirmwareUpdateService {
         if (this.activeProcess) {
           this.activeProcess.kill('SIGTERM');
         }
-        // The loader has a short listen window — waiting 3s here would
-        // routinely miss it on fast boards like the Heltec V3 (the loader
-        // times out and reboots before our upload connects, leaving the
-        // device half-flashed). SIGTERM frees the CLI's socket near-
-        // instantly; a 200ms buffer is enough for OS socket cleanup.
+        // The Python CLI's SIGTERM-handling latency is typically 300-1500ms
+        // on a busy host (it may be mid-protobuf-decode). 200ms used to
+        // routinely fire connect attempts before the CLI had released the
+        // socket; a 2s wait still leaves plenty of headroom within the
+        // ~30s loader-open window.
         await Promise.race([
           cliPromise,
-          new Promise(r => setTimeout(r, 200)),
+          new Promise(r => setTimeout(r, 2000)),
         ]);
-        // If the first connection misses the window (loader already
-        // closing, or CLI socket not yet released), retry quickly. The
-        // loader stays open for a bounded time after detection — small
-        // retries beat a single late attempt.
-        const UPLOAD_RETRY_DELAYS_MS = [0, 250, 500, 1000];
+        // If the first connection misses the window (loader already closing
+        // or CLI socket not yet released), retry. Delays widened from
+        // ~1.75s total to ~10s total — the loader stays open ~30s on
+        // Heltec V3 so we have plenty of headroom, and short retries lost
+        // races on slow handshakes.
+        const UPLOAD_RETRY_DELAYS_MS = [0, 500, 1500, 3000, 5000];
         let lastUploadError: unknown = null;
         for (const delay of UPLOAD_RETRY_DELAYS_MS) {
           if (delay > 0) await new Promise(r => setTimeout(r, delay));
+          // Reset phase tracker before each connect — uploadOtaFirmware
+          // updates this.uploadPhase as it transitions. After failure we
+          // inspect it to decide whether re-attempt is safe.
+          this.uploadPhase = 'handshake';
           try {
             await this.uploadOtaFirmware(host, OTA_LOADER_PORT, firmwarePath);
             lastUploadError = null;
@@ -1044,13 +1062,34 @@ export class FirmwareUpdateService {
           } catch (uploadErr) {
             lastUploadError = uploadErr;
             const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
-            // Only retry on connection-level failures — protocol errors
-            // ("Loader reported error", commit failures) won't recover
-            // by retrying a connect.
-            if (!/ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH/i.test(msg)) {
+
+            // SAFETY RAIL 4: if any firmware bytes were streamed, the OTA
+            // partition is mid-write. Retrying would re-handshake against
+            // a loader that has half a partition; the next stream would
+            // either be rejected (waste) or worse, layered over partial
+            // state. Stop now, mark the device half-flashed, and surface
+            // the recovery path.
+            if (this.uploadPhase !== 'handshake') {
+              const failedPhase = this.uploadPhase;
+              this.writeFlashIncompleteMarker(this.currentNodeId, failedPhase, msg);
+              throw new Error(
+                `Firmware streaming was interrupted in phase "${failedPhase}" — ` +
+                `device may be half-flashed. Use USB recovery before retrying. ` +
+                `Original error: ${msg}`
+              );
+            }
+
+            // Retry on connection-level failures and on handshake-phase
+            // loader timeouts. Protocol errors after handshake (e.g.
+            // "Loader reported error") and commit failures fall through.
+            const retryable =
+              /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH/i.test(msg) ||
+              /Loader closed connection in phase "handshake"/i.test(msg) ||
+              /Direct OTA upload timed out.*handshake/i.test(msg);
+            if (!retryable) {
               throw uploadErr;
             }
-            logger.warn(`[FirmwareUpdateService] OTA upload connect attempt failed (${msg}), retrying...`);
+            logger.warn(`[FirmwareUpdateService] OTA upload attempt failed (${msg}), retrying...`);
           }
         }
         if (lastUploadError) {
@@ -1223,6 +1262,75 @@ export class FirmwareUpdateService {
     logger.info(`[FirmwareUpdateService] Config restored from ${backupPath} to ${gatewayIp}`);
   }
 
+  // ---- Half-flash recovery markers (safety rail 5) ----
+
+  private sanitizeNodeId(nodeId: string | null): string {
+    return String(nodeId ?? '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'unknown';
+  }
+
+  /**
+   * Write a marker file under BACKUP_DIR when an OTA upload fails after
+   * streaming has begun. A device with a marker is presumed half-flashed
+   * and refuses further OTA attempts until the marker is explicitly cleared
+   * (typically after a USB-tethered recovery).
+   */
+  private writeFlashIncompleteMarker(nodeId: string | null, phase: string, reason: string): void {
+    try {
+      this.ensureBackupDir();
+      const safe = this.sanitizeNodeId(nodeId);
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const markerPath = path.join(BACKUP_DIR, `.flash-incomplete-${safe}-${ts}`);
+      const resolvedBackupDir = path.resolve(BACKUP_DIR);
+      const resolvedMarker = path.resolve(markerPath);
+      if (!resolvedMarker.startsWith(resolvedBackupDir + path.sep)) {
+        logger.error('[FirmwareUpdateService] Refusing to write marker outside backup dir');
+        return;
+      }
+      fs.writeFileSync(
+        resolvedMarker,
+        JSON.stringify({ nodeId: safe, phase, reason, timestamp: Date.now() }, null, 2),
+        'utf-8'
+      );
+      logger.warn(`[FirmwareUpdateService] Wrote half-flash marker: ${resolvedMarker}`);
+    } catch (err) {
+      logger.error('[FirmwareUpdateService] Failed to write half-flash marker:', err);
+    }
+  }
+
+  /** True if a recovery marker exists for the given nodeId. */
+  hasFlashIncompleteMarker(nodeId: string): boolean {
+    try {
+      if (!fs.existsSync(BACKUP_DIR)) return false;
+      const safe = this.sanitizeNodeId(nodeId);
+      const prefix = `.flash-incomplete-${safe}-`;
+      return fs.readdirSync(BACKUP_DIR).some(f => f.startsWith(prefix));
+    } catch (err) {
+      logger.warn('[FirmwareUpdateService] Error checking flash incomplete markers:', err);
+      return false;
+    }
+  }
+
+  /** Remove all recovery markers for the given nodeId. Returns count removed. */
+  clearFlashIncompleteMarker(nodeId: string): number {
+    let removed = 0;
+    try {
+      if (!fs.existsSync(BACKUP_DIR)) return 0;
+      const safe = this.sanitizeNodeId(nodeId);
+      const prefix = `.flash-incomplete-${safe}-`;
+      const resolvedBackupDir = path.resolve(BACKUP_DIR);
+      for (const f of fs.readdirSync(BACKUP_DIR)) {
+        if (!f.startsWith(prefix)) continue;
+        const target = path.resolve(path.join(BACKUP_DIR, f));
+        if (!target.startsWith(resolvedBackupDir + path.sep)) continue;
+        fs.unlinkSync(target);
+        removed++;
+      }
+    } catch (err) {
+      logger.warn('[FirmwareUpdateService] Error clearing flash incomplete markers:', err);
+    }
+    return removed;
+  }
+
   // ---- Private helpers ----
 
   /**
@@ -1291,15 +1399,23 @@ export class FirmwareUpdateService {
 
       type Phase = 'handshake' | 'streaming' | 'commit' | 'done';
       let phase: Phase = 'handshake';
+      // Mirror to instance state so executeFlash's retry loop knows whether
+      // any bytes have been streamed (safety rail 4).
+      this.uploadPhase = 'handshake';
       let lineBuffer = '';
       let bytesSent = 0;
       let lastProgressUpdate = 0;
       let finished = false;
 
+      const setPhase = (p: Phase) => {
+        phase = p;
+        this.uploadPhase = p;
+      };
+
       const finish = (err?: Error) => {
         if (finished) return;
         finished = true;
-        phase = 'done';
+        setPhase('done');
         clearTimeout(overallTimer);
         socket.removeAllListeners();
         socket.destroy();
@@ -1311,7 +1427,7 @@ export class FirmwareUpdateService {
       }, OVERALL_TIMEOUT_MS);
 
       const streamFirmware = () => {
-        phase = 'streaming';
+        setPhase('streaming');
         this.updateStatus({ progress: 0, message: 'Uploading firmware: 0%' });
         let offset = 0;
         const writeNext = () => {
@@ -1336,7 +1452,7 @@ export class FirmwareUpdateService {
             }
           }
           // All bytes written. Now wait for the commit `OK`.
-          phase = 'commit';
+          setPhase('commit');
           this.updateStatus({ progress: 100, message: 'Waiting for loader to verify and commit firmware...' });
           logger.debug(`[FirmwareUpdateService] Direct OTA: all ${size} bytes sent, awaiting commit OK`);
         };
