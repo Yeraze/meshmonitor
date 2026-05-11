@@ -8,6 +8,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAdmin } from '../auth/authMiddleware.js';
 import { firmwareUpdateService } from '../services/firmwareUpdateService.js';
+import meshtasticManager from '../meshtasticManager.js';
 import { logger } from '../../utils/logger.js';
 import path from 'path';
 
@@ -248,10 +249,13 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
       }
 
       case 'flash': {
-        // After flash, move to verify step (waiting for reconnect)
+        // Read the firmware version the device is actually running now —
+        // not the target. Otherwise verifyUpdate is comparing target against
+        // target and trivially "succeeds" regardless of what flashed.
+        const actualVersion = meshtasticManager.getLocalNodeInfo()?.firmwareVersion ?? '';
         firmwareUpdateService.verifyUpdate(
-          status.targetVersion ?? '',
-          status.preflightInfo?.targetVersion ?? ''
+          actualVersion,
+          status.targetVersion ?? ''
         );
         break;
       }

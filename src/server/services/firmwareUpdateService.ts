@@ -1160,6 +1160,19 @@ export class FirmwareUpdateService {
    * Step 6: Verify that the firmware version matches the target after reboot.
    */
   verifyUpdate(newFirmwareVersion: string, targetVersion: string): void {
+    // Guard against the empty-string false-positive: ''.includes(target) is
+    // false but target.includes('') is true, so any unset arg used to pass.
+    if (!newFirmwareVersion || !targetVersion) {
+      const message = `Cannot verify firmware version (running: "${newFirmwareVersion}", expected: "${targetVersion}")`;
+      this.updateStatus({
+        state: 'error',
+        step: 'verify',
+        message,
+        error: 'Firmware version unavailable for verification',
+      });
+      logger.warn(`[FirmwareUpdateService] ${message}`);
+      return;
+    }
     if (newFirmwareVersion.includes(targetVersion) || targetVersion.includes(newFirmwareVersion)) {
       this.updateStatus({
         state: 'success',
