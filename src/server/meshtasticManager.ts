@@ -802,22 +802,31 @@ class MeshtasticManager implements ISourceManager {
         logger.error('❌ TCP transport error:', error.message);
       });
 
-      // Honor post-reset cooldown — after a transient post-OTA half-open
-      // connect we deliberately wait before re-attempting so the node's
-      // WiFi stack can finish settling and we don't loop on the same race.
-      const cooldownRemaining = this.postResetCooldownUntil - Date.now();
-      if (cooldownRemaining > 0) {
-        logger.debug(`⏸️ Post-reset cooldown active, waiting ${cooldownRemaining}ms before reconnect`);
-        await new Promise((r) => setTimeout(r, cooldownRemaining));
-      }
+      // Only honor cooldown + probe when handleConnected has flagged a
+      // post-OTA half-open recovery. On cold/normal connects we skip both
+      // so the 15s TCP probe doesn't eat the caller's connection budget.
+      const cooldownActive = this.postResetCooldownUntil > 0;
+      if (cooldownActive) {
+        // Honor post-reset cooldown — after a transient post-OTA half-open
+        // connect we deliberately wait before re-attempting so the node's
+        // WiFi stack can finish settling and we don't loop on the same race.
+        const cooldownRemaining = this.postResetCooldownUntil - Date.now();
+        if (cooldownRemaining > 0) {
+          logger.debug(`⏸️ Post-reset cooldown active, waiting ${cooldownRemaining}ms before reconnect`);
+          await new Promise((r) => setTimeout(r, cooldownRemaining));
+        }
 
-      // Best-effort TCP-readiness probe — confirm the node is actually
-      // accepting sockets before we hand off to the @meshtastic/js transport.
-      try {
-        await this.waitForTcpReady(config.nodeIp, config.tcpPort);
-      } catch (probeErr) {
-        const msg = probeErr instanceof Error ? probeErr.message : String(probeErr);
-        logger.warn(`⚠️ TCP readiness probe to ${config.nodeIp}:${config.tcpPort} failed (${msg}) — proceeding anyway`);
+        // Best-effort TCP-readiness probe — confirm the node is actually
+        // accepting sockets before we hand off to the @meshtastic/js transport.
+        try {
+          await this.waitForTcpReady(config.nodeIp, config.tcpPort);
+        } catch (probeErr) {
+          const msg = probeErr instanceof Error ? probeErr.message : String(probeErr);
+          logger.warn(`⚠️ TCP readiness probe to ${config.nodeIp}:${config.tcpPort} failed (${msg}) — proceeding anyway`);
+        }
+
+        // Clear the flag so subsequent normal connects skip this path.
+        this.postResetCooldownUntil = 0;
       }
 
       // Connect to node
