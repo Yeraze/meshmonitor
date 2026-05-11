@@ -1075,7 +1075,8 @@ export class FirmwareUpdateService {
               throw new Error(
                 `Firmware streaming was interrupted in phase "${failedPhase}" — ` +
                 `device may be half-flashed. Use USB recovery before retrying. ` +
-                `Original error: ${msg}`
+                `Original error: ${msg}`,
+                { cause: uploadErr }
               );
             }
 
