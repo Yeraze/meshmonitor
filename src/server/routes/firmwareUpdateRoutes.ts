@@ -168,6 +168,15 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
       });
     }
 
+    // Reject double-submits while a step is mid-flight. Without this the user
+    // can re-click Confirm during a slow backup and trigger a parallel run.
+    if (firmwareUpdateService.isStepRunning()) {
+      return res.status(409).json({
+        success: false,
+        error: 'A firmware update step is already running',
+      });
+    }
+
     switch (status.step) {
       case 'preflight': {
         // Advance to backup step

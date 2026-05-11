@@ -138,6 +138,10 @@ export class FirmwareUpdateService {
   private status: UpdateStatus = createIdleStatus();
   private activeProcess: ChildProcess | null = null;
   private tempDir: string | null = null;
+  // True from the instant cancelUpdate is invoked until its reconnect finishes.
+  // In-flight executeXxx catch blocks observe this and bail out instead of
+  // racing cancelUpdate on status writes / reconnects.
+  private cancelling: boolean = false;
 
   private pollingInterval: ReturnType<typeof setInterval> | null = null;
   private initialCheckTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -346,27 +350,40 @@ export class FirmwareUpdateService {
     const wasDisconnected = this.status.state === 'in-progress' &&
       ['backup', 'download', 'extract', 'flash'].includes(this.status.step ?? '');
 
-    if (this.activeProcess) {
-      try {
-        this.activeProcess.kill('SIGTERM');
-      } catch {
-        // Process may already be dead
+    this.cancelling = true;
+    try {
+      if (this.activeProcess) {
+        try {
+          this.activeProcess.kill('SIGTERM');
+        } catch {
+          // Process may already be dead
+        }
+        this.activeProcess = null;
       }
-      this.activeProcess = null;
-    }
-    this.cleanupTempDir();
-    this.status = createIdleStatus();
-    this.updateStatus({ message: 'Update cancelled' });
-    logger.info('[FirmwareUpdateService] Update cancelled by user');
+      this.cleanupTempDir();
+      this.status = createIdleStatus();
+      this.updateStatus({ message: 'Update cancelled' });
+      logger.info('[FirmwareUpdateService] Update cancelled by user');
 
-    if (wasDisconnected) {
-      logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after cancel');
-      try {
-        await meshtasticManager.userReconnect();
-      } catch (reconnectError) {
-        logger.error('[FirmwareUpdateService] Reconnect after cancel errored:', reconnectError);
+      if (wasDisconnected) {
+        logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after cancel');
+        try {
+          await meshtasticManager.userReconnect();
+        } catch (reconnectError) {
+          logger.error('[FirmwareUpdateService] Reconnect after cancel errored:', reconnectError);
+        }
       }
+    } finally {
+      this.cancelling = false;
     }
+  }
+
+  /**
+   * True while a CLI process is mid-flight. Used to short-circuit
+   * double-submits of /update/confirm with HTTP 409.
+   */
+  isStepRunning(): boolean {
+    return this.activeProcess !== null;
   }
 
   /**
@@ -490,7 +507,7 @@ export class FirmwareUpdateService {
   runCliCommand(
     command: string,
     args: string[],
-    options?: { onOutput?: (chunk: string) => void }
+    options?: { onOutput?: (chunk: string) => void; timeoutMs?: number }
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     return new Promise((resolve) => {
       const proc = spawn(command, args, {
@@ -502,6 +519,25 @@ export class FirmwareUpdateService {
 
       let stdout = '';
       let stderr = '';
+      let timedOut = false;
+
+      // SIGTERM after timeoutMs, then SIGKILL after a 5s grace period if the
+      // process is still alive. Without this, a hung CLI (e.g. backup waiting
+      // on a lost radio packet) blocks the HTTP handler indefinitely.
+      const timeoutMs = options?.timeoutMs ?? 0;
+      let killTimer: ReturnType<typeof setTimeout> | null = null;
+      let graceTimer: ReturnType<typeof setTimeout> | null = null;
+      if (timeoutMs > 0) {
+        killTimer = setTimeout(() => {
+          timedOut = true;
+          logger.warn(`[FirmwareUpdateService] CLI exceeded ${timeoutMs}ms — sending SIGTERM`);
+          try { proc.kill('SIGTERM'); } catch { /* already dead */ }
+          graceTimer = setTimeout(() => {
+            logger.warn(`[FirmwareUpdateService] CLI did not exit within grace period — sending SIGKILL`);
+            try { proc.kill('SIGKILL'); } catch { /* already dead */ }
+          }, 5000);
+        }, timeoutMs);
+      }
 
       proc.stdout?.on('data', (data: Buffer) => {
         const text = data.toString();
@@ -518,11 +554,18 @@ export class FirmwareUpdateService {
       });
 
       proc.on('close', (code) => {
+        if (killTimer) clearTimeout(killTimer);
+        if (graceTimer) clearTimeout(graceTimer);
         this.activeProcess = null;
+        if (timedOut) {
+          stderr += `\n[firmwareUpdateService] Command timed out after ${timeoutMs}ms and was terminated`;
+        }
         resolve({ stdout, stderr, exitCode: code ?? 1 });
       });
 
       proc.on('error', (error) => {
+        if (killTimer) clearTimeout(killTimer);
+        if (graceTimer) clearTimeout(graceTimer);
         this.activeProcess = null;
         this.appendLog(`Command error: ${error.message}`);
         resolve({ stdout, stderr, exitCode: 1 });
@@ -675,8 +718,9 @@ export class FirmwareUpdateService {
 
       const result = await this.runCliCommand('meshtastic', [
         '--host', gatewayIp,
+        '--timeout', '60',
         '--export-config',
-      ]);
+      ], { timeoutMs: 180_000 });
 
       if (result.exitCode !== 0) {
         const combined = [result.stdout, result.stderr].filter(Boolean).join('\n');
@@ -706,6 +750,8 @@ export class FirmwareUpdateService {
       logger.info(`[FirmwareUpdateService] Config backup saved: ${backupPath}`);
       return backupPath;
     } catch (error) {
+      // cancelUpdate already owns status + reconnect; don't race it.
+      if (this.cancelling) throw error;
       const message = error instanceof Error ? error.message : String(error);
       this.updateStatus({
         state: 'error',
@@ -782,6 +828,7 @@ export class FirmwareUpdateService {
       logger.info(`[FirmwareUpdateService] Downloaded firmware: ${zipPath} (${downloadSize} bytes)`);
       return zipPath;
     } catch (error) {
+      if (this.cancelling) throw error;
       const message = error instanceof Error ? error.message : String(error);
       this.cleanupTempDir();
       this.updateStatus({
@@ -818,7 +865,11 @@ export class FirmwareUpdateService {
       const extractDir = path.join(path.dirname(zipPath), 'extracted');
       fs.mkdirSync(extractDir, { recursive: true });
 
-      const result = await this.runCliCommand('unzip', ['-o', zipPath, '-d', extractDir]);
+      const result = await this.runCliCommand(
+        'unzip',
+        ['-o', zipPath, '-d', extractDir],
+        { timeoutMs: 60_000 }
+      );
       if (result.exitCode !== 0) {
         throw new Error(`Extraction failed with exit code ${result.exitCode}: ${result.stderr}`);
       }
@@ -845,6 +896,7 @@ export class FirmwareUpdateService {
       logger.info(`[FirmwareUpdateService] Matched firmware binary: ${matched}`);
       return firmwarePath;
     } catch (error) {
+      if (this.cancelling) throw error;
       const message = error instanceof Error ? error.message : String(error);
       this.cleanupTempDir();
       this.updateStatus({
@@ -880,6 +932,7 @@ export class FirmwareUpdateService {
       await this.waitForNodeReady(host, port);
       this.appendLog(`Node ${host}:${port} is accepting connections — starting OTA.`);
     } catch (readyErr) {
+      if (this.cancelling) throw readyErr;
       const message = readyErr instanceof Error ? readyErr.message : String(readyErr);
       this.updateStatus({
         state: 'error',
@@ -1075,6 +1128,7 @@ export class FirmwareUpdateService {
 
       logger.info('[FirmwareUpdateService] OTA flash completed successfully and reconnected to node');
     } catch (error) {
+      if (this.cancelling) throw error;
       const message = error instanceof Error ? error.message : String(error);
       this.updateStatus({
         state: 'error',
@@ -1143,10 +1197,11 @@ export class FirmwareUpdateService {
       throw new Error(`Backup file not found: ${resolvedBackup}`);
     }
 
-    const result = await this.runCliCommand('meshtastic', [
-      '--host', gatewayIp,
-      '--configure', resolvedBackup,
-    ]);
+    const result = await this.runCliCommand(
+      'meshtastic',
+      ['--host', gatewayIp, '--configure', resolvedBackup],
+      { timeoutMs: 180_000 }
+    );
 
     if (result.exitCode !== 0) {
       throw new Error(`Restore command failed with exit code ${result.exitCode}: ${result.stderr}`);
