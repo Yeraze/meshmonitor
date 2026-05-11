@@ -25,6 +25,7 @@ const {
   mockVerifyUpdate,
   mockGetTempDir,
   mockRetryFlash,
+  mockIsStepRunning,
 } = vi.hoisted(() => ({
   mockGetStatus: vi.fn(),
   mockGetChannel: vi.fn(),
@@ -47,6 +48,7 @@ const {
   mockVerifyUpdate: vi.fn(),
   mockGetTempDir: vi.fn(),
   mockRetryFlash: vi.fn(),
+  mockIsStepRunning: vi.fn().mockReturnValue(false),
 }));
 
 // Mock auth middleware to inject admin user
@@ -101,8 +103,16 @@ vi.mock('../services/firmwareUpdateService.js', () => ({
     verifyUpdate: mockVerifyUpdate,
     getTempDir: mockGetTempDir,
     retryFlash: (...args: unknown[]) => mockRetryFlash(...args),
+    isStepRunning: mockIsStepRunning,
   },
   FirmwareChannel: {},
+}));
+
+// Mock meshtasticManager (routes use it for post-flash actual-version read)
+vi.mock('../meshtasticManager.js', () => ({
+  default: {
+    getLocalNodeInfo: vi.fn().mockReturnValue(null),
+  },
 }));
 
 // Mock logger
@@ -333,6 +343,7 @@ describe('firmwareUpdateRoutes', () => {
           platform: 'esp32',
         },
       });
+      mockDisconnectFromNode.mockResolvedValue(undefined);
       mockExecuteBackup.mockResolvedValue('/backups/config-test.yaml');
 
       const res = await request(app)
@@ -341,8 +352,30 @@ describe('firmwareUpdateRoutes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
+      // The confirm route fires the step async (F1) — wait for the IIFE to advance.
+      await new Promise((r) => setTimeout(r, 10));
       expect(mockDisconnectFromNode).toHaveBeenCalled();
       expect(mockExecuteBackup).toHaveBeenCalledWith('192.168.1.100', 'node123');
+    });
+
+    it('should return 409 when a step is already running', async () => {
+      mockGetStatus.mockReturnValue({
+        state: 'awaiting-confirm',
+        step: 'preflight',
+        message: 'Preflight complete',
+        logs: [],
+      });
+      mockIsStepRunning.mockReturnValueOnce(true);
+
+      const res = await request(app)
+        .post('/api/firmware/update/confirm')
+        .send({ gatewayIp: '192.168.1.100', nodeId: 'node123' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/already running/i);
+      expect(mockDisconnectFromNode).not.toHaveBeenCalled();
+      expect(mockExecuteBackup).not.toHaveBeenCalled();
     });
 
     it('should return 400 when no update is in progress', async () => {

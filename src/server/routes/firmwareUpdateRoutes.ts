@@ -178,6 +178,13 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
       });
     }
 
+    // Long-running steps are kicked off async and the HTTP response returns
+    // immediately. The frontend tracks progress via Socket.IO `firmware:status`
+    // events on every updateStatus() call — it never relied on this response
+    // body for anything other than current state. Synchronous awaits here
+    // routinely tripped reverse-proxy idle timeouts (60–100s) on slow
+    // backups, leaving the wizard convinced the step hung while the server
+    // kept running.
     switch (status.step) {
       case 'preflight': {
         // Advance to backup step
@@ -188,8 +195,14 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
           });
         }
         // Visibly disconnect from node before backup — stays disconnected through entire flash
-        await firmwareUpdateService.disconnectFromNode();
-        await firmwareUpdateService.executeBackup(gatewayIp, nodeId);
+        void (async () => {
+          try {
+            await firmwareUpdateService.disconnectFromNode();
+            await firmwareUpdateService.executeBackup(gatewayIp, nodeId);
+          } catch (err) {
+            logger.error('[FirmwareRoutes] Backup step failed:', err);
+          }
+        })();
         break;
       }
 
@@ -208,23 +221,26 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
           });
         }
 
-        // Download
-        await firmwareUpdateService.executeDownload(status.downloadUrl);
-
-        // Extract immediately after download (no user prompt needed)
-        const tempDir = firmwareUpdateService.getTempDir();
-        if (!tempDir) {
-          return res.status(500).json({
-            success: false,
-            error: 'Temp directory not available. Download may have failed.',
-          });
-        }
-        const zipPath = path.join(tempDir, 'firmware.zip');
-        await firmwareUpdateService.executeExtract(
-          zipPath,
-          status.preflightInfo.boardName,
-          status.preflightInfo.targetVersion
-        );
+        const downloadUrl = status.downloadUrl;
+        const preflightInfo = status.preflightInfo;
+        void (async () => {
+          try {
+            await firmwareUpdateService.executeDownload(downloadUrl);
+            const tempDir = firmwareUpdateService.getTempDir();
+            if (!tempDir) {
+              logger.error('[FirmwareRoutes] Temp directory missing after download');
+              return;
+            }
+            const zipPath = path.join(tempDir, 'firmware.zip');
+            await firmwareUpdateService.executeExtract(
+              zipPath,
+              preflightInfo.boardName,
+              preflightInfo.targetVersion
+            );
+          } catch (err) {
+            logger.error('[FirmwareRoutes] Download/extract step failed:', err);
+          }
+        })();
         break;
       }
 
@@ -244,7 +260,14 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
           });
         }
         const firmwarePath = path.join(extractTempDir, 'extracted', status.matchedFile);
-        await firmwareUpdateService.executeFlash(status.preflightInfo.gatewayIp, firmwarePath);
+        const gatewayForFlash = status.preflightInfo.gatewayIp;
+        void (async () => {
+          try {
+            await firmwareUpdateService.executeFlash(gatewayForFlash, firmwarePath);
+          } catch (err) {
+            logger.error('[FirmwareRoutes] Flash step failed:', err);
+          }
+        })();
         break;
       }
 
