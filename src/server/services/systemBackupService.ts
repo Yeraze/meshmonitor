@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-syntax -- TODO(remediation 6.3): retire generic queryRows/queryOne/executeStatement helpers in favor of typed Drizzle selectors per BACKUP_TABLES, then remove this disable. */
 /**
  * System Backup Service
  * Exports complete database to JSON format for disaster recovery and migration

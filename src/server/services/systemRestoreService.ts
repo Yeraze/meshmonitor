@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-syntax -- TODO(remediation 6.3): retire raw SQL identifier interpolation in favor of typed Drizzle selectors per BACKUP_TABLES, then remove this disable. */
 /**
  * System Restore Service
  * Restores complete database from JSON backup with migration support
