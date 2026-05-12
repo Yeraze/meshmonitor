@@ -623,13 +623,20 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
-   * Delete all telemetry
+   * Delete all telemetry, optionally scoped to a single source.
    */
-  async deleteAllTelemetry(): Promise<number> {
+  async deleteAllTelemetry(sourceId?: string): Promise<number> {
     const { telemetry } = this.tables;
-    const result = await this.db.select({ count: count() }).from(telemetry);
+    const countQuery = this.db.select({ count: count() }).from(telemetry);
+    const result = await (sourceId
+      ? countQuery.where(eq(telemetry.sourceId, sourceId))
+      : countQuery);
     const deleteCount = Number(result[0].count);
-    await this.db.delete(telemetry);
+    if (sourceId) {
+      await this.db.delete(telemetry).where(eq(telemetry.sourceId, sourceId));
+    } else {
+      await this.db.delete(telemetry);
+    }
     return deleteCount;
   }
 
@@ -1111,13 +1118,16 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
-   * Synchronously delete all telemetry rows (SQLite only).
+   * Synchronously delete all telemetry rows (SQLite only),
+   * optionally scoped to a single source.
    * Returns the number of rows deleted.
    */
-  deleteAllTelemetrySync(): number {
+  deleteAllTelemetrySync(sourceId?: string): number {
     const db = this.getSqliteDb();
     const { telemetry } = this.tables;
-    const result = db.delete(telemetry).run();
+    const result = sourceId
+      ? db.delete(telemetry).where(eq(telemetry.sourceId, sourceId)).run()
+      : db.delete(telemetry).run();
     return Number((result as any).changes ?? 0);
   }
 

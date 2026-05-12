@@ -144,11 +144,15 @@ export class NeighborsRepository extends BaseRepository {
   }
 
   /**
-   * Delete all neighbor info
+   * Delete all neighbor info, optionally scoped to a single source.
    */
-  async deleteAllNeighborInfo(): Promise<void> {
+  async deleteAllNeighborInfo(sourceId?: string): Promise<void> {
     const { neighborInfo } = this.tables;
-    await this.db.delete(neighborInfo);
+    if (sourceId) {
+      await this.db.delete(neighborInfo).where(eq(neighborInfo.sourceId, sourceId));
+    } else {
+      await this.db.delete(neighborInfo);
+    }
   }
 
   /**

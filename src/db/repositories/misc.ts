@@ -1094,11 +1094,13 @@ export class MiscRepository extends BaseRepository {
   }
 
   /**
-   * Clear all packet logs
+   * Clear all packet logs, optionally scoped to a single source.
    */
-  async clearPacketLogs(): Promise<number> {
+  async clearPacketLogs(sourceId?: string): Promise<number> {
     try {
-      const results = await this.executeRun(sql`DELETE FROM packet_log`);
+      const results = sourceId
+        ? await this.executeRun(sql`DELETE FROM packet_log WHERE sourceId = ${sourceId}`)
+        : await this.executeRun(sql`DELETE FROM packet_log`);
       const deletedCount = this.getAffectedRows(results);
       logger.debug(`[MiscRepository] Cleared ${deletedCount} packet log entries`);
       return deletedCount;
@@ -1260,9 +1262,11 @@ export class MiscRepository extends BaseRepository {
    * Synchronously clear all packet log rows (SQLite only).
    * Returns number of rows deleted.
    */
-  clearPacketLogsSync(): number {
+  clearPacketLogsSync(sourceId?: string): number {
     const db = this.getSqliteDb();
-    const result = db.run(sql`DELETE FROM packet_log`) as any;
+    const result = (sourceId
+      ? db.run(sql`DELETE FROM packet_log WHERE sourceId = ${sourceId}`)
+      : db.run(sql`DELETE FROM packet_log`)) as any;
     const changes = Number(result?.changes ?? 0);
     logger.debug(`[MiscRepository] Cleared ${changes} packet log entries (sync)`);
     return changes;

@@ -6398,10 +6398,10 @@ apiRouter.get('/announce/preview', requirePermission('automation', 'read'), asyn
 // Danger zone endpoints
 apiRouter.post('/purge/nodes', requireAdmin(), async (req, res) => {
   try {
-    const nodeCount = await databaseService.nodes.getNodeCount();
-    await databaseService.purgeAllNodesAsync();
-    // Trigger a node refresh after purging
     const { sourceId: purgeNodesSourceId } = req.body || {};
+    const nodeCount = await databaseService.nodes.getNodeCount();
+    await databaseService.purgeAllNodesAsync(purgeNodesSourceId);
+    // Trigger a node refresh after purging (only on the affected source)
     const purgeNodesManager = resolveSourceManager(purgeNodesSourceId);
     await purgeNodesManager.refreshNodeDatabase();
 
@@ -6410,11 +6410,16 @@ apiRouter.post('/purge/nodes', requireAdmin(), async (req, res) => {
       req.user!.id,
       'nodes_purged',
       'nodes',
-      JSON.stringify({ count: nodeCount }),
+      JSON.stringify({ count: nodeCount, sourceId: purgeNodesSourceId ?? null }),
       req.ip || null
     );
 
-    res.json({ success: true, message: 'All nodes and traceroutes purged, refresh triggered' });
+    res.json({
+      success: true,
+      message: purgeNodesSourceId
+        ? `Nodes and traceroutes purged for source ${purgeNodesSourceId}, refresh triggered`
+        : 'All nodes and traceroutes purged, refresh triggered',
+    });
   } catch (error) {
     logger.error('Error purging nodes:', error);
     res.status(500).json({ error: 'Failed to purge nodes' });
@@ -6423,18 +6428,24 @@ apiRouter.post('/purge/nodes', requireAdmin(), async (req, res) => {
 
 apiRouter.post('/purge/telemetry', requireAdmin(), async (req, res) => {
   try {
-    await databaseService.purgeAllTelemetryAsync();
+    const { sourceId: purgeTelemetrySourceId } = req.body || {};
+    await databaseService.purgeAllTelemetryAsync(purgeTelemetrySourceId);
 
     // Audit log
     databaseService.auditLogAsync(
       req.user!.id,
       'telemetry_purged',
       'telemetry',
-      'All telemetry data purged',
+      JSON.stringify({ sourceId: purgeTelemetrySourceId ?? null }),
       req.ip || null
     );
 
-    res.json({ success: true, message: 'All telemetry data purged' });
+    res.json({
+      success: true,
+      message: purgeTelemetrySourceId
+        ? `Telemetry purged for source ${purgeTelemetrySourceId}`
+        : 'All telemetry data purged',
+    });
   } catch (error) {
     logger.error('Error purging telemetry:', error);
     res.status(500).json({ error: 'Failed to purge telemetry' });
@@ -8138,9 +8149,11 @@ apiRouter.post('/device/purge-nodedb', requirePermission('configuration', 'write
     // Purge the device's node database
     await purgeManager.purgeNodeDb(seconds);
 
-    // Also purge the local database
+    // Also purge the local database (scoped to the source we just told the
+    // device to wipe — purging globally on a per-source admin command would
+    // wipe siblings)
     logger.info('🗑️ Purging local node database');
-    await databaseService.purgeAllNodesAsync();
+    await databaseService.purgeAllNodesAsync(purgeSourceId);
     logger.info('✅ Local node database purged successfully');
 
     res.json({

@@ -365,13 +365,20 @@ export class TraceroutesRepository extends BaseRepository {
   }
 
   /**
-   * Delete all traceroutes
+   * Delete all traceroutes, optionally scoped to a single source.
    */
-  async deleteAllTraceroutes(): Promise<number> {
+  async deleteAllTraceroutes(sourceId?: string): Promise<number> {
     const { traceroutes } = this.tables;
-    const result = await this.db.select({ count: count() }).from(traceroutes);
+    const countQuery = this.db.select({ count: count() }).from(traceroutes);
+    const result = await (sourceId
+      ? countQuery.where(eq(traceroutes.sourceId, sourceId))
+      : countQuery);
     const total = Number(result[0].count);
-    await this.db.delete(traceroutes);
+    if (sourceId) {
+      await this.db.delete(traceroutes).where(eq(traceroutes.sourceId, sourceId));
+    } else {
+      await this.db.delete(traceroutes);
+    }
     return total;
   }
 
@@ -423,10 +430,12 @@ export class TraceroutesRepository extends BaseRepository {
    * Synchronously delete all traceroutes (SQLite only).
    * Returns the number of rows deleted.
    */
-  deleteAllTraceroutesSync(): number {
+  deleteAllTraceroutesSync(sourceId?: string): number {
     const db = this.getSqliteDb();
     const { traceroutes } = this.tables;
-    const result = db.delete(traceroutes).run();
+    const result = sourceId
+      ? db.delete(traceroutes).where(eq(traceroutes.sourceId, sourceId)).run()
+      : db.delete(traceroutes).run();
     return Number((result as any).changes ?? 0);
   }
 
@@ -434,10 +443,12 @@ export class TraceroutesRepository extends BaseRepository {
    * Synchronously delete all route segments (SQLite only).
    * Returns the number of rows deleted.
    */
-  deleteAllRouteSegmentsSync(): number {
+  deleteAllRouteSegmentsSync(sourceId?: string): number {
     const db = this.getSqliteDb();
     const { routeSegments } = this.tables;
-    const result = db.delete(routeSegments).run();
+    const result = sourceId
+      ? db.delete(routeSegments).where(eq(routeSegments.sourceId, sourceId)).run()
+      : db.delete(routeSegments).run();
     return Number((result as any).changes ?? 0);
   }
 
