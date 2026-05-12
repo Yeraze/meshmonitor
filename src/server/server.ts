@@ -4367,7 +4367,7 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), a
     const estimatedPositionTypes = new Set(['estimated_latitude', 'estimated_longitude']);
 
     // Efficient bulk query: get all telemetry types for all nodes at once
-    const nodeTelemetryTypes = await databaseService.getAllNodesTelemetryTypesAsync();
+    const nodeTelemetryTypes = await databaseService.getAllNodesTelemetryTypesAsync(telAvailSourceId);
 
     nodes.forEach(node => {
       const telemetryTypes = nodeTelemetryTypes.get(node.nodeId);
@@ -4395,8 +4395,13 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), a
     // Check for PKC-enabled nodes
     const nodesWithPKC: string[] = [];
 
-    // Get the local node ID to ensure it's always marked as secure
-    const localNodeNumStr = await databaseService.settings.getSetting('localNodeNum');
+    // Get the local node ID to ensure it's always marked as secure.
+    // Read per-source so multi-source deployments don't always show the first
+    // source's local node as "secure local node" for every source view.
+    const localNodeNumStr = await databaseService.settings.getSettingForSource(
+      telAvailSourceId ?? null,
+      'localNodeNum'
+    );
     let localNodeId: string | null = null;
     if (localNodeNumStr) {
       const localNodeNum = parseInt(localNodeNumStr, 10);

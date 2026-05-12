@@ -263,9 +263,13 @@ class DatabaseService {
 
 
   // Cache for telemetry types per node (expensive GROUP BY query)
-  private telemetryTypesCache: Map<string, string[]> | null = null;
-  private telemetryTypesCacheTime: number = 0;
+  // Keyed by sourceId (or '__global__' when called without a source filter)
+  private telemetryTypesCacheBySource: Map<
+    string,
+    { map: Map<string, string[]>; time: number }
+  > = new Map();
   private static readonly TELEMETRY_TYPES_CACHE_TTL_MS = 60000; // 60 seconds
+  private static readonly TELEMETRY_TYPES_CACHE_GLOBAL_KEY = '__global__';
 
   // Drizzle ORM database and repositories (for async operations and PostgreSQL/MySQL support)
   private drizzleDatabase: Database | null = null;
@@ -6055,71 +6059,61 @@ class DatabaseService {
 
   // Get all nodes with their telemetry types (cached for performance)
   // This query can be slow with large telemetry tables, so results are cached
-  getAllNodesTelemetryTypes(): Map<string, string[]> {
+  getAllNodesTelemetryTypes(sourceId?: string): Map<string, string[]> {
     const now = Date.now();
+    const cacheKey = sourceId ?? DatabaseService.TELEMETRY_TYPES_CACHE_GLOBAL_KEY;
+    const cached = this.telemetryTypesCacheBySource.get(cacheKey);
 
     // Return cached result if still valid
-    if (
-      this.telemetryTypesCache !== null &&
-      now - this.telemetryTypesCacheTime < DatabaseService.TELEMETRY_TYPES_CACHE_TTL_MS
-    ) {
-      return this.telemetryTypesCache;
+    if (cached && now - cached.time < DatabaseService.TELEMETRY_TYPES_CACHE_TTL_MS) {
+      return cached.map;
     }
 
     // For PostgreSQL/MySQL, use async query and cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.telemetryRepo) {
         // Fire async query and update cache in background
-        this.telemetryRepo.getAllNodesTelemetryTypes().then(map => {
-          this.telemetryTypesCache = map;
-          this.telemetryTypesCacheTime = Date.now();
+        this.telemetryRepo.getAllNodesTelemetryTypes(sourceId).then(map => {
+          this.telemetryTypesCacheBySource.set(cacheKey, { map, time: Date.now() });
         }).catch(err => logger.debug('Failed to fetch telemetry types:', err));
       }
       // Return existing cache or empty map
-      return this.telemetryTypesCache || new Map();
+      return cached?.map ?? new Map();
     }
 
     // SQLite: query the database and update cache
     const map = this.telemetry.getAllNodesTelemetryTypesSync();
-
-    this.telemetryTypesCache = map;
-    this.telemetryTypesCacheTime = now;
-
+    this.telemetryTypesCacheBySource.set(cacheKey, { map, time: now });
     return map;
   }
 
   // Get all nodes with their telemetry types (async version)
-  async getAllNodesTelemetryTypesAsync(): Promise<Map<string, string[]>> {
+  async getAllNodesTelemetryTypesAsync(sourceId?: string): Promise<Map<string, string[]>> {
     const now = Date.now();
+    const cacheKey = sourceId ?? DatabaseService.TELEMETRY_TYPES_CACHE_GLOBAL_KEY;
+    const cached = this.telemetryTypesCacheBySource.get(cacheKey);
 
     // Return cached result if still valid
-    if (
-      this.telemetryTypesCache !== null &&
-      now - this.telemetryTypesCacheTime < DatabaseService.TELEMETRY_TYPES_CACHE_TTL_MS
-    ) {
-      return this.telemetryTypesCache;
+    if (cached && now - cached.time < DatabaseService.TELEMETRY_TYPES_CACHE_TTL_MS) {
+      return cached.map;
     }
 
     // For PostgreSQL/MySQL, use async repository
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const map = await this.telemetry.getAllNodesTelemetryTypes();
-      this.telemetryTypesCache = map;
-      this.telemetryTypesCacheTime = Date.now();
+      const map = await this.telemetry.getAllNodesTelemetryTypes(sourceId);
+      this.telemetryTypesCacheBySource.set(cacheKey, { map, time: Date.now() });
       return map;
     }
 
     // SQLite: query the database and update cache
     const map = this.telemetry.getAllNodesTelemetryTypesSync();
-
-    this.telemetryTypesCache = map;
-    this.telemetryTypesCacheTime = now;
-
+    this.telemetryTypesCacheBySource.set(cacheKey, { map, time: now });
     return map;
   }
 
   // Invalidate the telemetry types cache (call when new telemetry is inserted)
   invalidateTelemetryTypesCache(): void {
-    this.telemetryTypesCacheTime = 0;
+    this.telemetryTypesCacheBySource.clear();
   }
 
   // Danger zone operations
