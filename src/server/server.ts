@@ -2112,8 +2112,8 @@ apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write')
 apiRouter.get('/messages', optionalAuth(), async (req, res) => {
   try {
     // Check if user has either any channel permission or messages permission
-    const hasChannelsRead = req.user?.isAdmin || await hasPermission(req.user!, 'channel_0', 'read');
-    const hasMessagesRead = req.user?.isAdmin || await hasPermission(req.user!, 'messages', 'read');
+    const hasChannelsRead = req.user?.isAdmin || (req.user ? await hasPermission(req.user, 'channel_0', 'read') : false);
+    const hasMessagesRead = req.user?.isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read') : false);
 
     if (!hasChannelsRead && !hasMessagesRead) {
       return res.status(403).json({
@@ -2219,7 +2219,7 @@ apiRouter.get('/messages/channel/:channel', optionalAuth(), async (req, res) => 
 
     // Check per-channel read permission
     const channelResource = `channel_${messageChannel}` as import('../types/permission.js').ResourceType;
-    if (!req.user?.isAdmin && !await hasPermission(req.user!, channelResource, 'read')) {
+    if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, channelResource, 'read') : false)) {
       return res.status(403).json({
         error: 'Insufficient permissions',
         code: 'FORBIDDEN',
@@ -2275,7 +2275,7 @@ apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
     // If marking by channelId, check per-channel read permission
     if (channelId !== undefined && channelId !== null && channelId !== -1) {
       const channelResource = `channel_${channelId}` as import('../types/permission.js').ResourceType;
-      if (!req.user?.isAdmin && !await hasPermission(req.user!, channelResource, 'read')) {
+      if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, channelResource, 'read') : false)) {
         return res.status(403).json({
           error: 'Insufficient permissions',
           code: 'FORBIDDEN',
@@ -2286,7 +2286,7 @@ apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
 
     // If marking by nodeId (DMs) or allDMs, check messages permission
     if ((nodeId && channelId === -1) || allDMs) {
-      const hasMessagesRead = req.user?.isAdmin || await hasPermission(req.user!, 'messages', 'read');
+      const hasMessagesRead = req.user?.isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read') : false);
       if (!hasMessagesRead) {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -2335,8 +2335,8 @@ apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
 apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
   try {
     // Check if user has either any channel permission or messages permission
-    const hasChannelsRead = req.user?.isAdmin || await hasPermission(req.user!, 'channel_0', 'read');
-    const hasMessagesRead = req.user?.isAdmin || await hasPermission(req.user!, 'messages', 'read');
+    const hasChannelsRead = req.user?.isAdmin || (req.user ? await hasPermission(req.user, 'channel_0', 'read') : false);
+    const hasMessagesRead = req.user?.isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read') : false);
 
     if (!hasChannelsRead && !hasMessagesRead) {
       return res.status(403).json({
@@ -3524,7 +3524,7 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
     // Check permissions based on whether this is a DM or channel message
     if (destinationNum) {
       // Direct message - check 'messages' write permission
-      if (!req.user?.isAdmin && !await hasPermission(req.user!, 'messages', 'write')) {
+      if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, 'messages', 'write') : false)) {
         return res.status(403).json({
           error: 'Insufficient permissions',
           code: 'FORBIDDEN',
@@ -3534,7 +3534,7 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
     } else {
       // Channel message - check per-channel write permission
       const channelResource = `channel_${meshChannel}` as import('../types/permission.js').ResourceType;
-      if (!req.user?.isAdmin && !await hasPermission(req.user!, channelResource, 'write')) {
+      if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, channelResource, 'write') : false)) {
         return res.status(403).json({
           error: 'Insufficient permissions',
           code: 'FORBIDDEN',
@@ -4126,8 +4126,8 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
     // Allow users with info read OR dashboard read (dashboard needs telemetry data)
     if (
       !req.user?.isAdmin &&
-      !await hasPermission(req.user!, 'info', 'read') &&
-      !await hasPermission(req.user!, 'dashboard', 'read')
+      !(req.user ? await hasPermission(req.user, 'info', 'read') : false) &&
+      !(req.user ? await hasPermission(req.user, 'dashboard', 'read') : false)
     ) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
@@ -4185,8 +4185,8 @@ apiRouter.get('/telemetry/:nodeId/rates', optionalAuth(), async (req, res) => {
     // Allow users with info read OR dashboard read
     if (
       !req.user?.isAdmin &&
-      !await hasPermission(req.user!, 'info', 'read') &&
-      !await hasPermission(req.user!, 'dashboard', 'read')
+      !(req.user ? await hasPermission(req.user, 'info', 'read') : false) &&
+      !(req.user ? await hasPermission(req.user, 'dashboard', 'read') : false)
     ) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
@@ -4266,8 +4266,8 @@ apiRouter.get('/telemetry/:nodeId/smarthops', optionalAuth(), async (req, res) =
     // Allow users with info read OR dashboard read
     if (
       !req.user?.isAdmin &&
-      !await hasPermission(req.user!, 'info', 'read') &&
-      !await hasPermission(req.user!, 'dashboard', 'read')
+      !(req.user ? await hasPermission(req.user, 'info', 'read') : false) &&
+      !(req.user ? await hasPermission(req.user, 'dashboard', 'read') : false)
     ) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
@@ -4302,8 +4302,8 @@ apiRouter.get('/telemetry/:nodeId/linkquality', optionalAuth(), async (req, res)
     // Allow users with info read OR dashboard read
     if (
       !req.user?.isAdmin &&
-      !await hasPermission(req.user!, 'info', 'read') &&
-      !await hasPermission(req.user!, 'dashboard', 'read')
+      !(req.user ? await hasPermission(req.user, 'info', 'read') : false) &&
+      !(req.user ? await hasPermission(req.user, 'dashboard', 'read') : false)
     ) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
@@ -4823,7 +4823,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 8. Device config (requires configuration:read permission)
     try {
-      const hasConfigRead = req.user?.isAdmin || await hasPermission(req.user!, 'configuration', 'read');
+      const hasConfigRead = req.user?.isAdmin || (req.user ? await hasPermission(req.user, 'configuration', 'read') : false);
       if (hasConfigRead) {
         const config = await activeManager.getDeviceConfig();
         if (config) {
