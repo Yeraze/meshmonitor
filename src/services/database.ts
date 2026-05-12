@@ -6111,23 +6111,44 @@ class DatabaseService {
     return map;
   }
 
-  // Invalidate the telemetry types cache (call when new telemetry is inserted)
-  invalidateTelemetryTypesCache(): void {
-    this.telemetryTypesCacheBySource.clear();
+  // Invalidate the telemetry types cache (call when new telemetry is inserted
+  // or rows are bulk-purged). When sourceId is provided, only that source's
+  // cache slot is cleared (plus the global '__global__' slot, since its
+  // contents are derived from the union of all sources). When omitted, the
+  // whole map is cleared.
+  invalidateTelemetryTypesCache(sourceId?: string): void {
+    if (!sourceId) {
+      this.telemetryTypesCacheBySource.clear();
+      return;
+    }
+    this.telemetryTypesCacheBySource.delete(sourceId);
+    this.telemetryTypesCacheBySource.delete(DatabaseService.TELEMETRY_TYPES_CACHE_GLOBAL_KEY);
   }
 
   // Danger zone operations
-  purgeAllNodes(): void {
-    logger.debug('⚠️ PURGING all nodes and related data from database');
+  // When sourceId is provided, the purge is scoped to that source only; all
+  // child tables receive a WHERE sourceId = ? filter. When omitted, all rows
+  // are deleted (legacy behavior preserved for unscoped callers).
+  purgeAllNodes(sourceId?: string): void {
+    logger.debug(`⚠️ PURGING ${sourceId ? `source ${sourceId}'s ` : 'all '}nodes and related data from database`);
 
     // For PostgreSQL/MySQL, clear cache and fire-and-forget async purge
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Clear the nodes cache immediately
-      this.nodesCache.clear();
+      // Clear the nodes cache immediately (scoped clear when sourceId is provided)
+      if (sourceId) {
+        for (const key of Array.from(this.nodesCache.keys())) {
+          const cached = this.nodesCache.get(key);
+          if (cached && (cached as any).sourceId === sourceId) {
+            this.nodesCache.delete(key);
+          }
+        }
+      } else {
+        this.nodesCache.clear();
+      }
 
       // Fire-and-forget async purge
-      this.purgeAllNodesAsync().catch(err => {
-        logger.error('Failed to purge all nodes from database:', err);
+      this.purgeAllNodesAsync(sourceId).catch(err => {
+        logger.error('Failed to purge nodes from database:', err);
       });
 
       logger.debug('✅ Cache cleared, async purge started');
@@ -6138,43 +6159,43 @@ class DatabaseService {
     // Delete in order to respect foreign key constraints
     // First delete all child records that reference nodes
     if (this.messagesRepo) {
-      this.messagesRepo.deleteAllMessagesSqlite();
+      this.messagesRepo.deleteAllMessagesSqlite(sourceId);
     }
-    this.telemetry.deleteAllTelemetrySync();
-    this.traceroutes.deleteAllTraceroutesSync();
-    this.traceroutes.deleteAllRouteSegmentsSync();
+    this.telemetry.deleteAllTelemetrySync(sourceId);
+    this.traceroutes.deleteAllTraceroutesSync(sourceId);
+    this.traceroutes.deleteAllRouteSegmentsSync(sourceId);
     if (this.neighborsRepo) {
       // Use Drizzle repo for all backends (including SQLite)
-      this.neighborsRepo.deleteAllNeighborInfo().catch(err =>
-        logger.debug('Failed to delete all neighbor info:', err)
+      this.neighborsRepo.deleteAllNeighborInfo(sourceId).catch(err =>
+        logger.debug('Failed to delete neighbor info:', err)
       );
     }
     // Clear packet log so Packet Monitor doesn't show ghost entries from purged nodes (issue #2637)
     if (this.miscRepo) {
       try {
-        this.miscRepo.clearPacketLogsSync();
+        this.miscRepo.clearPacketLogsSync(sourceId);
       } catch (err) {
         logger.error('Failed to clear packet logs during purge:', err);
       }
     }
     // Finally delete the nodes themselves
-    this.nodesRepo!.truncateNodesSqlite();
+    this.nodesRepo!.truncateNodesSqlite(sourceId);
     // Telemetry cache invalidation after bulk purge
-    this.invalidateTelemetryTypesCache();
-    logger.debug('✅ Successfully purged all nodes and related data');
+    this.invalidateTelemetryTypesCache(sourceId);
+    logger.debug('✅ Successfully purged nodes and related data');
   }
 
-  purgeAllTelemetry(): void {
-    logger.debug('⚠️ PURGING all telemetry from database');
+  purgeAllTelemetry(sourceId?: string): void {
+    logger.debug(`⚠️ PURGING ${sourceId ? `source ${sourceId}'s ` : 'all '}telemetry from database`);
 
     // For PostgreSQL/MySQL, use async repository
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.telemetryRepo) {
-        this.telemetryRepo.deleteAllTelemetry().then(() => {
-          logger.debug('✅ Successfully purged all telemetry');
-          this.invalidateTelemetryTypesCache();
+        this.telemetryRepo.deleteAllTelemetry(sourceId).then(() => {
+          logger.debug('✅ Successfully purged telemetry');
+          this.invalidateTelemetryTypesCache(sourceId);
         }).catch(err => {
-          logger.error('Failed to purge all telemetry:', err);
+          logger.error('Failed to purge telemetry:', err);
         });
       } else {
         logger.warn('Cannot purge telemetry: telemetry repository not initialized');
@@ -6182,8 +6203,8 @@ class DatabaseService {
       return;
     }
 
-    this.telemetry.deleteAllTelemetrySync();
-    this.invalidateTelemetryTypesCache();
+    this.telemetry.deleteAllTelemetrySync(sourceId);
+    this.invalidateTelemetryTypesCache(sourceId);
   }
 
   purgeOldTelemetry(hoursToKeep: number, favoriteDaysToKeep?: number): number {
@@ -6280,21 +6301,21 @@ class DatabaseService {
   }
 
   /**
-   * Purge all telemetry data (async version)
+   * Purge all telemetry data (async version), optionally scoped to one source.
    */
-  async purgeAllTelemetryAsync(): Promise<void> {
-    logger.debug('⚠️ PURGING all telemetry from database');
+  async purgeAllTelemetryAsync(sourceId?: string): Promise<void> {
+    logger.debug(`⚠️ PURGING ${sourceId ? `source ${sourceId}'s ` : 'all '}telemetry from database`);
 
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      await this.telemetry.deleteAllTelemetry();
-      this.invalidateTelemetryTypesCache();
-      logger.debug('✅ Successfully purged all telemetry');
+      await this.telemetry.deleteAllTelemetry(sourceId);
+      this.invalidateTelemetryTypesCache(sourceId);
+      logger.debug('✅ Successfully purged telemetry');
       return;
     }
 
-    this.telemetry.deleteAllTelemetrySync();
-    this.invalidateTelemetryTypesCache();
-    logger.debug('✅ Successfully purged all telemetry');
+    this.telemetry.deleteAllTelemetrySync(sourceId);
+    this.invalidateTelemetryTypesCache(sourceId);
+    logger.debug('✅ Successfully purged telemetry');
   }
 
   /**
@@ -6551,46 +6572,56 @@ class DatabaseService {
   }
 
   /**
-   * Purge all nodes and related data (async version for PostgreSQL)
+   * Purge all nodes and related data (async version).
+   * When sourceId is provided, scope to that source only.
    */
-  async purgeAllNodesAsync(): Promise<void> {
-    logger.debug('⚠️ PURGING all nodes and related data from database (async)');
+  async purgeAllNodesAsync(sourceId?: string): Promise<void> {
+    logger.debug(`⚠️ PURGING ${sourceId ? `source ${sourceId}'s ` : 'all '}nodes and related data from database (async)`);
 
     try {
       // Delete in order to respect foreign key constraints
       // First delete all child records that reference nodes
       if (this.messagesRepo) {
-        await this.messagesRepo.deleteAllMessages();
+        await this.messagesRepo.deleteAllMessages(sourceId);
       }
       if (this.telemetryRepo) {
-        await this.telemetryRepo.deleteAllTelemetry();
+        await this.telemetryRepo.deleteAllTelemetry(sourceId);
       }
       if (this.traceroutesRepo) {
-        await this.traceroutesRepo.deleteAllTraceroutes();
-        await this.traceroutesRepo.deleteAllRouteSegments();
+        await this.traceroutesRepo.deleteAllTraceroutes(sourceId);
+        await this.traceroutesRepo.deleteAllRouteSegments(sourceId);
       }
       if (this.neighborsRepo) {
-        await this.neighborsRepo.deleteAllNeighborInfo();
+        await this.neighborsRepo.deleteAllNeighborInfo(sourceId);
       }
       // Clear packet log so Packet Monitor doesn't show ghost entries from purged nodes (issue #2637)
       if (this.miscRepo) {
         try {
-          await this.miscRepo.clearPacketLogs();
+          await this.miscRepo.clearPacketLogs(sourceId);
         } catch (err) {
           logger.error('Failed to clear packet logs during purge:', err);
         }
       }
       // Finally delete the nodes themselves
       if (this.nodesRepo) {
-        await this.nodesRepo.deleteAllNodes();
+        await this.nodesRepo.deleteAllNodes(sourceId);
       }
 
-      // Clear the cache
-      this.nodesCache.clear();
+      // Clear the cache (scoped if a sourceId was provided)
+      if (sourceId) {
+        for (const key of Array.from(this.nodesCache.keys())) {
+          const cached = this.nodesCache.get(key);
+          if (cached && (cached as any).sourceId === sourceId) {
+            this.nodesCache.delete(key);
+          }
+        }
+      } else {
+        this.nodesCache.clear();
+      }
 
-      logger.debug('✅ Successfully purged all nodes and related data (async)');
+      logger.debug('✅ Successfully purged nodes and related data (async)');
     } catch (error) {
-      logger.error('Error purging all nodes:', error);
+      logger.error('Error purging nodes:', error);
       throw error;
     }
   }
