@@ -4492,6 +4492,65 @@ apiRouter.get('/device/security-keys', requireAdmin(), async (req, res) => {
   }
 });
 
+/**
+ * Resolve the connection host/port for an `/api/poll` or `/api/config` caller
+ * scoped to a particular sourceId. Returns the active source's `config.host`
+ * and `config.port` when the source is `meshtastic_tcp`, the env default when
+ * no sourceId was supplied (legacy single-source callers), and `null` host
+ * when the source is non-TCP (BLE/serial/virtual/MQTT/meshcore) — those
+ * cannot be reached via the OTA CLI's `--host` argument and the firmware UI
+ * must not present them as a flash target. See issue #2981.
+ */
+async function resolveSourceConnectionConfig(
+  sourceId: string | undefined
+): Promise<{
+  host: string | null;
+  port: number | null;
+  sourceType: string | null;
+  isEnvDefault: boolean;
+}> {
+  if (!sourceId) {
+    return {
+      host: env.meshtasticNodeIp,
+      port: env.meshtasticTcpPort,
+      sourceType: null,
+      isEnvDefault: true,
+    };
+  }
+  try {
+    const source = await databaseService.sources.getSource(sourceId);
+    if (!source) {
+      return {
+        host: env.meshtasticNodeIp,
+        port: env.meshtasticTcpPort,
+        sourceType: null,
+        isEnvDefault: true,
+      };
+    }
+    if (source.type === 'meshtastic_tcp') {
+      const cfg = (source.config ?? {}) as { host?: string; port?: number };
+      return {
+        host: cfg.host || null,
+        port: cfg.port ?? env.meshtasticTcpPort,
+        sourceType: source.type,
+        isEnvDefault: false,
+      };
+    }
+    // Non-TCP sources (mqtt, meshcore, BLE/serial via future managers) can't
+    // be flashed over IP — surface a null host so the UI disables OTA rather
+    // than silently shipping the env default.
+    return { host: null, port: null, sourceType: source.type, isEnvDefault: false };
+  } catch (error) {
+    logger.error(`Failed to resolve source connection config for ${sourceId}:`, error);
+    return {
+      host: env.meshtasticNodeIp,
+      port: env.meshtasticTcpPort,
+      sourceType: null,
+      isEnvDefault: true,
+    };
+  }
+}
+
 // Consolidated polling endpoint - reduces multiple API calls to one
 apiRouter.get('/poll', optionalAuth(), async (req, res) => {
   logger.debug('🔔 [POLL] Endpoint called');
@@ -4808,10 +4867,16 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         shortName: managerNodeInfo.shortName,
       } : undefined;
 
+      // Source-scoped connection config (issue #2981). When the caller passes
+      // a sourceId, return that source's host/port so OTA firmware updates
+      // flash the right node instead of the env default (192.168.1.100).
+      const conn = await resolveSourceConnectionConfig(pollSourceId);
+
       result.config = {
-        ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
-        meshtasticTcpPort: env.meshtasticTcpPort,
+        ...(req.session.userId ? { meshtasticNodeIp: conn.host ?? '' } : {}),
+        meshtasticTcpPort: conn.port ?? env.meshtasticTcpPort,
         meshtasticUseTls: false,
+        meshtasticSourceType: conn.sourceType,
         baseUrl: BASE_URL,
         deviceMetadata: deviceMetadata,
         localNodeInfo: pollLocalNodeInfo,
@@ -5055,10 +5120,14 @@ apiRouter.get('/config', optionalAuth(), async (req, res) => {
       }
     }
 
+    // Source-scoped connection config (issue #2981).
+    const conn = await resolveSourceConnectionConfig(configSourceId);
+
     res.json({
-      ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
-      meshtasticTcpPort: env.meshtasticTcpPort,
+      ...(req.session.userId ? { meshtasticNodeIp: conn.host ?? '' } : {}),
+      meshtasticTcpPort: conn.port ?? env.meshtasticTcpPort,
       meshtasticUseTls: false, // We're using TCP, not TLS
+      meshtasticSourceType: conn.sourceType,
       baseUrl: BASE_URL,
       deviceMetadata: deviceMetadata,
       localNodeInfo: localNodeInfo,

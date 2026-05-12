@@ -73,6 +73,7 @@ export interface PollConfig {
   meshtasticNodeIp?: string;
   meshtasticTcpPort?: number;
   meshtasticUseTls?: boolean;
+  meshtasticSourceType?: string | null;
   baseUrl?: string;
   deviceMetadata?: {
     firmwareVersion?: string;
