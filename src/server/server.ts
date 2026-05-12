@@ -3891,7 +3891,7 @@ apiRouter.get('/traceroutes/recent', async (req, res) => {
 });
 
 // Get traceroute history for a specific source-destination pair
-apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', async (req, res) => {
+apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', requirePermission('traceroute', 'read', { sourceIdFrom: 'query' }), async (req, res) => {
   try {
     const fromNodeNum = parseInt(req.params.fromNodeNum);
     const toNodeNum = parseInt(req.params.toNodeNum);
