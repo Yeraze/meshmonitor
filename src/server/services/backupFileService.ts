@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-syntax -- TODO(remediation 6.2): migrate SQLite path to Drizzle repository, then remove this disable. */
 /**
  * Backup File Service
  * Handles file system operations for device backups

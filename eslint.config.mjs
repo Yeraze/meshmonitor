@@ -72,6 +72,16 @@ export default [
           message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
         },
         {
+          // Catches `const db = databaseService.db; db.prepare(...)` — the
+          // local-variable escape hatch around the two selectors above.
+          selector: "CallExpression[callee.object.name='db'][callee.property.name='prepare']",
+          message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
+        },
+        {
+          selector: "CallExpression[callee.object.name='db'][callee.property.name='exec']",
+          message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
+        },
+        {
           selector: "CallExpression[callee.object.property.name='postgresPool'][callee.property.name='query']",
           message: "Raw SQL forbidden outside src/server/migrations/. Use Drizzle repository in src/db/repositories/. For intentional raw (bootstrap/diagnostic), add eslint-disable-next-line with reason.",
         },
