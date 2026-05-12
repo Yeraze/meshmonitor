@@ -68,6 +68,8 @@ import { migration as createWaypointsMigration, runMigration053Postgres, runMigr
 import { migration as addWaypointsPermissionMigration, runMigration054Postgres, runMigration054Mysql } from '../server/migrations/054_add_waypoints_permission.js';
 import { migration as seedGlobalWaypointsPermissionMigration, runMigration055Postgres, runMigration055Mysql } from '../server/migrations/055_seed_global_waypoints_permission.js';
 import { migration as addShowTraceroutesToEmbedProfilesMigration, runMigration056Postgres, runMigration056Mysql } from '../server/migrations/056_add_show_traceroutes_to_embed_profiles.js';
+import { migration as addSourceIdToMeshcoreTablesMigration, runMigration057Postgres, runMigration057Mysql } from '../server/migrations/057_add_source_id_to_meshcore_tables.js';
+import { migration as collapseMeshcoreResourceMigration, runMigration058Postgres, runMigration058Mysql } from '../server/migrations/058_collapse_meshcore_resource.js';
 
 // ============================================================================
 // Registry
@@ -866,4 +868,37 @@ registry.register({
   sqlite: (db) => addShowTraceroutesToEmbedProfilesMigration.up(db),
   postgres: (client) => runMigration056Postgres(client),
   mysql: (pool) => runMigration056Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 057: Add nullable sourceId to meshcore_nodes / meshcore_messages
+// (mirrors migration 021 for Meshtastic) and synthesise a legacy default
+// MeshCore source for any pre-existing rows. First slice of the MeshCore
+// per-source refactor — the manager registry now keys on sourceId.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 57,
+  name: 'add_source_id_to_meshcore_tables',
+  settingsKey: 'migration_057_add_source_id_to_meshcore_tables',
+  sqlite: (db) => addSourceIdToMeshcoreTablesMigration.up(db),
+  postgres: (client) => runMigration057Postgres(client),
+  mysql: (pool) => runMigration057Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 058: Collapse the global `meshcore` permission resource into
+// the per-source sourcey set. Expands each global meshcore grant into
+// (connection, configuration, nodes, messages) rows scoped per
+// meshcore-typed source, then drops the originals. Slice 3 of the
+// MeshCore per-source refactor.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 58,
+  name: 'collapse_meshcore_resource',
+  settingsKey: 'migration_058_collapse_meshcore_resource',
+  sqlite: (db) => collapseMeshcoreResourceMigration.up(db),
+  postgres: (client) => runMigration058Postgres(client),
+  mysql: (pool) => runMigration058Mysql(pool),
 });

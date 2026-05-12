@@ -4,7 +4,7 @@
  * Handles MeshCore node and message database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, sql, isNull } from 'drizzle-orm';
+import { eq, desc, sql, isNull, and, lt } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -32,6 +32,8 @@ export interface DbMeshCoreNode {
   hasAdminAccess?: boolean | null;
   lastAdminCheck?: number | null;
   isLocalNode?: boolean | null;
+  /** Owning source id; required on writes since slice 1 (migration 056). */
+  sourceId?: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -50,6 +52,8 @@ export interface DbMeshCoreMessage {
   messageType?: string | null;
   delivered?: boolean | null;
   deliveredAt?: number | null;
+  /** Owning source id; required on writes since slice 1 (migration 056). */
+  sourceId?: string | null;
   createdAt: number;
 }
 
@@ -76,7 +80,10 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
-   * Get a specific node by public key
+   * Get a specific node by public key, ignoring source ownership.
+   * Prefer `getNodeByPublicKeyAndSource` for write paths — this variant
+   * exists for cross-source read paths that legitimately don't care which
+   * source owns the row.
    */
   async getNodeByPublicKey(publicKey: string): Promise<DbMeshCoreNode | null> {
     const { meshcoreNodes } = this.tables;
@@ -84,6 +91,25 @@ export class MeshCoreRepository extends BaseRepository {
       .select()
       .from(meshcoreNodes)
       .where(eq(meshcoreNodes.publicKey, publicKey))
+      .limit(1);
+    return result[0] ? this.normalizeBigInts(result[0]) as unknown as DbMeshCoreNode : null;
+  }
+
+  /**
+   * Get a node scoped by both publicKey and sourceId. Required for any
+   * write path: looking up by publicKey alone would let one source's
+   * upsert clobber another source's row when both happen to advertise
+   * the same key.
+   */
+  async getNodeByPublicKeyAndSource(
+    publicKey: string,
+    sourceId: string,
+  ): Promise<DbMeshCoreNode | null> {
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)))
       .limit(1);
     return result[0] ? this.normalizeBigInts(result[0]) as unknown as DbMeshCoreNode : null;
   }
@@ -102,23 +128,32 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
-   * Upsert a MeshCore node (insert or update)
+   * Upsert a MeshCore node (insert or update). `sourceId` is required so
+   * every row in `meshcore_nodes` is stamped with its owning source —
+   * non-negotiable since the multi-source MeshCore refactor (slice 1).
    */
-  async upsertNode(node: Partial<DbMeshCoreNode> & { publicKey: string }): Promise<void> {
+  async upsertNode(
+    node: Partial<DbMeshCoreNode> & { publicKey: string },
+    sourceId: string,
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.upsertNode requires a sourceId');
+    }
     const now = this.now();
     const { meshcoreNodes } = this.tables;
-    const existing = await this.getNodeByPublicKey(node.publicKey);
+    const existing = await this.getNodeByPublicKeyAndSource(node.publicKey, sourceId);
 
     if (existing) {
       await this.db
         .update(meshcoreNodes)
-        .set({ ...node, updatedAt: now })
-        .where(eq(meshcoreNodes.publicKey, node.publicKey));
+        .set({ ...node, sourceId, updatedAt: now })
+        .where(and(eq(meshcoreNodes.publicKey, node.publicKey), eq(meshcoreNodes.sourceId, sourceId)));
     } else {
       await this.db
         .insert(meshcoreNodes)
         .values({
           ...node,
+          sourceId,
           createdAt: now,
           updatedAt: now,
         });
@@ -199,11 +234,15 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
-   * Insert a message
+   * Insert a message. `sourceId` is required so every row in
+   * `meshcore_messages` is stamped with its owning source.
    */
-  async insertMessage(message: DbMeshCoreMessage): Promise<void> {
+  async insertMessage(message: DbMeshCoreMessage, sourceId: string): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.insertMessage requires a sourceId');
+    }
     const { meshcoreMessages } = this.tables;
-    await this.db.insert(meshcoreMessages).values(message);
+    await this.db.insert(meshcoreMessages).values({ ...message, sourceId });
   }
 
   /**
@@ -235,11 +274,13 @@ export class MeshCoreRepository extends BaseRepository {
     const toDelete = await this.db
       .select({ id: meshcoreMessages.id })
       .from(meshcoreMessages)
-      .where(sql`${meshcoreMessages.timestamp} < ${timestamp}`);
+      .where(lt(meshcoreMessages.timestamp, timestamp));
 
-    for (const msg of toDelete) {
-      await this.db.delete(meshcoreMessages).where(eq(meshcoreMessages.id, msg.id));
-    }
+    if (toDelete.length === 0) return 0;
+
+    await this.db
+      .delete(meshcoreMessages)
+      .where(lt(meshcoreMessages.timestamp, timestamp));
     return toDelete.length;
   }
 

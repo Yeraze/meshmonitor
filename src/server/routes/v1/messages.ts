@@ -8,7 +8,7 @@
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import { resolveSourceManager } from '../../utils/resolveSourceManager.js';
-import meshcoreManager from '../../meshcoreManager.js';
+import { meshcoreManagerRegistry } from '../../meshcoreRegistry.js';
 import { hasPermission } from '../../auth/authMiddleware.js';
 import { ResourceType } from '../../../types/permission.js';
 import { messageLimiter } from '../../middleware/rateLimiters.js';
@@ -248,12 +248,13 @@ router.get('/search', async (req: Request, res: Response) => {
       total += scopedMessages.length;
     }
 
-    // Search MeshCore messages (in-memory filter)
-    if ((searchScope === 'all' || searchScope === 'meshcore') && meshcoreManager.isConnected()) {
+    // Search MeshCore messages (in-memory filter, across every registered source)
+    const meshcoreManagers = meshcoreManagerRegistry.list().filter(m => m.isConnected());
+    if ((searchScope === 'all' || searchScope === 'meshcore') && meshcoreManagers.length > 0) {
       const hasMeshcoreAccess = isAdmin || (accessibleChannels === null);
 
       if (hasMeshcoreAccess) {
-        const allMeshcoreMessages = meshcoreManager.getRecentMessages(1000);
+        const allMeshcoreMessages = meshcoreManagers.flatMap(m => m.getRecentMessages(1000));
         const filtered = allMeshcoreMessages.filter(m => {
           if (!m.text) return false;
           const textMatch = isCaseSensitive

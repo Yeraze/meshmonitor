@@ -35,6 +35,9 @@ export const meshcoreMessagesSqlite = sqliteTable('meshcore_messages', {
   delivered: integer('delivered', { mode: 'boolean' }).default(false),
   deliveredAt: integer('deliveredAt'),
 
+  // Owning source (nullable for legacy single-source rows; backfilled by migration 056)
+  sourceId: text('sourceId'),
+
   // Timestamps
   createdAt: integer('createdAt').notNull(),
 });
@@ -52,6 +55,7 @@ export const meshcoreMessagesPostgres = pgTable('meshcore_messages', {
   messageType: pgText('messageType').default('text'),
   delivered: pgBoolean('delivered').default(false),
   deliveredAt: pgBigint('deliveredAt', { mode: 'number' }),
+  sourceId: pgText('sourceId'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
 });
 
@@ -68,6 +72,7 @@ export const meshcoreMessagesMysql = mysqlTable('meshcore_messages', {
   messageType: myVarchar('messageType', { length: 32 }).default('text'),
   delivered: myBoolean('delivered').default(false),
   deliveredAt: myBigint('deliveredAt', { mode: 'number' }),
+  sourceId: myVarchar('sourceId', { length: 64 }),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
 });
 

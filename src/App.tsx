@@ -609,7 +609,6 @@ function App() {
 
     const isAdmin = authStatus?.user?.isAdmin || false;
     const isAuthenticated = authStatus?.authenticated || false;
-    const meshcoreEnabled = authStatus?.meshcoreEnabled || false;
 
     // Mirrors Sidebar.tsx hasAnyChannelPermission — channels tab is reachable
     // if the user can read at least one channel (channel_0..channel_7).
@@ -628,7 +627,6 @@ function App() {
       info: () => hasPermission('info', 'read'),
       messages: () => hasPermission('messages', 'read'),
       channels: hasAnyChannelPermission,
-      meshcore: () => meshcoreEnabled && hasPermission('meshcore', 'read'),
       settings: () => hasPermission('settings', 'read'),
       automation: () => hasPermission('automation', 'read'),
       configuration: () => hasPermission('configuration', 'read'),
@@ -5271,7 +5269,7 @@ function App() {
           shortName: n.user?.shortName || '????',
         }))}
         canSearchDms={hasPermission('messages', 'read')}
-        canSearchMeshcore={hasPermission('meshcore', 'read')}
+        canSearchMeshcore={false}
       />
 
       {/* SaveBar for unified save/dismiss actions */}

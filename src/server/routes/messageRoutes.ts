@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import databaseService from '../../services/database.js';
-import meshcoreManager from '../meshcoreManager.js';
+import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
 import meshtasticManagerDefault from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { logger } from '../../utils/logger.js';
@@ -206,12 +206,13 @@ router.get('/search', async (req: Request, res: Response) => {
       total += sourceIdStr ? filtered.length : searchResult.total;
     }
 
-    // Search MeshCore messages (in-memory filter)
-    if ((searchScope === 'all' || searchScope === 'meshcore') && meshcoreManager.isConnected()) {
+    // Search MeshCore messages (in-memory filter, across every registered source)
+    const meshcoreManagers = meshcoreManagerRegistry.list().filter(m => m.isConnected());
+    if ((searchScope === 'all' || searchScope === 'meshcore') && meshcoreManagers.length > 0) {
       const hasMeshcoreAccess = isAdmin || (accessibleChannels !== null && accessibleChannels.has(-1));
 
       if (hasMeshcoreAccess) {
-        const allMeshcoreMessages = meshcoreManager.getRecentMessages(1000);
+        const allMeshcoreMessages = meshcoreManagers.flatMap(m => m.getRecentMessages(1000));
         const filtered = allMeshcoreMessages.filter(m => {
           if (!m.text) return false;
           const textMatch = isCaseSensitive
