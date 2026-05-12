@@ -117,8 +117,18 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
       hwModel: gatewayNode?.user?.hwModel ?? 0,
       nodeId,
       nodeNum,
+      // Issue #2981: track the active source's type so we can disable OTA on
+      // sources that can't be reached via the OTA CLI's `--host` (BLE, serial,
+      // virtual, mqtt, meshcore). `null` means single-source legacy mode.
+      sourceType: (config?.meshtasticSourceType ?? null) as string | null,
     };
   }, [pollData]);
+
+  // OTA firmware updates require a reachable TCP host. A null sourceType is
+  // legacy single-source mode and trusts MESHTASTIC_NODE_IP.
+  const isOtaSupported =
+    (gatewayInfo.sourceType === null || gatewayInfo.sourceType === 'meshtastic_tcp') &&
+    !!gatewayInfo.gatewayIp;
 
   // Local state
   const [channel, setChannel] = useState<FirmwareChannel>('stable');
@@ -392,6 +402,33 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
     <div id="settings-firmware" className="settings-section" style={{ marginTop: '2rem' }}>
       <h3>{t('firmware.title', 'Firmware Updates')}</h3>
       <p className="setting-description">{t('firmware.description', 'Manage firmware updates for your gateway node.')}</p>
+
+      {/* Issue #2981: surface a clear notice when the active source can't be
+          flashed over IP, instead of silently defaulting to 192.168.1.100. */}
+      {!isOtaSupported && (
+        <div
+          className="setting-item"
+          style={{
+            marginTop: '0.5rem',
+            padding: '0.5rem 0.75rem',
+            border: '1px solid var(--ctp-yellow, #d4a017)',
+            borderRadius: '4px',
+          }}
+        >
+          <span className="setting-description">
+            {gatewayInfo.sourceType && gatewayInfo.sourceType !== 'meshtastic_tcp'
+              ? t(
+                  'firmware.ota_unavailable_non_tcp',
+                  'OTA firmware update is only available for TCP sources. The active source ({{type}}) cannot be flashed from MeshMonitor.',
+                  { type: gatewayInfo.sourceType }
+                )
+              : t(
+                  'firmware.ota_unavailable_no_host',
+                  'No node IP is configured for this source. Configure the TCP host before starting an OTA update.'
+                )}
+          </span>
+        </div>
+      )}
 
       {/* Gateway Info */}
       {gatewayInfo.firmwareVersion && (
@@ -818,6 +855,15 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                       <button
                         className="save-button"
                         onClick={() => handleInstall(release)}
+                        disabled={!isOtaSupported}
+                        title={
+                          !isOtaSupported
+                            ? t(
+                                'firmware.ota_unavailable_tooltip',
+                                'OTA firmware update requires a TCP source with a configured host.'
+                              )
+                            : undefined
+                        }
                         style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem' }}
                       >
                         {t('firmware.install', 'Install')}

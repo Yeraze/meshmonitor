@@ -8,6 +8,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAdmin } from '../auth/authMiddleware.js';
 import { firmwareUpdateService } from '../services/firmwareUpdateService.js';
+import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
 import path from 'path';
 
@@ -131,6 +132,20 @@ router.post('/update', async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         error: `Release version "${targetVersion}" not found in cached releases. Try checking for updates first.`,
+      });
+    }
+
+    // Issue #2981: refuse to start the wizard when the resolved gateway is the
+    // env default *and* MESHTASTIC_NODE_IP was not explicitly provided. This
+    // is the fallback that used to silently target 192.168.1.100 for non-TCP
+    // or unconfigured sources. We surface it as an explicit error instead.
+    const env = getEnvironmentConfig();
+    if (!env.meshtasticNodeIpProvided && gatewayIp === env.meshtasticNodeIp) {
+      return res.status(400).json({
+        success: false,
+        error:
+          'No node IP configured for this source. OTA firmware update requires ' +
+          'a TCP source with a host configured, or MESHTASTIC_NODE_IP explicitly set.',
       });
     }
 

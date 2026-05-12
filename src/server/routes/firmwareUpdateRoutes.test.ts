@@ -121,6 +121,17 @@ vi.mock('../meshtasticManager.js', () => ({
   },
 }));
 
+// Mock environment config — issue #2981 guard reads meshtasticNodeIpProvided
+// to decide whether the gatewayIp argument was explicitly configured by the
+// operator. Tests pass an explicit IP, so flag it as provided.
+vi.mock('../config/environment.js', () => ({
+  getEnvironmentConfig: () => ({
+    meshtasticNodeIp: '192.168.1.100',
+    meshtasticNodeIpProvided: true,
+    meshtasticTcpPort: 4403,
+  }),
+}));
+
 // Mock logger
 vi.mock('../../utils/logger.js', () => ({
   logger: {
