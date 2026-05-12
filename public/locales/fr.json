@@ -3658,6 +3658,7 @@
     "automation.geofence_triggers.section_title": "",
     "meshcore.type": "",
     "source.status_connected": "",
+    "source.status_disconnected": "",
     "source.form.host_placeholder": "",
     "telemetry_config.health_interval": "",
     "automation.time_sync.select_nodes": "",

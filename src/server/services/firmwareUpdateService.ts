@@ -1552,7 +1552,11 @@ export class FirmwareUpdateService {
       const finish = (err?: Error) => {
         if (finished) return;
         finished = true;
-        setPhase('done');
+        // Only mark 'done' on success. On error, leave uploadPhase pointing at
+        // the phase that was active when the failure happened so executeFlash's
+        // safety rail can distinguish a handshake-phase failure (retryable, no
+        // bytes streamed) from a streaming/commit failure (real half-flash).
+        if (!err) setPhase('done');
         clearTimeout(overallTimer);
         socket.removeAllListeners();
         socket.destroy();

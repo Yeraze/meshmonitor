@@ -4217,6 +4217,7 @@
   "source.open": "Open →",
   "source.node_count": "{{count}} nodes",
   "source.status_connected": "Connected",
+  "source.status_disconnected": "Disconnected",
   "source.status_connecting": "Connecting",
   "source.status_disabled": "Disabled",
   "source.status_idle": "Idle (manual)",
