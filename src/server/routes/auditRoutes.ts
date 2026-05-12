@@ -5,7 +5,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { requirePermission } from '../auth/authMiddleware.js';
+import { requirePermission, requireAdmin } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 
@@ -121,15 +121,8 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // Cleanup old audit logs (admin only)
-router.post('/cleanup', requirePermission('audit', 'write'), async (req: Request, res: Response) => {
+router.post('/cleanup', requireAdmin(), async (req: Request, res: Response) => {
   try {
-    // Require admin for cleanup operations
-    if (!req.user?.isAdmin) {
-      return res.status(403).json({
-        error: 'Admin privileges required for audit log cleanup'
-      });
-    }
-
     const { days } = req.body;
 
     if (!days || typeof days !== 'number' || days < 1) {
