@@ -48,9 +48,15 @@ const mockBackupService = vi.hoisted(() => ({
   getBackupMetadata: vi.fn(),
 }));
 
-vi.mock('./systemBackupService.js', () => ({
-  systemBackupService: mockBackupService,
-}));
+vi.mock('./systemBackupService.js', async () => {
+  const actual = await vi.importActual<typeof import('./systemBackupService.js')>(
+    './systemBackupService.js'
+  );
+  return {
+    systemBackupService: mockBackupService,
+    BACKUP_TABLES: actual.BACKUP_TABLES,
+  };
+});
 
 // ─── getDatabaseConfig mock ───────────────────────────────────────────────────
 
