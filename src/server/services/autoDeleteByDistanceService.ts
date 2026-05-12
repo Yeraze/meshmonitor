@@ -1,8 +1,7 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { calculateDistance } from '../../utils/distance.js';
-import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import meshtasticManager from '../meshtasticManager.js';
+import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 
 type DistanceAction = 'delete' | 'ignore';
@@ -151,7 +150,7 @@ class AutoDeleteByDistanceService {
                 if (pendingSyncDelay) {
                   await new Promise((resolve) => setTimeout(resolve, SYNC_DELAY_MS));
                 }
-                const manager = (sourceManagerRegistry.getManager(nodeSourceId) as typeof meshtasticManager) ?? meshtasticManager;
+                const manager = resolveSourceManager(nodeSourceId);
                 try {
                   await manager.sendIgnoredNode(nodeNum);
                   pendingSyncDelay = true;

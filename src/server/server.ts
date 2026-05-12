@@ -10,6 +10,7 @@ import { MeshMessage } from '../types/message.js';
 import meshtasticManager from './meshtasticManager.js';
 import { MeshtasticManager } from './meshtasticManager.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
+import { resolveSourceManager } from './utils/resolveSourceManager.js';
 import protobufService from './protobufService.js';
 
 // Make meshtasticManager available globally for routes that need it
@@ -900,9 +901,7 @@ setSettingsCallbacks({
   refreshTileHostnameCache,
   setTracerouteInterval: (interval) => meshtasticManager.setTracerouteInterval(interval),
   setRemoteAdminScannerInterval: (interval, sourceId) => {
-    const mgr = sourceId
-      ? (sourceManagerRegistry.getManager(sourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager;
+    const mgr = resolveSourceManager(sourceId);
     mgr.setRemoteAdminScannerInterval(interval);
   },
   setLocalStatsInterval: (interval) => meshtasticManager.setLocalStatsInterval(interval),
@@ -1227,7 +1226,7 @@ apiRouter.post('/nodes/:nodeId/favorite', requirePermission('nodes', 'write', { 
     let deviceSyncError: string | undefined;
 
     if (syncToDevice) {
-      const favManager = (favSourceId ? (sourceManagerRegistry.getManager(favSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+      const favManager = resolveSourceManager(favSourceId);
       try {
         if (isFavorite) {
           await favManager.sendFavoriteNode(nodeNum, destinationNodeNum);
@@ -1353,7 +1352,7 @@ apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write
 apiRouter.get('/auto-favorite/status', requirePermission('nodes', 'read'), async (req, res) => {
   try {
     const afSourceId = req.query.sourceId as string | undefined;
-    const afManager = afSourceId ? (sourceManagerRegistry.getManager(afSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
+    const afManager = resolveSourceManager(afSourceId);
     // Prefer the manager's in-memory local node (populated at connect time). This avoids
     // the legacy global 'localNodeNum' settings key, which is clobbered across sources.
     const localNodeNumInt = afManager.getLocalNodeInfo()?.nodeNum;
@@ -1472,7 +1471,7 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write', { s
     let deviceSyncError: string | undefined;
 
     if (syncToDevice) {
-      const ignoreManager = (ignoreSourceId ? (sourceManagerRegistry.getManager(ignoreSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+      const ignoreManager = resolveSourceManager(ignoreSourceId);
       try {
         if (isIgnored) {
           await ignoreManager.sendIgnoredNode(nodeNum, destinationNodeNum);
@@ -1893,9 +1892,7 @@ apiRouter.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings'
       ? (req.query.sourceId as string)
       : undefined;
     const scanSourceId = querySourceId ?? bodySourceId;
-    const scanManager = (scanSourceId
-      ? (sourceManagerRegistry.getManager(scanSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const scanManager = (resolveSourceManager(scanSourceId));
 
     // Check if the node exists on the scoped source (same nodeNum may exist
     // on other sources that aren't the scan target).
@@ -1970,7 +1967,7 @@ apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 
     const nodeNum = parseInt(nodeNumStr, 16);
 
     const { sourceId: warnSourceId } = req.body || {};
-    const warnManager = (warnSourceId ? (sourceManagerRegistry.getManager(warnSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const warnManager = resolveSourceManager(warnSourceId);
 
     // Verify the node actually has a security issue on the target source
     // (security flags are per-source — the same nodeNum may be safe on another source).
@@ -2270,7 +2267,7 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages'
 apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
   try {
     const { messageIds, channelId, nodeId, beforeTimestamp, allDMs, sourceId: markReadSourceId } = req.body;
-    const markReadManager = markReadSourceId ? (sourceManagerRegistry.getManager(markReadSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
+    const markReadManager = resolveSourceManager(markReadSourceId);
 
     // If marking by channelId, check per-channel read permission
     if (channelId !== undefined && channelId !== null && channelId !== -1) {
@@ -2354,9 +2351,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
     const unreadSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
       ? req.query.sourceId
       : undefined;
-    const unreadManager = unreadSourceId
-      ? (sourceManagerRegistry.getManager(unreadSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager;
+    const unreadManager = resolveSourceManager(unreadSourceId);
     const localNodeInfo = unreadManager.getLocalNodeInfo();
 
     const result: {
@@ -2799,9 +2794,7 @@ apiRouter.put('/channels/:id', requireAuth(), async (req, res) => {
     );
 
     // Send channel configuration to Meshtastic device
-    const chanUpdateManager = (chanSourceId
-      ? (sourceManagerRegistry.getManager(chanSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const chanUpdateManager = (resolveSourceManager(chanSourceId));
     try {
       await chanUpdateManager.setChannelConfig(channelId, {
         name: updatedChannelData.name,
@@ -2960,9 +2953,7 @@ apiRouter.post('/channels/:slotId/import', requireAuth(), async (req, res) => {
     await databaseService.channels.upsertChannel(importedChannelData);
 
     // Send channel configuration to Meshtastic device
-    const importManager = (importSourceId
-      ? (sourceManagerRegistry.getManager(importSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const importManager = (resolveSourceManager(importSourceId));
     try {
       await importManager.setChannelConfig(slotId, {
         name: importedChannelData.name,
@@ -3042,9 +3033,7 @@ apiRouter.post('/channels/reorder', requireAuth(), async (req, res) => {
     const channelsBySlot = new Map(allChannels.map(ch => [ch.id, ch]));
 
     // Begin edit settings transaction
-    const reorderManager = (reorderSourceId
-      ? (sourceManagerRegistry.getManager(reorderSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const reorderManager = (resolveSourceManager(reorderSourceId));
     logger.info(`🔄 Beginning channel reorder: ${newOrder.join(',')}`);
     await reorderManager.beginEditSettings();
     // Pacing: device firmware silently drops admin packets that arrive too soon
@@ -3161,7 +3150,7 @@ apiRouter.post('/channels/decode-url', requirePermission('configuration', 'read'
 apiRouter.post('/channels/encode-url', requirePermission('configuration', 'read'), async (req, res) => {
   try {
     const { channelIds, includeLoraConfig, sourceId: encodeUrlSourceId } = req.body;
-    const encodeUrlManager = encodeUrlSourceId ? (sourceManagerRegistry.getManager(encodeUrlSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
+    const encodeUrlManager = resolveSourceManager(encodeUrlSourceId);
 
     if (!Array.isArray(channelIds)) {
       return res.status(400).json({ error: 'channelIds must be an array' });
@@ -3259,9 +3248,7 @@ apiRouter.post('/channels/import-config', requirePermission('configuration', 'wr
     logger.info(`📥 Decoded ${decoded.channels?.length || 0} channels, LoRa config: ${!!decoded.loraConfig}`);
 
     // Begin edit settings transaction to batch all changes
-    const configImportManager = (configSourceId
-      ? (sourceManagerRegistry.getManager(configSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const configImportManager = (resolveSourceManager(configSourceId));
     try {
       logger.info(`🔄 Beginning edit settings transaction for import`);
       await configImportManager.beginEditSettings();
@@ -3544,9 +3531,7 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
     }
 
     // Route to the correct source manager when sourceId is provided
-    const activeManager = (reqSourceId
-      ? (sourceManagerRegistry.getManager(reqSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const activeManager = (resolveSourceManager(reqSourceId));
 
     // Send the message to the mesh network (with optional destination for DMs, replyId, and emoji flag)
     // Note: sendTextMessage() now handles saving the message to the database
@@ -3575,9 +3560,7 @@ apiRouter.post('/traceroute', requirePermission('traceroute', 'write'), async (r
     const node = await databaseService.nodes.getNode(destinationNum, traceSourceId);
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
-    const traceManager = (traceSourceId
-      ? (sourceManagerRegistry.getManager(traceSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const traceManager = (resolveSourceManager(traceSourceId));
     await traceManager.sendTraceroute(destinationNum, channel);
     res.json({
       success: true,
@@ -3606,9 +3589,7 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
       ? req.body.channel
       : (node?.channel ?? 0);
 
-    const posManager = (posSourceId
-      ? (sourceManagerRegistry.getManager(posSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const posManager = (resolveSourceManager(posSourceId));
     const { packetId, requestId } = await posManager.sendPositionRequest(destinationNum, channel);
 
     // Get local node info to create system message
@@ -3676,9 +3657,7 @@ apiRouter.post('/nodeinfo/request', requirePermission('messages', 'write'), asyn
     const node = await databaseService.nodes.getNode(destinationNum, niSourceId);
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
-    const niManager = (niSourceId
-      ? (sourceManagerRegistry.getManager(niSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const niManager = (resolveSourceManager(niSourceId));
     const { packetId, requestId } = await niManager.sendNodeInfoRequest(destinationNum, channel);
 
     // Get local node info to create system message
@@ -3745,9 +3724,7 @@ apiRouter.post('/neighborinfo/request', requirePermission('traceroute', 'write')
 
     // Eligibility check: only allow requests to local node or 0-hop nodes
     const { sourceId: neighborSourceId } = req.body;
-    const neighborManager = (neighborSourceId
-      ? (sourceManagerRegistry.getManager(neighborSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const neighborManager = (resolveSourceManager(neighborSourceId));
     const localNodeNum = neighborManager.getLocalNodeInfo()?.nodeNum;
     // Scope to the target source so hopsAway/channel reflect this mesh
     const node = await databaseService.nodes.getNode(destinationNum, neighborSourceId);
@@ -3815,9 +3792,7 @@ apiRouter.post('/telemetry/request', requirePermission('messages', 'write'), asy
     const node = await databaseService.nodes.getNode(destinationNum, telSourceId);
     const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
 
-    const telManager = (telSourceId
-      ? (sourceManagerRegistry.getManager(telSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const telManager = (resolveSourceManager(telSourceId));
     const { packetId, requestId } = await telManager.sendTelemetryRequest(
       destinationNum,
       channel,
@@ -4447,7 +4422,7 @@ apiRouter.get('/connection', optionalAuth(), async (req, res) => {
       });
       return;
     }
-    const connManager = (connSourceId ? (sourceManagerRegistry.getManager(connSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const connManager = resolveSourceManager(connSourceId);
     const status = await connManager.getConnectionStatus();
     // Hide nodeIp from anonymous users
     if (!req.session.userId) {
@@ -4466,7 +4441,7 @@ apiRouter.get('/connection', optionalAuth(), async (req, res) => {
 apiRouter.get('/device/tx-status', optionalAuth(), async (req, res) => {
   try {
     const txSourceId = req.query.sourceId as string | undefined;
-    const txManager = (txSourceId ? (sourceManagerRegistry.getManager(txSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const txManager = resolveSourceManager(txSourceId);
     const deviceConfig = await txManager.getDeviceConfig();
     const txEnabled = deviceConfig?.lora?.txEnabled !== false; // Default to true if undefined
     res.json({ txEnabled });
@@ -4483,7 +4458,7 @@ apiRouter.get('/device/tx-status', optionalAuth(), async (req, res) => {
 apiRouter.get('/device/security-keys', requireAdmin(), async (req, res) => {
   try {
     const skSourceId = req.query.sourceId as string | undefined;
-    const skManager = (skSourceId ? (sourceManagerRegistry.getManager(skSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const skManager = resolveSourceManager(skSourceId);
     const keys = skManager.getSecurityKeys();
     res.json(keys);
   } catch (error) {
@@ -4570,9 +4545,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // Optional sourceId scoping — when provided, use the matching manager and filter DB queries
     const pollSourceId = (req.query.sourceId as string | undefined) || undefined;
-    const activeManager = (pollSourceId
-      ? (sourceManagerRegistry.getManager(pollSourceId) ?? meshtasticManager)
-      : meshtasticManager) as typeof meshtasticManager;
+    const activeManager = resolveSourceManager(pollSourceId);
 
     // Pre-compute shared values used across multiple sections
     const user = (req as any).user;
@@ -4965,9 +4938,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 apiRouter.post('/connection/disconnect', requirePermission('connection', 'write'), async (req, res) => {
   try {
     const { sourceId: disconnectSourceId } = req.body;
-    const disconnectManager = (disconnectSourceId
-      ? (sourceManagerRegistry.getManager(disconnectSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const disconnectManager = (resolveSourceManager(disconnectSourceId));
     await disconnectManager.userDisconnect();
 
     // Audit log
@@ -4990,9 +4961,7 @@ apiRouter.post('/connection/disconnect', requirePermission('connection', 'write'
 apiRouter.post('/connection/reconnect', requirePermission('connection', 'write'), async (req, res) => {
   try {
     const { sourceId: reconnectSourceId } = req.body;
-    const reconnectManager = (reconnectSourceId
-      ? (sourceManagerRegistry.getManager(reconnectSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const reconnectManager = (resolveSourceManager(reconnectSourceId));
     const success = await reconnectManager.userReconnect();
 
     // Audit log
@@ -5018,7 +4987,7 @@ apiRouter.post('/connection/reconnect', requirePermission('connection', 'write')
 apiRouter.get('/connection/info', requireAuth(), async (req, res) => {
   try {
     const ciSourceId = req.query.sourceId as string | undefined;
-    const ciManager = (ciSourceId ? (sourceManagerRegistry.getManager(ciSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const ciManager = resolveSourceManager(ciSourceId);
     const status = await ciManager.getConnectionStatus();
     const env = getEnvironmentConfig();
     const ipOverride = await databaseService.settings.getSetting('meshtasticNodeIpOverride');
@@ -5060,9 +5029,7 @@ apiRouter.post('/connection/configure', requireAdmin(), async (req, res) => {
 
     // Set the override
     const { sourceId: connConfigSourceId } = req.body;
-    const connConfigManager = (connConfigSourceId
-      ? (sourceManagerRegistry.getManager(connConfigSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const connConfigManager = (resolveSourceManager(connConfigSourceId));
     await connConfigManager.setNodeIpOverride(nodeIp);
 
     // Audit log
@@ -5147,7 +5114,7 @@ apiRouter.get('/config', optionalAuth(), async (req, res) => {
 apiRouter.get('/device-config', requirePermission('configuration', 'read'), async (req, res) => {
   try {
     const dcSourceId = req.query.sourceId as string | undefined;
-    const dcManager = (dcSourceId ? (sourceManagerRegistry.getManager(dcSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const dcManager = resolveSourceManager(dcSourceId);
     const config = await dcManager.getDeviceConfig();
     if (config) {
       res.json(config);
@@ -5167,7 +5134,7 @@ apiRouter.get('/device/backup', requirePermission('configuration', 'read'), asyn
   try {
     const saveToFile = req.query.save === 'true';
     const backupSourceId = req.query.sourceId as string | undefined;
-    const backupManager = backupSourceId ? (sourceManagerRegistry.getManager(backupSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
+    const backupManager = resolveSourceManager(backupSourceId);
     logger.info(`📦 Device backup requested (save=${saveToFile})...`);
 
     // Generate YAML backup using the device backup service
@@ -5583,9 +5550,7 @@ apiRouter.post('/nodes/refresh', requirePermission('nodes', 'write'), async (req
     logger.debug('🔄 Manual node database refresh requested...');
 
     const { sourceId: refreshSourceId } = req.body || {};
-    const refreshManager = (refreshSourceId
-      ? (sourceManagerRegistry.getManager(refreshSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const refreshManager = (resolveSourceManager(refreshSourceId));
     // Trigger full node database refresh
     await refreshManager.refreshNodeDatabase();
 
@@ -5615,9 +5580,7 @@ apiRouter.post('/channels/refresh', requirePermission('messages', 'write'), asyn
     logger.debug('🔄 Manual channel refresh requested...');
 
     const { sourceId: chanRefreshSourceId } = req.body;
-    const chanRefreshManager = (chanRefreshSourceId
-      ? (sourceManagerRegistry.getManager(chanRefreshSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const chanRefreshManager = (resolveSourceManager(chanRefreshSourceId));
     // Trigger full node database refresh (includes channels)
     await chanRefreshManager.refreshNodeDatabase();
 
@@ -5647,9 +5610,7 @@ apiRouter.post('/settings/traceroute-interval', requirePermission('settings', 'w
       return res.status(400).json({ error: 'Invalid interval. Must be between 0 and 60 minutes (0 = disabled).' });
     }
 
-    const traceIntervalManager = (traceIntervalSourceId
-      ? (sourceManagerRegistry.getManager(traceIntervalSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const traceIntervalManager = (resolveSourceManager(traceIntervalSourceId));
     traceIntervalManager.setTracerouteInterval(intervalMinutes);
     res.json({ success: true, intervalMinutes });
   } catch (error) {
@@ -5939,7 +5900,7 @@ apiRouter.post('/settings/time-sync-nodes', requirePermission('settings', 'write
 
     // Update the meshtastic manager interval if connected
     const timeSyncSourceId = sourceId;
-    const timeSyncManager = timeSyncSourceId ? (sourceManagerRegistry.getManager(timeSyncSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
+    const timeSyncManager = resolveSourceManager(timeSyncSourceId);
     if (intervalMinutes !== undefined) {
       timeSyncManager.setTimeSyncInterval(enabled ? Number(intervalMinutes) : 0);
     } else if (enabled !== undefined) {
@@ -5967,7 +5928,7 @@ apiRouter.post('/settings/time-sync-nodes', requirePermission('settings', 'write
 apiRouter.get('/settings/auto-ping', requirePermission('settings', 'read'), async (req, res) => {
   try {
     const autoPingSourceId = req.query.sourceId as string | undefined;
-    const autoPingManager = autoPingSourceId ? (sourceManagerRegistry.getManager(autoPingSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
+    const autoPingManager = resolveSourceManager(autoPingSourceId);
     // Per-source settings layered on top of globals (source override wins)
     const sourceOverrides = autoPingSourceId
       ? await databaseService.settings.getSourceSettings(autoPingSourceId)
@@ -6061,7 +6022,7 @@ apiRouter.post('/auto-ping/stop/:nodeNum', requirePermission('settings', 'write'
       return res.status(400).json({ error: 'Invalid node number.' });
     }
     const { sourceId: stopPingSourceId } = req.body || {};
-    const stopPingManager = stopPingSourceId ? (sourceManagerRegistry.getManager(stopPingSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
+    const stopPingManager = resolveSourceManager(stopPingSourceId);
     stopPingManager.stopAutoPingSession(nodeNum, 'force_stopped');
     res.json({ success: true });
   } catch (error) {
@@ -6391,9 +6352,7 @@ apiRouter.delete('/themes/:slug', requirePermission('themes', 'write'), async (r
 apiRouter.post('/announce/send', requirePermission('automation', 'write'), async (req, res) => {
   try {
     const { sourceId: announceSourceId } = req.body;
-    const announceManager = (announceSourceId
-      ? (sourceManagerRegistry.getManager(announceSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const announceManager = (resolveSourceManager(announceSourceId));
     await announceManager.sendAutoAnnouncement();
     // Update last announcement time (per-source when known)
     if (announceSourceId) {
@@ -6427,7 +6386,7 @@ apiRouter.get('/announce/preview', requirePermission('automation', 'read'), asyn
       return res.status(400).json({ error: 'Missing message parameter' });
     }
     const previewSourceId = req.query.sourceId as string | undefined;
-    const previewManager = previewSourceId ? (sourceManagerRegistry.getManager(previewSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
+    const previewManager = resolveSourceManager(previewSourceId);
     const preview = await previewManager.previewAnnouncementMessage(message);
     res.json({ preview });
   } catch (error) {
@@ -6443,7 +6402,7 @@ apiRouter.post('/purge/nodes', requireAdmin(), async (req, res) => {
     await databaseService.purgeAllNodesAsync();
     // Trigger a node refresh after purging
     const { sourceId: purgeNodesSourceId } = req.body || {};
-    const purgeNodesManager = (purgeNodesSourceId ? (sourceManagerRegistry.getManager(purgeNodesSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const purgeNodesManager = resolveSourceManager(purgeNodesSourceId);
     await purgeNodesManager.refreshNodeDatabase();
 
     // Audit log
@@ -6529,7 +6488,7 @@ apiRouter.post('/purge/traceroutes', requireAdmin(), async (req, res) => {
 apiRouter.get('/config/current', requirePermission('configuration', 'read'), (req, res) => {
   try {
     const ccSourceId = req.query.sourceId as string | undefined;
-    const ccManager = (ccSourceId ? (sourceManagerRegistry.getManager(ccSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const ccManager = resolveSourceManager(ccSourceId);
     const config = ccManager.getCurrentConfig();
     res.json(config);
   } catch (error) {
@@ -6541,7 +6500,7 @@ apiRouter.get('/config/current', requirePermission('configuration', 'read'), (re
 apiRouter.post('/config/device', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const { sourceId: cfgDevSourceId, ...config } = req.body;
-    const cfgDevManager = (cfgDevSourceId ? (sourceManagerRegistry.getManager(cfgDevSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const cfgDevManager = resolveSourceManager(cfgDevSourceId);
     await cfgDevManager.setDeviceConfig(config);
     res.json({ success: true, message: 'Device configuration sent' });
   } catch (error) {
@@ -6553,7 +6512,7 @@ apiRouter.post('/config/device', requirePermission('configuration', 'write'), as
 apiRouter.post('/config/network', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const { sourceId: cfgNetSourceId, ...config } = req.body;
-    const cfgNetManager = (cfgNetSourceId ? (sourceManagerRegistry.getManager(cfgNetSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const cfgNetManager = resolveSourceManager(cfgNetSourceId);
     await cfgNetManager.setNetworkConfig(config);
     res.json({ success: true, message: 'Network configuration sent' });
   } catch (error) {
@@ -6565,7 +6524,7 @@ apiRouter.post('/config/network', requirePermission('configuration', 'write'), a
 apiRouter.post('/config/lora', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const { sourceId: cfgLoraSourceId, ...config } = req.body;
-    const cfgLoraManager = (cfgLoraSourceId ? (sourceManagerRegistry.getManager(cfgLoraSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const cfgLoraManager = resolveSourceManager(cfgLoraSourceId);
 
     // IMPORTANT: Always force txEnabled to true
     // MeshMonitor users need TX enabled to send messages
@@ -6587,7 +6546,7 @@ apiRouter.post('/config/lora', requirePermission('configuration', 'write'), asyn
 apiRouter.post('/config/position', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const { sourceId: cfgPosSourceId, ...config } = req.body;
-    const cfgPosManager = (cfgPosSourceId ? (sourceManagerRegistry.getManager(cfgPosSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const cfgPosManager = resolveSourceManager(cfgPosSourceId);
     await cfgPosManager.setPositionConfig(config);
     res.json({ success: true, message: 'Position configuration sent' });
   } catch (error) {
@@ -6599,7 +6558,7 @@ apiRouter.post('/config/position', requirePermission('configuration', 'write'), 
 apiRouter.post('/config/mqtt', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const { sourceId: cfgMqttSourceId, ...config } = req.body;
-    const cfgMqttManager = (cfgMqttSourceId ? (sourceManagerRegistry.getManager(cfgMqttSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const cfgMqttManager = resolveSourceManager(cfgMqttSourceId);
     await cfgMqttManager.setMQTTConfig(config);
     res.json({ success: true, message: 'MQTT configuration sent' });
   } catch (error) {
@@ -6612,7 +6571,7 @@ apiRouter.post('/config/neighborinfo', requirePermission('configuration', 'write
   logger.debug('🔍 DEBUG: /config/neighborinfo endpoint called with body:', JSON.stringify(req.body));
   try {
     const { sourceId: cfgNiSourceId, ...config } = req.body;
-    const cfgNiManager = (cfgNiSourceId ? (sourceManagerRegistry.getManager(cfgNiSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const cfgNiManager = resolveSourceManager(cfgNiSourceId);
     await cfgNiManager.setNeighborInfoConfig(config);
     res.json({ success: true, message: 'NeighborInfo configuration sent' });
   } catch (error) {
@@ -6624,7 +6583,7 @@ apiRouter.post('/config/neighborinfo', requirePermission('configuration', 'write
 apiRouter.post('/config/power', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const { sourceId: cfgPwrSourceId, ...config } = req.body;
-    const cfgPwrManager = (cfgPwrSourceId ? (sourceManagerRegistry.getManager(cfgPwrSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const cfgPwrManager = resolveSourceManager(cfgPwrSourceId);
     await cfgPwrManager.setPowerConfig(config);
     res.json({ success: true, message: 'Power configuration sent' });
   } catch (error) {
@@ -6636,7 +6595,7 @@ apiRouter.post('/config/power', requirePermission('configuration', 'write'), asy
 apiRouter.post('/config/display', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const { sourceId: cfgDispSourceId, ...config } = req.body;
-    const cfgDispManager = (cfgDispSourceId ? (sourceManagerRegistry.getManager(cfgDispSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const cfgDispManager = resolveSourceManager(cfgDispSourceId);
     await cfgDispManager.setDisplayConfig(config);
     res.json({ success: true, message: 'Display configuration sent' });
   } catch (error) {
@@ -6648,7 +6607,7 @@ apiRouter.post('/config/display', requirePermission('configuration', 'write'), a
 apiRouter.post('/config/module/telemetry', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const { sourceId: cfgTelSourceId, ...config } = req.body;
-    const cfgTelManager = (cfgTelSourceId ? (sourceManagerRegistry.getManager(cfgTelSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const cfgTelManager = resolveSourceManager(cfgTelSourceId);
     await cfgTelManager.setTelemetryConfig(config);
     res.json({ success: true, message: 'Telemetry configuration sent' });
   } catch (error) {
@@ -6663,7 +6622,7 @@ apiRouter.post('/config/module/:moduleType', requirePermission('configuration', 
   try {
     const { moduleType } = req.params;
     const { sourceId: cfgModSourceId, ...config } = req.body;
-    const cfgModManager = (cfgModSourceId ? (sourceManagerRegistry.getManager(cfgModSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const cfgModManager = resolveSourceManager(cfgModSourceId);
 
     // Validate moduleType
     const validModuleTypes = ['extnotif', 'storeforward', 'rangetest', 'cannedmsg', 'audio',
@@ -6688,7 +6647,7 @@ apiRouter.post('/config/owner', requirePermission('configuration', 'write'), asy
       res.status(400).json({ error: 'longName and shortName are required' });
       return;
     }
-    const ownerManager = (ownerSourceId ? (sourceManagerRegistry.getManager(ownerSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const ownerManager = resolveSourceManager(ownerSourceId);
     await ownerManager.setNodeOwner(longName, shortName, isUnmessagable, isLicensed);
     res.json({ success: true, message: 'Node owner updated' });
   } catch (error) {
@@ -6704,7 +6663,7 @@ apiRouter.post('/config/request', requirePermission('configuration', 'write'), a
       res.status(400).json({ error: 'configType is required' });
       return;
     }
-    const cfgReqManager = (cfgReqSourceId ? (sourceManagerRegistry.getManager(cfgReqSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const cfgReqManager = resolveSourceManager(cfgReqSourceId);
     await cfgReqManager.requestConfig(configType);
     res.json({ success: true, message: 'Config request sent' });
   } catch (error) {
@@ -6720,7 +6679,7 @@ apiRouter.post('/config/module/request', requirePermission('configuration', 'wri
       res.status(400).json({ error: 'configType is required' });
       return;
     }
-    const cfgModReqManager = (cfgModReqSourceId ? (sourceManagerRegistry.getManager(cfgModReqSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const cfgModReqManager = resolveSourceManager(cfgModReqSourceId);
     await cfgModReqManager.requestModuleConfig(configType);
     res.json({ success: true, message: 'Module config request sent' });
   } catch (error) {
@@ -6733,7 +6692,7 @@ apiRouter.post('/device/reboot', requirePermission('configuration', 'write'), as
   try {
     const { seconds: rebootSeconds, sourceId: rebootSourceId } = req.body || {};
     const seconds = rebootSeconds || 10;
-    const rebootManager = (rebootSourceId ? (sourceManagerRegistry.getManager(rebootSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const rebootManager = resolveSourceManager(rebootSourceId);
     await rebootManager.rebootDevice(seconds);
     res.json({ success: true, message: `Device will reboot in ${seconds} seconds` });
   } catch (error) {
@@ -6752,7 +6711,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
       return res.status(400).json({ error: 'configType is required' });
     }
 
-    const adminLoadManager = (adminLoadSourceId ? (sourceManagerRegistry.getManager(adminLoadSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const adminLoadManager = resolveSourceManager(adminLoadSourceId);
     const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (adminLoadManager.getLocalNodeInfo()?.nodeNum || 0);
     const localNodeNum = adminLoadManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
@@ -7243,7 +7202,7 @@ apiRouter.post('/admin/ensure-session-passkey', requireAdmin(), async (req, res)
   try {
     const { nodeNum, sourceId: espSourceId } = req.body;
 
-    const espManager = (espSourceId ? (sourceManagerRegistry.getManager(espSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const espManager = resolveSourceManager(espSourceId);
     const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (espManager.getLocalNodeInfo()?.nodeNum || 0);
     const localNodeNum = espManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
@@ -7282,7 +7241,7 @@ apiRouter.post('/admin/session-passkey-status', requireAdmin(), async (req, res)
   try {
     const { nodeNum, sourceId: spsSourceId } = req.body;
 
-    const spsManager = (spsSourceId ? (sourceManagerRegistry.getManager(spsSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const spsManager = resolveSourceManager(spsSourceId);
     const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (spsManager.getLocalNodeInfo()?.nodeNum || 0);
     const localNodeNum = spsManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
@@ -7314,7 +7273,7 @@ apiRouter.post('/admin/get-channel', requireAdmin(), async (req, res) => {
       return res.status(400).json({ error: 'channelIndex is required' });
     }
 
-    const gcManager = (gcSourceId ? (sourceManagerRegistry.getManager(gcSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const gcManager = resolveSourceManager(gcSourceId);
     const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (gcManager.getLocalNodeInfo()?.nodeNum || 0);
     const localNodeNum = gcManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
@@ -7402,7 +7361,7 @@ apiRouter.post('/admin/load-owner', requireAdmin(), async (req, res) => {
   try {
     const { nodeNum, sourceId: loSourceId } = req.body;
 
-    const loManager = (loSourceId ? (sourceManagerRegistry.getManager(loSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const loManager = resolveSourceManager(loSourceId);
     const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (loManager.getLocalNodeInfo()?.nodeNum || 0);
     const localNodeNum = loManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
@@ -7455,7 +7414,7 @@ apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) =>
   try {
     const { nodeNum, sourceId: gdmSourceId } = req.body;
 
-    const gdmManager = (gdmSourceId ? (sourceManagerRegistry.getManager(gdmSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const gdmManager = resolveSourceManager(gdmSourceId);
     const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (gdmManager.getLocalNodeInfo()?.nodeNum || 0);
     const localNodeNum = gdmManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
@@ -7532,7 +7491,7 @@ apiRouter.post('/admin/reboot', requireAdmin(), async (req, res) => {
   try {
     const { nodeNum, seconds = 10, sourceId: arSourceId } = req.body;
 
-    const arManager = (arSourceId ? (sourceManagerRegistry.getManager(arSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const arManager = resolveSourceManager(arSourceId);
     const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (arManager.getLocalNodeInfo()?.nodeNum || 0);
 
     await arManager.sendRebootCommand(destinationNodeNum, Number(seconds));
@@ -7576,7 +7535,7 @@ apiRouter.post('/admin/set-time', requireAdmin(), async (req, res) => {
   try {
     const { nodeNum, sourceId: astSourceId } = req.body;
 
-    const astManager = (astSourceId ? (sourceManagerRegistry.getManager(astSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const astManager = resolveSourceManager(astSourceId);
     const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (astManager.getLocalNodeInfo()?.nodeNum || 0);
 
     await astManager.sendSetTimeCommand(destinationNodeNum);
@@ -7599,7 +7558,7 @@ apiRouter.post('/admin/export-config', requireAdmin(), async (req, res) => {
       return res.status(400).json({ error: 'channelIds must be an array' });
     }
 
-    const aecManager = (aecSourceId ? (sourceManagerRegistry.getManager(aecSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const aecManager = resolveSourceManager(aecSourceId);
     const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (aecManager.getLocalNodeInfo()?.nodeNum || 0);
     const localNodeNum = aecManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
@@ -7729,7 +7688,7 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
       return res.status(400).json({ error: 'URL is required' });
     }
 
-    const aicManager = (aicSourceId ? (sourceManagerRegistry.getManager(aicSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const aicManager = resolveSourceManager(aicSourceId);
     const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (aicManager.getLocalNodeInfo()?.nodeNum || 0);
     const localNodeNum = aicManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
@@ -7888,7 +7847,7 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
       return res.status(400).json({ error: 'Command is required' });
     }
 
-    const acManager = (acSourceId ? (sourceManagerRegistry.getManager(acSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const acManager = resolveSourceManager(acSourceId);
     const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (acManager.getLocalNodeInfo()?.nodeNum || 0);
     const localNodeNum = acManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
@@ -8174,7 +8133,7 @@ apiRouter.post('/device/purge-nodedb', requirePermission('configuration', 'write
   try {
     const { seconds: purgeSeconds, sourceId: purgeSourceId } = req.body || {};
     const seconds = purgeSeconds || 0;
-    const purgeManager = (purgeSourceId ? (sourceManagerRegistry.getManager(purgeSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager);
+    const purgeManager = resolveSourceManager(purgeSourceId);
 
     // Purge the device's node database
     await purgeManager.purgeNodeDb(seconds);
