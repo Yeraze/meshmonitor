@@ -825,14 +825,19 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Delete all nodes
+   * Delete all nodes, optionally scoped to a single source.
    */
-  async deleteAllNodes(): Promise<number> {
+  async deleteAllNodes(sourceId?: string): Promise<number> {
     const { nodes } = this.tables;
-    const result = await this.db
-      .select({ nodeNum: nodes.nodeNum })
-      .from(nodes);
-    await this.db.delete(nodes);
+    const baseSelect = this.db.select({ nodeNum: nodes.nodeNum }).from(nodes);
+    const result = await (sourceId
+      ? baseSelect.where(eq(nodes.sourceId, sourceId))
+      : baseSelect);
+    if (sourceId) {
+      await this.db.delete(nodes).where(eq(nodes.sourceId, sourceId));
+    } else {
+      await this.db.delete(nodes);
+    }
     this.clearCacheAll();
     return result.length;
   }
@@ -1540,13 +1545,18 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * SQLite-only sync delete all nodes (used by importData / purgeAllNodes).
+   * SQLite-only sync delete all nodes (used by importData / purgeAllNodes),
+   * optionally scoped to a single source.
    */
-  truncateNodesSqlite(): void {
+  truncateNodesSqlite(sourceId?: string): void {
     if (!this.sqliteDb) throw new Error('truncateNodesSqlite is SQLite-only');
     const db = this.sqliteDb;
     const { nodes } = this.tables;
-    db.delete(nodes).run();
+    if (sourceId) {
+      db.delete(nodes).where(eq(nodes.sourceId, sourceId)).run();
+    } else {
+      db.delete(nodes).run();
+    }
   }
 
   /**
