@@ -216,12 +216,17 @@ POST /api/nodes/scan-duplicate-keys
 Retrieve all nodes currently flagged with security issues:
 
 ```bash
-GET /api/nodes/security-issues
+GET /api/security/issues
 ```
 
 **Response**:
 ```json
 {
+  "total": 1,
+  "lowEntropyCount": 1,
+  "duplicateKeyCount": 0,
+  "excessivePacketsCount": 0,
+  "timeOffsetCount": 0,
   "nodes": [
     {
       "nodeNum": 123456789,
@@ -232,7 +237,7 @@ GET /api/nodes/security-issues
       "keySecurityIssueDetails": "Known low-entropy key detected"
     }
   ],
-  "count": 1
+  "topBroadcasters": []
 }
 ```
 
@@ -314,7 +319,7 @@ GET /api/nodes/security-issues
 **Diagnostic Commands**:
 ```bash
 # Get nodes with security issues
-curl http://localhost:8080/api/nodes/security-issues
+curl http://localhost:8080/api/security/issues
 
 # View scanner logs (Docker)
 docker logs meshmonitor 2>&1 | grep "🔐"

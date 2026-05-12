@@ -271,7 +271,6 @@ check "GET /api/version/check" "$(api GET /api/version/check)" 200
 check_json "GET /api/virtual-node/status" "GET" "/api/virtual-node/status" "'sources' in data"
 check_json "GET /api/nodes" "GET" "/api/nodes" "isinstance(data, list)"
 check_json "GET /api/nodes/active" "GET" "/api/nodes/active" "isinstance(data, list)"
-check_json "GET /api/nodes/security-issues" "GET" "/api/nodes/security-issues" "isinstance(data, list)"
 check_json "GET /api/ignored-nodes" "GET" "/api/ignored-nodes" "isinstance(data, list)"
 check "GET /api/auto-favorite/status" "$(api GET /api/auto-favorite/status)" 200
 check "GET /api/device/tx-status" "$(api GET /api/device/tx-status)" 200
