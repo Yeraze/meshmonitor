@@ -474,16 +474,18 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
-   * SQLite-only synchronous wipe of ALL messages.
+   * SQLite-only synchronous wipe of all messages, optionally scoped to a source.
    * Mirrors `deleteAllMessages()` for the sync DatabaseService facade.
    */
-  deleteAllMessagesSqlite(): number {
+  deleteAllMessagesSqlite(sourceId?: string): number {
     if (!this.sqliteDb) {
       throw new Error('deleteAllMessagesSqlite is SQLite-only');
     }
     const db = this.sqliteDb;
     const messages = this.tables.messages;
-    const result = db.delete(messages).run();
+    const result = sourceId
+      ? db.delete(messages).where(eq(messages.sourceId, sourceId)).run()
+      : db.delete(messages).run();
     return Number(result.changes);
   }
 
@@ -744,13 +746,20 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
-   * Delete all messages
+   * Delete all messages, optionally scoped to a single source.
    */
-  async deleteAllMessages(): Promise<number> {
+  async deleteAllMessages(sourceId?: string): Promise<number> {
     const { messages } = this.tables;
-    const result = await this.db.select({ count: count() }).from(messages);
+    const countQuery = this.db.select({ count: count() }).from(messages);
+    const result = await (sourceId
+      ? countQuery.where(eq(messages.sourceId, sourceId))
+      : countQuery);
     const total = Number(result[0].count);
-    await this.db.delete(messages);
+    if (sourceId) {
+      await this.db.delete(messages).where(eq(messages.sourceId, sourceId));
+    } else {
+      await this.db.delete(messages);
+    }
     return total;
   }
 
