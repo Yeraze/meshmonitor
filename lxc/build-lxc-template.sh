@@ -186,6 +186,9 @@ cp -r "$PROJECT_ROOT/protobufs" "$ROOTFS_DIR/opt/meshmonitor/"
 cp "$PROJECT_ROOT/package.json" "$ROOTFS_DIR/opt/meshmonitor/"
 cp "$PROJECT_ROOT/package-lock.json" "$ROOTFS_DIR/opt/meshmonitor/"
 
+echo "Rebuilding native modules against container Node.js..."
+chroot "$ROOTFS_DIR" bash -c "cd /opt/meshmonitor && npm rebuild better-sqlite3 --build-from-source"
+
 # Copy Docker helper scripts (apprise-api.py and others)
 mkdir -p "$ROOTFS_DIR/opt/meshmonitor/docker"
 cp "$PROJECT_ROOT/docker/apprise-api.py" "$ROOTFS_DIR/opt/meshmonitor/docker/"
