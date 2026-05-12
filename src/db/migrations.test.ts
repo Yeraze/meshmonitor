@@ -2,9 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { registry } from './migrations.js';
 
 describe('migrations registry', () => {
-  it('has all 55 migrations registered', () => {
-    expect(registry.count()).toBe(55);
+  it('has all 56 migrations registered', () => {
+    expect(registry.count()).toBe(56);
   });
+
+  // Bumping these counts: when adding a new migration, increment to <N>+1 and
+  // update the "last migration is …" assertion below.
 
   it('first migration is v37 baseline', () => {
     const all = registry.getAll();
@@ -12,14 +15,14 @@ describe('migrations registry', () => {
     expect(all[0].name).toContain('v37_baseline');
   });
 
-  it('last migration is seed_global_waypoints_permission', () => {
+  it('last migration is add_show_traceroutes_to_embed_profiles', () => {
     const all = registry.getAll();
     const last = all[all.length - 1];
-    expect(last.number).toBe(55);
-    expect(last.name).toContain('seed_global_waypoints_permission');
+    expect(last.number).toBe(56);
+    expect(last.name).toContain('add_show_traceroutes_to_embed_profiles');
   });
 
-  it('migrations are sequentially numbered from 1 to 55', () => {
+  it('migrations are sequentially numbered from 1 to 56', () => {
     const all = registry.getAll();
     for (let i = 0; i < all.length; i++) {
       expect(all[i].number).toBe(i + 1);
