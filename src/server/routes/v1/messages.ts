@@ -7,9 +7,8 @@
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
-import meshtasticManager from '../../meshtasticManager.js';
+import { resolveSourceManager } from '../../utils/resolveSourceManager.js';
 import meshcoreManager from '../../meshcoreManager.js';
-import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { hasPermission } from '../../auth/authMiddleware.js';
 import { ResourceType } from '../../../types/permission.js';
 import { messageLimiter } from '../../middleware/rateLimiters.js';
@@ -372,9 +371,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
     const { text, channel, toNodeId, replyId } = req.body;
     // Scope priority: path (:sourceId) → query → body.sourceId.
     const msgSourceId = getScopedSourceId(req);
-    const activeManager = (msgSourceId
-      ? (sourceManagerRegistry.getManager(msgSourceId) as typeof meshtasticManager ?? meshtasticManager)
-      : meshtasticManager);
+    const activeManager = resolveSourceManager(msgSourceId);
 
     // Validate text is provided
     if (!text || typeof text !== 'string' || text.trim().length === 0) {

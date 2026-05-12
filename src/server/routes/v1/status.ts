@@ -7,8 +7,7 @@
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
-import meshtasticManager from '../../meshtasticManager.js';
-import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
+import { resolveSourceManager } from '../../utils/resolveSourceManager.js';
 import { logger } from '../../../utils/logger.js';
 
 const router = express.Router({ mergeParams: true });
@@ -19,7 +18,7 @@ router.get('/', async (req: Request, res: Response) => {
     const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
     const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
     const statusSourceId = fromPath ?? fromQuery;
-    const statusManager = statusSourceId ? (sourceManagerRegistry.getManager(statusSourceId) as typeof meshtasticManager ?? meshtasticManager) : meshtasticManager;
+    const statusManager = resolveSourceManager(statusSourceId);
 
     const localNodeNum = await databaseService.settings.getSetting('localNodeNum');
     const localNodeId = await databaseService.settings.getSetting('localNodeId');
