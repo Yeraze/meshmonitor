@@ -823,16 +823,16 @@ apiRouter.use('/mfa', mfaRoutes);
 apiRouter.use('/v1', v1Router);
 
 // User management routes (admin only)
-apiRouter.use('/users', userRoutes);
+apiRouter.use('/users', optionalAuth(), userRoutes);
 
 // Audit log routes (admin only)
-apiRouter.use('/audit', auditRoutes);
+apiRouter.use('/audit', optionalAuth(), auditRoutes);
 
 // Channel database routes (admin only, session-based)
-apiRouter.use('/channel-database', channelDatabaseRoutes);
+apiRouter.use('/channel-database', optionalAuth(), channelDatabaseRoutes);
 
 // Security routes (requires security:read)
-apiRouter.use('/security', securityRoutes);
+apiRouter.use('/security', optionalAuth(), securityRoutes);
 
 // Packet log routes (requires channels:read AND messages:read)
 apiRouter.use('/packets', optionalAuth(), packetRoutes);
