@@ -1933,7 +1933,7 @@ apiRouter.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings'
 });
 
 // Get nodes with key security issues (low-entropy or duplicate keys)
-apiRouter.get('/nodes/security-issues', optionalAuth(), async (_req, res) => {
+apiRouter.get('/nodes/security-issues', requirePermission('security', 'read'), async (_req, res) => {
   try {
     const nodes = await databaseService.getNodesWithKeySecurityIssuesAsync();
     res.json(nodes);
