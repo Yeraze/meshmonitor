@@ -18,7 +18,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { systemBackupService } from './systemBackupService.js';
+import { systemBackupService, BACKUP_TABLES } from './systemBackupService.js';
 import { getDatabaseConfig } from '../../db/index.js';
 import { Pool } from 'pg';
 import mysql from 'mysql2/promise';
@@ -350,9 +350,20 @@ class SystemRestoreService {
     let totalRowsRestored = 0;
     let tablesRestored = 0;
 
+    // Allowlist of tables that can be restored. Table names from a backup's
+    // metadata.json are otherwise interpolated directly into SQL, so a crafted
+    // backup could inject arbitrary statements. See SQL/Drizzle audit MEDIUM-3.
+    const allowedTables = new Set<string>(BACKUP_TABLES);
+    const identifierPattern = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
     const transaction = db.transaction(() => {
       for (const tableName of tables) {
         try {
+          if (!allowedTables.has(tableName)) {
+            logger.warn(`⚠️  Skipping table not in backup allowlist: ${tableName}`);
+            continue;
+          }
+
           const tableFile = path.join(backupPath, `${tableName}.json`);
 
           if (!fs.existsSync(tableFile)) {
@@ -368,6 +379,15 @@ class SystemRestoreService {
           // Insert backup data
           if (data.length > 0) {
             const columns = Object.keys(data[0]);
+            // Column names are interpolated into the INSERT statement, so
+            // reject anything that isn't a plain SQL identifier.
+            for (const col of columns) {
+              if (!identifierPattern.test(col)) {
+                throw new Error(
+                  `Invalid column name in backup for table ${tableName}: ${col}`
+                );
+              }
+            }
             const placeholders = columns.map(() => '?').join(', ');
             const stmt = db.prepare(
               `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`
