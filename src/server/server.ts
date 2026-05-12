@@ -1929,22 +1929,6 @@ apiRouter.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings'
   }
 });
 
-// Get nodes with key security issues (low-entropy or duplicate keys)
-apiRouter.get('/nodes/security-issues', requirePermission('security', 'read'), async (_req, res) => {
-  try {
-    const nodes = await databaseService.getNodesWithKeySecurityIssuesAsync();
-    res.json(nodes);
-  } catch (error) {
-    logger.error('Error getting nodes with security issues:', error);
-    const errorResponse: ApiErrorResponse = {
-      error: 'Failed to get nodes with security issues',
-      code: 'INTERNAL_ERROR',
-      details: error instanceof Error ? error.message : 'Unknown error occurred',
-    };
-    res.status(500).json(errorResponse);
-  }
-});
-
 // Send key security warning DM to a specific node
 apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 'write'), async (req, res) => {
   try {
