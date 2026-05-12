@@ -328,6 +328,7 @@ This project is licensed under the BSD-3-Clause License - see the [LICENSE](LICE
 ## Third-Party Clients
 
 - **[meshmonitor-chat.el](https://git.andros.dev/andros/meshmonitor-chat.el)** - Emacs chat client using the REST API v1. Channel and DM support, delivery confirmation, emoji reactions, polling.
+- **[MeshMonitor Chat for iOS](https://apps.apple.com/app/meshmonitor-chat/id6766212933)** - Native iOS chat client using the REST API v1. Channel and DM support over your MeshMonitor server.
 
 ## Acknowledgments
 
