@@ -4045,6 +4045,7 @@
     "automation.auto_heap.heap_status": "",
     "unified.telemetry.network_error": "",
     "source.status_connected": "",
+    "source.status_disconnected": "",
     "source.form.host_placeholder": "",
     "unified.messages.history_start": "",
     "automation.auto_ping.successful": "",

@@ -3912,6 +3912,7 @@
     "meshcore.device_type.companion": "",
     "meshcore.type": "",
     "source.status_connected": "",
+    "source.status_disconnected": "",
     "source.form.host_placeholder": "",
     "meshcore.rssi": "",
     "meshcore.no_messages": "",
