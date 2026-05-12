@@ -177,6 +177,14 @@ router.get('/search', async (req: Request, res: Response) => {
         }
       }
 
+      // Security: if a non-admin user has no accessible channels, the empty
+      // filter array would be ignored by the repository layer and ALL messages
+      // would be returned. Short-circuit to an empty result set instead.
+      // See FINDING-2 (Phase 0.2 remediation).
+      if (!isAdmin && effectiveChannelFilter !== undefined && effectiveChannelFilter.length === 0) {
+        return res.json({ success: true, count: 0, total: 0, data: [] });
+      }
+
       const searchResult = await databaseService.searchMessagesAsync({
         query: searchQuery,
         caseSensitive: isCaseSensitive,
@@ -200,7 +208,7 @@ router.get('/search', async (req: Request, res: Response) => {
 
     // Search MeshCore messages (in-memory filter)
     if ((searchScope === 'all' || searchScope === 'meshcore') && meshcoreManager.isConnected()) {
-      const hasMeshcoreAccess = isAdmin || (accessibleChannels === null);
+      const hasMeshcoreAccess = isAdmin || (accessibleChannels !== null && accessibleChannels.has(-1));
 
       if (hasMeshcoreAccess) {
         const allMeshcoreMessages = meshcoreManager.getRecentMessages(1000);
