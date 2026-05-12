@@ -92,6 +92,7 @@ router.post('/', async (req: Request, res: Response) => {
     const showLegend = req.body.showLegend !== false;
     const showPaths = req.body.showPaths === true;
     const showNeighborInfo = req.body.showNeighborInfo === true;
+    const showTraceroutes = req.body.showTraceroutes === true;
     const showMqttNodes = req.body.showMqttNodes !== false;
     const pollIntervalSeconds = clampPollInterval(req.body.pollIntervalSeconds);
     const allowedOrigins = Array.isArray(req.body.allowedOrigins)
@@ -117,6 +118,7 @@ router.post('/', async (req: Request, res: Response) => {
       showLegend,
       showPaths,
       showNeighborInfo,
+      showTraceroutes,
       showMqttNodes,
       pollIntervalSeconds,
       allowedOrigins,
@@ -157,6 +159,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (req.body.showLegend !== undefined) updates.showLegend = Boolean(req.body.showLegend);
     if (req.body.showPaths !== undefined) updates.showPaths = Boolean(req.body.showPaths);
     if (req.body.showNeighborInfo !== undefined) updates.showNeighborInfo = Boolean(req.body.showNeighborInfo);
+    if (req.body.showTraceroutes !== undefined) updates.showTraceroutes = Boolean(req.body.showTraceroutes);
     if (req.body.showMqttNodes !== undefined) updates.showMqttNodes = Boolean(req.body.showMqttNodes);
     if (req.body.pollIntervalSeconds !== undefined) updates.pollIntervalSeconds = clampPollInterval(req.body.pollIntervalSeconds);
     if (req.body.allowedOrigins !== undefined) updates.allowedOrigins = Array.isArray(req.body.allowedOrigins)

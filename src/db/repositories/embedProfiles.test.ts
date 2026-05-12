@@ -34,6 +34,7 @@ describe('EmbedProfileRepository', () => {
         showLegend INTEGER NOT NULL DEFAULT 1,
         showPaths INTEGER NOT NULL DEFAULT 0,
         showNeighborInfo INTEGER NOT NULL DEFAULT 0,
+        showTraceroutes INTEGER NOT NULL DEFAULT 0,
         showMqttNodes INTEGER NOT NULL DEFAULT 1,
         pollIntervalSeconds INTEGER NOT NULL DEFAULT 30,
         allowedOrigins TEXT NOT NULL DEFAULT '[]',
@@ -76,6 +77,7 @@ describe('EmbedProfileRepository', () => {
       showLegend: true,
       showPaths: false,
       showNeighborInfo: false,
+  showTraceroutes: false,
       showMqttNodes: true,
       pollIntervalSeconds: 30,
       allowedOrigins: ['https://example.com'],
@@ -118,6 +120,7 @@ describe('EmbedProfileRepository', () => {
       showLegend: true,
       showPaths: false,
       showNeighborInfo: false,
+  showTraceroutes: false,
       showMqttNodes: true,
       pollIntervalSeconds: 30,
       allowedOrigins: [],
@@ -161,6 +164,7 @@ describe('EmbedProfileRepository', () => {
       showLegend: true,
       showPaths: false,
       showNeighborInfo: false,
+  showTraceroutes: false,
       showMqttNodes: true,
       pollIntervalSeconds: 30,
       allowedOrigins: [],
@@ -195,6 +199,7 @@ describe('EmbedProfileRepository', () => {
       showLegend: true,
       showPaths: false,
       showNeighborInfo: false,
+  showTraceroutes: false,
       showMqttNodes: true,
       pollIntervalSeconds: 30,
       allowedOrigins: [],
@@ -215,10 +220,10 @@ describe('EmbedProfileRepository', () => {
     // Insert directly with SQLite integers for booleans
     db.exec(`
       INSERT INTO embed_profiles (id, name, enabled, channels, tileset, defaultLat, defaultLng, defaultZoom,
-        showTooltips, showPopups, showLegend, showPaths, showNeighborInfo, showMqttNodes,
+        showTooltips, showPopups, showLegend, showPaths, showNeighborInfo, showTraceroutes, showMqttNodes,
         pollIntervalSeconds, allowedOrigins, createdAt, updatedAt)
       VALUES ('bool-test', 'Bool Test', 0, '[1,2]', 'osm', 0, 0, 10,
-        0, 1, 1, 0, 0, 1, 30, '["http://localhost"]', 1000, 2000)
+        0, 1, 1, 0, 0, 0, 1, 30, '["http://localhost"]', 1000, 2000)
     `);
 
     const profile = await repo.getByIdAsync('bool-test');

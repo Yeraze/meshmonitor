@@ -38,6 +38,7 @@ interface EmbedProfile {
   showLegend: boolean;
   showPaths: boolean;
   showNeighborInfo: boolean;
+  showTraceroutes: boolean;
   showMqttNodes: boolean;
   pollIntervalSeconds: number;
   allowedOrigins: string[];
@@ -61,6 +62,7 @@ const DEFAULT_FORM: ProfileFormData = {
   showLegend: true,
   showPaths: false,
   showNeighborInfo: false,
+  showTraceroutes: false,
   showMqttNodes: true,
   pollIntervalSeconds: 30,
   allowedOrigins: [],
@@ -201,6 +203,7 @@ const EmbedSettings = () => {
       showLegend: profile.showLegend,
       showPaths: profile.showPaths,
       showNeighborInfo: profile.showNeighborInfo,
+      showTraceroutes: profile.showTraceroutes,
       showMqttNodes: profile.showMqttNodes,
       pollIntervalSeconds: profile.pollIntervalSeconds,
       allowedOrigins: [...profile.allowedOrigins],
@@ -522,6 +525,7 @@ const EmbedSettings = () => {
                     ['showLegend', t('settings.embed.show_legend', 'Show Legend')],
                     ['showPaths', t('settings.embed.show_paths', 'Show Paths')],
                     ['showNeighborInfo', t('settings.embed.show_neighbor_info', 'Show Neighbor Info')],
+                    ['showTraceroutes', t('settings.embed.show_traceroutes', 'Show Traceroutes (exposes mesh topology)')],
                     ['showMqttNodes', t('settings.embed.show_mqtt_nodes', 'Show MQTT Nodes')],
                   ] as [keyof ProfileFormData, string][]).map(([key, label]) => (
                     <label key={key} className="embed-checkbox-label">

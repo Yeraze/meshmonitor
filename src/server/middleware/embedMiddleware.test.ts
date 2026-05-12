@@ -32,6 +32,7 @@ const sampleProfile = {
   showLegend: true,
   showPaths: false,
   showNeighborInfo: false,
+  showTraceroutes: false,
   showMqttNodes: true,
   pollIntervalSeconds: 30,
   allowedOrigins: ['https://example.com', 'https://other.org'],

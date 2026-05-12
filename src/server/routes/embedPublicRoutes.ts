@@ -57,6 +57,7 @@ router.get('/:profileId/config', createEmbedCspMiddleware(), (req: Request, res:
     showLegend: profile.showLegend,
     showPaths: profile.showPaths,
     showNeighborInfo: profile.showNeighborInfo,
+    showTraceroutes: profile.showTraceroutes,
     showMqttNodes: profile.showMqttNodes,
     pollIntervalSeconds: profile.pollIntervalSeconds,
   });
@@ -192,6 +193,12 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Re
 
   if (!profile) {
     return res.status(404).json({ error: 'Embed profile not found' });
+  }
+
+  // Profile must explicitly opt in to exposing traceroute topology.
+  // Default false avoids leaking mesh topology to embed viewers.
+  if (!profile.showTraceroutes) {
+    return res.status(404).json({ error: 'Traceroutes not enabled for this profile' });
   }
 
   try {

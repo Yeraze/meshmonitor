@@ -67,6 +67,7 @@ import { migration as addSourceIdToEmbedProfilesMigration, runMigration052Postgr
 import { migration as createWaypointsMigration, runMigration053Postgres, runMigration053Mysql } from '../server/migrations/053_create_waypoints.js';
 import { migration as addWaypointsPermissionMigration, runMigration054Postgres, runMigration054Mysql } from '../server/migrations/054_add_waypoints_permission.js';
 import { migration as seedGlobalWaypointsPermissionMigration, runMigration055Postgres, runMigration055Mysql } from '../server/migrations/055_seed_global_waypoints_permission.js';
+import { migration as addShowTraceroutesToEmbedProfilesMigration, runMigration056Postgres, runMigration056Mysql } from '../server/migrations/056_add_show_traceroutes_to_embed_profiles.js';
 
 // ============================================================================
 // Registry
@@ -856,4 +857,13 @@ registry.register({
   sqlite: (db) => seedGlobalWaypointsPermissionMigration.up(db),
   postgres: (client) => runMigration055Postgres(client),
   mysql: (pool) => runMigration055Mysql(pool),
+});
+
+registry.register({
+  number: 56,
+  name: 'add_show_traceroutes_to_embed_profiles',
+  settingsKey: 'migration_056_add_show_traceroutes_to_embed_profiles',
+  sqlite: (db) => addShowTraceroutesToEmbedProfilesMigration.up(db),
+  postgres: (client) => runMigration056Postgres(client),
+  mysql: (pool) => runMigration056Mysql(pool),
 });

@@ -25,6 +25,7 @@ export interface EmbedProfile {
   showLegend: boolean;
   showPaths: boolean;
   showNeighborInfo: boolean;
+  showTraceroutes: boolean;
   showMqttNodes: boolean;
   pollIntervalSeconds: number;
   allowedOrigins: string[];
@@ -56,6 +57,7 @@ function deserializeRow(row: any): EmbedProfile {
     showLegend: Boolean(row.showLegend),
     showPaths: Boolean(row.showPaths),
     showNeighborInfo: Boolean(row.showNeighborInfo),
+    showTraceroutes: Boolean(row.showTraceroutes),
     showMqttNodes: Boolean(row.showMqttNodes),
     pollIntervalSeconds: Number(row.pollIntervalSeconds),
     allowedOrigins: typeof row.allowedOrigins === 'string' ? JSON.parse(row.allowedOrigins) : row.allowedOrigins,
@@ -115,6 +117,7 @@ export class EmbedProfileRepository extends BaseRepository {
       showLegend: input.showLegend,
       showPaths: input.showPaths,
       showNeighborInfo: input.showNeighborInfo,
+      showTraceroutes: input.showTraceroutes,
       showMqttNodes: input.showMqttNodes,
       pollIntervalSeconds: input.pollIntervalSeconds,
       allowedOrigins: JSON.stringify(input.allowedOrigins),
@@ -148,6 +151,7 @@ export class EmbedProfileRepository extends BaseRepository {
     if (input.showLegend !== undefined) updateValues.showLegend = input.showLegend;
     if (input.showPaths !== undefined) updateValues.showPaths = input.showPaths;
     if (input.showNeighborInfo !== undefined) updateValues.showNeighborInfo = input.showNeighborInfo;
+    if (input.showTraceroutes !== undefined) updateValues.showTraceroutes = input.showTraceroutes;
     if (input.showMqttNodes !== undefined) updateValues.showMqttNodes = input.showMqttNodes;
     if (input.pollIntervalSeconds !== undefined) updateValues.pollIntervalSeconds = input.pollIntervalSeconds;
     if (input.allowedOrigins !== undefined) updateValues.allowedOrigins = JSON.stringify(input.allowedOrigins);
