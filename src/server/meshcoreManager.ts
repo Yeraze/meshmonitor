@@ -1050,6 +1050,25 @@ class MeshCoreManager extends EventEmitter {
     };
   }
 
+  /**
+   * Source-registry-compatible status snapshot. Lets `/api/sources/:id/status`
+   * report meshcore sources via the same shape Meshtastic managers return,
+   * even though MeshCoreManager isn't registered in `sourceManagerRegistry`.
+   */
+  getStatus(sourceName: string): {
+    sourceId: string;
+    sourceName: string;
+    sourceType: 'meshcore';
+    connected: boolean;
+  } {
+    return {
+      sourceId: this.sourceId,
+      sourceName,
+      sourceType: 'meshcore',
+      connected: this.connected,
+    };
+  }
+
   getLocalNode(): MeshCoreNode | null {
     return this.localNode;
   }
