@@ -102,6 +102,9 @@ export interface MeshCoreContact {
 export interface MeshCoreMessage {
   id: string;
   fromPublicKey: string;
+  /** Display name parsed from the message body (channel messages only — MeshCore
+   *  channel packets carry no per-sender identity; the sender prefixes their name). */
+  fromName?: string;
   toPublicKey?: string; // null for broadcast
   text: string;
   timestamp: number;
@@ -497,10 +500,18 @@ class MeshCoreManager extends EventEmitter {
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix}: ${data.text}`);
     } else if (event_type === 'channel_message') {
+      // MeshCore channel packets have no sender field on the wire — the sender's
+      // device prefixes "Name: " onto the text body. Split it out so the UI can
+      // show the sender and the body separately.
+      const rawText: string = data.text ?? '';
+      const prefixMatch = rawText.match(/^([^:\n]{1,32}):\s*(.*)$/s);
+      const fromName = prefixMatch ? prefixMatch[1].trim() : undefined;
+      const body = prefixMatch ? prefixMatch[2] : rawText;
       const message: MeshCoreMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         fromPublicKey: MeshCoreManager.channelPublicKey(data.channel_idx),
-        text: data.text,
+        fromName,
+        text: body,
         timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
         snr: data.snr,
         sourceId: this.sourceId,
@@ -1035,6 +1046,19 @@ class MeshCoreManager extends EventEmitter {
     } else {
       try {
         const response = await this.sendBridgeCommand('set_radio', { freq, bw, sf, cr });
+        if (response.success) {
+          if (this.localNode) {
+            this.localNode.radioFreq = freq;
+            this.localNode.radioBw = bw;
+            this.localNode.radioSf = sf;
+            this.localNode.radioCr = cr;
+          }
+          try {
+            await this.refreshLocalNode();
+          } catch (refreshErr) {
+            logger.warn('[MeshCore] refreshLocalNode after set_radio failed:', refreshErr);
+          }
+        }
         return response.success;
       } catch (error) {
         logger.error('[MeshCore] Failed to set radio:', error);
