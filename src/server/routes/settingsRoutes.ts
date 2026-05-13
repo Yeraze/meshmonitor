@@ -541,6 +541,23 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
       }
     }
 
+    // Apprise API server URL (global; #3012). Empty string clears the override
+    // so the resolver falls back to APPRISE_URL env / bundled localhost default.
+    if ('appriseApiServerUrl' in filteredSettings) {
+      const raw = filteredSettings.appriseApiServerUrl.trim();
+      if (raw.length > 0) {
+        try {
+          const parsed = new URL(raw);
+          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return res.status(400).json({ error: 'appriseApiServerUrl must use http:// or https://' });
+          }
+        } catch {
+          return res.status(400).json({ error: 'appriseApiServerUrl must be a valid http(s) URL' });
+        }
+      }
+      filteredSettings.appriseApiServerUrl = raw;
+    }
+
     // Save to database
     if (sourceId) {
       // Per-source: store with source: prefix

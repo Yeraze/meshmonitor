@@ -144,6 +144,7 @@ export const VALID_SETTINGS_KEYS = [
   'tracerouteFilterHopsMin',
   'tracerouteFilterHopsMax',
   'defaultLandingPage',
+  'appriseApiServerUrl',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];

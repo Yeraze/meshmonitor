@@ -59,18 +59,26 @@ class AppriseNotificationService {
   }
 
   /**
-   * Resolve Apprise URL for a given source (no global fallback per Phase B policy).
+   * Resolve Apprise URL for a given source.
+   *
+   * Precedence (highest → lowest):
+   *   1. Per-source `apprise_url` setting (DB)
+   *   2. Global `appriseApiServerUrl` setting (DB) — set via Global Settings UI;
+   *      added in #3012 so desktop builds can target an externally-hosted
+   *      Apprise API server without env vars.
+   *   3. `APPRISE_URL` environment variable
+   *   4. `http://localhost:8000` (bundled in the Docker image via supervisord)
    */
   private async resolveAppriseConfig(sourceId: string): Promise<AppriseConfig | null> {
     try {
       const perSourceUrl = await databaseService.settings.getSettingForSource(sourceId, 'apprise_url');
       const enabledSetting = await databaseService.settings.getSettingForSource(sourceId, 'apprise_enabled');
-      // Fall back to APPRISE_URL env var if no per-source setting exists.
-      // This preserves zero-config quick-start deployments while still allowing
-      // per-source overrides via the settings UI.
-      // Bundled Apprise server runs on localhost:8000 by default in the
-      // meshmonitor container; preserves zero-config quick-start behavior.
-      const url = perSourceUrl || process.env.APPRISE_URL || 'http://localhost:8000';
+      const globalUrl = await databaseService.settings.getSetting('appriseApiServerUrl');
+      const url =
+        perSourceUrl ||
+        globalUrl ||
+        process.env.APPRISE_URL ||
+        'http://localhost:8000';
       if (!url) {
         logger.debug(`ℹ️ No apprise_url configured for source ${sourceId} (and no APPRISE_URL env)`);
         return null;

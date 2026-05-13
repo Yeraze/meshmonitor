@@ -311,6 +311,73 @@ describe('settingsRoutes', () => {
         .send({ meshName: 'NewMesh' })
         .expect(500);
     });
+
+    describe('appriseApiServerUrl (#3012)', () => {
+      it('should accept a valid http URL', async () => {
+        const app = createApp(adminUser);
+        await request(app)
+          .post('/api/settings')
+          .send({ appriseApiServerUrl: 'http://apprise.example.com:8000' })
+          .expect(200);
+        expect(databaseService.settings.setSettings).toHaveBeenCalledWith(
+          expect.objectContaining({ appriseApiServerUrl: 'http://apprise.example.com:8000' })
+        );
+      });
+
+      it('should accept a valid https URL', async () => {
+        const app = createApp(adminUser);
+        await request(app)
+          .post('/api/settings')
+          .send({ appriseApiServerUrl: 'https://apprise.example.com' })
+          .expect(200);
+      });
+
+      it('should accept an empty / whitespace value (clears the override)', async () => {
+        const app = createApp(adminUser);
+        await request(app)
+          .post('/api/settings')
+          .send({ appriseApiServerUrl: '   ' })
+          .expect(200);
+        expect(databaseService.settings.setSettings).toHaveBeenCalledWith(
+          expect.objectContaining({ appriseApiServerUrl: '' })
+        );
+      });
+
+      it('should reject a non-http(s) scheme', async () => {
+        const app = createApp(adminUser);
+        const res = await request(app)
+          .post('/api/settings')
+          .send({ appriseApiServerUrl: 'file:///etc/passwd' })
+          .expect(400);
+        expect(res.body.error).toContain('http://');
+      });
+
+      it('should reject garbage that is not a URL', async () => {
+        const app = createApp(adminUser);
+        const res = await request(app)
+          .post('/api/settings')
+          .send({ appriseApiServerUrl: 'not a url' })
+          .expect(400);
+        expect(res.body.error).toContain('valid http(s) URL');
+      });
+
+      it('should return 403 when lacking settings:write permission', async () => {
+        const app = createApp({ id: 2, username: 'user', isActive: true, isAdmin: false });
+        (databaseService as any).findUserByIdAsync.mockResolvedValue({
+          id: 2, username: 'user', isActive: true, isAdmin: false
+        });
+        (databaseService as any).checkPermissionAsync.mockResolvedValue(false);
+        (databaseService as any).getUserPermissionSetAsync.mockResolvedValue({
+          settings: { read: true, write: false },
+          isAdmin: false,
+        });
+
+        await request(app)
+          .post('/api/settings')
+          .send({ appriseApiServerUrl: 'http://apprise.example.com:8000' })
+          .expect(403);
+      });
+    });
   });
 
   describe('DELETE /api/settings', () => {
