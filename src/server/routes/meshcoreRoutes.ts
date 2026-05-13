@@ -325,7 +325,7 @@ router.post('/contacts/refresh', meshcoreDeviceLimiter, requireAuth(), requirePe
 
 /**
  * GET /api/meshcore/messages
- * Get recent messages
+ * Get recent messages. Optional ?since=<ms-timestamp> returns only messages newer than that time.
  */
 router.get('/messages', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
@@ -336,7 +336,12 @@ router.get('/messages', optionalAuth(), requirePermission('messages', 'read', { 
     } else if (limit > VALIDATION.MAX_MESSAGE_LIMIT) {
       limit = VALIDATION.MAX_MESSAGE_LIMIT;
     }
-    const messages = managerFor(req).getRecentMessages(limit);
+    const sinceRaw = req.query.since as string | undefined;
+    const since = sinceRaw ? parseInt(sinceRaw, 10) : undefined;
+    let messages = managerFor(req).getRecentMessages(limit);
+    if (since !== undefined && !isNaN(since)) {
+      messages = messages.filter(m => m.timestamp > since);
+    }
     res.json({
       success: true,
       data: messages,
@@ -345,6 +350,59 @@ router.get('/messages', optionalAuth(), requirePermission('messages', 'read', { 
   } catch (error) {
     logger.error('[API] Error getting messages:', error);
     res.status(500).json({ success: false, error: 'Failed to get messages' });
+  }
+});
+
+/**
+ * GET /api/sources/:id/meshcore/snapshot
+ * Single-call initial load: status, localNode, contacts, nodes, messages, and a seqCursor
+ * (the timestamp of the newest message) for reconnect catch-up.
+ */
+router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const manager = managerFor(req);
+    const status = manager.getConnectionStatus();
+    const localNode = manager.getLocalNode();
+    const envConfig = manager.getEnvConfig();
+    const contacts = manager.getContacts();
+    const nodes = manager.getAllNodes();
+    const messages = manager.getRecentMessages(50);
+    const seqCursor = messages.length > 0 ? Math.max(...messages.map(m => m.timestamp)) : 0;
+
+    // Mirror the contacts-with-localNode logic from GET /contacts
+    const allContacts = [...contacts];
+    if (localNode && localNode.latitude && localNode.longitude) {
+      allContacts.unshift({
+        publicKey: localNode.publicKey,
+        advName: `${localNode.name} (local)`,
+        name: localNode.name,
+        latitude: localNode.latitude,
+        longitude: localNode.longitude,
+        advType: localNode.advType,
+        rssi: undefined,
+        snr: undefined,
+        lastSeen: Date.now(),
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        status: {
+          ...status,
+          localNode,
+          deviceTypeName: MeshCoreDeviceType[status.deviceType],
+          envConfig,
+        },
+        contacts: allContacts,
+        nodes,
+        messages,
+        seqCursor,
+      },
+    });
+  } catch (error) {
+    logger.error('[API] Error getting snapshot:', error);
+    res.status(500).json({ success: false, error: 'Failed to get snapshot' });
   }
 });
 
