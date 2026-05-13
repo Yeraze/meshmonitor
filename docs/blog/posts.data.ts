@@ -13,8 +13,39 @@ export interface BlogPost {
 declare const data: BlogPost[];
 export { data };
 
+function makeExcerpt(src: string, maxLen = 220): string {
+  if (!src) return '';
+  const body = src.replace(/^---\n[\s\S]*?\n---\n?/, '').trim();
+  const paragraphs = body.split(/\n\s*\n/);
+  let para = '';
+  for (const p of paragraphs) {
+    const trimmed = p.trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith('#')) continue;
+    if (trimmed.startsWith('```')) continue;
+    if (trimmed.startsWith('>')) continue;
+    para = trimmed;
+    break;
+  }
+  let text = para
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/(^|\s)_([^_]+)_/g, '$1$2')
+    .replace(/\n+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length > maxLen) {
+    text = text.slice(0, maxLen).replace(/\s+\S*$/, '') + '…';
+  }
+  return text;
+}
+
 export default createContentLoader('blog/*.md', {
-  excerpt: false,
+  includeSrc: true,
   transform(raw): BlogPost[] {
     return raw
       .filter((page) => !page.url.endsWith('/blog/'))
@@ -27,6 +58,7 @@ export default createContentLoader('blog/*.md', {
         category: page.frontmatter.category,
         priority: page.frontmatter.priority,
         minVersion: page.frontmatter.minVersion,
+        excerpt: makeExcerpt(page.src ?? ''),
       }))
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   },
