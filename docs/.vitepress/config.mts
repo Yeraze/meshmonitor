@@ -48,16 +48,16 @@ export default defineConfig({
     nav: [
       { text: 'Getting Started', link: '/getting-started' },
       { text: 'FAQ', link: '/faq' },
-      { text: 'Blog', link: '/blog/' },
-      { text: '🌐 Site Gallery', link: '/site-gallery' },
-      { text: '📜 User Scripts', link: '/user-scripts' },
       {
-        text: 'Docs',
+        text: 'Documents',
         items: [
           { text: 'Features', link: '/features/settings' },
           { text: 'Configuration', link: '/configuration/' },
           { text: 'Add-ons', link: '/add-ons/' },
-          { text: 'Development', link: '/development/' }
+          { text: 'Development', link: '/development/' },
+          { text: 'Blog', link: '/blog/' },
+          { text: '🌐 Site Gallery', link: '/site-gallery' },
+          { text: '📜 User Scripts', link: '/user-scripts' }
         ]
       },
       { text: '📦 Releases', link: 'https://github.com/yeraze/meshmonitor/releases' }
