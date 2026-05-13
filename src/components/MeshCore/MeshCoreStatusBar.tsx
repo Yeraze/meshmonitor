@@ -7,6 +7,9 @@ interface MeshCoreStatusBarProps {
   loading: boolean;
   onOpenSettings: () => void;
   actions: MeshCoreActions;
+  /** When true, the parent renders the connection chip in its own header
+   *  and we suppress the duplicate "Connected to X" text + dot here. */
+  hideConnectionText?: boolean;
 }
 
 export const MeshCoreStatusBar: React.FC<MeshCoreStatusBarProps> = ({
@@ -14,6 +17,7 @@ export const MeshCoreStatusBar: React.FC<MeshCoreStatusBarProps> = ({
   loading,
   onOpenSettings,
   actions,
+  hideConnectionText,
 }) => {
   const { t } = useTranslation();
   const connected = status?.connected ?? false;
@@ -22,14 +26,18 @@ export const MeshCoreStatusBar: React.FC<MeshCoreStatusBarProps> = ({
   return (
     <div className="meshcore-status-bar">
       <div className="meshcore-status-bar-left">
-        <span className={`status-dot ${connected ? 'connected' : ''}`} />
-        <span className="status-text">
-          {connected
-            ? t('meshcore.connected_to', { name: localName, defaultValue: `Connected to ${localName}` })
-            : t('meshcore.disconnected', 'Disconnected')}
-        </span>
-        {connected && status?.deviceTypeName && (
-          <span className="status-meta">{status.deviceTypeName}</span>
+        {!hideConnectionText && (
+          <>
+            <span className={`status-dot ${connected ? 'connected' : ''}`} />
+            <span className="status-text">
+              {connected
+                ? t('meshcore.connected_to', { name: localName, defaultValue: `Connected to ${localName}` })
+                : t('meshcore.disconnected', 'Disconnected')}
+            </span>
+            {connected && status?.deviceTypeName && (
+              <span className="status-meta">{status.deviceTypeName}</span>
+            )}
+          </>
         )}
       </div>
       <div className="meshcore-status-bar-right">

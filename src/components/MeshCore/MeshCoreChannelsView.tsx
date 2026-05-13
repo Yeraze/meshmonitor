@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreMessage, MeshCoreActions, ConnectionStatus } from './hooks/useMeshCore';
+import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 
 interface MeshCoreChannelsViewProps {
   messages: MeshCoreMessage[];
+  contacts: MeshCoreContact[];
   status: ConnectionStatus | null;
   actions: MeshCoreActions;
 }
@@ -26,6 +28,7 @@ const PUBLIC_CHANNEL: ChannelDef = {
 
 export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   messages,
+  contacts,
   status,
   actions,
 }) => {
@@ -69,6 +72,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       <div className="meshcore-main-pane">
         <MeshCoreMessageStream
           messages={filtered}
+          contacts={contacts}
           selfPublicKey={selfKey}
           disabled={!connected}
           emptyText={t('meshcore.no_messages', 'No messages on this channel yet')}

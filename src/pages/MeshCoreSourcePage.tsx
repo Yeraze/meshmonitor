@@ -23,7 +23,9 @@ import LoginModal from '../components/LoginModal';
 import UserMenu from '../components/UserMenu';
 import { appBasename } from '../init';
 import { MeshCorePage } from '../components/MeshCore/MeshCorePage';
+import type { ConnectionStatus } from '../components/MeshCore/hooks/useMeshCore';
 import '../components/MeshCore/MeshCoreTab.css';
+import '../components/AppHeader/AppHeader.css';
 
 function MeshCoreSourceInner() {
   const { t } = useTranslation();
@@ -36,6 +38,7 @@ function MeshCoreSourceInner() {
   const canReadConnection = hasPermission('connection', 'read');
 
   const [showLogin, setShowLogin] = useState(false);
+  const [mcStatus, setMcStatus] = useState<ConnectionStatus | null>(null);
 
   if (!sourceId) {
     return (
@@ -57,15 +60,20 @@ function MeshCoreSourceInner() {
     );
   }
 
+  const connected = mcStatus?.connected ?? false;
+  const localNode = mcStatus?.localNode ?? null;
+  const localNodeLabel = localNode?.name || null;
+  const localNodeMeta = mcStatus?.deviceTypeName || null;
+
   return (
     <div className="dashboard-page">
       <header className="dashboard-topbar">
         <button
-          className="dashboard-topbar-hamburger"
-          onClick={() => navigate('/')}
+          className="back-to-sources-btn"
+          onClick={() => navigate('/', { state: { showList: true } })}
           title={t('source.sidebar.open_sources', 'Sources')}
         >
-          ☰
+          {t('unified.back_to_sources', '← Sources')}
         </button>
         <div className="dashboard-topbar-logo">
           <img
@@ -75,7 +83,26 @@ function MeshCoreSourceInner() {
           />
           <span className="dashboard-topbar-title">MeshMonitor — MeshCore</span>
         </div>
+        {localNodeLabel && (
+          <div className="node-info">
+            <span className="node-address" title={localNode?.publicKey}>
+              {localNodeMeta ? `${localNodeLabel} (${localNodeMeta})` : localNodeLabel}
+            </span>
+          </div>
+        )}
         <div className="dashboard-topbar-actions">
+          <div className="connection-status-container">
+            <div className="connection-status">
+              <span
+                className={`status-indicator ${connected ? 'connected' : 'disconnected'}`}
+              />
+              <span>
+                {connected
+                  ? t('header.status.connected', 'Connected')
+                  : t('header.status.disconnected', 'Disconnected')}
+              </span>
+            </div>
+          </div>
           {isAuthenticated ? (
             <UserMenu />
           ) : (
@@ -86,7 +113,7 @@ function MeshCoreSourceInner() {
         </div>
       </header>
 
-      <MeshCorePage baseUrl={appBasename} sourceId={sourceId} />
+      <MeshCorePage baseUrl={appBasename} sourceId={sourceId} onStatusChange={setMcStatus} />
 
       <LoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} />
     </div>
