@@ -1,13 +1,41 @@
 import { defineConfig } from 'vitepress'
+import { spawnSync } from 'node:child_process'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const repoRoot = resolve(__dirname, '../..')
+const generatorPath = resolve(repoRoot, 'scripts/blog-to-news.mjs')
+
+function regenerateNewsJson(label: string) {
+  const result = spawnSync(process.execPath, [generatorPath], {
+    cwd: repoRoot,
+    stdio: 'inherit',
+  })
+  if (result.status !== 0) {
+    throw new Error(`[${label}] blog-to-news generator exited with code ${result.status}`)
+  }
+}
+
+const newsJsonPlugin = {
+  name: 'meshmonitor:news-json',
+  buildStart() {
+    regenerateNewsJson('vite:buildStart')
+  },
+  configureServer() {
+    regenerateNewsJson('vite:configureServer')
+  },
+}
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   vite: {
     server: {
       host: '0.0.0.0',
-      allowedHosts: ['localhost', 'meshmonitor.org', 'www.meshmonitor.org', 'sentry.yeraze.online'],
+      allowedHosts: ['localhost', 'meshmonitor.org', 'www.meshmonitor.org', 'sentry.yeraze.online', 'spire.yeraze.online'],
       cors: true
-    }
+    },
+    plugins: [newsJsonPlugin]
   },
   title: "MeshMonitor",
   description: "Self-hosted web dashboard for Meshtastic networks. Real-time maps, messaging, telemetry, automation, and alerts. Runs on Docker, desktop, or Kubernetes.",
@@ -20,15 +48,16 @@ export default defineConfig({
     nav: [
       { text: 'Getting Started', link: '/getting-started' },
       { text: 'FAQ', link: '/faq' },
-      { text: '🌐 Site Gallery', link: '/site-gallery' },
-      { text: '📜 User Scripts', link: '/user-scripts' },
       {
-        text: 'Docs',
+        text: 'Documents',
         items: [
           { text: 'Features', link: '/features/settings' },
           { text: 'Configuration', link: '/configuration/' },
           { text: 'Add-ons', link: '/add-ons/' },
-          { text: 'Development', link: '/development/' }
+          { text: 'Development', link: '/development/' },
+          { text: 'Blog', link: '/blog/' },
+          { text: '🌐 Site Gallery', link: '/site-gallery' },
+          { text: '📜 User Scripts', link: '/user-scripts' }
         ]
       },
       { text: '📦 Releases', link: 'https://github.com/yeraze/meshmonitor/releases' }
