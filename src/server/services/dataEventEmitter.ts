@@ -8,6 +8,7 @@
 
 import { EventEmitter } from 'events';
 import type { DbNode, DbMessage, DbTelemetry, DbChannel, DbTraceroute } from '../../services/database.js';
+import type { MeshCoreMessage, MeshCoreContact, MeshCoreNode } from '../meshcoreManager.js';
 import { logger } from '../../utils/logger.js';
 
 export type DataEventType =
@@ -21,7 +22,11 @@ export type DataEventType =
   | 'auto-ping:update'
   | 'waypoint:upserted'
   | 'waypoint:deleted'
-  | 'waypoint:expired';
+  | 'waypoint:expired'
+  | 'meshcore:message'
+  | 'meshcore:contact:updated'
+  | 'meshcore:status:updated'
+  | 'meshcore:local-node:updated';
 
 export interface DataEvent {
   type: DataEventType;
@@ -70,6 +75,10 @@ class DataEventEmitter extends EventEmitter {
   private telemetryBuffer: Map<string, Map<number, DbTelemetry[]>> = new Map();
   private batchTimeout: NodeJS.Timeout | null = null;
   private batchIntervalMs: number = 1000; // 1 second batching window
+
+  // Keyed by sourceId → publicKey → contact (latest wins within window)
+  private contactBuffer: Map<string, Map<string, MeshCoreContact>> = new Map();
+  private contactBatchTimeout: NodeJS.Timeout | null = null;
 
   constructor() {
     super();
@@ -266,12 +275,92 @@ class DataEventEmitter extends EventEmitter {
   }
 
   /**
+   * Emit a MeshCore message event
+   */
+  emitMeshCoreMessage(message: MeshCoreMessage, sourceId: string): void {
+    const event: DataEvent = {
+      type: 'meshcore:message',
+      data: message,
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] MeshCore message from ${message.fromPublicKey}`);
+  }
+
+  /**
+   * Buffer a MeshCore contact update for batched emission (1s window)
+   */
+  emitMeshCoreContactUpdated(contact: MeshCoreContact, sourceId: string): void {
+    if (!this.contactBuffer.has(sourceId)) {
+      this.contactBuffer.set(sourceId, new Map());
+    }
+    this.contactBuffer.get(sourceId)!.set(contact.publicKey, contact);
+
+    if (!this.contactBatchTimeout) {
+      this.contactBatchTimeout = setTimeout(() => this.flushContacts(), this.batchIntervalMs);
+    }
+  }
+
+  /**
+   * Flush buffered contact updates
+   */
+  private flushContacts(): void {
+    for (const [sourceId, contacts] of this.contactBuffer) {
+      for (const contact of contacts.values()) {
+        const event: DataEvent = {
+          type: 'meshcore:contact:updated',
+          data: { sourceId, contact },
+          timestamp: Date.now(),
+          sourceId,
+        };
+        this.emit('data', event);
+      }
+      logger.debug(`[DataEventEmitter] MeshCore contacts flushed: ${contacts.size} (source: ${sourceId})`);
+    }
+    this.contactBuffer.clear();
+    this.contactBatchTimeout = null;
+  }
+
+  /**
+   * Emit a MeshCore status update event (connected/disconnected)
+   */
+  emitMeshCoreStatusUpdated(data: { connected: boolean; node?: MeshCoreNode | null }, sourceId: string): void {
+    const event: DataEvent = {
+      type: 'meshcore:status:updated',
+      data: { sourceId, ...data },
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] MeshCore status: ${data.connected ? 'connected' : 'disconnected'} (source: ${sourceId})`);
+  }
+
+  /**
+   * Emit a MeshCore local-node update event
+   */
+  emitMeshCoreLocalNodeUpdated(node: MeshCoreNode, sourceId: string): void {
+    const event: DataEvent = {
+      type: 'meshcore:local-node:updated',
+      data: { sourceId, node },
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] MeshCore local node updated (source: ${sourceId})`);
+  }
+
+  /**
    * Force flush any pending telemetry (useful for shutdown)
    */
   flushPending(): void {
     if (this.batchTimeout) {
       clearTimeout(this.batchTimeout);
       this.flushTelemetry();
+    }
+    if (this.contactBatchTimeout) {
+      clearTimeout(this.contactBatchTimeout);
+      this.flushContacts();
     }
   }
 }

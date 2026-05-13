@@ -20,6 +20,7 @@ import * as path from 'path';
 import * as readline from 'readline';
 import { fileURLToPath } from 'url';
 import { logger } from '../utils/logger.js';
+import { dataEventEmitter } from './services/dataEventEmitter.js';
 
 // Dynamic imports for optional serialport dependency
 // These are loaded only when MeshCore is enabled to avoid requiring native build tools
@@ -229,6 +230,10 @@ class MeshCoreManager extends EventEmitter {
 
       this.connected = true;
       this.emit('connected', this.localNode);
+      dataEventEmitter.emitMeshCoreStatusUpdated({ connected: true, node: this.localNode }, this.sourceId);
+      if (this.localNode) {
+        dataEventEmitter.emitMeshCoreLocalNodeUpdated(this.localNode, this.sourceId);
+      }
       logger.info(`[MeshCore] Connected to ${this.localNode?.name || 'unknown device'}`);
 
       return true;
@@ -284,6 +289,7 @@ class MeshCoreManager extends EventEmitter {
     this.contacts.clear();
 
     this.emit('disconnected');
+    dataEventEmitter.emitMeshCoreStatusUpdated({ connected: false }, this.sourceId);
     logger.info('[MeshCore] Disconnected');
   }
 
@@ -486,6 +492,7 @@ class MeshCoreManager extends EventEmitter {
       };
       this.addMessage(message);
       this.emit('message', message);
+      dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix}: ${data.text}`);
     } else if (event_type === 'channel_message') {
       const message: MeshCoreMessage = {
@@ -498,6 +505,7 @@ class MeshCoreManager extends EventEmitter {
       };
       this.addMessage(message);
       this.emit('message', message);
+      dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore] Channel ${data.channel_idx} message: ${data.text}`);
     } else if (event_type === 'contact_advertised' || event_type === 'contact_added') {
       const publicKey: string = data.public_key;
@@ -514,7 +522,8 @@ class MeshCoreManager extends EventEmitter {
           lastSeen: Date.now(),
         };
         this.contacts.set(publicKey, updated);
-        this.emit('contacts_updated', { sourceId: this.config?.tcpHost ?? this.config?.serialPort ?? 'local', contact: updated});
+        this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+        dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
         logger.info(`[MeshCore] ${event_type} for ${publicKey} (${data.adv_name ?? ''})`);
       }
     } else if (event_type === 'contact_path_updated') {
@@ -527,7 +536,8 @@ class MeshCoreManager extends EventEmitter {
           lastSeen: Date.now(),
         };
         this.contacts.set(publicKey, updated);
-        this.emit('contacts_updated', { sourceId: this.config?.tcpHost ?? this.config?.serialPort ?? 'local', contact: updated});
+        this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+        dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
         logger.info(`[MeshCore] contact_path_updated for ${publicKey}`);
       }
     } else {
@@ -632,6 +642,7 @@ class MeshCoreManager extends EventEmitter {
       };
       this.addMessage(message);
       this.emit('message', message);
+      dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore] Message from ${match[1].substring(0, 8)}...: ${match[2]}`);
     }
   }
@@ -871,6 +882,7 @@ class MeshCoreManager extends EventEmitter {
         };
         this.addMessage(sentMessage);
         this.emit('message', sentMessage);
+        dataEventEmitter.emitMeshCoreMessage(sentMessage, this.sourceId);
 
         return true;
       } else {
