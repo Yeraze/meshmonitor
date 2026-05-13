@@ -50,21 +50,19 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   }, [local?.name]);
 
   useEffect(() => {
-    if (local) {
-      if (typeof local.radioFreq === 'number') setFreq(local.radioFreq);
-      if (typeof local.radioBw === 'number') setBw(local.radioBw);
-      if (typeof local.radioSf === 'number') setSf(local.radioSf);
-      if (typeof local.radioCr === 'number') setCr(local.radioCr);
-    }
-  }, [local]);
+    if (!local) return;
+    if (typeof local.radioFreq === 'number') setFreq(local.radioFreq);
+    if (typeof local.radioBw === 'number') setBw(local.radioBw);
+    if (typeof local.radioSf === 'number') setSf(local.radioSf);
+    if (typeof local.radioCr === 'number') setCr(local.radioCr);
+  }, [local?.radioFreq, local?.radioBw, local?.radioSf, local?.radioCr]);
 
   useEffect(() => {
-    if (local) {
-      if (typeof local.latitude === 'number') setLat(local.latitude);
-      if (typeof local.longitude === 'number') setLon(local.longitude);
-      if (typeof local.advLocPolicy === 'number') setAdvLoc(local.advLocPolicy === 1);
-    }
-  }, [local]);
+    if (!local) return;
+    if (typeof local.latitude === 'number') setLat(local.latitude);
+    if (typeof local.longitude === 'number') setLon(local.longitude);
+    if (typeof local.advLocPolicy === 'number') setAdvLoc(local.advLocPolicy === 1);
+  }, [local?.latitude, local?.longitude, local?.advLocPolicy]);
 
   const handleSaveName = async () => {
     if (!name.trim()) return;
