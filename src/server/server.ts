@@ -5381,7 +5381,10 @@ apiRouter.get('/system/backup/download/:dirname', requirePermission('configurati
     }
 
     const backupPath = systemBackupService.getBackupPath(dirname);
-    const archiver = await import('archiver');
+    // archiver v8 exposes only named class exports; @types/archiver still ships v7 types.
+    const { TarArchive } = (await import('archiver')) as unknown as {
+      TarArchive: new (opts: import('archiver').ArchiverOptions) => import('archiver').Archiver;
+    };
     const fs = await import('fs');
 
     // Check if backup exists
@@ -5393,7 +5396,7 @@ apiRouter.get('/system/backup/download/:dirname', requirePermission('configurati
     res.setHeader('Content-Type', 'application/gzip');
     res.setHeader('Content-Disposition', `attachment; filename="${dirname}.tar.gz"`);
 
-    const archive = archiver.default('tar', {
+    const archive = new TarArchive({
       gzip: true,
       gzipOptions: { level: 9 },
     });
@@ -9933,8 +9936,11 @@ apiRouter.post('/scripts/export', requirePermission('settings', 'read'), async (
     }
 
     const scriptsDir = getScriptsDirectory();
-    const archiver = (await import('archiver')).default;
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    // archiver v8 exposes only named class exports; @types/archiver still ships v7 types.
+    const { ZipArchive } = (await import('archiver')) as unknown as {
+      ZipArchive: new (opts: import('archiver').ArchiverOptions) => import('archiver').Archiver;
+    };
+    const archive = new ZipArchive({ zlib: { level: 9 } });
 
     res.attachment('scripts-export.zip');
     archive.pipe(res);
