@@ -82,6 +82,7 @@ export interface MeshCoreNode {
   uptimeSecs?: number;
   latitude?: number;
   longitude?: number;
+  advLocPolicy?: number;
 }
 
 export interface MeshCoreContact {
@@ -806,6 +807,7 @@ class MeshCoreManager extends EventEmitter {
             radioCr: info.radio_cr,
             latitude: info.latitude,
             longitude: info.longitude,
+            advLocPolicy: info.adv_loc_policy,
           };
         }
       } catch (error) {
@@ -1038,6 +1040,61 @@ class MeshCoreManager extends EventEmitter {
         logger.error('[MeshCore] Failed to set radio:', error);
         return false;
       }
+    }
+  }
+
+  /**
+   * Set device coordinates (companion only)
+   */
+  async setCoords(lat: number, lon: number): Promise<boolean> {
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+      throw new Error('Invalid latitude: must be between -90 and 90');
+    }
+    if (!Number.isFinite(lon) || lon < -180 || lon > 180) {
+      throw new Error('Invalid longitude: must be between -180 and 180');
+    }
+
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      logger.warn('[MeshCore] set_coords not supported on repeater');
+      return false;
+    }
+
+    try {
+      const response = await this.sendBridgeCommand('set_coords', { lat, lon });
+      if (response.success && this.localNode) {
+        this.localNode.latitude = lat;
+        this.localNode.longitude = lon;
+      }
+      return response.success;
+    } catch (error) {
+      logger.error('[MeshCore] Failed to set coords:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Set advert location policy (companion only)
+   * policy: 0 = do not include location in adverts, 1 = include location
+   */
+  async setAdvertLocPolicy(policy: number): Promise<boolean> {
+    if (policy !== 0 && policy !== 1) {
+      throw new Error('Invalid advert location policy: must be 0 or 1');
+    }
+
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      logger.warn('[MeshCore] set_advert_loc_policy not supported on repeater');
+      return false;
+    }
+
+    try {
+      const response = await this.sendBridgeCommand('set_advert_loc_policy', { policy });
+      if (response.success && this.localNode) {
+        this.localNode.advLocPolicy = policy;
+      }
+      return response.success;
+    } catch (error) {
+      logger.error('[MeshCore] Failed to set advert loc policy:', error);
+      return false;
     }
   }
 

@@ -588,4 +588,76 @@ router.post('/config/radio', meshcoreDeviceLimiter, requireAuth(), requirePermis
   }
 });
 
+/**
+ * POST /api/meshcore/config/coords
+ * Set device GPS coordinates (companion only)
+ * Requires authentication - modifies device configuration
+ */
+router.post('/config/coords', meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { lat, lon } = req.body;
+
+    if (lat === undefined || lon === undefined) {
+      return res.status(400).json({ success: false, error: 'Both lat and lon are required' });
+    }
+
+    const parsedLat = parseFloat(lat);
+    const parsedLon = parseFloat(lon);
+
+    if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLon)) {
+      return res.status(400).json({ success: false, error: 'lat and lon must be valid numbers' });
+    }
+
+    if (parsedLat < -90 || parsedLat > 90) {
+      return res.status(400).json({ success: false, error: 'lat must be between -90 and 90' });
+    }
+    if (parsedLon < -180 || parsedLon > 180) {
+      return res.status(400).json({ success: false, error: 'lon must be between -180 and 180' });
+    }
+
+    const success = await managerFor(req).setCoords(parsedLat, parsedLon);
+
+    if (success) {
+      res.json({ success: true, message: 'Coordinates updated' });
+    } else {
+      res.status(400).json({ success: false, error: 'Failed to update coordinates' });
+    }
+  } catch (error) {
+    logger.error('[API] Error setting coords:', error);
+    res.status(500).json({ success: false, error: 'Config error' });
+  }
+});
+
+/**
+ * POST /api/meshcore/config/advert-loc-policy
+ * Set advert location policy (companion only)
+ * Requires authentication - modifies device configuration
+ */
+router.post('/config/advert-loc-policy', meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { policy } = req.body;
+
+    if (policy === undefined) {
+      return res.status(400).json({ success: false, error: 'policy is required' });
+    }
+
+    const parsedPolicy = parseInt(policy, 10);
+
+    if (parsedPolicy !== 0 && parsedPolicy !== 1) {
+      return res.status(400).json({ success: false, error: 'policy must be 0 or 1' });
+    }
+
+    const success = await managerFor(req).setAdvertLocPolicy(parsedPolicy);
+
+    if (success) {
+      res.json({ success: true, message: 'Advert location policy updated' });
+    } else {
+      res.status(400).json({ success: false, error: 'Failed to update advert location policy' });
+    }
+  } catch (error) {
+    logger.error('[API] Error setting advert loc policy:', error);
+    res.status(500).json({ success: false, error: 'Config error' });
+  }
+});
+
 export default router;

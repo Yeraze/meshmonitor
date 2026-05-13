@@ -44,6 +44,9 @@ export interface MeshCoreNode {
   snr?: number;
   batteryMv?: number;
   uptimeSecs?: number;
+  latitude?: number;
+  longitude?: number;
+  advLocPolicy?: number;
 }
 
 export interface MeshCoreMessage {
@@ -90,6 +93,8 @@ export interface MeshCoreActions {
   sendMessage: (text: string, toPublicKey?: string) => Promise<boolean>;
   setDeviceName: (name: string) => Promise<boolean>;
   setRadioParams: (params: { freq: number; bw: number; sf: number; cr: number }) => Promise<boolean>;
+  setCoords: (lat: number, lon: number) => Promise<boolean>;
+  setAdvertLocPolicy: (policy: number) => Promise<boolean>;
   refreshAll: () => Promise<void>;
   clearError: () => void;
 }
@@ -549,6 +554,46 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, fetchStatus]);
 
+  const setCoords = useCallback(async (lat: number, lon: number): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/coords`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lat, lon }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchStatus();
+        return true;
+      }
+      setError(data.error || 'Failed to update coordinates');
+      return false;
+    } catch (_err) {
+      setError('Failed to update coordinates');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch, fetchStatus]);
+
+  const setAdvertLocPolicy = useCallback(async (policy: number): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/advert-loc-policy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ policy }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchStatus();
+        return true;
+      }
+      setError(data.error || 'Failed to update advert location policy');
+      return false;
+    } catch (_err) {
+      setError('Failed to update advert location policy');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch, fetchStatus]);
+
   const refreshAll = useCallback(async () => {
     if (sourceId) {
       await loadSnapshot();
@@ -577,6 +622,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       sendMessage,
       setDeviceName,
       setRadioParams,
+      setCoords,
+      setAdvertLocPolicy,
       refreshAll,
       clearError,
     },
