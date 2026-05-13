@@ -58,9 +58,9 @@ function SourceApp() {
   if (source?.type === 'meshcore') {
     return (
       <SourceProvider sourceId={sourceId} sourceName={source.name}>
-        {/* No WebSocketProvider: the per-source meshcore surface polls REST
-            today; live updates come via slice-N follow-up. */}
-        <MeshCoreSourcePage key={sourceId} />
+        <WebSocketProvider>
+          <MeshCoreSourcePage key={sourceId} />
+        </WebSocketProvider>
       </SourceProvider>
     );
   }

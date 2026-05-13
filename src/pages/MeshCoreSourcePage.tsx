@@ -20,6 +20,13 @@ import { ToastProvider } from '../components/ToastContainer';
 import { useAuth } from '../contexts/AuthContext';
 import { useSource } from '../contexts/SourceContext';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useWebSocketContext } from '../contexts/WebSocketContext';
+import type {
+  MeshCoreMessageEvent,
+  MeshCoreContactUpdateEvent,
+  MeshCoreStatusUpdateEvent,
+  MeshCoreLocalNodeUpdateEvent,
+} from '../hooks/useWebSocket';
 import LoginModal from '../components/LoginModal';
 import UserMenu from '../components/UserMenu';
 import { appBasename } from '../init';
@@ -117,8 +124,61 @@ function MeshCoreSourceInner() {
   const [selectedContact, setSelectedContact] = useState<string>('');
 
   const connectedRef = useRef(false);
+  // Newest message timestamp seen — used by reconnect catch-up to request only
+  // messages we missed while the socket was down.
+  const seqCursorRef = useRef<number>(0);
+  // Local-node + contacts map are the source of truth for deriving `nodes`
+  // after push events arrive. The snapshot seeds both; events keep them fresh.
+  const localNodeRef = useRef<MeshCoreNode | null>(null);
+  const contactsRef = useRef<Map<string, MeshCoreContact>>(new Map());
 
-  // -- fetchers --------------------------------------------------------------
+  const { state: wsState } = useWebSocketContext();
+  const socket = wsState.socket;
+
+  const contactToNode = useCallback((c: MeshCoreContact): MeshCoreNode => ({
+    publicKey: c.publicKey,
+    name: c.advName || c.name || 'Unknown',
+    advType: c.advType ?? 0,
+    lastHeard: c.lastSeen,
+    rssi: c.rssi,
+    snr: c.snr,
+    latitude: c.latitude,
+    longitude: c.longitude,
+  }), []);
+
+  const recomputeNodes = useCallback(() => {
+    const merged: MeshCoreNode[] = [];
+    if (localNodeRef.current) merged.push(localNodeRef.current);
+    for (const c of contactsRef.current.values()) merged.push(contactToNode(c));
+    setNodes(merged);
+  }, [contactToNode]);
+
+  // -- snapshot (initial load) ----------------------------------------------
+
+  const loadSnapshot = useCallback(async (): Promise<boolean> => {
+    if (!base || !canReadConnection) return false;
+    try {
+      const res = await csrfFetch(`${base}/snapshot`);
+      const data = await res.json();
+      if (!data.success) return false;
+      const snap = data.data;
+      setStatus(snap.status);
+      localNodeRef.current = snap.status?.localNode ?? null;
+      contactsRef.current = new Map(
+        (snap.contacts ?? []).map((c: MeshCoreContact) => [c.publicKey, c]),
+      );
+      setContacts(snap.contacts ?? []);
+      setNodes(snap.nodes ?? []);
+      setMessages(snap.messages ?? []);
+      seqCursorRef.current = snap.seqCursor ?? 0;
+      return snap.status?.connected ?? false;
+    } catch (err) {
+      if (isAuthenticated) console.error('Failed to load meshcore snapshot:', err);
+      return false;
+    }
+  }, [base, canReadConnection, csrfFetch, isAuthenticated]);
+
+  // -- status-only safety-net poll (30s) ------------------------------------
 
   const fetchStatus = useCallback(async (): Promise<boolean> => {
     if (!base || !canReadConnection) return false;
@@ -127,49 +187,14 @@ function MeshCoreSourceInner() {
       const data = await res.json();
       if (data.success) {
         setStatus(data.data);
+        localNodeRef.current = data.data?.localNode ?? localNodeRef.current;
         return data.data.connected ?? false;
       }
     } catch (err) {
-      // Surface only if the user expects authority — anonymous loads stay quiet
       if (isAuthenticated) console.error('Failed to fetch meshcore status:', err);
     }
     return false;
   }, [base, canReadConnection, csrfFetch, isAuthenticated]);
-
-  const fetchNodes = useCallback(async () => {
-    if (!base || !canReadNodes) return;
-    try {
-      const res = await csrfFetch(`${base}/nodes`);
-      const data = await res.json();
-      if (data.success) setNodes(data.data ?? []);
-    } catch (err) {
-      if (isAuthenticated) console.error('Failed to fetch meshcore nodes:', err);
-    }
-  }, [base, canReadNodes, csrfFetch, isAuthenticated]);
-
-  const fetchContacts = useCallback(async () => {
-    if (!base || !canReadNodes) return;
-    try {
-      const res = await csrfFetch(`${base}/contacts`);
-      const data = await res.json();
-      if (data.success) setContacts(data.data ?? []);
-    } catch (err) {
-      if (isAuthenticated) console.error('Failed to fetch meshcore contacts:', err);
-    }
-  }, [base, canReadNodes, csrfFetch, isAuthenticated]);
-
-  const fetchMessages = useCallback(async () => {
-    if (!base || !canReadMessages) return;
-    try {
-      const res = await csrfFetch(`${base}/messages?limit=100`);
-      const data = await res.json();
-      if (data.success) setMessages(data.data ?? []);
-    } catch (err) {
-      if (isAuthenticated) console.error('Failed to fetch meshcore messages:', err);
-    }
-  }, [base, canReadMessages, csrfFetch, isAuthenticated]);
-
-  // -- polling ---------------------------------------------------------------
 
   useEffect(() => {
     connectedRef.current = status?.connected ?? false;
@@ -177,21 +202,111 @@ function MeshCoreSourceInner() {
 
   useEffect(() => {
     if (!base) return;
-    let cancelled = false;
-    const tick = async () => {
-      const isConnected = await fetchStatus();
-      if (cancelled) return;
-      if (isConnected) {
-        await Promise.all([fetchNodes(), fetchContacts(), fetchMessages()]);
-      }
+    void loadSnapshot();
+    const interval = setInterval(() => { void fetchStatus(); }, 30000);
+    return () => clearInterval(interval);
+  }, [base, loadSnapshot, fetchStatus]);
+
+  // -- push events ----------------------------------------------------------
+
+  useEffect(() => {
+    if (!socket || !sourceId) return;
+
+    const joinRoom = () => {
+      socket.emit('join-source', sourceId);
     };
-    void tick();
-    const interval = setInterval(tick, 5000);
+    // If the socket is already connected when this effect runs, join now.
+    // Otherwise the 'connect' handler below will join when it fires.
+    if (socket.connected) joinRoom();
+    socket.on('connect', joinRoom);
+
+    const onMessage = (msg: MeshCoreMessageEvent) => {
+      setMessages(prev => {
+        if (prev.some(m => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
+      if (msg.timestamp > seqCursorRef.current) seqCursorRef.current = msg.timestamp;
+    };
+
+    const onContactUpdated = (evt: MeshCoreContactUpdateEvent) => {
+      if (evt.sourceId !== sourceId) return;
+      const c = evt.contact;
+      contactsRef.current.set(c.publicKey, c as MeshCoreContact);
+      setContacts(Array.from(contactsRef.current.values()));
+      recomputeNodes();
+    };
+
+    const onStatusUpdated = (evt: MeshCoreStatusUpdateEvent) => {
+      if (evt.sourceId !== sourceId) return;
+      setStatus(prev => {
+        if (!prev) {
+          return {
+            connected: evt.connected,
+            deviceType: 0,
+            deviceTypeName: '',
+            config: null,
+            localNode: (evt.node as MeshCoreNode | null) ?? null,
+          };
+        }
+        return {
+          ...prev,
+          connected: evt.connected,
+          localNode: (evt.node as MeshCoreNode | null) ?? prev.localNode,
+        };
+      });
+      if (evt.node) localNodeRef.current = evt.node as MeshCoreNode;
+    };
+
+    const onLocalNodeUpdated = (evt: MeshCoreLocalNodeUpdateEvent) => {
+      if (evt.sourceId !== sourceId) return;
+      localNodeRef.current = evt.node as MeshCoreNode;
+      setStatus(prev => (prev ? { ...prev, localNode: evt.node as MeshCoreNode } : prev));
+      recomputeNodes();
+    };
+
+    // Reconnect catch-up: pull any messages we missed while disconnected, then
+    // rejoin the room (the 'connect' handler above also handles the rejoin).
+    const onReconnect = () => {
+      if (!base || !canReadMessages) return;
+      const since = seqCursorRef.current;
+      void (async () => {
+        try {
+          const res = await csrfFetch(`${base}/messages?since=${since}`);
+          const data = await res.json();
+          if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+            setMessages(prev => {
+              const seen = new Set(prev.map(m => m.id));
+              const additions = (data.data as MeshCoreMessage[]).filter(
+                m => !seen.has(m.id),
+              );
+              if (additions.length === 0) return prev;
+              for (const m of additions) {
+                if (m.timestamp > seqCursorRef.current) seqCursorRef.current = m.timestamp;
+              }
+              return [...prev, ...additions];
+            });
+          }
+        } catch (err) {
+          if (isAuthenticated) console.error('MeshCore reconnect catch-up failed:', err);
+        }
+      })();
+    };
+
+    socket.on('meshcore:message', onMessage);
+    socket.on('meshcore:contact:updated', onContactUpdated);
+    socket.on('meshcore:status:updated', onStatusUpdated);
+    socket.on('meshcore:local-node:updated', onLocalNodeUpdated);
+    socket.io.on('reconnect', onReconnect);
+
     return () => {
-      cancelled = true;
-      clearInterval(interval);
+      socket.off('connect', joinRoom);
+      socket.off('meshcore:message', onMessage);
+      socket.off('meshcore:contact:updated', onContactUpdated);
+      socket.off('meshcore:status:updated', onStatusUpdated);
+      socket.off('meshcore:local-node:updated', onLocalNodeUpdated);
+      socket.io.off('reconnect', onReconnect);
     };
-  }, [base, fetchStatus, fetchNodes, fetchContacts, fetchMessages]);
+  }, [socket, sourceId, base, canReadMessages, csrfFetch, isAuthenticated, recomputeNodes]);
 
   // -- actions ---------------------------------------------------------------
 
@@ -229,6 +344,8 @@ function MeshCoreSourceInner() {
         { method: 'POST' },
       );
       await fetchStatus();
+      contactsRef.current.clear();
+      localNodeRef.current = null;
       setNodes([]);
       setContacts([]);
       setMessages([]);
@@ -245,7 +362,12 @@ function MeshCoreSourceInner() {
     try {
       const res = await csrfFetch(`${base}/contacts/refresh`, { method: 'POST' });
       const data = await res.json();
-      if (data.success) setContacts(data.data ?? []);
+      if (data.success) {
+        const fresh = (data.data ?? []) as MeshCoreContact[];
+        contactsRef.current = new Map(fresh.map(c => [c.publicKey, c]));
+        setContacts(fresh);
+        recomputeNodes();
+      }
     } catch (err) {
       console.error('Refresh contacts error:', err);
     } finally {
@@ -278,7 +400,8 @@ function MeshCoreSourceInner() {
       const data = await res.json();
       if (data.success) {
         setMessageText('');
-        await fetchMessages();
+        // The server emits `meshcore:message` for outbound sends too, so the
+        // message will arrive via the socket listener.
       } else {
         setError(data.error || t('meshcore.send_failed', 'Failed to send message'));
       }
