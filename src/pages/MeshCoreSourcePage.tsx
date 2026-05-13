@@ -196,17 +196,20 @@ function MeshCoreSourceInner() {
   // -- actions ---------------------------------------------------------------
 
   const handleConnect = async () => {
-    if (!base || !canWriteConnection) return;
+    if (!sourceId || !canWriteConnection) return;
     setLoading(true);
     setError(null);
     try {
-      // The nested /connect route already pulls connection params from the
-      // saved source.config, so we don't need to send a body.
-      const res = await csrfFetch(`${base}/connect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
+      // The generic /api/sources/:id/connect endpoint pulls connection params
+      // from the saved source.config, so we don't need to send a body.
+      const res = await csrfFetch(
+        `${appBasename}/api/sources/${encodeURIComponent(sourceId)}/connect`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        },
+      );
       const data = await res.json();
       if (!data.success) setError(data.error || t('meshcore.connect_failed', 'Connection failed'));
       await fetchStatus();
@@ -218,10 +221,13 @@ function MeshCoreSourceInner() {
   };
 
   const handleDisconnect = async () => {
-    if (!base || !canWriteConnection) return;
+    if (!sourceId || !canWriteConnection) return;
     setLoading(true);
     try {
-      await csrfFetch(`${base}/disconnect`, { method: 'POST' });
+      await csrfFetch(
+        `${appBasename}/api/sources/${encodeURIComponent(sourceId)}/disconnect`,
+        { method: 'POST' },
+      );
       await fetchStatus();
       setNodes([]);
       setContacts([]);
