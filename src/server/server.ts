@@ -1003,7 +1003,44 @@ apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
     // Filter nodes based on channel read permissions
     const filteredNodes = await filterNodesByChannelPermission(allNodes, (req as any).user);
     const enhancedNodes = await Promise.all(filteredNodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions)));
-    res.json(enhancedNodes);
+
+    // Append MeshCore contacts/localNodes so the aggregate dashboard map can
+    // render them alongside Meshtastic nodes. MeshCore stores lastSeen in ms;
+    // dashboard age-cutoff expects seconds, so we down-convert here.
+    const meshcoreManagers = nodesSourceId
+      ? (meshcoreManagerRegistry.get(nodesSourceId) ? [meshcoreManagerRegistry.get(nodesSourceId)!] : [])
+      : meshcoreManagerRegistry.list();
+    const meshcoreNodes: any[] = [];
+    for (const mgr of meshcoreManagers) {
+      for (const n of mgr.getAllNodes()) {
+        if (n.latitude == null || n.longitude == null) continue;
+        if (n.latitude === 0 && n.longitude === 0) continue;
+        const lastHeard = typeof n.lastHeard === 'number'
+          ? Math.floor(n.lastHeard / 1000)
+          : Math.floor(Date.now() / 1000);
+        const pubKey = n.publicKey || '';
+        const nodeId = `mc:${mgr.sourceId}:${pubKey.substring(0, 12)}`;
+        meshcoreNodes.push({
+          nodeId,
+          nodeNum: 0,
+          sourceId: mgr.sourceId,
+          isMeshCore: true,
+          isIgnored: false,
+          isFavorite: false,
+          user: { id: nodeId, longName: n.name, shortName: (n.name || '').substring(0, 4) },
+          longName: n.name,
+          shortName: (n.name || '').substring(0, 4),
+          latitude: n.latitude,
+          longitude: n.longitude,
+          position: { latitude: n.latitude, longitude: n.longitude },
+          lastHeard,
+          hopsAway: 0,
+          role: 0,
+        });
+      }
+    }
+
+    res.json([...enhancedNodes, ...meshcoreNodes]);
   } catch (error) {
     logger.error('Error fetching nodes:', error);
     res.status(500).json({ error: 'Failed to fetch nodes' });
