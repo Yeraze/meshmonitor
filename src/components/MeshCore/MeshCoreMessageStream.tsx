@@ -79,7 +79,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           const friendlyName = outgoing ? null : nameForKey(m.fromPublicKey);
           const fromLabel = outgoing
             ? t('meshcore.you', 'You')
-            : friendlyName ?? `${m.fromPublicKey.substring(0, 8)}…`;
+            : m.fromName ?? friendlyName ?? `${m.fromPublicKey.substring(0, 8)}…`;
           return (
             <div key={m.id} className={`mc-message-row ${outgoing ? 'outgoing' : ''}`}>
               <div className="mc-message-header">

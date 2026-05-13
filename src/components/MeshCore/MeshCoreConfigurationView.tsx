@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ConnectionStatus, MeshCoreActions } from './hooks/useMeshCore';
+import { RADIO_PRESETS, findPresetId } from './radioPresets';
 
 interface MeshCoreConfigurationViewProps {
   status: ConnectionStatus | null;
@@ -24,6 +25,18 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   const [lon, setLon] = useState<number>(local?.longitude ?? 0);
   const [advLoc, setAdvLoc] = useState<boolean>(local?.advLocPolicy === 1);
 
+  const presetId = useMemo(() => findPresetId(freq, bw, sf, cr), [freq, bw, sf, cr]);
+
+  const handlePresetChange = (id: string) => {
+    if (id === 'custom') return;
+    const preset = RADIO_PRESETS.find(p => p.id === id);
+    if (!preset) return;
+    setFreq(preset.freq);
+    setBw(preset.bw);
+    setSf(preset.sf);
+    setCr(preset.cr);
+  };
+
   const [savingName, setSavingName] = useState(false);
   const [savingRadio, setSavingRadio] = useState(false);
   const [savingLocation, setSavingLocation] = useState(false);
@@ -37,21 +50,19 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   }, [local?.name]);
 
   useEffect(() => {
-    if (local) {
-      if (typeof local.radioFreq === 'number') setFreq(local.radioFreq);
-      if (typeof local.radioBw === 'number') setBw(local.radioBw);
-      if (typeof local.radioSf === 'number') setSf(local.radioSf);
-      if (typeof local.radioCr === 'number') setCr(local.radioCr);
-    }
-  }, [local]);
+    if (!local) return;
+    if (typeof local.radioFreq === 'number') setFreq(local.radioFreq);
+    if (typeof local.radioBw === 'number') setBw(local.radioBw);
+    if (typeof local.radioSf === 'number') setSf(local.radioSf);
+    if (typeof local.radioCr === 'number') setCr(local.radioCr);
+  }, [local?.radioFreq, local?.radioBw, local?.radioSf, local?.radioCr]);
 
   useEffect(() => {
-    if (local) {
-      if (typeof local.latitude === 'number') setLat(local.latitude);
-      if (typeof local.longitude === 'number') setLon(local.longitude);
-      if (typeof local.advLocPolicy === 'number') setAdvLoc(local.advLocPolicy === 1);
-    }
-  }, [local]);
+    if (!local) return;
+    if (typeof local.latitude === 'number') setLat(local.latitude);
+    if (typeof local.longitude === 'number') setLon(local.longitude);
+    if (typeof local.advLocPolicy === 'number') setAdvLoc(local.advLocPolicy === 1);
+  }, [local?.latitude, local?.longitude, local?.advLocPolicy]);
 
   const handleSaveName = async () => {
     if (!name.trim()) return;
@@ -207,6 +218,20 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           {t('meshcore.config.radio_hint',
             'Frequency (137–1020 MHz), Bandwidth (kHz), Spreading Factor (5–12), Coding Rate (5–8 → 4/5 – 4/8).')}
         </p>
+        <div>
+          <label htmlFor="mc-cfg-preset">{t('meshcore.config.preset', 'Preset')}</label>
+          <select
+            id="mc-cfg-preset"
+            value={presetId}
+            onChange={e => handlePresetChange(e.target.value)}
+            disabled={!connected || savingRadio}
+          >
+            <option value="custom">{t('meshcore.config.preset.custom', 'Custom')}</option>
+            {RADIO_PRESETS.map(p => (
+              <option key={p.id} value={p.id}>{p.label}</option>
+            ))}
+          </select>
+        </div>
         <div className="form-row">
           <div>
             <label>{t('meshcore.config.frequency', 'Frequency (MHz)')}</label>

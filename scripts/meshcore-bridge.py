@@ -374,8 +374,11 @@ class MeshCoreBridge:
         sf = cmd_data.get('sf')
         cr = cmd_data.get('cr')
 
-        await self.meshcore.commands.set_radio(freq, bw, sf, cr)
-        return {'id': cmd_id, 'success': True, 'data': {'set': True}}
+        result = await self.meshcore.commands.set_radio(freq, bw, sf, cr)
+        if result is not None and getattr(result, 'is_error', lambda: False)():
+            err = getattr(result, 'payload', None) or 'device rejected set_radio'
+            return {'id': cmd_id, 'success': False, 'error': str(err)}
+        return {'id': cmd_id, 'success': True, 'data': {'set': True, 'freq': freq, 'bw': bw, 'sf': sf, 'cr': cr}}
 
     async def cmd_set_coords(self, cmd_id: str, cmd_data: dict) -> dict:
         """Set device GPS coordinates (lat/lon in decimal degrees)"""

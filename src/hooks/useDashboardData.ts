@@ -313,17 +313,27 @@ function mergeNodeRecords(records: any[]): any {
 export function mergeUnifiedSourceData(
   perSource: Array<{ nodes: unknown[]; traceroutes: unknown[]; neighborInfo: unknown[]; channels: unknown[] }>,
 ): { nodes: unknown[]; traceroutes: unknown[]; neighborInfo: unknown[]; channels: unknown[] } {
-  const recordsByNum = new Map<number, any[]>();
+  // Keys are stringified so MeshCore contacts (which don't have a meshtastic
+  // nodeNum and instead carry an `mc:<source>:<pubkey>` nodeId) don't all
+  // collapse into the bucket for nodeNum=0.
+  const recordsByKey = new Map<string, any[]>();
   const traceroutes: unknown[] = [];
   const neighborInfo: unknown[] = [];
   let channels: unknown[] = [];
 
   for (const ps of perSource) {
     for (const n of ps.nodes as any[]) {
-      if (n == null || typeof n.nodeNum !== 'number') continue;
-      const bucket = recordsByNum.get(n.nodeNum);
+      if (n == null) continue;
+      let key: string | null = null;
+      if (n.isMeshCore && typeof n.nodeId === 'string' && n.nodeId.length > 0) {
+        key = `mc:${n.nodeId}`;
+      } else if (typeof n.nodeNum === 'number') {
+        key = `mt:${n.nodeNum}`;
+      }
+      if (key == null) continue;
+      const bucket = recordsByKey.get(key);
       if (bucket) bucket.push(n);
-      else recordsByNum.set(n.nodeNum, [n]);
+      else recordsByKey.set(key, [n]);
     }
     traceroutes.push(...ps.traceroutes);
     neighborInfo.push(...ps.neighborInfo);
@@ -332,7 +342,7 @@ export function mergeUnifiedSourceData(
     }
   }
 
-  const nodes = Array.from(recordsByNum.values()).map(mergeNodeRecords);
+  const nodes = Array.from(recordsByKey.values()).map(mergeNodeRecords);
 
   return {
     nodes,

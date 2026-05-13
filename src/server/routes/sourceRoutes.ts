@@ -474,6 +474,43 @@ router.get('/:id/nodes', requirePermission('nodes', 'read', { sourceIdFrom: 'par
     const source = await databaseService.sources.getSource(req.params.id);
     if (!source) return res.status(404).json({ error: 'Source not found' });
 
+    // MeshCore sources don't share the meshtastic node table — pull contacts
+    // (and localNode) directly from the per-source MeshCoreManager and map
+    // them into the dashboard's flat node shape.
+    if (source.type === 'meshcore') {
+      const mcManager = meshcoreManagerRegistry.get(source.id);
+      const mcNodes: any[] = [];
+      if (mcManager) {
+        for (const n of mcManager.getAllNodes()) {
+          if (n.latitude == null || n.longitude == null) continue;
+          if (n.latitude === 0 && n.longitude === 0) continue;
+          const lastHeard = typeof n.lastHeard === 'number'
+            ? Math.floor(n.lastHeard / 1000)
+            : Math.floor(Date.now() / 1000);
+          const pubKey = n.publicKey || '';
+          const nodeId = `mc:${mcManager.sourceId}:${pubKey.substring(0, 12)}`;
+          mcNodes.push({
+            nodeId,
+            nodeNum: 0,
+            sourceId: mcManager.sourceId,
+            isMeshCore: true,
+            isIgnored: false,
+            isFavorite: false,
+            user: { id: nodeId, longName: n.name, shortName: (n.name || '').substring(0, 4) },
+            longName: n.name,
+            shortName: (n.name || '').substring(0, 4),
+            latitude: n.latitude,
+            longitude: n.longitude,
+            position: { latitude: n.latitude, longitude: n.longitude },
+            lastHeard,
+            hopsAway: 0,
+            role: 0,
+          });
+        }
+      }
+      return res.json(mcNodes);
+    }
+
     // Nodes are stored per-source (composite PK (nodeNum, sourceId) since
     // migration 029). Filter strictly by this source so two sources viewing
     // overlapping meshes show only what each has actually heard.
