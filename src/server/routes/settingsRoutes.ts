@@ -541,6 +541,23 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
       }
     }
 
+    // Apprise API server URL (global; #3012). Empty string clears the override
+    // so the resolver falls back to APPRISE_URL env / bundled localhost default.
+    if ('appriseApiServerUrl' in filteredSettings) {
+      const raw = filteredSettings.appriseApiServerUrl.trim();
+      if (raw.length > 0) {
+        try {
+          const parsed = new URL(raw);
+          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return res.status(400).json({ error: 'appriseApiServerUrl must use http:// or https://' });
+          }
+        } catch {
+          return res.status(400).json({ error: 'appriseApiServerUrl must be a valid http(s) URL' });
+        }
+      }
+      filteredSettings.appriseApiServerUrl = raw;
+    }
+
     // Save to database
     if (sourceId) {
       // Per-source: store with source: prefix
@@ -781,6 +798,121 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
   } catch (error) {
     logger.error('Error saving settings:', error);
     res.status(500).json({ error: 'Failed to save settings' });
+  }
+});
+
+// POST /settings/test-apprise — probe an Apprise API server URL (#3012).
+// If `url` is supplied in the body, that URL is tested directly (so admins can
+// validate a value before saving it). Otherwise the currently-saved global
+// setting is used, falling back to the same precedence as the resolver
+// (APPRISE_URL env / bundled http://localhost:8000).
+export const MAX_APPRISE_PROBE_URL_LENGTH = 2048;
+
+// Hostnames/IPs that resolve to cloud Instance Metadata Service endpoints.
+// Even though this route is admin-only and never returns the upstream body,
+// allowing `fetch()` at these hosts gives a stolen settings:write token a
+// reliable SSRF primitive against AWS/GCP/Azure IMDS. Block them by name and
+// by the 169.254.0.0/16 link-local range that backs the IPv4 IMDS.
+const BLOCKED_APPRISE_PROBE_HOSTNAMES = new Set([
+  'metadata.google.internal',
+  'metadata.azure.com',
+]);
+
+function isBlockedAppriseProbeHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (BLOCKED_APPRISE_PROBE_HOSTNAMES.has(h)) return true;
+  if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  return false;
+}
+
+export interface AppriseProbeUrlValidation {
+  ok: boolean;
+  error?: string;
+  probeUrl?: string;
+}
+
+export function validateAppriseProbeUrl(raw: string): AppriseProbeUrlValidation {
+  if (raw.length === 0) return { ok: false, error: 'URL is required' };
+  if (raw.length > MAX_APPRISE_PROBE_URL_LENGTH) return { ok: false, error: 'URL is too long' };
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return { ok: false, error: 'Invalid URL format' };
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return { ok: false, error: 'URL must use http:// or https://' };
+  }
+  if (isBlockedAppriseProbeHost(parsed.hostname)) {
+    return { ok: false, error: 'Host is not permitted' };
+  }
+  let pathEnd = parsed.pathname.length;
+  while (pathEnd > 0 && parsed.pathname.charCodeAt(pathEnd - 1) === 47 /* '/' */) {
+    pathEnd--;
+  }
+  const probeUrl = `${parsed.origin}${parsed.pathname.slice(0, pathEnd)}/health`;
+  return { ok: true, probeUrl };
+}
+
+router.post('/test-apprise', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
+  try {
+    const requestUrl = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+
+    let target: string;
+    if (requestUrl.length > 0) {
+      target = requestUrl;
+    } else {
+      const saved = await databaseService.settings.getSetting('appriseApiServerUrl');
+      target = (saved && saved.trim().length > 0)
+        ? saved.trim()
+        : (process.env.APPRISE_URL || 'http://localhost:8000');
+    }
+
+    const validation = validateAppriseProbeUrl(target);
+    if (!validation.ok || !validation.probeUrl) {
+      return res.status(400).json({ ok: false, error: validation.error || 'Invalid URL', url: target });
+    }
+    const probeUrl = validation.probeUrl;
+    const start = Date.now();
+    try {
+      const response = await fetch(probeUrl, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000),
+      });
+      const latencyMs = Date.now() - start;
+
+      if (!response.ok) {
+        return res.json({
+          ok: false,
+          status: response.status,
+          latencyMs,
+          error: `Apprise server returned HTTP ${response.status}`,
+          url: target,
+        });
+      }
+
+      return res.json({
+        ok: true,
+        status: response.status,
+        latencyMs,
+        url: target,
+      });
+    } catch (error: any) {
+      const latencyMs = Date.now() - start;
+      const isTimeout = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+      const message = isTimeout
+        ? 'Connection timed out after 5000ms'
+        : (error?.message || String(error));
+      return res.json({
+        ok: false,
+        latencyMs,
+        error: message,
+        url: target,
+      });
+    }
+  } catch (error) {
+    logger.error('Error testing Apprise connection:', error);
+    res.status(500).json({ ok: false, error: 'Failed to test Apprise connection' });
   }
 });
 

@@ -4159,5 +4159,13 @@
     "unified.messages.heard_by_count": "",
     "settings.analytics_custom_script_label": "",
     "meshcore.port": "",
-    "auto_responder.cooldown_badge": ""
+    "auto_responder.cooldown_badge": "",
+    "settings.apprise_server_section": "Apprise API Server",
+    "settings.apprise_server_description": "MeshMonitor delivers Apprise notifications through an Apprise API server, which fans out to the per-user notification service URLs (Discord, email, etc.) configured elsewhere. Override the server location below if you are running it outside the bundled container.",
+    "settings.apprise_server_url_label": "Apprise API Server URL",
+    "settings.apprise_server_url_description": "Leave empty if MeshMonitor's bundled Apprise API server is running (default for Docker installs).",
+    "settings.apprise_server_test": "Test Connection",
+    "settings.apprise_server_testing": "Testing…",
+    "settings.apprise_server_test_success": "Connected successfully ({{latency}}ms)",
+    "settings.apprise_server_test_failure": "Connection failed: {{error}}"
 }

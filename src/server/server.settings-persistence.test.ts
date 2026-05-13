@@ -165,6 +165,7 @@ function validTestValue(key: string, suffix = ''): string {
     autoDeleteByDistanceThresholdKm: '100',
     autoDeleteByDistanceLat: '40.7128',
     autoDeleteByDistanceLon: '-74.006',
+    appriseApiServerUrl: 'http://apprise.example.com:8000',
   };
 
   if (key in VALID_VALUES) {
@@ -408,6 +409,9 @@ describe('Settings Persistence', () => {
         'localStatsIntervalMinutes',
         // Analytics — backend injects into HTML, frontend doesn't need them
         'analyticsProvider', 'analyticsConfig',
+        // Apprise API server URL (#3012) — loaded directly by SettingsTab,
+        // not surfaced via SettingsContext (admin-only field, no global hook).
+        'appriseApiServerUrl',
       ];
 
       const keysNotLoaded = SETTINGS_TAB_SENDS.filter(

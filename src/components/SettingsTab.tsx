@@ -92,7 +92,7 @@ interface SettingsTabProps {
 
 const GLOBAL_SECTIONS = new Set([
   'settings-language', 'settings-units', 'settings-appearance', 'settings-map',
-  'settings-backup', 'settings-maintenance', 'settings-auto-upgrade', 'settings-analytics',
+  'settings-apprise-server', 'settings-backup', 'settings-maintenance', 'settings-auto-upgrade', 'settings-analytics',
 ]);
 
 const SOURCE_SECTIONS = new Set([
@@ -240,6 +240,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localAnalyticsConfig, setLocalAnalyticsConfig] = useState<Record<string, string>>({});
   const [initialAnalyticsProvider, setInitialAnalyticsProvider] = useState<string>('none');
   const [initialAnalyticsConfig, setInitialAnalyticsConfig] = useState<string>('{}');
+  const [localAppriseApiServerUrl, setLocalAppriseApiServerUrl] = useState<string>('');
+  const [initialAppriseApiServerUrl, setInitialAppriseApiServerUrl] = useState<string>('');
+  const [isTestingApprise, setIsTestingApprise] = useState<boolean>(false);
+  const [appriseTestResult, setAppriseTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const { showToast } = useToast();
 
   // Fetch system status to determine if running in Docker
@@ -333,6 +337,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               setInitialAnalyticsConfig(settings.analyticsConfig);
             } catch { /* ignore parse errors */ }
           }
+
+          // Load Apprise API server URL (#3012)
+          const appriseApiServerUrl = typeof settings.appriseApiServerUrl === 'string'
+            ? settings.appriseApiServerUrl
+            : '';
+          setLocalAppriseApiServerUrl(appriseApiServerUrl);
+          setInitialAppriseApiServerUrl(appriseApiServerUrl);
         }
       } catch (error) {
         logger.error('Failed to fetch server settings:', error);
@@ -439,7 +450,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       nodeDimmingStartHours !== initialNodeDimmingSettings.startHours ||
       nodeDimmingMinOpacity !== initialNodeDimmingSettings.minOpacity ||
       localAnalyticsProvider !== initialAnalyticsProvider ||
-      JSON.stringify(localAnalyticsConfig) !== initialAnalyticsConfig;
+      JSON.stringify(localAnalyticsConfig) !== initialAnalyticsConfig ||
+      localAppriseApiServerUrl !== initialAppriseApiServerUrl;
     setHasChanges(changed);
   }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localDefaultLandingPage, localTheme, localNodeHopsCalculation, localDashboardSortOption,
       maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, defaultLandingPage, theme, nodeHopsCalculation, preferredDashboardSortOption,
@@ -449,7 +461,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localHideIncompleteNodes, showIncompleteNodes, localHomoglyphEnabled, initialHomoglyphEnabled,
       localLocalStatsIntervalMinutes, initialLocalStatsIntervalMinutes,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, initialNodeDimmingSettings,
-      localAnalyticsProvider, localAnalyticsConfig, initialAnalyticsProvider, initialAnalyticsConfig]);
+      localAnalyticsProvider, localAnalyticsConfig, initialAnalyticsProvider, initialAnalyticsConfig,
+      localAppriseApiServerUrl, initialAppriseApiServerUrl]);
 
   // Reset local state to current saved values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -492,6 +505,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setNodeDimmingMinOpacity(initialNodeDimmingSettings.minOpacity);
     setLocalAnalyticsProvider(initialAnalyticsProvider);
     try { setLocalAnalyticsConfig(JSON.parse(initialAnalyticsConfig)); } catch { setLocalAnalyticsConfig({}); }
+    setLocalAppriseApiServerUrl(initialAppriseApiServerUrl);
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes,
       inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours,
       favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat,
@@ -500,7 +514,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes,
       initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialNodeDimmingSettings,
       setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity,
-      initialAnalyticsProvider, initialAnalyticsConfig]);
+      initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -545,6 +559,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         nodeDimmingMinOpacity: nodeDimmingMinOpacity.toString(),
         analyticsProvider: localAnalyticsProvider,
         analyticsConfig: JSON.stringify(localAnalyticsConfig),
+        appriseApiServerUrl: localAppriseApiServerUrl.trim(),
       };
 
       // Save to server
@@ -597,6 +612,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       });
       setInitialAnalyticsProvider(localAnalyticsProvider);
       setInitialAnalyticsConfig(JSON.stringify(localAnalyticsConfig));
+      setInitialAppriseApiServerUrl(localAppriseApiServerUrl.trim());
 
       showToast(t('settings.saved_success'), 'success');
       setHasChanges(false);
@@ -622,7 +638,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange, onSolarMonitoringAzimuthChange,
       onSolarMonitoringDeclinationChange, setShowIncompleteNodes, showToast, t,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
-      localAnalyticsProvider, localAnalyticsConfig]);
+      localAnalyticsProvider, localAnalyticsConfig, localAppriseApiServerUrl]);
 
   // Register with SaveBar
   useSaveBar({
@@ -633,6 +649,49 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     onSave: handleSave,
     onDismiss: resetChanges
   });
+
+  const handleTestAppriseConnection = useCallback(async () => {
+    setIsTestingApprise(true);
+    setAppriseTestResult(null);
+    try {
+      const response = await csrfFetch(`${baseUrl}/api/settings/test-apprise`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ url: localAppriseApiServerUrl.trim() || undefined }),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        setAppriseTestResult({
+          ok: false,
+          message: errBody.error || `HTTP ${response.status}`,
+        });
+        return;
+      }
+
+      const data: { ok: boolean; status?: number; error?: string; latencyMs?: number } = await response.json();
+      if (data.ok) {
+        setAppriseTestResult({
+          ok: true,
+          message: t('settings.apprise_server_test_success', 'Connected successfully ({{latency}}ms)', { latency: data.latencyMs ?? 0 }),
+        });
+      } else {
+        setAppriseTestResult({
+          ok: false,
+          message: t('settings.apprise_server_test_failure', 'Connection failed: {{error}}', { error: data.error || 'Unknown error' }),
+        });
+      }
+    } catch (error) {
+      logger.error('Failed to test Apprise connection:', error);
+      setAppriseTestResult({
+        ok: false,
+        message: t('settings.apprise_server_test_failure', 'Connection failed: {{error}}', { error: error instanceof Error ? error.message : String(error) }),
+      });
+    } finally {
+      setIsTestingApprise(false);
+    }
+  }, [csrfFetch, baseUrl, localAppriseApiServerUrl, t]);
 
   const handleFetchSolarEstimates = async () => {
     setIsFetchingSolarEstimates(true);
@@ -925,6 +984,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         { id: 'settings-notifications', label: t('settings.notifications_and_security') },
         { id: 'settings-packet-monitor', label: t('settings.packet_monitor') },
         { id: 'settings-solar', label: t('settings.solar_monitoring') },
+        ...(isAdmin ? [{ id: 'settings-apprise-server', label: t('settings.apprise_server_section', 'Apprise API Server') }] : []),
         { id: 'settings-backup', label: t('settings.system_backup', 'System Backup') },
         // Only show Database Maintenance for SQLite - it uses SQLite-specific features like VACUUM
         ...(databaseType === 'sqlite' ? [{ id: 'settings-maintenance', label: t('maintenance.title', 'Database Maintenance') }] : []),
@@ -1631,6 +1691,55 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
             </>
           )}
+        </div>}
+
+        {show('settings-apprise-server') && isAdmin && <div id="settings-apprise-server" className="settings-section">
+          <h3>{t('settings.apprise_server_section', 'Apprise API Server')}</h3>
+          <p className="setting-description">
+            {t('settings.apprise_server_description', 'MeshMonitor delivers Apprise notifications through an Apprise API server, which fans out to the per-user notification service URLs (Discord, email, etc.) configured elsewhere. Override the server location below if you are running it outside the bundled container.')}
+          </p>
+          <div className="setting-item">
+            <label htmlFor="appriseApiServerUrl">
+              {t('settings.apprise_server_url_label', 'Apprise API Server URL')}
+              <span className="setting-description">
+                {t('settings.apprise_server_url_description', 'Leave empty if MeshMonitor\'s bundled Apprise API server is running (default for Docker installs).')}
+              </span>
+            </label>
+            <input
+              id="appriseApiServerUrl"
+              type="url"
+              value={localAppriseApiServerUrl}
+              onChange={(e) => setLocalAppriseApiServerUrl(e.target.value)}
+              placeholder="http://localhost:8000"
+              className="setting-input"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <div style={{ marginTop: '0.75rem' }}>
+              <button
+                type="button"
+                onClick={handleTestAppriseConnection}
+                disabled={isTestingApprise}
+                className="save-button"
+                style={{ width: 'auto', padding: '0.5rem 1rem' }}
+              >
+                {isTestingApprise
+                  ? t('settings.apprise_server_testing', 'Testing…')
+                  : t('settings.apprise_server_test', 'Test Connection')}
+              </button>
+              {appriseTestResult && (
+                <p
+                  className="setting-description"
+                  style={{
+                    marginTop: '0.5rem',
+                    color: appriseTestResult.ok ? 'var(--color-success, #10b981)' : 'var(--color-error, #ef4444)',
+                  }}
+                >
+                  {appriseTestResult.message}
+                </p>
+              )}
+            </div>
+          </div>
         </div>}
 
         {show('settings-backup') && <div id="settings-backup">

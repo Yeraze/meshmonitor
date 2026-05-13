@@ -1528,6 +1528,15 @@
   "settings.shutdown_action": "shut down",
   "settings.restart_failed": "Failed to {{action}}. Please try again.",
 
+  "settings.apprise_server_section": "Apprise API Server",
+  "settings.apprise_server_description": "MeshMonitor delivers Apprise notifications through an Apprise API server, which fans out to the per-user notification service URLs (Discord, email, etc.) configured elsewhere. Override the server location below if you are running it outside the bundled container.",
+  "settings.apprise_server_url_label": "Apprise API Server URL",
+  "settings.apprise_server_url_description": "Leave empty if MeshMonitor's bundled Apprise API server is running (default for Docker installs).",
+  "settings.apprise_server_test": "Test Connection",
+  "settings.apprise_server_testing": "Testing…",
+  "settings.apprise_server_test_success": "Connected successfully ({{latency}}ms)",
+  "settings.apprise_server_test_failure": "Connection failed: {{error}}",
+
   "settings.analytics": "Analytics",
   "settings.analytics_provider_label": "Analytics Provider",
   "settings.analytics_provider_description": "Select an analytics service to track visitor traffic on your instance.",
