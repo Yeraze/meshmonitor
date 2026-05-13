@@ -1,0 +1,532 @@
+/**
+ * MeshCorePage layout — sub-toolbar (left) + content (right).
+ */
+
+.meshcore-page {
+  display: flex;
+  flex-direction: column;
+  /* .app-main applies header+2rem top padding and 2rem on the other sides.
+     Take what we're given but fill the remaining viewport height. */
+  height: calc(100dvh - var(--header-height, 60px) - 4rem);
+  overflow: hidden;
+  background: var(--ctp-base);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-xl);
+}
+
+/* Status strip under the AppHeader */
+.meshcore-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background: var(--ctp-surface0);
+  border-bottom: 1px solid var(--ctp-surface1);
+  flex-shrink: 0;
+}
+
+.meshcore-status-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.meshcore-status-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.meshcore-status-bar .status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--ctp-overlay0);
+  flex-shrink: 0;
+}
+
+.meshcore-status-bar .status-dot.connected {
+  background: var(--ctp-green);
+  box-shadow: 0 0 8px var(--ctp-green);
+}
+
+.meshcore-status-bar .status-text {
+  color: var(--ctp-text);
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.meshcore-status-bar .status-meta {
+  color: var(--ctp-subtext0);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meshcore-status-bar button {
+  background: var(--ctp-mauve);
+  color: var(--ctp-accent-text);
+  border: none;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+
+.meshcore-status-bar button:hover { background: var(--ctp-pink); }
+.meshcore-status-bar button:disabled {
+  background: var(--ctp-surface2);
+  color: var(--ctp-overlay0);
+  cursor: not-allowed;
+}
+.meshcore-status-bar button.disconnect { background: var(--ctp-red); }
+.meshcore-status-bar button.disconnect:hover { background: var(--ctp-maroon); }
+
+/* Error banner */
+.meshcore-error-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background: var(--ctp-red);
+  color: var(--ctp-accent-text);
+}
+
+.meshcore-error-bar button {
+  background: transparent;
+  border: 1px solid var(--ctp-accent-text);
+  color: var(--ctp-accent-text);
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+/* Body row: sub-toolbar + content */
+.meshcore-page-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Sub-toolbar (narrow left strip) */
+.meshcore-sub-toolbar {
+  width: 56px;
+  background: var(--ctp-mantle);
+  border-right: 1px solid var(--ctp-surface1);
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0;
+  flex-shrink: 0;
+  transition: width 0.18s ease;
+}
+
+.meshcore-sub-toolbar.expanded {
+  width: 220px;
+}
+
+.meshcore-sub-toolbar-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  margin: 0.1rem 0.4rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--ctp-subtext0);
+  border: none;
+  background: transparent;
+  font-size: 0.9rem;
+  text-align: left;
+  width: calc(100% - 0.8rem);
+}
+
+.meshcore-sub-toolbar-item:hover {
+  background: var(--ctp-surface1);
+  color: var(--ctp-text);
+}
+
+.meshcore-sub-toolbar-item.active {
+  background: var(--ctp-surface1);
+  color: var(--ctp-mauve);
+}
+
+.meshcore-sub-toolbar-item .icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.meshcore-sub-toolbar.collapsed .meshcore-sub-toolbar-item .label {
+  display: none;
+}
+
+.meshcore-sub-toolbar-spacer { flex: 1; }
+
+.meshcore-sub-toolbar-toggle {
+  margin: 0.25rem 0.4rem;
+  background: transparent;
+  border: 1px solid var(--ctp-surface2);
+  color: var(--ctp-subtext0);
+  border-radius: var(--radius-md);
+  padding: 0.35rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.meshcore-sub-toolbar-toggle:hover {
+  color: var(--ctp-text);
+  background: var(--ctp-surface1);
+}
+
+/* Content area */
+.meshcore-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Two-pane view (list + main) */
+.meshcore-two-pane {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.meshcore-list-pane {
+  width: 320px;
+  flex-shrink: 0;
+  background: var(--ctp-surface0);
+  border-right: 1px solid var(--ctp-surface1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.meshcore-list-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.9rem;
+  background: var(--ctp-mantle);
+  border-bottom: 1px solid var(--ctp-surface1);
+  color: var(--ctp-text);
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.meshcore-list-pane-header .pane-count {
+  color: var(--ctp-subtext0);
+  font-weight: normal;
+  font-size: 0.8rem;
+}
+
+.meshcore-list-pane-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.4rem;
+}
+
+.meshcore-main-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Map area */
+.meshcore-map-pane {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+
+.meshcore-map-pane .leaflet-container {
+  height: 100%;
+  width: 100%;
+  background: var(--ctp-surface0);
+}
+
+/* Nodes list items */
+.mc-node-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  margin-bottom: 0.2rem;
+  background: var(--ctp-surface1);
+}
+
+.mc-node-row:hover { background: var(--ctp-surface2); }
+.mc-node-row.selected { background: var(--ctp-surface2); outline: 1px solid var(--ctp-mauve); }
+
+.mc-node-row-name {
+  color: var(--ctp-text);
+  font-weight: 500;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mc-node-row-type {
+  background: var(--ctp-surface0);
+  color: var(--ctp-subtext0);
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  font-weight: normal;
+}
+
+.mc-node-row-meta {
+  display: flex;
+  gap: 0.6rem;
+  color: var(--ctp-subtext0);
+  font-size: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.mc-node-row-key {
+  color: var(--ctp-overlay0);
+  font-size: 0.7rem;
+  font-family: monospace;
+}
+
+/* Message stream */
+.meshcore-message-stream {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: var(--ctp-base);
+}
+
+.meshcore-message-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mc-message-row {
+  background: var(--ctp-surface0);
+  border-radius: var(--radius-lg);
+  padding: 0.5rem 0.75rem;
+  max-width: 75%;
+  align-self: flex-start;
+}
+
+.mc-message-row.outgoing {
+  align-self: flex-end;
+  background: var(--ctp-surface1);
+}
+
+.mc-message-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.2rem;
+  font-size: 0.75rem;
+}
+
+.mc-message-from {
+  color: var(--ctp-mauve);
+  font-weight: 500;
+}
+
+.mc-message-time { color: var(--ctp-overlay0); }
+.mc-message-text { color: var(--ctp-text); font-size: 0.9rem; word-wrap: break-word; }
+
+.meshcore-send-bar {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--ctp-surface0);
+  border-top: 1px solid var(--ctp-surface1);
+}
+
+.meshcore-send-bar input {
+  flex: 1;
+  background: var(--ctp-surface1);
+  border: 1px solid var(--ctp-surface2);
+  color: var(--ctp-text);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+}
+
+.meshcore-send-bar input:focus {
+  outline: none;
+  border-color: var(--ctp-mauve);
+}
+
+.meshcore-send-bar button {
+  background: var(--ctp-mauve);
+  color: var(--ctp-accent-text);
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.meshcore-send-bar button:hover { background: var(--ctp-pink); }
+.meshcore-send-bar button:disabled {
+  background: var(--ctp-surface2);
+  color: var(--ctp-overlay0);
+  cursor: not-allowed;
+}
+
+/* Form view (Configuration / Settings) */
+.meshcore-form-view {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+.meshcore-form-view .form-section {
+  max-width: 640px;
+  background: var(--ctp-surface0);
+  border-radius: var(--radius-xl);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.meshcore-form-view .form-section h3 {
+  color: var(--ctp-text);
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.meshcore-form-view .form-section p.hint {
+  color: var(--ctp-subtext0);
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.meshcore-form-view label {
+  color: var(--ctp-subtext0);
+  font-size: 0.85rem;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.meshcore-form-view input,
+.meshcore-form-view select {
+  background: var(--ctp-surface1);
+  border: 1px solid var(--ctp-surface2);
+  color: var(--ctp-text);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  width: 100%;
+  max-width: 320px;
+}
+
+.meshcore-form-view input:focus,
+.meshcore-form-view select:focus {
+  outline: none;
+  border-color: var(--ctp-mauve);
+}
+
+.meshcore-form-view .form-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.meshcore-form-view .form-row > div {
+  flex: 1;
+  min-width: 140px;
+}
+
+.meshcore-form-view button {
+  background: var(--ctp-mauve);
+  color: var(--ctp-accent-text);
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-weight: 500;
+  margin-top: 0.5rem;
+}
+
+.meshcore-form-view button:hover { background: var(--ctp-pink); }
+.meshcore-form-view button:disabled {
+  background: var(--ctp-surface2);
+  color: var(--ctp-overlay0);
+  cursor: not-allowed;
+}
+
+/* Empty state shared by list panes */
+.meshcore-empty-state {
+  text-align: center;
+  color: var(--ctp-overlay0);
+  font-style: italic;
+  padding: 1.5rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+/* Disconnected hero */
+.meshcore-disconnected-hero {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.meshcore-disconnected-hero-inner {
+  background: var(--ctp-surface0);
+  border-radius: var(--radius-xl);
+  padding: 2rem;
+  max-width: 480px;
+  width: 100%;
+}
+
+.meshcore-disconnected-hero-inner h3 {
+  color: var(--ctp-text);
+  margin-bottom: 0.5rem;
+}
+
+.meshcore-disconnected-hero-inner p {
+  color: var(--ctp-subtext0);
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+/* Scrollbars (reuses MeshCoreTab.css overrides where they apply) */
+.meshcore-list-pane-body::-webkit-scrollbar,
+.meshcore-message-list::-webkit-scrollbar,
+.meshcore-form-view::-webkit-scrollbar {
+  width: 6px;
+}
+
+.meshcore-list-pane-body::-webkit-scrollbar-thumb,
+.meshcore-message-list::-webkit-scrollbar-thumb,
+.meshcore-form-view::-webkit-scrollbar-thumb {
+  background: var(--ctp-surface2);
+  border-radius: var(--radius-xs);
+}
