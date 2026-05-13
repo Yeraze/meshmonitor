@@ -485,6 +485,7 @@ class MeshCoreManager extends EventEmitter {
       const message: MeshCoreMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         fromPublicKey: data.pubkey_prefix,
+        toPublicKey: this.localNode?.publicKey || 'local',
         text: data.text,
         timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
         snr: data.snr,
