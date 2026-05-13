@@ -93,6 +93,8 @@ export interface MeshCoreContact {
   advType?: MeshCoreDeviceType;
   latitude?: number;
   longitude?: number;
+  lastAdvert?: number;
+  pathLen?: number;
 }
 
 export interface MeshCoreMessage {
@@ -497,6 +499,37 @@ class MeshCoreManager extends EventEmitter {
       this.addMessage(message);
       this.emit('message', message);
       logger.info(`[MeshCore] Channel ${data.channel_idx} message: ${data.text}`);
+    } else if (event_type === 'contact_advertised' || event_type === 'contact_added') {
+      const publicKey: string = data.public_key;
+      if (publicKey) {
+        const existing = this.contacts.get(publicKey) ?? { publicKey };
+        const updated: MeshCoreContact = {
+          ...existing,
+          publicKey,
+          advName: data.adv_name ?? existing.advName,
+          advType: data.adv_type ?? existing.advType,
+          lastAdvert: data.last_advert ?? existing.lastAdvert,
+          latitude: data.latitude ?? existing.latitude,
+          longitude: data.longitude ?? existing.longitude,
+          lastSeen: Date.now(),
+        };
+        this.contacts.set(publicKey, updated);
+        this.emit('contacts_updated', { sourceId: this.config?.tcpHost ?? this.config?.serialPort ?? 'local', contact: updated});
+        logger.info(`[MeshCore] ${event_type} for ${publicKey} (${data.adv_name ?? ''})`);
+      }
+    } else if (event_type === 'contact_path_updated') {
+      const publicKey: string = data.public_key;
+      if (publicKey) {
+        const existing = this.contacts.get(publicKey) ?? { publicKey };
+        const updated: MeshCoreContact = {
+          ...existing,
+          publicKey,
+          lastSeen: Date.now(),
+        };
+        this.contacts.set(publicKey, updated);
+        this.emit('contacts_updated', { sourceId: this.config?.tcpHost ?? this.config?.serialPort ?? 'local', contact: updated});
+        logger.info(`[MeshCore] contact_path_updated for ${publicKey}`);
+      }
     } else {
       logger.debug(`[MeshCore] Unknown bridge event: ${event_type}`);
     }

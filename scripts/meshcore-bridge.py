@@ -180,9 +180,49 @@ class MeshCoreBridge:
                 'snr': payload.get('SNR'),
             })
 
+        async def on_advertisement(event):
+            try:
+                payload = event.payload
+                self._emit_event('contact_advertised', {
+                    'public_key': payload.get('public_key', ''),
+                    'adv_name': payload.get('adv_name', ''),
+                    'adv_type': payload.get('type'),
+                    'last_advert': payload.get('last_advert'),
+                    'latitude': payload.get('adv_lat'),
+                    'longitude': payload.get('adv_lon'),
+                })
+            except Exception as e:
+                self._emit_event('debug', {'message': f'Error in on_advertisement: {e}'})
+
+        async def on_new_contact(event):
+            try:
+                payload = event.payload
+                self._emit_event('contact_added', {
+                    'public_key': payload.get('public_key', ''),
+                    'adv_name': payload.get('adv_name', ''),
+                    'adv_type': payload.get('type'),
+                    'last_advert': payload.get('last_advert'),
+                    'latitude': payload.get('adv_lat'),
+                    'longitude': payload.get('adv_lon'),
+                })
+            except Exception as e:
+                self._emit_event('debug', {'message': f'Error in on_new_contact: {e}'})
+
+        async def on_path_update(event):
+            try:
+                payload = event.payload
+                self._emit_event('contact_path_updated', {
+                    'public_key': payload.get('public_key', ''),
+                })
+            except Exception as e:
+                self._emit_event('debug', {'message': f'Error in on_path_update: {e}'})
+
         sub1 = self.meshcore.subscribe(EventType.CONTACT_MSG_RECV, on_contact_message)
         sub2 = self.meshcore.subscribe(EventType.CHANNEL_MSG_RECV, on_channel_message)
-        self.subscriptions = [sub1, sub2]
+        sub3 = self.meshcore.subscribe(EventType.ADVERTISEMENT, on_advertisement)
+        sub4 = self.meshcore.subscribe(EventType.NEW_CONTACT, on_new_contact)
+        sub5 = self.meshcore.subscribe(EventType.PATH_UPDATE, on_path_update)
+        self.subscriptions = [sub1, sub2, sub3, sub4, sub5]
 
         # Start auto message fetching (polls device when MESSAGES_WAITING is received)
         auto_sub = await self.meshcore.start_auto_message_fetching()
