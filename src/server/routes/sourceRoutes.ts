@@ -378,8 +378,10 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
 // Delete source
 router.delete('/:id', requirePermission('sources', 'write'), async (req: Request, res: Response) => {
   try {
-    // Stop the manager before deleting
+    // Stop the manager before deleting (both registries — each is a no-op when
+    // the source id isn't registered, so this safely covers either type).
     await sourceManagerRegistry.removeManager(req.params.id);
+    await meshcoreManagerRegistry.remove(req.params.id);
 
     const deleted = await databaseService.sources.deleteSource(req.params.id);
     if (!deleted) {
@@ -688,6 +690,14 @@ router.post('/:id/disconnect', requirePermission('sources', 'write'), async (req
   try {
     const source = await databaseService.sources.getSource(req.params.id);
     if (!source) return res.status(404).json({ error: 'Source not found' });
+    if (source.type === 'meshcore') {
+      const existingMc = meshcoreManagerRegistry.get(source.id);
+      if (!existingMc?.isConnected()) {
+        return res.json({ success: true, alreadyStopped: true });
+      }
+      await meshcoreManagerRegistry.remove(source.id);
+      return res.json({ success: true });
+    }
     if (!sourceManagerRegistry.getManager(source.id)) {
       return res.json({ success: true, alreadyStopped: true });
     }
