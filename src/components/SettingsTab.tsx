@@ -242,6 +242,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [initialAnalyticsConfig, setInitialAnalyticsConfig] = useState<string>('{}');
   const [localAppriseApiServerUrl, setLocalAppriseApiServerUrl] = useState<string>('');
   const [initialAppriseApiServerUrl, setInitialAppriseApiServerUrl] = useState<string>('');
+  const [isTestingApprise, setIsTestingApprise] = useState<boolean>(false);
+  const [appriseTestResult, setAppriseTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const { showToast } = useToast();
 
   // Fetch system status to determine if running in Docker
@@ -647,6 +649,49 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     onSave: handleSave,
     onDismiss: resetChanges
   });
+
+  const handleTestAppriseConnection = useCallback(async () => {
+    setIsTestingApprise(true);
+    setAppriseTestResult(null);
+    try {
+      const response = await csrfFetch(`${baseUrl}/api/settings/test-apprise`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ url: localAppriseApiServerUrl.trim() || undefined }),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        setAppriseTestResult({
+          ok: false,
+          message: errBody.error || `HTTP ${response.status}`,
+        });
+        return;
+      }
+
+      const data: { ok: boolean; status?: number; error?: string; latencyMs?: number } = await response.json();
+      if (data.ok) {
+        setAppriseTestResult({
+          ok: true,
+          message: t('settings.apprise_server_test_success', 'Connected successfully ({{latency}}ms)', { latency: data.latencyMs ?? 0 }),
+        });
+      } else {
+        setAppriseTestResult({
+          ok: false,
+          message: t('settings.apprise_server_test_failure', 'Connection failed: {{error}}', { error: data.error || 'Unknown error' }),
+        });
+      }
+    } catch (error) {
+      logger.error('Failed to test Apprise connection:', error);
+      setAppriseTestResult({
+        ok: false,
+        message: t('settings.apprise_server_test_failure', 'Connection failed: {{error}}', { error: error instanceof Error ? error.message : String(error) }),
+      });
+    } finally {
+      setIsTestingApprise(false);
+    }
+  }, [csrfFetch, baseUrl, localAppriseApiServerUrl, t]);
 
   const handleFetchSolarEstimates = async () => {
     setIsFetchingSolarEstimates(true);
@@ -1670,6 +1715,30 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               autoComplete="off"
               spellCheck={false}
             />
+            <div style={{ marginTop: '0.75rem' }}>
+              <button
+                type="button"
+                onClick={handleTestAppriseConnection}
+                disabled={isTestingApprise}
+                className="save-button"
+                style={{ width: 'auto', padding: '0.5rem 1rem' }}
+              >
+                {isTestingApprise
+                  ? t('settings.apprise_server_testing', 'Testing…')
+                  : t('settings.apprise_server_test', 'Test Connection')}
+              </button>
+              {appriseTestResult && (
+                <p
+                  className="setting-description"
+                  style={{
+                    marginTop: '0.5rem',
+                    color: appriseTestResult.ok ? 'var(--color-success, #10b981)' : 'var(--color-error, #ef4444)',
+                  }}
+                >
+                  {appriseTestResult.message}
+                </p>
+              )}
+            </div>
           </div>
         </div>}
 

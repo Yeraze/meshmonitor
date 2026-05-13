@@ -2,7 +2,7 @@
  * Settings Routes Unit Tests
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import express, { Express } from 'express';
 import session from 'express-session';
 import request from 'supertest';
@@ -377,6 +377,148 @@ describe('settingsRoutes', () => {
           .send({ appriseApiServerUrl: 'http://apprise.example.com:8000' })
           .expect(403);
       });
+    });
+  });
+
+  describe('POST /api/settings/test-apprise (#3012)', () => {
+    const fetchMock = vi.fn();
+    const originalFetch = globalThis.fetch;
+
+    beforeEach(() => {
+      fetchMock.mockReset();
+      globalThis.fetch = fetchMock as any;
+    });
+
+    afterAll(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    it('returns ok:true when the Apprise server responds 200', async () => {
+      fetchMock.mockResolvedValue(new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+
+      const app = createApp(adminUser);
+      const res = await request(app)
+        .post('/api/settings/test-apprise')
+        .send({ url: 'http://apprise.example.com:8000' })
+        .expect(200);
+
+      expect(res.body.ok).toBe(true);
+      expect(res.body.status).toBe(200);
+      expect(typeof res.body.latencyMs).toBe('number');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe('http://apprise.example.com:8000/health');
+    });
+
+    it('strips trailing slashes from the supplied URL before probing', async () => {
+      fetchMock.mockResolvedValue(new Response('{}', { status: 200 }));
+
+      const app = createApp(adminUser);
+      await request(app)
+        .post('/api/settings/test-apprise')
+        .send({ url: 'http://apprise.example.com:8000///' })
+        .expect(200);
+
+      expect(fetchMock.mock.calls[0][0]).toBe('http://apprise.example.com:8000/health');
+    });
+
+    it('returns ok:false with status when the Apprise server returns a non-2xx', async () => {
+      fetchMock.mockResolvedValue(new Response('boom', { status: 503 }));
+
+      const app = createApp(adminUser);
+      const res = await request(app)
+        .post('/api/settings/test-apprise')
+        .send({ url: 'http://apprise.example.com:8000' })
+        .expect(200);
+
+      expect(res.body.ok).toBe(false);
+      expect(res.body.status).toBe(503);
+      expect(res.body.error).toContain('503');
+    });
+
+    it('returns ok:false when fetch throws (network failure)', async () => {
+      fetchMock.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      const app = createApp(adminUser);
+      const res = await request(app)
+        .post('/api/settings/test-apprise')
+        .send({ url: 'http://apprise.example.com:8000' })
+        .expect(200);
+
+      expect(res.body.ok).toBe(false);
+      expect(res.body.error).toContain('ECONNREFUSED');
+    });
+
+    it('falls back to the saved global setting when no URL is supplied', async () => {
+      fetchMock.mockResolvedValue(new Response('{}', { status: 200 }));
+      (databaseService as any).settings.getSetting.mockResolvedValue('http://saved.example.com:8000');
+
+      const app = createApp(adminUser);
+      const res = await request(app)
+        .post('/api/settings/test-apprise')
+        .send({})
+        .expect(200);
+
+      expect(res.body.ok).toBe(true);
+      expect(fetchMock.mock.calls[0][0]).toBe('http://saved.example.com:8000/health');
+    });
+
+    it('falls back to http://localhost:8000 when no URL and no saved setting', async () => {
+      fetchMock.mockResolvedValue(new Response('{}', { status: 200 }));
+      (databaseService as any).settings.getSetting.mockResolvedValue(null);
+
+      const app = createApp(adminUser);
+      await request(app)
+        .post('/api/settings/test-apprise')
+        .send({})
+        .expect(200);
+
+      expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:8000/health');
+    });
+
+    it('rejects a non-http(s) scheme with 400', async () => {
+      const app = createApp(adminUser);
+      const res = await request(app)
+        .post('/api/settings/test-apprise')
+        .send({ url: 'file:///etc/passwd' })
+        .expect(400);
+
+      expect(res.body.ok).toBe(false);
+      expect(res.body.error).toContain('http://');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects garbage that is not a URL with 400', async () => {
+      const app = createApp(adminUser);
+      const res = await request(app)
+        .post('/api/settings/test-apprise')
+        .send({ url: 'not a url' })
+        .expect(400);
+
+      expect(res.body.ok).toBe(false);
+      expect(res.body.error).toContain('Invalid URL');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('returns 403 when lacking settings:write permission', async () => {
+      const app = createApp({ id: 2, username: 'user', isActive: true, isAdmin: false });
+      (databaseService as any).findUserByIdAsync.mockResolvedValue({
+        id: 2, username: 'user', isActive: true, isAdmin: false,
+      });
+      (databaseService as any).checkPermissionAsync.mockResolvedValue(false);
+      (databaseService as any).getUserPermissionSetAsync.mockResolvedValue({
+        settings: { read: true, write: false },
+        isAdmin: false,
+      });
+
+      await request(app)
+        .post('/api/settings/test-apprise')
+        .send({ url: 'http://apprise.example.com:8000' })
+        .expect(403);
+
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 

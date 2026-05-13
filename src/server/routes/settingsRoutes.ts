@@ -801,6 +801,77 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
   }
 });
 
+// POST /settings/test-apprise — probe an Apprise API server URL (#3012).
+// If `url` is supplied in the body, that URL is tested directly (so admins can
+// validate a value before saving it). Otherwise the currently-saved global
+// setting is used, falling back to the same precedence as the resolver
+// (APPRISE_URL env / bundled http://localhost:8000).
+router.post('/test-apprise', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
+  try {
+    const requestUrl = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+
+    let target: string;
+    if (requestUrl.length > 0) {
+      try {
+        const parsed = new URL(requestUrl);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          return res.status(400).json({ ok: false, error: 'URL must use http:// or https://' });
+        }
+      } catch {
+        return res.status(400).json({ ok: false, error: 'Invalid URL format' });
+      }
+      target = requestUrl;
+    } else {
+      const saved = await databaseService.settings.getSetting('appriseApiServerUrl');
+      target = (saved && saved.trim().length > 0)
+        ? saved.trim()
+        : (process.env.APPRISE_URL || 'http://localhost:8000');
+    }
+
+    const probeUrl = `${target.replace(/\/+$/, '')}/health`;
+    const start = Date.now();
+    try {
+      const response = await fetch(probeUrl, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000),
+      });
+      const latencyMs = Date.now() - start;
+
+      if (!response.ok) {
+        return res.json({
+          ok: false,
+          status: response.status,
+          latencyMs,
+          error: `Apprise server returned HTTP ${response.status}`,
+          url: target,
+        });
+      }
+
+      return res.json({
+        ok: true,
+        status: response.status,
+        latencyMs,
+        url: target,
+      });
+    } catch (error: any) {
+      const latencyMs = Date.now() - start;
+      const isTimeout = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+      const message = isTimeout
+        ? 'Connection timed out after 5000ms'
+        : (error?.message || String(error));
+      return res.json({
+        ok: false,
+        latencyMs,
+        error: message,
+        url: target,
+      });
+    }
+  } catch (error) {
+    logger.error('Error testing Apprise connection:', error);
+    res.status(500).json({ ok: false, error: 'Failed to test Apprise connection' });
+  }
+});
+
 // DELETE /settings — reset to defaults
 router.delete('/', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
   try {
