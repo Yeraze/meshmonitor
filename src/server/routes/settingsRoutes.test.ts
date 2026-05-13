@@ -6,7 +6,12 @@ import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import express, { Express } from 'express';
 import session from 'express-session';
 import request from 'supertest';
-import settingsRoutes, { validateTileUrl, validateCustomTilesets } from './settingsRoutes.js';
+import settingsRoutes, {
+  validateTileUrl,
+  validateCustomTilesets,
+  validateAppriseProbeUrl,
+  MAX_APPRISE_PROBE_URL_LENGTH,
+} from './settingsRoutes.js';
 import databaseService from '../../services/database.js';
 
 vi.mock('../../services/database.js', () => ({
@@ -646,5 +651,79 @@ describe('validateCustomTilesets', () => {
   it('should reject tileset missing required fields', () => {
     const { name, ...incomplete } = validTileset;
     expect(validateCustomTilesets([incomplete as any])).toBe(false);
+  });
+});
+
+describe('validateAppriseProbeUrl', () => {
+  it('accepts a bare http URL and builds /health', () => {
+    const r = validateAppriseProbeUrl('http://localhost:8000');
+    expect(r.ok).toBe(true);
+    expect(r.probeUrl).toBe('http://localhost:8000/health');
+  });
+
+  it('accepts an https URL with a path prefix and preserves it', () => {
+    const r = validateAppriseProbeUrl('https://apprise.example.com/api');
+    expect(r.ok).toBe(true);
+    expect(r.probeUrl).toBe('https://apprise.example.com/api/health');
+  });
+
+  it('strips multiple trailing slashes without regex backtracking', () => {
+    const r = validateAppriseProbeUrl('http://localhost:8000/apprise-api/////');
+    expect(r.ok).toBe(true);
+    expect(r.probeUrl).toBe('http://localhost:8000/apprise-api/health');
+  });
+
+  it('accepts RFC1918 hosts (Docker compose / LAN deployments)', () => {
+    const r = validateAppriseProbeUrl('http://192.168.1.50:8000');
+    expect(r.ok).toBe(true);
+    expect(r.probeUrl).toBe('http://192.168.1.50:8000/health');
+  });
+
+  it('rejects empty input', () => {
+    expect(validateAppriseProbeUrl('')).toEqual({ ok: false, error: 'URL is required' });
+  });
+
+  it('rejects inputs longer than the cap', () => {
+    const oversized = 'http://example.com/' + 'a'.repeat(MAX_APPRISE_PROBE_URL_LENGTH);
+    const r = validateAppriseProbeUrl(oversized);
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('URL is too long');
+  });
+
+  it('rejects non-http(s) protocols', () => {
+    expect(validateAppriseProbeUrl('file:///etc/passwd').ok).toBe(false);
+    expect(validateAppriseProbeUrl('ftp://example.com').ok).toBe(false);
+    expect(validateAppriseProbeUrl('javascript:alert(1)').ok).toBe(false);
+  });
+
+  it('rejects unparsable input', () => {
+    expect(validateAppriseProbeUrl('not a url').ok).toBe(false);
+    expect(validateAppriseProbeUrl('http://').ok).toBe(false);
+  });
+
+  it('blocks AWS/Azure IPv4 IMDS (169.254.169.254)', () => {
+    const r = validateAppriseProbeUrl('http://169.254.169.254/latest/meta-data/');
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('Host is not permitted');
+  });
+
+  it('blocks the rest of the 169.254.0.0/16 link-local range', () => {
+    expect(validateAppriseProbeUrl('http://169.254.0.1').ok).toBe(false);
+    expect(validateAppriseProbeUrl('http://169.254.255.254').ok).toBe(false);
+  });
+
+  it('blocks GCP IMDS hostname (case-insensitive)', () => {
+    expect(validateAppriseProbeUrl('http://metadata.google.internal/').ok).toBe(false);
+    expect(validateAppriseProbeUrl('http://Metadata.Google.Internal/').ok).toBe(false);
+  });
+
+  it('blocks Azure IMDS hostname', () => {
+    expect(validateAppriseProbeUrl('http://metadata.azure.com/').ok).toBe(false);
+  });
+
+  it('does not over-block similar-looking hosts', () => {
+    expect(validateAppriseProbeUrl('http://metadata.google.internal.evil.com/').ok).toBe(true);
+    expect(validateAppriseProbeUrl('http://169.254.169.254.nip.io/').ok).toBe(true);
+    expect(validateAppriseProbeUrl('http://169.253.169.254/').ok).toBe(true);
   });
 });
