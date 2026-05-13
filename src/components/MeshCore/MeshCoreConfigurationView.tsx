@@ -20,11 +20,17 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   const [bw, setBw] = useState<number>(local?.radioBw ?? 250);
   const [sf, setSf] = useState<number>(local?.radioSf ?? 11);
   const [cr, setCr] = useState<number>(local?.radioCr ?? 5);
+  const [lat, setLat] = useState<number>(local?.latitude ?? 0);
+  const [lon, setLon] = useState<number>(local?.longitude ?? 0);
+  const [advLoc, setAdvLoc] = useState<boolean>(local?.advLocPolicy === 1);
 
   const [savingName, setSavingName] = useState(false);
   const [savingRadio, setSavingRadio] = useState(false);
+  const [savingLocation, setSavingLocation] = useState(false);
+  const [savingAdvLoc, setSavingAdvLoc] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
   const [radioSaved, setRadioSaved] = useState(false);
+  const [locationSaved, setLocationSaved] = useState(false);
 
   useEffect(() => {
     if (local?.name) setName(local.name);
@@ -36,6 +42,14 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
       if (typeof local.radioBw === 'number') setBw(local.radioBw);
       if (typeof local.radioSf === 'number') setSf(local.radioSf);
       if (typeof local.radioCr === 'number') setCr(local.radioCr);
+    }
+  }, [local]);
+
+  useEffect(() => {
+    if (local) {
+      if (typeof local.latitude === 'number') setLat(local.latitude);
+      if (typeof local.longitude === 'number') setLon(local.longitude);
+      if (typeof local.advLocPolicy === 'number') setAdvLoc(local.advLocPolicy === 1);
     }
   }, [local]);
 
@@ -59,6 +73,29 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
     if (ok) {
       setRadioSaved(true);
       setTimeout(() => setRadioSaved(false), 2500);
+    }
+  };
+
+  const handleSaveLocation = async () => {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    setSavingLocation(true);
+    setLocationSaved(false);
+    const ok = await actions.setCoords(lat, lon);
+    setSavingLocation(false);
+    if (ok) {
+      setLocationSaved(true);
+      setTimeout(() => setLocationSaved(false), 2500);
+    }
+  };
+
+  const handleToggleAdvLoc = async (checked: boolean) => {
+    setSavingAdvLoc(true);
+    const prev = advLoc;
+    setAdvLoc(checked);
+    const ok = await actions.setAdvertLocPolicy(checked ? 1 : 0);
+    setSavingAdvLoc(false);
+    if (!ok) {
+      setAdvLoc(prev);
     }
   };
 
@@ -99,6 +136,68 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
               ✓ {t('meshcore.config.saved', 'Saved')}
             </span>
           )}
+        </div>
+      </div>
+
+      <div className="form-section">
+        <h3>{t('meshcore.config.location', 'Location')}</h3>
+        <p className="hint">
+          {t('meshcore.config.location_hint',
+            'GPS coordinates reported by the device. Latitude (-90 to 90), Longitude (-180 to 180).')}
+        </p>
+        <div className="form-row">
+          <div>
+            <label htmlFor="mc-cfg-lat">{t('meshcore.config.latitude', 'Latitude')}</label>
+            <input
+              id="mc-cfg-lat"
+              type="number"
+              step="0.000001"
+              min={-90}
+              max={90}
+              value={lat}
+              onChange={e => setLat(parseFloat(e.target.value))}
+              disabled={!connected || savingLocation}
+            />
+          </div>
+          <div>
+            <label htmlFor="mc-cfg-lon">{t('meshcore.config.longitude', 'Longitude')}</label>
+            <input
+              id="mc-cfg-lon"
+              type="number"
+              step="0.000001"
+              min={-180}
+              max={180}
+              value={lon}
+              onChange={e => setLon(parseFloat(e.target.value))}
+              disabled={!connected || savingLocation}
+            />
+          </div>
+        </div>
+        <div>
+          <button
+            onClick={() => void handleSaveLocation()}
+            disabled={!connected || savingLocation || !Number.isFinite(lat) || !Number.isFinite(lon)}
+          >
+            {savingLocation
+              ? t('meshcore.config.saving', 'Saving…')
+              : t('meshcore.config.save_location', 'Save location')}
+          </button>
+          {locationSaved && (
+            <span style={{ marginLeft: '0.75rem', color: 'var(--ctp-green)' }}>
+              ✓ {t('meshcore.config.saved', 'Saved')}
+            </span>
+          )}
+        </div>
+        <div style={{ marginTop: '0.75rem' }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+            <input
+              type="checkbox"
+              checked={advLoc}
+              onChange={e => void handleToggleAdvLoc(e.target.checked)}
+              disabled={!connected || savingAdvLoc}
+            />
+            {t('meshcore.config.advert_loc_policy', 'Include location in adverts')}
+          </label>
         </div>
       </div>
 

@@ -413,12 +413,30 @@ router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) =>
       return res.status(404).json({ error: 'Source not found' });
     }
     const manager = sourceManagerRegistry.getManager(req.params.id);
-    const status = manager ? manager.getStatus() : {
-      sourceId: source.id,
-      sourceName: source.name,
-      sourceType: source.type,
-      connected: false,
-    };
+    let status: any;
+    if (manager) {
+      status = manager.getStatus();
+    } else if (source.type === 'meshcore') {
+      // MeshCore managers live in their own registry, not sourceManagerRegistry.
+      // Surface their live status through the same shape so the dashboard
+      // sidebar reflects connection state for meshcore sources too.
+      const mcManager = meshcoreManagerRegistry.get(req.params.id);
+      status = mcManager
+        ? mcManager.getStatus(source.name)
+        : {
+            sourceId: source.id,
+            sourceName: source.name,
+            sourceType: source.type,
+            connected: false,
+          };
+    } else {
+      status = {
+        sourceId: source.id,
+        sourceName: source.name,
+        sourceType: source.type,
+        connected: false,
+      };
+    }
 
     const user = (req as any).user;
     const isAdmin = user?.isAdmin ?? false;

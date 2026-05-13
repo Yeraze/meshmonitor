@@ -10,11 +10,13 @@
  *   │ │                       │   config/settings)    │
  *   └─┴───────────────────────────────────────────────┘
  *
- * Talks to the existing /api/meshcore/* singleton routes via useMeshCore.
+ * Talks to /api/meshcore/* (singleton) or /api/sources/:id/meshcore/*
+ * (per-source dashboard) via useMeshCore, depending on whether `sourceId`
+ * is passed in.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useMeshCore } from './hooks/useMeshCore';
+import { useMeshCore, ConnectionStatus } from './hooks/useMeshCore';
 import { MeshCoreStatusBar } from './MeshCoreStatusBar';
 import { MeshCoreSubToolbar, MeshCoreView } from './MeshCoreSubToolbar';
 import { MeshCoreNodesView } from './MeshCoreNodesView';
@@ -27,15 +29,26 @@ import './MeshCorePage.css';
 
 interface MeshCorePageProps {
   baseUrl: string;
+  /** When set, routes the hook through /api/sources/:id/meshcore/*. */
+  sourceId?: string;
+  /** When false, the hook is disabled (no polling). Used for permission gating. */
+  enabled?: boolean;
+  /** When provided, the parent renders the connection chip in its own header
+   *  and the inline status bar suppresses its duplicate "Connected to X" text. */
+  onStatusChange?: (status: ConnectionStatus | null) => void;
 }
 
-export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl }) => {
+export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, enabled, onStatusChange }) => {
   const { t } = useTranslation();
-  const meshCore = useMeshCore(baseUrl);
+  const meshCore = useMeshCore({ baseUrl, sourceId, enabled });
   const { status, nodes, contacts, messages, loading, error, actions } = meshCore;
 
   const [view, setView] = useState<MeshCoreView>('nodes');
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
+
+  useEffect(() => {
+    onStatusChange?.(status);
+  }, [status, onStatusChange]);
 
   return (
     <div className="meshcore-page">
@@ -44,6 +57,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl }) => {
         loading={loading}
         onOpenSettings={() => setView('settings')}
         actions={actions}
+        hideConnectionText={!!onStatusChange}
       />
 
       {error && (
@@ -67,7 +81,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl }) => {
             <MeshCoreNodesView nodes={nodes} contacts={contacts} />
           )}
           {view === 'channels' && (
-            <MeshCoreChannelsView messages={messages} status={status} actions={actions} />
+            <MeshCoreChannelsView messages={messages} contacts={contacts} status={status} actions={actions} />
           )}
           {view === 'dms' && (
             <MeshCoreDirectMessagesView
@@ -81,7 +95,12 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl }) => {
             <MeshCoreConfigurationView status={status} actions={actions} />
           )}
           {view === 'settings' && (
-            <MeshCoreSettingsView status={status} loading={loading} actions={actions} />
+            <MeshCoreSettingsView
+              status={status}
+              loading={loading}
+              actions={actions}
+              perSource={!!sourceId}
+            />
           )}
         </div>
       </div>

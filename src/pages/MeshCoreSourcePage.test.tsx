@@ -37,6 +37,27 @@ beforeEach(() => {
     if (url.includes('/api/auth/csrf-token')) {
       return new Response(JSON.stringify({ token: 't' }), { status: 200 });
     }
+    if (url.includes('/meshcore/snapshot')) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            status: {
+              connected: false,
+              deviceType: 0,
+              deviceTypeName: 'unknown',
+              config: null,
+              localNode: null,
+            },
+            contacts: [],
+            nodes: [],
+            messages: [],
+            seqCursor: 0,
+          },
+        }),
+        { status: 200 },
+      );
+    }
     if (url.includes('/meshcore/status')) {
       return new Response(
         JSON.stringify({ success: true, data: { connected: false, deviceType: 0, deviceTypeName: 'unknown', config: null, localNode: null } }),
@@ -57,6 +78,11 @@ vi.mock('../contexts/SettingsContext', () => ({
   useSettings: () => ({}),
 }));
 
+vi.mock('../contexts/MapContext', () => ({
+  MapProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useMapContext: () => ({ setMeshCoreNodes: vi.fn() }),
+}));
+
 vi.mock('../components/ToastContainer', () => ({
   ToastProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
@@ -71,6 +97,17 @@ vi.mock('../components/UserMenu', () => ({
 
 vi.mock('../hooks/useCsrfFetch', () => ({
   useCsrfFetch: () => globalThis.fetch,
+}));
+
+// Mock the WebSocket context so we don't open a real Socket.io connection
+// during these smoke tests.
+vi.mock('../contexts/WebSocketContext', () => ({
+  WebSocketProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useWebSocketContext: () => ({
+    state: { connected: false, socketId: null, error: null, socket: null },
+    enabled: false,
+  }),
+  useWebSocketConnected: () => false,
 }));
 
 const sourceContext = { sourceId: 'mc-src-1' as string | null, sourceName: 'MC Test' as string | null };
@@ -100,11 +137,11 @@ function renderPage() {
 }
 
 describe('MeshCoreSourcePage', () => {
-  it('hits the nested /api/sources/:id/meshcore/status route on mount', async () => {
+  it('hits the nested /api/sources/:id/meshcore/snapshot route on mount', async () => {
     authValue.hasPermission = () => true;
     renderPage();
     await waitFor(() => {
-      expect(fetchUrls.some((u) => u.includes('/api/sources/mc-src-1/meshcore/status'))).toBe(true);
+      expect(fetchUrls.some((u) => u.includes('/api/sources/mc-src-1/meshcore/snapshot'))).toBe(true);
     });
   });
 
@@ -114,7 +151,8 @@ describe('MeshCoreSourcePage', () => {
     expect(
       await screen.findByText('You do not have permission to view this MeshCore source.'),
     ).toBeInTheDocument();
-    // No status request should have been issued.
+    // No snapshot request should have been issued.
+    expect(fetchUrls.some((u) => u.includes('/meshcore/snapshot'))).toBe(false);
     expect(fetchUrls.some((u) => u.includes('/meshcore/status'))).toBe(false);
   });
 });

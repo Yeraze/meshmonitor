@@ -325,7 +325,7 @@ router.post('/contacts/refresh', meshcoreDeviceLimiter, requireAuth(), requirePe
 
 /**
  * GET /api/meshcore/messages
- * Get recent messages
+ * Get recent messages. Optional ?since=<ms-timestamp> returns only messages newer than that time.
  */
 router.get('/messages', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
@@ -336,7 +336,12 @@ router.get('/messages', optionalAuth(), requirePermission('messages', 'read', { 
     } else if (limit > VALIDATION.MAX_MESSAGE_LIMIT) {
       limit = VALIDATION.MAX_MESSAGE_LIMIT;
     }
-    const messages = managerFor(req).getRecentMessages(limit);
+    const sinceRaw = req.query.since as string | undefined;
+    const since = sinceRaw ? parseInt(sinceRaw, 10) : undefined;
+    let messages = managerFor(req).getRecentMessages(limit);
+    if (since !== undefined && !isNaN(since)) {
+      messages = messages.filter(m => m.timestamp > since);
+    }
     res.json({
       success: true,
       data: messages,
@@ -345,6 +350,59 @@ router.get('/messages', optionalAuth(), requirePermission('messages', 'read', { 
   } catch (error) {
     logger.error('[API] Error getting messages:', error);
     res.status(500).json({ success: false, error: 'Failed to get messages' });
+  }
+});
+
+/**
+ * GET /api/sources/:id/meshcore/snapshot
+ * Single-call initial load: status, localNode, contacts, nodes, messages, and a seqCursor
+ * (the timestamp of the newest message) for reconnect catch-up.
+ */
+router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const manager = managerFor(req);
+    const status = manager.getConnectionStatus();
+    const localNode = manager.getLocalNode();
+    const envConfig = manager.getEnvConfig();
+    const contacts = manager.getContacts();
+    const nodes = manager.getAllNodes();
+    const messages = manager.getRecentMessages(50);
+    const seqCursor = messages.length > 0 ? Math.max(...messages.map(m => m.timestamp)) : 0;
+
+    // Mirror the contacts-with-localNode logic from GET /contacts
+    const allContacts = [...contacts];
+    if (localNode && localNode.latitude && localNode.longitude) {
+      allContacts.unshift({
+        publicKey: localNode.publicKey,
+        advName: `${localNode.name} (local)`,
+        name: localNode.name,
+        latitude: localNode.latitude,
+        longitude: localNode.longitude,
+        advType: localNode.advType,
+        rssi: undefined,
+        snr: undefined,
+        lastSeen: Date.now(),
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        status: {
+          ...status,
+          localNode,
+          deviceTypeName: MeshCoreDeviceType[status.deviceType],
+          envConfig,
+        },
+        contacts: allContacts,
+        nodes,
+        messages,
+        seqCursor,
+      },
+    });
+  } catch (error) {
+    logger.error('[API] Error getting snapshot:', error);
+    res.status(500).json({ success: false, error: 'Failed to get snapshot' });
   }
 });
 
@@ -526,6 +584,78 @@ router.post('/config/radio', meshcoreDeviceLimiter, requireAuth(), requirePermis
     }
   } catch (error) {
     logger.error('[API] Error setting radio config:', error);
+    res.status(500).json({ success: false, error: 'Config error' });
+  }
+});
+
+/**
+ * POST /api/meshcore/config/coords
+ * Set device GPS coordinates (companion only)
+ * Requires authentication - modifies device configuration
+ */
+router.post('/config/coords', meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { lat, lon } = req.body;
+
+    if (lat === undefined || lon === undefined) {
+      return res.status(400).json({ success: false, error: 'Both lat and lon are required' });
+    }
+
+    const parsedLat = parseFloat(lat);
+    const parsedLon = parseFloat(lon);
+
+    if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLon)) {
+      return res.status(400).json({ success: false, error: 'lat and lon must be valid numbers' });
+    }
+
+    if (parsedLat < -90 || parsedLat > 90) {
+      return res.status(400).json({ success: false, error: 'lat must be between -90 and 90' });
+    }
+    if (parsedLon < -180 || parsedLon > 180) {
+      return res.status(400).json({ success: false, error: 'lon must be between -180 and 180' });
+    }
+
+    const success = await managerFor(req).setCoords(parsedLat, parsedLon);
+
+    if (success) {
+      res.json({ success: true, message: 'Coordinates updated' });
+    } else {
+      res.status(400).json({ success: false, error: 'Failed to update coordinates' });
+    }
+  } catch (error) {
+    logger.error('[API] Error setting coords:', error);
+    res.status(500).json({ success: false, error: 'Config error' });
+  }
+});
+
+/**
+ * POST /api/meshcore/config/advert-loc-policy
+ * Set advert location policy (companion only)
+ * Requires authentication - modifies device configuration
+ */
+router.post('/config/advert-loc-policy', meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { policy } = req.body;
+
+    if (policy === undefined) {
+      return res.status(400).json({ success: false, error: 'policy is required' });
+    }
+
+    const parsedPolicy = parseInt(policy, 10);
+
+    if (parsedPolicy !== 0 && parsedPolicy !== 1) {
+      return res.status(400).json({ success: false, error: 'policy must be 0 or 1' });
+    }
+
+    const success = await managerFor(req).setAdvertLocPolicy(parsedPolicy);
+
+    if (success) {
+      res.json({ success: true, message: 'Advert location policy updated' });
+    } else {
+      res.status(400).json({ success: false, error: 'Failed to update advert location policy' });
+    }
+  } catch (error) {
+    logger.error('[API] Error setting advert loc policy:', error);
     res.status(500).json({ success: false, error: 'Config error' });
   }
 });

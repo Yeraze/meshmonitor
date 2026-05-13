@@ -24,6 +24,81 @@ export interface WebSocketState {
   socketId: string | null;
   /** Last error message if any */
   error: string | null;
+  /**
+   * The underlying Socket.io socket once a connection has been established.
+   * Exposed so consumers (e.g. MeshCoreSourcePage) can attach event listeners
+   * for events that update local component state rather than TanStack Query.
+   */
+  socket: Socket | null;
+}
+
+// --- MeshCore push-event payloads ---------------------------------------------
+//
+// Server-side these are emitted by `dataEventEmitter` and forwarded by
+// `webSocketService` with per-source room scoping. See server/services for the
+// authoritative shapes.
+
+/**
+ * MeshCore message arrived. Mirrors `MeshCoreMessage` from the server but
+ * duplicated client-side to avoid importing server modules.
+ */
+export interface MeshCoreMessageEvent {
+  id: string;
+  fromPublicKey: string;
+  toPublicKey?: string;
+  text: string;
+  timestamp: number;
+  rssi?: number;
+  snr?: number;
+  sourceId?: string;
+}
+
+export interface MeshCoreContactPayload {
+  publicKey: string;
+  advName?: string;
+  name?: string;
+  advType?: number;
+  lastSeen?: number;
+  rssi?: number;
+  snr?: number;
+  latitude?: number;
+  longitude?: number;
+  lastAdvert?: number;
+  pathLen?: number;
+}
+
+export interface MeshCoreNodePayload {
+  publicKey: string;
+  name: string;
+  advType: number;
+  txPower?: number;
+  radioFreq?: number;
+  radioBw?: number;
+  radioSf?: number;
+  radioCr?: number;
+  lastHeard?: number;
+  rssi?: number;
+  snr?: number;
+  batteryMv?: number;
+  uptimeSecs?: number;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface MeshCoreContactUpdateEvent {
+  sourceId: string;
+  contact: MeshCoreContactPayload;
+}
+
+export interface MeshCoreStatusUpdateEvent {
+  sourceId: string;
+  connected: boolean;
+  node?: MeshCoreNodePayload | null;
+}
+
+export interface MeshCoreLocalNodeUpdateEvent {
+  sourceId: string;
+  node: MeshCoreNodePayload;
 }
 
 /**
@@ -80,6 +155,7 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
     connected: false,
     socketId: null,
     error: null,
+    socket: null,
   });
 
   const socketRef = useRef<Socket | null>(null);
@@ -178,7 +254,7 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
-        setState({ connected: false, socketId: null, error: null });
+        setState({ connected: false, socketId: null, error: null, socket: null });
       }
       return;
     }
@@ -199,6 +275,9 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
     });
 
     socketRef.current = socket;
+    // Expose the socket immediately so consumers can attach listeners before
+    // the first `connect` fires.
+    setState(prev => ({ ...prev, socket }));
 
     // Connection events
     socket.on('connect', () => {
@@ -206,6 +285,7 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
         connected: true,
         socketId: socket.id || null,
         error: null,
+        socket,
       });
     });
 

@@ -20,6 +20,7 @@ import * as path from 'path';
 import * as readline from 'readline';
 import { fileURLToPath } from 'url';
 import { logger } from '../utils/logger.js';
+import { dataEventEmitter } from './services/dataEventEmitter.js';
 
 // Dynamic imports for optional serialport dependency
 // These are loaded only when MeshCore is enabled to avoid requiring native build tools
@@ -81,6 +82,7 @@ export interface MeshCoreNode {
   uptimeSecs?: number;
   latitude?: number;
   longitude?: number;
+  advLocPolicy?: number;
 }
 
 export interface MeshCoreContact {
@@ -93,6 +95,8 @@ export interface MeshCoreContact {
   advType?: MeshCoreDeviceType;
   latitude?: number;
   longitude?: number;
+  lastAdvert?: number;
+  pathLen?: number;
 }
 
 export interface MeshCoreMessage {
@@ -227,6 +231,10 @@ class MeshCoreManager extends EventEmitter {
 
       this.connected = true;
       this.emit('connected', this.localNode);
+      dataEventEmitter.emitMeshCoreStatusUpdated({ connected: true, node: this.localNode }, this.sourceId);
+      if (this.localNode) {
+        dataEventEmitter.emitMeshCoreLocalNodeUpdated(this.localNode, this.sourceId);
+      }
       logger.info(`[MeshCore] Connected to ${this.localNode?.name || 'unknown device'}`);
 
       return true;
@@ -282,6 +290,7 @@ class MeshCoreManager extends EventEmitter {
     this.contacts.clear();
 
     this.emit('disconnected');
+    dataEventEmitter.emitMeshCoreStatusUpdated({ connected: false }, this.sourceId);
     logger.info('[MeshCore] Disconnected');
   }
 
@@ -477,6 +486,7 @@ class MeshCoreManager extends EventEmitter {
       const message: MeshCoreMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         fromPublicKey: data.pubkey_prefix,
+        toPublicKey: this.localNode?.publicKey || 'local',
         text: data.text,
         timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
         snr: data.snr,
@@ -484,6 +494,7 @@ class MeshCoreManager extends EventEmitter {
       };
       this.addMessage(message);
       this.emit('message', message);
+      dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix}: ${data.text}`);
     } else if (event_type === 'channel_message') {
       const message: MeshCoreMessage = {
@@ -496,7 +507,41 @@ class MeshCoreManager extends EventEmitter {
       };
       this.addMessage(message);
       this.emit('message', message);
+      dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore] Channel ${data.channel_idx} message: ${data.text}`);
+    } else if (event_type === 'contact_advertised' || event_type === 'contact_added') {
+      const publicKey: string = data.public_key;
+      if (publicKey) {
+        const existing = this.contacts.get(publicKey) ?? { publicKey };
+        const updated: MeshCoreContact = {
+          ...existing,
+          publicKey,
+          advName: data.adv_name ?? existing.advName,
+          advType: data.adv_type ?? existing.advType,
+          lastAdvert: data.last_advert ?? existing.lastAdvert,
+          latitude: data.latitude ?? existing.latitude,
+          longitude: data.longitude ?? existing.longitude,
+          lastSeen: Date.now(),
+        };
+        this.contacts.set(publicKey, updated);
+        this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+        dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+        logger.info(`[MeshCore] ${event_type} for ${publicKey} (${data.adv_name ?? ''})`);
+      }
+    } else if (event_type === 'contact_path_updated') {
+      const publicKey: string = data.public_key;
+      if (publicKey) {
+        const existing = this.contacts.get(publicKey) ?? { publicKey };
+        const updated: MeshCoreContact = {
+          ...existing,
+          publicKey,
+          lastSeen: Date.now(),
+        };
+        this.contacts.set(publicKey, updated);
+        this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+        dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+        logger.info(`[MeshCore] contact_path_updated for ${publicKey}`);
+      }
     } else {
       logger.debug(`[MeshCore] Unknown bridge event: ${event_type}`);
     }
@@ -599,6 +644,7 @@ class MeshCoreManager extends EventEmitter {
       };
       this.addMessage(message);
       this.emit('message', message);
+      dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore] Message from ${match[1].substring(0, 8)}...: ${match[2]}`);
     }
   }
@@ -761,6 +807,7 @@ class MeshCoreManager extends EventEmitter {
             radioCr: info.radio_cr,
             latitude: info.latitude,
             longitude: info.longitude,
+            advLocPolicy: info.adv_loc_policy,
           };
         }
       } catch (error) {
@@ -838,6 +885,7 @@ class MeshCoreManager extends EventEmitter {
         };
         this.addMessage(sentMessage);
         this.emit('message', sentMessage);
+        dataEventEmitter.emitMeshCoreMessage(sentMessage, this.sourceId);
 
         return true;
       } else {
@@ -995,6 +1043,61 @@ class MeshCoreManager extends EventEmitter {
     }
   }
 
+  /**
+   * Set device coordinates (companion only)
+   */
+  async setCoords(lat: number, lon: number): Promise<boolean> {
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+      throw new Error('Invalid latitude: must be between -90 and 90');
+    }
+    if (!Number.isFinite(lon) || lon < -180 || lon > 180) {
+      throw new Error('Invalid longitude: must be between -180 and 180');
+    }
+
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      logger.warn('[MeshCore] set_coords not supported on repeater');
+      return false;
+    }
+
+    try {
+      const response = await this.sendBridgeCommand('set_coords', { lat, lon });
+      if (response.success && this.localNode) {
+        this.localNode.latitude = lat;
+        this.localNode.longitude = lon;
+      }
+      return response.success;
+    } catch (error) {
+      logger.error('[MeshCore] Failed to set coords:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Set advert location policy (companion only)
+   * policy: 0 = do not include location in adverts, 1 = include location
+   */
+  async setAdvertLocPolicy(policy: number): Promise<boolean> {
+    if (policy !== 0 && policy !== 1) {
+      throw new Error('Invalid advert location policy: must be 0 or 1');
+    }
+
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      logger.warn('[MeshCore] set_advert_loc_policy not supported on repeater');
+      return false;
+    }
+
+    try {
+      const response = await this.sendBridgeCommand('set_advert_loc_policy', { policy });
+      if (response.success && this.localNode) {
+        this.localNode.advLocPolicy = policy;
+      }
+      return response.success;
+    } catch (error) {
+      logger.error('[MeshCore] Failed to set advert loc policy:', error);
+      return false;
+    }
+  }
+
   // ============ Getters ============
 
   getConnectionStatus(): { connected: boolean; deviceType: MeshCoreDeviceType; config: MeshCoreConfig | null } {
@@ -1002,6 +1105,25 @@ class MeshCoreManager extends EventEmitter {
       connected: this.connected,
       deviceType: this.deviceType,
       config: this.config,
+    };
+  }
+
+  /**
+   * Source-registry-compatible status snapshot. Lets `/api/sources/:id/status`
+   * report meshcore sources via the same shape Meshtastic managers return,
+   * even though MeshCoreManager isn't registered in `sourceManagerRegistry`.
+   */
+  getStatus(sourceName: string): {
+    sourceId: string;
+    sourceName: string;
+    sourceType: 'meshcore';
+    connected: boolean;
+  } {
+    return {
+      sourceId: this.sourceId,
+      sourceName,
+      sourceType: 'meshcore',
+      connected: this.connected,
     };
   }
 

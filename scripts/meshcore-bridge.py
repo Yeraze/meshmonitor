@@ -22,6 +22,8 @@ Commands:
 - get_status: {"id": "8", "cmd": "get_status", "public_key": "..."}
 - set_name: {"id": "9", "cmd": "set_name", "name": "..."}
 - set_radio: {"id": "10", "cmd": "set_radio", "freq": 906.875, "bw": 250, "sf": 11, "cr": 8}
+- set_coords: {"id": "12", "cmd": "set_coords", "lat": 30.0, "lon": -90.0}
+- set_advert_loc_policy: {"id": "13", "cmd": "set_advert_loc_policy", "policy": 1}
 - shutdown: {"id": "11", "cmd": "shutdown"}
 """
 
@@ -88,6 +90,10 @@ class MeshCoreBridge:
                 return await self.cmd_set_name(cmd_id, cmd_data)
             elif cmd == 'set_radio':
                 return await self.cmd_set_radio(cmd_id, cmd_data)
+            elif cmd == 'set_coords':
+                return await self.cmd_set_coords(cmd_id, cmd_data)
+            elif cmd == 'set_advert_loc_policy':
+                return await self.cmd_set_advert_loc_policy(cmd_id, cmd_data)
             elif cmd == 'shutdown':
                 return await self.cmd_shutdown(cmd_id)
             elif cmd == 'ping':
@@ -180,9 +186,49 @@ class MeshCoreBridge:
                 'snr': payload.get('SNR'),
             })
 
+        async def on_advertisement(event):
+            try:
+                payload = event.payload
+                self._emit_event('contact_advertised', {
+                    'public_key': payload.get('public_key', ''),
+                    'adv_name': payload.get('adv_name', ''),
+                    'adv_type': payload.get('type'),
+                    'last_advert': payload.get('last_advert'),
+                    'latitude': payload.get('adv_lat'),
+                    'longitude': payload.get('adv_lon'),
+                })
+            except Exception as e:
+                self._emit_event('debug', {'message': f'Error in on_advertisement: {e}'})
+
+        async def on_new_contact(event):
+            try:
+                payload = event.payload
+                self._emit_event('contact_added', {
+                    'public_key': payload.get('public_key', ''),
+                    'adv_name': payload.get('adv_name', ''),
+                    'adv_type': payload.get('type'),
+                    'last_advert': payload.get('last_advert'),
+                    'latitude': payload.get('adv_lat'),
+                    'longitude': payload.get('adv_lon'),
+                })
+            except Exception as e:
+                self._emit_event('debug', {'message': f'Error in on_new_contact: {e}'})
+
+        async def on_path_update(event):
+            try:
+                payload = event.payload
+                self._emit_event('contact_path_updated', {
+                    'public_key': payload.get('public_key', ''),
+                })
+            except Exception as e:
+                self._emit_event('debug', {'message': f'Error in on_path_update: {e}'})
+
         sub1 = self.meshcore.subscribe(EventType.CONTACT_MSG_RECV, on_contact_message)
         sub2 = self.meshcore.subscribe(EventType.CHANNEL_MSG_RECV, on_channel_message)
-        self.subscriptions = [sub1, sub2]
+        sub3 = self.meshcore.subscribe(EventType.ADVERTISEMENT, on_advertisement)
+        sub4 = self.meshcore.subscribe(EventType.NEW_CONTACT, on_new_contact)
+        sub5 = self.meshcore.subscribe(EventType.PATH_UPDATE, on_path_update)
+        self.subscriptions = [sub1, sub2, sub3, sub4, sub5]
 
         # Start auto message fetching (polls device when MESSAGES_WAITING is received)
         auto_sub = await self.meshcore.start_auto_message_fetching()
@@ -331,6 +377,31 @@ class MeshCoreBridge:
         await self.meshcore.commands.set_radio(freq, bw, sf, cr)
         return {'id': cmd_id, 'success': True, 'data': {'set': True}}
 
+    async def cmd_set_coords(self, cmd_id: str, cmd_data: dict) -> dict:
+        """Set device GPS coordinates (lat/lon in decimal degrees)"""
+        if not self.connected or not self.meshcore:
+            return {'id': cmd_id, 'success': False, 'error': 'Not connected'}
+
+        lat = cmd_data.get('lat')
+        lon = cmd_data.get('lon')
+        if lat is None or lon is None:
+            return {'id': cmd_id, 'success': False, 'error': 'lat and lon required'}
+
+        await self.meshcore.commands.set_coords(float(lat), float(lon))
+        return {'id': cmd_id, 'success': True, 'data': {'lat': float(lat), 'lon': float(lon)}}
+
+    async def cmd_set_advert_loc_policy(self, cmd_id: str, cmd_data: dict) -> dict:
+        """Set advert location policy (0 = off, 1 = include coords in adverts)"""
+        if not self.connected or not self.meshcore:
+            return {'id': cmd_id, 'success': False, 'error': 'Not connected'}
+
+        policy = cmd_data.get('policy')
+        if policy is None:
+            return {'id': cmd_id, 'success': False, 'error': 'policy required'}
+
+        await self.meshcore.commands.set_advert_loc_policy(int(policy))
+        return {'id': cmd_id, 'success': True, 'data': {'policy': int(policy)}}
+
     async def cmd_shutdown(self, cmd_id: str) -> dict:
         """Shutdown the bridge"""
         self.running = False
@@ -359,6 +430,7 @@ class MeshCoreBridge:
             'radio_cr': info.get('radio_cr'),
             'latitude': lat,
             'longitude': lon,
+            'adv_loc_policy': info.get('adv_loc_policy'),
         }
 
     async def run(self):

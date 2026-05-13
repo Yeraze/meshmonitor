@@ -1,9 +1,11 @@
-import React, { useEffect, useRef, useState, KeyboardEvent } from 'react';
+import React, { useEffect, useMemo, useRef, useState, KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreMessage } from './hooks/useMeshCore';
+import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 
 interface MeshCoreMessageStreamProps {
   messages: MeshCoreMessage[];
+  contacts?: MeshCoreContact[];
   selfPublicKey?: string;
   emptyText?: string;
   disabled?: boolean;
@@ -16,6 +18,7 @@ function formatTime(ts: number): string {
 
 export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   messages,
+  contacts,
   selfPublicKey,
   emptyText,
   disabled,
@@ -25,6 +28,23 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // MeshCore inbound messages carry `pubkey_prefix` (typically 6-byte / 12-char
+  // hex) in `fromPublicKey`, while contacts are keyed by full pubkey. Match by
+  // prefix so the friendly name resolves regardless of length.
+  const nameForKey = useMemo(() => {
+    const exact = new Map<string, MeshCoreContact>();
+    const list = contacts ?? [];
+    for (const c of list) {
+      if (c.publicKey) exact.set(c.publicKey, c);
+    }
+    return (key: string): string | null => {
+      if (!key) return null;
+      const hit = exact.get(key) ?? list.find(c => c.publicKey && c.publicKey.startsWith(key));
+      if (!hit) return null;
+      return hit.advName || hit.name || null;
+    };
+  }, [contacts]);
 
   useEffect(() => {
     if (listRef.current) {
@@ -56,11 +76,15 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           </div>
         ) : messages.map(m => {
           const outgoing = !!selfPublicKey && m.fromPublicKey === selfPublicKey;
+          const friendlyName = outgoing ? null : nameForKey(m.fromPublicKey);
+          const fromLabel = outgoing
+            ? t('meshcore.you', 'You')
+            : friendlyName ?? `${m.fromPublicKey.substring(0, 8)}…`;
           return (
             <div key={m.id} className={`mc-message-row ${outgoing ? 'outgoing' : ''}`}>
               <div className="mc-message-header">
-                <span className="mc-message-from">
-                  {outgoing ? t('meshcore.you', 'You') : `${m.fromPublicKey.substring(0, 8)}…`}
+                <span className="mc-message-from" title={outgoing ? undefined : m.fromPublicKey}>
+                  {fromLabel}
                 </span>
                 <span className="mc-message-time">{formatTime(m.timestamp)}</span>
               </div>
