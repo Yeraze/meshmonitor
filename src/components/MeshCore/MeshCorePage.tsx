@@ -10,7 +10,9 @@
  *   │ │                       │   config/settings)    │
  *   └─┴───────────────────────────────────────────────┘
  *
- * Talks to the existing /api/meshcore/* singleton routes via useMeshCore.
+ * Talks to /api/meshcore/* (singleton) or /api/sources/:id/meshcore/*
+ * (per-source dashboard) via useMeshCore, depending on whether `sourceId`
+ * is passed in.
  */
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -27,11 +29,15 @@ import './MeshCorePage.css';
 
 interface MeshCorePageProps {
   baseUrl: string;
+  /** When set, routes the hook through /api/sources/:id/meshcore/*. */
+  sourceId?: string;
+  /** When false, the hook is disabled (no polling). Used for permission gating. */
+  enabled?: boolean;
 }
 
-export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl }) => {
+export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, enabled }) => {
   const { t } = useTranslation();
-  const meshCore = useMeshCore(baseUrl);
+  const meshCore = useMeshCore({ baseUrl, sourceId, enabled });
   const { status, nodes, contacts, messages, loading, error, actions } = meshCore;
 
   const [view, setView] = useState<MeshCoreView>('nodes');
@@ -81,7 +87,12 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl }) => {
             <MeshCoreConfigurationView status={status} actions={actions} />
           )}
           {view === 'settings' && (
-            <MeshCoreSettingsView status={status} loading={loading} actions={actions} />
+            <MeshCoreSettingsView
+              status={status}
+              loading={loading}
+              actions={actions}
+              perSource={!!sourceId}
+            />
           )}
         </div>
       </div>

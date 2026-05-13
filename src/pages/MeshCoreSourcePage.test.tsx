@@ -78,6 +78,11 @@ vi.mock('../contexts/SettingsContext', () => ({
   useSettings: () => ({}),
 }));
 
+vi.mock('../contexts/MapContext', () => ({
+  MapProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useMapContext: () => ({ setMeshCoreNodes: vi.fn() }),
+}));
+
 vi.mock('../components/ToastContainer', () => ({
   ToastProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));

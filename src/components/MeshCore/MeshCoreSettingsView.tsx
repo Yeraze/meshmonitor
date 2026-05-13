@@ -6,12 +6,18 @@ interface MeshCoreSettingsViewProps {
   status: ConnectionStatus | null;
   loading: boolean;
   actions: MeshCoreActions;
+  /**
+   * Per-source mode: connection params come from the saved source.config —
+   * the form fields are hidden and only a Connect button is shown.
+   */
+  perSource?: boolean;
 }
 
 export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   status,
   loading,
   actions,
+  perSource = false,
 }) => {
   const { t } = useTranslation();
   const connected = status?.connected ?? false;
@@ -23,7 +29,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   const [defaultsLoaded, setDefaultsLoaded] = useState(false);
 
   useEffect(() => {
-    if (defaultsLoaded || connected) return;
+    if (defaultsLoaded || connected || perSource) return;
     const env = status?.envConfig;
     if (env) {
       if (env.connectionType === 'serial' || env.connectionType === 'tcp') {
@@ -34,9 +40,11 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
       if (env.tcpPort) setTcpPort(String(env.tcpPort));
       setDefaultsLoaded(true);
     }
-  }, [status?.envConfig, defaultsLoaded, connected]);
+  }, [status?.envConfig, defaultsLoaded, connected, perSource]);
 
   const handleConnect = async () => {
+    // In per-source mode the form is hidden — params are ignored by the hook
+    // (it posts to the generic /api/sources/:id/connect with no body).
     await actions.connect({
       connectionType,
       serialPort: connectionType === 'serial' ? serialPort : undefined,
@@ -67,56 +75,66 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
           </>
         ) : (
           <>
-            <div className="form-row">
-              <div>
-                <label>{t('meshcore.connection_type', 'Connection type')}</label>
-                <select
-                  value={connectionType}
-                  onChange={e => setConnectionType(e.target.value as 'serial' | 'tcp')}
-                  disabled={loading}
-                >
-                  <option value="serial">{t('meshcore.serial_port', 'Serial')}</option>
-                  <option value="tcp">{t('meshcore.tcp_ip', 'TCP/IP')}</option>
-                </select>
-              </div>
-            </div>
-            {connectionType === 'serial' ? (
-              <div className="form-row">
-                <div>
-                  <label>{t('meshcore.serial_port', 'Serial port')}</label>
-                  <input
-                    type="text"
-                    value={serialPort}
-                    onChange={e => setSerialPort(e.target.value)}
-                    placeholder="COM3 or /dev/ttyACM0"
-                    disabled={loading}
-                  />
+            {!perSource && (
+              <>
+                <div className="form-row">
+                  <div>
+                    <label>{t('meshcore.connection_type', 'Connection type')}</label>
+                    <select
+                      value={connectionType}
+                      onChange={e => setConnectionType(e.target.value as 'serial' | 'tcp')}
+                      disabled={loading}
+                    >
+                      <option value="serial">{t('meshcore.serial_port', 'Serial')}</option>
+                      <option value="tcp">{t('meshcore.tcp_ip', 'TCP/IP')}</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="form-row">
-                <div>
-                  <label>{t('meshcore.host', 'Host')}</label>
-                  <input
-                    type="text"
-                    value={tcpHost}
-                    onChange={e => setTcpHost(e.target.value)}
-                    placeholder="192.168.1.100"
-                    disabled={loading}
-                  />
-                </div>
-                <div>
-                  <label>{t('meshcore.port', 'Port')}</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={tcpPort}
-                    onChange={e => setTcpPort(e.target.value)}
-                    placeholder="4403"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
+                {connectionType === 'serial' ? (
+                  <div className="form-row">
+                    <div>
+                      <label>{t('meshcore.serial_port', 'Serial port')}</label>
+                      <input
+                        type="text"
+                        value={serialPort}
+                        onChange={e => setSerialPort(e.target.value)}
+                        placeholder="COM3 or /dev/ttyACM0"
+                        disabled={loading}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="form-row">
+                    <div>
+                      <label>{t('meshcore.host', 'Host')}</label>
+                      <input
+                        type="text"
+                        value={tcpHost}
+                        onChange={e => setTcpHost(e.target.value)}
+                        placeholder="192.168.1.100"
+                        disabled={loading}
+                      />
+                    </div>
+                    <div>
+                      <label>{t('meshcore.port', 'Port')}</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={tcpPort}
+                        onChange={e => setTcpPort(e.target.value)}
+                        placeholder="4403"
+                        disabled={loading}
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+            {perSource && (
+              <p className="hint">
+                {t('meshcore.settings.persource_hint',
+                  'Connection parameters are managed in the source configuration.')}
+              </p>
             )}
             <div>
               <button onClick={() => void handleConnect()} disabled={loading}>
