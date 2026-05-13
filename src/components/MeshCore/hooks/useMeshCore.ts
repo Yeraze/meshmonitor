@@ -52,6 +52,7 @@ export interface MeshCoreNode {
 export interface MeshCoreMessage {
   id: string;
   fromPublicKey: string;
+  fromName?: string;
   toPublicKey?: string;
   text: string;
   timestamp: number;
