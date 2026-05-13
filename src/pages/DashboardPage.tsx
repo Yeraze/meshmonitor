@@ -81,6 +81,7 @@ function DashboardInner() {
   // Source add/edit modal state
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  const [formType, setFormType] = useState<'meshtastic_tcp' | 'meshcore'>('meshtastic_tcp');
   const [formName, setFormName] = useState('');
   const [formHost, setFormHost] = useState('');
   const [formPort, setFormPort] = useState('4403');
@@ -89,6 +90,9 @@ function DashboardInner() {
   const [formVnAllowAdmin, setFormVnAllowAdmin] = useState(false);
   const [formHeartbeat, setFormHeartbeat] = useState('30'); // seconds, 0 = disabled (issue 2609)
   const [formAutoConnect, setFormAutoConnect] = useState(true); // issue #2773
+  // MeshCore-specific (slice 4): companion-USB v1 — serial path + device type.
+  const [formMcSerialPort, setFormMcSerialPort] = useState('');
+  const [formMcDeviceType, setFormMcDeviceType] = useState<'companion' | 'repeater'>('companion');
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
 
@@ -194,6 +198,7 @@ function DashboardInner() {
   // ----- admin actions -----
   const onAddSource = () => {
     setEditingSourceId(null);
+    setFormType('meshtastic_tcp');
     setFormName('');
     setFormHost('');
     setFormPort('4403');
@@ -202,6 +207,8 @@ function DashboardInner() {
     setFormVnAllowAdmin(false);
     setFormHeartbeat('30');
     setFormAutoConnect(true);
+    setFormMcSerialPort('');
+    setFormMcDeviceType('companion');
     setFormError('');
     setShowSourceModal(true);
   };
@@ -211,6 +218,7 @@ function DashboardInner() {
     if (!source) return;
     const cfg = source.config as Record<string, any> | undefined;
     setEditingSourceId(id);
+    setFormType(source.type === 'meshcore' ? 'meshcore' : 'meshtastic_tcp');
     setFormName(source.name);
     setFormHost(cfg?.host ?? '');
     setFormPort(String(cfg?.port ?? 4403));
@@ -221,48 +229,70 @@ function DashboardInner() {
     setFormHeartbeat(String(cfg?.heartbeatIntervalSeconds ?? 0));
     // Default to true when unset (legacy sources pre-#2773 auto-connected).
     setFormAutoConnect(cfg?.autoConnect !== false);
+    // MeshCore-specific config (slice 4)
+    setFormMcSerialPort(cfg?.serialPort ?? cfg?.port ?? '');
+    setFormMcDeviceType(cfg?.deviceType === 'repeater' ? 'repeater' : 'companion');
     setFormError('');
     setShowSourceModal(true);
   };
 
   const onSaveSource = async () => {
     if (!formName.trim()) { setFormError(t('source.form.error_name_required')); return; }
-    if (!formHost.trim()) { setFormError(t('source.form.error_host_required')); return; }
-    const port = parseInt(formPort, 10);
-    if (isNaN(port) || port < 1 || port > 65535) { setFormError(t('source.form.error_port_range')); return; }
 
-    // Heartbeat interval (issue 2609): 0 = disabled, otherwise a positive
-    // number of seconds. We clamp to a sane range to prevent pathological
-    // configurations (sub-second floods or 24h naps that defeat the point).
-    const heartbeatSeconds = parseInt(formHeartbeat, 10);
-    if (isNaN(heartbeatSeconds) || heartbeatSeconds < 0 || heartbeatSeconds > 3600) {
-      setFormError(t('source.form.error_heartbeat_range'));
-      return;
-    }
-
-    let vnConfig: { enabled: boolean; port: number; allowAdminCommands: boolean } | undefined;
-    if (formVnEnabled) {
-      const vnPort = parseInt(formVnPort, 10);
-      if (isNaN(vnPort) || vnPort < 1 || vnPort > 65535) {
-        setFormError(t('source.form.error_vn_port_range'));
+    let cfg: Record<string, any>;
+    if (formType === 'meshcore') {
+      // MeshCore companion-USB v1: just serial port + device type. Other
+      // transports (BLE/TCP) are out of scope for slice 4.
+      const port = formMcSerialPort.trim();
+      if (!port) {
+        setFormError(t('meshcore.form.error_port_required', 'Serial port is required'));
         return;
       }
-      vnConfig = { enabled: true, port: vnPort, allowAdminCommands: formVnAllowAdmin };
+      cfg = {
+        transport: 'usb',
+        port,
+        deviceType: formMcDeviceType,
+        autoConnect: formAutoConnect,
+      };
+    } else {
+      if (!formHost.trim()) { setFormError(t('source.form.error_host_required')); return; }
+      const port = parseInt(formPort, 10);
+      if (isNaN(port) || port < 1 || port > 65535) { setFormError(t('source.form.error_port_range')); return; }
+
+      // Heartbeat interval (issue 2609): 0 = disabled, otherwise a positive
+      // number of seconds. We clamp to a sane range to prevent pathological
+      // configurations (sub-second floods or 24h naps that defeat the point).
+      const heartbeatSeconds = parseInt(formHeartbeat, 10);
+      if (isNaN(heartbeatSeconds) || heartbeatSeconds < 0 || heartbeatSeconds > 3600) {
+        setFormError(t('source.form.error_heartbeat_range'));
+        return;
+      }
+
+      let vnConfig: { enabled: boolean; port: number; allowAdminCommands: boolean } | undefined;
+      if (formVnEnabled) {
+        const vnPort = parseInt(formVnPort, 10);
+        if (isNaN(vnPort) || vnPort < 1 || vnPort > 65535) {
+          setFormError(t('source.form.error_vn_port_range'));
+          return;
+        }
+        vnConfig = { enabled: true, port: vnPort, allowAdminCommands: formVnAllowAdmin };
+      }
+
+      cfg = { host: formHost.trim(), port };
+      if (heartbeatSeconds > 0) cfg.heartbeatIntervalSeconds = heartbeatSeconds;
+      if (vnConfig) cfg.virtualNode = vnConfig;
+      // Persist autoConnect explicitly so the server can distinguish legacy
+      // sources (undefined → treat as true) from ones the user opted out of.
+      cfg.autoConnect = formAutoConnect;
     }
 
     setFormSaving(true);
     setFormError('');
     try {
       const csrfToken = getToken();
-      const cfg: Record<string, any> = { host: formHost.trim(), port };
-      if (heartbeatSeconds > 0) cfg.heartbeatIntervalSeconds = heartbeatSeconds;
-      if (vnConfig) cfg.virtualNode = vnConfig;
-      // Persist autoConnect explicitly so the server can distinguish legacy
-      // sources (undefined → treat as true) from ones the user opted out of.
-      cfg.autoConnect = formAutoConnect;
       const body = {
         name: formName.trim(),
-        type: 'meshtastic_tcp',
+        type: formType,
         config: cfg,
         enabled: true,
       };
@@ -503,6 +533,23 @@ function DashboardInner() {
           <div className="dashboard-confirm-dialog" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
             <h3>{editingSourceId ? t('source.edit') : t('source.add')}</h3>
 
+            {/* Type selector (slice 4): only meaningful when adding — type is
+                immutable on edit because backend tables and managers are
+                bound to the type that was chosen at creation time. */}
+            {!editingSourceId && (
+              <label className="dashboard-form-field">
+                <span className="dashboard-form-label">{t('source.form.type', 'Type')}</span>
+                <select
+                  className="dashboard-form-input"
+                  value={formType}
+                  onChange={(e) => setFormType(e.target.value as 'meshtastic_tcp' | 'meshcore')}
+                >
+                  <option value="meshtastic_tcp">{t('source.form.type_meshtastic', 'Meshtastic (TCP)')}</option>
+                  <option value="meshcore">{t('source.form.type_meshcore', 'MeshCore (USB)')}</option>
+                </select>
+              </label>
+            )}
+
             <label className="dashboard-form-field">
               <span className="dashboard-form-label">{t('source.form.name')}</span>
               <input
@@ -515,6 +562,48 @@ function DashboardInner() {
               />
             </label>
 
+            {formType === 'meshcore' ? (
+              <>
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('meshcore.form.serial_port', 'Serial Port')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="text"
+                    value={formMcSerialPort}
+                    onChange={(e) => setFormMcSerialPort(e.target.value)}
+                    placeholder="/dev/ttyACM0"
+                  />
+                  <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                    {t('meshcore.form.serial_port_help', 'OS path of the USB-connected MeshCore companion (e.g. /dev/ttyACM0, COM3).')}
+                  </p>
+                </label>
+
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('meshcore.form.device_type', 'Device Type')}</span>
+                  <select
+                    className="dashboard-form-input"
+                    value={formMcDeviceType}
+                    onChange={(e) => setFormMcDeviceType(e.target.value as 'companion' | 'repeater')}
+                  >
+                    <option value="companion">{t('meshcore.device_type.companion', 'Companion')}</option>
+                    <option value="repeater">{t('meshcore.device_type.repeater', 'Repeater')}</option>
+                  </select>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '8px 0 4px' }}>
+                  <input
+                    type="checkbox"
+                    checked={formAutoConnect}
+                    onChange={(e) => setFormAutoConnect(e.target.checked)}
+                  />
+                  {t('source.form.auto_connect')}
+                </label>
+                <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '0 0 8px 24px' }}>
+                  {t('source.form.auto_connect_help')}
+                </p>
+              </>
+            ) : (
+            <>
             <label className="dashboard-form-field">
               <span className="dashboard-form-label">{t('source.form.host')}</span>
               <input
@@ -601,6 +690,8 @@ function DashboardInner() {
                 </>
               )}
             </fieldset>
+            </>
+            )}
 
             {formError && (
               <p style={{ color: 'var(--ctp-red)', fontSize: 12, margin: '8px 0 0' }}>{formError}</p>

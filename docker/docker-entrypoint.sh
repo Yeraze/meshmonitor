@@ -78,6 +78,31 @@ else
     echo "Kubernetes fsGroup should handle file permissions"
 fi
 
+# Serial device access: when /dev/tty* devices are mapped into the container,
+# the host's owning GIDs may not be in the node user's supplementary groups
+# (su-exec drops supplementary groups). Ensure the node user can read/write
+# each mapped tty device by adding node to the owning group.
+if [ "$RUNNING_AS_ROOT" = "true" ]; then
+    for dev in /dev/ttyUSB* /dev/ttyACM* /dev/ttyS*; do
+        [ -e "$dev" ] || continue
+        DEV_GID=$(stat -c '%g' "$dev" 2>/dev/null || true)
+        [ -n "$DEV_GID" ] || continue
+        # Skip if node already has this gid (primary or supplementary)
+        if id node | grep -qE "(^|[=,])${DEV_GID}([(,]|$)"; then
+            continue
+        fi
+        GROUP_NAME=$(getent group "$DEV_GID" 2>/dev/null | cut -d: -f1 || true)
+        if [ -z "$GROUP_NAME" ]; then
+            GROUP_NAME="ttydev${DEV_GID}"
+            addgroup -g "$DEV_GID" "$GROUP_NAME" 2>/dev/null || true
+        fi
+        if [ -n "$GROUP_NAME" ]; then
+            addgroup node "$GROUP_NAME" 2>/dev/null || true
+            echo "✓ Granted node user access to $dev via group $GROUP_NAME (gid $DEV_GID)"
+        fi
+    done
+fi
+
 # Copy upgrade-related scripts to internal directory (separate from user scripts)
 # User scripts go in /data/scripts (may be bind-mounted)
 # Internal MeshMonitor scripts go in /data/.meshmonitor-internal (never bind-mounted)

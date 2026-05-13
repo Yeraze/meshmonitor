@@ -447,6 +447,35 @@ setTimeout(async () => {
     let firstTcpSourceConfigured = false;
 
     for (const source of enabledSources) {
+      if (source.type === 'meshcore') {
+        // Slice 1 of multi-source MeshCore: spin up a per-source manager
+        // and connect it. Companion-USB only — other transports will be
+        // wired in slice 2.
+        const cfg = source.config as any;
+        if (cfg?.autoConnect === false) {
+          logger.info(`Skipping auto-connect for MeshCore source ${source.id} (${source.name}) — autoConnect disabled`);
+          continue;
+        }
+
+        try {
+          const mcConfig = meshcoreConfigFromSource(source);
+          if (!mcConfig) {
+            logger.warn(`MeshCore source ${source.id} (${source.name}) has incomplete config; skipping auto-connect`);
+            continue;
+          }
+          const manager = meshcoreManagerRegistry.getOrCreate(source);
+          const connected = await manager.connect(mcConfig);
+          if (connected) {
+            logger.info(`[MeshCore:${source.id}] Auto-connected source ${source.name}`);
+          } else {
+            logger.warn(`[MeshCore:${source.id}] Auto-connect failed for source ${source.name}`);
+          }
+        } catch (err) {
+          logger.error(`Failed to start MeshCore source ${source.id} (${source.name}); continuing with other sources:`, err);
+        }
+        continue;
+      }
+
       if (source.type === 'meshtastic_tcp') {
         const cfg = source.config as any;
 
@@ -500,19 +529,31 @@ setTimeout(async () => {
       logger.debug(`Started ${enabledSources.length} source manager(s)`);
     }
 
-    // Auto-connect MeshCore if enabled via environment variables
+    // Legacy env-var-based MeshCore auto-connect: when MESHCORE_ENABLED=true
+    // and no MeshCore source row exists yet, mint the legacy default source
+    // (same id as migration 056) from environment variables and connect it
+    // through the registry. Once a real source is configured via the UI,
+    // this branch becomes a no-op.
     if (process.env.MESHCORE_ENABLED === 'true') {
-      const meshcoreConfig = meshcoreManager.getEnvConfig();
-      if (meshcoreConfig) {
-        logger.info('[MeshCore] Auto-connecting on startup...');
-        const connected = await meshcoreManager.connect();
-        if (connected) {
-          logger.info('[MeshCore] Auto-connected successfully on startup');
-        } else {
-          logger.warn('[MeshCore] Auto-connect on startup failed — use the MeshCore tab to retry');
+      const existingMeshcoreSources = enabledSources.filter(s => s.type === 'meshcore');
+      if (existingMeshcoreSources.length === 0) {
+        try {
+          const legacyManager = meshcoreManagerRegistry.getOrCreateLegacyManager();
+          const envConfig = legacyManager.getEnvConfig();
+          if (envConfig) {
+            logger.info('[MeshCore] Auto-connecting legacy env-var source on startup...');
+            const connected = await legacyManager.connect(envConfig);
+            if (connected) {
+              logger.info('[MeshCore] Legacy env-var source connected');
+            } else {
+              logger.warn('[MeshCore] Legacy env-var auto-connect failed — use the MeshCore tab to retry');
+            }
+          } else {
+            logger.warn('[MeshCore] MESHCORE_ENABLED=true but no serial port or TCP host configured');
+          }
+        } catch (err) {
+          logger.error('[MeshCore] Legacy env-var auto-connect threw:', err);
         }
-      } else {
-        logger.warn('[MeshCore] MESHCORE_ENABLED=true but no serial port or TCP host configured');
       }
     }
 
@@ -759,7 +800,7 @@ import newsRoutes from './routes/newsRoutes.js';
 import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
-import meshcoreManager from './meshcoreManager.js';
+import { meshcoreManagerRegistry, meshcoreConfigFromSource } from './meshcoreRegistry.js';
 import embedProfileRoutes from './routes/embedProfileRoutes.js';
 import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';
@@ -850,12 +891,12 @@ apiRouter.use('/upgrade', upgradeRoutes);
 // Message routes (requires appropriate write permissions)
 apiRouter.use('/messages', optionalAuth(), messageRoutes);
 
-// MeshCore routes (for MeshCore device monitoring)
-// Authentication handled per-route in meshcoreRoutes.ts
-// Enable with MESHCORE_ENABLED=true in .env
-if (process.env.MESHCORE_ENABLED === 'true') {
-  apiRouter.use('/meshcore', meshcoreRoutes);
-}
+// MeshCore routes — nested under `/api/sources/:id/meshcore/*` so each
+// request resolves the manager bound to a specific source. The legacy
+// un-nested `/api/meshcore/*` mount was dropped in slice 3 along with
+// the global `meshcore` permission resource; the new frontend talks to
+// the per-source surface only.
+apiRouter.use('/sources/:id/meshcore', meshcoreRoutes);
 
 // Link preview routes
 apiRouter.use('/', linkPreviewRoutes);

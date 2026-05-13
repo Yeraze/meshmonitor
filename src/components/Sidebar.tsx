@@ -86,7 +86,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSearchClick,
   baseUrl,
   connectedNodeName,
-  meshcoreEnabled,
   packetLogEnabled
 }) => {
   const { t } = useTranslation();
@@ -252,9 +251,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
           {hasPermission('dashboard', 'read') && (
             <NavItem id="dashboard" label={t('nav.dashboard')} icon={icon('dashboard')} />
-          )}
-          {meshcoreEnabled && hasPermission('meshcore', 'read') && (
-            <NavItem id="meshcore" label={t('nav.meshcore', 'MeshCore')} icon={icon('meshcore')} />
           )}
           {packetLogEnabled && hasPermission('packetmonitor', 'read') && (
             <NavItem id="packetmonitor" label={t('nav.packet_monitor', 'Packet Monitor')} icon={icon('packetmonitor')} />

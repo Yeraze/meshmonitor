@@ -273,7 +273,7 @@ export async function handleOIDCCallback(
             'automation', 'connection', 'traceroute', 'audit', 'security', 'themes',
             'channel_0', 'channel_1', 'channel_2', 'channel_3',
             'channel_4', 'channel_5', 'channel_6', 'channel_7',
-            'nodes_private', 'meshcore', 'packetmonitor'
+            'nodes_private', 'packetmonitor'
           ];
           for (const resource of allResources) {
             await databaseService.auth.createPermission({

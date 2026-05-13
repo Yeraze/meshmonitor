@@ -2,5 +2,5 @@
  * MeshCore Components Index
  */
 
-export { MeshCoreTab } from './MeshCoreTab';
-export { default as MeshCoreTabDefault } from './MeshCoreTab';
+export { MeshCorePage, MeshCoreTab } from './MeshCorePage';
+export { default as MeshCoreTabDefault } from './MeshCorePage';

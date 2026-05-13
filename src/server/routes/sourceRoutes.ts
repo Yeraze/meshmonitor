@@ -5,6 +5,7 @@ import { requirePermission, optionalAuth, hasPermission } from '../auth/authMidd
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
+import { meshcoreManagerRegistry, meshcoreConfigFromSource } from '../meshcoreRegistry.js';
 import waypointRoutes from './waypoints.js';
 import { filterNodesByChannelPermission, maskNodeLocationByChannel, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { PortNum } from '../constants/meshtastic.js';
@@ -168,6 +169,18 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       } catch (err) {
         logger.warn(`Could not start manager for new source ${source.id}:`, err);
       }
+    } else if (source.enabled && source.type === 'meshcore' && cfgForStart?.autoConnect !== false) {
+      try {
+        const mcConfig = meshcoreConfigFromSource(source);
+        if (mcConfig) {
+          const manager = meshcoreManagerRegistry.getOrCreate(source);
+          await manager.connect(mcConfig);
+        } else {
+          logger.warn(`MeshCore source ${source.id} created with incomplete config`);
+        }
+      } catch (err) {
+        logger.warn(`Could not start MeshCore manager for new source ${source.id}:`, err);
+      }
     }
 
     res.status(201).json(source);
@@ -243,13 +256,33 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
           logger.warn(`Could not start manager for source ${source.id}:`, err);
         }
       }
+    } else if (!wasEnabled && isNowEnabled && source.type === 'meshcore' && newAutoConnect) {
+      // Newly enabled MeshCore source with autoConnect on — get-or-create the
+      // per-source manager and connect it.
+      try {
+        const mcConfig = meshcoreConfigFromSource(source);
+        if (mcConfig) {
+          const manager = meshcoreManagerRegistry.getOrCreate(source);
+          await manager.connect(mcConfig);
+        } else {
+          logger.warn(`MeshCore source ${source.id} enabled with incomplete config`);
+        }
+      } catch (err) {
+        logger.warn(`Could not start MeshCore manager for source ${source.id}:`, err);
+      }
     } else if (wasEnabled && !isNowEnabled) {
-      // Newly disabled: stop manager
+      // Newly disabled: stop manager (both registries — each is a no-op when
+      // the source id isn't registered, so this safely covers either type).
       await sourceManagerRegistry.removeManager(source.id);
+      await meshcoreManagerRegistry.remove(source.id);
     } else if (wasEnabled && isNowEnabled && source.type === 'meshtastic_tcp' && oldAutoConnect && !newAutoConnect) {
       // autoConnect just turned off — stop the running manager. The source
       // stays enabled so the user can manually reconnect.
       await sourceManagerRegistry.removeManager(source.id);
+    } else if (wasEnabled && isNowEnabled && source.type === 'meshcore' && oldAutoConnect && !newAutoConnect) {
+      // MeshCore autoConnect just turned off — disconnect the manager. The
+      // source stays enabled so the user can manually reconnect.
+      await meshcoreManagerRegistry.remove(source.id);
     } else if (wasEnabled && isNowEnabled && source.type === 'meshtastic_tcp' && !oldAutoConnect && newAutoConnect) {
       // autoConnect just turned on — start the manager if not already running.
       if (!sourceManagerRegistry.getManager(source.id)) {
@@ -265,6 +298,21 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         } catch (err) {
           logger.warn(`Could not start manager for source ${source.id}:`, err);
         }
+      }
+    } else if (wasEnabled && isNowEnabled && source.type === 'meshcore' && !oldAutoConnect && newAutoConnect) {
+      // MeshCore autoConnect just turned on — get-or-create + connect.
+      try {
+        const mcConfig = meshcoreConfigFromSource(source);
+        if (mcConfig) {
+          const manager = meshcoreManagerRegistry.getOrCreate(source);
+          if (!manager.isConnected()) {
+            await manager.connect(mcConfig);
+          }
+        } else {
+          logger.warn(`MeshCore source ${source.id} has incomplete config; not auto-connecting`);
+        }
+      } catch (err) {
+        logger.warn(`Could not start MeshCore manager for source ${source.id}:`, err);
       }
     } else if (wasEnabled && isNowEnabled && source.type === 'meshtastic_tcp' && config !== undefined) {
       // Still enabled, config possibly changed. Detect what changed and act.
@@ -302,6 +350,22 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
           logger.warn(`Could not hot-swap virtual node for source ${source.id}:`, err);
         }
       }
+    } else if (wasEnabled && isNowEnabled && source.type === 'meshcore' && newAutoConnect && config !== undefined) {
+      // MeshCore source config changed while enabled and autoConnect on —
+      // the connect config is baked in at connect-time, so any change means
+      // disconnect + reconnect with the fresh config.
+      try {
+        const mcConfig = meshcoreConfigFromSource(source);
+        if (mcConfig) {
+          await meshcoreManagerRegistry.remove(source.id);
+          const manager = meshcoreManagerRegistry.getOrCreate(source);
+          await manager.connect(mcConfig);
+        } else {
+          logger.warn(`MeshCore source ${source.id} updated to incomplete config`);
+        }
+      } catch (err) {
+        logger.warn(`Could not restart MeshCore manager for source ${source.id}:`, err);
+      }
     }
 
     res.json(source);
@@ -314,8 +378,10 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
 // Delete source
 router.delete('/:id', requirePermission('sources', 'write'), async (req: Request, res: Response) => {
   try {
-    // Stop the manager before deleting
+    // Stop the manager before deleting (both registries — each is a no-op when
+    // the source id isn't registered, so this safely covers either type).
     await sourceManagerRegistry.removeManager(req.params.id);
+    await meshcoreManagerRegistry.remove(req.params.id);
 
     const deleted = await databaseService.sources.deleteSource(req.params.id);
     if (!deleted) {
@@ -584,8 +650,21 @@ router.post('/:id/connect', requirePermission('sources', 'write'), async (req: R
     if (!source.enabled) {
       return res.status(409).json({ error: 'Source is disabled; enable it first' });
     }
-    if (source.type !== 'meshtastic_tcp') {
-      return res.status(400).json({ error: 'Manual connect is only supported for meshtastic_tcp sources' });
+    if (source.type !== 'meshtastic_tcp' && source.type !== 'meshcore') {
+      return res.status(400).json({ error: 'Manual connect is only supported for meshtastic_tcp and meshcore sources' });
+    }
+    if (source.type === 'meshcore') {
+      const existingMc = meshcoreManagerRegistry.get(source.id);
+      if (existingMc?.isConnected()) {
+        return res.json({ success: true, alreadyRunning: true });
+      }
+      const mcConfig = meshcoreConfigFromSource(source);
+      if (!mcConfig) {
+        return res.status(400).json({ error: 'MeshCore source has incomplete config' });
+      }
+      const manager = meshcoreManagerRegistry.getOrCreate(source);
+      await manager.connect(mcConfig);
+      return res.json({ success: true });
     }
     if (sourceManagerRegistry.getManager(source.id)) {
       return res.json({ success: true, alreadyRunning: true });
@@ -611,6 +690,14 @@ router.post('/:id/disconnect', requirePermission('sources', 'write'), async (req
   try {
     const source = await databaseService.sources.getSource(req.params.id);
     if (!source) return res.status(404).json({ error: 'Source not found' });
+    if (source.type === 'meshcore') {
+      const existingMc = meshcoreManagerRegistry.get(source.id);
+      if (!existingMc?.isConnected()) {
+        return res.json({ success: true, alreadyStopped: true });
+      }
+      await meshcoreManagerRegistry.remove(source.id);
+      return res.json({ success: true });
+    }
     if (!sourceManagerRegistry.getManager(source.id)) {
       return res.json({ success: true, alreadyStopped: true });
     }
