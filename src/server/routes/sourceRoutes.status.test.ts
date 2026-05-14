@@ -115,6 +115,8 @@ describe('GET /:id/status — meshcore registry fallback', () => {
         sourceType: 'meshcore',
         connected: true,
       }),
+      getLocalNode: () => null,
+      getAllNodes: () => [],
     });
 
     const res = await request(app).get('/mc-1/status');
@@ -143,6 +145,47 @@ describe('GET /:id/status — meshcore registry fallback', () => {
     expect(res.status).toBe(200);
     expect(res.body.connected).toBe(false);
     expect(res.body.sourceType).toBe('meshcore');
+  });
+
+  it('returns nodeCount/activeNodeCount from the meshcore manager (not the empty nodes table)', async () => {
+    const app = createApp();
+    mockDb.sources.getSource.mockResolvedValue({
+      id: 'mc-3',
+      name: 'Counting MeshCore',
+      type: 'meshcore',
+      enabled: true,
+      config: {},
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: 1,
+    });
+    const now = Date.now();
+    mockMeshcoreRegistry.get.mockReturnValue({
+      sourceId: 'mc-3',
+      getStatus: (name: string) => ({
+        sourceId: 'mc-3',
+        sourceName: name,
+        sourceType: 'meshcore',
+        connected: true,
+      }),
+      getLocalNode: () => ({ publicKey: 'self', name: 'Self', advType: 1 }),
+      // localNode (no lastHeard) + 2 fresh contacts + 1 stale contact
+      getAllNodes: () => [
+        { publicKey: 'self', name: 'Self', advType: 1 },
+        { publicKey: 'a', name: 'Fresh A', advType: 1, lastHeard: now - 60_000 },
+        { publicKey: 'b', name: 'Fresh B', advType: 1, lastHeard: now - 3_600_000 },
+        { publicKey: 'c', name: 'Stale', advType: 1, lastHeard: now - 10_800_000 },
+      ],
+    });
+
+    const res = await request(app).get('/mc-3/status');
+
+    expect(res.status).toBe(200);
+    expect(res.body.nodeCount).toBe(4);
+    expect(res.body.activeNodeCount).toBe(3);
+    // database fallbacks should NOT have been consulted for a meshcore source
+    expect(mockDb.nodes.getNodeCount).not.toHaveBeenCalled();
+    expect(mockDb.nodes.getActiveNodeCount).not.toHaveBeenCalled();
   });
 
   it('still uses sourceManagerRegistry for non-meshcore sources', async () => {
