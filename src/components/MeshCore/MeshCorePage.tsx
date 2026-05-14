@@ -22,6 +22,7 @@ import { MeshCoreSubToolbar, MeshCoreView } from './MeshCoreSubToolbar';
 import { MeshCoreNodesView } from './MeshCoreNodesView';
 import { MeshCoreChannelsView } from './MeshCoreChannelsView';
 import { MeshCoreDirectMessagesView } from './MeshCoreDirectMessagesView';
+import { MeshCoreInfoView } from './MeshCoreInfoView';
 import { MeshCoreConfigurationView } from './MeshCoreConfigurationView';
 import { MeshCoreSettingsView } from './MeshCoreSettingsView';
 import './MeshCoreTab.css';
@@ -75,6 +76,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
           onSelect={setView}
           expanded={toolbarExpanded}
           onToggleExpanded={() => setToolbarExpanded(v => !v)}
+          showInfo={!!sourceId}
         />
         <div className="meshcore-content">
           {view === 'nodes' && (
@@ -90,6 +92,9 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               status={status}
               actions={actions}
             />
+          )}
+          {view === 'info' && sourceId && (
+            <MeshCoreInfoView baseUrl={baseUrl} sourceId={sourceId} status={status} />
           )}
           {view === 'configuration' && (
             <MeshCoreConfigurationView status={status} actions={actions} />

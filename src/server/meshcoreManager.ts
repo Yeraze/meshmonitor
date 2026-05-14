@@ -96,6 +96,12 @@ export interface MeshCoreNode {
   telemetryModeBase?: TelemetryMode;
   telemetryModeLoc?: TelemetryMode;
   telemetryModeEnv?: TelemetryMode;
+  /** From DeviceQuery — populated by the telemetry poller. In-memory only;
+   *  re-derived from the device on each poll cycle (no DB persistence). */
+  firmwareVer?: number;
+  firmwareBuild?: string;
+  model?: string;
+  ver?: string;
 }
 
 export interface MeshCoreContact {
@@ -139,6 +145,48 @@ export interface MeshCoreStatus {
   radioBw?: number;
   radioSf?: number;
   radioCr?: number;
+}
+
+/**
+ * Local-node stats fetched over the companion-protocol link. These never
+ * touch the air — they read counters/state from the directly-connected
+ * node. Field names match what python-meshcore returns.
+ */
+export interface MeshCoreStatsCore {
+  batteryMv?: number;
+  uptimeSecs?: number;
+  errors?: number;
+  queueLen?: number;
+}
+
+export interface MeshCoreStatsRadio {
+  noiseFloor?: number;
+  lastRssi?: number;
+  lastSnr?: number;
+  txAirSecs?: number;
+  rxAirSecs?: number;
+}
+
+export interface MeshCoreStatsPackets {
+  recv?: number;
+  sent?: number;
+  floodTx?: number;
+  directTx?: number;
+  floodRx?: number;
+  directRx?: number;
+  recvErrors?: number | null;
+}
+
+export interface MeshCoreDeviceInfo {
+  firmwareVer?: number;
+  firmwareBuild?: string;
+  model?: string;
+  ver?: string;
+  maxContacts?: number;
+  maxChannels?: number;
+  blePin?: number;
+  repeat?: boolean;
+  pathHashMode?: number;
 }
 
 // Bridge command response
@@ -1189,6 +1237,126 @@ class MeshCoreManager extends EventEmitter {
    */
   async setTelemetryModeEnv(mode: TelemetryMode): Promise<boolean> {
     return this.setTelemetryMode('env', mode);
+  }
+
+  // ============ Local-node stats (companion only, no RF) ============
+  //
+  // These hit the locally-attached node over USB/BLE/TCP — they read counters
+  // and config off the directly-connected node and never transmit on the air.
+  // Safe to poll on a fixed interval. Returns null if not a companion, not
+  // connected, or the bridge call fails.
+
+  async getStatsCore(): Promise<MeshCoreStatsCore | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
+    try {
+      const response = await this.sendBridgeCommand('get_stats', { type: 'core' });
+      if (!response.success || !response.data) return null;
+      const d = response.data;
+      return {
+        batteryMv: typeof d.battery_mv === 'number' ? d.battery_mv : undefined,
+        uptimeSecs: typeof d.uptime_secs === 'number' ? d.uptime_secs : undefined,
+        errors: typeof d.errors === 'number' ? d.errors : undefined,
+        queueLen: typeof d.queue_len === 'number' ? d.queue_len : undefined,
+      };
+    } catch (error) {
+      logger.warn(`[MeshCore:${this.sourceId}] getStatsCore failed:`, error);
+      return null;
+    }
+  }
+
+  async getStatsRadio(): Promise<MeshCoreStatsRadio | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
+    try {
+      const response = await this.sendBridgeCommand('get_stats', { type: 'radio' });
+      if (!response.success || !response.data) return null;
+      const d = response.data;
+      return {
+        noiseFloor: typeof d.noise_floor === 'number' ? d.noise_floor : undefined,
+        lastRssi: typeof d.last_rssi === 'number' ? d.last_rssi : undefined,
+        lastSnr: typeof d.last_snr === 'number' ? d.last_snr : undefined,
+        txAirSecs: typeof d.tx_air_secs === 'number' ? d.tx_air_secs : undefined,
+        rxAirSecs: typeof d.rx_air_secs === 'number' ? d.rx_air_secs : undefined,
+      };
+    } catch (error) {
+      logger.warn(`[MeshCore:${this.sourceId}] getStatsRadio failed:`, error);
+      return null;
+    }
+  }
+
+  async getStatsPackets(): Promise<MeshCoreStatsPackets | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
+    try {
+      const response = await this.sendBridgeCommand('get_stats', { type: 'packets' });
+      if (!response.success || !response.data) return null;
+      const d = response.data;
+      return {
+        recv: typeof d.recv === 'number' ? d.recv : undefined,
+        sent: typeof d.sent === 'number' ? d.sent : undefined,
+        floodTx: typeof d.flood_tx === 'number' ? d.flood_tx : undefined,
+        directTx: typeof d.direct_tx === 'number' ? d.direct_tx : undefined,
+        floodRx: typeof d.flood_rx === 'number' ? d.flood_rx : undefined,
+        directRx: typeof d.direct_rx === 'number' ? d.direct_rx : undefined,
+        recvErrors: typeof d.recv_errors === 'number' ? d.recv_errors : null,
+      };
+    } catch (error) {
+      logger.warn(`[MeshCore:${this.sourceId}] getStatsPackets failed:`, error);
+      return null;
+    }
+  }
+
+  /** Read the RTC on the locally-connected node (Unix seconds). */
+  async getDeviceTime(): Promise<number | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
+    try {
+      const response = await this.sendBridgeCommand('get_device_time', {});
+      if (!response.success || !response.data) return null;
+      const t = response.data.time;
+      return typeof t === 'number' ? t : null;
+    } catch (error) {
+      logger.warn(`[MeshCore:${this.sourceId}] getDeviceTime failed:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Stamp DeviceQuery output onto the in-memory localNode. The poller calls
+   * this after a successful `deviceQuery()` so consumers of `getLocalNode()`
+   * (status endpoint, snapshot endpoint, Info page) immediately see firmware
+   * version, build date, and model alongside SelfInfo.
+   */
+  applyDeviceInfo(info: MeshCoreDeviceInfo): void {
+    if (!this.localNode) return;
+    if (info.firmwareVer !== undefined) this.localNode.firmwareVer = info.firmwareVer;
+    if (info.firmwareBuild !== undefined) this.localNode.firmwareBuild = info.firmwareBuild;
+    if (info.model !== undefined) this.localNode.model = info.model;
+    if (info.ver !== undefined) this.localNode.ver = info.ver;
+    dataEventEmitter.emitMeshCoreLocalNodeUpdated(this.localNode, this.sourceId);
+  }
+
+  /** DeviceQuery → DeviceInfo (firmware version, build date, model, etc). */
+  async deviceQuery(): Promise<MeshCoreDeviceInfo | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
+    try {
+      const response = await this.sendBridgeCommand('device_query', {});
+      if (!response.success || !response.data) return null;
+      const d = response.data;
+      // python-meshcore returns "fw ver" (with a space) for the version byte.
+      const fwVerRaw = d['fw ver'] ?? d.fw_ver;
+      return {
+        firmwareVer: typeof fwVerRaw === 'number' ? fwVerRaw : undefined,
+        firmwareBuild: typeof d.fw_build === 'string' ? d.fw_build : undefined,
+        model: typeof d.model === 'string' ? d.model : undefined,
+        ver: typeof d.ver === 'string' ? d.ver : undefined,
+        maxContacts: typeof d.max_contacts === 'number' ? d.max_contacts : undefined,
+        maxChannels: typeof d.max_channels === 'number' ? d.max_channels : undefined,
+        blePin: typeof d.ble_pin === 'number' ? d.ble_pin : undefined,
+        repeat: typeof d.repeat === 'boolean' ? d.repeat : undefined,
+        pathHashMode: typeof d.path_hash_mode === 'number' ? d.path_hash_mode : undefined,
+      };
+    } catch (error) {
+      logger.warn(`[MeshCore:${this.sourceId}] deviceQuery failed:`, error);
+      return null;
+    }
   }
 
   // ============ Getters ============

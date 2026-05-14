@@ -70,6 +70,7 @@ import { migration as seedGlobalWaypointsPermissionMigration, runMigration055Pos
 import { migration as addShowTraceroutesToEmbedProfilesMigration, runMigration056Postgres, runMigration056Mysql } from '../server/migrations/056_add_show_traceroutes_to_embed_profiles.js';
 import { migration as addSourceIdToMeshcoreTablesMigration, runMigration057Postgres, runMigration057Mysql } from '../server/migrations/057_add_source_id_to_meshcore_tables.js';
 import { migration as collapseMeshcoreResourceMigration, runMigration058Postgres, runMigration058Mysql } from '../server/migrations/058_collapse_meshcore_resource.js';
+import { migration as telemetrySourceNodeTypeTsIndexMigration, runMigration059Postgres, runMigration059Mysql } from '../server/migrations/059_telemetry_source_node_type_ts_index.js';
 
 // ============================================================================
 // Registry
@@ -901,4 +902,20 @@ registry.register({
   sqlite: (db) => collapseMeshcoreResourceMigration.up(db),
   postgres: (client) => runMigration058Postgres(client),
   mysql: (pool) => runMigration058Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 059: Add (sourceId, nodeId, telemetryType, timestamp DESC) index
+// to back the MeshCore Info-page time-series queries. Migration 049 covered
+// the equality columns but stopped short of `timestamp`, forcing a sort on
+// each range fetch. Idempotent across SQLite / PostgreSQL / MySQL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 59,
+  name: 'telemetry_source_node_type_ts_index',
+  settingsKey: 'migration_059_telemetry_source_node_type_ts_index',
+  sqlite: (db) => telemetrySourceNodeTypeTsIndexMigration.up(db),
+  postgres: (client) => runMigration059Postgres(client),
+  mysql: (pool) => runMigration059Mysql(pool),
 });

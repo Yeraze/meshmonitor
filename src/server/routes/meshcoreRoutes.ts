@@ -11,6 +11,7 @@
 import { Router, Request, Response } from 'express';
 import { ConnectionType, MeshCoreDeviceType, MeshCoreManager } from '../meshcoreManager.js';
 import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
+import { getMeshCoreTelemetryPoller, nodeNumFromPubkey } from '../services/meshcoreTelemetryPoller.js';
 import { logger } from '../../utils/logger.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiters.js';
@@ -403,6 +404,59 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
   } catch (error) {
     logger.error('[API] Error getting snapshot:', error);
     res.status(500).json({ success: false, error: 'Failed to get snapshot' });
+  }
+});
+
+/**
+ * GET /api/sources/:id/meshcore/info
+ *
+ * Single-call payload for the MeshCore Node Info page:
+ *
+ *   - `identity`: name, pubkey, node type, manufacturer/model, firmware
+ *     ver + build date, radio config, advertised lat/lon — pulled from
+ *     `localNode` which now folds in DeviceQuery output.
+ *   - `latest`: the most recent telemetry poll snapshot from
+ *     `MeshCoreTelemetryPoller`. Contains battery, queue depth, noise
+ *     floor, RSSI/SNR, RTC drift, packet counters, and computed
+ *     duty-cycle / rate fields. `null` until the first poll completes.
+ *   - `telemetryRef`: { nodeId, nodeNum, sourceId } — the keys the existing
+ *     `/api/telemetry/:nodeId?sourceId=...` endpoint indexes graphs on.
+ *
+ * Companion-only. Repeaters do not expose GetStats; the response will
+ * still include identity but `latest` will be `null` and clients should
+ * suppress the health/graphs panels.
+ */
+router.get('/info', optionalAuth(), requirePermission('connection', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const manager = managerFor(req);
+    const status = manager.getConnectionStatus();
+    const localNode = manager.getLocalNode();
+    const poller = getMeshCoreTelemetryPoller();
+    const snapshot = poller ? poller.getLastSnapshot(manager.sourceId) : undefined;
+
+    const telemetryRef = localNode?.publicKey
+      ? {
+          nodeId: localNode.publicKey,
+          nodeNum: nodeNumFromPubkey(localNode.publicKey),
+          sourceId: manager.sourceId,
+        }
+      : null;
+
+    res.json({
+      success: true,
+      data: {
+        sourceId: manager.sourceId,
+        connected: status.connected,
+        deviceType: status.deviceType,
+        deviceTypeName: MeshCoreDeviceType[status.deviceType],
+        identity: localNode,
+        latest: snapshot ?? null,
+        telemetryRef,
+      },
+    });
+  } catch (error) {
+    logger.error('[API] Error getting MeshCore info:', error);
+    res.status(500).json({ success: false, error: 'Failed to get info' });
   }
 });
 

@@ -671,6 +671,34 @@ setTimeout(async () => {
 }, 5000); // Wait 5 seconds after startup
 
 // ==========================================
+// MeshCore local-node telemetry poller
+// ==========================================
+// Sample every connected MeshCore COMPANION manager every
+// MESHCORE_TELEMETRY_INTERVAL_MS (default 5 minutes). All commands hit the
+// locally-attached node only — no RF — so the poller is safe to run on a
+// fixed cadence regardless of mesh topology. Exposed back to the request
+// handlers as `meshcoreTelemetryPoller` so the Info endpoint can serve the
+// last cached snapshot without forcing a synchronous bridge round-trip.
+export const meshcoreTelemetryPoller = new MeshCoreTelemetryPoller({
+  registry: meshcoreManagerRegistry,
+  database: databaseService,
+});
+setMeshCoreTelemetryPoller(meshcoreTelemetryPoller);
+setTimeout(async () => {
+  try {
+    await databaseService.waitForReady();
+    meshcoreTelemetryPoller.start();
+    // Run one immediately so the Info page has data without waiting a
+    // full interval after first connect.
+    meshcoreTelemetryPoller.pollOnce().catch((err) =>
+      logger.warn('[MeshCorePoller] Initial poll failed:', err),
+    );
+  } catch (error) {
+    logger.error('Failed to start MeshCore telemetry poller:', error);
+  }
+}, 7000); // Slightly after the initial telemetry purge so the DB is settled.
+
+// ==========================================
 // Scheduled Auto-Upgrade Check
 // ==========================================
 // Check for updates every 4 hours server-side to enable unattended upgrades
@@ -801,6 +829,7 @@ import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
 import { meshcoreManagerRegistry, meshcoreConfigFromSource } from './meshcoreRegistry.js';
+import { MeshCoreTelemetryPoller, setMeshCoreTelemetryPoller } from './services/meshcoreTelemetryPoller.js';
 import embedProfileRoutes from './routes/embedProfileRoutes.js';
 import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';
