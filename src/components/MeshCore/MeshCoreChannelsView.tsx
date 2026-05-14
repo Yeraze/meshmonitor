@@ -59,14 +59,14 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           {channels.map(c => (
             <button
               key={c.id}
-              className={`mc-node-row ${active.id === c.id ? 'selected' : ''}`}
+              className={`mc-channel-row ${active.id === c.id ? 'selected' : ''}`}
               onClick={() => setSelected(c.id)}
             >
-              <div className="mc-node-row-name">
-                <span># {c.name}</span>
+              <div className="mc-channel-row-name">
+                # {c.name}
               </div>
-              <div className="mc-node-row-meta">
-                <span>{messages.filter(c.filter).length} {t('meshcore.messages', 'messages')}</span>
+              <div className="mc-channel-row-meta">
+                {messages.filter(c.filter).length} {t('meshcore.messages', 'messages')}
               </div>
             </button>
           ))}

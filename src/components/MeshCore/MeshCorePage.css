@@ -241,7 +241,7 @@
 .meshcore-list-pane-body {
   flex: 1;
   overflow-y: auto;
-  padding: 0.4rem;
+  padding: 0.5rem 0;
 }
 
 .meshcore-main-pane {
@@ -265,20 +265,81 @@
   background: var(--ctp-surface0);
 }
 
-/* Nodes list items */
+/* Nodes list items — flat row style matching Meshtastic .node-item */
 .mc-node-row {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  padding: 0.55rem 0.7rem;
-  border-radius: var(--radius-md);
+  padding: 0.5rem 0.75rem;
   cursor: pointer;
-  margin-bottom: 0.2rem;
-  background: var(--ctp-surface1);
+  border-bottom: 1px solid var(--ctp-surface1);
+  background: transparent;
+  border-radius: 0;
+  margin-bottom: 0;
+  width: 100%;
+  text-align: left;
+  transition: background 0.2s ease;
 }
 
-.mc-node-row:hover { background: var(--ctp-surface2); }
-.mc-node-row.selected { background: var(--ctp-surface2); outline: 1px solid var(--ctp-mauve); }
+.mc-node-row:hover { background: var(--ctp-surface1); }
+.mc-node-row.selected {
+  background: var(--ctp-blue);
+  color: var(--ctp-accent-text);
+}
+
+.mc-node-row.selected .mc-node-row-name,
+.mc-node-row.selected .mc-node-row-type,
+.mc-node-row.selected .mc-node-row-meta,
+.mc-node-row.selected .mc-node-row-key {
+  color: var(--ctp-accent-text);
+}
+
+/* Channel list items — card button style matching Meshtastic .channel-button */
+.mc-channel-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem 1.25rem;
+  margin: 0 0.4rem 0.5rem;
+  background: var(--ctp-surface0);
+  border: 2px solid var(--ctp-surface2);
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  width: calc(100% - 0.8rem);
+  text-align: left;
+  transition: all 0.3s ease;
+}
+
+.mc-channel-row:hover {
+  background: var(--ctp-surface1);
+  border-color: var(--ctp-blue);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px -5px rgba(137, 180, 250, 0.3);
+}
+
+.mc-channel-row.selected {
+  background: var(--ctp-blue);
+  border-color: var(--ctp-blue);
+  color: var(--ctp-accent-text);
+  box-shadow: 0 8px 25px -5px rgba(137, 180, 250, 0.5);
+}
+
+.mc-channel-row-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: inherit;
+}
+
+.mc-channel-row-meta {
+  font-size: 0.85rem;
+  color: var(--ctp-subtext0);
+  opacity: 0.7;
+}
+
+.mc-channel-row.selected .mc-channel-row-meta {
+  color: var(--ctp-accent-text);
+  opacity: 0.9;
+}
 
 .mc-node-row-name {
   color: var(--ctp-text);
@@ -449,14 +510,15 @@
   max-width: 640px;
   background: var(--ctp-surface0);
   border-radius: var(--radius-xl);
-  padding: 1.25rem 1.5rem;
-  margin-bottom: 1rem;
+  border: 1px solid var(--ctp-surface1);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .meshcore-form-view .form-section h3 {
-  color: var(--ctp-text);
-  font-size: 1rem;
-  margin-bottom: 0.75rem;
+  color: var(--ctp-lavender);
+  font-size: 1.25rem;
+  margin-bottom: 1rem;
 }
 
 .meshcore-form-view .form-section p.hint {
@@ -598,36 +660,35 @@
 
 .meshcore-info-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
 }
 
+/* Info cards — match Meshtastic .info-section vocabulary */
 .meshcore-info-card {
   background: var(--ctp-surface0);
   border: 1px solid var(--ctp-surface1);
-  border-radius: var(--radius-md);
-  padding: 1rem;
+  border-radius: var(--radius-xl);
+  padding: 1.5rem;
 }
 
 .meshcore-info-card h3 {
-  margin: 0 0 0.75rem 0;
-  font-size: 0.95rem;
-  color: var(--ctp-text);
-  border-bottom: 1px solid var(--ctp-surface1);
-  padding-bottom: 0.5rem;
+  margin: 0 0 1rem 0;
+  font-size: 1.25rem;
+  color: var(--ctp-lavender);
 }
 
 .meshcore-info-card dl {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 0.4rem 0.75rem;
+  gap: 0.5rem 0.75rem;
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
 }
 
 .meshcore-info-card dt {
-  color: var(--ctp-subtext0);
-  font-weight: 500;
+  color: var(--ctp-blue);
+  font-weight: 600;
 }
 
 .meshcore-info-card dd {
@@ -644,54 +705,72 @@
   margin: 0;
 }
 
+/* Graphs section — wrap as a card to match the info-section card row above */
+.meshcore-info-graphs {
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-xl);
+  padding: 1.5rem;
+}
+
 .meshcore-info-graphs-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.75rem;
+  margin-bottom: 1rem;
 }
 
 .meshcore-info-graphs-header h3 {
   margin: 0;
-  color: var(--ctp-text);
+  color: var(--ctp-lavender);
+  font-size: 1.25rem;
 }
 
 .meshcore-info-range {
   display: flex;
-  gap: 0.25rem;
+  gap: 0.5rem;
 }
 
+/* Time-range pills — match the inline timeRangeButtonStyle in InfoTab.tsx */
 .meshcore-info-range .mc-range-btn {
-  background: var(--ctp-surface0);
+  background: var(--ctp-surface1);
   color: var(--ctp-subtext0);
-  border: 1px solid var(--ctp-surface1);
-  padding: 0.25rem 0.6rem;
-  border-radius: var(--radius-xs);
+  border: none;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 0.85em;
+  font-weight: 400;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.meshcore-info-range .mc-range-btn:hover {
+  background: var(--ctp-surface2);
 }
 
 .meshcore-info-range .mc-range-btn.active {
   background: var(--ctp-blue);
-  color: var(--ctp-base);
-  border-color: var(--ctp-blue);
+  color: var(--ctp-crust);
+  font-weight: 600;
 }
 
+/* Graph cards — match Meshtastic .graph-container */
 .meshcore-info-graphs-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 1.25rem;
 }
 
 .meshcore-info-graph {
-  background: var(--ctp-surface0);
+  background: var(--ctp-crust);
   border: 1px solid var(--ctp-surface1);
-  border-radius: var(--radius-md);
-  padding: 0.75rem;
+  border-radius: var(--radius-lg);
+  padding: 1rem;
 }
 
 .meshcore-info-graph-title {
-  font-size: 0.85rem;
+  font-size: 1rem;
+  font-weight: 500;
   color: var(--ctp-text);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
 }
