@@ -398,6 +398,46 @@
   cursor: not-allowed;
 }
 
+/* Contact detail pane (below the message stream in the DM view) */
+.meshcore-detail-pane {
+  flex-shrink: 0;
+  max-height: 45%;
+  overflow-y: auto;
+  background: var(--ctp-base);
+  border-top: 1px solid var(--ctp-surface1);
+  padding: 0.75rem;
+}
+
+.meshcore-detail-pane .node-details-block {
+  margin-bottom: 0;
+  padding: 12px 16px;
+}
+
+.meshcore-detail-pane .node-details-title {
+  font-size: 1rem;
+}
+
+.meshcore-detail-pane .node-details-grid {
+  gap: 10px;
+}
+
+.meshcore-detail-pane .node-detail-card {
+  padding: 10px 12px;
+}
+
+.meshcore-detail-pane .node-detail-value {
+  font-size: 1rem;
+}
+
+.meshcore-detail-pane::-webkit-scrollbar {
+  width: 6px;
+}
+
+.meshcore-detail-pane::-webkit-scrollbar-thumb {
+  background: var(--ctp-surface2);
+  border-radius: var(--radius-xs);
+}
+
 /* Form view (Configuration / Settings) */
 .meshcore-form-view {
   flex: 1;

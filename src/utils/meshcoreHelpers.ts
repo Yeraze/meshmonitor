@@ -13,6 +13,8 @@ export interface MeshCoreContact {
   advType?: number;
   latitude?: number;
   longitude?: number;
+  lastAdvert?: number;
+  pathLen?: number;
 }
 
 /**
