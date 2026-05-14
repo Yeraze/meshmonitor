@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { MeshCoreNode } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMap } from './MeshCoreMap';
-import { MeshCoreNodeTelemetryConfig } from './MeshCoreNodeTelemetryConfig';
 
 const DEVICE_TYPE_KEYS: Record<number, string> = {
   0: 'meshcore.device_type.unknown',
@@ -15,19 +14,6 @@ const DEVICE_TYPE_KEYS: Record<number, string> = {
 interface MeshCoreNodesViewProps {
   nodes: MeshCoreNode[];
   contacts: MeshCoreContact[];
-  /** Frontend basename — required for the per-node detail panel's API calls. */
-  baseUrl?: string;
-  /**
-   * Owning source id. When set, selecting a node renders the per-node
-   * telemetry-retrieval config panel; without it the right pane is
-   * map-only (legacy / un-nested mount).
-   */
-  sourceId?: string;
-}
-
-/** True when the publicKey is a real 64-char hex (i.e. not a synthetic channel key). */
-function isRealNodeKey(key: string): boolean {
-  return /^[0-9a-fA-F]{64}$/.test(key);
 }
 
 interface MergedRow {
@@ -92,14 +78,11 @@ function mergeNodesAndContacts(
 export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   nodes,
   contacts,
-  baseUrl,
-  sourceId,
 }) => {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<string | null>(null);
 
   const rows = useMemo(() => mergeNodesAndContacts(nodes, contacts), [nodes, contacts]);
-  const canShowDetail = !!sourceId && !!baseUrl && !!selected && isRealNodeKey(selected);
 
   return (
     <div className="meshcore-two-pane">
@@ -144,13 +127,6 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
       </div>
       <div className="meshcore-main-pane">
         <MeshCoreMap contacts={contacts} selectedPublicKey={selected} />
-        {canShowDetail && (
-          <MeshCoreNodeTelemetryConfig
-            baseUrl={baseUrl!}
-            sourceId={sourceId!}
-            publicKey={selected!}
-          />
-        )}
       </div>
     </div>
   );

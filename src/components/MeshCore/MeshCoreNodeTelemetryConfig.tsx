@@ -1,13 +1,14 @@
 /**
- * Per-node telemetry-retrieval config panel for the MeshCore Nodes view.
+ * Per-node telemetry-retrieval config panel for the MeshCore per-node
+ * detail view.
  *
- * Mounts inside `MeshCoreNodesView` when a node is selected. Fetches the
- * current `(enabled, intervalMinutes)` for the (sourceId, publicKey)
- * pair from `/api/sources/:id/meshcore/nodes/:publicKey/telemetry-config`
- * and PATCHes back to the same endpoint on save. Gated by
- * `configuration:write` per the PR #3019 pattern — read-only users see
- * the current values but the controls are disabled and an explanation
- * banner is shown.
+ * Mounts inside the DM/contact detail pane of `MeshCoreDirectMessagesView`
+ * when a peer with a real 64-hex pubkey is selected. Fetches the current
+ * `(enabled, intervalMinutes)` for the (sourceId, publicKey) pair from
+ * `/api/sources/:id/meshcore/nodes/:publicKey/telemetry-config` and
+ * PATCHes back to the same endpoint on save. Gated by `configuration:write`
+ * per the PR #3019 pattern — read-only users see the current values but
+ * the controls are disabled and an explanation banner is shown.
  */
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';

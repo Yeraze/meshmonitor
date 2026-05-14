@@ -6,6 +6,7 @@ import {
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
+import { MeshCoreNodeTelemetryConfig } from './MeshCoreNodeTelemetryConfig';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface MeshCoreDirectMessagesViewProps {
@@ -13,6 +14,19 @@ interface MeshCoreDirectMessagesViewProps {
   contacts: MeshCoreContact[];
   status: ConnectionStatus | null;
   actions: MeshCoreActions;
+  /** Frontend basename — required for the per-node telemetry-config panel. */
+  baseUrl?: string;
+  /**
+   * Owning source id. When set together with a 64-hex contact pubkey, the
+   * per-node telemetry-retrieval config panel is rendered next to the
+   * contact-detail panel.
+   */
+  sourceId?: string;
+}
+
+/** True when the publicKey is a real 64-char hex (i.e. not a synthetic / prefix key). */
+function isRealNodeKey(key: string): boolean {
+  return /^[0-9a-fA-F]{64}$/.test(key);
 }
 
 export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProps> = ({
@@ -20,6 +34,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   contacts,
   status,
   actions,
+  baseUrl,
+  sourceId,
 }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
@@ -134,6 +150,13 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 contact={contactsByKey.get(selected) ?? null}
                 publicKey={selected}
               />
+              {!!sourceId && typeof baseUrl === 'string' && isRealNodeKey(selected) && (
+                <MeshCoreNodeTelemetryConfig
+                  baseUrl={baseUrl}
+                  sourceId={sourceId}
+                  publicKey={selected}
+                />
+              )}
             </div>
           </>
         ) : (

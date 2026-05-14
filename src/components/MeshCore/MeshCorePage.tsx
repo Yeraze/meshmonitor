@@ -83,8 +83,6 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             <MeshCoreNodesView
               nodes={nodes}
               contacts={contacts}
-              baseUrl={baseUrl}
-              sourceId={sourceId}
             />
           )}
           {view === 'channels' && (
@@ -96,6 +94,8 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               contacts={contacts}
               status={status}
               actions={actions}
+              baseUrl={baseUrl}
+              sourceId={sourceId}
             />
           )}
           {view === 'info' && sourceId && (
