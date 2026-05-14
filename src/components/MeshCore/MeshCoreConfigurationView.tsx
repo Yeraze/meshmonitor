@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ConnectionStatus, MeshCoreActions, TelemetryMode } from './hooks/useMeshCore';
 import { RADIO_PRESETS, findPresetId } from './radioPresets';
+import { useAuth } from '../../contexts/AuthContext';
 
 const TELEMETRY_MODE_OPTIONS: TelemetryMode[] = ['always', 'device', 'never'];
 // MeshCore device types: COMPANION=1, REPEATER=2, ROOM_SERVER=3.
@@ -17,6 +18,8 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   actions,
 }) => {
   const { t } = useTranslation();
+  const { hasPermission } = useAuth();
+  const canWriteConfig = hasPermission('configuration', 'write');
   const connected = status?.connected ?? false;
   const local = status?.localNode;
 
@@ -128,7 +131,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
 
   const advType = local?.advType;
   const isCompanionOnly = typeof advType === 'number' && COMPANION_ONLY_DEVICES.has(advType);
-  const telemetryDisabled = !connected || isCompanionOnly;
+  const telemetryDisabled = !connected || isCompanionOnly || !canWriteConfig;
 
   const handleSaveTelemetry = async () => {
     setSavingTelemetry(true);
@@ -157,6 +160,19 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
         </div>
       )}
 
+      {!canWriteConfig && (
+        <div
+          className="meshcore-empty-state"
+          style={{ marginBottom: '1rem', color: 'var(--ctp-yellow)' }}
+          role="status"
+        >
+          {t(
+            'meshcore.config.permission_denied',
+            "You don't have permission to change configuration for this source.",
+          )}
+        </div>
+      )}
+
       <div className="form-section">
         <h3>{t('meshcore.config.device_name', 'Device name')}</h3>
         <p className="hint">
@@ -172,7 +188,10 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           disabled={!connected || savingName}
         />
         <div>
-          <button onClick={() => void handleSaveName()} disabled={!connected || savingName || !name.trim()}>
+          <button
+            onClick={() => void handleSaveName()}
+            disabled={!connected || savingName || !name.trim() || !canWriteConfig}
+          >
             {savingName
               ? t('meshcore.config.saving', 'Saving…')
               : t('meshcore.config.save_name', 'Save name')}
@@ -222,7 +241,9 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
         <div>
           <button
             onClick={() => void handleSaveLocation()}
-            disabled={!connected || savingLocation || !Number.isFinite(lat) || !Number.isFinite(lon)}
+            disabled={
+              !connected || savingLocation || !Number.isFinite(lat) || !Number.isFinite(lon) || !canWriteConfig
+            }
           >
             {savingLocation
               ? t('meshcore.config.saving', 'Saving…')
@@ -240,7 +261,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
               type="checkbox"
               checked={advLoc}
               onChange={e => void handleToggleAdvLoc(e.target.checked)}
-              disabled={!connected || savingAdvLoc}
+              disabled={!connected || savingAdvLoc || !canWriteConfig}
             />
             {t('meshcore.config.advert_loc_policy', 'Include location in adverts')}
           </label>
@@ -319,7 +340,10 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           </div>
         </div>
         <div>
-          <button onClick={() => void handleSaveRadio()} disabled={!connected || savingRadio}>
+          <button
+            onClick={() => void handleSaveRadio()}
+            disabled={!connected || savingRadio || !canWriteConfig}
+          >
             {savingRadio
               ? t('meshcore.config.saving', 'Saving…')
               : t('meshcore.config.save_radio', 'Save radio settings')}
