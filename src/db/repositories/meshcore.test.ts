@@ -336,4 +336,122 @@ describe('MeshCoreRepository — sourceId stamping', () => {
       repo.setNodeTelemetryConfig('', 'pk-1', { enabled: true }),
     ).rejects.toThrow(/requires a sourceId/);
   });
+
+  // ============ Composite-PK regression (issue: UNIQUE constraint failed) ============
+
+  it('setNodeTelemetryConfig succeeds for the same publicKey under two sources on the composite-PK schema', async () => {
+    // Post-migration-061 schema: PK is (sourceId, publicKey). This was the
+    // bug repro — POST /api/sources/{sourceId}/meshcore/nodes/{publicKey}
+    // /telemetry-config raised `UNIQUE constraint failed:
+    // meshcore_nodes.publicKey` when the same key already existed under a
+    // different source.
+    db.exec(`
+      DROP TABLE meshcore_nodes;
+      CREATE TABLE meshcore_nodes (
+        publicKey TEXT NOT NULL,
+        name TEXT,
+        advType INTEGER,
+        txPower INTEGER,
+        maxTxPower INTEGER,
+        radioFreq REAL,
+        radioBw REAL,
+        radioSf INTEGER,
+        radioCr INTEGER,
+        latitude REAL,
+        longitude REAL,
+        altitude REAL,
+        batteryMv INTEGER,
+        uptimeSecs INTEGER,
+        rssi INTEGER,
+        snr REAL,
+        lastHeard INTEGER,
+        hasAdminAccess INTEGER DEFAULT 0,
+        lastAdminCheck INTEGER,
+        isLocalNode INTEGER DEFAULT 0,
+        sourceId TEXT NOT NULL,
+        telemetryEnabled INTEGER DEFAULT 0,
+        telemetryIntervalMinutes INTEGER DEFAULT 60,
+        lastTelemetryRequestAt INTEGER,
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL,
+        PRIMARY KEY (sourceId, publicKey)
+      );
+    `);
+
+    // src-a owns the key first.
+    await repo.setNodeTelemetryConfig('src-a', 'pk-shared', {
+      enabled: true,
+      intervalMinutes: 15,
+    });
+
+    // src-b setting telemetry-config on the SAME publicKey must NOT
+    // raise UNIQUE constraint failed.
+    await expect(
+      repo.setNodeTelemetryConfig('src-b', 'pk-shared', {
+        enabled: true,
+        intervalMinutes: 45,
+      }),
+    ).resolves.not.toThrow();
+
+    const rows = db
+      .prepare(
+        `SELECT sourceId, telemetryEnabled, telemetryIntervalMinutes
+         FROM meshcore_nodes WHERE publicKey = 'pk-shared' ORDER BY sourceId`,
+      )
+      .all() as Array<{ sourceId: string; telemetryEnabled: number; telemetryIntervalMinutes: number }>;
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toEqual({ sourceId: 'src-a', telemetryEnabled: 1, telemetryIntervalMinutes: 15 });
+    expect(rows[1]).toEqual({ sourceId: 'src-b', telemetryEnabled: 1, telemetryIntervalMinutes: 45 });
+  });
+
+  it('deleteNode requires a sourceId and only removes the matching (sourceId, publicKey) row', async () => {
+    db.exec(`
+      DROP TABLE meshcore_nodes;
+      CREATE TABLE meshcore_nodes (
+        publicKey TEXT NOT NULL,
+        name TEXT,
+        advType INTEGER,
+        txPower INTEGER,
+        maxTxPower INTEGER,
+        radioFreq REAL,
+        radioBw REAL,
+        radioSf INTEGER,
+        radioCr INTEGER,
+        latitude REAL,
+        longitude REAL,
+        altitude REAL,
+        batteryMv INTEGER,
+        uptimeSecs INTEGER,
+        rssi INTEGER,
+        snr REAL,
+        lastHeard INTEGER,
+        hasAdminAccess INTEGER DEFAULT 0,
+        lastAdminCheck INTEGER,
+        isLocalNode INTEGER DEFAULT 0,
+        sourceId TEXT NOT NULL,
+        telemetryEnabled INTEGER DEFAULT 0,
+        telemetryIntervalMinutes INTEGER DEFAULT 60,
+        lastTelemetryRequestAt INTEGER,
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL,
+        PRIMARY KEY (sourceId, publicKey)
+      );
+    `);
+
+    await repo.upsertNode({ publicKey: 'pk-shared', name: 'A' }, 'src-a');
+    await repo.upsertNode({ publicKey: 'pk-shared', name: 'B' }, 'src-b');
+
+    // Guard against missing sourceId
+    await expect(repo.deleteNode('pk-shared', '')).rejects.toThrow(/requires a sourceId/);
+
+    // Source-scoped delete leaves the other source's row alone
+    const ok = await repo.deleteNode('pk-shared', 'src-a');
+    expect(ok).toBe(true);
+
+    const rows = db
+      .prepare(`SELECT sourceId, name FROM meshcore_nodes WHERE publicKey = 'pk-shared'`)
+      .all() as Array<{ sourceId: string; name: string }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({ sourceId: 'src-b', name: 'B' });
+  });
 });

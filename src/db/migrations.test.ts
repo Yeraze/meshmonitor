@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { registry } from './migrations.js';
 
 describe('migrations registry', () => {
-  it('has all 60 migrations registered', () => {
-    expect(registry.count()).toBe(60);
+  it('has all 61 migrations registered', () => {
+    expect(registry.count()).toBe(61);
   });
 
   // Bumping these counts: when adding a new migration, increment to <N>+1 and
@@ -15,14 +15,14 @@ describe('migrations registry', () => {
     expect(all[0].name).toContain('v37_baseline');
   });
 
-  it('last migration is meshcore_node_telemetry_config', () => {
+  it('last migration is meshcore_nodes_composite_pk', () => {
     const all = registry.getAll();
     const last = all[all.length - 1];
-    expect(last.number).toBe(60);
-    expect(last.name).toContain('meshcore_node_telemetry_config');
+    expect(last.number).toBe(61);
+    expect(last.name).toContain('meshcore_nodes_composite_pk');
   });
 
-  it('migrations are sequentially numbered from 1 to 60', () => {
+  it('migrations are sequentially numbered from 1 to 61', () => {
     const all = registry.getAll();
     for (let i = 0; i < all.length; i++) {
       expect(all[i].number).toBe(i + 1);

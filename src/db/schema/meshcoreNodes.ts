@@ -5,9 +5,9 @@
  * MeshCore uses public keys (64-char hex) as primary identifiers
  * instead of numeric node IDs like Meshtastic.
  */
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, real as pgReal, doublePrecision as pgDoublePrecision, boolean as pgBoolean, bigint as pgBigint } from 'drizzle-orm/pg-core';
-import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint } from 'drizzle-orm/mysql-core';
+import { sqliteTable, text, integer, real, primaryKey as sqlitePrimaryKey } from 'drizzle-orm/sqlite-core';
+import { pgTable, text as pgText, integer as pgInteger, real as pgReal, doublePrecision as pgDoublePrecision, boolean as pgBoolean, bigint as pgBigint, primaryKey as pgPrimaryKey } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint, primaryKey as myPrimaryKey } from 'drizzle-orm/mysql-core';
 
 /**
  * MeshCore device types
@@ -20,8 +20,8 @@ import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, boo
 // ============ SQLite Schema ============
 
 export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
-  // Primary identifier - 64 character hex public key
-  publicKey: text('publicKey').primaryKey(),
+  // 64 character hex public key — part of composite PK after migration 061
+  publicKey: text('publicKey').notNull(),
 
   // Node identity
   name: text('name'),
@@ -58,8 +58,8 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   // Local node indicator
   isLocalNode: integer('isLocalNode', { mode: 'boolean' }).default(false),
 
-  // Owning source (nullable for legacy single-source rows; backfilled by migration 056)
-  sourceId: text('sourceId'),
+  // Owning source — required as part of composite PK after migration 061.
+  sourceId: text('sourceId').notNull(),
 
   // Per-node remote-telemetry retrieval config (migration 060). The
   // MeshCoreRemoteTelemetryScheduler reads these to decide whether to
@@ -71,12 +71,14 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   // Timestamps
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
-});
+}, (table) => ({
+  pk: sqlitePrimaryKey({ columns: [table.sourceId, table.publicKey] }),
+}));
 
 // ============ PostgreSQL Schema ============
 
 export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
-  publicKey: pgText('publicKey').primaryKey(),
+  publicKey: pgText('publicKey').notNull(),
 
   name: pgText('name'),
   advType: pgInteger('advType'),
@@ -105,7 +107,7 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
 
   isLocalNode: pgBoolean('isLocalNode').default(false),
 
-  sourceId: pgText('sourceId'),
+  sourceId: pgText('sourceId').notNull(),
 
   telemetryEnabled: pgBoolean('telemetryEnabled').default(false),
   telemetryIntervalMinutes: pgInteger('telemetryIntervalMinutes').default(60),
@@ -113,12 +115,14 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
 
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
-});
+}, (table) => ({
+  pk: pgPrimaryKey({ columns: [table.sourceId, table.publicKey] }),
+}));
 
 // ============ MySQL Schema ============
 
 export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
-  publicKey: myVarchar('publicKey', { length: 64 }).primaryKey(),
+  publicKey: myVarchar('publicKey', { length: 64 }).notNull(),
 
   name: myVarchar('name', { length: 255 }),
   advType: myInt('advType'),
@@ -147,7 +151,7 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
 
   isLocalNode: myBoolean('isLocalNode').default(false),
 
-  sourceId: myVarchar('sourceId', { length: 64 }),
+  sourceId: myVarchar('sourceId', { length: 64 }).notNull(),
 
   telemetryEnabled: myBoolean('telemetryEnabled').default(false),
   telemetryIntervalMinutes: myInt('telemetryIntervalMinutes').default(60),
@@ -155,7 +159,9 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
 
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
-});
+}, (table) => ({
+  pk: myPrimaryKey({ columns: [table.sourceId, table.publicKey] }),
+}));
 
 // ============ Type Inference ============
 
