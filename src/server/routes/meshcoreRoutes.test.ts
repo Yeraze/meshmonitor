@@ -181,7 +181,6 @@ describe('MeshCore Routes', () => {
   });
 
   let testUserCounter = 0;
-  let testUserId: number;
 
   beforeEach(async () => {
     // Create unique test user for each test
@@ -193,7 +192,6 @@ describe('MeshCore Routes', () => {
       password: 'password123',
       authProvider: 'local'
     });
-    testUserId = user.id;
 
     for (const resource of ['connection', 'nodes', 'messages', 'configuration'] as const) {
       await permissionModel.grant({

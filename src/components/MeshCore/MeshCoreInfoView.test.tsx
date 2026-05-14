@@ -8,6 +8,7 @@
  * for non-Companion devices. The TanStack Query layer is shimmed via a
  * fresh `QueryClientProvider` per test so caches don't bleed across runs.
  */
+import type { ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -33,7 +34,7 @@ class StubResizeObserver {
 // @ts-expect-error - polyfill for jsdom
 globalThis.ResizeObserver = StubResizeObserver;
 
-function withQueryClient(ui: React.ReactNode) {
+function withQueryClient(ui: ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
   });
