@@ -71,6 +71,7 @@ import { migration as addShowTraceroutesToEmbedProfilesMigration, runMigration05
 import { migration as addSourceIdToMeshcoreTablesMigration, runMigration057Postgres, runMigration057Mysql } from '../server/migrations/057_add_source_id_to_meshcore_tables.js';
 import { migration as collapseMeshcoreResourceMigration, runMigration058Postgres, runMigration058Mysql } from '../server/migrations/058_collapse_meshcore_resource.js';
 import { migration as telemetrySourceNodeTypeTsIndexMigration, runMigration059Postgres, runMigration059Mysql } from '../server/migrations/059_telemetry_source_node_type_ts_index.js';
+import { migration as meshcoreNodeTelemetryConfigMigration, runMigration060Postgres, runMigration060Mysql } from '../server/migrations/060_meshcore_node_telemetry_config.js';
 
 // ============================================================================
 // Registry
@@ -918,4 +919,20 @@ registry.register({
   sqlite: (db) => telemetrySourceNodeTypeTsIndexMigration.up(db),
   postgres: (client) => runMigration059Postgres(client),
   mysql: (pool) => runMigration059Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 060: Per-node remote-telemetry config columns on meshcore_nodes
+// (telemetryEnabled, telemetryIntervalMinutes, lastTelemetryRequestAt).
+// Read by the MeshCoreRemoteTelemetryScheduler each tick. Idempotent across
+// SQLite / PostgreSQL / MySQL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 60,
+  name: 'meshcore_node_telemetry_config',
+  settingsKey: 'migration_060_meshcore_node_telemetry_config',
+  sqlite: (db) => meshcoreNodeTelemetryConfigMigration.up(db),
+  postgres: (client) => runMigration060Postgres(client),
+  mysql: (pool) => runMigration060Mysql(pool),
 });

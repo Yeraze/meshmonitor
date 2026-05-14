@@ -80,7 +80,12 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
         />
         <div className="meshcore-content">
           {view === 'nodes' && (
-            <MeshCoreNodesView nodes={nodes} contacts={contacts} />
+            <MeshCoreNodesView
+              nodes={nodes}
+              contacts={contacts}
+              baseUrl={baseUrl}
+              sourceId={sourceId}
+            />
           )}
           {view === 'channels' && (
             <MeshCoreChannelsView messages={messages} contacts={contacts} status={status} actions={actions} />

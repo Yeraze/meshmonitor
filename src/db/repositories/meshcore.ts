@@ -34,6 +34,14 @@ export interface DbMeshCoreNode {
   isLocalNode?: boolean | null;
   /** Owning source id; required on writes since slice 1 (migration 056). */
   sourceId?: string | null;
+  /**
+   * Per-node remote-telemetry retrieval config (migration 060). Controls
+   * whether the MeshCoreRemoteTelemetryScheduler periodically issues
+   * `req_telemetry_sync` against this node and at what cadence.
+   */
+  telemetryEnabled?: boolean | null;
+  telemetryIntervalMinutes?: number | null;
+  lastTelemetryRequestAt?: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -158,6 +166,86 @@ export class MeshCoreRepository extends BaseRepository {
           updatedAt: now,
         });
     }
+  }
+
+  /**
+   * Set the per-node remote-telemetry retrieval config for a
+   * (sourceId, publicKey) row. Inserts a stub row if one doesn't yet
+   * exist — MeshCoreManager doesn't currently persist every observed
+   * contact, so the user may toggle telemetry on a node that has only
+   * been seen in-memory. Idempotent on the (publicKey, sourceId) pair.
+   *
+   * Caller is responsible for validating `intervalMinutes` (>0, sane
+   * ceiling). Passing `undefined` for either field leaves the existing
+   * value intact (on update) or applies the column default (on insert).
+   */
+  async setNodeTelemetryConfig(
+    sourceId: string,
+    publicKey: string,
+    cfg: { enabled?: boolean; intervalMinutes?: number },
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.setNodeTelemetryConfig requires a sourceId');
+    }
+    const now = this.now();
+    const { meshcoreNodes } = this.tables;
+    const existing = await this.getNodeByPublicKeyAndSource(publicKey, sourceId);
+
+    if (existing) {
+      const patch: Record<string, unknown> = { updatedAt: now };
+      if (cfg.enabled !== undefined) patch.telemetryEnabled = cfg.enabled;
+      if (cfg.intervalMinutes !== undefined) patch.telemetryIntervalMinutes = cfg.intervalMinutes;
+      await this.db
+        .update(meshcoreNodes)
+        .set(patch)
+        .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+      return;
+    }
+
+    const seed: Record<string, unknown> = {
+      publicKey,
+      sourceId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (cfg.enabled !== undefined) seed.telemetryEnabled = cfg.enabled;
+    if (cfg.intervalMinutes !== undefined) seed.telemetryIntervalMinutes = cfg.intervalMinutes;
+    await this.db.insert(meshcoreNodes).values(seed);
+  }
+
+  /**
+   * Mark a node as having just had a telemetry request sent. Stamps
+   * `lastTelemetryRequestAt` to `now` so the scheduler will wait at
+   * least `telemetryIntervalMinutes` before picking it again.
+   */
+  async markTelemetryRequested(
+    sourceId: string,
+    publicKey: string,
+    when: number = this.now(),
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.markTelemetryRequested requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    await this.db
+      .update(meshcoreNodes)
+      .set({ lastTelemetryRequestAt: when, updatedAt: when })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+  }
+
+  /**
+   * Return every node in a source that currently has telemetry retrieval
+   * enabled. The scheduler decides per-node eligibility (interval vs
+   * `lastTelemetryRequestAt`) in memory so it can stay engine-portable
+   * without needing per-backend time math in the query.
+   */
+  async getTelemetryEnabledNodes(sourceId: string): Promise<DbMeshCoreNode[]> {
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.sourceId, sourceId), eq(meshcoreNodes.telemetryEnabled, true)));
+    return this.normalizeBigInts(result) as unknown as DbMeshCoreNode[];
   }
 
   /**

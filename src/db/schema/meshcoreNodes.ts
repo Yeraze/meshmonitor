@@ -61,6 +61,13 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   // Owning source (nullable for legacy single-source rows; backfilled by migration 056)
   sourceId: text('sourceId'),
 
+  // Per-node remote-telemetry retrieval config (migration 060). The
+  // MeshCoreRemoteTelemetryScheduler reads these to decide whether to
+  // send `req_telemetry_sync` to this node on each tick.
+  telemetryEnabled: integer('telemetryEnabled', { mode: 'boolean' }).default(false),
+  telemetryIntervalMinutes: integer('telemetryIntervalMinutes').default(60),
+  lastTelemetryRequestAt: integer('lastTelemetryRequestAt'),
+
   // Timestamps
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
@@ -100,6 +107,10 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
 
   sourceId: pgText('sourceId'),
 
+  telemetryEnabled: pgBoolean('telemetryEnabled').default(false),
+  telemetryIntervalMinutes: pgInteger('telemetryIntervalMinutes').default(60),
+  lastTelemetryRequestAt: pgBigint('lastTelemetryRequestAt', { mode: 'number' }),
+
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
 });
@@ -137,6 +148,10 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   isLocalNode: myBoolean('isLocalNode').default(false),
 
   sourceId: myVarchar('sourceId', { length: 64 }),
+
+  telemetryEnabled: myBoolean('telemetryEnabled').default(false),
+  telemetryIntervalMinutes: myInt('telemetryIntervalMinutes').default(60),
+  lastTelemetryRequestAt: myBigint('lastTelemetryRequestAt', { mode: 'number' }),
 
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),

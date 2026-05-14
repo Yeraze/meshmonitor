@@ -30,6 +30,7 @@ Commands:
 - get_stats: {"id": "17", "cmd": "get_stats", "type": "core" | "radio" | "packets"}
 - get_device_time: {"id": "18", "cmd": "get_device_time"}
 - device_query: {"id": "19", "cmd": "device_query"}
+- request_telemetry: {"id": "20", "cmd": "request_telemetry", "public_key": "...", "timeout": 0}
 - shutdown: {"id": "11", "cmd": "shutdown"}
 
 The get_stats / get_device_time / device_query commands hit only the locally-
@@ -116,6 +117,8 @@ class MeshCoreBridge:
                 return await self.cmd_get_device_time(cmd_id)
             elif cmd == 'device_query':
                 return await self.cmd_device_query(cmd_id)
+            elif cmd == 'request_telemetry':
+                return await self.cmd_request_telemetry(cmd_id, cmd_data)
             elif cmd == 'shutdown':
                 return await self.cmd_shutdown(cmd_id)
             elif cmd == 'ping':
@@ -567,6 +570,76 @@ class MeshCoreBridge:
         payload = getattr(event, 'payload', None) or {}
         # Forward verbatim: fw ver, fw_build (date string), model, ver, etc.
         return {'id': cmd_id, 'success': True, 'data': dict(payload)}
+
+    async def cmd_request_telemetry(self, cmd_id: str, cmd_data: dict) -> dict:
+        """Request telemetry from a remote node over RF.
+
+        Calls `meshcore.commands.binary.req_telemetry_sync(contact)`. This
+        DOES transmit on the air — collision avoidance is the caller's
+        responsibility (the Node-side scheduler enforces a 60s global
+        minimum between requests). Returns the LPP frame as a list of
+        `{channel, type, value}` records.
+        """
+        if not self.connected or not self.meshcore:
+            return {'id': cmd_id, 'success': False, 'error': 'Not connected'}
+
+        public_key = cmd_data.get('public_key', '')
+        if not public_key:
+            return {'id': cmd_id, 'success': False, 'error': 'public_key required'}
+
+        contact = self.meshcore.contacts.get(public_key)
+        if not contact:
+            # Refresh once in case the cache hasn't seen this contact yet.
+            try:
+                await self.meshcore.commands.get_contacts()
+                contact = self.meshcore.contacts.get(public_key)
+            except Exception as e:
+                return {'id': cmd_id, 'success': False, 'error': f'get_contacts threw: {e}'}
+        if not contact:
+            return {'id': cmd_id, 'success': False, 'error': f'no contact for {public_key[:16]}…'}
+
+        try:
+            timeout = float(cmd_data.get('timeout') or 0)
+        except (TypeError, ValueError):
+            timeout = 0.0
+
+        try:
+            lpp = await self.meshcore.commands.req_telemetry_sync(contact, timeout=timeout)
+        except Exception as e:
+            return {'id': cmd_id, 'success': False, 'error': f'req_telemetry_sync threw: {e}'}
+
+        if lpp is None:
+            return {'id': cmd_id, 'success': False, 'error': 'no telemetry response (timeout?)'}
+
+        # `lpp` is a cayennelpp.LppFrame. `.data` is a list of LppData entries,
+        # each with .channel, .type (an LppType enum-ish wrapper), .value
+        # (tuple of floats). Serialize to plain dicts so we can ship over JSON.
+        try:
+            records = []
+            for item in getattr(lpp, 'data', []) or []:
+                # `type` is an LppType-ish object that compares to int — we
+                # forward the raw numeric LPP type id so the Node side can
+                # decide on a string name without depending on the python lib.
+                type_id = getattr(item.type, 'type', None)
+                if type_id is None:
+                    # Fall back: some versions stash type id directly.
+                    type_id = getattr(item, 'type_id', None)
+                value = item.value
+                if isinstance(value, (list, tuple)):
+                    serialized_value = [float(v) if isinstance(v, (int, float)) else v for v in value]
+                    if len(serialized_value) == 1:
+                        serialized_value = serialized_value[0]
+                else:
+                    serialized_value = value
+                records.append({
+                    'channel': int(getattr(item, 'channel', 0)),
+                    'type': int(type_id) if type_id is not None else None,
+                    'value': serialized_value,
+                })
+        except Exception as e:
+            return {'id': cmd_id, 'success': False, 'error': f'failed to serialize lpp: {e}'}
+
+        return {'id': cmd_id, 'success': True, 'data': {'records': records}}
 
     async def cmd_shutdown(self, cmd_id: str) -> dict:
         """Shutdown the bridge"""

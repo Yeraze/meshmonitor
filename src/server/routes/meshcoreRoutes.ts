@@ -12,6 +12,8 @@ import { Router, Request, Response } from 'express';
 import { ConnectionType, MeshCoreDeviceType, MeshCoreManager } from '../meshcoreManager.js';
 import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
 import { getMeshCoreTelemetryPoller, nodeNumFromPubkey } from '../services/meshcoreTelemetryPoller.js';
+import { MAX_INTERVAL_MINUTES } from '../services/meshcoreRemoteTelemetryScheduler.js';
+import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiters.js';
@@ -789,5 +791,106 @@ router.post('/config/telemetry-mode-env', meshcoreDeviceLimiter, requireAuth(), 
     res.status(500).json({ success: false, error: 'Config error' });
   }
 });
+
+/**
+ * GET /api/sources/:id/meshcore/nodes/:publicKey/telemetry-config
+ *
+ * Read the per-node remote-telemetry-retrieval config for a specific
+ * mesh node. Returns the persisted (telemetryEnabled,
+ * telemetryIntervalMinutes, lastTelemetryRequestAt) triple, or
+ * defaults (`enabled: false, intervalMinutes: 60, lastRequestAt: null`)
+ * if the node has never been written.
+ */
+router.get(
+  '/nodes/:publicKey/telemetry-config',
+  optionalAuth(),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id: string }).id;
+      const { publicKey } = req.params;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
+      }
+      const node = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId);
+      res.json({
+        success: true,
+        data: {
+          publicKey,
+          sourceId,
+          enabled: Boolean(node?.telemetryEnabled),
+          intervalMinutes: node?.telemetryIntervalMinutes ?? 60,
+          lastRequestAt: node?.lastTelemetryRequestAt ?? null,
+        },
+      });
+    } catch (error) {
+      logger.error('[API] Error getting per-node telemetry-config:', error);
+      res.status(500).json({ success: false, error: 'Failed to read telemetry-config' });
+    }
+  },
+);
+
+/**
+ * PATCH /api/sources/:id/meshcore/nodes/:publicKey/telemetry-config
+ *
+ * Update the per-node remote-telemetry-retrieval config. Body:
+ *   { enabled?: boolean, intervalMinutes?: number }
+ *
+ * Gated by `configuration:write` per the PR #3019 pattern for any
+ * MeshCore control that mutates source-bound state.
+ */
+router.patch(
+  '/nodes/:publicKey/telemetry-config',
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id: string }).id;
+      const { publicKey } = req.params;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
+      }
+
+      const { enabled, intervalMinutes } = req.body ?? {};
+
+      const patch: { enabled?: boolean; intervalMinutes?: number } = {};
+      if (enabled !== undefined) {
+        if (typeof enabled !== 'boolean') {
+          return res.status(400).json({ success: false, error: 'enabled must be a boolean' });
+        }
+        patch.enabled = enabled;
+      }
+      if (intervalMinutes !== undefined) {
+        const n = Number(intervalMinutes);
+        if (!Number.isInteger(n) || n < 1 || n > MAX_INTERVAL_MINUTES) {
+          return res.status(400).json({
+            success: false,
+            error: `intervalMinutes must be an integer between 1 and ${MAX_INTERVAL_MINUTES}`,
+          });
+        }
+        patch.intervalMinutes = n;
+      }
+      if (patch.enabled === undefined && patch.intervalMinutes === undefined) {
+        return res.status(400).json({ success: false, error: 'No fields to update' });
+      }
+
+      await databaseService.meshcore.setNodeTelemetryConfig(sourceId, publicKey, patch);
+      const node = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId);
+      res.json({
+        success: true,
+        data: {
+          publicKey,
+          sourceId,
+          enabled: Boolean(node?.telemetryEnabled),
+          intervalMinutes: node?.telemetryIntervalMinutes ?? 60,
+          lastRequestAt: node?.lastTelemetryRequestAt ?? null,
+        },
+      });
+    } catch (error) {
+      logger.error('[API] Error setting per-node telemetry-config:', error);
+      res.status(500).json({ success: false, error: 'Failed to update telemetry-config' });
+    }
+  },
+);
 
 export default router;
