@@ -2,13 +2,15 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 
-export type MeshCoreView = 'nodes' | 'channels' | 'dms' | 'configuration' | 'settings';
+export type MeshCoreView = 'nodes' | 'channels' | 'dms' | 'info' | 'configuration' | 'settings';
 
 interface MeshCoreSubToolbarProps {
   view: MeshCoreView;
   onSelect: (view: MeshCoreView) => void;
   expanded: boolean;
   onToggleExpanded: () => void;
+  /** When false, the Info entry is suppressed (no source context — it would have no data). */
+  showInfo?: boolean;
 }
 
 interface Item {
@@ -22,6 +24,7 @@ const ITEMS: Item[] = [
   { id: 'nodes', icon: '🛰', labelKey: 'meshcore.nav.nodes', fallback: 'Nodes' },
   { id: 'channels', icon: '💬', labelKey: 'meshcore.nav.channels', fallback: 'Channels' },
   { id: 'dms', icon: '📧', labelKey: 'meshcore.nav.dms', fallback: 'Direct Messages' },
+  { id: 'info', icon: 'ℹ', labelKey: 'meshcore.nav.info', fallback: 'Node Info' },
   { id: 'configuration', icon: '📡', labelKey: 'meshcore.nav.configuration', fallback: 'Configuration' },
   { id: 'settings', icon: '⚙', labelKey: 'meshcore.nav.settings', fallback: 'Settings' },
 ];
@@ -31,6 +34,7 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
   onSelect,
   expanded,
   onToggleExpanded,
+  showInfo = true,
 }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
@@ -40,6 +44,8 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
     <aside className={`meshcore-sub-toolbar ${expanded ? 'expanded' : 'collapsed'}`}>
       {ITEMS.map(item => {
         if (item.id === 'configuration' && !canReadConfig) return null;
+        // Info is per-source only — it reads /api/sources/:id/meshcore/info.
+        if (item.id === 'info' && !showInfo) return null;
         const label = t(item.labelKey, item.fallback);
         return (
           <button

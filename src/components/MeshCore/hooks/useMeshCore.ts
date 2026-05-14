@@ -37,6 +37,7 @@ export interface MeshCoreNode {
   name: string;
   advType: number;
   txPower?: number;
+  maxTxPower?: number;
   radioFreq?: number;
   radioBw?: number;
   radioSf?: number;
@@ -52,6 +53,11 @@ export interface MeshCoreNode {
   telemetryModeBase?: TelemetryMode;
   telemetryModeLoc?: TelemetryMode;
   telemetryModeEnv?: TelemetryMode;
+  /** Populated from DeviceQuery by the server-side telemetry poller. */
+  firmwareVer?: number;
+  firmwareBuild?: string;
+  model?: string;
+  ver?: string;
 }
 
 export interface MeshCoreMessage {

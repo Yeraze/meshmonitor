@@ -27,7 +27,14 @@ Commands:
 - set_telemetry_mode_base: {"id": "14", "cmd": "set_telemetry_mode_base", "mode": "always"}
 - set_telemetry_mode_loc: {"id": "15", "cmd": "set_telemetry_mode_loc", "mode": "device"}
 - set_telemetry_mode_env: {"id": "16", "cmd": "set_telemetry_mode_env", "mode": "never"}
+- get_stats: {"id": "17", "cmd": "get_stats", "type": "core" | "radio" | "packets"}
+- get_device_time: {"id": "18", "cmd": "get_device_time"}
+- device_query: {"id": "19", "cmd": "device_query"}
 - shutdown: {"id": "11", "cmd": "shutdown"}
+
+The get_stats / get_device_time / device_query commands hit only the locally-
+connected node over its companion-protocol serial/BLE link. They never put a
+packet on the air, so they are safe to poll on a fixed interval.
 """
 
 import asyncio
@@ -103,6 +110,12 @@ class MeshCoreBridge:
                 return await self.cmd_set_telemetry_mode_loc(cmd_id, cmd_data)
             elif cmd == 'set_telemetry_mode_env':
                 return await self.cmd_set_telemetry_mode_env(cmd_id, cmd_data)
+            elif cmd == 'get_stats':
+                return await self.cmd_get_stats(cmd_id, cmd_data)
+            elif cmd == 'get_device_time':
+                return await self.cmd_get_device_time(cmd_id)
+            elif cmd == 'device_query':
+                return await self.cmd_device_query(cmd_id)
             elif cmd == 'shutdown':
                 return await self.cmd_shutdown(cmd_id)
             elif cmd == 'ping':
@@ -464,6 +477,96 @@ class MeshCoreBridge:
     async def cmd_set_telemetry_mode_env(self, cmd_id: str, cmd_data: dict) -> dict:
         """Set environment telemetry sharing mode."""
         return await self._set_telemetry_mode(cmd_id, cmd_data, 'env')
+
+    async def cmd_get_stats(self, cmd_id: str, cmd_data: dict) -> dict:
+        """Fetch local-node stats. type ∈ {core, radio, packets}.
+
+        These are GetStats(subtype) over the companion-protocol link to the
+        locally-connected node ONLY — they do not transmit on the air.
+        """
+        if not self.connected or not self.meshcore:
+            return {'id': cmd_id, 'success': False, 'error': 'Not connected'}
+
+        stats_type = (cmd_data.get('type') or '').strip().lower()
+        if stats_type == 'core':
+            getter = getattr(self.meshcore.commands, 'get_stats_core', None)
+        elif stats_type == 'radio':
+            getter = getattr(self.meshcore.commands, 'get_stats_radio', None)
+        elif stats_type == 'packets':
+            getter = getattr(self.meshcore.commands, 'get_stats_packets', None)
+        else:
+            return {'id': cmd_id, 'success': False, 'error': 'type must be core|radio|packets'}
+
+        if getter is None:
+            return {'id': cmd_id, 'success': False, 'error': f'meshcore lacks get_stats_{stats_type}'}
+
+        try:
+            event = await getter()
+        except Exception as e:
+            return {'id': cmd_id, 'success': False, 'error': f'get_stats_{stats_type} threw: {e}'}
+
+        if event is None:
+            return {'id': cmd_id, 'success': False, 'error': f'no response for get_stats_{stats_type}'}
+        if getattr(event, 'is_error', lambda: False)():
+            err = getattr(event, 'payload', None) or f'device rejected get_stats_{stats_type}'
+            return {'id': cmd_id, 'success': False, 'error': str(err)}
+
+        payload = getattr(event, 'payload', None)
+        if not isinstance(payload, dict):
+            return {'id': cmd_id, 'success': False, 'error': f'unexpected stats payload: {payload!r}'}
+
+        # Pass the dict through verbatim — Node side decides which fields it
+        # wants. python-meshcore field names: battery_mv, uptime_secs, errors,
+        # queue_len, noise_floor, last_rssi, last_snr, tx_air_secs, rx_air_secs,
+        # recv, sent, flood_tx, direct_tx, flood_rx, direct_rx, recv_errors.
+        return {'id': cmd_id, 'success': True, 'data': {'type': stats_type, **payload}}
+
+    async def cmd_get_device_time(self, cmd_id: str) -> dict:
+        """Read the RTC on the locally-connected node. Local only — no RF."""
+        if not self.connected or not self.meshcore:
+            return {'id': cmd_id, 'success': False, 'error': 'Not connected'}
+
+        getter = getattr(self.meshcore.commands, 'get_time', None)
+        if getter is None:
+            return {'id': cmd_id, 'success': False, 'error': 'meshcore lacks get_time'}
+
+        try:
+            event = await getter()
+        except Exception as e:
+            return {'id': cmd_id, 'success': False, 'error': f'get_time threw: {e}'}
+
+        if event is None:
+            return {'id': cmd_id, 'success': False, 'error': 'no response for get_time'}
+        if getattr(event, 'is_error', lambda: False)():
+            err = getattr(event, 'payload', None) or 'device rejected get_time'
+            return {'id': cmd_id, 'success': False, 'error': str(err)}
+
+        payload = getattr(event, 'payload', None) or {}
+        return {'id': cmd_id, 'success': True, 'data': {'time': payload.get('time')}}
+
+    async def cmd_device_query(self, cmd_id: str) -> dict:
+        """DeviceQuery → DeviceInfo. Local only — no RF."""
+        if not self.connected or not self.meshcore:
+            return {'id': cmd_id, 'success': False, 'error': 'Not connected'}
+
+        getter = getattr(self.meshcore.commands, 'send_device_query', None)
+        if getter is None:
+            return {'id': cmd_id, 'success': False, 'error': 'meshcore lacks send_device_query'}
+
+        try:
+            event = await getter()
+        except Exception as e:
+            return {'id': cmd_id, 'success': False, 'error': f'send_device_query threw: {e}'}
+
+        if event is None:
+            return {'id': cmd_id, 'success': False, 'error': 'no response for device_query'}
+        if getattr(event, 'is_error', lambda: False)():
+            err = getattr(event, 'payload', None) or 'device rejected device_query'
+            return {'id': cmd_id, 'success': False, 'error': str(err)}
+
+        payload = getattr(event, 'payload', None) or {}
+        # Forward verbatim: fw ver, fw_build (date string), model, ver, etc.
+        return {'id': cmd_id, 'success': True, 'data': dict(payload)}
 
     async def cmd_shutdown(self, cmd_id: str) -> dict:
         """Shutdown the bridge"""

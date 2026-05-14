@@ -31,6 +31,8 @@ vi.mock('../../services/database.js', () => ({
 // mock the registry directly here so requests under
 // `/api/sources/test-source/meshcore/*` resolve to this stub.
 const meshcoreManager = {
+  // The /info route reads `manager.sourceId` to populate telemetryRef.
+  sourceId: 'test-source',
   getConnectionStatus: vi.fn().mockReturnValue({
     connected: false,
     deviceType: 0,
@@ -77,6 +79,23 @@ vi.mock('../meshcoreRegistry.js', () => ({
     get: (sourceId: string) => (REGISTERED_SOURCE_IDS.has(sourceId) ? meshcoreManager : undefined),
   },
   LEGACY_MESHCORE_SOURCE_ID: 'meshcore-legacy-default',
+}));
+
+// The `/info` route reads the last poll snapshot from the singleton poller.
+// We expose a mutable fake here so individual tests can decide whether to
+// return a snapshot, returning null otherwise.
+const fakePollerSnapshot: { value: any } = { value: null };
+vi.mock('../services/meshcoreTelemetryPoller.js', () => ({
+  getMeshCoreTelemetryPoller: () => ({
+    getLastSnapshot: () => fakePollerSnapshot.value,
+  }),
+  // The route also imports `nodeNumFromPubkey` to build telemetryRef.
+  nodeNumFromPubkey: (publicKey: string) => {
+    if (!publicKey) return 0;
+    const tail = publicKey.replace(/^0x/, '').slice(-8);
+    const n = parseInt(tail, 16);
+    return Number.isFinite(n) ? n & 0x7fffffff : 0;
+  },
 }));
 
 import DatabaseService from '../../services/database.js';
@@ -162,7 +181,6 @@ describe('MeshCore Routes', () => {
   });
 
   let testUserCounter = 0;
-  let testUserId: number;
 
   beforeEach(async () => {
     // Create unique test user for each test
@@ -174,7 +192,6 @@ describe('MeshCore Routes', () => {
       password: 'password123',
       authProvider: 'local'
     });
-    testUserId = user.id;
 
     for (const resource of ['connection', 'nodes', 'messages', 'configuration'] as const) {
       await permissionModel.grant({
@@ -469,6 +486,98 @@ describe('MeshCore Routes', () => {
       expect(response.status).toBe(200);
       // Should clamp to max limit (1000) without error
       expect(meshcoreManager.getRecentMessages).toHaveBeenCalledWith(1000);
+    });
+  });
+
+  describe('GET /api/sources/test-source/meshcore/info', () => {
+    const FULL_PUBKEY = 'a'.repeat(64);
+
+    beforeEach(() => {
+      fakePollerSnapshot.value = null;
+    });
+
+    it('returns 404 when the source is not registered', async () => {
+      const response = await request(app).get('/api/sources/no-such-source/meshcore/info');
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('returns identity + null latest when no poll has fired yet', async () => {
+      meshcoreManager.getConnectionStatus.mockReturnValueOnce({
+        connected: true,
+        deviceType: 1, // Companion
+        config: null,
+      });
+      meshcoreManager.getLocalNode.mockReturnValueOnce({
+        publicKey: FULL_PUBKEY,
+        name: 'TestNode',
+        advType: 1,
+        radioFreq: 915.0,
+        radioBw: 125,
+        radioSf: 7,
+        radioCr: 5,
+      });
+
+      const response = await request(app).get('/api/sources/test-source/meshcore/info');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.connected).toBe(true);
+      expect(response.body.data.deviceType).toBe(1);
+      expect(response.body.data.identity).toMatchObject({
+        publicKey: FULL_PUBKEY,
+        name: 'TestNode',
+        radioFreq: 915.0,
+      });
+      expect(response.body.data.latest).toBeNull();
+      expect(response.body.data.telemetryRef).toEqual({
+        nodeId: FULL_PUBKEY,
+        nodeNum: expect.any(Number),
+        sourceId: 'test-source',
+      });
+    });
+
+    it('returns the latest poll snapshot when the poller has run', async () => {
+      meshcoreManager.getConnectionStatus.mockReturnValueOnce({
+        connected: true,
+        deviceType: 1,
+        config: null,
+      });
+      meshcoreManager.getLocalNode.mockReturnValueOnce({
+        publicKey: FULL_PUBKEY,
+        name: 'TestNode',
+        advType: 1,
+      });
+      fakePollerSnapshot.value = {
+        timestamp: 1700000000000,
+        batteryMv: 4100,
+        uptimeSecs: 7200,
+        queueLen: 1,
+        lastRssi: -88,
+        lastSnr: 6.5,
+        rtcDriftSecs: -2,
+        deviceInfo: { firmwareVer: 9, firmwareBuild: '2024-11-01', model: 'Heltec V3' },
+      };
+
+      const response = await request(app).get('/api/sources/test-source/meshcore/info');
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.latest).toEqual(fakePollerSnapshot.value);
+    });
+
+    it('returns null telemetryRef when no localNode has been resolved', async () => {
+      meshcoreManager.getConnectionStatus.mockReturnValueOnce({
+        connected: false,
+        deviceType: 0,
+        config: null,
+      });
+      meshcoreManager.getLocalNode.mockReturnValueOnce(null);
+
+      const response = await request(app).get('/api/sources/test-source/meshcore/info');
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.identity).toBeNull();
+      expect(response.body.data.telemetryRef).toBeNull();
     });
   });
 });
