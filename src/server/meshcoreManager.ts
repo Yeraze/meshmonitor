@@ -42,6 +42,14 @@ async function loadSerialPort(): Promise<boolean> {
   }
 }
 
+// Telemetry mode wire values: 0 = never, 1 = device (only added contacts), 2 = always
+function parseTelemetryMode(value: unknown): TelemetryMode | undefined {
+  if (value === 0) return 'never';
+  if (value === 1) return 'device';
+  if (value === 2) return 'always';
+  return undefined;
+}
+
 // MeshCore device types
 export enum MeshCoreDeviceType {
   UNKNOWN = 0,
@@ -65,6 +73,8 @@ export interface MeshCoreConfig {
   firmwareType?: 'companion' | 'repeater';
 }
 
+export type TelemetryMode = 'always' | 'device' | 'never';
+
 export interface MeshCoreNode {
   publicKey: string;
   name: string;
@@ -83,6 +93,9 @@ export interface MeshCoreNode {
   latitude?: number;
   longitude?: number;
   advLocPolicy?: number;
+  telemetryModeBase?: TelemetryMode;
+  telemetryModeLoc?: TelemetryMode;
+  telemetryModeEnv?: TelemetryMode;
 }
 
 export interface MeshCoreContact {
@@ -819,6 +832,9 @@ class MeshCoreManager extends EventEmitter {
             latitude: info.latitude,
             longitude: info.longitude,
             advLocPolicy: info.adv_loc_policy,
+            telemetryModeBase: parseTelemetryMode(info.telemetry_mode_base),
+            telemetryModeLoc: parseTelemetryMode(info.telemetry_mode_loc),
+            telemetryModeEnv: parseTelemetryMode(info.telemetry_mode_env),
           };
         }
       } catch (error) {
@@ -1120,6 +1136,59 @@ class MeshCoreManager extends EventEmitter {
       logger.error('[MeshCore] Failed to set advert loc policy:', error);
       return false;
     }
+  }
+
+  private isValidTelemetryMode(mode: unknown): mode is TelemetryMode {
+    return mode === 'always' || mode === 'device' || mode === 'never';
+  }
+
+  private async setTelemetryMode(
+    kind: 'base' | 'loc' | 'env',
+    mode: TelemetryMode,
+  ): Promise<boolean> {
+    if (!this.isValidTelemetryMode(mode)) {
+      throw new Error('Invalid telemetry mode: must be always, device, or never');
+    }
+
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      logger.warn(`[MeshCore] set_telemetry_mode_${kind} not supported on repeater`);
+      return false;
+    }
+
+    try {
+      const response = await this.sendBridgeCommand(`set_telemetry_mode_${kind}`, { mode });
+      if (response.success && this.localNode) {
+        if (kind === 'base') this.localNode.telemetryModeBase = mode;
+        else if (kind === 'loc') this.localNode.telemetryModeLoc = mode;
+        else if (kind === 'env') this.localNode.telemetryModeEnv = mode;
+      }
+      return response.success;
+    } catch (error) {
+      logger.error(`[MeshCore] Failed to set telemetry mode (${kind}):`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Set basic telemetry sharing mode (companion only).
+   * mode: 'always' = broadcast, 'device' = only respond to added contacts, 'never' = off.
+   */
+  async setTelemetryModeBase(mode: TelemetryMode): Promise<boolean> {
+    return this.setTelemetryMode('base', mode);
+  }
+
+  /**
+   * Set location telemetry sharing mode (companion only).
+   */
+  async setTelemetryModeLoc(mode: TelemetryMode): Promise<boolean> {
+    return this.setTelemetryMode('loc', mode);
+  }
+
+  /**
+   * Set environment telemetry sharing mode (companion only).
+   */
+  async setTelemetryModeEnv(mode: TelemetryMode): Promise<boolean> {
+    return this.setTelemetryMode('env', mode);
   }
 
   // ============ Getters ============

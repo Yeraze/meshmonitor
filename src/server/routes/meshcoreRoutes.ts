@@ -660,4 +660,80 @@ router.post('/config/advert-loc-policy', meshcoreDeviceLimiter, requireAuth(), r
   }
 });
 
+const TELEMETRY_MODES = ['always', 'device', 'never'] as const;
+type TelemetryModeReq = typeof TELEMETRY_MODES[number];
+
+function isTelemetryMode(value: unknown): value is TelemetryModeReq {
+  return typeof value === 'string' && (TELEMETRY_MODES as readonly string[]).includes(value);
+}
+
+/**
+ * POST /api/meshcore/config/telemetry-mode-base
+ * Set basic telemetry sharing mode (companion only).
+ * Body: { mode: 'always' | 'device' | 'never' }
+ */
+router.post('/config/telemetry-mode-base', meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { mode } = req.body;
+    if (!isTelemetryMode(mode)) {
+      return res.status(400).json({ success: false, error: 'mode must be always|device|never' });
+    }
+    const success = await managerFor(req).setTelemetryModeBase(mode);
+    if (success) {
+      res.json({ success: true, message: 'Basic telemetry mode updated' });
+    } else {
+      res.status(400).json({ success: false, error: 'Failed to update basic telemetry mode' });
+    }
+  } catch (error) {
+    logger.error('[API] Error setting telemetry mode (base):', error);
+    res.status(500).json({ success: false, error: 'Config error' });
+  }
+});
+
+/**
+ * POST /api/meshcore/config/telemetry-mode-loc
+ * Set location telemetry sharing mode (companion only).
+ * Body: { mode: 'always' | 'device' | 'never' }
+ */
+router.post('/config/telemetry-mode-loc', meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { mode } = req.body;
+    if (!isTelemetryMode(mode)) {
+      return res.status(400).json({ success: false, error: 'mode must be always|device|never' });
+    }
+    const success = await managerFor(req).setTelemetryModeLoc(mode);
+    if (success) {
+      res.json({ success: true, message: 'Location telemetry mode updated' });
+    } else {
+      res.status(400).json({ success: false, error: 'Failed to update location telemetry mode' });
+    }
+  } catch (error) {
+    logger.error('[API] Error setting telemetry mode (loc):', error);
+    res.status(500).json({ success: false, error: 'Config error' });
+  }
+});
+
+/**
+ * POST /api/meshcore/config/telemetry-mode-env
+ * Set environment telemetry sharing mode (companion only).
+ * Body: { mode: 'always' | 'device' | 'never' }
+ */
+router.post('/config/telemetry-mode-env', meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { mode } = req.body;
+    if (!isTelemetryMode(mode)) {
+      return res.status(400).json({ success: false, error: 'mode must be always|device|never' });
+    }
+    const success = await managerFor(req).setTelemetryModeEnv(mode);
+    if (success) {
+      res.json({ success: true, message: 'Environment telemetry mode updated' });
+    } else {
+      res.status(400).json({ success: false, error: 'Failed to update environment telemetry mode' });
+    }
+  } catch (error) {
+    logger.error('[API] Error setting telemetry mode (env):', error);
+    res.status(500).json({ success: false, error: 'Config error' });
+  }
+});
+
 export default router;

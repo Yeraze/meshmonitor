@@ -24,6 +24,9 @@ Commands:
 - set_radio: {"id": "10", "cmd": "set_radio", "freq": 906.875, "bw": 250, "sf": 11, "cr": 8}
 - set_coords: {"id": "12", "cmd": "set_coords", "lat": 30.0, "lon": -90.0}
 - set_advert_loc_policy: {"id": "13", "cmd": "set_advert_loc_policy", "policy": 1}
+- set_telemetry_mode_base: {"id": "14", "cmd": "set_telemetry_mode_base", "mode": "always"}
+- set_telemetry_mode_loc: {"id": "15", "cmd": "set_telemetry_mode_loc", "mode": "device"}
+- set_telemetry_mode_env: {"id": "16", "cmd": "set_telemetry_mode_env", "mode": "never"}
 - shutdown: {"id": "11", "cmd": "shutdown"}
 """
 
@@ -94,6 +97,12 @@ class MeshCoreBridge:
                 return await self.cmd_set_coords(cmd_id, cmd_data)
             elif cmd == 'set_advert_loc_policy':
                 return await self.cmd_set_advert_loc_policy(cmd_id, cmd_data)
+            elif cmd == 'set_telemetry_mode_base':
+                return await self.cmd_set_telemetry_mode_base(cmd_id, cmd_data)
+            elif cmd == 'set_telemetry_mode_loc':
+                return await self.cmd_set_telemetry_mode_loc(cmd_id, cmd_data)
+            elif cmd == 'set_telemetry_mode_env':
+                return await self.cmd_set_telemetry_mode_env(cmd_id, cmd_data)
             elif cmd == 'shutdown':
                 return await self.cmd_shutdown(cmd_id)
             elif cmd == 'ping':
@@ -405,6 +414,57 @@ class MeshCoreBridge:
         await self.meshcore.commands.set_advert_loc_policy(int(policy))
         return {'id': cmd_id, 'success': True, 'data': {'policy': int(policy)}}
 
+    @staticmethod
+    def _parse_telemetry_mode(mode: Any) -> Optional[int]:
+        """Convert string/int mode to wire-level int (0=never, 1=device, 2=always)."""
+        if mode is None:
+            return None
+        if isinstance(mode, int):
+            if mode in (0, 1, 2):
+                return mode
+            return None
+        if isinstance(mode, str):
+            m = mode.strip().lower()
+            if m == 'always' or m == 'all':
+                return 2
+            if m == 'device' or m == 'selected':
+                return 1
+            if m == 'never' or m == 'off':
+                return 0
+        return None
+
+    async def _set_telemetry_mode(self, cmd_id: str, cmd_data: dict, field: str) -> dict:
+        """Shared implementation for set_telemetry_mode_{base,loc,env}."""
+        if not self.connected or not self.meshcore:
+            return {'id': cmd_id, 'success': False, 'error': 'Not connected'}
+
+        mode_value = self._parse_telemetry_mode(cmd_data.get('mode'))
+        if mode_value is None:
+            return {'id': cmd_id, 'success': False, 'error': 'mode must be always|device|never'}
+
+        setter_name = f'set_telemetry_mode_{field}'
+        setter = getattr(self.meshcore.commands, setter_name, None)
+        if setter is None:
+            return {'id': cmd_id, 'success': False, 'error': f'meshcore lacks {setter_name}'}
+
+        result = await setter(mode_value)
+        if result is not None and getattr(result, 'is_error', lambda: False)():
+            err = getattr(result, 'payload', None) or f'device rejected {setter_name}'
+            return {'id': cmd_id, 'success': False, 'error': str(err)}
+        return {'id': cmd_id, 'success': True, 'data': {'mode': mode_value}}
+
+    async def cmd_set_telemetry_mode_base(self, cmd_id: str, cmd_data: dict) -> dict:
+        """Set basic telemetry sharing mode."""
+        return await self._set_telemetry_mode(cmd_id, cmd_data, 'base')
+
+    async def cmd_set_telemetry_mode_loc(self, cmd_id: str, cmd_data: dict) -> dict:
+        """Set location telemetry sharing mode."""
+        return await self._set_telemetry_mode(cmd_id, cmd_data, 'loc')
+
+    async def cmd_set_telemetry_mode_env(self, cmd_id: str, cmd_data: dict) -> dict:
+        """Set environment telemetry sharing mode."""
+        return await self._set_telemetry_mode(cmd_id, cmd_data, 'env')
+
     async def cmd_shutdown(self, cmd_id: str) -> dict:
         """Shutdown the bridge"""
         self.running = False
@@ -434,6 +494,9 @@ class MeshCoreBridge:
             'latitude': lat,
             'longitude': lon,
             'adv_loc_policy': info.get('adv_loc_policy'),
+            'telemetry_mode_base': info.get('telemetry_mode_base'),
+            'telemetry_mode_loc': info.get('telemetry_mode_loc'),
+            'telemetry_mode_env': info.get('telemetry_mode_env'),
         }
 
     async def run(self):

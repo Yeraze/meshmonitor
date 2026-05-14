@@ -30,6 +30,8 @@ import type {
 } from '../../../hooks/useWebSocket';
 import { MeshCoreContact, mapContactsToNodes } from '../../../utils/meshcoreHelpers';
 
+export type TelemetryMode = 'always' | 'device' | 'never';
+
 export interface MeshCoreNode {
   publicKey: string;
   name: string;
@@ -47,6 +49,9 @@ export interface MeshCoreNode {
   latitude?: number;
   longitude?: number;
   advLocPolicy?: number;
+  telemetryModeBase?: TelemetryMode;
+  telemetryModeLoc?: TelemetryMode;
+  telemetryModeEnv?: TelemetryMode;
 }
 
 export interface MeshCoreMessage {
@@ -96,6 +101,9 @@ export interface MeshCoreActions {
   setRadioParams: (params: { freq: number; bw: number; sf: number; cr: number }) => Promise<boolean>;
   setCoords: (lat: number, lon: number) => Promise<boolean>;
   setAdvertLocPolicy: (policy: number) => Promise<boolean>;
+  setTelemetryModeBase: (mode: TelemetryMode) => Promise<boolean>;
+  setTelemetryModeLoc: (mode: TelemetryMode) => Promise<boolean>;
+  setTelemetryModeEnv: (mode: TelemetryMode) => Promise<boolean>;
   refreshAll: () => Promise<void>;
   clearError: () => void;
 }
@@ -595,6 +603,43 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, fetchStatus]);
 
+  const setTelemetryMode = useCallback(async (
+    endpoint: 'telemetry-mode-base' | 'telemetry-mode-loc' | 'telemetry-mode-env',
+    mode: TelemetryMode,
+    label: string,
+  ): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchStatus();
+        return true;
+      }
+      setError(data.error || `Failed to update ${label}`);
+      return false;
+    } catch (_err) {
+      setError(`Failed to update ${label}`);
+      return false;
+    }
+  }, [mcPrefix, csrfFetch, fetchStatus]);
+
+  const setTelemetryModeBase = useCallback(
+    (mode: TelemetryMode) => setTelemetryMode('telemetry-mode-base', mode, 'basic telemetry mode'),
+    [setTelemetryMode],
+  );
+  const setTelemetryModeLoc = useCallback(
+    (mode: TelemetryMode) => setTelemetryMode('telemetry-mode-loc', mode, 'location telemetry mode'),
+    [setTelemetryMode],
+  );
+  const setTelemetryModeEnv = useCallback(
+    (mode: TelemetryMode) => setTelemetryMode('telemetry-mode-env', mode, 'environment telemetry mode'),
+    [setTelemetryMode],
+  );
+
   const refreshAll = useCallback(async () => {
     if (sourceId) {
       await loadSnapshot();
@@ -625,6 +670,9 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setRadioParams,
       setCoords,
       setAdvertLocPolicy,
+      setTelemetryModeBase,
+      setTelemetryModeLoc,
+      setTelemetryModeEnv,
       refreshAll,
       clearError,
     },
