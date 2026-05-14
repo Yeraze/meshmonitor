@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ConnectionStatus, MeshCoreActions } from './hooks/useMeshCore';
+import { ConnectionStatus, MeshCoreActions, TelemetryMode } from './hooks/useMeshCore';
 import { RADIO_PRESETS, findPresetId } from './radioPresets';
+
+const TELEMETRY_MODE_OPTIONS: TelemetryMode[] = ['always', 'device', 'never'];
+// MeshCore device types: COMPANION=1, REPEATER=2, ROOM_SERVER=3.
+const COMPANION_ONLY_DEVICES = new Set([2, 3]);
 
 interface MeshCoreConfigurationViewProps {
   status: ConnectionStatus | null;
@@ -24,6 +28,9 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   const [lat, setLat] = useState<number>(local?.latitude ?? 0);
   const [lon, setLon] = useState<number>(local?.longitude ?? 0);
   const [advLoc, setAdvLoc] = useState<boolean>(local?.advLocPolicy === 1);
+  const [telBase, setTelBase] = useState<TelemetryMode>(local?.telemetryModeBase ?? 'always');
+  const [telLoc, setTelLoc] = useState<TelemetryMode>(local?.telemetryModeLoc ?? 'always');
+  const [telEnv, setTelEnv] = useState<TelemetryMode>(local?.telemetryModeEnv ?? 'always');
 
   const presetId = useMemo(() => findPresetId(freq, bw, sf, cr), [freq, bw, sf, cr]);
 
@@ -41,9 +48,11 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   const [savingRadio, setSavingRadio] = useState(false);
   const [savingLocation, setSavingLocation] = useState(false);
   const [savingAdvLoc, setSavingAdvLoc] = useState(false);
+  const [savingTelemetry, setSavingTelemetry] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
   const [radioSaved, setRadioSaved] = useState(false);
   const [locationSaved, setLocationSaved] = useState(false);
+  const [telemetrySaved, setTelemetrySaved] = useState(false);
 
   useEffect(() => {
     if (local?.name) setName(local.name);
@@ -63,6 +72,13 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
     if (typeof local.longitude === 'number') setLon(local.longitude);
     if (typeof local.advLocPolicy === 'number') setAdvLoc(local.advLocPolicy === 1);
   }, [local?.latitude, local?.longitude, local?.advLocPolicy]);
+
+  useEffect(() => {
+    if (!local) return;
+    if (local.telemetryModeBase) setTelBase(local.telemetryModeBase);
+    if (local.telemetryModeLoc) setTelLoc(local.telemetryModeLoc);
+    if (local.telemetryModeEnv) setTelEnv(local.telemetryModeEnv);
+  }, [local?.telemetryModeBase, local?.telemetryModeLoc, local?.telemetryModeEnv]);
 
   const handleSaveName = async () => {
     if (!name.trim()) return;
@@ -107,6 +123,25 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
     setSavingAdvLoc(false);
     if (!ok) {
       setAdvLoc(prev);
+    }
+  };
+
+  const advType = local?.advType;
+  const isCompanionOnly = typeof advType === 'number' && COMPANION_ONLY_DEVICES.has(advType);
+  const telemetryDisabled = !connected || isCompanionOnly;
+
+  const handleSaveTelemetry = async () => {
+    setSavingTelemetry(true);
+    setTelemetrySaved(false);
+    const results = await Promise.all([
+      actions.setTelemetryModeBase(telBase),
+      actions.setTelemetryModeLoc(telLoc),
+      actions.setTelemetryModeEnv(telEnv),
+    ]);
+    setSavingTelemetry(false);
+    if (results.every(Boolean)) {
+      setTelemetrySaved(true);
+      setTimeout(() => setTelemetrySaved(false), 2500);
     }
   };
 
@@ -290,6 +325,91 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
               : t('meshcore.config.save_radio', 'Save radio settings')}
           </button>
           {radioSaved && (
+            <span style={{ marginLeft: '0.75rem', color: 'var(--ctp-green)' }}>
+              ✓ {t('meshcore.config.saved', 'Saved')}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="form-section">
+        <h3>{t('meshcore.config.telemetry', 'Telemetry')}</h3>
+        <p className="hint">
+          {t('meshcore.config.telemetry_hint',
+            'Control what telemetry this node shares. Always = broadcast on advert; Device only = only respond to direct requests from your contacts; Never = disable.')}
+        </p>
+        {connected && isCompanionOnly && (
+          <p className="hint" style={{ color: 'var(--ctp-yellow)' }}>
+            {t('meshcore.config.telemetry_companion_only',
+              'Telemetry mode is only configurable on companion devices.')}
+          </p>
+        )}
+        <div className="form-row">
+          <div>
+            <label htmlFor="mc-cfg-tel-base">
+              {t('meshcore.config.telemetry_base', 'Basic telemetry')}
+            </label>
+            <select
+              id="mc-cfg-tel-base"
+              value={telBase}
+              onChange={e => setTelBase(e.target.value as TelemetryMode)}
+              disabled={telemetryDisabled || savingTelemetry}
+            >
+              {TELEMETRY_MODE_OPTIONS.map(mode => (
+                <option key={mode} value={mode}>
+                  {t(`meshcore.config.telemetry_mode.${mode}`,
+                    mode === 'always' ? 'Always' : mode === 'device' ? 'Device only' : 'Never')}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="mc-cfg-tel-loc">
+              {t('meshcore.config.telemetry_loc', 'Location telemetry')}
+            </label>
+            <select
+              id="mc-cfg-tel-loc"
+              value={telLoc}
+              onChange={e => setTelLoc(e.target.value as TelemetryMode)}
+              disabled={telemetryDisabled || savingTelemetry}
+            >
+              {TELEMETRY_MODE_OPTIONS.map(mode => (
+                <option key={mode} value={mode}>
+                  {t(`meshcore.config.telemetry_mode.${mode}`,
+                    mode === 'always' ? 'Always' : mode === 'device' ? 'Device only' : 'Never')}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="mc-cfg-tel-env">
+              {t('meshcore.config.telemetry_env', 'Environment telemetry')}
+            </label>
+            <select
+              id="mc-cfg-tel-env"
+              value={telEnv}
+              onChange={e => setTelEnv(e.target.value as TelemetryMode)}
+              disabled={telemetryDisabled || savingTelemetry}
+            >
+              {TELEMETRY_MODE_OPTIONS.map(mode => (
+                <option key={mode} value={mode}>
+                  {t(`meshcore.config.telemetry_mode.${mode}`,
+                    mode === 'always' ? 'Always' : mode === 'device' ? 'Device only' : 'Never')}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div>
+          <button
+            onClick={() => void handleSaveTelemetry()}
+            disabled={telemetryDisabled || savingTelemetry}
+          >
+            {savingTelemetry
+              ? t('meshcore.config.saving', 'Saving…')
+              : t('meshcore.config.save_telemetry', 'Save telemetry settings')}
+          </button>
+          {telemetrySaved && (
             <span style={{ marginLeft: '0.75rem', color: 'var(--ctp-green)' }}>
               ✓ {t('meshcore.config.saved', 'Saved')}
             </span>
