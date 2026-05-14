@@ -42,6 +42,9 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastAdminCheck INTEGER,
         isLocalNode INTEGER DEFAULT 0,
         sourceId TEXT,
+        telemetryEnabled INTEGER DEFAULT 0,
+        telemetryIntervalMinutes INTEGER DEFAULT 60,
+        lastTelemetryRequestAt INTEGER,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       );
@@ -122,6 +125,9 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastAdminCheck INTEGER,
         isLocalNode INTEGER DEFAULT 0,
         sourceId TEXT NOT NULL,
+        telemetryEnabled INTEGER DEFAULT 0,
+        telemetryIntervalMinutes INTEGER DEFAULT 60,
+        lastTelemetryRequestAt INTEGER,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
         PRIMARY KEY (publicKey, sourceId)
@@ -205,6 +211,129 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         },
         '',
       ),
+    ).rejects.toThrow(/requires a sourceId/);
+  });
+
+  // ============ Per-node telemetry retrieval config (migration 060) ============
+
+  it('setNodeTelemetryConfig inserts a stub row when none exists', async () => {
+    await repo.setNodeTelemetryConfig('src-a', 'pk-new', {
+      enabled: true,
+      intervalMinutes: 15,
+    });
+
+    const row = db
+      .prepare(
+        `SELECT sourceId, telemetryEnabled, telemetryIntervalMinutes
+         FROM meshcore_nodes WHERE publicKey = 'pk-new'`,
+      )
+      .get() as { sourceId: string; telemetryEnabled: number; telemetryIntervalMinutes: number };
+    expect(row.sourceId).toBe('src-a');
+    expect(row.telemetryEnabled).toBe(1);
+    expect(row.telemetryIntervalMinutes).toBe(15);
+  });
+
+  it('setNodeTelemetryConfig updates an existing row in place', async () => {
+    await repo.upsertNode({ publicKey: 'pk-1', name: 'a' }, 'src-a');
+    await repo.setNodeTelemetryConfig('src-a', 'pk-1', { enabled: true });
+    await repo.setNodeTelemetryConfig('src-a', 'pk-1', { intervalMinutes: 30 });
+
+    const row = db
+      .prepare(
+        `SELECT telemetryEnabled, telemetryIntervalMinutes
+         FROM meshcore_nodes WHERE publicKey = 'pk-1'`,
+      )
+      .get() as { telemetryEnabled: number; telemetryIntervalMinutes: number };
+    expect(row.telemetryEnabled).toBe(1);
+    expect(row.telemetryIntervalMinutes).toBe(30);
+  });
+
+  it('setNodeTelemetryConfig is scoped by sourceId — same publicKey on two sources is independent', async () => {
+    // Composite-PK schema mirrors the prior cross-source guard test: lets
+    // one publicKey exist twice, scoped by sourceId. Must include every
+    // column Drizzle's MeshCoreNode schema declares, since drizzle SELECT
+    // pulls all of them by name.
+    db.exec(`
+      DROP TABLE meshcore_nodes;
+      CREATE TABLE meshcore_nodes (
+        publicKey TEXT NOT NULL,
+        name TEXT,
+        advType INTEGER,
+        txPower INTEGER,
+        maxTxPower INTEGER,
+        radioFreq REAL,
+        radioBw REAL,
+        radioSf INTEGER,
+        radioCr INTEGER,
+        latitude REAL,
+        longitude REAL,
+        altitude REAL,
+        batteryMv INTEGER,
+        uptimeSecs INTEGER,
+        rssi INTEGER,
+        snr REAL,
+        lastHeard INTEGER,
+        hasAdminAccess INTEGER DEFAULT 0,
+        lastAdminCheck INTEGER,
+        isLocalNode INTEGER DEFAULT 0,
+        sourceId TEXT NOT NULL,
+        telemetryEnabled INTEGER DEFAULT 0,
+        telemetryIntervalMinutes INTEGER DEFAULT 60,
+        lastTelemetryRequestAt INTEGER,
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL,
+        PRIMARY KEY (publicKey, sourceId)
+      );
+    `);
+    await repo.upsertNode({ publicKey: 'pk-1', name: 'a' }, 'src-a');
+    await repo.upsertNode({ publicKey: 'pk-1', name: 'b' }, 'src-b');
+    await repo.setNodeTelemetryConfig('src-a', 'pk-1', { enabled: true, intervalMinutes: 10 });
+    await repo.setNodeTelemetryConfig('src-b', 'pk-1', { enabled: false, intervalMinutes: 90 });
+
+    const rows = db
+      .prepare(
+        `SELECT sourceId, telemetryEnabled, telemetryIntervalMinutes
+         FROM meshcore_nodes WHERE publicKey = 'pk-1' ORDER BY sourceId`,
+      )
+      .all() as Array<{ sourceId: string; telemetryEnabled: number; telemetryIntervalMinutes: number }>;
+    expect(rows).toHaveLength(2);
+    const a = rows.find((r) => r.sourceId === 'src-a')!;
+    const b = rows.find((r) => r.sourceId === 'src-b')!;
+    expect(a.telemetryEnabled).toBe(1);
+    expect(a.telemetryIntervalMinutes).toBe(10);
+    expect(b.telemetryEnabled).toBe(0);
+    expect(b.telemetryIntervalMinutes).toBe(90);
+  });
+
+  it('getTelemetryEnabledNodes only returns rows with telemetryEnabled=true and matching sourceId', async () => {
+    await repo.upsertNode({ publicKey: 'pk-1' }, 'src-a');
+    await repo.upsertNode({ publicKey: 'pk-2' }, 'src-a');
+    await repo.upsertNode({ publicKey: 'pk-3' }, 'src-b');
+    await repo.setNodeTelemetryConfig('src-a', 'pk-1', { enabled: true });
+    await repo.setNodeTelemetryConfig('src-a', 'pk-2', { enabled: false });
+    await repo.setNodeTelemetryConfig('src-b', 'pk-3', { enabled: true });
+
+    const aResult = await repo.getTelemetryEnabledNodes('src-a');
+    expect(aResult.map((n) => n.publicKey)).toEqual(['pk-1']);
+
+    const bResult = await repo.getTelemetryEnabledNodes('src-b');
+    expect(bResult.map((n) => n.publicKey)).toEqual(['pk-3']);
+  });
+
+  it('markTelemetryRequested stamps lastTelemetryRequestAt', async () => {
+    await repo.upsertNode({ publicKey: 'pk-1' }, 'src-a');
+    await repo.setNodeTelemetryConfig('src-a', 'pk-1', { enabled: true });
+    await repo.markTelemetryRequested('src-a', 'pk-1', 999_999);
+
+    const row = db
+      .prepare(`SELECT lastTelemetryRequestAt FROM meshcore_nodes WHERE publicKey = 'pk-1'`)
+      .get() as { lastTelemetryRequestAt: number };
+    expect(row.lastTelemetryRequestAt).toBe(999_999);
+  });
+
+  it('setNodeTelemetryConfig throws without a sourceId', async () => {
+    await expect(
+      repo.setNodeTelemetryConfig('', 'pk-1', { enabled: true }),
     ).rejects.toThrow(/requires a sourceId/);
   });
 });

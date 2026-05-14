@@ -177,6 +177,19 @@ export interface MeshCoreStatsPackets {
   recvErrors?: number | null;
 }
 
+/**
+ * One LPP telemetry record decoded from a remote `req_telemetry_sync`
+ * response. `type` is the raw Cayenne-LPP type id (e.g. 116=voltage,
+ * 103=temperature, 104=humidity, 115=barometer, 121=altitude, 136=gps).
+ * `value` is whatever the encoder produced — a scalar for single-value
+ * types, a dict for multi-axis types like gps.
+ */
+export interface MeshCoreTelemetryRecord {
+  channel: number;
+  type: number | null;
+  value: number | string | Record<string, number> | number[] | null;
+}
+
 export interface MeshCoreDeviceInfo {
   firmwareVer?: number;
   firmwareBuild?: string;
@@ -241,6 +254,17 @@ class MeshCoreManager extends EventEmitter {
 
   // Message limit to prevent unbounded growth
   private static readonly MAX_MESSAGES = 1000;
+
+  /**
+   * Wall-clock timestamp (ms) of the most recent outbound RF operation
+   * for this source. Today only the remote-telemetry scheduler stamps
+   * it (after `requestRemoteTelemetry`), but it's intended as the
+   * shared throttling primitive for any future scheduled mesh-op on
+   * this manager (auto-traceroute, periodic adverts, status sweeps,
+   * …). Cross-source: only this manager's value — different sources
+   * are different radios.
+   */
+  private lastMeshTxAt: number = 0;
 
   constructor(sourceId: string) {
     super();
@@ -1237,6 +1261,79 @@ class MeshCoreManager extends EventEmitter {
    */
   async setTelemetryModeEnv(mode: TelemetryMode): Promise<boolean> {
     return this.setTelemetryMode('env', mode);
+  }
+
+  // ============ Mesh-op throttle primitive ============
+
+  /**
+   * Timestamp (ms) of the last outbound RF op the manager is aware of.
+   * Returns 0 if nothing has been recorded yet. Read by the
+   * remote-telemetry scheduler before issuing a new request so two
+   * scheduled-ops on the same source can't stomp each other.
+   */
+  getLastMeshTxAt(): number {
+    return this.lastMeshTxAt;
+  }
+
+  /**
+   * Stamp the manager as having just emitted an RF op. Callers that
+   * transmit on the air via this manager (today: only the
+   * remote-telemetry scheduler) MUST invoke this so the next scheduled
+   * op honours the global minimum interval.
+   */
+  recordMeshTx(when: number = Date.now()): void {
+    this.lastMeshTxAt = when;
+  }
+
+  // ============ Remote-node telemetry (companion only, RF) ============
+  //
+  // `requestRemoteTelemetry` puts a binary req-telemetry packet on the
+  // air via the locally-connected companion node. The python-meshcore
+  // helper `req_telemetry_sync` serialises against `_mesh_request_lock`
+  // on the bridge side, but the Node-side scheduler is also expected
+  // to enforce the cross-call 60s minimum.
+
+  /**
+   * Send a binary telemetry request to a remote node and wait for the
+   * LPP-decoded response. Returns null on timeout / error / repeater.
+   * The caller is responsible for honouring the global 60s throttle —
+   * this method does NOT consult `lastMeshTxAt`. It bumps the field on
+   * success so subsequent scheduled ops see it.
+   */
+  async requestRemoteTelemetry(
+    publicKey: string,
+    timeoutSecs?: number,
+  ): Promise<MeshCoreTelemetryRecord[] | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
+    if (!this.connected) return null;
+    if (!publicKey) return null;
+
+    try {
+      const params: Record<string, unknown> = { public_key: publicKey };
+      if (typeof timeoutSecs === 'number' && Number.isFinite(timeoutSecs) && timeoutSecs > 0) {
+        params.timeout = timeoutSecs;
+      }
+      // req_telemetry_sync can wait several seconds on the air; widen the
+      // bridge timeout so a slow node doesn't trip the default 30s ceiling
+      // on a back-to-back retry.
+      const response = await this.sendBridgeCommand('request_telemetry', params, 45_000);
+      if (!response.success) {
+        logger.warn(
+          `[MeshCore:${this.sourceId}] requestRemoteTelemetry(${publicKey.substring(0, 16)}…) failed: ${response.error}`,
+        );
+        return null;
+      }
+      this.recordMeshTx();
+      const data = response.data;
+      const records = Array.isArray(data?.records) ? (data.records as MeshCoreTelemetryRecord[]) : [];
+      return records;
+    } catch (error) {
+      logger.warn(
+        `[MeshCore:${this.sourceId}] requestRemoteTelemetry(${publicKey.substring(0, 16)}…) threw:`,
+        error,
+      );
+      return null;
+    }
   }
 
   // ============ Local-node stats (companion only, no RF) ============

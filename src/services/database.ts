@@ -34,6 +34,7 @@ import {
   SourcesRepository,
   AnalysisRepository,
   WaypointsRepository,
+  MeshCoreRepository,
 } from '../db/repositories/index.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 
@@ -475,6 +476,7 @@ class DatabaseService {
   public sourcesRepo: SourcesRepository | null = null;
   public analysisRepo: AnalysisRepository | null = null;
   public waypointsRepo: WaypointsRepository | null = null;
+  public meshcoreRepo: MeshCoreRepository | null = null;
 
   /**
    * Typed repository accessors — throw if database not initialized.
@@ -558,6 +560,11 @@ class DatabaseService {
   get waypoints(): WaypointsRepository {
     if (!this.waypointsRepo) throw new Error('Database not initialized');
     return this.waypointsRepo;
+  }
+
+  get meshcore(): MeshCoreRepository {
+    if (!this.meshcoreRepo) throw new Error('Database not initialized');
+    return this.meshcoreRepo;
   }
 
   constructor() {
@@ -831,6 +838,7 @@ class DatabaseService {
       this.sourcesRepo = new SourcesRepository(drizzleDb, this.drizzleDbType);
       this.analysisRepo = new AnalysisRepository(drizzleDb as any, this.drizzleDbType);
       this.waypointsRepo = new WaypointsRepository(drizzleDb, this.drizzleDbType);
+      this.meshcoreRepo = new MeshCoreRepository(drizzleDb, this.drizzleDbType);
 
       logger.info('[DatabaseService] Drizzle repositories initialized successfully');
 

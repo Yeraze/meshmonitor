@@ -699,6 +699,28 @@ setTimeout(async () => {
 }, 7000); // Slightly after the initial telemetry purge so the DB is settled.
 
 // ==========================================
+// MeshCore remote-telemetry scheduler
+// ==========================================
+// Periodically issues `req_telemetry_sync` against each opt-in remote
+// node. Unlike the local-node poller above, this DOES transmit on the
+// air, so it honours a per-source 60s minimum via the shared
+// `MeshCoreManager.lastMeshTxAt` primitive and only fires when a node's
+// own `telemetryIntervalMinutes` cadence has elapsed.
+export const meshcoreRemoteTelemetryScheduler = new MeshCoreRemoteTelemetryScheduler({
+  registry: meshcoreManagerRegistry,
+  database: databaseService,
+});
+setMeshCoreRemoteTelemetryScheduler(meshcoreRemoteTelemetryScheduler);
+setTimeout(async () => {
+  try {
+    await databaseService.waitForReady();
+    meshcoreRemoteTelemetryScheduler.start();
+  } catch (error) {
+    logger.error('Failed to start MeshCore remote-telemetry scheduler:', error);
+  }
+}, 8000); // After local poller so we never race the first per-manager TX.
+
+// ==========================================
 // Scheduled Auto-Upgrade Check
 // ==========================================
 // Check for updates every 4 hours server-side to enable unattended upgrades
@@ -830,6 +852,10 @@ import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
 import { meshcoreManagerRegistry, meshcoreConfigFromSource } from './meshcoreRegistry.js';
 import { MeshCoreTelemetryPoller, setMeshCoreTelemetryPoller } from './services/meshcoreTelemetryPoller.js';
+import {
+  MeshCoreRemoteTelemetryScheduler,
+  setMeshCoreRemoteTelemetryScheduler,
+} from './services/meshcoreRemoteTelemetryScheduler.js';
 import embedProfileRoutes from './routes/embedProfileRoutes.js';
 import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';

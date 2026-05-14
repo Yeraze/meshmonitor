@@ -75,7 +75,10 @@ function mergeNodesAndContacts(
   });
 }
 
-export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({ nodes, contacts }) => {
+export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
+  nodes,
+  contacts,
+}) => {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<string | null>(null);
 
