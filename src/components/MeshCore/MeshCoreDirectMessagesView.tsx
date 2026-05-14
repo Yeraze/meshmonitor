@@ -5,6 +5,7 @@ import {
 } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
+import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
 
 interface MeshCoreDirectMessagesViewProps {
   messages: MeshCoreMessage[];
@@ -116,14 +117,22 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
       </div>
       <div className="meshcore-main-pane">
         {selected ? (
-          <MeshCoreMessageStream
-            messages={filtered}
-            contacts={contacts}
-            selfPublicKey={selfKey}
-            disabled={!connected}
-            emptyText={t('meshcore.no_messages', 'No messages with this contact yet')}
-            onSend={text => actions.sendMessage(text, selected)}
-          />
+          <>
+            <MeshCoreMessageStream
+              messages={filtered}
+              contacts={contacts}
+              selfPublicKey={selfKey}
+              disabled={!connected}
+              emptyText={t('meshcore.no_messages', 'No messages with this contact yet')}
+              onSend={text => actions.sendMessage(text, selected)}
+            />
+            <div className="meshcore-detail-pane">
+              <MeshCoreContactDetailPanel
+                contact={contactsByKey.get(selected) ?? null}
+                publicKey={selected}
+              />
+            </div>
+          </>
         ) : (
           <div className="meshcore-empty-state" style={{ alignSelf: 'center', margin: 'auto' }}>
             {t('meshcore.select_contact', 'Select a contact to start a DM')}
