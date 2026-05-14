@@ -277,14 +277,18 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
               : null
           : null;
 
-        // Show the Meshtastic logo as a faint watermark for any meshtastic-typed
-        // source. Other source types render without a watermark.
+        // Show a faint logo watermark behind cards for source types we have
+        // brand assets for. Meshtastic sources get the green Meshtastic logo;
+        // MeshCore sources get the MeshCore wordmark. Other types render
+        // without a watermark.
         const isMeshtastic =
           source.type === 'meshtastic_tcp' || source.type === 'meshtastic_mqtt';
+        const isMeshCore = source.type === 'meshcore';
         const cardClassName =
           'dashboard-source-card' +
           (isSelected ? ' selected' : '') +
-          (isMeshtastic ? ' has-meshtastic-watermark' : '');
+          (isMeshtastic ? ' has-meshtastic-watermark' : '') +
+          (isMeshCore ? ' has-meshcore-watermark' : '');
 
         return (
           <div
@@ -301,9 +305,12 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
               <span className="dashboard-source-card-name" title={source.name}>
                 {source.name}
               </span>
-              {!isUnified && source.type !== 'meshtastic_tcp' && source.type !== 'meshtastic_mqtt' && (
-                <span className="dashboard-source-card-badge">{source.type}</span>
-              )}
+              {!isUnified &&
+                source.type !== 'meshtastic_tcp' &&
+                source.type !== 'meshtastic_mqtt' &&
+                source.type !== 'meshcore' && (
+                  <span className="dashboard-source-card-badge">{source.type}</span>
+                )}
               {!isUnified && (() => {
                 const vn = (source.config as any)?.virtualNode;
                 return vn?.enabled ? (

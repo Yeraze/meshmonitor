@@ -452,10 +452,33 @@ router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) =>
     // `activeNodeCount` is the count of nodes heard in the last 2h, used by
     // the sidebar's node-activity badge (issue #2883). Kept parallel with
     // the total count so source status fans out in a single round-trip.
-    const [nodeCount, activeNodeCount] = await Promise.all([
-      databaseService.nodes.getNodeCount(source.id).catch(() => 0),
-      databaseService.nodes.getActiveNodeCount(source.id).catch(() => 0),
-    ]);
+    // MeshCore contacts live in the per-source MeshCoreManager, not the
+    // shared `nodes` table, so count from getAllNodes() instead.
+    let nodeCount: number;
+    let activeNodeCount: number;
+    if (source.type === 'meshcore') {
+      const mcManager = meshcoreManagerRegistry.get(source.id);
+      if (mcManager) {
+        const all = mcManager.getAllNodes();
+        nodeCount = all.length;
+        const cutoffMs = Date.now() - 7_200_000;
+        const localHasLastHeard = mcManager.getLocalNode()?.lastHeard != null;
+        activeNodeCount = all.filter((n, i) => {
+          // localNode (index 0 when present) has no lastHeard at creation but
+          // is "active" while the manager is connected.
+          if (i === 0 && mcManager.getLocalNode() && !localHasLastHeard) return true;
+          return typeof n.lastHeard === 'number' && n.lastHeard >= cutoffMs;
+        }).length;
+      } else {
+        nodeCount = 0;
+        activeNodeCount = 0;
+      }
+    } else {
+      [nodeCount, activeNodeCount] = await Promise.all([
+        databaseService.nodes.getNodeCount(source.id).catch(() => 0),
+        databaseService.nodes.getActiveNodeCount(source.id).catch(() => 0),
+      ]);
+    }
     res.json({ ...status, nodeCount, activeNodeCount });
   } catch (error) {
     logger.error('Error fetching source status:', error);
