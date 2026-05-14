@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { MeshCoreMessage, MeshCoreActions, ConnectionStatus } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface MeshCoreChannelsViewProps {
   messages: MeshCoreMessage[];
@@ -33,6 +34,8 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   actions,
 }) => {
   const { t } = useTranslation();
+  const { hasPermission } = useAuth();
+  const canSend = hasPermission('messages', 'write');
   const [selected, setSelected] = useState<string>('public');
   const channels: ChannelDef[] = [PUBLIC_CHANNEL];
 
@@ -74,7 +77,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           messages={filtered}
           contacts={contacts}
           selfPublicKey={selfKey}
-          disabled={!connected}
+          disabled={!connected || !canSend}
           emptyText={t('meshcore.no_messages', 'No messages on this channel yet')}
           onSend={text => actions.sendMessage(text, active.toPublicKey)}
         />

@@ -6,6 +6,7 @@ import {
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface MeshCoreDirectMessagesViewProps {
   messages: MeshCoreMessage[];
@@ -21,6 +22,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   actions,
 }) => {
   const { t } = useTranslation();
+  const { hasPermission } = useAuth();
+  const canSend = hasPermission('messages', 'write');
   const [selected, setSelected] = useState<string | null>(null);
 
   const selfKey = status?.localNode?.publicKey;
@@ -122,7 +125,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               messages={filtered}
               contacts={contacts}
               selfPublicKey={selfKey}
-              disabled={!connected}
+              disabled={!connected || !canSend}
               emptyText={t('meshcore.no_messages', 'No messages with this contact yet')}
               onSend={text => actions.sendMessage(text, selected)}
             />

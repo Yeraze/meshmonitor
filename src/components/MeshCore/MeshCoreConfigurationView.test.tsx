@@ -7,6 +7,14 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+
+// Auth: default to write-permitted; individual tests can override before
+// rendering by reassigning `authPermission`.
+let authPermission: (resource: string, action: string) => boolean = () => true;
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ hasPermission: (r: string, a: string) => authPermission(r, a) }),
+}));
+
 import { MeshCoreConfigurationView } from './MeshCoreConfigurationView';
 import type { ConnectionStatus, MeshCoreActions } from './hooks/useMeshCore';
 
@@ -126,5 +134,25 @@ describe('MeshCoreConfigurationView telemetry section', () => {
       />,
     );
     expect(screen.getByLabelText('meshcore.config.telemetry_base')).toBeDisabled();
+  });
+});
+
+describe('MeshCoreConfigurationView permission gating', () => {
+  it('disables every save control and surfaces a hint when configuration:write is denied', () => {
+    authPermission = (_resource, action) => action !== 'write';
+    try {
+      render(<MeshCoreConfigurationView status={makeStatus()} actions={makeActions()} />);
+
+      // Permission-denied hint is visible. (i18n mocked to return the key.)
+      expect(screen.getByText('meshcore.config.permission_denied')).toBeDefined();
+
+      // All four save buttons disabled.
+      expect(screen.getByText('meshcore.config.save_name')).toBeDisabled();
+      expect(screen.getByText('meshcore.config.save_location')).toBeDisabled();
+      expect(screen.getByText('meshcore.config.save_radio')).toBeDisabled();
+      expect(screen.getByText('meshcore.config.save_telemetry')).toBeDisabled();
+    } finally {
+      authPermission = () => true;
+    }
   });
 });

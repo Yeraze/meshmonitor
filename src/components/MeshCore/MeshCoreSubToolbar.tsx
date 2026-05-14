@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../contexts/AuthContext';
 
 export type MeshCoreView = 'nodes' | 'channels' | 'dms' | 'configuration' | 'settings';
 
@@ -32,10 +33,13 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
   onToggleExpanded,
 }) => {
   const { t } = useTranslation();
+  const { hasPermission } = useAuth();
+  const canReadConfig = hasPermission('configuration', 'read');
 
   return (
     <aside className={`meshcore-sub-toolbar ${expanded ? 'expanded' : 'collapsed'}`}>
       {ITEMS.map(item => {
+        if (item.id === 'configuration' && !canReadConfig) return null;
         const label = t(item.labelKey, item.fallback);
         return (
           <button
