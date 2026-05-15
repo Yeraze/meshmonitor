@@ -4811,18 +4811,13 @@ class MeshtasticManager implements ISourceManager {
         const packetTimestamp = position.time ? Number(position.time) * 1000 : undefined;
         const packetId = meshPacket.id ? Number(meshPacket.id) : undefined;
 
-        // Extract position precision metadata
+        // Extract position precision metadata.
+        // precision_bits is set by the sending node's firmware to reflect ITS own channel
+        // precision setting. We must NOT fall back to the local channel's positionPrecision —
+        // that record reflects this MeshMonitor instance's channel config, not the remote
+        // node's, and using it caused accuracy boxes to all match the local node (issue #3030).
         const channelIndex = meshPacket.channel !== undefined ? meshPacket.channel : 0;
-        // Use precision_bits from packet if available, otherwise fall back to channel's positionPrecision
-        // Also fall back if precisionBits is 0 (which means no precision was set)
-        let precisionBits = position.precisionBits ?? position.precision_bits ?? undefined;
-        if (precisionBits === undefined || precisionBits === 0) {
-          const channel = await databaseService.channels.getChannelById(channelIndex, this.sourceId);
-          if (channel && channel.positionPrecision !== undefined && channel.positionPrecision !== null && channel.positionPrecision > 0) {
-            precisionBits = channel.positionPrecision;
-            logger.debug(`🗺️ Using channel ${channelIndex} positionPrecision (${precisionBits}) for position from ${nodeId}`);
-          }
-        }
+        const precisionBits = position.precisionBits ?? position.precision_bits ?? undefined;
         const gpsAccuracy = position.gpsAccuracy ?? position.gps_accuracy ?? undefined;
         const hdop = position.HDOP ?? position.hdop ?? undefined;
 
@@ -4850,37 +4845,12 @@ class MeshtasticManager implements ISourceManager {
         // Track PKI encryption
         await this.trackPKIEncryption(meshPacket, fromNum);
 
-        // Determine if we should update position based on precision upgrade/downgrade logic
+        // Lookup existing node for position-override check below. We always accept the
+        // newest position packet — older "smart upgrade/downgrade" logic that held onto
+        // a stored higher-precision value for up to 12 hours prevented legitimate
+        // precision changes from showing up (issue #3030). The latest packet is now
+        // authoritative for both lat/lon and precisionBits.
         const existingNode = await databaseService.nodes.getNode(fromNum);
-        let shouldUpdatePosition = true;
-
-        if (existingNode && existingNode.positionPrecisionBits != null && precisionBits !== undefined) {
-          const existingPrecision = existingNode.positionPrecisionBits;
-          const newPrecision = precisionBits;
-          const existingPositionAge = existingNode.positionTimestamp ? (now - existingNode.positionTimestamp) : Infinity;
-          const twelveHoursMs = 12 * 60 * 60 * 1000;
-          const tenMinutesMs = 10 * 60 * 1000;
-
-          // Mobile/tracker nodes need more frequent position updates
-          const isMobileOrTracker = existingNode.mobile === 1 ||
-            existingNode.role === 5 ||   // Tracker
-            existingNode.role === 10;    // TAK Tracker
-
-          const staleThresholdMs = isMobileOrTracker ? tenMinutesMs : twelveHoursMs;
-
-          // Smart upgrade/downgrade logic:
-          // - Always upgrade to higher precision
-          // - Only downgrade if existing position is older than the stale threshold
-          //   (10 min for mobile/tracker nodes, 12 hours for stationary)
-          if (newPrecision < existingPrecision && existingPositionAge < staleThresholdMs) {
-            shouldUpdatePosition = false;
-            logger.debug(`🗺️ Skipping position update for ${nodeId}: New precision (${newPrecision}) < existing (${existingPrecision}) and existing position is recent (${Math.round(existingPositionAge / 1000 / 60)}min old, threshold: ${Math.round(staleThresholdMs / 1000 / 60)}min)`);
-          } else if (newPrecision > existingPrecision) {
-            logger.debug(`🗺️ Upgrading position precision for ${nodeId}: ${existingPrecision} -> ${newPrecision} bits (channel ${channelIndex})`);
-          } else if (existingPositionAge >= staleThresholdMs) {
-            logger.debug(`🗺️ Updating stale position for ${nodeId}: existing is ${Math.round(existingPositionAge / 1000 / 60)}min old (threshold: ${Math.round(staleThresholdMs / 1000 / 60)}min)`);
-          }
-        }
 
         // Always save position to telemetry table for historical tracking
         // This ensures position history is complete regardless of precision changes
@@ -4940,7 +4910,7 @@ class MeshtasticManager implements ISourceManager {
         // which would otherwise overwrite the correct position in the database.
         const isLocalNode = this.localNodeInfo && fromNum === this.localNodeInfo.nodeNum;
         const hasFixedPositionEnabled = this.actualDeviceConfig?.position?.fixedPosition === true;
-        if (isLocalNode && hasFixedPositionEnabled && shouldUpdatePosition) {
+        if (isLocalNode && hasFixedPositionEnabled) {
           logger.info(`🗺️ Skipping position update for local node ${nodeId}: fixedPosition is enabled, position should only be set via config. Received: ${coords.latitude}, ${coords.longitude}`);
           // Still update lastHeard and technical fields, just not lat/lon/alt
           const technicalData: any = {
@@ -4955,7 +4925,7 @@ class MeshtasticManager implements ISourceManager {
             technicalData.rssi = meshPacket.rxRssi;
           }
           await databaseService.nodes.upsertNode(technicalData, this.sourceId);
-        } else if (shouldUpdatePosition) {
+        } else {
           const nodeData: any = {
             nodeNum: fromNum,
             nodeId: nodeId,
@@ -6934,24 +6904,16 @@ class MeshtasticManager implements ISourceManager {
           nodeData.longitude = coords.longitude;
           nodeData.altitude = nodeInfo.position.altitude;
 
-          // Extract position precision if available in NodeInfo
-          // NodeInfo.position may have precisionBits from the original Position packet
-          // Note: precisionBits=0 means "no precision data" and should trigger channel fallback
-          let precisionBits = nodeInfo.position.precisionBits ?? nodeInfo.position.precision_bits ?? undefined;
+          // Extract position precision if present in NodeInfo's embedded Position.
+          // The protobuf decoder normalizes a missing precision_bits field to 0, so we
+          // treat 0 as "absent" here and leave any existing positionPrecisionBits intact.
+          // We must NOT fall back to the local channel's positionPrecision — that record
+          // reflects this MeshMonitor instance's channel config, not the remote node's,
+          // and was causing every node's accuracy box to track the local node (issue #3030).
+          const precisionBits = nodeInfo.position.precisionBits ?? nodeInfo.position.precision_bits ?? undefined;
           const channelIndex = nodeInfo.channel !== undefined ? nodeInfo.channel : 0;
 
-          // Fall back to channel's positionPrecision if not in position data
-          // Also fall back if precisionBits is 0 (which means no precision was set)
-          if (precisionBits === undefined || precisionBits === 0) {
-            const channel = await databaseService.channels.getChannelById(channelIndex, this.sourceId);
-            if (channel && channel.positionPrecision !== undefined && channel.positionPrecision !== null && channel.positionPrecision > 0) {
-              precisionBits = channel.positionPrecision;
-              logger.debug(`🗺️ NodeInfo for ${nodeId}: using channel ${channelIndex} positionPrecision (${precisionBits}) as fallback`);
-            }
-          }
-
-          // Save position precision metadata
-          if (precisionBits !== undefined) {
+          if (precisionBits !== undefined && precisionBits !== 0) {
             nodeData.positionPrecisionBits = precisionBits;
             nodeData.positionChannel = channelIndex;
             nodeData.positionTimestamp = Date.now();

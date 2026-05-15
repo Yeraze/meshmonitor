@@ -115,7 +115,7 @@ For the full "adding a migration" recipe see [Migration recipe](#migration-recip
 - Don't run the Docker dev container and a local `npm run dev` at the same time — they fight over ports.
 - The dev container does NOT have `sqlite3` available as a CLI binary.
 - When sending test messages, use the `gauntlet` channel — never the Primary channel.
-- Tileserver runs on port 8082. Shut it down (and the container) before running `tests/system-tests.sh`.
+- Tileserver runs on port 8082. Only shut it down (and the dev container) when you are running `tests/system-tests.sh` locally to debug a system-test failure — CI runs system tests on every PR, so you should not be invoking that script as part of normal feature/bugfix work.
 
 ## Git Worktree Policy
 
@@ -126,9 +126,9 @@ For the full "adding a migration" recipe see [Migration recipe](#migration-recip
 
 ## Workflow
 
-- Prior to creating a PR, run `tests/system-tests.sh` and post the output report.
-- After creating or updating a PR, use the `/ci-monitor` skill to monitor CI status and auto-fix any failures.
-- All tests must pass (0 failures) before creating a PR. Run the full test suite, not just targeted tests, before committing migration or refactor work.
+- System tests (`tests/system-tests.sh`) are run by CI on every PR. Do not run them locally as part of normal feature or bugfix work — only run them locally when you are specifically debugging a system-test failure.
+- After creating or updating a PR, use the `/ci-monitor` skill to monitor CI status and auto-fix any failures (system-test regressions show up there).
+- All tests must pass (0 failures) before creating a PR. Run the full Vitest suite, not just targeted tests, before committing migration or refactor work.
 - When migrating test mocks from sync to async, use `mockResolvedValue` (not `mockReturnValue`) for any function that returns a Promise.
 - When testing locally, use `docker-compose.dev.yml` to build the local code, and verify the proper code was deployed once the container launches.
 
