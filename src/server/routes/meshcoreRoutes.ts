@@ -463,7 +463,7 @@ router.get('/info', optionalAuth(), requirePermission('connection', 'read', { so
  */
 router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const { text, toPublicKey } = req.body;
+    const { text, toPublicKey, channelIdx } = req.body;
 
     // Validate message text
     const textValidation = isValidMessage(text);
@@ -478,7 +478,17 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
       }
     }
 
-    const success = await managerFor(req).sendMessage(text, toPublicKey);
+    // Validate optional channelIdx (broadcast on a specific channel).
+    let parsedChannelIdx: number | undefined;
+    if (channelIdx !== undefined && channelIdx !== null) {
+      const n = Number(channelIdx);
+      if (!Number.isInteger(n) || n < 0 || n > 255) {
+        return res.status(400).json({ success: false, error: 'channelIdx must be an integer between 0 and 255' });
+      }
+      parsedChannelIdx = n;
+    }
+
+    const success = await managerFor(req).sendMessage(text, toPublicKey, parsedChannelIdx);
 
     if (success) {
       res.json({ success: true, message: 'Message sent' });
