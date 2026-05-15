@@ -92,6 +92,17 @@ function bytesToHex(bytes: Uint8Array | number[]): string {
   return out;
 }
 
+/** Manager passes telemetry mode as 'never' | 'device' | 'always'; firmware
+ *  wants the underlying 2-bit value (0/1/2). Numeric pass-through is allowed
+ *  so callers that already have the encoded value work unchanged. */
+function telemetryModeStringToNumber(value: unknown): number {
+  if (typeof value === 'number') return value & 0b11;
+  if (value === 'never') return 0;
+  if (value === 'device') return 1;
+  if (value === 'always') return 2;
+  throw new Error(`Invalid telemetry mode: ${String(value)}`);
+}
+
 /** Convert MeshCore int32 lat/lon (fixed point ×1e6) → decimal degrees, or undefined if zero. */
 function fixedToDegrees(v: number | undefined): number | undefined {
   if (v === undefined || v === null) return undefined;
@@ -402,20 +413,31 @@ export class MeshCoreNativeBackend extends EventEmitter {
         }
         return { ok: true };
 
-      case 'set_advert_loc_policy':
-        // TODO: wire to meshcore.js fork helper when available
-        // (SetOtherParams generalization landing upstream). For now, accept
-        // the call and cache the value so getLocalNode() reflects intent.
+      case 'set_advert_loc_policy': {
+        const policy = Number(params.policy);
+        await c.setAdvertLocPolicy(policy);
         if (this.cachedSelfInfo) {
-          (this.cachedSelfInfo as any).advLocPolicy = Number(params.policy);
+          (this.cachedSelfInfo as any).advLocPolicy = policy;
         }
-        return { ok: true, stub: true };
+        return { ok: true };
+      }
 
       case 'set_telemetry_mode_base':
       case 'set_telemetry_mode_loc':
-      case 'set_telemetry_mode_env':
-        // TODO: wire to meshcore.js fork helper when available
-        return { ok: true, stub: true };
+      case 'set_telemetry_mode_env': {
+        const mode = telemetryModeStringToNumber(params.mode);
+        if (cmd === 'set_telemetry_mode_base') {
+          await c.setTelemetryModeBase(mode);
+          if (this.cachedSelfInfo) (this.cachedSelfInfo as any).telemetryModeBase = mode;
+        } else if (cmd === 'set_telemetry_mode_loc') {
+          await c.setTelemetryModeLoc(mode);
+          if (this.cachedSelfInfo) (this.cachedSelfInfo as any).telemetryModeLoc = mode;
+        } else {
+          await c.setTelemetryModeEnv(mode);
+          if (this.cachedSelfInfo) (this.cachedSelfInfo as any).telemetryModeEnv = mode;
+        }
+        return { ok: true };
+      }
 
       case 'get_stats': {
         const type = String(params.type ?? 'core');
@@ -488,12 +510,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
       latitude: fixedToDegrees(info.advLat),
       longitude: fixedToDegrees(info.advLon),
       adv_loc_policy: info.advLocPolicy,
-      // TODO: wire to meshcore.js fork helper when available — the fork is
-      // adding telemetry mode fields to SelfInfo. Until then these stay
-      // undefined and the UI will show "—".
-      telemetry_mode_base: undefined,
-      telemetry_mode_loc: undefined,
-      telemetry_mode_env: undefined,
+      telemetry_mode_base: (info as any).telemetryModeBase,
+      telemetry_mode_loc: (info as any).telemetryModeLoc,
+      telemetry_mode_env: (info as any).telemetryModeEnv,
     };
   }
 

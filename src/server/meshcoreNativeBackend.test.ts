@@ -48,6 +48,10 @@ class MockConnection extends EventEmitter {
   public setAdvertNameCalls: string[] = [];
   public setAdvertLatLongCalls: Array<[number, number]> = [];
   public setRadioParamsCalls: Array<[number, number, number, number]> = [];
+  public setAdvertLocPolicyCalls: number[] = [];
+  public setTelemetryModeBaseCalls: number[] = [];
+  public setTelemetryModeLocCalls: number[] = [];
+  public setTelemetryModeEnvCalls: number[] = [];
   public statsRequests: number[] = [];
   public binaryRequests: Array<{ key: Uint8Array; req: number[] }> = [];
   public syncNextMessageQueue: any[] = [];
@@ -120,6 +124,22 @@ class MockConnection extends EventEmitter {
 
   async setRadioParams(freq: number, bw: number, sf: number, cr: number) {
     this.setRadioParamsCalls.push([freq, bw, sf, cr]);
+  }
+
+  async setAdvertLocPolicy(policy: number) {
+    this.setAdvertLocPolicyCalls.push(policy);
+  }
+
+  async setTelemetryModeBase(mode: number) {
+    this.setTelemetryModeBaseCalls.push(mode);
+  }
+
+  async setTelemetryModeLoc(mode: number) {
+    this.setTelemetryModeLocCalls.push(mode);
+  }
+
+  async setTelemetryModeEnv(mode: number) {
+    this.setTelemetryModeEnvCalls.push(mode);
   }
 
   async getContacts() {
@@ -405,22 +425,29 @@ describe('MeshCoreNativeBackend', () => {
     expect(resp.data).toEqual({ time: 1700000000 });
   });
 
-  it('stubs unsupported fork-only commands (set_telemetry_mode_*) as success', async () => {
+  it('routes telemetry/advert-loc commands to fork helpers', async () => {
     const backend = new MeshCoreNativeBackend('src-1', {
       connectionType: 'serial',
       serialPort: '/dev/ttyUSB0',
     });
     await backend.connect();
-    for (const cmd of [
-      'set_telemetry_mode_base',
-      'set_telemetry_mode_loc',
-      'set_telemetry_mode_env',
-      'set_advert_loc_policy',
-    ]) {
-      const resp = await backend.sendCommand(cmd, { mode: 'always', policy: 1 });
-      expect(resp.success).toBe(true);
-      expect(resp.data).toEqual(expect.objectContaining({ stub: true }));
-    }
+    const conn = lastInstanceRef.current as MockConnection;
+
+    const policyResp = await backend.sendCommand('set_advert_loc_policy', { policy: 1 });
+    expect(policyResp.success).toBe(true);
+    expect(conn.setAdvertLocPolicyCalls).toEqual([1]);
+
+    const baseResp = await backend.sendCommand('set_telemetry_mode_base', { mode: 'always' });
+    expect(baseResp.success).toBe(true);
+    expect(conn.setTelemetryModeBaseCalls).toEqual([2]);
+
+    const locResp = await backend.sendCommand('set_telemetry_mode_loc', { mode: 'device' });
+    expect(locResp.success).toBe(true);
+    expect(conn.setTelemetryModeLocCalls).toEqual([1]);
+
+    const envResp = await backend.sendCommand('set_telemetry_mode_env', { mode: 'never' });
+    expect(envResp.success).toBe(true);
+    expect(conn.setTelemetryModeEnvCalls).toEqual([0]);
   });
 
   it('decodes request_telemetry response via CayenneLpp.parse', async () => {
