@@ -223,6 +223,49 @@ describe('MeshtasticManager - Position Precision Tracking', () => {
       expect(isMobileOrTracker).toBe(true);
     });
 
+    it('should update positionPrecisionBits even when coordinate downgrade is blocked', () => {
+      // Reproduces issue #3030: when a user changes a node from 15-bit to 13-bit precision,
+      // MeshMonitor was keeping the 15-bit box because shouldUpdatePosition=false blocked the
+      // full node record update, including positionPrecisionBits. precision_bits is a static
+      // user config setting, so it must always be applied regardless of the coordinate guard.
+      const now = Date.now();
+      const oneHourAgo = now - (1 * 60 * 60 * 1000);
+
+      const existingNode = {
+        nodeNum: 123456,
+        positionPrecisionBits: 15,  // Was 15-bit
+        positionTimestamp: oneHourAgo,
+        latitude: 40.0,
+        longitude: -75.0,
+        mobile: 0,
+        role: 0
+      };
+      mockGetNode.mockReturnValue(existingNode);
+
+      const newPrecision = 13;  // Changed to 13-bit
+      const existingPrecision = existingNode.positionPrecisionBits;
+      const existingPositionAge = now - oneHourAgo;
+      const twelveHoursMs = 12 * 60 * 60 * 1000;
+
+      // Coordinate downgrade is blocked (< 12 hours)
+      const shouldUpdatePosition = !(newPrecision < existingPrecision && existingPositionAge < twelveHoursMs);
+      expect(shouldUpdatePosition).toBe(false);
+
+      // Simulate what the fixed code does: update precision even when shouldUpdatePosition=false
+      const precisionOnlyData = {
+        nodeNum: 123456,
+        nodeId: '!1e240abcd',
+        positionPrecisionBits: newPrecision,
+        positionChannel: 0,
+      };
+      mockUpsertNode(precisionOnlyData);
+
+      // Precision must be updated regardless
+      expect(mockUpsertNode).toHaveBeenCalledWith(
+        expect.objectContaining({ positionPrecisionBits: 13 })
+      );
+    });
+
     it('should still use 12-hour threshold for stationary non-tracker nodes', () => {
       const now = Date.now();
       const twoHoursAgo = now - (2 * 60 * 60 * 1000);

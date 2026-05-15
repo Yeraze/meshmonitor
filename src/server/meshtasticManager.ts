@@ -5011,6 +5011,22 @@ class MeshtasticManager implements ISourceManager {
           }
 
           logger.debug(`🗺️ Updated node position: ${nodeId} -> ${coords.latitude}, ${coords.longitude} (precision: ${precisionBits ?? 'unknown'} bits, channel: ${channelIndex})`);
+        } else {
+          // Coordinate downgrade protection blocked the full position update, but precision_bits
+          // is a user-configured setting that should always be applied immediately. Without this,
+          // changing a node from e.g. 15-bit to 13-bit precision never updates the accuracy box
+          // on the map until the 12-hour stale threshold passes (issue #3030).
+          if (precisionBits !== undefined) {
+            const precisionOnlyData: any = {
+              nodeNum: fromNum,
+              nodeId: nodeId,
+              positionPrecisionBits: precisionBits,
+              positionChannel: channelIndex,
+            };
+            await databaseService.nodes.upsertNode(precisionOnlyData, this.sourceId);
+            dataEventEmitter.emitNodeUpdate(fromNum, precisionOnlyData, this.sourceId);
+            logger.debug(`🗺️ Updated precision bits for ${nodeId}: ${existingNode?.positionPrecisionBits} -> ${precisionBits} bits (coordinates retained at higher precision)`);
+          }
         }
       }
     } catch (error) {
