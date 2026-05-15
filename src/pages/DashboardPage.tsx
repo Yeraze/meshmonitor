@@ -91,7 +91,12 @@ function DashboardInner() {
   const [formHeartbeat, setFormHeartbeat] = useState('30'); // seconds, 0 = disabled (issue 2609)
   const [formAutoConnect, setFormAutoConnect] = useState(true); // issue #2773
   // MeshCore-specific (slice 4): companion-USB v1 — serial path + device type.
+  // TCP transport added in v2: same Companion firmware reachable over a TCP
+  // socket (e.g. esp-link, ser2net, native TCP-capable MeshCore firmware).
+  const [formMcTransport, setFormMcTransport] = useState<'usb' | 'tcp'>('usb');
   const [formMcSerialPort, setFormMcSerialPort] = useState('');
+  const [formMcTcpHost, setFormMcTcpHost] = useState('');
+  const [formMcTcpPort, setFormMcTcpPort] = useState('4403');
   const [formMcDeviceType, setFormMcDeviceType] = useState<'companion' | 'repeater'>('companion');
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
@@ -207,7 +212,10 @@ function DashboardInner() {
     setFormVnAllowAdmin(false);
     setFormHeartbeat('30');
     setFormAutoConnect(true);
+    setFormMcTransport('usb');
     setFormMcSerialPort('');
+    setFormMcTcpHost('');
+    setFormMcTcpPort('4403');
     setFormMcDeviceType('companion');
     setFormError('');
     setShowSourceModal(true);
@@ -229,8 +237,13 @@ function DashboardInner() {
     setFormHeartbeat(String(cfg?.heartbeatIntervalSeconds ?? 0));
     // Default to true when unset (legacy sources pre-#2773 auto-connected).
     setFormAutoConnect(cfg?.autoConnect !== false);
-    // MeshCore-specific config (slice 4)
+    // MeshCore-specific config. transport=tcp is a v2 addition; legacy rows
+    // with no transport field are treated as USB (the original v1 default).
+    const mcTransport: 'usb' | 'tcp' = cfg?.transport === 'tcp' ? 'tcp' : 'usb';
+    setFormMcTransport(mcTransport);
     setFormMcSerialPort(cfg?.serialPort ?? cfg?.port ?? '');
+    setFormMcTcpHost(cfg?.tcpHost ?? '');
+    setFormMcTcpPort(cfg?.tcpPort != null ? String(cfg.tcpPort) : '4403');
     setFormMcDeviceType(cfg?.deviceType === 'repeater' ? 'repeater' : 'companion');
     setFormError('');
     setShowSourceModal(true);
@@ -241,19 +254,40 @@ function DashboardInner() {
 
     let cfg: Record<string, any>;
     if (formType === 'meshcore') {
-      // MeshCore companion-USB v1: just serial port + device type. Other
-      // transports (BLE/TCP) are out of scope for slice 4.
-      const port = formMcSerialPort.trim();
-      if (!port) {
-        setFormError(t('meshcore.form.error_port_required', 'Serial port is required'));
-        return;
+      // MeshCore source: USB/serial or TCP. Both transports flow through the
+      // same MeshCoreManager via the Python bridge — only the connect params
+      // differ. BLE remains out of scope.
+      if (formMcTransport === 'tcp') {
+        const host = formMcTcpHost.trim();
+        if (!host) {
+          setFormError(t('meshcore.form.error_tcp_host_required', 'Host is required'));
+          return;
+        }
+        const tcpPort = parseInt(formMcTcpPort, 10);
+        if (isNaN(tcpPort) || tcpPort < 1 || tcpPort > 65535) {
+          setFormError(t('source.form.error_port_range'));
+          return;
+        }
+        cfg = {
+          transport: 'tcp',
+          tcpHost: host,
+          tcpPort,
+          deviceType: formMcDeviceType,
+          autoConnect: formAutoConnect,
+        };
+      } else {
+        const port = formMcSerialPort.trim();
+        if (!port) {
+          setFormError(t('meshcore.form.error_port_required', 'Serial port is required'));
+          return;
+        }
+        cfg = {
+          transport: 'usb',
+          port,
+          deviceType: formMcDeviceType,
+          autoConnect: formAutoConnect,
+        };
       }
-      cfg = {
-        transport: 'usb',
-        port,
-        deviceType: formMcDeviceType,
-        autoConnect: formAutoConnect,
-      };
     } else {
       if (!formHost.trim()) { setFormError(t('source.form.error_host_required')); return; }
       const port = parseInt(formPort, 10);
@@ -565,18 +599,59 @@ function DashboardInner() {
             {formType === 'meshcore' ? (
               <>
                 <label className="dashboard-form-field">
-                  <span className="dashboard-form-label">{t('meshcore.form.serial_port', 'Serial Port')}</span>
-                  <input
+                  <span className="dashboard-form-label">{t('meshcore.form.transport', 'Transport')}</span>
+                  <select
                     className="dashboard-form-input"
-                    type="text"
-                    value={formMcSerialPort}
-                    onChange={(e) => setFormMcSerialPort(e.target.value)}
-                    placeholder="/dev/ttyACM0"
-                  />
-                  <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
-                    {t('meshcore.form.serial_port_help', 'OS path of the USB-connected MeshCore companion (e.g. /dev/ttyACM0, COM3).')}
-                  </p>
+                    value={formMcTransport}
+                    onChange={(e) => setFormMcTransport(e.target.value as 'usb' | 'tcp')}
+                  >
+                    <option value="usb">{t('meshcore.form.transport_usb', 'USB / Serial')}</option>
+                    <option value="tcp">{t('meshcore.form.transport_tcp', 'TCP')}</option>
+                  </select>
                 </label>
+
+                {formMcTransport === 'tcp' ? (
+                  <>
+                    <label className="dashboard-form-field">
+                      <span className="dashboard-form-label">{t('source.form.host')}</span>
+                      <input
+                        className="dashboard-form-input"
+                        type="text"
+                        value={formMcTcpHost}
+                        onChange={(e) => setFormMcTcpHost(e.target.value)}
+                        placeholder={t('source.form.host_placeholder')}
+                      />
+                      <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                        {t('meshcore.form.tcp_host_help', 'Hostname or IP of the MeshCore companion reachable over TCP (e.g. esp-link, ser2net, or native TCP firmware).')}
+                      </p>
+                    </label>
+
+                    <label className="dashboard-form-field">
+                      <span className="dashboard-form-label">{t('source.form.tcp_port')}</span>
+                      <input
+                        className="dashboard-form-input"
+                        type="number"
+                        value={formMcTcpPort}
+                        onChange={(e) => setFormMcTcpPort(e.target.value)}
+                        placeholder="4403"
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <label className="dashboard-form-field">
+                    <span className="dashboard-form-label">{t('meshcore.form.serial_port', 'Serial Port')}</span>
+                    <input
+                      className="dashboard-form-input"
+                      type="text"
+                      value={formMcSerialPort}
+                      onChange={(e) => setFormMcSerialPort(e.target.value)}
+                      placeholder="/dev/ttyACM0"
+                    />
+                    <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                      {t('meshcore.form.serial_port_help', 'OS path of the USB-connected MeshCore companion (e.g. /dev/ttyACM0, COM3).')}
+                    </p>
+                  </label>
+                )}
 
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('meshcore.form.device_type', 'Device Type')}</span>

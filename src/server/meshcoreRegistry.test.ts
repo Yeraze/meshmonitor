@@ -100,6 +100,25 @@ describe('meshcoreConfigFromSource', () => {
     });
   });
 
+  it('defaults tcpPort to 4403 when omitted', () => {
+    const cfg = meshcoreConfigFromSource(
+      fakeSource({ config: { transport: 'tcp', tcpHost: '10.0.0.5', deviceType: 'companion' } }),
+    );
+    expect(cfg).toEqual({
+      connectionType: ConnectionType.TCP,
+      tcpHost: '10.0.0.5',
+      tcpPort: 4403,
+      firmwareType: 'companion',
+    });
+  });
+
+  it('returns null for tcp transport without a host', () => {
+    const cfg = meshcoreConfigFromSource(
+      fakeSource({ config: { transport: 'tcp', tcpPort: 4403, deviceType: 'companion' } }),
+    );
+    expect(cfg).toBeNull();
+  });
+
   it('returns null when companion-USB source has no port set (legacy seed default)', () => {
     const cfg = meshcoreConfigFromSource(
       fakeSource({ config: { transport: 'usb', port: '', deviceType: 'companion' } }),
