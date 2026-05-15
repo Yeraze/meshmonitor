@@ -20,295 +20,89 @@ describe('MeshtasticManager - Position Precision Tracking', () => {
     vi.clearAllMocks();
   });
 
-  describe('Smart upgrade/downgrade logic', () => {
-    it('should always accept higher precision position', () => {
-      const now = Date.now();
-      const oneHourAgo = now - (1 * 60 * 60 * 1000);
+  describe('Latest-packet-wins behavior (issue #3030)', () => {
+    // The handler no longer keeps stored higher-precision values around when a node
+    // legitimately downgrades its channel precision. Latest packet is authoritative.
 
-      // Existing node has low precision (10 bits)
-      mockGetNode.mockReturnValue({
-        nodeNum: 123456,
-        positionPrecisionBits: 10,
-        positionTimestamp: oneHourAgo,
-        latitude: 40.0,
-        longitude: -75.0
-      });
+    it('accepts a precision downgrade even when existing position is recent', () => {
+      // Prior 4.5 behaviour blocked downgrades for 12 hours; the user's bug report
+      // (#3030) was that a node moved from 15-bit -> 13-bit precision but the box
+      // never shrank back. The handler must now always honour the new value.
+      const newPrecision = 13;
+      const existingPrecision = 15;
+      const shouldUpdatePosition = true; // always
 
-      // New position has higher precision (32 bits)
-      const newPrecision = 32;
-      const existingPrecision = 10;
-      const existingPositionAge = now - oneHourAgo;
-      const twelveHoursMs = 12 * 60 * 60 * 1000;
-
-      // Smart logic: should ACCEPT because newPrecision > existingPrecision
-      const shouldUpdatePosition = !(newPrecision < existingPrecision && existingPositionAge < twelveHoursMs);
-
+      expect(newPrecision).toBeLessThan(existingPrecision);
       expect(shouldUpdatePosition).toBe(true);
+    });
+
+    it('accepts a precision upgrade', () => {
+      const newPrecision = 15;
+      const existingPrecision = 13;
+      const shouldUpdatePosition = true;
+
       expect(newPrecision).toBeGreaterThan(existingPrecision);
-    });
-
-    it('should reject lower precision position when existing is recent', () => {
-      const now = Date.now();
-      const oneHourAgo = now - (1 * 60 * 60 * 1000); // 1 hour ago
-
-      // Existing node has high precision (32 bits) from 1 hour ago
-      mockGetNode.mockReturnValue({
-        nodeNum: 123456,
-        positionPrecisionBits: 32,
-        positionTimestamp: oneHourAgo,
-        latitude: 40.0,
-        longitude: -75.0
-      });
-
-      // New position has lower precision (10 bits)
-      const newPrecision = 10;
-      const existingPrecision = 32;
-      const existingPositionAge = now - oneHourAgo;
-      const twelveHoursMs = 12 * 60 * 60 * 1000;
-
-      // Smart logic: should REJECT because newPrecision < existingPrecision AND existing is recent
-      const shouldUpdatePosition = !(newPrecision < existingPrecision && existingPositionAge < twelveHoursMs);
-
-      expect(shouldUpdatePosition).toBe(false);
-      expect(existingPositionAge).toBeLessThan(twelveHoursMs);
-    });
-
-    it('should accept lower precision position when existing is stale (>12 hours)', () => {
-      const now = Date.now();
-      const thirteenHoursAgo = now - (13 * 60 * 60 * 1000); // 13 hours ago
-
-      // Existing node has high precision (32 bits) from 13 hours ago
-      mockGetNode.mockReturnValue({
-        nodeNum: 123456,
-        positionPrecisionBits: 32,
-        positionTimestamp: thirteenHoursAgo,
-        latitude: 40.0,
-        longitude: -75.0
-      });
-
-      // New position has lower precision (10 bits)
-      const newPrecision = 10;
-      const existingPrecision = 32;
-      const existingPositionAge = now - thirteenHoursAgo;
-      const twelveHoursMs = 12 * 60 * 60 * 1000;
-
-      // Smart logic: should ACCEPT because existing position is stale (>12 hours)
-      const shouldUpdatePosition = !(newPrecision < existingPrecision && existingPositionAge < twelveHoursMs);
-
-      expect(shouldUpdatePosition).toBe(true);
-      expect(existingPositionAge).toBeGreaterThan(twelveHoursMs);
-    });
-
-    it('should accept lower precision for mobile node after 10 minutes', () => {
-      const now = Date.now();
-      const elevenMinutesAgo = now - (11 * 60 * 1000); // 11 minutes ago
-
-      // Existing mobile node has high precision from 11 minutes ago
-      const existingNode = {
-        nodeNum: 123456,
-        positionPrecisionBits: 32,
-        positionTimestamp: elevenMinutesAgo,
-        latitude: 40.0,
-        longitude: -75.0,
-        mobile: 1 // Mobile node
-      };
-      mockGetNode.mockReturnValue(existingNode);
-
-      const newPrecision = 10;
-      const existingPrecision = existingNode.positionPrecisionBits;
-      const existingPositionAge = now - elevenMinutesAgo;
-      const tenMinutesMs = 10 * 60 * 1000;
-
-      const isMobileOrTracker = existingNode.mobile === 1;
-      const staleThresholdMs = isMobileOrTracker ? tenMinutesMs : 12 * 60 * 60 * 1000;
-
-      // Should ACCEPT: mobile node + position older than 10 minutes
-      const shouldUpdatePosition = !(newPrecision < existingPrecision && existingPositionAge < staleThresholdMs);
-
-      expect(shouldUpdatePosition).toBe(true);
-      expect(isMobileOrTracker).toBe(true);
-      expect(existingPositionAge).toBeGreaterThan(tenMinutesMs);
-    });
-
-    it('should reject lower precision for mobile node within 10 minutes', () => {
-      const now = Date.now();
-      const fiveMinutesAgo = now - (5 * 60 * 1000); // 5 minutes ago
-
-      // Existing mobile node has high precision from 5 minutes ago
-      const existingNode = {
-        nodeNum: 123456,
-        positionPrecisionBits: 32,
-        positionTimestamp: fiveMinutesAgo,
-        latitude: 40.0,
-        longitude: -75.0,
-        mobile: 1 // Mobile node
-      };
-      mockGetNode.mockReturnValue(existingNode);
-
-      const newPrecision = 10;
-      const existingPrecision = existingNode.positionPrecisionBits;
-      const existingPositionAge = now - fiveMinutesAgo;
-      const tenMinutesMs = 10 * 60 * 1000;
-
-      const isMobileOrTracker = existingNode.mobile === 1;
-      const staleThresholdMs = isMobileOrTracker ? tenMinutesMs : 12 * 60 * 60 * 1000;
-
-      // Should REJECT: mobile node but position is only 5 minutes old
-      const shouldUpdatePosition = !(newPrecision < existingPrecision && existingPositionAge < staleThresholdMs);
-
-      expect(shouldUpdatePosition).toBe(false);
-      expect(isMobileOrTracker).toBe(true);
-      expect(existingPositionAge).toBeLessThan(tenMinutesMs);
-    });
-
-    it('should accept lower precision for Tracker role (5) after 10 minutes', () => {
-      const now = Date.now();
-      const elevenMinutesAgo = now - (11 * 60 * 1000);
-
-      const existingNode = {
-        nodeNum: 123456,
-        positionPrecisionBits: 32,
-        positionTimestamp: elevenMinutesAgo,
-        latitude: 40.0,
-        longitude: -75.0,
-        mobile: 0,
-        role: 5 // Tracker role
-      };
-      mockGetNode.mockReturnValue(existingNode);
-
-      const newPrecision = 10;
-      const existingPrecision = existingNode.positionPrecisionBits;
-      const existingPositionAge = now - elevenMinutesAgo;
-      const tenMinutesMs = 10 * 60 * 1000;
-
-      const isMobileOrTracker = existingNode.mobile === 1 ||
-        existingNode.role === 5 || existingNode.role === 10;
-      const staleThresholdMs = isMobileOrTracker ? tenMinutesMs : 12 * 60 * 60 * 1000;
-
-      // Should ACCEPT: Tracker role + position older than 10 minutes
-      const shouldUpdatePosition = !(newPrecision < existingPrecision && existingPositionAge < staleThresholdMs);
-
-      expect(shouldUpdatePosition).toBe(true);
-      expect(isMobileOrTracker).toBe(true);
-    });
-
-    it('should accept lower precision for TAK Tracker role (10) after 10 minutes', () => {
-      const now = Date.now();
-      const elevenMinutesAgo = now - (11 * 60 * 1000);
-
-      const existingNode = {
-        nodeNum: 123456,
-        positionPrecisionBits: 32,
-        positionTimestamp: elevenMinutesAgo,
-        latitude: 40.0,
-        longitude: -75.0,
-        mobile: 0,
-        role: 10 // TAK Tracker role
-      };
-      mockGetNode.mockReturnValue(existingNode);
-
-      const newPrecision = 10;
-      const existingPrecision = existingNode.positionPrecisionBits;
-      const existingPositionAge = now - elevenMinutesAgo;
-      const tenMinutesMs = 10 * 60 * 1000;
-
-      const isMobileOrTracker = existingNode.mobile === 1 ||
-        existingNode.role === 5 || existingNode.role === 10;
-      const staleThresholdMs = isMobileOrTracker ? tenMinutesMs : 12 * 60 * 60 * 1000;
-
-      // Should ACCEPT: TAK Tracker role + position older than 10 minutes
-      const shouldUpdatePosition = !(newPrecision < existingPrecision && existingPositionAge < staleThresholdMs);
-
-      expect(shouldUpdatePosition).toBe(true);
-      expect(isMobileOrTracker).toBe(true);
-    });
-
-    it('should still use 12-hour threshold for stationary non-tracker nodes', () => {
-      const now = Date.now();
-      const twoHoursAgo = now - (2 * 60 * 60 * 1000);
-
-      // Stationary node (not mobile, not tracker)
-      const existingNode = {
-        nodeNum: 123456,
-        positionPrecisionBits: 32,
-        positionTimestamp: twoHoursAgo,
-        latitude: 40.0,
-        longitude: -75.0,
-        mobile: 0,
-        role: 0 // Client role (stationary)
-      };
-      mockGetNode.mockReturnValue(existingNode);
-
-      const newPrecision = 10;
-      const existingPrecision = existingNode.positionPrecisionBits;
-      const existingPositionAge = now - twoHoursAgo;
-      const twelveHoursMs = 12 * 60 * 60 * 1000;
-      const tenMinutesMs = 10 * 60 * 1000;
-
-      const isMobileOrTracker = existingNode.mobile === 1 ||
-        existingNode.role === 5 || existingNode.role === 10;
-      const staleThresholdMs = isMobileOrTracker ? tenMinutesMs : twelveHoursMs;
-
-      // Should REJECT: stationary node, position is only 2 hours old (< 12 hours)
-      const shouldUpdatePosition = !(newPrecision < existingPrecision && existingPositionAge < staleThresholdMs);
-
-      expect(shouldUpdatePosition).toBe(false);
-      expect(isMobileOrTracker).toBe(false);
-      expect(staleThresholdMs).toBe(twelveHoursMs);
-    });
-
-    it('should accept position when no existing position', () => {
-      // No existing node
-      mockGetNode.mockReturnValue(null);
-
-      const shouldUpdatePosition = true; // Always accept first position
-
       expect(shouldUpdatePosition).toBe(true);
     });
 
-    it('should accept position when existing has no precision data', () => {
-      // Existing node without precision tracking (old data)
-      mockGetNode.mockReturnValue({
-        nodeNum: 123456,
-        latitude: 40.0,
-        longitude: -75.0
-        // No positionPrecisionBits or positionTimestamp
-      });
+    it('accepts identical precision (no-op update path)', () => {
+      const newPrecision = 13;
+      const existingPrecision = 13;
+      const shouldUpdatePosition = true;
 
-      // New position has precision data
-      const newPrecision = 16;
-      const existingNode = mockGetNode();
-      const existingPrecision = existingNode?.positionPrecisionBits;
-
-      // Should accept because existing has no precision data
-      const shouldUpdatePosition = existingPrecision === undefined || newPrecision !== undefined;
-
+      expect(newPrecision).toBe(existingPrecision);
       expect(shouldUpdatePosition).toBe(true);
-      expect(existingPrecision).toBeUndefined();
+    });
+  });
+
+  describe('Channel-precision fallback removed (issue #3030)', () => {
+    // The handler previously fell back to the LOCAL channel's positionPrecision
+    // when a packet had no precision_bits. That record reflects the MeshMonitor
+    // instance's own config, not the remote node's, and produced incorrect boxes.
+
+    it('Position handler: uses precisionBits from the packet verbatim', () => {
+      const position = { precisionBits: 13 };
+      const localChannelPositionPrecision = 15; // unrelated; must not influence
+
+      const precisionBits = position.precisionBits ?? undefined;
+
+      expect(precisionBits).toBe(13);
+      expect(precisionBits).not.toBe(localChannelPositionPrecision);
     });
 
-    it('should calculate position age correctly at exactly 12 hours', () => {
-      const now = Date.now();
-      const exactlyTwelveHoursAgo = now - (12 * 60 * 60 * 1000);
+    it('Position handler: precisionBits=0 from wire is preserved (no fallback)', () => {
+      const position = { precisionBits: 0 };
+      const localChannelPositionPrecision = 15;
 
-      mockGetNode.mockReturnValue({
-        nodeNum: 123456,
-        positionPrecisionBits: 32,
-        positionTimestamp: exactlyTwelveHoursAgo,
-        latitude: 40.0,
-        longitude: -75.0
-      });
+      // After the fix the handler stores 0 as-is; the frontend then renders no
+      // accuracy box (0 means "no masking, full precision").
+      const precisionBits = position.precisionBits ?? undefined;
 
-      const newPrecision = 10;
-      const existingPrecision = 32;
-      const existingPositionAge = now - exactlyTwelveHoursAgo;
-      const twelveHoursMs = 12 * 60 * 60 * 1000;
+      expect(precisionBits).toBe(0);
+      expect(precisionBits).not.toBe(localChannelPositionPrecision);
+    });
 
-      // At exactly 12 hours, should still reject (< not <=)
-      const shouldUpdatePosition = !(newPrecision < existingPrecision && existingPositionAge < twelveHoursMs);
+    it('NodeInfo handler: treats embedded precisionBits=0 as "absent" and leaves existing untouched', () => {
+      // The NodeInfo protobuf decoder normalises missing precision_bits to 0. The
+      // handler now skips the precision write when the value is 0, preserving any
+      // value previously learned from a real Position packet.
+      const nodeInfoPosition = { precisionBits: 0 };
+      const existingPrecisionBits = 13;
 
-      expect(shouldUpdatePosition).toBe(true);
-      expect(existingPositionAge).toBe(twelveHoursMs);
+      const incoming = nodeInfoPosition.precisionBits ?? undefined;
+      const shouldWritePrecision = incoming !== undefined && incoming !== 0;
+
+      expect(shouldWritePrecision).toBe(false);
+      expect(existingPrecisionBits).toBe(13); // unchanged
+    });
+
+    it('NodeInfo handler: writes precisionBits when present in embedded Position', () => {
+      const nodeInfoPosition = { precisionBits: 14 };
+      const incoming = nodeInfoPosition.precisionBits ?? undefined;
+      const shouldWritePrecision = incoming !== undefined && incoming !== 0;
+
+      expect(shouldWritePrecision).toBe(true);
+      expect(incoming).toBe(14);
     });
   });
 
@@ -457,36 +251,9 @@ describe('MeshtasticManager - Position Precision Tracking', () => {
   });
 
   describe('Edge cases', () => {
-    it('should handle Infinity as position age when no timestamp exists', () => {
-      mockGetNode.mockReturnValue({
-        nodeNum: 123456,
-        positionPrecisionBits: 32,
-        // No positionTimestamp
-        latitude: 40.0,
-        longitude: -75.0
-      });
-
-      const existingNode = mockGetNode();
-      const existingPositionAge = existingNode?.positionTimestamp ? (Date.now() - existingNode.positionTimestamp) : Infinity;
-
-      expect(existingPositionAge).toBe(Infinity);
-    });
-
-    it('should accept new position when existing age is Infinity', () => {
-      const newPrecision = 10;
-      const existingPrecision = 32;
-      const existingPositionAge = Infinity;
-      const twelveHoursMs = 12 * 60 * 60 * 1000;
-
-      // Should accept because Infinity > 12 hours
-      const shouldUpdatePosition = !(newPrecision < existingPrecision && existingPositionAge < twelveHoursMs);
-
-      expect(shouldUpdatePosition).toBe(true);
-    });
-
     it('should handle precision bits of 0 (valid minimum)', () => {
       const position = {
-        precisionBits: 0, // Valid: very low precision
+        precisionBits: 0, // Valid: full precision / no masking
         latitude: 40.0,
         longitude: -75.0
       };
