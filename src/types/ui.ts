@@ -13,7 +13,6 @@ export type TabType =
   | 'security'
   | 'themes'
   | 'admin'
-  | 'meshcore'
   | 'packetmonitor';
 
 export type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'hops';

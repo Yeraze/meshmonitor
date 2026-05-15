@@ -13,9 +13,6 @@ import { MeshCoreManager, ConnectionType, type MeshCoreConfig } from './meshcore
 import type { Source } from '../db/repositories/sources.js';
 import { logger } from '../utils/logger.js';
 
-/** Source id minted by migration 056 for pre-multi-source MeshCore data. */
-export const LEGACY_MESHCORE_SOURCE_ID = 'meshcore-legacy-default';
-
 interface MeshCoreSourceConfig {
   transport?: 'usb' | 'serial' | 'tcp';
   port?: string;
@@ -116,43 +113,6 @@ export class MeshCoreManagerRegistry {
       }),
     );
     this.managers.clear();
-  }
-
-  /**
-   * Returns the "primary" manager for legacy `/api/meshcore/*` routes that
-   * are not yet nested under `/api/sources/:id/meshcore/*` (deferred to
-   * slice 2). The first manager that's currently connected wins; otherwise
-   * any registered manager. Returns undefined if no managers exist — the
-   * caller should treat that as "MeshCore not configured".
-   *
-   * TODO(slice-2): remove once routes are nested and carry sourceId.
-   */
-  getPrimaryForLegacyRoutes(): MeshCoreManager | undefined {
-    for (const m of this.managers.values()) {
-      if (m.isConnected()) return m;
-    }
-    return this.managers.values().next().value;
-  }
-
-  /**
-   * Legacy helper: return an existing manager (preferring the connected
-   * one) or lazily create one against `LEGACY_MESHCORE_SOURCE_ID`. Used
-   * only by the un-nested `/api/meshcore/*` routes; new code paths must
-   * use `getOrCreate(source)` so that the manager is bound to a real
-   * source row.
-   *
-   * TODO(slice-2): remove once routes are nested and carry sourceId.
-   */
-  getOrCreateLegacyManager(): MeshCoreManager {
-    const primary = this.getPrimaryForLegacyRoutes();
-    if (primary) return primary;
-    logger.warn(
-      `[MeshCoreRegistry] No managers registered — lazily creating legacy manager bound to ${LEGACY_MESHCORE_SOURCE_ID}. ` +
-        'Configure a MeshCore source to make this explicit.',
-    );
-    const manager = new MeshCoreManager(LEGACY_MESHCORE_SOURCE_ID);
-    this.managers.set(LEGACY_MESHCORE_SOURCE_ID, manager);
-    return manager;
   }
 }
 

@@ -1,22 +1,20 @@
 /**
- * useMeshCore — centralised MeshCore state + (mode-dependent) push events / polling.
+ * useMeshCore — centralised MeshCore state + push events / status safety poll.
  *
  * Owns the status / nodes / contacts / messages state for the MeshCore page
  * and exposes the action callbacks the sub-views call.
  *
- * Modes:
- *   - Singleton (App-shell tab): `useMeshCore({ baseUrl })` → /api/meshcore/*,
- *     5s polling tick, connect/disconnect take ConnectParams.
- *   - Per-source (source dashboard): `useMeshCore({ baseUrl, sourceId })` →
- *     /api/sources/:id/meshcore/* for reads, /api/sources/:id/connect (no
- *     body params — params come from the saved source.config) for lifecycle.
- *     Initial load is a single `/snapshot` round-trip and live updates come
- *     in via Socket.io rooms (`meshcore:message`, `meshcore:contact:updated`,
- *     `meshcore:status:updated`, `meshcore:local-node:updated`) joined per
- *     sourceId. A 30s status-only poll runs as a safety net; on socket
- *     reconnect a `?since=<seqCursor>` catch-up request fills any gap.
- *   - `enabled: false` short-circuits all fetches; used to honour permission
- *     gates that should suppress polling entirely.
+ * Reads route through `/api/sources/:id/meshcore/*`; connect/disconnect use
+ * the generic `/api/sources/:id/{connect,disconnect}` endpoints (no body
+ * params — params come from the saved source.config). Initial load is a
+ * single `/snapshot` round-trip and live updates come in via Socket.io rooms
+ * (`meshcore:message`, `meshcore:contact:updated`, `meshcore:status:updated`,
+ * `meshcore:local-node:updated`) joined per sourceId. A 30s status-only poll
+ * runs as a safety net; on socket reconnect a `?since=<seqCursor>` catch-up
+ * request fills any gap.
+ *
+ * `enabled: false` short-circuits all fetches; used to honour permission
+ * gates that should suppress polling entirely.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCsrfFetch } from '../../../hooks/useCsrfFetch';
@@ -69,13 +67,6 @@ export interface MeshCoreMessage {
   timestamp: number;
 }
 
-export interface MeshCoreEnvConfig {
-  connectionType: string;
-  serialPort?: string;
-  tcpHost?: string;
-  tcpPort?: number;
-}
-
 export interface ConnectionStatus {
   connected: boolean;
   deviceType: number;
@@ -87,18 +78,10 @@ export interface ConnectionStatus {
     tcpPort?: number;
   } | null;
   localNode: MeshCoreNode | null;
-  envConfig: MeshCoreEnvConfig | null;
-}
-
-export interface ConnectParams {
-  connectionType: 'serial' | 'tcp';
-  serialPort?: string;
-  tcpHost?: string;
-  tcpPort?: number;
 }
 
 export interface MeshCoreActions {
-  connect: (params: ConnectParams) => Promise<boolean>;
+  connect: () => Promise<boolean>;
   disconnect: () => Promise<void>;
   refreshContacts: () => Promise<void>;
   sendAdvert: () => Promise<void>;
@@ -124,7 +107,6 @@ export interface UseMeshCoreState {
   actions: MeshCoreActions;
 }
 
-const POLL_INTERVAL_MS = 5000;
 // Per-source mode relies on push events; the poll exists only to recover from
 // a missed status transition (e.g. if the socket is briefly down). 30s keeps
 // network chatter low while still catching anything the events miss.
@@ -133,13 +115,8 @@ const STATUS_SAFETY_POLL_MS = 30000;
 export interface UseMeshCoreOptions {
   /** Frontend basename (typically `''` or `'/meshmonitor'`). */
   baseUrl: string;
-  /**
-   * Optional source UUID. When set, all reads route through
-   * `/api/sources/:id/meshcore/*` and connect/disconnect use the generic
-   * `/api/sources/:id/{connect,disconnect}` endpoints (no body params —
-   * connection settings live in the persisted source.config).
-   */
-  sourceId?: string;
+  /** Source UUID — all reads/lifecycle calls are scoped to this source. */
+  sourceId: string;
   /** When false, the hook returns initial state and never polls. */
   enabled?: boolean;
 }
@@ -151,13 +128,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const { state: wsState } = useWebSocketContext();
   const socket = wsState.socket;
 
-  // Endpoint prefixes vary by mode.
-  const mcPrefix = sourceId
-    ? `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore`
-    : `${baseUrl}/api/meshcore`;
-  const sourceLifecyclePrefix = sourceId
-    ? `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}`
-    : null;
+  const mcPrefix = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore`;
+  const sourceLifecyclePrefix = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}`;
 
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [nodes, setNodes] = useState<MeshCoreNode[]>([]);
@@ -205,31 +177,6 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     return false;
   }, [enabled, mcPrefix, csrfFetch]);
 
-  const fetchNodes = useCallback(async () => {
-    if (!enabled) return;
-    try {
-      const response = await csrfFetch(`${mcPrefix}/nodes`);
-      const data = await response.json();
-      if (data.success) setNodes(data.data ?? []);
-    } catch (_err) {
-      console.error('Failed to fetch meshcore nodes:', _err);
-    }
-  }, [enabled, mcPrefix, csrfFetch]);
-
-  const fetchContacts = useCallback(async () => {
-    if (!enabled) return;
-    try {
-      const response = await csrfFetch(`${mcPrefix}/contacts`);
-      const data = await response.json();
-      if (data.success) {
-        setContacts(data.data ?? []);
-        setMeshCoreNodes(mapContactsToNodes(data.data ?? []));
-      }
-    } catch (_err) {
-      console.error('Failed to fetch meshcore contacts:', _err);
-    }
-  }, [enabled, mcPrefix, csrfFetch, setMeshCoreNodes]);
-
   const fetchMessages = useCallback(async () => {
     if (!enabled) return;
     try {
@@ -241,11 +188,11 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [enabled, mcPrefix, csrfFetch]);
 
-  // Per-source: single-call initial load. Returns status, contacts, nodes,
-  // messages and a seqCursor (newest message timestamp) for reconnect
-  // catch-up. Replaces three separate HTTP fetches at mount.
+  // Single-call initial load. Returns status, contacts, nodes, messages and
+  // a seqCursor (newest message timestamp) for reconnect catch-up. Replaces
+  // three separate HTTP fetches at mount.
   const loadSnapshot = useCallback(async (): Promise<boolean> => {
-    if (!enabled || !sourceId) return false;
+    if (!enabled) return false;
     try {
       const response = await csrfFetch(`${mcPrefix}/snapshot`);
       const data = await response.json();
@@ -266,7 +213,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       console.error('Failed to load meshcore snapshot:', _err);
       return false;
     }
-  }, [enabled, sourceId, mcPrefix, csrfFetch, setMeshCoreNodes]);
+  }, [enabled, mcPrefix, csrfFetch, setMeshCoreNodes]);
 
   useEffect(() => {
     connectedRef.current = status?.connected ?? false;
@@ -274,39 +221,17 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
 
   useEffect(() => {
     if (!enabled) return;
-    let cancelled = false;
-
-    // Per-source: snapshot on mount, then 30s status-only safety poll. Live
-    // updates ride in over Socket.io (see the push-events effect below).
-    if (sourceId) {
-      void loadSnapshot();
-      const interval = setInterval(() => { void fetchStatus(); }, STATUS_SAFETY_POLL_MS);
-      return () => {
-        cancelled = true;
-        clearInterval(interval);
-      };
-    }
-
-    // Singleton (App-shell tab): no per-source push events yet — keep the
-    // legacy 5s tick. Pulls status + nodes/contacts/messages when connected.
-    const tick = async () => {
-      const isConnected = await fetchStatus();
-      if (cancelled) return;
-      if (isConnected) {
-        await Promise.all([fetchNodes(), fetchContacts(), fetchMessages()]);
-      }
-    };
-    void tick();
-    const interval = setInterval(tick, POLL_INTERVAL_MS);
+    // Snapshot on mount, then 30s status-only safety poll. Live updates ride
+    // in over Socket.io (see the push-events effect below).
+    void loadSnapshot();
+    const interval = setInterval(() => { void fetchStatus(); }, STATUS_SAFETY_POLL_MS);
     return () => {
-      cancelled = true;
       clearInterval(interval);
     };
-  }, [enabled, sourceId, loadSnapshot, fetchStatus, fetchNodes, fetchContacts, fetchMessages]);
+  }, [enabled, loadSnapshot, fetchStatus]);
 
-  // Per-source push events — join the per-source room, subscribe to MeshCore
-  // events, and run a seq-cursor catch-up on reconnect. Singleton mode skips
-  // this entirely; it doesn't have a corresponding server-side broadcaster.
+  // Push events — join the per-source room, subscribe to MeshCore events,
+  // and run a seq-cursor catch-up on reconnect.
   useEffect(() => {
     if (!enabled || !sourceId || !socket) return;
 
@@ -344,7 +269,6 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
             deviceTypeName: '',
             config: null,
             localNode: (evt.node as MeshCoreNode | null) ?? null,
-            envConfig: null,
           };
         }
         return {
@@ -407,38 +331,22 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     };
   }, [enabled, sourceId, socket, mcPrefix, csrfFetch, setMeshCoreNodes, recomputeNodes]);
 
-  const connect = useCallback(async (params: ConnectParams): Promise<boolean> => {
+  const connect = useCallback(async (): Promise<boolean> => {
     setLoading(true);
     setError(null);
     try {
-      // In per-source mode the connection params come from source.config;
-      // the generic /api/sources/:id/connect endpoint takes an empty body.
-      const url = sourceLifecyclePrefix
-        ? `${sourceLifecyclePrefix}/connect`
-        : `${mcPrefix}/connect`;
-      const body = sourceLifecyclePrefix
-        ? {}
-        : {
-            connectionType: params.connectionType,
-            serialPort: params.connectionType === 'serial' ? params.serialPort : undefined,
-            tcpHost: params.connectionType === 'tcp' ? params.tcpHost : undefined,
-            tcpPort: params.connectionType === 'tcp' ? params.tcpPort : undefined,
-          };
-      const response = await csrfFetch(url, {
+      // Connection params come from source.config; the source lifecycle
+      // endpoint takes an empty body.
+      const response = await csrfFetch(`${sourceLifecyclePrefix}/connect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({}),
       });
       const data = await response.json();
       if (data.success) {
-        // Per-source: a snapshot pull primes status/nodes/contacts/messages and
-        // the seq cursor in one round trip; live updates then ride on sockets.
-        if (sourceId) {
-          await loadSnapshot();
-        } else {
-          await fetchStatus();
-          await Promise.all([fetchNodes(), fetchContacts()]);
-        }
+        // A snapshot pull primes status/nodes/contacts/messages and the seq
+        // cursor in one round trip; live updates then ride on sockets.
+        await loadSnapshot();
         return true;
       }
       setError(data.error || 'Connection failed');
@@ -449,22 +357,19 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     } finally {
       setLoading(false);
     }
-  }, [sourceId, mcPrefix, sourceLifecyclePrefix, csrfFetch, fetchStatus, fetchNodes, fetchContacts, loadSnapshot]);
+  }, [sourceLifecyclePrefix, csrfFetch, loadSnapshot]);
 
   const disconnect = useCallback(async () => {
     setLoading(true);
     try {
-      const url = sourceLifecyclePrefix
-        ? `${sourceLifecyclePrefix}/disconnect`
-        : `${mcPrefix}/disconnect`;
-      await csrfFetch(url, { method: 'POST' });
+      await csrfFetch(`${sourceLifecyclePrefix}/disconnect`, { method: 'POST' });
       await fetchStatus();
       setNodes([]);
       setContacts([]);
       setMessages([]);
       setMeshCoreNodes([]);
-      // Clear per-source push-event bookkeeping so a fresh connect doesn't
-      // resurrect stale contacts/local-node from refs.
+      // Clear push-event bookkeeping so a fresh connect doesn't resurrect
+      // stale contacts/local-node from refs.
       contactsRef.current.clear();
       localNodeRef.current = null;
       seqCursorRef.current = 0;
@@ -473,7 +378,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     } finally {
       setLoading(false);
     }
-  }, [mcPrefix, sourceLifecyclePrefix, csrfFetch, fetchStatus, setMeshCoreNodes]);
+  }, [sourceLifecyclePrefix, csrfFetch, fetchStatus, setMeshCoreNodes]);
 
   const refreshContacts = useCallback(async () => {
     setLoading(true);
@@ -487,7 +392,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         // Keep the push-event ref view in sync with the manual refresh so
         // a subsequent contact:updated event doesn't reintroduce stale rows.
         contactsRef.current = new Map(fresh.map(c => [c.publicKey, c]));
-        if (sourceId) recomputeNodes();
+        recomputeNodes();
       } else {
         setError(data.error || 'Failed to refresh contacts');
       }
@@ -496,7 +401,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     } finally {
       setLoading(false);
     }
-  }, [mcPrefix, csrfFetch, setMeshCoreNodes, sourceId, recomputeNodes]);
+  }, [mcPrefix, csrfFetch, setMeshCoreNodes, recomputeNodes]);
 
   const sendAdvert = useCallback(async () => {
     try {
@@ -647,15 +552,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   );
 
   const refreshAll = useCallback(async () => {
-    if (sourceId) {
-      await loadSnapshot();
-      return;
-    }
-    const isConnected = await fetchStatus();
-    if (isConnected) {
-      await Promise.all([fetchNodes(), fetchContacts(), fetchMessages()]);
-    }
-  }, [sourceId, loadSnapshot, fetchStatus, fetchNodes, fetchContacts, fetchMessages]);
+    await loadSnapshot();
+  }, [loadSnapshot]);
 
   const clearError = useCallback(() => setError(null), []);
 

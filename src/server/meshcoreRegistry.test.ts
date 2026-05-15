@@ -66,13 +66,6 @@ describe('MeshCoreManagerRegistry', () => {
     await registry.disconnectAll();
     expect(registry.list()).toHaveLength(0);
   });
-
-  it('getOrCreateLegacyManager lazily creates a manager keyed by the legacy id', () => {
-    const m = registry.getOrCreateLegacyManager();
-    expect(m.sourceId).toBe('meshcore-legacy-default');
-    // Subsequent calls reuse the same instance
-    expect(registry.getOrCreateLegacyManager()).toBe(m);
-  });
 });
 
 describe('meshcoreConfigFromSource', () => {

@@ -69,7 +69,6 @@ interface SidebarProps {
   onSearchClick?: () => void;
   baseUrl: string;
   connectedNodeName?: string;
-  meshcoreEnabled?: boolean;
   packetLogEnabled?: boolean;
 }
 

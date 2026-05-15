@@ -1,7 +1,7 @@
 /**
  * MeshCorePage — multi-pane MeshCore monitor view.
  *
- * Replaces the flat MeshCoreTab. Layout:
+ * Layout:
  *   ┌─ MeshCoreStatusBar ─────────────────────────────┐
  *   │ (connect / disconnect / status)                 │
  *   ├─┬───────────────────────────────────────────────┤
@@ -10,9 +10,7 @@
  *   │ │                       │   config/settings)    │
  *   └─┴───────────────────────────────────────────────┘
  *
- * Talks to /api/meshcore/* (singleton) or /api/sources/:id/meshcore/*
- * (per-source dashboard) via useMeshCore, depending on whether `sourceId`
- * is passed in.
+ * Talks to /api/sources/:id/meshcore/* via useMeshCore.
  */
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -30,8 +28,8 @@ import './MeshCorePage.css';
 
 interface MeshCorePageProps {
   baseUrl: string;
-  /** When set, routes the hook through /api/sources/:id/meshcore/*. */
-  sourceId?: string;
+  /** Source UUID — routes the hook through /api/sources/:id/meshcore/*. */
+  sourceId: string;
   /** When false, the hook is disabled (no polling). Used for permission gating. */
   enabled?: boolean;
   /** When provided, the parent renders the connection chip in its own header
@@ -76,7 +74,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
           onSelect={setView}
           expanded={toolbarExpanded}
           onToggleExpanded={() => setToolbarExpanded(v => !v)}
-          showInfo={!!sourceId}
+          showInfo
         />
         <div className="meshcore-content">
           {view === 'nodes' && (
@@ -98,7 +96,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               sourceId={sourceId}
             />
           )}
-          {view === 'info' && sourceId && (
+          {view === 'info' && (
             <MeshCoreInfoView baseUrl={baseUrl} sourceId={sourceId} status={status} />
           )}
           {view === 'configuration' && (
@@ -109,7 +107,6 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               status={status}
               loading={loading}
               actions={actions}
-              perSource={!!sourceId}
             />
           )}
         </div>
@@ -119,6 +116,3 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
 };
 
 export default MeshCorePage;
-
-// Back-compat alias so existing `import { MeshCoreTab } from '...'` keeps working.
-export const MeshCoreTab = MeshCorePage;

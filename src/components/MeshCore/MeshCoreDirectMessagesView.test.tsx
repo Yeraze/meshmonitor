@@ -63,7 +63,6 @@ function makeStatus(): ConnectionStatus {
     deviceTypeName: 'companion',
     config: null,
     localNode: { publicKey: 'self'.padEnd(64, '0'), name: 'self', advType: 1 },
-    envConfig: null,
   };
 }
 

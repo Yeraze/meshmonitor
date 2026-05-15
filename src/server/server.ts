@@ -529,34 +529,6 @@ setTimeout(async () => {
       logger.debug(`Started ${enabledSources.length} source manager(s)`);
     }
 
-    // Legacy env-var-based MeshCore auto-connect: when MESHCORE_ENABLED=true
-    // and no MeshCore source row exists yet, mint the legacy default source
-    // (same id as migration 056) from environment variables and connect it
-    // through the registry. Once a real source is configured via the UI,
-    // this branch becomes a no-op.
-    if (process.env.MESHCORE_ENABLED === 'true') {
-      const existingMeshcoreSources = enabledSources.filter(s => s.type === 'meshcore');
-      if (existingMeshcoreSources.length === 0) {
-        try {
-          const legacyManager = meshcoreManagerRegistry.getOrCreateLegacyManager();
-          const envConfig = legacyManager.getEnvConfig();
-          if (envConfig) {
-            logger.info('[MeshCore] Auto-connecting legacy env-var source on startup...');
-            const connected = await legacyManager.connect(envConfig);
-            if (connected) {
-              logger.info('[MeshCore] Legacy env-var source connected');
-            } else {
-              logger.warn('[MeshCore] Legacy env-var auto-connect failed — use the MeshCore tab to retry');
-            }
-          } else {
-            logger.warn('[MeshCore] MESHCORE_ENABLED=true but no serial port or TCP host configured');
-          }
-        } catch (err) {
-          logger.error('[MeshCore] Legacy env-var auto-connect threw:', err);
-        }
-      }
-    }
-
     // Initialize backup scheduler
     backupSchedulerService.initialize(meshtasticManager);
     logger.debug('Backup scheduler initialized');
