@@ -180,6 +180,21 @@ class MockConnection extends EventEmitter {
   async syncNextMessage() {
     return this.syncNextMessageQueue.shift() ?? null;
   }
+
+  // Channels — meshcore.js Connection.getChannels iterates until the device
+  // errors. Our mock just returns a programmable array.
+  public channelsResponse: Array<{ channelIdx: number; name: string; secret: Uint8Array }> = [];
+  public setChannelCalls: Array<{ idx: number; name: string; secret: Uint8Array }> = [];
+  public deleteChannelCalls: number[] = [];
+  async getChannels() {
+    return this.channelsResponse;
+  }
+  async setChannel(idx: number, name: string, secret: Uint8Array) {
+    this.setChannelCalls.push({ idx, name, secret });
+  }
+  async deleteChannel(idx: number) {
+    this.deleteChannelCalls.push(idx);
+  }
 }
 
 function installMockModule(MockConn: typeof MockConnection): MockConnection {
@@ -490,6 +505,103 @@ describe('MeshCoreNativeBackend', () => {
     const resp = await backend.sendCommand('get_device_time', {}, 50);
     expect(resp.success).toBe(false);
     expect(resp.error).toMatch(/timeout/i);
+  });
+
+  // ---------- channel commands ----------
+
+  it('get_channels maps meshcore.js rows to snake_case bridge shape with hex secret', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    conn.channelsResponse = [
+      {
+        channelIdx: 0,
+        name: 'Public',
+        secret: Uint8Array.from([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99]),
+      },
+      {
+        channelIdx: 1,
+        name: 'Private',
+        secret: new Uint8Array(16),
+      },
+    ];
+
+    const resp = await backend.sendCommand('get_channels', {});
+    expect(resp.success).toBe(true);
+    expect(resp.data).toEqual([
+      { channel_idx: 0, name: 'Public', secret_hex: 'aabbccddeeff00112233445566778899' },
+      { channel_idx: 1, name: 'Private', secret_hex: '00'.repeat(16) },
+    ]);
+  });
+
+  it('set_channel passes idx + name + decoded 16-byte secret to the connection', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    const resp = await backend.sendCommand('set_channel', {
+      idx: 2,
+      name: 'New',
+      secret_hex: 'aabbccddeeff00112233445566778899',
+    });
+    expect(resp.success).toBe(true);
+    expect(conn.setChannelCalls).toHaveLength(1);
+    expect(conn.setChannelCalls[0].idx).toBe(2);
+    expect(conn.setChannelCalls[0].name).toBe('New');
+    expect(conn.setChannelCalls[0].secret.length).toBe(16);
+    expect(Array.from(conn.setChannelCalls[0].secret).map((b) => b.toString(16).padStart(2, '0')).join(''))
+      .toBe('aabbccddeeff00112233445566778899');
+  });
+
+  it('set_channel rejects a non-16-byte secret', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+
+    const resp = await backend.sendCommand('set_channel', {
+      idx: 0,
+      name: 'TooShort',
+      secret_hex: 'aabb', // 1 byte, not 16
+    });
+    expect(resp.success).toBe(false);
+    expect(resp.error).toMatch(/must be 16 bytes/);
+  });
+
+  it('set_channel rejects an out-of-range index', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+
+    const resp = await backend.sendCommand('set_channel', {
+      idx: 999,
+      name: 'OutOfRange',
+      secret_hex: '00'.repeat(16),
+    });
+    expect(resp.success).toBe(false);
+    expect(resp.error).toMatch(/Invalid channel index/);
+  });
+
+  it('delete_channel passes idx to the connection', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    const resp = await backend.sendCommand('delete_channel', { idx: 4 });
+    expect(resp.success).toBe(true);
+    expect(conn.deleteChannelCalls).toEqual([4]);
   });
 });
 

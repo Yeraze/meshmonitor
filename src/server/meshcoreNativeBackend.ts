@@ -463,6 +463,39 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { records };
       }
 
+      case 'get_channels': {
+        const list: any[] = await c.getChannels();
+        return list.map((ch) => ({
+          channel_idx: ch.channelIdx,
+          name: typeof ch.name === 'string' ? ch.name : String(ch.name ?? ''),
+          secret_hex: ch.secret ? bytesToHex(ch.secret) : '',
+        }));
+      }
+
+      case 'set_channel': {
+        const idx = Number(params.idx);
+        const name = String(params.name ?? '');
+        const secretHex = String(params.secret_hex ?? '');
+        if (!Number.isInteger(idx) || idx < 0 || idx > 255) {
+          throw new Error(`Invalid channel index: ${idx}`);
+        }
+        const secret = Uint8Array.from(hexToBytes(secretHex));
+        if (secret.length !== 16) {
+          throw new Error(`Channel secret must be 16 bytes, got ${secret.length}`);
+        }
+        await c.setChannel(idx, name, secret);
+        return { ok: true };
+      }
+
+      case 'delete_channel': {
+        const idx = Number(params.idx);
+        if (!Number.isInteger(idx) || idx < 0 || idx > 255) {
+          throw new Error(`Invalid channel index: ${idx}`);
+        }
+        await c.deleteChannel(idx);
+        return { ok: true };
+      }
+
       case 'shutdown':
         await this.disconnect();
         return { ok: true };
