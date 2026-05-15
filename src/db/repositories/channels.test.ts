@@ -335,14 +335,20 @@ function runChannelsTests(getBackend: () => TestBackend) {
       return;
     }
 
+    // PostgreSQL preserves camelCase only when the identifier is double-quoted;
+    // MySQL's default sql_mode treats "..." as a string literal, not an
+    // identifier. So `sourceId` needs dialect-specific quoting on the raw SQL
+    // path. SQLite is happy either way.
+    const sourceIdCol = backend.dbType === 'postgres' ? '"sourceId"' : 'sourceId';
+
     // Set up two sources: one MeshCore, one Meshtastic.
     await backend.exec(`INSERT INTO sources (id, name, type, config) VALUES ('mc-1', 'My MeshCore', 'meshcore', '{}')`);
     await backend.exec(`INSERT INTO sources (id, name, type, config) VALUES ('mt-1', 'My Meshtastic', 'meshtastic_tcp', '{}')`);
 
     // MeshCore source has a channel at idx 8 (legal for its device).
-    await backend.exec(`INSERT INTO channels (id, name, psk, sourceId) VALUES (8, 'MC-Eight', 'aGVsbG8=', 'mc-1')`);
+    await backend.exec(`INSERT INTO channels (id, name, psk, ${sourceIdCol}) VALUES (8, 'MC-Eight', 'aGVsbG8=', 'mc-1')`);
     // Meshtastic source has an invalid channel at idx 8 (should be removed).
-    await backend.exec(`INSERT INTO channels (id, name, psk, sourceId) VALUES (8, 'MT-Eight', 'aGVsbG8=', 'mt-1')`);
+    await backend.exec(`INSERT INTO channels (id, name, psk, ${sourceIdCol}) VALUES (8, 'MT-Eight', 'aGVsbG8=', 'mt-1')`);
     // A legacy NULL-sourceId channel at idx 9 (implicitly Meshtastic; should be removed).
     await backend.exec(`INSERT INTO channels (id, name, psk) VALUES (9, 'Legacy-Nine', 'aGVsbG8=')`);
 
