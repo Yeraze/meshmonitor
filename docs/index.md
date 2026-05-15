@@ -18,7 +18,7 @@ hero:
 features:
   - icon: 🛰️
     title: Multi-Source Networks
-    details: Connect to multiple Meshtastic nodes at once over TCP — including Serial or BLE nodes fronted by the Serial Bridge or BLE Bridge sidecars (MQTT and MeshCore source types coming soon). Unified map, messages, telemetry, and traceroute views stay scoped per-source with a single click. Ideal for multi-site deployments, backup gateways, and combining a home node with a repeater.
+    details: Connect to multiple Meshtastic nodes at once over TCP — including Serial or BLE nodes fronted by the Serial Bridge or BLE Bridge sidecars — plus USB-attached MeshCore companions and repeaters managed from the Sources sidebar (TCP MeshCore via env-var bootstrap; MQTT source type coming soon). Unified map, messages, telemetry, and traceroute views stay scoped per-source with a single click. Ideal for multi-site deployments, backup gateways, and combining a home node with a repeater.
 
   - icon: 🔐
     title: Per-Source Permissions
@@ -149,7 +149,7 @@ MeshMonitor supports multiple deployment scenarios:
 ## Screenshots
 
 ### Multi-Source Dashboard
-Every source your deployment touches shows up in the sidebar with its own health, map pin colour, and unified or source-scoped views. TCP today (with Serial/BLE via the bridge sidecars); MQTT and MeshCore source types coming soon.
+Every source your deployment touches shows up in the sidebar with its own health, map pin colour, and unified or source-scoped views. Meshtastic TCP (with Serial/BLE via the bridge sidecars) and USB-attached MeshCore are first-class today; TCP MeshCore is supported via the legacy env-var bootstrap path, and MQTT is coming soon.
 
 ![Multi-Source Dashboard](/images/features/dashboard-multi-source.png)
 

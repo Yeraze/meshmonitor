@@ -90,7 +90,7 @@ export default defineConfig({
             { text: 'Analytics', link: '/features/analytics' },
             { text: 'Analysis & Reports', link: '/features/analysis-reports' },
             { text: 'Telemetry Widgets', link: '/features/telemetry-widgets' },
-            { text: 'MeshCore (Experimental)', link: '/features/meshcore' },
+            { text: 'MeshCore', link: '/features/meshcore' },
             { text: '🌍 Translations', link: '/features/translations' },
             { text: '🎨 Theme Gallery', link: '/THEME_GALLERY' },
             { text: '🌐 Site Gallery', link: '/site-gallery' },
