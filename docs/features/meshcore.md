@@ -42,11 +42,34 @@ Add MeshCore sources from the UI — they hot-connect immediately without a rest
 1. Open the **Sources sidebar** on the dashboard (admin only)
 2. Click the **+** button next to the Sources header
 3. Pick **MeshCore** as the source type
-4. Choose the transport — **USB** (enter the serial port, e.g. `/dev/ttyACM0`) or **TCP** (enter the host and port)
-5. Pick the **device type** — **Companion** for full-featured devices, **Repeater** for direct-serial repeaters
+4. Choose the transport — **USB** (enter the serial port, e.g. `/dev/ttyACM0`) or **TCP** (enter the host and port; see [TCP Transport](#tcp-transport) below)
+5. Pick the **device type** — **Companion** for full-featured devices, **Repeater** for direct-serial repeaters (USB only)
 6. Save — the source connects immediately if **Auto-connect** is on
 
 Sources you create from the UI are wired into the per-source MeshCore manager registry the same way Meshtastic TCP sources are, so create / update / delete / connect / disconnect all work without a process restart.
+
+### TCP Transport
+
+Added in 4.5.1. MeshCore Companions can now be reached over TCP directly from the UI — no env-var bootstrap, no container restart. Pick **TCP** in the transport selector when adding or editing a MeshCore source.
+
+| Field | Default | Notes |
+|---|---|---|
+| Host | (none) | Hostname or IP of the device or proxy reachable from the MeshMonitor container |
+| Port | `4403` | TCP port the companion is listening on; override if your proxy uses a different port |
+
+Common ways to put a MeshCore Companion on TCP:
+
+- **Native TCP firmware** — MeshCore Companion builds that expose the binary protocol directly over TCP (listening on `4403` by default). Wire the device to your network, point MeshMonitor at it.
+- **`ser2net`** — Bridge a serial-attached MeshCore device on another host to a TCP port. Useful when the companion is plugged into a Pi or workstation that isn't running MeshMonitor.
+- **`esp-link`** — ESP8266/ESP32-based serial-to-WiFi adapter wired to the companion's UART. The same binary protocol flows transparently over the link.
+
+::: tip Container networking
+TCP sources connect from inside the MeshMonitor container, so the host must be reachable from there — use the device's LAN IP (or your gateway hostname), not `localhost` or `127.0.0.1`. If the companion is on the same host as MeshMonitor, use `host.docker.internal` (already configured in `docker-compose.dev.yml`) or the host's LAN IP.
+:::
+
+::: warning Companion only
+TCP is a Companion-class feature. Repeater devices are still USB-only — pick the **USB** transport when adding a Repeater source.
+:::
 
 ### Tuning Environment Variables
 
@@ -213,7 +236,8 @@ The roadmap is incremental: keep landing one or two MeshCore features per releas
 ## Troubleshooting
 
 ### MeshCore source can't be added or connection fails
-- Verify the serial port is accessible inside the container (check `devices:` mapping in docker-compose). The entrypoint auto-grants the `node` user access to mapped tty groups; if you mounted a device after the container started, restart it.
+- For **USB** sources: Verify the serial port is accessible inside the container (check `devices:` mapping in docker-compose). The entrypoint auto-grants the `node` user access to mapped tty groups; if you mounted a device after the container started, restart it.
+- For **TCP** sources: Verify the host is reachable from inside the container (the MeshMonitor process resolves it, not your browser). Use a LAN IP rather than `localhost`/`127.0.0.1`, or `host.docker.internal` when the device shares a host with MeshMonitor. Confirm the port (default `4403`) is open and the proxy/firmware is listening.
 - Check MeshMonitor logs for `[MeshCore]` entries for detailed error messages.
 
 ### Runtime-added MeshCore source idle until restart
