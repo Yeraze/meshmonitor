@@ -4150,11 +4150,17 @@ apiRouter.get('/neighbor-info', requirePermission('info', 'read'), async (req, r
         };
       })))
       .filter(ni => {
-        // Filter out connections where either node is too old or missing lastHeard
-        if (!ni.node?.lastHeard || !ni.neighbor?.lastHeard) {
-          return false;
-        }
-        return ni.node.lastHeard >= cutoffTime && ni.neighbor.lastHeard >= cutoffTime;
+        // The reporter (`node`) is a node we've directly heard from — we require a fresh
+        // `lastHeard` on them. The neighbor side may be a node we've only learned about
+        // second-hand through this NeighborInfo report (see #2615 zombie-node guard,
+        // which intentionally NULLs `lastHeard` on placeholder rows). For those, fall
+        // back to the freshness of the NeighborInfo record itself so we don't drop
+        // every indirect-neighbor link (#3025).
+        if (!ni.node?.lastHeard || ni.node.lastHeard < cutoffTime) return false;
+        if (ni.neighbor?.lastHeard && ni.neighbor.lastHeard >= cutoffTime) return true;
+        const reportSec = Math.floor((ni.timestamp ?? 0) / 1000);
+        const rxSec = ni.lastRxTime ?? 0;
+        return Math.max(reportSec, rxSec) >= cutoffTime;
       })
       .map(({ node, neighbor, ...rest }) => rest); // Remove the temporary node/neighbor fields
 

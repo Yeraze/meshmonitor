@@ -147,10 +147,13 @@ describe('Neighbor Info API with Position Overrides', () => {
             };
           })
           .filter(ni => {
-            if (!ni.node?.lastHeard || !ni.neighbor?.lastHeard) {
-              return false;
-            }
-            return ni.node.lastHeard >= cutoffTime && ni.neighbor.lastHeard >= cutoffTime;
+            // Mirror server.ts filter — reporter must be fresh, but neighbor can
+            // fall back to NeighborInfo report freshness when lastHeard is null (#3025)
+            if (!ni.node?.lastHeard || ni.node.lastHeard < cutoffTime) return false;
+            if (ni.neighbor?.lastHeard && ni.neighbor.lastHeard >= cutoffTime) return true;
+            const reportSec = Math.floor(((ni as any).timestamp ?? 0) / 1000);
+            const rxSec = (ni as any).lastRxTime ?? 0;
+            return Math.max(reportSec, rxSec) >= cutoffTime;
           })
           .map(({ node, neighbor, ...rest }) => rest);
 
