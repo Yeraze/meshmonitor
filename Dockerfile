@@ -55,7 +55,7 @@ RUN apk add --no-cache \
     su-exec \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && python3 -m venv /opt/apprise-venv \
-    && /opt/apprise-venv/bin/pip install --no-cache-dir apprise "paho-mqtt<2.0" meshtastic meshcore \
+    && /opt/apprise-venv/bin/pip install --no-cache-dir apprise "paho-mqtt<2.0" meshtastic \
     && ln -sf /opt/apprise-venv/bin/meshtastic /usr/local/bin/meshtastic \
     && ln -sf /usr/bin/python3 /usr/local/bin/python3
 
@@ -77,8 +77,7 @@ RUN chown -R node:node ./dist
 # Copy upgrade-related scripts into container
 COPY scripts/upgrade-watchdog.sh /app/scripts/upgrade-watchdog.sh
 COPY scripts/test-docker-socket.sh /app/scripts/test-docker-socket.sh
-COPY scripts/meshcore-bridge.py /app/scripts/meshcore-bridge.py
-RUN chmod +x /app/scripts/upgrade-watchdog.sh /app/scripts/test-docker-socket.sh /app/scripts/meshcore-bridge.py
+RUN chmod +x /app/scripts/upgrade-watchdog.sh /app/scripts/test-docker-socket.sh
 
 # Copy admin password reset script
 COPY reset-admin.mjs /app/reset-admin.mjs

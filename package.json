@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
+    "@liamcottle/meshcore.js": "github:Yeraze/meshcore.js#feat/meshmonitor-helpers",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@maplibre/maplibre-gl-leaflet": "^0.1.3",
