@@ -5,7 +5,7 @@ Multi-Source lets a single MeshMonitor deployment talk to **multiple Meshtastic 
 :::
 
 ::: info Coming soon
-**MQTT** and **MeshCore** source types are part of the multi-source architecture but are still in active development. They'll land in a future 4.x release.
+**MQTT** source types are part of the multi-source architecture but are still in active development. They'll land in a future 4.x release. **MeshCore** is a first-class source type as of 4.5 — see [MeshCore](/features/meshcore).
 :::
 
 ![Dashboard with multiple sources in the sidebar](/images/features/dashboard-multi-source.png)
@@ -14,7 +14,7 @@ Multi-Source lets a single MeshMonitor deployment talk to **multiple Meshtastic 
 
 A **source** is one upstream connection MeshMonitor speaks to — typically a Meshtastic node. Each source has:
 
-- A **type** — `meshtastic_tcp` today; `mqtt` and `meshcore` are planned. Serial and BLE nodes connect through the Serial Bridge / BLE Bridge sidecars and appear as `meshtastic_tcp` sources pointing at the bridge container.
+- A **type** — `meshtastic_tcp` and `meshcore` today; `mqtt` is planned. Serial and BLE Meshtastic nodes connect through the Serial Bridge / BLE Bridge sidecars and appear as `meshtastic_tcp` sources pointing at the bridge container. MeshCore connects directly — USB through the UI, TCP via the legacy env-var bootstrap path. No sidecar either way.
 - Its own **connection settings** (host, port, device path, credentials)
 - Its own **scheduler** (auto-responder, auto-announce, auto-traceroute, auto-ack)
 - Its own **Virtual Node** endpoint (TCP sources only)
@@ -61,7 +61,7 @@ Your picker choice persists per view and per user.
 
 Virtual Node is a MeshMonitor feature that lets mobile Meshtastic apps connect *through* MeshMonitor instead of directly to the node. In 4.0 it is **per-source**.
 
-- Only `meshtastic_tcp` sources support Virtual Node (planned MQTT and MeshCore source types will ignore VN settings when they ship)
+- Only `meshtastic_tcp` sources support Virtual Node — MeshCore sources ignore VN settings, and the planned MQTT source type will too
 - Each source can expose its own VN endpoint on its own port
 - Ports must be unique across sources — the API rejects collisions with HTTP 409
 
