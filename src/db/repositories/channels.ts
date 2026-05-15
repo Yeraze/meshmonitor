@@ -4,7 +4,7 @@
  * Handles all channel-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, and, gt, isNull, or, lt, count } from 'drizzle-orm';
+import { eq, and, gt, isNull, or, lt, count, notInArray } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbChannel } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -222,18 +222,37 @@ export class ChannelsRepository extends BaseRepository {
   }
 
   /**
-   * Clean up invalid channels that shouldn't have been created
-   * Meshtastic supports channels 0-7 (8 total channels)
+   * Clean up invalid channels that shouldn't have been created.
+   *
+   * The 0-7 slot cap is a Meshtastic-only constraint (8 channels per device).
+   * MeshCore devices report a device-dependent number of channels enumerated
+   * by index — we must not delete those rows just because they fall outside
+   * the Meshtastic range. The cap is therefore applied only to channels whose
+   * owning source is a Meshtastic source, or whose source is unset (legacy
+   * pre-multi-source rows are implicitly Meshtastic).
    */
   async cleanupInvalidChannels(): Promise<number> {
-    const { channels } = this.tables;
-    const whereClause = or(lt(channels.id, 0), gt(channels.id, 7));
+    const { channels, sources } = this.tables;
+
+    // Collect source IDs whose source-type is NOT Meshtastic. Channels owned
+    // by these sources are exempt from the 0-7 slot cap.
+    const nonMeshtasticRows = await this.db
+      .select({ id: sources.id })
+      .from(sources)
+      .where(eq(sources.type, 'meshcore'));
+    const exemptSourceIds = nonMeshtasticRows.map((r: { id: string }) => r.id).filter(Boolean);
+
+    const outOfRange = or(lt(channels.id, 0), gt(channels.id, 7));
+    const whereClause = exemptSourceIds.length > 0
+      ? and(outOfRange, or(isNull(channels.sourceId), notInArray(channels.sourceId, exemptSourceIds)))
+      : outOfRange;
+
     const result = await this.db.select({ count: count() }).from(channels).where(whereClause);
     const deleteCount = Number(result[0].count);
     if (deleteCount > 0) {
       await this.db.delete(channels).where(whereClause);
     }
-    logger.debug(`Cleaned up ${deleteCount} invalid channels (outside 0-7 range)`);
+    logger.debug(`Cleaned up ${deleteCount} invalid channels (outside 0-7 range, Meshtastic-owned only)`);
     return deleteCount;
   }
 

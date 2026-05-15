@@ -10,6 +10,7 @@
 
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
+import databaseService from '../services/database.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { MeshCoreNativeBackend, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
 
@@ -160,6 +161,19 @@ export interface MeshCoreStatus {
   radioBw?: number;
   radioSf?: number;
   radioCr?: number;
+}
+
+/**
+ * A single channel slot on a MeshCore device. The wire model is just
+ * { channelIdx, name, secret(16 bytes) } — see meshcore.js connection.js:605.
+ * The secret travels as a hex string in our API for human readability;
+ * we re-encode to base64 when mirroring into the shared `channels.psk` column.
+ */
+export interface MeshCoreChannel {
+  channelIdx: number;
+  name: string;
+  /** 32-char lowercase hex (16 bytes). Empty string if the firmware reports an empty slot. */
+  secretHex: string;
 }
 
 /**
@@ -324,6 +338,16 @@ class MeshCoreManager extends EventEmitter {
       // Get initial info
       await this.refreshLocalNode();
       await this.refreshContacts();
+      // Pull the device's channel list and mirror it into the DB. MeshCore has
+      // no push event for channel changes, so re-sync is connect-time and
+      // after every local write. Failure here is non-fatal.
+      if (this.deviceType === MeshCoreDeviceType.COMPANION) {
+        try {
+          await this.syncChannelsFromDevice();
+        } catch (err) {
+          logger.warn(`[MeshCore:${this.sourceId}] syncChannelsFromDevice failed: ${(err as Error).message}`);
+        }
+      }
 
       this.connected = true;
       this.connectionState = 'connected';
@@ -536,6 +560,97 @@ class MeshCoreManager extends EventEmitter {
   /** Generate a synthetic public key identifier for channel messages */
   private static channelPublicKey(channelIdx: number): string {
     return `channel-${channelIdx}`;
+  }
+
+  // ============ Channel CRUD ============
+
+  /**
+   * Read the channel list from the device. Channels are returned in the order
+   * the firmware reports them (typically ascending channelIdx). Companion mode
+   * only — Repeater firmware doesn't expose a channel API over the CLI.
+   */
+  async listChannels(): Promise<MeshCoreChannel[]> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      return [];
+    }
+    const response = await this.sendBridgeCommand('get_channels', {});
+    if (!response.success) {
+      throw new Error(response.error || 'get_channels failed');
+    }
+    const list: Array<{ channel_idx: number; name: string; secret_hex: string }> =
+      Array.isArray(response.data) ? response.data : [];
+    return list.map((row) => ({
+      channelIdx: row.channel_idx,
+      name: row.name ?? '',
+      secretHex: row.secret_hex ?? '',
+    }));
+  }
+
+  /**
+   * Write a channel slot on the device. `secretHex` must decode to 16 bytes
+   * (AES-128). Re-syncs the DB from the device afterwards so any side-effect
+   * (e.g. the firmware normalising the name) is reflected immediately.
+   */
+  async setChannel(idx: number, name: string, secretHex: string): Promise<void> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      throw new Error('setChannel: MeshCore source is not in Companion mode');
+    }
+    const response = await this.sendBridgeCommand('set_channel', {
+      idx,
+      name,
+      secret_hex: secretHex,
+    });
+    if (!response.success) {
+      throw new Error(response.error || 'set_channel failed');
+    }
+    await this.syncChannelsFromDevice();
+  }
+
+  /**
+   * Delete a channel slot on the device. Re-syncs the DB from the device
+   * afterwards so the local mirror reflects the firmware's view.
+   */
+  async deleteChannel(idx: number): Promise<void> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      throw new Error('deleteChannel: MeshCore source is not in Companion mode');
+    }
+    const response = await this.sendBridgeCommand('delete_channel', { idx });
+    if (!response.success) {
+      throw new Error(response.error || 'delete_channel failed');
+    }
+    await this.syncChannelsFromDevice();
+  }
+
+  /**
+   * Read the device's channel list and mirror it into the shared `channels`
+   * table, scoped by this manager's sourceId. The 16-byte AES secret is
+   * stored base64-encoded in the existing `psk` column. Meshtastic-only
+   * columns (role, uplinkEnabled, downlinkEnabled, positionPrecision) are
+   * left null for MeshCore rows.
+   *
+   * MeshCore has no push event for channel changes, so callers should invoke
+   * this on connect and after every local write.
+   */
+  async syncChannelsFromDevice(): Promise<void> {
+    const channels = await this.listChannels();
+    for (const ch of channels) {
+      const pskBase64 = ch.secretHex ? Buffer.from(ch.secretHex, 'hex').toString('base64') : null;
+      await databaseService.channels.upsertChannel(
+        {
+          id: ch.channelIdx,
+          name: ch.name,
+          psk: pskBase64,
+          // Meshtastic-only fields explicitly nulled for MeshCore rows
+          role: null,
+          uplinkEnabled: null,
+          downlinkEnabled: null,
+          positionPrecision: null,
+        },
+        this.sourceId,
+        { allowBlankName: true },
+      );
+    }
+    logger.debug(`[MeshCore:${this.sourceId}] Synced ${channels.length} channel(s) from device`);
   }
 
   // ============ Direct Serial Methods (for Repeater) ============

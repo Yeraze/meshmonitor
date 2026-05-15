@@ -21,8 +21,9 @@ import {
   mysqlAvailable,
 } from './test-utils.js';
 
-// SQL for creating the channels table per backend
-// Matches the schema after migration 023: surrogate pk + UNIQUE(sourceId, id)
+// SQL for creating the channels + sources tables per backend.
+// `sources` is required because cleanupInvalidChannels reads source.type to
+// exempt MeshCore-owned channels from the 0-7 slot cap.
 const SQLITE_CREATE = `
   CREATE TABLE IF NOT EXISTS channels (
     pk INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,7 +38,17 @@ const SQLITE_CREATE = `
     updatedAt INTEGER NOT NULL DEFAULT 0,
     sourceId TEXT,
     UNIQUE(sourceId, id)
-  )
+  );
+  CREATE TABLE IF NOT EXISTS sources (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    config TEXT NOT NULL DEFAULT '{}',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    createdAt INTEGER NOT NULL DEFAULT 0,
+    updatedAt INTEGER NOT NULL DEFAULT 0,
+    createdBy INTEGER
+  );
 `;
 
 const POSTGRES_CREATE = `
@@ -55,7 +66,18 @@ const POSTGRES_CREATE = `
     "updatedAt" BIGINT NOT NULL DEFAULT 0,
     "sourceId" TEXT,
     UNIQUE ("sourceId", id)
-  )
+  );
+  DROP TABLE IF EXISTS sources CASCADE;
+  CREATE TABLE sources (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    config TEXT NOT NULL DEFAULT '{}',
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" BIGINT NOT NULL DEFAULT 0,
+    "updatedAt" BIGINT NOT NULL DEFAULT 0,
+    "createdBy" INTEGER
+  );
 `;
 
 const MYSQL_CREATE = `
@@ -73,7 +95,18 @@ const MYSQL_CREATE = `
     updatedAt BIGINT NOT NULL DEFAULT 0,
     sourceId VARCHAR(36),
     UNIQUE KEY channels_source_id_uniq (sourceId, id)
-  )
+  );
+  DROP TABLE IF EXISTS sources;
+  CREATE TABLE sources (
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(32) NOT NULL,
+    config VARCHAR(4096) NOT NULL DEFAULT '{}',
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    createdAt BIGINT NOT NULL DEFAULT 0,
+    updatedAt BIGINT NOT NULL DEFAULT 0,
+    createdBy INT
+  );
 `;
 
 /**
@@ -292,6 +325,48 @@ function runChannelsTests(getBackend: () => TestBackend) {
     expect(await repo.getChannelCount()).toBe(2);
   });
 
+  it('cleanupInvalidChannels - preserves out-of-range channels owned by a MeshCore source', async () => {
+    // MeshCore devices report a device-dependent number of channels; the 0-7
+    // slot cap is a Meshtastic-only convention. cleanupInvalidChannels must
+    // only apply the cap to Meshtastic-owned (or unscoped) channels.
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // PostgreSQL preserves camelCase only when the identifier is double-quoted;
+    // MySQL's default sql_mode treats "..." as a string literal, not an
+    // identifier. So `sourceId` needs dialect-specific quoting on the raw SQL
+    // path. SQLite is happy either way.
+    const sourceIdCol = backend.dbType === 'postgres' ? '"sourceId"' : 'sourceId';
+
+    // Set up two sources: one MeshCore, one Meshtastic.
+    await backend.exec(`INSERT INTO sources (id, name, type, config) VALUES ('mc-1', 'My MeshCore', 'meshcore', '{}')`);
+    await backend.exec(`INSERT INTO sources (id, name, type, config) VALUES ('mt-1', 'My Meshtastic', 'meshtastic_tcp', '{}')`);
+
+    // MeshCore source has a channel at idx 8 (legal for its device).
+    await backend.exec(`INSERT INTO channels (id, name, psk, ${sourceIdCol}) VALUES (8, 'MC-Eight', 'aGVsbG8=', 'mc-1')`);
+    // Meshtastic source has an invalid channel at idx 8 (should be removed).
+    await backend.exec(`INSERT INTO channels (id, name, psk, ${sourceIdCol}) VALUES (8, 'MT-Eight', 'aGVsbG8=', 'mt-1')`);
+    // A legacy NULL-sourceId channel at idx 9 (implicitly Meshtastic; should be removed).
+    await backend.exec(`INSERT INTO channels (id, name, psk) VALUES (9, 'Legacy-Nine', 'aGVsbG8=')`);
+
+    expect(await repo.getChannelCount()).toBe(3);
+
+    const deleted = await repo.cleanupInvalidChannels();
+    expect(deleted).toBe(2);
+
+    // MeshCore row survived.
+    const survivor = await repo.getChannelById(8, 'mc-1');
+    expect(survivor).not.toBeNull();
+    expect(survivor!.name).toBe('MC-Eight');
+
+    // Meshtastic row + legacy row gone.
+    expect(await repo.getChannelById(8, 'mt-1')).toBeNull();
+    expect(await repo.getChannelById(9)).toBeNull();
+  });
+
   it('cleanupEmptyChannels - removes channels with id > 1 and no psk/role', async () => {
     const backend = getBackend();
     if (!backend.available) {
@@ -394,6 +469,7 @@ describe.skipIf(!postgresAvailable)('ChannelsRepository - PostgreSQL Backend', (
   beforeEach(async () => {
     if (!backend.available) return;
     await clearTable(backend, 'channels');
+    await clearTable(backend, 'sources');
   });
 
   runChannelsTests(() => backend);
@@ -421,6 +497,7 @@ describe.skipIf(!mysqlAvailable)('ChannelsRepository - MySQL Backend', () => {
   beforeEach(async () => {
     if (!backend.available) return;
     await clearTable(backend, 'channels');
+    await clearTable(backend, 'sources');
   });
 
   runChannelsTests(() => backend);
