@@ -142,6 +142,10 @@ class MockConnection extends EventEmitter {
     this.setTelemetryModeEnvCalls.push(mode);
   }
 
+  async getSelfInfo(_timeoutMs?: number) {
+    return this.selfInfoToEmit;
+  }
+
   async getContacts() {
     return this.contactsResponse;
   }
@@ -496,11 +500,9 @@ import { MeshCoreManager, ConnectionType } from './meshcoreManager.js';
 describe('MeshCoreManager heartbeat (native backend)', () => {
   beforeEach(() => {
     installMockModule(MockConnection);
-    process.env.MESHCORE_TRANSPORT = 'native';
   });
   afterEach(() => {
     __setMeshCoreModule(null);
-    delete process.env.MESHCORE_TRANSPORT;
     vi.useRealTimers();
   });
 

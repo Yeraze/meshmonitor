@@ -24,7 +24,7 @@ When a MeshCore source is connected, you get:
 
 ## Source Types
 
-MeshCore sources today are **USB-attached** when added through the UI. The Sources sidebar lets you pick a device type of **Companion** (Python bridge) or **Repeater** (direct serial). TCP-connected companions are still wired through the MeshCore Python bridge under the hood, but in 4.5 they're only configured through the env-var bootstrap path described in [Bootstrap via Environment Variables](#bootstrap-via-environment-variables) — UI-driven TCP and BLE transports are out of scope for this slice.
+MeshCore sources today are **USB-attached** when added through the UI. The Sources sidebar lets you pick a device type of **Companion** (native JS backend via meshcore.js) or **Repeater** (direct serial). TCP-connected companions also go through the native JS backend, but in 4.5 they're only configured through the env-var bootstrap path described in [Bootstrap via Environment Variables](#bootstrap-via-environment-variables) — UI-driven TCP and BLE transports are out of scope for this slice.
 
 | Source path | Device type | Notes |
 |---|---|---|
@@ -33,15 +33,13 @@ MeshCore sources today are **USB-attached** when added through the UI. The Sourc
 | **Env-var bootstrap (TCP)** | Companion only | Seeded on first boot via `MESHCORE_TCP_HOST` / `MESHCORE_TCP_PORT` |
 
 ::: tip Room Server
-**Room Server** devices use the same Python bridge as Companion — when present they're auto-detected on connection. There's no Room Server option in the device-type selector; pick Companion and the bridge will identify the device correctly.
+**Room Server** devices use the same Companion path — when present they're auto-detected on connection. There's no Room Server option in the device-type selector; pick Companion and the device will be identified correctly.
 :::
 
 ## Requirements
 
 1. **A MeshCore device** — A LoRa device flashed with MeshCore firmware (Companion, Repeater, or Room Server)
-2. **Python 3** — Must be available in the container/host as `python3` (included in the official MeshMonitor image)
-3. **`meshcore` Python library** — Required for Companion device communication (`pip install meshcore`; preinstalled in the official image)
-4. **Serial port access** — If connecting via USB serial, the device must be mapped into the container with `devices:`
+2. **Serial port access** — If connecting via USB serial, the device must be mapped into the container with `devices:`
 
 ## Adding a MeshCore Source
 
@@ -120,9 +118,9 @@ MeshMonitor automatically detects the device type on connection:
 
 | Device Type | Description | Connection Method |
 |---|---|---|
-| **Companion** | Full-featured device with binary protocol support | Python bridge (serial or TCP) |
+| **Companion** | Full-featured device with binary protocol support | Native JS backend (meshcore.js, serial or TCP) |
 | **Repeater** | Lightweight relay with text CLI interface | Direct serial |
-| **Room Server** | Chat room server for group messaging | Python bridge |
+| **Room Server** | Chat room server for group messaging | Native JS backend (meshcore.js) |
 
 ## The MeshCore Page
 
@@ -242,7 +240,7 @@ Use the Configuration view's **Preset** dropdown to pick from the official MeshC
 Changing radio parameters will disconnect you from nodes using different settings. Make sure all nodes in your mesh use the same radio configuration.
 :::
 
-Saved radio params are now persisted authoritatively: the bridge propagates device-side errors back instead of silently returning success, and the manager optimistically updates `localNode.radio*` then refreshes from the device so the next snapshot reflects the real device state.
+Saved radio params are now persisted authoritatively: the backend propagates device-side errors back instead of silently returning success, and the manager optimistically updates `localNode.radio*` then refreshes from the device so the next snapshot reflects the real device state.
 
 ## Still Early
 
@@ -264,16 +262,10 @@ The roadmap is incremental: keep landing one or two MeshCore features per releas
 
 ### MeshCore source can't be added or connection fails
 - Verify the serial port is accessible inside the container (check `devices:` mapping in docker-compose). The entrypoint auto-grants the `node` user access to mapped tty groups; if you mounted a device after the container started, restart it.
-- Ensure `python3` is available and the `meshcore` Python library is installed.
 - Check MeshMonitor logs for `[MeshCore]` entries for detailed error messages.
 
 ### Runtime-added MeshCore source idle until restart
 This is fixed in 4.5 — source create/update/delete/connect/disconnect endpoints all wire MeshCore into the per-source registry. If you're seeing this on an earlier 4.x version, restart the container as a workaround and upgrade.
-
-### Python bridge errors
-- The MeshCore Python bridge (`scripts/meshcore-bridge.py`) requires the `meshcore` Python package.
-- Install it with: `pip install meshcore`.
-- For TCP connections, ensure your `meshcore` library version supports TCP (`TCPConnection`).
 
 ### No nodes appearing
 - Verify your MeshCore device is properly flashed and operating.

@@ -1,18 +1,14 @@
 /**
- * MeshCoreNativeBackend — native JS replacement for the Python bridge subprocess.
- *
- * Wraps `meshcore.js` (a JS implementation of the MeshCore Companion binary
- * protocol). Exposes the SAME command surface that `MeshCoreManager` was
- * calling on the Python bridge, so the rest of MeshCoreManager doesn't need
- * to change — it just delegates `sendBridgeCommand` to `sendCommand` here.
+ * MeshCoreNativeBackend — native JS implementation of the MeshCore Companion
+ * binary protocol, wrapping `meshcore.js`. Exposes the bridge-shaped command
+ * surface that `MeshCoreManager` uses, so the manager delegates
+ * `sendBridgeCommand` directly to `sendCommand` here.
  *
  * Transports: USB serial and TCP only. No BLE.
  *
- * Gated by `MESHCORE_TRANSPORT=native` in `MeshCoreManager.connect()`.
- *
- * NB: The reference to "bridge" in command names is preserved for drop-in
- * compatibility with the wire vocabulary `meshcoreManager.ts` already uses;
- * there is no subprocess in this path.
+ * NB: The "bridge" naming is preserved from the previous Python-bridge era as
+ * the wire vocabulary `meshcoreManager.ts` already speaks; there is no
+ * subprocess in this path.
  */
 
 import { EventEmitter } from 'events';
