@@ -19,7 +19,6 @@ import Dashboard from './components/Dashboard';
 import NodesTab from './components/NodesTab';
 import MessagesTab from './components/MessagesTab';
 import ChannelsTab from './components/ChannelsTab';
-import { MeshCoreTab } from './components/MeshCore';
 import PacketMonitorPanel from './components/PacketMonitorPanel';
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection';
 import AutoTracerouteSection from './components/AutoTracerouteSection';
@@ -4485,9 +4484,7 @@ function App() {
   const handleNavigateToMessage = useCallback((result: { id: string; source: string; channel?: number; fromNodeId?: string; fromNodeNum?: number }) => {
     setIsSearchOpen(false);
     setFocusMessageId(result.id);
-    if (result.source === 'meshcore') {
-      setActiveTab('meshcore');
-    } else if (result.channel === -1) {
+    if (result.channel === -1) {
       setActiveTab('messages');
       // Navigate to DM conversation with the sender
       if (result.fromNodeId) {
@@ -4694,7 +4691,6 @@ function App() {
         }}
         baseUrl={baseUrl}
         connectedNodeName={connectedNodeName}
-        meshcoreEnabled={authStatus?.meshcoreEnabled || false}
         packetLogEnabled={packetLogEnabled}
         onSearchClick={() => setIsSearchOpen(true)}
       />
@@ -5200,7 +5196,6 @@ function App() {
           <SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} setNewMessage={setNewMessage} />
           </ErrorBoundary>
         )}
-        {activeTab === 'meshcore' && <ErrorBoundary fallbackTitle="MeshCore failed to load"><MeshCoreTab baseUrl={baseUrl} /></ErrorBoundary>}
         {activeTab === 'packetmonitor' && (
           <ErrorBoundary fallbackTitle="Packet Monitor failed to load">
             <div style={{ height: 'calc(100dvh - var(--header-height, 60px) - 4rem)', overflow: 'hidden' }}>

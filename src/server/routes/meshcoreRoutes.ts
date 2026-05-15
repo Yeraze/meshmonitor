@@ -163,7 +163,6 @@ router.get('/status', optionalAuth(), requirePermission('connection', 'read', { 
     const manager = managerFor(req);
     const status = manager.getConnectionStatus();
     const localNode = manager.getLocalNode();
-    const envConfig = manager.getEnvConfig();
 
     res.json({
       success: true,
@@ -171,7 +170,6 @@ router.get('/status', optionalAuth(), requirePermission('connection', 'read', { 
         ...status,
         localNode,
         deviceTypeName: MeshCoreDeviceType[status.deviceType],
-        envConfig,
       },
     });
   } catch (error) {
@@ -187,7 +185,7 @@ router.get('/status', optionalAuth(), requirePermission('connection', 'read', { 
  */
 router.post('/connect', meshcoreDeviceLimiter, requireAuth(), requirePermission('connection', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const { connectionType, serialPort, tcpHost, tcpPort, baudRate } = req.body;
+    const { connectionType, serialPort, tcpHost, tcpPort, baudRate, deviceType } = req.body;
 
     // Parse numeric values
     const parsedTcpPort = tcpPort ? parseInt(tcpPort, 10) : undefined;
@@ -203,9 +201,7 @@ router.post('/connect', meshcoreDeviceLimiter, requireAuth(), requirePermission(
       return res.status(400).json({ success: false, error: validation.error });
     }
 
-    // Read firmware type from env (controls direct serial vs Python bridge)
-    const firmwareTypeRaw = (process.env.MESHCORE_FIRMWARE_TYPE || 'companion').toLowerCase();
-    const firmwareType: 'companion' | 'repeater' = firmwareTypeRaw === 'repeater' ? 'repeater' : 'companion';
+    const firmwareType: 'companion' | 'repeater' = deviceType === 'repeater' ? 'repeater' : 'companion';
 
     const config = {
       connectionType: connectionType as ConnectionType || ConnectionType.SERIAL,
@@ -366,7 +362,6 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
     const manager = managerFor(req);
     const status = manager.getConnectionStatus();
     const localNode = manager.getLocalNode();
-    const envConfig = manager.getEnvConfig();
     const contacts = manager.getContacts();
     const nodes = manager.getAllNodes();
     const messages = manager.getRecentMessages(50);
@@ -395,7 +390,6 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
           ...status,
           localNode,
           deviceTypeName: MeshCoreDeviceType[status.deviceType],
-          envConfig,
         },
         contacts: allContacts,
         nodes,

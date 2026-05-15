@@ -56,7 +56,6 @@ function makeStatus(
       telemetryModeEnv: 'never',
       ...overrides,
     },
-    envConfig: null,
   };
 }
 

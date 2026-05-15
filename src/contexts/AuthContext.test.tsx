@@ -69,7 +69,6 @@ const mockAuthStatus = {
   oidcEnabled: false,
   localAuthDisabled: false,
   anonymousDisabled: false,
-  meshcoreEnabled: false,
 };
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (

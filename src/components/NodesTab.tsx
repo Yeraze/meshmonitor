@@ -41,7 +41,6 @@ import { VectorTileLayer } from './VectorTileLayer';
 import { MapNodePopupContent } from './MapNodePopupContent';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import api from '../services/api';
-import { mapContactsToNodes } from '../utils/meshcoreHelpers';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 import type { MapStyle } from '../server/services/mapStyleService.js';
 
@@ -54,13 +53,6 @@ const SPIDERFIER_INIT = {
   /** Interval between initialization attempts (ms) - 50 attempts × 100ms = 5 seconds total */
   RETRY_INTERVAL_MS: 100,
 } as const;
-
-/**
- * MeshCore theming constants
- * Note: These are hardcoded because they're used in Leaflet divIcon template strings
- * where CSS variables are not available. This matches var(--ctp-mauve) from Catppuccin Mocha.
- */
-const MESHCORE_COLOR = '#cba6f7'; // Catppuccin Mocha mauve
 
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
@@ -307,10 +299,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowMotion,
     showMqttNodes,
     setShowMqttNodes,
-    showMeshCoreNodes,
-    setShowMeshCoreNodes,
-    meshCoreNodes,
-    setMeshCoreNodes,
     showAnimations,
     setShowAnimations,
     showEstimatedPositions,
@@ -401,7 +389,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     defaultMapCenterZoom,
   } = useSettings();
 
-  const { hasPermission, authStatus } = useAuth();
+  const { hasPermission } = useAuth();
   const csrfFetch = useCsrfFetch();
 
   // ----- Waypoint authoring state -----
@@ -611,34 +599,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     };
     setIsTouchDevice(checkTouch());
   }, []);
-
-  // Poll MeshCore contacts for map display when MeshCore is enabled
-  // Refreshes every 10 seconds to keep map and node list in sync with device
-  useEffect(() => {
-    if (!authStatus?.meshcoreEnabled) return;
-    let cancelled = false;
-
-    const fetchMeshCoreContacts = async () => {
-      try {
-        const baseUrl = await api.getBaseUrl();
-        const response = await csrfFetch(`${baseUrl}/api/meshcore/contacts`);
-        const data = await response.json();
-        if (!cancelled && data.success && Array.isArray(data.data)) {
-          setMeshCoreNodes(mapContactsToNodes(data.data));
-        }
-      } catch {
-        // MeshCore not connected or unavailable — no action needed
-      }
-    };
-
-    fetchMeshCoreContacts();
-    const interval = setInterval(fetchMeshCoreContacts, 10000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [authStatus?.meshcoreEnabled, setMeshCoreNodes, csrfFetch]);
 
   // Ref for spiderfier controller to manage overlapping markers
   const spiderfierRef = useRef<SpiderfierControllerRef>(null);
@@ -1415,13 +1375,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 }
                 return true;
               }).length;
-              const meshCoreCount = showMeshCoreNodes ? meshCoreNodes.length : 0;
               const isFiltered = securityFilter !== 'all' || !showIncompleteNodes || filterRemoteAdminOnly;
-              if (meshCoreCount > 0) {
-                return isFiltered
-                  ? `${filteredCount}/${processedNodes.length} + ${meshCoreCount} MC`
-                  : `${filteredCount} + ${meshCoreCount} MC`;
-              }
               return isFiltered ? `${filteredCount}/${processedNodes.length}` : processedNodes.length;
             })()})</h3>
           </div>
@@ -1499,103 +1453,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         </div>
         {!isNodeListCollapsed && (
         <div className="nodes-list">
-          {/* MeshCore nodes section - shows regardless of Meshtastic connection */}
-          {showMeshCoreNodes && meshCoreNodes.length > 0 && (
-            <div className="meshcore-section">
-              <div className="meshcore-section-header" style={{
-                padding: '8px 12px',
-                background: 'color-mix(in srgb, var(--ctp-mauve) 10%, transparent)',
-                borderBottom: '1px solid color-mix(in srgb, var(--ctp-mauve) 30%, transparent)',
-                fontSize: '12px',
-                fontWeight: 'bold',
-                color: 'var(--ctp-mauve)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}>
-                <span style={{
-                  background: 'var(--ctp-mauve)',
-                  color: 'var(--ctp-base)',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  fontSize: '10px'
-                }}>MC</span>
-                MeshCore ({meshCoreNodes.length})
-              </div>
-              {meshCoreNodes.map(mcNode => {
-                const hasPosition = mcNode.latitude && mcNode.longitude;
-                const advTypeName = mcNode.advType === 1 ? 'Companion' : mcNode.advType === 2 ? 'Repeater' : mcNode.advType === 3 ? 'Router' : '';
-                return (
-                  <div
-                    key={`mc-${mcNode.publicKey}`}
-                    className={`node-item meshcore-node ${selectedNodeId === `mc-${mcNode.publicKey}` ? 'selected' : ''}`}
-                    onClick={() => {
-                      if (hasPosition) {
-                        setMapCenterTarget([mcNode.latitude, mcNode.longitude]);
-                      }
-                      setSelectedNodeId(`mc-${mcNode.publicKey}`);
-                    }}
-                    style={{ borderLeft: '3px solid var(--ctp-mauve)' }}
-                  >
-                    <div className="node-header">
-                      <div className="node-name">
-                        <span style={{
-                          background: 'var(--ctp-mauve)',
-                          color: 'var(--ctp-base)',
-                          padding: '1px 4px',
-                          borderRadius: '3px',
-                          fontSize: '9px',
-                          marginRight: '6px'
-                        }}>MC</span>
-                        <div className="node-name-text">
-                          <div className="node-longname">
-                            {mcNode.name || 'MeshCore Node'}
-                          </div>
-                          {advTypeName && (
-                            <div className="node-role" title="MeshCore device type">{advTypeName}</div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="node-actions">
-                        <div className="node-short" style={{ color: 'var(--ctp-mauve)' }}>
-                          {mcNode.publicKey ? mcNode.publicKey.substring(0, 4) : '????'}...
-                        </div>
-                      </div>
-                    </div>
-                    <div className="node-details">
-                      <div className="node-stats">
-                        {mcNode.snr != null && typeof mcNode.snr === 'number' && (
-                          <span className="stat" title="SNR">
-                            📶 {mcNode.snr.toFixed(1)}dB
-                          </span>
-                        )}
-                        {mcNode.rssi !== undefined && (
-                          <span className="stat" title="RSSI">
-                            📡 {mcNode.rssi}dBm
-                          </span>
-                        )}
-                      </div>
-                      <div className="node-time">
-                        {mcNode.lastSeen ? (() => {
-                          const date = new Date(mcNode.lastSeen);
-                          return isToday(date)
-                            ? formatTime(date, timeFormat)
-                            : formatDateTime(date, timeFormat, dateFormat);
-                        })() : '-'}
-                      </div>
-                    </div>
-                    <div className="node-indicators">
-                      {hasPosition && (
-                        <div className="node-location" title="Has GPS location">
-                          📍
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
           {/* Meshtastic nodes section */}
           {shouldShowData() ? (() => {
             // Find the home node for distance calculations (use unfiltered nodes to ensure home node is found)
@@ -1788,12 +1645,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </div>
             );
           })() : (
-            // Only show "Connect to Meshtastic node" if there are also no MeshCore nodes
-            !(showMeshCoreNodes && meshCoreNodes.length > 0) && (
-              <div className="no-data">
-                Connect to Meshtastic node
-              </div>
-            )
+            <div className="no-data">
+              Connect to Meshtastic node
+            </div>
           )}
         </div>
         )}
@@ -1814,7 +1668,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         className={`map-container ${showPacketMonitor && canViewPacketMonitor ? 'with-packet-monitor' : ''}`}
         style={showPacketMonitor && canViewPacketMonitor ? { height: `calc(100% - ${packetMonitorHeight}px)` } : undefined}
       >
-        {(shouldShowData() || meshCoreNodes.length > 0) && (
+        {shouldShowData() && (
             <div
               ref={mapControlsRef}
               className={`map-controls ${isMapControlsCollapsed ? 'collapsed' : ''}`}
@@ -1900,16 +1754,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     />
                     <span>{t('map.showMqtt')}</span>
                   </label>
-                  {authStatus?.meshcoreEnabled && (
-                  <label className="map-control-item">
-                    <input
-                      type="checkbox"
-                      checked={showMeshCoreNodes}
-                      onChange={(e) => setShowMeshCoreNodes(e.target.checked)}
-                    />
-                    <span>{t('map.showMeshCore')}</span>
-                  </label>
-                  )}
                   <label className="map-control-item">
                     <input
                       type="checkbox"
@@ -2091,7 +1935,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       <span>Show Packet Monitor</span>
                     </label>
                   )}
-                  {canWriteWaypoints && (shouldShowData() || meshCoreNodes.length > 0) && (
+                  {canWriteWaypoints && shouldShowData() && (
                     <button
                       type="button"
                       className="waypoint-create-button"
@@ -2263,81 +2107,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </Marker>
                 );
               })}
-
-              {/* MeshCore nodes */}
-              {showMeshCoreNodes && meshCoreNodes
-                .filter(node => typeof node.latitude === 'number' && isFinite(node.latitude)
-                  && typeof node.longitude === 'number' && isFinite(node.longitude))
-                .map(node => {
-                  const position: [number, number] = [node.latitude, node.longitude];
-                  // Use MeshCore theme color (Catppuccin mauve) for MeshCore nodes
-                  const meshCoreIcon = L.divIcon({
-                    className: 'meshcore-marker',
-                    html: `
-                      <div style="
-                        width: 24px;
-                        height: 24px;
-                        background: ${MESHCORE_COLOR};
-                        border: 2px solid white;
-                        border-radius: 50%;
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        color: var(--ctp-base, #1e1e2e);
-                        font-size: 10px;
-                        font-weight: bold;
-                      ">MC</div>
-                      ${showLabel ? `<div style="
-                        position: absolute;
-                        top: -20px;
-                        left: 50%;
-                        transform: translateX(-50%);
-                        background: ${MESHCORE_COLOR}e6;
-                        color: var(--ctp-base, #1e1e2e);
-                        padding: 2px 6px;
-                        border-radius: 3px;
-                        font-size: 11px;
-                        white-space: nowrap;
-                      ">${node.name || 'MeshCore'}</div>` : ''}
-                    `,
-                    iconSize: [24, 24],
-                    iconAnchor: [12, 12],
-                  });
-
-                  return (
-                    <Marker
-                      key={`meshcore-${node.publicKey}`}
-                      position={position}
-                      icon={meshCoreIcon}
-                      ref={(ref) => handleMarkerRef(ref, `mc-${node.publicKey}`)}
-                    >
-                      <Tooltip>
-                        <strong>{node.name || 'MeshCore Node'}</strong>
-                        <br />
-                        <small>MeshCore Device</small>
-                        {node.rssi !== undefined && <><br />RSSI: {node.rssi} dBm</>}
-                        {node.snr !== undefined && <><br />SNR: {node.snr} dB</>}
-                      </Tooltip>
-                      <Popup>
-                        <div style={{ minWidth: '200px' }}>
-                          <h3 style={{ margin: '0 0 8px 0', color: 'var(--ctp-mauve)' }}>
-                            {node.name || 'MeshCore Node'}
-                          </h3>
-                          <div style={{ fontSize: '12px', color: '#666' }}>
-                            <strong>Type:</strong> MeshCore Device<br />
-                            <strong>Public Key:</strong> {node.publicKey ? node.publicKey.substring(0, 16) : '????'}...<br />
-                            {typeof node.latitude === 'number' && <><strong>Latitude:</strong> {node.latitude.toFixed(6)}<br /></>}
-                            {typeof node.longitude === 'number' && <><strong>Longitude:</strong> {node.longitude.toFixed(6)}<br /></>}
-                            {typeof node.rssi === 'number' && <><strong>RSSI:</strong> {node.rssi} dBm<br /></>}
-                            {typeof node.snr === 'number' && <><strong>SNR:</strong> {node.snr} dB<br /></>}
-                            {node.lastSeen && <><strong>Last Seen:</strong> {new Date(node.lastSeen).toLocaleString()}<br /></>}
-                          </div>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  );
-                })}
 
               {/* Draw uncertainty circles for estimated positions */}
               {showEstimatedPositions && nodesWithPosition
@@ -2576,13 +2345,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               {positionHistoryElements}
 
           </MapContainer>
-          {(shouldShowData() || meshCoreNodes.length > 0) && showTileSelector && (
+          {shouldShowData() && showTileSelector && (
           <TilesetSelector
             selectedTilesetId={activeTileset}
             onTilesetChange={setMapTileset}
           />
           )}
-          {(shouldShowData() || meshCoreNodes.length > 0) && nodesWithPosition.length === 0 && meshCoreNodes.filter(n => n.latitude && n.longitude).length === 0 && (
+          {shouldShowData() && nodesWithPosition.length === 0 && (
             <div className="map-overlay">
               <div className="overlay-content">
                 <h3>📍 No Node Locations</h3>
@@ -2591,11 +2360,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </div>
             </div>
           )}
-          {!(shouldShowData() || meshCoreNodes.length > 0) && (
+          {!shouldShowData() && (
           <div className="map-placeholder">
             <div className="placeholder-content">
               <h3>Map View</h3>
-              <p>Connect to a Meshtastic or MeshCore device to view node locations on the map</p>
+              <p>Connect to a Meshtastic node to view node locations on the map</p>
             </div>
           </div>
           )}

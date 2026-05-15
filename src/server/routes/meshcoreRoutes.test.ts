@@ -39,7 +39,6 @@ const meshcoreManager = {
     config: null,
   }),
   getLocalNode: vi.fn().mockReturnValue(null),
-  getEnvConfig: vi.fn().mockReturnValue(null),
   getAllNodes: vi.fn().mockReturnValue([]),
   getContacts: vi.fn().mockReturnValue([]),
   getRecentMessages: vi.fn().mockReturnValue([]),
@@ -74,11 +73,9 @@ vi.mock('../meshcoreManager.js', () => ({
 const REGISTERED_SOURCE_IDS = new Set(['test-source']);
 vi.mock('../meshcoreRegistry.js', () => ({
   meshcoreManagerRegistry: {
-    getOrCreateLegacyManager: () => meshcoreManager,
     list: () => [meshcoreManager],
     get: (sourceId: string) => (REGISTERED_SOURCE_IDS.has(sourceId) ? meshcoreManager : undefined),
   },
-  LEGACY_MESHCORE_SOURCE_ID: 'meshcore-legacy-default',
 }));
 
 // The `/info` route reads the last poll snapshot from the singleton poller.

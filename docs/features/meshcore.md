@@ -8,7 +8,7 @@ MeshCore support is still **new and basic**. The core capabilities are stable an
 
 [MeshCore](https://meshcore.co) is an alternative LoRa mesh networking protocol that runs on much of the same hardware as Meshtastic. In MeshMonitor 4.5+, each MeshCore device is a first-class **source** — it lives in the Sources sidebar next to your Meshtastic nodes, has its own per-source permissions, its own page, its own telemetry, and contributes contacts with valid coordinates to the unified dashboard map.
 
-A single MeshMonitor deployment can run multiple MeshCore sources alongside multiple Meshtastic sources and gate access to each one independently. The 4.5 UI source-add flow is **USB-only** (Companion or Repeater); TCP-connected companions are still supported but only through the legacy environment-variable bootstrap path.
+A single MeshMonitor deployment can run multiple MeshCore sources alongside multiple Meshtastic sources and gate access to each one independently. MeshCore sources are added from the UI and support both USB (Companion or Repeater) and TCP (Companion) transports.
 
 When a MeshCore source is connected, you get:
 
@@ -24,13 +24,7 @@ When a MeshCore source is connected, you get:
 
 ## Source Types
 
-MeshCore sources today are **USB-attached** when added through the UI. The Sources sidebar lets you pick a device type of **Companion** (native JS backend via meshcore.js) or **Repeater** (direct serial). TCP-connected companions also go through the native JS backend, but in 4.5 they're only configured through the env-var bootstrap path described in [Bootstrap via Environment Variables](#bootstrap-via-environment-variables) — UI-driven TCP and BLE transports are out of scope for this slice.
-
-| Source path | Device type | Notes |
-|---|---|---|
-| **UI (USB)** | Companion or Repeater | Add from the Sources sidebar; the entrypoint auto-grants the `node` user access to mapped tty groups |
-| **Env-var bootstrap (USB)** | Companion or Repeater (`MESHCORE_FIRMWARE_TYPE`) | Seeded on first boot; manage afterward through the UI |
-| **Env-var bootstrap (TCP)** | Companion only | Seeded on first boot via `MESHCORE_TCP_HOST` / `MESHCORE_TCP_PORT` |
+MeshCore sources are added through the UI. The Sources sidebar lets you pick a device type of **Companion** (native JS backend via meshcore.js) or **Repeater** (direct serial), and a transport of **USB** or **TCP**.
 
 ::: tip Room Server
 **Room Server** devices use the same Companion path — when present they're auto-detected on connection. There's no Room Server option in the device-type selector; pick Companion and the device will be identified correctly.
@@ -43,74 +37,33 @@ MeshCore sources today are **USB-attached** when added through the UI. The Sourc
 
 ## Adding a MeshCore Source
 
-The recommended path is to add MeshCore sources from the UI — they hot-connect immediately without a restart.
+Add MeshCore sources from the UI — they hot-connect immediately without a restart.
 
 1. Open the **Sources sidebar** on the dashboard (admin only)
 2. Click the **+** button next to the Sources header
-3. Pick **MeshCore (USB)** as the source type
-4. Enter the **serial port** (e.g. `/dev/ttyACM0`)
+3. Pick **MeshCore** as the source type
+4. Choose the transport — **USB** (enter the serial port, e.g. `/dev/ttyACM0`) or **TCP** (enter the host and port)
 5. Pick the **device type** — **Companion** for full-featured devices, **Repeater** for direct-serial repeaters
 6. Save — the source connects immediately if **Auto-connect** is on
 
 Sources you create from the UI are wired into the per-source MeshCore manager registry the same way Meshtastic TCP sources are, so create / update / delete / connect / disconnect all work without a process restart.
 
-::: tip Need TCP?
-TCP-connected companions still work, but in 4.5 they have to be set up via environment variables — see below. UI support for TCP-attached MeshCore is planned for a later slice.
+### Tuning Environment Variables
+
+A couple of background-scheduler tuning knobs are still environment-driven:
+
+| Variable | Default | Description |
+|---|---|---|
+| `MESHCORE_TELEMETRY_INTERVAL_MS` | `300000` | How often (ms) to poll the **local** companion for telemetry. Default 5 minutes. |
+| `MESHCORE_REMOTE_TELEMETRY_TICK_MS` | `30000` | How often (ms) the remote-telemetry scheduler walks each source and picks an eligible node. |
+
+::: warning Removed in 4.6
+The 3.x `MESHCORE_ENABLED`, `MESHCORE_SERIAL_PORT`, `MESHCORE_BAUD_RATE`, `MESHCORE_TCP_HOST`, `MESHCORE_TCP_PORT`, and `MESHCORE_FIRMWARE_TYPE` env-var bootstrap was removed when MeshCore became a first-class source type. Add a MeshCore source from the Sources sidebar instead.
 :::
-
-### Bootstrap via Environment Variables
-
-For headless setups and legacy 3.x compatibility, MeshCore can still be seeded on first boot from environment variables. After the first boot, **the env vars are informational only** — manage the source through the UI.
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `MESHCORE_ENABLED` | Yes | `false` | Set to `true` to seed a MeshCore source on first boot |
-| `MESHCORE_SERIAL_PORT` | Conditional | - | Serial port path (e.g., `/dev/ttyACM0`). Required for serial connections. |
-| `MESHCORE_BAUD_RATE` | No | `115200` | Baud rate for serial connection |
-| `MESHCORE_TCP_HOST` | Conditional | - | TCP host address. Required for TCP connections. |
-| `MESHCORE_TCP_PORT` | No | `4403` | TCP port for network connection |
-| `MESHCORE_FIRMWARE_TYPE` | No | `companion` | Set to `repeater` for Repeater devices. Companion and Room Server devices use the default. |
-| `MESHCORE_TELEMETRY_INTERVAL_MS` | No | `300000` | How often (ms) to poll the **local** companion for telemetry. Default 5 minutes. |
-| `MESHCORE_REMOTE_TELEMETRY_TICK_MS` | No | `30000` | How often (ms) the remote-telemetry scheduler walks each source and picks an eligible node. |
-
-You must provide **either** `MESHCORE_SERIAL_PORT` (for USB serial) **or** `MESHCORE_TCP_HOST` (for TCP network) when MeshCore is enabled.
 
 ::: tip
 `ENABLE_VIRTUAL_NODE` is a separate Meshtastic feature for proxying the Meshtastic protocol to mobile apps — it has **no relation** to MeshCore connectivity and is ignored by MeshCore sources.
 :::
-
-### Docker Compose Examples
-
-USB-connected companion:
-
-```yaml
-services:
-  meshmonitor:
-    image: yeraze/meshmonitor:latest
-    environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100
-      - MESHCORE_ENABLED=true
-      - MESHCORE_SERIAL_PORT=/dev/ttyACM0
-    devices:
-      - /dev/ttyACM0:/dev/ttyACM0
-    ports:
-      - "8080:3001"
-```
-
-TCP-connected companion:
-
-```yaml
-services:
-  meshmonitor:
-    image: yeraze/meshmonitor:latest
-    environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100
-      - MESHCORE_ENABLED=true
-      - MESHCORE_TCP_HOST=192.168.1.200
-      - MESHCORE_TCP_PORT=4403
-    ports:
-      - "8080:3001"
-```
 
 ## Device Types
 
@@ -249,7 +202,6 @@ This is the part that's worth being honest about. MeshCore support is **basic** 
 Known gaps and limitations:
 
 - **Repeater / Room Server per-source parity** is behind Companion. Repeater is selectable as a USB device type, but most new 4.5 features (local telemetry poller, remote-telemetry scheduler, telemetry-mode toggles) require a Companion connection on the source side.
-- **TCP MeshCore via the UI** isn't shipped yet — TCP companions are env-var bootstrap only in 4.5.
 - **No remote-admin equivalent** for MeshCore yet — the Meshtastic-side admin scanner, password rotation, OTA flow, etc. don't have MeshCore counterparts.
 - **No auto-responder / auto-announce / auto-traceroute** schedulers for MeshCore. The per-source scheduler primitives are wired up, but the user-facing features haven't been built yet.
 - **Notifications** for MeshCore events are minimal — apprise/push surfaces aren't yet first-class.

@@ -294,19 +294,13 @@ class MeshCoreManager extends EventEmitter {
   /**
    * Connect to a MeshCore device
    */
-  async connect(config?: MeshCoreConfig): Promise<boolean> {
+  async connect(config: MeshCoreConfig): Promise<boolean> {
     if (this.connected) {
       logger.warn('[MeshCore] Already connected, disconnecting first');
       await this.disconnect();
     }
 
-    // Use provided config or get from environment
-    this.config = config || this.getConfigFromEnv();
-
-    if (!this.config) {
-      logger.error('[MeshCore] No configuration provided');
-      return false;
-    }
+    this.config = config;
 
     logger.info(`[MeshCore] Connecting via ${this.config.connectionType}...`);
     this.connectionState = 'connecting';
@@ -323,7 +317,6 @@ class MeshCoreManager extends EventEmitter {
         logger.info('[MeshCore] Using Repeater mode (direct serial)');
       } else {
         // Companion (default) or TCP: use the native JS backend (meshcore.js).
-        // Set MESHCORE_FIRMWARE_TYPE=repeater to use direct serial for Repeater devices.
         await this.startNativeBackend();
         this.deviceType = MeshCoreDeviceType.COMPANION;
       }
@@ -405,43 +398,6 @@ class MeshCoreManager extends EventEmitter {
     this.emit('disconnected');
     dataEventEmitter.emitMeshCoreStatusUpdated({ connected: false }, this.sourceId);
     logger.info('[MeshCore] Disconnected');
-  }
-
-  /**
-   * Get configuration from environment variables (public accessor)
-   */
-  getEnvConfig(): MeshCoreConfig | null {
-    return this.getConfigFromEnv();
-  }
-
-  /**
-   * Get configuration from environment variables
-   */
-  private getConfigFromEnv(): MeshCoreConfig | null {
-    const firmwareTypeRaw = (process.env.MESHCORE_FIRMWARE_TYPE || 'companion').toLowerCase();
-    const firmwareType: 'companion' | 'repeater' = firmwareTypeRaw === 'repeater' ? 'repeater' : 'companion';
-
-    const serialPort = process.env.MESHCORE_SERIAL_PORT;
-    if (serialPort) {
-      return {
-        connectionType: ConnectionType.SERIAL,
-        serialPort,
-        baudRate: parseInt(process.env.MESHCORE_BAUD_RATE || '115200', 10),
-        firmwareType,
-      };
-    }
-
-    const tcpHost = process.env.MESHCORE_TCP_HOST;
-    if (tcpHost) {
-      return {
-        connectionType: ConnectionType.TCP,
-        tcpHost,
-        tcpPort: parseInt(process.env.MESHCORE_TCP_PORT || '4403', 10),
-        firmwareType,
-      };
-    }
-
-    return null;
   }
 
   // ============ Native Backend (meshcore.js) ============
