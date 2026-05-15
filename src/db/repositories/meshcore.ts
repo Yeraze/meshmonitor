@@ -249,11 +249,18 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
-   * Delete a node by public key
+   * Delete a node row scoped by (sourceId, publicKey). Required since the
+   * composite-PK migration: the same publicKey can exist under multiple
+   * sources, so a publicKey-only delete would wipe rows from every source.
    */
-  async deleteNode(publicKey: string): Promise<boolean> {
+  async deleteNode(publicKey: string, sourceId: string): Promise<boolean> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.deleteNode requires a sourceId');
+    }
     const { meshcoreNodes } = this.tables;
-    await this.db.delete(meshcoreNodes).where(eq(meshcoreNodes.publicKey, publicKey));
+    await this.db
+      .delete(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
     return true;
   }
 

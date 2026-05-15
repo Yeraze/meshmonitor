@@ -72,6 +72,7 @@ import { migration as addSourceIdToMeshcoreTablesMigration, runMigration057Postg
 import { migration as collapseMeshcoreResourceMigration, runMigration058Postgres, runMigration058Mysql } from '../server/migrations/058_collapse_meshcore_resource.js';
 import { migration as telemetrySourceNodeTypeTsIndexMigration, runMigration059Postgres, runMigration059Mysql } from '../server/migrations/059_telemetry_source_node_type_ts_index.js';
 import { migration as meshcoreNodeTelemetryConfigMigration, runMigration060Postgres, runMigration060Mysql } from '../server/migrations/060_meshcore_node_telemetry_config.js';
+import { migration as meshcoreNodesCompositePkMigration, runMigration061Postgres, runMigration061Mysql } from '../server/migrations/061_meshcore_nodes_composite_pk.js';
 
 // ============================================================================
 // Registry
@@ -935,4 +936,21 @@ registry.register({
   sqlite: (db) => meshcoreNodeTelemetryConfigMigration.up(db),
   postgres: (client) => runMigration060Postgres(client),
   mysql: (pool) => runMigration060Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 061: meshcore_nodes composite PK (sourceId, publicKey). Previously
+// publicKey alone was the PK, which collapsed the same MeshCore node under
+// two sources into one row and raised UNIQUE constraint failures on any
+// second-source write (observed via the per-source telemetry-config endpoint).
+// Mirrors migration 029 for Meshtastic nodes. Idempotent.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 61,
+  name: 'meshcore_nodes_composite_pk',
+  settingsKey: 'migration_061_meshcore_nodes_composite_pk',
+  sqlite: (db) => meshcoreNodesCompositePkMigration.up(db),
+  postgres: (client) => runMigration061Postgres(client),
+  mysql: (pool) => runMigration061Mysql(pool),
 });
