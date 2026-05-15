@@ -85,7 +85,7 @@ export interface MeshCoreActions {
   disconnect: () => Promise<void>;
   refreshContacts: () => Promise<void>;
   sendAdvert: () => Promise<void>;
-  sendMessage: (text: string, toPublicKey?: string) => Promise<boolean>;
+  sendMessage: (text: string, toPublicKey?: string, channelIdx?: number) => Promise<boolean>;
   setDeviceName: (name: string) => Promise<boolean>;
   setRadioParams: (params: { freq: number; bw: number; sf: number; cr: number }) => Promise<boolean>;
   setCoords: (lat: number, lon: number) => Promise<boolean>;
@@ -413,13 +413,17 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
-  const sendMessage = useCallback(async (text: string, toPublicKey?: string): Promise<boolean> => {
+  const sendMessage = useCallback(async (text: string, toPublicKey?: string, channelIdx?: number): Promise<boolean> => {
     if (!text.trim()) return false;
     try {
       const response = await csrfFetch(`${mcPrefix}/messages/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, toPublicKey: toPublicKey || undefined }),
+        body: JSON.stringify({
+          text,
+          toPublicKey: toPublicKey || undefined,
+          channelIdx,
+        }),
       });
       const data = await response.json();
       if (data.success) {

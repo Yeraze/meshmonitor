@@ -84,7 +84,14 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             />
           )}
           {view === 'channels' && (
-            <MeshCoreChannelsView messages={messages} contacts={contacts} status={status} actions={actions} />
+            <MeshCoreChannelsView
+              messages={messages}
+              contacts={contacts}
+              status={status}
+              actions={actions}
+              baseUrl={baseUrl}
+              sourceId={sourceId}
+            />
           )}
           {view === 'dms' && (
             <MeshCoreDirectMessagesView
