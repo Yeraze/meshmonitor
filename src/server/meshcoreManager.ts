@@ -21,6 +21,7 @@ import * as readline from 'readline';
 import { fileURLToPath } from 'url';
 import { logger } from '../utils/logger.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
+import { MeshCoreNativeBackend, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
 
 // Dynamic imports for optional serialport dependency
 // These are loaded only when MeshCore is enabled to avoid requiring native build tools
@@ -71,6 +72,30 @@ export interface MeshCoreConfig {
   tcpPort?: number;
   baudRate?: number;
   firmwareType?: 'companion' | 'repeater';
+
+  // Heartbeat / auto-reconnect (native-backend only; default off).
+  // See docs/meshcore-heartbeat-proposal.md.
+  heartbeatIntervalSeconds?: number;   // 0 = disabled. v1 native default: 0.
+  heartbeatTimeoutMs?: number;         // default 5000.
+  heartbeatMaxFailures?: number;       // default 3.
+  reconnectInitialDelayMs?: number;    // default 1000.
+  reconnectMaxDelayMs?: number;        // default 60000.
+  reconnectMaxAttempts?: number;       // default 0 (forever).
+}
+
+export type MeshCoreConnectionState =
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'failed';
+
+export interface MeshCoreHeartbeatStatus {
+  state: MeshCoreConnectionState;
+  consecutiveFailures: number;
+  lastSuccessfulProbeAt: number | null;
+  nextReconnectAt: number | null;
+  reconnectAttempts: number;
 }
 
 export type TelemetryMode = 'always' | 'device' | 'never';
@@ -245,6 +270,21 @@ class MeshCoreManager extends EventEmitter {
     timeout: NodeJS.Timeout
   }> = new Map();
 
+  // Companion: native JS backend (alternative to Python bridge, gated by
+  // MESHCORE_TRANSPORT=native). When set, sendBridgeCommand delegates here.
+  private nativeBackend: MeshCoreNativeBackend | null = null;
+
+  // Heartbeat / auto-reconnect state (native-backend only).
+  private connectionState: MeshCoreConnectionState = 'disconnected';
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private heartbeatConsecutiveFailures: number = 0;
+  private heartbeatLastSuccessAt: number | null = null;
+  private heartbeatProbeInFlight: boolean = false;
+  private reconnectAttempts: number = 0;
+  private nextReconnectAt: number | null = null;
+  private shouldReconnect: boolean = false;
+
   // Shared state
   private localNode: MeshCoreNode | null = null;
   private contacts: Map<string, MeshCoreContact> = new Map();
@@ -293,6 +333,7 @@ class MeshCoreManager extends EventEmitter {
     }
 
     logger.info(`[MeshCore] Connecting via ${this.config.connectionType}...`);
+    this.connectionState = 'connecting';
 
     try {
       if (this.config.connectionType === ConnectionType.SERIAL && this.config.firmwareType === 'repeater') {
@@ -305,11 +346,18 @@ class MeshCoreManager extends EventEmitter {
         this.deviceType = MeshCoreDeviceType.REPEATER;
         logger.info('[MeshCore] Using Repeater mode (direct serial)');
       } else {
-        // Companion (default) or TCP: use Python bridge
-        // Note: We no longer send "ver" over serial for auto-detection, as it
-        // corrupts Companion binary protocol state. Set MESHCORE_FIRMWARE_TYPE=repeater
-        // to use direct serial for Repeater devices.
-        await this.startBridge();
+        // Companion (default) or TCP: choose Python bridge or native JS backend.
+        // MESHCORE_TRANSPORT=native uses meshcore.js directly (no subprocess).
+        // Default remains the Python bridge.
+        const transport = (process.env.MESHCORE_TRANSPORT || 'bridge').toLowerCase();
+        if (transport === 'native') {
+          await this.startNativeBackend();
+        } else {
+          // Note: We no longer send "ver" over serial for auto-detection, as it
+          // corrupts Companion binary protocol state. Set MESHCORE_FIRMWARE_TYPE=repeater
+          // to use direct serial for Repeater devices.
+          await this.startBridge();
+        }
         this.deviceType = MeshCoreDeviceType.COMPANION;
       }
 
@@ -318,12 +366,22 @@ class MeshCoreManager extends EventEmitter {
       await this.refreshContacts();
 
       this.connected = true;
+      this.connectionState = 'connected';
+      this.heartbeatConsecutiveFailures = 0;
+      this.reconnectAttempts = 0;
+      this.nextReconnectAt = null;
       this.emit('connected', this.localNode);
       dataEventEmitter.emitMeshCoreStatusUpdated({ connected: true, node: this.localNode }, this.sourceId);
       if (this.localNode) {
         dataEventEmitter.emitMeshCoreLocalNodeUpdated(this.localNode, this.sourceId);
       }
       logger.info(`[MeshCore] Connected to ${this.localNode?.name || 'unknown device'}`);
+
+      // Start heartbeat only when running on the native backend — the Python
+      // bridge has its own heartbeat plan (separate slice).
+      if (this.nativeBackend) {
+        this.startHeartbeat();
+      }
 
       return true;
     } catch (error) {
@@ -338,6 +396,28 @@ class MeshCoreManager extends EventEmitter {
    */
   async disconnect(): Promise<void> {
     logger.info('[MeshCore] Disconnecting...');
+
+    // Clear reconnect intent first so a pending reconnect closure can't
+    // stomp the in-progress teardown.
+    this.shouldReconnect = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    // Stop heartbeat before tearing down the transport so a stray probe
+    // doesn't fire mid-teardown.
+    this.stopHeartbeat();
+
+    // Tear down native backend, if active.
+    if (this.nativeBackend) {
+      try {
+        await this.nativeBackend.disconnect();
+      } catch (err) {
+        logger.debug(`[MeshCore] Native backend disconnect threw: ${(err as Error).message}`);
+      }
+      this.nativeBackend = null;
+    }
 
     // Stop Python bridge
     if (this.bridgeProcess) {
@@ -373,6 +453,7 @@ class MeshCoreManager extends EventEmitter {
     this.pendingBridgeCommands.clear();
 
     this.connected = false;
+    this.connectionState = 'disconnected';
     this.deviceType = MeshCoreDeviceType.UNKNOWN;
     this.localNode = null;
     this.contacts.clear();
@@ -509,9 +590,55 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
-   * Send a command to the Python bridge and wait for response
+   * Start the native JS backend (meshcore.js) — alternative to the Python
+   * bridge. Reads the same config; supports USB serial and TCP.
+   */
+  private async startNativeBackend(): Promise<void> {
+    if (!this.config) {
+      throw new Error('Native backend: no config');
+    }
+
+    const backendConfig =
+      this.config.connectionType === ConnectionType.TCP
+        ? {
+            connectionType: 'tcp' as const,
+            tcpHost: this.config.tcpHost,
+            tcpPort: this.config.tcpPort,
+          }
+        : {
+            connectionType: 'serial' as const,
+            serialPort: this.sanitizeSerialPort(this.config.serialPort || ''),
+            baudRate: this.config.baudRate || 115200,
+          };
+
+    this.nativeBackend = new MeshCoreNativeBackend(this.sourceId, backendConfig);
+
+    // Wire push events from native backend through the same handler the
+    // bridge uses, so the rest of the manager doesn't care which transport
+    // produced the event.
+    this.nativeBackend.on('event', (evt: BridgeShapedEvent) => {
+      this.handleBridgeEvent(evt);
+    });
+
+    this.nativeBackend.on('disconnected', () => {
+      logger.warn(`[MeshCore:${this.sourceId}] Native backend reported disconnect`);
+    });
+
+    logger.info(`[MeshCore:${this.sourceId}] Starting native backend (meshcore.js)`);
+    await this.nativeBackend.connect();
+    logger.info(`[MeshCore:${this.sourceId}] Native backend ready`);
+  }
+
+  /**
+   * Send a command to the Python bridge OR native JS backend, depending on
+   * which transport this manager was started with. Both return the same
+   * BridgeResponse-shaped object.
    */
   private async sendBridgeCommand(cmd: string, params: Record<string, any>, timeout: number = 30000): Promise<BridgeResponse> {
+    if (this.nativeBackend) {
+      return this.nativeBackend.sendCommand(cmd, params, timeout);
+    }
+
     if (!this.bridgeProcess || !this.bridgeReady) {
       throw new Error('Bridge not ready');
     }
@@ -1522,6 +1649,174 @@ class MeshCoreManager extends EventEmitter {
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  // ============ Heartbeat / auto-reconnect (native-backend only) ============
+  //
+  // State machine: disconnected → connecting → connected → reconnecting → …
+  // Probe is `getDeviceTime()` (cheap RTC read, no RF). N consecutive
+  // failures triggers a teardown + exponential-backoff reconnect. See
+  // docs/meshcore-heartbeat-proposal.md for the full design.
+
+  getHeartbeatStatus(): MeshCoreHeartbeatStatus {
+    return {
+      state: this.connectionState,
+      consecutiveFailures: this.heartbeatConsecutiveFailures,
+      lastSuccessfulProbeAt: this.heartbeatLastSuccessAt,
+      nextReconnectAt: this.nextReconnectAt,
+      reconnectAttempts: this.reconnectAttempts,
+    };
+  }
+
+  /**
+   * Start the heartbeat probe loop. Called automatically from connect() when
+   * the native backend is in use. Idempotent: if interval is 0 or a timer
+   * is already running, it's a no-op.
+   */
+  private startHeartbeat(): void {
+    const intervalSecs = this.config?.heartbeatIntervalSeconds ?? 0;
+    if (intervalSecs <= 0) {
+      // Heartbeat disabled — preserves prior behaviour.
+      return;
+    }
+    if (this.heartbeatTimer) return;
+    this.shouldReconnect = true;
+    this.heartbeatTimer = setInterval(() => {
+      this.runHeartbeatProbe().catch((err) => {
+        logger.warn(`[MeshCore:${this.sourceId}] heartbeat probe threw: ${(err as Error).message}`);
+      });
+    }, intervalSecs * 1000);
+    logger.info(`[MeshCore:${this.sourceId}] Heartbeat started (every ${intervalSecs}s)`);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    this.heartbeatProbeInFlight = false;
+  }
+
+  private async runHeartbeatProbe(): Promise<void> {
+    if (this.heartbeatProbeInFlight) return;
+    if (this.connectionState !== 'connected') return;
+    if (!this.nativeBackend) return;
+
+    this.heartbeatProbeInFlight = true;
+    const timeoutMs = this.config?.heartbeatTimeoutMs ?? 5000;
+    const probeStartedAt = Date.now();
+    try {
+      const response = await this.nativeBackend.sendCommand('get_device_time', {}, timeoutMs);
+      // Probe arrived after a teardown — drop the result.
+      if (this.connectionState !== 'connected') return;
+
+      if (response.success) {
+        const latencyMs = Date.now() - probeStartedAt;
+        this.heartbeatConsecutiveFailures = 0;
+        this.heartbeatLastSuccessAt = Date.now();
+        this.emit('heartbeat_ok', { sourceId: this.sourceId, latencyMs });
+      } else {
+        this.recordHeartbeatFailure(new Error(response.error ?? 'probe failed'));
+      }
+    } catch (err) {
+      if (this.connectionState !== 'connected') return;
+      this.recordHeartbeatFailure(err as Error);
+    } finally {
+      this.heartbeatProbeInFlight = false;
+    }
+  }
+
+  private recordHeartbeatFailure(err: Error): void {
+    this.heartbeatConsecutiveFailures += 1;
+    const max = this.config?.heartbeatMaxFailures ?? 3;
+    this.emit('heartbeat_failed', {
+      sourceId: this.sourceId,
+      consecutiveFailures: this.heartbeatConsecutiveFailures,
+      error: err.message,
+    });
+    if (this.heartbeatConsecutiveFailures >= max) {
+      logger.warn(
+        `[MeshCore:${this.sourceId}] Heartbeat threshold reached (${this.heartbeatConsecutiveFailures}/${max}); reconnecting`,
+      );
+      this.beginReconnect();
+    }
+  }
+
+  private beginReconnect(): void {
+    if (this.connectionState === 'reconnecting' || this.connectionState === 'failed') return;
+    this.connectionState = 'reconnecting';
+    this.stopHeartbeat();
+    // Tear down the live transport without clearing shouldReconnect, so the
+    // closure that fires after the backoff can re-enter connect().
+    void this.teardownTransportOnly().then(() => this.scheduleNextReconnect());
+  }
+
+  /**
+   * Tear down the transport without clearing `shouldReconnect`. Mirrors the
+   * relevant half of `disconnect()` but preserves reconnect intent.
+   */
+  private async teardownTransportOnly(): Promise<void> {
+    if (this.nativeBackend) {
+      try {
+        await this.nativeBackend.disconnect();
+      } catch (err) {
+        logger.debug(`[MeshCore:${this.sourceId}] Native backend teardown threw: ${(err as Error).message}`);
+      }
+      this.nativeBackend = null;
+    }
+    this.connected = false;
+    // Keep `connectionState = 'reconnecting'`; do not clear the local node /
+    // contacts cache — the next connect() will refresh them.
+  }
+
+  private scheduleNextReconnect(): void {
+    if (!this.shouldReconnect) {
+      this.connectionState = 'failed';
+      return;
+    }
+    const maxAttempts = this.config?.reconnectMaxAttempts ?? 0;
+    if (maxAttempts > 0 && this.reconnectAttempts >= maxAttempts) {
+      this.connectionState = 'failed';
+      this.emit('reconnect_giveup', { sourceId: this.sourceId });
+      logger.warn(`[MeshCore:${this.sourceId}] Reconnect gave up after ${this.reconnectAttempts} attempts`);
+      return;
+    }
+
+    const initial = this.config?.reconnectInitialDelayMs ?? 1000;
+    const cap = this.config?.reconnectMaxDelayMs ?? 60000;
+    const delay = Math.min(initial * Math.pow(2, this.reconnectAttempts), cap);
+    this.reconnectAttempts += 1;
+    this.nextReconnectAt = Date.now() + delay;
+
+    this.emit('reconnecting', {
+      sourceId: this.sourceId,
+      attempt: this.reconnectAttempts,
+      nextDelayMs: delay,
+    });
+    logger.info(`[MeshCore:${this.sourceId}] Reconnect attempt ${this.reconnectAttempts} in ${delay}ms`);
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.shouldReconnect) return;
+      void this.attemptReconnect();
+    }, delay);
+  }
+
+  private async attemptReconnect(): Promise<void> {
+    if (!this.shouldReconnect || !this.config) return;
+    try {
+      const ok = await this.connect(this.config);
+      if (!ok && this.shouldReconnect) {
+        this.connectionState = 'reconnecting';
+        this.scheduleNextReconnect();
+      }
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] Reconnect attempt threw: ${(err as Error).message}`);
+      if (this.shouldReconnect) {
+        this.connectionState = 'reconnecting';
+        this.scheduleNextReconnect();
+      }
+    }
   }
 }
 
