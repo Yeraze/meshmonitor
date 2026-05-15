@@ -148,28 +148,15 @@ export class MeshCoreNativeBackend extends EventEmitter {
       this.connection = new mod.NodeJSSerialConnection(this.config.serialPort);
     }
 
-    // SelfInfo is emitted automatically as part of meshcore.js onConnected →
-    // AppStart. Capture it via a one-shot listener.
-    const selfInfoCode = this.constants.ResponseCodes.SelfInfo;
-    const selfInfoPromise = new Promise<any>((resolve) => {
-      this.connection.once(selfInfoCode, (info: any) => {
-        this.cachedSelfInfo = info;
-        resolve(info);
-      });
-    });
-
     // Wire all push handlers BEFORE connect — meshcore.js may emit immediately.
     this.wirePushEvents();
 
     await this.connection.connect();
 
-    // Wait for SelfInfo (AppStart response) with a generous timeout.
-    await Promise.race([
-      selfInfoPromise,
-      new Promise((_resolve, reject) =>
-        setTimeout(() => reject(new Error('Timed out waiting for AppStart/SelfInfo')), 10_000),
-      ),
-    ]);
+    // meshcore.js onConnected() does NOT send AppStart automatically —
+    // we must explicitly request SelfInfo after the transport is open.
+    const selfInfo = await this.connection.getSelfInfo(10_000);
+    this.cachedSelfInfo = selfInfo;
 
     // Listen for connection-side disconnect so callers can react.
     this.connection.on('disconnected', () => {
