@@ -266,7 +266,16 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
             <h3 className="news-item-title">{currentItem.title}</h3>
 
             <div className="news-item-content">
-              <ReactMarkdown>{currentItem.content}</ReactMarkdown>
+              <ReactMarkdown
+                components={{
+                  a(props) {
+                    const { node: _node, ...rest } = props;
+                    return <a {...rest} target="_blank" rel="noopener noreferrer" />;
+                  },
+                }}
+              >
+                {currentItem.content}
+              </ReactMarkdown>
             </div>
           </div>
         </div>
