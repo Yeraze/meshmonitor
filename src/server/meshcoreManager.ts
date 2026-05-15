@@ -957,9 +957,19 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
-   * Send a text message
+   * Send a text message.
+   *
+   * - `toPublicKey` is set → direct message to that contact.
+   * - `toPublicKey` unset and `channelIdx` set → broadcast on that channel.
+   * - Both unset → broadcast on channel 0 (the firmware's primary "Public" slot).
+   *
+   * The locally-stored copy of an outgoing channel message gets its
+   * `toPublicKey` stamped with the synthesized `channel-${idx}` pseudonym so
+   * the per-channel filter in the frontend can distinguish "I sent this to
+   * channel 1" from "I sent this to channel 0" — both used to be indistinguishable
+   * when only channel 0 was supported (issue follow-up to MeshCore channels plan).
    */
-  async sendMessage(text: string, toPublicKey?: string): Promise<boolean> {
+  async sendMessage(text: string, toPublicKey?: string, channelIdx?: number): Promise<boolean> {
     if (!this.connected) {
       logger.error('[MeshCore] Not connected');
       return false;
@@ -971,18 +981,24 @@ class MeshCoreManager extends EventEmitter {
     }
 
     try {
+      const isChannelSend = !toPublicKey && channelIdx !== undefined;
       const response = await this.sendBridgeCommand('send_message', {
         text,
         to: toPublicKey || null,
+        channel_idx: isChannelSend ? channelIdx : undefined,
       });
 
       if (response.success) {
         logger.info(`[MeshCore] Message sent: ${text.substring(0, 50)}...`);
 
+        const sentToPublicKey = isChannelSend
+          ? MeshCoreManager.channelPublicKey(channelIdx!)
+          : (toPublicKey || undefined);
+
         const sentMessage: MeshCoreMessage = {
           id: `sent-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
           fromPublicKey: this.localNode?.publicKey || 'local',
-          toPublicKey: toPublicKey || undefined,
+          toPublicKey: sentToPublicKey,
           text: text,
           timestamp: Date.now(),
           sourceId: this.sourceId,
