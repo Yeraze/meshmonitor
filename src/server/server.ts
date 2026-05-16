@@ -2891,9 +2891,20 @@ apiRouter.put('/channels/:id', requireAuth(), async (req, res) => {
       // MeshCore write path: push the channel to the device first, then
       // re-sync the DB from the device (the manager's setChannel handles
       // both — including base64↔hex secret conversion).
-      const mcManager = resolveSourceManager(chanSourceId) as unknown as {
-        setChannel: (idx: number, name: string, secretHex: string) => Promise<void>;
-      };
+      //
+      // MeshCore managers live in their own registry (meshcoreManagerRegistry),
+      // separate from the Meshtastic one. resolveSourceManager only knows
+      // about the Meshtastic registry and silently falls back to the global
+      // meshtasticManager singleton on a miss, which has no setChannel and
+      // surfaces as a runtime TypeError.
+      const mcManager = meshcoreManagerRegistry.get(chanSourceId);
+      if (!mcManager || typeof mcManager.setChannel !== 'function') {
+        return res.status(503).json({
+          error: 'MeshCore source not connected or not registered',
+          message: `No active MeshCore manager for source ${chanSourceId}. Connect the source and retry.`,
+        });
+      }
+
       // Convert the base64 PSK to hex for the meshcore.js wire format.
       // Reject anything that doesn't decode to exactly 16 bytes (AES-128).
       const incomingPskBase64 = updatedChannelData.psk;
@@ -3002,10 +3013,14 @@ apiRouter.delete('/channels/:id', requireAuth(), async (req, res) => {
 
     if (sourceType === 'meshcore') {
       // MeshCore: push delete to the device first, then re-sync the DB.
-      // (The manager.deleteChannel does both.) Also purge stored messages.
-      const mcManager = resolveSourceManager(deleteChannelSourceId) as unknown as {
-        deleteChannel: (idx: number) => Promise<void>;
-      };
+      // MeshCore managers are in their own registry — see PUT route comment.
+      const mcManager = meshcoreManagerRegistry.get(deleteChannelSourceId);
+      if (!mcManager || typeof mcManager.deleteChannel !== 'function') {
+        return res.status(503).json({
+          error: 'MeshCore source not connected or not registered',
+          message: `No active MeshCore manager for source ${deleteChannelSourceId}. Connect the source and retry.`,
+        });
+      }
       try {
         await mcManager.deleteChannel(channelId);
       } catch (deviceError) {
