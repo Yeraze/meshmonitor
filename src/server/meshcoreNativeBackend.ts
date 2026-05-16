@@ -106,6 +106,27 @@ function fixedToDegrees(v: number | undefined): number | undefined {
   return v / 1e6;
 }
 
+// MeshCore wire protocol uses integer-scaled radio units, but the rest of
+// MeshMonitor (UI presets, validation, API contract) speaks MHz / kHz floats.
+// Centralize the conversion here so cachedSelfInfo and outbound set_radio
+// frames each side of the boundary use their own native units.
+//
+//   radioFreq : library uses kHz uint32 (e.g. 917375 == 917.375 MHz)
+//   radioBw   : library uses Hz  uint32 (e.g. 250000 == 250 kHz, 62500 == 62.5 kHz)
+//   radioSf, radioCr : raw integers in both worlds.
+function libFreqToMhz(v: number | undefined): number | undefined {
+  return typeof v === 'number' ? v / 1000 : v;
+}
+function libBwToKhz(v: number | undefined): number | undefined {
+  return typeof v === 'number' ? v / 1000 : v;
+}
+function mhzToLibFreq(v: number): number {
+  return Math.round(v * 1000);
+}
+function khzToLibBw(v: number): number {
+  return Math.round(v * 1000);
+}
+
 // ---------------- backend ----------------
 
 export class MeshCoreNativeBackend extends EventEmitter {
@@ -152,7 +173,13 @@ export class MeshCoreNativeBackend extends EventEmitter {
     // meshcore.js onConnected() does NOT send AppStart automatically —
     // we must explicitly request SelfInfo after the transport is open.
     const selfInfo = await this.connection.getSelfInfo(10_000);
-    this.cachedSelfInfo = selfInfo;
+    this.cachedSelfInfo = {
+      ...selfInfo,
+      // Normalize wire kHz/Hz to MeshMonitor MHz/kHz so every downstream
+      // consumer (selfInfoToBridgeShape → manager → UI) sees consistent units.
+      radioFreq: libFreqToMhz(selfInfo?.radioFreq),
+      radioBw: libBwToKhz(selfInfo?.radioBw),
+    };
 
     // Listen for connection-side disconnect so callers can react.
     this.connection.on('disconnected', () => {
@@ -384,20 +411,23 @@ export class MeshCoreNativeBackend extends EventEmitter {
         if (this.cachedSelfInfo) this.cachedSelfInfo.name = String(params.name ?? '');
         return { ok: true };
 
-      case 'set_radio':
-        await c.setRadioParams(
-          Number(params.freq),
-          Number(params.bw),
-          Number(params.sf),
-          Number(params.cr),
-        );
+      case 'set_radio': {
+        const freqMhz = Number(params.freq);
+        const bwKhz = Number(params.bw);
+        const sf = Number(params.sf);
+        const cr = Number(params.cr);
+        // Wire protocol expects integer-scaled units (kHz freq, Hz bw); the
+        // library's BufferWriter.writeUInt32LE truncates floats and would
+        // otherwise ship a wildly wrong frequency that the device rejects.
+        await c.setRadioParams(mhzToLibFreq(freqMhz), khzToLibBw(bwKhz), sf, cr);
         if (this.cachedSelfInfo) {
-          this.cachedSelfInfo.radioFreq = Number(params.freq);
-          this.cachedSelfInfo.radioBw = Number(params.bw);
-          this.cachedSelfInfo.radioSf = Number(params.sf);
-          this.cachedSelfInfo.radioCr = Number(params.cr);
+          this.cachedSelfInfo.radioFreq = freqMhz;
+          this.cachedSelfInfo.radioBw = bwKhz;
+          this.cachedSelfInfo.radioSf = sf;
+          this.cachedSelfInfo.radioCr = cr;
         }
         return { ok: true };
+      }
 
       case 'set_coords':
         await c.setAdvertLatLong(Number(params.lat), Number(params.lon));
