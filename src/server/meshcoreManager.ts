@@ -42,6 +42,22 @@ function parseTelemetryMode(value: unknown): TelemetryMode | undefined {
   return undefined;
 }
 
+/**
+ * Decide whether a channel slot reported by the firmware is actually in use.
+ * MeshCore Companion firmware doesn't error on unconfigured slots — it
+ * returns success with an empty name and a 16-byte all-zero secret. We
+ * treat that exact shape as "empty slot" and skip it during DB sync. A slot
+ * with EITHER a non-empty name OR a non-zero secret is considered
+ * configured (so a user who chose to leave the name blank but generated a
+ * real key is preserved).
+ */
+function isConfiguredMeshCoreChannel(ch: { name: string; secretHex: string }): boolean {
+  const nameTrim = (ch.name || '').trim();
+  const hasName = nameTrim.length > 0;
+  const hasSecret = !!ch.secretHex && /[1-9a-f]/i.test(ch.secretHex);
+  return hasName || hasSecret;
+}
+
 // MeshCore device types
 export enum MeshCoreDeviceType {
   UNKNOWN = 0,
@@ -622,18 +638,32 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
-   * Read the device's channel list and mirror it into the shared `channels`
-   * table, scoped by this manager's sourceId. The 16-byte AES secret is
-   * stored base64-encoded in the existing `psk` column. Meshtastic-only
-   * columns (role, uplinkEnabled, downlinkEnabled, positionPrecision) are
-   * left null for MeshCore rows.
+   * Read the device's channel list and mirror CONFIGURED slots into the
+   * shared `channels` table, scoped by this manager's sourceId. The 16-byte
+   * AES secret is stored base64-encoded in the existing `psk` column.
+   * Meshtastic-only columns (role, uplinkEnabled, downlinkEnabled,
+   * positionPrecision) are left null for MeshCore rows.
+   *
+   * Empty/unconfigured slots are filtered out. MeshCore Companion firmware
+   * does NOT error when `GetChannel(idx)` is called on an unused slot — it
+   * returns a success response with an empty name and an all-zero 16-byte
+   * secret. meshcore.js's `getChannels()` enumerates until the firmware
+   * errors, so without this filter the whole slot table (MAX_CHANNELS,
+   * typically 40 on Companion builds) leaks into the UI.
+   *
+   * After syncing the configured slots we also delete any stale DB rows for
+   * this source whose idx is no longer reported as configured by the
+   * device — so an out-of-band delete via meshcore-cli is reflected on the
+   * next sync, and a previous "leaked empty slots" install gets cleaned up.
    *
    * MeshCore has no push event for channel changes, so callers should invoke
    * this on connect and after every local write.
    */
   async syncChannelsFromDevice(): Promise<void> {
     const channels = await this.listChannels();
-    for (const ch of channels) {
+    const configured = channels.filter(ch => isConfiguredMeshCoreChannel(ch));
+
+    for (const ch of configured) {
       const pskBase64 = ch.secretHex ? Buffer.from(ch.secretHex, 'hex').toString('base64') : null;
       await databaseService.channels.upsertChannel(
         {
@@ -650,7 +680,26 @@ class MeshCoreManager extends EventEmitter {
         { allowBlankName: true },
       );
     }
-    logger.debug(`[MeshCore:${this.sourceId}] Synced ${channels.length} channel(s) from device`);
+
+    // Reconcile: remove DB rows for slots the device no longer treats as
+    // configured. This covers (a) out-of-band deletes via meshcore-cli and
+    // (b) cleanup of legacy installs that had unconfigured-slot rows from
+    // before the filter landed.
+    const configuredIdxSet = new Set(configured.map(ch => ch.channelIdx));
+    const existing = await databaseService.channels.getAllChannels(this.sourceId);
+    let removed = 0;
+    for (const row of existing) {
+      if (!configuredIdxSet.has(row.id)) {
+        await databaseService.channels.deleteChannel(row.id, this.sourceId);
+        removed++;
+      }
+    }
+
+    logger.debug(
+      `[MeshCore:${this.sourceId}] Synced ${configured.length} configured channel(s) from device ` +
+      `(filtered out ${channels.length - configured.length} empty slot(s)` +
+      (removed > 0 ? `, removed ${removed} stale DB row(s))` : ')'),
+    );
   }
 
   // ============ Direct Serial Methods (for Repeater) ============
