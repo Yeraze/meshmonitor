@@ -2803,7 +2803,20 @@ async function migrateMessagesIfChannelsMoved(beforeSnapshot: { id: number; psk?
 apiRouter.put('/channels/:id', requireAuth(), async (req, res) => {
   try {
     const channelId = parseInt(req.params.id);
-    if (isNaN(channelId) || channelId < 0 || channelId > 7) {
+    if (isNaN(channelId) || channelId < 0) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    // The 0-7 slot cap is a Meshtastic-only convention; MeshCore devices
+    // expose a device-dependent number of channels (see phase-1 plan).
+    // Resolve the source type early so we can gate the cap accordingly.
+    const { sourceId: chanSourceId } = req.body;
+    const sourceRowForType = (typeof chanSourceId === 'string' && chanSourceId.length > 0)
+      ? await databaseService.sources.getSource(chanSourceId)
+      : null;
+    const sourceType = sourceRowForType?.type ?? 'meshtastic_tcp';
+
+    if (sourceType !== 'meshcore' && channelId > 7) {
       return res.status(400).json({ error: 'Invalid channel ID. Must be between 0-7' });
     }
 
@@ -2818,15 +2831,17 @@ apiRouter.put('/channels/:id', requireAuth(), async (req, res) => {
       });
     }
 
-    const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision, sourceId: chanSourceId } = req.body;
+    const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision } = req.body;
 
-    // Validate name if provided (allow empty names for unnamed channels)
+    // Validate name if provided (allow empty names for unnamed channels).
+    // Meshtastic caps channel names at 11 chars; MeshCore allows up to 31.
     if (name !== undefined && name !== null) {
       if (typeof name !== 'string') {
         return res.status(400).json({ error: 'Channel name must be a string' });
       }
-      if (name.length > 11) {
-        return res.status(400).json({ error: 'Channel name must be 11 characters or less' });
+      const maxLen = sourceType === 'meshcore' ? 31 : 11;
+      if (name.length > maxLen) {
+        return res.status(400).json({ error: `Channel name must be ${maxLen} characters or less` });
       }
     }
 
@@ -2872,6 +2887,45 @@ apiRouter.put('/channels/:id', requireAuth(), async (req, res) => {
           : existingChannel.positionPrecision,
     };
 
+    if (sourceType === 'meshcore') {
+      // MeshCore write path: push the channel to the device first, then
+      // re-sync the DB from the device (the manager's setChannel handles
+      // both — including base64↔hex secret conversion).
+      const mcManager = resolveSourceManager(chanSourceId) as unknown as {
+        setChannel: (idx: number, name: string, secretHex: string) => Promise<void>;
+      };
+      // Convert the base64 PSK to hex for the meshcore.js wire format.
+      // Reject anything that doesn't decode to exactly 16 bytes (AES-128).
+      const incomingPskBase64 = updatedChannelData.psk;
+      let secretHex: string;
+      try {
+        const bytes = Buffer.from(incomingPskBase64 ?? '', 'base64');
+        if (bytes.length !== 16) {
+          return res.status(400).json({
+            error: `MeshCore channel secret must decode to exactly 16 bytes (got ${bytes.length})`,
+          });
+        }
+        secretHex = bytes.toString('hex');
+      } catch {
+        return res.status(400).json({ error: 'Invalid MeshCore channel secret (expected base64 of 16 bytes)' });
+      }
+
+      try {
+        await mcManager.setChannel(channelId, updatedChannelData.name, secretHex);
+        logger.info(`✅ MeshCore: pushed channel ${channelId} to device + re-synced DB`);
+      } catch (deviceError) {
+        logger.error(`⚠️ MeshCore: failed to push channel ${channelId} to device:`, deviceError);
+        return res.status(502).json({
+          error: 'Failed to write channel to MeshCore device',
+          message: deviceError instanceof Error ? deviceError.message : String(deviceError),
+        });
+      }
+
+      const updatedChannel = await databaseService.channels.getChannelById(channelId, chanSourceId);
+      return res.json({ success: true, channel: updatedChannel });
+    }
+
+    // Meshtastic write path.
     // Update channel in database. Scope to the requesting source so each
     // source's channel row is independent. `allowBlankName: true` lets the
     // user clear a stored channel name — without it, the ingest-protection
@@ -2915,10 +2969,24 @@ apiRouter.put('/channels/:id', requireAuth(), async (req, res) => {
 apiRouter.delete('/channels/:id', requireAuth(), async (req, res) => {
   try {
     const channelId = parseInt(req.params.id);
-    if (isNaN(channelId) || channelId < 0 || channelId > 7) {
+    if (isNaN(channelId) || channelId < 0) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    // sourceId is required so the channel and its messages are removed from a single source
+    const rawSourceId = (req.body && req.body.sourceId) ?? (req.query && req.query.sourceId);
+    if (rawSourceId === undefined || rawSourceId === null || rawSourceId === '' || typeof rawSourceId !== 'string') {
+      return res.status(400).json({ error: 'sourceId is required' });
+    }
+    const deleteChannelSourceId: string = rawSourceId;
+
+    // Same 0-7 cap softening as the PUT route — MeshCore allows higher idx.
+    const sourceRowForType = await databaseService.sources.getSource(deleteChannelSourceId);
+    const sourceType = sourceRowForType?.type ?? 'meshtastic_tcp';
+    if (sourceType !== 'meshcore' && channelId > 7) {
       return res.status(400).json({ error: 'Invalid channel ID (0-7)' });
     }
-    if (channelId === 0) {
+    if (sourceType !== 'meshcore' && channelId === 0) {
       return res.status(400).json({ error: 'Cannot delete primary channel' });
     }
 
@@ -2932,13 +3000,26 @@ apiRouter.delete('/channels/:id', requireAuth(), async (req, res) => {
       });
     }
 
-    // sourceId is required so the channel and its messages are removed from a single source
-    const rawSourceId = (req.body && req.body.sourceId) ?? (req.query && req.query.sourceId);
-    if (rawSourceId === undefined || rawSourceId === null || rawSourceId === '' || typeof rawSourceId !== 'string') {
-      return res.status(400).json({ error: 'sourceId is required' });
+    if (sourceType === 'meshcore') {
+      // MeshCore: push delete to the device first, then re-sync the DB.
+      // (The manager.deleteChannel does both.) Also purge stored messages.
+      const mcManager = resolveSourceManager(deleteChannelSourceId) as unknown as {
+        deleteChannel: (idx: number) => Promise<void>;
+      };
+      try {
+        await mcManager.deleteChannel(channelId);
+      } catch (deviceError) {
+        logger.error(`⚠️ MeshCore: failed to delete channel ${channelId} on device:`, deviceError);
+        return res.status(502).json({
+          error: 'Failed to delete channel on MeshCore device',
+          message: deviceError instanceof Error ? deviceError.message : String(deviceError),
+        });
+      }
+      logger.info(`🗑️ MeshCore: deleted channel ${channelId} on device + re-synced DB (source=${deleteChannelSourceId})`);
+      return res.json({ success: true, message: `Channel ${channelId} deleted`, sourceId: deleteChannelSourceId });
     }
-    const deleteChannelSourceId: string = rawSourceId;
 
+    // Meshtastic path.
     // Purge messages for this channel (scoped to the chosen source)
     const deletedCount = await databaseService.messages.purgeChannelMessages(channelId, deleteChannelSourceId);
     // Delete the channel record (scoped to the chosen source)

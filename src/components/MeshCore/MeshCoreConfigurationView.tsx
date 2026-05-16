@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ConnectionStatus, MeshCoreActions, TelemetryMode } from './hooks/useMeshCore';
 import { RADIO_PRESETS, findPresetId } from './radioPresets';
 import { useAuth } from '../../contexts/AuthContext';
+import { MeshCoreChannelsConfigSection } from './MeshCoreChannelsConfigSection';
 
 const TELEMETRY_MODE_OPTIONS: TelemetryMode[] = ['always', 'device', 'never'];
 // MeshCore device types: COMPANION=1, REPEATER=2, ROOM_SERVER=3.
@@ -11,11 +12,18 @@ const COMPANION_ONLY_DEVICES = new Set([2, 3]);
 interface MeshCoreConfigurationViewProps {
   status: ConnectionStatus | null;
   actions: MeshCoreActions;
+  /** Frontend basename (typically `''` or `'/meshmonitor'`). Optional so legacy
+   *  single-source callers that don't manage channels still compile. */
+  baseUrl?: string;
+  /** Source UUID — required for the channels sub-section's API calls. */
+  sourceId?: string;
 }
 
 export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps> = ({
   status,
   actions,
+  baseUrl,
+  sourceId,
 }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
@@ -440,6 +448,16 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           )}
         </div>
       </div>
+
+      {/* Channels — Companion-only and only when the per-source addressing
+          props are available (sourceId/baseUrl come from the MeshCorePage). */}
+      {baseUrl !== undefined && sourceId && !COMPANION_ONLY_DEVICES.has(local?.advType ?? 1) && (
+        <MeshCoreChannelsConfigSection
+          baseUrl={baseUrl}
+          sourceId={sourceId}
+          canWrite={connected && canWriteConfig}
+        />
+      )}
     </div>
   );
 };
