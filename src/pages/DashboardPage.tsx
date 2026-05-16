@@ -313,7 +313,7 @@ function DashboardInner() {
       }
 
       cfg = { host: formHost.trim(), port };
-      if (heartbeatSeconds > 0) cfg.heartbeatIntervalSeconds = heartbeatSeconds;
+      cfg.heartbeatIntervalSeconds = heartbeatSeconds; // always persist, 0 = explicitly disabled
       if (vnConfig) cfg.virtualNode = vnConfig;
       // Persist autoConnect explicitly so the server can distinguish legacy
       // sources (undefined → treat as true) from ones the user opted out of.

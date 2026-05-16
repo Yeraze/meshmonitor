@@ -2287,7 +2287,7 @@ function App() {
           logger.debug('⚠️ Connection API returned connected=false');
           setConnectionStatus('disconnected');
           setError(
-            `Cannot connect to Meshtastic node at ${nodeAddress}. Please ensure the node is reachable and has HTTP API enabled.`
+            `Cannot connect to Meshtastic node${nodeAddress && nodeAddress !== 'Loading...' ? ` at ${nodeAddress}` : ''}. Please ensure the node is reachable and has HTTP API enabled.`
           );
         }
       } else {

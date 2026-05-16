@@ -765,11 +765,12 @@ class MeshtasticManager implements ISourceManager {
         tcpTransport.setConnectTimeout(env.meshtasticConnectTimeoutMs);
         tcpTransport.setReconnectTiming(env.meshtasticReconnectInitialDelayMs, env.meshtasticReconnectMaxDelayMs);
 
-        // Optional per-source keepalive heartbeat (issue 2609). When configured,
-        // we periodically send a Meshtastic Heartbeat ToRadio to the device so
-        // quiet nodes (CLIENT_MUTE) don't look idle to the stale-connection
-        // detector. Default 0 = disabled, preserves prior behavior.
-        const heartbeatSeconds = this.sourceConfigOverride?.heartbeatIntervalSeconds ?? 0;
+        // Per-source keepalive heartbeat (issue 2609 / #3047). Periodically
+        // sends a Meshtastic Heartbeat ToRadio so the firmware's idle-connection
+        // timer doesn't fire (~60–120 s on most WiFi nodes). Default 30 s keeps
+        // all TCP-capable firmware happy. Set heartbeatIntervalSeconds=0 in the
+        // source config to explicitly disable.
+        const heartbeatSeconds = this.sourceConfigOverride?.heartbeatIntervalSeconds ?? 30;
         if (heartbeatSeconds > 0) {
           tcpTransport.setHeartbeatInterval(
             heartbeatSeconds * 1000,
