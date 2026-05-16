@@ -83,8 +83,9 @@ class MockConnection extends EventEmitter {
     advLat: 40_000_000,
     advLon: -75_000_000,
     manualAddContacts: 0,
-    radioFreq: 915000000,
-    radioBw: 250000,
+    // Wire-format units: freq in kHz, bw in Hz. 915525 kHz == 915.525 MHz, 62500 Hz == 62.5 kHz.
+    radioFreq: 915525,
+    radioBw: 62500,
     radioSf: 11,
     radioCr: 5,
     name: 'TestNode',
@@ -261,7 +262,10 @@ describe('MeshCoreNativeBackend', () => {
     expect(resp.success).toBe(true);
     expect(resp.data?.name).toBe('TestNode');
     expect(resp.data?.public_key).toMatch(/^01020304/);
-    expect(resp.data?.radio_freq).toBe(915000000);
+    // Library yields wire-format kHz/Hz; the backend must normalize to MHz/kHz
+    // so the rest of MeshMonitor (UI presets, validation) sees consistent units.
+    expect(resp.data?.radio_freq).toBe(915.525);
+    expect(resp.data?.radio_bw).toBe(62.5);
     expect(resp.data?.latitude).toBeCloseTo(40, 4);
     expect(resp.data?.longitude).toBeCloseTo(-75, 4);
 
@@ -505,6 +509,37 @@ describe('MeshCoreNativeBackend', () => {
     const resp = await backend.sendCommand('get_device_time', {}, 50);
     expect(resp.success).toBe(false);
     expect(resp.error).toMatch(/timeout/i);
+  });
+
+  // ---------- radio commands ----------
+
+  it('set_radio scales MHz/kHz floats to wire-format kHz/Hz integers', async () => {
+    // Regression for issue #3048: the meshcore.js wire protocol writes radioFreq
+    // as a uint32 in kHz and radioBw as a uint32 in Hz. Passing the UI's MHz/kHz
+    // floats raw to writeUInt32LE truncates them and the device rejects the frame,
+    // so the user sees a "Failed to update radio params" toast.
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    const resp = await backend.sendCommand('set_radio', {
+      freq: 910.525,
+      bw: 62.5,
+      sf: 7,
+      cr: 5,
+    });
+    expect(resp.success).toBe(true);
+    expect(conn.setRadioParamsCalls).toEqual([[910525, 62500, 7, 5]]);
+
+    // The bridge-shaped get_self_info readback should keep UI units (MHz/kHz).
+    const after = await backend.sendCommand('get_self_info', {});
+    expect(after.data?.radio_freq).toBe(910.525);
+    expect(after.data?.radio_bw).toBe(62.5);
+    expect(after.data?.radio_sf).toBe(7);
+    expect(after.data?.radio_cr).toBe(5);
   });
 
   // ---------- channel commands ----------
