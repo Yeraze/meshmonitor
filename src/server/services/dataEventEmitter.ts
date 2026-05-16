@@ -7,7 +7,7 @@
  */
 
 import { EventEmitter } from 'events';
-import type { DbNode, DbMessage, DbTelemetry, DbChannel, DbTraceroute } from '../../services/database.js';
+import type { DbNode, DbMessage, DbTelemetry, DbChannel, DbTraceroute, DbNeighborInfo } from '../../services/database.js';
 import type { MeshCoreMessage, MeshCoreContact, MeshCoreNode } from '../meshcoreManager.js';
 import { logger } from '../../utils/logger.js';
 
@@ -26,7 +26,8 @@ export type DataEventType =
   | 'meshcore:message'
   | 'meshcore:contact:updated'
   | 'meshcore:status:updated'
-  | 'meshcore:local-node:updated';
+  | 'meshcore:local-node:updated'
+  | 'neighbor-info:updated';
 
 export interface DataEvent {
   type: DataEventType;
@@ -202,6 +203,20 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Traceroute complete: ${traceroute.fromNodeNum} -> ${traceroute.toNodeNum}`);
+  }
+
+  /**
+   * Emit a neighbor-info updated event so clients invalidate their cached neighbor data
+   */
+  emitNeighborInfoUpdated(nodeNum: number, neighbors: DbNeighborInfo[], sourceId?: string): void {
+    const event: DataEvent = {
+      type: 'neighbor-info:updated',
+      data: { nodeNum, neighbors },
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] Neighbor info updated for node ${nodeNum} (${neighbors.length} neighbors)`);
   }
 
   /**

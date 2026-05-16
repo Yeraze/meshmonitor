@@ -337,6 +337,10 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
       queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
     });
 
+    socket.on('neighbor-info:updated', (_data: unknown) => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'neighborInfo', sourceId] });
+    });
+
     socket.on('routing:update', (_data: { requestId: number; status: string }) => {
       queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
     });

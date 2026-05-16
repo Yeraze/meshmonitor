@@ -77,7 +77,7 @@ function getStatusInfo(
   source: DashboardSource,
   status: SourceStatus | null | undefined,
   t: (key: string) => string,
-): { dotClass: string; label: string } {
+): { dotClass: string; label: string; tooltip?: string } {
   if (!source.enabled) {
     return { dotClass: 'disabled', label: t('source.status_disabled') };
   }
@@ -93,6 +93,17 @@ function getStatusInfo(
   }
   if (status.connected) {
     return { dotClass: 'connected', label: t('source.status_connected') };
+  }
+  // Broken state (MQTT bad URL, auth fail, etc.) is distinguishable from a
+  // still-attempting state when the manager surfaces a `lastError`. Show
+  // the error verbatim as a tooltip so the user knows what to fix without
+  // hunting through server logs.
+  if (status.lastError) {
+    return {
+      dotClass: 'disconnected',
+      label: t('source.status_disconnected'),
+      tooltip: status.lastError,
+    };
   }
   return { dotClass: 'connecting', label: t('source.status_connecting') };
 }
@@ -257,13 +268,15 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           ? unifiedStatus?.connected ??
             Array.from(statusMap.values()).some((s) => s?.connected === true)
           : false;
-        const { dotClass, label } = isUnified
+        const statusInfo = isUnified
           ? unifiedConnected
-            ? { dotClass: 'connected', label: t('source.status_connected') }
-            : { dotClass: 'disconnected', label: t('source.status_disconnected') }
+            ? { dotClass: 'connected', label: t('source.status_connected'), tooltip: undefined }
+            : { dotClass: 'disconnected', label: t('source.status_disconnected'), tooltip: undefined }
           : isConnecting
-            ? { dotClass: 'connecting', label: t('source.status_connecting') }
+            ? { dotClass: 'connecting', label: t('source.status_connecting'), tooltip: undefined }
             : getStatusInfo(source, status, t);
+        const { dotClass, label } = statusInfo;
+        const statusTooltip = (statusInfo as { tooltip?: string }).tooltip;
         const nodeCount = nodeCounts.get(source.id) ?? 0;
         const isSelected = selectedSourceId === source.id;
         // Mesh-activity badge — shown only for enabled sources with a known
@@ -305,9 +318,15 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
               <span className="dashboard-source-card-name" title={source.name}>
                 {source.name}
               </span>
+              {!isUnified && source.type === 'mqtt' && (
+                <span className="dashboard-source-card-badge" title={t('source.mqtt_badge_title', 'MQTT broker source')}>
+                  MQTT
+                </span>
+              )}
               {!isUnified &&
                 source.type !== 'meshtastic_tcp' &&
                 source.type !== 'meshtastic_mqtt' &&
+                source.type !== 'mqtt' &&
                 source.type !== 'meshcore' && (
                   <span className="dashboard-source-card-badge">{source.type}</span>
                 )}
@@ -335,7 +354,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
               )}
             </div>
 
-            <div className="dashboard-source-card-status">
+            <div className="dashboard-source-card-status" title={statusTooltip}>
               <span className={`dashboard-status-dot ${dotClass}`} />
               <span>{label}</span>
               {activityBadge && (

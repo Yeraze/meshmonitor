@@ -5,6 +5,7 @@ import { requirePermission, optionalAuth, hasPermission } from '../auth/authMidd
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
+import { MqttSourceManager, mqttSourceConfigFromSource } from '../mqttSourceManager.js';
 import { meshcoreManagerRegistry, meshcoreConfigFromSource } from '../meshcoreRegistry.js';
 import waypointRoutes from './waypoints.js';
 import { filterNodesByChannelPermission, maskNodeLocationByChannel, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
@@ -52,15 +53,50 @@ const getEffectivePosition = (node: any) => getEffectiveDbNodePosition(node);
 // endpoints must remove them for non-admin callers. Admins receive the
 // full record so the existing source-edit UI continues to round-trip
 // values (the form re-posts the same blob it loaded).
+//
+// Paths use dotted notation; values at those paths are removed from a
+// deep-cloned copy of the config. Add new paths here as new credential
+// fields are introduced.
+const SECRET_CONFIG_PATHS = [
+  'password',
+  'apiKey',
+  // MQTT source credentials (introduced with native MQTT integration)
+  'broker.password',
+  'tls.key',
+  'tls.cert',
+] as const;
+
+function stripSecretPaths(config: unknown): unknown {
+  if (!config || typeof config !== 'object') return config;
+  // Shallow clone the top-level; only recurse along the secret paths we know about.
+  const clone: any = Array.isArray(config) ? [...config] : { ...config };
+  for (const dotted of SECRET_CONFIG_PATHS) {
+    const segments = dotted.split('.');
+    if (segments.length === 1) {
+      if (segments[0] in clone) delete clone[segments[0]];
+      continue;
+    }
+    let cursor: any = clone;
+    // Walk to the parent, deep-copying along the way so we don't mutate the input.
+    for (let i = 0; i < segments.length - 1; i++) {
+      const k = segments[i];
+      const child = cursor[k];
+      if (!child || typeof child !== 'object') break;
+      cursor[k] = Array.isArray(child) ? [...child] : { ...child };
+      cursor = cursor[k];
+    }
+    const last = segments[segments.length - 1];
+    if (cursor && typeof cursor === 'object' && last in cursor) delete cursor[last];
+  }
+  return clone;
+}
+
 function stripSourceSecrets<T extends { config?: unknown } | null | undefined>(
   source: T,
   isAdmin: boolean,
 ): T {
   if (!source || isAdmin) return source;
-  const { password, apiKey, ...safeConfig } = (source.config as any) ?? {};
-  void password;
-  void apiKey;
-  return { ...source, config: safeConfig };
+  return { ...source, config: stripSecretPaths(source.config) };
 }
 
 // List all sources — public so the landing page can redirect unauthenticated users
@@ -164,6 +200,7 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
           port: cfgForStart.port,
           heartbeatIntervalSeconds: cfgForStart.heartbeatIntervalSeconds,
           virtualNode: cfgForStart.virtualNode,
+          mqttLink: cfgForStart.mqttLink,
         });
         await sourceManagerRegistry.addManager(manager);
       } catch (err) {
@@ -180,6 +217,18 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
         }
       } catch (err) {
         logger.warn(`Could not start MeshCore manager for new source ${source.id}:`, err);
+      }
+    } else if (source.enabled && source.type === 'mqtt' && cfgForStart?.autoConnect !== false) {
+      try {
+        const mqttCfg = mqttSourceConfigFromSource(source);
+        if (mqttCfg) {
+          const manager = new MqttSourceManager(source.id, mqttCfg);
+          await sourceManagerRegistry.addManager(manager);
+        } else {
+          logger.warn(`MQTT source ${source.id} created with incomplete config (broker.url and gateway are required)`);
+        }
+      } catch (err) {
+        logger.warn(`Could not start MQTT manager for new source ${source.id}:`, err);
       }
     }
 
@@ -250,6 +299,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
             port: cfg.port,
             heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
             virtualNode: cfg.virtualNode,
+            mqttLink: cfg.mqttLink,
           });
           await sourceManagerRegistry.addManager(manager);
         } catch (err) {
@@ -293,6 +343,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
             port: cfg.port,
             heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
             virtualNode: cfg.virtualNode,
+            mqttLink: cfg.mqttLink,
           });
           await sourceManagerRegistry.addManager(manager);
         } catch (err) {
@@ -337,6 +388,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
             port: newCfg.port,
             heartbeatIntervalSeconds: newCfg.heartbeatIntervalSeconds,
             virtualNode: newCfg.virtualNode,
+            mqttLink: newCfg.mqttLink,
           });
           await sourceManagerRegistry.addManager(manager);
         } catch (err) {
@@ -348,6 +400,20 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
           await sourceManagerRegistry.reconfigureVirtualNode(source.id, newCfg.virtualNode);
         } catch (err) {
           logger.warn(`Could not hot-swap virtual node for source ${source.id}:`, err);
+        }
+      }
+
+      // Hot-swap the Quick Connect MQTT link on any config update — cheap.
+      const oldLink = JSON.stringify(oldCfg.mqttLink ?? null);
+      const newLink = JSON.stringify(newCfg.mqttLink ?? null);
+      if (oldLink !== newLink && !transportChanged) {
+        const mgr = sourceManagerRegistry.getManager(source.id);
+        if (mgr && typeof (mgr as any).setMqttLink === 'function') {
+          try {
+            (mgr as any).setMqttLink(newCfg.mqttLink);
+          } catch (err) {
+            logger.warn(`Could not hot-swap MQTT link for source ${source.id}:`, err);
+          }
         }
       }
     } else if (wasEnabled && isNowEnabled && source.type === 'meshcore' && newAutoConnect && config !== undefined) {
@@ -365,6 +431,49 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         }
       } catch (err) {
         logger.warn(`Could not restart MeshCore manager for source ${source.id}:`, err);
+      }
+    } else if (!wasEnabled && isNowEnabled && source.type === 'mqtt' && newAutoConnect) {
+      // Newly enabled MQTT source with autoConnect on — start it.
+      if (!sourceManagerRegistry.getManager(source.id)) {
+        try {
+          const mqttCfg = mqttSourceConfigFromSource(source);
+          if (mqttCfg) {
+            const manager = new MqttSourceManager(source.id, mqttCfg);
+            await sourceManagerRegistry.addManager(manager);
+          }
+        } catch (err) {
+          logger.warn(`Could not start MQTT manager for source ${source.id}:`, err);
+        }
+      }
+    } else if (wasEnabled && isNowEnabled && source.type === 'mqtt' && oldAutoConnect && !newAutoConnect) {
+      // autoConnect just turned off — stop the MQTT manager.
+      await sourceManagerRegistry.removeManager(source.id);
+    } else if (wasEnabled && isNowEnabled && source.type === 'mqtt' && !oldAutoConnect && newAutoConnect) {
+      // autoConnect just turned on — start the MQTT manager.
+      if (!sourceManagerRegistry.getManager(source.id)) {
+        try {
+          const mqttCfg = mqttSourceConfigFromSource(source);
+          if (mqttCfg) {
+            const manager = new MqttSourceManager(source.id, mqttCfg);
+            await sourceManagerRegistry.addManager(manager);
+          }
+        } catch (err) {
+          logger.warn(`Could not start MQTT manager for source ${source.id}:`, err);
+        }
+      }
+    } else if (wasEnabled && isNowEnabled && source.type === 'mqtt' && newAutoConnect && config !== undefined) {
+      // MQTT source config changed while enabled and autoConnect on — broker
+      // URL / credentials / filters / subscriptions are baked in at start,
+      // so any config change means restart with the fresh config.
+      try {
+        await sourceManagerRegistry.removeManager(source.id);
+        const mqttCfg = mqttSourceConfigFromSource(source);
+        if (mqttCfg) {
+          const manager = new MqttSourceManager(source.id, mqttCfg);
+          await sourceManagerRegistry.addManager(manager);
+        }
+      } catch (err) {
+        logger.warn(`Could not restart MQTT manager for source ${source.id}:`, err);
       }
     }
 
@@ -759,6 +868,7 @@ router.post('/:id/connect', requirePermission('sources', 'write'), async (req: R
       port: cfg.port,
       heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
       virtualNode: cfg.virtualNode,
+      mqttLink: cfg.mqttLink,
     });
     await sourceManagerRegistry.addManager(manager);
     res.json({ success: true });

@@ -81,7 +81,7 @@ function DashboardInner() {
   // Source add/edit modal state
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
-  const [formType, setFormType] = useState<'meshtastic_tcp' | 'meshcore'>('meshtastic_tcp');
+  const [formType, setFormType] = useState<'meshtastic_tcp' | 'meshcore' | 'mqtt'>('meshtastic_tcp');
   const [formName, setFormName] = useState('');
   const [formHost, setFormHost] = useState('');
   const [formPort, setFormPort] = useState('4403');
@@ -98,6 +98,19 @@ function DashboardInner() {
   const [formMcTcpHost, setFormMcTcpHost] = useState('');
   const [formMcTcpPort, setFormMcTcpPort] = useState('4403');
   const [formMcDeviceType, setFormMcDeviceType] = useState<'companion' | 'repeater'>('companion');
+  // MQTT source fields — broker creds + a synthetic gateway identity. The
+  // gateway nodeNum is generated client-side at create time (random uint32
+  // with bit 31 set so it doesn't collide with the 31-bit Meshtastic node
+  // ID space). The user picks a human-readable long/short name.
+  const [formMqttBrokerUrl, setFormMqttBrokerUrl] = useState('');
+  const [formMqttUsername, setFormMqttUsername] = useState('');
+  const [formMqttPassword, setFormMqttPassword] = useState('');
+  const [formMqttRootTopic, setFormMqttRootTopic] = useState('msh');
+  const [formMqttSubscriptions, setFormMqttSubscriptions] = useState(''); // newline-separated
+  const [formMqttGatewayLong, setFormMqttGatewayLong] = useState('');
+  const [formMqttGatewayShort, setFormMqttGatewayShort] = useState('');
+  // Captured at create-time so edits don't regenerate the identity.
+  const [formMqttGatewayNodeNum, setFormMqttGatewayNodeNum] = useState<number | null>(null);
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
 
@@ -217,6 +230,14 @@ function DashboardInner() {
     setFormMcTcpHost('');
     setFormMcTcpPort('4403');
     setFormMcDeviceType('companion');
+    setFormMqttBrokerUrl('');
+    setFormMqttUsername('');
+    setFormMqttPassword('');
+    setFormMqttRootTopic('msh/US');
+    setFormMqttSubscriptions('msh/US/2/e/#');
+    setFormMqttGatewayLong('');
+    setFormMqttGatewayShort('');
+    setFormMqttGatewayNodeNum(null);
     setFormError('');
     setShowSourceModal(true);
   };
@@ -226,7 +247,13 @@ function DashboardInner() {
     if (!source) return;
     const cfg = source.config as Record<string, any> | undefined;
     setEditingSourceId(id);
-    setFormType(source.type === 'meshcore' ? 'meshcore' : 'meshtastic_tcp');
+    setFormType(
+      source.type === 'meshcore'
+        ? 'meshcore'
+        : source.type === 'mqtt'
+          ? 'mqtt'
+          : 'meshtastic_tcp',
+    );
     setFormName(source.name);
     setFormHost(cfg?.host ?? '');
     setFormPort(String(cfg?.port ?? 4403));
@@ -245,6 +272,20 @@ function DashboardInner() {
     setFormMcTcpHost(cfg?.tcpHost ?? '');
     setFormMcTcpPort(cfg?.tcpPort != null ? String(cfg.tcpPort) : '4403');
     setFormMcDeviceType(cfg?.deviceType === 'repeater' ? 'repeater' : 'companion');
+    // MQTT-specific fields when editing an mqtt source. Broker / TLS keys may
+    // be stripped for non-admins by stripSourceSecrets — we just round-trip
+    // whatever the API returned us.
+    const broker = (cfg?.broker ?? {}) as { url?: string; username?: string; password?: string };
+    setFormMqttBrokerUrl(broker.url ?? '');
+    setFormMqttUsername(broker.username ?? '');
+    setFormMqttPassword(broker.password ?? '');
+    setFormMqttRootTopic(cfg?.rootTopic ?? 'msh');
+    const subs = Array.isArray(cfg?.subscriptions) ? cfg.subscriptions.join('\n') : '';
+    setFormMqttSubscriptions(subs);
+    const gw = (cfg?.gateway ?? {}) as { nodeNum?: number; longName?: string; shortName?: string };
+    setFormMqttGatewayLong(gw.longName ?? '');
+    setFormMqttGatewayShort(gw.shortName ?? '');
+    setFormMqttGatewayNodeNum(typeof gw.nodeNum === 'number' ? gw.nodeNum : null);
     setFormError('');
     setShowSourceModal(true);
   };
@@ -253,7 +294,63 @@ function DashboardInner() {
     if (!formName.trim()) { setFormError(t('source.form.error_name_required')); return; }
 
     let cfg: Record<string, any>;
-    if (formType === 'meshcore') {
+    if (formType === 'mqtt') {
+      // MQTT source — broker connection + a synthetic gateway identity for
+      // packets we publish on behalf of MeshMonitor. The gateway nodeNum is
+      // generated at create time so it stays stable across edits.
+      const url = formMqttBrokerUrl.trim();
+      if (!url) {
+        setFormError(t('source.form.error_broker_url_required', 'Broker URL is required (e.g. mqtt://broker.example.com:1883)'));
+        return;
+      }
+      const longName = formMqttGatewayLong.trim() || formName.trim();
+      const shortName = (formMqttGatewayShort.trim() || formName.trim().slice(0, 4) || 'MMGW')
+        .toUpperCase()
+        .slice(0, 4);
+      const nodeNum =
+        formMqttGatewayNodeNum !== null
+          ? formMqttGatewayNodeNum
+          : // Random uint32 with bit 31 forced on (so the synthetic ID stays
+            // above the 31-bit range typically used by real Meshtastic nodes).
+            (Math.floor(Math.random() * 0x7fffffff) | 0x80000000) >>> 0;
+      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+      const subscriptions = formMqttSubscriptions
+        .split('\n')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
+      cfg = {
+        broker: { url },
+        gateway: { nodeNum, nodeId, longName, shortName },
+        rootTopic: formMqttRootTopic.trim() || 'msh',
+        autoConnect: formAutoConnect,
+      };
+      if (formMqttUsername) cfg.broker.username = formMqttUsername;
+      if (formMqttPassword) {
+        cfg.broker.password = formMqttPassword;
+      } else if (editingSourceId) {
+        // Edit-mode preservation: if the password field is left blank we
+        // assume "keep the existing value" rather than "clear it". The
+        // server PUT replaces config wholesale, so we must round-trip the
+        // existing secret ourselves. Non-admin GETs are stripped, so this
+        // only succeeds when the editor is an admin — which matches the
+        // permission required to edit sources in the first place.
+        try {
+          const existingRes = await fetch(`${appBasename}/api/sources/${editingSourceId}`, {
+            credentials: 'include',
+          });
+          if (existingRes.ok) {
+            const existing = await existingRes.json();
+            const existingPw = existing?.config?.broker?.password;
+            if (existingPw) cfg.broker.password = existingPw;
+          }
+        } catch {
+          // best-effort: if the fetch fails, the user can re-enter the
+          // password and try again
+        }
+      }
+      if (subscriptions.length > 0) cfg.subscriptions = subscriptions;
+    } else if (formType === 'meshcore') {
       // MeshCore source: USB/serial or TCP. Both transports flow through the
       // same MeshCoreManager via the Python bridge — only the connect params
       // differ. BLE remains out of scope.
@@ -564,7 +661,15 @@ function DashboardInner() {
       {/* Add/Edit source modal */}
       {showSourceModal && (
         <div className="dashboard-confirm-overlay" onClick={() => setShowSourceModal(false)}>
-          <div className="dashboard-confirm-dialog" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
+          <div
+            className="dashboard-confirm-dialog"
+            style={{
+              maxWidth: 400,
+              maxHeight: 'calc(100vh - 48px)',
+              overflowY: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3>{editingSourceId ? t('source.edit') : t('source.add')}</h3>
 
             {/* Type selector (slice 4): only meaningful when adding — type is
@@ -576,10 +681,11 @@ function DashboardInner() {
                 <select
                   className="dashboard-form-input"
                   value={formType}
-                  onChange={(e) => setFormType(e.target.value as 'meshtastic_tcp' | 'meshcore')}
+                  onChange={(e) => setFormType(e.target.value as 'meshtastic_tcp' | 'meshcore' | 'mqtt')}
                 >
                   <option value="meshtastic_tcp">{t('source.form.type_meshtastic', 'Meshtastic (TCP)')}</option>
                   <option value="meshcore">{t('source.form.type_meshcore', 'MeshCore')}</option>
+                  <option value="mqtt">{t('source.form.type_mqtt', 'MQTT broker')}</option>
                 </select>
               </label>
             )}
@@ -596,7 +702,126 @@ function DashboardInner() {
               />
             </label>
 
-            {formType === 'meshcore' ? (
+            {formType === 'mqtt' ? (
+              <>
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('mqtt_source.form.broker_url', 'Broker URL')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="text"
+                    value={formMqttBrokerUrl}
+                    onChange={(e) => setFormMqttBrokerUrl(e.target.value)}
+                    placeholder="mqtt://broker.example.com:1883"
+                  />
+                  <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                    {t('mqtt_source.form.broker_url_help', 'Full URL including scheme. Use mqtts:// for TLS.')}
+                  </p>
+                </label>
+
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('mqtt_source.form.username', 'Username')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="text"
+                    value={formMqttUsername}
+                    onChange={(e) => setFormMqttUsername(e.target.value)}
+                    placeholder={t('mqtt_source.form.username_placeholder', 'Optional')}
+                    autoComplete="off"
+                  />
+                </label>
+
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('mqtt_source.form.password', 'Password')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="password"
+                    value={formMqttPassword}
+                    onChange={(e) => setFormMqttPassword(e.target.value)}
+                    placeholder={editingSourceId
+                      ? t('mqtt_source.form.password_unchanged', '(leave blank to keep unchanged)')
+                      : t('mqtt_source.form.password_placeholder', 'Optional')}
+                    autoComplete="new-password"
+                  />
+                </label>
+
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('mqtt_source.form.root_topic', 'Root topic')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="text"
+                    value={formMqttRootTopic}
+                    onChange={(e) => setFormMqttRootTopic(e.target.value)}
+                    placeholder="msh/US"
+                  />
+                  <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                    {t('mqtt_source.form.root_topic_help', 'Topic prefix used when publishing on behalf of MeshMonitor. Defaults to "msh".')}
+                  </p>
+                </label>
+
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('mqtt_source.form.subscriptions', 'Subscriptions')}</span>
+                  <textarea
+                    className="dashboard-form-input"
+                    rows={3}
+                    value={formMqttSubscriptions}
+                    onChange={(e) => setFormMqttSubscriptions(e.target.value)}
+                    placeholder={'msh/US/2/e/#'}
+                    style={{ fontFamily: 'monospace', fontSize: 12 }}
+                  />
+                  <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                    {t('mqtt_source.form.subscriptions_help', 'One MQTT topic filter per line. Wildcards: + (single level), # (multi-level tail).')}
+                  </p>
+                </label>
+
+                <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
+                  <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>
+                    {t('mqtt_source.form.gateway_legend', 'Gateway identity')}
+                  </legend>
+                  <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '0 0 8px' }}>
+                    {t('mqtt_source.form.gateway_help', 'Synthetic node identity used when MeshMonitor publishes messages on this source. Node ID is generated automatically.')}
+                  </p>
+                  <label className="dashboard-form-field">
+                    <span className="dashboard-form-label">{t('mqtt_source.form.long_name', 'Long name')}</span>
+                    <input
+                      className="dashboard-form-input"
+                      type="text"
+                      value={formMqttGatewayLong}
+                      onChange={(e) => setFormMqttGatewayLong(e.target.value)}
+                      placeholder={formName || 'MeshMonitor gateway'}
+                    />
+                  </label>
+                  <label className="dashboard-form-field" style={{ marginTop: 8 }}>
+                    <span className="dashboard-form-label">{t('mqtt_source.form.short_name', 'Short name (4 chars)')}</span>
+                    <input
+                      className="dashboard-form-input"
+                      type="text"
+                      value={formMqttGatewayShort}
+                      onChange={(e) => setFormMqttGatewayShort(e.target.value.toUpperCase().slice(0, 4))}
+                      placeholder="MMGW"
+                      maxLength={4}
+                    />
+                  </label>
+                  {formMqttGatewayNodeNum !== null && (
+                    <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '8px 0 0' }}>
+                      {t('mqtt_source.form.gateway_node_id', 'Node ID')}:{' '}
+                      <code>!{formMqttGatewayNodeNum.toString(16).padStart(8, '0')}</code>
+                    </p>
+                  )}
+                </fieldset>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '8px 0 4px' }}>
+                  <input
+                    type="checkbox"
+                    checked={formAutoConnect}
+                    onChange={(e) => setFormAutoConnect(e.target.checked)}
+                  />
+                  {t('source.form.auto_connect')}
+                </label>
+                <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '0 0 8px 24px' }}>
+                  {t('source.form.auto_connect_help')}
+                </p>
+              </>
+            ) : formType === 'meshcore' ? (
               <>
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('meshcore.form.transport', 'Transport')}</span>

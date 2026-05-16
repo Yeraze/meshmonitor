@@ -129,7 +129,12 @@ services:
       # News feed URL for testing - use host.docker.internal to access host machine
       - NEWS_FEED_URL=${NEWS_FEED_URL:-}
 
-  # LN4CY MQTT Proxy - sidecar for testing MQTT uplink via Virtual Node
+  # LN4CY MQTT Proxy - sidecar for testing MQTT uplink via Virtual Node.
+  # DEPRECATED: MeshMonitor now has native MQTT support via the `mqtt` source
+  # type and Quick Connect on the device's MQTT module config. New deployments
+  # should configure an MQTT source and link it from the device's MQTT config
+  # instead of running this sidecar. See docs/add-ons/mqtt-proxy.md for the
+  # migration guide. The sidecar remains usable during the transition.
   # Connects to source 2's VN on port 4504. Bring up alongside sqlite profile.
   # Credit: https://github.com/LN4CY/mqtt-proxy
   mqtt-proxy:

@@ -6,6 +6,7 @@ import { TcpTransport } from './tcpTransport.js';
 import { VirtualNodeServer, type VirtualNodeConfig } from './virtualNodeServer.js';
 import type { ITransport } from './transports/transport.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
+import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { calculateDistance } from '../utils/distance.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
@@ -293,12 +294,29 @@ interface AutoPingSession {
   results: Array<{ pingNum: number; status: 'ack' | 'nak' | 'timeout'; durationMs?: number; sentAt: number }>;
 }
 
+/**
+ * Quick Connect link: ties a Meshtastic source to an MQTT source for broker
+ * proxy bridging. Replaces the external mqtt-proxy sidecar.
+ */
+export interface MqttLinkConfig {
+  enabled?: boolean;
+  mqttSourceId?: string;
+  /** Optional rewrite of the leading topic path on both publish and inject. */
+  topicOverride?: string;
+}
+
 class MeshtasticManager implements ISourceManager {
   public sourceId: string;
   private sourceConfigOverride: { host?: string; port?: number; heartbeatIntervalSeconds?: number } | null = null;
   private postResetCooldownUntil: number = 0;
   private virtualNodeServer?: VirtualNodeServer;
   private transport: ITransport | null = null;
+  /** Quick Connect link to an MqttSourceManager (replaces the mqtt-proxy sidecar). */
+  private mqttLink: MqttLinkConfig | undefined = undefined;
+  /** Detach hook for the linked MQTT source's brokerMessage listener. */
+  private mqttLinkDetach: (() => void) | null = null;
+  /** Registry "manager-started" hook for late linking. */
+  private mqttLinkRegistryHook: ((mgr: ISourceManager) => void) | null = null;
   private isConnected = false;
   private userDisconnectedState = false;  // Track user-initiated disconnect
   private tracerouteInterval: NodeJS.Timeout | null = null;
@@ -445,7 +463,13 @@ class MeshtasticManager implements ISourceManager {
    * Apply a source config after construction.
    * Used to configure the legacy singleton when sources are loaded from DB at startup.
    */
-  configureSource(config: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig }, sourceId?: string): void {
+  configureSource(config: {
+    host?: string;
+    port?: number;
+    heartbeatIntervalSeconds?: number;
+    virtualNode?: VirtualNodeConfig;
+    mqttLink?: MqttLinkConfig;
+  }, sourceId?: string): void {
     this.sourceConfigOverride = {
       host: config.host,
       port: config.port,
@@ -459,6 +483,7 @@ class MeshtasticManager implements ISourceManager {
         meshtasticManager: this,
       });
     }
+    this.mqttLink = config.mqttLink;
   }
 
   async start(): Promise<void> {
@@ -468,6 +493,8 @@ class MeshtasticManager implements ISourceManager {
     } catch (err) {
       logger.error(`Failed to start VirtualNodeServer for source ${this.sourceId}:`, err);
     }
+    // Wire up the Quick Connect bridge if a link was configured.
+    this.setupMqttLink();
   }
 
   async stop(): Promise<void> {
@@ -476,7 +503,144 @@ class MeshtasticManager implements ISourceManager {
     } catch (err) {
       logger.error(`Failed to stop VirtualNodeServer for source ${this.sourceId}:`, err);
     }
+    this.teardownMqttLink();
     this.disconnect();
+  }
+
+  /**
+   * Set up the Quick Connect bridge to the linked MqttSourceManager.
+   * Subscribes to its broker-message event so we can inject received traffic
+   * back into the firmware as ToRadio.MqttClientProxyMessage. Outbound
+   * (FromRadio.MqttClientProxyMessage from the firmware) is handled lazily
+   * in the message dispatch switch — no setup required.
+   *
+   * If the linked MQTT source isn't started yet, listen to the registry
+   * for `manager-started` and wire up when it comes online.
+   */
+  private setupMqttLink(): void {
+    // First tear down any previous link so reconfiguration is idempotent.
+    this.teardownMqttLink();
+    const link = this.mqttLink;
+    if (!link || link.enabled === false || !link.mqttSourceId) return;
+
+    const attachToManager = (mgr: ISourceManager) => {
+      if (mgr.sourceId !== link.mqttSourceId) return;
+      if (mgr.sourceType !== 'mqtt') return;
+      // MqttSourceManager extends EventEmitter; cast carefully without
+      // pulling in a hard import that the dynamic-link path doesn't need.
+      const emitter = mgr as unknown as {
+        on: (e: 'brokerMessage', cb: (msg: { topic: string; payload: Uint8Array | Buffer; retained: boolean }) => void) => void;
+        off: (e: 'brokerMessage', cb: (...args: any[]) => void) => void;
+      };
+      const handler = (msg: { topic: string; payload: Uint8Array | Buffer; retained: boolean }) => {
+        this.onLinkedBrokerMessage(msg.topic, msg.payload, msg.retained);
+      };
+      emitter.on('brokerMessage', handler);
+      this.mqttLinkDetach = () => emitter.off('brokerMessage', handler);
+      logger.info(`[MQTT-Link ${this.sourceId}] attached to ${link.mqttSourceId}`);
+    };
+
+    const existing = sourceManagerRegistry.getManager(link.mqttSourceId);
+    if (existing) {
+      attachToManager(existing);
+      return;
+    }
+    // Defer: when the matching manager starts, attach.
+    const onManagerStarted = (mgr: ISourceManager) => {
+      if (mgr.sourceId === link.mqttSourceId) {
+        attachToManager(mgr);
+        if (this.mqttLinkRegistryHook) {
+          sourceManagerRegistry.off('manager-started', this.mqttLinkRegistryHook);
+          this.mqttLinkRegistryHook = null;
+        }
+      }
+    };
+    sourceManagerRegistry.on('manager-started', onManagerStarted);
+    this.mqttLinkRegistryHook = onManagerStarted;
+    logger.info(`[MQTT-Link ${this.sourceId}] linked MQTT source ${link.mqttSourceId} not started yet — waiting`);
+  }
+
+  private teardownMqttLink(): void {
+    if (this.mqttLinkDetach) {
+      try { this.mqttLinkDetach(); } catch { /* ignore */ }
+      this.mqttLinkDetach = null;
+    }
+    if (this.mqttLinkRegistryHook) {
+      sourceManagerRegistry.off('manager-started', this.mqttLinkRegistryHook);
+      this.mqttLinkRegistryHook = null;
+    }
+  }
+
+  /**
+   * Hot-swap Quick Connect link configuration. Tears down any existing
+   * bridge listener and (re)attaches according to the new link. Safe to
+   * call while disconnected — the new link is recorded and reused at the
+   * next start().
+   */
+  setMqttLink(link: MqttLinkConfig | undefined): void {
+    this.mqttLink = link;
+    this.setupMqttLink();
+  }
+
+  /**
+   * Called by the linked MqttSourceManager when the broker delivers a message.
+   * Wraps the raw bytes in a ToRadio.MqttClientProxyMessage and sends to the
+   * physical device. Only forwards when the device's firmware MQTT module
+   * has proxy_to_client_enabled — otherwise the device doesn't expect this
+   * traffic and would log decode errors.
+   */
+  private async onLinkedBrokerMessage(topic: string, payload: Uint8Array | Buffer, retained: boolean): Promise<void> {
+    if (!this.isConnected || !this.transport) return;
+    const mqttCfg = (this.actualModuleConfig as any)?.mqtt;
+    if (!mqttCfg?.enabled || !mqttCfg.proxyToClientEnabled) {
+      // Device isn't asking us to proxy — drop silently.
+      return;
+    }
+    const data = payload instanceof Buffer ? new Uint8Array(payload) : payload;
+    const toRadioBytes = meshtasticProtobufService.encodeToRadioMqttClientProxyMessage({
+      topic,
+      data,
+      retained,
+    });
+    if (!toRadioBytes) return;
+    try {
+      await this.transport.send(toRadioBytes);
+      logger.debug(`[MQTT-Link ${this.sourceId}] injected broker message → firmware (topic=${topic}, ${data.length} bytes)`);
+    } catch (err) {
+      logger.warn(`[MQTT-Link ${this.sourceId}] failed to inject broker message:`, err);
+    }
+  }
+
+  /**
+   * Handle FromRadio.MqttClientProxyMessage — the firmware is asking us to
+   * forward an outbound payload to the upstream broker. Routes via the
+   * linked MqttSourceManager (Quick Connect bridge).
+   */
+  private async handleFromRadioMqttProxy(msg: { topic?: string; data?: Uint8Array; text?: string; retained?: boolean }): Promise<void> {
+    const link = this.mqttLink;
+    if (!link?.mqttSourceId || link.enabled === false) {
+      logger.debug(`[MQTT-Link ${this.sourceId}] firmware proxy message but no link configured — dropping`);
+      return;
+    }
+    const mqttMgr = sourceManagerRegistry.getManager(link.mqttSourceId);
+    if (!mqttMgr || mqttMgr.sourceType !== 'mqtt') {
+      logger.warn(`[MQTT-Link ${this.sourceId}] linked MQTT source ${link.mqttSourceId} not available`);
+      return;
+    }
+    const topic = msg.topic ?? '';
+    if (!topic) return;
+    const data = msg.data && msg.data.length > 0
+      ? (msg.data instanceof Uint8Array ? msg.data : new Uint8Array(msg.data as any))
+      : (msg.text ? new TextEncoder().encode(msg.text) : null);
+    if (!data || data.length === 0) return;
+    try {
+      await (mqttMgr as unknown as {
+        publishRawProxyMessage: (t: string, d: Uint8Array, r: boolean) => Promise<void>;
+      }).publishRawProxyMessage(topic, data, msg.retained ?? false);
+      logger.debug(`[MQTT-Link ${this.sourceId}] forwarded firmware → broker (topic=${topic}, ${data.length} bytes)`);
+    } catch (err) {
+      logger.warn(`[MQTT-Link ${this.sourceId}] failed to publish firmware proxy message:`, err);
+    }
   }
 
   async reconfigureVirtualNode(config: VirtualNodeConfig | undefined): Promise<void> {
@@ -523,7 +687,13 @@ class MeshtasticManager implements ISourceManager {
   // 4.0-alpha NO_CHANNEL auto-ack regression).
   public readonly messageQueue: MessageQueueService = new MessageQueueService();
 
-  constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig }) {
+  constructor(sourceId: string = 'default', sourceConfig?: {
+    host?: string;
+    port?: number;
+    heartbeatIntervalSeconds?: number;
+    virtualNode?: VirtualNodeConfig;
+    mqttLink?: MqttLinkConfig;
+  }) {
     this.sourceId = sourceId;
     if (sourceConfig) {
       this.sourceConfigOverride = {
@@ -539,6 +709,7 @@ class MeshtasticManager implements ISourceManager {
         meshtasticManager: this,
       });
     }
+    this.mqttLink = sourceConfig?.mqttLink;
     // Initialize message queue service with send callback
     this.messageQueue.setSendCallback(async (text: string, destination: number, replyId?: number, channel?: number, emoji?: number) => {
       // For channel messages: channel is specified, destination is 0 (undefined in sendTextMessage)
@@ -3015,6 +3186,11 @@ class MeshtasticManager implements ISourceManager {
       switch (parsed.type) {
         case 'fromRadio':
           logger.debug('⚠️ Generic FromRadio message (no specific field set)');
+          break;
+        case 'mqttClientProxyMessage':
+          // Firmware wants us to forward an outbound payload to its upstream
+          // MQTT broker. Quick Connect bridge — handles this for us.
+          await this.handleFromRadioMqttProxy(parsed.data);
           break;
         case 'meshPacket':
           await this.processMeshPacket(parsed.data, context);
@@ -6717,6 +6893,9 @@ class MeshtasticManager implements ISourceManager {
           const neighborNodeId = `!${vn.nodeNum.toString(16).padStart(8, '0')}`;
           logger.debug(`🔗 Saved neighbor: ${fromNodeId} -> ${neighborNodeId}, SNR: ${vn.snr ?? 'N/A'}`);
         }
+
+        const saved = await databaseService.neighbors.getNeighborsForNode(fromNum, this.sourceId);
+        dataEventEmitter.emitNeighborInfoUpdated(fromNum, saved, this.sourceId);
       }
     } catch (error) {
       logger.error('❌ Error processing neighbor info message:', error);

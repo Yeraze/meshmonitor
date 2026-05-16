@@ -766,6 +766,14 @@ export class MeshtasticProtobufService {
           type: 'moduleConfig',
           data: fromRadio.moduleConfig
         };
+      } else if ((fromRadio as any).mqttClientProxyMessage) {
+        // Firmware is asking us (as its phone-API peer) to forward an MQTT
+        // payload to the upstream broker. Used by MeshMonitor's Quick Connect
+        // bridge to replace the external mqtt-proxy sidecar.
+        return {
+          type: 'mqttClientProxyMessage',
+          data: (fromRadio as any).mqttClientProxyMessage,
+        };
       } else if (fromRadio.configCompleteId) {
         return {
           type: 'configComplete',
@@ -1659,6 +1667,66 @@ export class MeshtasticProtobufService {
       };
     } catch (error) {
       logger.warn('⚠️ Failed to decode ServiceEnvelope:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Build a ToRadio bytes payload containing an MqttClientProxyMessage.
+   * Used by the Quick Connect bridge to inject broker-received payloads
+   * back into a Meshtastic device that asked us to proxy.
+   */
+  encodeToRadioMqttClientProxyMessage(input: {
+    topic: string;
+    data: Uint8Array;
+    retained: boolean;
+  }): Uint8Array | null {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+    try {
+      const ToRadio = root.lookupType('meshtastic.ToRadio');
+      const MqttClientProxyMessage = root.lookupType('meshtastic.MqttClientProxyMessage');
+      const proxyMsg = MqttClientProxyMessage.create({
+        topic: input.topic,
+        data: input.data,
+        retained: input.retained,
+      });
+      const toRadio = ToRadio.create({ mqttClientProxyMessage: proxyMsg });
+      return ToRadio.encode(toRadio).finish();
+    } catch (error) {
+      logger.error('❌ Failed to encode ToRadio.MqttClientProxyMessage:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Encode a ServiceEnvelope wrapping a MeshPacket for MQTT broker publish.
+   * Used by MqttSourceManager.publishTextMessage to send messages from a
+   * synthetic gateway identity onto the configured upstream broker.
+   */
+  encodeServiceEnvelope(input: {
+    packet: any;
+    channelId?: string;
+    gatewayId?: string;
+  }): Uint8Array | null {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+    try {
+      const ServiceEnvelope = root.lookupType('meshtastic.ServiceEnvelope');
+      const env = ServiceEnvelope.create({
+        packet: input.packet,
+        channelId: input.channelId,
+        gatewayId: input.gatewayId,
+      });
+      return ServiceEnvelope.encode(env).finish();
+    } catch (error) {
+      logger.error('❌ Failed to encode ServiceEnvelope:', error);
       return null;
     }
   }

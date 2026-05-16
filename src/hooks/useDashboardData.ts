@@ -37,6 +37,12 @@ export interface SourceStatus {
    * mesh-activity badge alongside the link-state badge (issue #2883).
    */
   activeNodeCount?: number;
+  /**
+   * Optional human-readable failure reason — used by the sidebar to show why
+   * a source is stuck disconnected (e.g. MQTT bad broker URL, auth failure).
+   * Populated by managers that override the default disconnected state.
+   */
+  lastError?: string;
   [key: string]: unknown;
 }
 

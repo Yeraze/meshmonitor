@@ -1,6 +1,7 @@
 import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import MqttQuickConnect from './MqttQuickConnect';
 
 interface MQTTConfigSectionProps {
   mqttEnabled: boolean;
@@ -148,6 +149,19 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           ❓
         </a>
       </h3>
+      <MqttQuickConnect
+        applyToFirmwareModule={(values) => {
+          setMqttEnabled(values.mqttEnabled);
+          setMqttAddress(values.mqttAddress);
+          setMqttUsername(values.mqttUsername);
+          setMqttPassword(values.mqttPassword);
+          setMqttRoot(values.mqttRoot);
+          setMqttEncryptionEnabled(values.mqttEncryptionEnabled);
+          setMqttJsonEnabled(values.mqttJsonEnabled);
+          setTlsEnabled(values.tlsEnabled);
+          setProxyToClientEnabled(values.proxyToClientEnabled);
+        }}
+      />
       <div className="setting-item">
         <label htmlFor="mqttEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
           <input

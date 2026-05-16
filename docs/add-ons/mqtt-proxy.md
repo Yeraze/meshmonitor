@@ -1,5 +1,16 @@
 # MQTT Client Proxy
 
+::: warning Native MQTT support — sidecar deprecated
+MeshMonitor now supports MQTT natively through a first-class **MQTT source** type and a **Quick Connect** option in the device's MQTT module configuration. The native path replaces the role of this sidecar with no extra container, broker filtering on inbound traffic, and full visibility of MQTT-ingested nodes/messages/telemetry inside MeshMonitor.
+
+To migrate:
+1. Create an MQTT source pointing at your upstream broker (via the source-create API or, in a future release, the new MQTT source UI).
+2. In your Meshtastic device's **Configuration → MQTT** tab, use the new **Quick Connect** dropdown to link the device to the MQTT source. This auto-populates the firmware MQTT module fields (server, username, password, root topic, **Client Proxy**) and records a `mqttLink` on the source so MeshMonitor bridges proxied traffic to the broker.
+3. Once verified working, remove the legacy `mqtt-proxy` sidecar container from your `docker-compose.yml`.
+
+The sidecar described below remains supported for users mid-migration but new deployments should use the native path.
+:::
+
 The MQTT Client Proxy is an optional sidecar container that enables reliable MQTT connectivity for MeshMonitor deployments. It routes MQTT traffic through MeshMonitor instead of relying on your Meshtastic node's WiFi connection.
 
 ::: tip Credit

@@ -476,6 +476,28 @@ setTimeout(async () => {
         continue;
       }
 
+      if (source.type === 'mqtt') {
+        // MQTT source — start its manager if autoConnect isn't disabled.
+        const cfg = source.config as any;
+        if (cfg?.autoConnect === false) {
+          logger.info(`Skipping auto-connect for MQTT source ${source.id} (${source.name}) — autoConnect disabled`);
+          continue;
+        }
+        try {
+          const mqttCfg = mqttSourceConfigFromSource(source);
+          if (!mqttCfg) {
+            logger.warn(`MQTT source ${source.id} (${source.name}) has incomplete config; skipping auto-connect`);
+            continue;
+          }
+          const manager = new MqttSourceManager(source.id, mqttCfg);
+          await sourceManagerRegistry.addManager(manager);
+          logger.info(`[MQTT:${source.id}] Auto-connected source ${source.name}`);
+        } catch (err) {
+          logger.error(`Failed to start MQTT source ${source.id} (${source.name}); continuing with other sources:`, err);
+        }
+        continue;
+      }
+
       if (source.type === 'meshtastic_tcp') {
         const cfg = source.config as any;
 
@@ -497,6 +519,7 @@ setTimeout(async () => {
               port: cfg.port,
               heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
               virtualNode: cfg.virtualNode,
+              mqttLink: cfg.mqttLink,
             }, source.id);
             await applyManagerSettings(meshtasticManager, source.id, databaseService);
             await sourceManagerRegistry.addManager(meshtasticManager);
@@ -509,6 +532,7 @@ setTimeout(async () => {
               port: cfg.port,
               heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
               virtualNode: cfg.virtualNode,
+              mqttLink: cfg.mqttLink,
             });
             await applyManagerSettings(manager, source.id, databaseService);
             await sourceManagerRegistry.addManager(manager);
@@ -823,6 +847,7 @@ import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
 import { meshcoreManagerRegistry, meshcoreConfigFromSource } from './meshcoreRegistry.js';
+import { MqttSourceManager, mqttSourceConfigFromSource } from './mqttSourceManager.js';
 import { MeshCoreTelemetryPoller, setMeshCoreTelemetryPoller } from './services/meshcoreTelemetryPoller.js';
 import {
   MeshCoreRemoteTelemetryScheduler,

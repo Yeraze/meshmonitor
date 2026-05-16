@@ -189,8 +189,8 @@ export interface DbNeighborInfo {
   id?: number;
   nodeNum: number;
   neighborNodeNum: number;
-  snr?: number;
-  lastRxTime?: number;
+  snr?: number | null;
+  lastRxTime?: number | null;
   timestamp: number;
   createdAt: number;
 }

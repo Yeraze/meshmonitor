@@ -270,3 +270,78 @@ describe('MM-SEC-8 — sources endpoints strip credentials for non-admins', () =
     expect(res.body[0].config.apiKey).toBe('tok_aaaaaaaaaaaaaaaa');
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// MM-SEC-8 follow-on — native MQTT source nested credentials
+// (broker.password, tls.key, tls.cert) added with Quick Connect support.
+// ────────────────────────────────────────────────────────────────────────
+
+describe('MM-SEC-8 — native MQTT source nested credentials stripped for non-admins', () => {
+  const nativeMqttSource = {
+    id: 'mqtt-native-1',
+    name: 'native',
+    type: 'mqtt',
+    enabled: true,
+    createdAt: 0,
+    updatedAt: 0,
+    config: {
+      broker: {
+        url: 'mqtts://broker.example.com:8883',
+        username: 'user',
+        password: 'native-mqtt-secret',
+      },
+      tls: {
+        rejectUnauthorized: true,
+        ca: 'PUBLIC-CA-CERT',
+        cert: 'CLIENT-CERT-PUBLIC',
+        key: 'PRIVATE-KEY-MATERIAL',
+      },
+      gateway: {
+        nodeNum: 0x7ff80a48,
+        nodeId: '!7ff80a48',
+        longName: 'gw',
+        shortName: 'g',
+      },
+      rootTopic: 'msh/US',
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDb.sources.getSource.mockResolvedValue(nativeMqttSource);
+    mockDb.sources.getAllSources.mockResolvedValue([nativeMqttSource]);
+    mockDb.checkPermissionAsync.mockResolvedValue(true);
+    mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: false });
+  });
+
+  it('non-admin GET — strips broker.password, tls.key, tls.cert; keeps broker.url, broker.username, tls.ca, gateway, rootTopic', async () => {
+    mockDb.findUserByIdAsync.mockResolvedValue(regularUser);
+    const res = await request(createApp(regularUser.id)).get('/mqtt-native-1');
+    expect(res.status).toBe(200);
+    expect(res.body.config.broker.password).toBeUndefined();
+    expect(res.body.config.tls.key).toBeUndefined();
+    expect(res.body.config.tls.cert).toBeUndefined();
+    // Non-secret nested fields still present
+    expect(res.body.config.broker.url).toBe('mqtts://broker.example.com:8883');
+    expect(res.body.config.broker.username).toBe('user');
+    expect(res.body.config.tls.ca).toBe('PUBLIC-CA-CERT');
+    expect(res.body.config.tls.rejectUnauthorized).toBe(true);
+    expect(res.body.config.gateway.nodeId).toBe('!7ff80a48');
+    expect(res.body.config.rootTopic).toBe('msh/US');
+    // Serialized response must not leak any secret values
+    const body = JSON.stringify(res.body);
+    expect(body).not.toContain('native-mqtt-secret');
+    expect(body).not.toContain('PRIVATE-KEY-MATERIAL');
+    expect(body).not.toContain('CLIENT-CERT-PUBLIC');
+  });
+
+  it('admin GET — returns nested credentials so the source-edit UI can round-trip', async () => {
+    mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
+    mockDb.getUserPermissionSetAsync.mockResolvedValue({});
+    const res = await request(createApp(adminUser.id)).get('/mqtt-native-1');
+    expect(res.status).toBe(200);
+    expect(res.body.config.broker.password).toBe('native-mqtt-secret');
+    expect(res.body.config.tls.key).toBe('PRIVATE-KEY-MATERIAL');
+    expect(res.body.config.tls.cert).toBe('CLIENT-CERT-PUBLIC');
+  });
+});

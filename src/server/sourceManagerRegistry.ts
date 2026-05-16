@@ -12,6 +12,13 @@ export interface SourceStatus {
   connected: boolean;
   nodeNum?: number;
   nodeId?: string;
+  /**
+   * Optional human-readable explanation for the current disconnected state.
+   * Currently populated by MqttSourceManager so the sidebar can show *why*
+   * a broker isn't reachable (bad URL, auth failure, etc.) instead of just
+   * an indefinite "Connecting…" or "Disconnected" pill.
+   */
+  lastError?: string;
 }
 
 /**
@@ -42,6 +49,11 @@ export class SourceManagerRegistry extends EventEmitter {
 
     try {
       await manager.start();
+      // Notify consumers (e.g. MeshtasticManager waiting on its linked
+      // MqttSourceManager for Quick Connect bridging) that the manager is
+      // up. Emitted only after start() resolves successfully, so listeners
+      // can safely call into the manager.
+      this.emit('manager-started', manager);
     } catch (error) {
       logger.error(`Failed to start source manager ${manager.sourceId}:`, error);
     }
@@ -57,6 +69,7 @@ export class SourceManagerRegistry extends EventEmitter {
       logger.error(`Error stopping source manager ${sourceId}:`, error);
     }
     this.managers.delete(sourceId);
+    this.emit('manager-stopped', manager);
     logger.info(`Removed source manager: ${sourceId}`);
   }
 
