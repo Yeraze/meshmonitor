@@ -23,7 +23,26 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 
 cd "$PROJECT_ROOT"
 
-# Pre-flight: check for existing meshmonitor containers that may hog the device connection
+# Pre-flight: auto-remove any orphan test-scoped containers leaked by a previous
+# crashed run of this script or its sibling (test-api-exercise-all-backends.sh).
+# These names belong exclusively to test scripts, so removal cannot affect the
+# developer's running dev stack.
+ORPHAN_TEST_NAMES=(
+    meshmonitor-db-backing-sqlite-test
+    meshmonitor-db-backing-postgres-test
+    meshmonitor-db-backing-mysql-test
+    meshmonitor-api-exercise-sqlite-test
+    meshmonitor-api-exercise-postgres-test
+    meshmonitor-api-exercise-mysql-test
+)
+for orphan in "${ORPHAN_TEST_NAMES[@]}"; do
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$orphan"; then
+        echo -e "${YELLOW}!${NC} Removing orphan test container from previous run: $orphan"
+        docker rm -f "$orphan" >/dev/null 2>&1 || true
+    fi
+done
+
+# Pre-flight: check for any remaining meshmonitor containers that may hog the device connection
 EXISTING_MM=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^meshmonitor' | grep -v 'db-backing' || true)
 if [ -n "$EXISTING_MM" ]; then
     echo -e "${RED}✗ ERROR${NC}: Existing MeshMonitor containers detected that may conflict:"
