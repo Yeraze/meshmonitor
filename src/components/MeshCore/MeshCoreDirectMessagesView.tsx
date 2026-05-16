@@ -75,10 +75,20 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     return a.startsWith(b) || b.startsWith(a);
   };
 
+  // Phase 2 of the MeshCore channels feature tags every locally-sent channel
+  // message with `toPublicKey = 'channel-${idx}'` so the per-channel filter in
+  // MeshCoreChannelsView can group sent messages back into the right tab.
+  // Those synthetic keys are NOT real DM peers and must not surface in the
+  // DM sidebar / conversation list — filter them out everywhere the DM view
+  // looks at toPublicKey / fromPublicKey.
+  const isChannelPseudoKey = (k: string | null | undefined): boolean =>
+    typeof k === 'string' && k.startsWith('channel-');
+
   const dmPeers = useMemo(() => {
     const peers = new Set<string>();
     for (const m of messages) {
       if (!m.toPublicKey) continue;
+      if (isChannelPseudoKey(m.toPublicKey) || isChannelPseudoKey(m.fromPublicKey)) continue;
       if (selfKey && keysMatch(m.fromPublicKey, selfKey)) peers.add(canonicalize(m.toPublicKey));
       else if (selfKey && keysMatch(m.toPublicKey, selfKey)) peers.add(canonicalize(m.fromPublicKey));
       else {
@@ -88,7 +98,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     }
     // Always include all contacts so the user can start a new DM.
     for (const c of contacts) {
-      if (c.publicKey) peers.add(c.publicKey);
+      if (c.publicKey && !isChannelPseudoKey(c.publicKey)) peers.add(c.publicKey);
     }
     return Array.from(peers);
   }, [messages, contacts, selfKey, canonicalize]);
@@ -97,6 +107,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     if (!selected) return [];
     return messages.filter(m => {
       if (!m.toPublicKey) return false;
+      if (isChannelPseudoKey(m.toPublicKey) || isChannelPseudoKey(m.fromPublicKey)) return false;
       if (selfKey && keysMatch(m.fromPublicKey, selfKey) && keysMatch(m.toPublicKey, selected)) return true;
       if (selfKey && keysMatch(m.toPublicKey, selfKey) && keysMatch(m.fromPublicKey, selected)) return true;
       // No selfKey known — fall back to either direction matching the selected peer.
