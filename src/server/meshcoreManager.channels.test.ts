@@ -25,7 +25,14 @@ function makeManager(opts: {
   deviceType?: MeshCoreDeviceType;
   getChannelsResponse?: { success: boolean; data?: unknown; error?: string };
   failOnSet?: boolean;
-}): { manager: MeshCoreManager; bridgeCalls: BridgeCall[]; upsertCalls: Array<{ data: any; sourceId: string | undefined; opts: any }> } {
+  /** Pre-existing DB rows for this source — what `getAllChannels(sourceId)` returns. */
+  preExistingRows?: Array<{ id: number; name?: string; psk?: string | null }>;
+}): {
+  manager: MeshCoreManager;
+  bridgeCalls: BridgeCall[];
+  upsertCalls: Array<{ data: any; sourceId: string | undefined; opts: any }>;
+  deleteCalls: Array<{ id: number; sourceId: string | undefined }>;
+} {
   const deviceType = opts.deviceType ?? MeshCoreDeviceType.COMPANION;
   const m = new MeshCoreManager('test-source');
   // Force the device type so the manager doesn't short-circuit on the
@@ -34,6 +41,14 @@ function makeManager(opts: {
 
   const bridgeCalls: BridgeCall[] = [];
   const upsertCalls: Array<{ data: any; sourceId: string | undefined; opts: any }> = [];
+  const deleteCalls: Array<{ id: number; sourceId: string | undefined }> = [];
+  // syncChannelsFromDevice tracks pre-existing DB rows so it can reconcile
+  // (delete rows for slots the device no longer reports as configured).
+  // Each upsert mutates this view so subsequent calls in the same test see
+  // the post-upsert state.
+  const dbRows: Map<number, { id: number; name: string; psk: string | null }> = new Map(
+    (opts.preExistingRows ?? []).map(r => [r.id, { id: r.id, name: r.name ?? '', psk: r.psk ?? null }]),
+  );
 
   const defaultGetChannels = {
     success: true,
@@ -66,10 +81,18 @@ function makeManager(opts: {
   vi.spyOn(databaseService, 'channels', 'get').mockReturnValue({
     upsertChannel: vi.fn(async (data: any, sourceId?: string, opts?: any) => {
       upsertCalls.push({ data, sourceId, opts });
+      dbRows.set(data.id, { id: data.id, name: data.name ?? '', psk: data.psk ?? null });
+    }),
+    getAllChannels: vi.fn(async (_sourceId?: string) => {
+      return Array.from(dbRows.values());
+    }),
+    deleteChannel: vi.fn(async (id: number, sourceId?: string) => {
+      deleteCalls.push({ id, sourceId });
+      dbRows.delete(id);
     }),
   } as any);
 
-  return { manager: m, bridgeCalls, upsertCalls };
+  return { manager: m, bridgeCalls, upsertCalls, deleteCalls };
 }
 
 describe('MeshCoreManager — listChannels', () => {
@@ -153,6 +176,67 @@ describe('MeshCoreManager — syncChannelsFromDevice', () => {
     await manager.syncChannelsFromDevice();
     expect(upsertCalls).toHaveLength(1);
     expect(upsertCalls[0].data.psk).toBeNull();
+  });
+
+  it('filters out empty/unconfigured slots (the MAX_CHANNELS leak)', async () => {
+    // MeshCore Companion firmware returns success for every slot up to
+    // MAX_CHANNELS (typically 40) with an empty name and all-zero secret
+    // for unused slots. The sync must skip those.
+    const zero = '00'.repeat(16);
+    const { manager, upsertCalls } = makeManager({
+      getChannelsResponse: {
+        success: true,
+        data: [
+          { channel_idx: 0, name: 'Public', secret_hex: 'aa'.repeat(16) },
+          { channel_idx: 1, name: '', secret_hex: zero }, // empty slot — skip
+          { channel_idx: 2, name: '', secret_hex: zero }, // empty slot — skip
+          { channel_idx: 5, name: 'Town', secret_hex: 'bb'.repeat(16) },
+          { channel_idx: 6, name: '', secret_hex: zero }, // empty slot — skip
+        ],
+      },
+    });
+    await manager.syncChannelsFromDevice();
+    expect(upsertCalls.map(c => c.data.id)).toEqual([0, 5]);
+  });
+
+  it('keeps a slot configured when the user blanks the name but keeps a real secret', async () => {
+    const { manager, upsertCalls } = makeManager({
+      getChannelsResponse: {
+        success: true,
+        data: [{ channel_idx: 3, name: '', secret_hex: 'cc'.repeat(16) }],
+      },
+    });
+    await manager.syncChannelsFromDevice();
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0].data.id).toBe(3);
+  });
+
+  it('reconciles: deletes DB rows for slots the device no longer treats as configured', async () => {
+    // Pre-existing DB has channels at idx 0, 1, 5 (left over from before the
+    // empty-slot filter, OR from an out-of-band delete via meshcore-cli).
+    // The device now only reports 0 + 5 as configured; 1 should be deleted.
+    const zero = '00'.repeat(16);
+    const { manager, deleteCalls, upsertCalls } = makeManager({
+      preExistingRows: [
+        { id: 0, name: 'Public', psk: 'old' },
+        { id: 1, name: '', psk: '' },
+        { id: 5, name: 'Town', psk: 'oldtoo' },
+      ],
+      getChannelsResponse: {
+        success: true,
+        data: [
+          { channel_idx: 0, name: 'Public', secret_hex: 'aa'.repeat(16) },
+          { channel_idx: 1, name: '', secret_hex: zero }, // empty — filtered out
+          { channel_idx: 5, name: 'Town', secret_hex: 'bb'.repeat(16) },
+        ],
+      },
+    });
+    await manager.syncChannelsFromDevice();
+
+    // Upserted only the two configured slots.
+    expect(upsertCalls.map(c => c.data.id)).toEqual([0, 5]);
+    // Deleted the stale empty-slot row at idx 1.
+    expect(deleteCalls).toEqual([{ id: 1, sourceId: 'test-source' }]);
   });
 });
 
