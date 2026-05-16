@@ -579,7 +579,7 @@ function DashboardInner() {
                   onChange={(e) => setFormType(e.target.value as 'meshtastic_tcp' | 'meshcore')}
                 >
                   <option value="meshtastic_tcp">{t('source.form.type_meshtastic', 'Meshtastic (TCP)')}</option>
-                  <option value="meshcore">{t('source.form.type_meshcore', 'MeshCore (USB)')}</option>
+                  <option value="meshcore">{t('source.form.type_meshcore', 'MeshCore')}</option>
                 </select>
               </label>
             )}
