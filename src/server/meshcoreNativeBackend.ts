@@ -336,8 +336,19 @@ export class MeshCoreNativeBackend extends EventEmitter {
           await c.sendTextMessage(fullKey, text);
           return { sent: true };
         }
-        // Broadcast = channel 0
-        await c.sendChannelTextMessage(0, text);
+        // No recipient → broadcast on a channel. `channel_idx` is optional;
+        // historical callers omit it and get channel 0, which the firmware's
+        // primary "Public" slot is conventionally bound to. Multi-channel
+        // callers (Phase 2 of the channels feature) pass a specific idx.
+        const channelIdxRaw = params.channel_idx;
+        const channelIdx =
+          channelIdxRaw === undefined || channelIdxRaw === null
+            ? 0
+            : Number(channelIdxRaw);
+        if (!Number.isInteger(channelIdx) || channelIdx < 0 || channelIdx > 255) {
+          throw new Error(`Invalid channel index: ${channelIdxRaw}`);
+        }
+        await c.sendChannelTextMessage(channelIdx, text);
         return { sent: true };
       }
 
