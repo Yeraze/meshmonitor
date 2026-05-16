@@ -107,7 +107,12 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             <MeshCoreInfoView baseUrl={baseUrl} sourceId={sourceId} status={status} />
           )}
           {view === 'configuration' && (
-            <MeshCoreConfigurationView status={status} actions={actions} />
+            <MeshCoreConfigurationView
+              status={status}
+              actions={actions}
+              baseUrl={baseUrl}
+              sourceId={sourceId}
+            />
           )}
           {view === 'settings' && (
             <MeshCoreSettingsView
