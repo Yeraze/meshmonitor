@@ -100,6 +100,13 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     for (const c of contacts) {
       if (c.publicKey && !isChannelPseudoKey(c.publicKey)) peers.add(c.publicKey);
     }
+    // Drop the local node — DMing yourself is meaningless and the local node
+    // sometimes appears in the contacts list as a side-effect of seeding.
+    if (selfKey) {
+      for (const key of Array.from(peers)) {
+        if (keysMatch(key, selfKey)) peers.delete(key);
+      }
+    }
     return Array.from(peers);
   }, [messages, contacts, selfKey, canonicalize]);
 
