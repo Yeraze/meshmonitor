@@ -3243,6 +3243,24 @@ class MeshtasticManager implements ISourceManager {
         case 'configComplete':
           logger.debug('✅ Config complete received, ID:', parsed.data.configCompleteId);
 
+          // configComplete is direct evidence the local device just finished talking to us —
+          // refresh its lastHeard so freshness filters (e.g., neighbor-info) don't treat a
+          // quiet-but-connected local node as stale (#3025). Best-effort: silently swallow
+          // errors so a DB hiccup never blocks config-capture completion.
+          if (this.localNodeInfo?.nodeNum) {
+            const localNodeNum = this.localNodeInfo.nodeNum;
+            const localNodeId = this.localNodeInfo.nodeId;
+            try {
+              await databaseService.nodes.upsertNode({
+                nodeNum: localNodeNum,
+                nodeId: localNodeId,
+                lastHeard: Date.now() / 1000,
+              }, this.sourceId);
+            } catch (err) {
+              logger.debug('⚠️ Could not refresh local node lastHeard on configComplete:', err);
+            }
+          }
+
           // Stop capturing init messages
           if (this.isCapturingInitConfig && !this.configCaptureComplete) {
             this.configCaptureComplete = true;
@@ -3411,6 +3429,11 @@ class MeshtasticManager implements ISourceManager {
             isIgnored: newNode?.isIgnored || oldNode?.isIgnored || false,
             hasRemoteAdmin: true, // Local node always has admin
             rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
+            // Receiving MyNodeInfo over the active link is direct evidence we just heard
+            // from the local device — stamp lastHeard so downstream consumers (e.g.,
+            // neighbor-info filters, activity displays) don't treat the local node as stale
+            // when no broadcast traffic has happened to flow through processMeshPacket yet (#3025).
+            lastHeard: Date.now() / 1000,
           }, this.sourceId);
 
           // Delete old ghost node (cascades messages, traceroutes, neighbors, telemetry)
@@ -3498,6 +3521,7 @@ class MeshtasticManager implements ISourceManager {
         nodeId,
         keyMismatchDetected: false,
         keySecurityIssueDetails: null,
+        lastHeard: Date.now() / 1000, // we just received MyNodeInfo (#3025)
       }, this.sourceId);
       dataEventEmitter.emitNodeUpdate(nodeNum, { keyMismatchDetected: false, keySecurityIssueDetails: undefined }, this.sourceId);
     }
@@ -3515,12 +3539,18 @@ class MeshtasticManager implements ISourceManager {
         isLocked: true  // Lock it to prevent overwrites
       } as any;
 
-      // Update rebootCount and ensure hasRemoteAdmin is set for local node
+      // Update rebootCount and ensure hasRemoteAdmin is set for local node.
+      // Also refresh lastHeard — we just received MyNodeInfo, which is direct evidence
+      // we heard from the local device. Without this, a local node whose stored lastHeard
+      // is stale (no inbound packets via processMeshPacket since startup) would have its
+      // own NeighborInfo links silently dropped by the freshness filter in
+      // sourceRoutes.ts / server.ts (#3025).
       await databaseService.nodes.upsertNode({
         nodeNum: nodeNum,
         nodeId: nodeId,
         rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
-        hasRemoteAdmin: true  // Local node always has remote admin access
+        hasRemoteAdmin: true, // Local node always has remote admin access
+        lastHeard: Date.now() / 1000,
       }, this.sourceId);
       logger.debug(`📱 Updated local device: ${existingNode.longName} (${nodeId}), rebootCount: ${myNodeInfo.rebootCount}, hasRemoteAdmin: true`);
 

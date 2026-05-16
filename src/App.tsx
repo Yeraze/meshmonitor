@@ -1521,7 +1521,7 @@ function App() {
         return () => clearInterval(interval);
       }
     }
-  }, [connectionStatus]);
+  }, [connectionStatus, sourceId]);
 
   // Fetch position history when a mobile node is selected
   useEffect(() => {
@@ -2306,8 +2306,10 @@ function App() {
   // fetchTraceroutes removed - traceroutes are now synced via poll mechanism
 
   const fetchNeighborInfo = async () => {
+    if (!sourceId) return;
     try {
-      const response = await authFetch(`${baseUrl}/api/neighbor-info`);
+      const url = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/neighbor-info`;
+      const response = await authFetch(url);
       if (response.ok) {
         const data = await response.json();
         setNeighborInfo(data);

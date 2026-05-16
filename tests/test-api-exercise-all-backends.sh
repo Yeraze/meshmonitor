@@ -30,6 +30,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# Pre-flight: auto-remove any orphan test-scoped containers leaked by a previous
+# crashed run of this script. These names belong exclusively to this test, so
+# removal cannot affect the developer's running dev stack.
+for orphan in meshmonitor-api-exercise-sqlite-test meshmonitor-api-exercise-postgres-test meshmonitor-api-exercise-mysql-test; do
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$orphan"; then
+        echo -e "${YELLOW}!${NC} Removing orphan test container from previous run: $orphan"
+        docker rm -f "$orphan" >/dev/null 2>&1 || true
+    fi
+done
+
 # Test configuration
 TEST_NODE_IP="${TEST_NODE_IP:-192.168.5.106}"
 TEST_PORT="8085"
