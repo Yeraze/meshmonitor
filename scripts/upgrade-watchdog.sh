@@ -14,6 +14,7 @@ IMAGE_NAME="${IMAGE_NAME:-ghcr.io/yeraze/meshmonitor}"
 COMPOSE_PROJECT_DIR="${COMPOSE_PROJECT_DIR:-/compose}"
 DOCKER_SOCKET_TEST_REQUEST="${DOCKER_SOCKET_TEST_REQUEST:-/data/.docker-socket-test-request}"
 DOCKER_SOCKET_TEST_SCRIPT="${DOCKER_SOCKET_TEST_SCRIPT:-/data/.meshmonitor-internal/test-docker-socket.sh}"
+HEALTH_CHECK_TIMEOUT="${HEALTH_CHECK_TIMEOUT:-600}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -275,10 +276,10 @@ recreate_container() {
 
 # Wait for container health check
 wait_for_health() {
-  local max_wait=120
+  local max_wait=${HEALTH_CHECK_TIMEOUT}
   local elapsed=0
 
-  log "Waiting for container health check..."
+  log "Waiting for container health check (timeout: ${max_wait}s)..."
 
   # Get BASE_URL from container env vars, default to empty if not set
   local base_url=$(docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | grep '^BASE_URL=' | cut -d'=' -f2 | tr -d '\r\n')
@@ -292,10 +293,22 @@ wait_for_health() {
   while [ $elapsed -lt $max_wait ]; do
     # Check if container is running
     if ! docker ps --filter "name=$CONTAINER_NAME" --filter "status=running" | grep -q "$CONTAINER_NAME"; then
-      log_warn "Container not running yet..."
+      log_warn "Container not running yet... (${elapsed}s/${max_wait}s)"
       sleep 5
       elapsed=$((elapsed + 5))
       continue
+    fi
+
+    # Check Docker's own health status to distinguish states:
+    #   "unhealthy" → container started but health check is actively failing → fail fast
+    #   "starting"  → Docker health check hasn't passed yet → keep waiting
+    #   "healthy"   → Docker considers it healthy, proceed to HTTP check
+    #   ""          → no HEALTHCHECK in image, rely solely on HTTP check
+    local docker_health=""
+    docker_health=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$CONTAINER_NAME" 2>/dev/null || true)
+    if [ "$docker_health" = "unhealthy" ]; then
+      log_error "Docker health check reports container is unhealthy — failing fast"
+      return 1
     fi
 
     # Get container IP directly from Docker inspect - more reliable than DNS after recreation
@@ -303,9 +316,9 @@ wait_for_health() {
     local container_ip=""
     container_ip=$(docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | head -n1)
 
-    # If no IP yet, wait for container to get network assigned
+    # If no IP yet, container network is still initialising — keep waiting
     if [ -z "$container_ip" ]; then
-      log_warn "Container has no IP assigned yet..."
+      log_warn "Container has no IP assigned yet... (Docker health: ${docker_health:-none}, ${elapsed}s/${max_wait}s)"
       sleep 5
       elapsed=$((elapsed + 5))
       continue
@@ -327,7 +340,7 @@ wait_for_health() {
       return 0
     fi
 
-    log "Waiting for health check... (${elapsed}s/${max_wait}s)"
+    log "Waiting for health check... (Docker health: ${docker_health:-none}, ${elapsed}s/${max_wait}s)"
     sleep 5
     elapsed=$((elapsed + 5))
   done
@@ -504,6 +517,7 @@ main() {
   log "Image: $IMAGE_NAME"
   log "Trigger file: $TRIGGER_FILE"
   log "Check interval: ${CHECK_INTERVAL}s"
+  log "Health check timeout: ${HEALTH_CHECK_TIMEOUT}s"
   log "Compose project: $COMPOSE_PROJECT_DIR"
   log "=================================================="
 
