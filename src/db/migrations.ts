@@ -73,6 +73,7 @@ import { migration as collapseMeshcoreResourceMigration, runMigration058Postgres
 import { migration as telemetrySourceNodeTypeTsIndexMigration, runMigration059Postgres, runMigration059Mysql } from '../server/migrations/059_telemetry_source_node_type_ts_index.js';
 import { migration as meshcoreNodeTelemetryConfigMigration, runMigration060Postgres, runMigration060Mysql } from '../server/migrations/060_meshcore_node_telemetry_config.js';
 import { migration as meshcoreNodesCompositePkMigration, runMigration061Postgres, runMigration061Mysql } from '../server/migrations/061_meshcore_nodes_composite_pk.js';
+import { migration as meshcoreMessagesFromnameMigration, runMigration062Postgres, runMigration062Mysql } from '../server/migrations/062_meshcore_messages_fromname.js';
 
 // ============================================================================
 // Registry
@@ -953,4 +954,21 @@ registry.register({
   sqlite: (db) => meshcoreNodesCompositePkMigration.up(db),
   postgres: (client) => runMigration061Postgres(client),
   mysql: (pool) => runMigration061Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 062: Add `fromName` to `meshcore_messages`.
+// MeshCore channel messages carry no per-sender identity on the wire — the
+// sender prefixes their name onto the text body. MeshCoreManager parses it
+// into `fromName` on the in-memory message. This column persists it so
+// channel messages retain sender attribution after restart.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 62,
+  name: 'meshcore_messages_fromname',
+  settingsKey: 'migration_062_meshcore_messages_fromname',
+  sqlite: (db) => meshcoreMessagesFromnameMigration.up(db),
+  postgres: (client) => runMigration062Postgres(client),
+  mysql: (pool) => runMigration062Mysql(pool),
 });

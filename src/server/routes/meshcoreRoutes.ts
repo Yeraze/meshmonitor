@@ -207,7 +207,7 @@ router.post('/connect', meshcoreDeviceLimiter, requireAuth(), requirePermission(
       connectionType: connectionType as ConnectionType || ConnectionType.SERIAL,
       serialPort,
       tcpHost,
-      tcpPort: parsedTcpPort ?? 4403,
+      tcpPort: parsedTcpPort ?? 5000,
       baudRate: parsedBaudRate ?? 115200,
       firmwareType,
     };

@@ -15,6 +15,9 @@ export const meshcoreMessagesSqlite = sqliteTable('meshcore_messages', {
   // Sender public key
   fromPublicKey: text('fromPublicKey').notNull(),
 
+  // Display name of the sender (channel messages only; parsed from the "Name: body" prefix)
+  fromName: text('fromName'),
+
   // Recipient public key (null for broadcast)
   toPublicKey: text('toPublicKey'),
 
@@ -47,6 +50,7 @@ export const meshcoreMessagesSqlite = sqliteTable('meshcore_messages', {
 export const meshcoreMessagesPostgres = pgTable('meshcore_messages', {
   id: pgText('id').primaryKey(),
   fromPublicKey: pgText('fromPublicKey').notNull(),
+  fromName: pgText('fromName'),
   toPublicKey: pgText('toPublicKey'),
   text: pgText('text').notNull(),
   timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
@@ -64,6 +68,7 @@ export const meshcoreMessagesPostgres = pgTable('meshcore_messages', {
 export const meshcoreMessagesMysql = mysqlTable('meshcore_messages', {
   id: myVarchar('id', { length: 64 }).primaryKey(),
   fromPublicKey: myVarchar('fromPublicKey', { length: 64 }).notNull(),
+  fromName: myVarchar('fromName', { length: 64 }),
   toPublicKey: myVarchar('toPublicKey', { length: 64 }),
   text: myText('text').notNull(),
   timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
