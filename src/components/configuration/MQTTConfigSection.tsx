@@ -2,6 +2,10 @@ import React, { useRef, useMemo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { useDashboardSources } from '../../hooks/useDashboardData';
+import { useSource } from '../../contexts/SourceContext';
+import { useCsrf } from '../../contexts/CsrfContext';
+import { appBasename } from '../../init';
+import { logger } from '../../utils/logger';
 
 interface MQTTConfigSectionProps {
   mqttEnabled: boolean;
@@ -61,6 +65,8 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   onSave
 }) => {
   const { t } = useTranslation();
+  const { sourceId: currentSourceId } = useSource();
+  const { getToken } = useCsrf();
 
   // Quick-configure: list of locally-configured mqtt_broker sources the user
   // can point this device at with one click. Bridges are not offered here —
@@ -98,9 +104,37 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
       // device-payload encryption flag and is a sane default for any broker.
       setTlsEnabled(false);
       setMqttEncryptionEnabled(true);
+      // Flip on the firmware's MQTT proxy mode so traffic flows through
+      // MeshMonitor's TCP API rather than directly to the broker. The
+      // mqttLink stamp below is what actually relays the proxy traffic —
+      // see MeshtasticManager.setupMqttLink (issue #3003 follow-up).
+      setProxyToClientEnabled(true);
+
+      // Stamp the parent Meshtastic source's mqttLink so MeshMonitor
+      // bridges this device's proxy traffic to the embedded broker. The
+      // PUT triggers reconfigureMqttLink server-side without restarting
+      // the transport. Best-effort — failure is logged, not surfaced.
+      if (currentSourceId) {
+        const source = allSources.find((s) => s.id === currentSourceId);
+        if (source && source.type === 'meshtastic_tcp') {
+          const nextConfig = { ...(source.config ?? {}), mqttLink: { enabled: true, mqttBrokerSourceId: sourceId } };
+          fetch(`${appBasename}/api/sources/${currentSourceId}`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-csrf-token': getToken() || '',
+            },
+            body: JSON.stringify({ config: nextConfig }),
+          }).catch((err) => logger.warn('Failed to stamp mqttLink on parent source:', err));
+        }
+      }
     },
     [
       brokerSources,
+      allSources,
+      currentSourceId,
+      getToken,
       setMqttEnabled,
       setMqttAddress,
       setMqttUsername,
@@ -108,6 +142,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
       setMqttRoot,
       setTlsEnabled,
       setMqttEncryptionEnabled,
+      setProxyToClientEnabled,
     ],
   );
 

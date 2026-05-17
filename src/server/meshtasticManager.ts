@@ -6,6 +6,7 @@ import { TcpTransport } from './tcpTransport.js';
 import { VirtualNodeServer, type VirtualNodeConfig } from './virtualNodeServer.js';
 import type { ITransport } from './transports/transport.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
+import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { calculateDistance } from '../utils/distance.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
@@ -293,9 +294,29 @@ interface AutoPingSession {
   results: Array<{ pingNum: number; status: 'ack' | 'nak' | 'timeout'; durationMs?: number; sentAt: number }>;
 }
 
+/**
+ * Bidirectional bridge config between this Meshtastic source and an embedded
+ * mqtt_broker source (issue #3003 follow-up). When `enabled`, MeshMonitor
+ * forwards FromRadio.mqttClientProxyMessage payloads to the linked broker and
+ * injects broker messages back as ToRadio.mqttClientProxyMessage. Works for
+ * devices that have `mqtt.proxy_to_client_enabled = true` set in firmware.
+ */
+export interface MeshtasticMqttLink {
+  enabled?: boolean;
+  mqttBrokerSourceId?: string;
+}
+
 class MeshtasticManager implements ISourceManager {
   public sourceId: string;
-  private sourceConfigOverride: { host?: string; port?: number; heartbeatIntervalSeconds?: number } | null = null;
+  private sourceConfigOverride: { host?: string; port?: number; heartbeatIntervalSeconds?: number; mqttLink?: MeshtasticMqttLink } | null = null;
+  // mqttLink runtime state — set up in start()/reconfigureMqttLink().
+  private mqttLink: MeshtasticMqttLink | null = null;
+  private mqttLinkBroker: import('./mqttBrokerManager.js').MqttBrokerManager | null = null;
+  private mqttLinkBrokerListener: ((p: import('./mqttBrokerManager.js').MqttBrokerLocalPacket) => void) | null = null;
+  private mqttLinkRegistryStartedListener: ((m: ISourceManager) => void) | null = null;
+  private mqttLinkRegistryStoppedListener: ((m: ISourceManager) => void) | null = null;
+  private mqttLinkEchoDeviceToBroker: Array<{ topic: string; packetId: number; expiresAt: number }> = [];
+  private mqttLinkEchoBrokerToDevice: Array<{ topic: string; packetId: number; expiresAt: number }> = [];
   private postResetCooldownUntil: number = 0;
   private virtualNodeServer?: VirtualNodeServer;
   private transport: ITransport | null = null;
@@ -445,11 +466,12 @@ class MeshtasticManager implements ISourceManager {
    * Apply a source config after construction.
    * Used to configure the legacy singleton when sources are loaded from DB at startup.
    */
-  configureSource(config: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig }, sourceId?: string): void {
+  configureSource(config: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink }, sourceId?: string): void {
     this.sourceConfigOverride = {
       host: config.host,
       port: config.port,
       heartbeatIntervalSeconds: config.heartbeatIntervalSeconds,
+      mqttLink: config.mqttLink,
     };
     if (sourceId) this.sourceId = sourceId;
     if (config.virtualNode?.enabled && !this.virtualNodeServer) {
@@ -459,6 +481,7 @@ class MeshtasticManager implements ISourceManager {
         meshtasticManager: this,
       });
     }
+    this.mqttLink = config.mqttLink ?? null;
   }
 
   async start(): Promise<void> {
@@ -468,15 +491,137 @@ class MeshtasticManager implements ISourceManager {
     } catch (err) {
       logger.error(`Failed to start VirtualNodeServer for source ${this.sourceId}:`, err);
     }
+    // Wire up the MQTT proxy bridge if this source has an mqttLink. Done
+    // after connect() so the transport is ready to receive injected ToRadio.
+    if (this.mqttLink?.enabled && this.mqttLink.mqttBrokerSourceId) {
+      this.setupMqttLink();
+    }
   }
 
   async stop(): Promise<void> {
+    this.teardownMqttLink();
     try {
       await this.virtualNodeServer?.stop();
     } catch (err) {
       logger.error(`Failed to stop VirtualNodeServer for source ${this.sourceId}:`, err);
     }
     this.disconnect();
+  }
+
+  /**
+   * Apply a new mqttLink config without restarting the upstream transport.
+   * Called from sourceRoutes.ts when the user toggles or repoints the link
+   * via the UI.
+   */
+  async reconfigureMqttLink(link: MeshtasticMqttLink | undefined): Promise<void> {
+    this.teardownMqttLink();
+    this.mqttLink = link ?? null;
+    if (this.sourceConfigOverride) {
+      this.sourceConfigOverride.mqttLink = link;
+    }
+    if (this.mqttLink?.enabled && this.mqttLink.mqttBrokerSourceId) {
+      this.setupMqttLink();
+    }
+  }
+
+  private setupMqttLink(): void {
+    const brokerId = this.mqttLink?.mqttBrokerSourceId;
+    if (!brokerId) return;
+
+    const attach = (mgr: ISourceManager) => {
+      if (mgr.sourceType !== 'mqtt_broker') return;
+      this.mqttLinkBroker = mgr as import('./mqttBrokerManager.js').MqttBrokerManager;
+      const listener = (p: import('./mqttBrokerManager.js').MqttBrokerLocalPacket) => {
+        this.handleLinkedBrokerLocalPacket(p);
+      };
+      this.mqttLinkBrokerListener = listener;
+      this.mqttLinkBroker.on('local-packet', listener);
+      logger.info(`MQTT link attached: source ${this.sourceId} ↔ broker ${brokerId}`);
+    };
+
+    const existing = sourceManagerRegistry.getManager(brokerId);
+    if (existing) {
+      attach(existing);
+      return;
+    }
+    // Defer until the broker starts.
+    this.mqttLinkRegistryStartedListener = (m: ISourceManager) => {
+      if (m.sourceId === brokerId) attach(m);
+    };
+    sourceManagerRegistry.on('manager-started', this.mqttLinkRegistryStartedListener);
+
+    this.mqttLinkRegistryStoppedListener = (m: ISourceManager) => {
+      if (m.sourceId === brokerId) {
+        logger.warn(`MQTT link parent broker ${brokerId} stopped — detaching from source ${this.sourceId}`);
+        this.detachMqttLinkBroker();
+      }
+    };
+    sourceManagerRegistry.on('manager-stopped', this.mqttLinkRegistryStoppedListener);
+  }
+
+  private teardownMqttLink(): void {
+    this.detachMqttLinkBroker();
+    if (this.mqttLinkRegistryStartedListener) {
+      sourceManagerRegistry.off('manager-started', this.mqttLinkRegistryStartedListener);
+      this.mqttLinkRegistryStartedListener = null;
+    }
+    if (this.mqttLinkRegistryStoppedListener) {
+      sourceManagerRegistry.off('manager-stopped', this.mqttLinkRegistryStoppedListener);
+      this.mqttLinkRegistryStoppedListener = null;
+    }
+    this.mqttLinkEchoDeviceToBroker.length = 0;
+    this.mqttLinkEchoBrokerToDevice.length = 0;
+  }
+
+  private detachMqttLinkBroker(): void {
+    if (this.mqttLinkBroker && this.mqttLinkBrokerListener) {
+      this.mqttLinkBroker.off('local-packet', this.mqttLinkBrokerListener);
+    }
+    this.mqttLinkBroker = null;
+    this.mqttLinkBrokerListener = null;
+  }
+
+  /**
+   * Inbound from the device: it sent a FromRadio.mqttClientProxyMessage,
+   * which means firmware is asking us (its TCP client) to publish this
+   * payload to the broker. Forward the raw bytes to the linked broker.
+   */
+  private async handleDeviceMqttProxyMessage(msg: { topic: string; data: Uint8Array; text?: string; retained: boolean }): Promise<void> {
+    if (!this.mqttLinkBroker) return;
+    if (!msg.topic || msg.data.length === 0) return;
+    const packetId = peekServiceEnvelopePacketId(msg.data);
+    // Suppress echo from the OPPOSITE direction's history.
+    if (packetId !== null && matchesMqttEcho(this.mqttLinkEchoBrokerToDevice, msg.topic, packetId)) return;
+    try {
+      await this.mqttLinkBroker.publish(msg.topic, Buffer.from(msg.data), msg.retained);
+      recordMqttEcho(this.mqttLinkEchoDeviceToBroker, msg.topic, packetId);
+    } catch (err) {
+      logger.warn(`MQTT link: failed to forward device publish to broker: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Outbound to the device: the linked broker received a publish from
+   * elsewhere (another device, an upstream bridge). Inject it back to
+   * the device as ToRadio.mqttClientProxyMessage.
+   */
+  private async handleLinkedBrokerLocalPacket(p: import('./mqttBrokerManager.js').MqttBrokerLocalPacket): Promise<void> {
+    if (!this.isConnected || !this.transport) return;
+    const packetId = p.envelope.packet?.id !== undefined ? (p.envelope.packet.id >>> 0) : null;
+    // Skip the echo of our OWN device's just-forwarded publish.
+    if (packetId !== null && matchesMqttEcho(this.mqttLinkEchoDeviceToBroker, p.topic, packetId)) return;
+    const bytes = meshtasticProtobufService.encodeToRadioMqttClientProxyMessage({
+      topic: p.topic,
+      data: p.payload,
+      retained: p.retained,
+    });
+    if (!bytes) return;
+    try {
+      await this.transport.send(bytes);
+      recordMqttEcho(this.mqttLinkEchoBrokerToDevice, p.topic, packetId);
+    } catch (err) {
+      logger.warn(`MQTT link: failed to inject broker message to device: ${(err as Error).message}`);
+    }
   }
 
   async reconfigureVirtualNode(config: VirtualNodeConfig | undefined): Promise<void> {
@@ -523,14 +668,16 @@ class MeshtasticManager implements ISourceManager {
   // 4.0-alpha NO_CHANNEL auto-ack regression).
   public readonly messageQueue: MessageQueueService = new MessageQueueService();
 
-  constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig }) {
+  constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink }) {
     this.sourceId = sourceId;
     if (sourceConfig) {
       this.sourceConfigOverride = {
         host: sourceConfig.host,
         port: sourceConfig.port,
         heartbeatIntervalSeconds: sourceConfig.heartbeatIntervalSeconds,
+        mqttLink: sourceConfig.mqttLink,
       };
+      if (sourceConfig.mqttLink) this.mqttLink = sourceConfig.mqttLink;
     }
     if (sourceConfig?.virtualNode?.enabled) {
       this.virtualNodeServer = new VirtualNodeServer({
@@ -3015,6 +3162,9 @@ class MeshtasticManager implements ISourceManager {
       switch (parsed.type) {
         case 'fromRadio':
           logger.debug('⚠️ Generic FromRadio message (no specific field set)');
+          break;
+        case 'mqttClientProxyMessage':
+          await this.handleDeviceMqttProxyMessage(parsed.data);
           break;
         case 'meshPacket':
           await this.processMeshPacket(parsed.data, context);
@@ -12774,6 +12924,35 @@ class MeshtasticManager implements ISourceManager {
 
 // Export the class for testing purposes (allows creating isolated test instances)
 export { MeshtasticManager };
+
+// ──────────────────────────────────────────────────────────────────────────
+// MQTT proxy bridge helpers (issue #3003 follow-up)
+// ──────────────────────────────────────────────────────────────────────────
+
+const MQTT_LINK_ECHO_TTL_MS = 60_000;
+const MQTT_LINK_ECHO_MAX = 256;
+
+function peekServiceEnvelopePacketId(payload: Uint8Array): number | null {
+  // Quiet decode — proxy payloads on broad topics often aren't ServiceEnvelopes
+  // (firmware can publish to any topic), so we don't want WARN log spam.
+  const decoded = meshtasticProtobufService.decodeServiceEnvelope(payload, { quiet: true });
+  if (!decoded || typeof decoded.packet?.id !== 'number') return null;
+  return decoded.packet.id >>> 0;
+}
+
+function recordMqttEcho(store: Array<{ topic: string; packetId: number; expiresAt: number }>, topic: string, packetId: number | null): void {
+  if (packetId === null) return;
+  const now = Date.now();
+  while (store.length > 0 && store[0].expiresAt < now) store.shift();
+  if (store.length >= MQTT_LINK_ECHO_MAX) store.shift();
+  store.push({ topic, packetId, expiresAt: now + MQTT_LINK_ECHO_TTL_MS });
+}
+
+function matchesMqttEcho(store: Array<{ topic: string; packetId: number; expiresAt: number }>, topic: string, packetId: number): boolean {
+  const now = Date.now();
+  while (store.length > 0 && store[0].expiresAt < now) store.shift();
+  return store.some((e) => e.topic === topic && e.packetId === packetId);
+}
 
 /**
  * @deprecated Use sourceManagerRegistry to manage MeshtasticManager instances.

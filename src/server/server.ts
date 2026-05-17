@@ -522,6 +522,7 @@ setTimeout(async () => {
               port: cfg.port,
               heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
               virtualNode: cfg.virtualNode,
+              mqttLink: cfg.mqttLink,
             }, source.id);
             await applyManagerSettings(meshtasticManager, source.id, databaseService);
             await sourceManagerRegistry.addManager(meshtasticManager);
@@ -534,6 +535,7 @@ setTimeout(async () => {
               port: cfg.port,
               heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
               virtualNode: cfg.virtualNode,
+              mqttLink: cfg.mqttLink,
             });
             await applyManagerSettings(manager, source.id, databaseService);
             await sourceManagerRegistry.addManager(manager);
