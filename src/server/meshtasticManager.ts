@@ -587,14 +587,23 @@ class MeshtasticManager implements ISourceManager {
    * payload to the broker. Forward the raw bytes to the linked broker.
    */
   private async handleDeviceMqttProxyMessage(msg: { topic: string; data: Uint8Array; text?: string; retained: boolean }): Promise<void> {
+    logger.debug(
+      `📨 [${this.sourceId}] FromRadio.mqttClientProxyMessage topic=${msg.topic} dataLen=${msg.data?.length ?? 0} retained=${msg.retained} link=${this.mqttLinkBroker ? this.mqttLink?.mqttBrokerSourceId : 'none'}`,
+    );
     if (!this.mqttLinkBroker) return;
     if (!msg.topic || msg.data.length === 0) return;
     const packetId = peekServiceEnvelopePacketId(msg.data);
     // Suppress echo from the OPPOSITE direction's history.
     if (packetId !== null && matchesMqttEcho(this.mqttLinkEchoBrokerToDevice, msg.topic, packetId)) return;
+    // Record the echo BEFORE publishing. Aedes' 'publish' event fires
+    // synchronously inside aedes.publish() (the await only resolves after
+    // the broadcast callback), and the broker's 'local-packet' event chain
+    // re-enters this manager via handleLinkedBrokerLocalPacket → echo check.
+    // If we record after the await, the check finds an empty cache and the
+    // same packet bounces straight back to the device as a ToRadio.
+    recordMqttEcho(this.mqttLinkEchoDeviceToBroker, msg.topic, packetId);
     try {
       await this.mqttLinkBroker.publish(msg.topic, Buffer.from(msg.data), msg.retained);
-      recordMqttEcho(this.mqttLinkEchoDeviceToBroker, msg.topic, packetId);
     } catch (err) {
       logger.warn(`MQTT link: failed to forward device publish to broker: ${(err as Error).message}`);
     }
@@ -616,9 +625,13 @@ class MeshtasticManager implements ISourceManager {
       retained: p.retained,
     });
     if (!bytes) return;
+    // Record echo BEFORE transport.send, same reasoning as the symmetric
+    // path in handleDeviceMqttProxyMessage. (For broker → device the timing
+    // window is wider — the device must process+republish before the cache
+    // gets stale — but we keep the pattern consistent.)
+    recordMqttEcho(this.mqttLinkEchoBrokerToDevice, p.topic, packetId);
     try {
       await this.transport.send(bytes);
-      recordMqttEcho(this.mqttLinkEchoBrokerToDevice, p.topic, packetId);
     } catch (err) {
       logger.warn(`MQTT link: failed to inject broker message to device: ${(err as Error).message}`);
     }
