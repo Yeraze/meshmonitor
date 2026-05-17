@@ -174,6 +174,26 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
       mqttEncryptionEnabled, mqttJsonEnabled, mqttRoot, tlsEnabled,
       proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision]);
 
+  // Detect the "client proxy on, but nothing to proxy through" misconfiguration.
+  // We warn when (a) the user has turned on proxyToClientEnabled in the firmware
+  // and (b) the parent Meshtastic source has no mqttLink pointing at a known
+  // mqtt_broker. The MQTTProxy sidecar — which connects to the Virtual Node
+  // Server and publishes externally — is an alternative escape hatch we can't
+  // detect reliably from the browser, so we mention it in the warning text and
+  // leave the call to the operator.
+  const proxyLinkMisconfigured = useMemo(() => {
+    if (!proxyToClientEnabled) return false;
+    if (!currentSourceId) return false;
+    const parent = allSources.find((s) => s.id === currentSourceId);
+    if (!parent || parent.type !== 'meshtastic_tcp') return false;
+    const link = (parent.config as { mqttLink?: { enabled?: boolean; mqttBrokerSourceId?: string } } | undefined)?.mqttLink;
+    if (!link?.enabled || !link.mqttBrokerSourceId) return true;
+    // Link references a sourceId that's no longer present (broker was deleted).
+    const linkedBroker = allSources.find((s) => s.id === link.mqttBrokerSourceId);
+    if (!linkedBroker || linkedBroker.type !== 'mqtt_broker') return true;
+    return false;
+  }, [proxyToClientEnabled, currentSourceId, allSources]);
+
   // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
     const initial = initialValuesRef.current;
@@ -233,6 +253,50 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           ❓
         </a>
       </h3>
+      {proxyLinkMisconfigured && (
+        <div
+          role="alert"
+          style={{
+            margin: '8px 0',
+            padding: '10px 12px',
+            borderRadius: 6,
+            background: 'rgba(249, 226, 175, 0.10)', // ctp-yellow @ low alpha
+            border: '1px solid var(--ctp-yellow, #f9e2af)',
+            color: 'var(--ctp-text)',
+            fontSize: 13,
+            lineHeight: 1.4,
+          }}
+        >
+          <strong style={{ color: 'var(--ctp-yellow, #f9e2af)' }}>
+            ⚠️ {t('mqtt_config.proxy_warning_title', 'Client proxy is enabled but no broker is linked')}
+          </strong>
+          <div style={{ marginTop: 6 }}>
+            {t(
+              'mqtt_config.proxy_warning_body',
+              'With "MQTT Client Proxy" on, the device sends its MQTT traffic to MeshMonitor instead of opening its own connection. MeshMonitor will silently drop those messages unless one of:',
+            )}
+          </div>
+          <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
+            <li>
+              {brokerSources.length > 0
+                ? t(
+                    'mqtt_config.proxy_warning_link_option',
+                    'Pick an embedded broker from the dropdown below — that will both fill these fields and link this source to the broker.',
+                  )
+                : t(
+                    'mqtt_config.proxy_warning_no_broker_option',
+                    'Create an embedded MQTT broker source first, then return here and pick it from the dropdown that will appear.',
+                  )}
+            </li>
+            <li>
+              {t(
+                'mqtt_config.proxy_warning_sidecar_option',
+                'You have the MQTTProxy sidecar container attached to this source’s Virtual Node Server, which will publish to its own configured upstream. In that case, ignore this warning.',
+              )}
+            </li>
+          </ul>
+        </div>
+      )}
       {brokerSources.length > 0 && (
         <div className="setting-item">
           <label htmlFor="mqttQuickConfig">
