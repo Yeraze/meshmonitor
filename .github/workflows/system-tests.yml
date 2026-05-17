@@ -35,6 +35,13 @@ jobs:
       github.event.action != 'labeled' ||
       github.event.label.name == 'system-test'
     timeout-minutes: 90
+    env:
+      # Skip puppeteer's chrome-headless-shell download during npm install.
+      # System tests are shell-script API tests with no browser automation,
+      # so the headless browser is unused on this runner. Without this,
+      # `npm install --prefer-offline` fails on hosts that don't already
+      # have the chrome binary cached and can't reach the puppeteer CDN.
+      PUPPETEER_SKIP_DOWNLOAD: 'true'
 
     steps:
       - name: Checkout code
