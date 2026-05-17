@@ -1,6 +1,7 @@
-import React, { useRef, useMemo, useCallback } from 'react';
+import React, { useRef, useMemo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useDashboardSources } from '../../hooks/useDashboardData';
 
 interface MQTTConfigSectionProps {
   mqttEnabled: boolean;
@@ -60,6 +61,55 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   onSave
 }) => {
   const { t } = useTranslation();
+
+  // Quick-configure: list of locally-configured mqtt_broker sources the user
+  // can point this device at with one click. Bridges are not offered here —
+  // devices publish to the embedded broker, the bridge fans out to upstream.
+  const { data: allSources = [] } = useDashboardSources();
+  const brokerSources = useMemo(
+    () => allSources.filter((s) => s.type === 'mqtt_broker' && s.enabled),
+    [allSources],
+  );
+  const [quickConfigSelection, setQuickConfigSelection] = useState('');
+  const applyQuickConfig = useCallback(
+    (sourceId: string) => {
+      setQuickConfigSelection(sourceId);
+      if (!sourceId) return;
+      const src = brokerSources.find((s) => s.id === sourceId);
+      const cfg = src?.config as
+        | {
+            listener?: { port?: number };
+            auth?: { username?: string; password?: string };
+            rootTopic?: string;
+          }
+        | undefined;
+      if (!cfg) return;
+      // Address: use the hostname the operator is using to reach MeshMonitor
+      // as a best-guess LAN address for the broker. Operator can edit if it's
+      // wrong (e.g. when running behind a reverse proxy).
+      const host = window.location.hostname || 'localhost';
+      const port = cfg.listener?.port ?? 1883;
+      setMqttEnabled(true);
+      setMqttAddress(port === 1883 ? host : `${host}:${port}`);
+      if (cfg.auth?.username) setMqttUsername(cfg.auth.username);
+      if (cfg.auth?.password) setMqttPassword(cfg.auth.password);
+      if (cfg.rootTopic) setMqttRoot(cfg.rootTopic);
+      // Embedded broker v1 is plain TCP; firmware MQTT encryption is the
+      // device-payload encryption flag and is a sane default for any broker.
+      setTlsEnabled(false);
+      setMqttEncryptionEnabled(true);
+    },
+    [
+      brokerSources,
+      setMqttEnabled,
+      setMqttAddress,
+      setMqttUsername,
+      setMqttPassword,
+      setMqttRoot,
+      setTlsEnabled,
+      setMqttEncryptionEnabled,
+    ],
+  );
 
   // Track initial values for change detection
   const initialValuesRef = useRef({
@@ -148,6 +198,32 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           ❓
         </a>
       </h3>
+      {brokerSources.length > 0 && (
+        <div className="setting-item">
+          <label htmlFor="mqttQuickConfig">
+            {t('mqtt_config.quick_configure', 'Quick configure from MeshMonitor broker')}
+            <span className="setting-description">
+              {t(
+                'mqtt_config.quick_configure_description',
+                'Auto-fill these fields to point the device at an embedded MQTT broker configured in MeshMonitor.',
+              )}
+            </span>
+          </label>
+          <select
+            id="mqttQuickConfig"
+            className="setting-input"
+            value={quickConfigSelection}
+            onChange={(e) => applyQuickConfig(e.target.value)}
+          >
+            <option value="">{t('common.select', 'Select…')}</option>
+            {brokerSources.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="setting-item">
         <label htmlFor="mqttEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
           <input

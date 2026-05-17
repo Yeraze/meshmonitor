@@ -168,6 +168,41 @@
   overflow: hidden;
 }
 
+/* Embedded MQTT broker watermark — a hub-and-spoke graphic: the broker is
+   the large central node, devices/clients are the four smaller nodes
+   surrounding it. Path-only SVG so we don't depend on system fonts. */
+.dashboard-source-card.has-mqtt-broker-watermark::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 50L15 15M50 50L85 15M50 50L15 85M50 50L85 85' stroke='white' stroke-width='3' fill='none'/%3E%3Ccircle cx='50' cy='50' r='12' fill='white'/%3E%3Ccircle cx='15' cy='15' r='7' fill='white'/%3E%3Ccircle cx='85' cy='15' r='7' fill='white'/%3E%3Ccircle cx='15' cy='85' r='7' fill='white'/%3E%3Ccircle cx='85' cy='85' r='7' fill='white'/%3E%3C/svg%3E");
+  background-size: 70% auto;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0.10;
+  pointer-events: none;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+/* MQTT bridge watermark — two nodes connected by a bidirectional arrow,
+   evoking "local broker ↔ upstream broker" relaying. Distinct from the
+   embedded-broker hub-and-spoke so the two MQTT card types are visually
+   distinguishable at a glance. */
+.dashboard-source-card.has-mqtt-bridge-watermark::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 60'%3E%3Ccircle cx='18' cy='30' r='12' fill='white'/%3E%3Ccircle cx='102' cy='30' r='12' fill='white'/%3E%3Cpath d='M32 30 H88' stroke='white' stroke-width='3' fill='none'/%3E%3Cpolygon points='34,30 44,24 44,36' fill='white'/%3E%3Cpolygon points='86,30 76,24 76,36' fill='white'/%3E%3C/svg%3E");
+  background-size: 80% auto;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0.10;
+  pointer-events: none;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
 .dashboard-source-card > * {
   position: relative;
 }

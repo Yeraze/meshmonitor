@@ -443,10 +443,35 @@ setTimeout(async () => {
     // The first TCP source also configures the legacy singleton so that all
     // existing non-poll endpoints (which import meshtasticManager directly)
     // continue to work without modification.
-    const enabledSources = await databaseService.sources.getEnabledSources();
+    const enabledSourcesRaw = await databaseService.sources.getEnabledSources();
+    // Sort so mqtt_broker sources start before mqtt_bridge sources — bridges
+    // resolve their parent broker via the registry, and while they can
+    // attach later via the deferred 'manager-started' event, starting in
+    // order keeps the happy path racefree.
+    const typeStartOrder = (t: string) =>
+      t === 'mqtt_broker' ? 0 : t === 'mqtt_bridge' ? 2 : 1;
+    const enabledSources = [...enabledSourcesRaw].sort(
+      (a, b) => typeStartOrder(a.type) - typeStartOrder(b.type),
+    );
     let firstTcpSourceConfigured = false;
 
     for (const source of enabledSources) {
+      if (source.type === 'mqtt_broker' || source.type === 'mqtt_bridge') {
+        try {
+          const manager = buildMqttManagerForSource(
+            source.id,
+            source.name,
+            source.type,
+            source.config,
+          );
+          await sourceManagerRegistry.addManager(manager);
+          logger.info(`Started MQTT ${source.type} source ${source.id} (${source.name})`);
+        } catch (err) {
+          logger.error(`Failed to start MQTT source ${source.id} (${source.name}):`, err);
+        }
+        continue;
+      }
+
       if (source.type === 'meshcore') {
         // Slice 1 of multi-source MeshCore: spin up a per-source manager
         // and connect it. Companion-USB only — other transports will be
@@ -518,7 +543,16 @@ setTimeout(async () => {
           // The manager's internal retry logic will reconnect when reachable.
           logger.error(`Failed to start source ${source.id} (${source.name}); continuing with other sources:`, err);
         }
+        continue;
       }
+
+      // Unknown source type — most likely a leftover row from a deprecated
+      // type (e.g. the pre-#3003 'mqtt' subscriber type). Surface a warning
+      // so it shows up in logs; the source will appear in the dashboard
+      // sidebar as never-connected until the user deletes it.
+      logger.warn(
+        `Source ${source.id} (${source.name}) has unknown type "${source.type}" — no manager will be started. Delete the source if it is no longer needed.`,
+      );
     }
 
     if (!firstTcpSourceConfigured) {
@@ -832,7 +866,7 @@ import embedProfileRoutes from './routes/embedProfileRoutes.js';
 import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';
 import firmwareUpdateRoutes from './routes/firmwareUpdateRoutes.js';
-import sourceRoutes from './routes/sourceRoutes.js';
+import sourceRoutes, { buildMqttManagerForSource } from './routes/sourceRoutes.js';
 import unifiedRoutes from './routes/unifiedRoutes.js';
 import analysisRoutes from './routes/analysisRoutes.js';
 import { firmwareUpdateService } from './services/firmwareUpdateService.js';

@@ -81,7 +81,9 @@ function DashboardInner() {
   // Source add/edit modal state
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
-  const [formType, setFormType] = useState<'meshtastic_tcp' | 'meshcore'>('meshtastic_tcp');
+  const [formType, setFormType] = useState<
+    'meshtastic_tcp' | 'meshcore' | 'mqtt_broker' | 'mqtt_bridge'
+  >('meshtastic_tcp');
   const [formName, setFormName] = useState('');
   const [formHost, setFormHost] = useState('');
   const [formPort, setFormPort] = useState('4403');
@@ -98,6 +100,28 @@ function DashboardInner() {
   const [formMcTcpHost, setFormMcTcpHost] = useState('');
   const [formMcTcpPort, setFormMcTcpPort] = useState('4403');
   const [formMcDeviceType, setFormMcDeviceType] = useState<'companion' | 'repeater'>('companion');
+  // MQTT broker (mqtt_broker) form state.
+  const [formMqttListenPort, setFormMqttListenPort] = useState('1883');
+  const [formMqttUsername, setFormMqttUsername] = useState('');
+  const [formMqttPassword, setFormMqttPassword] = useState('');
+  const [formMqttRootTopic, setFormMqttRootTopic] = useState('msh');
+  // MQTT bridge (mqtt_bridge) form state.
+  const [formMqttBridgeBrokerId, setFormMqttBridgeBrokerId] = useState('');
+  const [formMqttBridgeUrl, setFormMqttBridgeUrl] = useState('');
+  const [formMqttBridgeUsername, setFormMqttBridgeUsername] = useState('');
+  const [formMqttBridgePassword, setFormMqttBridgePassword] = useState('');
+  const [formMqttBridgeSubscriptions, setFormMqttBridgeSubscriptions] = useState('msh/#');
+  // Each filter is opt-in via a checkbox so the form stays short for the
+  // common case where the user just wants a topic-pattern subscription.
+  const [formMqttBridgeUseTopicBlock, setFormMqttBridgeUseTopicBlock] = useState(false);
+  const [formMqttBridgeTopicBlock, setFormMqttBridgeTopicBlock] = useState('');
+  const [formMqttBridgeUseGeo, setFormMqttBridgeUseGeo] = useState(false);
+  const [formMqttBridgeGeo, setFormMqttBridgeGeo] = useState({
+    minLat: '',
+    maxLat: '',
+    minLng: '',
+    maxLng: '',
+  });
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
 
@@ -217,6 +241,19 @@ function DashboardInner() {
     setFormMcTcpHost('');
     setFormMcTcpPort('4403');
     setFormMcDeviceType('companion');
+    setFormMqttListenPort('1883');
+    setFormMqttUsername('');
+    setFormMqttPassword('');
+    setFormMqttRootTopic('msh');
+    setFormMqttBridgeBrokerId('');
+    setFormMqttBridgeUrl('');
+    setFormMqttBridgeUsername('');
+    setFormMqttBridgePassword('');
+    setFormMqttBridgeSubscriptions('msh/#');
+    setFormMqttBridgeUseTopicBlock(false);
+    setFormMqttBridgeTopicBlock('');
+    setFormMqttBridgeUseGeo(false);
+    setFormMqttBridgeGeo({ minLat: '', maxLat: '', minLng: '', maxLng: '' });
     setFormError('');
     setShowSourceModal(true);
   };
@@ -226,6 +263,45 @@ function DashboardInner() {
     if (!source) return;
     const cfg = source.config as Record<string, any> | undefined;
     setEditingSourceId(id);
+    if (source.type === 'mqtt_broker') {
+      setFormType('mqtt_broker');
+      setFormName(source.name);
+      setFormMqttListenPort(String(cfg?.listener?.port ?? 1883));
+      setFormMqttUsername(cfg?.auth?.username ?? '');
+      // Non-admin GETs strip the password — leave the field empty, the
+      // backend round-trips the existing value when the field stays empty.
+      setFormMqttPassword('');
+      setFormMqttRootTopic(cfg?.rootTopic ?? 'msh');
+      setFormError('');
+      setShowSourceModal(true);
+      return;
+    }
+    if (source.type === 'mqtt_bridge') {
+      setFormType('mqtt_bridge');
+      setFormName(source.name);
+      setFormMqttBridgeBrokerId(cfg?.brokerSourceId ?? '');
+      setFormMqttBridgeUrl(cfg?.upstream?.url ?? '');
+      setFormMqttBridgeUsername(cfg?.upstream?.username ?? '');
+      setFormMqttBridgePassword('');
+      setFormMqttBridgeSubscriptions((cfg?.subscriptions ?? []).join('\n'));
+      const topicBlock: string[] = cfg?.downlinkFilters?.topics?.block ?? [];
+      setFormMqttBridgeUseTopicBlock(topicBlock.length > 0);
+      setFormMqttBridgeTopicBlock(topicBlock.join('\n'));
+      const geo = cfg?.downlinkFilters?.geo ?? {};
+      const hasGeo = ['minLat', 'maxLat', 'minLng', 'maxLng'].some(
+        (k) => geo[k] != null,
+      );
+      setFormMqttBridgeUseGeo(hasGeo);
+      setFormMqttBridgeGeo({
+        minLat: geo.minLat != null ? String(geo.minLat) : '',
+        maxLat: geo.maxLat != null ? String(geo.maxLat) : '',
+        minLng: geo.minLng != null ? String(geo.minLng) : '',
+        maxLng: geo.maxLng != null ? String(geo.maxLng) : '',
+      });
+      setFormError('');
+      setShowSourceModal(true);
+      return;
+    }
     setFormType(source.type === 'meshcore' ? 'meshcore' : 'meshtastic_tcp');
     setFormName(source.name);
     setFormHost(cfg?.host ?? '');
@@ -253,7 +329,87 @@ function DashboardInner() {
     if (!formName.trim()) { setFormError(t('source.form.error_name_required')); return; }
 
     let cfg: Record<string, any>;
-    if (formType === 'meshcore') {
+    if (formType === 'mqtt_broker') {
+      const port = parseInt(formMqttListenPort, 10);
+      if (isNaN(port) || port < 1 || port > 65535) {
+        setFormError(t('source.form.error_port_range'));
+        return;
+      }
+      if (!formMqttUsername.trim()) {
+        setFormError(t('source.form.error_mqtt_username_required', 'Broker username is required'));
+        return;
+      }
+      if (!editingSourceId && !formMqttPassword) {
+        setFormError(t('source.form.error_mqtt_password_required', 'Broker password is required'));
+        return;
+      }
+      // Generate a synthetic gateway identity. nodeNum bit 31 set keeps it
+      // outside the legitimate Meshtastic node-id range so it can't be
+      // confused with a real radio.
+      const nodeNum = (Math.floor(Math.random() * 0x7fffffff) | 0x80000000) >>> 0;
+      const nodeId = '!' + nodeNum.toString(16).padStart(8, '0');
+      const shortName = formName.trim().substring(0, 4) || 'MM';
+      cfg = {
+        listener: { port, host: '0.0.0.0' },
+        auth: { username: formMqttUsername.trim(), password: formMqttPassword },
+        gateway: { nodeNum, nodeId, longName: formName.trim(), shortName },
+        rootTopic: formMqttRootTopic.trim() || 'msh',
+      };
+      if (editingSourceId && !formMqttPassword) {
+        // Empty password on edit → tell server to keep the existing one.
+        // Drop the password field so the merge logic on the server preserves it.
+        delete (cfg.auth as { password?: string }).password;
+      }
+    } else if (formType === 'mqtt_bridge') {
+      if (!formMqttBridgeBrokerId) {
+        setFormError(t('source.form.error_mqtt_broker_required', 'Select a parent broker'));
+        return;
+      }
+      if (!formMqttBridgeUrl.trim()) {
+        setFormError(t('source.form.error_mqtt_url_required', 'Upstream URL is required'));
+        return;
+      }
+      const subscriptions = formMqttBridgeSubscriptions
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const topicBlock = formMqttBridgeUseTopicBlock
+        ? formMqttBridgeTopicBlock
+            .split('\n')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+      const geo: Record<string, number> = {};
+      if (formMqttBridgeUseGeo) {
+        for (const k of ['minLat', 'maxLat', 'minLng', 'maxLng'] as const) {
+          const v = formMqttBridgeGeo[k];
+          if (v) {
+            const n = Number(v);
+            if (Number.isNaN(n)) {
+              setFormError(t('source.form.error_geo_invalid', 'Geo bounds must be numbers'));
+              return;
+            }
+            geo[k] = n;
+          }
+        }
+      }
+      const downlinkFilters: Record<string, unknown> = {};
+      if (topicBlock.length > 0) downlinkFilters.topics = { block: topicBlock };
+      if (Object.keys(geo).length > 0) downlinkFilters.geo = geo;
+      cfg = {
+        brokerSourceId: formMqttBridgeBrokerId,
+        upstream: {
+          url: formMqttBridgeUrl.trim(),
+          username: formMqttBridgeUsername.trim() || undefined,
+          password: formMqttBridgePassword || undefined,
+        },
+        subscriptions: subscriptions.length > 0 ? subscriptions : ['msh/#'],
+        ...(Object.keys(downlinkFilters).length > 0 ? { downlinkFilters } : {}),
+      };
+      if (editingSourceId && !formMqttBridgePassword) {
+        delete (cfg.upstream as { password?: string }).password;
+      }
+    } else if (formType === 'meshcore') {
       // MeshCore source: USB/serial or TCP. Both transports flow through the
       // same MeshCoreManager via the Python bridge — only the connect params
       // differ. BLE remains out of scope.
@@ -564,7 +720,7 @@ function DashboardInner() {
       {/* Add/Edit source modal */}
       {showSourceModal && (
         <div className="dashboard-confirm-overlay" onClick={() => setShowSourceModal(false)}>
-          <div className="dashboard-confirm-dialog" style={{ maxWidth: 400 }} onClick={(e) => e.stopPropagation()}>
+          <div className="dashboard-confirm-dialog" style={{ maxWidth: 480, maxHeight: '85vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
             <h3>{editingSourceId ? t('source.edit') : t('source.add')}</h3>
 
             {/* Type selector (slice 4): only meaningful when adding — type is
@@ -576,10 +732,25 @@ function DashboardInner() {
                 <select
                   className="dashboard-form-input"
                   value={formType}
-                  onChange={(e) => setFormType(e.target.value as 'meshtastic_tcp' | 'meshcore')}
+                  onChange={(e) =>
+                    setFormType(
+                      e.target.value as
+                        | 'meshtastic_tcp'
+                        | 'meshcore'
+                        | 'mqtt_broker'
+                        | 'mqtt_bridge',
+                    )
+                  }
                 >
                   <option value="meshtastic_tcp">{t('source.form.type_meshtastic', 'Meshtastic (TCP)')}</option>
                   <option value="meshcore">{t('source.form.type_meshcore', 'MeshCore')}</option>
+                  <option value="mqtt_broker">{t('source.form.type_mqtt_broker', 'Embedded MQTT Broker (devices connect here)')}</option>
+                  {/* Bridge requires a parent broker — only offer it once an
+                      embedded broker exists, otherwise the user lands on a
+                      form with an empty parent-broker dropdown. */}
+                  {sources.some((s) => s.type === 'mqtt_broker') && (
+                    <option value="mqtt_bridge">{t('source.form.type_mqtt_bridge', 'MQTT Bridge (forward to/from an upstream broker)')}</option>
+                  )}
                 </select>
               </label>
             )}
@@ -596,7 +767,166 @@ function DashboardInner() {
               />
             </label>
 
-            {formType === 'meshcore' ? (
+            {formType === 'mqtt_broker' ? (
+              <>
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.mqtt_listen_port', 'Listen port')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="number"
+                    value={formMqttListenPort}
+                    onChange={(e) => setFormMqttListenPort(e.target.value)}
+                    placeholder="1883"
+                  />
+                  <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                    {t('source.form.mqtt_listen_port_help', 'Devices configure their MQTT module to point at this port on the MeshMonitor host.')}
+                  </p>
+                </label>
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.mqtt_username', 'Username')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="text"
+                    value={formMqttUsername}
+                    onChange={(e) => setFormMqttUsername(e.target.value)}
+                  />
+                </label>
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.mqtt_password', 'Password')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="password"
+                    value={formMqttPassword}
+                    onChange={(e) => setFormMqttPassword(e.target.value)}
+                    placeholder={editingSourceId ? '••••••••' : ''}
+                  />
+                </label>
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.mqtt_root_topic', 'Root topic')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="text"
+                    value={formMqttRootTopic}
+                    onChange={(e) => setFormMqttRootTopic(e.target.value)}
+                    placeholder="msh"
+                  />
+                </label>
+              </>
+            ) : formType === 'mqtt_bridge' ? (
+              <>
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.mqtt_bridge_broker', 'Parent broker')}</span>
+                  <select
+                    className="dashboard-form-input"
+                    value={formMqttBridgeBrokerId}
+                    onChange={(e) => setFormMqttBridgeBrokerId(e.target.value)}
+                  >
+                    <option value="">{t('common.select', 'Select…')}</option>
+                    {sources
+                      .filter((s) => s.type === 'mqtt_broker')
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.mqtt_upstream_url', 'Upstream URL')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="text"
+                    value={formMqttBridgeUrl}
+                    onChange={(e) => setFormMqttBridgeUrl(e.target.value)}
+                    placeholder="mqtt://mqtt.meshtastic.org:1883"
+                  />
+                </label>
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.mqtt_username', 'Username')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="text"
+                    value={formMqttBridgeUsername}
+                    onChange={(e) => setFormMqttBridgeUsername(e.target.value)}
+                  />
+                </label>
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.mqtt_password', 'Password')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="password"
+                    value={formMqttBridgePassword}
+                    onChange={(e) => setFormMqttBridgePassword(e.target.value)}
+                    placeholder={editingSourceId ? '••••••••' : ''}
+                  />
+                </label>
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.mqtt_subscriptions', 'Upstream topics (one per line)')}</span>
+                  <textarea
+                    className="dashboard-form-input"
+                    rows={3}
+                    value={formMqttBridgeSubscriptions}
+                    onChange={(e) => setFormMqttBridgeSubscriptions(e.target.value)}
+                  />
+                </label>
+                <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
+                  <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={formMqttBridgeUseTopicBlock}
+                        onChange={(e) => setFormMqttBridgeUseTopicBlock(e.target.checked)}
+                      />
+                      {t('source.form.mqtt_topic_block_enable', 'Block specific topics')}
+                    </label>
+                  </legend>
+                  {formMqttBridgeUseTopicBlock && (
+                    <label className="dashboard-form-field" style={{ marginTop: 4 }}>
+                      <span className="dashboard-form-label">{t('source.form.mqtt_topic_block_label', 'Topics to drop (one per line, MQTT wildcards allowed)')}</span>
+                      <textarea
+                        className="dashboard-form-input"
+                        rows={3}
+                        value={formMqttBridgeTopicBlock}
+                        onChange={(e) => setFormMqttBridgeTopicBlock(e.target.value)}
+                        placeholder="msh/CA/QC/#"
+                      />
+                    </label>
+                  )}
+                </fieldset>
+                <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
+                  <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={formMqttBridgeUseGeo}
+                        onChange={(e) => setFormMqttBridgeUseGeo(e.target.checked)}
+                      />
+                      {t('source.form.mqtt_geo_enable', 'Restrict to geographic bounding box')}
+                    </label>
+                  </legend>
+                  {formMqttBridgeUseGeo && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }}>
+                      <label className="dashboard-form-field">
+                        <span className="dashboard-form-label">minLat</span>
+                        <input className="dashboard-form-input" value={formMqttBridgeGeo.minLat} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, minLat: e.target.value })} />
+                      </label>
+                      <label className="dashboard-form-field">
+                        <span className="dashboard-form-label">maxLat</span>
+                        <input className="dashboard-form-input" value={formMqttBridgeGeo.maxLat} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, maxLat: e.target.value })} />
+                      </label>
+                      <label className="dashboard-form-field">
+                        <span className="dashboard-form-label">minLng</span>
+                        <input className="dashboard-form-input" value={formMqttBridgeGeo.minLng} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, minLng: e.target.value })} />
+                      </label>
+                      <label className="dashboard-form-field">
+                        <span className="dashboard-form-label">maxLng</span>
+                        <input className="dashboard-form-input" value={formMqttBridgeGeo.maxLng} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, maxLng: e.target.value })} />
+                      </label>
+                    </div>
+                  )}
+                </fieldset>
+              </>
+            ) : formType === 'meshcore' ? (
               <>
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('meshcore.form.transport', 'Transport')}</span>
