@@ -284,11 +284,15 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         const isMeshtastic =
           source.type === 'meshtastic_tcp' || source.type === 'meshtastic_mqtt';
         const isMeshCore = source.type === 'meshcore';
+        const isMqttBroker = source.type === 'mqtt_broker';
+        const isMqttBridge = source.type === 'mqtt_bridge';
         const cardClassName =
           'dashboard-source-card' +
           (isSelected ? ' selected' : '') +
           (isMeshtastic ? ' has-meshtastic-watermark' : '') +
-          (isMeshCore ? ' has-meshcore-watermark' : '');
+          (isMeshCore ? ' has-meshcore-watermark' : '') +
+          (isMqttBroker ? ' has-mqtt-broker-watermark' : '') +
+          (isMqttBridge ? ' has-mqtt-bridge-watermark' : '');
 
         return (
           <div
@@ -335,7 +339,10 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
               )}
             </div>
 
-            <div className="dashboard-source-card-status">
+            <div
+              className="dashboard-source-card-status"
+              title={status && !status.connected ? (status as { lastError?: string }).lastError ?? undefined : undefined}
+            >
               <span className={`dashboard-status-dot ${dotClass}`} />
               <span>{label}</span>
               {activityBadge && (
@@ -373,7 +380,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                     </button>
                   );
                 })()}
-              {!isUnified && (
+              {!isUnified && source.type !== 'mqtt_broker' && source.type !== 'mqtt_bridge' && (
                 <button
                   className="dashboard-open-btn"
                   disabled={!source.enabled}

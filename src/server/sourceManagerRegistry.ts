@@ -42,6 +42,7 @@ export class SourceManagerRegistry extends EventEmitter {
 
     try {
       await manager.start();
+      this.emit('manager-started', manager);
     } catch (error) {
       logger.error(`Failed to start source manager ${manager.sourceId}:`, error);
     }
@@ -57,6 +58,7 @@ export class SourceManagerRegistry extends EventEmitter {
       logger.error(`Error stopping source manager ${sourceId}:`, error);
     }
     this.managers.delete(sourceId);
+    this.emit('manager-stopped', manager);
     logger.info(`Removed source manager: ${sourceId}`);
   }
 

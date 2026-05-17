@@ -6,6 +6,8 @@ import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
 import { meshcoreManagerRegistry, meshcoreConfigFromSource } from '../meshcoreRegistry.js';
+import { MqttBrokerManager, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
+import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
 import { filterNodesByChannelPermission, maskNodeLocationByChannel, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { PortNum } from '../constants/meshtastic.js';
@@ -46,6 +48,20 @@ async function validateVirtualNodeConfig(
 // so override behaviour matches the rest of the API surface (issue #2847).
 const getEffectivePosition = (node: any) => getEffectiveDbNodePosition(node);
 
+// Build the right ISourceManager for a stored Source row. Used by both the
+// HTTP create path and the startup wiring in server.ts.
+export function buildMqttManagerForSource(
+  id: string,
+  name: string,
+  type: 'mqtt_broker' | 'mqtt_bridge',
+  config: Record<string, unknown>,
+) {
+  if (type === 'mqtt_broker') {
+    return new MqttBrokerManager(id, name, config as unknown as MqttBrokerSourceConfig);
+  }
+  return new MqttBridgeManager(id, name, config as unknown as MqttBridgeSourceConfig);
+}
+
 // MM-SEC-8: shared credential strip applied to source records leaving the
 // HTTP boundary. The `mqtt` and `meshcore` source types carry connection
 // credentials in their `config` blob; both the list and singular GET
@@ -57,10 +73,20 @@ function stripSourceSecrets<T extends { config?: unknown } | null | undefined>(
   isAdmin: boolean,
 ): T {
   if (!source || isAdmin) return source;
-  const { password, apiKey, ...safeConfig } = (source.config as any) ?? {};
+  const cfg = (source.config as any) ?? {};
+  const { password, apiKey, ...rest } = cfg;
   void password;
   void apiKey;
-  return { ...source, config: safeConfig };
+  // mqtt_broker and mqtt_bridge nest their credentials inside sub-objects.
+  // Clone-and-redact rather than passing through so non-admins never see the
+  // password in plaintext.
+  if (rest.auth && typeof rest.auth === 'object') {
+    rest.auth = { ...rest.auth, password: undefined };
+  }
+  if (rest.upstream && typeof rest.upstream === 'object') {
+    rest.upstream = { ...rest.upstream, password: undefined };
+  }
+  return { ...source, config: rest };
 }
 
 // List all sources — public so the landing page can redirect unauthenticated users
@@ -118,8 +144,20 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'name is required and must be a string' });
     }
-    if (!['meshtastic_tcp', 'mqtt', 'meshcore'].includes(type)) {
-      return res.status(400).json({ error: 'type must be meshtastic_tcp, mqtt, or meshcore' });
+    if (!['meshtastic_tcp', 'mqtt_broker', 'mqtt_bridge', 'meshcore'].includes(type)) {
+      return res.status(400).json({ error: 'type must be meshtastic_tcp, mqtt_broker, mqtt_bridge, or meshcore' });
+    }
+
+    // mqtt_bridge requires an existing mqtt_broker to attach to.
+    if (type === 'mqtt_bridge') {
+      const parentId = config?.brokerSourceId;
+      if (typeof parentId !== 'string' || !parentId) {
+        return res.status(400).json({ error: 'mqtt_bridge config.brokerSourceId is required' });
+      }
+      const parent = await databaseService.sources.getSource(parentId);
+      if (!parent || parent.type !== 'mqtt_broker') {
+        return res.status(400).json({ error: `mqtt_bridge brokerSourceId ${parentId} does not reference an mqtt_broker source` });
+      }
     }
     if (!config || typeof config !== 'object') {
       return res.status(400).json({ error: 'config is required and must be an object' });
@@ -180,6 +218,18 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
         }
       } catch (err) {
         logger.warn(`Could not start MeshCore manager for new source ${source.id}:`, err);
+      }
+    } else if (source.enabled && (source.type === 'mqtt_broker' || source.type === 'mqtt_bridge')) {
+      try {
+        const manager = buildMqttManagerForSource(
+          source.id,
+          source.name,
+          source.type,
+          source.config,
+        );
+        await sourceManagerRegistry.addManager(manager);
+      } catch (err) {
+        logger.warn(`Could not start MQTT manager for new source ${source.id}:`, err);
       }
     }
 
@@ -350,6 +400,26 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
           logger.warn(`Could not hot-swap virtual node for source ${source.id}:`, err);
         }
       }
+    } else if (!wasEnabled && isNowEnabled && (source.type === 'mqtt_broker' || source.type === 'mqtt_bridge')) {
+      // Newly enabled MQTT source — register and start the manager.
+      if (!sourceManagerRegistry.getManager(source.id)) {
+        try {
+          const manager = buildMqttManagerForSource(source.id, source.name, source.type, source.config);
+          await sourceManagerRegistry.addManager(manager);
+        } catch (err) {
+          logger.warn(`Could not start MQTT manager for source ${source.id}:`, err);
+        }
+      }
+    } else if (wasEnabled && isNowEnabled && (source.type === 'mqtt_broker' || source.type === 'mqtt_bridge') && config !== undefined) {
+      // MQTT source config changed while enabled — full restart, since the
+      // listener port / upstream URL / filter set are all baked in at start.
+      try {
+        await sourceManagerRegistry.removeManager(source.id);
+        const manager = buildMqttManagerForSource(source.id, source.name, source.type, source.config);
+        await sourceManagerRegistry.addManager(manager);
+      } catch (err) {
+        logger.warn(`Could not restart MQTT manager for source ${source.id}:`, err);
+      }
     } else if (wasEnabled && isNowEnabled && source.type === 'meshcore' && newAutoConnect && config !== undefined) {
       // MeshCore source config changed while enabled and autoConnect on —
       // the connect config is baked in at connect-time, so any change means
@@ -378,6 +448,22 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
 // Delete source
 router.delete('/:id', requirePermission('sources', 'write'), async (req: Request, res: Response) => {
   try {
+    const target = await databaseService.sources.getSource(req.params.id);
+    if (target?.type === 'mqtt_broker') {
+      // Refuse to delete a broker that has bridges pointing at it — cascade
+      // would silently break the bridges' upstream-to-local routing.
+      const all = await databaseService.sources.getAllSources();
+      const dependents = all.filter(
+        (s) => s.type === 'mqtt_bridge' && (s.config as any)?.brokerSourceId === req.params.id,
+      );
+      if (dependents.length > 0) {
+        return res.status(409).json({
+          error: `Cannot delete: ${dependents.length} mqtt_bridge source(s) reference this broker`,
+          dependents: dependents.map((s) => ({ id: s.id, name: s.name })),
+        });
+      }
+    }
+
     // Stop the manager before deleting (both registries — each is a no-op when
     // the source id isn't registered, so this safely covers either type).
     await sourceManagerRegistry.removeManager(req.params.id);

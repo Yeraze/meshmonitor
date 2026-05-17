@@ -57,6 +57,7 @@ services:
       - "4503:4503"  # Per-source VN
       - "4504:4504"  # Per-source VN
       - "4505:4505"  # Per-source VN
+      - "1883:1883"  # Embedded MQTT broker (issue #3003)
     restart: unless-stopped
     volumes:
       - meshmonitor-data:/data
@@ -103,6 +104,7 @@ services:
       - "4503:4503"  # Per-source VN
       - "4504:4504"  # Per-source VN
       - "4505:4505"  # Per-source VN
+      - "1883:1883"  # Embedded MQTT broker (issue #3003)
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -200,6 +202,7 @@ services:
       - "4503:4503"  # Per-source VN
       - "4504:4504"  # Per-source VN
       - "4505:4505"  # Per-source VN
+      - "1883:1883"  # Embedded MQTT broker (issue #3003)
     restart: unless-stopped
     volumes:
       - meshmonitor-mysql-data:/data

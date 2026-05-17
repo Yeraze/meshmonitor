@@ -11,7 +11,7 @@ import { logger } from '../../utils/logger.js';
 export interface Source {
   id: string;
   name: string;
-  type: 'meshtastic_tcp' | 'mqtt' | 'meshcore';
+  type: 'meshtastic_tcp' | 'mqtt_broker' | 'mqtt_bridge' | 'meshcore';
   config: Record<string, unknown>;
   enabled: boolean;
   createdAt: number;

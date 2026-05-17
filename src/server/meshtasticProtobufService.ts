@@ -1631,7 +1631,11 @@ export class MeshtasticProtobufService {
    * Decode a ServiceEnvelope from raw bytes (typically from mqttClientProxyMessage.data).
    * Returns the decoded envelope with its MeshPacket, or null if decoding fails or packet is missing.
    */
-  decodeServiceEnvelope(data: Uint8Array): { packet: any; channelId?: string; gatewayId?: string } | null {
+  decodeServiceEnvelope(
+    data: Uint8Array,
+    opts?: { quiet?: boolean },
+  ): { packet: any; channelId?: string; gatewayId?: string } | null {
+    const quiet = opts?.quiet === true;
     const root = getProtobufRoot();
     if (!root) {
       logger.error('❌ Protobuf definitions not loaded');
@@ -1639,7 +1643,7 @@ export class MeshtasticProtobufService {
     }
 
     if (!data || data.length === 0) {
-      logger.warn('⚠️ Empty data passed to decodeServiceEnvelope');
+      if (!quiet) logger.warn('⚠️ Empty data passed to decodeServiceEnvelope');
       return null;
     }
 
@@ -1648,7 +1652,7 @@ export class MeshtasticProtobufService {
       const decoded = ServiceEnvelope.decode(data) as any;
 
       if (!decoded.packet) {
-        logger.warn('⚠️ ServiceEnvelope has no packet field');
+        if (!quiet) logger.warn('⚠️ ServiceEnvelope has no packet field');
         return null;
       }
 
@@ -1658,7 +1662,36 @@ export class MeshtasticProtobufService {
         gatewayId: decoded.gatewayId || undefined,
       };
     } catch (error) {
-      logger.warn('⚠️ Failed to decode ServiceEnvelope:', error);
+      if (!quiet) logger.warn('⚠️ Failed to decode ServiceEnvelope:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Encode a ServiceEnvelope wrapping an existing MeshPacket. Used when
+   * bridging packets from an upstream MQTT broker back into the local
+   * embedded broker so connected devices see the same wire format.
+   */
+  encodeServiceEnvelope(input: {
+    packet: any;
+    channelId?: string;
+    gatewayId?: string;
+  }): Uint8Array | null {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+    try {
+      const ServiceEnvelope = root.lookupType('meshtastic.ServiceEnvelope');
+      const message = ServiceEnvelope.create({
+        packet: input.packet,
+        channelId: input.channelId ?? '',
+        gatewayId: input.gatewayId ?? '',
+      });
+      return ServiceEnvelope.encode(message).finish();
+    } catch (error) {
+      logger.warn('⚠️ Failed to encode ServiceEnvelope:', error);
       return null;
     }
   }
