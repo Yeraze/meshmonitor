@@ -122,6 +122,9 @@ function DashboardInner() {
     minLng: '',
     maxLng: '',
   });
+  // Meshtastic source ↔ embedded MQTT broker proxy link (issue #3003
+  // follow-up). Empty string = unset / no proxy bridge.
+  const [formMtMqttLinkBrokerId, setFormMtMqttLinkBrokerId] = useState('');
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
 
@@ -254,6 +257,7 @@ function DashboardInner() {
     setFormMqttBridgeTopicBlock('');
     setFormMqttBridgeUseGeo(false);
     setFormMqttBridgeGeo({ minLat: '', maxLat: '', minLng: '', maxLng: '' });
+    setFormMtMqttLinkBrokerId('');
     setFormError('');
     setShowSourceModal(true);
   };
@@ -321,6 +325,8 @@ function DashboardInner() {
     setFormMcTcpHost(cfg?.tcpHost ?? '');
     setFormMcTcpPort(cfg?.tcpPort != null ? String(cfg.tcpPort) : '4403');
     setFormMcDeviceType(cfg?.deviceType === 'repeater' ? 'repeater' : 'companion');
+    const link = cfg?.mqttLink as { enabled?: boolean; mqttBrokerSourceId?: string } | undefined;
+    setFormMtMqttLinkBrokerId(link?.enabled && link.mqttBrokerSourceId ? link.mqttBrokerSourceId : '');
     setFormError('');
     setShowSourceModal(true);
   };
@@ -474,6 +480,14 @@ function DashboardInner() {
       // Persist autoConnect explicitly so the server can distinguish legacy
       // sources (undefined → treat as true) from ones the user opted out of.
       cfg.autoConnect = formAutoConnect;
+      // MQTT proxy bridge — if set, MeshMonitor relays
+      // FromRadio.mqttClientProxyMessage to/from the selected embedded
+      // broker. Empty selection clears the link.
+      if (formMtMqttLinkBrokerId) {
+        cfg.mqttLink = { enabled: true, mqttBrokerSourceId: formMtMqttLinkBrokerId };
+      } else {
+        cfg.mqttLink = { enabled: false };
+      }
     }
 
     setFormSaving(true);
@@ -1095,6 +1109,34 @@ function DashboardInner() {
                 </>
               )}
             </fieldset>
+
+            {sources.some((s) => s.type === 'mqtt_broker') && (
+              <label className="dashboard-form-field">
+                <span className="dashboard-form-label">
+                  {t('source.form.mqtt_proxy_link', 'Bridge MQTT proxy to')}
+                </span>
+                <select
+                  className="dashboard-form-input"
+                  value={formMtMqttLinkBrokerId}
+                  onChange={(e) => setFormMtMqttLinkBrokerId(e.target.value)}
+                >
+                  <option value="">{t('source.form.mqtt_proxy_none', 'None — device handles MQTT directly')}</option>
+                  {sources
+                    .filter((s) => s.type === 'mqtt_broker')
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                </select>
+                <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                  {t(
+                    'source.form.mqtt_proxy_link_help',
+                    'When set, MeshMonitor relays the device’s mqttClientProxyMessage traffic to the selected embedded broker. Requires the device’s MQTT module to have proxy_to_client_enabled = true.',
+                  )}
+                </p>
+              </label>
+            )}
             </>
             )}
 

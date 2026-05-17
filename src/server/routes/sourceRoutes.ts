@@ -202,6 +202,7 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
           port: cfgForStart.port,
           heartbeatIntervalSeconds: cfgForStart.heartbeatIntervalSeconds,
           virtualNode: cfgForStart.virtualNode,
+          mqttLink: cfgForStart.mqttLink,
         });
         await sourceManagerRegistry.addManager(manager);
       } catch (err) {
@@ -300,6 +301,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
             port: cfg.port,
             heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
             virtualNode: cfg.virtualNode,
+            mqttLink: cfg.mqttLink,
           });
           await sourceManagerRegistry.addManager(manager);
         } catch (err) {
@@ -343,6 +345,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
             port: cfg.port,
             heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
             virtualNode: cfg.virtualNode,
+            mqttLink: cfg.mqttLink,
           });
           await sourceManagerRegistry.addManager(manager);
         } catch (err) {
@@ -377,6 +380,9 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
       const oldVn = JSON.stringify(oldCfg.virtualNode ?? null);
       const newVn = JSON.stringify(newCfg.virtualNode ?? null);
       const vnChanged = oldVn !== newVn;
+      const oldLink = JSON.stringify(oldCfg.mqttLink ?? null);
+      const newLink = JSON.stringify(newCfg.mqttLink ?? null);
+      const linkChanged = oldLink !== newLink;
 
       if (transportChanged) {
         // Full restart — upstream TCP target or heartbeat config changed.
@@ -387,6 +393,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
             port: newCfg.port,
             heartbeatIntervalSeconds: newCfg.heartbeatIntervalSeconds,
             virtualNode: newCfg.virtualNode,
+            mqttLink: newCfg.mqttLink,
           });
           await sourceManagerRegistry.addManager(manager);
         } catch (err) {
@@ -398,6 +405,18 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
           await sourceManagerRegistry.reconfigureVirtualNode(source.id, newCfg.virtualNode);
         } catch (err) {
           logger.warn(`Could not hot-swap virtual node for source ${source.id}:`, err);
+        }
+      } else if (linkChanged) {
+        // Hot-swap only the MQTT proxy link (issue #3003 follow-up). The
+        // upstream transport stays up; the manager rebinds its broker
+        // listener without dropping the device connection.
+        const mgr = sourceManagerRegistry.getManager(source.id) as MeshtasticManager | undefined;
+        if (mgr && typeof mgr.reconfigureMqttLink === 'function') {
+          try {
+            await mgr.reconfigureMqttLink(newCfg.mqttLink);
+          } catch (err) {
+            logger.warn(`Could not hot-swap MQTT link for source ${source.id}:`, err);
+          }
         }
       }
     } else if (!wasEnabled && isNowEnabled && (source.type === 'mqtt_broker' || source.type === 'mqtt_bridge')) {
@@ -845,6 +864,7 @@ router.post('/:id/connect', requirePermission('sources', 'write'), async (req: R
       port: cfg.port,
       heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
       virtualNode: cfg.virtualNode,
+      mqttLink: cfg.mqttLink,
     });
     await sourceManagerRegistry.addManager(manager);
     res.json({ success: true });

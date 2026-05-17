@@ -93,14 +93,19 @@ export class MqttBroker extends EventEmitter {
       this.emit('client-disconnected', client.id);
     });
     this.aedes.on('publish', (packet: AedesPublishPacket, client: Client | null) => {
-      // Aedes emits internal $SYS messages with `client === null`. Skip
-      // those — only forward publishes from real clients.
-      if (!client) return;
+      // Skip Aedes' internal $SYS topics — those are broker-monitoring
+      // metadata (uptime, connected clients, etc.) and aren't part of the
+      // Meshtastic data stream we want to ingest. DO NOT filter on
+      // `client === null` here: programmatic publishes via aedes.publish()
+      // (e.g. MeshtasticManager forwarding a device's mqttClientProxyMessage
+      // through to this broker) arrive with a null client and must be
+      // forwarded too.
+      if (packet.topic.startsWith('$SYS/')) return;
       this.emit('publish', {
         topic: packet.topic,
         payload: toBuffer(packet.payload),
         retained: !!packet.retain,
-        clientId: client.id ?? null,
+        clientId: client?.id ?? null,
       });
     });
 

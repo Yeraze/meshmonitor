@@ -771,6 +771,17 @@ export class MeshtasticProtobufService {
           type: 'configComplete',
           data: { configCompleteId: fromRadio.configCompleteId }
         };
+      } else if ((fromRadio as any).mqttClientProxyMessage) {
+        const m = (fromRadio as any).mqttClientProxyMessage;
+        return {
+          type: 'mqttClientProxyMessage',
+          data: {
+            topic: typeof m.topic === 'string' ? m.topic : '',
+            data: m.data instanceof Uint8Array ? m.data : (m.data ? new Uint8Array(m.data) : new Uint8Array()),
+            text: typeof m.text === 'string' ? m.text : undefined,
+            retained: !!m.retained,
+          },
+        };
       } else {
         return {
           type: 'fromRadio',
@@ -1663,6 +1674,39 @@ export class MeshtasticProtobufService {
       };
     } catch (error) {
       if (!quiet) logger.warn('⚠️ Failed to decode ServiceEnvelope:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Encode a ToRadio carrying an MqttClientProxyMessage. Used to inject
+   * an MQTT broker message into the device when a Meshtastic source is
+   * linked to an embedded broker via `mqttLink` (issue #3003 follow-up).
+   * The device's firmware MQTT module unpacks this as if it had been
+   * received directly from a broker.
+   */
+  encodeToRadioMqttClientProxyMessage(input: {
+    topic: string;
+    data: Uint8Array;
+    retained?: boolean;
+  }): Uint8Array | null {
+    const root = getProtobufRoot();
+    if (!root) {
+      logger.error('❌ Protobuf definitions not loaded');
+      return null;
+    }
+    try {
+      const Mcpm = root.lookupType('meshtastic.MqttClientProxyMessage');
+      const ToRadio = root.lookupType('meshtastic.ToRadio');
+      const mcpm = Mcpm.create({
+        topic: input.topic,
+        data: input.data,
+        retained: !!input.retained,
+      });
+      const toRadio = ToRadio.create({ mqttClientProxyMessage: mcpm });
+      return ToRadio.encode(toRadio).finish();
+    } catch (error) {
+      logger.warn('⚠️ Failed to encode ToRadio.mqttClientProxyMessage:', error);
       return null;
     }
   }
