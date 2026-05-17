@@ -1032,12 +1032,16 @@ export class MiscRepository extends BaseRepository {
     try {
       const longName = this.col('longName');
       const nodeNum = this.col('nodeNum');
+      const sourceIdCol = this.col('sourceId');
 
+      // Join on both nodeNum AND sourceId so that a nodeNum present in multiple
+      // sources (composite PK since migration 029) does not produce duplicate rows
+      // for the same packet (#3051).
       const joinQuery = sql`
         SELECT pl.*, from_nodes.${longName} as from_node_longName, to_nodes.${longName} as to_node_longName
         FROM packet_log pl
-        LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.${nodeNum}
-        LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.${nodeNum}
+        LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.${nodeNum} AND pl.${sourceIdCol} = from_nodes.${sourceIdCol}
+        LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.${nodeNum} AND pl.${sourceIdCol} = to_nodes.${sourceIdCol}
         WHERE ${whereClause}
         ORDER BY pl.timestamp DESC, pl.id DESC LIMIT ${limit} OFFSET ${offset}
       `;
@@ -1057,12 +1061,14 @@ export class MiscRepository extends BaseRepository {
     try {
       const longName = this.col('longName');
       const nodeNum = this.col('nodeNum');
+      const sourceIdCol = this.col('sourceId');
 
+      // Join on both nodeNum AND sourceId — same fix as getPacketLogs (#3051).
       const joinQuery = sql`
         SELECT pl.*, from_nodes.${longName} as from_node_longName, to_nodes.${longName} as to_node_longName
         FROM packet_log pl
-        LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.${nodeNum}
-        LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.${nodeNum}
+        LEFT JOIN nodes from_nodes ON pl.from_node = from_nodes.${nodeNum} AND pl.${sourceIdCol} = from_nodes.${sourceIdCol}
+        LEFT JOIN nodes to_nodes ON pl.to_node = to_nodes.${nodeNum} AND pl.${sourceIdCol} = to_nodes.${sourceIdCol}
         WHERE pl.id = ${id}
       `;
 
