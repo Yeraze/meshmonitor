@@ -465,7 +465,13 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     value: process.env.MESHTASTIC_NODE_IP || '192.168.1.100',
     wasProvided: process.env.MESHTASTIC_NODE_IP !== undefined
   };
-  const meshtasticTcpPort = parseInt32('MESHTASTIC_TCP_PORT', process.env.MESHTASTIC_TCP_PORT, 4403);
+  // Accept MESHTASTIC_NODE_PORT (used by the online configurator and docker-compose examples)
+  // as a synonym for MESHTASTIC_TCP_PORT, giving it priority.
+  const meshtasticTcpPort = parseInt32(
+    'MESHTASTIC_NODE_PORT / MESHTASTIC_TCP_PORT',
+    process.env.MESHTASTIC_NODE_PORT ?? process.env.MESHTASTIC_TCP_PORT,
+    4403
+  );
   const meshtasticStaleConnectionTimeout = parseInt32(
     'MESHTASTIC_STALE_CONNECTION_TIMEOUT',
     process.env.MESHTASTIC_STALE_CONNECTION_TIMEOUT,
@@ -671,7 +677,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   }
   logger.info('   --- Meshtastic ---');
   logger.info(`   MESHTASTIC_NODE_IP: ${meshtasticNodeIp.value} (${src(meshtasticNodeIp.wasProvided)})`);
-  logger.info(`   MESHTASTIC_TCP_PORT: ${meshtasticTcpPort.value} (${src(meshtasticTcpPort.wasProvided)})`);
+  logger.info(`   MESHTASTIC_NODE_PORT / MESHTASTIC_TCP_PORT: ${meshtasticTcpPort.value} (${src(meshtasticTcpPort.wasProvided)})`);
   logger.info(`   MESHTASTIC_STALE_CONNECTION_TIMEOUT: ${meshtasticStaleConnectionTimeout.value}ms (${src(meshtasticStaleConnectionTimeout.wasProvided)})`);
   logger.info(`   MESHTASTIC_CONNECT_TIMEOUT_MS: ${meshtasticConnectTimeoutMs.value}ms (${src(meshtasticConnectTimeoutMs.wasProvided)})`);
   logger.info(`   MESHTASTIC_RECONNECT_INITIAL_DELAY_MS: ${meshtasticReconnectInitialDelayMs.value}ms (${src(meshtasticReconnectInitialDelayMs.wasProvided)})`);
