@@ -110,6 +110,36 @@ cleanup() {
 # Set trap to cleanup on exit
 trap cleanup EXIT
 
+# Fail-fast helper. Called by a failed sub-test's `else` branch to:
+#  - Emit a minimal markdown report (so the workflow's `Post results to PR`
+#    step still has content to upload when a fail-fast abort happens).
+#  - Print a clear "✗ SYSTEM TESTS FAILED at <test>" banner.
+#  - exit 1, which triggers the EXIT trap → cleanup().
+# We deliberately do NOT continue past the first failing test — the goal of
+# this script is fast debug feedback, not exhaustive pass/fail tabulation.
+abort_remaining() {
+    local failed_test="$1"
+    REPORT_FILE="test-results.md"
+    {
+        echo "# MeshMonitor System Test Results"
+        echo ""
+        echo "**Test Run:** $(date '+%Y-%m-%d %H:%M:%S %Z')"
+        echo ""
+        echo "## ❌ Overall Result: FAILED"
+        echo ""
+        echo "Aborted on first failing test (fail-fast mode). Remaining tests skipped."
+        echo ""
+        echo "### Failed Test"
+        echo ""
+        echo "- **${failed_test}**"
+    } > "$REPORT_FILE"
+    echo ""
+    echo -e "${RED}=========================================="
+    echo "✗ SYSTEM TESTS FAILED at: ${failed_test}"
+    echo "==========================================${NC}"
+    exit 1
+}
+
 echo -e "${BLUE}Step 1: Bootstrap - Building fresh Docker image${NC}"
 echo "This ensures tests run against the latest code..."
 echo ""
@@ -157,44 +187,7 @@ else
     CONFIG_IMPORT_RESULT="FAILED"
     echo ""
     echo -e "${RED}✗ Configuration Import test FAILED${NC}"
-    echo ""
-    echo -e "${RED}===========================================${NC}"
-    echo -e "${RED}ABORTING: Configuration Import failed${NC}"
-    echo -e "${RED}Other tests depend on the device state set by this test.${NC}"
-    echo -e "${RED}===========================================${NC}"
-    # Set all other results to SKIPPED
-    QUICKSTART_RESULT="SKIPPED"
-    SECURITY_RESULT="SKIPPED"
-    V1_API_RESULT="SKIPPED"
-    REVERSE_PROXY_RESULT="SKIPPED"
-    OIDC_RESULT="SKIPPED"
-    VIRTUAL_NODE_RESULT="SKIPPED"
-    BACKUP_RESTORE_RESULT="SKIPPED"
-    DB_MIGRATION_RESULT="SKIPPED"
-    DB_BACKING_RESULT="SKIPPED"
-    API_EXERCISE_RESULT="SKIPPED"
-    # Skip to results
-    echo ""
-    echo "=========================================="
-    echo "System Test Results"
-    echo "=========================================="
-    echo ""
-    echo -e "Configuration Import:     ${RED}✗ FAILED${NC}"
-    echo -e "Quick Start Test:         ${YELLOW}⊘ SKIPPED${NC}"
-    echo -e "Security Test:            ${YELLOW}⊘ SKIPPED${NC}"
-    echo -e "V1 API Test:              ${YELLOW}⊘ SKIPPED${NC}"
-    echo -e "Reverse Proxy Test:       ${YELLOW}⊘ SKIPPED${NC}"
-    echo -e "Reverse Proxy + OIDC:     ${YELLOW}⊘ SKIPPED${NC}"
-    echo -e "Virtual Node CLI Test:    ${YELLOW}⊘ SKIPPED${NC}"
-    echo -e "Backup & Restore Test:    ${YELLOW}⊘ SKIPPED${NC}"
-    echo -e "Database Migration Test:  ${YELLOW}⊘ SKIPPED${NC}"
-    echo -e "DB Backing Consistency:  ${YELLOW}⊘ SKIPPED${NC}"
-    echo -e "API Exercise (3 DBs):    ${YELLOW}⊘ SKIPPED${NC}"
-    echo ""
-    echo -e "${RED}===========================================${NC}"
-    echo -e "${RED}✗ SYSTEM TESTS FAILED${NC}"
-    echo -e "${RED}===========================================${NC}"
-    exit 1
+    abort_remaining "Configuration Import"
 fi
 echo ""
 
@@ -216,6 +209,7 @@ else
     SECURITY_RESULT="FAILED"
     echo ""
     echo -e "${RED}✗ Quick Start test FAILED${NC}"
+    abort_remaining "Quick Start Test"
 fi
 echo ""
 
@@ -234,6 +228,7 @@ else
     V1_API_RESULT="FAILED"
     echo ""
     echo -e "${RED}✗ V1 API test FAILED${NC}"
+    abort_remaining "V1 API Test"
 fi
 
 # Clean up Quick Start container now that V1 API test is done
@@ -256,6 +251,7 @@ else
     REVERSE_PROXY_RESULT="FAILED"
     echo ""
     echo -e "${RED}✗ Reverse Proxy test FAILED${NC}"
+    abort_remaining "Reverse Proxy Test"
 fi
 echo ""
 
@@ -273,6 +269,7 @@ else
     OIDC_RESULT="FAILED"
     echo ""
     echo -e "${RED}✗ Reverse Proxy + OIDC test FAILED${NC}"
+    abort_remaining "Reverse Proxy + OIDC Test"
 fi
 echo ""
 
@@ -290,6 +287,7 @@ else
     VIRTUAL_NODE_CLI_RESULT="FAILED"
     echo ""
     echo -e "${RED}✗ Virtual Node CLI test FAILED${NC}"
+    abort_remaining "Virtual Node CLI Test"
 fi
 echo ""
 
@@ -307,6 +305,7 @@ else
     BACKUP_RESTORE_RESULT="FAILED"
     echo ""
     echo -e "${RED}✗ System Backup & Restore test FAILED${NC}"
+    abort_remaining "Backup & Restore Test"
 fi
 echo ""
 
@@ -324,6 +323,7 @@ else
     DB_MIGRATION_RESULT="FAILED"
     echo ""
     echo -e "${RED}✗ Database Migration test FAILED${NC}"
+    abort_remaining "Database Migration Test"
 fi
 echo ""
 
@@ -341,6 +341,7 @@ else
     DB_BACKING_RESULT="FAILED"
     echo ""
     echo -e "${RED}✗ Database Backing Consistency test FAILED${NC}"
+    abort_remaining "Database Backing Consistency Test"
 fi
 echo ""
 
@@ -358,6 +359,7 @@ else
     API_EXERCISE_RESULT="FAILED"
     echo ""
     echo -e "${RED}✗ API Exercise test FAILED${NC}"
+    abort_remaining "API Exercise Test (All Backends)"
 fi
 echo ""
 
