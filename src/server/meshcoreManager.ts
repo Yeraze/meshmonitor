@@ -332,6 +332,32 @@ class MeshCoreManager extends EventEmitter {
 
     this.config = config;
 
+    // Pre-seed in-memory message cache from DB so history survives restarts.
+    // Reset the array first to avoid duplicates on reconnect within the same
+    // process (the previous session's messages are already in DB).
+    this.messages = [];
+    try {
+      const stored = await databaseService.meshcore.getRecentMessages(
+        MeshCoreManager.MAX_MESSAGES,
+        this.sourceId,
+      );
+      // DB returns newest-first; reverse to oldest-first for the in-memory array.
+      this.messages = stored.reverse().map(dbMsg => ({
+        id: dbMsg.id,
+        fromPublicKey: dbMsg.fromPublicKey,
+        fromName: dbMsg.fromName ?? undefined,
+        toPublicKey: dbMsg.toPublicKey ?? undefined,
+        text: dbMsg.text,
+        timestamp: dbMsg.timestamp,
+        rssi: dbMsg.rssi ?? undefined,
+        snr: dbMsg.snr ?? undefined,
+        sourceId: dbMsg.sourceId ?? undefined,
+      }));
+    } catch (loadErr) {
+      logger.warn(`[MeshCore:${this.sourceId}] Failed to load messages from DB: ${(loadErr as Error).message}`);
+      this.messages = [];
+    }
+
     logger.info(`[MeshCore] Connecting via ${this.config.connectionType}...`);
     this.connectionState = 'connecting';
 
@@ -807,6 +833,24 @@ class MeshCoreManager extends EventEmitter {
     if (this.messages.length > MeshCoreManager.MAX_MESSAGES) {
       this.messages = this.messages.slice(-MeshCoreManager.MAX_MESSAGES);
     }
+    databaseService.meshcore.insertMessage(
+      {
+        id: message.id,
+        fromPublicKey: message.fromPublicKey,
+        fromName: message.fromName ?? null,
+        toPublicKey: message.toPublicKey ?? null,
+        text: message.text,
+        timestamp: message.timestamp,
+        rssi: message.rssi ?? null,
+        snr: message.snr ?? null,
+        messageType: 'text',
+        sourceId: this.sourceId,
+        createdAt: Date.now(),
+      },
+      this.sourceId,
+    ).catch(err => {
+      logger.warn(`[MeshCore:${this.sourceId}] Failed to persist message ${message.id}: ${(err as Error).message}`);
+    });
   }
 
   /**

@@ -4,7 +4,7 @@
  * Handles MeshCore node and message database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, sql, isNull, and, lt } from 'drizzle-orm';
+import { eq, desc, sql, isNull, and, lt, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -52,6 +52,8 @@ export interface DbMeshCoreNode {
 export interface DbMeshCoreMessage {
   id: string;
   fromPublicKey: string;
+  /** Display name parsed from channel message body ("Name: text"); null for DMs. */
+  fromName?: string | null;
   toPublicKey?: string | null;
   text: string;
   timestamp: number;
@@ -286,13 +288,17 @@ export class MeshCoreRepository extends BaseRepository {
   // ============ Message Operations ============
 
   /**
-   * Get recent messages
+   * Get recent messages, optionally scoped to a source.
    */
-  async getRecentMessages(limit: number = 50): Promise<DbMeshCoreMessage[]> {
+  async getRecentMessages(limit: number = 50, sourceId?: string): Promise<DbMeshCoreMessage[]> {
     const { meshcoreMessages } = this.tables;
+    const whereClause: SQL | undefined = sourceId
+      ? eq(meshcoreMessages.sourceId, sourceId)
+      : undefined;
     const result = await this.db
       .select()
       .from(meshcoreMessages)
+      .where(whereClause)
       .orderBy(desc(meshcoreMessages.timestamp))
       .limit(limit);
     return this.normalizeBigInts(result) as unknown as DbMeshCoreMessage[];
