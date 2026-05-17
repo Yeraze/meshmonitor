@@ -51,6 +51,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
       CREATE TABLE meshcore_messages (
         id TEXT PRIMARY KEY,
         fromPublicKey TEXT NOT NULL,
+        fromName TEXT,
         toPublicKey TEXT,
         text TEXT NOT NULL,
         timestamp INTEGER NOT NULL,
