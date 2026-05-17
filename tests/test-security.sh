@@ -19,7 +19,7 @@ NC='\033[0m' # No Color
 # Use port 8083 which is what quick-start test uses, or override with env var
 BASE_URL="${BASE_URL:-http://localhost:8083}"
 SENSITIVE_IP="192.168.5.106"
-SENSITIVE_MQTT="mqtt.areyoumeshingwith.us"
+SENSITIVE_MQTT="${SENSITIVE_MQTT:-spire.yeraze.online}"
 
 # Test 1: Verify anonymous user CANNOT see Node IP in /api/poll
 echo "Test 1: Anonymous user - Node IP hidden in /api/poll"
