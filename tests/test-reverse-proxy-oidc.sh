@@ -99,7 +99,12 @@ services:
         condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
-      - "oidc-mock.yeraze.online:host-gateway"  # Allow meshmonitor to reach OIDC provider via reverse proxy
+    # NOTE: We intentionally do NOT add `oidc-mock.yeraze.online:host-gateway`
+    # here. The reverse proxy that terminates TLS for *.yeraze.online lives
+    # on a separate machine from the test runner, so routing via the runner's
+    # docker host-gateway (172.17.0.1) hits nothing. Normal LAN DNS resolves
+    # the hostname to the proxy machine, which forwards back to the test
+    # runner's exposed port 3005 — that path works end-to-end.
 
 volumes:
   meshmonitor-oidc-test-data:
