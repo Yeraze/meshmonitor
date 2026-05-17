@@ -58,17 +58,8 @@ jobs:
       - name: Create .env file
         run: touch .env
 
-      - name: Run system tests (attempt 1)
-        id: test1
-        continue-on-error: true
+      - name: Run system tests
         run: ./tests/system-tests.sh
-
-      - name: Retry system tests (attempt 2)
-        if: steps.test1.outcome == 'failure'
-        run: |
-          echo "First attempt failed — retrying (hardware tests can be flaky)..."
-          sleep 30
-          ./tests/system-tests.sh
 
       - name: Upload test results
         if: always()
