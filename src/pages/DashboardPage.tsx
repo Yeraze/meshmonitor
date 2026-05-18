@@ -25,6 +25,7 @@ import type { DashboardSource } from '../hooks/useDashboardData';
 import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import DashboardMap from '../components/Dashboard/DashboardMap';
 import BBoxMapEditor, { type BBoxValue } from '../components/BBoxMapEditor';
+import { bboxToFormStrings, boundsFromDetectedNodes } from './DashboardPage.bboxSeed';
 import LoginModal from '../components/LoginModal';
 import UserMenu from '../components/UserMenu';
 import { NewsPopup } from '../components/NewsPopup';
@@ -52,6 +53,7 @@ function bboxFromForm(geo: {
   if (minLat > maxLat || minLng > maxLng) return null;
   return { minLat, maxLat, minLng, maxLng };
 }
+
 
 // ---------------------------------------------------------------------------
 // DashboardInner — rendered inside SettingsProvider
@@ -933,7 +935,28 @@ function DashboardInner() {
                       <input
                         type="checkbox"
                         checked={formMqttBridgeUseGeo}
-                        onChange={(e) => setFormMqttBridgeUseGeo(e.target.checked)}
+                        onChange={(e) => {
+                          const enabled = e.target.checked;
+                          setFormMqttBridgeUseGeo(enabled);
+                          // Seed the bbox from currently-detected node positions
+                          // when the user first enables the filter and the form is
+                          // empty. Saves them having to pan/zoom from the middle
+                          // of the ocean on a fresh source.
+                          if (
+                            enabled &&
+                            !formMqttBridgeGeo.minLat &&
+                            !formMqttBridgeGeo.maxLat &&
+                            !formMqttBridgeGeo.minLng &&
+                            !formMqttBridgeGeo.maxLng
+                          ) {
+                            const allNodes = [
+                              ...(unifiedSourceData.nodes as Array<{ latitude?: number | null; longitude?: number | null }>),
+                              ...(sourceData.nodes as Array<{ latitude?: number | null; longitude?: number | null }>),
+                            ];
+                            const seeded = boundsFromDetectedNodes(allNodes);
+                            if (seeded) setFormMqttBridgeGeo(bboxToFormStrings(seeded));
+                          }
+                        }}
                       />
                       {t('source.form.mqtt_geo_enable', 'Restrict to geographic bounding box')}
                     </label>
@@ -944,12 +967,7 @@ function DashboardInner() {
                         bbox={bboxFromForm(formMqttBridgeGeo)}
                         onChange={(next) => {
                           if (next) {
-                            setFormMqttBridgeGeo({
-                              minLat: next.minLat.toFixed(5),
-                              maxLat: next.maxLat.toFixed(5),
-                              minLng: next.minLng.toFixed(5),
-                              maxLng: next.maxLng.toFixed(5),
-                            });
+                            setFormMqttBridgeGeo(bboxToFormStrings(next));
                           } else {
                             setFormMqttBridgeGeo({ minLat: '', maxLat: '', minLng: '', maxLng: '' });
                           }
