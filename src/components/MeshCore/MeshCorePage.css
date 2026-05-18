@@ -5,13 +5,15 @@
 .meshcore-page {
   display: flex;
   flex-direction: column;
-  /* .app-main applies header+2rem top padding and 2rem on the other sides.
-     Take what we're given but fill the remaining viewport height. */
-  height: calc(100dvh - var(--header-height, 60px) - 4rem);
+  /* Fill the parent flex slot. The page is rendered inside .dashboard-page
+     (a 100dvh flex column with .dashboard-topbar above) and previously used
+     an absolute `height: calc(100dvh - header - 4rem)` calc that assumed
+     `.app-main`'s 2rem padding existed — leaving a ~4rem dead band at the
+     bottom and a too-short sub-toolbar in the dashboard shell. */
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   background: var(--ctp-base);
-  border: 1px solid var(--ctp-surface1);
-  border-radius: var(--radius-xl);
 }
 
 /* Status strip under the AppHeader */
