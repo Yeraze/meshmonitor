@@ -18,67 +18,75 @@ hero:
 features:
   - icon: 🛰️
     title: Multi-Source Networks
-    details: Connect to multiple Meshtastic nodes at once over TCP — including Serial or BLE nodes fronted by the Serial Bridge or BLE Bridge sidecars — plus USB-attached MeshCore companions and repeaters managed from the Sources sidebar (TCP MeshCore via env-var bootstrap; MQTT source type coming soon). Unified map, messages, telemetry, and traceroute views stay scoped per-source with a single click. Ideal for multi-site deployments, backup gateways, and combining a home node with a repeater.
+    details: Connect to many Meshtastic nodes at once — TCP, Serial, or BLE. One dashboard, per-source maps, messages, telemetry, and traceroutes. No restart to add or remove a source.
+
+  - icon: 📡
+    title: MeshCore Support
+    details: First-class MeshCore companions and repeaters living alongside your Meshtastic nodes. Per-source permissions, a multi-pane page with channels, DMs, and telemetry, and contacts plotted on the unified map.
+
+  - icon: 🌉
+    title: Embedded MQTT Broker
+    details: Run an MQTT broker inside MeshMonitor with bidirectional bridges to public upstreams. Filter what crosses the boundary by topic, channel, portnum, or geographic bounding box — your local mesh stays clean without firmware changes.
 
   - icon: 🔐
     title: Per-Source Permissions
-    details: Grant users access to specific sources, not the whole deployment. Shared dashboards, separate operators, and read-only guests all coexist. Admin-managed Users page, SSO support, and MFA round out the access model.
+    details: Grant users access to specific sources, not the whole deployment. Local accounts, SSO (OIDC), MFA, and a full admin audit log.
 
   - icon: 🌐
     title: Per-Source Virtual Node
-    details: Each TCP source can expose its own Virtual Node endpoint on its own port. Multiple Meshtastic mobile apps connect simultaneously through MeshMonitor, with message queuing, config caching, and stability for 3-5+ concurrent clients.
+    details: Each TCP source exposes its own Virtual Node endpoint. Run multiple Meshtastic mobile apps through MeshMonitor with message queuing and config caching.
 
   - icon: 🗺️
-    title: Interactive Map View
-    details: Visualize your mesh network on an interactive map with real-time node positions, signal strength indicators, and network topology. Import GeoJSON, KML, and KMZ overlays to layer zone maps or emergency boundaries. Enable a polar grid overlay for RF coverage visualization.
+    title: Interactive Map
+    details: Real-time node positions, signal-strength indicators, and topology overlays. GeoJSON / KML / KMZ imports for zones, plus an optional polar grid for RF coverage.
 
   - icon: 📊
     title: Analytics & Telemetry
-    details: Track message statistics, node health, signal quality (SNR), and network performance over time with detailed charts and graphs. Switch between chart, gauge, and numeric display modes for telemetry widgets. Unified telemetry view with search, sort, and source filtering.
+    details: Charts, gauges, and numeric widgets across every source. Unified telemetry views with search, sort, and per-source filtering.
 
   - icon: 💬
-    title: Message Management
-    details: View, send, and manage messages across your mesh network. Unified cross-source messages view with per-source isolation. Multi-channel support, drag and drop channel reordering, tapbacks, replies, and full message search.
+    title: Messages
+    details: Unified cross-source view with per-source filters. Multi-channel, drag-and-drop reorder, tapbacks, replies, full-text search.
 
   - icon: ⚡
     title: Automation & Triggers
-    details: Create powerful automations with Auto-Responders, Scheduled Messages, Auto-Traceroute, and Geofence Triggers. Define geographic zones and trigger responses when nodes enter, exit, or remain inside — perfect for arrival notifications, asset tracking, and proximity alerts. Extend further with custom Python or Bash scripts.
+    details: Auto-Responders, Scheduled Messages, Auto-Traceroute, and Geofence Triggers. Extend with custom Python or Bash scripts.
 
   - icon: 📬
     title: Store & Forward
-    details: Work with Store & Forward servers on your mesh — retrieve history from S&F peers, flag S&F server nodes on the map, and keep messages flowing across offline gaps.
+    details: Retrieve history from S&F peers, flag S&F servers on the map, and keep messages flowing across offline gaps.
 
   - icon: 🔒
     title: Security Monitoring
-    details: Automatic detection of weak encryption keys and duplicate key issues. Built-in authentication with local accounts, MFA/TOTP, SSO (OIDC), and a full audit log of admin actions.
+    details: Automatic detection of weak or duplicate encryption keys across your nodes. Full admin audit log of every privileged action.
 
   - icon: 🔔
     title: Push Notifications
-    details: Receive real-time alerts for new messages and per-source events on iOS, Android, and desktop — even when the app is closed. Apprise integration for email, Slack, Discord, Telegram, and more. Zero configuration, works with HTTPS.
+    details: Real-time alerts on iOS, Android, and desktop — even when the app is closed. Apprise for email, Slack, Discord, Telegram, and more.
 
   - icon: 🖥️
     title: Remote Administration
-    details: Change node connections on-the-fly without container restarts. Configure device settings, manage channels, run the Quick Node Configurator, and push OTA firmware updates through a connected gateway — all from the web interface.
+    details: Configure devices, manage channels, and push OTA firmware updates through a connected gateway — all from the web UI, no SSH or CLI.
 
   - icon: 🧩
-    title: Custom Map Tile Servers
-    details: Configure custom map tile servers with support for both vector (.pbf) and raster (.png) tiles. Enable offline operation, custom styling, and privacy-focused mapping. Works with TileServer GL, nginx caching proxy, and standard XYZ tile servers. Upload custom MapLibre style JSON for fully branded or offline-first map appearances.
+    title: Custom Map Tiles
+    details: Bring your own vector or raster tiles (TileServer GL, nginx, XYZ). Upload custom MapLibre styles for branded or offline-first maps.
 
   - icon: 🎨
     title: Customizable Themes
-    details: Choose from 15 built-in themes or create your own with the visual theme editor. Includes color-blind friendly options, WCAG AAA compliant high-contrast themes, and full import/export support for sharing custom themes.
+    details: 15 built-in themes plus a visual editor. Color-blind friendly and WCAG AAA high-contrast variants. Import / export to share.
 
   - icon: ☀️
     title: Solar Monitoring
-    details: Integrate with forecast.solar to visualize expected solar production alongside telemetry data. Run the cross-source Solar Monitoring Analysis report to auto-detect solar-powered nodes, project battery state across the forecast horizon, and surface nodes predicted at risk. Perfect for optimizing off-grid deployments.
+    details: forecast.solar projections alongside telemetry. Auto-detect solar nodes and surface ones predicted at risk for off-grid deployments.
 
   - icon: 💻
     title: Desktop & Mobile
-    details: Native desktop app for Windows and macOS — no server, no Docker. Progressive Web App (PWA) for iOS and Android with a collapsible sidebar on small screens. System tray integration keeps your network awareness one click away.
+    details: Native desktop app for Windows and macOS. Progressive Web App for iOS and Android with a collapsible sidebar and system-tray integration.
 
   - icon: 🐳
     title: Flexible Deployment
-    details: Deploy with Docker Compose, Kubernetes (Helm charts included), Proxmox LXC, or bare metal. SQLite, PostgreSQL, or MySQL backends. System backup, one-click auto-upgrade, and reverse-proxy-friendly configuration out of the box.
+    details: Docker Compose, Kubernetes (Helm), Proxmox LXC, or bare metal. SQLite, PostgreSQL, or MySQL. Reverse-proxy-friendly with one-click auto-upgrade.
 ---
 
 ## Quick Start
@@ -149,7 +157,7 @@ MeshMonitor supports multiple deployment scenarios:
 ## Screenshots
 
 ### Multi-Source Dashboard
-Every source your deployment touches shows up in the sidebar with its own health, map pin colour, and unified or source-scoped views. Meshtastic TCP (with Serial/BLE via the bridge sidecars) and USB-attached MeshCore are first-class today; TCP MeshCore is supported via the legacy env-var bootstrap path, and MQTT is coming soon.
+Every source your deployment touches shows up in the sidebar with its own health, map pin colour, and unified or source-scoped views. Meshtastic TCP (with Serial/BLE via the bridge sidecars), USB-attached MeshCore, and the embedded MQTT broker are first-class today; TCP MeshCore is supported via the legacy env-var bootstrap path.
 
 ![Multi-Source Dashboard](/images/features/dashboard-multi-source.png)
 
