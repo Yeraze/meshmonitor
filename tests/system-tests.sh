@@ -237,6 +237,18 @@ echo -e "${BLUE}Cleaning up Quick Start container...${NC}"
 docker compose -f docker-compose.quick-start-test.yml down -v 2>/dev/null || true
 echo ""
 
+# Let the Meshtastic device fully release the previous container's TCP
+# session before the next test connects. Firmware logs (look for
+# `ApiServer: Force close previous TCP connection` in
+# /var/log/meshtastic-*) show the device aggressively closes an in-flight
+# session whenever a new incoming TCP arrives — and the session table
+# takes ~60s to fully recover. Without this wait, the first DM send from
+# the next container hits a 4s post-connect flap and fails with HTTP 500
+# (Not connected to Meshtastic node).
+echo -e "${BLUE}Waiting 60s for hardware node to release previous TCP session...${NC}"
+sleep 60
+echo ""
+
 echo "=========================================="
 echo -e "${BLUE}Running Reverse Proxy Test${NC}"
 echo "=========================================="
@@ -253,6 +265,13 @@ else
     echo -e "${RED}✗ Reverse Proxy test FAILED${NC}"
     abort_remaining "Reverse Proxy Test"
 fi
+echo ""
+
+# Same firmware-side TCP session-release wait as before Reverse Proxy.
+# Each hardware-sharing test container needs the device's previous session
+# to fully drain before connecting.
+echo -e "${BLUE}Waiting 60s for hardware node to release previous TCP session...${NC}"
+sleep 60
 echo ""
 
 echo "=========================================="

@@ -381,6 +381,48 @@ if [ "$NODE_CONNECTED" = false ]; then
 fi
 echo ""
 
+# Test 11b: Confirm the LIVE connection is healthy and stable. See the
+# matching block in test-reverse-proxy.sh for the rationale (Meshtastic
+# firmware allows one TCP client at a time and aggressively force-closes
+# the previous session when a new connection arrives, causing a 4s
+# post-connect flap that lets channels/nodes load but breaks message
+# sending).
+echo "Test 11b: Verify live connection is healthy and stable"
+STABLE_SECONDS=20
+LIVE_MAX_WAIT=180
+LIVE_ELAPSED=0
+STABLE_FOR=0
+LIVE_OK=false
+while [ $LIVE_ELAPSED -lt $LIVE_MAX_WAIT ]; do
+    CONN_STATUS=$(curl -s -k $TEST_URL/api/connection \
+        -b /tmp/meshmonitor-oidc-cookies.txt 2>/dev/null || echo '{}')
+    if echo "$CONN_STATUS" | grep -q '"connected":true' && \
+       echo "$CONN_STATUS" | grep -q '"nodeResponsive":true'; then
+        STABLE_FOR=$((STABLE_FOR + 2))
+        if [ $STABLE_FOR -ge $STABLE_SECONDS ]; then
+            echo -e "${GREEN}✓ PASS${NC}: Connection stable for ${STABLE_FOR}s"
+            LIVE_OK=true
+            break
+        fi
+    else
+        if [ $STABLE_FOR -gt 0 ]; then
+            echo " (flap detected, restarting stability count)"
+        fi
+        STABLE_FOR=0
+    fi
+    sleep 2
+    LIVE_ELAPSED=$((LIVE_ELAPSED + 2))
+    echo -n "."
+done
+echo ""
+
+if [ "$LIVE_OK" = false ]; then
+    echo -e "${RED}✗ FAIL${NC}: Live connection not stable after ${LIVE_MAX_WAIT}s"
+    echo "  Last /api/connection: $CONN_STATUS"
+    exit 1
+fi
+echo ""
+
 # Allow time for system to settle before messaging test
 echo "Waiting 15 seconds for system to settle..."
 sleep 15
