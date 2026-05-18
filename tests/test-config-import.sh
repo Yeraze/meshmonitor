@@ -30,8 +30,11 @@ CONTAINER_NAME="meshmonitor-config-import-test"
 TEST_PORT="8084"
 
 # Default test URLs (can be overridden with environment variables)
-# URL1: 3 channels (primary, dummyA, dummyB), LONG_FAST preset, US region, 3 hops
-DEFAULT_URL_1="https://meshtastic.org/e/#CjMSIAHcVEKVGrMDzpRL2SFja8rjMVvCprKKEiAdC7A2FkOGGgdwcmltYXJ5KAAwADoCCA4KExIBARoGZHVtbXlBKAEwADoCCAUKExIBARoGZHVtbXlCKAAwAToCCAcSHwgBEAAY+gEgCygFNQAAAAA4AUADSABQHlgAaAHIBgA"
+# URL1: 3 channels (unnamed, dummyA, dummyB), LONG_FAST preset, US region, 3 hops.
+# Channel 0 is intentionally unnamed so the device's primary matches the
+# Meshtastic factory-default state. Regenerate with:
+#   npx tsx scripts/rebuild-config-url.ts <old-url>
+DEFAULT_URL_1="https://meshtastic.org/e/#CjUIABIgAdxUQpUaswPOlEvZIWNryuMxW8KmsooSIB0LsDYWQ4YaACUAAAAAKAAwADoECA4QAAocCAASAQEaBmR1bW15QSUAAAAAKAEwADoECAUQAAocCAASAQEaBmR1bW15QiUAAAAAKAAwAToECAcQABIuCAEQABj6ASALKAU1AAAAADgBQANIAFAeWABgAGgBdQAAAAB4AMAGAMgGANAGAA"
 
 # URL2: 2 channels (unnamed, meshmonitor), MEDIUM_FAST preset, US region, 5 hops
 DEFAULT_URL_2="https://meshtastic.org/e/#CgsSAQEoATAAOgIIDgo3EiCfYZP2Kk8nXOGneKNQG/2EZInPXFeYPop3Q3lz/5pskhoLbWVzaG1vbml0b3IoADAAOgIIABIfCAEQBBj6ASALKAU1AAAAADgBQAVIAVAeWABoAcgGAQ"
@@ -251,9 +254,20 @@ wait_for_reconnect() {
 
     if [ "$DISCONNECTED" = false ]; then
         echo -e "${YELLOW}⚠${NC} Device did not disconnect (may have rebooted too fast)"
+        # The 30s disconnect window can end with the script still seeing the
+        # pre-reboot connection alive — either the device hasn't started
+        # rebooting yet, or it cycled disconnect+reconnect inside a single 1s
+        # poll interval. Either way, returning immediately means verify_config
+        # runs against PRE-reboot state. Wait a fixed grace period so the
+        # device has time to actually drop and come back, then re-verify
+        # nodeResponsive on the new socket before proceeding.
+        echo "  Waiting 45s grace period for reboot to complete in the background..."
+        sleep 45
     fi
 
-    # Now wait for device to reconnect (reboot complete)
+    # Now wait for device to reconnect (reboot complete) AND be live (the
+    # singleton's nodeResponsive flag tracks MyNodeInfo arrival on the
+    # current socket — false until the device has spoken on the new TCP).
     # Allow extra time for reconnect initial delay (default 60s) plus device reboot time
     echo "Waiting for device to reconnect (up to 180 seconds)..."
     MAX_WAIT_RECONNECT=180
@@ -263,8 +277,9 @@ wait_for_reconnect() {
         CONNECTION_STATUS=$(curl -s http://localhost:$TEST_PORT/api/connection \
             -b /tmp/meshmonitor-config-import-cookies.txt 2>/dev/null || echo '{"connected":false}')
 
-        if echo "$CONNECTION_STATUS" | grep -q '"connected":true'; then
-            echo -e "${GREEN}✓${NC} Device reconnected after ${ELAPSED}s"
+        if echo "$CONNECTION_STATUS" | grep -q '"connected":true' && \
+           echo "$CONNECTION_STATUS" | grep -q '"nodeResponsive":true'; then
+            echo -e "${GREEN}✓${NC} Device reconnected and responsive after ${ELAPSED}s"
 
             # Request fresh configuration from device (same as UI does)
             echo "Requesting fresh configuration from device..."
@@ -285,7 +300,7 @@ wait_for_reconnect() {
         sleep 2
         ELAPSED=$((ELAPSED + 2))
         if [ $((ELAPSED % 10)) -eq 0 ]; then
-            echo "  Still waiting... (${ELAPSED}s)"
+            echo "  Still waiting... (${ELAPSED}s) — last status: $CONNECTION_STATUS"
         fi
     done
 
@@ -696,7 +711,7 @@ echo ""
 # Test 7: Verify first configuration
 echo "Test 7: Verify first configuration"
 # URL1 expectations:
-#   - 3 channels: primary (role=1), dummyA (role=2), dummyB (role=2)
+#   - 3 channels: unnamed primary (role=1), dummyA (role=2), dummyB (role=2)
 #   - LoRa: LONG_FAST (preset=0), Region US (region=1), Hop Limit 3
 #
 # TODO: Channel name and role verification are temporarily limited to channels 0-1 due to an architectural issue.
