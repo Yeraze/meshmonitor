@@ -24,6 +24,7 @@ import {
 import type { DashboardSource } from '../hooks/useDashboardData';
 import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import DashboardMap from '../components/Dashboard/DashboardMap';
+import BBoxMapEditor, { type BBoxValue } from '../components/BBoxMapEditor';
 import LoginModal from '../components/LoginModal';
 import UserMenu from '../components/UserMenu';
 import { NewsPopup } from '../components/NewsPopup';
@@ -32,6 +33,25 @@ import api from '../services/api';
 import { logger } from '../utils/logger';
 import { appBasename } from '../init';
 import '../styles/dashboard.css';
+
+// Helper: parse the four bbox text fields into a BBoxValue, or null if any
+// is empty / not a number. The map editor needs a fully-defined bbox; the
+// numeric inputs let the user type values one at a time, so we tolerate
+// partial state and just don't render the rectangle until all four parse.
+function bboxFromForm(geo: {
+  minLat: string;
+  maxLat: string;
+  minLng: string;
+  maxLng: string;
+}): BBoxValue | null {
+  const minLat = Number(geo.minLat);
+  const maxLat = Number(geo.maxLat);
+  const minLng = Number(geo.minLng);
+  const maxLng = Number(geo.maxLng);
+  if ([minLat, maxLat, minLng, maxLng].some((n) => Number.isNaN(n))) return null;
+  if (minLat > maxLat || minLng > maxLng) return null;
+  return { minLat, maxLat, minLng, maxLng };
+}
 
 // ---------------------------------------------------------------------------
 // DashboardInner — rendered inside SettingsProvider
@@ -919,23 +939,40 @@ function DashboardInner() {
                     </label>
                   </legend>
                   {formMqttBridgeUseGeo && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }}>
-                      <label className="dashboard-form-field">
-                        <span className="dashboard-form-label">minLat</span>
-                        <input className="dashboard-form-input" value={formMqttBridgeGeo.minLat} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, minLat: e.target.value })} />
-                      </label>
-                      <label className="dashboard-form-field">
-                        <span className="dashboard-form-label">maxLat</span>
-                        <input className="dashboard-form-input" value={formMqttBridgeGeo.maxLat} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, maxLat: e.target.value })} />
-                      </label>
-                      <label className="dashboard-form-field">
-                        <span className="dashboard-form-label">minLng</span>
-                        <input className="dashboard-form-input" value={formMqttBridgeGeo.minLng} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, minLng: e.target.value })} />
-                      </label>
-                      <label className="dashboard-form-field">
-                        <span className="dashboard-form-label">maxLng</span>
-                        <input className="dashboard-form-input" value={formMqttBridgeGeo.maxLng} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, maxLng: e.target.value })} />
-                      </label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                      <BBoxMapEditor
+                        bbox={bboxFromForm(formMqttBridgeGeo)}
+                        onChange={(next) => {
+                          if (next) {
+                            setFormMqttBridgeGeo({
+                              minLat: next.minLat.toFixed(5),
+                              maxLat: next.maxLat.toFixed(5),
+                              minLng: next.minLng.toFixed(5),
+                              maxLng: next.maxLng.toFixed(5),
+                            });
+                          } else {
+                            setFormMqttBridgeGeo({ minLat: '', maxLat: '', minLng: '', maxLng: '' });
+                          }
+                        }}
+                      />
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <label className="dashboard-form-field">
+                          <span className="dashboard-form-label">minLat</span>
+                          <input className="dashboard-form-input" value={formMqttBridgeGeo.minLat} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, minLat: e.target.value })} />
+                        </label>
+                        <label className="dashboard-form-field">
+                          <span className="dashboard-form-label">maxLat</span>
+                          <input className="dashboard-form-input" value={formMqttBridgeGeo.maxLat} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, maxLat: e.target.value })} />
+                        </label>
+                        <label className="dashboard-form-field">
+                          <span className="dashboard-form-label">minLng</span>
+                          <input className="dashboard-form-input" value={formMqttBridgeGeo.minLng} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, minLng: e.target.value })} />
+                        </label>
+                        <label className="dashboard-form-field">
+                          <span className="dashboard-form-label">maxLng</span>
+                          <input className="dashboard-form-input" value={formMqttBridgeGeo.maxLng} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, maxLng: e.target.value })} />
+                        </label>
+                      </div>
                     </div>
                   )}
                 </fieldset>
