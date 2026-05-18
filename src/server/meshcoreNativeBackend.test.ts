@@ -448,6 +448,57 @@ describe('MeshCoreNativeBackend', () => {
     expect(resp.data).toEqual({ time: 1700000000 });
   });
 
+  it('device_query: splits NUL-separated remainder into model + version', async () => {
+    // Newer Meshcore firmware packs the model name and a firmware-version
+    // string as NUL-terminated segments into the DeviceInfo frame remainder.
+    // The upstream meshcore.js library decodes the whole remainder as one
+    // UTF-8 string, so we have to split it ourselves — otherwise the Info
+    // panel's Model row shows "<model><NUL><version>" with unprintable boxes.
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    conn.deviceQueryResponse = {
+      firmwareVer: 4,
+      firmware_build_date: '01 Jan 2026',
+      manufacturerModel: 'Heltec V3 v1.7.0 ',
+    };
+
+    const resp = await backend.sendCommand('device_query', {});
+    expect(resp.success).toBe(true);
+    expect(resp.data).toEqual({
+      'fw ver': 4,
+      fw_build: '01 Jan 2026',
+      model: 'Heltec V3',
+      ver: 'v1.7.0',
+    });
+  });
+
+  it('device_query: handles plain model with no trailing version string', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    conn.deviceQueryResponse = {
+      firmwareVer: 3,
+      firmware_build_date: '12 Mar 2025',
+      manufacturerModel: 'RAK4631',
+    };
+
+    const resp = await backend.sendCommand('device_query', {});
+    expect(resp.success).toBe(true);
+    expect(resp.data).toEqual({
+      'fw ver': 3,
+      fw_build: '12 Mar 2025',
+      model: 'RAK4631',
+      ver: undefined,
+    });
+  });
+
   it('routes telemetry/advert-loc commands to fork helpers', async () => {
     const backend = new MeshCoreNativeBackend('src-1', {
       connectionType: 'serial',

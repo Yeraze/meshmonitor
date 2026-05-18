@@ -483,12 +483,21 @@ export class MeshCoreNativeBackend extends EventEmitter {
       case 'device_query': {
         // SupportedCompanionProtocolVersion = 1
         const info = await c.deviceQuery(1);
-        const manuf = (info?.manufacturerModel ?? '') as string;
+        // The upstream meshcore.js library reads the entire remainder of the
+        // DeviceInfo frame as `manufacturerModel`. Newer firmware packs the
+        // hardware model name and a firmware-version string (e.g. "v1.7.0") as
+        // separate NUL-terminated segments into that remainder, so without
+        // splitting we'd show both fields concatenated with stray NUL bytes
+        // (rendered as unprintable squares) in the Info panel's Model row.
+        const rawManuf = (info?.manufacturerModel ?? '') as string;
+        const manufParts = rawManuf.split(' ').filter((s) => s.length > 0);
+        const model = manufParts[0] ?? '';
+        const verString = manufParts[1];
         return {
           'fw ver': info?.firmwareVer,
           fw_build: info?.firmware_build_date,
-          model: manuf,
-          ver: info?.firmware_build_date,
+          model,
+          ver: verString,
         };
       }
 
