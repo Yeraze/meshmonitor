@@ -66,6 +66,15 @@ export function ingestServiceEnvelope(input: MqttIngestionInput): MqttIngestionR
     return { ingested: false, reason: 'decode-error', portnum };
   }
 
+  // Fail-closed geo membership: when a bbox is configured on the filter,
+  // only allow packets from senders we've previously decoded a position
+  // for AND that position was inside the bbox. POSITION_APP is exempt
+  // here because the bbox check on the position payload (below) is what
+  // populates the membership cache in the first place.
+  if (filter && portnum !== PortNum.POSITION_APP && !filter.passesMembership(fromNum)) {
+    return { ingested: false, reason: 'geo-filtered', portnum };
+  }
+
   switch (portnum) {
     case PortNum.NODEINFO_APP: {
       const user = payload as Record<string, any>;
@@ -90,7 +99,7 @@ export function ingestServiceEnvelope(input: MqttIngestionInput): MqttIngestionR
 
     case PortNum.POSITION_APP: {
       const position = payload as PositionShape & Record<string, any>;
-      if (filter && !filter.postFilterPosition(position)) {
+      if (filter && !filter.postFilterPosition(position, fromNum)) {
         return { ingested: false, reason: 'geo-filtered', portnum };
       }
       const latI = position.latitudeI ?? position.latitude_i;

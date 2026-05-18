@@ -224,10 +224,21 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
 
     // Apply geo filter early — position packets outside the bbox must
     // not be republished to the local broker, otherwise they'd pollute
-    // the nodeDBs of devices connected to it.
+    // the nodeDBs of devices connected to it. Passing `from` to
+    // postFilterPosition lets the filter cache this node's membership
+    // so non-position packets can be gated by `passesMembership` below.
+    const fromNum = typeof envelope.packet?.from === 'number' ? envelope.packet.from >>> 0 : null;
     if (envelope.packet?.decoded?.portnum === PortNum.POSITION_APP) {
       const position = decodePosition(envelope.packet.decoded.payload);
-      if (!this.downlinkFilter.postFilterPosition(position)) return;
+      if (!this.downlinkFilter.postFilterPosition(position, fromNum ?? undefined)) return;
+    } else {
+      // Fail-closed: drop non-position traffic from senders we haven't
+      // already classified as inside the bbox. Encrypted packets (no
+      // decoded portnum) also flow through here — `decoded` would be
+      // undefined, the strict equality above is false, and we end up
+      // gated on membership too. That's intentional: an encrypted
+      // packet from an unknown sender should also be dropped.
+      if (!this.downlinkFilter.passesMembership(fromNum)) return;
     }
 
     const result = ingestServiceEnvelope({
