@@ -6,6 +6,10 @@ The MQTT Client Proxy is an optional sidecar container that enables reliable MQT
 The MQTT Proxy was created by [LN4CY](https://github.com/LN4CY/mqtt-proxy). MeshMonitor integrates it as an optional Docker sidecar. See also: [AI Responder](/add-ons/ai-responder), another add-on by the same author.
 :::
 
+::: info Built-in alternative since 4.6
+MeshMonitor now ships its own [**Embedded MQTT Broker**](/features/mqtt-broker) source type that covers most of the use cases this sidecar addresses, with added support for **multiple upstream bridges** and **server-side filtering** (geographic bounding boxes, topic / channel / node / portnum allow-block lists). The sidecar remains a valid option — particularly for pure-relay setups with no MeshMonitor-side ingestion of bridged data. See [the comparison table](/features/mqtt-broker#comparison-embedded-broker-vs-mqtt-proxy-sidecar-vs-node-s-built-in-mqtt) for a per-feature breakdown.
+:::
+
 ## Overview
 
 The MQTT Client Proxy behaves like the official Meshtastic mobile apps - it uses the `mqttClientProxyMessage` protocol to route MQTT traffic through a client device instead of directly from the node. This provides several advantages over the node's built-in MQTT gateway.

@@ -488,6 +488,35 @@
 
       <div class="form-group">
         <label class="checkbox-label">
+          <input type="checkbox" v-model="config.enableEmbeddedMqttBroker" />
+          Expose embedded MQTT broker (port 1883)
+        </label>
+        <p class="field-help">
+          Publishes host port <code>1883</code> so Meshtastic devices can connect <strong>directly</strong>
+          to MeshMonitor's built-in MQTT broker. The broker itself is still configured per-source in
+          <strong>Dashboard → Sources → Add Source → Embedded MQTT Broker</strong> after the container starts;
+          this checkbox only opens the host firewall path. Leave off if you'll only use the
+          <em>client-proxy</em> path (devices proxy through their TCP API connection — no extra port needed).
+          <a href="/features/mqtt-broker" target="_blank">Learn more</a>
+        </p>
+      </div>
+
+      <div v-if="config.enableEmbeddedMqttBroker" class="info-box">
+        <strong>📡 Embedded MQTT Broker Setup:</strong>
+        <ol>
+          <li>After container start, go to <strong>Dashboard → Sources → Add Source</strong> and pick <strong>Embedded MQTT Broker</strong>.</li>
+          <li>Set a listen port (default <code>1883</code>) and a shared username/password. Devices must use these credentials to publish.</li>
+          <li>On each Meshtastic device, set <strong>Device → MQTT</strong> → address to <code>&lt;your-host-ip&gt;:1883</code>, fill in the same credentials, and save. The device opens a TCP socket directly to the broker on the standard MQTT port (<a href="https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml?search=mqtt" target="_blank">IANA 1883</a>).</li>
+          <li>Optional: add one or more <strong>MQTT Bridge</strong> sources for upstream public brokers (e.g. <code>mqtt.meshtastic.org</code>) with filter rules (topic / channel / portnum / geographic bounding box).</li>
+        </ol>
+        <p style="margin-top: 1rem; font-size: 0.9rem;">
+          💡 The broker uses <a href="https://github.com/moscajs/aedes" target="_blank">Aedes</a> (pure-Node MQTT 3.1.1 broker) under the hood.
+          TLS (port 8883) and WebSocket listeners are not in v1.
+        </p>
+      </div>
+
+      <div class="form-group">
+        <label class="checkbox-label">
           <input type="checkbox" v-model="config.enableMqttProxy" />
           Enable MQTT Client Proxy Sidecar
         </label>
@@ -495,6 +524,10 @@
           Adds an MQTT proxy container that routes MQTT traffic through MeshMonitor instead of directly from your node.
           Useful when your node has unreliable WiFi or when you want MQTT without running mobile apps.
           <a href="/add-ons/mqtt-proxy" target="_blank">Learn more</a>
+        </p>
+        <p v-if="config.enableEmbeddedMqttBroker" class="field-help" style="color: var(--vp-c-warning-1, #d97706); margin-top: 0.5rem;">
+          ℹ️ The embedded broker (above) already covers this use case natively — no sidecar required.
+          Both can coexist (they listen on different ports), but most deployments only need one.
         </p>
       </div>
 
@@ -622,7 +655,8 @@ const config = ref({
   enableOfflineMaps: false,
   tileServerPort: 8081,
   enableAutoResponderScripts: false,
-  enableMqttProxy: false
+  enableMqttProxy: false,
+  enableEmbeddedMqttBroker: false
 })
 
 const copiedDockerCompose = ref(false)
@@ -738,6 +772,11 @@ const dockerComposeYaml = computed(() => {
     // Publishes the host port for Virtual Node. The in-container port
     // must match — configure it per-source in Dashboard → Edit Source → Virtual Node.
     lines.push(`      - "${config.value.virtualNodePort}:${config.value.virtualNodePort}"`)
+  }
+  if (config.value.enableEmbeddedMqttBroker) {
+    // Publishes the embedded MQTT broker's standard port. The broker itself
+    // is configured per-source in Dashboard → Sources → Add Source.
+    lines.push('      - "1883:1883"  # Embedded MQTT broker — devices connect here for direct-TCP MQTT')
   }
   lines.push('    restart: unless-stopped')
   lines.push('    volumes:')
