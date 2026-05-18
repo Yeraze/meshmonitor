@@ -411,7 +411,18 @@ class MeshCoreManager extends EventEmitter {
 
       return true;
     } catch (error) {
-      logger.error('[MeshCore] Connection failed:', error);
+      // meshcore.js rejects some promises with `undefined` (no Error object),
+      // which left the catch logging "Connection failed: undefined" with no
+      // actionable signal. Surface whatever we got, with a sentinel for the
+      // empty-rejection case so the next report carries usable diagnostics.
+      // See discussion #2604.
+      const detail =
+        error instanceof Error
+          ? error.stack ?? error.message
+          : error === undefined || error === null
+            ? '<meshcore.js rejected without an Error — likely port open / AppStart timeout / library-internal>'
+            : String(error);
+      logger.error(`[MeshCore] Connection failed: ${detail}`);
       await this.disconnect();
       return false;
     }
