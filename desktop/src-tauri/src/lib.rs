@@ -157,8 +157,6 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
         .stderr(Stdio::from(stderr_file))
         .env("NODE_ENV", "production")
         .env("PORT", config.web_port.to_string())
-        .env("MESHTASTIC_NODE_IP", &config.meshtastic_ip)
-        .env("MESHTASTIC_TCP_PORT", config.meshtastic_port.to_string())
         .env("DATABASE_PATH", db_path.to_string_lossy().to_string())
         .env("DATA_DIR", data_path.to_string_lossy().to_string())
         .env("SESSION_SECRET", &config.session_secret)
@@ -194,12 +192,30 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
         .env("IS_DESKTOP", "true")
         .env("FIRMWARE_CHECK_ENABLED", "false");
 
+    // Only pass MESHTASTIC_NODE_IP / TCP_PORT if the user has actually
+    // configured a Meshtastic node. Setting either env var triggers the
+    // backend's auto-created Meshtastic TCP source, which would otherwise
+    // pin every MeshCore-only desktop install into a forever ENETUNREACH
+    // reconnect loop against a placeholder address. See discussion #2604.
+    let meshtastic_ip_configured = !config.meshtastic_ip.trim().is_empty();
+    if meshtastic_ip_configured {
+        cmd.env("MESHTASTIC_NODE_IP", &config.meshtastic_ip)
+            .env("MESHTASTIC_TCP_PORT", config.meshtastic_port.to_string());
+    }
+
     log_to_file(&logs_path, "Environment variables set");
     log_to_file(&logs_path, &format!("PORT: {}", config.web_port));
-    log_to_file(
-        &logs_path,
-        &format!("MESHTASTIC_NODE_IP: {}", config.meshtastic_ip),
-    );
+    if meshtastic_ip_configured {
+        log_to_file(
+            &logs_path,
+            &format!("MESHTASTIC_NODE_IP: {}", config.meshtastic_ip),
+        );
+    } else {
+        log_to_file(
+            &logs_path,
+            "MESHTASTIC_NODE_IP: <unset> (no Meshtastic node configured)",
+        );
+    }
     log_to_file(
         &logs_path,
         &format!(

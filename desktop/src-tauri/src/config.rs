@@ -31,7 +31,14 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            meshtastic_ip: String::from("192.168.1.100"),
+            // Empty by default — we don't ship a placeholder IP because the
+            // backend uses the presence of MESHTASTIC_NODE_IP to decide whether
+            // to enable the env-derived Meshtastic TCP source. Shipping a
+            // placeholder (e.g. "192.168.1.100") would force every fresh
+            // install — including MeshCore-only desktop users — into a
+            // forever ENETUNREACH reconnect loop against an address they
+            // never configured. See discussion #2604.
+            meshtastic_ip: String::new(),
             meshtastic_port: 4403,
             web_port: 8080,
             auto_start: false,

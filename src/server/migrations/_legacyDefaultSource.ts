@@ -21,19 +21,30 @@ interface LegacyDefaultSource {
   name: string;
   type: string;
   config: string;
+  /**
+   * 1 when MESHTASTIC_NODE_IP was explicitly set (Docker users with the env
+   * configured, etc.); 0 when we fell through to the `meshtastic.local`
+   * placeholder. The disabled-by-default branch prevents the auto-source
+   * from flapping in a forever reconnect loop against an unreachable
+   * address for users who never configured a Meshtastic node — most
+   * commonly MeshCore-only macOS desktop installs (discussion #2604).
+   */
+  enabled: 0 | 1;
   createdAt: number;
   updatedAt: number;
 }
 
 export function buildLegacyDefaultSource(): LegacyDefaultSource {
   const now = Date.now();
-  const host = process.env.MESHTASTIC_NODE_IP || 'meshtastic.local';
+  const envHost = process.env.MESHTASTIC_NODE_IP?.trim();
+  const host = envHost && envHost.length > 0 ? envHost : 'meshtastic.local';
   const port = parseInt(process.env.MESHTASTIC_TCP_PORT || '4403', 10) || 4403;
   return {
     id: randomUUID(),
     name: 'Default',
     type: 'meshtastic_tcp',
     config: JSON.stringify({ host, port }),
+    enabled: envHost && envHost.length > 0 ? 1 : 0,
     createdAt: now,
     updatedAt: now,
   };
@@ -63,11 +74,21 @@ export function ensureDefaultSourceIdSqlite(
   }
 
   const legacy = buildLegacyDefaultSource();
-  logger.info(`${migrationLabel}: sources table empty; creating default source '${legacy.id}'`);
+  logger.info(
+    `${migrationLabel}: sources table empty; creating default source '${legacy.id}' (enabled=${legacy.enabled})`,
+  );
   db.prepare(`
     INSERT INTO sources (id, name, type, config, enabled, createdAt, updatedAt)
-    VALUES (?, ?, ?, ?, 1, ?, ?)
-  `).run(legacy.id, legacy.name, legacy.type, legacy.config, legacy.createdAt, legacy.updatedAt);
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    legacy.id,
+    legacy.name,
+    legacy.type,
+    legacy.config,
+    legacy.enabled,
+    legacy.createdAt,
+    legacy.updatedAt,
+  );
   return legacy.id;
 }
 
@@ -90,11 +111,13 @@ export async function ensureDefaultSourceIdPostgres(
   }
 
   const legacy = buildLegacyDefaultSource();
-  logger.info(`${migrationLabel}: sources table empty; creating default source '${legacy.id}' (PG)`);
+  logger.info(
+    `${migrationLabel}: sources table empty; creating default source '${legacy.id}' (enabled=${legacy.enabled}) (PG)`,
+  );
   await client.query(
     `INSERT INTO sources (id, name, type, config, enabled, "createdAt", "updatedAt")
-     VALUES ($1, $2, $3, $4, true, $5, $6)`,
-    [legacy.id, legacy.name, legacy.type, legacy.config, legacy.createdAt, legacy.updatedAt],
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [legacy.id, legacy.name, legacy.type, legacy.config, legacy.enabled === 1, legacy.createdAt, legacy.updatedAt],
   );
   return legacy.id;
 }
@@ -122,11 +145,13 @@ export async function ensureDefaultSourceIdMysql(
     }
 
     const legacy = buildLegacyDefaultSource();
-    logger.info(`${migrationLabel}: sources table empty; creating default source '${legacy.id}' (MySQL)`);
+    logger.info(
+      `${migrationLabel}: sources table empty; creating default source '${legacy.id}' (enabled=${legacy.enabled}) (MySQL)`,
+    );
     await conn.query(
       `INSERT INTO sources (id, name, type, config, enabled, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, 1, ?, ?)`,
-      [legacy.id, legacy.name, legacy.type, legacy.config, legacy.createdAt, legacy.updatedAt],
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [legacy.id, legacy.name, legacy.type, legacy.config, legacy.enabled, legacy.createdAt, legacy.updatedAt],
     );
     return legacy.id;
   } finally {
