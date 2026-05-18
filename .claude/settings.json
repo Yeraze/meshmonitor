@@ -12,19 +12,6 @@
           }
         ]
       }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "CMD=$(jq -r '.tool_input.command // empty'); echo \"$CMD\" | grep -q 'gh pr create' || exit 0; echo 'Running test suite before PR creation...' >&2; RESULT=$(npm test 2>&1); if echo \"$RESULT\" | grep -qE 'Tests.*failed'; then FAILS=$(echo \"$RESULT\" | grep -E 'Test Files|Tests ' | tail -2); echo \"{\\\"decision\\\": \\\"block\\\", \\\"reason\\\": \\\"Tests failed — fix before creating PR:\\n$FAILS\\\"}\"; else echo \"{\\\"hookSpecificOutput\\\": {\\\"hookEventName\\\": \\\"PreToolUse\\\", \\\"additionalContext\\\": \\\"All tests passed — PR creation approved.\\\"}}\"; fi",
-            "timeout": 300,
-            "statusMessage": "Running tests before PR creation..."
-          }
-        ]
-      }
     ]
   }
 }
