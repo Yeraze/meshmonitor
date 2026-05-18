@@ -1,19 +1,26 @@
 name: System Tests
 
-# Manually-triggered only. The hardware-dependent suite (Yeraze Station G2
-# DM round-trip, modem-preset round-trip via Configuration Import) is too
-# slow and too coupled to the runner's physical setup to gate every PR on
-# it — see the discussion in PR #3081 / commit "wait for stable live
-# connection between hardware-sharing containers" for the long-running
-# flake history. Use `gh workflow run "System Tests"` or the Actions UI
-# "Run workflow" button on PRs that genuinely need a hardware check.
+# Two trigger paths, both opt-in:
+#   1. `workflow_dispatch` — manual run from the Actions UI or
+#      `gh workflow run "System Tests" --ref <branch>`. Use when there's no
+#      PR open yet, or when iterating on the system-tests scripts.
+#   2. PR with the `system-test` label — adding the label flags the PR for
+#      hardware evaluation; subsequent pushes to the labeled PR re-run the
+#      suite. Remove the label to stop re-running.
+#
+# The suite is intentionally NOT triggered on every push. The hardware-
+# dependent steps (Yeraze Station G2 DM round-trip, modem-preset round-trip
+# via Configuration Import) are slow and serialize through a single
+# self-hosted runner — see PR #3082 for the long-running flake history.
 on:
   workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize]
 
-# Scope concurrency so distinct manual triggers don't cancel each other.
-# The self-hosted hardware runner physically serializes execution, so
-# concurrent runs queue naturally; this just avoids one user superseding
-# another's in-progress invocation on the same branch.
+# Scope concurrency so distinct triggers don't cancel each other unless they
+# target the same branch. The self-hosted hardware runner physically
+# serializes execution anyway; this just avoids one user superseding
+# another's in-progress invocation on the same ref.
 concurrency:
   group: system-tests-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
@@ -26,6 +33,13 @@ jobs:
   system-tests:
     name: System Tests (Hardware)
     runs-on: [self-hosted, meshmonitor-hw]
+    # workflow_dispatch always runs. PR events only run when the
+    # `system-test` label is set on the PR — either the labeled action
+    # added that label, or the PR carried it through a synchronize.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'system-test'))
     timeout-minutes: 90
     env:
       # Skip puppeteer's chrome-headless-shell download during npm install.
@@ -60,6 +74,22 @@ jobs:
           name: system-test-results
           path: test-results.md
 
-      # Without an originating PR (workflow_dispatch only), there's nothing to
-      # comment on. Results are available as an artifact via the upload step
-      # above and in the run's job logs.
+      - name: Post results to PR
+        # Only meaningful when triggered from a PR (the labeled path). On
+        # workflow_dispatch there is no PR context — results are still in
+        # the artifact and job logs.
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          if [ -f test-results.md ]; then
+            {
+              echo "<details><summary>System Test Results</summary>"
+              echo ""
+              cat test-results.md
+              echo ""
+              echo "</details>"
+            } > /tmp/system-test-comment.md
+            gh pr comment "${{ github.event.pull_request.number }}" \
+              --body-file /tmp/system-test-comment.md
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
