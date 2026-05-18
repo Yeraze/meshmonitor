@@ -254,9 +254,20 @@ wait_for_reconnect() {
 
     if [ "$DISCONNECTED" = false ]; then
         echo -e "${YELLOW}⚠${NC} Device did not disconnect (may have rebooted too fast)"
+        # The 30s disconnect window can end with the script still seeing the
+        # pre-reboot connection alive — either the device hasn't started
+        # rebooting yet, or it cycled disconnect+reconnect inside a single 1s
+        # poll interval. Either way, returning immediately means verify_config
+        # runs against PRE-reboot state. Wait a fixed grace period so the
+        # device has time to actually drop and come back, then re-verify
+        # nodeResponsive on the new socket before proceeding.
+        echo "  Waiting 45s grace period for reboot to complete in the background..."
+        sleep 45
     fi
 
-    # Now wait for device to reconnect (reboot complete)
+    # Now wait for device to reconnect (reboot complete) AND be live (the
+    # singleton's nodeResponsive flag tracks MyNodeInfo arrival on the
+    # current socket — false until the device has spoken on the new TCP).
     # Allow extra time for reconnect initial delay (default 60s) plus device reboot time
     echo "Waiting for device to reconnect (up to 180 seconds)..."
     MAX_WAIT_RECONNECT=180
@@ -266,8 +277,9 @@ wait_for_reconnect() {
         CONNECTION_STATUS=$(curl -s http://localhost:$TEST_PORT/api/connection \
             -b /tmp/meshmonitor-config-import-cookies.txt 2>/dev/null || echo '{"connected":false}')
 
-        if echo "$CONNECTION_STATUS" | grep -q '"connected":true'; then
-            echo -e "${GREEN}✓${NC} Device reconnected after ${ELAPSED}s"
+        if echo "$CONNECTION_STATUS" | grep -q '"connected":true' && \
+           echo "$CONNECTION_STATUS" | grep -q '"nodeResponsive":true'; then
+            echo -e "${GREEN}✓${NC} Device reconnected and responsive after ${ELAPSED}s"
 
             # Request fresh configuration from device (same as UI does)
             echo "Requesting fresh configuration from device..."
@@ -288,7 +300,7 @@ wait_for_reconnect() {
         sleep 2
         ELAPSED=$((ELAPSED + 2))
         if [ $((ELAPSED % 10)) -eq 0 ]; then
-            echo "  Still waiting... (${ELAPSED}s)"
+            echo "  Still waiting... (${ELAPSED}s) — last status: $CONNECTION_STATUS"
         fi
     done
 
