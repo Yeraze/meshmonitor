@@ -355,6 +355,14 @@ export async function checkNodeChannelAccess(
 ): Promise<boolean> {
   if (user?.isAdmin) return true;
 
+  // MeshCore node identifiers are 64-char hex public keys. The Meshtastic
+  // per-channel viewOnMap permission model does not apply to them — MeshCore
+  // sources gate access at the source-permission level (and the calling
+  // route still enforces the top-level info/dashboard read gate). Short-
+  // circuit to allow so non-admin MeshCore users can fetch telemetry for
+  // contacts in their source. Anonymous callers remain blocked.
+  if (/^[0-9a-fA-F]{64}$/.test(nodeId)) return !!user;
+
   // Support both hex nodeId (!abcdef01) and decimal nodeId (2882400001)
   const nodeNum = nodeId.startsWith('!')
     ? parseInt(nodeId.replace('!', ''), 16)

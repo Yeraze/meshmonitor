@@ -7,6 +7,7 @@ import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
 import { MeshCoreNodeTelemetryConfig } from './MeshCoreNodeTelemetryConfig';
+import TelemetryGraphs from '../TelemetryGraphs';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface MeshCoreDirectMessagesViewProps {
@@ -169,11 +170,14 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 publicKey={selected}
               />
               {!!sourceId && typeof baseUrl === 'string' && isRealNodeKey(selected) && (
-                <MeshCoreNodeTelemetryConfig
-                  baseUrl={baseUrl}
-                  sourceId={sourceId}
-                  publicKey={selected}
-                />
+                <>
+                  <MeshCoreNodeTelemetryConfig
+                    baseUrl={baseUrl}
+                    sourceId={sourceId}
+                    publicKey={selected}
+                  />
+                  <TelemetryGraphs nodeId={selected} baseUrl={baseUrl} />
+                </>
               )}
             </div>
           </>
