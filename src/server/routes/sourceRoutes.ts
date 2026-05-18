@@ -62,6 +62,43 @@ export function buildMqttManagerForSource(
   return new MqttBridgeManager(id, name, config as unknown as MqttBridgeSourceConfig);
 }
 
+// Restore credentials the edit UI intentionally omitted from the save
+// payload. The source-edit form clears the password field on load (the GET
+// endpoint strips it for non-admins) and drops the field from the PUT body
+// when the user did not type a new one, expecting the server to round-trip
+// the stored value. Without this merge, editing an unrelated field (e.g.
+// the geofence bounding box) writes back a config with no password and
+// wipes the saved credential.
+function preserveSourceCredentials(
+  type: string,
+  existingConfig: Record<string, unknown> | undefined,
+  incomingConfig: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...incomingConfig };
+  if (type === 'mqtt_broker') {
+    const existingAuth = (existingConfig as any)?.auth;
+    const incomingAuth = (incomingConfig as any)?.auth;
+    if (
+      existingAuth?.password &&
+      incomingAuth && typeof incomingAuth === 'object' &&
+      (incomingAuth.password === undefined || incomingAuth.password === '')
+    ) {
+      merged.auth = { ...incomingAuth, password: existingAuth.password };
+    }
+  } else if (type === 'mqtt_bridge') {
+    const existingUpstream = (existingConfig as any)?.upstream;
+    const incomingUpstream = (incomingConfig as any)?.upstream;
+    if (
+      existingUpstream?.password &&
+      incomingUpstream && typeof incomingUpstream === 'object' &&
+      (incomingUpstream.password === undefined || incomingUpstream.password === '')
+    ) {
+      merged.upstream = { ...incomingUpstream, password: existingUpstream.password };
+    }
+  }
+  return merged;
+}
+
 // MM-SEC-8: shared credential strip applied to source records leaving the
 // HTTP boundary. The `mqtt` and `meshcore` source types carry connection
 // credentials in their `config` blob; both the list and singular GET
@@ -252,7 +289,13 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
 
     const updates: any = {};
     if (name !== undefined) updates.name = name.trim();
-    if (config !== undefined) updates.config = config;
+    if (config !== undefined) {
+      updates.config = preserveSourceCredentials(
+        existing.type,
+        existing.config as Record<string, unknown> | undefined,
+        config,
+      );
+    }
     if (enabled !== undefined) updates.enabled = enabled;
 
     // Validate VN config if config is being updated
