@@ -31,6 +31,8 @@ interface DashboardSidebarProps {
   onConnectSource?: (id: string) => void;
   /** Called when user clicks Disconnect (kebab) on a source with autoConnect=false. */
   onDisconnectSource?: (id: string) => void;
+  /** Called when user clicks Prune Outside ROI (kebab) on an mqtt_bridge with a geo bbox. */
+  onPruneOutsideRoi?: (id: string) => void;
   /** Source IDs currently awaiting a /connect POST — used to show "Connecting..." feedback. */
   connectingIds?: Set<string>;
   /** Mobile drawer state — on desktop the sidebar is always visible. */
@@ -102,20 +104,25 @@ interface KebabMenuProps {
   sourceEnabled: boolean;
   /** When true, render a "Disconnect" item (manager running + autoConnect=false). */
   canDisconnect?: boolean;
+  /** When true, render a "Prune Outside ROI" item (mqtt_bridge with a geo bbox). */
+  canPruneOutsideRoi?: boolean;
   onEdit: (id: string) => void;
   onToggle: (id: string, enabled: boolean) => void;
   onDelete: (id: string) => void;
   onDisconnect?: (id: string) => void;
+  onPruneOutsideRoi?: (id: string) => void;
 }
 
 const KebabMenu: React.FC<KebabMenuProps> = ({
   sourceId,
   sourceEnabled,
   canDisconnect,
+  canPruneOutsideRoi,
   onEdit,
   onToggle,
   onDelete,
   onDisconnect,
+  onPruneOutsideRoi,
 }) => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -178,6 +185,18 @@ const KebabMenu: React.FC<KebabMenuProps> = ({
               {t('source.kebab.disconnect')}
             </button>
           )}
+          {canPruneOutsideRoi && onPruneOutsideRoi && (
+            <button
+              className="dashboard-kebab-item"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+                onPruneOutsideRoi(sourceId);
+              }}
+            >
+              {t('source.kebab.prune_outside_roi')}
+            </button>
+          )}
           <button
             className="dashboard-kebab-item danger"
             onClick={(e) => {
@@ -209,6 +228,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   onDeleteSource,
   onConnectSource,
   onDisconnectSource,
+  onPruneOutsideRoi,
   connectingIds,
   mobileOpen = false,
   onMobileClose,
@@ -323,20 +343,32 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                   </span>
                 ) : null;
               })()}
-              {!isUnified && isAdmin && (
-                <KebabMenu
-                  sourceId={source.id}
-                  sourceEnabled={source.enabled}
-                  canDisconnect={
-                    (source.config as any)?.autoConnect === false &&
-                    status?.connected === true
-                  }
-                  onEdit={onEditSource}
-                  onToggle={onToggleSource}
-                  onDelete={onDeleteSource}
-                  onDisconnect={onDisconnectSource}
-                />
-              )}
+              {!isUnified && isAdmin && (() => {
+                // Only show Prune Outside ROI for mqtt_bridge sources that
+                // actually have at least one geo bound configured — otherwise
+                // the action would no-op server-side.
+                const geo = (source.config as any)?.downlinkFilters?.geo;
+                const hasGeoBounds =
+                  source.type === 'mqtt_bridge' &&
+                  geo &&
+                  [geo.minLat, geo.maxLat, geo.minLng, geo.maxLng].some((v) => typeof v === 'number');
+                return (
+                  <KebabMenu
+                    sourceId={source.id}
+                    sourceEnabled={source.enabled}
+                    canDisconnect={
+                      (source.config as any)?.autoConnect === false &&
+                      status?.connected === true
+                    }
+                    canPruneOutsideRoi={hasGeoBounds}
+                    onEdit={onEditSource}
+                    onToggle={onToggleSource}
+                    onDelete={onDeleteSource}
+                    onDisconnect={onDisconnectSource}
+                    onPruneOutsideRoi={onPruneOutsideRoi}
+                  />
+                );
+              })()}
             </div>
 
             <div

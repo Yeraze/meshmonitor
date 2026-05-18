@@ -942,6 +942,43 @@ router.post('/:id/disconnect', requirePermission('sources', 'write'), async (req
   }
 });
 
+// POST /api/sources/:id/prune-outside-roi — surgical cleanup of node rows
+// whose last-known position is outside the bridge's geo bbox. Only valid for
+// mqtt_bridge sources that have downlinkFilters.geo configured. Forward-only
+// ingestion is already gated by MqttPacketFilter.postFilterPosition, so this
+// endpoint exists to clean up rows that were ingested *before* the current
+// bbox was set (or with a wider previous bbox).
+router.post('/:id/prune-outside-roi', requirePermission('sources', 'write'), async (req: Request, res: Response) => {
+  try {
+    const source = await databaseService.sources.getSource(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Source not found' });
+    if (source.type !== 'mqtt_bridge') {
+      return res.status(400).json({ error: 'Prune outside ROI is only supported on mqtt_bridge sources' });
+    }
+    const geo = (source.config as any)?.downlinkFilters?.geo;
+    const bounds = {
+      minLat: typeof geo?.minLat === 'number' ? geo.minLat : undefined,
+      maxLat: typeof geo?.maxLat === 'number' ? geo.maxLat : undefined,
+      minLng: typeof geo?.minLng === 'number' ? geo.minLng : undefined,
+      maxLng: typeof geo?.maxLng === 'number' ? geo.maxLng : undefined,
+    };
+    if (
+      bounds.minLat === undefined &&
+      bounds.maxLat === undefined &&
+      bounds.minLng === undefined &&
+      bounds.maxLng === undefined
+    ) {
+      return res.status(400).json({ error: 'This bridge has no geo bounding box configured' });
+    }
+    const count = await databaseService.pruneNodesOutsideBboxAsync(source.id, bounds);
+    logger.info(`Pruned ${count} node(s) outside ROI for source ${source.id} (${source.name})`);
+    res.json({ success: true, count, sourceId: source.id });
+  } catch (err) {
+    logger.error('Error pruning nodes outside ROI:', err);
+    res.status(500).json({ error: 'Failed to prune nodes' });
+  }
+});
+
 // Waypoints sub-router. Each handler runs `requirePermission('waypoints', …)`
 // scoped to the path's `:id` parameter.
 router.use('/:id/waypoints', waypointRoutes);
