@@ -555,6 +555,62 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * Delete nodes for a source whose last-known position is outside the given
+   * bbox. Nodes with no recorded position (latitude/longitude null) are NOT
+   * deleted — we have no evidence they're outside.
+   *
+   * Used by the "Prune Outside ROI" kebab action on mqtt_bridge sources to
+   * clean up rows that were ingested before the current geo filter was
+   * configured. New traffic is gated by MqttPacketFilter.postFilterPosition
+   * at ingestion time; this method handles the legacy cleanup.
+   *
+   * Returns the number of node rows actually deleted.
+   *
+   * @param sourceId  Mandatory — never prune across sources.
+   * @param bbox      Inclusive bounds; any axis may be undefined (no bound on
+   *                  that side). A node is "outside" if it violates *any*
+   *                  defined bound.
+   */
+  async pruneNodesOutsideBbox(
+    sourceId: string,
+    bbox: { minLat?: number; maxLat?: number; minLng?: number; maxLng?: number },
+  ): Promise<number> {
+    const { nodes } = this.tables;
+    const outsideTerms = [];
+    if (typeof bbox.minLat === 'number') outsideTerms.push(lt(nodes.latitude, bbox.minLat));
+    if (typeof bbox.maxLat === 'number') outsideTerms.push(gt(nodes.latitude, bbox.maxLat));
+    if (typeof bbox.minLng === 'number') outsideTerms.push(lt(nodes.longitude, bbox.minLng));
+    if (typeof bbox.maxLng === 'number') outsideTerms.push(gt(nodes.longitude, bbox.maxLng));
+    // No bounds → no-op. Caller should validate this earlier and return 400,
+    // but be defensive here so a misconfigured row doesn't wipe the source.
+    if (outsideTerms.length === 0) return 0;
+
+    const whereClause = and(
+      eq(nodes.sourceId, sourceId),
+      isNotNull(nodes.latitude),
+      isNotNull(nodes.longitude),
+      or(...outsideTerms),
+    );
+
+    // Collect nodeNums first so we can invalidate cache entries. Drizzle's
+    // `.delete().returning()` works on PG/SQLite but not MySQL, so do a
+    // SELECT-then-DELETE to keep the path uniform across backends.
+    const toDelete = await this.db
+      .select({ nodeNum: nodes.nodeNum })
+      .from(nodes)
+      .where(whereClause);
+    if (toDelete.length === 0) return 0;
+
+    await this.db.delete(nodes).where(whereClause);
+
+    for (const row of toDelete) {
+      await this.syncCacheNode(Number(row.nodeNum), sourceId);
+    }
+
+    return toDelete.length;
+  }
+
+  /**
    * Get nodes with key security issues
    */
   async getNodesWithKeySecurityIssues(sourceId?: string): Promise<DbNode[]> {

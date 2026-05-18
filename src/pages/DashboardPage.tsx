@@ -89,6 +89,10 @@ function DashboardInner() {
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [showLogin, setShowLogin] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [pruneConfirm, setPruneConfirm] = useState<string | null>(null);
+  const [pruneResult, setPruneResult] = useState<{ sourceId: string; count: number } | null>(null);
+  const [pruneError, setPruneError] = useState<string | null>(null);
+  const [prunePending, setPrunePending] = useState(false);
   // Mobile drawer state — hamburger toggles; source selection auto-closes.
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -655,6 +659,44 @@ function DashboardInner() {
     if (res.ok) refreshSources();
   };
 
+  const onPruneOutsideRoi = (id: string) => {
+    setPruneError(null);
+    setPruneResult(null);
+    setPruneConfirm(id);
+  };
+
+  const confirmPrune = async () => {
+    if (!pruneConfirm || prunePending) return;
+    setPrunePending(true);
+    setPruneError(null);
+    try {
+      const csrfToken = getToken();
+      const res = await fetch(
+        `${appBasename}/api/sources/${pruneConfirm}/prune-outside-roi`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-csrf-token': csrfToken || '',
+          },
+        },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPruneError(body.error || `HTTP ${res.status}`);
+        return;
+      }
+      setPruneResult({ sourceId: pruneConfirm, count: body.count ?? 0 });
+      setPruneConfirm(null);
+      refreshSources();
+    } catch (err) {
+      setPruneError(err instanceof Error ? err.message : 'Request failed');
+    } finally {
+      setPrunePending(false);
+    }
+  };
+
   // ----- render -----
   return (
     <div className="dashboard-page">
@@ -703,6 +745,7 @@ function DashboardInner() {
           onDeleteSource={onDeleteSource}
           onConnectSource={onConnectSource}
           onDisconnectSource={onDisconnectSource}
+          onPruneOutsideRoi={onPruneOutsideRoi}
           connectingIds={connectingIds}
           mobileOpen={mobileSidebarOpen}
           onMobileClose={() => setMobileSidebarOpen(false)}
@@ -748,6 +791,42 @@ function DashboardInner() {
             <div className="dashboard-confirm-actions">
               <button onClick={() => setDeleteConfirm(null)}>{t('common.cancel')}</button>
               <button onClick={confirmDelete}>{t('source.kebab.delete')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Prune Outside ROI confirmation */}
+      {pruneConfirm && (
+        <div className="dashboard-confirm-overlay">
+          <div className="dashboard-confirm-dialog">
+            <h3>{t('source.kebab.prune_outside_roi')}</h3>
+            <p>{t('source.prune_outside_roi_confirm')}</p>
+            {pruneError && (
+              <p style={{ color: 'var(--ctp-red)', fontSize: 13 }}>{pruneError}</p>
+            )}
+            <div className="dashboard-confirm-actions">
+              <button onClick={() => setPruneConfirm(null)} disabled={prunePending}>
+                {t('common.cancel')}
+              </button>
+              <button onClick={confirmPrune} disabled={prunePending}>
+                {prunePending
+                  ? t('source.prune_pending', 'Pruning…')
+                  : t('source.kebab.prune_outside_roi')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Prune result toast — simple modal, dismissed on click */}
+      {pruneResult && (
+        <div className="dashboard-confirm-overlay" onClick={() => setPruneResult(null)}>
+          <div className="dashboard-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>{t('source.kebab.prune_outside_roi')}</h3>
+            <p>{t('source.prune_outside_roi_result', { count: pruneResult.count })}</p>
+            <div className="dashboard-confirm-actions">
+              <button onClick={() => setPruneResult(null)}>{t('common.ok')}</button>
             </div>
           </div>
         </div>

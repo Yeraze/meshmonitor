@@ -6580,6 +6580,21 @@ class DatabaseService {
   }
 
   /**
+   * Delete nodes for a source whose last-known position is outside the bbox.
+   * Surgical alternative to purgeAllNodesAsync — keeps inside-bbox nodes and
+   * nodes without recorded position. Returns the number of rows deleted.
+   *
+   * Powers the "Prune Outside ROI" kebab action on mqtt_bridge sources.
+   */
+  async pruneNodesOutsideBboxAsync(
+    sourceId: string,
+    bbox: { minLat?: number; maxLat?: number; minLng?: number; maxLng?: number },
+  ): Promise<number> {
+    if (!this.nodesRepo) throw new Error('Nodes repository not initialized');
+    return this.nodesRepo.pruneNodesOutsideBbox(sourceId, bbox);
+  }
+
+  /**
    * Purge all nodes and related data (async version).
    * When sourceId is provided, scope to that source only.
    */
