@@ -32,6 +32,16 @@ vi.mock('../../hooks/useCsrfFetch', () => ({
   useCsrfFetch: () => csrfFetchMock,
 }));
 
+// TelemetryGraphs is exercised by its own tests; here we only need to
+// confirm the DM view mounts it with the right props when conditions are
+// met. Stub the heavy graphs component with a sentinel so we don't need
+// ToastProvider / QueryClientProvider / SourceProvider in this test.
+vi.mock('../TelemetryGraphs', () => ({
+  default: (props: { nodeId: string; baseUrl?: string }) => (
+    <div data-testid="telemetry-graphs" data-node-id={props.nodeId} data-base-url={props.baseUrl ?? ''} />
+  ),
+}));
+
 import { MeshCoreDirectMessagesView } from './MeshCoreDirectMessagesView';
 import type { MeshCoreActions, ConnectionStatus, MeshCoreMessage } from './hooks/useMeshCore';
 import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
@@ -160,6 +170,61 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
 
     expect(screen.queryByText('Telemetry Retrieval')).toBeNull();
     expect(csrfFetchMock).not.toHaveBeenCalled();
+  });
+
+  it('mounts the TelemetryGraphs component with the selected pubkey when sourceId is set', async () => {
+    render(
+      <MeshCoreDirectMessagesView
+        messages={messages}
+        contacts={[realContact]}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl="/meshmonitor"
+        sourceId="src-a"
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Remote Bob'));
+
+    const graphs = await screen.findByTestId('telemetry-graphs');
+    expect(graphs.getAttribute('data-node-id')).toBe(REAL_PK);
+    expect(graphs.getAttribute('data-base-url')).toBe('/meshmonitor');
+  });
+
+  it('does NOT mount TelemetryGraphs for a non-real-pubkey peer', () => {
+    const prefixOnly: MeshCoreContact = {
+      publicKey: 'cafebabe1234',
+      advName: 'Prefix Pete',
+      advType: 1,
+    };
+
+    render(
+      <MeshCoreDirectMessagesView
+        messages={messages}
+        contacts={[prefixOnly]}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Prefix Pete'));
+    expect(screen.queryByTestId('telemetry-graphs')).toBeNull();
+  });
+
+  it('does NOT mount TelemetryGraphs when sourceId is not provided', () => {
+    render(
+      <MeshCoreDirectMessagesView
+        messages={messages}
+        contacts={[realContact]}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Remote Bob'));
+    expect(screen.queryByTestId('telemetry-graphs')).toBeNull();
   });
 
   it('refetches telemetry config when switching from one real-pubkey peer to another', async () => {

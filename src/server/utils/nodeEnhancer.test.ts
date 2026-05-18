@@ -266,6 +266,23 @@ describe('nodeEnhancer: checkNodeChannelAccess', () => {
     const noPermUser = { id: 99, isAdmin: false } as any;
     expect(await checkNodeChannelAccess('!00000001', noPermUser)).toBe(false);
   });
+
+  it('should allow access for a MeshCore 64-char-hex pubkey even without per-channel viewOnMap permission', async () => {
+    // MeshCore sources do not use the Meshtastic per-channel permission
+    // model; access is controlled at the source-permission level by the
+    // calling route. A user with no channel permissions should still be
+    // able to look up telemetry for a MeshCore contact in a source they
+    // can read.
+    const noPermUser = { id: 99, isAdmin: false } as any;
+    const meshcorePubkey = 'a'.repeat(64);
+    expect(await checkNodeChannelAccess(meshcorePubkey, noPermUser)).toBe(true);
+  });
+
+  it('should still deny anonymous access for a MeshCore pubkey', async () => {
+    const meshcorePubkey = 'b'.repeat(64);
+    expect(await checkNodeChannelAccess(meshcorePubkey, null)).toBe(false);
+    expect(await checkNodeChannelAccess(meshcorePubkey, undefined)).toBe(false);
+  });
 });
 
 describe('nodeEnhancer: maskNodeLocationByChannel', () => {
