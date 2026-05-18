@@ -353,6 +353,23 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                   {activityBadge.text}
                 </span>
               )}
+              {(() => {
+                // MQTT bridges surface `permissionMessage` on their status
+                // when the upstream broker denied subscribe or rejected auth.
+                // Shown even when the link is connected — the bridge is up
+                // but some capabilities are disabled.
+                const permMsg = (status as { permissionMessage?: string | null } | null | undefined)
+                  ?.permissionMessage;
+                return permMsg ? (
+                  <span
+                    className="dashboard-permission-badge"
+                    title={permMsg}
+                    aria-label={permMsg}
+                  >
+                    ⚠ {t('source.permission_restricted', 'restricted')}
+                  </span>
+                ) : null;
+              })()}
             </div>
 
             <div className="dashboard-source-card-actions">
