@@ -463,7 +463,7 @@ describe('MeshCoreNativeBackend', () => {
     conn.deviceQueryResponse = {
       firmwareVer: 4,
       firmware_build_date: '01 Jan 2026',
-      manufacturerModel: 'Heltec V3 v1.7.0 ',
+      manufacturerModel: 'Heltec V3\u0000v1.7.0\u0000',
     };
 
     const resp = await backend.sendCommand('device_query', {});
@@ -497,6 +497,44 @@ describe('MeshCoreNativeBackend', () => {
       model: 'RAK4631',
       ver: undefined,
     });
+  });
+
+  it('device_query: empty manufacturerModel falls back to empty model + undefined ver', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    conn.deviceQueryResponse = {
+      firmwareVer: 2,
+      firmware_build_date: '01 Jan 2024',
+      manufacturerModel: '',
+    };
+
+    const resp = await backend.sendCommand('device_query', {});
+    expect(resp.success).toBe(true);
+    expect(resp.data.model).toBe('');
+    expect(resp.data.ver).toBeUndefined();
+  });
+
+  it('device_query: manufacturerModel that is only NUL padding yields empty model', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    conn.deviceQueryResponse = {
+      firmwareVer: 5,
+      firmware_build_date: '01 May 2026',
+      manufacturerModel: '\u0000\u0000\u0000',
+    };
+
+    const resp = await backend.sendCommand('device_query', {});
+    expect(resp.success).toBe(true);
+    expect(resp.data.model).toBe('');
+    expect(resp.data.ver).toBeUndefined();
   });
 
   it('routes telemetry/advert-loc commands to fork helpers', async () => {

@@ -490,7 +490,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // splitting we'd show both fields concatenated with stray NUL bytes
         // (rendered as unprintable squares) in the Info panel's Model row.
         const rawManuf = (info?.manufacturerModel ?? '') as string;
-        const manufParts = rawManuf.split(' ').filter((s) => s.length > 0);
+        const manufParts = rawManuf.split('\u0000').filter((s) => s.length > 0);
         const model = manufParts[0] ?? '';
         const verString = manufParts[1];
         return {
