@@ -18,7 +18,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { MqttBrokerClient } from './transports/mqttBrokerClient.js';
+import { MqttBrokerClient, type MqttClientCapabilities } from './transports/mqttBrokerClient.js';
 import {
   MqttPacketFilter,
   type MqttFilterConfig,
@@ -56,6 +56,15 @@ export interface MqttBridgeStatus extends SourceStatus {
   downlinkDrops: ReturnType<MqttPacketFilter['getDropCounters']>;
   uplinkDrops: ReturnType<MqttPacketFilter['getDropCounters']>;
   lastError: string | null;
+  /**
+   * Inferred broker ACL state. `permissionMessage` is non-null when the
+   * broker has restricted what this bridge can do (subscribe-only,
+   * publish-only, auth-rejected) — surface it to the user so they know
+   * why some traffic isn't flowing. See MqttClientCapabilities for the
+   * caveats on `canPublish` at QoS 0.
+   */
+  capabilities: MqttClientCapabilities;
+  permissionMessage: string | null;
 }
 
 interface EchoEntry { topic: string; packetId: number; expiresAt: number }
@@ -104,6 +113,16 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     this.client.on('error', (err) => {
       this.lastError = err.message;
     });
+    this.client.on('permission-denied', (info: { kind: 'auth' | 'subscribe'; message: string }) => {
+      // Mirror to lastError so legacy UI tooltips (which only show on
+      // disconnect) still pick it up. The dedicated permissionMessage
+      // surface is preferred for connected-but-restricted bridges.
+      this.lastError = info.message;
+      logger.warn(
+        `MQTT bridge ${this.sourceId} permission issue (${info.kind}): ${info.message}`,
+      );
+      this.emit('permission-denied', info);
+    });
     this.client.on('message', (msg) => this.handleDownlink(msg.topic, msg.payload, msg.retained));
 
     await this.client.connect();
@@ -124,6 +143,9 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
   }
 
   getStatus(): MqttBridgeStatus {
+    const capabilities: MqttClientCapabilities = this.client
+      ? this.client.getCapabilities()
+      : { canSubscribe: true, canPublish: 'unknown', authFailed: false, deniedSubscriptions: [] };
     return {
       sourceId: this.sourceId,
       sourceName: this.sourceName,
@@ -138,6 +160,8 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       downlinkDrops: this.downlinkFilter.getDropCounters(),
       uplinkDrops: this.uplinkFilter.getDropCounters(),
       lastError: this.lastError ?? this.client?.getLastError() ?? null,
+      capabilities,
+      permissionMessage: buildPermissionMessage(capabilities, this.config.subscriptions.length),
     };
   }
 
@@ -297,6 +321,33 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     while (store.length > 0 && store[0].expiresAt < now) store.shift();
     return store.some((e) => e.topic === topic && e.packetId === packetId);
   }
+}
+
+/**
+ * Build a user-facing summary of what the broker won't let us do.
+ * Returns null when the broker appears fully permissive (or when we have no
+ * evidence either way yet — e.g. before the first SUBACK lands).
+ *
+ * The message is intentionally one short sentence so it fits in a card
+ * tooltip; the full per-topic denial list lives in `capabilities`.
+ */
+export function buildPermissionMessage(
+  caps: MqttClientCapabilities,
+  requestedSubscriptionCount: number,
+): string | null {
+  if (caps.authFailed) {
+    return 'Broker rejected authentication — check credentials.';
+  }
+  const deniedCount = caps.deniedSubscriptions.length;
+  if (deniedCount === 0) return null;
+  // All subscriptions denied: this is effectively a publish-only endpoint
+  // from our perspective. Downlink is dead until ACLs change.
+  if (requestedSubscriptionCount > 0 && deniedCount >= requestedSubscriptionCount) {
+    return `Broker denied all ${deniedCount} subscription(s). This endpoint appears to be publish-only — downlink is disabled.`;
+  }
+  const preview = caps.deniedSubscriptions.slice(0, 3).join(', ');
+  const overflow = deniedCount > 3 ? ` (+${deniedCount - 3} more)` : '';
+  return `Broker denied ${deniedCount} subscription(s): ${preview}${overflow}. Downlink reduced.`;
 }
 
 function decodePosition(payload: Uint8Array | undefined): PositionShape | null {

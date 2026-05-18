@@ -314,6 +314,19 @@
   color: var(--ctp-red);
 }
 
+.dashboard-permission-badge {
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  background: color-mix(in srgb, var(--ctp-yellow) 22%, transparent);
+  color: var(--ctp-yellow);
+  cursor: help;
+  white-space: nowrap;
+}
+
 .dashboard-source-card-actions {
   display: flex;
   align-items: center;
