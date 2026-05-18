@@ -206,6 +206,126 @@ describe('MqttPacketFilter.postFilterPosition — geo bbox', () => {
   });
 });
 
+describe('MqttPacketFilter.passesMembership — fail-closed geo membership', () => {
+  // Bbox approximately covering southern Ontario for these tests.
+  const ON_BBOX = { minLat: 43, maxLat: 45, minLng: -80, maxLng: -77 };
+  const NODE_IN = 0x7ff80a48;
+  const NODE_OUT = 0x11111111;
+  const NODE_UNKNOWN = 0x22222222;
+
+  it('no-op (passes everything) when no bbox is configured', () => {
+    const f = new MqttPacketFilter({});
+    expect(f.passesMembership(NODE_UNKNOWN)).toBe(true);
+    expect(f.passesMembership(null)).toBe(true);
+    expect(f.passesMembership(undefined)).toBe(true);
+    expect(f.getDropCounters().geo).toBe(0);
+  });
+
+  it('no-op when geo object exists but has no actual bounds set', () => {
+    // {} is truthy but has no min/max — should behave like "no bbox".
+    const f = new MqttPacketFilter({ geo: {} });
+    expect(f.passesMembership(NODE_UNKNOWN)).toBe(true);
+    expect(f.getDropCounters().geo).toBe(0);
+  });
+
+  it('drops unknown senders when bbox is enabled (fail-closed)', () => {
+    const f = new MqttPacketFilter({ geo: ON_BBOX });
+    expect(f.passesMembership(NODE_UNKNOWN)).toBe(false);
+    expect(f.getDropCounters().geo).toBe(1);
+  });
+
+  it('drops when fromNum is missing entirely', () => {
+    const f = new MqttPacketFilter({ geo: ON_BBOX });
+    expect(f.passesMembership(null)).toBe(false);
+    expect(f.passesMembership(undefined)).toBe(false);
+    expect(f.getDropCounters().geo).toBe(2);
+  });
+
+  it('learns membership from a position inside the bbox', () => {
+    const f = new MqttPacketFilter({ geo: ON_BBOX });
+    // Toronto-ish — clearly inside.
+    expect(
+      f.postFilterPosition({ latitudeI: 437_000_000, longitudeI: -793_000_000 }, NODE_IN),
+    ).toBe(true);
+    // Subsequent non-position packets pass.
+    expect(f.passesMembership(NODE_IN)).toBe(true);
+    expect(f.getMembershipSize()).toBe(1);
+  });
+
+  it('learns and drops a sender whose position is outside the bbox', () => {
+    const f = new MqttPacketFilter({ geo: ON_BBOX });
+    // Vancouver — clearly outside.
+    expect(
+      f.postFilterPosition({ latitudeI: 492_000_000, longitudeI: -1_230_000_000 }, NODE_OUT),
+    ).toBe(false);
+    // Even though we now "know" this node, it's known-out → still drops.
+    expect(f.passesMembership(NODE_OUT)).toBe(false);
+    // Both the position itself AND the subsequent membership check increment geo.
+    expect(f.getDropCounters().geo).toBe(2);
+  });
+
+  it('refreshes membership when a node moves across the boundary', () => {
+    const f = new MqttPacketFilter({ geo: ON_BBOX });
+    const NODE = 0x7ff80a48;
+
+    // First seen inside.
+    f.postFilterPosition({ latitudeI: 437_000_000, longitudeI: -793_000_000 }, NODE);
+    expect(f.passesMembership(NODE)).toBe(true);
+
+    // Then moves outside — membership should flip to 'out'.
+    f.postFilterPosition({ latitudeI: 492_000_000, longitudeI: -1_230_000_000 }, NODE);
+    expect(f.passesMembership(NODE)).toBe(false);
+
+    // ...and back inside.
+    f.postFilterPosition({ latitudeI: 437_000_000, longitudeI: -793_000_000 }, NODE);
+    expect(f.passesMembership(NODE)).toBe(true);
+
+    // Cache should still have a single entry for this node, not three.
+    expect(f.getMembershipSize()).toBe(1);
+  });
+
+  it('does NOT record membership when fromNum is omitted', () => {
+    const f = new MqttPacketFilter({ geo: ON_BBOX });
+    // Position decode-only path (e.g. from older callers that didn't pass fromNum).
+    f.postFilterPosition({ latitudeI: 437_000_000, longitudeI: -793_000_000 });
+    expect(f.getMembershipSize()).toBe(0);
+  });
+
+  it('does NOT record membership when position lacks lat/lon', () => {
+    const f = new MqttPacketFilter({ geo: ON_BBOX });
+    // Position-shaped payload with no coords — can't decide.
+    expect(f.postFilterPosition({}, NODE_IN)).toBe(true);
+    // No coords were learned, so the node stays unknown → fail-closed drop.
+    expect(f.passesMembership(NODE_IN)).toBe(false);
+    expect(f.getMembershipSize()).toBe(0);
+  });
+
+  it('does NOT record membership when no bbox is set even if fromNum provided', () => {
+    const f = new MqttPacketFilter({});
+    f.postFilterPosition({ latitudeI: 437_000_000, longitudeI: -793_000_000 }, NODE_IN);
+    // No bbox in use → membership cache should remain empty.
+    expect(f.getMembershipSize()).toBe(0);
+  });
+
+  it('respects half-open bboxes (only one axis bounded)', () => {
+    // Only minLat set: anything below latitude 43 is "out", everything else is "in".
+    const f = new MqttPacketFilter({ geo: { minLat: 43 } });
+    f.postFilterPosition({ latitudeI: 440_000_000, longitudeI: -793_000_000 }, NODE_IN); // 44.0 → in
+    f.postFilterPosition({ latitudeI: 420_000_000, longitudeI: -793_000_000 }, NODE_OUT); // 42.0 → out
+    expect(f.passesMembership(NODE_IN)).toBe(true);
+    expect(f.passesMembership(NODE_OUT)).toBe(false);
+  });
+
+  it('different filter instances do not share membership state', () => {
+    const a = new MqttPacketFilter({ geo: ON_BBOX });
+    const b = new MqttPacketFilter({ geo: ON_BBOX });
+    a.postFilterPosition({ latitudeI: 437_000_000, longitudeI: -793_000_000 }, NODE_IN);
+    expect(a.passesMembership(NODE_IN)).toBe(true);
+    // Filter b never saw the position → still drops.
+    expect(b.passesMembership(NODE_IN)).toBe(false);
+  });
+});
+
 describe('MqttPacketFilter.resetCounters', () => {
   it('zeroes all drop counters', () => {
     const f = new MqttPacketFilter({ topics: { block: ['x'] } });

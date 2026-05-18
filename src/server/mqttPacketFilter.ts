@@ -52,6 +52,18 @@ export interface PositionShape {
   longitude_i?: number;
 }
 
+/**
+ * Per-node bbox membership decision, cached the first time we see a
+ * position for that nodeNum and refreshed on every subsequent position.
+ *
+ * Used by `passesMembership` to apply the bbox to *all* portnums (not just
+ * POSITION_APP). Nodes we've never seen a position for are treated as
+ * unknown and rejected — see "fail-closed" semantics in the class doc.
+ */
+type GeoMembership = 'in' | 'out';
+
+const MEMBERSHIP_MAX = 10_000;
+
 export class MqttPacketFilter {
   private readonly topicAllow: RegExp[];
   private readonly topicBlock: RegExp[];
@@ -62,6 +74,7 @@ export class MqttPacketFilter {
   private readonly portAllow: Set<number> | null;
   private readonly portBlock: Set<number>;
   private readonly geo: MqttFilterConfig['geo'] | null;
+  private readonly membership = new Map<number, GeoMembership>();
   private readonly drops: MqttFilterDropCounters = {
     topic: 0,
     channel: 0,
@@ -152,8 +165,13 @@ export class MqttPacketFilter {
    * Geographic bounding box filter applied after decoding a Position
    * payload. Returns true if the position is inside the configured
    * bbox (or no bbox configured), false to drop.
+   *
+   * If `fromNum` is provided AND the bbox is enabled AND the position
+   * carries valid coordinates, the result is cached as the node's
+   * membership (in / out). `passesMembership` then uses that cache to
+   * decide non-position portnums.
    */
-  postFilterPosition(position: PositionShape | null): boolean {
+  postFilterPosition(position: PositionShape | null, fromNum?: number): boolean {
     if (!this.geo || !position) return true;
     const latI = position.latitudeI ?? position.latitude_i;
     const lngI = position.longitudeI ?? position.longitude_i;
@@ -161,23 +179,49 @@ export class MqttPacketFilter {
     const lat = latI / 1e7;
     const lng = lngI / 1e7;
     const { minLat, maxLat, minLng, maxLng } = this.geo;
-    if (typeof minLat === 'number' && lat < minLat) {
-      this.drops.geo++;
-      return false;
+    const inside =
+      (typeof minLat !== 'number' || lat >= minLat) &&
+      (typeof maxLat !== 'number' || lat <= maxLat) &&
+      (typeof minLng !== 'number' || lng >= minLng) &&
+      (typeof maxLng !== 'number' || lng <= maxLng);
+
+    if (typeof fromNum === 'number' && this.hasGeoBounds()) {
+      this.recordMembership(fromNum >>> 0, inside ? 'in' : 'out');
     }
-    if (typeof maxLat === 'number' && lat > maxLat) {
-      this.drops.geo++;
-      return false;
-    }
-    if (typeof minLng === 'number' && lng < minLng) {
-      this.drops.geo++;
-      return false;
-    }
-    if (typeof maxLng === 'number' && lng > maxLng) {
+
+    if (!inside) {
       this.drops.geo++;
       return false;
     }
     return true;
+  }
+
+  /**
+   * Non-position fail-closed membership check.
+   *
+   * When the bbox is enabled, every packet (TEXT, TELEMETRY, NODEINFO,
+   * NEIGHBORINFO, encrypted, ...) is gated on the sender having a
+   * known-inside-the-bbox membership. Senders we've never decoded a
+   * position for, or that last reported a position outside the bbox,
+   * are dropped — increments `drops.geo`.
+   *
+   * No-op (passes everything) when the bbox is not configured.
+   */
+  passesMembership(fromNum: number | null | undefined): boolean {
+    if (!this.hasGeoBounds()) return true;
+    if (typeof fromNum !== 'number') {
+      this.drops.geo++;
+      return false;
+    }
+    const status = this.membership.get(fromNum >>> 0);
+    if (status === 'in') return true;
+    this.drops.geo++;
+    return false;
+  }
+
+  /** Test/debug helper — current membership cache size. */
+  getMembershipSize(): number {
+    return this.membership.size;
   }
 
   getDropCounters(): MqttFilterDropCounters {
@@ -190,6 +234,28 @@ export class MqttPacketFilter {
     this.drops.node = 0;
     this.drops.portnum = 0;
     this.drops.geo = 0;
+  }
+
+  private hasGeoBounds(): boolean {
+    if (!this.geo) return false;
+    return (
+      typeof this.geo.minLat === 'number' ||
+      typeof this.geo.maxLat === 'number' ||
+      typeof this.geo.minLng === 'number' ||
+      typeof this.geo.maxLng === 'number'
+    );
+  }
+
+  private recordMembership(nodeNum: number, status: GeoMembership): void {
+    // FIFO eviction at MEMBERSHIP_MAX. Re-inserting a key bumps it to the
+    // end of insertion order, which makes refreshed nodes effectively MRU.
+    if (this.membership.has(nodeNum)) {
+      this.membership.delete(nodeNum);
+    } else if (this.membership.size >= MEMBERSHIP_MAX) {
+      const oldest = this.membership.keys().next().value;
+      if (oldest !== undefined) this.membership.delete(oldest);
+    }
+    this.membership.set(nodeNum, status);
   }
 }
 
