@@ -826,7 +826,7 @@ function DashboardInner() {
             <h3>{t('source.kebab.prune_outside_roi')}</h3>
             <p>{t('source.prune_outside_roi_result', { count: pruneResult.count })}</p>
             <div className="dashboard-confirm-actions">
-              <button onClick={() => setPruneResult(null)}>{t('common.cancel', 'OK')}</button>
+              <button onClick={() => setPruneResult(null)}>{t('common.ok')}</button>
             </div>
           </div>
         </div>
