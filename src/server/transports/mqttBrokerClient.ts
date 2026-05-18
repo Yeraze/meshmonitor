@@ -235,16 +235,26 @@ export class MqttBrokerClient extends EventEmitter {
     requested: string[],
     err: Error | null | undefined,
     granted: Array<{ topic: string; qos: number }> | undefined,
-    packet: { granted?: number[] } | undefined,
+    // mqtt.js's ISubackPacket['granted'] is `number[] | Object[]` because
+    // MQTT 5 SUBACK uses reason-code objects while MQTT 3.1.1 uses plain
+    // numbers. We hardcode protocolVersion: 4, so entries are numbers in
+    // practice — but the type system can't narrow that, so accept the
+    // broader shape and runtime-filter to numbers.
+    packet: { granted?: ReadonlyArray<number | object> } | undefined,
   ): { kind: 'ok' } | { kind: 'error'; error: Error } {
     const subackPacket =
-      packet ?? (err as (Error & { packet?: { granted?: number[] } }) | null)?.packet;
+      packet ??
+      (err as (Error & { packet?: { granted?: ReadonlyArray<number | object> } }) | null)?.packet;
     const rawGrants = subackPacket?.granted;
 
-    if (rawGrants && Array.isArray(rawGrants)) {
+    if (rawGrants && Array.isArray(rawGrants) && rawGrants.length > 0) {
       const results: MqttSubscriptionResult[] = rawGrants.map((code, i) => ({
         topic: requested[i] ?? `?[${i}]`,
-        qos: (code as MqttSubscriptionResult['qos']),
+        qos: (typeof code === 'number'
+          ? code
+          : // MQTT 5 path (unused with protocolVersion:4 but kept defensive):
+            // reason-code object may carry its own `reasonCode` field.
+            (((code as { reasonCode?: number }).reasonCode ?? 0) as number)) as MqttSubscriptionResult['qos'],
       }));
       this.applySubackResults(results);
       return { kind: 'ok' };
