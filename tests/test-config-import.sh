@@ -30,8 +30,11 @@ CONTAINER_NAME="meshmonitor-config-import-test"
 TEST_PORT="8084"
 
 # Default test URLs (can be overridden with environment variables)
-# URL1: 3 channels (primary, dummyA, dummyB), LONG_FAST preset, US region, 3 hops
-DEFAULT_URL_1="https://meshtastic.org/e/#CjMSIAHcVEKVGrMDzpRL2SFja8rjMVvCprKKEiAdC7A2FkOGGgdwcmltYXJ5KAAwADoCCA4KExIBARoGZHVtbXlBKAEwADoCCAUKExIBARoGZHVtbXlCKAAwAToCCAcSHwgBEAAY+gEgCygFNQAAAAA4AUADSABQHlgAaAHIBgA"
+# URL1: 3 channels (unnamed, dummyA, dummyB), LONG_FAST preset, US region, 3 hops.
+# Channel 0 is intentionally unnamed so the device's primary matches the
+# Meshtastic factory-default state. Regenerate with:
+#   npx tsx scripts/rebuild-config-url.ts <old-url>
+DEFAULT_URL_1="https://meshtastic.org/e/#CjUIABIgAdxUQpUaswPOlEvZIWNryuMxW8KmsooSIB0LsDYWQ4YaACUAAAAAKAAwADoECA4QAAocCAASAQEaBmR1bW15QSUAAAAAKAEwADoECAUQAAocCAASAQEaBmR1bW15QiUAAAAAKAAwAToECAcQABIuCAEQABj6ASALKAU1AAAAADgBQANIAFAeWABgAGgBdQAAAAB4AMAGAMgGANAGAA"
 
 # URL2: 2 channels (unnamed, meshmonitor), MEDIUM_FAST preset, US region, 5 hops
 DEFAULT_URL_2="https://meshtastic.org/e/#CgsSAQEoATAAOgIIDgo3EiCfYZP2Kk8nXOGneKNQG/2EZInPXFeYPop3Q3lz/5pskhoLbWVzaG1vbml0b3IoADAAOgIIABIfCAEQBBj6ASALKAU1AAAAADgBQAVIAVAeWABoAcgGAQ"
@@ -696,7 +699,7 @@ echo ""
 # Test 7: Verify first configuration
 echo "Test 7: Verify first configuration"
 # URL1 expectations:
-#   - 3 channels: primary (role=1), dummyA (role=2), dummyB (role=2)
+#   - 3 channels: unnamed primary (role=1), dummyA (role=2), dummyB (role=2)
 #   - LoRa: LONG_FAST (preset=0), Region US (region=1), Hop Limit 3
 #
 # TODO: Channel name and role verification are temporarily limited to channels 0-1 due to an architectural issue.

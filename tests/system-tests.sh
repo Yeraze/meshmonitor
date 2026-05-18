@@ -178,7 +178,7 @@ echo "=========================================="
 echo ""
 
 # Run Configuration Import test FIRST - it sets up the device to a known state
-# This test imports channels (primary, dummyA, dummyB) that other tests depend on
+# This test imports channels (unnamed primary, dummyA, dummyB) that other tests depend on
 if bash "$SCRIPT_DIR/test-config-import.sh"; then
     CONFIG_IMPORT_RESULT="PASSED"
     echo ""
@@ -197,7 +197,7 @@ echo "=========================================="
 echo ""
 
 # Run Quick Start test - expects device state from Configuration Import
-# (channels: primary, dummyA, dummyB)
+# (channels: unnamed primary, dummyA, dummyB)
 # Set KEEP_ALIVE=true so container stays running for V1 API test
 if KEEP_ALIVE=true bash "$SCRIPT_DIR/test-quick-start.sh"; then
     QUICKSTART_RESULT="PASSED"
