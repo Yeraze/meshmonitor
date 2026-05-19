@@ -9,6 +9,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 _No changes yet._
 
 
+## [4.6.2-1] - 2026-05-19
+
+# MeshMonitor v4.6.2-1
+
+Hotfix re-publishing the v4.6.2 multi-arch Docker manifest. The v4.6.2 build pipeline succeeded for `linux/amd64` and `linux/arm64` but failed on `linux/arm/v7` because `puppeteer@25.0.2` (bumped in #3071) attempts to download a Chrome browser binary during npm postinstall and Chrome has no armv7 build. No application-code changes.
+
+## Fixes
+- **Dockerfile.armv7**: set `PUPPETEER_SKIP_DOWNLOAD=true` before `npm install` so the postinstall doesn't try to fetch a non-existent armv7 Chrome binary. Puppeteer is a devDep used only in CI tests; runtime armv7 images don't need it.
+
+
 ## [4.6.2] - 2026-05-19
 
 # MeshMonitor v4.6.2

@@ -19,7 +19,14 @@ COPY package*.json ./
 # better-sqlite3 will download pre-built binaries for the target platform
 # Use cache mount to speed up repeated builds
 # --legacy-peer-deps needed for vitest peer dependency conflicts
+#
+# PUPPETEER_SKIP_DOWNLOAD=true: puppeteer's npm postinstall downloads a
+# Chrome binary, and Chrome has no armv7 build — without this the
+# install fails at downloadBrowsers and the whole image build aborts.
+# Puppeteer is a devDependency used only by CI tests, so production
+# armv7 images don't need the browser binary at all.
 RUN --mount=type=cache,target=/root/.npm \
+    PUPPETEER_SKIP_DOWNLOAD=true \
     npm install --legacy-peer-deps
 
 # Verify protobufs are present (fail fast if git submodule wasn't initialized)
