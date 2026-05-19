@@ -110,7 +110,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
    * Create a new channel database entry.
    * Keeps branching: MySQL returns insertId differently, SQLite/Postgres use .returning().
    */
-  async createAsync(data: ChannelDatabaseInput, sourceId?: string): Promise<number> {
+  async createAsync(data: ChannelDatabaseInput): Promise<number> {
     const now = this.now();
     const { channelDatabase } = this.tables;
     const values: any = {
@@ -126,9 +126,6 @@ export class ChannelDatabaseRepository extends BaseRepository {
       createdAt: now,
       updatedAt: now,
     };
-    if (sourceId) {
-      values.sourceId = sourceId;
-    }
 
     if (this.isMySQL()) {
       // MySQL returns insertId from mysql2
@@ -329,7 +326,6 @@ export class ChannelDatabaseRepository extends BaseRepository {
       createdBy: row.createdBy,
       createdAt: Number(row.createdAt),
       updatedAt: Number(row.updatedAt),
-      sourceId: row.sourceId ?? null,
     });
   }
 

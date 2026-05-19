@@ -15,6 +15,7 @@ import SystemBackupSection from './configuration/SystemBackupSection';
 import DatabaseMaintenanceSection from './configuration/DatabaseMaintenanceSection';
 import AutoUpgradeTestSection from './configuration/AutoUpgradeTestSection';
 import FirmwareUpdateSection from './configuration/FirmwareUpdateSection';
+import ChannelDatabaseSection from './configuration/ChannelDatabaseSection';
 import { CustomThemeManagement } from './CustomThemeManagement';
 import { CustomTilesetManager } from './CustomTilesetManager';
 import { type Theme, type NodeHopsCalculation, useSettings } from '../contexts/SettingsContext';
@@ -92,7 +93,8 @@ interface SettingsTabProps {
 
 const GLOBAL_SECTIONS = new Set([
   'settings-language', 'settings-units', 'settings-appearance', 'settings-map',
-  'settings-apprise-server', 'settings-backup', 'settings-maintenance', 'settings-auto-upgrade', 'settings-analytics',
+  'settings-apprise-server', 'settings-backup', 'settings-channel-database',
+  'settings-maintenance', 'settings-auto-upgrade', 'settings-analytics',
 ]);
 
 const SOURCE_SECTIONS = new Set([
@@ -986,6 +988,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         { id: 'settings-solar', label: t('settings.solar_monitoring') },
         ...(isAdmin ? [{ id: 'settings-apprise-server', label: t('settings.apprise_server_section', 'Apprise API Server') }] : []),
         { id: 'settings-backup', label: t('settings.system_backup', 'System Backup') },
+        ...(isAdmin ? [{ id: 'settings-channel-database', label: t('channel_database.title', 'Channel Database') }] : []),
         // Only show Database Maintenance for SQLite - it uses SQLite-specific features like VACUUM
         ...(databaseType === 'sqlite' ? [{ id: 'settings-maintenance', label: t('maintenance.title', 'Database Maintenance') }] : []),
         { id: 'settings-auto-upgrade', label: t('auto_upgrade_test.title', 'Auto Upgrade') },
@@ -1744,6 +1747,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
         {show('settings-backup') && <div id="settings-backup">
           <SystemBackupSection />
+        </div>}
+
+        {show('settings-channel-database') && isAdmin && <div id="settings-channel-database">
+          <ChannelDatabaseSection isAdmin={isAdmin} />
         </div>}
 
         {show('settings-maintenance') && <DatabaseMaintenanceSection />}

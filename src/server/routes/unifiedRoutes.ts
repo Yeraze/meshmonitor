@@ -259,16 +259,16 @@ router.get('/channels', async (req: Request, res: Response) => {
           logger.warn(`Failed to load channels for source ${source.id}:`, err);
         }
 
-        // Virtual channels belong to exactly one source (creator) and are
-        // surfaced to the unified picker under a synthetic channel number
-        // `CHANNEL_DB_OFFSET + vcId` — the same encoding used for the stored
-        // message rows (see meshtasticManager.ts dual-insert path). If a
-        // virtual channel shares a name with a physical slot on the same
-        // source, both entries collapse into the same `byName` group so the
-        // picker shows one option; the `/messages` endpoint will union both
-        // channel numbers when fetching.
+        // Virtual channels are global — every channel-database entry decrypts
+        // packets from every source — so each virtual channel is surfaced
+        // under every source at the synthetic channel number
+        // `CHANNEL_DB_OFFSET + vcId` (same encoding used for stored message
+        // rows; see meshtasticManager.ts dual-insert path). If a virtual
+        // channel shares a name with a physical slot on the same source, both
+        // entries collapse into the same `byName` group so the picker shows
+        // one option; the `/messages` endpoint will union both channel
+        // numbers when fetching.
         for (const vc of virtualChannels) {
-          if (vc.sourceId !== source.id) continue;
           if (vc.id == null) continue;
           if (!canReadVirtualChannel(vc.id, readableVirtualIds)) continue;
           const name = (vc.name ?? '').trim();
@@ -408,10 +408,12 @@ router.get('/messages', async (req: Request, res: Response) => {
           databaseService.nodes.getAllNodes(source.id),
         ]);
 
-        // Virtual channels scoped to THIS source that the user can read.
-        // Shared between the named-channel and legacy paths below.
+        // Virtual channels are global — every enabled channel-database entry
+        // can decrypt packets on this source — so every readable virtual
+        // channel is in scope. Shared between the named-channel and legacy
+        // paths below.
         const vcsOnSource = virtualChannels.filter(
-          (vc) => vc.sourceId === source.id && vc.id != null &&
+          (vc) => vc.id != null &&
             canReadVirtualChannel(vc.id, readableVirtualIds),
         );
 

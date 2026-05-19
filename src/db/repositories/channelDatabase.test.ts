@@ -49,8 +49,7 @@ const SQLITE_CREATE = `
     last_decrypted_at INTEGER,
     created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    sourceId TEXT
+    updated_at INTEGER NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS channel_database_permissions (
@@ -95,8 +94,7 @@ const POSTGRES_CREATE = `
     "lastDecryptedAt" BIGINT,
     "createdBy" INTEGER REFERENCES users(id) ON DELETE SET NULL,
     "createdAt" BIGINT NOT NULL,
-    "updatedAt" BIGINT NOT NULL,
-    "sourceId" TEXT
+    "updatedAt" BIGINT NOT NULL
   );
 
   CREATE TABLE channel_database_permissions (
@@ -144,7 +142,6 @@ const MYSQL_CREATE = `
     createdBy INT,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL,
-    sourceId VARCHAR(36),
     FOREIGN KEY (createdBy) REFERENCES users(id) ON DELETE SET NULL
   );
 
