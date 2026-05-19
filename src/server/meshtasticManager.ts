@@ -3235,6 +3235,22 @@ class MeshtasticManager implements ISourceManager {
               parsed.data.lora.channelNum = 0;
               logger.info('📊 Set channelNum to 0 (was undefined - Proto3 default)');
             }
+
+            // Persist the modem preset per-source so the unified channels
+            // endpoint can use it as the display-name fallback for slot 0
+            // (which the firmware leaves blank when running on a preset).
+            // See `unifiedChannelDisplayName` in unifiedRoutes.ts.
+            if (this.sourceId && typeof parsed.data.lora.modemPreset === 'number') {
+              const presetKey = `lora.preset.${this.sourceId}`;
+              try {
+                await databaseService.settings.setSetting(
+                  presetKey,
+                  String(parsed.data.lora.modemPreset),
+                );
+              } catch (err) {
+                logger.debug(`Failed to persist ${presetKey}:`, err);
+              }
+            }
           }
 
           // Apply Proto3 defaults to device config

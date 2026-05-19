@@ -13,7 +13,7 @@
 import { EventEmitter } from 'events';
 import { MqttBroker, type MqttBrokerPublish } from './transports/mqttBroker.js';
 import { MqttPacketFilter, type ServiceEnvelopeShape } from './mqttPacketFilter.js';
-import { ingestServiceEnvelope } from './mqttIngestion.js';
+import { ingestServiceEnvelope, bootstrapMqttChannelDatabase } from './mqttIngestion.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import type { Source } from '../db/repositories/sources.js';
@@ -75,6 +75,7 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
 
   async start(): Promise<void> {
     if (this.broker) return;
+    await bootstrapMqttChannelDatabase(this.sourceId);
     this.broker = new MqttBroker({
       port: this.config.listener.port,
       host: this.config.listener.host,
@@ -150,14 +151,20 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
     }
     const envelope: ServiceEnvelopeShape = decoded as ServiceEnvelopeShape;
 
-    const result = ingestServiceEnvelope({
+    ingestServiceEnvelope({
       sourceId: this.sourceId,
       envelope,
       filter: this.filter,
-    });
-
-    if (result.ingested) this.packetsIngested++;
-    else this.packetsDropped++;
+    })
+      .then((result) => {
+        if (result.ingested) this.packetsIngested++;
+        else this.packetsDropped++;
+      })
+      .catch((err) => {
+        this.packetsDropped++;
+        const m = err instanceof Error ? err.message : String(err);
+        logger.warn(`MQTT broker ${this.sourceId} ingest failed: ${m}`);
+      });
 
     // Always emit, even if not ingested — bridges may want encrypted or
     // unsupported-portnum packets for uplink. They apply their own filter.

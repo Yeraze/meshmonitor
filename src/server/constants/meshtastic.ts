@@ -207,6 +207,39 @@ export function getStoreForwardRequestResponseName(rr: number): string {
 }
 
 /**
+ * Modem preset → channel-name map (Meshtastic firmware spec).
+ *
+ * When a device's channel slot has an empty name AND it's running on a
+ * `modem_preset`, the firmware derives the on-wire channel name from the
+ * preset's pascal-case label (no spaces) — `LONG_FAST` → `LongFast` etc.
+ * That derived name is used both for the channel hash AND for the
+ * `ServiceEnvelope.channelId` field when publishing to MQTT.
+ *
+ * Reference: firmware `meshtastic/firmware`, see `Channels.cpp::getName`.
+ *
+ * NOTE: the values here are the firmware-spec names (no spaces) — distinct
+ * from the user-friendly "Long Fast" labels we render elsewhere. Anything
+ * touching channel hashes or MQTT topic naming must use these.
+ */
+export const MODEM_PRESET_CHANNEL_NAMES: Record<number, string> = {
+  0: 'LongFast',
+  1: 'LongSlow',
+  2: 'VeryLongSlow',  // deprecated in firmware, retained for legacy enum values
+  3: 'MediumSlow',
+  4: 'MediumFast',
+  5: 'ShortSlow',
+  6: 'ShortFast',
+  7: 'LongModerate',
+  8: 'ShortTurbo',
+};
+
+/** Returns the firmware-derived channel name for a modem preset, or null. */
+export function modemPresetChannelName(modemPreset: number | undefined | null): string | null {
+  if (typeof modemPreset !== 'number') return null;
+  return MODEM_PRESET_CHANNEL_NAMES[modemPreset] ?? null;
+}
+
+/**
  * Channel Database Constants
  *
  * These constants are used for server-side decryption of encrypted packets
