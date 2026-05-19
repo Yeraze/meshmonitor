@@ -106,9 +106,11 @@ export class SourcesRepository extends BaseRepository {
    * calls update 0 rows.
    */
   async assignNullSourceIds(sourceId: string): Promise<void> {
+    // `channel_database` was in this list pre-migration-063 but its sourceId
+    // column has since been dropped — the channel DB is global.
     const dataTables = [
       'nodes', 'messages', 'telemetry', 'traceroutes',
-      'channels', 'neighbor_info', 'packet_log', 'ignored_nodes', 'channel_database',
+      'channels', 'neighbor_info', 'packet_log', 'ignored_nodes',
     ];
 
     for (const table of dataTables) {
