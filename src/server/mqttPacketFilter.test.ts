@@ -326,6 +326,136 @@ describe('MqttPacketFilter.passesMembership — fail-closed geo membership', () 
   });
 });
 
+describe('MqttPacketFilter.seedMembership — pre-seeded geo membership', () => {
+  // Bbox approximately covering southern Ontario.
+  const ON_BBOX = { minLat: 43, maxLat: 45, minLng: -80, maxLng: -77 };
+  const NODE_IN = 0x7ff80a48;
+  const NODE_OUT = 0x11111111;
+  const NODE_OTHER = 0x33333333;
+
+  it('seeds in-region nodes so non-position packets pass without a prior POSITION_APP', () => {
+    const f = new MqttPacketFilter({ geo: ON_BBOX });
+    // Pre-load with Toronto-ish coordinates.
+    const count = f.seedMembership([
+      { nodeNum: NODE_IN, latitudeDeg: 43.7, longitudeDeg: -79.3 },
+    ]);
+    expect(count).toBe(1);
+    // Right out of the gate, before any POSITION_APP packet — node passes.
+    expect(f.passesMembership(NODE_IN)).toBe(true);
+    expect(f.getDropCounters().geo).toBe(0);
+  });
+
+  it('does NOT seed out-of-region nodes (only seeds "in")', () => {
+    const f = new MqttPacketFilter({ geo: ON_BBOX });
+    // Vancouver — clearly outside.
+    const count = f.seedMembership([
+      { nodeNum: NODE_OUT, latitudeDeg: 49.2, longitudeDeg: -123.0 },
+    ]);
+    expect(count).toBe(0);
+    // Node remains unknown — fail-closed drops, but cache stays empty so the
+    // next POSITION_APP can still flip the verdict either way.
+    expect(f.passesMembership(NODE_OUT)).toBe(false);
+    expect(f.getMembershipSize()).toBe(0);
+  });
+
+  it('partitions a mixed batch into in/out and only seeds the in-region ones', () => {
+    const f = new MqttPacketFilter({ geo: ON_BBOX });
+    const count = f.seedMembership([
+      { nodeNum: NODE_IN, latitudeDeg: 43.7, longitudeDeg: -79.3 },
+      { nodeNum: NODE_OUT, latitudeDeg: 49.2, longitudeDeg: -123.0 },
+      { nodeNum: NODE_OTHER, latitudeDeg: 44.0, longitudeDeg: -78.5 },
+    ]);
+    expect(count).toBe(2);
+    expect(f.getMembershipSize()).toBe(2);
+    expect(f.passesMembership(NODE_IN)).toBe(true);
+    expect(f.passesMembership(NODE_OTHER)).toBe(true);
+    expect(f.passesMembership(NODE_OUT)).toBe(false);
+  });
+
+  it('skips entries with non-finite coordinates without throwing', () => {
+    const f = new MqttPacketFilter({ geo: ON_BBOX });
+    const count = f.seedMembership([
+      { nodeNum: NODE_IN, latitudeDeg: NaN, longitudeDeg: -79.3 },
+      { nodeNum: NODE_OTHER, latitudeDeg: 43.7, longitudeDeg: Infinity },
+    ]);
+    expect(count).toBe(0);
+    expect(f.getMembershipSize()).toBe(0);
+  });
+
+  it('treats 0,0 as "no position" sentinel and skips it', () => {
+    const f = new MqttPacketFilter({ geo: { minLat: -1, maxLat: 1, minLng: -1, maxLng: 1 } });
+    // 0,0 is technically inside the bbox here, but it's our codebase-wide
+    // sentinel for "node has no real position yet" — must not be seeded.
+    const count = f.seedMembership([
+      { nodeNum: NODE_IN, latitudeDeg: 0, longitudeDeg: 0 },
+    ]);
+    expect(count).toBe(0);
+    expect(f.passesMembership(NODE_IN)).toBe(false);
+  });
+
+  it('is a no-op when the filter has no bbox configured', () => {
+    const f = new MqttPacketFilter({});
+    const count = f.seedMembership([
+      { nodeNum: NODE_IN, latitudeDeg: 43.7, longitudeDeg: -79.3 },
+    ]);
+    expect(count).toBe(0);
+    expect(f.getMembershipSize()).toBe(0);
+  });
+
+  it('lets a subsequent POSITION_APP outside the bbox override the seed', () => {
+    const f = new MqttPacketFilter({ geo: ON_BBOX });
+    f.seedMembership([{ nodeNum: NODE_IN, latitudeDeg: 43.7, longitudeDeg: -79.3 }]);
+    expect(f.passesMembership(NODE_IN)).toBe(true);
+
+    // Node sends a new position — Vancouver, outside the bbox.
+    f.postFilterPosition({ latitudeI: 492_000_000, longitudeI: -1_230_000_000 }, NODE_IN);
+    expect(f.passesMembership(NODE_IN)).toBe(false);
+    // Still a single entry — refreshed, not duplicated.
+    expect(f.getMembershipSize()).toBe(1);
+  });
+});
+
+describe('MqttPacketFilter.seedTrustedNodes — bypasses bbox check', () => {
+  const ON_BBOX = { minLat: 43, maxLat: 45, minLng: -80, maxLng: -77 };
+  const NODE_A = 0xa2e4ff4c;
+  const NODE_B = 0x11111111;
+
+  it('marks nodes as in-cache without a position check', () => {
+    const f = new MqttPacketFilter({ geo: ON_BBOX });
+    const seeded = f.seedTrustedNodes([NODE_A, NODE_B]);
+    expect(seeded).toBe(2);
+    expect(f.passesMembership(NODE_A)).toBe(true);
+    expect(f.passesMembership(NODE_B)).toBe(true);
+    expect(f.getDropCounters().geo).toBe(0);
+  });
+
+  it('skips non-finite node numbers', () => {
+    const f = new MqttPacketFilter({ geo: ON_BBOX });
+    const seeded = f.seedTrustedNodes([NaN, Infinity, NODE_A] as any);
+    expect(seeded).toBe(1);
+    expect(f.passesMembership(NODE_A)).toBe(true);
+  });
+
+  it('is a no-op when no bbox is configured', () => {
+    const f = new MqttPacketFilter({});
+    const seeded = f.seedTrustedNodes([NODE_A]);
+    expect(seeded).toBe(0);
+    expect(f.getMembershipSize()).toBe(0);
+  });
+
+  it('lets a subsequent out-of-bbox POSITION_APP downgrade a trusted seed', () => {
+    const f = new MqttPacketFilter({ geo: ON_BBOX });
+    f.seedTrustedNodes([NODE_A]);
+    expect(f.passesMembership(NODE_A)).toBe(true);
+
+    // Trusted node sends a position outside the bbox — membership flips.
+    // Same refresh semantics as `seedMembership` lets POSITION_APP override.
+    f.postFilterPosition({ latitudeI: 492_000_000, longitudeI: -1_230_000_000 }, NODE_A);
+    expect(f.passesMembership(NODE_A)).toBe(false);
+    expect(f.getMembershipSize()).toBe(1);
+  });
+});
+
 describe('MqttPacketFilter.resetCounters', () => {
   it('zeroes all drop counters', () => {
     const f = new MqttPacketFilter({ topics: { block: ['x'] } });

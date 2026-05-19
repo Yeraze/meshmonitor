@@ -12,9 +12,74 @@
  */
 
 import meshtasticProtobufService from './meshtasticProtobufService.js';
+import { channelDecryptionService } from './services/channelDecryptionService.js';
 import databaseService from '../services/database.js';
-import type { DbNode, DbMessage, DbTelemetry } from '../services/database.js';
-import { PortNum } from './constants/meshtastic.js';
+
+/**
+ * Public Meshtastic channels that ship with the default key. Used to
+ * bootstrap the channel_database for newly-created MQTT sources so the
+ * decryption service can decode their traffic out of the box. Users can
+ * still add/remove rows via the UI; this only inserts when no matching
+ * name+psk row exists, so manual edits aren't clobbered.
+ *
+ * Format: `name` + 1-byte shorthand PSK (expanded by `expandShorthandPsk`
+ * at cache load time — see channelDecryptionService.refreshChannelCache).
+ *   0x01 → LongFast (the Meshtastic public default)
+ */
+const DEFAULT_MQTT_CHANNELS: ReadonlyArray<{ name: string; psk: string; pskLength: number }> = [
+  { name: 'LongFast', psk: 'AQ==', pskLength: 1 },
+];
+
+/**
+ * Ensure each well-known default-key channel exists in the channel_database
+ * so the server-side decryption service can decrypt MQTT-relayed traffic
+ * for newly added MQTT sources. Attribution is by sourceId — first MQTT
+ * source to bootstrap a channel owns it. Subsequent calls are no-ops when
+ * a matching row (by name, case-insensitive) already exists in any scope.
+ */
+export async function bootstrapMqttChannelDatabase(sourceId: string): Promise<void> {
+  try {
+    const existing = await databaseService.channelDatabase.getAllAsync();
+    const haveName = new Set(existing.map((c) => (c.name ?? '').toLowerCase()));
+    for (const ch of DEFAULT_MQTT_CHANNELS) {
+      if (haveName.has(ch.name.toLowerCase())) continue;
+      await databaseService.channelDatabase.createAsync(
+        {
+          name: ch.name,
+          psk: ch.psk,
+          pskLength: ch.pskLength,
+          isEnabled: true,
+          enforceNameValidation: false,
+          description: `Auto-seeded for MQTT decryption (default Meshtastic key)`,
+          createdBy: null,
+        },
+        sourceId,
+      );
+      logger.info(
+        `MQTT source ${sourceId} bootstrapped channel_database entry "${ch.name}" with default key`,
+      );
+    }
+    // Pick up the new row(s) on the next decryption attempt.
+    await channelDecryptionService.refreshChannelCache();
+  } catch (err) {
+    const m = err instanceof Error ? err.message : String(err);
+    logger.warn(`MQTT source ${sourceId} channel_database bootstrap failed: ${m}`);
+  }
+}
+import type {
+  DbNode,
+  DbMessage,
+  DbTelemetry,
+  DbTraceroute,
+  DbRouteSegment,
+  DbNeighborInfo,
+} from '../services/database.js';
+import {
+  PortNum,
+  StoreForwardRequestResponse,
+  getStoreForwardRequestResponseName,
+} from './constants/meshtastic.js';
+import { calculateDistance } from '../utils/distance.js';
 import { logger } from '../utils/logger.js';
 import {
   nodeNumToId,
@@ -40,10 +105,36 @@ export interface MqttIngestionResult {
   portnum?: number;
 }
 
-export function ingestServiceEnvelope(input: MqttIngestionInput): MqttIngestionResult {
+export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<MqttIngestionResult> {
   const { sourceId, envelope, filter } = input;
   const packet = envelope.packet;
   if (!packet) return { ingested: false, reason: 'no-packet' };
+
+  // Server-side channel decryption — mirror the TCP path in
+  // `meshtasticManager.processMeshPacket`. Public MQTT brokers republish
+  // packets in their on-wire encrypted form (`packet.encrypted` set, no
+  // `packet.decoded`). If any PSK in the channel_database matches, we
+  // synthesize the `decoded` field and continue with normal ingest.
+  if (!packet.decoded && packet.encrypted && packet.encrypted.length > 0 && channelDecryptionService.isEnabled()) {
+    const fromNum = typeof packet.from === 'number' ? packet.from >>> 0 : 0;
+    const pid = typeof packet.id === 'number' ? packet.id >>> 0 : 0;
+    try {
+      const r = await channelDecryptionService.tryDecrypt(
+        packet.encrypted,
+        pid,
+        fromNum,
+        typeof packet.channel === 'number' ? packet.channel : undefined,
+      );
+      if (r.success) {
+        (packet as { decoded?: { portnum?: number; payload?: Uint8Array } }).decoded = {
+          portnum: r.portnum,
+          payload: r.payload,
+        };
+      }
+    } catch (err) {
+      logger.debug(`MQTT ingest: server decryption error for packet from ${fromNum}: ${err}`);
+    }
+  }
 
   const decoded = packet.decoded;
   if (!decoded) return { ingested: false, reason: 'encrypted' };
@@ -65,6 +156,12 @@ export function ingestServiceEnvelope(input: MqttIngestionInput): MqttIngestionR
     logger.warn(`MQTT ingest: failed to decode portnum ${portnum}: ${err}`);
     return { ingested: false, reason: 'decode-error', portnum };
   }
+
+  // Surface the channel this packet came in on so the unified channel
+  // picker shows it. Fire-and-forget: a failed upsert just means the
+  // picker won't surface this channel for this source — the packet
+  // ingest itself is unaffected.
+  recordChannelFromEnvelope(sourceId, envelope, packet);
 
   // Fail-closed geo membership: when a bbox is configured on the filter,
   // only allow packets from senders we've previously decoded a position
@@ -129,7 +226,14 @@ export function ingestServiceEnvelope(input: MqttIngestionInput): MqttIngestionR
       if (!text) return { ingested: false, reason: 'decode-error', portnum };
       const packetId = typeof packet.id === 'number' ? packet.id >>> 0 : 0;
       const msg: DbMessage = {
-        id: `${sourceId}-${packetId || nowMs}-${fromNum}`,
+        // Row ID uses the TCP convention `${sourceId}_${fromNum}_${packetId}`
+        // — underscores, fromNum middle, packetId last — so the unified
+        // dedup parser (extractPacketIdFromRowId in unifiedRoutes.ts) can
+        // recover the packet ID and collapse TCP/MQTT receptions of the
+        // same mesh packet into one entry with a multi-source receptions
+        // array. Diverging from this format makes the same packet appear
+        // N times in the unified view (one per receiving source).
+        id: `${sourceId}_${fromNum}_${packetId || nowMs}`,
         fromNodeNum: fromNum,
         toNodeNum: toNum ?? 0xffffffff,
         fromNodeId,
@@ -145,7 +249,10 @@ export function ingestServiceEnvelope(input: MqttIngestionInput): MqttIngestionR
         createdAt: nowMs,
       } as DbMessage;
       (msg as any).sourceId = sourceId;
-      databaseService.insertMessage(msg);
+      // Use the repo's per-source insert — the `databaseService.insertMessage`
+      // facade drops the sourceId, leaving rows orphaned (`sourceId=NULL`)
+      // and invisible to source-scoped queries like /api/unified/messages.
+      databaseService.messages.insertMessage(msg, sourceId);
       // Refresh lastHeard for the sender.
       databaseService.upsertNode({
         nodeNum: fromNum,
@@ -207,8 +314,495 @@ export function ingestServiceEnvelope(input: MqttIngestionInput): MqttIngestionR
       return any ? { ingested: true, portnum } : { ingested: false, reason: 'decode-error', portnum };
     }
 
+    case PortNum.TRACEROUTE_APP: {
+      await ingestTraceroute(sourceId, packet, payload as Record<string, any>, fromNum, fromNodeId, toNum, toNodeId, nowMs);
+      return { ingested: true, portnum };
+    }
+
+    case PortNum.NEIGHBORINFO_APP: {
+      const ok = await ingestNeighborInfo(sourceId, payload as Record<string, any>, fromNum, fromNodeId, nowMs);
+      return ok ? { ingested: true, portnum } : { ingested: false, reason: 'decode-error', portnum };
+    }
+
+    case PortNum.PAXCOUNTER_APP: {
+      const ok = ingestPaxcounter(sourceId, packet, payload as Record<string, any>, fromNum, fromNodeId, nowMs);
+      return ok ? { ingested: true, portnum } : { ingested: false, reason: 'decode-error', portnum };
+    }
+
+    case PortNum.STORE_FORWARD_APP: {
+      const ok = await ingestStoreForward(sourceId, packet, payload as Record<string, any>, fromNum, fromNodeId, toNum, toNodeId, nowMs);
+      return ok ? { ingested: true, portnum } : { ingested: false, reason: 'unsupported-portnum', portnum };
+    }
+
     default:
       return { ingested: false, reason: 'unsupported-portnum', portnum };
+  }
+}
+
+/**
+ * TRACEROUTE_APP — persist the traceroute record, a hop-count telemetry
+ * datum, and any route segments we can compute from known node positions.
+ * Mirrors the TCP path's storage side (skipping presentation-only steps
+ * like human-readable route text generation and the autoresponder
+ * delivery hook, which don't apply to MQTT-sourced traceroutes).
+ */
+async function ingestTraceroute(
+  sourceId: string,
+  packet: any,
+  routeDiscovery: Record<string, any>,
+  fromNum: number,
+  fromNodeId: string,
+  toNum: number | null,
+  toNodeId: string,
+  nowMs: number,
+): Promise<void> {
+  const BROADCAST_ADDR = 4294967295;
+  const lastHeard = Math.floor(nowMs / 1000);
+  const isValidRouteNode = (n: number): boolean => n > 3 && n !== 255 && n !== 65535;
+
+  // Refresh sender. Don't clobber an existing name.
+  const existingFrom = await databaseService.nodes.getNode(fromNum, sourceId);
+  await databaseService.nodes.upsertNode(
+    existingFrom
+      ? { nodeNum: fromNum, nodeId: fromNodeId, lastHeard, viaMqtt: true }
+      : {
+          nodeNum: fromNum,
+          nodeId: fromNodeId,
+          longName: `Node ${fromNodeId}`,
+          shortName: fromNodeId.slice(-4),
+          hwModel: 0,
+          viaMqtt: true,
+          lastHeard,
+          createdAt: nowMs,
+          updatedAt: nowMs,
+        },
+    sourceId,
+  );
+
+  if (toNum !== null && toNum !== BROADCAST_ADDR) {
+    const existingTo = await databaseService.nodes.getNode(toNum, sourceId);
+    await databaseService.nodes.upsertNode(
+      existingTo
+        ? { nodeNum: toNum, nodeId: toNodeId, lastHeard, viaMqtt: true }
+        : {
+            nodeNum: toNum,
+            nodeId: toNodeId,
+            longName: `Node ${toNodeId}`,
+            shortName: toNodeId.slice(-4),
+            hwModel: 0,
+            viaMqtt: true,
+            lastHeard,
+            createdAt: nowMs,
+            updatedAt: nowMs,
+          },
+      sourceId,
+    );
+  }
+
+  const rawRoute: number[] = Array.isArray(routeDiscovery.route) ? routeDiscovery.route : [];
+  const rawRouteBack: number[] = Array.isArray(routeDiscovery.routeBack) ? routeDiscovery.routeBack : [];
+  const rawSnrTowards: number[] = Array.isArray(routeDiscovery.snrTowards) ? routeDiscovery.snrTowards : [];
+  const rawSnrBack: number[] = Array.isArray(routeDiscovery.snrBack) ? routeDiscovery.snrBack : [];
+
+  const route: number[] = [];
+  const snrTowards: number[] = [];
+  rawRoute.forEach((n, i) => {
+    if (!isValidRouteNode(n)) return;
+    route.push(n);
+    if (rawSnrTowards[i] !== undefined) snrTowards.push(rawSnrTowards[i]);
+  });
+  const routeBack: number[] = [];
+  const snrBack: number[] = [];
+  rawRouteBack.forEach((n, i) => {
+    if (!isValidRouteNode(n)) return;
+    routeBack.push(n);
+    if (rawSnrBack[i] !== undefined) snrBack.push(rawSnrBack[i]);
+  });
+  if (rawSnrTowards.length > rawRoute.length) snrTowards.push(rawSnrTowards[rawRoute.length]);
+  if (rawSnrBack.length > rawRouteBack.length) snrBack.push(rawSnrBack[rawRouteBack.length]);
+
+  // Stub rows for intermediate hops we haven't seen NodeInfo for. No
+  // lastHeard — we haven't directly heard from them, only learned of them
+  // via the relay. Matches the TCP path's anti-zombie behavior (issue #2602).
+  const intermediates = new Set<number>();
+  for (const n of route) intermediates.add(n);
+  for (const n of routeBack) intermediates.add(n);
+  intermediates.delete(fromNum);
+  if (toNum !== null) intermediates.delete(toNum);
+  intermediates.delete(BROADCAST_ADDR);
+  for (const hop of intermediates) {
+    const hopId = nodeNumToId(hop);
+    const existing = await databaseService.nodes.getNode(hop, sourceId);
+    if (existing) continue;
+    await databaseService.nodes.upsertNode(
+      {
+        nodeNum: hop,
+        nodeId: hopId,
+        longName: `Node ${hopId}`,
+        shortName: hopId.slice(-4),
+        hwModel: 0,
+        viaMqtt: true,
+        createdAt: nowMs,
+        updatedAt: nowMs,
+      },
+      sourceId,
+    );
+  }
+
+  const channelIndex = typeof packet.channel === 'number' ? packet.channel : -1;
+  const record: DbTraceroute = {
+    fromNodeNum: fromNum,
+    toNodeNum: toNum ?? 0,
+    fromNodeId,
+    toNodeId,
+    route: JSON.stringify(route),
+    routeBack: JSON.stringify(routeBack),
+    snrTowards: JSON.stringify(snrTowards),
+    snrBack: JSON.stringify(snrBack),
+    timestamp: nowMs,
+    createdAt: nowMs,
+  };
+  if (channelIndex >= 0) (record as any).channel = channelIndex;
+  databaseService.insertTraceroute(record, sourceId);
+
+  // Hop count → telemetry, matches TCP's Smart Hops feed.
+  const packetId = typeof packet.id === 'number' ? packet.id >>> 0 : undefined;
+  const hops = route.length + 1;
+  const hopTel: DbTelemetry = {
+    nodeId: fromNodeId,
+    nodeNum: fromNum,
+    telemetryType: 'messageHops',
+    timestamp: nowMs,
+    value: hops,
+    createdAt: nowMs,
+    packetId,
+    ...({ unit: 'hops' } as any),
+  };
+  databaseService.insertTelemetry(hopTel, sourceId);
+
+  // Route segments — one row per adjacent pair with known positions.
+  if (toNum !== null) {
+    const fullForward = [toNum, ...route, fromNum];
+    await persistRouteSegments(sourceId, fullForward, nowMs);
+    if (routeBack.length > 0) {
+      const fullReturn = [fromNum, ...routeBack, toNum];
+      await persistRouteSegments(sourceId, fullReturn, nowMs);
+    }
+  }
+}
+
+async function persistRouteSegments(sourceId: string, fullRoute: number[], timestamp: number): Promise<void> {
+  for (let i = 0; i < fullRoute.length - 1; i++) {
+    const a = fullRoute[i];
+    const b = fullRoute[i + 1];
+    if (a === b) continue;
+    if (a === 4294967295 || b === 4294967295) continue; // broadcast placeholder
+    const n1 = await databaseService.nodes.getNode(a, sourceId);
+    const n2 = await databaseService.nodes.getNode(b, sourceId);
+    if (!n1?.latitude || !n1?.longitude || !n2?.latitude || !n2?.longitude) continue;
+    const distKm = calculateDistance(n1.latitude, n1.longitude, n2.latitude, n2.longitude);
+    const seg: DbRouteSegment = {
+      fromNodeNum: a,
+      toNodeNum: b,
+      fromNodeId: nodeNumToId(a),
+      toNodeId: nodeNumToId(b),
+      distanceKm: distKm,
+      isRecordHolder: false,
+      timestamp,
+      createdAt: Date.now(),
+      ...({
+        fromLatitude: n1.latitude,
+        fromLongitude: n1.longitude,
+        toLatitude: n2.latitude,
+        toLongitude: n2.longitude,
+      } as any),
+    };
+    databaseService.insertRouteSegment(seg, sourceId);
+  }
+}
+
+/**
+ * NEIGHBORINFO_APP — replace the sender's neighbor list with whatever this
+ * packet contains, scoped to this source. Mirrors the TCP path's storage.
+ *
+ * Differs from TCP intentionally: TCP's handler skips packets flagged
+ * `viaMqtt` on the wire (an MQTT-gateway-relayed packet picked up over
+ * LoRa). That guard exists to avoid polluting the *local* radio's neighbor
+ * graph with foreign-mesh data. Here the source IS an MQTT bridge and the
+ * neighbor data is exactly what we want to persist — the sourceId scope
+ * keeps it cleanly partitioned from TCP-learned neighbors.
+ */
+async function ingestNeighborInfo(
+  sourceId: string,
+  neighborInfo: Record<string, any>,
+  fromNum: number,
+  fromNodeId: string,
+  nowMs: number,
+): Promise<boolean> {
+  const neighbors = neighborInfo.neighbors;
+  if (!Array.isArray(neighbors)) return false;
+
+  const senderNode = await databaseService.nodes.getNode(fromNum, sourceId);
+  if (!senderNode) {
+    await databaseService.nodes.upsertNode(
+      {
+        nodeNum: fromNum,
+        nodeId: fromNodeId,
+        longName: `Node ${fromNodeId}`,
+        shortName: fromNodeId.slice(-4),
+        hwModel: 0,
+        viaMqtt: true,
+        lastHeard: Math.floor(nowMs / 1000),
+        createdAt: nowMs,
+        updatedAt: nowMs,
+      },
+      sourceId,
+    );
+  }
+  const senderHopsAway = senderNode?.hopsAway ?? 0;
+
+  const valid: Array<{ nodeNum: number; snr: number | null; lastRxTime: number | null }> = [];
+  for (const n of neighbors) {
+    const num = Number(n.nodeId ?? n.node_id);
+    if (!Number.isFinite(num) || num <= 0) continue;
+    valid.push({
+      nodeNum: num >>> 0,
+      snr: n.snr != null ? Number(n.snr) : null,
+      lastRxTime: n.lastRxTime != null ? Number(n.lastRxTime) : (n.last_rx_time != null ? Number(n.last_rx_time) : null),
+    });
+  }
+  if (valid.length === 0) return false;
+
+  // Create stubs for unknown neighbors. No lastHeard — only the reporter
+  // has heard them. Matches the TCP path (issue #2602 zombie-row fix).
+  const existing = await databaseService.nodes.getNodesByNums(valid.map((v) => v.nodeNum));
+  for (const v of valid) {
+    if (existing.has(v.nodeNum)) continue;
+    const id = nodeNumToId(v.nodeNum);
+    await databaseService.nodes.upsertNode(
+      {
+        nodeNum: v.nodeNum,
+        nodeId: id,
+        longName: `Node ${id}`,
+        shortName: id.slice(-4),
+        hwModel: 0,
+        hopsAway: senderHopsAway + 1,
+        viaMqtt: true,
+        createdAt: nowMs,
+        updatedAt: nowMs,
+      },
+      sourceId,
+    );
+  }
+
+  await databaseService.neighbors.deleteNeighborInfoForNode(fromNum, sourceId);
+  const records: DbNeighborInfo[] = valid.map((v) => ({
+    nodeNum: fromNum,
+    neighborNodeNum: v.nodeNum,
+    snr: v.snr,
+    lastRxTime: v.lastRxTime,
+    timestamp: nowMs,
+    createdAt: nowMs,
+  } as DbNeighborInfo));
+  await databaseService.neighbors.insertNeighborInfoBatch(records, sourceId);
+  return true;
+}
+
+/**
+ * PAXCOUNTER_APP — three telemetry rows (wifi, ble, uptime) plus a
+ * lastHeard refresh. Same shape as TCP's processPaxcounterMessageProtobuf.
+ */
+function ingestPaxcounter(
+  sourceId: string,
+  packet: any,
+  paxcount: Record<string, any>,
+  fromNum: number,
+  fromNodeId: string,
+  nowMs: number,
+): boolean {
+  const packetId = typeof packet.id === 'number' ? packet.id >>> 0 : undefined;
+  let any = false;
+  const tryInsert = (telemetryType: string, value: unknown, unit: string): void => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return;
+    const tel: DbTelemetry = {
+      nodeId: fromNodeId,
+      nodeNum: fromNum,
+      telemetryType,
+      timestamp: nowMs,
+      value,
+      createdAt: nowMs,
+      packetId,
+      ...({ unit } as any),
+    };
+    databaseService.insertTelemetry(tel, sourceId);
+    any = true;
+  };
+  tryInsert('paxcounterWifi', paxcount.wifi, 'devices');
+  tryInsert('paxcounterBle', paxcount.ble, 'devices');
+  tryInsert('paxcounterUptime', paxcount.uptime, 's');
+
+  databaseService.upsertNode({
+    nodeNum: fromNum,
+    nodeId: fromNodeId,
+    longName: '',
+    shortName: '',
+    hwModel: 0,
+    lastHeard: Math.floor(nowMs / 1000),
+    viaMqtt: true,
+    sourceId,
+    createdAt: nowMs,
+    updatedAt: nowMs,
+  });
+  return any;
+}
+
+/**
+ * STORE_FORWARD_APP — replicates the storage-affecting branches of the
+ * TCP processStoreForwardMessage handler:
+ *   - ROUTER_HEARTBEAT: mark sender as an S&F server
+ *   - ROUTER_TEXT_DIRECT / ROUTER_TEXT_BROADCAST: insert as a text message
+ *     with viaStoreForward=true, deduping against the original transmission
+ * The STATS / HISTORY / PING branches are log-only on TCP and are skipped
+ * here (returned as unsupported).
+ */
+async function ingestStoreForward(
+  sourceId: string,
+  packet: any,
+  decoded: Record<string, any>,
+  fromNum: number,
+  fromNodeId: string,
+  toNum: number | null,
+  toNodeId: string,
+  nowMs: number,
+): Promise<boolean> {
+  const rr = decoded.rr ?? decoded.requestResponse ?? decoded.request_response ?? 0;
+  const rrName = getStoreForwardRequestResponseName(rr);
+
+  if (
+    rr === StoreForwardRequestResponse.ROUTER_TEXT_DIRECT ||
+    rr === StoreForwardRequestResponse.ROUTER_TEXT_BROADCAST
+  ) {
+    const textBytes = decoded.text;
+    if (!textBytes || (textBytes.length ?? 0) === 0) {
+      logger.debug(`📦 MQTT S&F ${rrName} from ${fromNodeId} — empty text, skipping`);
+      return false;
+    }
+    const text = new TextDecoder('utf-8').decode(
+      textBytes instanceof Uint8Array ? textBytes : new Uint8Array(textBytes),
+    );
+    const packetId = typeof packet.id === 'number' ? packet.id >>> 0 : 0;
+    // Match the TEXT_MESSAGE_APP id format above — see the comment there
+    // for why the TCP convention `${sourceId}_${fromNum}_${packetId}` is
+    // load-bearing for cross-source dedup in the unified view.
+    const id = `${sourceId}_${fromNum}_${packetId || nowMs}`;
+    // Dedup: if the original transmission already landed in `messages`
+    // via the regular TEXT_MESSAGE_APP path, don't double-insert.
+    const existing = await databaseService.messages.getMessage(id);
+    if (existing) {
+      logger.debug(`📦 MQTT S&F replay duplicates existing message ${id}`);
+      return false;
+    }
+    const msg: DbMessage = {
+      id,
+      fromNodeNum: fromNum,
+      toNodeNum: toNum ?? 0xffffffff,
+      fromNodeId,
+      toNodeId,
+      text,
+      channel: typeof packet.channel === 'number' ? packet.channel : 0,
+      portnum: PortNum.TEXT_MESSAGE_APP,
+      timestamp: nowMs,
+      rxTime: typeof packet.rxTime === 'number' ? packet.rxTime * 1000 : undefined,
+      rxSnr: typeof packet.rxSnr === 'number' ? packet.rxSnr : undefined,
+      rxRssi: typeof packet.rxRssi === 'number' ? packet.rxRssi : undefined,
+      viaMqtt: true,
+      createdAt: nowMs,
+    } as DbMessage;
+    (msg as any).sourceId = sourceId;
+    (msg as any).viaStoreForward = true;
+    // Same per-source insert path as the TEXT_MESSAGE_APP case above —
+    // the facade drops sourceId; the repo accepts it.
+    databaseService.messages.insertMessage(msg, sourceId);
+    return true;
+  }
+
+  if (rr === StoreForwardRequestResponse.ROUTER_HEARTBEAT) {
+    databaseService.upsertNode({
+      nodeNum: fromNum,
+      nodeId: fromNodeId,
+      longName: '',
+      shortName: '',
+      hwModel: 0,
+      lastHeard: Math.floor(nowMs / 1000),
+      viaMqtt: true,
+      sourceId,
+      createdAt: nowMs,
+      updatedAt: nowMs,
+      // isStoreForwardServer is in the schema but not on DbNode (Migration 056-ish).
+      ...({ isStoreForwardServer: true } as any),
+    } as Partial<DbNode>);
+    return true;
+  }
+
+  // STATS / HISTORY / PING / PONG / BUSY / etc. — log-only on TCP, mirrored here.
+  logger.debug(`📦 MQTT S&F ${rrName} (rr=${rr}) from ${fromNodeId}`);
+  return false;
+}
+
+/**
+ * Per-source memo of (slot, channelName) pairs we've already upserted into
+ * the channels table this process lifetime. Used to keep `recordChannelFromEnvelope`
+ * cheap: only the first packet on a given (source, slot, name) combination
+ * actually hits the DB. Names that change for an existing slot still trigger
+ * a fresh upsert so the picker stays in sync.
+ */
+const channelMemo = new Map<string, Map<number, string>>();
+
+function recordChannelFromEnvelope(
+  sourceId: string,
+  envelope: ServiceEnvelopeShape,
+  packet: NonNullable<ServiceEnvelopeShape['packet']>,
+): void {
+  const name = envelope.channelId?.trim();
+  if (!name) return;
+  const slot = typeof packet.channel === 'number' ? packet.channel : 0;
+  if (slot < 0 || slot > 255) return;
+
+  let perSource = channelMemo.get(sourceId);
+  if (!perSource) {
+    perSource = new Map();
+    channelMemo.set(sourceId, perSource);
+  }
+  if (perSource.get(slot) === name) return;
+  perSource.set(slot, name);
+
+  try {
+    const result = databaseService.channels?.upsertChannel(
+      {
+        id: slot,
+        name,
+        // Slot 0 is the primary channel on Meshtastic; anything else is
+        // secondary. Matches the role rules in `upsertChannel`.
+        role: slot === 0 ? 1 : 2,
+        uplinkEnabled: true,
+        downlinkEnabled: true,
+      },
+      sourceId,
+    );
+    if (result && typeof (result as any).catch === 'function') {
+      (result as Promise<unknown>).catch((err) => {
+        // Clear the memo entry so a retry can run on the next packet —
+        // losing a single write isn't fatal, but persistently skipping
+        // it would keep the channel invisible in the picker.
+        perSource!.delete(slot);
+        const m = err instanceof Error ? err.message : String(err);
+        logger.debug(`MQTT channel upsert skipped for source ${sourceId} slot ${slot}: ${m}`);
+      });
+    }
+  } catch (err) {
+    perSource.delete(slot);
+    const m = err instanceof Error ? err.message : String(err);
+    logger.debug(`MQTT channel upsert unavailable for source ${sourceId} slot ${slot}: ${m}`);
   }
 }
 

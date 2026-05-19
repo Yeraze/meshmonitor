@@ -9,7 +9,7 @@ import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
 import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
-import { PortNum, CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
+import { PortNum, CHANNEL_DB_OFFSET, modemPresetChannelName } from '../constants/meshtastic.js';
 import type { DbChannelDatabase } from '../../db/types.js';
 
 const router = Router();
@@ -22,24 +22,59 @@ router.use(optionalAuth());
  *
  * Meshtastic channel conventions:
  *  - Channel 0 is always the PRIMARY channel. Its name is often blank because
- *    the Meshtastic client shows the modem preset instead; we label it
- *    "Primary" so it surfaces in the unified channel picker.
+ *    the firmware derives the on-wire channel name from the modem preset at
+ *    runtime — `MEDIUM_FAST` → "MediumFast" — and uses that derived name for
+ *    both the channel hash and the `ServiceEnvelope.channelId` it publishes
+ *    to MQTT. When we have the source's preset on hand (via
+ *    `lora.preset.<sourceId>` in the settings table), use the preset's
+ *    pascal-case label so the TCP-side empty-name channel groups with
+ *    MQTT-side rows that carry the same label. Falls back to "Primary" only
+ *    when no preset is known.
  *  - Channels with `role === 0` are DISABLED — skip entirely.
  *  - Any other channel with a blank name is a disabled/unused slot — skip.
  *
  * Returns `null` when the channel should be omitted from the unified list.
  */
 const PRIMARY_CHANNEL_NAME = 'Primary';
-function unifiedChannelDisplayName(c: {
-  id: number;
-  name?: string | null;
-  role?: number | null;
-}): string | null {
+function unifiedChannelDisplayName(
+  c: { id: number; name?: string | null; role?: number | null },
+  presetName?: string | null,
+): string | null {
   if (c.role === 0) return null; // DISABLED
   const name = (c.name ?? '').trim();
   if (name) return name;
-  if (c.id === 0) return PRIMARY_CHANNEL_NAME;
+  if (c.id === 0) return presetName ?? PRIMARY_CHANNEL_NAME;
   return null;
+}
+
+/**
+ * Load the modem-preset-derived channel name for each source the caller can
+ * see. Returns a Map<sourceId, presetName | null>. Sources without a stored
+ * `lora.preset.<sourceId>` setting (e.g. MQTT bridges/brokers, MeshCore
+ * sources, or TCP sources we've never received config from) map to null.
+ *
+ * Heavy callers fetch this once up front and pass per-source slices into
+ * `unifiedChannelDisplayName` so we don't hit the settings table on every
+ * channel row.
+ */
+async function loadSourcePresetNames(sourceIds: string[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  await Promise.all(
+    sourceIds.map(async (sid) => {
+      try {
+        const raw = await databaseService.settings.getSetting(`lora.preset.${sid}`);
+        if (raw === null || raw === undefined) {
+          out.set(sid, null);
+          return;
+        }
+        const n = Number(raw);
+        out.set(sid, Number.isFinite(n) ? modemPresetChannelName(n) : null);
+      } catch {
+        out.set(sid, null);
+      }
+    }),
+  );
+  return out;
 }
 
 /**
@@ -52,6 +87,16 @@ function unifiedChannelDisplayName(c: {
  * reliable cross-source dedup key for received text messages because the
  * `requestId` column is only populated for Virtual Node ACK tracking, not for
  * ordinary received text.
+ *
+ * **Contract for every code path that inserts into `messages`:** this exact
+ * format (underscores, fromNum middle, packetId last) is load-bearing.
+ * Diverge from it — different separator, different field order, hyphens,
+ * anything — and this parser returns null. The `/messages` dedup then falls
+ * back to a `${fromNum}:${text}:${floor(timestamp/1000)}` heuristic. TCP and
+ * MQTT receptions of the same packet arrive seconds apart, miss the 1s
+ * window, and the user sees the same message N times in the unified view —
+ * once per receiving source. See `src/server/mqttIngestion.ts` for examples
+ * of MQTT-side ingest matching this format.
  *
  * Defensive validation (rowId comes from DB so trusted, but cheap to harden):
  *  - non-string or empty → null
@@ -152,6 +197,10 @@ router.get('/channels', async (req: Request, res: Response) => {
       loadEnabledVirtualChannels(),
       getUserReadableVirtualChannelIds(user, isAdmin),
     ]);
+    // Modem preset per source — used as the fallback display name for
+    // empty-named slot 0 so TCP and MQTT-side rows for the same logical
+    // channel collapse to one picker entry.
+    const sourcePresets = await loadSourcePresetNames(sources.map((s) => s.id));
 
     type ChannelSourceRef = { sourceId: string; sourceName: string; channelNumber: number };
     // Group case-insensitively so cross-device casing drift (e.g. one source
@@ -186,8 +235,9 @@ router.get('/channels', async (req: Request, res: Response) => {
 
         try {
           const chans = await databaseService.channels.getAllChannels(source.id);
+          const presetName = sourcePresets.get(source.id) ?? null;
           for (const c of chans) {
-            const name = unifiedChannelDisplayName(c as any);
+            const name = unifiedChannelDisplayName(c as any, presetName);
             if (!name) continue; // disabled or unused slot
             const channelNum = (c as any).id as number;
             const canReadChannel = canReadMessages || (user
@@ -290,6 +340,10 @@ router.get('/messages', async (req: Request, res: Response) => {
       loadEnabledVirtualChannels(),
       getUserReadableVirtualChannelIds(user, isAdmin),
     ]);
+    // Modem preset per source — pass into the channel-name resolver so a
+    // picker entry like "MediumFast" matches an empty-named slot 0 on a TCP
+    // source whose preset derives that label.
+    const sourcePresets = await loadSourcePresetNames(sources.map((s) => s.id));
 
     type Reception = {
       sourceId: string;
@@ -379,11 +433,16 @@ router.get('/messages', async (req: Request, res: Response) => {
           // messages even though the picker showed a single entry.
           const channelNameLower = channelName.toLowerCase();
 
-          // Physical slot match.
-          const match = chans?.find(
-            (c) => (unifiedChannelDisplayName(c as any) ?? '').toLowerCase() === channelNameLower
+          // Physical slot matches. MQTT bridges/brokers can have multiple
+          // slots on a single source with the same channel name (different
+          // upstream gateways place "LongFast" at different slots) — collect
+          // ALL matches, not just the first. The preset hint lets empty-named
+          // slot 0 on a TCP source match a picker entry like "MediumFast".
+          const presetName = sourcePresets.get(source.id) ?? null;
+          const physMatches = (chans ?? []).filter(
+            (c) => (unifiedChannelDisplayName(c as any, presetName) ?? '').toLowerCase() === channelNameLower
           );
-          if (match) {
+          for (const match of physMatches) {
             const physNum = (match as any).id as number;
             const canReadChannel = canReadMessages || (user
               ? await databaseService.checkPermissionAsync(
@@ -605,7 +664,7 @@ router.get('/telemetry', async (req: Request, res: Response) => {
         const perNodeLatest = await Promise.all(
           nodes.map((node) =>
             databaseService.telemetry
-              .getLatestTelemetryByNode(node.nodeId)
+              .getLatestTelemetryByNode(node.nodeId, source.id)
               .then((latest) => ({ node, latest }))
               .catch((err) => {
                 logger.warn(

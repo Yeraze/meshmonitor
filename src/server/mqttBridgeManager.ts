@@ -25,13 +25,14 @@ import {
   type ServiceEnvelopeShape,
   type PositionShape,
 } from './mqttPacketFilter.js';
-import { ingestServiceEnvelope } from './mqttIngestion.js';
+import { ingestServiceEnvelope, bootstrapMqttChannelDatabase } from './mqttIngestion.js';
 import { PortNum } from './constants/meshtastic.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import type { MqttBrokerManager, MqttBrokerLocalPacket } from './mqttBrokerManager.js';
 import type { Source } from '../db/repositories/sources.js';
+import databaseService from '../services/database.js';
 import { logger } from '../utils/logger.js';
 
 export interface MqttBridgeSourceConfig {
@@ -103,6 +104,8 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
 
   async start(): Promise<void> {
     this.attachParentBroker();
+    await bootstrapMqttChannelDatabase(this.sourceId);
+    await this.seedDownlinkMembership();
 
     this.client = new MqttBrokerClient({
       url: this.config.upstream.url,
@@ -139,6 +142,58 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     if (this.client) {
       await this.client.disconnect();
       this.client = null;
+    }
+  }
+
+  /**
+   * Pre-seed the downlink filter's geo-membership cache with:
+   *   1. Any node our local (non-MQTT) sources have heard directly —
+   *      "trusted" because the operator clearly considers them part of
+   *      their mesh. These pass the bbox filter regardless of whether we
+   *      have a stored position for them. Without this, a node attached
+   *      to a TCP source whose GPS hasn't reported a position yet would
+   *      have its MQTT-relayed text/telemetry silently geo-dropped.
+   *   2. Any node from any source whose stored position is inside the bbox.
+   *
+   * Without this seed the fail-closed filter drops every non-POSITION
+   * packet from a node until that node next broadcasts a position — which
+   * can be hours and is reset on every restart.
+   */
+  private async seedDownlinkMembership(): Promise<void> {
+    try {
+      const allSources = await databaseService.sources.getAllSources();
+      const localSourceIds = allSources
+        .filter((s) => s.type !== 'mqtt_bridge' && s.type !== 'mqtt_broker')
+        .map((s) => s.id);
+
+      // Trusted local-mesh nodes (any source we operate directly).
+      const trustedNums = new Set<number>();
+      for (const sid of localSourceIds) {
+        const localNodes = await databaseService.nodes.getAllNodes(sid);
+        for (const n of localNodes) trustedNums.add(n.nodeNum);
+      }
+      const trustedSeeded = this.downlinkFilter.seedTrustedNodes(trustedNums);
+
+      // In-bbox positions from anywhere.
+      const allNodes = await databaseService.nodes.getAllNodes();
+      const entries = allNodes
+        .filter((n) => typeof n.latitude === 'number' && typeof n.longitude === 'number')
+        .map((n) => ({
+          nodeNum: n.nodeNum,
+          latitudeDeg: n.latitude as number,
+          longitudeDeg: n.longitude as number,
+        }));
+      const positionSeeded = this.downlinkFilter.seedMembership(entries);
+
+      if (trustedSeeded > 0 || positionSeeded > 0) {
+        logger.info(
+          `MQTT bridge ${this.sourceId} seeded ${trustedSeeded} trusted local-mesh node(s) + ` +
+            `${positionSeeded} in-bbox position(s) into downlink membership cache`,
+        );
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`MQTT bridge ${this.sourceId} membership seed failed: ${message}`);
     }
   }
 
@@ -265,12 +320,18 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       if (!this.downlinkFilter.passesMembership(fromNum)) return;
     }
 
-    const result = ingestServiceEnvelope({
+    ingestServiceEnvelope({
       sourceId: this.sourceId,
       envelope,
       filter: this.downlinkFilter,
-    });
-    if (result.ingested) this.downlinkIngested++;
+    })
+      .then((result) => {
+        if (result.ingested) this.downlinkIngested++;
+      })
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn(`MQTT bridge ${this.sourceId} ingest failed: ${msg}`);
+      });
 
     // Republish to local broker so devices see it. Skip if no parent attached.
     if (this.parentBroker) {

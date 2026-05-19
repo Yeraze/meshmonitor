@@ -224,6 +224,63 @@ export class MqttPacketFilter {
     return this.membership.size;
   }
 
+  /**
+   * Pre-seed the membership cache with "trusted" nodes — those we know
+   * belong to the operator's mesh regardless of whether we have a stored
+   * position for them. Used to flow MQTT-relayed packets from nodes that
+   * our TCP/Meshcore sources have heard directly but whose position
+   * hasn't been decoded yet (e.g. a base station with GPS disabled).
+   *
+   * Bypasses the bbox check on purpose: if a node is part of the local
+   * mesh, its MQTT-relayed traffic should land regardless of geometry.
+   * No-op when no bbox is configured (everything already passes).
+   */
+  seedTrustedNodes(nodeNums: Iterable<number>): number {
+    if (!this.hasGeoBounds()) return 0;
+    let seeded = 0;
+    for (const num of nodeNums) {
+      if (!Number.isFinite(num)) continue;
+      this.recordMembership(num >>> 0, 'in');
+      seeded++;
+    }
+    return seeded;
+  }
+
+  /**
+   * Pre-seed the membership cache with nodes whose persisted positions are
+   * inside the bbox. Used by MqttBridgeManager on start so that nodes
+   * already known to be in-region don't have to re-broadcast a POSITION_APP
+   * packet before their TEXT/TELEMETRY/NODEINFO traffic is accepted.
+   *
+   * Only seeds 'in' — never 'out'. An out-of-region node may have moved,
+   * so we leave it unknown and let the next POSITION_APP packet update it.
+   * Returns the number of entries actually marked. No-op when no bbox is
+   * configured or for entries with invalid/zero coords.
+   */
+  seedMembership(
+    entries: Array<{ nodeNum: number; latitudeDeg: number; longitudeDeg: number }>,
+  ): number {
+    if (!this.hasGeoBounds()) return 0;
+    const { minLat, maxLat, minLng, maxLng } = this.geo!;
+    let seeded = 0;
+    for (const e of entries) {
+      const lat = e.latitudeDeg;
+      const lng = e.longitudeDeg;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      // 0,0 is the sentinel for "no position" elsewhere in the codebase.
+      if (lat === 0 && lng === 0) continue;
+      const inside =
+        (typeof minLat !== 'number' || lat >= minLat) &&
+        (typeof maxLat !== 'number' || lat <= maxLat) &&
+        (typeof minLng !== 'number' || lng >= minLng) &&
+        (typeof maxLng !== 'number' || lng <= maxLng);
+      if (!inside) continue;
+      this.recordMembership(e.nodeNum >>> 0, 'in');
+      seeded++;
+    }
+    return seeded;
+  }
+
   getDropCounters(): MqttFilterDropCounters {
     return { ...this.drops };
   }

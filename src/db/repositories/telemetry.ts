@@ -289,15 +289,18 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
-   * Get latest telemetry for each type for a node
+   * Get latest telemetry for each type for a node. When `sourceId` is
+   * provided, only rows attributed to that source are considered — required
+   * for multi-source views (e.g. `/api/unified/telemetry`) that otherwise
+   * misattribute cross-source telemetry to whichever source happens to be
+   * iterating in the outer loop.
    */
-  async getLatestTelemetryByNode(nodeId: string): Promise<DbTelemetry[]> {
-    // Get all distinct types for this node, then get latest of each
-    const types = await this.getNodeTelemetryTypes(nodeId);
+  async getLatestTelemetryByNode(nodeId: string, sourceId?: string): Promise<DbTelemetry[]> {
+    const types = await this.getNodeTelemetryTypes(nodeId, sourceId);
     const results: DbTelemetry[] = [];
 
     for (const type of types) {
-      const latest = await this.getLatestTelemetryForType(nodeId, type);
+      const latest = await this.getLatestTelemetryForType(nodeId, type, sourceId);
       if (latest) {
         results.push(latest);
       }
@@ -307,19 +310,24 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
-   * Get latest telemetry for a specific type for a node
+   * Get latest telemetry for a specific type for a node, optionally scoped
+   * to a single source.
    */
-  async getLatestTelemetryForType(nodeId: string, telemetryType: string): Promise<DbTelemetry | null> {
+  async getLatestTelemetryForType(
+    nodeId: string,
+    telemetryType: string,
+    sourceId?: string,
+  ): Promise<DbTelemetry | null> {
     const { telemetry } = this.tables;
+    const conditions = [
+      eq(telemetry.nodeId, nodeId),
+      eq(telemetry.telemetryType, telemetryType),
+    ];
+    if (sourceId) conditions.push(eq(telemetry.sourceId, sourceId));
     const result = await this.db
       .select()
       .from(telemetry)
-      .where(
-        and(
-          eq(telemetry.nodeId, nodeId),
-          eq(telemetry.telemetryType, telemetryType)
-        )
-      )
+      .where(and(...conditions))
       .orderBy(desc(telemetry.timestamp))
       .limit(1);
 
@@ -398,12 +406,14 @@ export class TelemetryRepository extends BaseRepository {
   /**
    * Get all telemetry types for a node
    */
-  async getNodeTelemetryTypes(nodeId: string): Promise<string[]> {
+  async getNodeTelemetryTypes(nodeId: string, sourceId?: string): Promise<string[]> {
     const { telemetry } = this.tables;
+    const conditions = [eq(telemetry.nodeId, nodeId)];
+    if (sourceId) conditions.push(eq(telemetry.sourceId, sourceId));
     const result = await this.db
       .selectDistinct({ type: telemetry.telemetryType })
       .from(telemetry)
-      .where(eq(telemetry.nodeId, nodeId));
+      .where(and(...conditions));
 
     return result.map((r: any) => r.type);
   }

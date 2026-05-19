@@ -36,6 +36,9 @@ vi.mock('../../services/database.js', () => ({
       getAllAsync: vi.fn(),
       getPermissionsForUserAsync: vi.fn(),
     },
+    settings: {
+      getSetting: vi.fn().mockResolvedValue(null),
+    },
     checkPermissionAsync: vi.fn(),
     findUserByIdAsync: vi.fn(),
     findUserByUsernameAsync: vi.fn(),
@@ -242,6 +245,63 @@ describe('Unified Routes', () => {
       const app = createApp(adminUser);
       const res = await request(app).get('/channels');
       expect(res.status).toBe(500);
+    });
+
+    it('uses the source modem preset as the slot 0 display name when set', async () => {
+      // Empty-named slot 0 on a TCP source with persisted preset 4 (MEDIUM_FAST)
+      // should display as "MediumFast" — matching the firmware-derived label
+      // that public MQTT gateways publish under, so unified picker collapses
+      // TCP + MQTT receptions of the same logical channel.
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.channels.getAllChannels.mockResolvedValue([{ id: 0, name: '', role: 1 }]);
+      mockDb.settings.getSetting.mockResolvedValueOnce('4'); // MEDIUM_FAST
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/channels');
+
+      expect(res.status).toBe(200);
+      const names = res.body.map((c: any) => c.name);
+      expect(names).toContain('MediumFast');
+      expect(names).not.toContain('Primary');
+    });
+
+    it('falls back to "Primary" when no preset is persisted for the source', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.channels.getAllChannels.mockResolvedValue([{ id: 0, name: '', role: 1 }]);
+      mockDb.settings.getSetting.mockResolvedValue(null);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/channels');
+
+      expect(res.status).toBe(200);
+      const names = res.body.map((c: any) => c.name);
+      expect(names).toContain('Primary');
+    });
+
+    it('groups TCP empty-slot-0 and MQTT explicit-name as one entry when preset matches', async () => {
+      // TCP source: empty-name slot 0 with preset MEDIUM_FAST → "MediumFast"
+      // MQTT source: explicit "MediumFast" at slot 0
+      // Both should collapse to one picker entry sourced from both.
+      const TCP_SRC = { id: 'tcp', name: 'TCP', type: 'meshtastic_tcp', enabled: true };
+      const MQTT_SRC = { id: 'mqtt', name: 'MQTT', type: 'mqtt_bridge', enabled: true };
+      mockDb.sources.getAllSources.mockResolvedValue([TCP_SRC, MQTT_SRC]);
+      mockDb.channels.getAllChannels.mockImplementation((sourceId: string) => {
+        if (sourceId === 'tcp') return Promise.resolve([{ id: 0, name: '', role: 1 }]);
+        return Promise.resolve([{ id: 0, name: 'MediumFast', role: 1 }]);
+      });
+      // Preset only persisted for the TCP source.
+      mockDb.settings.getSetting.mockImplementation((key: string) =>
+        Promise.resolve(key === 'lora.preset.tcp' ? '4' : null),
+      );
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/channels');
+
+      expect(res.status).toBe(200);
+      const mediumFast = res.body.find((c: any) => c.name === 'MediumFast');
+      expect(mediumFast).toBeDefined();
+      expect(mediumFast.sources).toHaveLength(2);
+      expect(mediumFast.sources.map((s: any) => s.sourceId).sort()).toEqual(['mqtt', 'tcp']);
     });
   });
 
