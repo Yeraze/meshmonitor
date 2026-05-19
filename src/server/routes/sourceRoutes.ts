@@ -10,7 +10,7 @@ import { MqttBrokerManager, type MqttBrokerSourceConfig } from '../mqttBrokerMan
 import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
 import { filterNodesByChannelPermission, maskNodeLocationByChannel, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
-import { PortNum } from '../constants/meshtastic.js';
+import { PortNum, modemPresetChannelName } from '../constants/meshtastic.js';
 import { transformChannel } from '../utils/channelView.js';
 import type { ResourceType } from '../../types/permission.js';
 
@@ -759,6 +759,20 @@ router.get('/:id/channels', optionalAuth(), async (req: Request, res: Response) 
     const allChannels = await databaseService.channels.getAllChannels(source.id);
     const isAdmin = req.user?.isAdmin === true;
 
+    // Resolve this source's persisted modem preset (if any) so empty-name
+    // slot 0 can display as "MediumFast"/"LongFast"/etc. instead of the
+    // synthetic "Primary" fallback — matching the unified channels picker
+    // and the on-wire label gateways use. The setting is written by
+    // `meshtasticManager` on each LoRa config response.
+    let presetName: string | null = null;
+    try {
+      const raw = await databaseService.settings.getSetting(`lora.preset.${source.id}`);
+      const n = raw != null ? Number(raw) : NaN;
+      if (Number.isFinite(n)) presetName = modemPresetChannelName(n);
+    } catch (err) {
+      logger.debug(`Failed to load preset for source ${source.id}:`, err);
+    }
+
     const accessible: typeof allChannels = [];
     for (const channel of allChannels) {
       if (isAdmin) {
@@ -780,7 +794,7 @@ router.get('/:id/channels', optionalAuth(), async (req: Request, res: Response) 
       const includePsk = isAdmin || (req.user
         ? await hasPermission(req.user, channelResource, 'write', source.id)
         : false);
-      return transformChannel(channel, { includePsk });
+      return transformChannel(channel, { includePsk, presetName });
     }));
 
     res.json(projected);

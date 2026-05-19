@@ -51,7 +51,7 @@ import { rewriteHtml } from './utils/htmlRewriter.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { safeFetch, SsrfBlockedError } from './utils/ssrfGuard.js';
 import { resolveRequestSourceId } from './utils/sourceResolver.js';
-import { PortNum } from './constants/meshtastic.js';
+import { PortNum, modemPresetChannelName } from './constants/meshtastic.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 import { applyManagerSettings } from './applyManagerSettings.js';
 
@@ -2647,6 +2647,21 @@ apiRouter.get('/channels', optionalAuth(), async (req, res) => {
     const allChannels = await databaseService.channels.getAllChannels(channelsSourceId);
     const isAdmin = req.user?.isAdmin === true;
 
+    // Resolve the source's persisted modem preset (if scoped to one source)
+    // so empty-name slot 0 displays as "MediumFast"/"LongFast"/etc. via
+    // transformChannel's `displayName` field. Matches the unified picker
+    // and the firmware-derived label MQTT gateways publish under.
+    let channelsPresetName: string | null = null;
+    if (channelsSourceId) {
+      try {
+        const raw = await databaseService.settings.getSetting(`lora.preset.${channelsSourceId}`);
+        const n = raw != null ? Number(raw) : NaN;
+        if (Number.isFinite(n)) channelsPresetName = modemPresetChannelName(n);
+      } catch (err) {
+        logger.debug(`Failed to load preset for source ${channelsSourceId}:`, err);
+      }
+    }
+
     // Per-row permission gate (MM-SEC-2). Build the authorized set first.
     const accessible: typeof allChannels = [];
     for (const channel of allChannels) {
@@ -2705,7 +2720,7 @@ apiRouter.get('/channels', optionalAuth(), async (req, res) => {
       const includePsk = isAdmin || (req.user
         ? await hasPermission(req.user, channelResource, 'write', channelsSourceId)
         : false);
-      return transformChannel(channel, { includePsk });
+      return transformChannel(channel, { includePsk, presetName: channelsPresetName });
     }));
 
     logger.debug(`📡 Serving ${filteredChannels.length} filtered channels (from ${allChannels.length} total)`);

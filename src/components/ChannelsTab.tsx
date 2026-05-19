@@ -330,8 +330,15 @@ export default function ChannelsTab({
     // First check device channels (0-7)
     const channel = channels.find(ch => ch.id === channelNum);
     if (channel) {
-      // Slot 0 with blank name displays as "Primary" — matches unifiedChannelDisplayName
-      // and the Meshtastic client convention of falling back to the modem preset label.
+      // Prefer the server-projected `displayName` — it carries the modem-
+      // preset fallback ("MediumFast"/"LongFast"/etc.) for empty-name slot
+      // 0, matching the unified picker and what MQTT gateways publish under.
+      // Falls back to the raw `name`, and finally to the legacy "Primary"
+      // localization key when neither is present (server returns
+      // displayName="Primary" only when no preset is known for the source).
+      if (channel.displayName && channel.displayName.trim()) {
+        return channel.displayName;
+      }
       if (!channel.name?.trim() && channelNum === 0) {
         return t('channels.primary');
       }
