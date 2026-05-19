@@ -77,6 +77,7 @@ import { migration as telemetrySourceNodeTypeTsIndexMigration, runMigration059Po
 import { migration as meshcoreNodeTelemetryConfigMigration, runMigration060Postgres, runMigration060Mysql } from '../server/migrations/060_meshcore_node_telemetry_config.js';
 import { migration as meshcoreNodesCompositePkMigration, runMigration061Postgres, runMigration061Mysql } from '../server/migrations/061_meshcore_nodes_composite_pk.js';
 import { migration as meshcoreMessagesFromnameMigration, runMigration062Postgres, runMigration062Mysql } from '../server/migrations/062_meshcore_messages_fromname.js';
+import { migration as dropSourceIdFromChannelDatabaseMigration, runMigration063Postgres, runMigration063Mysql } from '../server/migrations/063_drop_source_id_from_channel_database.js';
 
 // ============================================================================
 // Registry
@@ -974,4 +975,21 @@ registry.register({
   sqlite: (db) => meshcoreMessagesFromnameMigration.up(db),
   postgres: (client) => runMigration062Postgres(client),
   mysql: (pool) => runMigration062Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 063: Drop the never-used `sourceId` column from `channel_database`.
+// Channel-database entries are pooled into one global decryption cache by
+// `channelDecryptionService` — no read path filters by source — so the
+// column has been dead since migration 021. Removing it ahead of moving the
+// UI from Device Configuration to Global Settings.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 63,
+  name: 'drop_source_id_from_channel_database',
+  settingsKey: 'migration_063_drop_source_id_from_channel_database',
+  sqlite: (db) => dropSourceIdFromChannelDatabaseMigration.up(db),
+  postgres: (client) => runMigration063Postgres(client),
+  mysql: (pool) => runMigration063Mysql(pool),
 });

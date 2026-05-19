@@ -328,7 +328,6 @@ export interface DbChannelDatabase {
   createdBy?: number | null;
   createdAt: number;
   updatedAt: number;
-  sourceId?: string | null; // Owning source (creator). Null on legacy rows predating multi-source.
 }
 
 /**

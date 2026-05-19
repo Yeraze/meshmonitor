@@ -313,12 +313,12 @@ describe('Unified Routes', () => {
     // the offset should break these tests loudly.
     const VC_OFFSET = 100;
 
-    it('includes enabled virtual channels scoped to the owning source', async () => {
+    it('surfaces enabled virtual channels under every source (channel db is global)', async () => {
       mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
       mockDb.channels.getAllChannels.mockResolvedValue([]);
       mockDb.channelDatabase.getAllAsync.mockResolvedValue([
-        { id: 5, name: 'SecretOps', isEnabled: true, sourceId: 'src-a' },
-        { id: 6, name: 'Crew', isEnabled: true, sourceId: 'src-b' },
+        { id: 5, name: 'SecretOps', isEnabled: true },
+        { id: 6, name: 'Crew', isEnabled: true },
       ]);
 
       const app = createApp(adminUser);
@@ -327,13 +327,21 @@ describe('Unified Routes', () => {
       expect(res.status).toBe(200);
       const secret = res.body.find((c: any) => c.name === 'SecretOps');
       expect(secret).toBeDefined();
-      expect(secret.sources).toEqual([
-        { sourceId: 'src-a', sourceName: 'Source A', channelNumber: VC_OFFSET + 5 },
-      ]);
+      expect(secret.sources).toEqual(
+        expect.arrayContaining([
+          { sourceId: 'src-a', sourceName: 'Source A', channelNumber: VC_OFFSET + 5 },
+          { sourceId: 'src-b', sourceName: 'Source B', channelNumber: VC_OFFSET + 5 },
+        ]),
+      );
+      expect(secret.sources).toHaveLength(2);
       const crew = res.body.find((c: any) => c.name === 'Crew');
-      expect(crew.sources).toEqual([
-        { sourceId: 'src-b', sourceName: 'Source B', channelNumber: VC_OFFSET + 6 },
-      ]);
+      expect(crew.sources).toEqual(
+        expect.arrayContaining([
+          { sourceId: 'src-a', sourceName: 'Source A', channelNumber: VC_OFFSET + 6 },
+          { sourceId: 'src-b', sourceName: 'Source B', channelNumber: VC_OFFSET + 6 },
+        ]),
+      );
+      expect(crew.sources).toHaveLength(2);
     });
 
     it('hides virtual channels the non-admin user has no canRead permission for', async () => {
