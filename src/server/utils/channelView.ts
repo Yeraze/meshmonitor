@@ -46,14 +46,51 @@ export interface TransformChannelOptions {
    * callers; see `transformChannelForUser` for the gated helper.
    */
   includePsk?: boolean;
+  /**
+   * Firmware-derived channel name for the device's modem preset
+   * (e.g. `MediumFast`, `LongFast`). When provided, this is used as the
+   * `displayName` fallback for slot 0 if its `name` column is blank —
+   * matching what the Meshtastic firmware actually publishes on the wire.
+   * Callers compute this from the persisted `lora.preset.<sourceId>`
+   * setting via `modemPresetChannelName`; pass `null` when no preset is
+   * known for the source.
+   */
+  presetName?: string | null;
+}
+
+/** Slot 0 fallback when we can't derive a firmware-preset name. */
+export const PRIMARY_CHANNEL_NAME = 'Primary';
+
+/**
+ * Compute the user-facing display name for a channel row, applying the
+ * same rules as `unifiedChannelDisplayName` in unifiedRoutes.ts:
+ *   1. If `name` is set, use it.
+ *   2. Otherwise for slot 0, fall back to the modem-preset's firmware name
+ *      ("MediumFast", "LongFast", etc.) when available, so per-source
+ *      views collapse onto the same label MQTT gateways publish under.
+ *   3. Otherwise for slot 0 with no preset hint, fall back to "Primary".
+ *   4. Otherwise return whatever `name` is (typically empty/unused slot).
+ */
+export function computeChannelDisplayName(
+  channel: { id: number; name?: string | null },
+  presetName?: string | null,
+): string {
+  const trimmed = (channel.name ?? '').trim();
+  if (trimmed) return trimmed;
+  if (channel.id === 0) return presetName ?? PRIMARY_CHANNEL_NAME;
+  return trimmed;
 }
 
 /**
  * Project a raw `channels` row into the public response shape.
  *
- * Always returns: `id`, `name`, `role`, `roleName`, `uplinkEnabled`,
- * `downlinkEnabled`, `positionPrecision`, `pskSet` (boolean), and
- * `encryptionStatus` ('none' | 'default' | 'secure').
+ * Always returns: `id`, `name`, `displayName`, `role`, `roleName`,
+ * `uplinkEnabled`, `downlinkEnabled`, `positionPrecision`,
+ * `pskSet` (boolean), and `encryptionStatus` ('none' | 'default' | 'secure').
+ *
+ * `name` is the raw DB column (may be empty for slot 0 when the device
+ * runs on a modem preset). `displayName` is the user-facing label with
+ * the preset/Primary fallback applied — frontends should render that.
  *
  * When `options.includePsk === true`, the actual `psk` string is included
  * so an authorized admin can see/edit the existing key. The default is to
@@ -63,6 +100,7 @@ export function transformChannel(channel: any, options: TransformChannelOptions 
   const base = {
     id: channel.id,
     name: channel.name,
+    displayName: computeChannelDisplayName(channel, options.presetName),
     role: channel.role,
     roleName: getRoleName(channel.role),
     uplinkEnabled: channel.uplinkEnabled,

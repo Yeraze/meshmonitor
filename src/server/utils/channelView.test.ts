@@ -70,11 +70,33 @@ describe('channelView', () => {
       const out = transformChannel(dbRow);
       expect(Object.keys(out).sort()).toEqual(
         [
-          'id', 'name', 'role', 'roleName',
+          'id', 'name', 'displayName', 'role', 'roleName',
           'uplinkEnabled', 'downlinkEnabled', 'positionPrecision',
           'pskSet', 'encryptionStatus',
         ].sort()
       );
+    });
+
+    it('uses raw name as displayName when set', () => {
+      const out = transformChannel({ ...dbRow, name: 'gauntlet', id: 2 });
+      expect(out.name).toBe('gauntlet');
+      expect(out.displayName).toBe('gauntlet');
+    });
+
+    it('falls back to preset-derived name for empty slot 0 when presetName is provided', () => {
+      const out = transformChannel({ ...dbRow, name: '' }, { presetName: 'MediumFast' });
+      expect(out.name).toBe(''); // raw DB column unchanged
+      expect(out.displayName).toBe('MediumFast');
+    });
+
+    it('falls back to "Primary" for empty slot 0 when no preset is provided', () => {
+      const out = transformChannel({ ...dbRow, name: '' });
+      expect(out.displayName).toBe('Primary');
+    });
+
+    it('does not synthesize a fallback name for non-slot-0 empty channels', () => {
+      const out = transformChannel({ ...dbRow, id: 3, name: '' });
+      expect(out.displayName).toBe('');
     });
 
     it('includes psk only when includePsk: true is passed', () => {

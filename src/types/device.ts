@@ -58,6 +58,17 @@ export interface Channel {
   id: number;
   name: string;
   /**
+   * User-facing channel name with the modem-preset / "Primary" fallback
+   * applied by `transformChannel` on the server. For slot 0 with an empty
+   * `name` column this surfaces the firmware-derived label (e.g.
+   * `"MediumFast"`, `"LongFast"`) so per-source views match the unified
+   * picker and the label MQTT gateways publish under. Always present on
+   * server-projected channel rows; clients should prefer this over `name`
+   * for display purposes. Falls back to `"Primary"` if the source's modem
+   * preset hasn't been received yet.
+   */
+  displayName?: string;
+  /**
    * Raw base64 PSK. Only populated by the API for admins or callers with
    * `channel_${id}:write` permission for this channel (MM-SEC-2 / #2951).
    * Read-only consumers should rely on `encryptionStatus` / `pskSet` instead.
