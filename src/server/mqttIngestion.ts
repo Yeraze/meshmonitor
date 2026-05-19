@@ -43,18 +43,15 @@ export async function bootstrapMqttChannelDatabase(sourceId: string): Promise<vo
     const haveName = new Set(existing.map((c) => (c.name ?? '').toLowerCase()));
     for (const ch of DEFAULT_MQTT_CHANNELS) {
       if (haveName.has(ch.name.toLowerCase())) continue;
-      await databaseService.channelDatabase.createAsync(
-        {
-          name: ch.name,
-          psk: ch.psk,
-          pskLength: ch.pskLength,
-          isEnabled: true,
-          enforceNameValidation: false,
-          description: `Auto-seeded for MQTT decryption (default Meshtastic key)`,
-          createdBy: null,
-        },
-        sourceId,
-      );
+      await databaseService.channelDatabase.createAsync({
+        name: ch.name,
+        psk: ch.psk,
+        pskLength: ch.pskLength,
+        isEnabled: true,
+        enforceNameValidation: false,
+        description: `Auto-seeded for MQTT decryption (default Meshtastic key)`,
+        createdBy: null,
+      });
       logger.info(
         `MQTT source ${sourceId} bootstrapped channel_database entry "${ch.name}" with default key`,
       );
