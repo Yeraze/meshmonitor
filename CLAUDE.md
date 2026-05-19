@@ -17,7 +17,7 @@
 | Multi-source registry | `src/server/sourceManagerRegistry.ts`, `src/server/meshtasticManager.ts`, `src/server/meshcoreManager.ts` (parallel Meshcore protocol; not a fallback), `src/contexts/SourceContext.tsx` |
 | Auth + permissions | `src/server/auth/`, `src/db/repositories/auth.ts`, `src/db/repositories/permissions.ts` |
 | Database backends | `src/db/drivers/{sqlite,postgres,mysql}.ts`, `src/db/schema/`, `src/db/repositories/` |
-| Migrations | `src/server/migrations/NNN_*.ts` (62+ total), registry in `src/db/migrations.ts` |
+| Migrations | `src/server/migrations/NNN_*.ts` (63+ total), registry in `src/db/migrations.ts` |
 | Backup/restore | `src/server/services/systemBackupService.ts`, `systemRestoreService.ts` |
 | Routes | `src/server/routes/*` |
 | Frontend pages | `src/pages/*` (`Unified*Page` = multi-source aware) |
@@ -39,7 +39,7 @@ MeshMonitor 4.x supports **N concurrent Meshtastic node connections** ("sources"
 
 ### Critical Rules
 - **No global `meshtasticManager` singleton.** Look up per-source instances via `sourceManagerRegistry.getManager(sourceId)`.
-- **Every packet/node/message/telemetry/traceroute/neighbor/channel/embed-profile/ignored-node/distance-delete/time-sync/meshcore row carries a `sourceId`.** Migrations 020–062 are mostly source-scoping work. Repository queries that don't scope by `sourceId` will leak data across sources.
+- **Every packet/node/message/telemetry/traceroute/neighbor/channel/embed-profile/ignored-node/distance-delete/time-sync/meshcore row carries a `sourceId`.** Migrations 020–062 are mostly source-scoping work. Repository queries that don't scope by `sourceId` will leak data across sources. **Exception:** the `channel_database` (server-side decryption PSKs) is intentionally global — `channelDecryptionService` tries every enabled row regardless of source, and migration 063 dropped its dead `sourceId` column. Adding a new per-source data type should still get a `sourceId` column unless you have a concrete cross-source-by-design reason like decryption.
 - **Permissions are per-source.** `permissions.sourceId` was added in migration 022, refined in 033. `requirePermission(resource, action)` middleware honors source scoping.
 - **Frontend uses `SourceContext`** (`src/contexts/SourceContext.tsx`). `useSource()` returns `{ sourceId, sourceName }`; `sourceId` is `null` outside a `SourceProvider` (legacy/single-source views).
 - **`Unified*Page` components are cross-source consumers** (`UnifiedMessagesPage`, `UnifiedTelemetryPage`, `DashboardPage`).
@@ -97,7 +97,7 @@ For per-source permission tests, mock `getUserPermissionSetAsync(userId, sourceI
 ### Migration Registry
 Migrations use a centralized registry in `src/db/migrations.ts`. Each migration has functions for all three backends.
 
-**Current migration count:** 62 (latest: `062_meshcore_messages_fromname`).
+**Current migration count:** 63 (latest: `063_drop_source_id_from_channel_database`).
 
 For the full "adding a migration" recipe see [Migration recipe](#migration-recipe) below.
 

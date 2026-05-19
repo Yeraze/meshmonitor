@@ -9,6 +9,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 _No changes yet._
 
 
+## [4.6.2] - 2026-05-19
+
+# MeshMonitor v4.6.2
+
+Patch release focused on **MQTT ingest completeness** and channel-name UX. MQTT bridges and brokers now ingest the full set of Meshtastic portnums (text, telemetry, position, nodeinfo, traceroute, neighbor info, paxcounter, store-and-forward) with proper per-source attribution and server-side channel decryption — receptions of the same mesh packet on TCP and MQTT now dedup into a single Unified Messages entry with all sources listed. Empty-named slot 0 on a source now displays as the modem preset's firmware label (`MediumFast`, `LongFast`, etc.) instead of the synthetic `"Primary"`, matching what MQTT gateways publish under and collapsing the TCP and MQTT views of the same channel into one picker entry. The Channel Database is now genuinely global (PSKs apply to decryption across all sources), with the dead `sourceId` column dropped and the management UI moved from the per-source Channels tab to Global Settings. A Meshcore repeater-telemetry regression was fixed via `SendStatusReq` + guest-login fallback. The Desktop first-run flow no longer requires a Meshtastic IP.
+
+## Features
+- #3089 feat(mqtt): full source-scoped ingest with channel decryption and unified-view fixes — auto-bootstraps the LongFast PSK into `channel_database`, decrypts encrypted packets server-side, adds TRACEROUTE_APP / NEIGHBORINFO_APP / PAXCOUNTER_APP / STORE_FORWARD_APP handlers, pre-seeds the geo-membership cache with trusted local-mesh nodes and in-bbox positions, fixes telemetry source attribution in `/api/unified/telemetry`, and aligns MQTT message row IDs with the TCP convention so cross-source dedup collapses TCP + MQTT receptions of the same packet into one Unified Messages entry.
+- #3093 feat(channels): apply modem-preset display name to per-source channels view — `transformChannel` now emits a `displayName` field that uses the source's persisted `lora.preset` for empty-name slot 0 (firmware-spec label `MediumFast` / `LongFast` / etc.), falling back to `"Primary"` only when no preset is known. Channels tab + Source Channels view now show the same label MQTT gateways publish under.
+- #3088 feat(desktop): remove Meshtastic IP requirement from first-run setup
+
+## Fixes
+- #3086 fix: clear recovery message on SQLITE_CORRUPT migration failure
+- #3094 fix(meshcore): repeater telemetry via SendStatusReq + guest-login fallback
+
+## Refactors
+- #3091 refactor(channel-db): drop dead sourceId column (migration 063) and move UI to Global Settings — channel_database PSKs were already global (decryption tries every enabled row regardless of source), so the per-row sourceId was misleading dead weight. Drops the column, removes the Channels-tab UI entry point, and surfaces management under Global Settings.
+
+## Dependencies
+- #3069 chore(deps): bump lucide-react from 1.14.0 to 1.16.0
+- #3070 chore(deps): bump protobufjs from 8.2.0 to 8.3.0
+- #3072 chore(deps): bump better-sqlite3 from 12.9.0 to 12.10.0
+- #3071 chore(deps-dev): bump puppeteer from 24.43.0 to 25.0.2
+
+## Docs
+- #3090 docs: refresh CLAUDE.md, README, CHANGELOG for 4.6.1 accuracy
+
+
 ## [4.6.1] - 2026-05-18
 
 # MeshMonitor v4.6.1
