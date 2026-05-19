@@ -1,7 +1,7 @@
 # MeshMonitor — Claude Agent Brief
 
-**Version:** 4.x (multi-source architecture)
-**Stack:** React 19 + TS + Vite frontend / Node.js 22 + Express + TS backend / SQLite (default), PostgreSQL, MySQL via Drizzle ORM / Meshtastic protobuf-over-TCP through a per-source manager registry.
+**Version:** 4.6.1 (multi-source architecture)
+**Stack:** React 19 + TS + Vite frontend / Node.js 20+ (Docker image ships Node 24; CI matrix covers 20/22/24/25) + Express 5 + TS backend / SQLite (default), PostgreSQL, MySQL via Drizzle ORM / Meshtastic protobuf-over-TCP and MeshCore (native `meshcore.js` for companion, serial CLI for repeater) through a per-source manager registry.
 
 ## Read order for new agents
 
@@ -17,7 +17,7 @@
 | Multi-source registry | `src/server/sourceManagerRegistry.ts`, `src/server/meshtasticManager.ts`, `src/server/meshcoreManager.ts` (parallel Meshcore protocol; not a fallback), `src/contexts/SourceContext.tsx` |
 | Auth + permissions | `src/server/auth/`, `src/db/repositories/auth.ts`, `src/db/repositories/permissions.ts` |
 | Database backends | `src/db/drivers/{sqlite,postgres,mysql}.ts`, `src/db/schema/`, `src/db/repositories/` |
-| Migrations | `src/server/migrations/NNN_*.ts` (52+ total), registry in `src/db/migrations.ts` |
+| Migrations | `src/server/migrations/NNN_*.ts` (62+ total), registry in `src/db/migrations.ts` |
 | Backup/restore | `src/server/services/systemBackupService.ts`, `systemRestoreService.ts` |
 | Routes | `src/server/routes/*` |
 | Frontend pages | `src/pages/*` (`Unified*Page` = multi-source aware) |
@@ -35,11 +35,11 @@
 
 ## Multi-Source Architecture (4.x)
 
-MeshMonitor 4.x supports **N concurrent Meshtastic node connections** ("sources"). Pre-4.0 code that referenced a singleton `meshtasticManager` is now a deprecated compatibility shim flagged by `tsc`.
+MeshMonitor 4.x supports **N concurrent Meshtastic node connections** ("sources"). Pre-4.0 code that referenced a singleton `meshtasticManager` is now a `@deprecated` JSDoc-tagged compatibility shim at the bottom of `src/server/meshtasticManager.ts` — IDEs will strikethrough usages but `tsc` does not error.
 
 ### Critical Rules
 - **No global `meshtasticManager` singleton.** Look up per-source instances via `sourceManagerRegistry.getManager(sourceId)`.
-- **Every packet/node/message/telemetry/traceroute/neighbor/channel/embed-profile/ignored-node/distance-delete/time-sync row carries a `sourceId`.** Migrations 020–052 are mostly source-scoping work. Repository queries that don't scope by `sourceId` will leak data across sources.
+- **Every packet/node/message/telemetry/traceroute/neighbor/channel/embed-profile/ignored-node/distance-delete/time-sync/meshcore row carries a `sourceId`.** Migrations 020–062 are mostly source-scoping work. Repository queries that don't scope by `sourceId` will leak data across sources.
 - **Permissions are per-source.** `permissions.sourceId` was added in migration 022, refined in 033. `requirePermission(resource, action)` middleware honors source scoping.
 - **Frontend uses `SourceContext`** (`src/contexts/SourceContext.tsx`). `useSource()` returns `{ sourceId, sourceName }`; `sourceId` is `null` outside a `SourceProvider` (legacy/single-source views).
 - **`Unified*Page` components are cross-source consumers** (`UnifiedMessagesPage`, `UnifiedTelemetryPage`, `DashboardPage`).
@@ -97,7 +97,7 @@ For per-source permission tests, mock `getUserPermissionSetAsync(userId, sourceI
 ### Migration Registry
 Migrations use a centralized registry in `src/db/migrations.ts`. Each migration has functions for all three backends.
 
-**Current migration count:** 52 (latest: `052_add_source_id_to_embed_profiles`).
+**Current migration count:** 62 (latest: `062_meshcore_messages_fromname`).
 
 For the full "adding a migration" recipe see [Migration recipe](#migration-recipe) below.
 
@@ -110,7 +110,8 @@ For the full "adding a migration" recipe see [Migration recipe](#migration-recip
 
 ## Operational gotchas
 
-- Default admin account: username `admin`, password `changeme1` (legacy seeds used `changeme`).
+- Default admin account: username `admin`, password `changeme` (seeded by `DatabaseService` on first boot when no admin exists; logged to stdout). The login UI surfaces an `isDefaultPassword=true` warning until this is changed.
+- Default SQLite path: `/data/meshmonitor.db` (set via `DATABASE_PATH` env var). This default is the same on every platform — baremetal Node deployments outside Docker must either create `/data/` writable to the runtime user OR set `DATABASE_PATH` to a different location.
 - Load the app at `http://localhost:8080` for dev-container testing. The webserver has `BASE_URL` configured for `/meshmonitor`.
 - Don't run the Docker dev container and a local `npm run dev` at the same time — they fight over ports.
 - The dev container does NOT have `sqlite3` available as a CLI binary.

@@ -205,9 +205,10 @@ MeshMonitor supports multiple deployment methods:
   - Pre-built templates available
   - Community-supported alternative
 
-- **🔧 Manual** - Direct Node.js deployment
-  - [Manual Installation Guide](docs/deployment/DEPLOYMENT_GUIDE.md#manual-nodejs-deployment)
+- **🔧 Manual** - Direct Node.js deployment (bare metal)
+  - [Bare Metal (Node.js) Deployment Guide](docs/deployment/DEPLOYMENT_GUIDE.md#bare-metal-nodejs-deployment)
   - For development or custom setups
+  - **Note:** the SQLite default path is `/data/meshmonitor.db` (Docker convention). Bare-metal installs must set `DATABASE_PATH` to a writable location or create `/data/` for the runtime user.
 
 - **🖥️ Desktop Apps** - Native applications for Windows and macOS
   - Download from [GitHub Releases](https://github.com/Yeraze/meshmonitor/releases)

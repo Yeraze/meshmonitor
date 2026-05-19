@@ -6,146 +6,3721 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
-- **Analysis & Reports workspace** ([#2898](https://github.com/Yeraze/meshmonitor/pull/2898)): New global cross-source analytics page at `/reports`, linked from the dashboard sidebar. The first bundled report is **Solar Monitoring Analysis**, a port of MeshManager's algorithm that detects solar-powered nodes by scanning battery / voltage / INA-channel telemetry for the morning-low → afternoon-peak charging pattern and overnight discharge.
-  - **Two new endpoints** under `/api/analysis/*`, both gated by the existing per-source `nodes:read` permission filter:
-    - `GET /api/analysis/solar-nodes?lookback_days=N&sources=…` — solar candidates with daily patterns, chart data, and a hourly solar-production overlay sourced from the existing forecast.solar cache
-    - `GET /api/analysis/solar-forecast?lookback_days=N&sources=…` — forecast vs historical Wh per day, per-node battery simulation across the next ~5 days (sunrise / peak / sunset waypoints), low-output warning, and a "nodes predicted at risk" list (simulated min battery < 50% / 3.5 V)
-  - **Per-node chart** uses Recharts to render the actual battery / voltage line, the solar production area overlay, healthy-level reference lines (100/50/20% for battery; 4.2/3.7/3.3 V for voltage), and the forecast simulation as a mauve dashed extension
-  - **Permission-aware**: admins see all enabled sources, non-admins see only sources they hold `nodes:read` on; an optional `?sources=` query param scopes further
-  - **Telemetry repository**: new `getTelemetryByTypesSince(types, sinceMs, sourceIds?)` for efficient cross-node multi-type scans within a lookback window — works against SQLite, PostgreSQL, and MySQL via Drizzle
+_No changes yet._
 
-- **BREAKING (v1 REST API)**: Per-source data endpoints moved under `/api/v1/sources/{sourceId}/...` to mirror the 4.0 multi-source architecture. The reshape affects nodes, messages, channels, telemetry, traceroutes, packets, network, position history, and status. The literal string `default` is accepted in place of a UUID — it resolves to the first source the token has read permission on (admins get the first enabled source by `createdAt`). New `GET /api/v1/sources` lists the sources a token can read. Deployment-global endpoints (`/api/v1/solar`, `/api/v1/channel-database`) stay unscoped.
-  - Legacy root paths (`/api/v1/nodes?sourceId=...`, etc.) still respond but now emit a `Warning: 299` response header and will be removed in a future release.
-  - Bumps OpenAPI `info.version` to `2.0.0` while keeping the URL prefix `/api/v1/` so existing `mm_v1_` tokens keep working.
-  - Also fixes an arbitrary-source node-lookup bug in `GET /api/v1/nodes/:nodeId` (composite PK `(nodeNum, sourceId)` from migration 029) — lookups are now correctly scoped to the requested source.
-  - Kills a fetch-all-then-filter anti-pattern in several v1 routes that pulled every row across all sources into memory before filtering; every relevant repo call now receives `sourceId` directly.
 
-- **Multi-Source Architecture (4.0)**: Connect MeshMonitor to multiple Meshtastic gateways simultaneously and manage them from a unified dashboard.
-  - **Multiple sources**: Add TCP or MQTT sources via the Sources API; each source runs its own `MeshtasticManager` instance with independent connection lifecycle
-  - **Data isolation**: All data tables (`nodes`, `messages`, `telemetry`, `traceroutes`, `channels`, `neighbors`, `packets`, `ignored_nodes`, `channel_database`) carry a `sourceId` column for per-source scoping (migrations 020–022)
-  - **Source-scoped permissions**: Administrators can grant per-source `sources:read` access, controlling which users see which gateway's data
-  - **Dashboard page**: New map-centric landing page replaces the source list — left sidebar with source cards (status dot, node count, kebab admin menu) and a full-screen live map for the selected source
-  - **Unified views**: Cross-source Messages and Telemetry pages show fleet-wide activity across all connected gateways
-  - **Real-time updates**: WebSocket rooms are scoped per source; clients only receive events for the sources they have access to
-  - **Backward compatible**: Existing single-source deployments upgrade automatically — legacy rows are assigned to the default source on startup
-  - **Fix ([#2631](https://github.com/Yeraze/meshmonitor/issues/2631))**: Fresh SQLite installs crashed with `SqliteError: no such column: source_id` when fetching node telemetry. Three raw SQL sites in `DatabaseService` referenced the column as `source_id` while the schema defines `sourceId`. Converted `purgeChannelMessages`, `purgeDirectMessages`, and `getTelemetryByNodeAveraged` to dispatch through new Drizzle-backed sync helpers on the repositories so column names come from the schema and the drift can't recur
+## [4.6.1] - 2026-05-18
 
-- **Homepage Refresh** ([#2542](https://github.com/Yeraze/meshmonitor/pull/2542)): MeshMonitor.org homepage redesigned for clarity and accuracy.
-  - **New hero section**: Updated headline ("Your mesh. Your data."), new tagline, and hero image showing the interactive map
-  - **Desktop Application card**: New feature card highlighting the native Windows/macOS app — no server or Docker required, system tray integration
-  - **Expanded feature cards**: Interactive Map now mentions GeoJSON/KML/KMZ overlay import and polar RF grid; Analytics highlights chart/gauge/numeric display modes; Message Management notes drag-and-drop channel reordering; Custom Map Tile Servers describes MapLibre style JSON upload
-  - **Consolidated cards**: Automation, Geofence Triggers, and Custom Scripting merged into one card; Responsive Design card removed (17 → 15 cards)
-  - **Quick Start fix**: `ALLOWED_ORIGINS` environment variable added to the docker-compose snippet, preventing CORS errors on first run
-  - **Screenshot section fixed**: Broken image references replaced with working screenshots (Message History, User Management)
-  - **Updated meta description**: Site description now reflects current feature set for better SEO
+# MeshMonitor v4.6.1
 
-- **Per-Channel and Per-DM Notification Muting** ([#2549](https://github.com/Yeraze/meshmonitor/pull/2549)): Granular notification control at the channel and direct message level, persisted server-side.
-  - **Mute any channel or DM**: Mute notifications for a specific Meshtastic channel or DM conversation — independently of global notification settings
-  - **Time-based mute options**: Choose to mute indefinitely, for 1 hour, or for 1 week. Expiry is evaluated at read-time with no server-side cron
-  - **Visual indicators**: Muted channels and DMs show a 🔇 icon in the sidebar and in the channel/DM header
-  - **UI access**: Click the 🔔 icon in the Channels tab header to mute a channel; use the Actions ▼ menu in a DM thread to mute a DM conversation
-  - **Both push and audio suppressed**: Muting silences browser audio notifications AND push/Apprise server-side notifications; whitelist keywords still override mutes
-  - **Cross-device sync**: Mute preferences are stored in `user_notification_preferences` on the server and follow you across browsers and devices
+Patch release focused on Meshcore protocol stability, MQTT source resilience, and test infrastructure. The Meshcore integration gained telemetry graphs in the DM contact-detail pane, correct DeviceInfo decoding for nodes that pack a NUL-separated remainder, and a layout fix so MeshCorePage fills the dashboard shell. On the MQTT side, the source editor now preserves saved passwords when the field is left blank, broker ACL restrictions are detected and surfaced to the user, and mqtt_bridge sources gained a Prune Outside ROI maintenance action. The hardware system-test suite was stabilized and moved to a manually-triggered (`system-test` label or `workflow_dispatch`) workflow after the Test 14 HTTP 500 flake was root-caused to TCP-1-client firmware session takeover, not a code regression. Dependency groups were bumped in lockstep.
 
-- **Telemetry Gauge & Numeric Display Modes**: Each telemetry widget now supports three display modes — chart (default), radial gauge, and numeric label. Mode and range preferences persist per-widget via `localStorage`. Gauge min/max ranges are editable inline. Available in both the Telemetry tab and the Dashboard.
+## Features
+- #3077 feat(meshcore): render telemetry graphs in DM contact-detail pane
+- #3078 feat(mqtt): detect broker ACL restrictions and surface to user
+- #3079 feat(sources): add Prune Outside ROI action for mqtt_bridge sources
 
-- **Multi-Channel AutoAnnounce & AutoResponder** ([#2078](https://github.com/Yeraze/meshmonitor/pull/2078)): Select multiple channels for automation targets
-  - **AutoAnnounce**: Broadcast announcements to multiple channels simultaneously via checkbox selection (replaces single-channel dropdown)
-  - **AutoResponder**: Triggers can now match messages on any combination of channels and DMs (replaces single-channel-per-trigger limitation)
-  - **Backward Compatible**: Existing single-channel configurations automatically migrate at runtime via normalization — no manual reconfiguration needed on upgrade
+## Bug Fixes
+- #3076 fix(mqtt-source): preserve saved password on edit when field is blank
+- #3080 fix(meshcore): make MeshCorePage fill the dashboard shell height
+- #3081 fix(meshcore): split NUL-separated DeviceInfo remainder for Info panel
 
-### Added
-- **Admin Commands Tab** ([#911](https://github.com/Yeraze/meshmonitor/pull/911)): Comprehensive remote node management and administrative commands
-  - **New Admin Tab**: Dedicated interface for managing both local and remote Meshtastic nodes
-  - **Node Selection**: Search and select any node in the mesh network (local or remote)
-  - **Device Management Commands**:
-    - **Reboot Device**: Reboot with configurable delay (0-60 seconds)
-    - **Factory Reset**: Complete device reset to factory defaults
-    - **Set Owner**: Configure node owner information (long name, short name, unmessagable status)
-    - **Set Device Config**: Configure device role (CLIENT, CLIENT_MUTE, ROUTER) and node info broadcast interval
-    - **Set LoRa Config**: Full LoRa radio configuration including presets, bandwidth, spread factor, coding rate, region, hop limit, TX power, and more
-    - **Set Position Config**: Configure position broadcasting (interval, smart position, fixed position with coordinates)
-    - **Set MQTT Config**: Configure MQTT broker settings (address, credentials, encryption, JSON mode, root topic)
-  - **Channel Management**:
-    - **Load Channels**: Fetch and display all channels from remote nodes
-    - **Edit Channels**: Modify channel settings (name, PSK, role, uplink/downlink, position precision)
-    - **Import Channels**: Import channel configurations from Meshtastic URLs
-    - **Export Channels**: Export channel configurations to Meshtastic URLs with QR codes
-  - **Configuration Import/Export**:
-    - **Full Configuration Import**: Import complete device configuration (channels + LoRa settings) from Meshtastic URLs
-    - **Full Configuration Export**: Export complete device configuration to Meshtastic URLs with QR codes
-    - Works seamlessly with both local and remote nodes
-  - **Remote Node Support**:
-    - **Session Passkey Management**: Automatic session passkey handling for remote node authentication
-    - **Per-Node Configuration Storage**: Isolated configuration storage prevents data conflicts between nodes
-    - **Remote Channel Loading**: Load and manage channels from nodes not directly connected to MeshMonitor
-    - **Remote Config Loading**: Fetch device, LoRa, and position configurations from remote nodes
-  - **Database Management**:
-    - **Purge Node Database**: Remove all nodes from the device's node database
-  - **UI Features**:
-    - Consistent styling matching Device Configuration page
-    - Real-time loading states and progress indicators
-    - Comprehensive error handling with user-friendly messages
-    - Confirmation dialogs for destructive operations
-    - Search functionality for node selection
-  - **Security**: Admin-only access with proper authentication and session management
-  - **Backend API**: New `/api/admin/*` endpoints for remote node operations
-    - `/api/admin/commands` - Generic admin command execution
-    - `/api/admin/load-config` - Load device/LoRa/position config from remote nodes
-    - `/api/admin/get-channel` - Fetch individual channel from remote node
-    - `/api/admin/export-config` - Export configuration for remote nodes
-    - `/api/admin/import-config` - Import configuration to remote nodes
-    - `/api/admin/ensure-session-passkey` - Manage remote node authentication
-  - **Protobuf Enhancements**: Improved AdminMessage decoding with proper nested object conversion
-  - **Boolean Normalization**: Consistent boolean handling for channel uplink/downlink settings across local and remote nodes
-- **Node Favorites & Ignored Management** ([#940](https://github.com/Yeraze/meshmonitor/issues/940)): Complete support for managing favorite and ignored nodes
-  - **Local Node Management**: Toggle favorite and ignored status directly from the nodes page
-  - **Remote Node Management**: Manage favorite and ignored nodes on remote devices via Admin Commands tab
-  - **Device Synchronization**: Two-way sync between MeshMonitor database and Meshtastic device
-  - **Database Migration**: Automatic migration to add `isIgnored` column to nodes table
-  - **Optimistic UI Updates**: Immediate visual feedback with proper polling reconciliation
-  - **Firmware Compatibility**: Gracefully handles devices running firmware < 2.7.0 (feature requires 2.7.0+)
-  - **API Endpoints**: New `/api/nodes/:nodeId/favorite` and `/api/nodes/:nodeId/ignored` endpoints
-- **Draggable UI Components** ([#940](https://github.com/Yeraze/meshmonitor/issues/940)): Enhanced user experience with movable and resizable interface elements
-  - **Nodes Sidebar**: Draggable and resizable nodes list with position and size persistence
-  - **Map Legend**: Draggable Hops legend that doesn't interfere with map panning
-  - **Map Controls**: Draggable Features box with improved positioning
-  - **localStorage Persistence**: All component positions and sizes saved across sessions
-  - **Smooth Interactions**: Proper event handling to prevent conflicts with Leaflet map controls
+## Testing & CI
+- #3082 test(system): stabilize hardware test suite and make it manually-triggered
 
-### Fixed
-- **Auto-Upgrade**: Fixed version check endpoint to prevent multiple upgrade triggers when an upgrade is already in progress
-  - Added pre-check using `isUpgradeInProgress()` before calling `triggerUpgrade()`
-  - Prevents unnecessary upgrade attempts when polling the version check endpoint frequently
-  - Handles race conditions where an upgrade might start between the check and trigger call
-  - Made `isUpgradeInProgress()` public to allow external status checks
-- **Protobuf Error Messages**: Fixed `requestRemoteOwner()` to provide clear error message when protobuf definitions are not loaded
-  - Added explicit null check for `getProtobufRoot()` before use
-  - Now matches the error handling pattern used in `requestRemoteSessionPasskey()` and `requestRemoteChannel()`
-  - Provides informative "Protobuf definitions not loaded" error instead of misleading "AdminMessage type not found"
-- **Channel Import**: Fixed boolean normalization for `uplinkEnabled` and `downlinkEnabled` to default to `true` (enabled) for consistency with local node behavior
-- **Export Modal**: Fixed `useEffect` dependency array to prevent unwanted resets of user channel selections
-- **Error Handling**: Fixed `handleLoadChannels` and `handleLoadLoRaConfig` to properly re-throw errors for `Promise.all` rejection handling
-- **Config Structure**: Fixed remote node configuration loading to correctly assign `getConfigResponse` without incorrect object spreading
-- **Protobuf Root**: Added explicit null checks for `getProtobufRoot()` with informative error messages
-- **Button States**: Fixed Edit, Export, and Import channel buttons to properly disable when no node is selected
-- **API Authentication**: Added `credentials: 'include'` to admin API calls to ensure session cookies are sent
-- **Hop Count Calculation**: Fixed `hopCount` assignment to verify `routeArray` is actually an array before accessing `.length`
-  - Prevents `undefined` hopCount values for malformed route data
-  - Added `Array.isArray()` check in all traceroute endpoints
-- **Race Condition in Remote Requests**: Fixed data clearing order in `requestRemoteConfig`, `requestRemoteChannel`, and `requestRemoteOwner`
-  - Data is now cleared *before* sending requests instead of after
-  - Prevents race conditions where incoming responses are immediately deleted, causing polling timeouts
-- **Tapback Routing**: Fixed tapback emoji reactions to respect `alwaysUseDM` flag
-  - Tapbacks now correctly route via DM when `alwaysUseDM` is enabled, matching message reply behavior
-- **CORS Configuration**: Fixed development environment CORS check to correctly recognize localhost origins
-  - Prevents false positive CORS error banners in development mode
-- **Remote Node Favorite/Ignored Management** ([#950](https://github.com/Yeraze/meshmonitor/issues/950)): Fixed incorrect status display and management for remote nodes
-  - Added separate state tracking for remote node favorite/ignored status
-  - UI now correctly displays and manages favorite/ignored status for remote nodes independently from local node status
-  - Fixed button disable conditions to allow management of remote nodes even when local node has different status
-  - Remote node status is cleared when switching target nodes to prevent stale data
-  - Prevents incorrect UI state and disabled buttons when managing favorite/ignored status on remote devices
+## Dependencies
+- #3068 chore(deps): bump the production-dependencies group with 13 updates
+- #3067 chore(deps-dev): bump the development-dependencies group with 3 updates
+- #3073 chore(deps-dev): bump tsx from 4.21.0 to 4.22.1
+- #3075 chore(deps-dev): bump the development-dependencies group across 1 directory with 2 updates
+
+## Release
+- #3083 chore(release): bump version to 4.6.1
+
+## Issues Resolved
+- #3046 [SUPPORT] meshmonitor.org: creating an Embed Profile not consistent with the latest version
+- #3003 Feature: Built-in MQTT broker/proxy with topic and geographic filtering
+- #2804 [BUG] 4.0.0-beta1 — node seen on traceroute but not in list
+- #2582 [FEAT] Support for multiple MQTT Upstream Brokers
+
+## Upgrade Notes
+No breaking changes. Standard patch upgrade — pull the new image / chart and restart.
+
+**Full Changelog:** https://github.com/Yeraze/meshmonitor/compare/v4.6.0...v4.6.1
+
+## [4.6.0] - 2026-05-18
+
+# MeshMonitor v4.6.0
+
+## Summary
+
+MeshMonitor 4.6 introduces the **embedded MQTT broker** — a built-in MQTT server that bridges packets bidirectionally between Meshtastic sources, with optional geographic bounding-box filtering for incoming MQTT traffic. The bridge gains an interactive map editor for drawing the bbox visually and a smart initial-bbox heuristic that seeds the filter from your already-detected node positions. The MeshCore stack closes several gaps: channel and DM messages now persist to the database (so history survives restarts), the TCP-transport default port is fixed, and the channels view picks up a CRUD UI for create/edit/delete. The Meshtastic neighbor-info display is fixed for multi-source deployments — the frontend now correctly scopes the fetch to the active source, and the backend defensively refreshes `lastHeard` on `MyNodeInfo` and `configComplete` so the freshness filter doesn't drop entries from the local node mid-session. MeshCore radio parameters are no longer corrupted on save: the native backend now correctly scales between UI MHz/kHz and the wire-format kHz/Hz integers the meshcore.js library expects. Desktop bundle improvements: fresh installs no longer auto-create a phantom Meshtastic source against the old `192.168.1.100` placeholder when only MeshCore companions are configured, and MeshCore connect errors now surface a real diagnostic instead of `undefined`. The auto-upgrade watchdog health-check timeout grows from 120s to 600s (configurable via env var) so larger DBs on ARM-class hardware don't flap during boot. The API gains a server-side fix for duplicate packets reported by multi-source consumers. CI now fails fast on the first failing system test, and a `MESHTASTIC_NODE_PORT` synonym is now honoured on fresh installs alongside `MESHTASTIC_TCP_PORT`.
+
+## Features
+
+- **Embedded MQTT broker + bidirectional bridges** — #3053
+- **MQTT bridge: `mqttClientProxyMessage` to the embedded broker** — #3054 (follow-up to #3003)
+- **MQTT bridge: interactive map editor for the filter geographic bounding box** — #3064
+- **MQTT bridge: seed bbox from detected node positions on first enable** — #3066
+
+## Bug Fixes
+
+- **Neighbor info missing in UI:** scope the frontend fetch to the current source + defensively refresh local-node `lastHeard` on `MyNodeInfo` / `configComplete` — #3049 (fixes #3025)
+- **MeshCore radio parameters can't be saved:** scale between UI MHz/kHz and wire-format kHz/Hz integers in the native backend — #3050 (fixes #3048)
+- **API: duplicate packets** in `/api/packet-logs` for multi-source deployments — #3052 (fixes #3051)
+- **MeshCore:** persist channel + DM messages to the DB; fix TCP-transport default port — #3058 (fixes #3057)
+- **Auto-upgrade watchdog:** raise health-check timeout to 600s and make it configurable via env var — #3056 (fixes #3055)
+- **MESHTASTIC_NODE_PORT env var** not respected on fresh installs — #3062 (fixes #3061)
+- **Desktop:** stop creating a phantom Meshtastic source on MeshCore-only installs; surface a real MeshCore connect error instead of `undefined` — #3065
+- **UI:** drop the "(USB)" suffix from the MeshCore source-type label — #3043
+
+## CI / DevOps
+
+- **System tests:** fail-fast on first failing test, drop retry attempt — #3060
+
+## Docs
+
+- **Embedded MQTT broker** — configurator option, feature documentation, blog post — #3063
+
+## Issues Resolved
+
+- #2600 — [FEAT] More Meshcore support
+- #3025 — [BUG] Meshtastic NeighborInfo: response received but not shown in UI
+- #3048 — [BUG] Meshcore shows wrong radio parameters and can't be updated
+- #3051 — [BUG] API: duplicate packets
+- #3055 — Auto-upgrade watchdog 120s health-check timeout too short for large-DB instances on slow ARM hardware
+- #3057 — [MeshCore] MeshCore, channels and persistence
+- #3061 — [BUG] `MESHTASTIC_NODE_PORT` not respected
+
+## Upgrade Notes
+
+**Desktop bundle behaviour change (#3065).** Fresh installs that don't set `MESHTASTIC_NODE_IP` in the environment now create the auto-default Meshtastic source as **`enabled=0`** instead of `enabled=1`. Users upgrading from 4.5.x desktop builds keep their existing sources as-is, but a fresh install / fresh DB will require explicitly enabling the Meshtastic source via the **Sources** page. Docker users who set `MESHTASTIC_NODE_IP` themselves are unaffected.
+
+**Embedded MQTT broker (#3053)** is opt-in. Existing installs without an MQTT broker source configured see no behaviour change.
+
+## Full Changelog
+
+https://github.com/Yeraze/meshmonitor/compare/v4.5.2...v4.6.0
+
+
+## [4.5.2] - 2026-05-16
+
+# MeshMonitor v4.5.2 — MeshCore Channel Support
+
+A focused follow-up to **v4.5.1 — MeshCore TCP Support** that closes the last big gap in the MeshCore subsystem: **end-to-end channel management** from the MeshMonitor UI. Connect a MeshCore Companion and MeshMonitor now reads the device's channel list on connect, displays each channel as its own tab in the MeshCore page with the sent/received messages segregated correctly, and exposes a per-source Configuration UI to add, rename, regenerate the AES-128 secret of, or delete channels — every write goes to the device first and the local mirror is reconciled afterwards. The new send path is channel-idx aware so a message typed in any tab actually reaches that channel instead of falling back to slot 0. Several rough edges from initial real-hardware testing are also smoothed over: the firmware's MAX_CHANNELS placeholders (typically 40 on Companion builds) are filtered out so you only see configured slots, stale empty rows from earlier syncs are auto-cleaned, the DM-view sidebar excludes the channel pseudo-pubkeys and the local node, and the route layer now talks to the correct MeshCore manager registry instead of silently falling back to the Meshtastic singleton. On the Meshtastic side, a long-standing map issue is fixed: per-node position-accuracy boxes now reflect each sending node's own `precision_bits` instead of the local node's channel setting. The release also flips the changelog links to open in a new tab so a context-switch doesn't blow away the page.
+
+## ✨ Features
+
+- [#3034](https://github.com/Yeraze/meshmonitor/pull/3034) — **MeshCore channel CRUD + connect-time sync (phase 1/3)**. `MeshCoreManager` exposes `listChannels` / `setChannel` / `deleteChannel` and mirrors the device's channel list into the shared `channels` table on every connect. AES-128 secrets are stored base64-encoded in the existing `psk` column; `cleanupInvalidChannels` is source-type-aware so MeshCore's higher channel indices survive cleanup.
+- [#3038](https://github.com/Yeraze/meshmonitor/pull/3038) — **Display device channels in MeshCoreChannelsView (phase 2/3)**. The hardcoded single "Public" entry is replaced by one tab per device-reported channel. Per-channel filter handles both received and locally-sent messages; the manager's `sendMessage` and the `/api/meshcore/messages/send` route both grew an optional `channelIdx` so non-channel-0 sends actually go to the right channel.
+- [#3039](https://github.com/Yeraze/meshmonitor/pull/3039) — **Channel create / edit / delete UI (phase 3/3)**. New `MeshCoreChannelsConfigSection` mounted inside `MeshCoreConfigurationView`. Add channel (auto-assigns the lowest free idx, seeds a 16-byte random secret via `crypto.getRandomValues`), edit, regenerate-secret, and delete. Secret displayed as hex with masked-by-default show/copy toggles. Backend `PUT/DELETE /api/channels/:id` routes are source-type-aware — MeshCore drops the 0-7 cap, widens name to 31 bytes, and routes the write through the manager.
+
+## 🐛 Bug Fixes
+
+- [#3033](https://github.com/Yeraze/meshmonitor/pull/3033) — **Per-node position precision boxes**. Map accuracy boxes now use each sending node's own `precision_bits` instead of the local MeshMonitor node's channel setting. Removed the local-channel fallback in both the Position and NodeInfo handlers, plus the "smart upgrade/downgrade" logic that was holding onto a stored higher precision for up to 12 hours and refusing legitimate downgrades. Closes [#3030](https://github.com/Yeraze/meshmonitor/issues/3030).
+- [#3040](https://github.com/Yeraze/meshmonitor/pull/3040) — **MeshCore channels post-deploy polish**. Filters out empty slots so the firmware's MAX_CHANNELS (typically 40 on Companion builds) doesn't leak placeholder rows into the UI; the next sync after upgrade auto-cleans existing leaked rows from the DB. Fixes the route layer to pull the MeshCore manager from the correct `meshcoreManagerRegistry` instead of the Meshtastic fallback (was producing `mcManager.setChannel is not a function`). DM-view sidebar now filters out the `channel-N` synthetic pubkeys and the locally-connected node.
+
+## 🪟 UX
+
+- [#3037](https://github.com/Yeraze/meshmonitor/pull/3037) — **Changelog links open in a new tab** so clicking through doesn't unload the page. Closes [#3035](https://github.com/Yeraze/meshmonitor/issues/3035).
+
+## ⬆️ Upgrade Notes
+
+- **No migrations.** The MeshCore channels feature reuses the existing `channels` table — Meshtastic-only columns (`role`, `uplinkEnabled`, `downlinkEnabled`, `positionPrecision`) stay null for MeshCore rows.
+- **Existing MeshCore installs:** after upgrade, the next connect-time sync will run the new reconcile pass and automatically remove the 38-or-so empty placeholder rows that older builds wrote to the `channels` table. No manual cleanup needed.
+- **Position accuracy boxes** will start reflecting each remote node's actual `precision_bits`. If you had previously seen all boxes mirror your local node's setting, that was the old smart upgrade/downgrade behavior holding stale precision; the new packets will repopulate within minutes.
+- **API change (additive):** `PUT/DELETE /api/channels/:id` accept higher channel IDs (>7) when the target source is MeshCore. The Meshtastic 0-7 cap is unchanged.
+
+## Issues Resolved
+
+- [#3030](https://github.com/Yeraze/meshmonitor/issues/3030) — Position accuracy boxes wrong size
+- [#3035](https://github.com/Yeraze/meshmonitor/issues/3035) — Open changelog links in new tab
+
+## Full Changelog
+
+https://github.com/Yeraze/meshmonitor/compare/v4.5.1...v4.5.2
+
+## [4.5.1] - 2026-05-15
+
+# MeshMonitor v4.5.1 — MeshCore TCP Support
+
+A focused follow-up to **v4.5.0 — MeshCore Levels Up**, closing the last two big gaps called out in the 4.5 announcement: **TCP transport for MeshCore Companions from the UI**, and a **native JavaScript MeshCore backend** that replaces the Python bridge entirely. TCP-attached Companions (esp-link, ser2net, or native TCP firmware) are now added through the same Sources sidebar flow as everything else — no env-var bootstrap, no container restart. The new in-process [`meshcore.js`](https://github.com/Yeraze/meshcore.js) integration removes the Python sidecar from the container, cutting startup time, memory footprint, and a whole class of cross-process serialization bugs. Two small bugs from 4.5 are also fixed: a MeshCore TCP source that wouldn't appear in the source list and a Meshtastic NeighborInfo link that disappeared when the neighbor row had a NULL `lastHeard` despite a fresh NI report.
+
+## ✨ Features
+
+- [#3027](https://github.com/Yeraze/meshmonitor/pull/3027) — **MeshCore TCP transport from the UI**. The Sources sidebar now offers USB **and** TCP for MeshCore Companions (default port `4403`); works with esp-link, ser2net, or any native TCP-capable MeshCore firmware. Closes [#3028](https://github.com/Yeraze/meshmonitor/issues/3028).
+- [#3029](https://github.com/Yeraze/meshmonitor/pull/3029) — **Native JavaScript MeshCore backend**. Initial port of the MeshCore protocol layer onto [`meshcore.js`](https://github.com/Yeraze/meshcore.js), running in-process inside the Node server.
+- [#3031](https://github.com/Yeraze/meshmonitor/pull/3031) — **Python bridge and 3.x addon removed**. The native JS backend is now the only path; the Python sidecar process, its requirements, and the legacy 3.x firmware addon are gone.
+
+## 🐛 Bug Fixes
+
+- [#3026](https://github.com/Yeraze/meshmonitor/pull/3026) — **NeighborInfo links survive NULL `lastHeard`**. When a neighbor row has no `lastHeard` but the NeighborInfo report itself is fresh, the link is now kept in the topology view instead of being filtered out. Closes [#3025](https://github.com/Yeraze/meshmonitor/issues/3025).
+
+## 📝 Documentation
+
+- [#3032](https://github.com/Yeraze/meshmonitor/pull/3032) — **MeshCore TCP transport documentation** added to the [MeshCore feature page](https://meshmonitor.org/features/meshcore#tcp-transport), covering host/port form fields, common deployment patterns (native TCP firmware / `ser2net` / `esp-link`), container-networking guidance, and updated USB-vs-TCP troubleshooting.
+
+## 🧹 Architecture
+
+The MeshCore subsystem is now considerably simpler:
+
+- **One process** — the entire MeshCore stack (companion protocol, channel/contact state, telemetry collection) runs inside the Node server. No more Python sidecar to coordinate with, no more cross-process JSON shuttling.
+- **Two transports for Companions** — USB serial and TCP, both wired through the same per-source manager registry that handles Meshtastic sources. Hot connect/disconnect, source create/update/delete, no container restart for any of it.
+- **Repeater path unchanged** — Repeater is still USB-only and still uses the direct-serial text CLI path.
+
+## ⬆️ Upgrade Notes
+
+- **No migrations.** Database schema is unchanged from 4.5.0.
+- **Python is no longer required.** If you maintain a custom image or compose override that mounted Python deps for the MeshCore bridge, you can drop them.
+- **MeshCore env-var bootstrap stays removed.** The `MESHCORE_*` env vars that 3.x used were already gone in 4.5.0; configure MeshCore sources from the Sources sidebar.
+
+## Issues Resolved
+
+- [#3028](https://github.com/Yeraze/meshmonitor/issues/3028) — TCP/WiFi MeshCore source not showing in source list
+- [#3025](https://github.com/Yeraze/meshmonitor/issues/3025) — Meshtastic NeighborInfo response received but not shown in UI
+
+## Full Changelog
+
+https://github.com/Yeraze/meshmonitor/compare/v4.5.0...v4.5.1
+
+## [4.5.0] - 2026-05-15
+
+MeshCore graduates from "experimental tab" to **first-class source** in MeshMonitor. It sits in the dashboard sidebar next to your Meshtastic nodes, has its own per-source permissions, its own multi-pane page, its own telemetry pipeline, and contributes contacts to the unified dashboard map. The 4.5 UI source-add flow is **USB-only** for MeshCore (Companion or Repeater); TCP-connected companions still work via the legacy env-var bootstrap path.
+
+## Source model
+
+- **Per-source MeshCore managers** — each MeshCore device is its own source row, manageable from the Sources sidebar with no container restart (#3005, #3014)
+- **Permissions, expanded** — the legacy global ` + "`meshcore`" + ` permission is gone; migration 058 expanded every grant into the per-source **sourcey** set (connection, configuration, nodes, messages)
+- **Composite primary key** on ` + "`meshcore_nodes`" + ` (sourceId, publicKey) — same device under two sources is tracked independently (#3023)
+
+## Dashboard + map
+
+- **Styled source cards** matching the Meshtastic visual vocabulary (#3016)
+- **Unified dashboard map** enumerates every MeshCore source and renders contacts with valid coordinates (#3015)
+
+## MeshCore page
+
+- **Multi-pane redesign** — Nodes / Channels / Direct Messages / Configuration / Node Info (#3005)
+- **Contact-detail panel** below each DM thread — hops, RSSI/SNR, last heard, position, full public key (#3017)
+- **UI permission gating** — write controls dim and explain themselves for read-only users (#3019)
+- **Visual alignment** with Meshtastic Info / Channels / Nodes rows (#3021)
+
+## Telemetry
+
+- **Local-node telemetry** — background poller samples ` + "`GetStats core/radio/packets`" + `, ` + "`GetDeviceTime`" + `, ` + "`DeviceQuery`" + ` every 5 minutes (configurable, on-device, no RF) writing batched ` + "`mc_*`" + ` rows into the shared telemetry table (#3020)
+- **Node Info page** graphing across 1h / 6h / 24h / 3d / 7d ranges
+- **Telemetry-mode toggles** — device-side base / loc / env classes from the Configuration view (#3018)
+- **Per-node remote telemetry retrieval** — scheduled ` + "`req_telemetry_sync`" + ` pulls with a per-node interval, gated by a shared 60-second cross-mesh throttle, with decoded LPP values written into the telemetry store (#3022)
+
+## Configuration
+
+- **Radio preset selector** from the official MeshCore preset list, with a Custom fallback (#3015)
+- **Persistent radio params** — bridge propagates device-side errors instead of silently returning success
+- **Staged edits no longer revert** during live push updates
+- **Location configuration** + advert-location policy
+- **Channel-message senders** extracted from the ` + "`\"Name: body\"`" + ` prefix and shown separately
+
+## Still Early
+
+MeshCore in MeshMonitor remains **new and basic**. Known gaps:
+
+- **Repeater / Room Server parity** trails Companion — local-telemetry poller, remote-telemetry scheduler, and telemetry-mode toggles all need a Companion on the source side
+- **TCP MeshCore via the UI** isn't shipped — TCP companions are env-var bootstrap only in 4.5
+- **No MeshCore remote-admin** equivalent
+- **No scheduler integrations** for auto-responder / auto-announce / auto-traceroute (primitives wired, user-facing features next)
+- **Minimal MeshCore notifications** — apprise and push aren't first-class
+- **No MeshCore-specific map affordances** yet
+- **MQTT source type** still planned
+
+The plan is incremental — one or two MeshCore features per release, keep aligning the UI vocabulary with Meshtastic, gradually close the parity gap.
+
+---
+
+📖 [Updated MeshCore docs](https://meshmonitor.org/features/meshcore) · 📝 [Full 4.5 blog post](https://meshmonitor.org/blog/2026-05-14-meshcore-4-5)
+
+## [4.3.2] - 2026-05-12
+
+Patch release rolling up fixes landed since 4.3.1.
+
+## Fixes
+- #3001 fix(firmware): keep uploadPhase on error so half-flash detection works (no more false-positive half-flash markers from commit-OK ECONNRESET)
+- #2998 chore: remove legacy /api/nodes/security-issues endpoint
+- #2997 fix(sourcey): scope purgeAllNodes / purgeAllTelemetry by sourceId
+- #2992 feat(embed): add showTraceroutes toggle to embed profiles
+- #2981 fix(firmware): scope OTA gateway IP to the active source
+- #2989 fix(sourcey): scope telemetry types and localNodeNum by sourceId
+- #2986 fix(auth): mount optionalAuth() in front of permission-gated router
+- #2983 fix(security): allowlist tables and validate column names in SQLite
+- #2982 fix: replace hasPermission non-null assertions with null-safe guards
+- #2980 fix(security): gate legacy /api/nodes/security-issues with security:read
+- #2978 fix(security): block message search when user has zero channel permissions
+- #2977 fix(security): gate /api/traceroutes/history with traceroute:read
+- #2976 fix(lxc): align LXC template Node version with runtime
+- #2975 refactor(audit): gate cleanup with requireAdmin instead of redundant checks
+
+## Refactors / Internals
+- refactor(sourcey): extract resolveSourceManager helper, retire 65 inline lookups
+- refactor(backup): unify SQLite path with Drizzle misc repository
+- chore(eslint): close `const db = …; db.prepare()` escape hatch in no-raw-sql
+
+## Docs / i18n
+- #2979 docs: add MeshMonitor Chat for iOS to Third-Party Clients
+- #2874 Translations update from Hosted Weblate
+- i18n: add `source.status_disconnected` key across locales
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v4.3.1...v4.3.2
+
+
+## [4.3.1] - 2026-05-11
+
+Patch release rolling up fixes and small features landed since 4.3.0.
+
+## Features
+- #2974 feat(waypoints): scheduled rebroadcast with global airtime floor
+- #2960 feat(dashboard): "More..." entry in Add Widget menu with telemetry help
+
+## Fixes
+- fix(firmware): harden OTA update — timeouts, cancel guard, async orchestration, retry widening, half-flash detection (073oa8b2)
+- #2956 fix: don't record 0-hop telemetry when hop_start is unset
+- #2953 fix(channels): expose PSK to authorized writers so config UI works
+
+## Dependencies
+- protobufjs 8.0.3 → 8.2.0 (#2968)
+- archiver 7.0.1 → 8.0.0 (#2964)
+- react-router-dom 7.14.2 → 7.15.0 (#2967)
+- i18next-http-backend 3.0.6 → 4.0.0 (#2970)
+- vite-plugin-pwa 1.2.0 → 1.3.0 (#2969)
+- puppeteer 24.42.0 → 24.43.0 (#2965)
+- @eslint/compat 2.0.5 → 2.1.0 (#2966)
+- production-dependencies group, 7 updates (#2963)
+- @types/node (#2961)
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v4.3.0...v4.3.1
+
+## [4.3.0] - 2026-05-10
+
+# MeshMonitor v4.3.0 — Waypoints
+
+This minor release introduces **Waypoints** as a first-class data type alongside nodes, messages, and telemetry. MeshMonitor now stores every WAYPOINT_APP packet per source, renders them on both the per-source dashboard map and Map Analysis using each waypoint's emoji as its icon, and lets users with the new `waypoints:write` permission create, edit, and delete waypoints in place from the Map Features panel — broadcasting the result back to the mesh. A daily maintenance sweep handles expiry (with `expire_at = 0` correctly treated as "no expiration"), and the existing source-scoped WebSocket fan-out delivers `waypoint:upserted` / `:deleted` / `:expired` events in real time. Migrations 053–055 add the per-source `waypoints` table and seed the new `waypoints:read|write` permissions for every user that already had matching `messages` grants. Beyond Waypoints, the release adds Tile Selection / Legend visibility toggles to the Map Features panel, fixes a dashboard bug where the active tileset wasn't applied on load, corrects the channel encryption label for unencrypted and shorthand PSKs, irons out several mobile-browser interface issues, and bootstraps the very first OIDC user as an admin so SSO-only deployments can complete onboarding.
+
+## ✨ Features
+
+- **Waypoints — basic support** ([#2936](https://github.com/Yeraze/meshmonitor/issues/2936) / [#2938](https://github.com/Yeraze/meshmonitor/pull/2938)) — per-source `waypoints` table (migration 053), `WAYPOINT_APP` dispatch + broadcast/delete-tombstone helpers, `/api/sources/:id/waypoints` (GET/POST/PATCH/DELETE) gated by new `waypoints:read|write` permission, `useWaypoints` hook with WS-cache invalidation, `WaypointsLayer` for Map Analysis, daily expire sweep with grace window. Permission seeding via migrations 054/055 clones each user's per-source `messages` grants.
+- **Waypoints — authoring UI** ([#2942](https://github.com/Yeraze/meshmonitor/pull/2942)) — in-place create/edit/delete on the per-source dashboard map. Map-click and right-click placement modes (crosshair cursor, ESC to cancel), emoji icon picker with VS-16 forcing, optional expiry, lock-to-self checkbox; popup actions (Edit / Delete) gated by `canEdit` / `canDelete` and suppressed for waypoints locked to other nodes. Create button lives inside the Map Features dropdown.
+- **Map Features: Tile Selection + Legend visibility toggles** ([#2945](https://github.com/Yeraze/meshmonitor/pull/2945)) — adds two toggles to the Map Features panel that hide the bottom-center tileset picker and the SNR legend, persisted per-user.
+
+## 🐛 Bug Fixes
+
+- **fix:** map tileset selection not applying on dashboard ([#2948](https://github.com/Yeraze/meshmonitor/pull/2948))
+- **fix(mobile):** mobile browser interface fixes ([#2946](https://github.com/Yeraze/meshmonitor/pull/2946) / [#2940](https://github.com/Yeraze/meshmonitor/issues/2940))
+- **fix:** correct channel encryption label for unencrypted and shorthand PSKs ([#2944](https://github.com/Yeraze/meshmonitor/pull/2944) / [#2939](https://github.com/Yeraze/meshmonitor/issues/2939))
+- **fix(auth):** bootstrap first OIDC user as admin ([#2937](https://github.com/Yeraze/meshmonitor/pull/2937) / [#2749](https://github.com/Yeraze/meshmonitor/issues/2749))
+
+## 📚 Documentation
+
+- New **Waypoints** feature page in the docs site, plus a Waypoints sub-section in the Maps overview. Version-Highlights nav sections were retired and their pages folded into the regular Features sidebar.
+- **docs:** add Canadaverse Mesh to the Site Gallery ([#2943](https://github.com/Yeraze/meshmonitor/pull/2943))
+
+## ⚙️ Release
+
+- **chore(release):** bump version to 4.3.0 ([#2949](https://github.com/Yeraze/meshmonitor/pull/2949))
+
+## ⚠️ Known follow-ups
+
+- Waypoint **rebroadcast scheduler** is not yet wired. The `rebroadcast_interval_s` column is persisted and accepted by the API, but no timer fires it — owned waypoints are broadcast once on save. Tracked under [#2936](https://github.com/Yeraze/meshmonitor/issues/2936).
+- **Automation hooks** for the waypoint message type are not yet available — Auto-Responders and Geofence Triggers do not currently match on waypoint events.
+
+## Full Changelog
+
+https://github.com/Yeraze/meshmonitor/compare/v4.2.3...v4.3.0
+
+
+## [4.2.3] - 2026-05-08
+
+# MeshMonitor v4.2.3
+
+A maintenance release focused on the messages experience and the multi-source traceroute view.
+
+## Summary
+
+This release fixes three message-system bugs that surfaced together on multi-source SQLite deployments: infinite scrollback on a freshly-loaded channel didn't fire on the first scroll, unread counts leaked across sources so badges stayed lit for messages the active source couldn't display, and SQLite's mark-as-read silently no-op'd when a stale read row from an earlier session blocked the insert. A traceroute coloring bug (#2931) where a single UDP/MQTT bridge node forced the entire route to render as dashed IP is fixed; only the actual IP hops are now styled that way. The auto-responder no longer triple-sends when the target's ACK arrives late, and the notification chime no longer fires on incoming traceroute responses cached in the WebSocket buffer. Desktop builds now resolve the script interpreter from PATH so Tauri-launched bash scripts work on machines without `/bin/bash`. Internally, the Claude-agent documentation under `.claude/` and `docs/` was consolidated for the 4.x architecture: completed planning docs were removed and `CLAUDE.md` rewritten with the multi-source registry, source-scoped query convention, and the current 52-migration registry up front.
+
+## Bug Fixes
+
+- **fix(messages):** infinite scroll-up firing with stale offset on first scroll (#2930)
+- **fix(messages):** unread-count scoping + stuck mark-as-read on SQLite (#2932)
+- **fix(traceroute):** stop cascading IP-style across radio segments (#2935) — closes #2931
+- **fix(notifications):** skip traceroute messages in WS cache to stop spurious chime (#2929)
+- **fix(auto-responder):** prevent triple-send when target ACK arrives late (#2928)
+- **fix(scripts):** resolve interpreter from PATH in desktop builds (#2926)
+
+## Documentation
+
+- **chore(docs):** consolidate Claude-agent guidance for 4.x; drop shipped plans (#2933)
+
+## Release
+
+- **chore(release):** bump version to 4.2.3 (#2934)
+
+## Issues Resolved
+
+- #2931 — [BUG] drawing a route trace
+
+## Full Changelog
+
+https://github.com/Yeraze/meshmonitor/compare/v4.2.2...v4.2.3
+
+## [4.2.2] - 2026-05-06
+
+# MeshMonitor v4.2.2
+
+**Security update + multi-source bug fixes.** This release patches the **MM-SEC-5/6/7/8 follow-on advisory** (four authorization issues uncovered in a follow-up audit to the v4.2.1 disclosure), introduces an **admin-configurable Default Landing Page**, and fixes several multi-source routing bugs from the 4.0/4.2 line. The most severe finding (MM-SEC-5) leaked the local node's PKI **private key** to any logged-in user, and MM-SEC-6/7 exposed channel **PSKs** through endpoints missed by the v4.2.1 patches. **All MeshMonitor 4.x deployments should upgrade.** Operators of multi-tenant or untrusted-user installations should also rotate their local node's PKI key, any exposed channel PSKs, and any source credentials that non-admin users may have read.
+
+> **Action Required**
+> - Rotate your local node's PKI private key if untrusted users had login access on 4.2.1 or earlier.
+> - Rotate any channel PSKs that were exposed.
+> - Rotate any source credentials (`password` / `apiKey`) that may have been read by non-admin users.
+> - Full advisory: [`docs/security/SECURITY_ADVISORY.md`](https://github.com/Yeraze/meshmonitor/blob/main/docs/security/SECURITY_ADVISORY.md)
+
+## Security
+
+- **MM-SEC-5/6/7/8 follow-on advisory** — Four authorization fixes, including a high-severity PKI private-key disclosure, two PSK leak channels missed by the MM-SEC-2 patch, and a source credential leak. ([#2915](https://github.com/Yeraze/meshmonitor/pull/2915))
+
+## Features
+
+- **Admin-configurable Default Landing Page** — Choose what users see at the root URL: the unified multi-source dashboard (default) or any single configured source. Lives under **Settings → Appearance**, admin-only. ([#2921](https://github.com/Yeraze/meshmonitor/pull/2921), closes [#2917](https://github.com/Yeraze/meshmonitor/issues/2917))
+
+## Bug Fixes
+
+- **Multi-source: Exchange Node Info / Position / Neighbor Info** — These actions now route through the source the user selected instead of always going through the default. ([#2916](https://github.com/Yeraze/meshmonitor/pull/2916), closes [#2911](https://github.com/Yeraze/meshmonitor/issues/2911))
+- **Auto Traceroute checkbox** — Now hydrates from the per-source value instead of a stale global, so the toggle reflects what's actually configured on each source. ([#2918](https://github.com/Yeraze/meshmonitor/pull/2918), closes [#2914](https://github.com/Yeraze/meshmonitor/issues/2914))
+- **Node position override** — Writes to the live source row instead of the legacy `default` row, so manual coordinate overrides actually render. ([#2913](https://github.com/Yeraze/meshmonitor/pull/2913), closes [#2902](https://github.com/Yeraze/meshmonitor/issues/2902))
+- **Auto-upgrade sidecar** — Clears the stale `.upgrade-status` file before triggering a new upgrade, preventing the watchdog from looping on stale state. ([#2920](https://github.com/Yeraze/meshmonitor/pull/2920))
+- **Desktop x64 macOS DMG** — Now ships with x86_64 native binaries instead of accidentally bundling the arm64 `better_sqlite3.node`. ([#2912](https://github.com/Yeraze/meshmonitor/pull/2912), closes [#2901](https://github.com/Yeraze/meshmonitor/issues/2901))
+- **Desktop script storage** — Honors `DATA_DIR` so desktop builds can persist user scripts in the configured data directory. ([#2919](https://github.com/Yeraze/meshmonitor/pull/2919))
+- **`/api/scan-remote-admin`** — Handles empty request bodies cleanly instead of 500-ing. ([#2910](https://github.com/Yeraze/meshmonitor/pull/2910))
+
+## Documentation
+
+- New **Default Landing Page** section in [`docs/features/settings.md`](https://meshmonitor.org/features/settings#default-landing-page), linked from the Appearance section of [`docs/features/global-settings.md`](https://meshmonitor.org/features/global-settings). ([#2922](https://github.com/Yeraze/meshmonitor/pull/2922))
+
+## Dependencies
+
+- `lucide-react` 1.11.0 → 1.14.0 ([#2895](https://github.com/Yeraze/meshmonitor/pull/2895))
+- `npm audit fix` cleared the `serialize-javascript` (high) and `ip-address` (moderate) advisory chains. The remaining 6 advisories are all dev-only `esbuild` via `drizzle-kit` / `vitepress` and have no production runtime exposure.
+
+## Issues Resolved
+
+- [#2901](https://github.com/Yeraze/meshmonitor/issues/2901) — [BUG] MeshMonitor-Desktop-4.2.0-x64.dmg bundles `better_sqlite3.node` as arm64 instead of x86_64
+- [#2902](https://github.com/Yeraze/meshmonitor/issues/2902) — [BUG] Node position override saved to non-rendered source row
+- [#2911](https://github.com/Yeraze/meshmonitor/issues/2911) — [BUG] 4.2.0 — Exchange Node Info / Position emitted from wrong node
+- [#2914](https://github.com/Yeraze/meshmonitor/issues/2914) — [BUG] Auto Traceroute
+- [#2917](https://github.com/Yeraze/meshmonitor/issues/2917) — [FEAT] Load Default Node
+
+## Full Changelog
+
+https://github.com/Yeraze/meshmonitor/compare/v4.2.1...v4.2.2
+
+## [4.2.1] - 2026-05-06
+
+# MeshMonitor v4.2.1 — Security release
+
+> **All 4.x deployments should upgrade.** This release fixes three high-severity authorization issues reachable by unauthenticated visitors under the standard public-viewer configuration, plus one medium-severity authenticated-user privilege escalation. See [SECURITY_ADVISORY.md](https://github.com/Yeraze/meshmonitor/blob/main/docs/security/SECURITY_ADVISORY.md) for full per-finding details.
+
+## Summary
+
+v4.2.1 is a focused security and stability release. It closes the **MM-SEC-1/2/3/4** advisory series reported by an external researcher: anonymous disclosure of the auto-generated VAPID private key via `GET /api/settings` (MM-SEC-1), anonymous disclosure of every channel's PSK via `GET /api/channels` and `/api/poll` (MM-SEC-2), anonymous disclosure of hidden-channel message content via `/api/poll` (MM-SEC-3), and authenticated-user privilege escalation across the channel-mutation endpoints (MM-SEC-4). Two adjacent fixes also land: a long-standing decode bug where empty channel names were silently dropped during channel-URL import (#2900), and admin-packet pacing during config import to work around a firmware-side timing race that started causing system-test flakiness on Meshtastic firmware v2.7.22 (#2903). A new regression test locks in the system-backup tarball's exclusion of `push_subscriptions`, `sessions`, and `backup_history` (#2908). All v4.x deployments should upgrade — operators who ran a public-viewer dashboard with `channel_0:read` granted to anonymous should rotate exposed PSKs after upgrading, since PSK disclosure cannot be undone retroactively.
+
+## Security
+
+- **MM-SEC-1 (High):** Strip secret keys (`vapid_private_key`, `securityDigestAppriseUrl`, `analyticsConfig`, plus a `*_private_key` / `*_secret` / `*_token` tail-pattern denylist) from `GET /api/settings` for non-admin callers ([#2904](https://github.com/Yeraze/meshmonitor/pull/2904))
+- **MM-SEC-2 (High):** Stop returning `channel.psk` from `/api/channels`, `/api/channels/all`, and `/api/poll`. Hoist `transformChannel` to a shared module + per-row read permission check + new derived `pskSet: boolean` so callers can answer "is a PSK configured?" without seeing the key ([#2905](https://github.com/Yeraze/meshmonitor/pull/2905))
+- **MM-SEC-3 (High):** Filter messages by per-channel read in `/api/poll`, `/api/messages`, and `/api/messages/unread-counts` so a caller with `channel_0:read` can no longer see hidden-channel message content ([#2906](https://github.com/Yeraze/meshmonitor/pull/2906))
+- **MM-SEC-4 (Medium):** Per-channel write gate on `PUT/DELETE /api/channels/:id`, `/api/channels/:id/export`, `/api/channels/:slotId/import`, and `/api/channels/reorder` so a user with `channel_0:write` can no longer mutate any channel ([#2907](https://github.com/Yeraze/meshmonitor/pull/2907))
+- **Coverage lock-in:** `BACKUP_TABLES` regression test asserts `push_subscriptions`, `sessions`, `backup_history` are never re-added to the system-backup tarball + operator-facing `SECURITY_ADVISORY.md` ([#2908](https://github.com/Yeraze/meshmonitor/pull/2908))
+
+## Bug Fixes
+
+- **Channel URL decode:** Preserve empty channel names instead of silently dropping them — fixes round-trip imports of channel-set URLs whose primary channel is unnamed ([#2900](https://github.com/Yeraze/meshmonitor/pull/2900))
+- **Config import pacing:** Bump admin-packet inter-message delays from 500/300/500 ms to 2000/1000/1500 ms across `/channels/import-config`, `/channels/reorder`, and the local + remote `/admin/import-config` paths. Works around a firmware-side timing race in Meshtastic v2.7.22 where the first SetChannel admin packet after a tight BeginEditSettings was being silently dropped, causing intermittent CI failures ([#2903](https://github.com/Yeraze/meshmonitor/pull/2903))
+
+## Upgrade notes
+
+After upgrading, **rotate any channel PSKs** that were exposed while a public-viewer dashboard with `channel_0:read` was reachable. The PSK disclosure under MM-SEC-2 is the highest-impact finding because anyone who saved the keys before the patch can still decrypt mesh traffic captured at the time. The leak is irreversible — only key rotation closes it.
+
+If you never set `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` via environment variables, also **rotate the auto-generated VAPID key**: delete the three `vapid_*` rows from the `settings` table and restart. Existing browser push subscriptions are invalidated — clients re-subscribe transparently on next visit.
+
+The MM-SEC-4 fix tightens the per-channel write check from a static `channel_0:write` gate to a per-row check using the URL's actual `:id`. Users who previously relied on having only `channel_0:write` to manage every channel will now need explicit per-channel grants. Audit accounts and grant per-channel permissions as needed.
+
+## Full Changelog
+
+https://github.com/Yeraze/meshmonitor/compare/v4.2.0...v4.2.1
+
+## [4.2.0] - 2026-05-04
+
+# MeshMonitor v4.2.0 — Analysis & Reports
+
+This minor release introduces a brand-new global **Analysis & Reports** workspace with the first cross-source analytical report — **Solar Monitoring Analysis**. The report ports the proven detection algorithm from MeshManager to identify solar-powered nodes by scanning battery / voltage / INA-channel telemetry for the morning-low → afternoon-peak charging pattern, overlays the forecast.solar production curve on each candidate's chart, draws healthy-level reference lines, and projects multi-day battery state into the future to surface nodes predicted to drop below safe thresholds. Map Analysis gets several quality-of-life upgrades: a close button and live telemetry inside the marker detail pane, fixes to the SNR overlay (dedupe, clickability, scoping, coloring), and draggable Forward/Return path popups on traceroute results. Source status badges now reflect actual mesh activity for anonymous viewers via the unified status endpoint, alongside a new mesh-liveness badge that complements the link-state dot. The TrafficManagement module is realigned with the v2.7.23 protobuf schema, with firmware-side fixes folded in. Dependencies are bumped across the production and development trees.
+
+## ✨ Features
+
+- **Analysis & Reports workspace** ([#2898](https://github.com/Yeraze/meshmonitor/pull/2898)) — new `/reports` page linked from the dashboard sidebar; first report is the cross-source **Solar Monitoring Analysis** with auto-detection of solar-powered nodes, hourly solar production overlay, healthy-level reference lines (100/50/20% for batteries; 4.2/3.7/3.3 V for voltage), and an optional forecast simulation that projects battery state across the next several days using the forecast.solar production cache. New endpoints: `GET /api/analysis/solar-nodes` and `GET /api/analysis/solar-forecast`, both gated by per-source `nodes:read`.
+- **Map Analysis: telemetry in detail pane + close button** ([#2890](https://github.com/Yeraze/meshmonitor/pull/2890), closes [#2885](https://github.com/Yeraze/meshmonitor/issues/2885))
+- **Traceroute: draggable Forward/Return path popups** ([#2891](https://github.com/Yeraze/meshmonitor/pull/2891), closes [#2887](https://github.com/Yeraze/meshmonitor/issues/2887))
+- **Protobufs v2.7.23 + TrafficManagement realign** ([#2897](https://github.com/Yeraze/meshmonitor/pull/2897), closes [#2729](https://github.com/Yeraze/meshmonitor/issues/2729)) — refreshes the bundled protobuf module to v2.7.23, realigns the TrafficManagement module config to match the new schema, and folds in firmware-side fixes.
+
+## 🐛 Bug Fixes
+
+- **Source status: real status badge for anonymous + mesh-activity badge** ([#2888](https://github.com/Yeraze/meshmonitor/pull/2888), closes [#2882](https://github.com/Yeraze/meshmonitor/issues/2882), [#2883](https://github.com/Yeraze/meshmonitor/issues/2883)) — anonymous viewers now see real source connectivity via the unified status endpoint; a complementary mesh-activity badge (live / partial / idle) reflects how recently nodes have been heard so a "Connected" gateway with stale nodes is no longer misleading.
+- **Map Analysis: SNR overlay dedupe / click / scoping / coloring** ([#2889](https://github.com/Yeraze/meshmonitor/pull/2889), closes [#2884](https://github.com/Yeraze/meshmonitor/issues/2884))
+
+## 📚 Documentation
+
+- New `docs/features/analysis-reports.md` and "🆕 4.2 Highlights" Vitepress nav section
+- Solar Monitoring page cross-links the new analysis report
+- REST API reference now documents the two new `/api/analysis/*` endpoints
+- README and homepage feature card updated to lead with the 4.2 highlight ([#2899](https://github.com/Yeraze/meshmonitor/pull/2899))
+
+## 📦 Dependencies
+
+- **Production deps** — 7-update group bump ([#2893](https://github.com/Yeraze/meshmonitor/pull/2893))
+- **`globals`** 17.5.0 → 17.6.0 ([#2894](https://github.com/Yeraze/meshmonitor/pull/2894))
+- **`@typescript-eslint/eslint-plugin`** 8.58.2 → 8.59.1 ([#2896](https://github.com/Yeraze/meshmonitor/pull/2896))
+- **`eslint`** 10.2.1 → 10.3.0 ([#2892](https://github.com/Yeraze/meshmonitor/pull/2892))
+
+## 📋 Issues Resolved
+
+- [#2729](https://github.com/Yeraze/meshmonitor/issues/2729) — Realign TrafficManagement module config with v2.7.22 protobuf schema
+- [#2864](https://github.com/Yeraze/meshmonitor/issues/2864) — Missing new map
+- [#2882](https://github.com/Yeraze/meshmonitor/issues/2882) — Anonymous user cannot access Unified source telemetry
+- [#2883](https://github.com/Yeraze/meshmonitor/issues/2883) — Source status badges do not reflect actual node connection state
+- [#2884](https://github.com/Yeraze/meshmonitor/issues/2884) — Map Analysis: SNR Overlay shows duplicate markers, non-clickable dots
+- [#2885](https://github.com/Yeraze/meshmonitor/issues/2885) — Map Analysis: show telemetry data in marker details pane
+- [#2886](https://github.com/Yeraze/meshmonitor/issues/2886) — Monitor current draw of the device that is connected
+- [#2887](https://github.com/Yeraze/meshmonitor/issues/2887) — Free positioning of forward and return path info box
+
+## ⬆️ Upgrade Notes
+
+No breaking changes. The new `/api/analysis/solar-nodes` and `/api/analysis/solar-forecast` endpoints inherit the existing per-source `nodes:read` permission filter; admins see all enabled sources. The Reports page route is publicly addressable but data is always permission-scoped.
+
+**Full changelog:** https://github.com/Yeraze/meshmonitor/compare/v4.1.2...v4.2.0
+
+## [4.1.2] - 2026-05-01
+
+# MeshMonitor v4.1.2
+
+This patch release hardens the auto-upgrade flow with a failure circuit breaker, fixes timezone handling in the Alpine runtime image by including `tzdata`, and resolves a PostgreSQL/MySQL coherency bug in the in-memory nodes cache. Two map-analysis improvements ship as well: a tileset selector overlay on the analysis canvas and a per-source filter for embed profiles. Tooling now uses exit-code-driven CI and release watchers to keep model context out of the polling loop. Translations refreshed from Hosted Weblate.
+
+## Features
+- **Embed profiles** — per-source filter on embed profiles (#2878)
+- **Map analysis** — tileset selector overlay (#2877)
+
+## Bug Fixes
+- **Auto-upgrade** — circuit breaker halts repeated failure loops on docker-compose pinned images (#2879, closes #2871)
+- **Docker** — install `tzdata` in Alpine runtime so timezone settings work (#2876, closes #2875)
+- **Multi-DB** — keep PG/MySQL `nodesCache` coherent via NodesRepository hook (#2873)
+
+## CI/DevOps
+- Exit-code-driven CI/Release watchers + `/release-monitor` skill (#2870)
+
+## Translations
+- Translations update from Hosted Weblate (#2851)
+
+## Issues Resolved
+- #2871 — Auto-upgrade silently loops forever on docker-compose pinned images
+- #2875 — Timezone not honored in Alpine runtime
+
+## Upgrade Notes
+No breaking changes. Standard upgrade path.
+
+**Full changelog:** https://github.com/Yeraze/meshmonitor/compare/v4.1.1...v4.1.2
+
+## [4.1.1] - 2026-04-30
+
+# MeshMonitor v4.1.1
+
+Hotfix release for v4.1.0 addressing several user-reported regressions: an MQTT/IP hop labelling bug in traceroute, a virtual-node MQTT uplink that lost its primary-channel name, custom map-pin locations being overwritten by node telemetry, packet-log retention failing on PostgreSQL/MySQL, channel-database UI rejecting empty channel names, and notification-preference legacy-fallback ignoring saved `notify*` values. Map Analysis gains link/trail detail in the inspector and consistent pin styling. The tooling side adds exit-code-driven CI/release watcher scripts plus a `/release-monitor` skill, and the security docs now document the kernel CVE policy and Helm seccomp default.
+
+## Bug Fixes
+
+- Notifications: legacy preference fallback now honors saved `notify*` values — #2868 (closes #2867)
+- Virtual node: synthesize a primary channel name from the modem preset for MQTT uplink — #2866
+- Traceroute: stop labelling RF hops as MQTT/IP — #2862 (closes #2859)
+- Map: preserve manual position override across WebSocket node updates — #2858 (closes #2847)
+- Database: portable two-step delete for packet log retention — #2857 (closes #2846)
+- Channels: allow empty channel names; render slot 0 as "Primary" when blank — #2856 (closes #2855)
+
+## Features
+
+- Map Analysis: shared pin style for node markers — #2865
+- Map Analysis: show neighbor link and trail details in inspector — #2863
+
+## Documentation
+
+- Security: kernel CVE policy + Helm seccomp default — #2860
+
+## CI / Tooling
+
+- Exit-code-driven `watch-ci.sh` + `watch-release.sh` + `/release-monitor` skill — #2870
+- Bump to 4.1.1 + News.json blurb — #2869
+
+## Issues Resolved
+
+- #2867 — Toggle audio notification for successful traceroute
+- #2859 — 4.1.0 using MQTT even when disabled
+- #2855 — Empty channel names rejected by Channel Database UI
+- #2847 — Custom Location overwritten by node telemetry (`fixedPosition`)
+- #2846 — Packet log retention delete portable across backends
+
+## Upgrade Notes
+
+No breaking changes or migrations. Standard upgrade.
+
+**Full Changelog:** https://github.com/Yeraze/meshmonitor/compare/v4.1.0...v4.1.1
+
+
+## [4.1.0] - 2026-04-29
+
+# MeshMonitor v4.1.0
+
+## Summary
+
+The headline feature of 4.1 is **Map Analysis** — a new cross-source visualization workspace for diagnosing mesh coverage, topology, and signal quality. Open it from the **Analysis** section of the dashboard sidebar (or `/analysis`) and you'll get a single Leaflet canvas with eight independent layers: node markers, traceroute paths colored by SNR, neighbor links, coverage heatmap, position trails, range rings, hop shading, and an SNR overlay. Lookback windows are configurable per layer (1h, 6h, 24h, 3d, 7d, 30d, all), a time slider scrubs sub-windows of the loaded data without refetching, and a right-side inspector mirrors the current selection. The workspace pulls from every source the viewer can read — silent per-source permission filtering, no new permission resource. Configuration is persisted per-browser to `localStorage` (versioned for future server-persisted promotion).
+
+The release also adds an emoji picker to the message composer, a hardware-model pie chart on the Info tab, humanized clock-offset display on the Security panel, and an upgrade for the bundled PirateWeather auto-responder script to the v2 API. Position overrides set in the UI are now honored across every read-side surface (no more drift back to device-reported coordinates). Translations are refreshed from Weblate.
+
+## Highlights
+
+- **Map Analysis workspace** — eight cross-source visualization layers, time slider, inspector, and per-browser persistence ([#2849](https://github.com/Yeraze/meshmonitor/pull/2849))
+- **Emoji picker** in compose inputs (closes [#2575](https://github.com/Yeraze/meshmonitor/issues/2575)) — [#2853](https://github.com/Yeraze/meshmonitor/pull/2853)
+- **Hardware model pie chart** panel on the Info tab (closes [#2663](https://github.com/Yeraze/meshmonitor/issues/2663)) — [#2852](https://github.com/Yeraze/meshmonitor/pull/2852)
+
+## Features
+
+- feat(analysis): cross-source Map Analysis workspace ([#2849](https://github.com/Yeraze/meshmonitor/pull/2849))
+- feat(messages): emoji picker button for compose inputs ([#2853](https://github.com/Yeraze/meshmonitor/pull/2853), closes [#2575](https://github.com/Yeraze/meshmonitor/issues/2575))
+- feat(info): add hwModel pie chart panel ([#2852](https://github.com/Yeraze/meshmonitor/pull/2852), closes [#2663](https://github.com/Yeraze/meshmonitor/issues/2663))
+- feat(scripts): update PirateWeatherADV to v2 ([#2850](https://github.com/Yeraze/meshmonitor/pull/2850), closes [#2728](https://github.com/Yeraze/meshmonitor/issues/2728))
+- feat(security): humanize clock offset display ([#2845](https://github.com/Yeraze/meshmonitor/pull/2845))
+
+## Bug Fixes
+
+- Honor user-set position overrides across all read-side surfaces ([#2848](https://github.com/Yeraze/meshmonitor/pull/2848))
+
+## Translations
+
+- Translations update from Hosted Weblate ([#2802](https://github.com/Yeraze/meshmonitor/pull/2802))
+
+## Documentation
+
+- chore(release): bump to 4.1.0 + Map Analysis docs ([#2854](https://github.com/Yeraze/meshmonitor/pull/2854))
+
+## Closed Issues
+
+- [#2575](https://github.com/Yeraze/meshmonitor/issues/2575) — Add emoji picker to message compose
+- [#2663](https://github.com/Yeraze/meshmonitor/issues/2663) — Add hardware model pie chart to Info tab
+- [#2728](https://github.com/Yeraze/meshmonitor/issues/2728) — PirateWeather auto-responder script needs v2 API
+
+## Upgrade Notes
+
+- No database migrations required for v1 of Map Analysis. Configuration is stored per-browser in `localStorage` under the versioned key `mapAnalysis.config.v1`.
+- Map Analysis uses your existing per-source read permissions — sources a user can't read silently contribute zero data.
+- See the new [Map Analysis docs](https://meshmonitor.org/features/map-analysis) for layer-by-layer details, lookback semantics, and performance guardrails.
+
+**Full Changelog:** https://github.com/Yeraze/meshmonitor/compare/v4.0.2...v4.1.0
+
+
+## [4.0.2] - 2026-04-28
+
+# MeshMonitor v4.0.2
+
+## Summary
+
+This release is a follow-up to the v4.0.1 hotfix and continues hardening the new multi-source architecture introduced in 4.0. It fixes a Postgres upgrade failure where migration 028 left a legacy single-column UNIQUE constraint on `user_notification_preferences.userId` that blocked saving notification preferences on any non-default source. It scopes several remaining tabs and queries to the active source — Notifications, Settings, the Virtual Node info panel, and the latest-telemetry-value rollup — fixing cases where users on Source 2+ saw default-source data. It resolves an upgrade-time crash on MySQL where migration 037 attempted to recreate a foreign key with a duplicate name, plus a startup crash in the packet-log retention timer. The unified channel/messages experience now correctly saves channel names, routes cross-source actions to the right node, and stops the source picker from drifting. The Messages composer now supports multi-line input (Enter sends, Shift+Enter inserts a newline). On the database side, composite indexes back the hot per-source query patterns and the default Postgres/MySQL pool size has been raised to keep up with per-source polling fan-out.
+
+## Bug Fixes
+
+- fix(notifications): scope channels per-source + drop legacy unique constraint (#2843)
+- fix(settings): scope per-source reads to per-source namespace only (#2842)
+- fix(upgrade): MySQL migration 037 FK + packet-log timer crash (#2838)
+- fix(unified): channel-name save, cross-source routing, picker drift (#2837)
+- fix(info): show per-source admin commands status in Virtual Node panel (#2835)
+- fix(telemetry): scope getLatestTelemetryValueForAllNodes by sourceId (#2834)
+- fix(sources): remove FE virtualNode port == source port block (#2832)
+
+## Features
+
+- feat(messages): multi-line compose — Enter sends, Shift+Enter inserts a newline (#2841)
+
+## Performance
+
+- perf(db): composite indexes for hot query patterns + raise default PG/MySQL pool size (#2833)
+
+## Release
+
+- chore(release): bump version to 4.0.2 (#2844)
+
+## Issues Resolved
+
+- #2836 — v4.0.1 hotfix: migration 32/33 hang on MySQL upgrade
+- #2768 — Incorrect value on last-traced time
+- #2723 — v4.0.0-beta5: all connected nodes use the same script settings
+
+## Upgrade Notes
+
+- **PostgreSQL** users who saw `duplicate key value violates unique constraint "user_notification_preferences_userId_key"` when saving notification preferences on a secondary source: this is fixed by new migration **051**, which runs automatically at startup and drops the legacy single-column UNIQUE.
+- **MySQL** users upgrading from 3.12 → 4.0 who hit the migration 037 foreign-key error or a server crash from the packet-log timer: this is fixed by #2838 and the upgrade should now complete cleanly.
+- No manual action required for either fix — both are covered by the automatic migration runner on startup.
+
+**Full Changelog:** https://github.com/Yeraze/meshmonitor/compare/v4.0.1...v4.0.2
+
+## [4.0.1] - 2026-04-27
+
+# MeshMonitor v4.0.1
+
+Hotfix release for v4.0.0. Addresses critical migration and stability issues encountered during 3.12 → 4.0 upgrades, plus several multi-source bugs reported by early upgraders. The server now survives SIGTERM and DB-not-ready conditions during long migrations, preserves legacy telemetry and neighbor data when migrating from 3.12, and correctly maps existing 3.x data structures into the new multi-source schema. Multi-source operation is more forgiving: virtual node ports may now equal a source TCP port, and the auto-favorite warning is correctly scoped to the active source. Also includes Node base image security upgrades and a settings hydration fix.
+
+## Bug Fixes
+
+- Migrations: preserve legacy telemetry & neighbor data on 3.12 → 4.0 upgrade (#2827)
+- Migrations: support 4.0 multi-source data structures in migrate-db tool (#2829)
+- Server: survive SIGTERM and DB-not-ready during long migrations (#2825)
+- Auto-favorite: scope status fetch to active source (#2828, fixes #2826)
+- Sources: allow virtualNode.port to equal source TCP port (#2823, fixes [#2823](https://github.com/Yeraze/meshmonitor/issues/2823))
+- Settings: stop re-POSTing tracerouteIntervalMinutes on hydration (#2822)
+
+## Security
+
+- Node base image: 24.14.0 → 24.14.1 → 24.15.0 (Alpine 3.22) (#2820, #2821)
+
+## Issues Resolved
+
+- #2826 — Autofavorite displays warning even when node is client_base
+- #2823 — Virtual Node port cannot equal the source TCP port
+
+## Upgrade Notes
+
+If you are upgrading from 3.12 directly to 4.0, this release is strongly recommended — it preserves legacy telemetry and neighbor data that earlier 4.0.0 builds could lose during the migration. Long migrations are now resilient to SIGTERM and database-not-ready races, so container restarts during the upgrade no longer corrupt state.
+
+**Full Changelog:** https://github.com/Yeraze/meshmonitor/compare/v4.0.0...v4.0.1
+
+
+## [4.0.0] - 2026-04-27
+
+# MeshMonitor v4.0.0 — Multi-Source
+
+This is the **general availability** release of MeshMonitor 4.0. The 4.0 line introduces **Multi-Source** support — a single MeshMonitor instance can now connect to **multiple Meshtastic nodes simultaneously**, each with its own Virtual Node, auto-responder, scheduler, and per-source permission matrix. 4.0 ships extensive schema migrations, a reorganized permission model, and removes several environment variables (including the Virtual Node env vars) in favor of per-source UI configuration. Since `v4.0.0-beta14`, this release rolls up two stabilization bug fixes, dev compose cleanup, dependency bumps, and the version bump to GA.
+
+## Action Required After Upgrade
+
+- **Permissions** — The permission matrix is now per-source. Open **Settings → Users** and verify each user's access on every source transferred over correctly. See [Per-Source Permissions](https://meshmonitor.org/features/per-source-permissions).
+- **Automation** — Auto-responder, AutoTraceroute, Auto Favorite, Auto-Ping, Auto-Acknowledge, geofences, and other automation settings are now per-source. Open the **Automation** tab on each source and confirm everything migrated as expected.
+- **Configuration** — Several environment variables (including Virtual Node env vars) are removed; per-source settings now live in the UI. See [Multi-Source](https://meshmonitor.org/features/multi-source).
+- **Back up your `/data` volume before upgrading.**
+
+## Bug Fixes
+
+- Stabilize Unified source node count when selected source changes (#2806, closes #2805)
+- Clear `packet_log` when purging all nodes (#2807, closes #2637)
+
+## CI / Dev
+
+- Drop stale `RATE_LIMIT_*` compose overrides (#2808)
+- Cut 4.0.0 release commit (#2819)
+
+## Dependencies
+
+### Production
+- Production dependencies group — 7 updates (#2810)
+- `express-rate-limit` 8.3.2 → 8.4.1 (#2813)
+- `maplibre-gl` 5.23.0 → 5.24.0 (#2814)
+- `lucide-react` 1.8.0 → 1.11.0 (#2816)
+
+### Development
+- `vitest` 4.1.4 → 4.1.5 (#2809)
+- `jsdom` 29.0.2 → 29.1.0 (#2811)
+- `puppeteer` 24.41.0 → 24.42.0 (#2812)
+- `@tanstack/react-query-devtools` 5.99.2 → 5.100.5 (#2815)
+- `@typescript-eslint/parser` 8.58.2 → 8.59.0 (#2818)
+
+## Issues Resolved
+
+- #2805 — [BUG] Unified source node count changes incorrectly based on selected source
+- #2787 — [FEAT] separate node database for different frequency/modulation
+- #2637 — [BUG] nodes not fully deleted
+
+## Need Help?
+
+- Visit [meshmonitor.org](https://meshmonitor.org) for the full 4.0 documentation and migration guide
+- Submit bugs at [github.com/Yeraze/meshmonitor/issues](https://github.com/Yeraze/meshmonitor/issues)
+- Join our [Discord](https://discord.gg/JVR3VBETQE) to discuss any issues you find
+
+**Full Changelog:** https://github.com/Yeraze/meshmonitor/compare/v4.0.0-beta14...v4.0.0
+
+## [3.12.0] - 2026-04-03
+
+## What's New in v3.12.0
+
+### Features
+
+- **Reverse proxy authentication** — Support for Cloudflare Access, oauth2-proxy, and other reverse proxy auth providers (#2539)
+- **Telemetry widget display modes** — Gauge and numeric display modes for telemetry widgets with per-widget persistence (MM-67, MM-80, #2537, #2550, #2554)
+- **Per-channel/DM notification muting** — Mute notifications per channel or DM with time-based options (MM-77, #2549)
+- **Auto heap management** — Prevents node OOM crashes with automatic memory management (#2555, MM-100, #2563)
+- **Delete channel** — Delete channel button with message and DB record cleanup (#2531, #2533)
+- **V1 API status endpoint** — `/api/v1/status` endpoint and WebSocket Bearer token auth (#2527)
+- **Custom tileserver style** — Generate default `style.json` from custom tileserver (#2551)
+- **System tests CI** — Self-hosted runner workflow for hardware-integrated system tests (#2569)
+- **Homepage refresh** — Updated MeshMonitor.org homepage content and structure (#2542)
+
+### Bug Fixes
+
+- **WebSocket connection with BASE_URL** — Fixed Socket.io silently failing when `<base>` tag is present; explicit URL + polling-first transport (#2567)
+- **CSP WebSocket support** — Added `ws:`/`wss:` to Content-Security-Policy `connect-src` (#2567)
+- **Widget mode/range BASE_URL** — `useWidgetMode`/`useWidgetRange` now respect BASE_URL for API calls (#2567)
+- **Notification muting** — Unread count badges and notification sounds now properly respect mute settings (#2570)
+- **Device config cache** — Config changes (LoRa, network, position, MQTT, etc.) immediately update the in-memory cache (#2568)
+- **Telemetry gauge/numeric display bugs** — Fixed mode display issues (MM-99, #2564)
+- **Private channel data masking** — Extended masking to telemetry and traceroute fields; prevent location data leaking through nodes API (MM-47, #2544, #2546)
+- **Mark-as-read PostgreSQL** — Fixed mark-as-read failing on PostgreSQL (#2535)
+- **Map preferences migration** — Migrated from raw SQL to Drizzle ORM (#2524, #2526)
+- **Packet monitor resize** — Invalidate map size when packet monitor is resized (#2553)
+- **PSK preservation** — Preserve `AQ==` PSK shorthand verbatim in channel database on save (#2559)
+- **MeshCore auto-connect** — Auto-connect MeshCore on startup (MM-31, #2543)
+- **Packet monitor encryption check** — Use `decryptedBy` flag for `isEncrypted` check (#2541)
+- **Zoom-based label visibility** — Apply to MeshCore map markers (#2525, #2529)
+- **Database migration test** — Fixed pipefail, empty count guards, auto build:server (#2568)
+- **System test reliability** — Favorites ±1 variance, missing `.env` for CI (#2572)
+
+### Other
+
+- **Translations update** from Hosted Weblate (#2516)
+- **Test coverage** — Phase 1 and Phase 2 coverage tests toward 50% target (MM-49, #2547, #2552)
+- **PirateWeatherADV** — Added community script to User Scripts Gallery (#2561)
+- **Tulsa/Broken Arrow Mesh** — Added to site gallery (#2523)
+- **Documentation** — Telemetry widgets, homepage refresh, notification muting docs (MM-77, MM-78, MM-79, #2556)
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.11.1...v3.12.0
+
+## [3.11.1] - 2026-03-30
+
+## What's Changed
+
+### New Features
+- **Custom MapLibre style JSON upload & switcher** — Upload or fetch MapLibre GL style JSON files and switch between them via a dropdown on the map when using vector tilesets. Styles are persisted as server default with per-browser override. (#2492)
+- **Native desktop notifications for Tauri app** — Replaces web push (which requires SSL) with native OS notifications via node-notifier. Same user preference filtering, triggered server-side. (#2518)
+
+### Bug Fixes
+- **Tile server CORS fix** — Test Connection now routes through the backend proxy, eliminating the add-bogus-URL-reload-edit workaround when adding custom tileservers (#2493)
+- **Node list timestamp accuracy** — `lastHeard` now uses server time instead of device `rxTime`, fixing incorrect "last seen" times when the local node's clock drifts (#2494)
+- **Neighbor timestamp normalization** — Handles mixed seconds/milliseconds in old `neighbor_info` data so "Last Seen" in neighbor popups no longer shows 1970 dates (#2514, closes #2458)
+- **SNR 0 dB MQTT misclassification** — Pure RF links with SNR exactly 0 dB are no longer incorrectly classified as MQTT/IP (#2515, closes #2512)
+- **TypeScript 6 compatibility** — Added CSS type declarations required by TS 6's stricter import checking (#2517)
+- **Desktop build path length** — Fixed NSIS installer failure on Windows by using production-only node_modules (#2519)
+
+### Maintenance
+- **Protobufs v2.7.20** — New hardware models (TBEAM_BPF, MINI_EPAPER_S3, TDISPLAY_S3_PRO), LORAWAN_BRIDGE port, SCD30 sensor, TAKConfig module (#2495)
+- **MySQL service in release pipeline** — Fixes release test failures (#2491)
+- **Dependency updates** — TypeScript 6, i18next 26, react-i18next 17, lucide-react 1.x, xmldom 0.9, rollup patch, CI action bumps
+- **Translations** — Updated from Hosted Weblate (#2482)
+- **Docs** — Emacs client added to README (#2513)
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.11.0...v3.11.1
+
+## [3.11.0] - 2026-03-29
+
+## What's Changed
+
+### New Features
+- **GeoJSON/KML/KMZ overlay layer support** — Upload geospatial files as map overlays with per-layer styling, visibility toggles, and simplestyle-spec support. KML/KMZ files are automatically converted to GeoJSON on upload. Files placed in `/data/geojson/` are auto-discovered. (#2488, closes #2487)
+
+### Bug Fixes
+- **Duplicate cron jobs after reconnects** — Timer triggers (auto-welcome, scheduled scripts) fired multiple times after device reconnects due to callback accumulation in the configComplete handler (#2489)
+- **Audit log FK constraint on channel migration** — Channel migration at startup used userId 0 which doesn't exist, causing SQLITE_CONSTRAINT_FOREIGNKEY error (#2486, reported in #2425)
+
+### New Dependencies
+- `@tmcw/togeojson` — KML to GeoJSON conversion
+- `@xmldom/xmldom` — XML parsing for KML
+- `jszip` — KMZ (ZIP archive) extraction
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.10.4...v3.11.0
+
+
+## [3.10.4] - 2026-03-28
+
+## What's Changed
+
+### Bug Fixes
+- **Fix reconnect flood on WiFi-connected devices** — Schedulers now wait for `configComplete` before starting, with staggered initialization and TCP backpressure handling to prevent overwhelming WiFi-connected Meshtastic devices (#2479, closes #2474)
+- **Detect and recover from phantom TCP connections** — Adds buffer staleness detection and forced reconnect when data arrives but no messages are parsed, fixing a long-standing issue with USB serial bridges losing inbound data after hours (#2480)
+- **Polygon geofence trigger button never enables** — Fixed Leaflet's double-click zoom consuming the polygon finalization event; polygon shape now updates progressively as vertices are added (#2481)
+- **Permissions swap fails on SQLite CHECK constraint** (#2476)
+
+### Improvements
+- **Expanded repository test coverage** — 363 new tests across all database backends (SQLite, PostgreSQL, MySQL) covering nodes, channels, notifications, neighbors, traceroutes, ignored nodes, channel database, and settings repositories (#2477)
+- **Flaky system test fix** — Added retry logic to config import CSRF/login step (#2479)
+- **Translation updates** from Hosted Weblate (#2459)
+
+### Issues Closed
+- #2474 — [BUG] Disconnects on 3.10.2
+- #2475 — [SUPPORT] Telegram proxy
+- #2425 — [FEAT] Channel Migration on container start
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.10.3...v3.10.4
+
+
+## [3.10.3] - 2026-03-27
+
+## What's New
+
+### Features
+- **Daily Security Digest via Apprise** — Schedule daily security reports (summary or detailed) delivered via Apprise to Discord, Slack, email, or 80+ other services. Configurable from the Security tab with enable toggle, Apprise URL, time picker, report type, format (plain text or markdown), and "Send Now" button. (#2471, closes #2468)
+- **Chronological SNR Chart** — Route segment popups now have a "Time of Day" / "Over Time" toggle, showing SNR trends over actual dates to track signal quality improvement or degradation. (#2467, closes #2464)
+- **Reversed Neighbor Arrows** — Neighbor connection arrows now point from the heard neighbor toward the receiving node, correctly representing communication direction. Arrows placed at 25%, 50%, and 75% along the line for visibility at any zoom level. (#2463, closes #2456)
+
+### Bug Fixes
+- **Comprehensive packet_log timestamp migration** — Fixed multiple functions still using seconds-based calculations for packet_log queries after the millisecond migration. Affected Top Broadcasters counts (inflated ~1000x), packet cleanup, and direct neighbor RSSI stats. Also fixed table header alignment in Top Broadcasters. (#2470, closes #2469)
+- **Neighbor info timestamp units** — Fixed "last seen" in Neighbor Connection popups showing wildly incorrect times due to seconds/milliseconds mismatch. (#2461, closes #2458)
+- **Channel swap detection** — Fixed channel migration only detecting one direction of a swap, causing message history loss and permissions UNIQUE constraint errors when channels swap positions. (#2460, closes #2425)
+- **Relay node filter by hop distance** — "Last Hops" filter dropdown now only shows plausible relay candidates (direct neighbors or 1-hop nodes), matching the column display logic. (#2462, closes #2457)
+- **Meshtastic connection timing defaults** — Increased default timeouts (connect: 10s→60s, reconnect initial delay: 1s→60s, module config delay: 100ms→1s) based on community feedback to reduce Node ID change issues during config sync. (#2472, relates to #2316)
+
+### Other
+- **Site Gallery** — Added NWI Mesh Net (Northwest Indiana) (#2466, closes #2465)
+- **Translations** — Updated translations from Hosted Weblate (#2416)
+
+## [3.10.2] - 2026-03-26
+
+## MeshMonitor v3.10.2
+
+### Bug Fixes
+- **#2438** fix: rename legacy system_backup_history columns ([#2419](https://github.com/Yeraze/meshmonitor/issues/2419))
+- **#2442** fix: add missing api_tokens name column ([#2435](https://github.com/Yeraze/meshmonitor/issues/2435))
+- **#2444** fix: correct frequency display when channelNum is 0 — implements DJB2 hash matching firmware ([#2436](https://github.com/Yeraze/meshmonitor/issues/2436))
+- **#2449** fix: change traceroute "MQTT" label to "IP" for non-LoRa hops ([#2443](https://github.com/Yeraze/meshmonitor/issues/2443))
+- **#2450** fix: replace node-cron with croner for missed execution recovery ([#2409](https://github.com/Yeraze/meshmonitor/issues/2409))
+- **#2451** fix: auto-mark incoming messages as read when viewing channel/DM ([#2316](https://github.com/Yeraze/meshmonitor/issues/2316))
+- **#2434** fix: packet monitor renders on mobile devices
+
+### Features
+- **#2433** feat: detect channel moves on startup, migrate messages and permissions
+- **#2439** feat: migrate automation channel references on channel move ([#2425](https://github.com/Yeraze/meshmonitor/issues/2425))
+- **#2448** feat: add `extraEnv` support to Helm chart for arbitrary environment variables
+
+### Security
+- **#2446** fix: upgrade ARMv7 base image to node:22.22.1-bookworm-slim (fixes critical zlib vulnerability)
+- **#2447** security upgrade node to 22.22.2-bookworm-slim
+
+### Testing
+- 3110 unit tests pass
+- 11/11 system tests pass (config import, security, reverse proxy, OIDC, backup/restore, DB migration, API exercise across SQLite/Postgres/MySQL)
+- 3/3 backend soak tests pass (300s each, no errors)
+
+## [3.10.1] - 2026-03-25
+
+## Changes since v3.10.0
+
+### Features
+- Dead nodes report with bulk delete on Security tab (#2414)
+- Icon style toggle — switch between Lucide and emoji sidebar icons (#2420)
+- API exercise test validates response structure on all 3 backends (#2422)
+
+### Bug Fixes
+- Channel database no longer shadows device channels with same PSK (#2415)
+- System backup history queries use wrong column names (#2421)
+- Left-align all packet monitor table columns, fix missing Date colgroup (#2428)
+- Add UNIQUE constraint to notification preferences userId — fixes 500 on save (#2429)
+- Auto-mark messages as read when viewing channel or DM — fixes persistent unread indicator (#2430)
+
+## [3.10.0] - 2026-03-24
+
+## MeshMonitor v3.10.0
+
+Major release featuring comprehensive database architecture refactoring — **5,672 lines of code removed** across 278 files — plus new features and dozens of bug fixes.
+
+### New Features
+- **Channel drag-and-drop reorder** with automatic message history migration (#2411)
+- **Dead nodes report** with bulk delete on Security tab (#2414)
+- **Rsyslog server setting** in network configuration (#2410)
+- **Polar grid map overlay** for directional analysis (#2359)
+- **Configurable default map center** (#2350)
+- **Auto responder environment variables** for external scripts (#2356)
+- **Millisecond packet timestamps** with dedicated date column (#2403)
+- **OIDC retry on failure** — auth no longer permanently disables (#2402)
+
+### Database Architecture (5,672 lines removed)
+- Full async migration — all sync database calls replaced (Phase 1-4: #2323, #2324, #2325, #2330, #2332, #2335)
+- Repository pattern — monolithic DatabaseService decomposed into domain-specific repositories (#2309, #2310)
+- Centralized migration registry with clean v3.7 baseline (#2315)
+- N+1 query elimination in security scanner, neighbor info, and node queries (#2336, #2339, #2404)
+- Cross-database helpers: `col()`, `upsert()`, `insertIgnore()`, `getAffectedRows()` (#2372, #2374, #2376, #2389)
+
+### Bug Fixes
+- Channel database no longer shadows device channels with same PSK (#2415, #2413)
+- PostgreSQL connection pool exhaustion with 200+ nodes (#2404)
+- Local node no longer self-flags security warnings or bounces link quality (#2407)
+- Key mismatch warnings now properly clear after resolution (#2406)
+- Admin keys no longer show as [object Object] (#2408)
+- Traceroute race conditions and duplication (#2366, #2380, #2387)
+- MQTT detection and visual distinction in traceroutes (#2302)
+- PKI_UNKNOWN_PUBKEY key mismatch flagging (#2382)
+- PG packet monitor showing hex IDs instead of node names (#2406)
+- Time offset flags not persisted on SQLite (#2379)
+- Maintenance service scheduling drift and timezone bugs (#2338)
+- Packet monitor ordering with same-second timestamps (#2369, #2403)
+
+## [3.9.5] - 2026-03-16
+
+## What's Changed in v3.9.5
+
+### Bug Fixes
+- **fix: SQLite migrations 083/084 skipped due to early return in 082** — Users upgrading from pre-3.9 on SQLite were missing the `lastMeshReceivedKey` column, crashing node queries and auto-delete-by-distance. ([#2301](https://github.com/Yeraze/meshmonitor/pull/2301), fixes [#2296](https://github.com/Yeraze/meshmonitor/issues/2296))
+- **fix: allow 0 for traceroute expiration hours setting** — Backend rejected 0 for "Re-traceroute after" even though the frontend and server route allowed it. ([#2300](https://github.com/Yeraze/meshmonitor/pull/2300))
+- **fix: polish Auto Delete by Distance UI** — Aligned header checkbox pattern, Run Now button, disabled states, and fixed "Invalid Date" on PostgreSQL. ([#2297](https://github.com/Yeraze/meshmonitor/pull/2297))
+- **fix: use correct column names for inactive node queries on PostgreSQL/MySQL** — Fixed nullable `lastHeard` causing TypeScript null check failures. ([#2282](https://github.com/Yeraze/meshmonitor/pull/2282), fixes [#2281](https://github.com/Yeraze/meshmonitor/issues/2281))
+- **fix: guard against local node echo processing and reboot-merge races** — Prevents local node echoed NodeInfo from overwriting data or triggering false key mismatch flags. ([#2278](https://github.com/Yeraze/meshmonitor/pull/2278), fixes [#2277](https://github.com/Yeraze/meshmonitor/issues/2277))
+- **fix: stop broadcasting stale public key in NodeInfo exchanges** — Fixed MeshMonitor broadcasting cached stale keys, causing firmware 2.7.19 to reject the node. ([#2276](https://github.com/Yeraze/meshmonitor/pull/2276), fixes [#2275](https://github.com/Yeraze/meshmonitor/issues/2275))
+- **fix: adjust auto-traceroute interval and expiration limits** — ([#2272](https://github.com/Yeraze/meshmonitor/pull/2272))
+- **fix: preserve traceroute request node order from virtual node** — ([#2279](https://github.com/Yeraze/meshmonitor/pull/2279))
+- **fix: rename Exchange User Info to Exchange Node Info** — ([#2280](https://github.com/Yeraze/meshmonitor/pull/2280))
+
+### Features
+- **feat: auto delete nodes by distance** — Automatically remove nodes outside a configured radius. ([#2270](https://github.com/Yeraze/meshmonitor/pull/2270))
+- **feat: direct radio links visualization with simplified map overlays** — ([#2268](https://github.com/Yeraze/meshmonitor/pull/2268))
+
+### Dependency Updates
+- better-sqlite3 12.6.2 → 12.8.0 ([#2295](https://github.com/Yeraze/meshmonitor/pull/2295))
+- mysql2 3.19.0 → 3.20.0 ([#2288](https://github.com/Yeraze/meshmonitor/pull/2288))
+- jsdom 28.1.0 → 29.0.0 ([#2292](https://github.com/Yeraze/meshmonitor/pull/2292))
+- docker/build-push-action 6 → 7 ([#2285](https://github.com/Yeraze/meshmonitor/pull/2285))
+- dorny/paths-filter 3 → 4 ([#2284](https://github.com/Yeraze/meshmonitor/pull/2284))
+- @typescript-eslint/eslint-plugin 8.56.1 → 8.57.0 ([#2294](https://github.com/Yeraze/meshmonitor/pull/2294))
+- @typescript-eslint/parser 8.56.1 → 8.57.0 ([#2289](https://github.com/Yeraze/meshmonitor/pull/2289))
+- @vitest/coverage-v8 4.0.18 → 4.1.0 ([#2290](https://github.com/Yeraze/meshmonitor/pull/2290))
+- puppeteer 24.38.0 → 24.39.1 ([#2291](https://github.com/Yeraze/meshmonitor/pull/2291))
+- Production dependencies group update ([#2287](https://github.com/Yeraze/meshmonitor/pull/2287))
+- Development dependencies group update ([#2286](https://github.com/Yeraze/meshmonitor/pull/2286))
+
+### Other
+- chore: add /create-pr slash command for PR workflow ([#2298](https://github.com/Yeraze/meshmonitor/pull/2298))
+- Translations update from Hosted Weblate ([#2271](https://github.com/Yeraze/meshmonitor/pull/2271))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.9.4...v3.9.5
+
+## [3.9.4] - 2026-03-15
+
+## What's New
+
+### Auto Delete by Distance
+A new automation feature that automatically removes nodes beyond a configurable distance threshold from your home coordinate. Keep your node database focused on your local mesh.
+
+- **Home coordinate** — Set your location manually or use your connected node's position
+- **Distance threshold** — Configure the maximum distance (in km or miles) to keep nodes
+- **Configurable interval** — Run cleanup every 6, 12, 24, or 48 hours
+- **Protected nodes** — Favorited nodes and your local node are never deleted
+- **Activity log** — Track what was deleted and when
+- **Run Now** — Trigger an immediate cleanup from the Automation tab
+
+### Auto Traceroute Improvements
+- **Retraceroute After** now accepts **0 hours**, meaning nodes are always eligible for retraceroute on every cycle ([#2269](https://github.com/Yeraze/meshmonitor/issues/2269))
+- **Minimum interval** raised to **3 minutes** to prevent excessive mesh traffic
+
+## Bug Fixes
+- **Multi-database parity** — Implemented missing PostgreSQL/MySQL methods for full feature parity across all backends ([#2267](https://github.com/Yeraze/meshmonitor/pull/2267))
+- **Auto-key repair** — Fixed state tracking on PostgreSQL/MySQL and improved device DB awareness ([#2264](https://github.com/Yeraze/meshmonitor/pull/2264))
+- **System tests** — Dev containers are now shut down before system tests to prevent port conflicts
+
+## Translations
+- Updated Spanish translations ([#2271](https://github.com/Yeraze/meshmonitor/pull/2271))
+
+## PRs Included
+- [#2270](https://github.com/Yeraze/meshmonitor/pull/2270) — feat: auto delete nodes by distance ([#2266](https://github.com/Yeraze/meshmonitor/issues/2266))
+- [#2272](https://github.com/Yeraze/meshmonitor/pull/2272) — fix: auto-traceroute interval and expiration limits ([#2269](https://github.com/Yeraze/meshmonitor/issues/2269))
+- [#2267](https://github.com/Yeraze/meshmonitor/pull/2267) — fix: multi-database parity
+- [#2264](https://github.com/Yeraze/meshmonitor/pull/2264) — fix: auto-key repair on PostgreSQL/MySQL
+- [#2271](https://github.com/Yeraze/meshmonitor/pull/2271) — Translations update from Hosted Weblate
+- [#2274](https://github.com/Yeraze/meshmonitor/pull/2274) — chore: bump version to 3.9.4
+
+## Issues Resolved
+- [#2266](https://github.com/Yeraze/meshmonitor/issues/2266) — Delete Nodes from Database by Distance Threshold
+- [#2269](https://github.com/Yeraze/meshmonitor/issues/2269) — Auto Traceroute time interval
+
+## [3.9.3] - 2026-03-14
+
+## What's Changed
+
+### Bug Fixes
+
+- **fix: packet monitor infinite scroll and duplicate rows** (#2259)
+  - Added viewport height constraint so the virtualizer properly constrains rendering
+  - Replaced broken IntersectionObserver with virtualizer-based scroll detection
+  - Deduplicated packets by ID to prevent overlap from polling refetch offset shifts
+  - Closes #2254
+
+- **fix: security page crashes when Drizzle schema has columns missing from DB** (#2257)
+  - Added try/catch fallback to raw SQL when Drizzle query fails due to missing columns
+  - Prevents crash when migration 084 hasn't run yet
+
+- **fix: OSM tiles blocked by missing Referer header** (#2261)
+  - Changed Helmet's Referrer-Policy from `no-referrer` to `strict-origin-when-cross-origin`
+  - OSM tile servers require a Referer header per their usage policy
+  - Closes #2260
+
+- **fix: auto-responder Cyrillic params mangled by homoglyph normalization** (#2262)
+  - Homoglyph normalization was replacing some Cyrillic chars with Latin equivalents in extracted parameters, breaking geocoding APIs
+  - Now extracts parameters from original message text, preserving full Unicode
+  - Closes #2258
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.9.2...v3.9.3
+
+## [3.9.2] - 2026-03-14
+
+## v3.9.2 - Hotfix
+
+### Bug Fixes
+- **fix: wrong property names for Postgres/MySQL pools in getKeyRepairLogAsync** (#2251) — The key mismatch history query used incorrect property names (`pgPool` instead of `postgresPool`) causing `Cannot read properties of undefined (reading 'connect')` errors on PostgreSQL and MySQL backends when viewing the Security page.
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.9.1...v3.9.2
+
+## [3.9.1] - 2026-03-14
+
+## v3.9.1 - Hotfix
+
+### Bug Fixes
+- **fix: migration 084 fails when `auto_key_repair_log` table doesn't exist** (#2249, closes #2247) — Users upgrading to 3.9.0 who never enabled auto-key management would hit SQLite errors on the Security page. Migration now checks table existence before altering on all three backends (SQLite, PostgreSQL, MySQL), and query methods gracefully handle missing table/columns.
+
+### Features
+- **feat: configurable zoom level for neighbor info lines** (#2246, closes #2245) — Added a setting in the Map section to control the zoom level at which Neighbor Info lines are hidden. Defaults to 12 (previous hardcoded value).
+
+### Documentation
+- **docs: update architecture lessons and CLAUDE.md** (#2248) — Added Key Management & PKI section, settings allowlist guidance, and version bump file list.
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.9.0...v3.9.1
+
+## [3.9.0] - 2026-03-13
+
+## What's New in 3.9.0
+
+### Key Mismatch Detection & Immediate Purge ([#2243](https://github.com/Yeraze/meshmonitor/pull/2243), closes [#2227](https://github.com/Yeraze/meshmonitor/issues/2227))
+
+Proactively detects when a mesh node broadcasts a different public key than what's stored locally. When a mismatch is found, MeshMonitor can automatically purge the stale entry from your connected device to trigger re-discovery with the correct key.
+
+- **Mismatch detection**: Compares mesh-received NodeInfo keys against stored keys in real-time
+- **Immediate Purge toggle**: Optionally purge mismatched nodes on detection instead of going through the exchange retry cycle
+- **Activity log enhancements**: Old/new key fragments and retry counts displayed in the Automation page activity log
+- **Security Tab**: New Key Mismatch Events section showing mismatch history with status indicators
+- **Channel-based exchanges**: NodeInfo exchanges for key repair are sent on the node's channel (not DM), since PKI-encrypted DMs fail when keys are mismatched
+- Supports all three database backends (SQLite, PostgreSQL, MySQL)
+
+### Map Visualization UI Overhaul ([#2237](https://github.com/Yeraze/meshmonitor/pull/2237))
+
+Major refresh of the map interface with improved usability and visual consistency. Thanks to **@NearlCrews** for his work on this!
+
+- **Consolidated map legend**: Merged position history legend into a single collapsible panel showing hop colors, link types, SNR quality, and position history gradient
+- **Node hover isolation**: Hovering a node marker dims unrelated route/neighbor lines to trace paths per node
+- **Zoom-adaptive filtering**: Poor/unknown SNR route segments and neighbor lines auto-hide at low zoom levels
+- **Standardized overlay panel styling**: All panels now share consistent Catppuccin-themed styling
+- **Tileset selector redesign**: Responsive 3-column grid layout replacing the old horizontal row
+- **Improved touch detection**: Uses CSS media queries for accurate laptop+touchscreen handling
+
+### Bug Fixes
+
+- **Node uptime not showing on PostgreSQL/MySQL backends** ([#2242](https://github.com/Yeraze/meshmonitor/pull/2242))
+- **Draggable overlay gets stuck off-screen on window resize** ([#2241](https://github.com/Yeraze/meshmonitor/pull/2241))
+- **Map preferences not saving on PostgreSQL/MySQL backends** ([#2239](https://github.com/Yeraze/meshmonitor/pull/2239))
+
+---
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.8.8...v3.9.0
+
+## [3.8.8] - 2026-03-12
+
+## What's Changed
+
+### Features
+- **Remote Admin: expanded device configuration** — Added 8 missing fields (rebroadcast mode, timezone, double-tap as button press, disable triple click, LED heartbeat, buzzer mode, button/buzzer GPIO) with full load/save support for remote nodes ([#2235](https://github.com/Yeraze/meshmonitor/pull/2235))
+- **Packet Monitor: date display** — Time column now shows short date prefix for entries from prior days ([#2232](https://github.com/Yeraze/meshmonitor/pull/2232))
+- **Startup environment logging** — All environment variables logged at startup with source tracking ([#2221](https://github.com/Yeraze/meshmonitor/pull/2221))
+
+### Bug Fixes
+- **Device metadata display** — Human-readable names for hardware model, role, and position flags on Remote Admin page ([#2236](https://github.com/Yeraze/meshmonitor/pull/2236))
+- **Auto key management: non-message requests** — Key mismatch errors now detected for NodeInfo, telemetry, and position requests, not just DMs ([#2233](https://github.com/Yeraze/meshmonitor/pull/2233))
+- **MQTT transport detection** — Now checks newer firmware `transportMechanism` enum in addition to legacy `viaMqtt` bool ([#2231](https://github.com/Yeraze/meshmonitor/pull/2231))
+- **Database purge on PostgreSQL/MySQL** — Fixed purge of telemetry, messages, and traceroutes failing on non-SQLite backends ([#2230](https://github.com/Yeraze/meshmonitor/pull/2230), closes [#2228](https://github.com/Yeraze/meshmonitor/issues/2228))
+- **Public key sync** — Prevent device sync from overwriting mesh-received public keys ([#2229](https://github.com/Yeraze/meshmonitor/pull/2229), closes [#2210](https://github.com/Yeraze/meshmonitor/issues/2210))
+- **macOS x64 build** — Fixed build producing ARM64 binary instead of x86_64 ([#2226](https://github.com/Yeraze/meshmonitor/pull/2226), closes [#2224](https://github.com/Yeraze/meshmonitor/issues/2224))
+- **Channel Database default key** — Support default key `AQ==` and fix permission check ([#2223](https://github.com/Yeraze/meshmonitor/pull/2223), closes [#2218](https://github.com/Yeraze/meshmonitor/issues/2218))
+- **Noisy logs** — Reduced INFO-level log spam from poll endpoint and getDeviceConfig ([#2222](https://github.com/Yeraze/meshmonitor/pull/2222), closes [#2219](https://github.com/Yeraze/meshmonitor/issues/2219))
+
+### Closed Issues
+- [#2225](https://github.com/Yeraze/meshmonitor/issues/2225) — NEIGHBORINFO_APP not received (user config: CORE_PORTNUMS_ONLY rebroadcast mode)
+- [#2220](https://github.com/Yeraze/meshmonitor/issues/2220) — Startup log for effective timing values
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.8.7...v3.8.8
+
+## [3.8.7] - 2026-03-11
+
+## Changes since v3.8.6
+
+### Features
+- **Configurable TCP timing and module config delay** ([#2216](https://github.com/Yeraze/meshmonitor/pull/2216)) — Closes [#2213](https://github.com/Yeraze/meshmonitor/issues/2213), [#2214](https://github.com/Yeraze/meshmonitor/issues/2214)
+  - `MESHTASTIC_CONNECT_TIMEOUT_MS` — initial TCP connect timeout (default: 10s)
+  - `MESHTASTIC_RECONNECT_INITIAL_DELAY_MS` — reconnect backoff base delay (default: 1s)
+  - `MESHTASTIC_RECONNECT_MAX_DELAY_MS` — reconnect backoff cap (default: 60s)
+  - `MESHTASTIC_MODULE_CONFIG_DELAY_MS` — delay between module config requests (default: 100ms)
+- **Node ignore list for auto-acknowledge** ([#2212](https://github.com/Yeraze/meshmonitor/pull/2212)) — Suppress auto-ack for specific noisy/abusive nodes (thanks @ascendr)
+- **Enhanced Node Status Widget** ([#2205](https://github.com/Yeraze/meshmonitor/pull/2205)) — Clickable node names, voltage column, uptime column (thanks @ascendr)
+
+### Bug Fixes
+- **Fix channel assignment for node communication** ([#2208](https://github.com/Yeraze/meshmonitor/pull/2208)) — Update node channel from all firmware-decoded packets instead of only NodeInfo, preventing nodes from getting stuck on wrong channel
+- **Fix MQTT-sourced neighbor info creating bogus map connections** ([#2206](https://github.com/Yeraze/meshmonitor/pull/2206))
+- **Fix iOS channel display ordering** ([#2204](https://github.com/Yeraze/meshmonitor/pull/2204)) — Match firmware config state machine order (thanks @NearlCrews)
+- **Fix NodeStatusWidget excessive voltage re-fetching** ([#2207](https://github.com/Yeraze/meshmonitor/pull/2207)) — Replace raw fetch with React Query hook for caching/dedup
+
+### Improvements
+- **CSS design token consolidation** ([#2215](https://github.com/Yeraze/meshmonitor/pull/2215)) — Unified design tokens, fixed 42+ orphan variable references, fully themed LoginPage and TilesetSelector (thanks @ascendr)
+- **Clarify Node Hops Calculation docs** ([#2211](https://github.com/Yeraze/meshmonitor/pull/2211)) — Document that "All messages" uses all packet types
+- **Enhanced bug report template** ([#2209](https://github.com/Yeraze/meshmonitor/pull/2209))
+- **Translation updates** ([#2196](https://github.com/Yeraze/meshmonitor/pull/2196))
+
+## [3.8.6] - 2026-03-10
+
+## What's New
+
+### Features
+- **Configurable Analytics Provider Settings** — Add optional web analytics to your MeshMonitor instance. Supports Google Analytics (GA4), Cloudflare Web Analytics, PostHog, Plausible, Umami, Matomo, and custom scripts. Configured via the Settings tab with automatic CSP integration. [#2200](https://github.com/Yeraze/meshmonitor/pull/2200) — closes [#2198](https://github.com/Yeraze/meshmonitor/issues/2198)
+- **Last Hop Filter for Packet Monitor** — Filter packets by the last relay node that forwarded them. [#2199](https://github.com/Yeraze/meshmonitor/pull/2199)
+- **Analytics Documentation** — New docs page covering all supported analytics providers, configuration, CSP handling, and privacy considerations. [#2203](https://github.com/Yeraze/meshmonitor/pull/2203)
+
+### Bug Fixes
+- **Upgrade Watchdog** — Accept both `.yml` and `.yaml` extensions for Docker Compose files, fixing auto-upgrade failures for some users. [#2201](https://github.com/Yeraze/meshmonitor/pull/2201) — closes [#2197](https://github.com/Yeraze/meshmonitor/issues/2197)
+- **Packet Monitor UI** — Improve button contrast and detail popup readability. [#2195](https://github.com/Yeraze/meshmonitor/pull/2195)
+- **Virtual Node** — Match physical radio's channel protobuf encoding exactly. [#2193](https://github.com/Yeraze/meshmonitor/pull/2193)
+- **Virtual Node Config** — Only suppress duplicate `wantConfigId` requests, not new ones. [#2192](https://github.com/Yeraze/meshmonitor/pull/2192) — closes [#2191](https://github.com/Yeraze/meshmonitor/issues/2191)
+- **Dashboard Widgets** — Filter empty distance buckets from dashboard widgets. [#2190](https://github.com/Yeraze/meshmonitor/pull/2190)
+- **Message Queue** — Fix message queue service bugs and unskip all tests. [#2189](https://github.com/Yeraze/meshmonitor/pull/2189)
+
+### Performance
+- **Batch SQL Operations** — Convert N+1 delete loops to batch DELETE operations and optimize COUNT queries. [#2187](https://github.com/Yeraze/meshmonitor/pull/2187), [#2188](https://github.com/Yeraze/meshmonitor/pull/2188)
+- **SQL COUNT Optimization** — Use SQL `COUNT(*)` instead of loading entire tables for count queries. [#2185](https://github.com/Yeraze/meshmonitor/pull/2185)
+
+### Other
+- Translations update from Hosted Weblate. [#2168](https://github.com/Yeraze/meshmonitor/pull/2168)
+- Remove unused legacy functions from meshtasticManager.ts. [#2186](https://github.com/Yeraze/meshmonitor/pull/2186)
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.8.5...v3.8.6
+
+## [3.8.5] - 2026-03-09
+
+## What's New
+
+### Features
+- **Packet Monitor as Sidebar Tab** — The Packet Monitor is now available as a dedicated sidebar tab in addition to the map panel ([#2180](https://github.com/Yeraze/meshmonitor/pull/2180), closes [#2179](https://github.com/Yeraze/meshmonitor/issues/2179))
+- **Dedicated Packet Monitor Permission** — New `packetmonitor:read` permission controls access to the Packet Monitor. Packets are filtered server-side based on channel and DM permissions ([#2181](https://github.com/Yeraze/meshmonitor/pull/2181))
+- **Dashboard Widgets** — Added hop distribution, distance distribution, and heatmap dashboard widgets ([#2164](https://github.com/Yeraze/meshmonitor/pull/2164), closes [#2162](https://github.com/Yeraze/meshmonitor/issues/2162))
+
+### Bug Fixes
+- **Virtual Node config loop** — Fixed config request loop caused by cached rebooted messages ([#2182](https://github.com/Yeraze/meshmonitor/pull/2182))
+- **MeshCore contacts** — Fixed contacts not auto-updating on map and monitor page ([#2165](https://github.com/Yeraze/meshmonitor/pull/2165))
+- **Backup modal UI** — Wider modal, styled buttons, improved spacing ([#2163](https://github.com/Yeraze/meshmonitor/pull/2163))
+- **Mobile message input** — Full-width text input with buttons below ([#2161](https://github.com/Yeraze/meshmonitor/pull/2161))
+
+### Performance
+- **SQL COUNT optimization** — Use `COUNT(*)` instead of loading entire tables for count queries ([#2185](https://github.com/Yeraze/meshmonitor/pull/2185))
+- **Batch DELETE operations** — Convert N+1 delete loops to batch DELETE statements ([#2187](https://github.com/Yeraze/meshmonitor/pull/2187))
+
+### Maintenance
+- Removed 1,182 lines of unused legacy functions from meshtasticManager.ts ([#2186](https://github.com/Yeraze/meshmonitor/pull/2186))
+- Removed debug leftovers and fixed desktop version ([#2183](https://github.com/Yeraze/meshmonitor/pull/2183))
+- Added tested hardware configurations documentation ([#2166](https://github.com/Yeraze/meshmonitor/pull/2166), [#2167](https://github.com/Yeraze/meshmonitor/pull/2167))
+- Translation updates from Weblate ([#2128](https://github.com/Yeraze/meshmonitor/pull/2128))
+
+### Dependency Updates
+- mysql2 3.18.2 → 3.19.0 ([#2178](https://github.com/Yeraze/meshmonitor/pull/2178))
+- express-rate-limit 8.2.1 → 8.3.0 ([#2177](https://github.com/Yeraze/meshmonitor/pull/2177))
+- pg 8.19.0 → 8.20.0 ([#2176](https://github.com/Yeraze/meshmonitor/pull/2176))
+- recharts 3.7.0 → 3.8.0 ([#2175](https://github.com/Yeraze/meshmonitor/pull/2175))
+- puppeteer 24.37.5 → 24.38.0 ([#2174](https://github.com/Yeraze/meshmonitor/pull/2174))
+- Production dependencies group update ([#2173](https://github.com/Yeraze/meshmonitor/pull/2173))
+- Development dependencies group update ([#2172](https://github.com/Yeraze/meshmonitor/pull/2172))
+- docker/login-action 3 → 4 ([#2171](https://github.com/Yeraze/meshmonitor/pull/2171))
+- docker/setup-buildx-action 3 → 4 ([#2170](https://github.com/Yeraze/meshmonitor/pull/2170))
+- docker/setup-qemu-action 3 → 4 ([#2169](https://github.com/Yeraze/meshmonitor/pull/2169))
+- actions/upload-artifact 4 → 7 ([#2094](https://github.com/Yeraze/meshmonitor/pull/2094))
+- actions/download-artifact 7 → 8 ([#2095](https://github.com/Yeraze/meshmonitor/pull/2095))
+
+### Action Required for Admins
+The new `packetmonitor:read` permission is granted to all users (including Anonymous) by default. If you need to restrict Packet Monitor access, review user permissions in **Settings → Users**.
+
+---
+
+## System Test Results
+
+**Test Run:** 2026-03-09
+
+| Test Suite | Result |
+|------------|--------|
+| Configuration Import | ✅ PASSED |
+| Quick Start Test | ✅ PASSED |
+| Security Test | ✅ PASSED |
+| V1 API Test | ✅ PASSED |
+| Reverse Proxy Test | ✅ PASSED |
+| Reverse Proxy + OIDC | ✅ PASSED |
+| Virtual Node CLI Test | ✅ PASSED |
+| Backup & Restore Test | ✅ PASSED |
+| Database Migration Test | ✅ PASSED |
+| DB Backing Consistency | ✅ PASSED |
+
+**Unit Tests:** 139 test files, 2,938 tests passed
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.8.4...v3.8.5
+
+## [3.8.4] - 2026-03-08
+
+# MeshMonitor v3.8.4
+
+MeshCore hotfix release.
+
+## What's Changed
+
+### Bug Fixes
+- fix: add defensive guards to MeshCore node rendering (#2158) — Closes #2157
+- fix: MeshCore repeater serial protocol — three bugs (#2159)
+
+### Details
+
+**MeshCore Nodes crash (#2158):**
+Enabling "Show MeshCore" on the Nodes page crashed when contacts had `null` SNR/RSSI values. Added type validation in `mapContactsToNodes()` and defensive guards in the render path.
+
+**MeshCore Repeater protocol (#2159)** — contributed by @NearlCrews:
+Three bugs prevented `MESHCORE_FIRMWARE_TYPE=repeater` from working:
+- `firmwareType` env var was ignored when connecting via API
+- Wrong line terminator (`\n` instead of `\r`) caused repeater to ignore all commands
+- Missing wake-up sequence and wrong response parsing for repeater CLI format
+
+### Issues Resolved
+- #2157 — [BUG] Connecting Meshcore device results to "Nodes failed to Load" error
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.8.3...v3.8.4
+
+## [3.8.3] - 2026-03-08
+
+# MeshMonitor v3.8.3
+
+## What's Changed
+
+### Bug Fixes
+- fix: resolve MeshCore display issues on Nodes page (#2151) — Closes #2154
+- fix: enable receiving incoming messages on MeshCore companion devices (#2150) — Closes #2149
+
+### Refactoring
+- refactor: reorganize Settings page into focused sections (#2148)
+- refactor: frontend review batch 1 — shared modal, toast theming, accessibility (#2152)
+- refactor: frontend review batch 2 — design tokens, CSS split, lucide icons (#2153)
+- refactor: frontend review batch 3 — error boundaries, context splitting (#2155)
+
+### Features
+- feat: add favorite lock toggle and filter (#2147)
+
+### Documentation
+- docs: add better-sqlite3 rebuild troubleshooting to LXC guide (#2146)
+
+### Issues Resolved
+- #2149 — [BUG] Meshcore Messaging only sends but cannot receive
+- #2154 — [BUG] Telemetry Dashboard Search Broken
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.8.2...v3.8.3
+
+## [3.8.2] - 2026-03-07
+
+## What's Changed
+
+### New Features
+- **Chat auto-scroll to new messages** — When near the bottom of a chat, new incoming messages automatically scroll the view. Works for both channel messages and DMs. Also adds a "Jump to Bottom" button to the DM tab. ([#2143](https://github.com/Yeraze/meshmonitor/pull/2143), [#2142](https://github.com/Yeraze/meshmonitor/issues/2142))
+
+### Bug Fixes
+- **Fix lock icon on auto-favorites** — Auto-favorited nodes no longer show a lock icon; only manually-locked favorites display 🔒 ([#2144](https://github.com/Yeraze/meshmonitor/pull/2144))
+- **Enable save for Dim Inactive Nodes settings** — Fix save button not enabling when changing dim inactive node settings ([#2140](https://github.com/Yeraze/meshmonitor/pull/2140), [#2138](https://github.com/Yeraze/meshmonitor/issues/2138))
+- **Normalize homoglyphs in autoresponder matching** — Autoresponder now matches messages with homoglyph characters ([#2137](https://github.com/Yeraze/meshmonitor/pull/2137), [#2136](https://github.com/Yeraze/meshmonitor/issues/2136))
+
+### Other
+- docs: fix outdated paths and values in ARCHITECTURE_LESSONS.md ([#2139](https://github.com/Yeraze/meshmonitor/pull/2139))
+- chore: bump version to 3.8.2 ([#2145](https://github.com/Yeraze/meshmonitor/pull/2145))
+
+
+## [3.8.1] - 2026-03-05
+
+## What's Changed
+
+### New Features
+- **Time Offset Security Detection** — Detect and flag mesh nodes whose clock is significantly out of sync (default threshold: 30 minutes, configurable via `TIME_OFFSET_THRESHOLD_MINUTES` env var). Displays in a new "Time Offset" section on the Security tab with human-readable offset and the node's reported time. ([#2130](https://github.com/Yeraze/meshmonitor/pull/2130))
+- **LOG_LEVEL environment variable** — Configure server log verbosity via environment variable ([#2124](https://github.com/Yeraze/meshmonitor/pull/2124))
+
+### Bug Fixes
+- **Suppress ghost node resurrection after reboot** — Prevents nodes from reappearing after server restart ([#2129](https://github.com/Yeraze/meshmonitor/pull/2129), [#2123](https://github.com/Yeraze/meshmonitor/issues/2123))
+- **Resolve test upgrade staying pending with Invalid Date** — Fix firmware upgrade test getting stuck ([#2127](https://github.com/Yeraze/meshmonitor/pull/2127), [#2125](https://github.com/Yeraze/meshmonitor/issues/2125))
+
+### Other
+- Translated using Weblate (Russian) ([#2069](https://github.com/Yeraze/meshmonitor/pull/2069))
+- Bump version to 3.8.1 ([#2131](https://github.com/Yeraze/meshmonitor/pull/2131))
+
+## [3.8.0] - 2026-03-04
+
+## MeshMonitor v3.8.0
+
+### Highlights
+
+**Gateway OTA Firmware Updates (Experimental)** — Administrators can now check for, download, and flash Meshtastic firmware updates directly from the MeshMonitor UI via a step-by-step wizard in System Settings. Supports Stable, Alpha, and custom firmware URLs with automatic config backup, live progress streaming, and hardware-matched binary selection. Docker deployments only.
+
+### New Features
+
+- **Gateway OTA firmware updates** ([#2110](https://github.com/Yeraze/meshmonitor/pull/2110)) — Closes [#2108](https://github.com/Yeraze/meshmonitor/issues/2108)
+- **Bell and position broadcast buttons** ([#2117](https://github.com/Yeraze/meshmonitor/pull/2117)) — Closes [#2113](https://github.com/Yeraze/meshmonitor/issues/2113), [#2114](https://github.com/Yeraze/meshmonitor/issues/2114)
+
+### Bug Fixes
+
+- **Disable OTA firmware updates on Tauri desktop builds** ([#2120](https://github.com/Yeraze/meshmonitor/pull/2120))
+- **Prevent auto-favorites from overriding manual favorites** ([#2115](https://github.com/Yeraze/meshmonitor/pull/2115)) — Closes [#2111](https://github.com/Yeraze/meshmonitor/issues/2111)
+
+### Documentation
+
+- **Message delivery status icon documentation and confirmed CSS fix** ([#2121](https://github.com/Yeraze/meshmonitor/pull/2121)) — Closes [#2118](https://github.com/Yeraze/meshmonitor/issues/2118)
+- **Add Utilization Alert to user scripts gallery** ([#2112](https://github.com/Yeraze/meshmonitor/pull/2112)) — Closes [#2109](https://github.com/Yeraze/meshmonitor/issues/2109)
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.7.6...v3.8.0
+
+## [3.7.6] - 2026-03-02
+
+## What's Changed
+
+### Bug Fixes
+- **Accept new nodeNum on same-device reboot** — when firmware reboots with a different nodeNum, MeshMonitor now accepts it and merges the old node's metadata instead of rejecting it. The old approach caused identity mismatches where MeshMonitor used the old nodeNum while the firmware broadcast on the new one ([#2106](https://github.com/Yeraze/meshmonitor/pull/2106))
+- **Fix isLocked desync for node names changed outside MeshMonitor** — node names changed via the Meshtastic app (or after factory reset) are now properly picked up. The `isLocked` flag was incorrectly blocking NodeInfo updates, the authoritative source for node identity ([#2106](https://github.com/Yeraze/meshmonitor/pull/2106))
+- **Prevent duplicate outgoing messages in chat** ([#2104](https://github.com/Yeraze/meshmonitor/pull/2104)) — closes [#2027](https://github.com/Yeraze/meshmonitor/issues/2027)
+
+### New Features
+- **Per-node cooldown for geofence triggers** — prevent repeated geofence alerts for the same node within a configurable time window ([#2105](https://github.com/Yeraze/meshmonitor/pull/2105)) — closes [#2103](https://github.com/Yeraze/meshmonitor/issues/2103)
+
+### Dependencies
+- Bump mysql2 from 3.17.4 to 3.18.2 ([#2102](https://github.com/Yeraze/meshmonitor/pull/2102))
+- Bump maplibre-gl from 5.18.0 to 5.19.0 ([#2101](https://github.com/Yeraze/meshmonitor/pull/2101))
+- Bump @types/supertest from 6.0.3 to 7.2.0 ([#2100](https://github.com/Yeraze/meshmonitor/pull/2100))
+- Bump pg and @types/pg ([#2099](https://github.com/Yeraze/meshmonitor/pull/2099))
+- Bump globals from 17.3.0 to 17.4.0 ([#2098](https://github.com/Yeraze/meshmonitor/pull/2098))
+- Bump production-dependencies group with 4 updates ([#2097](https://github.com/Yeraze/meshmonitor/pull/2097))
+- Bump development-dependencies group with 3 updates ([#2096](https://github.com/Yeraze/meshmonitor/pull/2096))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.7.5...v3.7.6
+
+
+## [3.7.5] - 2026-03-02
+
+## What's Changed
+
+### New Features
+- **Resizable node list sidebar** — drag to resize the sidebar to your preference ([#2079](https://github.com/Yeraze/meshmonitor/pull/2079))
+- **Multi-channel AutoAnnounce and AutoResponder** — configure automation on any channel, not just primary ([#2078](https://github.com/Yeraze/meshmonitor/pull/2078))
+- **Search filtered by user permissions** — search results now respect channel/resource permissions ([#2090](https://github.com/Yeraze/meshmonitor/pull/2090))
+- **Purge position history** — new action to clear position history for a node, plus taller actions dropdown ([#2086](https://github.com/Yeraze/meshmonitor/pull/2086)) — closes [#2082](https://github.com/Yeraze/meshmonitor/issues/2082)
+- **Dedicated chat bubble theme variables** — improved text contrast and theming support for chat bubbles ([#2088](https://github.com/Yeraze/meshmonitor/pull/2088)) — closes [#2084](https://github.com/Yeraze/meshmonitor/issues/2084)
+
+### Bug Fixes
+- **Prevent ghost duplicate node on reboot** — fix for devices that reboot with a different nodeNum creating phantom entries ([#2091](https://github.com/Yeraze/meshmonitor/pull/2091))
+- **Exclude MQTT-bridged nodes from auto-favourite** — nodes with 0 hops via MQTT are no longer auto-favourited ([#2087](https://github.com/Yeraze/meshmonitor/pull/2087)) — closes [#2085](https://github.com/Yeraze/meshmonitor/issues/2085)
+- **Sort dropdown overflow with long translations** — fix sidebar overflow with long i18n strings ([#2083](https://github.com/Yeraze/meshmonitor/pull/2083)) — closes [#2081](https://github.com/Yeraze/meshmonitor/issues/2081)
+- **Allow commas in embed allowed origins** — input field now correctly accepts comma-separated origins ([#2077](https://github.com/Yeraze/meshmonitor/pull/2077))
+
+### Maintenance
+- **Extract channel checkbox inline styles to CSS classes** ([#2089](https://github.com/Yeraze/meshmonitor/pull/2089))
+- **Replace trivy-action with direct Trivy install** for security scan CI ([#2080](https://github.com/Yeraze/meshmonitor/pull/2080))
+- **Stop system tests from rebuilding Docker image redundantly** — eliminates redundant builds and potential BuildKit cache corruption ([#2092](https://github.com/Yeraze/meshmonitor/pull/2092))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.7.4...v3.7.5
+
+## [3.7.4] - 2026-02-28
+
+## What's Changed
+
+### Bug Fixes
+- fix: allow any origin when embed allowedOrigins is blank (#2075) — Closes #2070
+- fix: prevent stale position broadcasts from overwriting fixed position (#2071)
+- fix: add embed.html to armv7 Dockerfile (#2067)
+- fix: use --entrypoint in Docker smoke tests (#2068)
+
+### Documentation
+- docs: exclude design plans from published docs (#2074)
+- docs: fix embed maps URL examples to match actual route (#2072)
+
+### Issues Resolved
+- #2070 [SUPPORT] Embed Maps
+- #2065 v3.7.3 isn't tagged with latest
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.7.3...v3.7.4
+
+## [3.7.3] - 2026-02-28
+
+## MeshMonitor v3.7.3
+
+### New Features
+
+- **Embeddable Map Widgets** — Share a live view of your mesh network on any website via `<iframe>`. Create embed profiles with channel filters, map defaults, and allowed origins. Includes hop-colored markers, rich popups, neighbor info lines, traceroute paths, and CSP-secured origins. [#2055](https://github.com/Yeraze/meshmonitor/pull/2055)
+- **Unified Message Search** — Search across all channels, DMs, and MeshCore messages with Ctrl+K / Cmd+K. Filter by sender, channel, date range, and scope. Click any result to jump to the message with highlight animation. REST API available at `GET /api/v1/messages/search`. [#2061](https://github.com/Yeraze/meshmonitor/pull/2061)
+
+### Bug Fixes
+
+- fix: persist Node Hops Calculation and Dim Inactive Nodes settings [#2049](https://github.com/Yeraze/meshmonitor/pull/2049) — closes [#2048](https://github.com/Yeraze/meshmonitor/issues/2048)
+- fix: payload_size calculation to include encrypted payload [#2052](https://github.com/Yeraze/meshmonitor/pull/2052)
+- fix: auto-welcome DMs send once and mark node immediately [#2057](https://github.com/Yeraze/meshmonitor/pull/2057) — closes [#2054](https://github.com/Yeraze/meshmonitor/issues/2054)
+- fix: don't render false direct-line segment for unknown return path [#2058](https://github.com/Yeraze/meshmonitor/pull/2058) — closes [#2051](https://github.com/Yeraze/meshmonitor/issues/2051)
+- fix: auto-assign IDs to geofence/timer triggers missing them [#2062](https://github.com/Yeraze/meshmonitor/pull/2062) — closes [#2059](https://github.com/Yeraze/meshmonitor/issues/2059)
+- fix: add embed.html to armv7 Dockerfile [#2067](https://github.com/Yeraze/meshmonitor/pull/2067)
+- fix: use --entrypoint in Docker smoke tests [#2068](https://github.com/Yeraze/meshmonitor/pull/2068)
+
+### Improvements
+
+- refactor: convert NodesTab sidebar from floating overlay to anchored sidebar [#2060](https://github.com/Yeraze/meshmonitor/pull/2060)
+- Remove unused node-specific packet distribution endpoint [#2053](https://github.com/Yeraze/meshmonitor/pull/2053)
+
+### Documentation & CI
+
+- docs: update README for accuracy with current feature set [#2043](https://github.com/Yeraze/meshmonitor/pull/2043)
+- docs: add screenshots to feature documentation pages [#2044](https://github.com/Yeraze/meshmonitor/pull/2044)
+- docs: add animated hero carousel to landing page [#2045](https://github.com/Yeraze/meshmonitor/pull/2045)
+- docs: add Embed Maps feature documentation [#2056](https://github.com/Yeraze/meshmonitor/pull/2056)
+- ci: add post-build smoke test for Docker images [#2047](https://github.com/Yeraze/meshmonitor/pull/2047) — closes [#2046](https://github.com/Yeraze/meshmonitor/issues/2046)
+- test: add settings persistence round-trip coverage [#2050](https://github.com/Yeraze/meshmonitor/pull/2050)
+
+### Issues Resolved
+
+- [#1976](https://github.com/Yeraze/meshmonitor/issues/1976) — Linux Raspbian baremetal; Node = v25.6.0
+- [#2046](https://github.com/Yeraze/meshmonitor/issues/2046) — arm64 Docker image for 3.7.0 contains 0-byte files
+- [#2048](https://github.com/Yeraze/meshmonitor/issues/2048) — UI Settings not persistent
+- [#2051](https://github.com/Yeraze/meshmonitor/issues/2051) — Received traceroute request generates false return segment
+- [#2054](https://github.com/Yeraze/meshmonitor/issues/2054) — Auto-welcome DMs send 3x and never mark node as welcomed
+- [#2059](https://github.com/Yeraze/meshmonitor/issues/2059) — Geofence exit events never fire when entry+exit triggers lack IDs
+
+
+## [3.7.2] - 2026-02-26
+
+## What's Changed
+
+### Security
+- **Enforce channel-based permission checks on telemetry and position endpoints** — Anonymous and limited users can no longer fetch telemetry or position data for nodes on channels they don't have `viewOnMap` permission for. Closes AUTHZ-VULN-02 from the Shannon pentest. ([#2038](https://github.com/Yeraze/meshmonitor/pull/2038))
+- **Regenerate session after authentication to prevent session fixation** ([#2034](https://github.com/Yeraze/meshmonitor/pull/2034))
+
+### Features
+- **Exchange Position with selectable channel** — Users can now choose which channel to send position exchange requests on. ([#2026](https://github.com/Yeraze/meshmonitor/pull/2026), closes [#2021](https://github.com/Yeraze/meshmonitor/issues/2021))
+- **Light/dark overlay color schemes for map elements** — Map overlays now respect the current theme. ([#2028](https://github.com/Yeraze/meshmonitor/pull/2028), closes [#2020](https://github.com/Yeraze/meshmonitor/issues/2020))
+- **Add Watch and Reboot + Home Assistant Bridge to user scripts gallery** — Two new community scripts from @maxhayim. ([#2039](https://github.com/Yeraze/meshmonitor/pull/2039), closes [#2035](https://github.com/Yeraze/meshmonitor/issues/2035), [#2036](https://github.com/Yeraze/meshmonitor/issues/2036))
+
+### Bug Fixes
+- **AutoAnnounce channel selection ignores disabled channels** ([#2025](https://github.com/Yeraze/meshmonitor/pull/2025), closes [#2024](https://github.com/Yeraze/meshmonitor/issues/2024))
+- **Duplicate outgoing messages in chat** ([#2029](https://github.com/Yeraze/meshmonitor/pull/2029), closes [#2027](https://github.com/Yeraze/meshmonitor/issues/2027))
+- **Deploy upgrade watchdog to legacy path for backward compat** ([#2030](https://github.com/Yeraze/meshmonitor/pull/2030), closes [#1888](https://github.com/Yeraze/meshmonitor/issues/1888))
+- **Reduce node load to prevent firmware heap exhaustion** ([#2031](https://github.com/Yeraze/meshmonitor/pull/2031), closes [#2013](https://github.com/Yeraze/meshmonitor/issues/2013))
+- **Poll interval now respects WebSocket connection state internally** ([#2032](https://github.com/Yeraze/meshmonitor/pull/2032))
+- **Position precision accuracy was 2x off from Meshtastic documentation** — The accuracy estimate displayed for precision bits (both in the info panel and on the map rectangle) was double the correct value. Now matches Meshtastic docs exactly. ([#2040](https://github.com/Yeraze/meshmonitor/pull/2040), closes [#2037](https://github.com/Yeraze/meshmonitor/issues/2037))
+- **Fix CSRF token invalidation in system tests** — After the session fixation fix, system tests needed to re-fetch the CSRF token post-login. ([#2042](https://github.com/Yeraze/meshmonitor/pull/2042))
+
+### Translations
+- Russian translation updates via Weblate ([#2033](https://github.com/Yeraze/meshmonitor/pull/2033), [#2041](https://github.com/Yeraze/meshmonitor/pull/2041))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.7.1...v3.7.2
+
+## [3.7.1] - 2026-02-25
+
+## MeshMonitor v3.7.1
+
+Hotfix release for Auto Favorite settings persistence.
+
+### Bug Fixes
+
+- **Auto Favorite settings not persisting after save** — The Auto Favorite toggle would revert to disabled immediately after saving. The `autoFavoriteEnabled` and `autoFavoriteStaleHours` settings keys were missing from the `validKeys` allowlist in the POST `/api/settings` endpoint, causing them to be silently dropped. ([#2023](https://github.com/Yeraze/meshmonitor/pull/2023))
+
+### Issues Resolved
+
+- [#2022](https://github.com/Yeraze/meshmonitor/issues/2022) — Auto Favorite toggle does not persist (reverts to disabled after saving)
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.7.0...v3.7.1
+
+## [3.7.0] - 2026-02-25
+
+## What's New
+
+### Auto Favorite Automation ([#2018](https://github.com/Yeraze/meshmonitor/pull/2018))
+
+Automatically favorite eligible nearby nodes for [zero-cost hop routing](https://meshtastic.org/blog/zero-cost-hops-favorite-routers/) on Meshtastic firmware 2.7+. When enabled on a **Router**, **Router Late**, or **Client Base** node, MeshMonitor detects 0-hop nodes and favorites them on your device — preserving hop counts across your mesh infrastructure without manual configuration.
+
+- **Event-driven**: Nodes are favorited as soon as they are detected
+- **Periodic cleanup**: Stale, out-of-range, or ineligible nodes are automatically unfavorited (configurable threshold, default 72h)
+- **Manual favorites are never touched** — only auto-managed nodes are swept
+- New **Auto Favorite** section in the Automation tab with enable toggle, staleness threshold, and status banners
+
+### Other Features
+
+- **Position precision accuracy estimates** — Channel UI now shows estimated accuracy for position precision settings ([#2008](https://github.com/Yeraze/meshmonitor/pull/2008))
+- **Location indicators on all channels** — All location-enabled channels now show location sharing indicators ([#2007](https://github.com/Yeraze/meshmonitor/pull/2007))
+
+## Bug Fixes
+
+- **Packet routes** — Use async DB methods for PostgreSQL/MySQL compatibility ([#2016](https://github.com/Yeraze/meshmonitor/pull/2016))
+- **Duplicate chat messages** — Prevented duplicate outgoing messages in chat ([#2012](https://github.com/Yeraze/meshmonitor/issues/2012), [#2015](https://github.com/Yeraze/meshmonitor/pull/2015))
+- **Map position updates** — Fixed position updates for mobile/tracker nodes and a WebSocket position bug ([#2014](https://github.com/Yeraze/meshmonitor/pull/2014))
+- **Homoglyph byte count** — Corrected optimized byte count display when homoglyph setting is enabled ([#2009](https://github.com/Yeraze/meshmonitor/pull/2009))
+
+## Maintenance
+
+- Clean up root markdown files ([#2011](https://github.com/Yeraze/meshmonitor/pull/2011))
+- Bump production dependencies ([#1992](https://github.com/Yeraze/meshmonitor/pull/1992))
+- Bump rollup dependencies ([#1993](https://github.com/Yeraze/meshmonitor/pull/1993), [#1996](https://github.com/Yeraze/meshmonitor/pull/1996))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.6.6...v3.7.0
+
+## [3.6.6] - 2026-02-23
+
+## What's Changed
+
+### Features
+- **Add homoglyph message optimization setting** — New setting to enable homoglyph character normalization for message display. Fixes [#1997](https://github.com/Yeraze/meshmonitor/issues/1997) ([#2000](https://github.com/Yeraze/meshmonitor/pull/2000))
+- **Add HAM Licensed checkbox to Node Identity settings** — Restores the missing HAM license checkbox in node identity configuration. Fixes [#1998](https://github.com/Yeraze/meshmonitor/issues/1998) ([#1999](https://github.com/Yeraze/meshmonitor/pull/1999))
+- **Add location sharing status to channel overview** — Channel overview now shows whether location sharing is enabled per channel. Fixes [#1985](https://github.com/Yeraze/meshmonitor/issues/1985) ([#1986](https://github.com/Yeraze/meshmonitor/pull/1986))
+
+### Bug Fixes
+- **Fix rate limiter IPv4-mapped IPv6 subnet masking** — All IPv4 clients were sharing a single rate limit bucket because the default `ipKeyGenerator` applied a `/56` subnet mask to `::ffff:x.x.x.x` addresses, zeroing out the IPv4 data. Each IPv4 client now gets its own bucket. Fixes [#1980](https://github.com/Yeraze/meshmonitor/issues/1980) ([#2001](https://github.com/Yeraze/meshmonitor/pull/2001))
+- **Fix NodeInfo broadcasting settings not saving** — Added NodeInfo broadcast settings to the validKeys whitelist so they persist correctly. Fixes [#1989](https://github.com/Yeraze/meshmonitor/issues/1989) ([#1990](https://github.com/Yeraze/meshmonitor/pull/1990))
+
+### Documentation
+- **Add Community Add-ons section** — New documentation for community add-ons including the AI Responder ([#1987](https://github.com/Yeraze/meshmonitor/pull/1987))
+
+### Dependencies
+- Bump @typescript-eslint/eslint-plugin from 8.55.0 to 8.56.0 ([#1994](https://github.com/Yeraze/meshmonitor/pull/1994))
+- Bump development dependencies group with 2 updates ([#1991](https://github.com/Yeraze/meshmonitor/pull/1991))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.6.5...v3.6.6
+
+
+## [3.6.5] - 2026-02-21
+
+## What's Changed
+
+### Features
+- **Allow disabling rate limits via environment variables** — Set `RATE_LIMIT_API`, `RATE_LIMIT_AUTH`, or `RATE_LIMIT_MESSAGES` to `unlimited`, `0`, or `-1` to disable rate limiting for users behind authenticating reverse proxies or on private networks ([#1981](https://github.com/Yeraze/meshmonitor/pull/1981))
+
+### Bug Fixes
+- **Fix ignored_nodes.nodeNum BIGINT overflow** — Upgraded `ignored_nodes.nodeNum` from INTEGER to BIGINT for PostgreSQL/MySQL to support full unsigned 32-bit Meshtastic node numbers. Fixes [#1973](https://github.com/Yeraze/meshmonitor/issues/1973) ([#1975](https://github.com/Yeraze/meshmonitor/pull/1975))
+- **Fix telemetry icons flickering on map load** — Prevent telemetry cache invalidation from clearing cached data, preserving stale data over empty data during cache transitions ([#1974](https://github.com/Yeraze/meshmonitor/pull/1974))
+- **Fix auto-upgrade sidecar port mapping loss** — Simplified the auto-upgrade sidecar script to prevent Docker port mappings from being lost during upgrades ([#1977](https://github.com/Yeraze/meshmonitor/pull/1977))
+- **Fix nodes with default shortName falsely classified as incomplete** — Nodes using the default Meshtastic short name are no longer hidden by the "hide incomplete nodes" filter ([#1972](https://github.com/Yeraze/meshmonitor/pull/1972))
+- **Fix filter popup Reset All button** — The Reset All button in the filter popup now correctly resets all filters ([#1971](https://github.com/Yeraze/meshmonitor/pull/1971))
+- **Fix premature new node notifications** — New node notifications are now deferred until node info is fully populated, preventing notifications with missing data ([#1970](https://github.com/Yeraze/meshmonitor/pull/1970))
+- **Fix map preference persistence** — `showAccuracyRegions` and `showEstimatedPositions` map settings now persist across page reloads ([#1969](https://github.com/Yeraze/meshmonitor/pull/1969))
+- **Remove incorrect "Desktop Only" label from packet monitor** — The packet monitor works on all platforms, not just desktop ([#1983](https://github.com/Yeraze/meshmonitor/pull/1983))
+- **Fix MySQL migration idempotency** — Fixed MySQL migrations 061 and 077 to correctly detect existing columns and avoid duplicate column/primary key errors ([#1982](https://github.com/Yeraze/meshmonitor/pull/1982))
+
+### CI/Infrastructure
+- **Add Node.js 25.x to CI test matrix** ([#1979](https://github.com/Yeraze/meshmonitor/pull/1979))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.6.4...v3.6.5
+
+## [3.6.4] - 2026-02-20
+
+## What's Changed
+
+### Bug Fixes
+- Upgrade telemetry packetId to BIGINT for PostgreSQL/MySQL ([#1967](https://github.com/Yeraze/meshmonitor/pull/1967)) - Fixes [#1964](https://github.com/Yeraze/meshmonitor/issues/1964)
+- Resolve MySQL/PostgreSQL node loss during init config sync ([#1965](https://github.com/Yeraze/meshmonitor/pull/1965))
+- Pre-populate MeshCore connection form from env vars ([#1963](https://github.com/Yeraze/meshmonitor/pull/1963)) - Fixes [#1960](https://github.com/Yeraze/meshmonitor/issues/1960)
+- Replace GPL session store and add MySQL URL detection ([#1961](https://github.com/Yeraze/meshmonitor/pull/1961))
+- Add processing delays to config import for reliable LoRa preset application ([#1958](https://github.com/Yeraze/meshmonitor/pull/1958))
+- Add DHCP client and networking service enablement to LXC template ([#1956](https://github.com/Yeraze/meshmonitor/pull/1956))
+
+### Tests
+- Add database backing consistency test across SQLite/PostgreSQL/MySQL ([#1966](https://github.com/Yeraze/meshmonitor/pull/1966))
+- Fix flaky DB backing consistency test node count check ([#1968](https://github.com/Yeraze/meshmonitor/pull/1968))
+
+### Other
+- Fix inaccuracies in Proxmox LXC deployment guide ([#1957](https://github.com/Yeraze/meshmonitor/pull/1957))
+- Translations update from Hosted Weblate - Russian ([#1959](https://github.com/Yeraze/meshmonitor/pull/1959))
+
+### Issues Resolved
+- [#1964](https://github.com/Yeraze/meshmonitor/issues/1964) - Telemetry insert failures on PostgreSQL due to packetId overflow
+- [#1960](https://github.com/Yeraze/meshmonitor/issues/1960) - MeshCore connection settings not pre-populated from env vars
+
+## [3.6.3] - 2026-02-19
+
+## What's Changed
+
+### Features
+- Differentiate own vs others' tapback reactions by color ([#1950](https://github.com/Yeraze/meshmonitor/pull/1950))
+
+### Bug Fixes
+- Add networking support to LXC template ([#1954](https://github.com/Yeraze/meshmonitor/pull/1954)) - Fixes [#1672](https://github.com/Yeraze/meshmonitor/issues/1672)
+- Consistent map pin click centering and popup positioning ([#1953](https://github.com/Yeraze/meshmonitor/pull/1953))
+- Use actual data tables for node packet type distribution ([#1952](https://github.com/Yeraze/meshmonitor/pull/1952))
+- Increase auto-responder script timeout from 10s to 30s ([#1942](https://github.com/Yeraze/meshmonitor/pull/1942))
+
+### Performance
+- Add server-side in-memory cache for link previews ([#1944](https://github.com/Yeraze/meshmonitor/pull/1944))
+
+### Other
+- Update deployment guide for accuracy ([#1946](https://github.com/Yeraze/meshmonitor/pull/1946))
+- Clean up LXC template build workflow release notes ([#1945](https://github.com/Yeraze/meshmonitor/pull/1945))
+- Translations update from Hosted Weblate - Russian ([#1943](https://github.com/Yeraze/meshmonitor/pull/1943))
+
+### Issues Resolved
+- [#1672](https://github.com/Yeraze/meshmonitor/issues/1672) - LXC deployment image/scenario on PM 9.1
+- [#1929](https://github.com/Yeraze/meshmonitor/issues/1929) - Short name incorrect
+- [#1934](https://github.com/Yeraze/meshmonitor/issues/1934) - Stations with icons as short name don't update on map
+- [#1936](https://github.com/Yeraze/meshmonitor/issues/1936) - Rounding to integers in graphs is still not fully fixed
+- [#1949](https://github.com/Yeraze/meshmonitor/issues/1949) - Window off screen again
+- [#1951](https://github.com/Yeraze/meshmonitor/issues/1951) - Traceroute results
+
+## [3.6.2] - 2026-02-18
+
+## What's Changed in v3.6.2
+
+### Bug Fixes
+
+- **fix: hide Show MeshCore toggle when disabled and persist its state** - The "Show MeshCore" checkbox in the map Features panel was always visible regardless of `MESHCORE_ENABLED` setting, and its state was never saved. Now properly hidden when MeshCore is disabled and persists across page loads. ([#1940](https://github.com/Yeraze/meshmonitor/pull/1940))
+- **fix: prevent fractional values in integer telemetry graphs** ([#1939](https://github.com/Yeraze/meshmonitor/pull/1939), [#1936](https://github.com/Yeraze/meshmonitor/issues/1936))
+- **fix: memoize map marker icons to prevent position update interference** ([#1938](https://github.com/Yeraze/meshmonitor/pull/1938))
+- **fix: render emoji short names as HTML overlay on map markers** ([#1937](https://github.com/Yeraze/meshmonitor/pull/1937), [#1934](https://github.com/Yeraze/meshmonitor/issues/1934))
+- **fix: add BASE_URL support to MeshCore API endpoints** ([#1935](https://github.com/Yeraze/meshmonitor/pull/1935))
+- **fix: derive short name from last 4 hex chars of node ID to match Meshtastic convention** ([#1932](https://github.com/Yeraze/meshmonitor/pull/1932), [#1929](https://github.com/Yeraze/meshmonitor/issues/1929))
+- **fix: position history endpoint nodeId parsing and pagination** ([#1931](https://github.com/Yeraze/meshmonitor/pull/1931))
+- **fix: increase auto-responder and script test timeout from 10s to 30s** - All automation script execution paths (auto-responder, timer, geofence, and the UI "Test" popup) now use a consistent 30-second timeout. ([#1942](https://github.com/Yeraze/meshmonitor/pull/1942))
+
+### New Features
+
+- **feat: add V1 API position history endpoint** ([#1930](https://github.com/Yeraze/meshmonitor/pull/1930))
+
+### Database Migration
+
+This release includes **migration 074** which adds the `show_meshcore_nodes` column to `user_map_preferences`. This migration runs automatically on startup for SQLite, PostgreSQL, and MySQL.
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.6.1...v3.6.2
+
+---
+
+## [3.6.1] - 2026-02-17
+
+## What's Changed
+
+### Features
+- Add feature emojis to `{FEATURES}` token and rename popup button ([#1923](https://github.com/Yeraze/meshmonitor/pull/1923))
+- Add StatusMessage and TrafficManagement module config ([#1925](https://github.com/Yeraze/meshmonitor/pull/1925))
+- Add Source filter to audit log page to separate UI vs API token events ([#1926](https://github.com/Yeraze/meshmonitor/pull/1926))
+
+### Fixes
+- Prevent MeshCore Companion corruption from repeater auto-detection ([#1924](https://github.com/Yeraze/meshmonitor/pull/1924))
+- Live backend preview for auto-announce and complete feature emoji legend ([#1927](https://github.com/Yeraze/meshmonitor/pull/1927))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.6.0...v3.6.1
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.6.0] - 2026-02-16
+
+## What's Changed
+
+### New Features
+- **Auto-Ping automation** — A new DM-command driven ping feature lets mesh users test connectivity and measure latency. Users DM `ping N` to start pings with ACK/NAK/timeout tracking and receive a summary with min/avg/max latency. Admins configure interval, max pings, and timeout in the Automation tab. ([#1917](https://github.com/Yeraze/meshmonitor/pull/1917), closes [#1894](https://github.com/Yeraze/meshmonitor/issues/1894))
+- **Telemetry packet ID tracking** — Telemetry records now include `packetId` from the originating mesh packet, enabling API consumers to de-duplicate data received via multiple mesh paths. ([#1921](https://github.com/Yeraze/meshmonitor/pull/1921))
+
+### Improvements
+- **Virtual Node firmware branding** — VN connections now report firmware as `2.6.6-MM3.6.0`, identifying the connection as a Virtual Node running on MeshMonitor. ([#1920](https://github.com/Yeraze/meshmonitor/pull/1920))
+- **Virtual Node channel stability** — Fixed `configComplete` broadcasts during physical radio reconnection causing VN clients to lose their channel list. Disabled channel slots (role=0) are now sent to match real device behavior. ([#1920](https://github.com/Yeraze/meshmonitor/pull/1920))
+- **Poll/unread optimization** — Batch queries for `/api/poll` and `/api/unread-counts` reduce database load with MySQL support. ([#1909](https://github.com/Yeraze/meshmonitor/pull/1909))
+- **Automation documentation** — Added missing docs for Auto-Ping, Auto Key Management, and Ignored Nodes. ([#1918](https://github.com/Yeraze/meshmonitor/pull/1918))
+
+### Bug Fixes
+- **Packet distribution portnum total** — Portnum filter now correctly applies to total count in the packet distribution API. ([#1919](https://github.com/Yeraze/meshmonitor/pull/1919))
+- **Mobile infinite scroll** — Fixed infinite scroll and always-visible virtual channels on mobile. ([#1907](https://github.com/Yeraze/meshmonitor/pull/1907), closes [#1908](https://github.com/Yeraze/meshmonitor/issues/1908))
+- **Hide accuracy region for overridden positions** — Position accuracy indicators no longer show for manually overridden node positions. ([#1910](https://github.com/Yeraze/meshmonitor/pull/1910))
+
+### Dependencies
+- Bump serialport from 12.0.0 to 13.0.0 ([#1915](https://github.com/Yeraze/meshmonitor/pull/1915))
+- Bump @serialport/parser-readline from 12.0.0 to 13.0.0 ([#1913](https://github.com/Yeraze/meshmonitor/pull/1913))
+- Bump production dependencies (jose, jiti, sass, sharp) ([#1911](https://github.com/Yeraze/meshmonitor/pull/1911))
+- Bump @typescript-eslint/eslint-plugin ([#1916](https://github.com/Yeraze/meshmonitor/pull/1916))
+- Bump @typescript-eslint/parser from 8.54.0 to 8.55.0 ([#1912](https://github.com/Yeraze/meshmonitor/pull/1912))
+- Bump jsdom from 28.0.0 to 28.1.0 ([#1914](https://github.com/Yeraze/meshmonitor/pull/1914))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.5.1...v3.6.0
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.5.1] - 2026-02-15
+
+## What's Changed
+
+### Bug Fixes
+- **Fix remote admin for ignore/favorite node toggle** — The dedicated ignore/favorite methods now support remote nodes by obtaining session passkeys and routing via `sendAdminCommand`, matching the existing AdminCommandsTab pattern. ([#1904](https://github.com/Yeraze/meshmonitor/pull/1904), closes [#1901](https://github.com/Yeraze/meshmonitor/issues/1901))
+- **Hide private key on Info page** — Private key is now hidden by default with a toggle visibility button. ([#1900](https://github.com/Yeraze/meshmonitor/pull/1900))
+- **Use apprise venv python for MeshCore bridge and scripts** — Fixes script execution in environments where the system Python differs from the venv. ([#1899](https://github.com/Yeraze/meshmonitor/pull/1899))
+- **Hide MeshCore sidebar when MESHCORE_ENABLED is not set** — The MeshCore sidebar entry no longer appears when the feature is disabled. ([#1893](https://github.com/Yeraze/meshmonitor/pull/1893))
+
+### New Features
+- **Per-portnum node distribution chart on Info page** — Adds more detailed statistics to the packet distribution diagrams. ([#1902](https://github.com/Yeraze/meshmonitor/pull/1902), closes [#1891](https://github.com/Yeraze/meshmonitor/issues/1891))
+- **RayHunter monitor script in script gallery** — New community script for RayHunter monitoring. ([#1895](https://github.com/Yeraze/meshmonitor/pull/1895))
+- **Server-node clock offset telemetry** — Tracks clock drift between the server and the connected node. ([#1889](https://github.com/Yeraze/meshmonitor/pull/1889))
+
+### Maintenance
+- **Update protobufs to v2.7.19** — Adds `TRAFFICMANAGEMENT_CONFIG` support. ([#1903](https://github.com/Yeraze/meshmonitor/pull/1903))
+- **Translation updates** — Russian translations updated via Weblate. ([#1892](https://github.com/Yeraze/meshmonitor/pull/1892))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.5.0...v3.5.1
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.5.0] - 2026-02-13
+
+## What's New
+
+MeshMonitor v3.5.0 is a milestone release introducing **experimental MeshCore protocol support**, along with AutoTraceroute scheduling improvements, Remote Admin UI enhancements, and several bug fixes.
+
+### Experimental MeshCore Protocol Support
+
+MeshMonitor can now connect to **MeshCore** repeaters and clients via serial port, enabling monitoring and messaging with MeshCore-based mesh networks alongside standard Meshtastic nodes.
+
+- **Serial port connectivity** to MeshCore repeaters and clients
+- **Node discovery and tracking** for MeshCore devices on the map
+- **Two-way messaging** between MeshMonitor and MeshCore nodes
+- **Contact management** with automatic discovery
+
+MeshCore support is experimental and requires a compatible MeshCore device connected via serial port. For more information, visit [meshcore.co](https://meshcore.co).
+
+([#1777](https://github.com/Yeraze/meshmonitor/pull/1777), [#1880](https://github.com/Yeraze/meshmonitor/pull/1880))
+
+### Features
+- **AutoTraceroute & Remote Admin time window scheduling** — Restrict scans to specific hours (e.g., off-peak 22:00–06:00) with overnight wrapping support ([#1871](https://github.com/Yeraze/meshmonitor/pull/1871), [#1872](https://github.com/Yeraze/meshmonitor/pull/1872))
+- **Remote Admin icon and filter on map node list** — Quickly identify and filter nodes with remote admin access ([#1868](https://github.com/Yeraze/meshmonitor/pull/1868))
+- **Show successful nodes first in Remote Admin Scanner log** — Improved scan log readability ([#1870](https://github.com/Yeraze/meshmonitor/pull/1870))
+- **Expand system tokens in Auto Responder HTTP URLs** — Use tokens like `{NODE_ID}`, `{SNR}`, etc. in HTTP action URLs ([#1867](https://github.com/Yeraze/meshmonitor/pull/1867), [#1865](https://github.com/Yeraze/meshmonitor/issues/1865))
+- **LLM Bridge user script** — New community script for connecting LLMs to your mesh ([#1878](https://github.com/Yeraze/meshmonitor/pull/1878), [#1876](https://github.com/Yeraze/meshmonitor/issues/1876))
+- **Highlight selected node during traceroute** — Pulsing glow on the selected node on the map ([#1847](https://github.com/Yeraze/meshmonitor/pull/1847))
+- **Compact packet charts on Info tab** — Combined charts into compact sections ([#1846](https://github.com/Yeraze/meshmonitor/pull/1846), [#1833](https://github.com/Yeraze/meshmonitor/issues/1833))
+- **Gist support for User Scripts Gallery** — Plus Earthquake Alerts script ([#1845](https://github.com/Yeraze/meshmonitor/pull/1845), [#1804](https://github.com/Yeraze/meshmonitor/issues/1804))
+- **Combined BLE & WiFi paxcounter graph** — Dual-line graph ([#1843](https://github.com/Yeraze/meshmonitor/pull/1843))
+- **Compact node list cards and tighter popups** ([#1842](https://github.com/Yeraze/meshmonitor/pull/1842), [#1834](https://github.com/Yeraze/meshmonitor/issues/1834))
+- **Document relayNode in V1 API and serve OpenAPI spec publicly** ([#1855](https://github.com/Yeraze/meshmonitor/pull/1855))
+- **Local node hint banner on Remote Admin page** ([#1854](https://github.com/Yeraze/meshmonitor/pull/1854))
+
+### Bug Fixes
+- **Tapback DM routing fix** — Tapback emoji reactions now correctly stay on the original channel instead of being sent as DMs ([#1885](https://github.com/Yeraze/meshmonitor/pull/1885))
+- **Outgoing message timestamp fix** — Timestamps update to node time on ACK receipt ([#1884](https://github.com/Yeraze/meshmonitor/pull/1884), [#1877](https://github.com/Yeraze/meshmonitor/issues/1877))
+- **Default auto-traceroute interval changed from 3 to 15 minutes** ([#1883](https://github.com/Yeraze/meshmonitor/pull/1883), [#1875](https://github.com/Yeraze/meshmonitor/issues/1875))
+- **Persist Auto Acknowledge pattern testing text** ([#1881](https://github.com/Yeraze/meshmonitor/pull/1881), [#1879](https://github.com/Yeraze/meshmonitor/issues/1879))
+- **Remove duplicate emoji from Sky and Sea Alert script name** ([#1882](https://github.com/Yeraze/meshmonitor/pull/1882))
+- **AutoTraceroute schedule settings race condition** ([#1872](https://github.com/Yeraze/meshmonitor/pull/1872))
+- **MFA verification broken on SQLite** — Missing columns in SELECT queries ([#1831](https://github.com/Yeraze/meshmonitor/pull/1831), [#1828](https://github.com/Yeraze/meshmonitor/issues/1828))
+- **Double-issuer in MFA otpauth URI** ([#1831](https://github.com/Yeraze/meshmonitor/pull/1831))
+- **Snapshot node positions at traceroute time** — Fix moving node rendering on traceroute maps ([#1864](https://github.com/Yeraze/meshmonitor/pull/1864), [#1862](https://github.com/Yeraze/meshmonitor/issues/1862))
+- **Broadcast outgoing text messages to virtual node clients** ([#1863](https://github.com/Yeraze/meshmonitor/pull/1863), [#1859](https://github.com/Yeraze/meshmonitor/issues/1859))
+- **Always verify auto_traceroute_nodes enabled column on startup** ([#1861](https://github.com/Yeraze/meshmonitor/pull/1861), [#1860](https://github.com/Yeraze/meshmonitor/issues/1860))
+- **Improve map node popup grid layout** for consistent positioning ([#1851](https://github.com/Yeraze/meshmonitor/pull/1851), [#1841](https://github.com/Yeraze/meshmonitor/issues/1841))
+- **Include network and telemetry configs in Load All button** ([#1854](https://github.com/Yeraze/meshmonitor/pull/1854), [#1852](https://github.com/Yeraze/meshmonitor/issues/1852))
+- **Always show local node in Auto Time Sync node list** ([#1848](https://github.com/Yeraze/meshmonitor/pull/1848))
+
+### Documentation
+- Add MeshCore feature documentation ([#1880](https://github.com/Yeraze/meshmonitor/pull/1880))
+- Add Auto Time Sync section to automation documentation ([#1874](https://github.com/Yeraze/meshmonitor/pull/1874))
+- Update API docs and schema for traceroute position snapshots ([#1866](https://github.com/Yeraze/meshmonitor/pull/1866))
+
+### Translations
+- Russian translation updates via Weblate ([#1856](https://github.com/Yeraze/meshmonitor/pull/1856), [#1869](https://github.com/Yeraze/meshmonitor/pull/1869))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.4.9...v3.5.0
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+---
+
+## Installation
+
+**Docker (recommended):**
+```bash
+docker run -d \
+  --name meshmonitor \
+  -p 8080:3001 \
+  -v meshmonitor-data:/data \
+  ghcr.io/yeraze/meshmonitor:3.5.0
+```
+
+**Helm:**
+```bash
+helm repo add meshmonitor https://yeraze.github.io/meshmonitor
+helm install meshmonitor meshmonitor/meshmonitor --version 3.5.0
+```
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.4.13] - 2026-02-12
+
+## What's New
+
+### Features
+- **Time window schedule for Auto Traceroute & Remote Admin Scanner** — Restrict these features to specific time windows (e.g., only scan during off-peak hours 22:00-06:00). Supports overnight wrapping. ([#1871](https://github.com/Yeraze/meshmonitor/pull/1871), [#1872](https://github.com/Yeraze/meshmonitor/pull/1872))
+- **Remote Admin icon and filter on map node list** — Quickly identify and filter nodes with remote admin access on the map ([#1868](https://github.com/Yeraze/meshmonitor/pull/1868))
+- **Show successful nodes first in Remote Admin Scanner log** — Improved scan log readability by sorting successful results to the top ([#1870](https://github.com/Yeraze/meshmonitor/pull/1870))
+- **Expand system tokens in Auto Responder HTTP URLs** — Use tokens like `{NODE_ID}`, `{SNR}`, etc. in HTTP action URLs ([#1867](https://github.com/Yeraze/meshmonitor/pull/1867), [#1865](https://github.com/Yeraze/meshmonitor/issues/1865))
+
+### Bug Fixes
+- **Snapshot node positions at traceroute time** — Fix moving node rendering on traceroute maps by capturing positions when traceroutes are recorded ([#1864](https://github.com/Yeraze/meshmonitor/pull/1864), [#1862](https://github.com/Yeraze/meshmonitor/issues/1862))
+- **Broadcast outgoing text messages to virtual node clients** — Virtual node clients now receive outgoing messages ([#1863](https://github.com/Yeraze/meshmonitor/pull/1863), [#1859](https://github.com/Yeraze/meshmonitor/issues/1859))
+- **Always verify auto_traceroute_nodes enabled column on startup** — Fix inability to enable auto traceroute on some installations ([#1861](https://github.com/Yeraze/meshmonitor/pull/1861), [#1860](https://github.com/Yeraze/meshmonitor/issues/1860))
+
+### Documentation
+- Update API docs and schema for traceroute position snapshots ([#1866](https://github.com/Yeraze/meshmonitor/pull/1866))
+
+### Translations
+- Russian translation updates via Weblate ([#1869](https://github.com/Yeraze/meshmonitor/pull/1869))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.4.12...v3.4.13
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.4.12] - 2026-02-11
+
+## What's Changed
+
+### Bug Fixes
+- fix: improve map node popup grid layout for consistent positioning ([#1851](https://github.com/Yeraze/meshmonitor/pull/1851)) — closes [#1841](https://github.com/Yeraze/meshmonitor/issues/1841)
+- fix: Load All button missing network and telemetry configs ([#1854](https://github.com/Yeraze/meshmonitor/pull/1854)) — closes [#1852](https://github.com/Yeraze/meshmonitor/issues/1852)
+  - Include network and telemetry configs in Remote Admin "Load All" button
+  - Add telemetry to local node load-config type map
+  - Add local node hint banner on Remote Admin page directing to Device Configuration
+
+### Features
+- feat: document relayNode in V1 API and serve OpenAPI spec publicly ([#1855](https://github.com/Yeraze/meshmonitor/pull/1855))
+  - Document `relayNode` and other undocumented fields in OpenAPI spec
+  - Make `openapi.json` and `openapi.yaml` accessible without authentication
+
+### Translations
+- Translations update from Hosted Weblate — Russian ([#1856](https://github.com/Yeraze/meshmonitor/pull/1856))
+
+### Maintenance
+- chore: bump version to 3.4.12 ([#1858](https://github.com/Yeraze/meshmonitor/pull/1858))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.4.11...v3.4.12
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.4.11] - 2026-02-09
+
+## What's Changed
+
+### Features
+- **Highlight selected node during traceroute** - Adds a pulsing glow to the selected node on the map during traceroute ([#1847](https://github.com/Yeraze/meshmonitor/pull/1847), closes [#1841](https://github.com/Yeraze/meshmonitor/issues/1841))
+- **Compact packet charts on Info tab** - Combines packet charts into compact sections ([#1846](https://github.com/Yeraze/meshmonitor/pull/1846), closes [#1833](https://github.com/Yeraze/meshmonitor/issues/1833))
+- **Gist support for User Scripts Gallery** - Add gist support to the gallery and include an Earthquake Alerts script ([#1845](https://github.com/Yeraze/meshmonitor/pull/1845), closes [#1804](https://github.com/Yeraze/meshmonitor/issues/1804))
+- **Combined BLE & WiFi paxcounter graph** - Merge BLE and WiFi paxcounter data into a single dual-line graph ([#1843](https://github.com/Yeraze/meshmonitor/pull/1843))
+- **Compact node list cards and tighter popups** - More compact node list layout and tighter map popups ([#1842](https://github.com/Yeraze/meshmonitor/pull/1842), closes [#1834](https://github.com/Yeraze/meshmonitor/issues/1834))
+
+### Bug Fixes
+- **Always show local node in Auto Time Sync node list** ([#1848](https://github.com/Yeraze/meshmonitor/pull/1848))
+
+### Maintenance
+- Fix reverse proxy and OIDC system test port mismatch (8081 → 8080) ([#1849](https://github.com/Yeraze/meshmonitor/pull/1849))
+
+### Dependency Updates
+- Bump @eslint/js from 9.39.2 to 10.0.1 ([#1840](https://github.com/Yeraze/meshmonitor/pull/1840))
+- Bump jsdom from 27.4.0 to 28.0.0 ([#1839](https://github.com/Yeraze/meshmonitor/pull/1839))
+- Bump puppeteer from 24.36.1 to 24.37.2 ([#1838](https://github.com/Yeraze/meshmonitor/pull/1838))
+- Bump eslint from 9.39.2 to 10.0.0 ([#1837](https://github.com/Yeraze/meshmonitor/pull/1837))
+- Bump production dependencies group with 5 updates ([#1836](https://github.com/Yeraze/meshmonitor/pull/1836))
+- Bump development dependencies group with 2 updates ([#1835](https://github.com/Yeraze/meshmonitor/pull/1835))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.4.10...v3.4.11
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.4.10] - 2026-02-08
+
+## MeshMonitor v3.4.10 - Hotfix: MFA verification on SQLite
+
+### Bug Fixes
+
+- **MFA verification broken on SQLite** (#1831) - The SQLite fallback UserModel SELECT queries were missing `mfa_enabled`, `mfa_secret`, and `mfa_backup_codes` columns, causing MFA setup verification and login to fail with a 400 error. All five query methods (`findById`, `findByUsername`, `findByOIDCSubject`, `findAll`, `findByEmail`) are now fixed.
+- **Double-issuer in otpauth URI** (#1831) - The QR code for authenticator apps showed `MeshMonitor:MeshMonitor:username` instead of `MeshMonitor:username`.
+
+### Full Changelog
+- #1831 - fix: MFA verification broken on SQLite - missing columns in SELECT queries
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.4.9] - 2026-02-08
+
+## v3.4.9 — Hotfix Release
+
+This is a hotfix release addressing two bugs discovered after v3.4.8.
+
+### Bug Fixes
+
+- **MFA operations fail on SQLite** — Two-factor authentication setup, enable, disable, and backup code operations failed on SQLite (the default database) with "Auth repository not initialized". MFA now works correctly on all database backends. — #1829 (closes #1828)
+- **News popup dismiss checkbox not persisting** — The dismiss checkbox in the news popup was not saving correctly. — #1827
+
+### Full Changelog
+
+https://github.com/Yeraze/meshmonitor/compare/v3.4.8...v3.4.9
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.4.8] - 2026-02-08
+
+## What's New in v3.4.8
+
+### Two-Factor Authentication (MFA)
+TOTP-based two-factor authentication for user accounts. Set up with any authenticator app (Google Authenticator, Authy, etc.), with 10 single-use backup codes for recovery. Admins can disable MFA for other users if needed.
+
+### Auto-Acknowledge Enhancements
+- **Per-channel control** — enable/disable auto-ack on individual channels and direct messages
+- **Tapback & text reply modes** — independent toggles for emoji reactions and text responses, each with separate direct/multi-hop settings
+- **Always use DM** — send responses as direct messages even when triggered by channel messages
+- **Sample message preview** — live preview of templates with example token values
+
+### Position History Line Style
+Choose between linear (straight) and spline (curved) line styles for position history tracks on the map.
+
+### News Popup UX Improvements
+Bulk dismiss, version-gated news items, and improved popup layout.
+
+### Bug Fixes
+- Fixed traceroute history always showing empty on PostgreSQL/MySQL deployments
+
+---
+
+## Pull Requests
+
+- [#1815](https://github.com/Yeraze/meshmonitor/pull/1815) feat: separate Direct and Multi-hop settings for Auto Acknowledge
+- [#1817](https://github.com/Yeraze/meshmonitor/pull/1817) fix: traceroute history always empty on PostgreSQL/MySQL
+- [#1818](https://github.com/Yeraze/meshmonitor/pull/1818) feat: add TOTP-based two-factor authentication (MFA)
+- [#1822](https://github.com/Yeraze/meshmonitor/pull/1822) feat: add position history line style setting
+- [#1824](https://github.com/Yeraze/meshmonitor/pull/1824) feat: improve news popup UX with bulk dismiss and version gating
+- [#1825](https://github.com/Yeraze/meshmonitor/pull/1825) docs: add auto-ack features, MFA section, and security sidebar link
+- [#1826](https://github.com/Yeraze/meshmonitor/pull/1826) chore: bump version to v3.4.8 with news update
+
+## Issues Resolved
+
+- [#1814](https://github.com/Yeraze/meshmonitor/issues/1814) [FEAT] Allow more granular fine-tuning of tapback/auto-acknowledge
+- [#1816](https://github.com/Yeraze/meshmonitor/issues/1816) [FEAT] 2 Factor Auth for admin user (TOTP)
+- [#1820](https://github.com/Yeraze/meshmonitor/issues/1820) [FEAT] semicircles in position history must die!
+- [#1823](https://github.com/Yeraze/meshmonitor/issues/1823) [BUG] Auto Acknowledge - Tapback and Reply too fast and getting rate limited
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.4.7] - 2026-02-06
+
+## What's Changed
+
+### New Features
+
+- **Auto Time Sync** — Automatically sync server time to nodes without NTP/GPS capability. Supports configurable intervals, expiration hours, and node filtering. Available in the Automation tab. (#1807)
+
+- **Persistent Ignored Nodes** — Ignored nodes are now stored in a dedicated database table and survive database pruning. Fixes #1796. (#1801)
+
+### Bug Fixes
+
+- **Fix traceroute scheduler timer leaks** — Prevent timer leaks when auto-traceroute scheduler is restarted, and enforce 30-second minimum interval between traceroute sends to respect Meshtastic firmware rate limits. Fixes #1805. (#1806)
+
+- **Fix verifyResponse checkbox** — The "Verify Response" checkbox for geofence triggers and auto-responders was being ignored. DMs now correctly use 1 attempt when disabled or 3 attempts when enabled. (#1808)
+
+- **Fix map popup positioning** — Improved map popup positioning and traceroute behavior. Fixes #1798. (#1803)
+
+- **Rename "Most Active Node" to "Most Recently Heard"** — The dashboard label now accurately reflects what the metric shows. Fixes #1800. (#1802)
+
+### Translations
+
+- Translation updates from Hosted Weblate (#1799)
+
+## Issues Resolved
+
+- #1805 - [BUG] Auto-Traceroute sends traceroute requests too frequently
+- #1800 - [BUG] node diagrams and most active node mismatch  
+- #1798 - [BUG] position of node popup on map not fully fixed
+- #1796 - [BUG] Logic Deadlock: Ignored nodes are permanently lost after Database Pruning
+
+## Pull Requests
+
+- #1801 - feat: persistent ignored nodes list
+- #1802 - fix: rename 'Most Active Node' to 'Most Recently Heard'
+- #1803 - fix: improve map popup positioning and traceroute behavior
+- #1806 - Fix traceroute scheduler timer leaks and enforce minimum send interval
+- #1807 - feat: add Auto Time Sync feature for nodes without NTP/GPS
+- #1808 - fix: respect verifyResponse setting for geofence and auto-responder
+- #1799 - Translations update from Hosted Weblate
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.4.6...v3.4.7
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.4.6] - 2026-02-05
+
+## What's Changed
+
+### Bug Fixes
+
+- **fix: Remote Admin fixed position sends 0,0 coordinates** — The Remote Admin handler was passing lat/lon in the position config message, but `Config.PositionConfig` has no coordinate fields in the protobuf. Coordinates are now correctly sent via a separate `set_fixed_position` admin message. Also removed an unnecessary 1-second delay between the two messages. ([#1793](https://github.com/Yeraze/meshmonitor/pull/1793))
+- **fix: traceroute history missing bidirectional search on PostgreSQL/MySQL** — `getTraceroutesByNodes()` only searched one direction on non-SQLite backends, missing traceroutes stored in the reverse direction (e.g., via Virtual Node). ([#1795](https://github.com/Yeraze/meshmonitor/pull/1795))
+- **fix: route scripts through Virtual Node to prevent connection conflicts** — Resolves [#1766](https://github.com/Yeraze/meshmonitor/issues/1766). ([#1792](https://github.com/Yeraze/meshmonitor/pull/1792))
+- **fix: handle StatusMessageConfig module type gracefully** — Resolves [#1764](https://github.com/Yeraze/meshmonitor/issues/1764). ([#1787](https://github.com/Yeraze/meshmonitor/pull/1787))
+- **fix: implement route segment queries for PostgreSQL/MySQL backends** ([#1785](https://github.com/Yeraze/meshmonitor/pull/1785))
+- **fix: quote PostgreSQL column aliases in packet distribution query** ([#1784](https://github.com/Yeraze/meshmonitor/pull/1784))
+
+### UI Improvements
+
+- **ui: move packet distribution time range into chart box** ([#1786](https://github.com/Yeraze/meshmonitor/pull/1786))
+
+### Translations
+
+- Russian, German, French, Spanish, Norwegian Bokmål, Chinese (Simplified) translations updated via Weblate ([#1780](https://github.com/Yeraze/meshmonitor/pull/1780))
+
+### Dependencies
+
+- Bump `@rollup/rollup-linux-arm-gnueabihf` to 4.57.1 ([#1746](https://github.com/Yeraze/meshmonitor/pull/1746))
+- Bump `@rollup/rollup-linux-arm64-musl` to 4.57.1 ([#1743](https://github.com/Yeraze/meshmonitor/pull/1743))
+- Bump `pg` to 8.18.0 ([#1744](https://github.com/Yeraze/meshmonitor/pull/1744))
+- Bump `maplibre-gl` to 5.17.0 ([#1741](https://github.com/Yeraze/meshmonitor/pull/1741))
+
+### Issues Resolved
+
+- [#1766](https://github.com/Yeraze/meshmonitor/issues/1766) — Testing geotrigger scripts
+- [#1764](https://github.com/Yeraze/meshmonitor/issues/1764) — 3.4.4 failing to connect to node
+- [#1790](https://github.com/Yeraze/meshmonitor/issues/1790) — Packet distribution charts not showing TRACEROUTE_APP packets
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.4.5...v3.4.6
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.4.5] - 2026-02-04
+
+## What's Changed
+
+### Features
+- Add packet distribution charts to Info page (#1774)
+- Make favorite nodes always visible regardless of age (#1775)
+- Add tile server autodetect for Custom Tileset Manager (#1771)
+- Update meshtastic protobufs to latest version (#1782)
+  - New hardware models: WISMESH_TAP_V2, RAK3401, RAK6421, THINKNODE_M4, THINKNODE_M6, MESHSTICK_1262, TBEAM_1_WATT, T5_S3_EPAPER_PRO
+  - New modem preset: LONG_TURBO
+  - New PortNums: ALERT_APP, KEY_VERIFICATION_APP, STORE_FORWARD_PLUSPLUS_APP, NODE_STATUS_APP, RETICULUM_TUNNEL_APP, CAYENNE_APP
+
+### Bug Fixes
+- Preserve all config fields when saving in desktop setup (#1781) - fixes #1770
+- Reduce CPU usage on mobile by optimizing status timer (#1778) - fixes #1769
+- Fix node popup positioning when sidebar is expanded (#1776) - fixes #1768
+- Handle single quotes and env vars in script test arguments (#1772)
+- Use raw values for sats_in_view telemetry instead of averaging (#1767)
+- Show info modal for Channel Database virtual channels (#1765)
+
+### Documentation
+- Add FAQ entry for emoji fonts in offline deployments (#1779)
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.4.4...v3.4.5
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.4.4] - 2026-02-03
+
+## What's Changed
+
+### New Features
+
+* **Channel Database Sort Order** - Drag-and-drop reordering to control decryption priority in [#1757](https://github.com/Yeraze/meshmonitor/pull/1757)
+* **Channel Name Validation** - New "Enforce Name Validation" option for channel hash matching in [#1749](https://github.com/Yeraze/meshmonitor/pull/1749)
+* **Clear Filter Buttons** - Quick filter clearing on Nodes and Messages tabs in [#1755](https://github.com/Yeraze/meshmonitor/pull/1755)
+* **Script Test Feature** - Test automation trigger scripts directly from the UI in [#1754](https://github.com/Yeraze/meshmonitor/pull/1754)
+* **{ONLINENODES} Token** - New token and node count chart for automations in [#1751](https://github.com/Yeraze/meshmonitor/pull/1751)
+
+### Bug Fixes
+
+* Fix GPS Satellites chart showing decimals on Y-axis in [#1760](https://github.com/Yeraze/meshmonitor/pull/1760)
+* Support running as non-root user in Kubernetes in [#1759](https://github.com/Yeraze/meshmonitor/pull/1759)
+* Only send position in exchange when node has valid position source in [#1756](https://github.com/Yeraze/meshmonitor/pull/1756)
+* Add allowed_origins support to desktop app config in [#1737](https://github.com/Yeraze/meshmonitor/pull/1737)
+
+### Improvements
+
+* Use standard telemetry charts for system node metrics in [#1752](https://github.com/Yeraze/meshmonitor/pull/1752)
+
+### Documentation
+
+* Added Channel Database documentation for sort order and drag-and-drop reordering
+* Added documentation for Enforce Name Validation option
+* Added news entry for Channel Database improvements
+
+### Dependencies
+
+* Bump production dependencies in [#1739](https://github.com/Yeraze/meshmonitor/pull/1739)
+* Bump development dependencies in [#1738](https://github.com/Yeraze/meshmonitor/pull/1738), [#1740](https://github.com/Yeraze/meshmonitor/pull/1740), [#1742](https://github.com/Yeraze/meshmonitor/pull/1742)
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.4.3...v3.4.4
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.4.3] - 2026-02-02
+
+## Release v3.4.3
+
+### Features
+- feat: add `{TOTALNODES}` token for automation messages ([#1734](https://github.com/Yeraze/meshmonitor/pull/1734))
+- feat: enhance position history with color gradient and clickable segments ([#1731](https://github.com/Yeraze/meshmonitor/pull/1731))
+- feat: add position history duration slider ([#1727](https://github.com/Yeraze/meshmonitor/pull/1727))
+
+### Bug Fixes
+- fix: respect distance unit setting for position history speed display ([#1733](https://github.com/Yeraze/meshmonitor/pull/1733))
+- fix: improve mobile landscape layout for sidebar and header ([#1732](https://github.com/Yeraze/meshmonitor/pull/1732))
+
+### Issues Resolved
+- [#1730](https://github.com/Yeraze/meshmonitor/issues/1730) - [BUG] incorrect value at {NODECOUNT}
+- [#1245](https://github.com/Yeraze/meshmonitor/issues/1245) - [BUG] sidebar in landscape mode out of position on mobile devices
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.4.2...v3.4.3
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.4.2] - 2026-01-31
+
+## What's Changed
+
+### Features
+- Add missing telemetry config options (deviceTelemetryEnabled, health metrics) ([#1715](https://github.com/Yeraze/meshmonitor/pull/1715)) - Closes [#1714](https://github.com/Yeraze/meshmonitor/issues/1714)
+- Improve script execution logging for automations ([#1712](https://github.com/Yeraze/meshmonitor/pull/1712))
+- Add tabs to map and node popups for better iOS scrolling ([#1709](https://github.com/Yeraze/meshmonitor/pull/1709))
+- Add node filter to packet monitor ([#1704](https://github.com/Yeraze/meshmonitor/pull/1704))
+- Add traceroute button to node popup on map ([#1702](https://github.com/Yeraze/meshmonitor/pull/1702))
+
+### Bug Fixes
+- Restore URL hash navigation for bookmarks and direct links ([#1716](https://github.com/Yeraze/meshmonitor/pull/1716))
+- Always save position history regardless of precision changes ([#1710](https://github.com/Yeraze/meshmonitor/pull/1710))
+- Preserve lastHeard during config sync to prevent incorrect timestamps ([#1707](https://github.com/Yeraze/meshmonitor/pull/1707))
+- Preserve channel names when device sends empty names ([#1703](https://github.com/Yeraze/meshmonitor/pull/1703))
+
+### Documentation
+- Update Sky and Sea Alert script metadata ([#1713](https://github.com/Yeraze/meshmonitor/pull/1713))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.4.1...v3.4.2
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.4.1] - 2026-01-29
+
+## What's Changed
+
+### New Features
+- **Spam Detection**: Added detection for nodes with excessive packet rates in the Security tab (#1696, closes #1690)
+- **Script Arguments**: Added script arguments support for AutoResponder, Timer, and Geofence triggers with token expansion (#1691, closes #1685)
+- **Geofence Enhancements**: 
+  - Added "None" channel option and `{IP}` token for geofence triggers (#1686)
+  - Added "Verify Response" option for geofence triggers (#1693)
+- **Accuracy Regions**: Changed accuracy circles to rectangles for better GPS precision visualization (#1694, closes #1688)
+- **Long Message Support**: Added automatic message breakup for long API messages (#1695, closes #1689)
+
+### Bug Fixes
+- **Phantom Telemetry**: Filter out phantom telemetry packets from packet log - these were internal device state updates incorrectly logged as TX packets (#1697)
+- **Position History**: Fixed position history not working on PostgreSQL/MySQL backends (#1692)
+
+### Other
+- Translation updates from Weblate (#1674)
+
+## Pull Requests
+- #1698 - chore: bump version to 3.4.1
+- #1697 - fix: filter phantom telemetry packets from packet log
+- #1696 - feat: add spam detection for nodes with excessive packets
+- #1695 - feat: add multi-message breakup for long API messages
+- #1694 - feat: change accuracy circles to accuracy regions (rectangles)
+- #1693 - feat: add Verify Response option to Geofence Triggers
+- #1692 - fix: position history not working on PostgreSQL/MySQL backends
+- #1691 - feat: add script arguments for AutoResponder, Timer, and Geofence triggers
+- #1686 - feat: add "None" channel option and {IP} token for geofence triggers
+- #1674 - Translations update from Hosted Weblate
+
+## Issues Closed
+- #1690 - [FEAT] AutoBan for Spam
+- #1689 - [BUG] Long messages sent via the API get stuck pending
+- #1688 - [FEAT] Show Accuracy as Rectangle on Map
+- #1685 - [FEAT] Geofence / Script / Remote Admin
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.4.0...v3.4.1
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.4.0] - 2026-01-28
+
+## What's New in v3.4.0
+
+This release introduces **Geofence Triggers** - a powerful automation feature for location-based actions, along with **in-app node connection configuration** and several quality-of-life improvements.
+
+### ✨ New Features
+
+#### Geofence Triggers
+Create automated responses when nodes enter, exit, or remain inside geographic areas. Define circular or polygon zones on an interactive map and trigger text messages or scripts when conditions are met.
+
+- **Flexible Zone Shapes**: Draw circles or polygons directly on the map
+- **Three Event Types**: Trigger on entry, exit, or periodically while inside
+- **Node Filtering**: Monitor all nodes or select specific ones
+- **Dynamic Responses**: Use tokens like `{LONG_NAME}`, `{GEOFENCE_NAME}`, `{DISTANCE_TO_CENTER}`
+- **Routing Options**: Send to channels or as direct messages
+
+#### Node Connection Configuration
+Change your Meshtastic node's IP address directly from the UI - no container restart required.
+
+- Click the **node name in the header** to open the Node Info modal
+- Administrators can modify the connection IP address and port
+- Changes persist until container restart
+- Supports IP:port format (e.g., `192.168.1.100:4045`)
+
+#### Other Improvements
+- **Rebroadcast mode warnings** for Channel Database feature (#1679)
+- **Edit functionality** for geofence triggers (#1677)
+- **News feed improvements** - Only show new items, scroll to top on navigation (#1681, #1683)
+
+### 🐛 Bug Fixes
+
+- **Emoji tapback validation** - Improved emoji detection and input validation (#1678)
+- **Packet log decryption** - Save decrypted_by and decrypted_channel_id properly (#1675)
+- **Auto-traceroute jitter** - Add random jitter to prevent network bursts (#1673)
+- **GPS coordinates links** - Updated helper links to latlong.net (#1680)
+
+### 🌍 Translations
+- Translation updates from Hosted Weblate (#1650)
+
+---
+
+## Pull Requests
+
+- [#1683](https://github.com/Yeraze/meshmonitor/pull/1683): chore: bump version to 3.4.0 and add feature documentation
+- [#1682](https://github.com/Yeraze/meshmonitor/pull/1682): feat: add Node Info modal with IP/port configuration
+- [#1681](https://github.com/Yeraze/meshmonitor/pull/1681): fix: only show new news items instead of all unread items
+- [#1680](https://github.com/Yeraze/meshmonitor/pull/1680): chore: update GPS coordinates helper links to latlong.net
+- [#1679](https://github.com/Yeraze/meshmonitor/pull/1679): feat: add rebroadcast mode warnings for Channel Database feature
+- [#1678](https://github.com/Yeraze/meshmonitor/pull/1678): fix: improve emoji detection and validate tapback emoji input
+- [#1677](https://github.com/Yeraze/meshmonitor/pull/1677): feat: add edit functionality to geofence triggers
+- [#1675](https://github.com/Yeraze/meshmonitor/pull/1675): fix: save decrypted_by and decrypted_channel_id in packet log
+- [#1673](https://github.com/Yeraze/meshmonitor/pull/1673): fix: add random jitter to auto-traceroute scheduler
+- [#1669](https://github.com/Yeraze/meshmonitor/pull/1669): feat: add geofence triggers to automation tab
+- [#1650](https://github.com/Yeraze/meshmonitor/pull/1650): Translations update from Hosted Weblate
+
+## Issues Closed
+
+- [#1671](https://github.com/Yeraze/meshmonitor/issues/1671): [BUG] traceroute network bursts!
+- [#1670](https://github.com/Yeraze/meshmonitor/issues/1670): [SUPPORT] Channel DB channels
+- [#1555](https://github.com/Yeraze/meshmonitor/issues/1555): [FEAT] Allow for Radio Connection to change in the UI rather than Environment Variable
+
+---
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.3.1...v3.4.0
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.3.1] - 2026-01-27
+
+## Hotfix Release
+
+### Bug Fixes
+- **fix: add missing `enabled` column to `auto_traceroute_nodes` table** — Users whose SQLite supported `ALTER TABLE RENAME COLUMN` (most users) never got the `enabled` column from migration 048. This caused errors when setting up auto-traceroute. (#1665)
+- **fix: correct `reset-admin.mjs` database path and account state** — Fixed wrong database path (`./data/` → `/data/`) and ensured the script also clears `is_active` and `password_locked` flags so reset accounts actually work. (#1667, #1658)
+- **fix: extend `reset-admin.mjs` to support PostgreSQL and MySQL** — The script now auto-detects the database backend from `DATABASE_URL` and uses the correct driver and column names for each backend. (#1667)
+
+### Documentation
+- **docs: add Link Quality & Smart Hops documentation page** — New documentation explaining the Link Quality score (0–10) and Smart Hops rolling 24-hour min/avg/max graphs. (#1664)
+- **docs: update FAQ for multi-database `reset-admin.mjs`** — Updated the password reset FAQ with PostgreSQL/MySQL examples and account unlock behavior. (#1667)
+
+### Full Changelog
+https://github.com/Yeraze/meshmonitor/compare/v3.3.0...v3.3.1
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.3.0] - 2026-01-27
+
+## What's New in v3.3.0
+
+### Features
+- **User-specific permissions for virtual channels** - Virtual channels now support per-user View Map and Read permissions ([#1655](https://github.com/Yeraze/meshmonitor/pull/1655))
+- **Emoji tapback reactions** - Single-emoji replies render as tapback pills instead of full message bubbles ([#1660](https://github.com/Yeraze/meshmonitor/pull/1660))
+- **Sticky/pinned nodes in Messages tab** ([#1651](https://github.com/Yeraze/meshmonitor/pull/1651))
+
+### Bug Fixes
+- **Fix virtual node channel reset on restart** - Rebuild channel config from database instead of cache, preventing Android clients from losing channel names ([#1661](https://github.com/Yeraze/meshmonitor/pull/1661), [#1659](https://github.com/Yeraze/meshmonitor/pull/1659), [#1567](https://github.com/Yeraze/meshmonitor/issues/1567))
+- **Fix map zoom with Show Traceroute** - Clicking a node with no traceroute now zooms to the node instead of doing nothing ([#1662](https://github.com/Yeraze/meshmonitor/pull/1662))
+- **Fix node deselection on map** - Allow deselecting nodes by clicking again in map node list ([#1657](https://github.com/Yeraze/meshmonitor/pull/1657), [#1656](https://github.com/Yeraze/meshmonitor/issues/1656))
+- **Improve Link Quality charts** for sparse data ([#1652](https://github.com/Yeraze/meshmonitor/pull/1652), [#1648](https://github.com/Yeraze/meshmonitor/pull/1648))
+- **Hide accuracy circles/segments when traceroute is active** ([#1649](https://github.com/Yeraze/meshmonitor/pull/1649))
+- **Support shorthand PSKs in Channel Database** ([#1644](https://github.com/Yeraze/meshmonitor/pull/1644), [#1642](https://github.com/Yeraze/meshmonitor/issues/1642))
+- **Preserve disabled channels in database** ([#1643](https://github.com/Yeraze/meshmonitor/pull/1643), [#1640](https://github.com/Yeraze/meshmonitor/issues/1640))
+- **Show correct encryption status in Device Channels view** ([#1646](https://github.com/Yeraze/meshmonitor/pull/1646), [#1641](https://github.com/Yeraze/meshmonitor/issues/1641))
+
+### Other
+- **Translations** - Russian translation update ([#1625](https://github.com/Yeraze/meshmonitor/pull/1625))
+- **Docs** - Added Sky and Sea Alert to user scripts gallery ([#1645](https://github.com/Yeraze/meshmonitor/pull/1645))
+- **Dependencies** - Updated recharts, express-session, react-router-dom, i18next, and others
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.2.5] - 2026-01-26
+
+## What's Changed
+
+### Features
+- **Unified SaveBar Component** - Replaced individual Save buttons across 30+ settings components with a unified SaveBar that appears as a fixed bar at the bottom when changes are detected. Includes smooth slide-in animation, Save/Dismiss buttons, and support for multiple sections with unsaved changes. (#1628)
+- **Remote Telemetry Configuration** - Added Telemetry Configuration section to Remote Admin's Module Configuration area, allowing remote configuration of Device, Environment, Air Quality, and Power telemetry settings. (#1612)
+- **Transport Mechanism Tracking** - Enhanced packet logging to track full transport mechanism (Radio, MQTT Uplink, MQTT Downlink) instead of just via_mqtt boolean. (#1622, #1623)
+
+### Bug Fixes
+- **Virtual Node Message History** - Removed 10-message history replay on client connect to fix duplicate messages and incorrect hop counts on iOS clients. (#1610, #1621)
+- **Message Action Icons** - Moved message action icons above the bubble to prevent overlap with hop count links. (#1616)
+- **PostgreSQL/MySQL Packet Clear** - Fixed async support for clearing packet logs on PostgreSQL and MySQL databases. (#1620)
+- **Docker Healthchecks** - Added curl to Docker container for proper healthcheck support. (#1614)
+- **Dashboard Favorites** - Fixed rendering of Smart Hops and Link Quality on favorites dashboard. (#1607)
+
+### Translations
+- Updated translations from Hosted Weblate (#1611)
+
+### Maintenance
+- Version bump to 3.2.5 with Virtual Node CLI test fixes (#1618)
+
+## Issues Closed
+- #1619 - 'TransportMechanism' field is missing from packet_log table
+- #1617 - Failed to clear packet logs
+- #1615 - Quick action icons overlap with the hop count link
+- #1608 - Channel messages error on virtual node
+- #1589 - Remote Admin Telemetry Missing
+- #1557 - Auto Responder scripts save successfully but disappear afterward
+
+## Pull Requests
+- #1628 - feat(ui): add unified SaveBar component for settings changes
+- #1623 - refactor(packets): replace via_mqtt with full transport_mechanism enum
+- #1622 - feat(packets): add via_mqtt column to packet_log table
+- #1621 - fix(virtual-node): remove 10-message history replay on client connect
+- #1620 - fix(api): add async support for clearing packet logs on PostgreSQL/MySQL
+- #1618 - chore: bump version to 3.2.5 and fix Virtual Node CLI test
+- #1616 - fix(ui): move message actions above bubble to prevent hop count overlap
+- #1614 - fix(docker): add curl for container healthchecks
+- #1612 - feat(admin): add telemetry configuration to remote admin
+- #1611 - Translations update from Hosted Weblate
+- #1610 - fix(virtual-node): improve message history replay for iOS clients
+- #1607 - fix(dashboard): render Smart Hops and Link Quality favorites correctly
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.2.4...v3.2.5
+
+---
+
+
+## [3.2.4] - 2026-01-24
+
+## What's Changed
+
+### Features
+- **Sidebar Pin Button** - Added a pin button to the sidebar that prevents it from auto-collapsing when clicking navigation items. Pin state persists across sessions. (#1604)
+- **Virtual Node Message History** - Virtual node now sends the last 10 messages to connecting mobile apps, so you can see recent chat history immediately. (#1603)
+- **Desktop Virtual Node Config** - Windows/macOS desktop app now supports `enable_virtual_node` and `virtual_node_allow_admin` config options in `config.json`. (#1605)
+- **Purge Neighbors Button** - Added button to clear stale neighbor info from the Messages page. (#1595)
+
+### Bug Fixes
+- **Update Banner Auto-Dismiss** - Fixed the upgrade notification banner not auto-dismissing after 5 seconds due to a React callback reference issue. (#1604)
+- **Security Config Save Disabled** - Temporarily disabled the security config save button in Remote Admin to prevent key loss. (#1602)
+
+### Documentation
+- **BLE Bridge Windows Docs** - Added documentation for Windows native EXE Bluetooth pairing. (#1594)
+
+### Translations
+- Updated translations from Hosted Weblate (#1596)
+
+## Issues Closed
+- #1600 - Virtual node does not return a list of messages to client
+- #1599 - Update banner obscures interface elements
+- #1598 - Sidebar collapses upon clicking an item
+- #1597 - How to enable virtual node on Windows desktop client
+- #1601 - Direct node sends all packets but not appear on map/list
+- #1591 - Stuck neighbor info from days ago
+
+## Pull Requests
+- #1605 - feat(desktop): add virtual node config options to Tauri app
+- #1604 - feat(ui): add sidebar pin button and verify upgrade banner auto-dismiss
+- #1603 - fix(virtual-node): send message history to connecting clients
+- #1602 - fix(admin): disable security config save button
+- #1596 - Translations update from Hosted Weblate
+- #1595 - feat(ui): add purge neighbors button to Messages page
+- #1594 - docs(ble-bridge): add Windows native EXE documentation
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.2.3...v3.2.4
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.2.3] - 2026-01-23
+
+## 🔧 Hotfix Release
+
+This hotfix resolves a startup failure on PostgreSQL/MySQL backends introduced in v3.2.1.
+
+### Bug Fixes
+
+- **Fixed PostgreSQL/MySQL startup failure** - Migration 056 (backup_history column fix) now properly supports PostgreSQL and MySQL databases. The migration runs before schema initialization to fix tables with incorrect schemas before index creation is attempted. ([#1586](https://github.com/Yeraze/meshmonitor/pull/1586))
+
+### Technical Details
+
+The previous fix (v3.2.2) only addressed SQLite databases. PostgreSQL/MySQL databases with existing `backup_history` tables that had incorrect schemas would fail at startup with:
+```
+error: column "timestamp" does not exist
+  routine: 'ComputeIndexAttrs'
+```
+
+This release adds `runMigration056Postgres()` and `runMigration056Mysql()` functions that:
+- Run BEFORE the schema SQL is executed
+- Check if the `backup_history` table has the correct columns
+- Recreate the table with the correct schema if needed
+
+### Pull Requests
+
+- [#1586](https://github.com/Yeraze/meshmonitor/pull/1586) - fix(migration): add PostgreSQL/MySQL support to migration 056
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.2.2...v3.2.3
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.2.2] - 2026-01-23
+
+## 🔧 Hotfix Release
+
+This hotfix resolves a migration issue that prevented v3.2.1 from starting on some installations.
+
+# NOTE: Do not install if using MySQL or PostGres. There is a breaking bug that will prevent your installation from starting.
+
+### Bug Fixes
+
+- **Fixed migration 056 failing on startup** - The backup_history column migration now handles unexpected table schemas gracefully. Previously, if the table had an unexpected structure (missing `timestamp` column), the migration would fail and prevent the server from starting. ([#1585](https://github.com/Yeraze/meshmonitor/pull/1585))
+
+### Technical Details
+
+Migration 056 now:
+- Checks if the table exists before proceeding
+- Creates the table with the correct schema if it doesn't exist
+- Detects and handles tables with unexpected schemas by recreating them
+- Validates required columns exist before attempting data migration
+- Logs column names for easier debugging
+
+**Note:** If you had device backup history records in an incompatible schema, they will be lost during migration. The actual backup files on disk remain intact.
+
+### Pull Requests
+
+- [#1585](https://github.com/Yeraze/meshmonitor/pull/1585) - fix(migration): make backup_history migration more robust
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.2.1...v3.2.2
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.2.1] - 2026-01-23
+
+## 🔧 Hotfix Release
+
+This hotfix release addresses database compatibility issues with device backups on PostgreSQL/MySQL backends.
+
+# NOTE: Do not install if using MySQL or PostGres. There is a breaking bug that will prevent your installation from starting.
+
+### Bug Fixes
+
+- **Fixed device backups failing on PostgreSQL/MySQL** - Added missing `backup_history` and `system_backup_history` tables to PostgreSQL and MySQL schemas, and created migration to fix SQLite column names ([#1580](https://github.com/Yeraze/meshmonitor/pull/1580), [#1581](https://github.com/Yeraze/meshmonitor/pull/1581)) - Fixes [#1575](https://github.com/Yeraze/meshmonitor/issues/1575)
+
+### Features
+
+- **Remote Admin improvements** - Successfully completing any remote admin operation now sets the `hasRemoteAdmin` flag for that node. Retrieving device metadata now saves the data to the database, populating the same fields as the Remote Admin Scanner ([#1582](https://github.com/Yeraze/meshmonitor/pull/1582))
+
+### Pull Requests
+
+- [#1580](https://github.com/Yeraze/meshmonitor/pull/1580) - fix(backup): support PostgreSQL/MySQL for device backups
+- [#1581](https://github.com/Yeraze/meshmonitor/pull/1581) - fix(backup): add missing backup tables to PostgreSQL/MySQL schemas
+- [#1582](https://github.com/Yeraze/meshmonitor/pull/1582) - feat(admin): set hasRemoteAdmin flag on successful remote operations
+- [#1583](https://github.com/Yeraze/meshmonitor/pull/1583) - chore: bump version to 3.2.1
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.2.0...v3.2.1
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.2.0] - 2026-01-23
+
+## What's Changed
+
+### ✨ New Features
+- **Remote Admin Discovery Scanner** - Scan your mesh network to discover nodes that support remote administration ([#1577](https://github.com/Yeraze/meshmonitor/pull/1577))
+- **News Popup Feature** - Add announcements and news notifications for users ([#1571](https://github.com/Yeraze/meshmonitor/pull/1571))
+- **Tri-state Channel Permissions** - More granular control over channel-based permissions ([#1569](https://github.com/Yeraze/meshmonitor/pull/1569))
+- **Retrieve Device Metadata Button** - Added to Remote Admin page for easier device management ([#1564](https://github.com/Yeraze/meshmonitor/pull/1564))
+
+### 🐛 Bug Fixes
+- **PostgreSQL/MySQL Device Backups** - Fixed device backup functionality on PostgreSQL and MySQL backends ([#1580](https://github.com/Yeraze/meshmonitor/pull/1580)) - Closes [#1575](https://github.com/Yeraze/meshmonitor/issues/1575)
+- **Security Config Keys** - Preserve public/private keys when updating security configuration ([#1573](https://github.com/Yeraze/meshmonitor/pull/1573))
+- **PostgreSQL Position Overrides** - Added PostgreSQL/MySQL support for position override methods ([#1566](https://github.com/Yeraze/meshmonitor/pull/1566))
+- **Neighbor Info Display** - Fixed neighbor info display and stale data cleanup in Messages tab ([#1562](https://github.com/Yeraze/meshmonitor/pull/1562))
+
+### 🌐 Translations
+- Updated Russian translations ([#1578](https://github.com/Yeraze/meshmonitor/pull/1578), [#1572](https://github.com/Yeraze/meshmonitor/pull/1572))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.1.1...v3.2.0
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.1.1] - 2026-01-21
+
+## What's New in v3.1.1
+
+# Note: My anonymous map is blank.
+https://meshmonitor.org/faq.html#the-map-is-blank-for-anonymous-not-logged-in-users
+
+3.1.1 extends the user channel permissions to also cover Node Visibility on the map. This means that if don't have "Read" permissions to a particular channel, you will not be able to see nodes only communicating on that channel.  This is useful for networks with separate sub-networks on non-public channels that you may want to keep hidden from public view (due to precise positioning or other reasons).  A side effect of this is that if you have not granted the Anonymous user read access to any channels, then the map will be blank.
+
+In the upcoming version (3.1.2 or 3.2), there will be additional permissions to allow you to control visibility of a node on the map separate from the Channels Messages interface.
+
+
+### Features
+
+- **Request Telemetry from Remote Nodes** ([#1558](https://github.com/Yeraze/meshmonitor/pull/1558)) - Closes [#1400](https://github.com/Yeraze/meshmonitor/issues/1400)
+  - New "Request Telemetry" button in Messages tab actions menu
+  - Select from Device, Environment, Air Quality, or Power metrics
+  - Sends empty telemetry packet with `wantResponse:true` to trigger remote node response
+
+- **Extended Environment Telemetry Support** ([#1560](https://github.com/Yeraze/meshmonitor/pull/1560))
+  - Added support for all 22 EnvironmentMetrics fields from Meshtastic protobuf
+  - New telemetry types: wind (speed, direction, gust, lull), rainfall (1h, 24h), light sensors (lux, UV, IR), soil (moisture, temperature), radiation, distance, weight, IAQ
+  - Graph rendering with proper labels and colors for all new metrics
+
+- **Neighbor Info Display in Messages Tab** ([#1556](https://github.com/Yeraze/meshmonitor/pull/1556)) - Closes [#1550](https://github.com/Yeraze/meshmonitor/issues/1550)
+  - View neighbor information directly in Messages tab for DM conversations
+
+- **Channel-Based Node Visibility Filtering** ([#1553](https://github.com/Yeraze/meshmonitor/pull/1553))
+  - Filter nodes based on channel membership
+
+### Bug Fixes
+
+- **Neighbor Info Lines Respect Position Overrides** ([#1554](https://github.com/Yeraze/meshmonitor/pull/1554)) - Closes [#1552](https://github.com/Yeraze/meshmonitor/issues/1552), [#1526](https://github.com/Yeraze/meshmonitor/issues/1526)
+  - Fixed SQLite-specific issue where neighbor info lines ignored position overrides on the map
+
+- **BLE Bridge Healthcheck Fix** ([#1551](https://github.com/Yeraze/meshmonitor/pull/1551))
+  - Use Python for BLE bridge healthcheck for better reliability
+
+- **Channel Database Help Link** ([#1548](https://github.com/Yeraze/meshmonitor/pull/1548))
+  - Updated help link to point to MeshMonitor documentation
+
+### Other Changes
+
+- Translations update from Hosted Weblate ([#1549](https://github.com/Yeraze/meshmonitor/pull/1549))
+
+---
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.1.0...v3.1.1
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.1.0] - 2026-01-21
+
+## What's New in 3.1.0
+
+### New Features
+
+#### Channel Database for Server-Side Packet Decryption
+Store unlimited channel configurations beyond your device's 8 slots and decrypt packets server-side. This allows monitoring encrypted traffic from channels you're not actively participating in.
+
+- Store channel name and PSK combinations in MeshMonitor's database
+- Automatic server-side decryption of incoming encrypted packets
+- Retroactive processing of historical encrypted packets when adding new channels
+- Read-only access (view decrypted content without transmit capability)
+- Permission-based access control for non-admin users
+
+See the [Channel Database documentation](https://yeraze.github.io/meshmonitor/features/channel-database) for details.
+
+#### Enhanced Traceroute Visualization
+- Focused view mode for traceroute paths
+- Distinct path colors for better visualization
+
+#### Python Requests Library
+User scripts can now use `import requests` for HTTP calls without manual installation.
+
+### Bug Fixes
+
+- **PostgreSQL/MySQL schema fixes** - Fixed upgrade_history table schema mismatch and boolean type handling for auto_traceroute_log
+- **Direct neighbors API** - Fixed hardcoded URL that caused 404 errors when BASE_URL differs from default
+- **Bind mount conflicts** - Internal scripts now deploy to `/data/.meshmonitor-internal/` to avoid conflicts with user script directories during upgrades
+
+### Changes Since v3.0.3
+
+- [#1547](https://github.com/Yeraze/meshmonitor/pull/1547) - feat: add Python requests library to Docker image
+- [#1544](https://github.com/Yeraze/meshmonitor/pull/1544) - fix: move internal scripts to separate directory to avoid bind mount conflicts
+- [#1543](https://github.com/Yeraze/meshmonitor/pull/1543) - fix: use ApiService for direct-neighbors endpoint instead of hardcoded URL
+- [#1542](https://github.com/Yeraze/meshmonitor/pull/1542) - fix: PostgreSQL/MySQL schema bugs for upgrade_history and traceroute
+- [#1541](https://github.com/Yeraze/meshmonitor/pull/1541) - Translations update from Hosted Weblate
+- [#1540](https://github.com/Yeraze/meshmonitor/pull/1540) - feat: add Channel Database for server-side packet decryption
+- [#1536](https://github.com/Yeraze/meshmonitor/pull/1536) - feat: enhance traceroute visualization with focused view and distinct path colors
+
+### Issues Resolved
+
+- [#1545](https://github.com/Yeraze/meshmonitor/issues/1545) - Add py3-requests to Docker image
+- [#1539](https://github.com/Yeraze/meshmonitor/issues/1539) - PostgreSQL upgrade_history column does not exist
+- [#1538](https://github.com/Yeraze/meshmonitor/issues/1538) - Request Neighbor Info button not working
+- [#1537](https://github.com/Yeraze/meshmonitor/issues/1537) - PostgreSQL auto_traceroute_log boolean type error
+- [#1518](https://github.com/Yeraze/meshmonitor/issues/1518) - Scripts disappearing during upgrade with bind mounts
+- [#1495](https://github.com/Yeraze/meshmonitor/issues/1495) - Channel Database feature request
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.0.3...v3.1.0
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.0.3] - 2026-01-20
+
+## What's Changed
+
+This patch release includes several bug fixes for multi-database deployments (PostgreSQL/MySQL) and improves the reliability of device configuration handling.
+
+### Bug Fixes
+
+- **fix: map overlays now respect position overrides** - Traceroute paths and node markers now correctly use overridden positions on the map ([#1527](https://github.com/Yeraze/meshmonitor/pull/1527)) - Fixes [#1526](https://github.com/Yeraze/meshmonitor/issues/1526)
+- **fix: upgrade service now works with PostgreSQL and MySQL** - Self-upgrade functionality no longer fails with "SQLite method 'prepare' called" error on non-SQLite databases ([#1528](https://github.com/Yeraze/meshmonitor/pull/1528))
+- **fix: favorite telemetry retention now works on PostgreSQL/MySQL** - Favorited telemetry is now properly retained for the configured period instead of being deleted with regular telemetry ([#1529](https://github.com/Yeraze/meshmonitor/pull/1529))
+- **fix: relay node matching now filters to plausible candidates only** - Relay suggestions now only show direct neighbors or 1-hop nodes instead of distant nodes with matching bytes ([#1531](https://github.com/Yeraze/meshmonitor/pull/1531))
+- **fix: add missing notification preference columns for PostgreSQL/MySQL** - Resolves "column enabledChannels does not exist" error on PostgreSQL deployments ([#1532](https://github.com/Yeraze/meshmonitor/pull/1532))
+- **fix: redirect unauthorized users from protected tabs** - Users can no longer access protected tabs (settings, automation, configuration) via direct URL navigation without proper permissions ([#1534](https://github.com/Yeraze/meshmonitor/pull/1534))
+- **fix: clear stale device config after disconnect/reconnect** - Device configuration is now properly cleared on disconnect, preventing stale LoRa config data after device reboot ([#1535](https://github.com/Yeraze/meshmonitor/pull/1535))
+
+### Performance Improvements
+
+- **refactor: optimize DELETE queries to use direct WHERE clauses** - Replaced inefficient SELECT-then-DELETE-in-loop patterns with direct DELETE WHERE statements, reducing database round trips from thousands to 1-2 per operation ([#1530](https://github.com/Yeraze/meshmonitor/pull/1530))
+
+---
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.0.2...v3.0.3
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.0.2] - 2026-01-20
+
+## What's Changed
+
+### Bug Fixes
+- **fix(desktop): add JIT entitlements for macOS Node.js binary** - Fixes crash on macOS ARM64 with "Failed to reserve virtual memory for CodeRange" error ([#1524](https://github.com/Yeraze/meshmonitor/pull/1524)) - Fixes [#1478](https://github.com/Yeraze/meshmonitor/issues/1478)
+- **fix: notification channel settings not persisting** - Channel selections, monitored nodes, whitelist, and blacklist now properly save and load ([#1523](https://github.com/Yeraze/meshmonitor/pull/1523)) - Fixes [#1519](https://github.com/Yeraze/meshmonitor/issues/1519)
+- **fix(api): enforce user permissions on v1 API read endpoints** ([#1517](https://github.com/Yeraze/meshmonitor/pull/1517))
+
+### Documentation
+- Update Discord invite link ([#1522](https://github.com/Yeraze/meshmonitor/pull/1522))
+- Update bug_report.md with database options ([#1520](https://github.com/Yeraze/meshmonitor/pull/1520))
+
+### Translations
+- Translations update from Hosted Weblate ([#1514](https://github.com/Yeraze/meshmonitor/pull/1514))
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v3.0.1...v3.0.2
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.0.1] - 2026-01-19
+
+# Release Notes - v3.0.1 Hotfix
+
+## Overview
+
+MeshMonitor 3.0.1 is a hotfix release addressing several bugs reported after the v3.0.0 "MultiDatabase" release.
+
+---
+
+## Bug Fixes
+
+### Desktop Application
+- [#1509](https://github.com/Yeraze/meshmonitor/pull/1509) - **Fix Windows desktop app startup crash** - Include missing `db` directory in Tauri bundle, fixing "Cannot find module 'dist/db/drivers/sqlite.js'" error (Fixes [#1508](https://github.com/Yeraze/meshmonitor/issues/1508))
+
+### User Interface
+- [#1507](https://github.com/Yeraze/meshmonitor/pull/1507) - **Fix Audit Logs "Invalid Date" display** - Correctly handle timestamp format in audit log entries (Fixes [#1505](https://github.com/Yeraze/meshmonitor/issues/1505))
+- [#1507](https://github.com/Yeraze/meshmonitor/pull/1507) - **Hide Database Maintenance section for PostgreSQL/MySQL** - The maintenance feature is SQLite-specific; now correctly hidden for other database backends
+- [#1507](https://github.com/Yeraze/meshmonitor/pull/1507) - **Fix SQLite notification preferences save error** - Correct Drizzle schema column names to match actual SQLite table structure
+- [#1512](https://github.com/Yeraze/meshmonitor/pull/1512) - **Fix accuracy circles showing for hidden nodes** - Apply same filters (hide incomplete nodes, hide MQTT nodes) to accuracy and uncertainty circles (Fixes [#1411](https://github.com/Yeraze/meshmonitor/issues/1411))
+
+### Enhancements
+- [#1511](https://github.com/Yeraze/meshmonitor/pull/1511) - **Increase font size for hop count and message time** - Improved readability in Channels panel (Fixes [#1433](https://github.com/Yeraze/meshmonitor/issues/1433))
+
+---
+
+## Upgrade Instructions
+
+### Docker
+```bash
+docker pull ghcr.io/yeraze/meshmonitor:3.0.1
+docker compose down && docker compose up -d
+```
+
+### Helm
+```bash
+helm repo update
+helm upgrade meshmonitor meshmonitor/meshmonitor --version 3.0.1
+```
+
+### Desktop
+Download the latest installer from the [Releases page](https://github.com/Yeraze/meshmonitor/releases/tag/v3.0.1).
+
+---
+
+## Previous Release
+
+For the full v3.0.0 "MultiDatabase" release notes including multi-database support, see the [v3.0.0 Release](https://github.com/Yeraze/meshmonitor/releases/tag/v3.0.0).
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
+
+## [3.0.0] - 2026-01-19
+
+# MeshMonitor v3.0.0 "MultiDatabase"
+
+MeshMonitor 3.0.0 is a major release introducing **multi-database support**, allowing you to choose between SQLite (default), PostgreSQL, or MySQL/MariaDB as your database backend.
+
+## 📚 Documentation
+
+- **[Database Migration Guide](https://meshmonitor.org/database-migration)** - How to migrate from SQLite to PostgreSQL/MySQL
+- **[Database Configuration](https://meshmonitor.org/development/database)** - Detailed setup instructions for all database backends
+- **[Full Documentation](https://meshmonitor.org/)** - Complete MeshMonitor documentation
+
+---
+
+## ✨ Highlights
+
+- **PostgreSQL and MySQL/MariaDB Support** - Enterprise-ready database options with full feature parity
+- **Database Migration Tool** - Seamlessly migrate your existing SQLite database to PostgreSQL or MySQL
+- **Customizable Tapback Reactions** - Configure your own set of emoji reactions
+- **Script Metadata Support** - Enhanced UI display for user scripts with descriptions and icons
+- **Auto-Traceroute for All Databases** - PostgreSQL and MySQL now support automatic traceroute functionality
+- **PKI Key Management** - Automatic detection and repair of PKI key mismatches
+
+---
+
+## ⚠️ Breaking Changes
+
+### Database Architecture
+- All database methods are now async to support multiple database backends
+- If you have custom integrations using the database API, update to use the new async methods
+
+### Node.js Requirements
+- Node 18 is no longer officially supported
+- Minimum recommended version: Node 20.x
+- Officially tested on: Node 20.x and 22.x
+
+---
+
+## 🚀 Major Features
+
+### Multi-Database Support
+- [#1460](https://github.com/Yeraze/meshmonitor/pull/1460) - PostgreSQL and MySQL Database Support
+- [#1404](https://github.com/Yeraze/meshmonitor/pull/1404) - PostgreSQL support as optional database backend
+- [#1405](https://github.com/Yeraze/meshmonitor/pull/1405) - MySQL/MariaDB support as database backend
+
+Configure via `DATABASE_URL` environment variable:
+```bash
+# PostgreSQL
+DATABASE_URL=postgres://user:password@host:5432/meshmonitor
+
+# MySQL/MariaDB
+DATABASE_URL=mysql://user:password@host:3306/meshmonitor
+
+# SQLite (default - no configuration needed)
+```
+
+### Database Migration & Compatibility
+- [#1489](https://github.com/Yeraze/meshmonitor/pull/1489) - PostgreSQL/MySQL support for auto-traceroute
+- [#1485](https://github.com/Yeraze/meshmonitor/pull/1485) - PostgreSQL column type migration fixes
+- [#1473](https://github.com/Yeraze/meshmonitor/pull/1473) - PostgreSQL/MySQL support for API token management
+- [#1440](https://github.com/Yeraze/meshmonitor/pull/1440) - PostgreSQL/MySQL support for sync database methods
+- [#1438](https://github.com/Yeraze/meshmonitor/pull/1438) - Async methods for traceroute log and audit
+- [#1436](https://github.com/Yeraze/meshmonitor/pull/1436) - Updated tests for async database methods
+- [#1412](https://github.com/Yeraze/meshmonitor/pull/1412) - PostgreSQL/MySQL cache sync for node modifications
+
+### New Features
+- [#1482](https://github.com/Yeraze/meshmonitor/pull/1482) - Customizable tapback emoji reactions
+- [#1492](https://github.com/Yeraze/meshmonitor/pull/1492) - Script metadata support for enhanced UI display
+- [#1435](https://github.com/Yeraze/meshmonitor/pull/1435) - Show channel ID for encrypted packets
+- [#1439](https://github.com/Yeraze/meshmonitor/pull/1439) - Show session passkey status for remote nodes
+- [#1444](https://github.com/Yeraze/meshmonitor/pull/1444) - Add uptimeSeconds to v1 nodes API
+- [#1403](https://github.com/Yeraze/meshmonitor/pull/1403) - Battery status monitor auto-responder script
+- [#1396](https://github.com/Yeraze/meshmonitor/pull/1396) - Security configuration section on Device page
+- [#1394](https://github.com/Yeraze/meshmonitor/pull/1394) - Request neighbor info from remote nodes
+- [#1389](https://github.com/Yeraze/meshmonitor/pull/1389) - Node Hops Calculation setting
+- [#1387](https://github.com/Yeraze/meshmonitor/pull/1387) - Node opacity dimming based on last heard time
+- [#1379](https://github.com/Yeraze/meshmonitor/pull/1379) - Display last traceroute in node popup on map
+- [#1377](https://github.com/Yeraze/meshmonitor/pull/1377) - GPS accuracy circles on map
+- [#1376](https://github.com/Yeraze/meshmonitor/pull/1376) - Filter CLIENT_MUTE from relay modal
+- [#1367](https://github.com/Yeraze/meshmonitor/pull/1367) - GPS satellites in view as telemetry graph
+- [#1357](https://github.com/Yeraze/meshmonitor/pull/1357) - PUID/PGID environment variable support for Docker
+- [#1352](https://github.com/Yeraze/meshmonitor/pull/1352) - Navigate to channel/DM from push notifications
+- [#1349](https://github.com/Yeraze/meshmonitor/pull/1349) - Auto key management for PKI key mismatch repair
+- [#1348](https://github.com/Yeraze/meshmonitor/pull/1348) - Detect and display PKI key mismatch errors
+- [#1329](https://github.com/Yeraze/meshmonitor/pull/1329) - Log outgoing mesh commands to Packet Monitor
+- [#1325](https://github.com/Yeraze/meshmonitor/pull/1325) - Automated database maintenance feature
+- [#1398](https://github.com/Yeraze/meshmonitor/pull/1398) - Display MQTT indicator for unknown SNR in traceroutes
+
+---
+
+## 🐛 Bug Fixes
+
+### Database & Backend
+- [#1491](https://github.com/Yeraze/meshmonitor/pull/1491) - Prevent PKI key corruption from addContact messages
+- [#1483](https://github.com/Yeraze/meshmonitor/pull/1483) - Wait for database initialization before accepting requests
+- [#1479](https://github.com/Yeraze/meshmonitor/pull/1479) - Fix DM routing, SQLite schema, and purge validation
+- [#1477](https://github.com/Yeraze/meshmonitor/pull/1477) - Add logging for mark-as-read operations
+- [#1476](https://github.com/Yeraze/meshmonitor/pull/1476) - Convert booleans to integers for SQLite binding
+- [#1461](https://github.com/Yeraze/meshmonitor/pull/1461) - Address type safety issues from v3.0 PR review
+- [#1445](https://github.com/Yeraze/meshmonitor/pull/1445) - Don't send config while radio is restarting
+- [#1441](https://github.com/Yeraze/meshmonitor/pull/1441) - Include reset-admin.mjs script in Docker image
+- [#1395](https://github.com/Yeraze/meshmonitor/pull/1395) - Improve Remote Admin config load reliability
+- [#1393](https://github.com/Yeraze/meshmonitor/pull/1393) - Add detection and logging for virtual node ID mismatches
+- [#1385](https://github.com/Yeraze/meshmonitor/pull/1385) - Correct RX/TX direction for packets from local node
+- [#1381](https://github.com/Yeraze/meshmonitor/pull/1381) - Use precision_bits for accuracy circles
+- [#1359](https://github.com/Yeraze/meshmonitor/pull/1359) - Filter out internal ADMIN_APP and ROUTING_APP packets
+- [#1353](https://github.com/Yeraze/meshmonitor/pull/1353) - Auto Responder replies now work on channels
+- [#1347](https://github.com/Yeraze/meshmonitor/pull/1347) - Cache telemetry types to reduce poll latency
+- [#1346](https://github.com/Yeraze/meshmonitor/pull/1346) - Use WebSocket message data directly
+- [#1343](https://github.com/Yeraze/meshmonitor/pull/1343) - Delete broadcast messages when purging node
+- [#1334](https://github.com/Yeraze/meshmonitor/pull/1334) - Consistent nullish coalescing for txEnabled
+- [#1333](https://github.com/Yeraze/meshmonitor/pull/1333) - Add missing txEnabled fields to Remote Admin LoRa config
+
+### Frontend & UI
+- [#1494](https://github.com/Yeraze/meshmonitor/pull/1494) - Clarify device-reported node counts in graph labels
+- [#1486](https://github.com/Yeraze/meshmonitor/pull/1486) - Show most recent message timestamp in Recent Activity
+- [#1480](https://github.com/Yeraze/meshmonitor/pull/1480) - Fix orphaned security issue details display
+- [#1451](https://github.com/Yeraze/meshmonitor/pull/1451) - Remove duplicate tray icon on Windows
+- [#1448](https://github.com/Yeraze/meshmonitor/pull/1448) - Set default height for messages container
+- [#1417](https://github.com/Yeraze/meshmonitor/pull/1417) - Improve push notification scroll to message
+- [#1419](https://github.com/Yeraze/meshmonitor/pull/1419) - Handle empty/corrupted desktop config files
+
+### Networking & CORS
+- [#1466](https://github.com/Yeraze/meshmonitor/pull/1466) - Correct IP address byte order for static WiFi config
+- [#1465](https://github.com/Yeraze/meshmonitor/pull/1465) - Allow X-CSRF-Token header in CORS configuration
+
+### Internationalization
+- [#1467](https://github.com/Yeraze/meshmonitor/pull/1467) - Update purge warning to include local database
+- [#1450](https://github.com/Yeraze/meshmonitor/pull/1450) - Add missing channel edit translations
+- [#1421](https://github.com/Yeraze/meshmonitor/pull/1421) - Add missing channel config translations
+- [#1402](https://github.com/Yeraze/meshmonitor/pull/1402) - Correct incomplete githubPath URLs in scripts gallery
+
+---
+
+## 📖 Documentation
+
+- [#1481](https://github.com/Yeraze/meshmonitor/pull/1481) - Add WX Weather Alerts and Carrier Outage scripts to gallery
+- [#1418](https://github.com/Yeraze/meshmonitor/pull/1418) - Add Indiana Mesh to site gallery
+- [#1392](https://github.com/Yeraze/meshmonitor/pull/1392) - Add Radio Identity + QTH script to gallery
+- [#1363](https://github.com/Yeraze/meshmonitor/pull/1363) - Fix MESHTASTIC_STALE_CONNECTION_TIMEOUT default value
+- [#1361](https://github.com/Yeraze/meshmonitor/pull/1361) - Update documentation for protocol constants
+- [#1320](https://github.com/Yeraze/meshmonitor/pull/1320) - Fix meshtasticd documentation with correct CLI options
+
+---
+
+## 🌐 Translations
+
+Thanks to our translation community on Hosted Weblate:
+- [#1468](https://github.com/Yeraze/meshmonitor/pull/1468), [#1446](https://github.com/Yeraze/meshmonitor/pull/1446), [#1422](https://github.com/Yeraze/meshmonitor/pull/1422), [#1407](https://github.com/Yeraze/meshmonitor/pull/1407)
+- [#1388](https://github.com/Yeraze/meshmonitor/pull/1388), [#1380](https://github.com/Yeraze/meshmonitor/pull/1380), [#1369](https://github.com/Yeraze/meshmonitor/pull/1369), [#1365](https://github.com/Yeraze/meshmonitor/pull/1365)
+- [#1345](https://github.com/Yeraze/meshmonitor/pull/1345), [#1342](https://github.com/Yeraze/meshmonitor/pull/1342), [#1332](https://github.com/Yeraze/meshmonitor/pull/1332), [#1327](https://github.com/Yeraze/meshmonitor/pull/1327)
+- [#1319](https://github.com/Yeraze/meshmonitor/pull/1319)
+
+---
+
+## 🔧 Infrastructure
+
+- [#1360](https://github.com/Yeraze/meshmonitor/pull/1360) - Extract Meshtastic protocol constants to shared file
+- [#1457](https://github.com/Yeraze/meshmonitor/pull/1457) - Use npm install instead of npm ci in CI
+- [#1456](https://github.com/Yeraze/meshmonitor/pull/1456) - Add --legacy-peer-deps to npm ci commands
+
+---
+
+## 📦 Migration Guide
+
+### Upgrading from v2.x
+
+1. **Backup your database** before upgrading
+2. The existing SQLite database will continue to work without changes
+3. To migrate to PostgreSQL or MySQL, use the migration tool:
+   ```bash
+   # Set up target database
+   export DATABASE_URL=postgres://user:password@host:5432/meshmonitor
+
+   # Run migration
+   npm run migrate-db -- --from sqlite:/data/meshmonitor.db --to $DATABASE_URL
+   ```
+
+See the [Database Migration Guide](https://meshmonitor.app/database-migration) for detailed instructions.
+
+---
+
+## 🙏 Contributors
+
+Thanks to all contributors who made this release possible, including:
+- The MeshMonitor core team
+- Translation contributors via Hosted Weblate
+- Community bug reporters and testers
+
+---
+
+**Full Changelog**: https://github.com/Yeraze/meshmonitor/compare/v2.22.0...v3.0.0
+
+---
+
+## Proxmox LXC Template
+
+This release includes a Proxmox-compatible LXC container template for MeshMonitor.
+
+### Installation
+
+1. Download the `.tar.gz` template file
+2. Verify the SHA256 checksum (optional but recommended)
+3. Upload to your Proxmox server: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
+4. Create a new LXC container from the template via Proxmox web UI
+5. Configure `/etc/meshmonitor/meshmonitor.env` with your Meshtastic node IP
+6. Start the container and access the web UI on port 8080
+
+### Documentation
+
+See the [Proxmox LXC Deployment Guide](https://github.com/jeremiah-k/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md) for detailed instructions.
+
+### Limitations
+
+- Auto-upgrade feature is not supported in LXC deployments
+- Manual updates required (download new template for each version)
+- Community-supported (Docker remains the primary deployment method)
+
 
 ## [2.18.1] - 2025-11-15
 
@@ -176,6 +3751,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
     - Request timeouts
     - Safe HTML entity handling
   - **Works in All Message Types**: Channel messages, direct messages, and traceroute messages
+
 
 ## [2.12.2] - 2025-10-31
 
@@ -237,6 +3813,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Security resource excluded from default user permissions
 - **Auto Announce Architecture**: Enhanced scheduler to support both interval and cron-based execution modes
 
+
 ## [2.11.3] - 2025-10-28
 
 ### Added
@@ -280,6 +3857,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Supports special characters in Apprise URLs
   - Better error messages for invalid URLs
 
+
 ## [2.10.4] - 2025-10-25
 
 ### Added
@@ -299,6 +3877,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Changed
 - Replaced magic numbers with configuration constants for improved maintainability
 - Optimized traceroute display performance with memoized route formatting
+
 
 ## [2.10.3] - 2025-10-25
 
@@ -322,6 +3901,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Improved UX for managing large numbers of nodes
 - Updated README with SESSION_ROLLING documentation
 
+
 ## [2.4.6] - 2025-01-13
 
 ### Fixed
@@ -331,6 +3911,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Maintains full backward compatibility with existing OIDC providers (Authentik, Keycloak, Auth0, Okta, Azure AD)
   - Resolves "response parameter iss (issuer) missing" error
   - Fixes #197
+
 
 ## [2.1.0] - 2025-10-10
 
@@ -377,10 +3958,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Route segments functionality while disconnected
 - Page refresh behavior when in disconnected state
 
+
 ## [2.0.1] - 2025-10-09
 
 ### Fixed
 - Cookie security configuration with `COOKIE_SECURE` and `COOKIE_SAMESITE` environment variables
+
 
 ## [2.0.0] - 2025-10-08
 
@@ -388,6 +3971,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Authentication and user management system
 - Role-based access control with granular permissions
 - Update notification system with GitHub release checking
+
 
 ## [1.15.0] - 2025-10-06
 
@@ -415,6 +3999,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Session passkey lifecycle management in meshtasticManager
 - Admin message processing for extracting session passkey from responses
 - Automatic passkey refresh with 290-second buffer before expiry
+
 
 ## [1.4.0] - 2025-09-29
 
@@ -445,6 +4030,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Improved build times with updated tooling
 - Enhanced type safety with latest TypeScript ESLint
 - Better development experience with latest Vite and React
+
 
 ## [1.1.0] - 2025-09-28
 
@@ -478,6 +4064,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Automated multi-architecture image builds
 - Layer caching for faster subsequent builds
 - Public GHCR package for easy access
+
 
 ## [1.0.0] - 2025-09-28
 
