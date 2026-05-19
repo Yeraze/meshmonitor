@@ -22,50 +22,6 @@ import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
 import { REBROADCAST_MODE_OPTIONS } from './constants';
 
-/**
- * Meshtastic default channel key (shorthand value 1)
- * Used for the "default" encryption setting
- */
-const MESHTASTIC_DEFAULT_KEY = new Uint8Array([
-  0xd4, 0xf1, 0xbb, 0x3a, 0x20, 0x29, 0x07, 0x59,
-  0xf0, 0xbc, 0xff, 0xab, 0xcf, 0x4e, 0x69, 0x01
-]);
-
-/**
- * Expand a Meshtastic shorthand PSK (1 byte) to a full 16-byte key
- * Shorthand values:
- *   0 = No crypto (returns null)
- *   1 = Default key
- *   2-10 = Default key with (value-1) added to last byte (simple1-simple9)
- */
-function expandShorthandPsk(shorthandValue: number): Uint8Array | null {
-  if (shorthandValue === 0) {
-    return null; // No crypto
-  }
-
-  // Copy the default key
-  const key = new Uint8Array(MESHTASTIC_DEFAULT_KEY);
-
-  if (shorthandValue >= 2 && shorthandValue <= 10) {
-    // simple1-simple9: add (value-1) to last byte
-    key[15] = (key[15] + (shorthandValue - 1)) & 0xff;
-  }
-  // For value 1, just use the default key as-is
-
-  return key;
-}
-
-/**
- * Convert Uint8Array to base64 string
- */
-function uint8ArrayToBase64(arr: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < arr.length; i++) {
-    binary += String.fromCharCode(arr[i]);
-  }
-  return btoa(binary);
-}
-
 interface ChannelDatabaseSectionProps {
   isAdmin: boolean;
   rebroadcastMode?: number;
@@ -401,29 +357,22 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
       return;
     }
 
-    // Validate PSK is valid Base64 and expand shorthand if needed
-    let finalPsk = editingChannel.psk;
+    // Validate PSK length only — preserve the user's exact input. 1-byte
+    // shorthand keys (e.g. `AQ==`) are stored as-is and expanded at runtime
+    // by channelDecryptionService.refreshChannelCache.
+    const finalPsk = editingChannel.psk;
     try {
       const pskBytes = atob(editingChannel.psk);
 
       if (pskBytes.length === 0) {
-        // No crypto - not valid for channel database
         showToast(t('channel_database.toast_psk_no_crypto'), 'error');
         return;
       } else if (pskBytes.length === 1) {
-        // Shorthand PSK - expand to full key
-        const shorthandValue = pskBytes.charCodeAt(0);
-        if (shorthandValue === 0) {
+        // Shorthand PSK — byte 0 means "no crypto" and is not a valid stored key.
+        if (pskBytes.charCodeAt(0) === 0) {
           showToast(t('channel_database.toast_psk_no_crypto'), 'error');
           return;
         }
-        const expandedKey = expandShorthandPsk(shorthandValue);
-        if (!expandedKey) {
-          showToast(t('channel_database.toast_psk_no_crypto'), 'error');
-          return;
-        }
-        finalPsk = uint8ArrayToBase64(expandedKey);
-        logger.debug(`Expanded shorthand PSK ${shorthandValue} to full 16-byte key`);
       } else if (pskBytes.length !== 16 && pskBytes.length !== 32) {
         showToast(t('channel_database.toast_psk_invalid_length'), 'error');
         return;
