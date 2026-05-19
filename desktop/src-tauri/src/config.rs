@@ -4,13 +4,19 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// Meshtastic node IP address
+    /// Legacy: Meshtastic node IP address. No longer surfaced in the setup UI
+    /// (sources are configured in the web UI instead). Retained so existing
+    /// installs that previously set a value continue to auto-derive a
+    /// Meshtastic TCP source on startup. New installs default to empty.
+    #[serde(default)]
     pub meshtastic_ip: String,
-    /// Meshtastic TCP port (default: 4403)
+    /// Legacy: Meshtastic TCP port (default: 4403). See `meshtastic_ip` note.
+    #[serde(default = "default_meshtastic_port")]
     pub meshtastic_port: u16,
     /// Web UI port (default: 8080)
     pub web_port: u16,
-    /// Auto-start with Windows
+    /// Autostart on user login. Persisted from the settings UI but not yet
+    /// wired to a platform implementation (no autostart plugin is registered).
     pub auto_start: bool,
     /// Session secret for authentication
     pub session_secret: String,
@@ -146,6 +152,11 @@ pub fn get_logs_path() -> Result<PathBuf, String> {
     let logs_dir = get_data_path()?.join("logs");
     fs::create_dir_all(&logs_dir).map_err(|e| format!("Failed to create logs directory: {}", e))?;
     Ok(logs_dir)
+}
+
+/// Default Meshtastic TCP port for legacy `meshtastic_port` field.
+fn default_meshtastic_port() -> u16 {
+    4403
 }
 
 /// Generate a random session secret
