@@ -1,10 +1,13 @@
 /**
  * Migration Registry Barrel File
  *
- * Registers all 44 migrations in sequential order for use by the migration runner.
+ * Registers all migrations in sequential order for use by the migration runner.
  * Migration 001 is the v3.7 baseline (selfIdempotent — handles its own detection).
  * Migrations 002-011 were originally 078-087 and retain their original settingsKeys
  * for upgrade compatibility.
+ *
+ * Total count is asserted by `src/db/migrations.test.ts`; update that test when
+ * adding a new migration.
  */
 
 import { MigrationRegistry } from './migrationRegistry.js';

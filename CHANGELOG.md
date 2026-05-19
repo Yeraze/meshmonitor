@@ -4,7 +4,9 @@ All notable changes to MeshMonitor will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+> **Note:** This file's per-version history was last fully maintained at **2.18.1** (2025-11-15). Release notes for every 3.x and 4.x version since — including the 3.0 multi-database release, the 4.0 multi-source architecture, and the MeshCore integration (4.5.x) — live on the [GitHub Releases page](https://github.com/Yeraze/meshmonitor/releases). The current release is **4.6.1**. Feature highlights below this note describe behavior that has already shipped; consult GitHub Releases for the exact version each item landed in.
+
+## [Released since 2.18.1 — see GitHub Releases for per-version detail]
 
 - **Analysis & Reports workspace** ([#2898](https://github.com/Yeraze/meshmonitor/pull/2898)): New global cross-source analytics page at `/reports`, linked from the dashboard sidebar. The first bundled report is **Solar Monitoring Analysis**, a port of MeshManager's algorithm that detects solar-powered nodes by scanning battery / voltage / INA-channel telemetry for the morning-low → afternoon-peak charging pattern and overnight discharge.
   - **Two new endpoints** under `/api/analysis/*`, both gated by the existing per-source `nodes:read` permission filter:
