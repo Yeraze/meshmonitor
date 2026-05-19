@@ -4,13 +4,19 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// Meshtastic node IP address
+    /// Legacy: Meshtastic node IP address. No longer surfaced in the setup UI
+    /// (sources are configured in the web UI instead). Retained so existing
+    /// installs that previously set a value continue to auto-derive a
+    /// Meshtastic TCP source on startup. New installs default to empty.
+    #[serde(default)]
     pub meshtastic_ip: String,
-    /// Meshtastic TCP port (default: 4403)
+    /// Legacy: Meshtastic TCP port (default: 4403). See `meshtastic_ip` note.
+    #[serde(default = "default_meshtastic_port")]
     pub meshtastic_port: u16,
     /// Web UI port (default: 8080)
     pub web_port: u16,
-    /// Auto-start with Windows
+    /// Autostart on user login. Persisted from the settings UI but not yet
+    /// wired to a platform implementation (no autostart plugin is registered).
     pub auto_start: bool,
     /// Session secret for authentication
     pub session_secret: String,
@@ -148,6 +154,11 @@ pub fn get_logs_path() -> Result<PathBuf, String> {
     Ok(logs_dir)
 }
 
+/// Default Meshtastic TCP port for legacy `meshtastic_port` field.
+fn default_meshtastic_port() -> u16 {
+    4403
+}
+
 /// Generate a random session secret
 fn generate_secret() -> String {
     uuid::Uuid::new_v4().to_string().replace("-", "")
@@ -170,5 +181,42 @@ mod tests {
     fn test_generate_secret() {
         let secret = generate_secret();
         assert_eq!(secret.len(), 64); // Two UUIDs without dashes
+    }
+
+    /// A config.json written by a future build that no longer emits the legacy
+    /// Meshtastic fields must deserialize cleanly, with sensible defaults.
+    /// Locks in the `#[serde(default)]` markers added when the setup UI
+    /// stopped collecting a Meshtastic node IP.
+    #[test]
+    fn test_config_deserialises_without_legacy_meshtastic_fields() {
+        let json = r#"{
+            "web_port": 8080,
+            "auto_start": false,
+            "session_secret": "deadbeef",
+            "setup_completed": true
+        }"#;
+        let config: Config =
+            serde_json::from_str(json).expect("config without legacy fields should parse");
+        assert_eq!(config.meshtastic_ip, "");
+        assert_eq!(config.meshtastic_port, 4403);
+        assert!(config.setup_completed);
+    }
+
+    /// An existing install with a populated `meshtastic_ip` must round-trip
+    /// without losing the value — `lib.rs` still passes that env var to the
+    /// backend, so the legacy auto-derived Meshtastic source keeps working.
+    #[test]
+    fn test_config_preserves_legacy_meshtastic_ip() {
+        let json = r#"{
+            "meshtastic_ip": "10.0.0.42",
+            "meshtastic_port": 4403,
+            "web_port": 8080,
+            "auto_start": false,
+            "session_secret": "deadbeef",
+            "setup_completed": true
+        }"#;
+        let config: Config = serde_json::from_str(json).expect("legacy config should parse");
+        assert_eq!(config.meshtastic_ip, "10.0.0.42");
+        assert_eq!(config.meshtastic_port, 4403);
     }
 }
