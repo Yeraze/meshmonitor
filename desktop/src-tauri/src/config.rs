@@ -195,7 +195,8 @@ mod tests {
             "session_secret": "deadbeef",
             "setup_completed": true
         }"#;
-        let config: Config = serde_json::from_str(json).expect("config without legacy fields should parse");
+        let config: Config =
+            serde_json::from_str(json).expect("config without legacy fields should parse");
         assert_eq!(config.meshtastic_ip, "");
         assert_eq!(config.meshtastic_port, 4403);
         assert!(config.setup_completed);
