@@ -1026,6 +1026,26 @@ class DatabaseService {
         }
       } catch (error) {
         logger.error(`Error running migration ${String(migration.number).padStart(3, '0')} (${migration.name}):`, error);
+        if (error && typeof error === 'object' && 'code' in error && (error as any).code === 'SQLITE_CORRUPT') {
+          const dbPath = getEnvironmentConfig().databasePath;
+          logger.error(
+            '\n════════════════════════════════════════════════════════\n' +
+            'DATABASE CORRUPTION DETECTED\n' +
+            '════════════════════════════════════════════════════════\n' +
+            'Your SQLite database file is corrupted (SQLITE_CORRUPT).\n' +
+            'On Raspberry Pi this is usually caused by SD card failure\n' +
+            'or an unexpected power loss during a write operation.\n\n' +
+            `Database location: ${dbPath}\n\n` +
+            'To recover:\n' +
+            `  1. Back up:  cp "${dbPath}" "${dbPath}.bak"\n` +
+            `  2. Delete:   rm "${dbPath}"\n` +
+            '  3. Restart MeshMonitor — a fresh database will be created.\n\n' +
+            'Historical data will be lost. Keep the .bak file if you\n' +
+            'want to attempt manual recovery with the sqlite3 tool.\n' +
+            '════════════════════════════════════════════════════════',
+          );
+          process.exit(1);
+        }
         throw error;
       }
     }
