@@ -172,6 +172,28 @@ export interface MeshCoreMessage {
 export interface MeshCoreStatus {
   batteryMv?: number;
   uptimeSecs?: number;
+
+  // Repeater operational stats exposed by SendStatusReq → StatusResponse.
+  // Always populated when the remote node is a Repeater or Room Server;
+  // typically absent when the target is another Companion since Companion
+  // firmware doesn't ship these counters.
+  queueLen?: number;
+  noiseFloor?: number;
+  lastRssi?: number;
+  lastSnr?: number;
+  packetsRecv?: number;
+  packetsSent?: number;
+  airTimeSecs?: number;
+  sentFlood?: number;
+  sentDirect?: number;
+  recvFlood?: number;
+  recvDirect?: number;
+  errors?: number;
+  directDups?: number;
+  floodDups?: number;
+
+  // Companion-only fields (radio config etc.). Kept on the interface for
+  // backwards compatibility with callers that ask Companion targets for status.
   txPower?: number;
   radioFreq?: number;
   radioBw?: number;
@@ -471,6 +493,7 @@ class MeshCoreManager extends EventEmitter {
     this.deviceType = MeshCoreDeviceType.UNKNOWN;
     this.localNode = null;
     this.contacts.clear();
+    this.guestLoggedInNodes.clear();
 
     this.emit('disconnected');
     dataEventEmitter.emitMeshCoreStatusUpdated({ connected: false }, this.sourceId);
@@ -1194,14 +1217,29 @@ class MeshCoreManager extends EventEmitter {
       }, 15000);
 
       if (response.success && response.data) {
+        const d = response.data;
         return {
-          batteryMv: response.data.bat_mv,
-          uptimeSecs: response.data.up_secs,
-          txPower: response.data.tx_power,
-          radioFreq: response.data.radio_freq,
-          radioBw: response.data.radio_bw,
-          radioSf: response.data.radio_sf,
-          radioCr: response.data.radio_cr,
+          batteryMv: d.bat_mv,
+          uptimeSecs: d.up_secs,
+          queueLen: d.queue_len,
+          noiseFloor: d.noise_floor,
+          lastRssi: d.last_rssi,
+          lastSnr: d.last_snr,
+          packetsRecv: d.packets_recv,
+          packetsSent: d.packets_sent,
+          airTimeSecs: d.air_time_secs,
+          sentFlood: d.sent_flood,
+          sentDirect: d.sent_direct,
+          recvFlood: d.recv_flood,
+          recvDirect: d.recv_direct,
+          errors: d.errors,
+          directDups: d.direct_dups,
+          floodDups: d.flood_dups,
+          txPower: d.tx_power,
+          radioFreq: d.radio_freq,
+          radioBw: d.radio_bw,
+          radioSf: d.radio_sf,
+          radioCr: d.radio_cr,
         };
       }
       return null;
@@ -1209,6 +1247,36 @@ class MeshCoreManager extends EventEmitter {
       logger.error('[MeshCore] Status request failed:', error);
       return null;
     }
+  }
+
+  /**
+   * In-memory set of remote-node public keys that we've successfully
+   * established a guest session with on the currently-open connection.
+   * Cleared on disconnect: a fresh TCP/serial reconnect drops any prior
+   * MeshCore session, so callers must re-login.
+   *
+   * Guest login (empty password) is the canonical way to "unlock"
+   * `GetTelemetryData` responses on Repeater firmware whose
+   * `telemetry_mode_*` is set to `Disabled` for anonymous callers — see
+   * https://github.com/Yeraze/meshmonitor/issues/3092.
+   */
+  private guestLoggedInNodes: Set<string> = new Set();
+
+  /**
+   * Ensure a guest (empty-password) login session exists for `publicKey`.
+   * Returns true if already logged in, or if a fresh login attempt
+   * succeeded. Safe to call before every binary request to a repeater:
+   * the in-memory set short-circuits repeats on the same connection.
+   */
+  async ensureGuestLogin(publicKey: string): Promise<boolean> {
+    if (this.guestLoggedInNodes.has(publicKey)) return true;
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return false;
+    if (!this.connected) return false;
+    const ok = await this.loginToNode(publicKey, '');
+    if (ok) {
+      this.guestLoggedInNodes.add(publicKey);
+    }
+    return ok;
   }
 
   /**
@@ -1761,6 +1829,11 @@ class MeshCoreManager extends EventEmitter {
       this.nativeBackend = null;
     }
     this.connected = false;
+    // The MeshCore session on the wire is gone — any guest-login state on
+    // the previous connection no longer applies. Local node / contacts
+    // cache is intentionally preserved; the next connect() will refresh
+    // them.
+    this.guestLoggedInNodes.clear();
     // Keep `connectionState = 'reconnecting'`; do not clear the local node /
     // contacts cache — the next connect() will refresh them.
   }

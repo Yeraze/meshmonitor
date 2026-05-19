@@ -23,9 +23,24 @@
 import { logger } from '../../utils/logger.js';
 import type { DbTelemetry } from '../../services/database.js';
 import type { DbMeshCoreNode } from '../../db/repositories/meshcore.js';
-import type { MeshCoreManager, MeshCoreTelemetryRecord } from '../meshcoreManager.js';
+import type {
+  MeshCoreManager,
+  MeshCoreStatus,
+  MeshCoreTelemetryRecord,
+} from '../meshcoreManager.js';
 import type { MeshCoreManagerRegistry } from '../meshcoreRegistry.js';
 import { MC_TELEMETRY_PREFIX, nodeNumFromPubkey } from './meshcoreTelemetryPoller.js';
+
+/**
+ * `adv_type` values for MeshCore contacts. Matches the `MeshCoreDeviceType`
+ * enum (companion=1, repeater=2, room=3) but kept as a local literal-union
+ * to avoid importing the enum just for the integer comparison.
+ *
+ * Repeater and Room Server targets get the path-#1 (`SendStatusReq`)
+ * treatment plus a best-effort guest-login before path-#3 (LPP); other
+ * advTypes use path #3 only.
+ */
+const REPEATER_ADV_TYPES = new Set<number>([2, 3]);
 
 /** Database surface the scheduler depends on (kept thin for testability). */
 export interface RemoteTelemetrySchedulerDatabase {
@@ -183,6 +198,71 @@ export function recordToTelemetryRows(
   return out;
 }
 
+/**
+ * Map a `MeshCoreStatus` (returned by `SendStatusReq` / `getStatus(pubkey)`)
+ * into telemetry rows under the `mc_status_*` namespace. Battery is
+ * normalised from mV → V to match the LPP `battery_volts` convention so
+ * the UI's existing battery graph picks it up. Counter fields are written
+ * raw (no derivation) so a future renderer can do its own deltas.
+ *
+ * Fields the firmware reports as 0/undefined are still emitted as zero
+ * rather than dropped — uptime starting at 0 is meaningful, and a
+ * Companion target that doesn't ship these counters simply omits them
+ * (the manager's `requestNodeStatus` decoder leaves the field undefined).
+ *
+ * Exported for the unit test.
+ */
+export interface StatusFieldDef {
+  source: keyof MeshCoreStatus;
+  telemetryType: string;
+  unit?: string;
+  transform?: (v: number) => number;
+}
+
+export const STATUS_FIELD_MAP: readonly StatusFieldDef[] = [
+  { source: 'batteryMv', telemetryType: 'battery_volts', unit: 'V', transform: (v) => v / 1000 },
+  { source: 'uptimeSecs', telemetryType: 'uptime_secs', unit: 's' },
+  { source: 'queueLen', telemetryType: 'queue_len' },
+  { source: 'noiseFloor', telemetryType: 'noise_floor', unit: 'dB' },
+  { source: 'lastRssi', telemetryType: 'last_rssi', unit: 'dBm' },
+  { source: 'lastSnr', telemetryType: 'last_snr', unit: 'dB' },
+  { source: 'packetsRecv', telemetryType: 'packets_recv' },
+  { source: 'packetsSent', telemetryType: 'packets_sent' },
+  { source: 'airTimeSecs', telemetryType: 'air_time_secs', unit: 's' },
+  { source: 'sentFlood', telemetryType: 'sent_flood' },
+  { source: 'sentDirect', telemetryType: 'sent_direct' },
+  { source: 'recvFlood', telemetryType: 'recv_flood' },
+  { source: 'recvDirect', telemetryType: 'recv_direct' },
+  { source: 'errors', telemetryType: 'errors' },
+  { source: 'directDups', telemetryType: 'direct_dups' },
+  { source: 'floodDups', telemetryType: 'flood_dups' },
+];
+
+export function statusToTelemetryRows(
+  status: MeshCoreStatus,
+  nodeId: string,
+  nodeNum: number,
+  timestamp: number,
+): DbTelemetry[] {
+  const out: DbTelemetry[] = [];
+  for (const def of STATUS_FIELD_MAP) {
+    const raw = status[def.source];
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) continue;
+    const value = def.transform ? def.transform(raw) : raw;
+    if (!Number.isFinite(value)) continue;
+    out.push({
+      nodeId,
+      nodeNum,
+      telemetryType: `${MC_TELEMETRY_PREFIX}status_${def.telemetryType}`,
+      value,
+      unit: def.unit,
+      timestamp,
+      createdAt: timestamp,
+    });
+  }
+  return out;
+}
+
 export class MeshCoreRemoteTelemetryScheduler {
   private readonly registry: MeshCoreManagerRegistry;
   private readonly database: RemoteTelemetrySchedulerDatabase;
@@ -263,42 +343,97 @@ export class MeshCoreRemoteTelemetryScheduler {
     const target = pickMostOverdue(nodes, now);
     if (!target) return;
 
+    const isRepeaterLike = typeof target.advType === 'number' && REPEATER_ADV_TYPES.has(target.advType);
+    const keyShort = target.publicKey.substring(0, 16);
     logger.info(
-      `[MeshCoreRemoteTelem:${manager.sourceId}] Requesting telemetry from ${target.publicKey.substring(0, 16)}…`,
+      `[MeshCoreRemoteTelem:${manager.sourceId}] Requesting telemetry from ${keyShort}… (${isRepeaterLike ? 'repeater: status + LPP' : 'companion: LPP'})`,
     );
 
-    // Stamp the request time BEFORE issuing — keeps a slow / failing node
-    // from being re-selected on every tick while we wait. The manager
-    // also bumps its own `lastMeshTxAt` inside `requestRemoteTelemetry`.
+    // Stamp the request time BEFORE issuing — preserves fair rotation
+    // when several nodes share the same overdue-by, so a slow / failing
+    // node doesn't starve its peers on subsequent ticks. The manager
+    // also bumps its own `lastMeshTxAt` inside `requestRemoteTelemetry`
+    // on success; we pre-bump here so the per-source 60s gate applies
+    // regardless of which sub-call returns first.
     await this.database.meshcore.markTelemetryRequested(manager.sourceId, target.publicKey, now);
     manager.recordMeshTx(now);
-
-    const records = await manager.requestRemoteTelemetry(target.publicKey);
-    if (!records || records.length === 0) {
-      logger.debug(
-        `[MeshCoreRemoteTelem:${manager.sourceId}] No telemetry from ${target.publicKey.substring(0, 16)}… (timeout or empty)`,
-      );
-      return;
-    }
 
     const nodeNum = nodeNumFromPubkey(target.publicKey);
     const ts = this.nowFn();
     const rows: DbTelemetry[] = [];
-    for (const rec of records) {
-      rows.push(...recordToTelemetryRows(rec, target.publicKey, nodeNum, ts));
+    const sources: string[] = [];
+
+    // Path #1: SendStatusReq → StatusResponse. Works on any reachable
+    // Repeater / Room Server with no login required, returns the
+    // 16-field operational stats blob (battery, uptime, queue, packet
+    // counters, RSSI/SNR, errors). Companion firmware doesn't ship
+    // these counters, so we skip the call there to avoid wasted air
+    // time. See https://github.com/Yeraze/meshmonitor/issues/3092.
+    if (isRepeaterLike) {
+      try {
+        const status = await manager.requestNodeStatus(target.publicKey);
+        if (status) {
+          const statusRows = statusToTelemetryRows(status, target.publicKey, nodeNum, ts);
+          if (statusRows.length > 0) {
+            rows.push(...statusRows);
+            sources.push(`status:${statusRows.length}`);
+          }
+        }
+      } catch (err) {
+        logger.warn(
+          `[MeshCoreRemoteTelem:${manager.sourceId}] requestNodeStatus(${keyShort}…) threw:`,
+          err,
+        );
+      }
+
+      // Best-effort guest-login: empty-password login is the canonical
+      // way to unlock LPP `GetTelemetryData` responses on repeaters
+      // whose `telemetry_mode_*` is set to `Disabled` for anonymous
+      // callers. Tracked in-memory on the manager so we don't re-login
+      // every tick. Failure is silently fine — the LPP request below
+      // still runs in case the repeater is configured for anonymous
+      // access.
+      try {
+        await manager.ensureGuestLogin(target.publicKey);
+      } catch (err) {
+        logger.debug(
+          `[MeshCoreRemoteTelem:${manager.sourceId}] ensureGuestLogin(${keyShort}…) threw:`,
+          err,
+        );
+      }
+    }
+
+    // Path #3: GetTelemetryData binary request → BinaryResponse with a
+    // Cayenne-LPP payload. Always attempted: Companion targets are the
+    // primary consumer of this path (they're where actual sensors
+    // live), and Repeater targets may also expose LPP channels once a
+    // guest session is established.
+    const records = await manager.requestRemoteTelemetry(target.publicKey);
+    if (records && records.length > 0) {
+      const lppRows: DbTelemetry[] = [];
+      for (const rec of records) {
+        lppRows.push(...recordToTelemetryRows(rec, target.publicKey, nodeNum, ts));
+      }
+      if (lppRows.length > 0) {
+        rows.push(...lppRows);
+        sources.push(`lpp:${lppRows.length}`);
+      }
     }
 
     if (rows.length === 0) {
-      logger.debug(
-        `[MeshCoreRemoteTelem:${manager.sourceId}] LPP frame decoded to 0 rows for ${target.publicKey.substring(0, 16)}…`,
+      // Promoted from debug → info so silent-empty failures are visible
+      // in normal log levels. Operators have no other signal when a
+      // repeater's `telemetry_mode_*` is set restrictively.
+      logger.info(
+        `[MeshCoreRemoteTelem:${manager.sourceId}] No telemetry from ${keyShort}… (${isRepeaterLike ? 'status + LPP both empty/timeout' : 'LPP empty/timeout'})`,
       );
       return;
     }
 
     try {
       await this.database.telemetry.insertTelemetryBatch(rows, manager.sourceId);
-      logger.debug(
-        `[MeshCoreRemoteTelem:${manager.sourceId}] Wrote ${rows.length} telemetry rows for ${target.publicKey.substring(0, 16)}…`,
+      logger.info(
+        `[MeshCoreRemoteTelem:${manager.sourceId}] Wrote ${rows.length} telemetry rows for ${keyShort}… (${sources.join(', ')})`,
       );
     } catch (err) {
       logger.warn(`[MeshCoreRemoteTelem:${manager.sourceId}] insertTelemetryBatch failed:`, err);
