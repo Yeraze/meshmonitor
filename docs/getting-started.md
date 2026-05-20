@@ -8,7 +8,31 @@ Want a custom configuration generated for you? Try our **[Docker Compose Configu
 
 ## Deployment Methods
 
-MeshMonitor supports multiple deployment options to fit your infrastructure:
+MeshMonitor supports multiple deployment options to fit your infrastructure.
+
+### At a Glance
+
+| Method | Platform | Auto-Upgrade | Complexity | Support |
+|--------|----------|--------------|------------|---------|
+| 🐳 [Docker Compose](#quick-start-with-docker-compose) | Any | ✅ Yes (sidecar) | Low | Official |
+| 🖥️ [Desktop App](/configuration/desktop) | Windows / macOS | ❌ Manual | Very Low | Official |
+| ☸️ [Kubernetes / Helm](/deployment/DEPLOYMENT_GUIDE) | Any | ✅ Yes (image pull) | High | Official |
+| 📦 [Proxmox LXC](/deployment/PROXMOX_LXC_GUIDE) | Proxmox VE | ❌ Manual | Low | Community |
+| ❄️ [NixOS Flake](https://github.com/benjajaja/nixos-rk3588/blob/main/configuration.nix#L580) | NixOS | ✅ Declarative rebuild | Medium | Community |
+| 🔧 [Bare Metal](/deployment/DEPLOYMENT_GUIDE) | Linux / macOS | ❌ Manual | Medium | Community |
+
+### Which Should I Choose?
+
+- **You want the smoothest update experience** → **Docker Compose** with the [auto-upgrade overlay](/configuration/auto-upgrade). One click in the UI pulls a new image and restarts the container.
+- **You're on a single Windows or macOS machine and don't want to think about servers** → **Desktop App**. Updates are manual (download a new installer), but setup is the simplest.
+- **You're running on a Kubernetes cluster** → **Helm chart**. Upgrades are an `image:` tag bump and a `helm upgrade`.
+- **You're a Proxmox VE user** → **Proxmox LXC** for a lightweight, native-feeling install. Note: updates are manual.
+- **You're on NixOS** → **NixOS Flake** for fully declarative deployment. Upgrades happen on `nixos-rebuild`.
+- **You want to run directly on the host with Node.js** → **Bare Metal**. Best for development or custom integrations.
+
+::: tip Auto-Upgrade requires Docker
+Auto-upgrade through the MeshMonitor UI is only available with the Docker Compose deployment (using the `docker-compose.upgrade.yml` overlay). Desktop, Proxmox LXC, and Bare Metal installs must be updated manually. Kubernetes and NixOS handle upgrades through their own native mechanisms (Helm / `nixos-rebuild`), not the in-app button.
+:::
 
 ### Officially Supported
 
