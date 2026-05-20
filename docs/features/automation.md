@@ -862,6 +862,23 @@ When using multiple responses, each message is queued individually and sent with
 - Up to 3 retry attempts per message
 - Automatic ACK tracking for delivery confirmation
 
+**Optional fields**:
+
+| Field | Type | Applies to | Effect |
+|-------|------|------------|--------|
+| `response` | string | Text, HTTP, Script | Single message body (≤ 200 chars). |
+| `responses` | string[] | Text, HTTP, Script | Multiple message bodies (each ≤ 200 chars). Wins over `response` if both are present. |
+| `private` | boolean | Text, HTTP, Script | Force DM routing (`true`) or channel routing (`false`) regardless of where the trigger fired. Omit to keep the default ("reply on the same channel the trigger arrived on"). |
+
+**Interaction with the `multiline` trigger option**:
+
+- `multiline=true` only splits when the payload is a **single** response (plain text or `{"response": "…"}`). Each item in a `{"responses": [...]}` array is treated as already-chunked: items longer than 200 chars are **truncated**, not split. Pre-chunk your own messages when returning the array form.
+- `multiline=false` (default) truncates every response to 200 chars.
+
+**HTTP responses that aren't MeshMonitor-shaped JSON**:
+
+If an HTTP endpoint returns a body that parses as JSON but doesn't have `response` / `responses` (e.g. `{"status":"ok"}` from a webhook acknowledgment), the entire raw body is used as the single response message — same behaviour as a plain-text body. Only the script path treats this as an error.
+
 ### Parameter Extraction
 
 Parameters are automatically extracted from the incoming message and can be used in responses:

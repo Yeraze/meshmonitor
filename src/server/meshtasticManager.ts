@@ -44,7 +44,94 @@ const TCP_READY_CONNECT_TIMEOUT_MS = 1500;
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
 
-const AUTO_RESPONDER_TIMEOUT = 30_000;
+// Auto-responder timeouts are split so the HTTP path can stay snappy
+// (mesh consumers wait synchronously for the trigger to fire) while
+// scripts get a longer budget for legitimate work. Keep both ≤ the
+// 30s rate-limit so a slow backend can't fully consume the budget.
+const HTTP_AUTO_RESPONDER_TIMEOUT_MS = 5_000;
+const SCRIPT_AUTO_RESPONDER_TIMEOUT_MS = 30_000;
+
+/** Parsed auto-responder payload: list of messages to send, plus the
+ * raw decoded JSON object (or `{}` if the payload was plain text) so
+ * callers can read optional fields like `private`. */
+export interface AutoResponderParsed {
+  json: Record<string, unknown>;
+  responses: string[];
+}
+
+/**
+ * Parse an auto-responder response payload (script stdout or HTTP
+ * body) into a normalized `{ json, responses }` shape.
+ *
+ * Accepted formats:
+ *   { "responses": ["…", "…"] }    multi-message JSON
+ *   { "response": "…" }             single-message JSON
+ *   "plain text"                    only when jsonExpected=false
+ *
+ * `jsonExpected=true` (script path) requires JSON output with one of
+ * the two recognised fields; anything else logs an error and returns
+ * no messages. `jsonExpected=false` (HTTP / text path) keeps the raw
+ * body as a single response when the input either fails to parse OR
+ * parses to a JSON object that doesn't carry `response`/`responses`
+ * — preserves pre-PR behaviour for third-party endpoints that happen
+ * to return JSON shaped differently from MeshMonitor's convention.
+ *
+ * Exported so unit tests can exercise the matrix of inputs without
+ * standing up a MeshtasticManager.
+ */
+export function parseAutoResponderResponse(
+  rawResp: string,
+  jsonExpected: boolean,
+): AutoResponderParsed {
+  let jsonResp: unknown;
+  try {
+    jsonResp = JSON.parse(rawResp);
+  } catch (_) {
+    if (jsonExpected) {
+      logger.error(`❌ Auto responder output is not valid JSON: ${rawResp.substring(0, 100)}`);
+      return { json: {}, responses: [] };
+    }
+    return { json: {}, responses: [rawResp] };
+  }
+
+  // Narrow to a record so we can index by field name without `any`.
+  const obj = (jsonResp !== null && typeof jsonResp === 'object')
+    ? (jsonResp as Record<string, unknown>)
+    : ({} as Record<string, unknown>);
+
+  // Multiple responses format: { "responses": ["msg1", "msg2", ...] }
+  if (Array.isArray(obj.responses)) {
+    const arr = obj.responses;
+    const responses = arr.filter((r): r is string => typeof r === 'string');
+    const dropped = arr.length - responses.length;
+    if (dropped > 0) {
+      logger.warn(`⚠️  Auto responder 'responses' array dropped ${dropped} non-string entr${dropped === 1 ? 'y' : 'ies'}`);
+    }
+    if (responses.length === 0) {
+      logger.error(`❌ Auto responder output 'responses' array contains no valid strings`);
+    } else {
+      logger.debug(`📥 Auto responder returned ${responses.length} response(s)`);
+    }
+    return { json: obj, responses };
+  }
+
+  // Single response format: { "response": "msg" }
+  if (typeof obj.response === 'string') {
+    logger.debug(`📥 Auto responder output: ${obj.response.substring(0, 50)}…`);
+    return { json: obj, responses: [obj.response] };
+  }
+
+  // JSON parsed but no recognised field. For the script path this is
+  // a hard error. For HTTP/text we fall back to the raw body so
+  // existing webhooks that return e.g. {"status":"ok"} keep behaving
+  // as they did before this refactor (truncate-and-send).
+  if (jsonExpected) {
+    logger.error(`❌ Auto responder output missing valid 'response' or 'responses' field`);
+    return { json: {}, responses: [] };
+  }
+  logger.debug(`📥 Auto responder JSON body has no 'response'/'responses' field; using raw body as single message`);
+  return { json: obj, responses: [rawResp] };
+}
 
 export interface MeshtasticConfig {
   nodeIp: string;
@@ -9095,9 +9182,11 @@ class MeshtasticManager implements ISourceManager {
             logger.debug(`🌐 Fetching HTTP response from: ${url}`);
 
             try {
-              // Fetch with standard auto responder timeout
+              // Fetch with HTTP auto-responder timeout (5s). Kept shorter
+              // than the script timeout so mesh-trigger latency stays
+              // bounded even if the backend is slow.
               const controller = new AbortController();
-              const timeout = setTimeout(() => controller.abort(), AUTO_RESPONDER_TIMEOUT);
+              const timeout = setTimeout(() => controller.abort(), HTTP_AUTO_RESPONDER_TIMEOUT_MS);
 
               const response = await fetch(url, {
                 signal: controller.signal,
@@ -9202,10 +9291,10 @@ class MeshtasticManager implements ISourceManager {
                 logger.debug(`🤖 Script args expanded: ${trigger.scriptArgs} -> ${JSON.stringify(scriptArgsList)}`);
               }
 
-              // Execute script with standard auto responder timeout
+              // Execute script with the script-side auto-responder timeout (30s)
               // Use resolvedPath (actual file path) instead of scriptPath (API format)
               const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath, ...scriptArgsList], {
-                timeout: AUTO_RESPONDER_TIMEOUT,
+                timeout: SCRIPT_AUTO_RESPONDER_TIMEOUT_MS,
                 env: scriptEnv,
                 maxBuffer: 1024 * 1024, // 1MB max output
               });
@@ -9431,24 +9520,39 @@ class MeshtasticManager implements ISourceManager {
 
           const multilineEnabled = trigger.multiline || false;
           const responseValue = this.parseAutoResponderResponse(responseText, false);
+          if (responseValue.responses.length === 0) {
+            // parseAutoResponderResponse already logged the reason
+            return;
+          }
           if (multilineEnabled && responseValue.responses.length === 1) {
-            // Split into multiple messages if enabled
+            // Split into multiple messages if enabled — only safe when
+            // the parsed payload was a single response. Multi-response
+            // JSON intentionally bypasses splitting (see Multiple
+            // Responses Support in docs/features/automation.md).
             responseValue.responses = this.splitMessageForMeshtastic(responseValue.responses[0], 200);
             if (responseValue.responses.length > 1) {
               logger.debug(`📝 Split response into ${responseValue.responses.length} messages`);
             }
           } else {
-            // Truncate all responses
+            // Truncate each response and only log when truncation actually changed bytes.
             responseValue.responses = responseValue.responses.map((oldVal, i) => {
               const newVal = this.truncateMessageForMeshtastic(oldVal, 200);
-              logger.debug(`✂️  Response ${i + 1} truncated from ${oldVal.length} to ${newVal.length} characters`);
+              if (newVal.length !== oldVal.length) {
+                logger.debug(`✂️  Response ${i + 1} truncated from ${oldVal.length} to ${newVal.length} characters`);
+              }
               return newVal;
             });
           }
 
           // Enqueue all messages for delivery with retry logic
-          // Respond on the channel the message came from
-          const isDM = isDirectMessage;
+          // Respond on the channel the message came from.
+          // HTTP and text triggers honor an optional `"private": true`
+          // field in their JSON payload to force DM routing (same
+          // behaviour as the script path).
+          let isDM = isDirectMessage;
+          if (typeof responseValue.json.private === 'boolean') {
+            isDM = responseValue.json.private;
+          }
           // For DMs: use 3 attempts if verifyResponse is enabled, otherwise just 1 attempt
           const maxAttempts = isDM ? (trigger.verifyResponse ? 3 : 1) : 1;
           const target = isDM ? `!${message.fromNodeNum.toString(16).padStart(8, '0')}` : `channel ${message.channel}`;
@@ -9487,39 +9591,8 @@ class MeshtasticManager implements ISourceManager {
     }
   }
 
-  private parseAutoResponderResponse(rawResp: string, jsonExpected: boolean): { json: any, responses: string[] } {
-    // try to parse response as JSON...
-    let jsonResp;
-    try {
-      jsonResp = JSON.parse(rawResp);
-    } catch (_) {
-      if (jsonExpected) {
-        logger.error(`❌ Auto responder output is not valid JSON: ${rawResp.substring(0, 100)}`);
-        return { json: {}, responses: [] };
-      }
-
-      return { json: {}, responses: [rawResp] };
-    }
-
-    // Support both single response and multiple responses
-    if (jsonResp.responses && Array.isArray(jsonResp.responses)) {
-      // Multiple responses format: { "responses": ["msg1", "msg2", "msg3"] }
-      const responses = jsonResp.responses.filter((r: any) => typeof r === 'string');
-      if (responses.length === 0) {
-        logger.error(`❌ Auto responder output 'responses' array contains no valid strings`);
-      } else {
-        logger.debug(`📥 Auto responder returned ${responses.length} responses`);
-      }
-
-      return { json: jsonResp, responses: responses };
-    } else if (jsonResp.response && typeof jsonResp.response === 'string') {
-      // Single response format: { "response": "msg" }
-      logger.debug(`📥 Auto responder output: ${jsonResp.response.substring(0, 50)}...`);
-      return { json: jsonResp, responses: [jsonResp.response] };
-    } else {
-      logger.error(`❌ Auto responder output missing valid 'response' or 'responses' field`);
-      return { json: {}, responses: [] };
-    }
+  private parseAutoResponderResponse(rawResp: string, jsonExpected: boolean): AutoResponderParsed {
+    return parseAutoResponderResponse(rawResp, jsonExpected);
   }
 
   /**
