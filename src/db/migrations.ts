@@ -78,6 +78,7 @@ import { migration as meshcoreNodeTelemetryConfigMigration, runMigration060Postg
 import { migration as meshcoreNodesCompositePkMigration, runMigration061Postgres, runMigration061Mysql } from '../server/migrations/061_meshcore_nodes_composite_pk.js';
 import { migration as meshcoreMessagesFromnameMigration, runMigration062Postgres, runMigration062Mysql } from '../server/migrations/062_meshcore_messages_fromname.js';
 import { migration as dropSourceIdFromChannelDatabaseMigration, runMigration063Postgres, runMigration063Mysql } from '../server/migrations/063_drop_source_id_from_channel_database.js';
+import { migration as addChannelDatabasePermissionMigration, runMigration064Postgres, runMigration064Mysql } from '../server/migrations/064_add_channel_database_permission.js';
 
 // ============================================================================
 // Registry
@@ -992,4 +993,21 @@ registry.register({
   sqlite: (db) => dropSourceIdFromChannelDatabaseMigration.up(db),
   postgres: (client) => runMigration063Postgres(client),
   mysql: (pool) => runMigration063Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 064: Backfill the global `channel_database` permission resource.
+// Introduces `channel_database` as a global (sourceId IS NULL) permission and
+// grants every existing admin a row with canRead=true, canWrite=true. The
+// channel/PSK library is pooled across sources by channelDecryptionService,
+// so a single global grant governs access. Non-admins get no row by default.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 64,
+  name: 'add_channel_database_permission',
+  settingsKey: 'migration_064_add_channel_database_permission',
+  sqlite: (db) => addChannelDatabasePermissionMigration.up(db),
+  postgres: (client) => runMigration064Postgres(client),
+  mysql: (pool) => runMigration064Mysql(pool),
 });
