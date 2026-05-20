@@ -9,7 +9,7 @@ import { meshcoreManagerRegistry, meshcoreConfigFromSource } from '../meshcoreRe
 import { MqttBrokerManager, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
-import { filterNodesByChannelPermission, maskNodeLocationByChannel, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
+import { filterNodesByChannelPermission, maskNodeLocationByChannel, maskTraceroutesByChannel, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { PortNum, modemPresetChannelName } from '../constants/meshtastic.js';
 import { transformChannel } from '../utils/channelView.js';
 import type { ResourceType } from '../../types/permission.js';
@@ -812,7 +812,15 @@ router.get('/:id/traceroutes', requirePermission('traceroute', 'read', { sourceI
 
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
     const traceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, source.id);
-    res.json(traceroutes);
+    // Channel-gate traceroutes the same way nodes are gated. Without
+    // this, the rows' embedded `routePositions` JSON (a snapshot of
+    // every hop's lat/lng at traceroute time) lets the frontend draw
+    // line segments for routes the user has no viewOnMap permission
+    // for — appearing as "floating lines" once the nodes endpoint has
+    // stripped the corresponding markers. See #3092 follow-up.
+    const user = (req as any).user ?? null;
+    const masked = await maskTraceroutesByChannel(traceroutes, user, source.id);
+    res.json(masked);
   } catch (error) {
     logger.error('Error fetching traceroutes for source:', error);
     res.status(500).json({ error: 'Failed to fetch traceroutes' });
@@ -842,8 +850,28 @@ router.get('/:id/neighbor-info', requirePermission('nodes', 'read', { sourceIdFr
     ])];
     const nodeMap = await databaseService.nodes.getNodesByNums(allNodeNums);
 
+    // Apply the same channel gate the nodes endpoint uses, so that a
+    // neighbor-info link whose endpoint nodes the user can't see on the
+    // map doesn't leak their positions through the enriched response.
+    // Without this gate the map would draw neighbor lines between
+    // coordinates of nodes the user has no viewOnMap permission for —
+    // same "floating lines" symptom as the traceroute leak above.
+    // See #3092 follow-up.
+    const neighborUser = (req as any).user ?? null;
+    const visibleNodes = await filterNodesByChannelPermission(
+      Array.from(nodeMap.values()),
+      neighborUser,
+      source.id,
+    );
+    const visibleNodeNums = new Set(visibleNodes.map(n => Number((n as any).nodeNum)));
+
     // Enrich each record with node names, positions, and bidirectionality flag
-    const enrichedNeighborInfo = neighborInfo.map(ni => {
+    const enrichedNeighborInfo = neighborInfo
+      .filter(ni =>
+        visibleNodeNums.has(Number(ni.nodeNum)) &&
+        visibleNodeNums.has(Number(ni.neighborNodeNum)),
+      )
+      .map(ni => {
       const node = nodeMap.get(ni.nodeNum) ?? null;
       const neighbor = nodeMap.get(ni.neighborNodeNum) ?? null;
       const nodePos = getEffectivePosition(node);

@@ -209,6 +209,14 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         hwModel: typeof user.hwModel === 'number' ? user.hwModel : (user.hw_model ?? 0),
         role: typeof user.role === 'number' ? user.role : undefined,
         viaMqtt: true,
+        // Stamp the channel-database-encoded channel so
+        // `filterNodesByChannelPermission` can gate map visibility on
+        // the Virtual Channel Permissions the #3108 UI directs admins
+        // toward. Without this the row's `channel` stays NULL → the
+        // filter falls back to `channel_0` (a slot grant the UI hides
+        // for MQTT scopes), so non-admins can never see MQTT nodes on
+        // the map regardless of what they grant.
+        channel: effectiveChannel,
         macaddr: user.macaddr ? bytesToHex(user.macaddr) : undefined,
         publicKey: user.publicKey ? bytesToHex(user.publicKey) : (user.public_key ? bytesToHex(user.public_key) : undefined),
         lastHeard: Math.floor(nowMs / 1000),
@@ -234,6 +242,10 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         longName: '',
         shortName: '',
         hwModel: 0,
+        // See NODEINFO_APP above — `node.channel` must carry the
+        // CHANNEL_DB_OFFSET-encoded virtual-channel id for the map
+        // filter to honor Virtual Channel Permissions.
+        channel: effectiveChannel,
         latitude: typeof latI === 'number' ? latI / 1e7 : undefined,
         longitude: typeof lngI === 'number' ? lngI / 1e7 : undefined,
         altitude: typeof alt === 'number' ? alt : undefined,

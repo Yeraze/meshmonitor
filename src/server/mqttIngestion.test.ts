@@ -584,4 +584,52 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
     const [record] = (databaseService.insertTraceroute as any).mock.calls[0];
     expect(record.channel).toBe(CHANNEL_DB_OFFSET + 5);
   });
+
+  it('stamps node.channel on NODEINFO upserts so the map filter can honor Virtual Channel Permissions', async () => {
+    // Regression: prior to the fix, NODEINFO_APP and POSITION_APP node
+    // upserts dropped the resolved channel. The map filter then read
+    // `node.channel ?? 0` → channel 0 → required a per-source channel_0
+    // grant. But #3108 hides the channel_0..7 toggles for MQTT scopes
+    // and directs admins to Virtual Channel Permissions, leaving no
+    // way to grant map access — every non-admin saw "No nodes visible".
+    (databaseService.channelDatabase!.findOrCreatePassiveByNameAsync as any).mockResolvedValueOnce(9);
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 4 /* NODEINFO_APP */),
+    });
+
+    expect(result.ingested).toBe(true);
+    const [insertedNode] = (databaseService.upsertNode as any).mock.calls[0];
+    expect(insertedNode.channel).toBe(CHANNEL_DB_OFFSET + 9);
+  });
+
+  it('stamps node.channel on POSITION upserts the same way as NODEINFO', async () => {
+    (databaseService.channelDatabase!.findOrCreatePassiveByNameAsync as any).mockResolvedValueOnce(4);
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 3 /* POSITION_APP */),
+    });
+
+    expect(result.ingested).toBe(true);
+    const [insertedNode] = (databaseService.upsertNode as any).mock.calls[0];
+    expect(insertedNode.channel).toBe(CHANNEL_DB_OFFSET + 4);
+  });
+
+  it('falls back to the raw slot on node.channel when name resolution fails', async () => {
+    // Mirrors the same fallback semantics as the message-side test
+    // above — an empty channelId or null find-or-create should still
+    // ingest the node, just keyed to the raw slot.
+    (databaseService.channelDatabase!.findOrCreatePassiveByNameAsync as any).mockResolvedValueOnce(null);
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 4 /* NODEINFO_APP */),
+    });
+
+    expect(result.ingested).toBe(true);
+    const [insertedNode] = (databaseService.upsertNode as any).mock.calls[0];
+    expect(insertedNode.channel).toBe(0); // raw slot from the envelope
+  });
 });
