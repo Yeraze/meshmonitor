@@ -9,6 +9,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 _No changes yet._
 
 
+## [4.6.3] - 2026-05-20
+
+# MeshMonitor v4.6.3
+
+Patch release focused on **MQTT-source permissions and map visibility**. The MQTT ingest path now stamps `node.channel` with the channel-database-encoded virtual channel id so the map filter can honor Virtual Channel Permissions, MeshCore contacts are persisted to the DB so the remote-telemetry scheduler can correctly classify repeater targets, unified messages keep tapback metadata across multi-source merges, the Users tab admin UI for MQTT sources is readable in both themes, and traceroute / neighbor-info endpoints are now channel-gated so non-admins can no longer see line segments rendered between coordinates of nodes they have no permission to view.
+
+## Features
+- #3108 feat(mqtt): route MQTT channel permissions through `channel_database` — bootstraps a passive `channel_database` row for every observed MQTT channel name, encodes `message.channel` and `traceroute.channel` as `CHANNEL_DB_OFFSET + dbId`, and routes the Users-tab admin UI to manage MQTT-source access via Virtual Channel Permissions instead of the slot-indexed `channel_0..7` grants (which collide across senders on a shared broker).
+
+## Fixes
+- #3105 fix(unified): preserve tapback metadata across MQTT ingest + cross-source merge — captures `emoji` and `replyId` on MQTT TEXT_MESSAGE_APP ingest, surfaces them from `channelDecryptionService`, and upgrades the unified-merge to prefer non-null values from any source so reactions stop flickering between rendering as emoji pills and as inline messages.
+- #3107 fix(meshcore): persist contact advType to `meshcore_nodes` — the in-memory contact map was correct but never mirrored to SQL, so the remote-telemetry scheduler always read `advType=NULL` and routed every target through the legacy LPP-only path. Fixes #3092 for users with repeaters that don't anonymously answer LPP requests.
+- #3109 fix(users): use Catppuccin variables for the MQTT permissions hint banner so it's readable in both light and dark themes.
+- #3110 fix(mqtt): stamp `node.channel` on ingest, and channel-gate the traceroute and neighbor-info endpoints. Without the first half, the map filter fell back to `permissions[channel_0]` — a slot the #3108 UI hides for MQTT scopes — so non-admins couldn't see MQTT nodes regardless of what was granted. Without the second half, traceroute `routePositions` and neighbor-info enriched positions leaked enough coordinates for the frontend to render "floating lines" between hidden nodes.
+
+## Docs
+- #3106 docs(claude): drop the worktree restriction from CLAUDE.md.
+
+
 ## [4.6.2-1] - 2026-05-19
 
 # MeshMonitor v4.6.2-1
