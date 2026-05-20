@@ -544,6 +544,24 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
             </select>
 
             <select
+              value={filters.transport_mechanism ?? ''}
+              onChange={e =>
+                setFilters({
+                  ...filters,
+                  transport_mechanism: e.target.value !== '' ? parseInt(e.target.value, 10) : undefined,
+                })
+              }
+              title={t('packet_monitor.filter.transport_tooltip')}
+            >
+              <option value="">{t('packet_monitor.filter.all_transports')}</option>
+              <option value="1">{t('packet_monitor.filter.transport_lora')}</option>
+              <option value="6">{t('packet_monitor.filter.transport_udp')}</option>
+              <option value="5">{t('packet_monitor.filter.transport_mqtt')}</option>
+              <option value="7">{t('packet_monitor.filter.transport_api')}</option>
+              <option value="0">{t('packet_monitor.filter.transport_internal')}</option>
+            </select>
+
+            <select
               value={filters.from_node ?? ''}
               onChange={e => setFilters({ ...filters, from_node: e.target.value ? parseInt(e.target.value) : undefined })}
               title={t('packet_monitor.filter.from_node_tooltip')}

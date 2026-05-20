@@ -154,6 +154,7 @@ router.get('/', requirePacketPermissions, async (req, res) => {
     const encrypted = req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
     const since = req.query.since ? normalizeSinceToMs(req.query.since as string) : undefined;
     const relay_node = req.query.relay_node === 'unknown' ? 'unknown' as const : req.query.relay_node ? parseInt(req.query.relay_node as string, 10) : undefined;
+    const transport_mechanism = req.query.transport_mechanism !== undefined ? parseInt(req.query.transport_mechanism as string, 10) : undefined;
 
     const isAdmin = (req as any).isAdmin;
     const allowedChannels = (req as any).allowedChannels as Set<number>;
@@ -170,6 +171,7 @@ router.get('/', requirePacketPermissions, async (req, res) => {
       encrypted,
       since,
       relay_node,
+      transport_mechanism,
       sourceId
     });
 
@@ -184,6 +186,7 @@ router.get('/', requirePacketPermissions, async (req, res) => {
       encrypted,
       since,
       relay_node,
+      transport_mechanism,
       sourceId
     });
 
@@ -300,6 +303,7 @@ router.get('/export', requirePacketPermissions, async (req, res) => {
     const encrypted = req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
     const since = req.query.since ? normalizeSinceToMs(req.query.since as string) : undefined;
     const relay_node = req.query.relay_node === 'unknown' ? 'unknown' as const : req.query.relay_node ? parseInt(req.query.relay_node as string, 10) : undefined;
+    const transport_mechanism = req.query.transport_mechanism !== undefined ? parseInt(req.query.transport_mechanism as string, 10) : undefined;
 
     const isAdmin = (req as any).isAdmin;
     const allowedChannels = (req as any).allowedChannels as Set<number>;
@@ -318,6 +322,7 @@ router.get('/export', requirePacketPermissions, async (req, res) => {
       encrypted,
       since,
       relay_node,
+      transport_mechanism,
       sourceId
     });
 
@@ -331,7 +336,9 @@ router.get('/export', requirePacketPermissions, async (req, res) => {
                             to_node !== undefined ||
                             channel !== undefined ||
                             encrypted !== undefined ||
-                            since !== undefined;
+                            since !== undefined ||
+                            relay_node !== undefined ||
+                            transport_mechanism !== undefined;
     const filterInfo = hasActiveFilters ? '-filtered' : '';
     const filename = `packet-monitor${filterInfo}-${timestamp}.jsonl`;
 

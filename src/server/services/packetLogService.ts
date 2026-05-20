@@ -63,6 +63,7 @@ class PacketLogService {
     encrypted?: boolean;
     since?: number;
     relay_node?: number | 'unknown';
+    transport_mechanism?: number;
     sourceId?: string;
   }): Promise<DbPacketLog[]> {
     return databaseService.getPacketLogsAsync(options);
@@ -81,6 +82,7 @@ class PacketLogService {
     encrypted?: boolean;
     since?: number;
     relay_node?: number | 'unknown';
+    transport_mechanism?: number;
     sourceId?: string;
   }): Promise<DbPacketLog[]> {
     return databaseService.getPacketLogsAsync(options);
@@ -108,6 +110,7 @@ class PacketLogService {
     encrypted?: boolean;
     since?: number;
     relay_node?: number | 'unknown';
+    transport_mechanism?: number;
     sourceId?: string;
   }): Promise<number> {
     return databaseService.getPacketLogCountAsync(options || {});
@@ -124,6 +127,7 @@ class PacketLogService {
     encrypted?: boolean;
     since?: number;
     relay_node?: number | 'unknown';
+    transport_mechanism?: number;
     sourceId?: string;
   }): Promise<number> {
     return databaseService.getPacketLogCountAsync(options || {});
