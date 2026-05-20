@@ -41,6 +41,7 @@ const meshcoreManager = {
   getLocalNode: vi.fn().mockReturnValue(null),
   getAllNodes: vi.fn().mockReturnValue([]),
   getContacts: vi.fn().mockReturnValue([]),
+  getContact: vi.fn().mockReturnValue(undefined),
   getRecentMessages: vi.fn().mockReturnValue([]),
   connect: vi.fn().mockResolvedValue(true),
   disconnect: vi.fn().mockResolvedValue(undefined),
@@ -575,6 +576,92 @@ describe('MeshCore Routes', () => {
       expect(response.status).toBe(200);
       expect(response.body.data.identity).toBeNull();
       expect(response.body.data.telemetryRef).toBeNull();
+    });
+  });
+
+  describe('PATCH /api/sources/test-source/meshcore/nodes/:publicKey/telemetry-config', () => {
+    const REPEATER_PUBKEY = 'f'.repeat(64);
+    const upsertNode = vi.fn().mockResolvedValue(undefined);
+    const setNodeTelemetryConfig = vi.fn().mockResolvedValue(undefined);
+    const getNodeByPublicKeyAndSource = vi.fn().mockResolvedValue({
+      publicKey: REPEATER_PUBKEY,
+      telemetryEnabled: true,
+      telemetryIntervalMinutes: 60,
+      lastTelemetryRequestAt: null,
+    });
+
+    beforeEach(() => {
+      // Inject the meshcore repo facade onto the mocked DatabaseService.
+      // Done in beforeEach so the function refs survive the global
+      // `vi.clearAllMocks()` (which clears call history but not impls).
+      (DatabaseService as any).meshcore = {
+        upsertNode,
+        setNodeTelemetryConfig,
+        getNodeByPublicKeyAndSource,
+      };
+      upsertNode.mockClear();
+      setNodeTelemetryConfig.mockClear();
+      getNodeByPublicKeyAndSource.mockClear();
+      meshcoreManager.getContact.mockReset();
+    });
+
+    it('backfills advType + advName from the in-memory contact before seeding the telemetry-config row', async () => {
+      // Regression for issue #3092: the route used to call only
+      // setNodeTelemetryConfig, which inserts a stub row with advType=null.
+      // The remote-telemetry scheduler then treated every target as a
+      // Companion (`isRepeaterLike=false`) and skipped the SendStatusReq +
+      // guest-login paths added in #3094.
+      meshcoreManager.getContact.mockReturnValueOnce({
+        publicKey: REPEATER_PUBKEY,
+        advName: 'MyRepeater',
+        advType: 2, // REPEATER
+        latitude: 51.0,
+        longitude: 0.0,
+        lastSeen: 1_700_000_000_000,
+      });
+
+      const response = await authenticatedAgent
+        .patch(`/api/sources/test-source/meshcore/nodes/${REPEATER_PUBKEY}/telemetry-config`)
+        .send({ enabled: true, intervalMinutes: 30 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      // The contact backfill must run BEFORE the telemetry-config seed
+      // so the seed's getOrInsert path sees the populated row and only
+      // patches its telemetry columns.
+      expect(upsertNode).toHaveBeenCalledTimes(1);
+      expect(upsertNode).toHaveBeenCalledWith(
+        expect.objectContaining({
+          publicKey: REPEATER_PUBKEY,
+          name: 'MyRepeater',
+          advType: 2,
+        }),
+        'test-source',
+      );
+      expect(setNodeTelemetryConfig).toHaveBeenCalledWith(
+        'test-source',
+        REPEATER_PUBKEY,
+        { enabled: true, intervalMinutes: 30 },
+      );
+      // Order: backfill upsert → telemetry-config patch.
+      const upsertOrder = upsertNode.mock.invocationCallOrder[0];
+      const setCfgOrder = setNodeTelemetryConfig.mock.invocationCallOrder[0];
+      expect(upsertOrder).toBeLessThan(setCfgOrder);
+    });
+
+    it('skips the backfill upsert when the contact is not yet in memory', async () => {
+      // User enables telemetry-retrieval on a publicKey we haven't
+      // received an advert for yet. The route must still create the
+      // telemetry-config row; backfill happens when the contact arrives.
+      meshcoreManager.getContact.mockReturnValueOnce(undefined);
+
+      const response = await authenticatedAgent
+        .patch(`/api/sources/test-source/meshcore/nodes/${REPEATER_PUBKEY}/telemetry-config`)
+        .send({ enabled: true });
+
+      expect(response.status).toBe(200);
+      expect(upsertNode).not.toHaveBeenCalled();
+      expect(setNodeTelemetryConfig).toHaveBeenCalledTimes(1);
     });
   });
 });
