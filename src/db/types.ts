@@ -125,6 +125,10 @@ export interface DbMessage {
   ackFromNode?: number | null;
   createdAt: number;
   decryptedBy?: 'node' | 'server' | null;
+  /** Client IP for HTTP-injected sends (honors X-Forwarded-For when trust proxy is configured). NULL for non-HTTP sources. */
+  sourceIp?: string | null;
+  /** Categorical message ingress path. NULL for pre-migration rows. */
+  sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null;
 }
 
 /**

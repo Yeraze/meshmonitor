@@ -2315,6 +2315,8 @@ function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
         ? true
         : undefined,
     decryptedBy: msg.decryptedBy ?? (msg as any).decrypted_by ?? null,
+    sourceIp: (msg as any).sourceIp ?? (msg as any).source_ip ?? null,
+    sourcePath: (msg as any).sourcePath ?? (msg as any).source_path ?? null,
   };
 }
 
@@ -3771,8 +3773,12 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
 
     // Send the message to the mesh network (with optional destination for DMs, replyId, and emoji flag)
     // Note: sendTextMessage() now handles saving the message to the database
-    // Pass userId so sent messages are automatically marked as read for the sender
-    await activeManager.sendTextMessage(text, meshChannel, destinationNum, replyId, emoji, req.user?.id);
+    // Pass userId so sent messages are automatically marked as read for the sender.
+    // Attribution: req.ip honors X-Forwarded-For when 'trust proxy' is configured.
+    await activeManager.sendTextMessage(text, meshChannel, destinationNum, replyId, emoji, req.user?.id, {
+      sourceIp: req.ip ?? null,
+      sourcePath: 'http_api',
+    });
 
     res.json({ success: true });
   } catch (error) {
@@ -3863,6 +3869,8 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
         timestamp: timestamp,
         rxTime: timestamp,
         createdAt: timestamp,
+        sourceIp: req.ip ?? null,
+        sourcePath: 'http_api',
       });
       logger.info(`📍 Position request system message inserted successfully`);
     } else {
@@ -3928,6 +3936,8 @@ apiRouter.post('/nodeinfo/request', requirePermission('messages', 'write'), asyn
         timestamp: timestamp,
         rxTime: timestamp,
         createdAt: timestamp,
+        sourceIp: req.ip ?? null,
+        sourcePath: 'http_api',
       });
       logger.info(`📇 NodeInfo request system message inserted successfully`);
     } else {

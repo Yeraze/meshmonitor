@@ -238,6 +238,8 @@ type TextMessage = {
   createdAt: number;
   decryptedBy?: 'node' | 'server' | null; // Decryption source - 'server' means read-only
   viaStoreForward?: boolean; // Message received via Store & Forward replay
+  sourceIp?: string | null; // Per-message ingress attribution (client IP for HTTP injects)
+  sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null;
 };
 
 /**
@@ -4808,6 +4810,13 @@ class MeshtasticManager implements ISourceManager {
           createdAt: Date.now(),
           decryptedBy: context?.decryptedBy ?? null, // Track decryption source - 'server' means read-only
           viaStoreForward: context?.viaStoreForward === true ? true : undefined, // Message received via Store & Forward replay
+          // Inbound radio path — message arrived from a meshtastic node over TCP.
+          // MQTT-bridged inbound packets are flagged via viaMqtt above; we still
+          // attribute the row's ingress to 'tcp_radio' because it arrived via
+          // this manager's TCP transport (the MQTT bridge path is handled in
+          // mqttIngestion.ts and uses 'mqtt_bridge').
+          sourceIp: null,
+          sourcePath: 'tcp_radio',
         };
         const wasInserted = await databaseService.messages.insertMessage(message, this.sourceId);
 
@@ -6118,7 +6127,10 @@ class MeshtasticManager implements ISourceManager {
         portnum: PortNum.TRACEROUTE_APP,
         timestamp: timestamp,
         rxTime: timestamp,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        // Inbound traceroute response from a meshtastic node over TCP.
+        sourceIp: null,
+        sourcePath: 'tcp_radio' as const,
       };
 
       const wasInserted = await databaseService.messages.insertMessage(message, this.sourceId);
@@ -7458,7 +7470,7 @@ class MeshtasticManager implements ISourceManager {
     };
   }
 
-  async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number, userId?: number): Promise<number> {
+  async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number, userId?: number, attribution?: { sourceIp?: string | null; sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null }): Promise<number> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -7550,7 +7562,11 @@ class MeshtasticManager implements ISourceManager {
           requestId: messageId, // Save requestId for routing error matching
           wantAck: true, // Request acknowledgment for this message
           deliveryState: 'pending', // Initial delivery state
-          createdAt: Date.now()
+          createdAt: Date.now(),
+          // Default attribution to 'system' when not provided (e.g. internal
+          // ping/welcome/etc. callers); HTTP route passes 'http_api' + req.ip.
+          sourceIp: attribution?.sourceIp ?? null,
+          sourcePath: attribution?.sourcePath ?? 'system'
         };
 
         await databaseService.messages.insertMessage(message, this.sourceId);

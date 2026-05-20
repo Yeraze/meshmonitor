@@ -306,6 +306,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         emoji,
         replyId,
         createdAt: nowMs,
+        sourcePath: 'mqtt_bridge',
       } as DbMessage;
       (msg as any).sourceId = sourceId;
       // Use the repo's per-source insert — the `databaseService.insertMessage`
@@ -777,6 +778,7 @@ async function ingestStoreForward(
       rxRssi: typeof packet.rxRssi === 'number' ? packet.rxRssi : undefined,
       viaMqtt: true,
       createdAt: nowMs,
+      sourcePath: 'mqtt_bridge',
     } as DbMessage;
     (msg as any).sourceId = sourceId;
     (msg as any).viaStoreForward = true;

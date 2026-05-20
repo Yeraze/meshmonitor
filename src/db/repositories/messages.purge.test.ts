@@ -71,7 +71,9 @@ describe('MessagesRepository sync purge helpers', () => {
         ackFromNode INTEGER,
         createdAt INTEGER NOT NULL,
         decrypted_by TEXT,
-        sourceId TEXT
+        sourceId TEXT,
+        source_ip TEXT,
+        source_path TEXT
       )
     `);
 

@@ -79,6 +79,7 @@ import { migration as meshcoreNodesCompositePkMigration, runMigration061Postgres
 import { migration as meshcoreMessagesFromnameMigration, runMigration062Postgres, runMigration062Mysql } from '../server/migrations/062_meshcore_messages_fromname.js';
 import { migration as dropSourceIdFromChannelDatabaseMigration, runMigration063Postgres, runMigration063Mysql } from '../server/migrations/063_drop_source_id_from_channel_database.js';
 import { migration as addChannelDatabasePermissionMigration, runMigration064Postgres, runMigration064Mysql } from '../server/migrations/064_add_channel_database_permission.js';
+import { migration as addMessageSourceAttributionMigration, runMigration065Postgres, runMigration065Mysql } from '../server/migrations/065_add_message_source_attribution.js';
 
 // ============================================================================
 // Registry
@@ -1010,4 +1011,19 @@ registry.register({
   sqlite: (db) => addChannelDatabasePermissionMigration.up(db),
   postgres: (client) => runMigration064Postgres(client),
   mysql: (pool) => runMigration064Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 065: Add source_ip + source_path columns to messages table.
+// Two nullable text columns so operators can trace WHICH client/API caller
+// injected a given message. Existing rows get NULL; backward compatible.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 65,
+  name: 'add_message_source_attribution',
+  settingsKey: 'migration_065_add_message_source_attribution',
+  sqlite: (db) => addMessageSourceAttributionMigration.up(db),
+  postgres: (client) => runMigration065Postgres(client),
+  mysql: (pool) => runMigration065Mysql(pool),
 });
