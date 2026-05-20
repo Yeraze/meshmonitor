@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState, KeyboardEvent } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreMessage } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
@@ -27,6 +27,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   const { t } = useTranslation();
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
   // MeshCore inbound messages carry `pubkey_prefix` (typically 6-byte / 12-char
@@ -46,11 +47,41 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     };
   }, [contacts]);
 
+  // Only auto-scroll on new messages when the user is already near the bottom.
   useEffect(() => {
-    if (listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
+    const container = listRef.current;
+    if (!container) return;
+    const isNearBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    if (isNearBottom) {
+      container.scrollTop = container.scrollHeight;
     }
   }, [messages.length]);
+
+  const handleScroll = useCallback(() => {
+    const container = listRef.current;
+    if (!container) return;
+    const isNearBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    setShowJumpToBottom(!isNearBottom);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    const container = listRef.current;
+    if (container) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    const container = listRef.current;
+    if (!container) return;
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
 
   const handleSend = async () => {
     if (!draft.trim() || sending) return;
@@ -69,7 +100,40 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
 
   return (
     <div className="meshcore-message-stream">
-      <div className="meshcore-message-list" ref={listRef}>
+      <div className="meshcore-message-list" ref={listRef} style={{ position: 'relative' }}>
+        {showJumpToBottom && (
+          <div
+            style={{
+              position: 'sticky',
+              top: '0.5rem',
+              zIndex: 10,
+              display: 'flex',
+              justifyContent: 'center',
+              marginBottom: '0.5rem',
+            }}
+          >
+            <button
+              className="jump-to-bottom-btn"
+              onClick={scrollToBottom}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: 'var(--ctp-blue)',
+                border: 'none',
+                borderRadius: '20px',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                color: 'var(--ctp-base)',
+                fontWeight: 'bold',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+              }}
+            >
+              <span>↓</span> {t('channels.jump_to_bottom', 'Jump to Bottom')}
+            </button>
+          </div>
+        )}
         {messages.length === 0 ? (
           <div className="meshcore-empty-state">
             {emptyText ?? t('meshcore.no_messages', 'No messages')}
