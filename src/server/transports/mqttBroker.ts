@@ -92,7 +92,8 @@ export class MqttBroker extends EventEmitter {
           return { ...packet, payload: out };
         } catch (err) {
           const m = err instanceof Error ? err.message : String(err);
-          logger.warn(`MQTT broker forwardTransform error on ${packet.topic}: ${m}`);
+          const brokerId = this.options.brokerId ?? 'meshmonitor-broker';
+          logger.warn(`MQTT broker [${brokerId}] forwardTransform error on ${packet.topic}: ${m}`);
           return packet;
         }
       };

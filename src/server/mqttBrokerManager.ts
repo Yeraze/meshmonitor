@@ -161,7 +161,7 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
     if (!topic.startsWith(rootTopicPrefix)) return null;
     const decoded = meshtasticProtobufService.decodeServiceEnvelope(payload, { quiet: true });
     if (!decoded || !decoded.packet) return null;
-    const packet = decoded.packet as { hopLimit?: number };
+    const packet = decoded.packet as { hopLimit?: number; hopStart?: number };
     if (packet.hopLimit === undefined || packet.hopLimit === 0) return null;
     packet.hopLimit = 0;
     const reencoded = meshtasticProtobufService.encodeServiceEnvelope({
