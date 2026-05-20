@@ -878,6 +878,33 @@ router.patch(
         return res.status(400).json({ success: false, error: 'No fields to update' });
       }
 
+      // Backfill advType/advName from the in-memory contact before
+      // seeding the stub row, so the remote-telemetry scheduler can
+      // classify the target correctly on the very next tick. Without
+      // this, setNodeTelemetryConfig writes a publicKey-only row and
+      // the scheduler treats every target as a Companion regardless
+      // of whether it's actually a Repeater — see issue #3092.
+      const manager = managerFor(req);
+      const contact = manager.getContact(publicKey);
+      if (contact) {
+        try {
+          await databaseService.meshcore.upsertNode(
+            {
+              publicKey,
+              name: contact.advName ?? contact.name ?? null,
+              advType: contact.advType ?? null,
+              latitude: contact.latitude ?? null,
+              longitude: contact.longitude ?? null,
+              lastHeard: contact.lastSeen ?? null,
+            },
+            sourceId,
+          );
+        } catch (err) {
+          logger.warn(
+            `[API] telemetry-config: contact backfill for ${publicKey.substring(0, 16)}… failed: ${(err as Error).message}`,
+          );
+        }
+      }
       await databaseService.meshcore.setNodeTelemetryConfig(sourceId, publicKey, patch);
       const node = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId);
       res.json({

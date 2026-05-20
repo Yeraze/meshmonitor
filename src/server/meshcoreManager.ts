@@ -610,6 +610,12 @@ class MeshCoreManager extends EventEmitter {
           lastSeen: Date.now(),
         };
         this.contacts.set(publicKey, updated);
+        // Mirror to meshcore_nodes so per-source consumers (telemetry
+        // scheduler, REST queries) see the contact's advType. Without
+        // this, the table only gets stub rows from setNodeTelemetryConfig
+        // and the scheduler can never classify a target as a repeater.
+        // See https://github.com/Yeraze/meshmonitor/issues/3092.
+        void this.persistContact(updated);
         this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
         dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
         logger.info(`[MeshCore] ${event_type} for ${publicKey} (${data.adv_name ?? ''})`);
@@ -624,12 +630,50 @@ class MeshCoreManager extends EventEmitter {
           lastSeen: Date.now(),
         };
         this.contacts.set(publicKey, updated);
+        void this.persistContact(updated);
         this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
         dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
         logger.info(`[MeshCore] contact_path_updated for ${publicKey}`);
       }
     } else {
       logger.debug(`[MeshCore] Unknown push event: ${event_type}`);
+    }
+  }
+
+  /**
+   * Mirror an in-memory MeshCoreContact to the `meshcore_nodes` SQL table.
+   *
+   * Without this the table only ever sees stub rows from
+   * `setNodeTelemetryConfig` (publicKey + telemetry flags, advType=null),
+   * so the remote-telemetry scheduler can't tell a Repeater from a
+   * Companion and routes every target through the LPP-only path —
+   * skipping the SendStatusReq + guest-login paths added in #3094. The
+   * mirror keeps the table accurate enough for any per-source consumer
+   * (scheduler, REST endpoints, future cross-source views) to read the
+   * contact's actual device type.
+   *
+   * Failures are logged but never thrown — a transient DB error on a
+   * single advert should not break the contact-event pipeline.
+   */
+  private async persistContact(contact: MeshCoreContact): Promise<void> {
+    try {
+      await databaseService.meshcore.upsertNode(
+        {
+          publicKey: contact.publicKey,
+          name: contact.advName ?? contact.name ?? null,
+          advType: contact.advType ?? null,
+          latitude: contact.latitude ?? null,
+          longitude: contact.longitude ?? null,
+          rssi: contact.rssi ?? null,
+          snr: contact.snr ?? null,
+          lastHeard: contact.lastSeen ?? null,
+        },
+        this.sourceId,
+      );
+    } catch (err) {
+      logger.warn(
+        `[MeshCore:${this.sourceId}] persistContact(${contact.publicKey.substring(0, 16)}…) failed: ${(err as Error).message}`,
+      );
     }
   }
 
@@ -1074,6 +1118,14 @@ class MeshCoreManager extends EventEmitter {
             lastSeen: Date.now(),
           });
         }
+        // Mirror every contact to meshcore_nodes so stale stub rows
+        // (publicKey-only seeds from setNodeTelemetryConfig) get their
+        // advType backfilled on the next refresh. This is what backfills
+        // existing deployments without requiring the user to retoggle
+        // telemetry-retrieval — see issue #3092.
+        await Promise.all(
+          Array.from(this.contacts.values()).map((c) => this.persistContact(c)),
+        );
         logger.info(`[MeshCore] Refreshed ${this.contacts.size} contacts`);
       }
     } catch (error) {
@@ -1682,6 +1734,16 @@ class MeshCoreManager extends EventEmitter {
 
   getContacts(): MeshCoreContact[] {
     return Array.from(this.contacts.values());
+  }
+
+  /**
+   * Look up a single in-memory contact by full public key. Returns
+   * `undefined` if the contact hasn't been seen yet on this connection.
+   * Used by routes that need the contact's advType/advName at config
+   * time (e.g. telemetry-config seed) so they can backfill the SQL row.
+   */
+  getContact(publicKey: string): MeshCoreContact | undefined {
+    return this.contacts.get(publicKey);
   }
 
   getAllNodes(): MeshCoreNode[] {
