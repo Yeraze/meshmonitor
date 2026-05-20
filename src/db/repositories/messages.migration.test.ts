@@ -68,7 +68,9 @@ describe('MessagesRepository.migrateMessagesForChannelMoves', () => {
         wantAck INTEGER,
         ackFromNode INTEGER,
         createdAt INTEGER NOT NULL,
-        decrypted_by TEXT
+        decrypted_by TEXT,
+        source_ip TEXT,
+        source_path TEXT
       )
     `);
 

@@ -51,6 +51,8 @@ export class MessagesRepository extends BaseRepository {
       ackFromNode: messageData.ackFromNode ?? null,
       createdAt: messageData.createdAt,
       decryptedBy: messageData.decryptedBy ?? null,
+      sourceIp: messageData.sourceIp ?? null,
+      sourcePath: messageData.sourcePath ?? null,
     };
     if (sourceId) {
       values.sourceId = sourceId;
@@ -313,6 +315,8 @@ export class MessagesRepository extends BaseRepository {
       ackFromNode: (messageData as any).ackFromNode ?? null,
       createdAt: messageData.createdAt,
       decryptedBy: (messageData as any).decryptedBy ?? null,
+      sourceIp: (messageData as any).sourceIp ?? null,
+      sourcePath: (messageData as any).sourcePath ?? null,
     };
     if (sourceId) {
       values.sourceId = sourceId;

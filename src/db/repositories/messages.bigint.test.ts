@@ -122,6 +122,8 @@ describe('Messages BIGINT round-trip (SQLite)', () => {
         createdAt INTEGER NOT NULL,
         decrypted_by TEXT,
         sourceId TEXT,
+        source_ip TEXT,
+        source_path TEXT,
         FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum) ON DELETE CASCADE,
         FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum) ON DELETE CASCADE
       )

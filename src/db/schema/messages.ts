@@ -40,6 +40,9 @@ export const messagesSqlite = sqliteTable('messages', {
   decryptedBy: text('decrypted_by'),
   // Source association (nullable — NULL = legacy default source)
   sourceId: text('sourceId'),
+  // Per-message ingress attribution (nullable — NULL for pre-migration rows)
+  sourceIp: text('source_ip'),
+  sourcePath: text('source_path'),
 });
 
 // PostgreSQL schema
@@ -75,6 +78,9 @@ export const messagesPostgres = pgTable('messages', {
   decryptedBy: pgText('decrypted_by'),
   // Source association (nullable — NULL = legacy default source)
   sourceId: pgText('sourceId'),
+  // Per-message ingress attribution (nullable — NULL for pre-migration rows)
+  sourceIp: pgText('source_ip'),
+  sourcePath: pgText('source_path'),
 });
 
 // MySQL schema
@@ -110,6 +116,9 @@ export const messagesMysql = mysqlTable('messages', {
   decryptedBy: myVarchar('decrypted_by', { length: 16 }),
   // Source association (nullable — NULL = legacy default source)
   sourceId: myVarchar('sourceId', { length: 36 }),
+  // Per-message ingress attribution (nullable — NULL for pre-migration rows)
+  sourceIp: myVarchar('source_ip', { length: 64 }),
+  sourcePath: myVarchar('source_path', { length: 16 }),
 });
 
 // Type inference

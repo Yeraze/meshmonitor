@@ -34,4 +34,9 @@ export interface MeshMessage {
   requestId?: number; // Packet request ID for tracking
   // Decryption source - 'server' means read-only (cannot reply)
   decryptedBy?: 'node' | 'server' | null;
+  // Per-message ingress attribution. NULL for pre-migration rows.
+  /** Client IP for HTTP-injected sends (honors X-Forwarded-For when trust proxy is configured). */
+  sourceIp?: string | null;
+  /** Categorical message ingress path. */
+  sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null;
 }
