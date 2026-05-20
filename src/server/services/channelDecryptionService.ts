@@ -21,6 +21,15 @@ export interface DecryptionResult {
   channelName?: string;
   portnum?: number;
   payload?: Uint8Array;
+  /**
+   * Tapback metadata from the decoded `Data` protobuf. `emoji=1` flags
+   * the packet as a reaction; `replyId` points at the parent packet id.
+   * Callers (mqttIngestion) propagate these so the unified view can group
+   * reactions under their parent message — without them, server-decrypted
+   * reactions render as full inline messages.
+   */
+  emoji?: number;
+  replyId?: number;
   error?: string;
 }
 
@@ -243,7 +252,13 @@ class ChannelDecryptionService {
    * 1. Have a reasonable portnum (field 1, varint) within the Meshtastic range (0-511)
    * 2. Not have obviously wrong values
    */
-  private isValidProtobuf(data: Buffer): { valid: boolean; portnum?: number; payload?: Uint8Array } {
+  private isValidProtobuf(data: Buffer): {
+    valid: boolean;
+    portnum?: number;
+    payload?: Uint8Array;
+    emoji?: number;
+    replyId?: number;
+  } {
     try {
       // Get the Data type from loaded protobuf definitions
       const root = getProtobufRoot();
@@ -261,10 +276,20 @@ class ChannelDecryptionService {
         return { valid: false };
       }
 
+      // Tapback metadata — surface so callers (mqttIngestion) can group
+      // reactions under their parent in the unified view.
+      const rawEmoji = decoded.emoji;
+      const emoji = typeof rawEmoji === 'number' && rawEmoji > 0 ? rawEmoji : undefined;
+      const rawReplyId = decoded.replyId ?? decoded.reply_id;
+      const replyId =
+        typeof rawReplyId === 'number' && rawReplyId > 0 ? rawReplyId >>> 0 : undefined;
+
       return {
         valid: true,
         portnum: portnum,
         payload: decoded.payload ? new Uint8Array(decoded.payload) : undefined,
+        emoji,
+        replyId,
       };
     } catch {
       // Parse failure means invalid protobuf
@@ -297,6 +322,8 @@ class ChannelDecryptionService {
       channelName: channel.name,
       portnum: validation.portnum,
       payload: validation.payload,
+      emoji: validation.emoji,
+      replyId: validation.replyId,
     };
   }
 
