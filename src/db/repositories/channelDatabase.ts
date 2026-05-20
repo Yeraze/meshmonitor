@@ -93,6 +93,51 @@ export class ChannelDatabaseRepository extends BaseRepository {
   }
 
   /**
+   * Look up a channel_database row by its human-readable name. Case-insensitive
+   * to mirror the bootstrap path in mqttIngestion.ts which dedups by lowercase
+   * name. Returns null if no row matches.
+   */
+  async getByNameAsync(name: string): Promise<DbChannelDatabase | null> {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const all = await this.getAllAsync();
+    const lower = trimmed.toLowerCase();
+    return all.find((c) => (c.name ?? '').toLowerCase() === lower) ?? null;
+  }
+
+  /**
+   * Find-or-create a "passive" channel_database row keyed by name. Passive =
+   * isEnabled=false with an empty PSK, so the row exists only as a target for
+   * channel_database_permissions (admins can grant view/read on it) and never
+   * participates in server-side decryption. Used by MQTT ingest to materialize
+   * a row for every observed channel name so the permission model can key
+   * MQTT-source data through channel_database instead of slot-indexed
+   * channel_0..7 grants.
+   *
+   * If a row already exists for the name (regardless of isEnabled), that row's
+   * id is returned and no changes are made — we never demote a real decryption
+   * entry by reusing its slot here.
+   */
+  async findOrCreatePassiveByNameAsync(name: string): Promise<number | null> {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const existing = await this.getByNameAsync(trimmed);
+    // `DbChannelDatabase.id` is typed optional for insert shapes; a row read
+    // from the DB always has it set, so fall through to create only if it
+    // somehow isn't.
+    if (existing && typeof existing.id === 'number') return existing.id;
+    return this.createAsync({
+      name: trimmed,
+      psk: '',
+      pskLength: 0,
+      isEnabled: false,
+      enforceNameValidation: false,
+      description: 'Auto-registered for MQTT channel permissions (no PSK)',
+      createdBy: null,
+    });
+  }
+
+  /**
    * Get all enabled channel database entries (for decryption, ordered by sortOrder)
    */
   async getEnabledAsync(): Promise<DbChannelDatabase[]> {

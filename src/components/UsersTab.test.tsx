@@ -179,6 +179,38 @@ describe('UsersTab — PR-C grid additions', () => {
     ]));
   });
 
+  it('hides per-slot channel rows and shows a hint when an MQTT source is selected', async () => {
+    // For MQTT sources, the slot index in `packet.channel` is the sender's
+    // device slot, not a stable channel identity — so channel_0..7 grants
+    // don't actually protect a specific channel. Permissions are routed
+    // through channel_database_permissions instead. The UI hides the slot
+    // grid here and points admins at the Virtual Channel section.
+    setupApi({
+      sources: [
+        { id: 'tcp-1', name: 'TCP Source', type: 'meshtastic_tcp' },
+        { id: 'mqtt-1', name: 'MQTT Broker', type: 'mqtt_broker' },
+      ],
+    });
+    render(<UsersTab />);
+    const aliceRow = await screen.findByText(/Alice/);
+    fireEvent.click(aliceRow);
+
+    const select = (await screen.findByLabelText(/permission_scope/i)) as HTMLSelectElement;
+
+    // TCP source first — channel rows ARE rendered (control case).
+    fireEvent.change(select, { target: { value: 'tcp-1' } });
+    await waitFor(() => expect(screen.getByText('users.channel_primary')).toBeInTheDocument());
+    expect(screen.queryByText(/Virtual Channel Permissions below/i)).not.toBeInTheDocument();
+
+    // Switch to MQTT — channel rows go away, hint appears.
+    fireEvent.change(select, { target: { value: 'mqtt-1' } });
+    await waitFor(() =>
+      expect(screen.getByText(/Virtual Channel Permissions below/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('users.channel_primary')).not.toBeInTheDocument();
+    expect(screen.queryByText('users.channel_n')).not.toBeInTheDocument();
+  });
+
   it('channel-database section renders a canWrite checkbox column', async () => {
     setupApi({
       channelDbEntries: [

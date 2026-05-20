@@ -883,11 +883,41 @@ const UsersTab: React.FC = () => {
               </div>
             )}
 
+            {/* For MQTT sources the slot-indexed channel_0..7 grid doesn't
+                map to a stable channel identity — different upstream nodes
+                use different channels in their own slot 0, so a grant on
+                channel_0 silently protects whichever name "won" the slot
+                most recently. MQTT-sourced rows are instead permission-keyed
+                through channel_database_permissions (the Virtual Channel
+                Permissions section below). Hide the grid's channel rows
+                here and show a pointer to where admins should actually
+                grant access. */}
+              {(() => {
+                const scopedSource = sources.find(s => s.id === permissionScope);
+                const isMqttScope = scopedSource?.type === 'mqtt_broker' || scopedSource?.type === 'mqtt_bridge';
+                return isMqttScope ? (
+                  <div className="permission-hint" style={{ margin: '8px 0 12px', padding: '8px 12px', background: 'var(--bg-soft, #f5f5f5)', borderLeft: '3px solid var(--accent, #2563eb)', borderRadius: '4px' }}>
+                    {t(
+                      'users.mqtt_channel_permissions_hint',
+                      'Channel permissions for MQTT sources are managed under Virtual Channel Permissions below — MQTT channels are identified by name across all sources, not by per-source slot.',
+                    )}
+                  </div>
+                ) : null;
+              })()}
+
             <div className="permissions-grid">
               {/* PR-C: only render sourcey resources here. Globals are in the
                   Global Resources section above; mixing them led to the
-                  scope dropdown looking like it affected themes/sources. */}
-              {PERMISSION_KEYS.filter(r => SOURCEY_RESOURCES.includes(r as ResourceType)).map(resource => {
+                  scope dropdown looking like it affected themes/sources.
+                  MQTT scopes additionally hide channel_0..7 rows — see the
+                  hint banner just above this grid for the rationale. */}
+              {PERMISSION_KEYS.filter(r => {
+                if (!SOURCEY_RESOURCES.includes(r as ResourceType)) return false;
+                const scopedSource = sources.find(s => s.id === permissionScope);
+                const isMqttScope = scopedSource?.type === 'mqtt_broker' || scopedSource?.type === 'mqtt_bridge';
+                if (isMqttScope && String(r).startsWith('channel_')) return false;
+                return true;
+              }).map(resource => {
                 // Get label from translated map or format it
                 let label = resource.charAt(0).toUpperCase() + resource.slice(1);
 
