@@ -29,7 +29,6 @@
 - **Per-source scoping is mandatory.** Every query against nodes/messages/telemetry/traceroutes/etc. must take a `sourceId`. Search `src/db/schema/` for `sourceId` to enumerate.
 - **No raw SQL outside `src/db/repositories/` and `src/server/migrations/`.** ESLint-enforced via `no-restricted-syntax` in `eslint.config.mjs`.
 - **All DatabaseService methods are async** (`Async` suffix). Tests mock with `mockResolvedValue`.
-- **Worktree policy:** core app changes on the live checkout; docs-only or CI-only may use a worktree.
 - **Never push directly to main. Always use a branch.**
 - After bulk find-and-replace or sed, verify modified functions have correct `async`/`await` signatures. Route handlers and callbacks need `async` if `await` was added inside.
 
@@ -117,13 +116,6 @@ For the full "adding a migration" recipe see [Migration recipe](#migration-recip
 - The dev container does NOT have `sqlite3` available as a CLI binary.
 - When sending test messages, use the `gauntlet` channel — never the Primary channel.
 - Tileserver runs on port 8082. Only shut it down (and the dev container) when you are running `tests/system-tests.sh` locally to debug a system-test failure — CI runs system tests on every PR, so you should not be invoking that script as part of normal feature/bugfix work.
-
-## Git Worktree Policy
-
-- **Core application changes** (anything affecting the running app): work directly on the live checkout at `/home/yeraze/Development/meshmonitor`.
-- **Documentation-only changes** (content for [meshmonitor.org](https://meshmonitor.org)) or **CI/CD pipeline-only changes** may be done in a worktree.
-- When using a worktree, start from latest `origin/main` unless a specific branch is required.
-- When working in a worktree, **deployment for user review is NOT required** before creating a PR — that requirement applies only to core app features on the main checkout.
 
 ## Workflow
 
