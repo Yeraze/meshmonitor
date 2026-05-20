@@ -139,7 +139,7 @@ describe('POST /api/sources/:id/prune-outside-roi', () => {
   });
 
   it('passes the bbox to the service and returns the deleted count on success', async () => {
-    mockDb.sources.getSource.mockResolvedValue({
+    const bridge = {
       id: 'bridge-3', name: 'Florida MQTT', type: 'mqtt_bridge', enabled: true,
       config: {
         brokerSourceId: 'broker-1',
@@ -150,22 +150,41 @@ describe('POST /api/sources/:id/prune-outside-roi', () => {
         },
       },
       createdAt: 0, updatedAt: 0, createdBy: 1,
-    });
-    mockDb.pruneNodesOutsideBboxAsync.mockResolvedValue(113);
+    };
+    const broker = {
+      id: 'broker-1', name: 'Local Broker', type: 'mqtt_broker', enabled: true,
+      config: {}, createdAt: 0, updatedAt: 0, createdBy: 1,
+    };
+    mockDb.sources.getSource.mockImplementation(async (id: string) =>
+      id === bridge.id ? bridge : id === broker.id ? broker : null,
+    );
+    // First call (bridge) returns 113, second (broker) returns 42.
+    mockDb.pruneNodesOutsideBboxAsync
+      .mockResolvedValueOnce(113)
+      .mockResolvedValueOnce(42);
 
     const res = await request(createApp()).post('/bridge-3/prune-outside-roi');
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ success: true, count: 113, sourceId: 'bridge-3' });
-    expect(mockDb.pruneNodesOutsideBboxAsync).toHaveBeenCalledWith('bridge-3', {
+    expect(res.body).toEqual({
+      success: true,
+      count: 155,
+      sourceId: 'bridge-3',
+      bridgeCount: 113,
+      brokerCount: 42,
+      brokerSourceId: 'broker-1',
+    });
+    const bbox = {
       minLat: 24.33,
       maxLat: 27.53,
       minLng: -81.30,
       maxLng: -77.67,
-    });
+    };
+    expect(mockDb.pruneNodesOutsideBboxAsync).toHaveBeenNthCalledWith(1, 'bridge-3', bbox);
+    expect(mockDb.pruneNodesOutsideBboxAsync).toHaveBeenNthCalledWith(2, 'broker-1', bbox);
   });
 
   it('forwards only the defined axes to the service when some bounds are absent', async () => {
-    mockDb.sources.getSource.mockResolvedValue({
+    const bridge = {
       id: 'bridge-4', name: 'Lat-only', type: 'mqtt_bridge', enabled: true,
       config: {
         brokerSourceId: 'broker-1',
@@ -175,17 +194,80 @@ describe('POST /api/sources/:id/prune-outside-roi', () => {
         downlinkFilters: { geo: { minLat: 24.33, maxLat: 27.53 } },
       },
       createdAt: 0, updatedAt: 0, createdBy: 1,
-    });
+    };
+    const broker = {
+      id: 'broker-1', name: 'Local Broker', type: 'mqtt_broker', enabled: true,
+      config: {}, createdAt: 0, updatedAt: 0, createdBy: 1,
+    };
+    mockDb.sources.getSource.mockImplementation(async (id: string) =>
+      id === bridge.id ? bridge : id === broker.id ? broker : null,
+    );
     mockDb.pruneNodesOutsideBboxAsync.mockResolvedValue(5);
 
     const res = await request(createApp()).post('/bridge-4/prune-outside-roi');
     expect(res.status).toBe(200);
-    expect(mockDb.pruneNodesOutsideBboxAsync).toHaveBeenCalledWith('bridge-4', {
+    const bbox = {
       minLat: 24.33,
       maxLat: 27.53,
       minLng: undefined,
       maxLng: undefined,
+    };
+    expect(mockDb.pruneNodesOutsideBboxAsync).toHaveBeenNthCalledWith(1, 'bridge-4', bbox);
+    expect(mockDb.pruneNodesOutsideBboxAsync).toHaveBeenNthCalledWith(2, 'broker-1', bbox);
+  });
+
+  it('skips the parent broker prune when brokerSourceId is unset', async () => {
+    mockDb.sources.getSource.mockResolvedValue({
+      id: 'bridge-no-broker', name: 'Orphaned bridge', type: 'mqtt_bridge', enabled: true,
+      config: {
+        // No brokerSourceId — degenerate config, but the prune call should
+        // still clean the bridge's own rows without crashing.
+        upstream: { url: 'mqtt://x' },
+        subscriptions: ['msh/#'],
+        downlinkFilters: { geo: { minLat: 0, maxLat: 1 } },
+      },
+      createdAt: 0, updatedAt: 0, createdBy: 1,
     });
+    mockDb.pruneNodesOutsideBboxAsync.mockResolvedValue(7);
+
+    const res = await request(createApp()).post('/bridge-no-broker/prune-outside-roi');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      success: true,
+      count: 7,
+      sourceId: 'bridge-no-broker',
+      bridgeCount: 7,
+      brokerCount: 0,
+      brokerSourceId: null,
+    });
+    expect(mockDb.pruneNodesOutsideBboxAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips the parent prune when brokerSourceId points at a non-broker', async () => {
+    const bridge = {
+      id: 'bridge-bad-parent', name: 'Bridge', type: 'mqtt_bridge', enabled: true,
+      config: {
+        brokerSourceId: 'not-a-broker',
+        upstream: { url: 'mqtt://x' },
+        subscriptions: ['msh/#'],
+        downlinkFilters: { geo: { minLat: 0, maxLat: 1 } },
+      },
+      createdAt: 0, updatedAt: 0, createdBy: 1,
+    };
+    const wrongType = {
+      id: 'not-a-broker', name: 'TCP node', type: 'meshtastic_tcp', enabled: true,
+      config: {}, createdAt: 0, updatedAt: 0, createdBy: 1,
+    };
+    mockDb.sources.getSource.mockImplementation(async (id: string) =>
+      id === bridge.id ? bridge : id === wrongType.id ? wrongType : null,
+    );
+    mockDb.pruneNodesOutsideBboxAsync.mockResolvedValue(3);
+
+    const res = await request(createApp()).post('/bridge-bad-parent/prune-outside-roi');
+    expect(res.status).toBe(200);
+    expect(res.body.brokerCount).toBe(0);
+    expect(res.body.brokerSourceId).toBeNull();
+    expect(mockDb.pruneNodesOutsideBboxAsync).toHaveBeenCalledTimes(1);
   });
 
   it('returns 500 and does not leak internal state when the service throws', async () => {
