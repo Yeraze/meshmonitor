@@ -209,6 +209,89 @@ describe('ingestServiceEnvelope — fail-closed membership', () => {
   });
 });
 
+describe('ingestServiceEnvelope — TEXT_MESSAGE_APP tapbacks', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('preserves emoji and replyId from the decoded Data protobuf', async () => {
+    // Regression: prior to the fix, the TEXT_MESSAGE_APP branch built a
+    // DbMessage that dropped emoji/replyId, so MQTT-sourced reactions
+    // failed `isReactionMessage` in the unified view and rendered as
+    // full inline messages instead of grouping under the parent packet.
+    const envelope: ServiceEnvelopeShape = {
+      channelId: 'LongFast',
+      gatewayId: '!00000001',
+      packet: {
+        id: 0xdeadbeef,
+        from: NODE_IN,
+        to: 0xffffffff,
+        channel: 0,
+        decoded: {
+          portnum: 1 /* TEXT_MESSAGE_APP */,
+          payload: new Uint8Array([0]),
+          emoji: 1,
+          replyId: 12345,
+        } as any,
+      },
+    };
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope,
+    });
+
+    expect(result.ingested).toBe(true);
+    expect(databaseService.messages.insertMessage).toHaveBeenCalledTimes(1);
+    const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
+    expect(inserted.emoji).toBe(1);
+    expect(inserted.replyId).toBe(12345);
+  });
+
+  it('accepts snake_case reply_id from a gateway that did not camelCase the field', async () => {
+    // Some MQTT bridges publish the raw protobuf field name `reply_id`
+    // rather than the protobufjs camelCase `replyId`. Accept both.
+    const envelope: ServiceEnvelopeShape = {
+      channelId: 'LongFast',
+      gatewayId: '!00000001',
+      packet: {
+        id: 0xdeadbeef,
+        from: NODE_IN,
+        to: 0xffffffff,
+        channel: 0,
+        decoded: {
+          portnum: 1 /* TEXT_MESSAGE_APP */,
+          payload: new Uint8Array([0]),
+          emoji: 1,
+          reply_id: 99,
+        } as any,
+      },
+    };
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope,
+    });
+
+    expect(result.ingested).toBe(true);
+    const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
+    expect(inserted.replyId).toBe(99);
+  });
+
+  it('omits emoji/replyId when the decoded packet has neither', async () => {
+    // Regular text messages must not be marked as reactions.
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 1 /* TEXT_MESSAGE_APP */),
+    });
+
+    expect(result.ingested).toBe(true);
+    const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
+    expect(inserted.emoji).toBeUndefined();
+    expect(inserted.replyId).toBeUndefined();
+  });
+});
+
 describe('ingestServiceEnvelope — TRACEROUTE_APP', () => {
   beforeEach(() => {
     vi.clearAllMocks();

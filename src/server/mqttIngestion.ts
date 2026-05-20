@@ -123,9 +123,16 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         typeof packet.channel === 'number' ? packet.channel : undefined,
       );
       if (r.success) {
-        (packet as { decoded?: { portnum?: number; payload?: Uint8Array } }).decoded = {
+        // Carry tapback metadata (emoji, replyId) onto the synthesized
+        // decoded shape so TEXT_MESSAGE_APP ingest can preserve it —
+        // reactions otherwise lose their grouping in the unified view.
+        (packet as {
+          decoded?: { portnum?: number; payload?: Uint8Array; emoji?: number; replyId?: number };
+        }).decoded = {
           portnum: r.portnum,
           payload: r.payload,
+          emoji: r.emoji,
+          replyId: r.replyId,
         };
       }
     } catch (err) {
@@ -222,6 +229,25 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
       const text = typeof payload === 'string' ? payload : '';
       if (!text) return { ingested: false, reason: 'decode-error', portnum };
       const packetId = typeof packet.id === 'number' ? packet.id >>> 0 : 0;
+      // Tapback metadata. `emoji=1` flags reactions; `reply_id` points at
+      // the parent packet id. Both live as siblings of `payload` on the
+      // decoded Data protobuf. When the bridge published an already-decoded
+      // packet they're on `packet.decoded`; when we server-decrypted via
+      // channel_database, channelDecryptionService now surfaces them on
+      // the synthesized `decoded` object (see `DecryptionResult`).
+      // Without these fields the unified view's `isReactionMessage` test
+      // fails for MQTT-sourced reactions and they render as full inline
+      // messages instead of grouping under the parent — see
+      // https://github.com/Yeraze/meshmonitor/issues/3092 follow-up.
+      const decodedAny = decoded as Record<string, unknown>;
+      const rawEmoji =
+        (decodedAny.emoji as number | undefined) ?? undefined;
+      const emoji = typeof rawEmoji === 'number' && rawEmoji > 0 ? rawEmoji : undefined;
+      const rawReplyId =
+        (decodedAny.replyId as number | undefined) ??
+        (decodedAny.reply_id as number | undefined);
+      const replyId =
+        typeof rawReplyId === 'number' && rawReplyId > 0 ? rawReplyId >>> 0 : undefined;
       const msg: DbMessage = {
         // Row ID uses the TCP convention `${sourceId}_${fromNum}_${packetId}`
         // — underscores, fromNum middle, packetId last — so the unified
@@ -243,6 +269,8 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         rxSnr: typeof packet.rxSnr === 'number' ? packet.rxSnr : undefined,
         rxRssi: typeof packet.rxRssi === 'number' ? packet.rxRssi : undefined,
         viaMqtt: true,
+        emoji,
+        replyId,
         createdAt: nowMs,
       } as DbMessage;
       (msg as any).sourceId = sourceId;

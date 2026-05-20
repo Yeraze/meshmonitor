@@ -586,6 +586,20 @@ router.get('/messages', async (req: Request, res: Response) => {
                 existing.fromNodeShortName = sender.shortName;
               }
             }
+            // Upgrade tapback metadata if a later source has it and the
+            // first-seen entry didn't. The per-source `Promise.all` ingest
+            // order is non-deterministic, so a row from a source that lost
+            // emoji/replyId (e.g. a stale insert) could otherwise win the
+            // race and make a tapback render as a full inline message.
+            // Once set, prefer the populated value: any source with the
+            // metadata is correct because the underlying mesh packet is
+            // identical across receivers.
+            if ((existing.emoji == null || existing.emoji === 0) && m.emoji != null && m.emoji > 0) {
+              existing.emoji = m.emoji;
+            }
+            if (existing.replyId == null && m.replyId != null && m.replyId > 0) {
+              existing.replyId = m.replyId;
+            }
           } else {
             const sender = nodeMap.get(fromNum);
             merged.set(dedupKey, {

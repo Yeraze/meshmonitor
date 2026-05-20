@@ -465,6 +465,52 @@ describe('Unified Routes', () => {
       expect(res.body[0].receptions[1].rxSnr).toBe(-8);
     });
 
+    it('upgrades emoji/replyId from a later source when the first-seen row lacks them', async () => {
+      // Same mesh packet heard by two sources. Source A's row arrives first
+      // in merge order but is missing tapback metadata (e.g. server-decrypted
+      // MQTT row before the channelDecryptionService surfaced emoji/replyId).
+      // Source B's row has the correct emoji=1 + replyId. The merged entry
+      // must adopt B's metadata so the unified view classifies it as a
+      // reaction — otherwise it renders as a full inline message.
+      // Regression for the bug where tapbacks flickered between rendering
+      // as reactions and full messages depending on Promise.all race order.
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
+      // Row IDs share the trailing packetId segment so unifiedRoutes'
+      // extractPacketIdFromRowId collapses them onto the same dedupKey.
+      mockDb.messages.getMessages
+        .mockResolvedValueOnce([
+          mkMsg({
+            id: 'src-a_2864434397_99',
+            fromNodeNum: NODE_ONE.nodeNum,
+            text: '👍',
+            timestamp: 3000,
+            rxTime: 3000,
+            emoji: null,
+            replyId: null,
+          }),
+        ])
+        .mockResolvedValueOnce([
+          mkMsg({
+            id: 'src-b_2864434397_99',
+            fromNodeNum: NODE_ONE.nodeNum,
+            text: '👍',
+            timestamp: 3100,
+            rxTime: 3100,
+            emoji: 1,
+            replyId: 12345,
+          }),
+        ]);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/messages?limit=50');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].receptions).toHaveLength(2);
+      expect(res.body[0].emoji).toBe(1);
+      expect(res.body[0].replyId).toBe(12345);
+    });
+
     it('resolves sender display names from the nodes table', async () => {
       mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
       mockDb.messages.getMessages.mockResolvedValue([
