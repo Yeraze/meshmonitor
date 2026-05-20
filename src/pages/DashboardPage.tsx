@@ -131,6 +131,7 @@ function DashboardInner() {
   const [formMqttUsername, setFormMqttUsername] = useState('');
   const [formMqttPassword, setFormMqttPassword] = useState('');
   const [formMqttRootTopic, setFormMqttRootTopic] = useState('msh');
+  const [formMqttZeroHopInjection, setFormMqttZeroHopInjection] = useState(false);
   // MQTT bridge (mqtt_bridge) form state.
   const [formMqttBridgeBrokerId, setFormMqttBridgeBrokerId] = useState('');
   const [formMqttBridgeUrl, setFormMqttBridgeUrl] = useState('');
@@ -274,6 +275,7 @@ function DashboardInner() {
     setFormMqttUsername('');
     setFormMqttPassword('');
     setFormMqttRootTopic('msh');
+    setFormMqttZeroHopInjection(false);
     setFormMqttBridgeBrokerId('');
     setFormMqttBridgeUrl('');
     setFormMqttBridgeUsername('');
@@ -302,6 +304,7 @@ function DashboardInner() {
       // backend round-trips the existing value when the field stays empty.
       setFormMqttPassword('');
       setFormMqttRootTopic(cfg?.rootTopic ?? 'msh');
+      setFormMqttZeroHopInjection(Boolean(cfg?.zeroHopInjection));
       setFormError('');
       setShowSourceModal(true);
       return;
@@ -386,6 +389,7 @@ function DashboardInner() {
         auth: { username: formMqttUsername.trim(), password: formMqttPassword },
         gateway: { nodeNum, nodeId, longName: formName.trim(), shortName },
         rootTopic: formMqttRootTopic.trim() || 'msh',
+        zeroHopInjection: formMqttZeroHopInjection,
       };
       if (editingSourceId && !formMqttPassword) {
         // Empty password on edit → tell server to keep the existing one.
@@ -925,6 +929,25 @@ function DashboardInner() {
                     onChange={(e) => setFormMqttRootTopic(e.target.value)}
                     placeholder="msh"
                   />
+                </label>
+                <label className="dashboard-form-field" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={formMqttZeroHopInjection}
+                    onChange={(e) => setFormMqttZeroHopInjection(e.target.checked)}
+                    style={{ marginTop: 3 }}
+                  />
+                  <span>
+                    <span className="dashboard-form-label" style={{ display: 'block' }}>
+                      {t('source.form.mqtt_zero_hop_injection', 'Zero-hop injection')}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--ctp-subtext0)' }}>
+                      {t(
+                        'source.form.mqtt_zero_hop_injection_help',
+                        'Clamp hop_limit to 0 on packets the broker delivers to connected devices, matching the public Meshtastic broker. Prevents MQTT-bridged packets from being rebroadcast over RF.',
+                      )}
+                    </span>
+                  </span>
                 </label>
               </>
             ) : formType === 'mqtt_bridge' ? (
