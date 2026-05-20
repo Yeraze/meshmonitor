@@ -896,7 +896,18 @@ const UsersTab: React.FC = () => {
                 const scopedSource = sources.find(s => s.id === permissionScope);
                 const isMqttScope = scopedSource?.type === 'mqtt_broker' || scopedSource?.type === 'mqtt_bridge';
                 return isMqttScope ? (
-                  <div className="permission-hint" style={{ margin: '8px 0 12px', padding: '8px 12px', background: 'var(--bg-soft, #f5f5f5)', borderLeft: '3px solid var(--accent, #2563eb)', borderRadius: '4px' }}>
+                  <div
+                    className="permission-hint"
+                    style={{
+                      margin: '8px 0 12px',
+                      padding: '8px 12px',
+                      background: 'var(--ctp-surface0)',
+                      color: 'var(--ctp-text)',
+                      borderLeft: '3px solid var(--ctp-blue)',
+                      borderRadius: '4px',
+                      fontSize: '0.9em',
+                    }}
+                  >
                     {t(
                       'users.mqtt_channel_permissions_hint',
                       'Channel permissions for MQTT sources are managed under Virtual Channel Permissions below — MQTT channels are identified by name across all sources, not by per-source slot.',
