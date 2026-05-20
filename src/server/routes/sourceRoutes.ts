@@ -962,6 +962,11 @@ router.post('/:id/disconnect', requirePermission('sources', 'write'), async (req
 // ingestion is already gated by MqttPacketFilter.postFilterPosition, so this
 // endpoint exists to clean up rows that were ingested *before* the current
 // bbox was set (or with a wider previous bbox).
+//
+// The bridge republishes downlink packets into its parent mqtt_broker source,
+// so the same out-of-ROI nodes typically exist under both sourceIds. Prune
+// the broker too — otherwise users see the "cleaned" nodes reappear the
+// moment they switch the sidebar to the broker.
 router.post('/:id/prune-outside-roi', requirePermission('sources', 'write'), async (req: Request, res: Response) => {
   try {
     const source = await databaseService.sources.getSource(req.params.id);
@@ -969,7 +974,8 @@ router.post('/:id/prune-outside-roi', requirePermission('sources', 'write'), asy
     if (source.type !== 'mqtt_bridge') {
       return res.status(400).json({ error: 'Prune outside ROI is only supported on mqtt_bridge sources' });
     }
-    const geo = (source.config as any)?.downlinkFilters?.geo;
+    const bridgeConfig = source.config as any;
+    const geo = bridgeConfig?.downlinkFilters?.geo;
     const bounds = {
       minLat: typeof geo?.minLat === 'number' ? geo.minLat : undefined,
       maxLat: typeof geo?.maxLat === 'number' ? geo.maxLat : undefined,
@@ -984,9 +990,31 @@ router.post('/:id/prune-outside-roi', requirePermission('sources', 'write'), asy
     ) {
       return res.status(400).json({ error: 'This bridge has no geo bounding box configured' });
     }
-    const count = await databaseService.pruneNodesOutsideBboxAsync(source.id, bounds);
-    logger.info(`Pruned ${count} node(s) outside ROI for source ${source.id} (${source.name})`);
-    res.json({ success: true, count, sourceId: source.id });
+    const bridgeCount = await databaseService.pruneNodesOutsideBboxAsync(source.id, bounds);
+    logger.info(`Pruned ${bridgeCount} node(s) outside ROI for source ${source.id} (${source.name})`);
+
+    let brokerCount = 0;
+    let prunedBrokerSourceId: string | null = null;
+    const brokerSourceId = typeof bridgeConfig?.brokerSourceId === 'string' ? bridgeConfig.brokerSourceId : null;
+    if (brokerSourceId && brokerSourceId !== source.id) {
+      const broker = await databaseService.sources.getSource(brokerSourceId);
+      if (broker && broker.type === 'mqtt_broker') {
+        brokerCount = await databaseService.pruneNodesOutsideBboxAsync(broker.id, bounds);
+        prunedBrokerSourceId = broker.id;
+        logger.info(`Pruned ${brokerCount} node(s) outside ROI for parent broker ${broker.id} (${broker.name})`);
+      } else if (!broker) {
+        logger.warn(`Bridge ${source.id} references missing brokerSourceId=${brokerSourceId}; skipping parent prune`);
+      }
+    }
+
+    res.json({
+      success: true,
+      count: bridgeCount + brokerCount,
+      sourceId: source.id,
+      bridgeCount,
+      brokerCount,
+      brokerSourceId: prunedBrokerSourceId,
+    });
   } catch (err) {
     logger.error('Error pruning nodes outside ROI:', err);
     res.status(500).json({ error: 'Failed to prune nodes' });
