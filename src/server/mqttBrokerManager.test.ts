@@ -169,10 +169,15 @@ describe('MqttBrokerManager', () => {
     expect(arg.shortName).toBe('TST');
     expect(arg.sourceId).toBe('test-broker');
 
-    const status = manager.getStatus();
-    expect(status.packetsIn).toBeGreaterThanOrEqual(1);
-    expect(status.packetsIngested).toBeGreaterThanOrEqual(1);
-    expect(status.clientCount).toBe(1);
+    // local-packet emits before ingestServiceEnvelope's .then runs that
+    // increments packetsIngested. Wait for the counter to settle instead
+    // of asserting on the immediate post-emit tick.
+    await vi.waitFor(() => {
+      const s = manager.getStatus();
+      expect(s.packetsIn).toBeGreaterThanOrEqual(1);
+      expect(s.packetsIngested).toBeGreaterThanOrEqual(1);
+    });
+    expect(manager.getStatus().clientCount).toBe(1);
   });
 
   it('drops publishes on topics outside the root topic', async () => {

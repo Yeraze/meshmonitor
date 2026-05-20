@@ -32,6 +32,13 @@ vi.mock('../services/database.js', () => ({
     channels: {
       upsertChannel: vi.fn(async () => undefined),
     },
+    channelDatabase: {
+      // Returns undefined by default so the resolver falls back to the raw
+      // slot — keeps every pre-existing test seeing the same channel values
+      // it asserted under the old behavior. Tests that want to exercise
+      // the channel_database-keyed path override the mock per-case.
+      findOrCreatePassiveByNameAsync: vi.fn(async () => undefined),
+    },
   },
 }));
 
@@ -68,9 +75,10 @@ vi.mock('./meshtasticProtobufService.js', () => ({
   },
 }));
 
-import { ingestServiceEnvelope } from './mqttIngestion.js';
+import { ingestServiceEnvelope, _resetMqttIngestCachesForTest } from './mqttIngestion.js';
 import { MqttPacketFilter, type ServiceEnvelopeShape } from './mqttPacketFilter.js';
 import databaseService from '../services/database.js';
+import { CHANNEL_DB_OFFSET } from './constants/meshtastic.js';
 
 const NODE_IN = 0x7ff80a48;
 const NODE_OUT = 0x11111111;
@@ -454,5 +462,126 @@ describe('ingestServiceEnvelope — STORE_FORWARD_APP', () => {
     expect(result.reason).toBe('unsupported-portnum');
     expect(databaseService.messages.insertMessage).not.toHaveBeenCalled();
     expect(databaseService.upsertNode).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Channel-permission re-wire: MQTT-sourced rows are permission-keyed via
+ * channel_database_permissions rather than per-source channel_0..7 slots.
+ * The seam is here in the ingest path — `channel` gets rewritten to the
+ * `CHANNEL_DB_OFFSET + channelDatabaseId` encoding nodeEnhancer already
+ * enforces. These tests pin that contract.
+ */
+describe('ingestServiceEnvelope — channel_database resolution', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetMqttIngestCachesForTest();
+  });
+
+  it('stamps `channel` with CHANNEL_DB_OFFSET + id when the channel name resolves', async () => {
+    (databaseService.channelDatabase!.findOrCreatePassiveByNameAsync as any).mockResolvedValueOnce(7);
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 1 /* TEXT_MESSAGE_APP */),
+    });
+
+    expect(result.ingested).toBe(true);
+    expect(databaseService.channelDatabase!.findOrCreatePassiveByNameAsync).toHaveBeenCalledWith('LongFast');
+    const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
+    expect(inserted.channel).toBe(CHANNEL_DB_OFFSET + 7);
+  });
+
+  it('memoizes lookups per channel name so repeated packets do not hit the DB twice', async () => {
+    (databaseService.channelDatabase!.findOrCreatePassiveByNameAsync as any).mockResolvedValue(11);
+
+    await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 1 /* TEXT_MESSAGE_APP */),
+    });
+    await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 1 /* TEXT_MESSAGE_APP */),
+    });
+
+    expect(databaseService.channelDatabase!.findOrCreatePassiveByNameAsync).toHaveBeenCalledTimes(1);
+    const inserts = (databaseService.messages.insertMessage as any).mock.calls;
+    expect(inserts[0][0].channel).toBe(CHANNEL_DB_OFFSET + 11);
+    expect(inserts[1][0].channel).toBe(CHANNEL_DB_OFFSET + 11);
+  });
+
+  it('falls back to the raw slot when envelope.channelId is missing', async () => {
+    const envelope: ServiceEnvelopeShape = {
+      // No channelId.
+      gatewayId: '!00000001',
+      packet: {
+        id: 0xfeed0001,
+        from: NODE_IN,
+        to: 0xffffffff,
+        channel: 3,
+        decoded: { portnum: 1 /* TEXT_MESSAGE_APP */, payload: new Uint8Array([0]) },
+      },
+    };
+
+    const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope });
+    expect(result.ingested).toBe(true);
+    expect(databaseService.channelDatabase!.findOrCreatePassiveByNameAsync).not.toHaveBeenCalled();
+    const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
+    expect(inserted.channel).toBe(3);
+  });
+
+  it('prefers a channelDatabaseId already attached by the decrypt path over the name lookup', async () => {
+    // Simulate the server-side-decrypted shape: `packet.decoded.channelDatabaseId`
+    // is set by channelDecryptionService.tryDecrypt() in mqttIngestion.ts.
+    // The name-based find-or-create must not be invoked when we already know
+    // the channel_database row.
+    const envelope: ServiceEnvelopeShape = {
+      channelId: 'LongFast',
+      gatewayId: '!00000001',
+      packet: {
+        id: 0xfeed0002,
+        from: NODE_IN,
+        to: 0xffffffff,
+        channel: 0,
+        decoded: {
+          portnum: 1 /* TEXT_MESSAGE_APP */,
+          payload: new Uint8Array([0]),
+          channelDatabaseId: 42,
+        } as any,
+      },
+    };
+
+    const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope });
+    expect(result.ingested).toBe(true);
+    expect(databaseService.channelDatabase!.findOrCreatePassiveByNameAsync).not.toHaveBeenCalled();
+    const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
+    expect(inserted.channel).toBe(CHANNEL_DB_OFFSET + 42);
+  });
+
+  it('falls back to the raw slot when the find-or-create resolves to null', async () => {
+    // Edge case: an empty/whitespace-only channel name reaches the repo and
+    // returns null — surface should still ingest the row with the slot
+    // value, just not permission-key it through channel_database.
+    (databaseService.channelDatabase!.findOrCreatePassiveByNameAsync as any).mockResolvedValueOnce(null);
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 1 /* TEXT_MESSAGE_APP */),
+    });
+    expect(result.ingested).toBe(true);
+    const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
+    expect(inserted.channel).toBe(0); // raw slot from the envelope
+  });
+
+  it('encodes the channel on traceroute rows the same way as messages', async () => {
+    (databaseService.channelDatabase!.findOrCreatePassiveByNameAsync as any).mockResolvedValueOnce(5);
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 70 /* TRACEROUTE_APP */),
+    });
+    expect(result.ingested).toBe(true);
+    const [record] = (databaseService.insertTraceroute as any).mock.calls[0];
+    expect(record.channel).toBe(CHANNEL_DB_OFFSET + 5);
   });
 });

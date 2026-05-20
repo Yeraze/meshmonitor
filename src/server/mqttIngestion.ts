@@ -75,6 +75,7 @@ import {
   PortNum,
   StoreForwardRequestResponse,
   getStoreForwardRequestResponseName,
+  CHANNEL_DB_OFFSET,
 } from './constants/meshtastic.js';
 import { calculateDistance } from '../utils/distance.js';
 import { logger } from '../utils/logger.js';
@@ -126,13 +127,22 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         // Carry tapback metadata (emoji, replyId) onto the synthesized
         // decoded shape so TEXT_MESSAGE_APP ingest can preserve it —
         // reactions otherwise lose their grouping in the unified view.
+        // `channelDatabaseId` rides along too so the channel-resolution
+        // step below can pick it up without re-running the cache scan.
         (packet as {
-          decoded?: { portnum?: number; payload?: Uint8Array; emoji?: number; replyId?: number };
+          decoded?: {
+            portnum?: number;
+            payload?: Uint8Array;
+            emoji?: number;
+            replyId?: number;
+            channelDatabaseId?: number;
+          };
         }).decoded = {
           portnum: r.portnum,
           payload: r.payload,
           emoji: r.emoji,
           replyId: r.replyId,
+          channelDatabaseId: r.channelDatabaseId,
         };
       }
     } catch (err) {
@@ -166,6 +176,18 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
   // picker won't surface this channel for this source — the packet
   // ingest itself is unaffected.
   recordChannelFromEnvelope(sourceId, envelope, packet);
+
+  // Resolve the channel_database row for this packet so downstream rows are
+  // permission-keyed via channel_database_permissions instead of the raw
+  // sender slot (which collides across senders on a shared MQTT broker).
+  // The encoding is the same `CHANNEL_DB_OFFSET + id` convention nodeEnhancer
+  // already enforces, so no schema migration is required. Falls back to the
+  // raw slot if nothing resolves (e.g. an unencrypted packet on a broker
+  // that strips channelId from its republished topic).
+  const channelDatabaseId = await resolveChannelDatabaseIdForMqtt(envelope, packet);
+  const rawSlot = typeof packet.channel === 'number' ? packet.channel : 0;
+  const effectiveChannel =
+    channelDatabaseId !== null ? CHANNEL_DB_OFFSET + channelDatabaseId : rawSlot;
 
   // Fail-closed geo membership: when a bbox is configured on the filter,
   // only allow packets from senders we've previously decoded a position
@@ -262,7 +284,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         fromNodeId,
         toNodeId,
         text,
-        channel: typeof packet.channel === 'number' ? packet.channel : 0,
+        channel: effectiveChannel,
         portnum,
         timestamp: nowMs,
         rxTime: typeof packet.rxTime === 'number' ? packet.rxTime * 1000 : undefined,
@@ -340,7 +362,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
     }
 
     case PortNum.TRACEROUTE_APP: {
-      await ingestTraceroute(sourceId, packet, payload as Record<string, any>, fromNum, fromNodeId, toNum, toNodeId, nowMs);
+      await ingestTraceroute(sourceId, packet, payload as Record<string, any>, fromNum, fromNodeId, toNum, toNodeId, nowMs, effectiveChannel);
       return { ingested: true, portnum };
     }
 
@@ -355,7 +377,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
     }
 
     case PortNum.STORE_FORWARD_APP: {
-      const ok = await ingestStoreForward(sourceId, packet, payload as Record<string, any>, fromNum, fromNodeId, toNum, toNodeId, nowMs);
+      const ok = await ingestStoreForward(sourceId, packet, payload as Record<string, any>, fromNum, fromNodeId, toNum, toNodeId, nowMs, effectiveChannel);
       return ok ? { ingested: true, portnum } : { ingested: false, reason: 'unsupported-portnum', portnum };
     }
 
@@ -380,6 +402,7 @@ async function ingestTraceroute(
   toNum: number | null,
   toNodeId: string,
   nowMs: number,
+  effectiveChannel: number,
 ): Promise<void> {
   const BROADCAST_ADDR = 4294967295;
   const lastHeard = Math.floor(nowMs / 1000);
@@ -474,7 +497,6 @@ async function ingestTraceroute(
     );
   }
 
-  const channelIndex = typeof packet.channel === 'number' ? packet.channel : -1;
   const record: DbTraceroute = {
     fromNodeNum: fromNum,
     toNodeNum: toNum ?? 0,
@@ -487,7 +509,7 @@ async function ingestTraceroute(
     timestamp: nowMs,
     createdAt: nowMs,
   };
-  if (channelIndex >= 0) (record as any).channel = channelIndex;
+  if (effectiveChannel >= 0) (record as any).channel = effectiveChannel;
   databaseService.insertTraceroute(record, sourceId);
 
   // Hop count → telemetry, matches TCP's Smart Hops feed.
@@ -699,6 +721,7 @@ async function ingestStoreForward(
   toNum: number | null,
   toNodeId: string,
   nowMs: number,
+  effectiveChannel: number,
 ): Promise<boolean> {
   const rr = decoded.rr ?? decoded.requestResponse ?? decoded.request_response ?? 0;
   const rrName = getStoreForwardRequestResponseName(rr);
@@ -734,7 +757,7 @@ async function ingestStoreForward(
       fromNodeId,
       toNodeId,
       text,
-      channel: typeof packet.channel === 'number' ? packet.channel : 0,
+      channel: effectiveChannel,
       portnum: PortNum.TEXT_MESSAGE_APP,
       timestamp: nowMs,
       rxTime: typeof packet.rxTime === 'number' ? packet.rxTime * 1000 : undefined,
@@ -782,6 +805,62 @@ async function ingestStoreForward(
  * a fresh upsert so the picker stays in sync.
  */
 const channelMemo = new Map<string, Map<number, string>>();
+
+/**
+ * Process-lifetime cache mapping lower-cased channel names to channel_database
+ * row IDs. Avoids hitting the DB on every MQTT packet for the same name. The
+ * cache is invalidated for a single name on the rare write that mints a new
+ * row; lookups for unknown names still go through findOrCreatePassiveByName
+ * so admin-curated entries are picked up automatically.
+ */
+const channelNameToDbIdCache = new Map<string, number>();
+
+/**
+ * Resolve a channel_database id for an MQTT-ingested packet, in priority order:
+ *   1. If server-side decryption already identified the row, trust that.
+ *   2. If `envelope.channelId` (the human-readable channel name from the topic /
+ *      ServiceEnvelope) is set, look up by name. Auto-register a passive
+ *      (isEnabled=false, no PSK) row if no entry exists — this is the seam
+ *      that lets channel_database_permissions become the single source of
+ *      truth for MQTT channel access without forcing operators to pre-declare
+ *      every observed channel.
+ *   3. Otherwise return null and the caller falls back to the slot index.
+ *
+ * Errors are swallowed because the ingest pipeline must not fail just because
+ * we couldn't materialize a permission target — the slot-indexed fallback
+ * keeps the row visible to anyone with channel_${slot} grants.
+ */
+async function resolveChannelDatabaseIdForMqtt(
+  envelope: ServiceEnvelopeShape,
+  packet: NonNullable<ServiceEnvelopeShape['packet']>,
+): Promise<number | null> {
+  const decoded = packet.decoded as { channelDatabaseId?: number } | undefined;
+  if (typeof decoded?.channelDatabaseId === 'number') return decoded.channelDatabaseId;
+
+  const name = envelope.channelId?.trim();
+  if (!name) return null;
+  const cacheKey = name.toLowerCase();
+  const cached = channelNameToDbIdCache.get(cacheKey);
+  if (typeof cached === 'number') return cached;
+
+  try {
+    const id = await databaseService.channelDatabase.findOrCreatePassiveByNameAsync(name);
+    if (typeof id === 'number') {
+      channelNameToDbIdCache.set(cacheKey, id);
+      return id;
+    }
+  } catch (err) {
+    const m = err instanceof Error ? err.message : String(err);
+    logger.debug(`MQTT ingest: channel_database resolve failed for name="${name}": ${m}`);
+  }
+  return null;
+}
+
+/** Exposed for tests to reset between cases. */
+export function _resetMqttIngestCachesForTest(): void {
+  channelMemo.clear();
+  channelNameToDbIdCache.clear();
+}
 
 function recordChannelFromEnvelope(
   sourceId: string,
