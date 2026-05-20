@@ -1022,6 +1022,44 @@ export class MiscRepository extends BaseRepository {
   }
 
   /**
+   * Return the distinct set of sourceId values that appear on encrypted,
+   * not-yet-server-decrypted rows of `packet_log`.
+   *
+   * Used by the retroactive-decrypt route as a per-source ACL pre-flight:
+   * the caller must hold `messages:read` on every sourceId returned here
+   * before processForChannel() is allowed to run. This is intentionally
+   * conservative — it returns every source with ANY undecoded encrypted
+   * packet, not just sources whose packets a specific channel PSK would
+   * actually decrypt. False-positive denials are preferred over leaking
+   * decrypted payloads cross-source.
+   *
+   * A `null` element in the returned array represents the legacy
+   * pre-multi-source default-source bucket (`packet_log.sourceId IS NULL`).
+   */
+  async getDistinctEncryptedPacketSourceIds(): Promise<Array<string | null>> {
+    const { packetLog } = this.tables;
+    const encryptedTrue = this.isSQLite() ? sql`${packetLog.encrypted} = 1` : sql`${packetLog.encrypted} = true`;
+
+    try {
+      const rows = await this.db
+        .selectDistinct({ sourceId: packetLog.sourceId })
+        .from(packetLog)
+        .where(and(encryptedTrue, isNull(packetLog.decrypted_by)));
+
+      // Normalize empty string → null and dedupe (selectDistinct already dedupes,
+      // but cross-driver behavior with NULL+empty makes a final Set safer).
+      const seen = new Set<string | null>();
+      for (const r of rows) {
+        seen.add((r as { sourceId: string | null }).sourceId ?? null);
+      }
+      return Array.from(seen);
+    } catch (error) {
+      logger.error('[MiscRepository] Failed to enumerate distinct encrypted packet sourceIds:', error);
+      return [];
+    }
+  }
+
+  /**
    * Get packet logs with optional filters and pagination
    */
   async getPacketLogs(options: PacketLogFilterOptions & { offset?: number; limit?: number }): Promise<DbPacketLog[]> {

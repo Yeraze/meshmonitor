@@ -8034,6 +8034,19 @@ class DatabaseService {
     return this.misc.getPacketLogs(options);
   }
 
+  /**
+   * Return distinct sourceIds for encrypted, not-yet-server-decrypted rows of
+   * `packet_log`. Consumed by the channel-database retroactive-decrypt
+   * permission pre-flight to enforce per-source `messages:read` ACL before
+   * any decrypted payload is written back to packet_log.
+   *
+   * A `null` element represents the legacy pre-multi-source default-source
+   * bucket (rows with `sourceId IS NULL`).
+   */
+  async getDistinctEncryptedPacketSourceIdsAsync(): Promise<Array<string | null>> {
+    return this.misc.getDistinctEncryptedPacketSourceIds();
+  }
+
   async getPacketLogByIdAsync(id: number): Promise<DbPacketLog | null> {
     return this.misc.getPacketLogById(id);
   }
