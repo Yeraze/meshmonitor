@@ -31,6 +31,7 @@ vi.mock('../../services/database.js', () => ({
     findUserByIdAsync: vi.fn(),
     findUserByUsernameAsync: vi.fn(),
     getUserPermissionSetAsync: vi.fn(),
+    getChannelDatabasePermissionsForUserAsSetAsync: vi.fn(),
   }
 }));
 
@@ -337,6 +338,35 @@ describe('GET /:id/neighbor-info', () => {
     expect(res.body[0].nodeName).toBe('Node !abcdef01');
     expect(res.body[0].neighborNodeId).toBe('!12345678');
     expect(res.body[0].neighborName).toBe('Node !12345678');
+  });
+
+  it('drops records whose endpoint nodes the user lacks viewOnMap permission for', async () => {
+    // Regression for #3092 follow-up: before the fix the neighbor-info
+    // endpoint enriched every record with positions from getNodesByNums
+    // regardless of channel access, leaving the map to draw lines
+    // between coordinates a non-admin viewer should never see.
+    const regularUser = { id: 7, username: 'viewer', isActive: true, isAdmin: false };
+    mockDb.findUserByIdAsync.mockResolvedValue(regularUser);
+    mockDb.getUserPermissionSetAsync.mockResolvedValue({}); // no channel grants
+    mockDb.getChannelDatabasePermissionsForUserAsSetAsync.mockResolvedValue({});
+    mockDb.checkPermissionAsync.mockResolvedValue(true); // nodes:read passes
+
+    const ni = makeNeighborRecord({ nodeNum: 111, neighborNodeNum: 222 });
+    mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
+    mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni]);
+    // Both nodes have a channel set (e.g. CHANNEL_DB_OFFSET + 5 — MQTT-routed)
+    // that the user has no permission for; filterNodesByChannelPermission
+    // returns empty → enriched neighbor-info must be empty.
+    // CHANNEL_DB_OFFSET = 100, so channel 105 = VC id 5 (which the user
+    // has no permission for in the empty mock above).
+    mockDb.nodes.getNodesByNums.mockImplementation(async (nums: number[]) =>
+      new Map(nums.map(n => [n, makeNode(n, { channel: 105 })])),
+    );
+
+    const res = await request(createApp(regularUser)).get('/src-abc/neighbor-info');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
   });
 
   it('returns 403 for unauthenticated requests', async () => {
