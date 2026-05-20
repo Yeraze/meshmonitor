@@ -19,6 +19,16 @@ export interface MqttBrokerOptions {
   host?: string;
   auth: { username: string; password: string };
   brokerId?: string;
+  /**
+   * Optional per-subscriber payload transform. Called once per delivery via
+   * Aedes' `authorizeForward` hook — returning a Buffer rewrites the payload
+   * the subscriber sees; returning null delivers the original. The
+   * `publish` event fires with the unmodified payload, so ingestion and
+   * uplink-bridge consumers are unaffected. Used by the broker manager to
+   * implement zero-hop injection without touching the wire envelope on
+   * paths the operator hasn't opted in to mutate.
+   */
+  forwardTransform?: (topic: string, payload: Buffer) => Buffer | null;
 }
 
 export interface MqttBrokerPublish {
@@ -71,6 +81,22 @@ export class MqttBroker extends EventEmitter {
     this.aedes = await Aedes.createBroker({
       id: this.options.brokerId ?? 'meshmonitor-broker',
     });
+
+    if (this.options.forwardTransform) {
+      const transform = this.options.forwardTransform;
+      this.aedes.authorizeForward = (_client, packet) => {
+        if (packet.topic.startsWith('$SYS/')) return packet;
+        try {
+          const out = transform(packet.topic, toBuffer(packet.payload));
+          if (!out) return packet;
+          return { ...packet, payload: out };
+        } catch (err) {
+          const m = err instanceof Error ? err.message : String(err);
+          logger.warn(`MQTT broker forwardTransform error on ${packet.topic}: ${m}`);
+          return packet;
+        }
+      };
+    }
 
     this.aedes.authenticate = (_client, username, password, done) => {
       const u = typeof username === 'string' ? username : '';

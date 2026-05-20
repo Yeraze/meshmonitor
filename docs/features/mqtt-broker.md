@@ -53,6 +53,7 @@ In **Dashboard → Sources → Add Source**, pick **Embedded MQTT Broker (device
 | Listener port | Default `1883` ([IANA-registered MQTT port](https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml?search=mqtt)) |
 | Username / Password | Shared credential for all clients |
 | Root topic | Default `msh` — must match what your devices publish under |
+| Zero-hop injection | Off by default. When on, the broker clamps `hop_limit` to `0` on every Meshtastic packet it delivers to a connected device — matching the behavior of [Meshtastic's public broker](https://meshtastic.org/docs/software/integrations/mqtt/). See [Zero-hop injection](#zero-hop-injection) below for when to use it. |
 
 Save. MeshMonitor will start the broker; you'll see `MQTT broker listening on 0.0.0.0:1883` in the container logs and a new source card in the sidebar.
 
@@ -106,6 +107,28 @@ Then on the Meshtastic source in MeshMonitor (**Dashboard → Sources → Edit �
 
 If `proxy_to_client_enabled` is on but no `mqttLink` is set, a yellow warning banner appears on the Device → MQTT page — without it, proxy traffic from the firmware would be silently dropped.
 
+## Zero-hop injection
+
+::: tip Added in 4.6.3
+The **Zero-hop injection** toggle on the broker source ships in 4.6.3 ([issue #3084](https://github.com/Yeraze/meshmonitor/issues/3084)).
+:::
+
+Meshtastic's public broker at `mqtt.meshtastic.org` overwrites the `hop_limit` field on every packet it re-publishes to its MQTT clients, setting it to `0`. Devices that receive a packet via MQTT therefore see "no hops remaining" and skip the RF re-broadcast — the firmware enforces a max of 7 hops (10 on older firmware), so without this clamp an MQTT-bridged packet can flood several RF rings before dying out.
+
+If you run a private broker and bridge it to public upstreams, you may want the same behavior. **Zero-hop injection** is an opt-in toggle on the `mqtt_broker` source that does exactly this:
+
+- **Disabled (default)** — packets are forwarded byte-for-byte. Use this for fully private setups where you actually want MQTT-bridged packets to take additional RF hops (small isolated mesh, deliberate fan-out).
+- **Enabled** — the broker decodes each Meshtastic `ServiceEnvelope` it delivers to a connected client, clamps `hop_limit` to `0`, and re-encodes. `hop_start` is preserved so receivers can still compute "how far has this travelled". Mirrors Meshtastic's public broker so private deployments behave the same way.
+
+Implementation notes:
+
+- The clamp only applies to packets the broker **delivers to its MQTT subscribers** (devices, sidecars, anything that connected to your `mqtt_broker` listener). The original `hop_limit` is preserved in:
+  - The MeshMonitor database (so hop diagnostics stay accurate)
+  - The payload re-published upstream via any attached `mqtt_bridge` (so the next broker in the chain sees the original value)
+- Topics outside the broker's `rootTopic` (e.g. non-Meshtastic publishes), non-decodable payloads, and packets that already have `hop_limit == 0` are passed through unchanged.
+
+If you're seeing your private broker flood the mesh after attaching a bridge to a public upstream, this toggle is almost certainly what you want.
+
 ## Comparison: embedded broker vs MQTT proxy sidecar vs node's built-in MQTT
 
 | Concern | Node's built-in MQTT | MQTT Proxy Sidecar ([LN4CY](https://github.com/LN4CY/mqtt-proxy)) | **Embedded MQTT Broker** (this feature) |
@@ -120,6 +143,7 @@ If `proxy_to_client_enabled` is on but no `mqttLink` is set, a yellow warning ba
 | **Recovery on broker outage** | Manual node restart | Manual sidecar restart | mqtt.js auto-reconnect with backoff |
 | **Default-deny auth** | Per-device | Per-device | Broker refuses connections without configured username/password |
 | **TLS** | Yes (on device) | Yes (on device + proxy) | **Plain TCP only in v1** (TLS / WSS deferred — track in [#3003](https://github.com/Yeraze/meshmonitor/issues/3003)) |
+| **Zero-hop injection** | n/a (no broker) | n/a (passthrough relay) | **Optional per broker** — clamp `hop_limit` to 0 on delivery to match public-broker behavior ([details](#zero-hop-injection)) |
 | **Operational visibility** | Limited firmware logs | Docker logs | Per-source `packetsIn / packetsIngested / packetsDropped / lastError` in `/api/sources/:id/status` |
 
 ### Plain-English summary

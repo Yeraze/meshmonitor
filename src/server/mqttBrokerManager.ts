@@ -29,6 +29,17 @@ export interface MqttBrokerSourceConfig {
     shortName: string;
   };
   rootTopic?: string;
+  /**
+   * When true, clamp `hop_limit` to 0 on Meshtastic ServiceEnvelopes the
+   * broker forwards back to its connected MQTT clients (issue #3084).
+   * Mirrors how Meshtastic's public broker behaves — devices receiving an
+   * MQTT-bridged packet won't re-flood it over RF. The transform runs on
+   * delivery to each subscriber; the original payload still drives our
+   * ingestion and uplink-bridge paths, so persisted hop diagnostics and
+   * upstream re-publishes stay accurate. Defaults to false to preserve
+   * the existing pass-through behavior for private-broker setups.
+   */
+  zeroHopInjection?: boolean;
 }
 
 export interface MqttBrokerStatus extends SourceStatus {
@@ -76,11 +87,15 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
   async start(): Promise<void> {
     if (this.broker) return;
     await bootstrapMqttChannelDatabase(this.sourceId);
+    const rootTopicPrefix = (this.config.rootTopic ?? 'msh') + '/';
     this.broker = new MqttBroker({
       port: this.config.listener.port,
       host: this.config.listener.host,
       auth: this.config.auth,
       brokerId: `meshmonitor-${this.sourceId}`,
+      forwardTransform: this.config.zeroHopInjection
+        ? (topic, payload) => this.applyZeroHop(rootTopicPrefix, topic, payload)
+        : undefined,
     });
 
     this.broker.on('publish', (msg) => this.handlePublish(msg));
@@ -133,6 +148,29 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
   async publish(topic: string, payload: Buffer, retained = false): Promise<void> {
     if (!this.broker) throw new Error('Broker not started');
     await this.broker.publish(topic, payload, retained);
+  }
+
+  /**
+   * Zero-hop forward transform. Returns a rewritten payload with
+   * `hop_limit = 0` for Meshtastic ServiceEnvelopes on this broker's
+   * root topic, or null to pass the original through. Anything that
+   * isn't a decodable ServiceEnvelope (off-topic, MQTT control, malformed
+   * payload, packet already at zero) falls through unchanged.
+   */
+  private applyZeroHop(rootTopicPrefix: string, topic: string, payload: Buffer): Buffer | null {
+    if (!topic.startsWith(rootTopicPrefix)) return null;
+    const decoded = meshtasticProtobufService.decodeServiceEnvelope(payload, { quiet: true });
+    if (!decoded || !decoded.packet) return null;
+    const packet = decoded.packet as { hopLimit?: number };
+    if (packet.hopLimit === undefined || packet.hopLimit === 0) return null;
+    packet.hopLimit = 0;
+    const reencoded = meshtasticProtobufService.encodeServiceEnvelope({
+      packet: decoded.packet,
+      channelId: decoded.channelId,
+      gatewayId: decoded.gatewayId,
+    });
+    if (!reencoded) return null;
+    return Buffer.from(reencoded);
   }
 
   private handlePublish(msg: MqttBrokerPublish): void {

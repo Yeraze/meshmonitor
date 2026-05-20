@@ -198,3 +198,170 @@ describe('MqttBrokerManager', () => {
     expect(status.packetsIngested).toBe(0);
   });
 });
+
+describe('MqttBrokerManager zero-hop injection', () => {
+  let port: number;
+  let manager: MqttBrokerManager | null = null;
+  let publisher: MqttClient | null = null;
+  let subscriber: MqttClient | null = null;
+
+  beforeAll(async () => {
+    await loadProtobufDefinitions();
+  });
+
+  afterEach(async () => {
+    for (const c of [publisher, subscriber]) {
+      if (c) await new Promise<void>((r) => c.end(true, {}, () => r()));
+    }
+    publisher = null;
+    subscriber = null;
+    if (manager) {
+      await manager.stop();
+      manager = null;
+    }
+  });
+
+  async function startManager(opts: { zeroHop: boolean }): Promise<void> {
+    port = await ephemeralPort();
+    manager = new MqttBrokerManager('zhi-broker', 'Zero Hop Broker', {
+      listener: { port, host: '127.0.0.1' },
+      auth: { username: 'mm', password: 's3cret' },
+      gateway: { nodeNum: 0xdeadbeef, nodeId: '!deadbeef', longName: 'MM', shortName: 'MM' },
+      rootTopic: 'msh',
+      zeroHopInjection: opts.zeroHop,
+    });
+    await manager.start();
+  }
+
+  function buildEnvelopeWithHopLimit(hopLimit: number): Buffer {
+    const bytes = meshtasticProtobufService.encodeServiceEnvelope({
+      packet: {
+        from: 0x12345678,
+        to: 0xffffffff,
+        channel: 0,
+        id: 0xabcdef01,
+        hopLimit,
+        hopStart: hopLimit,
+        decoded: { portnum: PortNum.TEXT_MESSAGE_APP, payload: new Uint8Array([0x68, 0x69]) },
+      },
+      channelId: 'LongFast',
+      gatewayId: '!12345678',
+    });
+    if (!bytes) throw new Error('encode failed');
+    return Buffer.from(bytes);
+  }
+
+  async function connectClient(clientId: string): Promise<MqttClient> {
+    const c = connect(`mqtt://127.0.0.1:${port}`, {
+      username: 'mm',
+      password: 's3cret',
+      reconnectPeriod: 0,
+      clientId,
+    });
+    await waitForEvent(c, 'connect');
+    return c;
+  }
+
+  it('clamps hop_limit to 0 on the payload delivered to subscribers when enabled', async () => {
+    await startManager({ zeroHop: true });
+
+    subscriber = await connectClient('sub');
+    await new Promise<void>((resolve, reject) => {
+      subscriber!.subscribe('msh/#', { qos: 0 }, (err) => (err ? reject(err) : resolve()));
+    });
+
+    publisher = await connectClient('pub');
+    const original = buildEnvelopeWithHopLimit(3);
+
+    const receivedPromise = new Promise<Buffer>((resolve) => {
+      subscriber!.once('message', (_topic, payload) => resolve(payload));
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      publisher!.publish('msh/US/2/e/LongFast/!12345678', original, { qos: 0 }, (err) =>
+        err ? reject(err) : resolve(),
+      );
+    });
+
+    const received = await receivedPromise;
+    const decoded = meshtasticProtobufService.decodeServiceEnvelope(received);
+    expect(decoded).not.toBeNull();
+    // proto3 omits zero values on encode, so the decoded field is either 0 or undefined.
+    expect(decoded!.packet.hopLimit ?? 0).toBe(0);
+    // hop_start should be preserved for downstream diagnostics.
+    expect(decoded!.packet.hopStart).toBe(3);
+  });
+
+  it('forwards the payload byte-for-byte when zeroHopInjection is disabled', async () => {
+    await startManager({ zeroHop: false });
+
+    subscriber = await connectClient('sub');
+    await new Promise<void>((resolve, reject) => {
+      subscriber!.subscribe('msh/#', { qos: 0 }, (err) => (err ? reject(err) : resolve()));
+    });
+
+    publisher = await connectClient('pub');
+    const original = buildEnvelopeWithHopLimit(3);
+
+    const receivedPromise = new Promise<Buffer>((resolve) => {
+      subscriber!.once('message', (_topic, payload) => resolve(payload));
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      publisher!.publish('msh/US/2/e/LongFast/!12345678', original, { qos: 0 }, (err) =>
+        err ? reject(err) : resolve(),
+      );
+    });
+
+    const received = await receivedPromise;
+    expect(received.equals(original)).toBe(true);
+  });
+
+  it('local-packet event carries the original (un-zeroed) payload', async () => {
+    await startManager({ zeroHop: true });
+
+    publisher = await connectClient('pub');
+    const original = buildEnvelopeWithHopLimit(5);
+
+    const localPacketPromise = new Promise<Buffer>((resolve) => {
+      manager!.once('local-packet', (p: { payload: Buffer }) => resolve(p.payload));
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      publisher!.publish('msh/US/2/e/LongFast/!12345678', original, { qos: 0 }, (err) =>
+        err ? reject(err) : resolve(),
+      );
+    });
+
+    const captured = await localPacketPromise;
+    const decoded = meshtasticProtobufService.decodeServiceEnvelope(captured);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.packet.hopLimit).toBe(5);
+    expect(decoded!.packet.hopStart).toBe(5);
+  });
+
+  it('passes garbage payloads through unchanged when enabled', async () => {
+    await startManager({ zeroHop: true });
+
+    subscriber = await connectClient('sub');
+    await new Promise<void>((resolve, reject) => {
+      subscriber!.subscribe('msh/garbage/#', { qos: 0 }, (err) => (err ? reject(err) : resolve()));
+    });
+
+    publisher = await connectClient('pub');
+    const garbage = Buffer.from([0xff, 0xfe, 0xfd, 0xfc, 0xfb]);
+
+    const receivedPromise = new Promise<Buffer>((resolve) => {
+      subscriber!.once('message', (_topic, payload) => resolve(payload));
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      publisher!.publish('msh/garbage/topic', garbage, { qos: 0 }, (err) =>
+        err ? reject(err) : resolve(),
+      );
+    });
+
+    const received = await receivedPromise;
+    expect(received.equals(garbage)).toBe(true);
+  });
+});
