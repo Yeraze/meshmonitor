@@ -14,6 +14,8 @@ vi.mock('../../../services/database.js', () => ({
       deleteAsync: vi.fn(),
       reorderAsync: vi.fn(),
       getPermissionsForChannelAsync: vi.fn(),
+      getPermissionsForUserAsync: vi.fn(),
+      getPermissionAsync: vi.fn(),
       setPermissionAsync: vi.fn(),
       deletePermissionAsync: vi.fn(),
     },
@@ -21,6 +23,7 @@ vi.mock('../../../services/database.js', () => ({
     findUserByUsernameAsync: vi.fn(),
     checkPermissionAsync: vi.fn(),
     getUserPermissionSetAsync: vi.fn(),
+    getDistinctEncryptedPacketSourceIdsAsync: vi.fn(),
     drizzleDbType: 'sqlite',
   },
 }));
@@ -86,9 +89,14 @@ beforeEach(() => {
   mockDb.channelDatabase.deleteAsync.mockResolvedValue(undefined);
   mockDb.channelDatabase.reorderAsync.mockResolvedValue(undefined);
   mockDb.channelDatabase.getPermissionsForChannelAsync.mockResolvedValue([]);
+  mockDb.channelDatabase.getPermissionsForUserAsync.mockResolvedValue([]);
+  mockDb.channelDatabase.getPermissionAsync.mockResolvedValue(null);
   mockDb.channelDatabase.setPermissionAsync.mockResolvedValue(undefined);
   mockDb.channelDatabase.deletePermissionAsync.mockResolvedValue(undefined);
   mockDb.findUserByIdAsync.mockResolvedValue({ id: 99, username: 'targetuser' });
+  // Default: deny all permission checks unless overridden by individual tests.
+  mockDb.checkPermissionAsync.mockResolvedValue(false);
+  mockDb.getDistinctEncryptedPacketSourceIdsAsync.mockResolvedValue([]);
 });
 
 // ─── GET / ──────────────────────────────────────────────────────────────────

@@ -10,7 +10,8 @@ import '../styles/users.css';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { logger } from '../utils/logger';
-import type { PermissionSet } from '../types/permission';
+import type { PermissionSet, ResourceType } from '../types/permission';
+import { RESOURCES, SOURCEY_RESOURCES } from '../types/permission';
 import { useToast } from './ToastContainer';
 
 interface Source {
@@ -43,16 +44,31 @@ interface ChannelDatabasePermission {
   channelDatabaseId: number;
   canViewOnMap: boolean;
   canRead: boolean;
+  /**
+   * PR-C: write capability on individual channel-database entries. The
+   * server-side schema for `channel_database_permissions` does not yet
+   * carry a canWrite column — PR-B is expected to land that migration in
+   * parallel. Until then the UI sends the field and the server ignores it
+   * (or accepts and persists it once the schema catches up).
+   */
+  canWrite?: boolean;
 }
 
 const PERMISSION_KEYS = [
   'dashboard', 'nodes', 'channel_0', 'channel_1', 'channel_2', 'channel_3',
   'channel_4', 'channel_5', 'channel_6', 'channel_7', 'messages', 'settings',
   'configuration', 'info', 'automation', 'connection', 'traceroute', 'audit',
-  'security', 'nodes_private', 'packetmonitor'
+  'security', 'nodes_private', 'packetmonitor', 'waypoints'
 ] as const;
 
-// All permissions are per-source — no global resources except Admin toggle
+// PR-C: Global (non-sourcey) resources that surface above the per-source
+// grid. Derived from RESOURCES \ SOURCEY_RESOURCES so new globals (e.g.
+// `channel_database`, registered for migration 064 in PR-A) appear here
+// automatically. The source-scope dropdown does not affect these grants —
+// they are stored against sourceId=null.
+const GLOBAL_PERMISSION_RESOURCES = RESOURCES.filter(
+  (r) => !SOURCEY_RESOURCES.includes(r.id)
+).map((r) => r.id);
 
 const UsersTab: React.FC = () => {
   const { t } = useTranslation();
@@ -128,8 +144,16 @@ const UsersTab: React.FC = () => {
   // Fetch channel database permissions for a user
   const fetchChannelDbPermissions = async (userId: number) => {
     try {
-      const response = await api.get<{ data: ChannelDatabasePermission[] }>(`/api/users/${userId}/channel-database-permissions`);
-      setChannelDbPermissions(response.data || []);
+      const response = await api.get<{ data: Array<ChannelDatabasePermission & { canWrite?: boolean }> }>(`/api/users/${userId}/channel-database-permissions`);
+      // Normalize canWrite. The current server payload omits it; PR-B will
+      // start including it once the column lands.
+      const list = (response.data || []).map(p => ({
+        channelDatabaseId: p.channelDatabaseId,
+        canViewOnMap: p.canViewOnMap,
+        canRead: p.canRead,
+        canWrite: p.canWrite ?? false,
+      }));
+      setChannelDbPermissions(list);
     } catch (err) {
       logger.error('Failed to fetch channel database permissions:', err);
       setChannelDbPermissions([]);
@@ -158,6 +182,8 @@ const UsersTab: React.FC = () => {
       const response = await api.get<{ permissions: PermissionSet }>(url);
 
       // If user is admin and no permissions returned, set all permissions
+      // (including the global resources rendered in the Global Resources
+      // section — see GLOBAL_PERMISSION_RESOURCES).
       if (user.isAdmin && Object.keys(response.permissions).length === 0) {
         const allPermissions: PermissionSet = {};
         PERMISSION_KEYS.forEach(resource => {
@@ -166,6 +192,9 @@ const UsersTab: React.FC = () => {
           } else {
             allPermissions[resource] = { read: true, write: true };
           }
+        });
+        GLOBAL_PERMISSION_RESOURCES.forEach(resource => {
+          allPermissions[resource] = { read: true, write: true };
         });
         setPermissions(allPermissions);
       } else {
@@ -210,9 +239,14 @@ const UsersTab: React.FC = () => {
     if (!selectedUser) return;
 
     try {
-      // Filter out empty/undefined permissions and ensure valid structure
+      // Filter out empty/undefined permissions and ensure valid structure.
+      // PR-C: also include any global (non-sourcey) resources the admin
+      // edited via the Global Resources section. The server PUT splits the
+      // payload by resource type and routes globals to sourceId=null,
+      // sourcey rows to the in-scope sourceId.
       const validPermissions: PermissionSet = {};
-      PERMISSION_KEYS.forEach(resource => {
+      const allKeys: ResourceType[] = [...PERMISSION_KEYS, ...GLOBAL_PERMISSION_RESOURCES];
+      allKeys.forEach(resource => {
         if (!permissions[resource]) return;
         if (resource.startsWith('channel_')) {
           validPermissions[resource] = {
@@ -444,22 +478,47 @@ const UsersTab: React.FC = () => {
   // Channel database (virtual channel) permission handlers
   const getChannelDbPermission = (channelDbId: number): ChannelDatabasePermission => {
     const existing = channelDbPermissions.find(p => p.channelDatabaseId === channelDbId);
-    return existing || { channelDatabaseId: channelDbId, canViewOnMap: false, canRead: false };
+    return existing || { channelDatabaseId: channelDbId, canViewOnMap: false, canRead: false, canWrite: false };
   };
 
   const toggleChannelDbViewOnMap = (channelDbId: number) => {
     const existing = getChannelDbPermission(channelDbId);
     const newValue = !existing.canViewOnMap;
-    updateChannelDbPermission(channelDbId, { canViewOnMap: newValue, canRead: existing.canRead });
+    updateChannelDbPermission(channelDbId, {
+      canViewOnMap: newValue,
+      canRead: existing.canRead,
+      canWrite: existing.canWrite ?? false,
+    });
   };
 
   const toggleChannelDbRead = (channelDbId: number) => {
     const existing = getChannelDbPermission(channelDbId);
     const newValue = !existing.canRead;
-    updateChannelDbPermission(channelDbId, { canViewOnMap: existing.canViewOnMap, canRead: newValue });
+    // Unchecking read forces canWrite off too — write without read is
+    // nonsensical and mirrors the channel_* grid behavior above.
+    updateChannelDbPermission(channelDbId, {
+      canViewOnMap: existing.canViewOnMap,
+      canRead: newValue,
+      canWrite: newValue ? (existing.canWrite ?? false) : false,
+    });
   };
 
-  const updateChannelDbPermission = (channelDbId: number, updates: { canViewOnMap: boolean; canRead: boolean }) => {
+  // PR-C: write toggle for channel-database entries. Checking write also
+  // checks read (matches channel_* behavior). Persisted via the same PUT.
+  const toggleChannelDbWrite = (channelDbId: number) => {
+    const existing = getChannelDbPermission(channelDbId);
+    const newValue = !(existing.canWrite ?? false);
+    updateChannelDbPermission(channelDbId, {
+      canViewOnMap: existing.canViewOnMap,
+      canRead: newValue ? true : existing.canRead,
+      canWrite: newValue,
+    });
+  };
+
+  const updateChannelDbPermission = (
+    channelDbId: number,
+    updates: { canViewOnMap: boolean; canRead: boolean; canWrite: boolean },
+  ) => {
     setChannelDbPermissions(prev => {
       const existingIndex = prev.findIndex(p => p.channelDatabaseId === channelDbId);
       if (existingIndex >= 0) {
@@ -476,8 +535,18 @@ const UsersTab: React.FC = () => {
     if (!selectedUser) return;
 
     try {
+      // Normalize: always send canWrite so the server has a chance to
+      // persist it once PR-B's schema column lands. Existing servers
+      // ignore unknown fields (canViewOnMap/canRead are the only ones
+      // validated and stored today).
+      const payload = channelDbPermissions.map(p => ({
+        channelDatabaseId: p.channelDatabaseId,
+        canViewOnMap: p.canViewOnMap,
+        canRead: p.canRead,
+        canWrite: p.canWrite ?? false,
+      }));
       await api.put(`/api/users/${selectedUser.id}/channel-database-permissions`, {
-        permissions: channelDbPermissions
+        permissions: payload,
       });
       showToast(t('users.channel_db_permissions_updated'), 'success');
     } catch (err) {
@@ -551,6 +620,10 @@ const UsersTab: React.FC = () => {
     nodes_private: t('nodes_private'),
     connection: t('users.can_control_connection'),
     traceroute: t('users.can_initiate_traceroutes'),
+    waypoints: 'Waypoints',
+    themes: 'Custom Themes',
+    sources: 'Sources',
+    channel_database: 'Channel Database',
   };
 
   const tooltipMap: Record<string, string> = {
@@ -567,6 +640,10 @@ const UsersTab: React.FC = () => {
     audit: 'Read: view the audit log. Write: purge audit log entries.',
     security: 'Read: view security scan results. Write: run scans, manage flagged/dead nodes.',
     packetmonitor: 'Read: view raw Meshtastic packets in the packet monitor.',
+    waypoints: 'Read: view map waypoints. Write: create, edit, and delete waypoints (WAYPOINT_APP).',
+    themes: 'Read: view custom color themes. Write: create and edit custom themes.',
+    sources: 'Read: view per-source status. Write: create, edit, enable/disable, and delete data sources.',
+    channel_database: 'Read: list global PSK library entries. Write: create/edit/delete entries used for MQTT decryption.',
   };
 
   return (
@@ -706,6 +783,57 @@ const UsersTab: React.FC = () => {
 
             <h3>{t('users.permissions')}</h3>
 
+            {/* PR-C: Global Resources section — themes, sources, channel_database
+                and any other non-sourcey grants. The source-scope dropdown
+                below does NOT affect these rows; the server stores them at
+                sourceId=null. */}
+            {GLOBAL_PERMISSION_RESOURCES.length > 0 && (
+              <>
+                <h4 style={{ marginTop: '12px' }}>
+                  {t('users.global_resources', 'Global Resources')}
+                </h4>
+                <p className="text-xs text-gray-500" style={{ marginTop: 0 }}>
+                  {t(
+                    'users.global_resources_hint',
+                    'Apply across the whole installation — not affected by the source scope below.',
+                  )}
+                </p>
+                <div className="permissions-grid">
+                  {GLOBAL_PERMISSION_RESOURCES.map(resource => {
+                    const label = labelMap[resource]
+                      || resource.charAt(0).toUpperCase() + resource.slice(1);
+                    const tooltip = tooltipMap[resource] || '';
+                    return (
+                      <div key={`global-${resource}`} className="permission-item">
+                        <div className="permission-label" title={tooltip}>{label}</div>
+                        <div className="permission-actions">
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={permissions[resource]?.read || false}
+                              onChange={() => togglePermission(resource, 'read')}
+                            />
+                            {t('users.read')}
+                          </label>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={permissions[resource]?.write || false}
+                              onChange={() => togglePermission(resource, 'write')}
+                            />
+                            {t('users.write')}
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <h4 style={{ marginTop: '16px' }}>
+                  {t('users.per_source_resources', 'Per-Source Resources')}
+                </h4>
+              </>
+            )}
+
             {sources.length > 0 && (
               <div className="permission-scope-selector">
                 <label htmlFor="permission-scope-select">{t('users.permission_scope')}:</label>
@@ -715,9 +843,39 @@ const UsersTab: React.FC = () => {
                   onChange={e => handlePermissionScopeChange(e.target.value || null)}
                   className="permission-scope-select"
                 >
-                  {sources.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
+                  {/* PR-C: group sources by type. Source.type comes from the
+                      sources repository (`meshtastic_tcp` | `mqtt_broker` |
+                      `mqtt_bridge` | `meshcore`) — bucket each option under
+                      a labelled <optgroup>. Unknown types fall into "Other". */}
+                  {(() => {
+                    const groupLabels: Record<string, string> = {
+                      meshtastic_tcp: t('source.type.meshtastic_tcp', 'Meshtastic (TCP/Serial)'),
+                      meshtastic_mqtt: t('source.type.meshtastic_mqtt', 'Meshtastic (MQTT)'),
+                      tcp: t('source.type.tcp', 'TCP'),
+                      serial: t('source.type.serial', 'Serial'),
+                      mqtt_broker: t('source.type.mqtt_broker', 'MQTT Broker'),
+                      mqtt_bridge: t('source.type.mqtt_bridge', 'MQTT Bridge'),
+                      meshcore: t('source.type.meshcore', 'MeshCore'),
+                      other: t('source.type.other', 'Other'),
+                    };
+                    const byType = new Map<string, Source[]>();
+                    sources.forEach(s => {
+                      const key = (s.type && groupLabels[s.type]) ? s.type : 'other';
+                      if (!byType.has(key)) byType.set(key, []);
+                      byType.get(key)!.push(s);
+                    });
+                    // Stable order: known types first, then 'other'.
+                    const order = ['meshtastic_tcp', 'meshtastic_mqtt', 'tcp', 'serial', 'mqtt_broker', 'mqtt_bridge', 'meshcore', 'other'];
+                    return order
+                      .filter(t => byType.has(t))
+                      .map(t => (
+                        <optgroup key={t} label={groupLabels[t]}>
+                          {byType.get(t)!.map(s => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </optgroup>
+                      ));
+                  })()}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
                   {t('users.source_permissions_hint', 'All permissions are granted per-source.')}
@@ -726,10 +884,13 @@ const UsersTab: React.FC = () => {
             )}
 
             <div className="permissions-grid">
-              {PERMISSION_KEYS.map(resource => {
+              {/* PR-C: only render sourcey resources here. Globals are in the
+                  Global Resources section above; mixing them led to the
+                  scope dropdown looking like it affected themes/sources. */}
+              {PERMISSION_KEYS.filter(r => SOURCEY_RESOURCES.includes(r as ResourceType)).map(resource => {
                 // Get label from translated map or format it
                 let label = resource.charAt(0).toUpperCase() + resource.slice(1);
-                
+
                 if (resource.startsWith('channel_')) {
                   const channelNum = resource.split('_')[1];
                   const chName = channelNames.get(Number(channelNum));
@@ -864,9 +1025,35 @@ const UsersTab: React.FC = () => {
                             <input
                               type="checkbox"
                               checked={perm.canRead}
+                              disabled={perm.canWrite ?? false}
                               onChange={() => toggleChannelDbRead(entry.id)}
                             />
                             {t('users.read_messages')}
+                          </label>
+                          {/* PR-C: canWrite column for channel-database
+                              entries. The legacy /api/users/:id/
+                              channel-database-permissions PUT in this
+                              repository currently accepts {canViewOnMap,
+                              canRead} only — sending canWrite is a
+                              forward-compatible no-op until PR-B lands the
+                              schema column and route extension. The UI
+                              reflects the intent regardless so an admin
+                              flipping the box sees their selection persist
+                              client-side for the session. NOTE: a per-row
+                              revoke (✕) button was considered, but the
+                              legacy router exposes no DELETE endpoint for
+                              /api/channel-database/:id/permissions/:userId
+                              and rather than mounting one in PR-C (PR-B's
+                              territory) we leave the UX to "clear both
+                              boxes and Save" — that branch in
+                              updateChannelDbPermission deletes the row. */}
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={perm.canWrite ?? false}
+                              onChange={() => toggleChannelDbWrite(entry.id)}
+                            />
+                            {t('users.write')}
                           </label>
                         </div>
                       </div>

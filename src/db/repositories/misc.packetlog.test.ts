@@ -236,6 +236,47 @@ describe('MiscRepository - Packet Log Queries', () => {
       expect(await repo.getPacketLogCount()).toBe(0);
     });
   });
+
+  // PR-B security fix — retroactive-decrypt per-source ACL pre-flight.
+  // Distinct sourceIds across encrypted, not-yet-server-decrypted packets are
+  // the set the caller must hold messages:read on before retroactive decrypt
+  // can write any decrypted payloads back to packet_log.
+  describe('getDistinctEncryptedPacketSourceIds', () => {
+    it('returns empty when no encrypted packets exist', async () => {
+      // Seeded fixture has only un-encrypted packets — ensure the helper returns []
+      const result = await repo.getDistinctEncryptedPacketSourceIds();
+      expect(result).toEqual([]);
+    });
+
+    it('returns distinct sourceIds for encrypted, undecoded rows', async () => {
+      const now = Date.now();
+      // Two sources with encrypted+undecoded packets; one source with multiple
+      // rows (must dedupe); one source that is already server-decrypted (must
+      // be excluded); one un-encrypted packet (must be excluded).
+      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, encrypted, portnum, direction, created_at, sourceId, decrypted_by) VALUES (100, ${now}, 100, 1, 1, 'rx', ${now}, 'src-a', NULL)`);
+      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, encrypted, portnum, direction, created_at, sourceId, decrypted_by) VALUES (101, ${now}, 100, 1, 1, 'rx', ${now}, 'src-a', NULL)`);
+      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, encrypted, portnum, direction, created_at, sourceId, decrypted_by) VALUES (102, ${now}, 100, 1, 1, 'rx', ${now}, 'src-b', NULL)`);
+      // already decrypted — must be excluded
+      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, encrypted, portnum, direction, created_at, sourceId, decrypted_by) VALUES (103, ${now}, 100, 1, 1, 'rx', ${now}, 'src-c', 'server')`);
+      // not encrypted — must be excluded
+      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, encrypted, portnum, direction, created_at, sourceId, decrypted_by) VALUES (104, ${now}, 100, 0, 1, 'rx', ${now}, 'src-d', NULL)`);
+
+      const result = await repo.getDistinctEncryptedPacketSourceIds();
+      const ids = result.map((s) => s ?? '__NULL__').sort();
+      expect(ids).toEqual(['src-a', 'src-b']);
+    });
+
+    it('includes null sourceId (legacy pre-multi-source bucket)', async () => {
+      const now = Date.now();
+      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, encrypted, portnum, direction, created_at, sourceId, decrypted_by) VALUES (200, ${now}, 100, 1, 1, 'rx', ${now}, NULL, NULL)`);
+      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, encrypted, portnum, direction, created_at, sourceId, decrypted_by) VALUES (201, ${now}, 100, 1, 1, 'rx', ${now}, 'src-a', NULL)`);
+
+      const result = await repo.getDistinctEncryptedPacketSourceIds();
+      expect(result).toContain(null);
+      expect(result).toContain('src-a');
+      expect(result.length).toBe(2);
+    });
+  });
 });
 
 /**

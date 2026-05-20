@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { version } from '../../../package.json';
 import type { DashboardSource, SourceStatus, UnifiedStatus } from '../../hooks/useDashboardData';
 import { UNIFIED_SOURCE_ID } from '../../hooks/useDashboardData';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface DashboardSidebarProps {
   sources: DashboardSource[];
@@ -236,6 +237,11 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
 }) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  // PR-C: kebab visibility (Prune Outside ROI in particular) is gated by
+  // per-source `sources:write` rather than the legacy global `isAdmin` prop.
+  // Admin short-circuit lives inside hasPermission, so existing admin users
+  // still see the menu on every source they have a row for.
+  const { hasPermission } = useAuth();
 
   // On mobile, wrap source selection so the drawer auto-closes after tap.
   const handleSelectSource = (id: string) => {
@@ -343,7 +349,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                   </span>
                 ) : null;
               })()}
-              {!isUnified && isAdmin && (() => {
+              {!isUnified && hasPermission('sources', 'write', { sourceId: source.id }) && (() => {
                 // Only show Prune Outside ROI for mqtt_bridge sources that
                 // actually have at least one geo bound configured — otherwise
                 // the action would no-op server-side.

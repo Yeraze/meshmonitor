@@ -26,7 +26,8 @@ export type ResourceType =
   | 'nodes_private'
   | 'packetmonitor'
   | 'sources'
-  | 'waypoints';
+  | 'waypoints'
+  | 'channel_database';
 
 export type PermissionAction = 'viewOnMap' | 'read' | 'write';
 
@@ -117,6 +118,7 @@ export const RESOURCES: readonly ResourceDefinition[] = [
   { id: 'packetmonitor', name: 'Packet Monitor', description: 'View real-time packet logs and statistics' },
   { id: 'sources', name: 'Sources', description: 'Manage data sources (Meshtastic TCP, MQTT, MeshCore)' },
   { id: 'waypoints', name: 'Waypoints', description: 'View and manage map waypoints (Meshtastic WAYPOINT_APP)' },
+  { id: 'channel_database', name: 'Channel Database', description: 'Manage global channel/PSK library used for MQTT decryption' },
 ] as const;
 
 // Default permissions for different user types
@@ -145,6 +147,7 @@ export const ADMIN_PERMISSIONS: PermissionSet = {
   packetmonitor: { read: true, write: true },
   sources: { read: true, write: true },
   waypoints: { read: true, write: true },
+  channel_database: { read: true, write: true },
 };
 
 export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
@@ -172,4 +175,5 @@ export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
   packetmonitor: { read: true, write: false },
   sources: { read: false, write: false },
   waypoints: { read: true, write: false },
+  channel_database: { read: false, write: false },
 };

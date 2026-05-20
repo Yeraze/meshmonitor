@@ -16,6 +16,14 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
+// PR-C: kebab/prune gating now consults AuthContext.hasPermission instead
+// of the legacy isAdmin prop. Default true so the bulk of pre-existing
+// tests (which exercise unrelated behavior) keep passing.
+const hasPermissionMock = vi.fn(() => true);
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ hasPermission: hasPermissionMock }),
+}));
+
 const makeSources = (): DashboardSource[] => [
   { id: 'src-1', name: 'Source Alpha', type: 'tcp', enabled: true },
   { id: 'src-2', name: 'Source Beta', type: 'mqtt', enabled: true },
@@ -61,6 +69,9 @@ function renderSidebar(props: Partial<typeof defaultProps> = {}) {
 describe('DashboardSidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Reset to "all sources writable" for the bulk of these tests; the
+    // PR-C gating block below overrides as needed.
+    hasPermissionMock.mockImplementation(() => true);
   });
 
   it('renders all source names', () => {
@@ -99,14 +110,41 @@ describe('DashboardSidebar', () => {
     expect(screen.queryByText(/source\.node_count/)).not.toBeInTheDocument();
   });
 
-  it('shows kebab menu button for admin users', () => {
+  it('shows kebab menu button when caller has sources:write on each source', () => {
+    // PR-C: kebab visibility is gated by per-source sources:write rather
+    // than the legacy isAdmin prop. With the default mock granting all
+    // sources, every card renders its kebab.
     renderSidebar({ isAdmin: true });
     const kebabBtns = screen.getAllByRole('button', { name: 'source.options' });
     expect(kebabBtns).toHaveLength(3);
   });
 
-  it('does NOT show kebab menu for non-admin users', () => {
+  it('does NOT show kebab menu when caller lacks sources:write on all sources', () => {
+    hasPermissionMock.mockImplementation(() => false);
     renderSidebar({ isAdmin: false });
+    expect(screen.queryByRole('button', { name: 'source.options' })).not.toBeInTheDocument();
+  });
+
+  // PR-C: per-source `sources:write` gating for the Prune Outside ROI
+  // kebab. (a) non-admin with sources:write on the specific source still
+  // sees the kebab; (b) admin without sources:write does not.
+  it('non-admin with sources:write on a source sees the kebab on that source', () => {
+    // Only grant src-2; others should be hidden.
+    hasPermissionMock.mockImplementation((_resource: string, _action: string, opts?: { sourceId?: string | null }) => {
+      return opts?.sourceId === 'src-2';
+    });
+    renderSidebar({ isAdmin: false });
+    const kebabBtns = screen.queryAllByRole('button', { name: 'source.options' });
+    expect(kebabBtns).toHaveLength(1);
+  });
+
+  it('admin without sources:write on any source does not see the kebab', () => {
+    // The hasPermission consumer in DashboardSidebar treats false as no
+    // kebab; the admin short-circuit lives inside the real useAuth hook,
+    // which is mocked here. Verifying the mock-driven behavior is enough
+    // to prove the gate flipped from isAdmin to the permission call.
+    hasPermissionMock.mockImplementation(() => false);
+    renderSidebar({ isAdmin: true });
     expect(screen.queryByRole('button', { name: 'source.options' })).not.toBeInTheDocument();
   });
 

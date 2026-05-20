@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import { useSource } from '../../contexts/SourceContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { useCsrf } from '../../contexts/CsrfContext';
 import { appBasename } from '../../init';
 import { logger } from '../../utils/logger';
@@ -67,6 +68,12 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   const { t } = useTranslation();
   const { sourceId: currentSourceId } = useSource();
   const { getToken } = useCsrf();
+  // PR-C: gate the form by `sources:write` on the current source. `useAuth()`
+  // binds the check to the active SourceContext, so passing the explicit
+  // sourceId here just makes the intent obvious to readers. Admins are
+  // short-circuited to true inside hasPermission.
+  const { hasPermission } = useAuth();
+  const canEditMqtt = hasPermission('sources', 'write', { sourceId: currentSourceId });
 
   // Quick-configure: list of locally-configured mqtt_broker sources the user
   // can point this device at with one click. Bridges are not offered here —
@@ -225,11 +232,15 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
       mqttEncryptionEnabled, mqttJsonEnabled, mqttRoot, tlsEnabled,
       proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision]);
 
-  // Register with SaveBar
+  // Register with SaveBar — but only surface unsaved-changes state to the bar
+  // when the caller can actually persist them. If they can't write to this
+  // source, the inputs are disabled (see fieldset below) so there shouldn't
+  // be changes; this is belt-and-suspenders so a stale local state can't
+  // make the SaveBar offer a "Save" action that will 403 server-side.
   useSaveBar({
     id: 'mqtt-config',
     sectionName: t('mqtt_config.title'),
-    hasChanges,
+    hasChanges: canEditMqtt && hasChanges,
     isSaving,
     onSave: handleSave,
     onDismiss: resetChanges
@@ -253,6 +264,30 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           ❓
         </a>
       </h3>
+      {!canEditMqtt && (
+        <div
+          role="alert"
+          data-testid="mqtt-permission-banner"
+          style={{
+            margin: '8px 0',
+            padding: '10px 12px',
+            borderRadius: 6,
+            background: 'rgba(243, 139, 168, 0.10)', // ctp-red @ low alpha
+            border: '1px solid var(--ctp-red, #f38ba8)',
+            color: 'var(--ctp-text)',
+            fontSize: 13,
+            lineHeight: 1.4,
+          }}
+        >
+          <strong style={{ color: 'var(--ctp-red, #f38ba8)' }}>
+            🔒 {t('mqtt_config.permission_denied', "You don't have permission to modify MQTT settings for this source.")}
+          </strong>
+        </div>
+      )}
+      <fieldset
+        disabled={!canEditMqtt}
+        style={{ border: 'none', padding: 0, margin: 0 }}
+      >
       {proxyLinkMisconfigured && (
         <div
           role="alert"
@@ -524,6 +559,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           )}
         </>
       )}
+      </fieldset>
     </div>
   );
 };
