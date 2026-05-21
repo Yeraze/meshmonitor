@@ -47,6 +47,10 @@ interface MapContextType {
   setShowMotion: (show: boolean) => void;
   showMqttNodes: boolean;
   setShowMqttNodes: (show: boolean) => void;
+  showUdpNodes: boolean;
+  setShowUdpNodes: (show: boolean) => void;
+  showRfNodes: boolean;
+  setShowRfNodes: (show: boolean) => void;
   showMeshCoreNodes: boolean;
   setShowMeshCoreNodes: (show: boolean) => void;
   showAnimations: boolean;
@@ -93,7 +97,12 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [showNeighborInfo, setShowNeighborInfoState] = useState<boolean>(false);
   const [showRoute, setShowRouteState] = useState<boolean>(true);
   const [showMotion, setShowMotionState] = useState<boolean>(true);
-  const [showMqttNodes, setShowMqttNodesState] = useState<boolean>(true);
+  const [showMqttNodes, setShowMqttNodesState] = useState<boolean>(false);
+  // Show UDP / RF defaults per #3112: RF on, UDP off, MQTT off. RF is the
+  // common case; UDP and MQTT are opt-in classes so users with a busy
+  // MQTT bridge or UDP multicast feed don't get a saturated map by default.
+  const [showUdpNodes, setShowUdpNodesState] = useState<boolean>(false);
+  const [showRfNodes, setShowRfNodesState] = useState<boolean>(true);
   const [showMeshCoreNodes, setShowMeshCoreNodesState] = useState<boolean>(true);
   const [showAnimations, setShowAnimationsState] = useState<boolean>(false);
   const [meshCoreNodes, setMeshCoreNodes] = useState<MeshCoreMapNode[]>([]);
@@ -156,6 +165,16 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const setShowMqttNodes = React.useCallback((value: boolean) => {
     setShowMqttNodesState(value);
     savePreferenceToServer({ showMqttNodes: value });
+  }, []);
+
+  const setShowUdpNodes = React.useCallback((value: boolean) => {
+    setShowUdpNodesState(value);
+    savePreferenceToServer({ showUdpNodes: value });
+  }, []);
+
+  const setShowRfNodes = React.useCallback((value: boolean) => {
+    setShowRfNodesState(value);
+    savePreferenceToServer({ showRfNodes: value });
   }, []);
 
   const setShowMeshCoreNodes = React.useCallback((value: boolean) => {
@@ -264,6 +283,12 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
             if (preferences.showMqttNodes !== undefined) {
               setShowMqttNodesState(preferences.showMqttNodes);
             }
+            if (preferences.showUdpNodes !== undefined) {
+              setShowUdpNodesState(preferences.showUdpNodes);
+            }
+            if (preferences.showRfNodes !== undefined) {
+              setShowRfNodesState(preferences.showRfNodes);
+            }
             if (preferences.showMeshCoreNodes !== undefined) {
               setShowMeshCoreNodesState(preferences.showMeshCoreNodes);
             }
@@ -338,6 +363,10 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
         setShowMotion,
         showMqttNodes,
         setShowMqttNodes,
+        showUdpNodes,
+        setShowUdpNodes,
+        showRfNodes,
+        setShowRfNodes,
         showMeshCoreNodes,
         setShowMeshCoreNodes,
         meshCoreNodes,

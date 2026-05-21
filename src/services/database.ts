@@ -52,6 +52,8 @@ export interface DbNode {
   hopsAway?: number;
   lastMessageHops?: number; // Hops from most recent packet (hopStart - hopLimit)
   viaMqtt?: boolean;
+  /** meshtastic.MeshPacket.TransportMechanism — see migration 066. */
+  transportMechanism?: number | null;
   macaddr?: string;
   latitude?: number;
   longitude?: number;
@@ -8847,6 +8849,8 @@ class DatabaseService {
     showRoute?: boolean;
     showMotion?: boolean;
     showMqttNodes?: boolean;
+    showUdpNodes?: boolean;
+    showRfNodes?: boolean;
     showMeshCoreNodes?: boolean;
     showAnimations?: boolean;
     showAccuracyRegions?: boolean;

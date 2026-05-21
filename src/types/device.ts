@@ -23,6 +23,14 @@ export interface DeviceInfo {
   hopsAway?: number;
   lastMessageHops?: number; // Hops from most recent packet (hopStart - hopLimit)
   viaMqtt?: boolean;
+  /**
+   * Most-recent meshtastic.MeshPacket.TransportMechanism this node was
+   * heard via. Map filters (Show RF / UDP / MQTT) classify markers off
+   * this column. 0=INTERNAL, 1=LORA, 2-4=LORA_ALT*, 5=MQTT,
+   * 6=MULTICAST_UDP, 7=API. Migration 066 adds the column + backfills
+   * MQTT(5) for `viaMqtt=true` rows and LORA(1) for the rest.
+   */
+  transportMechanism?: number | null;
   isStoreForwardServer?: boolean;
   lastHeard?: number;
   snr?: number;

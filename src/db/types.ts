@@ -38,6 +38,10 @@ export interface DbNode {
   hopsAway?: number | null;
   lastMessageHops?: number | null;
   viaMqtt?: boolean | null;
+  /** meshtastic.MeshPacket.TransportMechanism (0=INTERNAL, 1=LORA,
+   *  5=MQTT, 6=MULTICAST_UDP, 7=API). Drives the map's per-class
+   *  visibility toggles (#3112). Migration 066. */
+  transportMechanism?: number | null;
   isStoreForwardServer?: boolean | null;
   macaddr?: string | null;
   latitude?: number | null;

@@ -76,6 +76,7 @@ import {
   StoreForwardRequestResponse,
   getStoreForwardRequestResponseName,
   CHANNEL_DB_OFFSET,
+  TransportMechanism,
 } from './constants/meshtastic.js';
 import { calculateDistance } from '../utils/distance.js';
 import { logger } from '../utils/logger.js';
@@ -209,6 +210,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         hwModel: typeof user.hwModel === 'number' ? user.hwModel : (user.hw_model ?? 0),
         role: typeof user.role === 'number' ? user.role : undefined,
         viaMqtt: true,
+        transportMechanism: TransportMechanism.MQTT,
         // Stamp the channel-database-encoded channel so
         // `filterNodesByChannelPermission` can gate map visibility on
         // the Virtual Channel Permissions the #3108 UI directs admins
@@ -250,6 +252,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         longitude: typeof lngI === 'number' ? lngI / 1e7 : undefined,
         altitude: typeof alt === 'number' ? alt : undefined,
         viaMqtt: true,
+        transportMechanism: TransportMechanism.MQTT,
         lastHeard: Math.floor(nowMs / 1000),
         sourceId,
         createdAt: nowMs,
@@ -322,6 +325,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         hwModel: 0,
         lastHeard: Math.floor(nowMs / 1000),
         viaMqtt: true,
+        transportMechanism: TransportMechanism.MQTT,
         sourceId,
         createdAt: nowMs,
         updatedAt: nowMs,
@@ -367,6 +371,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         hwModel: 0,
         lastHeard: Math.floor(nowMs / 1000),
         viaMqtt: true,
+        transportMechanism: TransportMechanism.MQTT,
         sourceId,
         createdAt: nowMs,
         updatedAt: nowMs,
@@ -425,7 +430,7 @@ async function ingestTraceroute(
   const existingFrom = await databaseService.nodes.getNode(fromNum, sourceId);
   await databaseService.nodes.upsertNode(
     existingFrom
-      ? { nodeNum: fromNum, nodeId: fromNodeId, lastHeard, viaMqtt: true }
+      ? { nodeNum: fromNum, nodeId: fromNodeId, lastHeard, viaMqtt: true, transportMechanism: TransportMechanism.MQTT }
       : {
           nodeNum: fromNum,
           nodeId: fromNodeId,
@@ -433,6 +438,7 @@ async function ingestTraceroute(
           shortName: fromNodeId.slice(-4),
           hwModel: 0,
           viaMqtt: true,
+          transportMechanism: TransportMechanism.MQTT,
           lastHeard,
           createdAt: nowMs,
           updatedAt: nowMs,
@@ -444,7 +450,7 @@ async function ingestTraceroute(
     const existingTo = await databaseService.nodes.getNode(toNum, sourceId);
     await databaseService.nodes.upsertNode(
       existingTo
-        ? { nodeNum: toNum, nodeId: toNodeId, lastHeard, viaMqtt: true }
+        ? { nodeNum: toNum, nodeId: toNodeId, lastHeard, viaMqtt: true, transportMechanism: TransportMechanism.MQTT }
         : {
             nodeNum: toNum,
             nodeId: toNodeId,
@@ -452,6 +458,7 @@ async function ingestTraceroute(
             shortName: toNodeId.slice(-4),
             hwModel: 0,
             viaMqtt: true,
+            transportMechanism: TransportMechanism.MQTT,
             lastHeard,
             createdAt: nowMs,
             updatedAt: nowMs,
@@ -503,6 +510,7 @@ async function ingestTraceroute(
         shortName: hopId.slice(-4),
         hwModel: 0,
         viaMqtt: true,
+        transportMechanism: TransportMechanism.MQTT,
         createdAt: nowMs,
         updatedAt: nowMs,
       },
@@ -612,6 +620,7 @@ async function ingestNeighborInfo(
         shortName: fromNodeId.slice(-4),
         hwModel: 0,
         viaMqtt: true,
+        transportMechanism: TransportMechanism.MQTT,
         lastHeard: Math.floor(nowMs / 1000),
         createdAt: nowMs,
         updatedAt: nowMs,
@@ -648,6 +657,7 @@ async function ingestNeighborInfo(
         hwModel: 0,
         hopsAway: senderHopsAway + 1,
         viaMqtt: true,
+        transportMechanism: TransportMechanism.MQTT,
         createdAt: nowMs,
         updatedAt: nowMs,
       },
@@ -709,6 +719,7 @@ function ingestPaxcounter(
     hwModel: 0,
     lastHeard: Math.floor(nowMs / 1000),
     viaMqtt: true,
+    transportMechanism: TransportMechanism.MQTT,
     sourceId,
     createdAt: nowMs,
     updatedAt: nowMs,
@@ -797,6 +808,7 @@ async function ingestStoreForward(
       hwModel: 0,
       lastHeard: Math.floor(nowMs / 1000),
       viaMqtt: true,
+      transportMechanism: TransportMechanism.MQTT,
       sourceId,
       createdAt: nowMs,
       updatedAt: nowMs,

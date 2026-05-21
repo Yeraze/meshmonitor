@@ -6,6 +6,7 @@ import L from 'leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
+import { nodePassesTransportFilter } from '../utils/nodeTransport';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, createArrowIcon } from '../utils/mapHelpers.tsx';
 import { convertSpeed } from '../utils/speedConversion';
@@ -299,6 +300,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowMotion,
     showMqttNodes,
     setShowMqttNodes,
+    showUdpNodes,
+    setShowUdpNodes,
+    showRfNodes,
+    setShowRfNodes,
     showAnimations,
     setShowAnimations,
     showEstimatedPositions,
@@ -1749,6 +1754,22 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   <label className="map-control-item">
                     <input
                       type="checkbox"
+                      checked={showRfNodes}
+                      onChange={(e) => setShowRfNodes(e.target.checked)}
+                    />
+                    <span>{t('map.showRf', 'Show RF')}</span>
+                  </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
+                      checked={showUdpNodes}
+                      onChange={(e) => setShowUdpNodes(e.target.checked)}
+                    />
+                    <span>{t('map.showUdp', 'Show UDP')}</span>
+                  </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
                       checked={showMqttNodes}
                       onChange={(e) => setShowMqttNodes(e.target.checked)}
                     />
@@ -1998,7 +2019,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               {nodesWithPosition
                 .filter(node => {
                   // Apply standard filters
-                  if (!showMqttNodes && node.viaMqtt) return false;
+                  if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes })) return false;
                   if (!showIncompleteNodes && !isNodeComplete(node)) return false;
                   if (!showEstimatedPositions && node.user?.id && nodesWithEstimatedPosition.has(node.user.id)) return false;
                   // When traceroute is active, only show nodes involved in the traceroute
@@ -2110,7 +2131,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
               {/* Draw uncertainty circles for estimated positions */}
               {showEstimatedPositions && nodesWithPosition
-                .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id) && (showMqttNodes || !node.viaMqtt) && (showIncompleteNodes || isNodeComplete(node)) && (!tracerouteNodeNums || tracerouteNodeNums.has(node.nodeNum)))
+                .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id) && nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }) && (showIncompleteNodes || isNodeComplete(node)) && (!tracerouteNodeNums || tracerouteNodeNums.has(node.nodeNum)))
                 .map(node => {
                   // Calculate radius based on precision bits (higher precision = smaller circle)
                   // Meshtastic uses precision_bits to reduce coordinate precision
@@ -2150,7 +2171,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   // Don't show accuracy region for nodes with overridden positions
                   if (node.positionIsOverride) return false;
                   // Apply standard filters
-                  if (!showMqttNodes && node.viaMqtt) return false;
+                  if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes })) return false;
                   if (!showIncompleteNodes && !isNodeComplete(node)) return false;
                   // When traceroute is active, only show regions for nodes in the traceroute
                   if (tracerouteNodeNums && !tracerouteNodeNums.has(node.nodeNum)) return false;

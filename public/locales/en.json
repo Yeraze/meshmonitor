@@ -4257,6 +4257,8 @@
     "showNeighborInfo": "Show Neighbor Info",
     "showTraceroute": "Show Traceroute",
     "showMqtt": "Show MQTT",
+    "showUdp": "Show UDP",
+    "showRf": "Show RF",
     "showMeshCore": "Show MeshCore",
     "showPositionHistory": "Show Position History",
     "showAnimations": "Show Animations",

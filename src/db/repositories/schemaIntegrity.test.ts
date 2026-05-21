@@ -69,6 +69,7 @@ describe('Schema integrity after all migrations', () => {
         hopsAway INTEGER,
         lastMessageHops INTEGER,
         viaMqtt BOOLEAN DEFAULT 0,
+        transportMechanism INTEGER,
         macaddr TEXT,
         latitude REAL,
         longitude REAL,
