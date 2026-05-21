@@ -71,11 +71,19 @@ The following deployment methods are contributed and supported by the community:
 
 Before you begin, ensure you have:
 
-### Meshtastic Device
+### At least one mesh source
+
+MeshMonitor can monitor Meshtastic, MeshCore, and MQTT all at once — you only need **one** of these to get started. More can be added later from **Dashboard → Sources**.
+
+**Meshtastic** — any of:
 - A Meshtastic device connected to your network via IP (WiFi or Ethernet)
-- **OR** A Serial/USB device with the [Serial Bridge](/configuration/serial-bridge)
-- **OR** A Bluetooth device with the [BLE Bridge](/configuration/ble-bridge)
-- **OR** `meshtasticd` running as a virtual node
+- A Serial/USB device with the [Serial Bridge](/configuration/serial-bridge)
+- A Bluetooth device with the [BLE Bridge](/configuration/ble-bridge)
+- `meshtasticd` running as a virtual node
+
+**MeshCore** — a MeshCore companion or repeater attached over USB or reachable over TCP. See [MeshCore](/features/meshcore).
+
+**MQTT** — an MQTT broker (yours or a public one) carrying mesh traffic, or just use MeshMonitor's [embedded broker](/features/mqtt-broker) — no external broker required.
 
 ### Deployment Platform
 Choose one based on your deployment method:
@@ -249,6 +257,8 @@ ALLOWED_ORIGINS=https://meshmonitor.example.com # REQUIRED!
 - **Rate limiting**: Stricter (1000 requests/15min vs 10,000)
 
 ## Using with Virtual or Physical Devices
+
+These sections cover Meshtastic-specific setups. For MeshCore add a source from **Dashboard → Sources** ([details](/features/meshcore)); for MQTT enable the [embedded broker](/features/mqtt-broker) or point a source at an external broker.
 
 ### Virtual Nodes with meshtasticd
 

@@ -1,20 +1,16 @@
 # Multi-Source
 
-::: tip New in 4.0
-Multi-Source lets a single MeshMonitor deployment talk to **multiple Meshtastic nodes at once** over TCP. Serial- and BLE-attached nodes reach MeshMonitor through the **Serial Bridge** or **BLE Bridge** sidecar (they present as a TCP endpoint). Everything that used to be a global setting (Virtual Node, auto-responder, auto-traceroute, scheduler, permissions) is now configured **per source**.
-:::
-
-::: info Coming soon
-**MQTT** source types are part of the multi-source architecture but are still in active development. They'll land in a future 4.x release. **MeshCore** is a first-class source type as of 4.5 — see [MeshCore](/features/meshcore).
+::: tip New in 4.0 (expanded in 4.5+)
+Multi-Source lets a single MeshMonitor deployment talk to **multiple meshes at once** — Meshtastic, MeshCore, and MQTT — side by side. Serial- and BLE-attached Meshtastic nodes reach MeshMonitor through the **Serial Bridge** or **BLE Bridge** sidecar (they present as a TCP endpoint). Everything that used to be a global setting (Virtual Node, auto-responder, auto-traceroute, scheduler, permissions) is now configured **per source**.
 :::
 
 ![Dashboard with multiple sources in the sidebar](/images/features/dashboard-multi-source.png)
 
 ## What is a Source?
 
-A **source** is one upstream connection MeshMonitor speaks to — typically a Meshtastic node. Each source has:
+A **source** is one upstream connection MeshMonitor speaks to. Each source has:
 
-- A **type** — `meshtastic_tcp` and `meshcore` today; `mqtt` is planned. Serial and BLE Meshtastic nodes connect through the Serial Bridge / BLE Bridge sidecars and appear as `meshtastic_tcp` sources pointing at the bridge container. MeshCore connects directly — USB through the UI, TCP via the legacy env-var bootstrap path. No sidecar either way.
+- A **type** — `meshtastic_tcp`, `meshcore`, `mqtt_broker` (external MQTT broker as a source), or `mqtt_bridge` (the embedded broker bridging to an upstream). Serial and BLE Meshtastic nodes connect through the Serial Bridge / BLE Bridge sidecars and appear as `meshtastic_tcp` sources pointing at the bridge container. MeshCore connects directly — USB through the UI, TCP via the legacy env-var bootstrap path. No sidecar either way.
 - Its own **connection settings** (host, port, device path, credentials)
 - Its own **scheduler** (auto-responder, auto-announce, auto-traceroute, auto-ack)
 - Its own **Virtual Node** endpoint (TCP sources only)
@@ -61,7 +57,7 @@ Your picker choice persists per view and per user.
 
 Virtual Node is a MeshMonitor feature that lets mobile Meshtastic apps connect *through* MeshMonitor instead of directly to the node. In 4.0 it is **per-source**.
 
-- Only `meshtastic_tcp` sources support Virtual Node — MeshCore sources ignore VN settings, and the planned MQTT source type will too
+- Only `meshtastic_tcp` sources support Virtual Node — MeshCore and MQTT sources ignore VN settings
 - Each source can expose its own VN endpoint on its own port
 - Ports must be unique across sources — the API rejects collisions with HTTP 409
 

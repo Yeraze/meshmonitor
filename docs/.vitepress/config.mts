@@ -38,7 +38,7 @@ export default defineConfig({
     plugins: [newsJsonPlugin]
   },
   title: "MeshMonitor",
-  description: "Self-hosted web dashboard for Meshtastic networks. Real-time maps, messaging, telemetry, automation, and alerts. Runs on Docker, desktop, or Kubernetes.",
+  description: "Self-hosted, multi-protocol web dashboard for Meshtastic, MeshCore, and MQTT mesh networks. Real-time maps, messaging, telemetry, automation, and alerts. Runs on Docker, desktop, or Kubernetes.",
   base: '/',  // Custom domain: meshmonitor.org
 
   themeConfig: {

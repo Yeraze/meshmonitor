@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/github/license/Yeraze/meshmonitor)](https://github.com/Yeraze/meshmonitor/blob/main/LICENSE)
 [![Translation Status](https://hosted.weblate.org/widgets/meshmonitor/-/svg-badge.svg)](https://hosted.weblate.org/engage/meshmonitor/)
 
-A comprehensive web application for monitoring Meshtastic mesh networks over IP. Built with React, TypeScript, and Node.js, featuring a beautiful Catppuccin Mocha dark theme and multi-database support (SQLite, PostgreSQL, MySQL).
+A comprehensive web application for monitoring off-grid mesh networks — Meshtastic, MeshCore, and MQTT — from a single dashboard. Built with React, TypeScript, and Node.js, featuring a beautiful Catppuccin Mocha dark theme and multi-database support (SQLite, PostgreSQL, MySQL).
 
 ![MeshMonitor Interface](docs/images/main.png)
 
@@ -217,11 +217,12 @@ MeshMonitor supports multiple deployment methods:
 
 ## Key Features
 
+- **Multi-Protocol, Multi-Source** - Monitor Meshtastic (TCP/Serial/BLE), MeshCore (USB/TCP), and MQTT brokers from a single deployment, with per-source permissions, schedulers, and Virtual Nodes
+- **Embedded MQTT Broker** - Optional built-in broker with bidirectional bridges to public upstreams and topic/channel/portnum/geo filtering
 - **Analysis & Reports (4.2)** - Cross-source analytical workspace at `/reports`; first report is Solar Monitoring Analysis with auto-detection of solar-powered nodes, production overlay, healthy-level reference lines, and multi-day battery forecast simulation
-- **Multi-Source (4.0)** - Monitor multiple Meshtastic nodes from a single deployment; per-source permissions, schedulers, and Virtual Nodes
-- **Real-time Mesh Monitoring** - Live node discovery, telemetry, and message tracking
+- **Real-time Mesh Monitoring** - Live node discovery, telemetry, and message tracking across every connected source
 - **Modern UI** - Catppuccin theme with message reactions and threading
-- **Interactive Maps** - Node positions and network topology visualization
+- **Interactive Maps** - Unified node positions and network topology visualization across all sources
 - **Multi-Database Support** - SQLite (default), PostgreSQL, and MySQL via Drizzle ORM
 - **Notifications** - Web Push and Apprise integration for 100+ services
 - **Authentication** - Local, OIDC/SSO, and reverse proxy authentication with RBAC
@@ -229,7 +230,6 @@ MeshMonitor supports multiple deployment methods:
 - **Device Configuration** - Full node configuration UI
 - **Virtual Node Server** - Remote TCP access for Meshtastic Python clients
 - **REST API** - v1 API with Bearer token authentication for external integrations
-- **MeshCore Support** - Optional monitoring for MeshCore mesh networks
 - **Docker Ready** - Pre-built multi-architecture images
 - **One-click Self-Upgrade** - Automatic upgrades from the UI with backup and rollback
 - **System Backup & Restore** - Complete disaster recovery with automated backups
@@ -242,7 +242,7 @@ For a complete feature list and technical details, visit **[meshmonitor.org](htt
 
 - Node.js 20+
 - Docker (recommended) or local Node.js environment
-- A Meshtastic device with WiFi/Ethernet connectivity
+- At least one mesh source — a Meshtastic device (WiFi/Ethernet, or Serial/BLE via bridge), a MeshCore device, or an MQTT broker
 
 ### Local Development
 
