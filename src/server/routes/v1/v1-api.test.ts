@@ -377,6 +377,7 @@ describe('GET /api/v1/', () => {
     // Deployment-global resources stay at the root.
     expect(response.body.endpoints.solar).toBe('/api/v1/solar');
     expect(response.body.endpoints.channelDatabase).toBe('/api/v1/channel-database');
+    expect(response.body.endpoints.actions).toBe('/api/v1/sources/{sourceId}/actions');
     expect(response.body.note).toMatch(/Legacy root paths/i);
   });
 });

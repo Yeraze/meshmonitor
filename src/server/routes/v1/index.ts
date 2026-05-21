@@ -40,6 +40,7 @@ import statusRouter from './status.js';
 import sourcesRouter from './sources.js';
 import { attachSource } from './sourceParam.js';
 import { deprecationShim } from './deprecatedShim.js';
+import actionsRouter from './actions.js';
 
 const router = express.Router();
 
@@ -69,6 +70,7 @@ router.get('/', (_req, res) => {
       status: '/api/v1/sources/{sourceId}/status',
       channelDatabase: '/api/v1/channel-database',
       solar: '/api/v1/solar',
+      actions: '/api/v1/sources/{sourceId}/actions',
     },
     note:
       'Per-source paths are canonical. Legacy root paths (e.g. /api/v1/nodes?sourceId=...) ' +
@@ -126,6 +128,11 @@ router.use(
   attachSource('info', 'read'),
   statusRouter
 );
+// Actions endpoints (traceroute / position / nodeinfo / neighbors) mix two
+// permission resources — `traceroute:write` and `messages:write` — so they
+// apply `attachSource` per-route inside `actionsRouter` rather than at the
+// mount level.
+router.use('/sources/:sourceId/actions', actionsRouter);
 
 // Deprecated legacy routes (root-scoped). Same handlers, but gated by the
 // `deprecationShim` that stamps a `Warning: 299` header on every response
