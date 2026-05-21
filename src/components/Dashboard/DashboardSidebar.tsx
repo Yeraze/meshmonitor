@@ -34,6 +34,8 @@ interface DashboardSidebarProps {
   onDisconnectSource?: (id: string) => void;
   /** Called when user clicks Prune Outside ROI (kebab) on an mqtt_bridge with a geo bbox. */
   onPruneOutsideRoi?: (id: string) => void;
+  /** Called when user clicks Resync (kebab) on a connected meshtastic_tcp source (#3122). */
+  onResyncSource?: (id: string) => void;
   /** Source IDs currently awaiting a /connect POST — used to show "Connecting..." feedback. */
   connectingIds?: Set<string>;
   /** Mobile drawer state — on desktop the sidebar is always visible. */
@@ -107,11 +109,14 @@ interface KebabMenuProps {
   canDisconnect?: boolean;
   /** When true, render a "Prune Outside ROI" item (mqtt_bridge with a geo bbox). */
   canPruneOutsideRoi?: boolean;
+  /** When true, render a "Resync" item (meshtastic_tcp source currently connected). */
+  canResync?: boolean;
   onEdit: (id: string) => void;
   onToggle: (id: string, enabled: boolean) => void;
   onDelete: (id: string) => void;
   onDisconnect?: (id: string) => void;
   onPruneOutsideRoi?: (id: string) => void;
+  onResync?: (id: string) => void;
 }
 
 const KebabMenu: React.FC<KebabMenuProps> = ({
@@ -119,11 +124,13 @@ const KebabMenu: React.FC<KebabMenuProps> = ({
   sourceEnabled,
   canDisconnect,
   canPruneOutsideRoi,
+  canResync,
   onEdit,
   onToggle,
   onDelete,
   onDisconnect,
   onPruneOutsideRoi,
+  onResync,
 }) => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -198,6 +205,19 @@ const KebabMenu: React.FC<KebabMenuProps> = ({
               {t('source.kebab.prune_outside_roi')}
             </button>
           )}
+          {canResync && onResync && (
+            <button
+              className="dashboard-kebab-item"
+              title={t('source.kebab.resync_help', 'Force a fresh config/NodeDB sync from the device. Respects a 30s cooldown.')}
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+                onResync(sourceId);
+              }}
+            >
+              {t('source.kebab.resync', 'Resync')}
+            </button>
+          )}
           <button
             className="dashboard-kebab-item danger"
             onClick={(e) => {
@@ -230,6 +250,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   onConnectSource,
   onDisconnectSource,
   onPruneOutsideRoi,
+  onResyncSource,
   connectingIds,
   mobileOpen = false,
   onMobileClose,
@@ -367,11 +388,16 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                       status?.connected === true
                     }
                     canPruneOutsideRoi={hasGeoBounds}
+                    canResync={
+                      source.type === 'meshtastic_tcp' &&
+                      status?.connected === true
+                    }
                     onEdit={onEditSource}
                     onToggle={onToggleSource}
                     onDelete={onDeleteSource}
                     onDisconnect={onDisconnectSource}
                     onPruneOutsideRoi={onPruneOutsideRoi}
+                    onResync={onResyncSource}
                   />
                 );
               })()}

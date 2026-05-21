@@ -413,6 +413,25 @@ class MeshtasticManager implements ISourceManager {
   // transient closes on a large infrastructure node, short enough that genuine
   // config drift self-corrects without a manual refresh.
   private static readonly PASSIVE_RESYNC_STALE_MS = 4 * 60 * 60 * 1000; // 4 hours
+
+  // Manual resync (#3122 follow-up) — operator-initiated full config refresh:
+  //   * forces ONE want_config_id regardless of staleness window
+  //   * single-flight: only one resync at a time per source
+  //   * cooldown (30s) between resyncs to prevent rapid-fire button mashing
+  //     from overwhelming a fragile node
+  //   * watchdog (120s) clears the in-flight flag if config never arrives,
+  //     so a stuck sync can't disable the button forever
+  //   * post-resync reconnect: if the node closes the socket during/after
+  //     the forced sync, recovery reuses the cached config and does NOT
+  //     auto-retry the sync (would just recreate the failure loop)
+  private static readonly MANUAL_RESYNC_COOLDOWN_MS = 30_000;
+  private static readonly MANUAL_RESYNC_WATCHDOG_MS = 120_000;
+  private manualResyncInFlight = false;
+  private manualResyncLastAt: number | null = null;
+  private manualResyncWatchdog: NodeJS.Timeout | null = null;
+  // Latches across the next disconnect/reconnect so recovery skips the
+  // auto re-sync the new connection would otherwise trigger.
+  private suppressNextAutoSync = false;
   // mqttLink runtime state — set up in start()/reconfigureMqttLink().
   private mqttLink: MeshtasticMqttLink | null = null;
   private mqttLinkBroker: import('./mqttBrokerManager.js').MqttBrokerManager | null = null;
@@ -1168,9 +1187,21 @@ class MeshtasticManager implements ISourceManager {
       this.lastDisconnectAt !== null &&
       Date.now() - this.lastDisconnectAt < MeshtasticManager.PASSIVE_RESYNC_STALE_MS;
 
-    // In passive mode with fresh cache: keep localNodeInfo so dependent code
-    // doesn't briefly mark the node un-responsive between connect events.
-    if (!passiveResyncFresh) {
+    // suppressNextAutoSync latches a one-shot skip across a disconnect/reconnect
+    // cycle, used by manual-resync recovery: if the operator's forced sync caused
+    // the node to close the socket, we don't want the reconnect to immediately
+    // retry the same sync and reproduce the failure loop (#3122 follow-up).
+    const consumeSuppressFlag = this.suppressNextAutoSync;
+    if (consumeSuppressFlag) {
+      this.suppressNextAutoSync = false;
+      logger.warn('🟡 [manual-resync recovery] Skipping want_config_id on this reconnect — the previous manual resync did not complete cleanly; cached config will be reused');
+    }
+
+    const skipFullSync = passiveResyncFresh || consumeSuppressFlag;
+
+    // Keep cached localNodeInfo when we're skipping the sync — dependent code
+    // would otherwise briefly mark the node un-responsive between connect events.
+    if (!skipFullSync) {
       // Clear localNodeInfo so node will be marked as not responsive until it sends MyNodeInfo
       this.localNodeInfo = null;
     }
@@ -1179,16 +1210,26 @@ class MeshtasticManager implements ISourceManager {
     await serverEventNotificationService.notifyNodeConnected(this.sourceId, await this.getSourceName());
 
     try {
-      if (passiveResyncFresh) {
+      if (skipFullSync) {
         // Skip the want_config_id handshake. Mesh traffic (received packets)
         // continues to flow without it, and we already have a recent config
         // snapshot. This is the core stability fix for large TCP nodes that
         // close the socket under sync pressure (#3122). Mark capture complete
         // so the post-config scheduler logic still runs (with passive-mode
         // skips applied below).
-        logger.info('🟢 [passive] Skipping want_config_id on reconnect — using cached config from last session');
+        const reason = consumeSuppressFlag
+          ? '🟡 [manual-resync recovery] Skipping want_config_id — using cached config'
+          : '🟢 [passive] Skipping want_config_id on reconnect — using cached config from last session';
+        logger.info(reason);
         this.configCaptureComplete = true;
         this.isCapturingInitConfig = false;
+        // A manual-resync recovery should also clear the in-flight latch so the
+        // operator's button re-enables (the original sync never reached
+        // configComplete, so the normal onConfigCaptureComplete handler
+        // wouldn't have fired). Use 'recovery' so the watchdog cancels cleanly.
+        if (consumeSuppressFlag) {
+          this.clearManualResyncInFlight('recovery');
+        }
         // Run the scheduler callback as if config had just completed. The
         // callback itself honors passiveMode and will skip the outbound burst.
         if (this.onConfigCaptureComplete) {
@@ -1252,6 +1293,10 @@ class MeshtasticManager implements ISourceManager {
       // Chaining would accumulate scheduler starts across reconnects, causing
       // duplicate cron jobs (e.g., 4 reconnects = 4x auto-welcome messages).
       this.onConfigCaptureComplete = () => {
+        // Manual resync completed successfully — clear the in-flight latch and
+        // cancel the watchdog so the operator's button re-enables (after cooldown).
+        this.clearManualResyncInFlight('configComplete');
+
         // Call external callback (e.g., virtual node server init) — registered once, safe to call on every reconnect
         if (this.externalConfigCaptureCallback) {
           try { this.externalConfigCaptureCallback(); } catch (e) { logger.error('❌ Error in external config capture callback:', e); }
@@ -12882,6 +12927,119 @@ class MeshtasticManager implements ISourceManager {
         ? ((msg as any).deliveryState === 'confirmed' ? true : undefined)
         : ((msg as any).deliveryState === 'delivered' || (msg as any).deliveryState === 'confirmed' ? true : undefined)
     }));
+  }
+
+  /**
+   * Operator-initiated manual resync (#3122 follow-up).
+   *
+   * Sends a single want_config_id regardless of passive-mode staleness. Mostly
+   * useful for passive-mode sources where the automatic reconnect path skips
+   * resync while the cached config is "fresh" — the operator may know the node
+   * config actually changed (e.g. a remote channel rekey) and want to refresh.
+   *
+   * Guards:
+   *   * **single-flight** — only one resync in flight per source
+   *   * **cooldown** — MANUAL_RESYNC_COOLDOWN_MS (30s) since last attempt
+   *   * **watchdog** — MANUAL_RESYNC_WATCHDOG_MS (120s) max in-flight; if
+   *     the stream never reaches configComplete, the flag self-clears so the
+   *     button doesn't get stuck disabled
+   *   * **recovery latch** — sets suppressNextAutoSync so a node-side close
+   *     during/after the forced sync doesn't immediately re-trigger another
+   *     full sync on reconnect (which would just reproduce the failure loop)
+   *
+   * Returns the post-call state — caller (HTTP route) can surface inFlight +
+   * cooldownExpiresAt to the UI so the button renders the right state.
+   */
+  async requestManualResync(): Promise<{
+    started: boolean;
+    inFlight: boolean;
+    cooldownExpiresAt: number;
+    reason?: 'cooldown' | 'in-flight' | 'not-connected' | 'send-failed';
+  }> {
+    const now = Date.now();
+    const cooldownExpiresAt =
+      this.manualResyncLastAt !== null
+        ? this.manualResyncLastAt + MeshtasticManager.MANUAL_RESYNC_COOLDOWN_MS
+        : 0;
+
+    if (this.manualResyncInFlight) {
+      logger.debug('🟡 [manual-resync] Rejected — already in flight');
+      return { started: false, inFlight: true, cooldownExpiresAt, reason: 'in-flight' };
+    }
+    if (now < cooldownExpiresAt) {
+      logger.debug(`🟡 [manual-resync] Rejected — cooldown until ${new Date(cooldownExpiresAt).toISOString()}`);
+      return { started: false, inFlight: false, cooldownExpiresAt, reason: 'cooldown' };
+    }
+    if (!this.isConnected) {
+      logger.debug('🟡 [manual-resync] Rejected — not connected');
+      return { started: false, inFlight: false, cooldownExpiresAt, reason: 'not-connected' };
+    }
+
+    logger.info('🟡 [manual-resync] Operator-initiated resync — sending want_config_id');
+    this.manualResyncInFlight = true;
+    this.manualResyncLastAt = now;
+    // Latch the suppress flag BEFORE sending so a same-tick disconnect (which
+    // can happen on a fragile node) is observed by handleDisconnected → reconnect
+    // before this method returns.
+    this.suppressNextAutoSync = true;
+    // Mark config capture as resuming so streamed FromRadio entries refresh
+    // the cached snapshot rather than being dropped as "already complete".
+    this.configCaptureComplete = false;
+    this.isCapturingInitConfig = true;
+
+    // Watchdog: clear in-flight if the stream never lands.
+    if (this.manualResyncWatchdog) clearTimeout(this.manualResyncWatchdog);
+    this.manualResyncWatchdog = setTimeout(() => {
+      if (this.manualResyncInFlight) {
+        logger.warn(`⚠️ [manual-resync] Watchdog fired after ${MeshtasticManager.MANUAL_RESYNC_WATCHDOG_MS / 1000}s — clearing in-flight latch`);
+        this.clearManualResyncInFlight('watchdog');
+      }
+    }, MeshtasticManager.MANUAL_RESYNC_WATCHDOG_MS);
+
+    try {
+      await this.sendWantConfigId();
+    } catch (sendErr) {
+      const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+      logger.warn(`⚠️ [manual-resync] sendWantConfigId failed: ${msg}`);
+      // Send-time failure means the request never reached the node, so the
+      // suppress latch and in-flight aren't useful — clear them so the
+      // operator can retry (subject to cooldown).
+      this.clearManualResyncInFlight('send-failed');
+      this.suppressNextAutoSync = false;
+      return { started: false, inFlight: false, cooldownExpiresAt: now + MeshtasticManager.MANUAL_RESYNC_COOLDOWN_MS, reason: 'send-failed' };
+    }
+
+    return {
+      started: true,
+      inFlight: true,
+      cooldownExpiresAt: now + MeshtasticManager.MANUAL_RESYNC_COOLDOWN_MS,
+    };
+  }
+
+  /**
+   * Returns a serializable snapshot of manual-resync state for the HTTP layer.
+   * Surfaced to the UI so the Resync button can render disabled/enabled state
+   * and a countdown until the cooldown expires.
+   */
+  getManualResyncState(): { inFlight: boolean; cooldownExpiresAt: number } {
+    const cooldownExpiresAt =
+      this.manualResyncLastAt !== null
+        ? this.manualResyncLastAt + MeshtasticManager.MANUAL_RESYNC_COOLDOWN_MS
+        : 0;
+    return { inFlight: this.manualResyncInFlight, cooldownExpiresAt };
+  }
+
+  /**
+   * Idempotent helper used by configComplete + recovery + watchdog + send-failed
+   * paths. Always cancels the outstanding watchdog so a stale timer can't fire
+   * later and flip the latch back off after a new resync started.
+   */
+  private clearManualResyncInFlight(_reason: 'configComplete' | 'recovery' | 'watchdog' | 'send-failed'): void {
+    this.manualResyncInFlight = false;
+    if (this.manualResyncWatchdog) {
+      clearTimeout(this.manualResyncWatchdog);
+      this.manualResyncWatchdog = null;
+    }
   }
 
   // Public method to trigger manual refresh of node database
