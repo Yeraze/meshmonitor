@@ -89,6 +89,10 @@ export interface MeshCoreActions {
    *  ACKed the reset; `false` for any error (permission, unknown contact,
    *  source not Companion, network). */
   resetContactPath: (publicKey: string) => Promise<boolean>;
+  /** Broadcast the device's saved advert for a contact as a zero-hop frame so
+   *  nearby nodes can add this contact themselves. Wraps CMD_SHARE_CONTACT.
+   *  Resolves `true` when the device ACKed; `false` for any error. */
+  shareContact: (publicKey: string) => Promise<boolean>;
   sendAdvert: () => Promise<void>;
   sendMessage: (text: string, toPublicKey?: string, channelIdx?: number) => Promise<boolean>;
   setDeviceName: (name: string) => Promise<boolean>;
@@ -437,6 +441,24 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const shareContact = useCallback(async (publicKey: string): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(
+        `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/share`,
+        { method: 'POST' },
+      );
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to share contact');
+        return false;
+      }
+      return true;
+    } catch (_err) {
+      setError('Failed to share contact');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const sendAdvert = useCallback(async () => {
     try {
       const response = await csrfFetch(`${mcPrefix}/advert`, { method: 'POST' });
@@ -607,6 +629,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       disconnect,
       refreshContacts,
       resetContactPath,
+      shareContact,
       sendAdvert,
       sendMessage,
       setDeviceName,

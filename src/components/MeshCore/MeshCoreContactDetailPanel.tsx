@@ -19,12 +19,16 @@ interface MeshCoreContactDetailPanelProps {
    *  MeshCoreActions; unset means the button is hidden (e.g. read-only
    *  embeds that don't have the actions wired up). */
   onResetPath?: (publicKey: string) => Promise<boolean>;
+  /** Trigger CMD_SHARE_CONTACT for this contact, broadcasting their saved
+   *  advert to nearby nodes. Unset hides the Share button. */
+  onShareContact?: (publicKey: string) => Promise<boolean>;
   /** Whether the current user may invoke write actions on this source's
-   *  `nodes` resource. Required to gate the Reset Path button. */
+   *  `nodes` resource. Required to gate the Reset Path / Share buttons. */
   canWriteNodes?: boolean;
-  /** Is the source's device a Companion? CMD_RESET_PATH is companion-only.
-   *  Defaults to `true` so callers that don't pass this still see the button
-   *  when the action handler is supplied. */
+  /** Is the source's device a Companion? Both Reset Path and Share Contact
+   *  are companion-only (CMD_RESET_PATH / CMD_SHARE_CONTACT aren't supported
+   *  by Repeater firmware). Defaults to `true` so callers that don't pass
+   *  this still see the buttons when the action handlers are supplied. */
   isCompanion?: boolean;
 }
 
@@ -34,6 +38,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   contact,
   publicKey,
   onResetPath,
+  onShareContact,
   canWriteNodes = false,
   isCompanion = true,
 }) => {
@@ -44,16 +49,22 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   });
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [shareSuccess, setShareSuccess] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, isCollapsed.toString());
   }, [isCollapsed]);
 
-  // Clear the action's transient error/loading state when the selected
-  // contact changes so a previous failure doesn't bleed into a new node.
+  // Clear transient action state when the selected contact changes so a
+  // previous failure / success doesn't bleed into a new node.
   useEffect(() => {
     setResetError(null);
     setResetting(false);
+    setShareError(null);
+    setSharing(false);
+    setShareSuccess(false);
   }, [publicKey]);
 
   const name = contact?.advName || contact?.name || `${publicKey.substring(0, 8)}…`;
@@ -70,6 +81,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const pathKnown = typeof pathLen === 'number' && pathLen !== null && pathLen >= 0;
   const canShowResetButton =
     !!onResetPath && canWriteNodes && isCompanion;
+  const canShowShareButton =
+    !!onShareContact && canWriteNodes && isCompanion;
 
   const handleResetPath = async () => {
     if (!onResetPath || resetting) return;
@@ -91,6 +104,33 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
       }
     } finally {
       setResetting(false);
+    }
+  };
+
+  const handleShareContact = async () => {
+    if (!onShareContact || sharing) return;
+    const confirmMessage = t(
+      'meshcore.contact_details.share_contact_confirm',
+      `Broadcast ${name}'s contact info to nearby nodes? This sends a zero-hop advert with their identity, name and position.`,
+    );
+    if (typeof window !== 'undefined' && !window.confirm(confirmMessage)) {
+      return;
+    }
+    setSharing(true);
+    setShareError(null);
+    setShareSuccess(false);
+    try {
+      const ok = await onShareContact(publicKey);
+      if (ok) {
+        setShareSuccess(true);
+        window.setTimeout(() => setShareSuccess(false), 2200);
+      } else {
+        setShareError(
+          t('meshcore.contact_details.share_contact_error', 'Share contact failed.'),
+        );
+      }
+    } finally {
+      setSharing(false);
     }
   };
 
@@ -175,27 +215,52 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
             </div>
           )}
 
-          {/* Reset Path action — companion-only, write-permission-gated.
-              Hidden entirely when the path is already unknown so users
-              don't fire a no-op CMD_RESET_PATH against the device. */}
-          {canShowResetButton && pathKnown && (
+          {/* Contact actions — companion-only, write-permission-gated.
+              Reset Path is hidden when the route is already unknown so
+              users don't fire a no-op CMD_RESET_PATH; Share is always
+              available because the device retransmits the stored advert
+              regardless of route state. Rendered in one card so the
+              actions stay grouped at the bottom of the grid. */}
+          {(canShowResetButton || canShowShareButton) && (canShowShareButton || pathKnown) && (
             <div className="node-detail-card node-detail-card-2col">
               <div className="node-detail-label">
-                {t('meshcore.contact_details.reset_path_label', 'Route')}
+                {t('meshcore.contact_details.actions_label', 'Actions')}
               </div>
               <div className="node-detail-value" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={handleResetPath}
-                  disabled={resetting}
-                  aria-label={t('meshcore.contact_details.reset_path_button', 'Reset Path')}
-                >
-                  {resetting
-                    ? t('meshcore.contact_details.reset_path_running', 'Resetting…')
-                    : t('meshcore.contact_details.reset_path_button', 'Reset Path')}
-                </button>
+                {canShowResetButton && pathKnown && (
+                  <button
+                    type="button"
+                    onClick={handleResetPath}
+                    disabled={resetting}
+                    aria-label={t('meshcore.contact_details.reset_path_button', 'Reset Path')}
+                  >
+                    {resetting
+                      ? t('meshcore.contact_details.reset_path_running', 'Resetting…')
+                      : t('meshcore.contact_details.reset_path_button', 'Reset Path')}
+                  </button>
+                )}
+                {canShowShareButton && (
+                  <button
+                    type="button"
+                    onClick={handleShareContact}
+                    disabled={sharing}
+                    aria-label={t('meshcore.contact_details.share_contact_button', 'Share Contact')}
+                  >
+                    {sharing
+                      ? t('meshcore.contact_details.share_contact_running', 'Sharing…')
+                      : t('meshcore.contact_details.share_contact_button', 'Share Contact')}
+                  </button>
+                )}
                 {resetError && (
                   <span style={{ color: 'var(--ctp-red)' }} role="alert">{resetError}</span>
+                )}
+                {shareError && (
+                  <span style={{ color: 'var(--ctp-red)' }} role="alert">{shareError}</span>
+                )}
+                {shareSuccess && (
+                  <span style={{ color: 'var(--ctp-green)' }} role="status">
+                    {t('meshcore.contact_details.share_contact_success', 'Advert broadcast.')}
+                  </span>
                 )}
               </div>
             </div>

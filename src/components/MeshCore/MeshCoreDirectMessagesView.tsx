@@ -172,6 +172,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 contact={contactsByKey.get(selected) ?? null}
                 publicKey={selected}
                 onResetPath={actions.resetContactPath}
+                onShareContact={actions.shareContact}
                 canWriteNodes={canWriteNodes && connected}
                 isCompanion={isCompanion}
               />

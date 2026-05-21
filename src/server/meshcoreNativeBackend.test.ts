@@ -202,6 +202,11 @@ class MockConnection extends EventEmitter {
   async resetPath(pubKey: Uint8Array) {
     this.resetPathCalls.push(pubKey);
   }
+
+  public shareContactCalls: Uint8Array[] = [];
+  async shareContact(pubKey: Uint8Array) {
+    this.shareContactCalls.push(pubKey);
+  }
 }
 
 function installMockModule(MockConn: typeof MockConnection): MockConnection {
@@ -801,6 +806,35 @@ describe('MeshCoreNativeBackend', () => {
     const resp = await backend.sendCommand('reset_path', { public_key: 'cafebabe' });
     expect(resp.success).toBe(false);
     expect(resp.error).toMatch(/Reset-path target not found/);
+  });
+
+  it('share_contact forwards the resolved pubkey to the connection', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    const targetBytes = new Uint8Array(32);
+    targetBytes[0] = 0xfe; targetBytes[1] = 0xed; targetBytes[2] = 0xfa; targetBytes[3] = 0xce;
+    conn.contactsResponse = [{ publicKey: targetBytes, type: AdvType.Chat, advName: 'Carol' }];
+
+    const resp = await backend.sendCommand('share_contact', { public_key: 'feedface' });
+    expect(resp.success).toBe(true);
+    expect(conn.shareContactCalls).toHaveLength(1);
+    expect(Array.from(conn.shareContactCalls[0]).slice(0, 4)).toEqual([0xfe, 0xed, 0xfa, 0xce]);
+  });
+
+  it('share_contact returns an error when the contact cannot be resolved', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+
+    const resp = await backend.sendCommand('share_contact', { public_key: 'cafebabe' });
+    expect(resp.success).toBe(false);
+    expect(resp.error).toMatch(/Share-contact target not found/);
   });
 });
 
