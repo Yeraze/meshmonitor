@@ -892,7 +892,7 @@ export class MiscRepository extends BaseRepository {
    */
   private buildPacketLogWhere(options: PacketLogFilterOptions): { conditions: any[]; } {
     const conditions: any[] = [];
-    const { portnum, from_node, to_node, channel, encrypted, since, relay_node, sourceId } = options;
+    const { portnum, from_node, to_node, channel, encrypted, since, relay_node, transport_mechanism, sourceId } = options;
 
     if (sourceId !== undefined) conditions.push(sql`pl.${sql.identifier('sourceId')} = ${sourceId}`);
     if (portnum !== undefined) conditions.push(sql`pl.portnum = ${portnum}`);
@@ -911,6 +911,9 @@ export class MiscRepository extends BaseRepository {
       conditions.push(sql`pl.relay_node IS NULL`);
     } else if (relay_node !== undefined) {
       conditions.push(sql`pl.relay_node = ${relay_node}`);
+    }
+    if (transport_mechanism !== undefined) {
+      conditions.push(sql`pl.transport_mechanism = ${transport_mechanism}`);
     }
 
     return { conditions };
@@ -2131,5 +2134,6 @@ export interface PacketLogFilterOptions {
   encrypted?: boolean;
   since?: number;
   relay_node?: number | 'unknown';
+  transport_mechanism?: number;
   sourceId?: string;
 }

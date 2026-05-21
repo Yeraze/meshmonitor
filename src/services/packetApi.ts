@@ -35,6 +35,9 @@ export const getPackets = async (
   if (filters?.relay_node !== undefined) {
     params.append('relay_node', filters.relay_node.toString());
   }
+  if (filters?.transport_mechanism !== undefined) {
+    params.append('transport_mechanism', filters.transport_mechanism.toString());
+  }
   if (filters?.sourceId !== undefined) {
     params.append('sourceId', filters.sourceId);
   }
@@ -85,6 +88,9 @@ export const exportPackets = async (filters?: PacketFilters): Promise<void> => {
   }
   if (filters?.relay_node !== undefined) {
     params.append('relay_node', filters.relay_node.toString());
+  }
+  if (filters?.transport_mechanism !== undefined) {
+    params.append('transport_mechanism', filters.transport_mechanism.toString());
   }
   if (filters?.sourceId !== undefined) {
     params.append('sourceId', filters.sourceId);

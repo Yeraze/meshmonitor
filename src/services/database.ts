@@ -8029,7 +8029,7 @@ class DatabaseService {
   async getPacketLogsAsync(options: {
     offset?: number; limit?: number; portnum?: number; from_node?: number;
     to_node?: number; channel?: number; encrypted?: boolean; since?: number;
-    relay_node?: number | 'unknown'; sourceId?: string;
+    relay_node?: number | 'unknown'; transport_mechanism?: number; sourceId?: string;
   }): Promise<DbPacketLog[]> {
     return this.misc.getPacketLogs(options);
   }
@@ -8053,7 +8053,8 @@ class DatabaseService {
 
   async getPacketLogCountAsync(options: {
     portnum?: number; from_node?: number; to_node?: number; channel?: number;
-    encrypted?: boolean; since?: number; relay_node?: number | 'unknown'; sourceId?: string;
+    encrypted?: boolean; since?: number; relay_node?: number | 'unknown';
+    transport_mechanism?: number; sourceId?: string;
   } = {}): Promise<number> {
     return this.misc.getPacketLogCount(options);
   }
