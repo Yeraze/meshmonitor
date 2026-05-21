@@ -221,7 +221,16 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         // the map regardless of what they grant.
         channel: effectiveChannel,
         macaddr: user.macaddr ? bytesToHex(user.macaddr) : undefined,
-        publicKey: user.publicKey ? bytesToHex(user.publicKey) : (user.public_key ? bytesToHex(user.public_key) : undefined),
+        // publicKey is stored base64 across the rest of the codebase
+        // (see meshtasticManager.ts:5546 and the security-config save
+        // path at 3594). Using bytesToHex here would diverge from those
+        // paths and trip the false-positive "key mismatch" warning every
+        // time a node first ingested via MQTT later sends NodeInfo over
+        // the direct radio link. Cleanup of existing hex rows happens in
+        // migration 069.
+        publicKey: user.publicKey
+          ? Buffer.from(user.publicKey).toString('base64')
+          : (user.public_key ? Buffer.from(user.public_key).toString('base64') : undefined),
         lastHeard: Math.floor(nowMs / 1000),
         sourceId,
         createdAt: nowMs,
