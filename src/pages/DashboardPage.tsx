@@ -119,6 +119,7 @@ function DashboardInner() {
   const [formVnAllowAdmin, setFormVnAllowAdmin] = useState(false);
   const [formHeartbeat, setFormHeartbeat] = useState('30'); // seconds, 0 = disabled (issue 2609)
   const [formAutoConnect, setFormAutoConnect] = useState(true); // issue #2773
+  const [formPassiveMode, setFormPassiveMode] = useState(false); // issue #3122 — large/fragile TCP nodes
   // MeshCore-specific (slice 4): companion-USB v1 — serial path + device type.
   // TCP transport added in v2: same Companion firmware reachable over a TCP
   // socket (e.g. esp-link, ser2net, native TCP-capable MeshCore firmware).
@@ -267,6 +268,7 @@ function DashboardInner() {
     setFormVnAllowAdmin(false);
     setFormHeartbeat('30');
     setFormAutoConnect(true);
+    setFormPassiveMode(false);
     setFormMcTransport('usb');
     setFormMcSerialPort('');
     setFormMcTcpHost('');
@@ -347,6 +349,7 @@ function DashboardInner() {
     setFormHeartbeat(String(cfg?.heartbeatIntervalSeconds ?? 0));
     // Default to true when unset (legacy sources pre-#2773 auto-connected).
     setFormAutoConnect(cfg?.autoConnect !== false);
+    setFormPassiveMode(cfg?.passiveMode === true);
     // MeshCore-specific config. transport=tcp is a v2 addition; legacy rows
     // with no transport field are treated as USB (the original v1 default).
     const mcTransport: 'usb' | 'tcp' = cfg?.transport === 'tcp' ? 'tcp' : 'usb';
@@ -511,6 +514,10 @@ function DashboardInner() {
       // Persist autoConnect explicitly so the server can distinguish legacy
       // sources (undefined → treat as true) from ones the user opted out of.
       cfg.autoConnect = formAutoConnect;
+      // Passive Mode (#3122): disables outbound config bursts and preserves
+      // cached state across reconnects. Only persist when true so legacy
+      // sources continue to send the standard handshake.
+      if (formPassiveMode) cfg.passiveMode = true;
       // MQTT proxy bridge — if set, MeshMonitor relays
       // FromRadio.mqttClientProxyMessage to/from the selected embedded
       // broker. Empty selection clears the link.
@@ -1229,6 +1236,21 @@ function DashboardInner() {
             </label>
             <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '0 0 8px 24px' }}>
               {t('source.form.auto_connect_help')}
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '8px 0 4px' }}>
+              <input
+                type="checkbox"
+                checked={formPassiveMode}
+                onChange={(e) => setFormPassiveMode(e.target.checked)}
+              />
+              {t('source.form.passive_mode', 'Passive Mode')}
+            </label>
+            <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '0 0 8px 24px' }}>
+              {t(
+                'source.form.passive_mode_help',
+                'Reduces outbound requests to large or fragile TCP nodes. Preserves cached config across reconnects and skips post-config device requests. Recommended for router-class nodes with large NodeDBs.'
+              )}
             </p>
 
             <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>

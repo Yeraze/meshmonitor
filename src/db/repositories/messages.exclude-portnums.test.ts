@@ -83,11 +83,12 @@ describe('MessagesRepository.getMessages excludePortnums', () => {
   });
 
   const insert = (id: string, portnum: number | null, rxTime: number, text = 'x') => {
-    const now = Date.now();
+    // Use rxTime as createdAt so each insert has a deterministic, distinct
+    // arrival time. Ordering moved from device rxTime to createdAt in #3122.
     db.prepare(
       `INSERT INTO messages (id, fromNodeNum, toNodeNum, fromNodeId, toNodeId, text, channel, portnum, timestamp, rxTime, createdAt)
        VALUES (?, ?, ?, ?, ?, ?, -1, ?, ?, ?, ?)`
-    ).run(id, LOCAL_NUM, PEER_NUM, LOCAL_ID, PEER_ID, text, portnum, rxTime, rxTime, now);
+    ).run(id, LOCAL_NUM, PEER_NUM, LOCAL_ID, PEER_ID, text, portnum, rxTime, rxTime, rxTime);
   };
 
   it('drops traceroute rows (portnum 70) when excluded', async () => {

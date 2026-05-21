@@ -308,9 +308,12 @@ router.get('/channels', async (req: Request, res: Response) => {
  *   ?channel=<name>   Filter by channel NAME (not number — sources may place
  *                     the same name on different slots). If omitted, returns
  *                     messages from all channels across all sources (legacy).
- *   ?before=<ms>      Cursor: only include messages whose canonical time
- *                     (COALESCE(rxTime, timestamp)) is strictly less than
- *                     this. Used for infinite-scroll pagination.
+ *   ?before=<ms>      Cursor: only include messages whose server DB arrival
+ *                     time (createdAt) is strictly less than this. Used for
+ *                     infinite-scroll pagination. Switched from device
+ *                     rxTime/timestamp to createdAt in issue #3122 so
+ *                     future-skewed device clocks can't pin old messages
+ *                     at the visible "newest" slot.
  *   ?limit=<N>        Max de-duplicated messages to return (default 100,
  *                     cap 500).
  *
@@ -321,7 +324,8 @@ router.get('/channels', async (req: Request, res: Response) => {
  *     toNodeNum, toNodeId,
  *     channel, channelName,
  *     text, emoji, replyId,
- *     timestamp,        // canonical (earliest rxTime seen)
+ *     timestamp,        // canonical device time (earliest rxTime seen) — for display
+ *     createdAt,        // earliest server DB arrival time across receptions — for ordering/cursor
  *     receptions: [{ sourceId, sourceName, hopStart, hopLimit,
  *                    rxSnr, rxRssi, rxTime, timestamp }]
  *   }
@@ -371,6 +375,7 @@ router.get('/messages', async (req: Request, res: Response) => {
       emoji: number | null;
       replyId: number | null;
       timestamp: number;
+      createdAt: number;
       receptions: Reception[];
     };
 
@@ -529,7 +534,9 @@ router.get('/messages', async (req: Request, res: Response) => {
           // real DMs (issue #2741).
           msgs = await databaseService.messages.getMessages(fetchLimit, 0, source.id, [PortNum.TRACEROUTE_APP]);
           if (before !== undefined) {
-            msgs = msgs.filter((m) => (m.rxTime ?? m.timestamp) < before);
+            // Cursor is createdAt (server arrival time) to match the channel
+            // path and resist future-skewed device clocks (#3122).
+            msgs = msgs.filter((m) => m.createdAt < before);
           }
           // Filter to channels the user can read on this source. DMs (no
           // channel or explicitly -1) require the broader messages:read grant.
@@ -574,6 +581,8 @@ router.get('/messages', async (req: Request, res: Response) => {
             existing.receptions.push(reception);
             // Canonical = earliest heard
             if (canonical < existing.timestamp) existing.timestamp = canonical;
+            // createdAt = earliest DB arrival across all receptions (#3122)
+            if (m.createdAt < existing.createdAt) existing.createdAt = m.createdAt;
             // Upgrade sender display names if a later source knows the node
             // and the first-seen entry didn't. Common when one source's
             // nodes.getAllNodes failed or simply hasn't learned the sender yet.
@@ -618,6 +627,7 @@ router.get('/messages', async (req: Request, res: Response) => {
               emoji: m.emoji ?? null,
               replyId: m.replyId ?? null,
               timestamp: canonical,
+              createdAt: m.createdAt,
               receptions: [reception],
             });
           }
@@ -632,7 +642,10 @@ router.get('/messages', async (req: Request, res: Response) => {
     }
 
     const allMerged = Array.from(merged.values());
-    allMerged.sort((a, b) => b.timestamp - a.timestamp);
+    // Sort newest-first by server DB arrival time (createdAt) rather than the
+    // canonical device timestamp so a packet with a future-skewed device clock
+    // can't pin itself to the top of the feed (#3122).
+    allMerged.sort((a, b) => b.createdAt - a.createdAt);
 
     res.json(allMerged.slice(0, limit));
   } catch (error) {

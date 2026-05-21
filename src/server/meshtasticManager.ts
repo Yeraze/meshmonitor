@@ -399,7 +399,20 @@ export interface MeshtasticMqttLink {
 
 class MeshtasticManager implements ISourceManager {
   public sourceId: string;
-  private sourceConfigOverride: { host?: string; port?: number; heartbeatIntervalSeconds?: number; mqttLink?: MeshtasticMqttLink } | null = null;
+  private sourceConfigOverride: { host?: string; port?: number; heartbeatIntervalSeconds?: number; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean } | null = null;
+  // Passive Mode (issue #3122) — for large/fragile TCP nodes:
+  //   * preserve cached node/config state across reconnects
+  //   * skip post-config outbound bursts (LoRa config, all-module-configs, time sync, admin scanner)
+  //   * rate-limit want_config_id so reconnects don't trigger a full NodeDB resync
+  //   * fast initial reconnect for the first post-sync drop
+  private passiveMode = false;
+  private lastDisconnectAt: number | null = null;
+  // Cap full-config syncs in passive mode. First connect is always full; after
+  // that only re-sync if cache is empty or older than this threshold. 4h matches
+  // the reporter's recommendation in #3122 — long enough to ride out repeated
+  // transient closes on a large infrastructure node, short enough that genuine
+  // config drift self-corrects without a manual refresh.
+  private static readonly PASSIVE_RESYNC_STALE_MS = 4 * 60 * 60 * 1000; // 4 hours
   // mqttLink runtime state — set up in start()/reconfigureMqttLink().
   private mqttLink: MeshtasticMqttLink | null = null;
   private mqttLinkBroker: import('./mqttBrokerManager.js').MqttBrokerManager | null = null;
@@ -557,13 +570,15 @@ class MeshtasticManager implements ISourceManager {
    * Apply a source config after construction.
    * Used to configure the legacy singleton when sources are loaded from DB at startup.
    */
-  configureSource(config: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink }, sourceId?: string): void {
+  configureSource(config: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean }, sourceId?: string): void {
     this.sourceConfigOverride = {
       host: config.host,
       port: config.port,
       heartbeatIntervalSeconds: config.heartbeatIntervalSeconds,
       mqttLink: config.mqttLink,
+      passiveMode: config.passiveMode === true,
     };
+    this.passiveMode = config.passiveMode === true;
     if (sourceId) this.sourceId = sourceId;
     if (config.virtualNode?.enabled && !this.virtualNodeServer) {
       this.virtualNodeServer = new VirtualNodeServer({
@@ -772,7 +787,7 @@ class MeshtasticManager implements ISourceManager {
   // 4.0-alpha NO_CHANNEL auto-ack regression).
   public readonly messageQueue: MessageQueueService = new MessageQueueService();
 
-  constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink }) {
+  constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean }) {
     this.sourceId = sourceId;
     if (sourceConfig) {
       this.sourceConfigOverride = {
@@ -780,7 +795,9 @@ class MeshtasticManager implements ISourceManager {
         port: sourceConfig.port,
         heartbeatIntervalSeconds: sourceConfig.heartbeatIntervalSeconds,
         mqttLink: sourceConfig.mqttLink,
+        passiveMode: sourceConfig.passiveMode === true,
       };
+      this.passiveMode = sourceConfig.passiveMode === true;
       if (sourceConfig.mqttLink) this.mqttLink = sourceConfig.mqttLink;
     }
     if (sourceConfig?.virtualNode?.enabled) {
@@ -1140,13 +1157,46 @@ class MeshtasticManager implements ISourceManager {
       reason: 'TCP connection established'
     }, this.sourceId);
 
-    // Clear localNodeInfo so node will be marked as not responsive until it sends MyNodeInfo
-    this.localNodeInfo = null;
+    // Passive Mode (issue #3122): if we already have a cached snapshot of the
+    // node and config, skip the destabilizing post-reconnect full sync.
+    // First connect (or a stale cache older than PASSIVE_RESYNC_STALE_MS) still
+    // does the full handshake so we don't drift permanently out of date.
+    const passiveResyncFresh =
+      this.passiveMode &&
+      this.localNodeInfo !== null &&
+      this.actualDeviceConfig !== null &&
+      this.lastDisconnectAt !== null &&
+      Date.now() - this.lastDisconnectAt < MeshtasticManager.PASSIVE_RESYNC_STALE_MS;
+
+    // In passive mode with fresh cache: keep localNodeInfo so dependent code
+    // doesn't briefly mark the node un-responsive between connect events.
+    if (!passiveResyncFresh) {
+      // Clear localNodeInfo so node will be marked as not responsive until it sends MyNodeInfo
+      this.localNodeInfo = null;
+    }
 
     // Notify server event service of connection (handles initial vs reconnect logic)
     await serverEventNotificationService.notifyNodeConnected(this.sourceId, await this.getSourceName());
 
     try {
+      if (passiveResyncFresh) {
+        // Skip the want_config_id handshake. Mesh traffic (received packets)
+        // continues to flow without it, and we already have a recent config
+        // snapshot. This is the core stability fix for large TCP nodes that
+        // close the socket under sync pressure (#3122). Mark capture complete
+        // so the post-config scheduler logic still runs (with passive-mode
+        // skips applied below).
+        logger.info('🟢 [passive] Skipping want_config_id on reconnect — using cached config from last session');
+        this.configCaptureComplete = true;
+        this.isCapturingInitConfig = false;
+        // Run the scheduler callback as if config had just completed. The
+        // callback itself honors passiveMode and will skip the outbound burst.
+        if (this.onConfigCaptureComplete) {
+          try { this.onConfigCaptureComplete(); } catch (e) { logger.error('❌ Error in passive-mode config-capture callback:', e); }
+        }
+        return;
+      }
+
       // Enable message capture for virtual node server
       // Clear any previous cache and start capturing
       this.initConfigCache = [];
@@ -1216,11 +1266,26 @@ class MeshtasticManager implements ISourceManager {
         // Stagger scheduler starts to avoid overwhelming the device (#2474)
         // Each scheduler gets its own delay so outbound requests are spread out
         const S = MeshtasticManager.SCHEDULER_STAGGER_MS;
+        // Passive Mode (#3122): on large/fragile TCP nodes, the staggered
+        // outbound bursts of admin/config/time-sync traffic correlate with
+        // remote-initiated socket closes. Skip the device-bound outbound
+        // schedulers; keep local/receive-only ones (geofence, local stats,
+        // time-offset learning, announce, timer, key repair, distance delete,
+        // auto-favorite sweep) running.
+        const passive = this.passiveMode;
         setTimeout(() => this.startTracerouteScheduler(), S * 1);
-        setTimeout(() => this.startRemoteAdminScanner().catch(e =>
-          logger.error('❌ Error starting remote admin scanner:', e)), S * 2);
-        setTimeout(() => this.startTimeSyncScheduler().catch(e =>
-          logger.error('❌ Error starting time sync scheduler:', e)), S * 3);
+        if (passive) {
+          logger.info('🟢 [passive] Skipping remote admin scanner — outbound queries to device');
+        } else {
+          setTimeout(() => this.startRemoteAdminScanner().catch(e =>
+            logger.error('❌ Error starting remote admin scanner:', e)), S * 2);
+        }
+        if (passive) {
+          logger.info('🟢 [passive] Skipping time sync scheduler — outbound time corrections to device');
+        } else {
+          setTimeout(() => this.startTimeSyncScheduler().catch(e =>
+            logger.error('❌ Error starting time sync scheduler:', e)), S * 3);
+        }
         setTimeout(() => this.startLocalStatsScheduler(), S * 4);
         setTimeout(() => this.startTimeOffsetScheduler(), S * 5);
         setTimeout(() => this.startAnnounceScheduler().catch(e =>
@@ -1242,17 +1307,23 @@ class MeshtasticManager implements ISourceManager {
         // Request LoRa config (config type 5) for Configuration tab — deferred
         // until after configComplete so we don't flood the device mid-exchange.
         // This is safe for serial-bridge connections that reject mid-exchange admin msgs.
-        setTimeout(async () => {
-          try {
-            logger.info('📡 Requesting LoRa config from device...');
-            await this.requestConfig(5); // LORA_CONFIG = 5
-          } catch (error) {
-            logger.error('❌ Failed to request LoRa config:', error);
-          }
-        }, S * 9);
+        if (passive) {
+          logger.info('🟢 [passive] Skipping LoRa config request — outbound to device');
+        } else {
+          setTimeout(async () => {
+            try {
+              logger.info('📡 Requesting LoRa config from device...');
+              await this.requestConfig(5); // LORA_CONFIG = 5
+            } catch (error) {
+              logger.error('❌ Failed to request LoRa config:', error);
+            }
+          }, S * 9);
+        }
 
         // Request all module configs for complete device backup capability (skip on reconnect)
-        if (!this.moduleConfigsEverFetched) {
+        if (passive) {
+          logger.info('🟢 [passive] Skipping all-module-configs request — outbound to device');
+        } else if (!this.moduleConfigsEverFetched) {
           setTimeout(async () => {
             try {
               logger.info('📦 Requesting all module configs for backup...');
@@ -1305,6 +1376,7 @@ class MeshtasticManager implements ISourceManager {
   private async handleDisconnected(): Promise<void> {
     logger.debug('TCP connection lost');
     this.isConnected = false;
+    this.lastDisconnectAt = Date.now();
 
     // Emit WebSocket event for connection status change
     dataEventEmitter.emitConnectionStatus({
@@ -1314,20 +1386,36 @@ class MeshtasticManager implements ISourceManager {
       reason: 'TCP connection lost'
     }, this.sourceId);
 
-    // Clear localNodeInfo so node will be marked as not responsive
-    this.localNodeInfo = null;
-    // Clear favorites support cache on disconnect
-    this.favoritesSupportCache = null;
-    // Clear device/module config cache on disconnect
-    // This ensures fresh config is fetched on reconnect (prevents stale data after reboot)
-    this.actualDeviceConfig = null;
-    this.actualModuleConfig = null;
-    logger.debug('📸 Cleared device and module config cache on disconnect');
-    // Clear init config cache - will be repopulated on reconnect
-    // This ensures virtual node clients get fresh data if a different node reconnects
-    this.initConfigCache = [];
-    this.configCaptureComplete = false;
-    logger.debug('📸 Cleared init config cache on disconnect');
+    // Passive Mode (issue #3122): preserve cached node/config state so a brief
+    // remote-initiated close on a large TCP node doesn't kick off another full
+    // NodeDB resync. Virtual Node needs fresh replay data, so still clear the
+    // init capture buffer when VN is enabled.
+    if (this.passiveMode) {
+      this.favoritesSupportCache = null;
+      const vnEnabled = this.virtualNodeServer !== undefined;
+      if (vnEnabled) {
+        this.initConfigCache = [];
+        this.configCaptureComplete = false;
+        logger.debug('📸 [passive] VN enabled — cleared init config cache, kept device/module config');
+      } else {
+        logger.debug('📸 [passive] Preserved localNodeInfo + device/module/init config cache across disconnect');
+      }
+    } else {
+      // Clear localNodeInfo so node will be marked as not responsive
+      this.localNodeInfo = null;
+      // Clear favorites support cache on disconnect
+      this.favoritesSupportCache = null;
+      // Clear device/module config cache on disconnect
+      // This ensures fresh config is fetched on reconnect (prevents stale data after reboot)
+      this.actualDeviceConfig = null;
+      this.actualModuleConfig = null;
+      logger.debug('📸 Cleared device and module config cache on disconnect');
+      // Clear init config cache - will be repopulated on reconnect
+      // This ensures virtual node clients get fresh data if a different node reconnects
+      this.initConfigCache = [];
+      this.configCaptureComplete = false;
+      logger.debug('📸 Cleared init config cache on disconnect');
+    }
 
     // Notify server event service of disconnection
     // Skip notification if this is a user-initiated disconnect (already notified in userDisconnect())

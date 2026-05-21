@@ -240,6 +240,7 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
           heartbeatIntervalSeconds: cfgForStart.heartbeatIntervalSeconds,
           virtualNode: cfgForStart.virtualNode,
           mqttLink: cfgForStart.mqttLink,
+          passiveMode: cfgForStart.passiveMode === true,
         });
         await sourceManagerRegistry.addManager(manager);
       } catch (err) {
@@ -345,6 +346,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
             heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
             virtualNode: cfg.virtualNode,
             mqttLink: cfg.mqttLink,
+            passiveMode: cfg.passiveMode === true,
           });
           await sourceManagerRegistry.addManager(manager);
         } catch (err) {
@@ -389,6 +391,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
             heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
             virtualNode: cfg.virtualNode,
             mqttLink: cfg.mqttLink,
+            passiveMode: cfg.passiveMode === true,
           });
           await sourceManagerRegistry.addManager(manager);
         } catch (err) {
@@ -419,7 +422,10 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         oldCfg.port !== newCfg.port ||
         // Heartbeat changes require a restart because the interval is baked
         // into the transport at construct-time (issue 2609).
-        (oldCfg.heartbeatIntervalSeconds ?? 0) !== (newCfg.heartbeatIntervalSeconds ?? 0);
+        (oldCfg.heartbeatIntervalSeconds ?? 0) !== (newCfg.heartbeatIntervalSeconds ?? 0) ||
+        // Passive Mode (#3122) toggles reconnect/disconnect behavior baked into
+        // the running manager. Restart so the new policy takes effect cleanly.
+        (oldCfg.passiveMode === true) !== (newCfg.passiveMode === true);
       const oldVn = JSON.stringify(oldCfg.virtualNode ?? null);
       const newVn = JSON.stringify(newCfg.virtualNode ?? null);
       const vnChanged = oldVn !== newVn;
@@ -437,6 +443,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
             heartbeatIntervalSeconds: newCfg.heartbeatIntervalSeconds,
             virtualNode: newCfg.virtualNode,
             mqttLink: newCfg.mqttLink,
+            passiveMode: newCfg.passiveMode === true,
           });
           await sourceManagerRegistry.addManager(manager);
         } catch (err) {
@@ -950,6 +957,7 @@ router.post('/:id/connect', requirePermission('sources', 'write'), async (req: R
       heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
       virtualNode: cfg.virtualNode,
       mqttLink: cfg.mqttLink,
+      passiveMode: cfg.passiveMode === true,
     });
     await sourceManagerRegistry.addManager(manager);
     res.json({ success: true });
