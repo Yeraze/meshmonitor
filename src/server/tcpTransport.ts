@@ -49,6 +49,16 @@ export class TcpTransport extends EventEmitter implements ITransport {
   private reconnectInitialDelayMs: number = 1000; // 1 second default
   private reconnectMaxDelayMs: number = 60000; // 60 second default
 
+  // Startup-grace fast reconnect (#3122 follow-up). During the first
+  // `startupGraceMs` after this transport is created, scheduleReconnect uses
+  // `startupGraceFastDelayMs` instead of the exponential backoff. The reporter
+  // observed that a large/fragile TCP node usually closes the *first* config
+  // sync session but recovers cleanly on the next attempt — a short fast
+  // delay during startup shortens that user-visible "stuck reconnecting" gap
+  // without changing steady-state backoff once the session stabilizes.
+  private startupGraceUntil: number = 0;
+  private startupGraceFastDelayMs: number = 0;
+
   // Protocol constants
   private readonly START1 = 0x94;
   private readonly START2 = 0xc3;
@@ -83,6 +93,30 @@ export class TcpTransport extends EventEmitter implements ITransport {
     this.reconnectInitialDelayMs = initialDelayMs;
     this.reconnectMaxDelayMs = maxDelayMs;
     logger.debug(`⏱️  Reconnect timing: initial=${initialDelayMs}ms, max=${maxDelayMs}ms`);
+  }
+
+  /**
+   * Enable a startup-grace fast-reconnect window (#3122 follow-up).
+   *
+   * For the next `graceMs` from now, reconnect attempts use `fastDelayMs`
+   * instead of the exponential backoff. After the window expires, normal
+   * backoff resumes automatically. Intended for passive-mode TCP sources
+   * where the first session often closes mid-sync but the second session
+   * works — without the grace, the user sees a multi-second backoff gap
+   * before the recovery attempt.
+   *
+   * Pass graceMs=0 to disable (the default).
+   */
+  setStartupGraceReconnect(graceMs: number, fastDelayMs: number): void {
+    if (graceMs <= 0) {
+      this.startupGraceUntil = 0;
+      this.startupGraceFastDelayMs = 0;
+      logger.debug('⏱️  Startup-grace reconnect: disabled');
+      return;
+    }
+    this.startupGraceUntil = Date.now() + graceMs;
+    this.startupGraceFastDelayMs = fastDelayMs;
+    logger.debug(`⏱️  Startup-grace reconnect: ${fastDelayMs}ms delay for next ${graceMs / 1000}s`);
   }
 
   /**
@@ -228,10 +262,15 @@ export class TcpTransport extends EventEmitter implements ITransport {
 
     this.reconnectAttempts++;
 
-    // Exponential backoff: initialDelay * 2^(attempts-1), capped at maxDelay
-    const delay = Math.min(Math.pow(2, this.reconnectAttempts - 1) * this.reconnectInitialDelayMs, this.reconnectMaxDelayMs);
+    // Startup-grace fast reconnect (#3122): if we're still inside the grace
+    // window, use the fast delay regardless of attempt count. Outside the
+    // window, fall back to exponential backoff.
+    const inGrace = this.startupGraceUntil > 0 && Date.now() < this.startupGraceUntil;
+    const delay = inGrace
+      ? this.startupGraceFastDelayMs
+      : Math.min(Math.pow(2, this.reconnectAttempts - 1) * this.reconnectInitialDelayMs, this.reconnectMaxDelayMs);
 
-    logger.debug(`🔄 Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempts})...`);
+    logger.debug(`🔄 Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempts}${inGrace ? ', startup-grace' : ''})...`);
 
     this.reconnectTimeout = setTimeout(() => {
       this.doConnect().catch((error) => {
