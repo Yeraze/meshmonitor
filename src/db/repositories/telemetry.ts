@@ -1157,8 +1157,13 @@ export class TelemetryRepository extends BaseRepository {
 
   /**
    * Synchronously insert a telemetry row via Drizzle query builder (SQLite only).
-   * Does NOT apply the unique-on-packetId suppression from insertTelemetry; this
-   * matches the legacy facade sync behavior which always inserts.
+   *
+   * Uses onConflictDoNothing so duplicates colliding on the migration 032
+   * unique index (sourceId, nodeNum, packetId, telemetryType) WHERE packetId
+   * IS NOT NULL are silently dropped — matching the async insertTelemetry.
+   * Without this, MQTT bridge/broker re-broadcasts of the same packet would
+   * raise SQLITE_CONSTRAINT and the caller would log a [WARN] for every
+   * duplicate, drowning out real warnings.
    */
   insertTelemetrySync(telemetryData: DbTelemetry, sourceId?: string): void {
     const db = this.getSqliteDb();
@@ -1180,7 +1185,7 @@ export class TelemetryRepository extends BaseRepository {
     if (sourceId) {
       values.sourceId = sourceId;
     }
-    db.insert(telemetry).values(values).run();
+    db.insert(telemetry).values(values).onConflictDoNothing().run();
   }
 
   /**

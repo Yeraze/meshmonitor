@@ -427,4 +427,121 @@ describe('TelemetryRepository', () => {
       expect(result!.packetId).toBe(200);
     });
   });
+
+  // Regression: issue #3119 — MQTT bridge/broker re-broadcasts produce
+  // duplicate telemetry inserts. The migration 032 unique index must
+  // suppress them silently (no throw, no [WARN] in caller logs).
+  describe('duplicate packet dedupe (issue #3119)', () => {
+    const NOW = Date.now();
+    const SOURCE = 'mqtt-bridge-test';
+
+    beforeEach(() => {
+      // Apply the migration 032 partial unique index so insertIgnore /
+      // onConflictDoNothing actually has something to conflict against.
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS telemetry_source_packet_type_uniq
+          ON telemetry(sourceId, nodeNum, packetId, telemetryType)
+          WHERE packetId IS NOT NULL
+      `);
+    });
+
+    it('async insertTelemetry: same packet ingested twice yields one row, no throw', async () => {
+      const row = {
+        nodeId: NODE1,
+        nodeNum: NODE1_NUM,
+        telemetryType: 'batteryLevel',
+        timestamp: NOW,
+        value: 85,
+        unit: '%',
+        createdAt: NOW,
+        packetId: 4242,
+      };
+
+      const first = await repo.insertTelemetry(row, SOURCE);
+      const second = await repo.insertTelemetry(row, SOURCE);
+
+      expect(first).toBe(true);
+      expect(second).toBe(false);
+
+      const results = await repo.getTelemetryByNode(NODE1, 10);
+      expect(results).toHaveLength(1);
+    });
+
+    it('sync insertTelemetrySync: same packet ingested twice yields one row, no throw', () => {
+      const row = {
+        nodeId: NODE1,
+        nodeNum: NODE1_NUM,
+        telemetryType: 'voltage',
+        timestamp: NOW,
+        value: 3.7,
+        unit: 'V',
+        createdAt: NOW,
+        packetId: 9999,
+      };
+
+      // Both calls must complete without throwing.
+      expect(() => repo.insertTelemetrySync(row, SOURCE)).not.toThrow();
+      expect(() => repo.insertTelemetrySync(row, SOURCE)).not.toThrow();
+
+      const rows = db
+        .prepare('SELECT COUNT(*) AS n FROM telemetry WHERE packetId = ?')
+        .get(9999) as { n: number };
+      expect(rows.n).toBe(1);
+    });
+
+    it('different telemetryType from same packet still inserts (constraint includes telemetryType)', async () => {
+      const packetId = 7777;
+      await repo.insertTelemetry({
+        nodeId: NODE1, nodeNum: NODE1_NUM, telemetryType: 'batteryLevel',
+        timestamp: NOW, value: 85, unit: '%', createdAt: NOW, packetId,
+      }, SOURCE);
+      await repo.insertTelemetry({
+        nodeId: NODE1, nodeNum: NODE1_NUM, telemetryType: 'voltage',
+        timestamp: NOW, value: 3.7, unit: 'V', createdAt: NOW, packetId,
+      }, SOURCE);
+
+      const results = await repo.getTelemetryByNode(NODE1, 10);
+      expect(results).toHaveLength(2);
+    });
+
+    it('different sourceId is not deduped (cross-source telemetry preserved)', async () => {
+      const row = {
+        nodeId: NODE1,
+        nodeNum: NODE1_NUM,
+        telemetryType: 'batteryLevel',
+        timestamp: NOW,
+        value: 85,
+        unit: '%',
+        createdAt: NOW,
+        packetId: 5555,
+      };
+
+      const a = await repo.insertTelemetry(row, 'source-a');
+      const b = await repo.insertTelemetry(row, 'source-b');
+
+      expect(a).toBe(true);
+      expect(b).toBe(true);
+
+      const results = await repo.getTelemetryByNode(NODE1, 10);
+      expect(results).toHaveLength(2);
+    });
+
+    it('NULL packetId rows bypass the constraint (synthesized telemetry)', async () => {
+      const row = {
+        nodeId: NODE1,
+        nodeNum: NODE1_NUM,
+        telemetryType: 'derivedMetric',
+        timestamp: NOW,
+        value: 1,
+        unit: '',
+        createdAt: NOW,
+      };
+
+      await repo.insertTelemetry(row, SOURCE);
+      await repo.insertTelemetry(row, SOURCE);
+
+      const results = await repo.getTelemetryByNode(NODE1, 10);
+      expect(results).toHaveLength(2);
+    });
+  });
 });
