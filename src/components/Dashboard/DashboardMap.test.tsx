@@ -15,7 +15,29 @@ vi.mock('react-leaflet', () => ({
   Marker: ({ children }: any) => <div data-testid="map-marker">{children}</div>,
   Popup: ({ children }: any) => <div data-testid="map-popup">{children}</div>,
   Polyline: () => <div data-testid="map-polyline" />,
+  Rectangle: () => <div data-testid="map-rectangle" />,
   useMap: () => ({ fitBounds: vi.fn(), setView: vi.fn() }),
+}));
+
+// MapContext is normally provided by DashboardPage; in tests we mock the hook
+// directly so the toggles default to a known state and don't fire any server
+// preference fetches. Defaults below: RF/UDP/MQTT all visible (so transport
+// filtering doesn't drop existing fixture nodes), traceroute/accuracy off.
+vi.mock('../../contexts/MapContext', () => ({
+  useMapContext: () => ({
+    showPaths: false,
+    setShowPaths: vi.fn(),
+    showRoute: false,
+    setShowRoute: vi.fn(),
+    showAccuracyRegions: false,
+    setShowAccuracyRegions: vi.fn(),
+    showRfNodes: true,
+    setShowRfNodes: vi.fn(),
+    showUdpNodes: true,
+    setShowUdpNodes: vi.fn(),
+    showMqttNodes: true,
+    setShowMqttNodes: vi.fn(),
+  }),
 }));
 
 vi.mock('leaflet', () => ({

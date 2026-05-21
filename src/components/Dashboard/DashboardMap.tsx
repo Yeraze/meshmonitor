@@ -1,19 +1,26 @@
 /**
  * DashboardMap — self-contained map component for the Dashboard page.
  *
- * Renders node markers, marker popups, and neighbor link polylines on a
- * react-leaflet MapContainer. Automatically fits the map bounds to nodes
- * that have valid GPS positions.
+ * Renders node markers, marker popups, neighbor link polylines, traceroute
+ * paths, and position-accuracy regions on a react-leaflet MapContainer.
+ * Automatically fits the map bounds to nodes that have valid GPS positions.
+ *
+ * Map feature toggles (Show RF / UDP / MQTT, Show Traceroute, Show Route
+ * Segments, Show Accuracy Regions) are read from MapContext so they
+ * round-trip through `/api/user/map-preferences` alongside the per-source
+ * NodesTab toggles. DashboardPage wraps this component in a MapProvider.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import 'leaflet/dist/leaflet.css';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Rectangle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { createNodeIcon } from '../../utils/mapIcons';
 import { getTilesetById } from '../../config/tilesets';
 import type { CustomTileset } from '../../config/tilesets';
 import DashboardWaypoints from './DashboardWaypoints';
+import { useMapContext } from '../../contexts/MapContext';
+import { nodePassesTransportFilter } from '../../utils/nodeTransport';
 
 export interface DashboardMapProps {
   nodes: any[];
@@ -37,6 +44,44 @@ function getNodeLatLng(node: any): { lat: number; lng: number } | null {
     return { lat, lng };
   }
   return null;
+}
+
+/** SNR → color, matching the per-hop coloring used in MapAnalysis/TraceroutePathsLayer. */
+function snrToColor(snr: number): string {
+  if (snr >= 5) return '#22c55e';
+  if (snr >= 0) return '#eab308';
+  if (snr >= -5) return '#f97316';
+  return '#ef4444';
+}
+
+/** Safe JSON.parse that yields [] on bad/empty input. */
+function parseJsonArray(value: unknown): number[] {
+  if (typeof value !== 'string' || value.length === 0) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Parse the `routePositions` JSON snapshot stored on a traceroute row.
+ * Shape: `{ [nodeNum]: { lat, lng, alt? } }`. Backend emits this so the
+ * frontend can draw the route even if a hop's node has gone stale and
+ * been filtered out of the live nodes list.
+ */
+function parseRoutePositions(value: unknown): Record<number, { lat: number; lng: number }> {
+  if (typeof value !== 'string' || value.length === 0) return {};
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === 'object') {
+      return parsed as Record<number, { lat: number; lng: number }>;
+    }
+  } catch {
+    /* ignore */
+  }
+  return {};
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +118,7 @@ function MapBoundsUpdater({ positions, sourceId }: MapBoundsUpdaterProps) {
 export default function DashboardMap({
   nodes,
   neighborInfo,
+  traceroutes,
   tilesetId,
   customTilesets,
   defaultCenter,
@@ -81,18 +127,91 @@ export default function DashboardMap({
 }: DashboardMapProps) {
   const tileset = getTilesetById(tilesetId, customTilesets);
 
+  const {
+    showPaths,
+    setShowPaths,
+    showRoute,
+    setShowRoute,
+    showAccuracyRegions,
+    setShowAccuracyRegions,
+    showRfNodes,
+    setShowRfNodes,
+    showUdpNodes,
+    setShowUdpNodes,
+    showMqttNodes,
+    setShowMqttNodes,
+  } = useMapContext();
+
   // Build array of nodes that have valid positions, with their resolved lat/lng.
   // Mirrors NodesTab's processedNodes pipeline (App.tsx): ignored hidden, age cutoff
-  // bypassed by favorites. Dashboard has no "show ignored" / "show stale" toggle,
-  // so both filters apply unconditionally.
+  // bypassed by favorites, transport-class filter from the Map Features panel.
   const cutoffTime = Date.now() / 1000 - maxNodeAgeHours * 60 * 60;
   const nodesWithPosition = nodes
     .filter((n) => !n.isIgnored)
     .filter((n) => n.isFavorite || (n.lastHeard != null && n.lastHeard >= cutoffTime))
+    .filter((n) => nodePassesTransportFilter(n, { showRfNodes, showUdpNodes, showMqttNodes }))
     .map((n) => ({ node: n, pos: getNodeLatLng(n) }))
     .filter((entry): entry is { node: any; pos: { lat: number; lng: number } } => entry.pos !== null);
 
   const nodePositions: [number, number][] = nodesWithPosition.map((e) => [e.pos.lat, e.pos.lng]);
+
+  // nodeNum → [lat, lng] map used to resolve traceroute hop positions. The
+  // unified view merges per-source node rows by nodeNum (see mergeUnifiedSourceData
+  // in useDashboardData.ts), so a single lookup table works across sources.
+  const positionByNodeNum = useMemo(() => {
+    const map = new Map<number, [number, number]>();
+    for (const { node, pos } of nodesWithPosition) {
+      if (typeof node.nodeNum === 'number') {
+        map.set(node.nodeNum, [pos.lat, pos.lng]);
+      }
+    }
+    return map;
+  }, [nodesWithPosition]);
+
+  // Traceroute segments: one Polyline per hop, colored by snrTowards. Empty
+  // unless the user has enabled "Show Route Segments" or "Show Traceroute".
+  //
+  // Position resolution order for each hop:
+  //   1. `tr.routePositions` — JSON snapshot of positions at traceroute time.
+  //      Backend stamps this so the line still draws even when a hop's node
+  //      has aged out of the live nodes list.
+  //   2. live `positionByNodeNum` — current node positions.
+  const tracerouteSegments = useMemo(() => {
+    if (!showPaths && !showRoute) return [];
+    const segs: Array<{
+      key: string;
+      positions: [number, number][];
+      color: string;
+    }> = [];
+    for (const tr of (traceroutes ?? [])) {
+      const route = parseJsonArray(tr?.route);
+      const snrTowards = parseJsonArray(tr?.snrTowards);
+      const fromNum = Number(tr?.fromNodeNum);
+      const toNum = Number(tr?.toNodeNum);
+      if (!Number.isFinite(fromNum) || !Number.isFinite(toNum)) continue;
+      const snapshot = parseRoutePositions(tr?.routePositions);
+      const lookup = (nodeNum: number): [number, number] | undefined => {
+        const snap = snapshot[nodeNum];
+        if (snap && typeof snap.lat === 'number' && typeof snap.lng === 'number') {
+          return [snap.lat, snap.lng];
+        }
+        return positionByNodeNum.get(nodeNum);
+      };
+      const path = [fromNum, ...route.map((n) => Number(n)), toNum];
+      for (let i = 0; i < path.length - 1; i++) {
+        const a = lookup(path[i]);
+        const b = lookup(path[i + 1]);
+        if (!a || !b) continue;
+        const snr = typeof snrTowards[i] === 'number' ? snrTowards[i] : 0;
+        segs.push({
+          key: `tr-${tr.sourceId ?? 'x'}-${tr.id}-${i}`,
+          positions: [a, b],
+          color: snrToColor(snr),
+        });
+      }
+    }
+    return segs;
+  }, [traceroutes, positionByNodeNum, showPaths, showRoute]);
 
   const hasNodes = nodesWithPosition.length > 0;
 
@@ -155,6 +274,63 @@ export default function DashboardMap({
           );
         })}
 
+        {/* Position accuracy regions — drawn from precision_bits, mirroring NodesTab. */}
+        {showAccuracyRegions && nodesWithPosition
+          .filter(({ node }) => {
+            const bits = node.positionPrecisionBits;
+            if (bits === undefined || bits === null) return false;
+            if (bits <= 0 || bits >= 32) return false;
+            // Don't show accuracy region for nodes with user-overridden positions
+            if (node.positionIsOverride) return false;
+            return true;
+          })
+          .map(({ node, pos }) => {
+            // Meshtastic encodes lat/lon as int32 (1 unit = 1e-7 degrees).
+            // With N precision bits, the grid cell side = 2^(32-N) * 1e-7 * 111111 m.
+            // Accuracy (max deviation) is half the grid cell.
+            const metersPerDegree = 111_111;
+            const sizeMeters = Math.pow(2, 32 - node.positionPrecisionBits) * 1e-7 * metersPerDegree;
+            const halfSizeMeters = sizeMeters / 2;
+            const latOffset = halfSizeMeters / metersPerDegree;
+            const metersPerDegreeLng = metersPerDegree * Math.cos(pos.lat * Math.PI / 180);
+            const lngOffset = halfSizeMeters / metersPerDegreeLng;
+            const bounds: [[number, number], [number, number]] = [
+              [pos.lat - latOffset, pos.lng - lngOffset],
+              [pos.lat + latOffset, pos.lng + lngOffset],
+            ];
+            return (
+              <Rectangle
+                key={`accuracy-${node.nodeNum ?? node.nodeId ?? node.user?.id}`}
+                bounds={bounds}
+                pathOptions={{
+                  color: '#888',
+                  fillColor: '#888',
+                  fillOpacity: 0.08,
+                  opacity: 0.5,
+                  weight: 1,
+                }}
+              />
+            );
+          })}
+
+        {/* Route segments — thin SNR-colored hop polylines. */}
+        {showPaths && tracerouteSegments.map((s) => (
+          <Polyline
+            key={`seg-${s.key}`}
+            positions={s.positions}
+            pathOptions={{ color: s.color, weight: 2, opacity: 0.85 }}
+          />
+        ))}
+
+        {/* Traceroute overlay — thicker highlight on top of segments. */}
+        {showRoute && tracerouteSegments.map((s) => (
+          <Polyline
+            key={`route-${s.key}`}
+            positions={s.positions}
+            pathOptions={{ color: '#facc15', weight: 4, opacity: 0.6 }}
+          />
+        ))}
+
         {neighborInfo.map((link, idx) => {
           const { nodeLatitude, nodeLongitude, neighborLatitude, neighborLongitude, bidirectional } = link;
           if (
@@ -184,6 +360,62 @@ export default function DashboardMap({
           );
         })}
       </MapContainer>
+
+      {/* Map Features control panel — mirrors NodesTab's "Features" panel but
+          trimmed to the toggles meaningful on a cross-source map. */}
+      <div className="map-controls dashboard-map-controls">
+        <div className="map-controls-body">
+          <div className="map-controls-title">Features</div>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showPaths}
+              onChange={(e) => setShowPaths(e.target.checked)}
+            />
+            <span>Show Route Segments</span>
+          </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showRoute}
+              onChange={(e) => setShowRoute(e.target.checked)}
+            />
+            <span>Show Traceroute</span>
+          </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showAccuracyRegions}
+              onChange={(e) => setShowAccuracyRegions(e.target.checked)}
+            />
+            <span>Show Accuracy Regions</span>
+          </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showRfNodes}
+              onChange={(e) => setShowRfNodes(e.target.checked)}
+            />
+            <span>Show RF</span>
+          </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showUdpNodes}
+              onChange={(e) => setShowUdpNodes(e.target.checked)}
+            />
+            <span>Show UDP</span>
+          </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showMqttNodes}
+              onChange={(e) => setShowMqttNodes(e.target.checked)}
+            />
+            <span>Show MQTT</span>
+          </label>
+        </div>
+      </div>
 
       {!hasNodes && (
         <div className="dashboard-map-empty">

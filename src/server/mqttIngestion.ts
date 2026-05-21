@@ -79,6 +79,7 @@ import {
   TransportMechanism,
 } from './constants/meshtastic.js';
 import { calculateDistance } from '../utils/distance.js';
+import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { logger } from '../utils/logger.js';
 import {
   nodeNumToId,
@@ -518,6 +519,26 @@ async function ingestTraceroute(
     );
   }
 
+  // Position snapshot for every hop in the route (mirrors TCP path in
+  // meshtasticManager.ts). The dashboard map and TracerouteWidget rely on
+  // this to draw lines that survive a hop node going stale / un-positioned
+  // after the traceroute was recorded. Uses the effective (override-aware)
+  // position so user-pinned coordinates render correctly.
+  const routePositions: Record<number, { lat: number; lng: number; alt?: number }> = {};
+  const pathNodes = new Set<number>([fromNum, ...route, ...routeBack]);
+  if (toNum !== null && toNum !== BROADCAST_ADDR) pathNodes.add(toNum);
+  for (const nodeNum of pathNodes) {
+    const node = await databaseService.nodes.getNode(nodeNum, sourceId);
+    const eff = getEffectiveDbNodePosition(node);
+    if (eff.latitude != null && eff.longitude != null) {
+      routePositions[nodeNum] = {
+        lat: eff.latitude,
+        lng: eff.longitude,
+        ...(eff.altitude != null ? { alt: eff.altitude } : {}),
+      };
+    }
+  }
+
   const record: DbTraceroute = {
     fromNodeNum: fromNum,
     toNodeNum: toNum ?? 0,
@@ -527,6 +548,7 @@ async function ingestTraceroute(
     routeBack: JSON.stringify(routeBack),
     snrTowards: JSON.stringify(snrTowards),
     snrBack: JSON.stringify(snrBack),
+    routePositions: JSON.stringify(routePositions),
     timestamp: nowMs,
     createdAt: nowMs,
   };

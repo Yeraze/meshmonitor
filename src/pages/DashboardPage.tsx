@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { SettingsProvider, useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useCsrf } from '../contexts/CsrfContext';
+import { MapProvider } from '../contexts/MapContext';
 import {
   useDashboardSources,
   useSourceStatuses,
@@ -1322,7 +1323,9 @@ export default function DashboardPage() {
   return (
     <SettingsProvider>
       <ToastProvider>
-        <DashboardInner />
+        <MapProvider>
+          <DashboardInner />
+        </MapProvider>
       </ToastProvider>
     </SettingsProvider>
   );
