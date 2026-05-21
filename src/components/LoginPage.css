@@ -13,6 +13,11 @@
   justify-content: center;
   background: linear-gradient(135deg, var(--ctp-blue) 0%, var(--ctp-mauve) 100%);
   padding: 20px;
+  /* iOS keyboard overlay (issue #2994): the form centers in the viewport;
+     padding-bottom equal to the keyboard height shifts it upward so the
+     password field isn't hidden when the keyboard opens. */
+  padding-bottom: calc(20px + var(--keyboard-inset, 0px));
+  box-sizing: border-box;
 }
 
 .login-container {

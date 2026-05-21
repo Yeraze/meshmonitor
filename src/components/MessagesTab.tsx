@@ -28,6 +28,7 @@ import { calculateDistance, formatDistance, getDistanceToNode } from '../utils/d
 import { renderMessageWithLinks } from '../utils/linkRenderer';
 import { isNodeComplete, isInfrastructureNode, hasValidPosition, parseNodeId } from '../utils/nodeHelpers';
 import { getEffectiveHops } from '../utils/nodeHops';
+import { scrollInputIntoView } from '../utils/scrollInputIntoView';
 import { useMapContext } from '../contexts/MapContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useDeviceNodes } from '../hooks/useServerData';
@@ -1531,6 +1532,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         ref={dmMessageInputRef}
                         value={newMessage}
                         onChange={e => setNewMessage(e.target.value)}
+                        onFocus={scrollInputIntoView}
                         placeholder={t('messages.dm_placeholder', { name: getNodeName(selectedDMNode) })}
                         className="message-input"
                         rows={1}

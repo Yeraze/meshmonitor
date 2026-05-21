@@ -10,6 +10,12 @@
   align-items: center;
   justify-content: center;
   z-index: 10001;
+  /* iOS keyboard overlay (issue #2994): `--keyboard-inset` is set by
+     installKeyboardInsetsObserver from window.visualViewport. Padding the
+     overlay shifts the centered modal up so inputs at the bottom of the
+     modal aren't hidden behind the keyboard + accessory bar. */
+  padding-bottom: var(--keyboard-inset, 0px);
+  box-sizing: border-box;
 }
 
 .modal-content {
@@ -18,7 +24,9 @@
   padding: 0;
   max-width: 500px;
   width: 90%;
-  max-height: 80vh;
+  /* Subtract the iOS keyboard inset so the modal stays inside the visible
+     area (the desktop case is unaffected — the var defaults to 0px). */
+  max-height: calc(80vh - var(--keyboard-inset, 0px));
   overflow: auto;
   border: 1px solid var(--ctp-surface0);
 }
@@ -59,7 +67,10 @@
   .modal-overlay .modal-content {
     width: 100%;
     max-width: none;
-    height: 100dvh;
+    /* `100dvh - keyboard-inset` keeps the full-screen mobile modal above
+       the iOS keyboard; the dynamic-viewport unit handles browser chrome
+       and `--keyboard-inset` handles the keyboard + accessory bar (#2994). */
+    height: calc(100dvh - var(--keyboard-inset, 0px));
     max-height: none;
     border-radius: 0;
   }
