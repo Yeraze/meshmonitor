@@ -14,6 +14,7 @@ This document captures critical insights learned during MeshMonitor development.
 7. [Background Task Management](#background-task-management)
 8. [Multi-Database Architecture](#multi-database-architecture)
 9. [Multi-Source Architecture](#multi-source-architecture)
+10. [MeshCore Routing & Paths](#meshcore-routing--paths)
 
 ---
 
@@ -949,5 +950,68 @@ Auto-key-management, immediate purge, and the manual key-repair button all send 
 
 ---
 
-**Last Updated**: 2026-03-22
-**Related PRs**: #427, #429, #430, #431, #432, #433, #1359 (packet filtering), #1360 (protocol constants), #1404 (PostgreSQL support), #1405 (MySQL support), #1436 (async test fixes), #2243 (key mismatch detection), #2246 (neighbor info zoom setting), #2365 (key mismatch clearing), #2382 (PKI error detection)
+## MeshCore Routing & Paths
+
+MeshCore and Meshtastic both speak "paths," but the semantics are different enough that conflating them silently breaks features. Read this before touching anything in `src/server/meshcoreManager.ts`, the MeshCore detail panel, or the `meshcore_nodes.out_path` column.
+
+### Path is a **forwarding instruction**, not a hop trace
+
+In Meshtastic, a traceroute records the hops a packet visited after the fact. In MeshCore, the `path` field of every packet is **what the sender writes into the header to instruct routers where to send it next** (`src/Packet.h` in `meshtastic/MeshCore`). Two-bit route mode in the header:
+
+| Mode | Meaning |
+|---|---|
+| `ROUTE_TYPE_FLOOD` (1) | Packet floods; each forwarder appends `SNR*4` to `path[]` so the destination can read the SNR trace and reply with a discovered route |
+| `ROUTE_TYPE_DIRECT` (2) | Sender writes hop hashes into `path[]`; each router consumes one hash and forwards |
+| `TRANSPORT_FLOOD` / `TRANSPORT_DIRECT` (0/3) | Same modes + transport-code prefix |
+
+`MAX_PATH_SIZE = 64`. Hash size defaults to 1 byte per hop.
+
+### Per-contact `out_path` cache
+
+`ContactInfo.out_path` is the cached route **the local device uses next time it sends to this contact**. `out_path_len = OUT_PATH_UNKNOWN (0xFF)` means "we don't know — next send floods to discover." meshcore.js reads `out_path_len` as `Int8`, so the sentinel arrives as either `0xFF` or `-1` depending on platform; `formatOutPath()` in `src/server/meshcoreNativeBackend.ts` handles both.
+
+The firmware learns the path passively: send floods, destination replies via `PAYLOAD_TYPE_PATH` containing the reversed hop chain, manager stores it via `onContactPathRecv`. After that, sends to this contact are ROUTE_TYPE_DIRECT — much cheaper than flooding.
+
+### The four user actions, and why they're distinct
+
+This is the load-bearing distinction in the UI:
+
+| Action | Wire opcode | When to use |
+|---|---|---|
+| **Reset Path** | `CMD_RESET_PATH` (13) | "I think the cached route is stale — let auto-discovery flood next time." Sets `out_path_len = 0xFF`. Safe; firmware re-learns. |
+| **Share Contact** | `CMD_SHARE_CONTACT` (16) | "Broadcast this contact's stored advert so nearby nodes can add them." Pure retransmit; no local state changes. |
+| **Set Out-Path** | `CMD_ADD_UPDATE_CONTACT` (9) | Manually push specific hop bytes. Footgun: stale hops silently drop direct sends until the next flood. |
+| **Send Trace Path** | `CMD_SEND_TRACE_PATH` (36) | Explicit hop-by-hop SNR probe — closest analogue to Meshtastic traceroute. Not currently exposed in MeshMonitor. |
+
+**Reset Path is the default user-facing affordance.** Set Out-Path lives behind the `meshcoreAdvancedPathEdit` setting (off by default, server-side enforced) because users forget they pinned a route and then can't reach the contact when one hop disappears.
+
+### Path bytes are **hop hashes**, not node IDs
+
+A 1-byte hash collides — the UI can't always map every hop to a known node. Surface the hex chain (`a3,7f,02`) verbatim and accept that. Don't try to resolve hashes to names; you'll be wrong some of the time.
+
+### `PUSH_CODE_PATH_UPDATED` carries only the pubkey
+
+The push tells the app "this contact's path changed" but the body is just the 32-byte public key. To learn the new hop bytes you have to re-read the contact record. meshcore.js doesn't expose `CMD_GET_CONTACT_BY_KEY` (opcode 30) yet, so MeshMonitor falls back to `refreshContacts()` over a 1.5 s debounce window (`PATH_REFRESH_DEBOUNCE_MS`). A chatty contact churning its route across N back-to-back pushes costs **one** device sync, not N. If meshcore.js ever exposes the single-contact fetcher, swap it in here — same emit semantics, narrower wire traffic.
+
+After the refresh, only pubkeys still present in the contact list emit a `meshcore:contact:updated` WS event. A contact aged out during the window doesn't synthesize a stale UI row.
+
+### Companion-only
+
+`CMD_RESET_PATH`, `CMD_SHARE_CONTACT`, and `CMD_ADD_UPDATE_CONTACT` are only supported on Companion firmware (`deviceType = 1`). Gate every UI action and manager method on `deviceType === COMPANION` — Repeaters speak the serial CLI, not the companion binary protocol, and will silently fail or error.
+
+### Schema scoping
+
+`meshcore_nodes.out_path` (TEXT) and `meshcore_nodes.path_len` (INTEGER) live on the existing `(sourceId, publicKey)` composite-keyed table (migration 061). Path data is inherently per-source — different radios learn different routes to the same contact — so the columns inherit the source scope without extra work. Don't add a global path table.
+
+### Critical Design Principles
+
+- **Path = forwarding instruction, not trace.** Naming and UI copy should reflect that.
+- **Reset Path is the safe default.** Manual edits are advanced + flagged.
+- **Debounce push-driven refreshes.** Direct device queries per push thrash the link.
+- **Treat `0xFF` and `-1` as the same OUT_PATH_UNKNOWN sentinel.** meshcore.js parses path_len as Int8.
+- **Companion-only.** Wrap every path action in a `deviceType === COMPANION` guard.
+
+---
+
+**Last Updated**: 2026-05-21
+**Related PRs**: #427, #429, #430, #431, #432, #433, #1359 (packet filtering), #1360 (protocol constants), #1404 (PostgreSQL support), #1405 (MySQL support), #1436 (async test fixes), #2243 (key mismatch detection), #2246 (neighbor info zoom setting), #2365 (key mismatch clearing), #2382 (PKI error detection), #3123 #3124 #3127 #3130 (MeshCore path management)
