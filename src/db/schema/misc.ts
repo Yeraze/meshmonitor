@@ -101,6 +101,10 @@ export const userMapPreferencesSqlite = sqliteTable('user_map_preferences', {
   showRoute: integer('show_route', { mode: 'boolean' }).default(true),
   showMotion: integer('show_motion', { mode: 'boolean' }).default(true),
   showMqttNodes: integer('show_mqtt_nodes', { mode: 'boolean' }).default(true),
+  // Per-transport map visibility (#3112). RF default true; UDP default
+  // false so a busy multicast-UDP feed doesn't saturate the map.
+  showUdpNodes: integer('show_udp_nodes', { mode: 'boolean' }).default(false),
+  showRfNodes: integer('show_rf_nodes', { mode: 'boolean' }).default(true),
   showMeshcoreNodes: integer('show_meshcore_nodes', { mode: 'boolean' }).default(true),
   showAnimations: integer('show_animations', { mode: 'boolean' }).default(false),
   showAccuracyRegions: integer('show_accuracy_regions', { mode: 'boolean' }).default(false),
@@ -123,6 +127,8 @@ export const userMapPreferencesPostgres = pgTable('user_map_preferences', {
   showRoute: pgBoolean('show_route').default(true),
   showMotion: pgBoolean('show_motion').default(true),
   showMqttNodes: pgBoolean('show_mqtt_nodes').default(true),
+  showUdpNodes: pgBoolean('show_udp_nodes').default(false),
+  showRfNodes: pgBoolean('show_rf_nodes').default(true),
   showMeshcoreNodes: pgBoolean('show_meshcore_nodes').default(true),
   showAnimations: pgBoolean('show_animations').default(false),
   showAccuracyRegions: pgBoolean('show_accuracy_regions').default(false),
@@ -378,6 +384,8 @@ export const userMapPreferencesMysql = mysqlTable('user_map_preferences', {
   showRoute: myBoolean('show_route').default(true),
   showMotion: myBoolean('show_motion').default(true),
   showMqttNodes: myBoolean('show_mqtt_nodes').default(true),
+  showUdpNodes: myBoolean('show_udp_nodes').default(false),
+  showRfNodes: myBoolean('show_rf_nodes').default(true),
   showMeshcoreNodes: myBoolean('show_meshcore_nodes').default(true),
   showAnimations: myBoolean('show_animations').default(false),
   showAccuracyRegions: myBoolean('show_accuracy_regions').default(false),

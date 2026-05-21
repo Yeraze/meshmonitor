@@ -80,6 +80,8 @@ import { migration as meshcoreMessagesFromnameMigration, runMigration062Postgres
 import { migration as dropSourceIdFromChannelDatabaseMigration, runMigration063Postgres, runMigration063Mysql } from '../server/migrations/063_drop_source_id_from_channel_database.js';
 import { migration as addChannelDatabasePermissionMigration, runMigration064Postgres, runMigration064Mysql } from '../server/migrations/064_add_channel_database_permission.js';
 import { migration as addMessageSourceAttributionMigration, runMigration065Postgres, runMigration065Mysql } from '../server/migrations/065_add_message_source_attribution.js';
+import { migration as addTransportMechanismToNodesMigration, runMigration066Postgres, runMigration066Mysql } from '../server/migrations/066_add_transport_mechanism_to_nodes.js';
+import { migration as addShowUdpRfNodesToMapPrefsMigration, runMigration067Postgres, runMigration067Mysql } from '../server/migrations/067_add_show_udp_rf_nodes_to_map_prefs.js';
 
 // ============================================================================
 // Registry
@@ -1026,4 +1028,36 @@ registry.register({
   sqlite: (db) => addMessageSourceAttributionMigration.up(db),
   postgres: (client) => runMigration065Postgres(client),
   mysql: (pool) => runMigration065Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 066: Add transportMechanism column to nodes + backfill from
+// viaMqtt. Lifts the per-packet TransportMechanism enum onto the node row
+// so the map's Show RF / UDP / MQTT toggles can filter markers without a
+// per-packet scan. Existing rows with viaMqtt=true map to MQTT(5); the
+// rest default to LORA(1). Closes the node-level half of #3112.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 66,
+  name: 'add_transport_mechanism_to_nodes',
+  settingsKey: 'migration_066_add_transport_mechanism_to_nodes',
+  sqlite: (db) => addTransportMechanismToNodesMigration.up(db),
+  postgres: (client) => runMigration066Postgres(client),
+  mysql: (pool) => runMigration066Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 067: Add show_udp_nodes + show_rf_nodes columns to
+// user_map_preferences. Companion to 066 — persists the new per-transport
+// map-visibility toggles introduced for #3112. Defaults: RF on, UDP off.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 67,
+  name: 'add_show_udp_rf_nodes_to_map_prefs',
+  settingsKey: 'migration_067_add_show_udp_rf_nodes_to_map_prefs',
+  sqlite: (db) => addShowUdpRfNodesToMapPrefsMigration.up(db),
+  postgres: (client) => runMigration067Postgres(client),
+  mysql: (pool) => runMigration067Mysql(pool),
 });

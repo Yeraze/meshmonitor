@@ -37,6 +37,7 @@ const createTestDatabase = () => {
           role INTEGER,
           hopsAway INTEGER,
           viaMqtt BOOLEAN DEFAULT 0,
+          transportMechanism INTEGER,
           macaddr TEXT,
           latitude REAL,
           longitude REAL,

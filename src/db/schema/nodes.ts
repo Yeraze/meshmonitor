@@ -17,6 +17,12 @@ export const nodesSqlite = sqliteTable('nodes', {
   hopsAway: integer('hopsAway'),
   lastMessageHops: integer('lastMessageHops'),
   viaMqtt: integer('viaMqtt', { mode: 'boolean' }),
+  // Most-recent transport mechanism by which we heard this node.
+  // Values map to meshtastic.MeshPacket.TransportMechanism:
+  //   0=INTERNAL, 1=LORA, 2-4=LORA_ALT*, 5=MQTT, 6=MULTICAST_UDP, 7=API.
+  // Updated on every heard packet (most-recent wins). Map filters
+  // (Show RF / Show UDP / Show MQTT) group on it; #3112.
+  transportMechanism: integer('transportMechanism'),
   isStoreForwardServer: integer('isStoreForwardServer', { mode: 'boolean' }),
   macaddr: text('macaddr'),
   latitude: real('latitude'),
@@ -92,6 +98,8 @@ export const nodesPostgres = pgTable('nodes', {
   hopsAway: pgInteger('hopsAway'),
   lastMessageHops: pgInteger('lastMessageHops'),
   viaMqtt: pgBoolean('viaMqtt'),
+  // Most-recent transport mechanism — see SQLite schema for the value map.
+  transportMechanism: pgInteger('transportMechanism'),
   isStoreForwardServer: pgBoolean('isStoreForwardServer'),
   macaddr: pgText('macaddr'),
   // Using doublePrecision for coordinates (REAL only has ~7 significant digits, causes position jumps)
@@ -168,6 +176,8 @@ export const nodesMysql = mysqlTable('nodes', {
   hopsAway: myInt('hopsAway'),
   lastMessageHops: myInt('lastMessageHops'),
   viaMqtt: myBoolean('viaMqtt'),
+  // Most-recent transport mechanism — see SQLite schema for the value map.
+  transportMechanism: myInt('transportMechanism'),
   isStoreForwardServer: myBoolean('isStoreForwardServer'),
   macaddr: myVarchar('macaddr', { length: 32 }),
   latitude: myDouble('latitude'),

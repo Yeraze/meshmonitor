@@ -1837,6 +1837,8 @@ export class MiscRepository extends BaseRepository {
     showRoute?: boolean;
     showMotion?: boolean;
     showMqttNodes?: boolean;
+    showUdpNodes?: boolean;
+    showRfNodes?: boolean;
     showMeshCoreNodes?: boolean;
     showAnimations?: boolean;
     showAccuracyRegions?: boolean;
@@ -1859,6 +1861,8 @@ export class MiscRepository extends BaseRepository {
         if (preferences.showRoute !== undefined) set.showRoute = preferences.showRoute;
         if (preferences.showMotion !== undefined) set.showMotion = preferences.showMotion;
         if (preferences.showMqttNodes !== undefined) set.showMqttNodes = preferences.showMqttNodes;
+        if (preferences.showUdpNodes !== undefined) set.showUdpNodes = preferences.showUdpNodes;
+        if (preferences.showRfNodes !== undefined) set.showRfNodes = preferences.showRfNodes;
         if (preferences.showMeshCoreNodes !== undefined) set.showMeshcoreNodes = preferences.showMeshCoreNodes;
         if (preferences.showAnimations !== undefined) set.showAnimations = preferences.showAnimations;
         if (preferences.showAccuracyRegions !== undefined) set.showAccuracyRegions = preferences.showAccuracyRegions;
@@ -1877,7 +1881,9 @@ export class MiscRepository extends BaseRepository {
           showNeighborInfo: preferences.showNeighborInfo ?? false,
           showRoute: preferences.showRoute ?? true,
           showMotion: preferences.showMotion ?? true,
-          showMqttNodes: preferences.showMqttNodes ?? true,
+          showMqttNodes: preferences.showMqttNodes ?? false,
+          showUdpNodes: preferences.showUdpNodes ?? false,
+          showRfNodes: preferences.showRfNodes ?? true,
           showMeshcoreNodes: preferences.showMeshCoreNodes ?? true,
           showAnimations: preferences.showAnimations ?? false,
           showAccuracyRegions: preferences.showAccuracyRegions ?? false,

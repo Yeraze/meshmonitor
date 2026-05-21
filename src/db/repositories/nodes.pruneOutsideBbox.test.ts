@@ -26,6 +26,7 @@ const SQLITE_CREATE = `
     hopsAway INTEGER,
     lastMessageHops INTEGER,
     viaMqtt INTEGER DEFAULT 0,
+    transportMechanism INTEGER,
     macaddr TEXT,
     latitude REAL,
     longitude REAL,

@@ -4532,6 +4532,16 @@ class MeshtasticManager implements ISourceManager {
         ? meshPacket.channel
         : undefined;
 
+      // Stamp the per-packet transport mechanism onto the node row
+      // (most-recent wins). Feeds the map's Show RF / UDP / MQTT toggles
+      // — see migration 066 and the TransportMechanism enum in
+      // src/server/constants/meshtastic.ts. The field is proto3
+      // (default 0 = INTERNAL when unset), so only record values that
+      // came across the wire as actual numbers.
+      const txMech = typeof meshPacket.transportMechanism === 'number'
+        ? meshPacket.transportMechanism
+        : (meshPacket.viaMqtt === true ? 5 /* MQTT */ : undefined);
+
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
@@ -4541,6 +4551,7 @@ class MeshtasticManager implements ISourceManager {
         // traceroutes, position requests) use the channel the node is actually communicating
         // on. Previously only set from NodeInfo, which could get stuck on a secondary channel.
         ...(channelFromPacket !== undefined && { channel: channelFromPacket }),
+        ...(txMech !== undefined && { transportMechanism: txMech }),
       };
 
       // Only set default name if this is a brand new node
