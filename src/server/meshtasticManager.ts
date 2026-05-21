@@ -413,6 +413,14 @@ class MeshtasticManager implements ISourceManager {
   // transient closes on a large infrastructure node, short enough that genuine
   // config drift self-corrects without a manual refresh.
   private static readonly PASSIVE_RESYNC_STALE_MS = 4 * 60 * 60 * 1000; // 4 hours
+  // Startup-grace fast reconnect for passive-mode sources (#3122 follow-up).
+  // The reporter observed that a large infrastructure node usually closes
+  // the *first* config-sync session but recovers cleanly on the next attempt;
+  // a brief grace window with a 3s delay shortens the user-visible
+  // "stuck reconnecting" gap during startup without changing the steady-state
+  // backoff once the session stabilizes.
+  private static readonly STARTUP_GRACE_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
+  private static readonly STARTUP_GRACE_FAST_DELAY_MS = 3_000; // 3 seconds
 
   // Manual resync (#3122 follow-up) — operator-initiated full config refresh:
   //   * forces ONE want_config_id regardless of staleness window
@@ -1051,6 +1059,17 @@ class MeshtasticManager implements ISourceManager {
         tcpTransport.setStaleConnectionTimeout(env.meshtasticStaleConnectionTimeout);
         tcpTransport.setConnectTimeout(env.meshtasticConnectTimeoutMs);
         tcpTransport.setReconnectTiming(env.meshtasticReconnectInitialDelayMs, env.meshtasticReconnectMaxDelayMs);
+        // Passive-mode sources get a startup-grace fast-reconnect window
+        // (#3122). On large/fragile TCP nodes the first session often closes
+        // mid-sync but the second works — a 3s delay for the first 2min
+        // shortens the user-visible "stuck reconnecting" gap without
+        // changing steady-state backoff once the session stabilizes.
+        if (this.passiveMode) {
+          tcpTransport.setStartupGraceReconnect(
+            MeshtasticManager.STARTUP_GRACE_WINDOW_MS,
+            MeshtasticManager.STARTUP_GRACE_FAST_DELAY_MS,
+          );
+        }
 
         // Optional per-source keepalive heartbeat (issue 2609). When configured,
         // we periodically send a Meshtastic Heartbeat ToRadio to the device so
