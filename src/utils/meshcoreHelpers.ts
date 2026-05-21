@@ -14,7 +14,12 @@ export interface MeshCoreContact {
   latitude?: number;
   longitude?: number;
   lastAdvert?: number;
-  pathLen?: number;
+  /** Hop count of the cached forwarding route. `null` / undefined = unknown
+   *  (next send floods). */
+  pathLen?: number | null;
+  /** Comma-separated hex chain of hop hashes, e.g. "a3,7f,02". `null` /
+   *  undefined = OUT_PATH_UNKNOWN. */
+  outPath?: string | null;
 }
 
 /**

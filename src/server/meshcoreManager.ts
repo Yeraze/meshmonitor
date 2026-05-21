@@ -147,7 +147,17 @@ export interface MeshCoreContact {
   latitude?: number;
   longitude?: number;
   lastAdvert?: number;
-  pathLen?: number;
+  /**
+   * Hop count of the cached forwarding route to this contact. `null` /
+   * undefined means the firmware's OUT_PATH_UNKNOWN sentinel is set —
+   * the next send will be flooded.
+   */
+  pathLen?: number | null;
+  /**
+   * Comma-separated hex chain of hop hashes for the cached forwarding
+   * route (e.g. "a3,7f,02"). `null` / undefined means OUT_PATH_UNKNOWN.
+   */
+  outPath?: string | null;
 }
 
 export interface MeshCoreMessage {
@@ -667,6 +677,8 @@ class MeshCoreManager extends EventEmitter {
           rssi: contact.rssi ?? null,
           snr: contact.snr ?? null,
           lastHeard: contact.lastSeen ?? null,
+          outPath: contact.outPath ?? null,
+          pathLen: contact.pathLen ?? null,
         },
         this.sourceId,
       );
@@ -1116,6 +1128,8 @@ class MeshCoreManager extends EventEmitter {
             latitude: c.latitude,
             longitude: c.longitude,
             lastSeen: Date.now(),
+            outPath: c.out_path ?? null,
+            pathLen: c.path_len ?? null,
           });
         }
         // Mirror every contact to meshcore_nodes so stale stub rows
@@ -1226,6 +1240,51 @@ class MeshCoreManager extends EventEmitter {
         logger.error('[MeshCore] Failed to send advert:', error);
         return false;
       }
+    }
+  }
+
+  /**
+   * Reset the cached forwarding route ("out_path") for a contact so the
+   * next send re-discovers the route via flooding. Wraps the firmware's
+   * CMD_RESET_PATH; on success the in-memory contact + meshcore_nodes row
+   * are cleared so the UI reflects the new state without waiting for a
+   * PathUpdated push.
+   *
+   * Returns `true` on success, `false` if the device rejected the request
+   * (unknown contact, transient backend error) or this isn't a Companion.
+   */
+  async resetContactPath(publicKey: string): Promise<boolean> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Reset-path requires Companion firmware');
+      return false;
+    }
+    if (!this.connected) {
+      return false;
+    }
+    try {
+      const response = await this.sendBridgeCommand('reset_path', { public_key: publicKey });
+      if (!response.success) {
+        logger.warn(`[MeshCore] reset_path failed for ${publicKey}: ${response.error}`);
+        return false;
+      }
+      const existing = this.contacts.get(publicKey);
+      if (existing) {
+        const updated: MeshCoreContact = {
+          ...existing,
+          outPath: null,
+          pathLen: null,
+          lastSeen: Date.now(),
+        };
+        this.contacts.set(publicKey, updated);
+        void this.persistContact(updated);
+        this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+        dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+      }
+      logger.info(`[MeshCore] Reset path for ${publicKey.substring(0, 16)}…`);
+      return true;
+    } catch (error) {
+      logger.error('[MeshCore] resetContactPath threw:', error);
+      return false;
     }
   }
 

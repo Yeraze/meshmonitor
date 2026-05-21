@@ -88,6 +88,41 @@ function bytesToHex(bytes: Uint8Array | number[]): string {
   return out;
 }
 
+/**
+ * Render a MeshCore contact's `out_path` blob into a comma-separated hex
+ * chain like "a3,7f,02". Returns null when the firmware's OUT_PATH_UNKNOWN
+ * sentinel (0xFF — or -1 if meshcore.js read it as Int8) is set.
+ *
+ * The wire-format `out_path` field is always a 64-byte buffer; only the
+ * first `outPathLen` bytes are meaningful hop hashes.
+ */
+export function formatOutPath(
+  outPath: Uint8Array | number[] | null | undefined,
+  outPathLen: number | null | undefined,
+): { outPathHex: string | null; pathLen: number | null } {
+  if (outPathLen === undefined || outPathLen === null) {
+    return { outPathHex: null, pathLen: null };
+  }
+  // meshcore.js reads out_path_len as Int8, so 0xFF arrives as -1.
+  // Treat both representations as the OUT_PATH_UNKNOWN sentinel.
+  if (outPathLen < 0 || outPathLen === 0xff) {
+    return { outPathHex: null, pathLen: null };
+  }
+  if (outPathLen === 0) {
+    return { outPathHex: '', pathLen: 0 };
+  }
+  if (!outPath) {
+    return { outPathHex: null, pathLen: null };
+  }
+  const arr = outPath instanceof Uint8Array ? outPath : Uint8Array.from(outPath);
+  const take = Math.min(outPathLen, arr.length);
+  const parts: string[] = [];
+  for (let i = 0; i < take; i++) {
+    parts.push(arr[i].toString(16).padStart(2, '0'));
+  }
+  return { outPathHex: parts.join(','), pathLen: take };
+}
+
 /** Manager passes telemetry mode as 'never' | 'device' | 'always'; firmware
  *  wants the underlying 2-bit value (0/1/2). Numeric pass-through is allowed
  *  so callers that already have the encoded value work unchanged. */
@@ -339,15 +374,27 @@ export class MeshCoreNativeBackend extends EventEmitter {
 
       case 'get_contacts': {
         const contacts: any[] = await c.getContacts();
-        return contacts.map((ct) => ({
-          public_key: bytesToHex(ct.publicKey),
-          adv_name: ct.advName,
-          name: ct.advName,
-          adv_type: ct.type,
-          latitude: fixedToDegrees(ct.advLat),
-          longitude: fixedToDegrees(ct.advLon),
-          last_advert: ct.lastAdvert,
-        }));
+        return contacts.map((ct) => {
+          const { outPathHex, pathLen } = formatOutPath(ct.outPath, ct.outPathLen);
+          return {
+            public_key: bytesToHex(ct.publicKey),
+            adv_name: ct.advName,
+            name: ct.advName,
+            adv_type: ct.type,
+            latitude: fixedToDegrees(ct.advLat),
+            longitude: fixedToDegrees(ct.advLon),
+            last_advert: ct.lastAdvert,
+            out_path: outPathHex,
+            path_len: pathLen,
+          };
+        });
+      }
+
+      case 'reset_path': {
+        const publicKey = await this.resolvePublicKey(params.public_key as string);
+        if (!publicKey) throw new Error('Reset-path target not found');
+        await c.resetPath(publicKey);
+        return { ok: true };
       }
 
       case 'send_message': {

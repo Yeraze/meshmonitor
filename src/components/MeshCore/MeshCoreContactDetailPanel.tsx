@@ -15,6 +15,17 @@ const DEVICE_TYPE_KEYS: Record<number, string> = {
 interface MeshCoreContactDetailPanelProps {
   contact: MeshCoreContact | null;
   publicKey: string;
+  /** Trigger CMD_RESET_PATH for this contact. Provided by the parent's
+   *  MeshCoreActions; unset means the button is hidden (e.g. read-only
+   *  embeds that don't have the actions wired up). */
+  onResetPath?: (publicKey: string) => Promise<boolean>;
+  /** Whether the current user may invoke write actions on this source's
+   *  `nodes` resource. Required to gate the Reset Path button. */
+  canWriteNodes?: boolean;
+  /** Is the source's device a Companion? CMD_RESET_PATH is companion-only.
+   *  Defaults to `true` so callers that don't pass this still see the button
+   *  when the action handler is supplied. */
+  isCompanion?: boolean;
 }
 
 const COLLAPSED_KEY = 'meshcoreContactDetailsCollapsed';
@@ -22,16 +33,28 @@ const COLLAPSED_KEY = 'meshcoreContactDetailsCollapsed';
 export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProps> = ({
   contact,
   publicKey,
+  onResetPath,
+  canWriteNodes = false,
+  isCompanion = true,
 }) => {
   const { t } = useTranslation();
   const { timeFormat, dateFormat } = useSettings();
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     return localStorage.getItem(COLLAPSED_KEY) === 'true';
   });
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, isCollapsed.toString());
   }, [isCollapsed]);
+
+  // Clear the action's transient error/loading state when the selected
+  // contact changes so a previous failure doesn't bleed into a new node.
+  useEffect(() => {
+    setResetError(null);
+    setResetting(false);
+  }, [publicKey]);
 
   const name = contact?.advName || contact?.name || `${publicKey.substring(0, 8)}…`;
   const advType = contact?.advType;
@@ -40,9 +63,36 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const lastSeen = contact?.lastSeen;
   const lastAdvert = contact?.lastAdvert;
   const pathLen = contact?.pathLen;
+  const outPath = contact?.outPath;
   const latitude = contact?.latitude;
   const longitude = contact?.longitude;
   const hasPosition = typeof latitude === 'number' && typeof longitude === 'number';
+  const pathKnown = typeof pathLen === 'number' && pathLen !== null && pathLen >= 0;
+  const canShowResetButton =
+    !!onResetPath && canWriteNodes && isCompanion;
+
+  const handleResetPath = async () => {
+    if (!onResetPath || resetting) return;
+    const confirmMessage = t(
+      'meshcore.contact_details.reset_path_confirm',
+      `Clear the cached route to ${name}? The next send to this contact will rediscover the path via flooding.`,
+    );
+    if (typeof window !== 'undefined' && !window.confirm(confirmMessage)) {
+      return;
+    }
+    setResetting(true);
+    setResetError(null);
+    try {
+      const ok = await onResetPath(publicKey);
+      if (!ok) {
+        setResetError(
+          t('meshcore.contact_details.reset_path_error', 'Reset path failed.'),
+        );
+      }
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const getSignalClass = (value: number | undefined): string => {
     if (value === undefined || value === null) return '';
@@ -95,15 +145,58 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
           )}
 
           {/* Path length (hops) */}
-          {typeof pathLen === 'number' && (
-            <div className="node-detail-card">
-              <div className="node-detail-label">
-                {t('meshcore.contact_details.hops_away', 'Hops Away')}
-              </div>
-              <div className="node-detail-value">
-                {pathLen === 0
+          <div className="node-detail-card">
+            <div className="node-detail-label">
+              {t('meshcore.contact_details.hops_away', 'Hops Away')}
+            </div>
+            <div className="node-detail-value">
+              {pathKnown
+                ? (pathLen === 0
                   ? t('node_details.direct', 'Direct')
-                  : t('node_details.hops', { count: pathLen })}
+                  : t('node_details.hops', { count: pathLen as number }))
+                : t('meshcore.contact_details.path_unknown', 'Unknown — next send will flood')}
+            </div>
+          </div>
+
+          {/* Path bytes (hex chain). Show only when known so the panel
+              stays compact for fresh contacts. */}
+          {pathKnown && pathLen! > 0 && typeof outPath === 'string' && outPath.length > 0 && (
+            <div className="node-detail-card node-detail-card-2col">
+              <div className="node-detail-label">
+                {t('meshcore.contact_details.path', 'Path')}
+              </div>
+              <div
+                className="node-detail-value"
+                title={outPath}
+                style={{ fontFamily: 'var(--font-mono, monospace)', wordBreak: 'break-all' }}
+              >
+                {outPath}
+              </div>
+            </div>
+          )}
+
+          {/* Reset Path action — companion-only, write-permission-gated.
+              Hidden entirely when the path is already unknown so users
+              don't fire a no-op CMD_RESET_PATH against the device. */}
+          {canShowResetButton && pathKnown && (
+            <div className="node-detail-card node-detail-card-2col">
+              <div className="node-detail-label">
+                {t('meshcore.contact_details.reset_path_label', 'Route')}
+              </div>
+              <div className="node-detail-value" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={handleResetPath}
+                  disabled={resetting}
+                  aria-label={t('meshcore.contact_details.reset_path_button', 'Reset Path')}
+                >
+                  {resetting
+                    ? t('meshcore.contact_details.reset_path_running', 'Resetting…')
+                    : t('meshcore.contact_details.reset_path_button', 'Reset Path')}
+                </button>
+                {resetError && (
+                  <span style={{ color: 'var(--ctp-red)' }} role="alert">{resetError}</span>
+                )}
               </div>
             </div>
           )}

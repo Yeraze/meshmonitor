@@ -41,10 +41,13 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
   const canSend = hasPermission('messages', 'write');
+  const canWriteNodes = hasPermission('nodes', 'write');
   const [selected, setSelected] = useState<string | null>(null);
 
   const selfKey = status?.localNode?.publicKey;
   const connected = status?.connected ?? false;
+  // CMD_RESET_PATH is companion-only (firmware deviceType=1).
+  const isCompanion = (status?.deviceType ?? 0) === 1;
 
   // Contacts that have at least one DM thread (filtered on top).
   const contactsByKey = useMemo(() => {
@@ -168,6 +171,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               <MeshCoreContactDetailPanel
                 contact={contactsByKey.get(selected) ?? null}
                 publicKey={selected}
+                onResetPath={actions.resetContactPath}
+                canWriteNodes={canWriteNodes && connected}
+                isCompanion={isCompanion}
               />
               {!!sourceId && typeof baseUrl === 'string' && isRealNodeKey(selected) && (
                 <>

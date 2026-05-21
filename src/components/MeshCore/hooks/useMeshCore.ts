@@ -84,6 +84,11 @@ export interface MeshCoreActions {
   connect: () => Promise<boolean>;
   disconnect: () => Promise<void>;
   refreshContacts: () => Promise<void>;
+  /** Clear the cached forwarding route ("out_path") for a contact so the next
+   *  send re-discovers the route via flooding. Resolves `true` when the device
+   *  ACKed the reset; `false` for any error (permission, unknown contact,
+   *  source not Companion, network). */
+  resetContactPath: (publicKey: string) => Promise<boolean>;
   sendAdvert: () => Promise<void>;
   sendMessage: (text: string, toPublicKey?: string, channelIdx?: number) => Promise<boolean>;
   setDeviceName: (name: string) => Promise<boolean>;
@@ -403,6 +408,35 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, setMeshCoreNodes, recomputeNodes]);
 
+  const resetContactPath = useCallback(async (publicKey: string): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(
+        `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/reset-path`,
+        { method: 'POST' },
+      );
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to reset path');
+        return false;
+      }
+      // Optimistic local update so the UI flips to "unknown" instantly. The
+      // server has already mirrored the cleared row to meshcore_nodes; we
+      // skip a full refreshContacts() call to avoid hammering the device.
+      setContacts(prev => prev.map(c => (
+        c.publicKey === publicKey ? { ...c, outPath: null, pathLen: null } : c
+      )));
+      contactsRef.current.set(publicKey, {
+        ...(contactsRef.current.get(publicKey) ?? { publicKey }),
+        outPath: null,
+        pathLen: null,
+      });
+      return true;
+    } catch (_err) {
+      setError('Failed to reset path');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const sendAdvert = useCallback(async () => {
     try {
       const response = await csrfFetch(`${mcPrefix}/advert`, { method: 'POST' });
@@ -572,6 +606,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       connect,
       disconnect,
       refreshContacts,
+      resetContactPath,
       sendAdvert,
       sendMessage,
       setDeviceName,

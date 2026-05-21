@@ -42,6 +42,14 @@ export interface DbMeshCoreNode {
   telemetryEnabled?: boolean | null;
   telemetryIntervalMinutes?: number | null;
   lastTelemetryRequestAt?: number | null;
+  /**
+   * MeshCore per-contact forwarding route (migration 068). `outPath` is a
+   * comma-separated hex chain of hop hashes ("a3,7f,02"); `pathLen` is the
+   * hop count. Both null means the firmware's OUT_PATH_UNKNOWN (0xFF)
+   * sentinel is set and the next send will flood.
+   */
+  outPath?: string | null;
+  pathLen?: number | null;
   createdAt: number;
   updatedAt: number;
 }

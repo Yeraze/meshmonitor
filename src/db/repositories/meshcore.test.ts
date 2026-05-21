@@ -45,6 +45,8 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         telemetryEnabled INTEGER DEFAULT 0,
         telemetryIntervalMinutes INTEGER DEFAULT 60,
         lastTelemetryRequestAt INTEGER,
+        out_path TEXT,
+        path_len INTEGER,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       );
@@ -71,6 +73,33 @@ describe('MeshCoreRepository — sourceId stamping', () => {
 
   afterEach(() => {
     db.close();
+  });
+
+  it('upsertNode persists out_path and path_len round-trip', async () => {
+    // Round-trip the MeshCore per-contact route columns (migration 068).
+    // Drizzle treats `outPath`/`pathLen` as `out_path`/`path_len` per the
+    // schema mapping, so a getNodeByPublicKey read should return the same
+    // values we wrote.
+    await repo.upsertNode(
+      { publicKey: 'pk-path', outPath: 'a3,7f,02', pathLen: 3 },
+      'src-a',
+    );
+    const row = db.prepare(
+      `SELECT out_path AS outPath, path_len AS pathLen FROM meshcore_nodes WHERE publicKey = 'pk-path'`,
+    ).get() as { outPath: string; pathLen: number };
+    expect(row.outPath).toBe('a3,7f,02');
+    expect(row.pathLen).toBe(3);
+
+    // Updating with null clears the columns (CMD_RESET_PATH path).
+    await repo.upsertNode(
+      { publicKey: 'pk-path', outPath: null, pathLen: null },
+      'src-a',
+    );
+    const cleared = db.prepare(
+      `SELECT out_path AS outPath, path_len AS pathLen FROM meshcore_nodes WHERE publicKey = 'pk-path'`,
+    ).get() as { outPath: string | null; pathLen: number | null };
+    expect(cleared.outPath).toBeNull();
+    expect(cleared.pathLen).toBeNull();
   });
 
   it('upsertNode stamps sourceId on insert', async () => {
@@ -129,6 +158,8 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         telemetryEnabled INTEGER DEFAULT 0,
         telemetryIntervalMinutes INTEGER DEFAULT 60,
         lastTelemetryRequestAt INTEGER,
+        out_path TEXT,
+        path_len INTEGER,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
         PRIMARY KEY (publicKey, sourceId)
@@ -281,6 +312,8 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         telemetryEnabled INTEGER DEFAULT 0,
         telemetryIntervalMinutes INTEGER DEFAULT 60,
         lastTelemetryRequestAt INTEGER,
+        out_path TEXT,
+        path_len INTEGER,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
         PRIMARY KEY (publicKey, sourceId)
@@ -373,6 +406,8 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         telemetryEnabled INTEGER DEFAULT 0,
         telemetryIntervalMinutes INTEGER DEFAULT 60,
         lastTelemetryRequestAt INTEGER,
+        out_path TEXT,
+        path_len INTEGER,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
         PRIMARY KEY (sourceId, publicKey)
@@ -433,6 +468,8 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         telemetryEnabled INTEGER DEFAULT 0,
         telemetryIntervalMinutes INTEGER DEFAULT 60,
         lastTelemetryRequestAt INTEGER,
+        out_path TEXT,
+        path_len INTEGER,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
         PRIMARY KEY (sourceId, publicKey)
