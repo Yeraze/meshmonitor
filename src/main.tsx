@@ -25,6 +25,13 @@ import { AuthProvider } from './contexts/AuthContext';
 import { CsrfProvider } from './contexts/CsrfContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { SourceProvider } from './contexts/SourceContext';
+import { installKeyboardInsetsObserver } from './utils/keyboardInsets';
+
+// Publish the iOS keyboard overlay height as `--keyboard-inset` on
+// `document.documentElement` for the lifetime of the page (issue #2994).
+// Idempotent — safe to call from each route root if needed; we install
+// here so the variable exists from first paint.
+installKeyboardInsetsObserver();
 
 /**
  * Wraps App with SourceProvider then WebSocketProvider so that useWebSocket()

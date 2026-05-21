@@ -16,6 +16,7 @@ import { formatPrecisionAccuracy } from '../utils/distance';
 import apiService, { type ChannelDatabaseEntry } from '../services/api';
 import { formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
+import { scrollInputIntoView } from '../utils/scrollInputIntoView';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
@@ -982,16 +983,10 @@ export default function ChannelsTab({
                               ref={channelMessageInputRef}
                               value={newMessage}
                               onChange={e => setNewMessage(e.target.value)}
+                              onFocus={scrollInputIntoView}
                               placeholder={t('channels.send_placeholder', { name: getChannelName(selectedChannel) })}
                               className="message-input"
                               rows={1}
-                              onFocus={e => {
-                                // On mobile, prevent iOS from scrolling the page excessively
-                                // Use a small delay to let iOS do its thing, then reset scroll
-                                setTimeout(() => {
-                                  e.target.scrollIntoView({ block: 'end', behavior: 'smooth' });
-                                }, 100);
-                              }}
                               onKeyDown={e => {
                                 if (
                                   e.key === 'Enter' &&
