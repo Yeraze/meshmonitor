@@ -83,6 +83,7 @@ import { migration as addMessageSourceAttributionMigration, runMigration065Postg
 import { migration as addTransportMechanismToNodesMigration, runMigration066Postgres, runMigration066Mysql } from '../server/migrations/066_add_transport_mechanism_to_nodes.js';
 import { migration as addShowUdpRfNodesToMapPrefsMigration, runMigration067Postgres, runMigration067Mysql } from '../server/migrations/067_add_show_udp_rf_nodes_to_map_prefs.js';
 import { migration as meshcoreNodesOutPathMigration, runMigration068Postgres, runMigration068Mysql } from '../server/migrations/068_meshcore_nodes_out_path.js';
+import { migration as normalizeNodePublicKeysToBase64Migration, runMigration069Postgres, runMigration069Mysql } from '../server/migrations/069_normalize_node_public_keys_to_base64.js';
 
 // ============================================================================
 // Registry
@@ -1077,4 +1078,22 @@ registry.register({
   sqlite: (db) => meshcoreNodesOutPathMigration.up(db),
   postgres: (client) => runMigration068Postgres(client),
   mysql: (pool) => runMigration068Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 069: Normalize nodes.publicKey to base64. Cleanup for the MQTT
+// ingest path that stored publicKey as hex while every other path used
+// base64 — caused false-positive key-mismatch warnings every time a
+// MQTT-seen node later sent NodeInfo over the direct radio. Converts every
+// row matching `^[0-9a-f]{64}$` (lowercase 32-byte hex) to its base64
+// equivalent. Idempotent.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 69,
+  name: 'normalize_node_public_keys_to_base64',
+  settingsKey: 'migration_069_normalize_node_public_keys_to_base64',
+  sqlite: (db) => normalizeNodePublicKeysToBase64Migration.up(db),
+  postgres: (client) => runMigration069Postgres(client),
+  mysql: (pool) => runMigration069Mysql(pool),
 });
