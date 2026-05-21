@@ -317,6 +317,14 @@ class MeshCoreManager extends EventEmitter {
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private heartbeatConsecutiveFailures: number = 0;
+
+  /** Coalescing state for `contact_path_updated` pushes. Multiple pushes
+   *  within {@link PATH_REFRESH_DEBOUNCE_MS} collapse to a single
+   *  refreshContacts() call so a chatty contact churning its route doesn't
+   *  thunder the device. The set tracks which pubkeys had pushes during
+   *  the window — purely for logging; the refresh fetches everything. */
+  private pathRefreshTimer: NodeJS.Timeout | null = null;
+  private pathRefreshPendingKeys: Set<string> = new Set();
   private heartbeatLastSuccessAt: number | null = null;
   private heartbeatProbeInFlight: boolean = false;
   private reconnectAttempts: number = 0;
@@ -332,6 +340,12 @@ class MeshCoreManager extends EventEmitter {
 
   // Message limit to prevent unbounded growth
   private static readonly MAX_MESSAGES = 1000;
+
+  /** Window over which we coalesce `contact_path_updated` pushes into a
+   *  single device-side refreshContacts() call. Long enough to absorb a
+   *  flurry from one chatty contact churning its route, short enough that
+   *  the UI feels live. */
+  private static readonly PATH_REFRESH_DEBOUNCE_MS = 1500;
 
   /**
    * Wall-clock timestamp (ms) of the most recent outbound RF operation
@@ -477,6 +491,10 @@ class MeshCoreManager extends EventEmitter {
     // Stop heartbeat before tearing down the transport so a stray probe
     // doesn't fire mid-teardown.
     this.stopHeartbeat();
+
+    // Cancel any pending path-refresh — refreshContacts() against a torn-
+    // down connection would just log an error.
+    this.clearPathRefreshTimer();
 
     // Tear down native backend, if active.
     if (this.nativeBackend) {
@@ -633,17 +651,15 @@ class MeshCoreManager extends EventEmitter {
     } else if (event_type === 'contact_path_updated') {
       const publicKey: string = data.public_key;
       if (publicKey) {
-        const existing = this.contacts.get(publicKey) ?? { publicKey };
-        const updated: MeshCoreContact = {
-          ...existing,
-          publicKey,
-          lastSeen: Date.now(),
-        };
-        this.contacts.set(publicKey, updated);
-        void this.persistContact(updated);
-        this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
-        dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
-        logger.info(`[MeshCore] contact_path_updated for ${publicKey}`);
+        // The firmware's PUSH_CODE_PATH_UPDATED frame body is just the
+        // pubkey — the new path bytes live on the contact record itself,
+        // so we have to re-read the contact list to actually learn them.
+        // meshcore.js doesn't expose CMD_GET_CONTACT_BY_KEY yet (the only
+        // single-contact fetcher in the firmware), so refreshContacts()
+        // is what's available. Coalesce pushes in a debounce window so a
+        // chatty contact churning its route doesn't thunder the device.
+        this.schedulePathRefresh(publicKey);
+        logger.info(`[MeshCore] contact_path_updated for ${publicKey} (refresh scheduled)`);
       }
     } else {
       logger.debug(`[MeshCore] Unknown push event: ${event_type}`);
@@ -1103,6 +1119,62 @@ class MeshCoreManager extends EventEmitter {
     }
 
     return this.localNode;
+  }
+
+  /**
+   * Schedule a coalesced contact-list refresh in response to a
+   * `contact_path_updated` push (firmware's PUSH_CODE_PATH_UPDATED). The
+   * push body carries only the affected pubkey, so we need to re-read the
+   * contact record to learn the new path bytes. Multiple pushes inside
+   * the {@link PATH_REFRESH_DEBOUNCE_MS} window collapse to a single
+   * refreshContacts() call.
+   *
+   * Cleared on disconnect so a teardown can't fire a refresh against a
+   * dead connection.
+   */
+  private schedulePathRefresh(publicKey: string): void {
+    this.pathRefreshPendingKeys.add(publicKey);
+    if (this.pathRefreshTimer !== null) {
+      return; // already scheduled — the open window will pick this up
+    }
+    this.pathRefreshTimer = setTimeout(() => {
+      this.pathRefreshTimer = null;
+      const pending = Array.from(this.pathRefreshPendingKeys);
+      this.pathRefreshPendingKeys.clear();
+      logger.info(
+        `[MeshCore:${this.sourceId}] Refreshing contacts after ${pending.length} path-update push(es)`,
+      );
+      void this.refreshContacts()
+        .then(() => {
+          // refreshContacts() persists to DB but doesn't emit per-row
+          // WS events. Emit one update per affected pubkey so the UI
+          // flips the Hops/Path cells live without a full snapshot
+          // reload. We only emit for pubkeys we know about post-refresh
+          // — a path-update push for a contact that's since been
+          // removed shouldn't manufacture a fake row.
+          for (const key of pending) {
+            const fresh = this.contacts.get(key);
+            if (fresh) {
+              this.emit('contacts_updated', { sourceId: this.sourceId, contact: fresh });
+              dataEventEmitter.emitMeshCoreContactUpdated(fresh, this.sourceId);
+            }
+          }
+        })
+        .catch((err) => {
+          logger.warn(
+            `[MeshCore:${this.sourceId}] Path-refresh refreshContacts threw: ${(err as Error).message}`,
+          );
+        });
+    }, MeshCoreManager.PATH_REFRESH_DEBOUNCE_MS);
+  }
+
+  /** Test/disconnect hook: cancel any scheduled path-refresh. */
+  private clearPathRefreshTimer(): void {
+    if (this.pathRefreshTimer !== null) {
+      clearTimeout(this.pathRefreshTimer);
+      this.pathRefreshTimer = null;
+    }
+    this.pathRefreshPendingKeys.clear();
   }
 
   /**
