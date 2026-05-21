@@ -412,6 +412,11 @@ describe('Settings Persistence', () => {
         // Apprise API server URL (#3012) — loaded directly by SettingsTab,
         // not surfaced via SettingsContext (admin-only field, no global hook).
         'appriseApiServerUrl',
+        // MeshCore advanced path-edit toggle — gates the manual Edit Path…
+        // button + the server-side route. Read by the route directly via
+        // databaseService.settings.getSetting and lazy-fetched on the
+        // MeshCore page; not part of SettingsContext.
+        'meshcoreAdvancedPathEdit',
       ];
 
       const keysNotLoaded = SETTINGS_TAB_SENDS.filter(

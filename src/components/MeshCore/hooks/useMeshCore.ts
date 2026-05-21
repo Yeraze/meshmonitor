@@ -93,6 +93,12 @@ export interface MeshCoreActions {
    *  nearby nodes can add this contact themselves. Wraps CMD_SHARE_CONTACT.
    *  Resolves `true` when the device ACKed; `false` for any error. */
   shareContact: (publicKey: string) => Promise<boolean>;
+  /** Manually push a forwarding route into the device's contact record.
+   *  `outPath` is a comma-separated hex chain ("a3,7f,02"); empty string
+   *  sets a zero-hop direct path. Server gates this on the
+   *  `meshcoreAdvancedPathEdit` toggle, so a 403 is expected when the
+   *  setting is off. */
+  setContactOutPath: (publicKey: string, outPath: string) => Promise<boolean>;
   sendAdvert: () => Promise<void>;
   sendMessage: (text: string, toPublicKey?: string, channelIdx?: number) => Promise<boolean>;
   setDeviceName: (name: string) => Promise<boolean>;
@@ -459,6 +465,41 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const setContactOutPath = useCallback(async (publicKey: string, outPath: string): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(
+        `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/out-path`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ outPath }),
+        },
+      );
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to set path');
+        return false;
+      }
+      // Optimistic local update so the UI shows the new hops without a
+      // round trip. The server has already mirrored the new bytes to
+      // meshcore_nodes; refreshContacts() will happen on the next
+      // PathUpdated push if the firmware reroutes.
+      const trimmed = outPath.trim();
+      const newPathLen = trimmed === '' ? 0 : trimmed.split(',').length;
+      setContacts(prev => prev.map(c => (
+        c.publicKey === publicKey
+          ? { ...c, outPath: trimmed, pathLen: newPathLen }
+          : c
+      )));
+      const existing = contactsRef.current.get(publicKey) ?? { publicKey };
+      contactsRef.current.set(publicKey, { ...existing, outPath: trimmed, pathLen: newPathLen });
+      return true;
+    } catch (_err) {
+      setError('Failed to set path');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const sendAdvert = useCallback(async () => {
     try {
       const response = await csrfFetch(`${mcPrefix}/advert`, { method: 'POST' });
@@ -630,6 +671,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       refreshContacts,
       resetContactPath,
       shareContact,
+      setContactOutPath,
       sendAdvert,
       sendMessage,
       setDeviceName,

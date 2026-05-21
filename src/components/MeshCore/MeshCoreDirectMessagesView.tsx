@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   MeshCoreMessage, MeshCoreActions, ConnectionStatus,
@@ -46,8 +46,32 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
 
   const selfKey = status?.localNode?.publicKey;
   const connected = status?.connected ?? false;
-  // CMD_RESET_PATH is companion-only (firmware deviceType=1).
+  // CMD_RESET_PATH / CMD_SHARE_CONTACT / CMD_ADD_UPDATE_CONTACT are all
+  // companion-only (firmware deviceType=1).
   const isCompanion = (status?.deviceType ?? 0) === 1;
+
+  // Lazy-read the advanced path-edit toggle from /api/settings. Off by
+  // default; flipping it on/off in the Settings tab takes effect on the
+  // next mount. We don't subscribe to settings changes here — the panel
+  // is mounted often enough that polling isn't worth the complexity.
+  const [advancedPathEditEnabled, setAdvancedPathEditEnabled] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const base = (baseUrl ?? '').replace(/\/$/, '');
+    fetch(`${base}/api/settings`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (cancelled || !j) return;
+        const value = j?.data?.meshcoreAdvancedPathEdit ?? j?.meshcoreAdvancedPathEdit;
+        setAdvancedPathEditEnabled(value === 'true' || value === '1' || value === true);
+      })
+      .catch(() => {
+        /* leave default false on error */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseUrl]);
 
   // Contacts that have at least one DM thread (filtered on top).
   const contactsByKey = useMemo(() => {
@@ -173,8 +197,10 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 publicKey={selected}
                 onResetPath={actions.resetContactPath}
                 onShareContact={actions.shareContact}
+                onSetOutPath={actions.setContactOutPath}
                 canWriteNodes={canWriteNodes && connected}
                 isCompanion={isCompanion}
+                advancedPathEditEnabled={advancedPathEditEnabled}
               />
               {!!sourceId && typeof baseUrl === 'string' && isRealNodeKey(selected) && (
                 <>
