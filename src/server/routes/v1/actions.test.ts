@@ -39,6 +39,13 @@ const normalUser = { id: 2, username: 'normal', isActive: true, isAdmin: false }
 vi.mock('../../../services/database.js', () => ({
   default: {
     checkPermissionAsync: vi.fn(),
+    sources: {
+      // attachSource resolves :sourceId via this call before any handler
+      // logic runs. Tests that exercise unknown sources can override it
+      // per-case to return null.
+      getSource: vi.fn(),
+      getAllSources: vi.fn(),
+    },
     nodes: {
       getNode: vi.fn(),
     },
@@ -113,6 +120,19 @@ beforeEach(() => {
 
   // Default: grant all permissions
   mockDb.checkPermissionAsync.mockResolvedValue(true);
+  // Default: any sourceId resolves to a stub source row so attachSource
+  // proceeds to the handler. Tests can override per-case.
+  mockDb.sources.getSource.mockImplementation(async (id: string) => ({
+    id,
+    name: id,
+    type: 'meshtastic_tcp',
+    config: {},
+    enabled: true,
+    createdAt: 0,
+    updatedAt: 0,
+    createdBy: null,
+  }));
+  mockDb.sources.getAllSources.mockResolvedValue([]);
   // Default: no node found → channel 0
   mockDb.nodes.getNode.mockResolvedValue(null);
   // Default: insertMessage succeeds
@@ -191,7 +211,7 @@ describe('POST /traceroute', () => {
     const res = await post(app, SOURCE_A, 'traceroute', { destination: '!a1b2c3d4' });
 
     expect(res.status).toBe(403);
-    expect(res.body.required).toBe('traceroute:write');
+    expect(res.body.required).toEqual({ resource: 'traceroute', action: 'write', sourceId: SOURCE_A });
   });
 
   it('passes sourceId to checkPermissionAsync (per-source)', async () => {
@@ -324,7 +344,7 @@ describe('POST /request-position', () => {
     const res = await post(app, SOURCE_A, 'request-position', { destination: '!a1b2c3d4' });
 
     expect(res.status).toBe(403);
-    expect(res.body.required).toBe('messages:write');
+    expect(res.body.required).toEqual({ resource: 'messages', action: 'write', sourceId: SOURCE_A });
   });
 
   it('passes sourceId to checkPermissionAsync', async () => {
@@ -380,7 +400,7 @@ describe('POST /request-nodeinfo', () => {
     const res = await post(app, SOURCE_A, 'request-nodeinfo', { destination: '!a1b2c3d4' });
 
     expect(res.status).toBe(403);
-    expect(res.body.required).toBe('messages:write');
+    expect(res.body.required).toEqual({ resource: 'messages', action: 'write', sourceId: SOURCE_A });
   });
 
   it('passes sourceId to checkPermissionAsync', async () => {
@@ -472,7 +492,7 @@ describe('POST /request-neighbors', () => {
     const res = await post(app, SOURCE_A, 'request-neighbors', { destination: '!a1b2c3d4' });
 
     expect(res.status).toBe(403);
-    expect(res.body.required).toBe('traceroute:write');
+    expect(res.body.required).toEqual({ resource: 'traceroute', action: 'write', sourceId: SOURCE_A });
   });
 
   it('passes sourceId to checkPermissionAsync', async () => {
@@ -528,5 +548,35 @@ describe('destination resolution edge cases', () => {
     const app = buildApp(normalUser);
     const res = await post(app, SOURCE_A, 'traceroute', { nodeNum: 0x1FFFFFFFF });
     expect(res.status).toBe(400);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// `default` source alias — resolved by attachSource
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('default source alias', () => {
+  it('resolves `default` to the first enabled source the admin can see', async () => {
+    mockDb.sources.getAllSources.mockResolvedValue([
+      { id: SOURCE_A, name: 'A', type: 'meshtastic_tcp', config: {}, enabled: true,  createdAt: 1, updatedAt: 1, createdBy: null },
+      { id: SOURCE_B, name: 'B', type: 'meshtastic_tcp', config: {}, enabled: true,  createdAt: 2, updatedAt: 2, createdBy: null },
+    ]);
+
+    const app = buildApp(adminUser);
+    const res = await post(app, 'default', 'traceroute', { destination: '!a1b2c3d4' });
+
+    expect(res.status).toBe(200);
+    // attachSource normalises req.params.sourceId to the resolved UUID, so the
+    // handler asks the registry for SOURCE_A (the earliest-createdAt enabled row).
+    expect(mockResolveSourceManager).toHaveBeenCalledWith(SOURCE_A);
+  });
+
+  it('returns 404 when no enabled source exists for `default`', async () => {
+    mockDb.sources.getAllSources.mockResolvedValue([]);
+
+    const app = buildApp(adminUser);
+    const res = await post(app, 'default', 'traceroute', { destination: '!a1b2c3d4' });
+
+    expect(res.status).toBe(404);
   });
 });

@@ -5,17 +5,19 @@
  * nodeinfo exchange, and neighbor info request. Requires Bearer token auth.
  * All operations are scoped to the source identified by :sourceId.
  *
- * Permissions:
- *   traceroute, request-neighbors  → traceroute:write (per source)
- *   request-position, request-nodeinfo → messages:write (per source)
+ * Permissions (enforced by per-route `attachSource` middleware so the
+ * `default` source alias, per-source 403, and the canonical `req.source` shape
+ * match every other v1 resource):
+ *   traceroute, request-neighbors      → traceroute:write
+ *   request-position, request-nodeinfo → messages:write
  */
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import { resolveSourceManager } from '../../utils/resolveSourceManager.js';
-import { hasPermission } from '../../auth/authMiddleware.js';
 import { logger } from '../../../utils/logger.js';
 import { PortNum } from '../../constants/meshtastic.js';
+import { attachSource } from './sourceParam.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -74,18 +76,9 @@ function pruneNeighborRateLimit(): void {
 
 // POST /traceroute ─────────────────────────────────────────────────────────────
 
-router.post('/traceroute', async (req: Request, res: Response) => {
+router.post('/traceroute', attachSource('traceroute', 'write'), async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'Unauthorized', message: 'Authentication required' });
-    }
-
     const sourceId = req.params.sourceId as string;
-    if (!user.isAdmin && !(await hasPermission(user, 'traceroute', 'write', sourceId))) {
-      return res.status(403).json({ success: false, error: 'Insufficient permissions', required: 'traceroute:write' });
-    }
-
     const destinationNum = resolveDestination(req.body);
     if (destinationNum === null) {
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
@@ -115,18 +108,9 @@ router.post('/traceroute', async (req: Request, res: Response) => {
 
 // POST /request-position ───────────────────────────────────────────────────────
 
-router.post('/request-position', async (req: Request, res: Response) => {
+router.post('/request-position', attachSource('messages', 'write'), async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'Unauthorized', message: 'Authentication required' });
-    }
-
     const sourceId = req.params.sourceId as string;
-    if (!user.isAdmin && !(await hasPermission(user, 'messages', 'write', sourceId))) {
-      return res.status(403).json({ success: false, error: 'Insufficient permissions', required: 'messages:write' });
-    }
-
     const destinationNum = resolveDestination(req.body);
     if (destinationNum === null) {
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
@@ -181,18 +165,9 @@ router.post('/request-position', async (req: Request, res: Response) => {
 
 // POST /request-nodeinfo ───────────────────────────────────────────────────────
 
-router.post('/request-nodeinfo', async (req: Request, res: Response) => {
+router.post('/request-nodeinfo', attachSource('messages', 'write'), async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'Unauthorized', message: 'Authentication required' });
-    }
-
     const sourceId = req.params.sourceId as string;
-    if (!user.isAdmin && !(await hasPermission(user, 'messages', 'write', sourceId))) {
-      return res.status(403).json({ success: false, error: 'Insufficient permissions', required: 'messages:write' });
-    }
-
     const destinationNum = resolveDestination(req.body);
     if (destinationNum === null) {
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
@@ -246,18 +221,9 @@ router.post('/request-nodeinfo', async (req: Request, res: Response) => {
 
 // POST /request-neighbors ──────────────────────────────────────────────────────
 
-router.post('/request-neighbors', async (req: Request, res: Response) => {
+router.post('/request-neighbors', attachSource('traceroute', 'write'), async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'Unauthorized', message: 'Authentication required' });
-    }
-
     const sourceId = req.params.sourceId as string;
-    if (!user.isAdmin && !(await hasPermission(user, 'traceroute', 'write', sourceId))) {
-      return res.status(403).json({ success: false, error: 'Insufficient permissions', required: 'traceroute:write' });
-    }
-
     const destinationNum = resolveDestination(req.body);
     if (destinationNum === null) {
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });

@@ -128,6 +128,10 @@ router.use(
   attachSource('info', 'read'),
   statusRouter
 );
+// Actions endpoints (traceroute / position / nodeinfo / neighbors) mix two
+// permission resources — `traceroute:write` and `messages:write` — so they
+// apply `attachSource` per-route inside `actionsRouter` rather than at the
+// mount level.
 router.use('/sources/:sourceId/actions', actionsRouter);
 
 // Deprecated legacy routes (root-scoped). Same handlers, but gated by the
