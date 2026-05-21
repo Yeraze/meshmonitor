@@ -68,6 +68,13 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   telemetryIntervalMinutes: integer('telemetryIntervalMinutes').default(60),
   lastTelemetryRequestAt: integer('lastTelemetryRequestAt'),
 
+  // MeshCore per-contact forwarding route (migration 068).
+  // `outPath` is a comma-separated hex chain of hop hashes ("a3,7f,02");
+  // `pathLen` is the hop count. Both NULL when the firmware's
+  // OUT_PATH_UNKNOWN (0xFF) sentinel is set — next send will flood.
+  outPath: text('out_path'),
+  pathLen: integer('path_len'),
+
   // Timestamps
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
@@ -113,6 +120,9 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   telemetryIntervalMinutes: pgInteger('telemetryIntervalMinutes').default(60),
   lastTelemetryRequestAt: pgBigint('lastTelemetryRequestAt', { mode: 'number' }),
 
+  outPath: pgText('out_path'),
+  pathLen: pgInteger('path_len'),
+
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
 }, (table) => ({
@@ -156,6 +166,9 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   telemetryEnabled: myBoolean('telemetryEnabled').default(false),
   telemetryIntervalMinutes: myInt('telemetryIntervalMinutes').default(60),
   lastTelemetryRequestAt: myBigint('lastTelemetryRequestAt', { mode: 'number' }),
+
+  outPath: myVarchar('out_path', { length: 255 }),
+  pathLen: myInt('path_len'),
 
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),

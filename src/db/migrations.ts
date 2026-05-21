@@ -82,6 +82,7 @@ import { migration as addChannelDatabasePermissionMigration, runMigration064Post
 import { migration as addMessageSourceAttributionMigration, runMigration065Postgres, runMigration065Mysql } from '../server/migrations/065_add_message_source_attribution.js';
 import { migration as addTransportMechanismToNodesMigration, runMigration066Postgres, runMigration066Mysql } from '../server/migrations/066_add_transport_mechanism_to_nodes.js';
 import { migration as addShowUdpRfNodesToMapPrefsMigration, runMigration067Postgres, runMigration067Mysql } from '../server/migrations/067_add_show_udp_rf_nodes_to_map_prefs.js';
+import { migration as meshcoreNodesOutPathMigration, runMigration068Postgres, runMigration068Mysql } from '../server/migrations/068_meshcore_nodes_out_path.js';
 
 // ============================================================================
 // Registry
@@ -1060,4 +1061,20 @@ registry.register({
   sqlite: (db) => addShowUdpRfNodesToMapPrefsMigration.up(db),
   postgres: (client) => runMigration067Postgres(client),
   mysql: (pool) => runMigration067Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 068: Persist MeshCore per-contact route ("out_path") on
+// meshcore_nodes. Adds `out_path TEXT` (comma-separated hex hops) and
+// `path_len INTEGER`. NULL on both means the firmware's OUT_PATH_UNKNOWN
+// sentinel — next send will flood.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 68,
+  name: 'meshcore_nodes_out_path',
+  settingsKey: 'migration_068_meshcore_nodes_out_path',
+  sqlite: (db) => meshcoreNodesOutPathMigration.up(db),
+  postgres: (client) => runMigration068Postgres(client),
+  mysql: (pool) => runMigration068Mysql(pool),
 });

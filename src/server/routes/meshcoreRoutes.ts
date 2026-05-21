@@ -323,6 +323,45 @@ router.post('/contacts/refresh', meshcoreDeviceLimiter, requireAuth(), requirePe
 });
 
 /**
+ * POST /api/sources/:id/meshcore/contacts/:publicKey/reset-path
+ *
+ * Clear the cached forwarding route ("out_path") for a contact on the
+ * device, so the next send re-discovers the route via flooding. Wraps
+ * the firmware's CMD_RESET_PATH (companion protocol opcode 13).
+ *
+ * On success, MeshMonitor mirrors the device state by clearing the row's
+ * out_path / path_len columns so the UI reflects the change immediately.
+ */
+router.post(
+  '/contacts/:publicKey/reset-path',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const publicKey = req.params.publicKey;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid public key — must be 64-char hex',
+        });
+      }
+      const ok = await managerFor(req).resetContactPath(publicKey);
+      if (!ok) {
+        return res.status(409).json({
+          success: false,
+          error: 'Reset path failed — contact may be unknown, source disconnected, or not a Companion device',
+        });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('[API] Error resetting contact path:', error);
+      res.status(500).json({ success: false, error: 'Failed to reset path' });
+    }
+  },
+);
+
+/**
  * GET /api/meshcore/messages
  * Get recent messages. Optional ?since=<ms-timestamp> returns only messages newer than that time.
  */

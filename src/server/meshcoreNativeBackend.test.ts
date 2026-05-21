@@ -9,6 +9,7 @@ import { EventEmitter } from 'events';
 import {
   MeshCoreNativeBackend,
   __setMeshCoreModule,
+  formatOutPath,
 } from './meshcoreNativeBackend.js';
 
 // ---------------- mock meshcore.js ----------------
@@ -195,6 +196,11 @@ class MockConnection extends EventEmitter {
   }
   async deleteChannel(idx: number) {
     this.deleteChannelCalls.push(idx);
+  }
+
+  public resetPathCalls: Uint8Array[] = [];
+  async resetPath(pubKey: Uint8Array) {
+    this.resetPathCalls.push(pubKey);
   }
 }
 
@@ -726,6 +732,93 @@ describe('MeshCoreNativeBackend', () => {
     const resp = await backend.sendCommand('delete_channel', { idx: 4 });
     expect(resp.success).toBe(true);
     expect(conn.deleteChannelCalls).toEqual([4]);
+  });
+
+  it('get_contacts surfaces out_path and path_len from meshcore.js', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    const pubKey = new Uint8Array(32);
+    pubKey[0] = 0xaa; pubKey[1] = 0xbb;
+    const outPath = new Uint8Array(64);
+    outPath[0] = 0xa3; outPath[1] = 0x7f; outPath[2] = 0x02;
+    conn.contactsResponse = [
+      {
+        publicKey: pubKey, type: AdvType.Chat, advName: 'Bob',
+        outPath, outPathLen: 3,
+        advLat: 0, advLon: 0, lastAdvert: 1700000000,
+      },
+      // Unknown path: firmware sentinel 0xFF arrives as -1 over meshcore.js Int8 read.
+      {
+        publicKey: pubKey, type: AdvType.Chat, advName: 'Alice',
+        outPath: new Uint8Array(64), outPathLen: -1,
+        advLat: 0, advLon: 0, lastAdvert: 1700000001,
+      },
+      // Zero-hop direct neighbour.
+      {
+        publicKey: pubKey, type: AdvType.Chat, advName: 'Self',
+        outPath: new Uint8Array(64), outPathLen: 0,
+        advLat: 0, advLon: 0, lastAdvert: 1700000002,
+      },
+    ];
+
+    const resp = await backend.sendCommand('get_contacts', {});
+    expect(resp.success).toBe(true);
+    expect(Array.isArray(resp.data)).toBe(true);
+    expect(resp.data).toHaveLength(3);
+    expect(resp.data[0]).toEqual(expect.objectContaining({ out_path: 'a3,7f,02', path_len: 3 }));
+    expect(resp.data[1]).toEqual(expect.objectContaining({ out_path: null, path_len: null }));
+    expect(resp.data[2]).toEqual(expect.objectContaining({ out_path: '', path_len: 0 }));
+  });
+
+  it('reset_path forwards the resolved pubkey to the connection', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    const targetBytes = new Uint8Array(32);
+    targetBytes[0] = 0xde; targetBytes[1] = 0xad; targetBytes[2] = 0xbe; targetBytes[3] = 0xef;
+    conn.contactsResponse = [{ publicKey: targetBytes, type: AdvType.Chat, advName: 'Bob' }];
+
+    const resp = await backend.sendCommand('reset_path', { public_key: 'deadbeef' });
+    expect(resp.success).toBe(true);
+    expect(conn.resetPathCalls).toHaveLength(1);
+    expect(Array.from(conn.resetPathCalls[0]).slice(0, 4)).toEqual([0xde, 0xad, 0xbe, 0xef]);
+  });
+
+  it('reset_path returns an error when the contact cannot be resolved', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+
+    const resp = await backend.sendCommand('reset_path', { public_key: 'cafebabe' });
+    expect(resp.success).toBe(false);
+    expect(resp.error).toMatch(/Reset-path target not found/);
+  });
+});
+
+describe('formatOutPath', () => {
+  it('returns nulls for the OUT_PATH_UNKNOWN sentinel (0xFF or -1)', () => {
+    expect(formatOutPath(new Uint8Array(64), 0xff)).toEqual({ outPathHex: null, pathLen: null });
+    expect(formatOutPath(new Uint8Array(64), -1)).toEqual({ outPathHex: null, pathLen: null });
+    expect(formatOutPath(undefined, undefined)).toEqual({ outPathHex: null, pathLen: null });
+  });
+
+  it('renders zero-hop direct as empty string with pathLen=0', () => {
+    expect(formatOutPath(new Uint8Array(64), 0)).toEqual({ outPathHex: '', pathLen: 0 });
+  });
+
+  it('renders multi-hop path as comma-separated hex truncated to outPathLen', () => {
+    const buf = new Uint8Array(64);
+    buf[0] = 0xa3; buf[1] = 0x7f; buf[2] = 0x02; buf[3] = 0x10;
+    expect(formatOutPath(buf, 3)).toEqual({ outPathHex: 'a3,7f,02', pathLen: 3 });
   });
 });
 
