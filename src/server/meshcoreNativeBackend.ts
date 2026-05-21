@@ -397,6 +397,17 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { ok: true };
       }
 
+      case 'share_contact': {
+        // Broadcasts the contact's saved advert as a zero-hop frame so
+        // nearby nodes can pick it up. Wraps the firmware's
+        // CMD_SHARE_CONTACT (companion protocol opcode 16); device does
+        // not mutate the contact, it just retransmits the advert.
+        const publicKey = await this.resolvePublicKey(params.public_key as string);
+        if (!publicKey) throw new Error('Share-contact target not found');
+        await c.shareContact(publicKey);
+        return { ok: true };
+      }
+
       case 'send_message': {
         const to = params.to as string | null | undefined;
         const text = String(params.text ?? '');

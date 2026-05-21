@@ -49,6 +49,7 @@ const meshcoreManager = {
   sendAdvert: vi.fn().mockResolvedValue(true),
   refreshContacts: vi.fn().mockResolvedValue(new Map()),
   resetContactPath: vi.fn().mockResolvedValue(true),
+  shareContact: vi.fn().mockResolvedValue(true),
   loginToNode: vi.fn().mockResolvedValue(true),
   requestNodeStatus: vi.fn().mockResolvedValue({ batteryMv: 4200, uptimeSecs: 3600 }),
   setName: vi.fn().mockResolvedValue(true),
@@ -707,6 +708,52 @@ describe('MeshCore Routes', () => {
     it('returns 404 when the source has no registered manager', async () => {
       const response = await authenticatedAgent
         .post(`/api/sources/no-such-source/meshcore/contacts/${VALID_PUBKEY}/reset-path`);
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('POST /api/sources/test-source/meshcore/contacts/:publicKey/share', () => {
+    const VALID_PUBKEY = 'b'.repeat(64);
+
+    beforeEach(() => {
+      meshcoreManager.shareContact.mockReset();
+      meshcoreManager.shareContact.mockResolvedValue(true);
+    });
+
+    it('requires authentication', async () => {
+      const response = await request(app)
+        .post(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/share`);
+      expect(response.status).toBe(401);
+    });
+
+    it('rejects an invalid public key', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/contacts/not-hex/share');
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/64-char hex/);
+      expect(meshcoreManager.shareContact).not.toHaveBeenCalled();
+    });
+
+    it('forwards a valid public key to the manager and returns 200', async () => {
+      const response = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/share`);
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.broadcast).toBe(true);
+      expect(meshcoreManager.shareContact).toHaveBeenCalledWith(VALID_PUBKEY);
+    });
+
+    it('returns 409 when the manager rejects (unknown contact / non-companion)', async () => {
+      meshcoreManager.shareContact.mockResolvedValueOnce(false);
+      const response = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/share`);
+      expect(response.status).toBe(409);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('returns 404 when the source has no registered manager', async () => {
+      const response = await authenticatedAgent
+        .post(`/api/sources/no-such-source/meshcore/contacts/${VALID_PUBKEY}/share`);
       expect(response.status).toBe(404);
     });
   });

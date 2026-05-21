@@ -362,6 +362,43 @@ router.post(
 );
 
 /**
+ * POST /api/sources/:id/meshcore/contacts/:publicKey/share
+ *
+ * Broadcast the contact's saved advert as a zero-hop frame so nearby nodes
+ * can pick it up and add it themselves. Wraps the firmware's
+ * CMD_SHARE_CONTACT (companion protocol opcode 16). The device only
+ * retransmits the stored advert; no local state mutates.
+ */
+router.post(
+  '/contacts/:publicKey/share',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const publicKey = req.params.publicKey;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid public key — must be 64-char hex',
+        });
+      }
+      const ok = await managerFor(req).shareContact(publicKey);
+      if (!ok) {
+        return res.status(409).json({
+          success: false,
+          error: 'Share contact failed — contact may be unknown, source disconnected, or not a Companion device',
+        });
+      }
+      res.json({ success: true, broadcast: true });
+    } catch (error) {
+      logger.error('[API] Error sharing contact:', error);
+      res.status(500).json({ success: false, error: 'Failed to share contact' });
+    }
+  },
+);
+
+/**
  * GET /api/meshcore/messages
  * Get recent messages. Optional ?since=<ms-timestamp> returns only messages newer than that time.
  */

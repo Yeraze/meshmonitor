@@ -1289,6 +1289,37 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
+   * Broadcast the device's saved advert for a contact as a zero-hop frame
+   * so nearby nodes can add this contact themselves. Wraps the firmware's
+   * CMD_SHARE_CONTACT; the device only retransmits — no local state is
+   * mutated, so this method does not touch contacts or meshcore_nodes.
+   *
+   * Returns `true` on success, `false` if the device rejected the request
+   * (unknown contact, transient backend error) or this isn't a Companion.
+   */
+  async shareContact(publicKey: string): Promise<boolean> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Share-contact requires Companion firmware');
+      return false;
+    }
+    if (!this.connected) {
+      return false;
+    }
+    try {
+      const response = await this.sendBridgeCommand('share_contact', { public_key: publicKey });
+      if (!response.success) {
+        logger.warn(`[MeshCore] share_contact failed for ${publicKey}: ${response.error}`);
+        return false;
+      }
+      logger.info(`[MeshCore] Shared contact ${publicKey.substring(0, 16)}…`);
+      return true;
+    } catch (error) {
+      logger.error('[MeshCore] shareContact threw:', error);
+      return false;
+    }
+  }
+
+  /**
    * Login to a remote node for admin access
    */
   async loginToNode(publicKey: string, password: string): Promise<boolean> {
