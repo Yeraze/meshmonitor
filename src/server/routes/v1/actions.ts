@@ -1,66 +1,103 @@
 /**
  * v1 API - Node Actions Endpoint
  *
- * Provides POST actions for interacting with mesh nodes:
- * traceroute, position request, nodeinfo exchange, and neighbor info request.
+ * POST actions for interacting with mesh nodes: traceroute, position request,
+ * nodeinfo exchange, and neighbor info request. Requires Bearer token auth.
+ * All operations are scoped to the source identified by :sourceId.
  *
- * These endpoints mirror the internal API actions but are accessible
- * via Bearer token authentication for external clients.
+ * Permissions:
+ *   traceroute, request-neighbors  → traceroute:write (per source)
+ *   request-position, request-nodeinfo → messages:write (per source)
  */
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
-import meshtasticManager from '../../meshtasticManager.js';
+import { resolveSourceManager } from '../../utils/resolveSourceManager.js';
 import { hasPermission } from '../../auth/authMiddleware.js';
 import { logger } from '../../../utils/logger.js';
 import { PortNum } from '../../constants/meshtastic.js';
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
 
 /**
- * Resolve a node destination from the request body.
- * Accepts nodeId string (e.g. "!a1b2c3d4") or nodeNum number.
- * Returns the numeric node number or null if invalid.
+ * Resolve a destination node number from the request body.
+ * Accepts:
+ *   destination / nodeId / nodeNum  — any of the three keys
+ *   "!a1b2c3d4"  — !-prefixed hex (standard Meshtastic nodeId)
+ *   "0xa1b2c3d4" — 0x-prefixed hex
+ *   2712847316   — plain decimal number
+ *   "2712847316" — decimal string
+ *
+ * Returns null when absent, ambiguous, or out of the valid nodeNum range
+ * (1 – 0xFFFFFFFF).  nodeNum 0 is explicitly excluded: it means "broadcast"
+ * on some firmware paths but is not a valid single-node destination here.
  */
 function resolveDestination(body: any): number | null {
-  const { destination, nodeId, nodeNum } = body;
-  const raw = destination || nodeId || nodeNum;
-  if (!raw) return null;
+  const raw = body?.destination ?? body?.nodeId ?? body?.nodeNum;
+  if (raw == null) return null;
 
-  if (typeof raw === 'number') return raw;
-  if (typeof raw === 'string') {
-    // Handle "!hex" format
+  let num: number;
+  if (typeof raw === 'number') {
+    num = raw;
+  } else if (typeof raw === 'string') {
     if (raw.startsWith('!')) {
-      const num = parseInt(raw.slice(1), 16);
-      return isNaN(num) ? null : num;
+      num = parseInt(raw.slice(1), 16);
+    } else if (raw.startsWith('0x') || raw.startsWith('0X')) {
+      num = parseInt(raw, 16);
+    } else {
+      // Only accept unambiguous decimal strings — plain hex without prefix is
+      // indistinguishable from decimal and is therefore rejected.
+      num = parseInt(raw, 10);
     }
-    // Handle plain hex or decimal string
-    const num = parseInt(raw, raw.startsWith('0x') ? 16 : 10);
-    return isNaN(num) ? null : num;
+  } else {
+    return null;
   }
-  return null;
+
+  if (!Number.isInteger(num) || num <= 0 || num > 0xFFFFFFFF) return null;
+  return num;
 }
 
 /**
- * POST /api/v1/actions/traceroute
- * Send a traceroute to a destination node
+ * Source-scoped rate-limit map for request-neighbors.
+ * Key: "${sourceId}:${destinationNum}".  Pruned on every insert to avoid
+ * unbounded growth (entries older than 2× the limit are removed).
  */
+const neighborInfoRateLimitMap = new Map<string, number>();
+const NEIGHBOR_INFO_RATE_LIMIT_MS = 180_000;
+
+function pruneNeighborRateLimit(): void {
+  const cutoff = Date.now() - NEIGHBOR_INFO_RATE_LIMIT_MS * 2;
+  for (const [key, ts] of neighborInfoRateLimitMap) {
+    if (ts < cutoff) neighborInfoRateLimitMap.delete(key);
+  }
+}
+
+// POST /traceroute ─────────────────────────────────────────────────────────────
+
 router.post('/traceroute', async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    if (!user?.isAdmin && !(user ? await hasPermission(user, 'traceroute', 'write') : false)) {
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Unauthorized', message: 'Authentication required' });
+    }
+
+    const sourceId = req.params.sourceId as string;
+    if (!user.isAdmin && !(await hasPermission(user, 'traceroute', 'write', sourceId))) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions', required: 'traceroute:write' });
     }
 
     const destinationNum = resolveDestination(req.body);
-    if (!destinationNum) {
+    if (destinationNum === null) {
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
     }
 
-    const node = await databaseService.nodes.getNode(destinationNum);
-    const channel = node?.channel ?? 0;
+    const manager = resolveSourceManager(sourceId);
+    const node = await databaseService.nodes.getNode(destinationNum, sourceId);
+    const channel = (typeof req.body.channel === 'number' && req.body.channel >= 0 && req.body.channel <= 7)
+      ? req.body.channel
+      : (node?.channel ?? 0);
 
-    await meshtasticManager.sendTraceroute(destinationNum, channel);
+    await manager.sendTraceroute(destinationNum, channel);
 
     res.json({
       success: true,
@@ -76,50 +113,56 @@ router.post('/traceroute', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /api/v1/actions/request-position
- * Request position from a destination node
- */
+// POST /request-position ───────────────────────────────────────────────────────
+
 router.post('/request-position', async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    if (!user?.isAdmin && !(user ? await hasPermission(user, 'messages', 'write') : false)) {
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Unauthorized', message: 'Authentication required' });
+    }
+
+    const sourceId = req.params.sourceId as string;
+    if (!user.isAdmin && !(await hasPermission(user, 'messages', 'write', sourceId))) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions', required: 'messages:write' });
     }
 
     const destinationNum = resolveDestination(req.body);
-    if (!destinationNum) {
+    if (destinationNum === null) {
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
     }
 
-    const node = await databaseService.nodes.getNode(destinationNum);
+    const manager = resolveSourceManager(sourceId);
+    const node = await databaseService.nodes.getNode(destinationNum, sourceId);
     const channel = (typeof req.body.channel === 'number' && req.body.channel >= 0 && req.body.channel <= 7)
       ? req.body.channel
       : (node?.channel ?? 0);
 
-    const { packetId, requestId } = await meshtasticManager.sendPositionRequest(destinationNum, channel);
+    const { packetId, requestId } = await manager.sendPositionRequest(destinationNum, channel);
 
-    // Create system message like the internal endpoint does
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const localNodeInfo = manager.getLocalNodeInfo();
     const isBroadcast = destinationNum === 0xFFFFFFFF;
 
     if (localNodeInfo) {
       const timestamp = Date.now();
       const messageChannel = channel === 0 ? -1 : channel;
-      await databaseService.messages.insertMessage({
-        id: `${packetId}`,
-        fromNodeNum: localNodeInfo.nodeNum,
-        toNodeNum: destinationNum,
-        fromNodeId: localNodeInfo.nodeId,
-        toNodeId: `!${destinationNum.toString(16).padStart(8, '0')}`,
-        text: isBroadcast ? 'Position broadcast sent' : 'Position exchange requested',
-        channel: messageChannel,
-        portnum: PortNum.TEXT_MESSAGE_APP,
-        ...(isBroadcast ? {} : { requestId }),
-        timestamp,
-        rxTime: timestamp,
-        createdAt: timestamp,
-      });
+      await databaseService.messages.insertMessage(
+        {
+          id: `${sourceId}_${localNodeInfo.nodeNum}_${packetId}`,
+          fromNodeNum: localNodeInfo.nodeNum,
+          toNodeNum: destinationNum,
+          fromNodeId: localNodeInfo.nodeId,
+          toNodeId: `!${destinationNum.toString(16).padStart(8, '0')}`,
+          text: isBroadcast ? 'Position broadcast sent' : 'Position exchange requested',
+          channel: messageChannel,
+          portnum: PortNum.TEXT_MESSAGE_APP,
+          ...(isBroadcast ? {} : { requestId }),
+          timestamp,
+          rxTime: timestamp,
+          createdAt: timestamp,
+        },
+        sourceId
+      );
     }
 
     res.json({
@@ -136,47 +179,55 @@ router.post('/request-position', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /api/v1/actions/request-nodeinfo
- * Request node info exchange (triggers key exchange for DMs)
- */
+// POST /request-nodeinfo ───────────────────────────────────────────────────────
+
 router.post('/request-nodeinfo', async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    if (!user?.isAdmin && !(user ? await hasPermission(user, 'messages', 'write') : false)) {
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Unauthorized', message: 'Authentication required' });
+    }
+
+    const sourceId = req.params.sourceId as string;
+    if (!user.isAdmin && !(await hasPermission(user, 'messages', 'write', sourceId))) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions', required: 'messages:write' });
     }
 
     const destinationNum = resolveDestination(req.body);
-    if (!destinationNum) {
+    if (destinationNum === null) {
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
     }
 
-    const node = await databaseService.nodes.getNode(destinationNum);
-    const channel = node?.channel ?? 0;
+    const manager = resolveSourceManager(sourceId);
+    const node = await databaseService.nodes.getNode(destinationNum, sourceId);
+    const channel = (typeof req.body.channel === 'number' && req.body.channel >= 0 && req.body.channel <= 7)
+      ? req.body.channel
+      : (node?.channel ?? 0);
 
-    const { packetId, requestId } = await meshtasticManager.sendNodeInfoRequest(destinationNum, channel);
+    const { packetId, requestId } = await manager.sendNodeInfoRequest(destinationNum, channel);
 
-    // Create system message like the internal endpoint does
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const localNodeInfo = manager.getLocalNodeInfo();
 
     if (localNodeInfo) {
       const timestamp = Date.now();
       const messageChannel = channel === 0 ? -1 : channel;
-      await databaseService.messages.insertMessage({
-        id: `${packetId}`,
-        fromNodeNum: localNodeInfo.nodeNum,
-        toNodeNum: destinationNum,
-        fromNodeId: localNodeInfo.nodeId,
-        toNodeId: `!${destinationNum.toString(16).padStart(8, '0')}`,
-        text: 'User info exchange requested',
-        channel: messageChannel,
-        portnum: PortNum.TEXT_MESSAGE_APP,
-        requestId,
-        timestamp,
-        rxTime: timestamp,
-        createdAt: timestamp,
-      });
+      await databaseService.messages.insertMessage(
+        {
+          id: `${sourceId}_${localNodeInfo.nodeNum}_${packetId}`,
+          fromNodeNum: localNodeInfo.nodeNum,
+          toNodeNum: destinationNum,
+          fromNodeId: localNodeInfo.nodeId,
+          toNodeId: `!${destinationNum.toString(16).padStart(8, '0')}`,
+          text: 'User info exchange requested',
+          channel: messageChannel,
+          portnum: PortNum.TEXT_MESSAGE_APP,
+          requestId,
+          timestamp,
+          rxTime: timestamp,
+          createdAt: timestamp,
+        },
+        sourceId
+      );
     }
 
     res.json({
@@ -193,29 +244,29 @@ router.post('/request-nodeinfo', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /api/v1/actions/request-neighbors
- * Request neighbor info from a node (only local or 0-hop nodes)
- */
-const neighborInfoRequestTimestamps = new Map<number, number>();
-const NEIGHBOR_INFO_RATE_LIMIT_MS = 180_000;
+// POST /request-neighbors ──────────────────────────────────────────────────────
 
 router.post('/request-neighbors', async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    if (!user?.isAdmin && !(user ? await hasPermission(user, 'traceroute', 'write') : false)) {
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Unauthorized', message: 'Authentication required' });
+    }
+
+    const sourceId = req.params.sourceId as string;
+    if (!user.isAdmin && !(await hasPermission(user, 'traceroute', 'write', sourceId))) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions', required: 'traceroute:write' });
     }
 
     const destinationNum = resolveDestination(req.body);
-    if (!destinationNum) {
+    if (destinationNum === null) {
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
     }
 
-    // Eligibility check: only local node or 0-hop nodes
-    const localNodeNum = meshtasticManager.getLocalNodeInfo()?.nodeNum;
-    const node = await databaseService.nodes.getNode(destinationNum);
-    const isLocalNode = localNodeNum != null && Number(destinationNum) === Number(localNodeNum);
+    const manager = resolveSourceManager(sourceId);
+    const localNodeNum = manager.getLocalNodeInfo()?.nodeNum;
+    const node = await databaseService.nodes.getNode(destinationNum, sourceId);
+    const isLocalNode = localNodeNum != null && destinationNum === localNodeNum;
     const isDirectNode = node != null && node.hopsAway != null && Number(node.hopsAway) === 0;
 
     if (!isLocalNode && !isDirectNode) {
@@ -225,10 +276,10 @@ router.post('/request-neighbors', async (req: Request, res: Response) => {
       });
     }
 
-    // Rate limiting per destination
-    const lastRequest = neighborInfoRequestTimestamps.get(Number(destinationNum));
+    const rateLimitKey = `${sourceId}:${destinationNum}`;
+    const lastRequest = neighborInfoRateLimitMap.get(rateLimitKey);
     const now = Date.now();
-    if (lastRequest && (now - lastRequest) < NEIGHBOR_INFO_RATE_LIMIT_MS) {
+    if (lastRequest !== undefined && (now - lastRequest) < NEIGHBOR_INFO_RATE_LIMIT_MS) {
       const retryAfter = Math.ceil((NEIGHBOR_INFO_RATE_LIMIT_MS - (now - lastRequest)) / 1000);
       return res.status(429).json({
         success: false,
@@ -237,9 +288,14 @@ router.post('/request-neighbors', async (req: Request, res: Response) => {
       });
     }
 
-    const channel = node?.channel ?? 0;
-    await meshtasticManager.sendNeighborInfoRequest(destinationNum, channel);
-    neighborInfoRequestTimestamps.set(Number(destinationNum), now);
+    pruneNeighborRateLimit();
+
+    const channel = (typeof req.body.channel === 'number' && req.body.channel >= 0 && req.body.channel <= 7)
+      ? req.body.channel
+      : (node?.channel ?? 0);
+
+    await manager.sendNeighborInfoRequest(destinationNum, channel);
+    neighborInfoRateLimitMap.set(rateLimitKey, now);
 
     res.json({
       success: true,
@@ -255,4 +311,5 @@ router.post('/request-neighbors', async (req: Request, res: Response) => {
   }
 });
 
+export { neighborInfoRateLimitMap };
 export default router;

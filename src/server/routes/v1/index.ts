@@ -70,7 +70,7 @@ router.get('/', (_req, res) => {
       status: '/api/v1/sources/{sourceId}/status',
       channelDatabase: '/api/v1/channel-database',
       solar: '/api/v1/solar',
-      actions: '/api/v1/actions',
+      actions: '/api/v1/sources/{sourceId}/actions',
     },
     note:
       'Per-source paths are canonical. Legacy root paths (e.g. /api/v1/nodes?sourceId=...) ' +
@@ -82,7 +82,6 @@ router.get('/', (_req, res) => {
 router.use('/sources', sourcesRouter);
 router.use('/solar', solarRouter);
 router.use('/channel-database', channelDatabaseRouter);
-router.use('/actions', actionsRouter);
 
 // Per-source canonical routes. `attachSource(resource, action)` resolves the
 // :sourceId param (including the `default` alias) and enforces the
@@ -129,6 +128,7 @@ router.use(
   attachSource('info', 'read'),
   statusRouter
 );
+router.use('/sources/:sourceId/actions', actionsRouter);
 
 // Deprecated legacy routes (root-scoped). Same handlers, but gated by the
 // `deprecationShim` that stamps a `Warning: 299` header on every response
