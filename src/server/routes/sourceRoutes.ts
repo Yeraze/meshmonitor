@@ -241,6 +241,7 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
           virtualNode: cfgForStart.virtualNode,
           mqttLink: cfgForStart.mqttLink,
           passiveMode: cfgForStart.passiveMode === true,
+          passiveResyncStaleMs: typeof cfgForStart.passiveResyncStaleMs === 'number' ? cfgForStart.passiveResyncStaleMs : null,
         });
         await sourceManagerRegistry.addManager(manager);
       } catch (err) {
@@ -347,6 +348,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
             virtualNode: cfg.virtualNode,
             mqttLink: cfg.mqttLink,
             passiveMode: cfg.passiveMode === true,
+            passiveResyncStaleMs: typeof cfg.passiveResyncStaleMs === 'number' ? cfg.passiveResyncStaleMs : null,
           });
           await sourceManagerRegistry.addManager(manager);
         } catch (err) {
@@ -392,6 +394,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
             virtualNode: cfg.virtualNode,
             mqttLink: cfg.mqttLink,
             passiveMode: cfg.passiveMode === true,
+            passiveResyncStaleMs: typeof cfg.passiveResyncStaleMs === 'number' ? cfg.passiveResyncStaleMs : null,
           });
           await sourceManagerRegistry.addManager(manager);
         } catch (err) {
@@ -425,7 +428,12 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         (oldCfg.heartbeatIntervalSeconds ?? 0) !== (newCfg.heartbeatIntervalSeconds ?? 0) ||
         // Passive Mode (#3122) toggles reconnect/disconnect behavior baked into
         // the running manager. Restart so the new policy takes effect cleanly.
-        (oldCfg.passiveMode === true) !== (newCfg.passiveMode === true);
+        (oldCfg.passiveMode === true) !== (newCfg.passiveMode === true) ||
+        // Passive resync staleness window is read at construction time (and
+        // by configureSource) — change it → bounce the manager so the next
+        // reconnect uses the new threshold.
+        (typeof oldCfg.passiveResyncStaleMs === 'number' ? oldCfg.passiveResyncStaleMs : null) !==
+          (typeof newCfg.passiveResyncStaleMs === 'number' ? newCfg.passiveResyncStaleMs : null);
       const oldVn = JSON.stringify(oldCfg.virtualNode ?? null);
       const newVn = JSON.stringify(newCfg.virtualNode ?? null);
       const vnChanged = oldVn !== newVn;
@@ -444,6 +452,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
             virtualNode: newCfg.virtualNode,
             mqttLink: newCfg.mqttLink,
             passiveMode: newCfg.passiveMode === true,
+            passiveResyncStaleMs: typeof newCfg.passiveResyncStaleMs === 'number' ? newCfg.passiveResyncStaleMs : null,
           });
           await sourceManagerRegistry.addManager(manager);
         } catch (err) {
@@ -958,6 +967,7 @@ router.post('/:id/connect', requirePermission('sources', 'write'), async (req: R
       virtualNode: cfg.virtualNode,
       mqttLink: cfg.mqttLink,
       passiveMode: cfg.passiveMode === true,
+      passiveResyncStaleMs: typeof cfg.passiveResyncStaleMs === 'number' ? cfg.passiveResyncStaleMs : null,
     });
     await sourceManagerRegistry.addManager(manager);
     res.json({ success: true });

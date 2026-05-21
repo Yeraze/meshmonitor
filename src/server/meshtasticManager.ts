@@ -399,7 +399,7 @@ export interface MeshtasticMqttLink {
 
 class MeshtasticManager implements ISourceManager {
   public sourceId: string;
-  private sourceConfigOverride: { host?: string; port?: number; heartbeatIntervalSeconds?: number; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean } | null = null;
+  private sourceConfigOverride: { host?: string; port?: number; heartbeatIntervalSeconds?: number; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean; passiveResyncStaleMs?: number } | null = null;
   // Passive Mode (issue #3122) — for large/fragile TCP nodes:
   //   * preserve cached node/config state across reconnects
   //   * skip post-config outbound bursts (LoRa config, all-module-configs, time sync, admin scanner)
@@ -407,12 +407,23 @@ class MeshtasticManager implements ISourceManager {
   //   * fast initial reconnect for the first post-sync drop
   private passiveMode = false;
   private lastDisconnectAt: number | null = null;
+  // Per-source override of PASSIVE_RESYNC_STALE_MS. null means "use the
+  // class default". The reporter (#3122 follow-up) asked for this as an
+  // advanced setting so operators can tune the window for their specific
+  // node — e.g. a node whose config rarely changes might prefer 24h, while
+  // a node with frequent remote channel rekeys might prefer 1h.
+  private passiveResyncStaleMs: number | null = null;
   // Cap full-config syncs in passive mode. First connect is always full; after
   // that only re-sync if cache is empty or older than this threshold. 4h matches
   // the reporter's recommendation in #3122 — long enough to ride out repeated
   // transient closes on a large infrastructure node, short enough that genuine
   // config drift self-corrects without a manual refresh.
   private static readonly PASSIVE_RESYNC_STALE_MS = 4 * 60 * 60 * 1000; // 4 hours
+  // Bounds for the per-source override. Below the floor we'd be effectively
+  // resyncing on every flap; above the ceiling we'd never resync. Values
+  // outside this range fall back to the default.
+  private static readonly PASSIVE_RESYNC_STALE_MIN_MS = 60_000; // 1 minute
+  private static readonly PASSIVE_RESYNC_STALE_MAX_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
   // Startup-grace fast reconnect for passive-mode sources (#3122 follow-up).
   // The reporter observed that a large infrastructure node usually closes
   // the *first* config-sync session but recovers cleanly on the next attempt;
@@ -597,15 +608,19 @@ class MeshtasticManager implements ISourceManager {
    * Apply a source config after construction.
    * Used to configure the legacy singleton when sources are loaded from DB at startup.
    */
-  configureSource(config: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean }, sourceId?: string): void {
+  configureSource(config: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean; passiveResyncStaleMs?: number | null }, sourceId?: string): void {
     this.sourceConfigOverride = {
       host: config.host,
       port: config.port,
       heartbeatIntervalSeconds: config.heartbeatIntervalSeconds,
       mqttLink: config.mqttLink,
       passiveMode: config.passiveMode === true,
+      passiveResyncStaleMs:
+        typeof config.passiveResyncStaleMs === 'number' ? config.passiveResyncStaleMs : undefined,
     };
     this.passiveMode = config.passiveMode === true;
+    this.passiveResyncStaleMs =
+      typeof config.passiveResyncStaleMs === 'number' ? config.passiveResyncStaleMs : null;
     if (sourceId) this.sourceId = sourceId;
     if (config.virtualNode?.enabled && !this.virtualNodeServer) {
       this.virtualNodeServer = new VirtualNodeServer({
@@ -814,7 +829,7 @@ class MeshtasticManager implements ISourceManager {
   // 4.0-alpha NO_CHANNEL auto-ack regression).
   public readonly messageQueue: MessageQueueService = new MessageQueueService();
 
-  constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean }) {
+  constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean; passiveResyncStaleMs?: number | null }) {
     this.sourceId = sourceId;
     if (sourceConfig) {
       this.sourceConfigOverride = {
@@ -823,8 +838,16 @@ class MeshtasticManager implements ISourceManager {
         heartbeatIntervalSeconds: sourceConfig.heartbeatIntervalSeconds,
         mqttLink: sourceConfig.mqttLink,
         passiveMode: sourceConfig.passiveMode === true,
+        passiveResyncStaleMs:
+          typeof sourceConfig.passiveResyncStaleMs === 'number'
+            ? sourceConfig.passiveResyncStaleMs
+            : undefined,
       };
       this.passiveMode = sourceConfig.passiveMode === true;
+      this.passiveResyncStaleMs =
+        typeof sourceConfig.passiveResyncStaleMs === 'number'
+          ? sourceConfig.passiveResyncStaleMs
+          : null;
       if (sourceConfig.mqttLink) this.mqttLink = sourceConfig.mqttLink;
     }
     if (sourceConfig?.virtualNode?.enabled) {
@@ -1197,14 +1220,16 @@ class MeshtasticManager implements ISourceManager {
 
     // Passive Mode (issue #3122): if we already have a cached snapshot of the
     // node and config, skip the destabilizing post-reconnect full sync.
-    // First connect (or a stale cache older than PASSIVE_RESYNC_STALE_MS) still
+    // First connect (or a stale cache older than the effective window) still
     // does the full handshake so we don't drift permanently out of date.
+    // The window is per-source-configurable via passiveResyncStaleMs and
+    // falls back to PASSIVE_RESYNC_STALE_MS (4h) when unset.
     const passiveResyncFresh =
       this.passiveMode &&
       this.localNodeInfo !== null &&
       this.actualDeviceConfig !== null &&
       this.lastDisconnectAt !== null &&
-      Date.now() - this.lastDisconnectAt < MeshtasticManager.PASSIVE_RESYNC_STALE_MS;
+      Date.now() - this.lastDisconnectAt < this.effectivePassiveResyncStaleMs();
 
     // suppressNextAutoSync latches a one-shot skip across a disconnect/reconnect
     // cycle, used by manual-resync recovery: if the operator's forced sync caused
@@ -13059,6 +13084,28 @@ class MeshtasticManager implements ISourceManager {
       clearTimeout(this.manualResyncWatchdog);
       this.manualResyncWatchdog = null;
     }
+  }
+
+  /**
+   * Resolve the effective passive-resync staleness window for this source.
+   *
+   * Returns the per-source `passiveResyncStaleMs` override when it lies within
+   * [MIN, MAX] bounds; otherwise falls back to the class default. Bounds-
+   * checking prevents foot-guns from a value like 0 (would resync on every
+   * flap) or a value so large it disables resync entirely. The route layer
+   * also validates input, but this is the authoritative gate.
+   */
+  private effectivePassiveResyncStaleMs(): number {
+    const override = this.passiveResyncStaleMs;
+    if (
+      typeof override === 'number' &&
+      Number.isFinite(override) &&
+      override >= MeshtasticManager.PASSIVE_RESYNC_STALE_MIN_MS &&
+      override <= MeshtasticManager.PASSIVE_RESYNC_STALE_MAX_MS
+    ) {
+      return override;
+    }
+    return MeshtasticManager.PASSIVE_RESYNC_STALE_MS;
   }
 
   // Public method to trigger manual refresh of node database

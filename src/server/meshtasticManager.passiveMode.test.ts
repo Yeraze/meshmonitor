@@ -218,4 +218,94 @@ describe('MeshtasticManager — Passive Mode (#3122)', () => {
       expect(stale).toBe(4 * 60 * 60 * 1000);
     });
   });
+
+  describe('per-source staleness override (#3122 follow-up)', () => {
+    // Convenience: invoke the private effective-resolver via casted access so
+    // tests don't have to set up a full reconnect to observe the threshold.
+    const effective = (mgr: any): number => mgr.effectivePassiveResyncStaleMs();
+
+    it('returns the class default when no override is set', () => {
+      const mgr = new MeshtasticManager('src-1', { host: '127.0.0.1', port: 4403, passiveMode: true } as any);
+      expect(effective(mgr)).toBe(4 * 60 * 60 * 1000);
+    });
+
+    it('reads passiveResyncStaleMs from the constructor when provided', () => {
+      const oneHour = 60 * 60 * 1000;
+      const mgr = new MeshtasticManager('src-1', {
+        host: '127.0.0.1',
+        port: 4403,
+        passiveMode: true,
+        passiveResyncStaleMs: oneHour,
+      } as any);
+      expect(effective(mgr)).toBe(oneHour);
+    });
+
+    it('configureSource() applies a per-source staleness override', () => {
+      const mgr = new MeshtasticManager('src-1', { host: '127.0.0.1', port: 4403, passiveMode: true } as any);
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+      mgr.configureSource({
+        host: '127.0.0.1',
+        port: 4403,
+        passiveMode: true,
+        passiveResyncStaleMs: twentyFourHours,
+      } as any);
+      expect(effective(mgr)).toBe(twentyFourHours);
+    });
+
+    it('configureSource() clears the override when passiveResyncStaleMs is omitted', () => {
+      const mgr = new MeshtasticManager('src-1', {
+        host: '127.0.0.1',
+        port: 4403,
+        passiveMode: true,
+        passiveResyncStaleMs: 60_000,
+      } as any);
+      expect(effective(mgr)).toBe(60_000);
+
+      mgr.configureSource({ host: '127.0.0.1', port: 4403, passiveMode: true });
+
+      expect((mgr as any).passiveResyncStaleMs).toBeNull();
+      expect(effective(mgr)).toBe(4 * 60 * 60 * 1000);
+    });
+
+    it('falls back to default when override is below the 1-minute floor', () => {
+      const mgr = new MeshtasticManager('src-1', {
+        host: '127.0.0.1',
+        port: 4403,
+        passiveMode: true,
+        passiveResyncStaleMs: 1000, // 1 second — too short, would resync on every flap
+      } as any);
+      expect(effective(mgr)).toBe(4 * 60 * 60 * 1000);
+    });
+
+    it('falls back to default when override exceeds the 7-day ceiling', () => {
+      const mgr = new MeshtasticManager('src-1', {
+        host: '127.0.0.1',
+        port: 4403,
+        passiveMode: true,
+        passiveResyncStaleMs: 30 * 24 * 60 * 60 * 1000, // 30 days
+      } as any);
+      expect(effective(mgr)).toBe(4 * 60 * 60 * 1000);
+    });
+
+    it('accepts the boundary values (exactly 1 minute and exactly 7 days)', () => {
+      const minMgr = new MeshtasticManager('src-min', {
+        host: '127.0.0.1', port: 4403, passiveMode: true, passiveResyncStaleMs: 60_000,
+      } as any);
+      const maxMgr = new MeshtasticManager('src-max', {
+        host: '127.0.0.1', port: 4403, passiveMode: true, passiveResyncStaleMs: 7 * 24 * 60 * 60 * 1000,
+      } as any);
+      expect(effective(minMgr)).toBe(60_000);
+      expect(effective(maxMgr)).toBe(7 * 24 * 60 * 60 * 1000);
+    });
+
+    it('ignores non-numeric / NaN overrides', () => {
+      const mgr = new MeshtasticManager('src-1', {
+        host: '127.0.0.1',
+        port: 4403,
+        passiveMode: true,
+        passiveResyncStaleMs: NaN,
+      } as any);
+      expect(effective(mgr)).toBe(4 * 60 * 60 * 1000);
+    });
+  });
 });

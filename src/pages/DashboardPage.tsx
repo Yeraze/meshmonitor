@@ -120,6 +120,8 @@ function DashboardInner() {
   const [formHeartbeat, setFormHeartbeat] = useState('30'); // seconds, 0 = disabled (issue 2609)
   const [formAutoConnect, setFormAutoConnect] = useState(true); // issue #2773
   const [formPassiveMode, setFormPassiveMode] = useState(false); // issue #3122 — large/fragile TCP nodes
+  // Empty string = "use default 4 h". Numeric string in hours when overridden (#3122 follow-up).
+  const [formPassiveResyncStaleHours, setFormPassiveResyncStaleHours] = useState('');
   // MeshCore-specific (slice 4): companion-USB v1 — serial path + device type.
   // TCP transport added in v2: same Companion firmware reachable over a TCP
   // socket (e.g. esp-link, ser2net, native TCP-capable MeshCore firmware).
@@ -269,6 +271,7 @@ function DashboardInner() {
     setFormHeartbeat('30');
     setFormAutoConnect(true);
     setFormPassiveMode(false);
+    setFormPassiveResyncStaleHours('');
     setFormMcTransport('usb');
     setFormMcSerialPort('');
     setFormMcTcpHost('');
@@ -350,6 +353,14 @@ function DashboardInner() {
     // Default to true when unset (legacy sources pre-#2773 auto-connected).
     setFormAutoConnect(cfg?.autoConnect !== false);
     setFormPassiveMode(cfg?.passiveMode === true);
+    // Stored as ms; the UI works in whole hours for operator ergonomics.
+    // Anything not a positive number leaves the field blank → server default.
+    const staleMs = cfg?.passiveResyncStaleMs;
+    setFormPassiveResyncStaleHours(
+      typeof staleMs === 'number' && staleMs > 0
+        ? String(Math.round((staleMs / (60 * 60 * 1000)) * 100) / 100)
+        : '',
+    );
     // MeshCore-specific config. transport=tcp is a v2 addition; legacy rows
     // with no transport field are treated as USB (the original v1 default).
     const mcTransport: 'usb' | 'tcp' = cfg?.transport === 'tcp' ? 'tcp' : 'usb';
@@ -517,7 +528,16 @@ function DashboardInner() {
       // Passive Mode (#3122): disables outbound config bursts and preserves
       // cached state across reconnects. Only persist when true so legacy
       // sources continue to send the standard handshake.
-      if (formPassiveMode) cfg.passiveMode = true;
+      if (formPassiveMode) {
+        cfg.passiveMode = true;
+        // Optional per-source override of the 4h default resync staleness
+        // (#3122 follow-up). Stored as ms. Server clamps to [1m, 7d];
+        // anything blank/invalid falls back to the default.
+        const hours = parseFloat(formPassiveResyncStaleHours);
+        if (Number.isFinite(hours) && hours > 0) {
+          cfg.passiveResyncStaleMs = Math.round(hours * 60 * 60 * 1000);
+        }
+      }
       // MQTT proxy bridge — if set, MeshMonitor relays
       // FromRadio.mqttClientProxyMessage to/from the selected embedded
       // broker. Empty selection clears the link.
@@ -1281,6 +1301,30 @@ function DashboardInner() {
                 'Reduces outbound requests to large or fragile TCP nodes. Preserves cached config across reconnects and skips post-config device requests. Recommended for router-class nodes with large NodeDBs.'
               )}
             </p>
+
+            {formPassiveMode && (
+              <label className="dashboard-form-field" style={{ marginLeft: 24, marginBottom: 8 }}>
+                <span className="dashboard-form-label">
+                  {t('source.form.passive_resync_stale_hours', 'Resync staleness window (hours)')}
+                </span>
+                <input
+                  className="dashboard-form-input"
+                  type="number"
+                  min={0.0167}
+                  max={168}
+                  step={0.5}
+                  value={formPassiveResyncStaleHours}
+                  onChange={(e) => setFormPassiveResyncStaleHours(e.target.value)}
+                  placeholder={t('source.form.passive_resync_stale_default', '4 (default)')}
+                />
+                <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                  {t(
+                    'source.form.passive_resync_stale_help',
+                    'How long the cached config stays valid after a disconnect before the next reconnect forces a full sync. Leave blank for 4 hours (default). Range: 1 minute – 7 days.'
+                  )}
+                </p>
+              </label>
+            )}
 
             <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
               <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>{t('source.form.virtual_node')}</legend>
