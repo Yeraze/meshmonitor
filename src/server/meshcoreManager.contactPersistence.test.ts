@@ -106,9 +106,14 @@ describe('MeshCoreManager contact persistence (issue #3092)', () => {
     );
   });
 
-  it('preserves the existing advType when contact_path_updated fires later', async () => {
-    // Path updates carry no advert metadata; the manager must not
-    // overwrite the previously-learned advType with null/undefined.
+  it('does not directly upsert on contact_path_updated (refresh is debounced)', async () => {
+    // Slice 4 change: the PUSH_CODE_PATH_UPDATED frame body is just the
+    // pubkey, so the only way to learn the new path bytes is to re-read
+    // the contact record from the device. The push handler now schedules
+    // a debounced refreshContacts() call instead of upserting a stub
+    // immediately. The in-memory advType from the prior advert is
+    // preserved (no synchronous overwrite), and the refresh happens
+    // off-timer — covered by the debounce-specific tests below.
     const manager = new MeshCoreManager('src-a');
     dispatchBridgeEvent(manager, {
       event_type: 'contact_advertised',
@@ -129,14 +134,8 @@ describe('MeshCoreManager contact persistence (issue #3092)', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(upsertNode).toHaveBeenCalledTimes(1);
-    expect(upsertNode).toHaveBeenCalledWith(
-      expect.objectContaining({
-        publicKey: REPEATER_PUBKEY,
-        advType: MeshCoreDeviceType.REPEATER,
-      }),
-      'src-a',
-    );
+    expect(upsertNode).not.toHaveBeenCalled();
+    expect(manager.getContact(REPEATER_PUBKEY)?.advType).toBe(MeshCoreDeviceType.REPEATER);
   });
 
   it('logs but does not throw when the DB upsert fails', async () => {
