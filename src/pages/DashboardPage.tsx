@@ -677,6 +677,34 @@ function DashboardInner() {
     setPruneConfirm(id);
   };
 
+  // Manual Resync (#3122 follow-up). Operator-initiated full config refresh
+  // for Meshtastic TCP sources — useful for Passive Mode sources where the
+  // automatic reconnect skips want_config_id while the cache is fresh.
+  // Cooldown / single-flight / watchdog all live on the server; the click
+  // either succeeds (200) or is rejected (409) with state describing why.
+  const onResyncSource = async (id: string) => {
+    const csrfToken = getToken();
+    try {
+      const res = await fetch(`${appBasename}/api/sources/${id}/resync`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken || '',
+        },
+      });
+      // Refresh source status either way — a successful resync changes the
+      // connection state once configComplete arrives, and a rejected click
+      // doesn't hurt to re-poll.
+      queryClient.refetchQueries({ queryKey: ['dashboard', 'status', id], type: 'active' });
+      if (!res.ok && res.status !== 409) {
+        logger.warn('Manual resync request failed', { status: res.status });
+      }
+    } catch (err) {
+      logger.error('Manual resync request errored', err);
+    }
+  };
+
   const confirmPrune = async () => {
     if (!pruneConfirm || prunePending) return;
     setPrunePending(true);
@@ -758,6 +786,7 @@ function DashboardInner() {
           onConnectSource={onConnectSource}
           onDisconnectSource={onDisconnectSource}
           onPruneOutsideRoi={onPruneOutsideRoi}
+          onResyncSource={onResyncSource}
           connectingIds={connectingIds}
           mobileOpen={mobileSidebarOpen}
           onMobileClose={() => setMobileSidebarOpen(false)}

@@ -992,6 +992,61 @@ router.post('/:id/disconnect', requirePermission('sources', 'write'), async (req
   }
 });
 
+// POST /api/sources/:id/resync — operator-initiated full config refresh
+// (#3122 follow-up). Forces a single want_config_id even when Passive Mode
+// would otherwise skip it for cache-freshness. Returns the manual-resync
+// state (inFlight + cooldownExpiresAt) so the UI button renders correctly.
+//
+// Status codes:
+//   200 — resync started, inFlight=true, cooldownExpiresAt populated
+//   404 — source not found
+//   400 — source type doesn't support resync (only meshtastic_tcp)
+//   409 — another resync is in flight OR cooldown still active OR not connected
+//
+// Errors carry the same JSON shape as a success so the UI can keep its
+// disabled/cooldown timer state in sync with the server's reality without
+// special-casing the response shape.
+router.post('/:id/resync', requirePermission('sources', 'write'), async (req: Request, res: Response) => {
+  try {
+    const source = await databaseService.sources.getSource(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Source not found' });
+    if (source.type !== 'meshtastic_tcp') {
+      return res.status(400).json({ error: 'Manual resync is only supported on meshtastic_tcp sources' });
+    }
+    const mgr = sourceManagerRegistry.getManager(source.id) as MeshtasticManager | undefined;
+    if (!mgr || typeof mgr.requestManualResync !== 'function') {
+      return res.status(409).json({ error: 'Source manager is not running', reason: 'not-connected' });
+    }
+    const result = await mgr.requestManualResync();
+    const status = result.started ? 200 : 409;
+    return res.status(status).json(result);
+  } catch (err) {
+    logger.error('Error triggering manual resync:', err);
+    res.status(500).json({ error: 'Failed to trigger manual resync' });
+  }
+});
+
+// GET /api/sources/:id/resync — query the current manual-resync state
+// (inFlight + cooldownExpiresAt). Used by the UI to poll while a resync
+// is running so the button enables/disables in real time.
+router.get('/:id/resync', requirePermission('sources', 'read'), async (req: Request, res: Response) => {
+  try {
+    const source = await databaseService.sources.getSource(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Source not found' });
+    if (source.type !== 'meshtastic_tcp') {
+      return res.json({ inFlight: false, cooldownExpiresAt: 0 });
+    }
+    const mgr = sourceManagerRegistry.getManager(source.id) as MeshtasticManager | undefined;
+    if (!mgr || typeof mgr.getManualResyncState !== 'function') {
+      return res.json({ inFlight: false, cooldownExpiresAt: 0 });
+    }
+    res.json(mgr.getManualResyncState());
+  } catch (err) {
+    logger.error('Error fetching manual resync state:', err);
+    res.status(500).json({ error: 'Failed to fetch manual resync state' });
+  }
+});
+
 // POST /api/sources/:id/prune-outside-roi — surgical cleanup of node rows
 // whose last-known position is outside the bridge's geo bbox. Only valid for
 // mqtt_bridge sources that have downlinkFilters.geo configured. Forward-only
