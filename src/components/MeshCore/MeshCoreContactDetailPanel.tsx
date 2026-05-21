@@ -22,14 +22,24 @@ interface MeshCoreContactDetailPanelProps {
   /** Trigger CMD_SHARE_CONTACT for this contact, broadcasting their saved
    *  advert to nearby nodes. Unset hides the Share button. */
   onShareContact?: (publicKey: string) => Promise<boolean>;
+  /** Manually push a forwarding route into the device's contact record
+   *  via CMD_ADD_UPDATE_CONTACT. `outPath` is a comma-separated hex chain
+   *  ("a3,7f,02"). Unset OR `advancedPathEditEnabled=false` hides the
+   *  Edit Path… button. */
+  onSetOutPath?: (publicKey: string, outPath: string) => Promise<boolean>;
   /** Whether the current user may invoke write actions on this source's
-   *  `nodes` resource. Required to gate the Reset Path / Share buttons. */
+   *  `nodes` resource. Required to gate the Reset Path / Share / Edit
+   *  buttons. */
   canWriteNodes?: boolean;
-  /** Is the source's device a Companion? Both Reset Path and Share Contact
-   *  are companion-only (CMD_RESET_PATH / CMD_SHARE_CONTACT aren't supported
-   *  by Repeater firmware). Defaults to `true` so callers that don't pass
-   *  this still see the buttons when the action handlers are supplied. */
+  /** Is the source's device a Companion? Reset Path / Share Contact /
+   *  manual edit are all companion-only. Defaults to `true` so callers
+   *  that don't pass this still see the buttons when handlers are
+   *  supplied. */
   isCompanion?: boolean;
+  /** Server-side gated advanced toggle (settings.meshcoreAdvancedPathEdit).
+   *  When false the Edit Path… button is hidden even if onSetOutPath is
+   *  supplied. The server route also enforces this for defense in depth. */
+  advancedPathEditEnabled?: boolean;
 }
 
 const COLLAPSED_KEY = 'meshcoreContactDetailsCollapsed';
@@ -39,8 +49,10 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   publicKey,
   onResetPath,
   onShareContact,
+  onSetOutPath,
   canWriteNodes = false,
   isCompanion = true,
+  advancedPathEditEnabled = false,
 }) => {
   const { t } = useTranslation();
   const { timeFormat, dateFormat } = useSettings();
@@ -52,6 +64,12 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   const [shareSuccess, setShareSuccess] = useState(false);
+
+  // Path-editor modal state. Only mounted when advancedPathEditEnabled.
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorDraft, setEditorDraft] = useState('');
+  const [editorSaving, setEditorSaving] = useState(false);
+  const [editorError, setEditorError] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, isCollapsed.toString());
@@ -65,6 +83,9 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     setShareError(null);
     setSharing(false);
     setShareSuccess(false);
+    setEditorOpen(false);
+    setEditorError(null);
+    setEditorSaving(false);
   }, [publicKey]);
 
   const name = contact?.advName || contact?.name || `${publicKey.substring(0, 8)}…`;
@@ -83,6 +104,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     !!onResetPath && canWriteNodes && isCompanion;
   const canShowShareButton =
     !!onShareContact && canWriteNodes && isCompanion;
+  const canShowEditButton =
+    !!onSetOutPath && canWriteNodes && isCompanion && advancedPathEditEnabled;
 
   const handleResetPath = async () => {
     if (!onResetPath || resetting) return;
@@ -104,6 +127,52 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
       }
     } finally {
       setResetting(false);
+    }
+  };
+
+  const openEditor = () => {
+    setEditorDraft(outPath ?? '');
+    setEditorError(null);
+    setEditorOpen(true);
+  };
+
+  const HEX_PATH_REGEX = /^\s*([0-9a-fA-F]{1,2})(\s*,\s*[0-9a-fA-F]{1,2})*\s*$/;
+
+  const handleSaveEditor = async () => {
+    if (!onSetOutPath || editorSaving) return;
+    const draft = editorDraft.trim();
+    if (draft !== '' && !HEX_PATH_REGEX.test(draft)) {
+      setEditorError(
+        t(
+          'meshcore.contact_details.edit_path_invalid',
+          'Path must be comma-separated hex bytes, e.g. "a3,7f,02" (max 64).',
+        ),
+      );
+      return;
+    }
+    const hopCount = draft === '' ? 0 : draft.split(',').length;
+    if (hopCount > 64) {
+      setEditorError(
+        t(
+          'meshcore.contact_details.edit_path_too_long',
+          `Path too long: ${hopCount} hops (max 64).`,
+        ),
+      );
+      return;
+    }
+    setEditorSaving(true);
+    setEditorError(null);
+    try {
+      const ok = await onSetOutPath(publicKey, draft);
+      if (!ok) {
+        setEditorError(
+          t('meshcore.contact_details.edit_path_save_failed', 'Save failed.'),
+        );
+      } else {
+        setEditorOpen(false);
+      }
+    } finally {
+      setEditorSaving(false);
     }
   };
 
@@ -221,7 +290,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               available because the device retransmits the stored advert
               regardless of route state. Rendered in one card so the
               actions stay grouped at the bottom of the grid. */}
-          {(canShowResetButton || canShowShareButton) && (canShowShareButton || pathKnown) && (
+          {(canShowResetButton || canShowShareButton || canShowEditButton) &&
+            (canShowShareButton || canShowEditButton || pathKnown) && (
             <div className="node-detail-card node-detail-card-2col">
               <div className="node-detail-label">
                 {t('meshcore.contact_details.actions_label', 'Actions')}
@@ -249,6 +319,15 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     {sharing
                       ? t('meshcore.contact_details.share_contact_running', 'Sharing…')
                       : t('meshcore.contact_details.share_contact_button', 'Share Contact')}
+                  </button>
+                )}
+                {canShowEditButton && (
+                  <button
+                    type="button"
+                    onClick={openEditor}
+                    aria-label={t('meshcore.contact_details.edit_path_button', 'Edit Path…')}
+                  >
+                    {t('meshcore.contact_details.edit_path_button', 'Edit Path…')}
                   </button>
                 )}
                 {resetError && (
@@ -324,6 +403,108 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
             <div className="node-detail-label">{t('meshcore.public_key', 'Public Key')}</div>
             <div className="node-detail-value node-detail-public-key" title={publicKey}>
               {publicKey}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editorOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('meshcore.contact_details.edit_path_dialog_title', 'Edit forwarding path')}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget && !editorSaving) setEditorOpen(false); }}
+        >
+          <div
+            style={{
+              background: 'var(--ctp-base, #1e1e2e)',
+              color: 'var(--ctp-text, #cdd6f4)',
+              padding: '1.25rem 1.5rem',
+              borderRadius: '8px',
+              maxWidth: '32rem',
+              width: '90%',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>
+              {t('meshcore.contact_details.edit_path_dialog_title', 'Edit forwarding path')}
+            </h3>
+            <p style={{ marginBottom: '0.75rem' }}>
+              {t(
+                'meshcore.contact_details.edit_path_dialog_hint',
+                'Enter the new hop chain as comma-separated hex bytes (e.g. "a3,7f,02"). Each byte is one hop hash; 0..64 bytes total. Leave empty to set a zero-hop direct path.',
+              )}
+            </p>
+            <div
+              style={{
+                background: 'var(--ctp-surface0, #313244)',
+                color: 'var(--ctp-yellow, #f9e2af)',
+                padding: '0.6rem 0.8rem',
+                borderRadius: '4px',
+                marginBottom: '0.75rem',
+                fontSize: '0.9em',
+              }}
+              role="alert"
+            >
+              {t(
+                'meshcore.contact_details.edit_path_warning',
+                'Manual paths bypass auto-discovery. Stale hops silently drop direct sends until the next flood. Use "Reset Path" instead if you just want to re-discover.',
+              )}
+            </div>
+            <label style={{ display: 'block', marginBottom: '0.5rem' }}>
+              {t('meshcore.contact_details.edit_path_label', 'New path (hex chain):')}
+            </label>
+            <input
+              type="text"
+              value={editorDraft}
+              onChange={(e) => setEditorDraft(e.target.value)}
+              disabled={editorSaving}
+              placeholder="a3,7f,02"
+              style={{
+                width: '100%',
+                padding: '0.5rem',
+                marginBottom: '0.5rem',
+                fontFamily: 'var(--font-mono, monospace)',
+                boxSizing: 'border-box',
+              }}
+              autoFocus
+            />
+            <div style={{ fontSize: '0.85em', opacity: 0.8, marginBottom: '0.75rem' }}>
+              {editorDraft.trim() === ''
+                ? t('meshcore.contact_details.edit_path_zero_hops', '0 hops (direct path)')
+                : t('meshcore.contact_details.edit_path_hop_count', { count: editorDraft.trim().split(',').length })}
+            </div>
+            {editorError && (
+              <div style={{ color: 'var(--ctp-red)', marginBottom: '0.75rem' }} role="alert">
+                {editorError}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => setEditorOpen(false)}
+                disabled={editorSaving}
+              >
+                {t('meshcore.contact_details.edit_path_cancel', 'Cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEditor}
+                disabled={editorSaving}
+              >
+                {editorSaving
+                  ? t('meshcore.contact_details.edit_path_saving', 'Saving…')
+                  : t('meshcore.contact_details.edit_path_save', 'Save Path')}
+              </button>
             </div>
           </div>
         </div>

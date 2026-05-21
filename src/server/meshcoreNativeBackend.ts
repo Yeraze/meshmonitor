@@ -408,6 +408,36 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { ok: true };
       }
 
+      case 'set_out_path': {
+        // Manually push a forwarding route into the device's contact
+        // record. Wraps meshcore.js's setContactPath(contact, path),
+        // which reads the contact's existing type/flags/name/advert
+        // timestamp/lat/lon and only mutates outPath + outPathLen via
+        // CMD_ADD_UPDATE_CONTACT (opcode 9). Stale hops silently drop
+        // direct sends, so this is gated behind the advanced toggle at
+        // the route layer.
+        //
+        // `out_path` is the parsed Uint8Array of hop hashes (0..64 bytes).
+        // Caller is responsible for validating the byte length; we just
+        // forward.
+        const publicKey = await this.resolvePublicKey(params.public_key as string);
+        if (!publicKey) throw new Error('Set-out-path target not found');
+        const pathBytes = params.out_path as Uint8Array | number[] | undefined;
+        if (!pathBytes) throw new Error('set_out_path requires out_path bytes');
+        const path = pathBytes instanceof Uint8Array ? pathBytes : Uint8Array.from(pathBytes);
+        if (path.length > 64) {
+          throw new Error(`out_path too long: ${path.length} > 64`);
+        }
+        const contacts: any[] = await c.getContacts();
+        const contact = contacts.find((ct) => {
+          const hex = bytesToHex(ct.publicKey);
+          return hex === bytesToHex(publicKey);
+        });
+        if (!contact) throw new Error('Set-out-path target not in device contact list');
+        await c.setContactPath(contact, path);
+        return { ok: true };
+      }
+
       case 'send_message': {
         const to = params.to as string | null | undefined;
         const text = String(params.text ?? '');

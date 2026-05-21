@@ -94,6 +94,26 @@ function isValidPublicKey(key: string | undefined): boolean {
   return /^[0-9a-fA-F]{64}$/.test(key);
 }
 
+/**
+ * Parse a comma-separated hex chain like "a3,7f,02" into a Uint8Array.
+ * Empty string parses to a zero-length array (zero-hop direct path).
+ * Returns null on any malformed token so the route can return a 400.
+ */
+function parseHexPathChain(input: string): Uint8Array | null {
+  const trimmed = input.trim();
+  if (trimmed.length === 0) return new Uint8Array(0);
+  const parts = trimmed.split(',');
+  const out = new Uint8Array(parts.length);
+  for (let i = 0; i < parts.length; i++) {
+    const tok = parts[i].trim();
+    if (!/^[0-9a-fA-F]{1,2}$/.test(tok)) return null;
+    const n = parseInt(tok, 16);
+    if (!Number.isFinite(n) || n < 0 || n > 0xff) return null;
+    out[i] = n;
+  }
+  return out;
+}
+
 function isValidMessage(text: string | undefined): { valid: boolean; error?: string } {
   if (!text || typeof text !== 'string') {
     return { valid: false, error: 'Message text required' };
@@ -357,6 +377,80 @@ router.post(
     } catch (error) {
       logger.error('[API] Error resetting contact path:', error);
       res.status(500).json({ success: false, error: 'Failed to reset path' });
+    }
+  },
+);
+
+/**
+ * PUT /api/sources/:id/meshcore/contacts/:publicKey/out-path
+ *
+ * Manually set the cached forwarding route ("out_path") for a contact.
+ * Wraps the firmware's CMD_ADD_UPDATE_CONTACT (companion protocol
+ * opcode 9), with the non-path fields preserved verbatim by
+ * meshcore.js's setContactPath helper.
+ *
+ * Gated by the `meshcoreAdvancedPathEdit` setting because stale hops
+ * silently drop direct sends to this contact. When the toggle is off
+ * (default), the route returns 403 even for users with nodes:write.
+ *
+ * Body: { outPath: "a3,7f,02" }  — comma-separated hex chain, 0..64
+ *                                   bytes (empty string = 0 hops).
+ */
+router.put(
+  '/contacts/:publicKey/out-path',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const publicKey = req.params.publicKey;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid public key — must be 64-char hex',
+        });
+      }
+      // Settings are stored as string values; the boolean check is here
+      // only for robustness against future schema changes.
+      const flagRaw: unknown = await databaseService.settings.getSetting('meshcoreAdvancedPathEdit');
+      const flagEnabled = flagRaw === 'true' || flagRaw === '1' || flagRaw === true;
+      if (!flagEnabled) {
+        return res.status(403).json({
+          success: false,
+          error: 'Advanced MeshCore path editing is disabled. Enable meshcoreAdvancedPathEdit in Settings to use this endpoint.',
+        });
+      }
+      const rawPath = (req.body ?? {}).outPath;
+      if (typeof rawPath !== 'string') {
+        return res.status(400).json({
+          success: false,
+          error: 'Body must include `outPath` as a comma-separated hex string',
+        });
+      }
+      const parsed = parseHexPathChain(rawPath);
+      if (!parsed) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid outPath — expected comma-separated hex bytes, e.g. "a3,7f,02"',
+        });
+      }
+      if (parsed.length > 64) {
+        return res.status(400).json({
+          success: false,
+          error: `outPath too long: ${parsed.length} bytes (max 64)`,
+        });
+      }
+      const ok = await managerFor(req).setContactOutPath(publicKey, parsed);
+      if (!ok) {
+        return res.status(409).json({
+          success: false,
+          error: 'Set out_path failed — contact may be unknown, source disconnected, or not a Companion device',
+        });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('[API] Error setting contact out_path:', error);
+      res.status(500).json({ success: false, error: 'Failed to set out_path' });
     }
   },
 );

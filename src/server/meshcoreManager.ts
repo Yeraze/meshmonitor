@@ -1392,6 +1392,71 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
+   * Manually push a forwarding route ("out_path") into the device's
+   * contact record. Wraps meshcore.js setContactPath via the
+   * `set_out_path` bridge command, which preserves all other contact
+   * fields and only mutates outPath + outPathLen.
+   *
+   * Stale hops silently drop direct sends — this is gated by the
+   * advanced settings toggle at the route layer.
+   *
+   * `outPathBytes` must be 0..64 bytes; an empty array sets path-len 0
+   * (zero-hop direct), which is distinct from RESET_PATH's
+   * OUT_PATH_UNKNOWN sentinel.
+   *
+   * On success the in-memory contact + meshcore_nodes row are mirrored
+   * so the UI reflects the new state without waiting for a PathUpdated
+   * push.
+   *
+   * Returns `true` on success, `false` if the device rejected the
+   * request or this isn't a connected Companion.
+   */
+  async setContactOutPath(publicKey: string, outPathBytes: Uint8Array): Promise<boolean> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Set-out-path requires Companion firmware');
+      return false;
+    }
+    if (!this.connected) {
+      return false;
+    }
+    if (outPathBytes.length > 64) {
+      logger.warn(`[MeshCore] Set-out-path rejected: ${outPathBytes.length} > 64 bytes`);
+      return false;
+    }
+    try {
+      const response = await this.sendBridgeCommand('set_out_path', {
+        public_key: publicKey,
+        out_path: outPathBytes,
+      });
+      if (!response.success) {
+        logger.warn(`[MeshCore] set_out_path failed for ${publicKey}: ${response.error}`);
+        return false;
+      }
+      const hex = Array.from(outPathBytes)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join(',');
+      const existing = this.contacts.get(publicKey);
+      if (existing) {
+        const updated: MeshCoreContact = {
+          ...existing,
+          outPath: hex,
+          pathLen: outPathBytes.length,
+          lastSeen: Date.now(),
+        };
+        this.contacts.set(publicKey, updated);
+        void this.persistContact(updated);
+        this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+        dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+      }
+      logger.info(`[MeshCore] Set out_path (${outPathBytes.length} hops) for ${publicKey.substring(0, 16)}…`);
+      return true;
+    } catch (error) {
+      logger.error('[MeshCore] setContactOutPath threw:', error);
+      return false;
+    }
+  }
+
+  /**
    * Login to a remote node for admin access
    */
   async loginToNode(publicKey: string, password: string): Promise<boolean> {

@@ -207,6 +207,11 @@ class MockConnection extends EventEmitter {
   async shareContact(pubKey: Uint8Array) {
     this.shareContactCalls.push(pubKey);
   }
+
+  public setContactPathCalls: Array<{ contact: any; path: Uint8Array }> = [];
+  async setContactPath(contact: any, path: Uint8Array) {
+    this.setContactPathCalls.push({ contact, path });
+  }
 }
 
 function installMockModule(MockConn: typeof MockConnection): MockConnection {
@@ -835,6 +840,86 @@ describe('MeshCoreNativeBackend', () => {
     const resp = await backend.sendCommand('share_contact', { public_key: 'cafebabe' });
     expect(resp.success).toBe(false);
     expect(resp.error).toMatch(/Share-contact target not found/);
+  });
+
+  it('set_out_path forwards the resolved contact and path bytes to setContactPath', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    const targetBytes = new Uint8Array(32);
+    targetBytes[0] = 0xab; targetBytes[1] = 0xcd; targetBytes[2] = 0xef; targetBytes[3] = 0x01;
+    // setContactPath needs the full contact object so it can preserve
+    // type/flags/name/advert timestamp/lat/lon — verify it's the one
+    // returned by getContacts(), not a synthesised stub.
+    const fullContact = {
+      publicKey: targetBytes,
+      type: AdvType.Chat,
+      flags: 0,
+      outPathLen: 0xff,
+      outPath: new Uint8Array(64),
+      advName: 'Bob',
+      lastAdvert: 1700000000,
+      advLat: 10_000_000,
+      advLon: 20_000_000,
+      lastMod: 1700000000,
+    };
+    conn.contactsResponse = [fullContact];
+
+    const pathBytes = Uint8Array.from([0xa3, 0x7f, 0x02]);
+    const resp = await backend.sendCommand('set_out_path', {
+      public_key: 'abcdef01' + '0'.repeat(56),
+      out_path: pathBytes,
+    });
+
+    expect(resp.success).toBe(true);
+    expect(conn.setContactPathCalls).toHaveLength(1);
+    expect(conn.setContactPathCalls[0].contact).toBe(fullContact);
+    expect(Array.from(conn.setContactPathCalls[0].path)).toEqual([0xa3, 0x7f, 0x02]);
+  });
+
+  it('set_out_path rejects oversize paths (>64 bytes)', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    const targetBytes = new Uint8Array(32);
+    targetBytes[0] = 0xab;
+    conn.contactsResponse = [{ publicKey: targetBytes, type: AdvType.Chat, advName: 'Bob' }];
+
+    const tooLong = new Uint8Array(65);
+    const resp = await backend.sendCommand('set_out_path', {
+      public_key: 'ab' + '0'.repeat(62),
+      out_path: tooLong,
+    });
+    expect(resp.success).toBe(false);
+    expect(resp.error).toMatch(/out_path too long/);
+    expect(conn.setContactPathCalls).toHaveLength(0);
+  });
+
+  it('set_out_path returns an error when the contact is missing from the device list', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    // Backend can resolve the pubkey from the 64-char hex form even
+    // without a contact match — but setContactPath needs the full
+    // contact object, so the second lookup against getContacts() should
+    // produce the "not in device contact list" error.
+    conn.contactsResponse = [];
+
+    const resp = await backend.sendCommand('set_out_path', {
+      public_key: 'a'.repeat(64),
+      out_path: Uint8Array.from([0x01]),
+    });
+    expect(resp.success).toBe(false);
+    expect(resp.error).toMatch(/Set-out-path target not in device contact list/);
   });
 });
 
