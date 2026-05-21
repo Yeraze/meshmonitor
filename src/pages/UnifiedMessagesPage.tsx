@@ -59,7 +59,8 @@ interface UnifiedMessage {
   text: string;
   emoji: number | null;
   replyId: number | null;
-  timestamp: number; // canonical (earliest heard)
+  timestamp: number; // canonical device time (earliest heard) — for display
+  createdAt: number; // earliest server DB arrival time — for ordering / pagination cursor (#3122)
   receptions: Reception[];
 }
 
@@ -209,7 +210,10 @@ export default function UnifiedMessagesPage() {
     initialPageParam: undefined as number | undefined,
     getNextPageParam: (lastPage) => {
       if (!lastPage || lastPage.length < PAGE_SIZE) return undefined;
-      return lastPage[lastPage.length - 1].timestamp;
+      // Cursor uses createdAt (server DB arrival time) so pagination matches
+      // the server's createdAt ordering and stays stable under device-clock
+      // skew (#3122).
+      return lastPage[lastPage.length - 1].createdAt;
     },
     enabled: !!selectedChannel && canReadAnyMessages,
     refetchInterval: POLL_INTERVAL_MS,
@@ -235,7 +239,10 @@ export default function UnifiedMessagesPage() {
     // newest message to the bottom of the scroll container. Polling can bring
     // in new entries on any page; re-sort defensively so the feed is always
     // monotonic regardless of how TanStack merged the pages.
-    out.sort((a, b) => a.timestamp - b.timestamp);
+    // Sort by createdAt (server DB arrival) instead of device timestamp so
+    // future-skewed device clocks can't make old messages display as "newest"
+    // and pin themselves at the bottom of the chat window (#3122).
+    out.sort((a, b) => a.createdAt - b.createdAt);
     return out;
   }, [data?.pages]);
 

@@ -93,7 +93,10 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
-   * Get messages with pagination, ordered by rxTime/timestamp desc.
+   * Get messages with pagination, ordered by server DB arrival time (createdAt) desc.
+   *
+   * Uses `createdAt` instead of device-reported `rxTime`/`timestamp` so future-skewed
+   * device clocks cannot pin old messages at the top of channel chat (issue #3122).
    *
    * `excludePortnums` drops rows whose portnum matches any in the list. NULL
    * portnums are always retained (legacy rows predate the column). UI feeds
@@ -117,7 +120,7 @@ export class MessagesRepository extends BaseRepository {
       .select()
       .from(messages)
       .where(whereClause)
-      .orderBy(desc(sql`COALESCE(${messages.rxTime}, ${messages.timestamp})`))
+      .orderBy(desc(messages.createdAt))
       .limit(limit)
       .offset(offset);
 
@@ -125,7 +128,7 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
-   * Get messages by channel
+   * Get messages by channel, ordered by server DB arrival time (issue #3122).
    */
   async getMessagesByChannel(channel: number, limit: number = 100, offset: number = 0, sourceId?: string): Promise<DbMessage[]> {
     const { messages } = this.tables;
@@ -133,7 +136,7 @@ export class MessagesRepository extends BaseRepository {
       .select()
       .from(messages)
       .where(and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId)))
-      .orderBy(desc(sql`COALESCE(${messages.rxTime}, ${messages.timestamp})`))
+      .orderBy(desc(messages.createdAt))
       .limit(limit)
       .offset(offset);
 
@@ -141,10 +144,13 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
-   * Get messages in a channel strictly before a cursor timestamp (cursor-based pagination).
+   * Get messages in a channel strictly before a cursor (cursor-based pagination).
+   *
+   * Cursor is server DB arrival time (createdAt) so the chat scroll-back order is
+   * stable even when device clocks are skewed (issue #3122).
    *
    * @param channel    Channel number to filter on
-   * @param before     Exclusive upper-bound for COALESCE(rxTime, timestamp) in ms.
+   * @param before     Exclusive upper-bound for createdAt in ms.
    *                   If undefined, no upper bound is applied (returns newest `limit` rows).
    * @param limit      Max rows to return
    * @param sourceId   Optional source scope
@@ -156,25 +162,24 @@ export class MessagesRepository extends BaseRepository {
     sourceId?: string
   ): Promise<DbMessage[]> {
     const { messages } = this.tables;
-    const timeExpr = sql`COALESCE(${messages.rxTime}, ${messages.timestamp})`;
     const conditions: (SQL | undefined)[] = [
       eq(messages.channel, channel),
       this.withSourceScope(messages, sourceId),
     ];
     if (before !== undefined) {
-      conditions.push(sql`${timeExpr} < ${before}`);
+      conditions.push(sql`${messages.createdAt} < ${before}`);
     }
     const result = await this.db
       .select()
       .from(messages)
       .where(and(...conditions))
-      .orderBy(desc(timeExpr))
+      .orderBy(desc(messages.createdAt))
       .limit(limit);
     return this.normalizeBigInts(result) as DbMessage[];
   }
 
   /**
-   * Get direct messages between two nodes
+   * Get direct messages between two nodes, ordered by server DB arrival time (issue #3122).
    */
   async getDirectMessages(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0, sourceId?: string): Promise<DbMessage[]> {
     const { messages } = this.tables;
@@ -192,7 +197,7 @@ export class MessagesRepository extends BaseRepository {
           this.withSourceScope(messages, sourceId)
         )
       )
-      .orderBy(desc(sql`COALESCE(${messages.rxTime}, ${messages.timestamp})`))
+      .orderBy(desc(messages.createdAt))
       .limit(limit)
       .offset(offset);
 
@@ -354,7 +359,7 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
-   * SQLite-only synchronous paginated fetch of messages.
+   * SQLite-only synchronous paginated fetch of messages, ordered by createdAt (issue #3122).
    */
   getMessagesSqlite(limit: number = 100, offset: number = 0, sourceId?: string): DbMessage[] {
     if (!this.sqliteDb) {
@@ -366,7 +371,7 @@ export class MessagesRepository extends BaseRepository {
       .select()
       .from(messages)
       .where(this.withSourceScope(messages, sourceId))
-      .orderBy(desc(sql`COALESCE(${messages.rxTime}, ${messages.timestamp})`))
+      .orderBy(desc(messages.createdAt))
       .limit(limit)
       .offset(offset)
       .all();
@@ -374,7 +379,7 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
-   * SQLite-only synchronous paginated fetch of messages by channel.
+   * SQLite-only synchronous paginated fetch of messages by channel, ordered by createdAt (issue #3122).
    */
   getMessagesByChannelSqlite(channel: number, limit: number = 100, offset: number = 0, sourceId?: string): DbMessage[] {
     if (!this.sqliteDb) {
@@ -386,7 +391,7 @@ export class MessagesRepository extends BaseRepository {
       .select()
       .from(messages)
       .where(and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId)))
-      .orderBy(desc(sql`COALESCE(${messages.rxTime}, ${messages.timestamp})`))
+      .orderBy(desc(messages.createdAt))
       .limit(limit)
       .offset(offset)
       .all();

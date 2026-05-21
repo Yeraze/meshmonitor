@@ -94,7 +94,7 @@ const CHANNELS_B = [
 
 /** Build a message row the way the repo layer returns it (post-normalize). */
 function mkMsg(overrides: Record<string, any> = {}) {
-  return {
+  const base = {
     id: 'row-1',
     fromNodeNum: 0xaabbccdd,
     fromNodeId: '!aabbccdd',
@@ -121,8 +121,16 @@ function mkMsg(overrides: Record<string, any> = {}) {
     ackFromNode: null,
     createdAt: 1_700_000_000_000,
     decryptedBy: null,
-    ...overrides,
   };
+  const merged = { ...base, ...overrides };
+  // Default createdAt to mirror the supplied timestamp/rxTime so tests that
+  // express ordering by timestamp keep that ordering after the server moved
+  // to createdAt-based sort (#3122). Explicit createdAt overrides win.
+  if (!('createdAt' in overrides)) {
+    const t = (overrides as any).rxTime ?? (overrides as any).timestamp;
+    if (typeof t === 'number') merged.createdAt = t;
+  }
+  return merged;
 }
 
 const NODE_ONE = { nodeId: '!aabbccdd', nodeNum: 0xaabbccdd, longName: 'Node One', shortName: 'N1' };
