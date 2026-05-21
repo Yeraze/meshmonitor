@@ -171,6 +171,8 @@ export interface DbTraceroute {
   routeBack: string;
   snrTowards: string;
   snrBack: string;
+  /** JSON: `{ [nodeNum]: { lat, lng, alt? } }` — position snapshot at traceroute time. */
+  routePositions?: string;
   timestamp: number;
   createdAt: number;
 }
