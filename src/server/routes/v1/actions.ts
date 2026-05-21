@@ -47,8 +47,8 @@ function resolveDestination(body: any): number | null {
  */
 router.post('/traceroute', async (req: Request, res: Response) => {
   try {
-    const user = (req as any).apiTokenUser;
-    if (!user?.isAdmin && !hasPermission(user?.permissions, 'traceroute', 'write')) {
+    const user = (req as any).user;
+    if (!user?.isAdmin && !(user ? await hasPermission(user, 'traceroute', 'write') : false)) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions', required: 'traceroute:write' });
     }
 
@@ -82,8 +82,8 @@ router.post('/traceroute', async (req: Request, res: Response) => {
  */
 router.post('/request-position', async (req: Request, res: Response) => {
   try {
-    const user = (req as any).apiTokenUser;
-    if (!user?.isAdmin && !hasPermission(user?.permissions, 'messages', 'write')) {
+    const user = (req as any).user;
+    if (!user?.isAdmin && !(user ? await hasPermission(user, 'messages', 'write') : false)) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions', required: 'messages:write' });
     }
 
@@ -142,8 +142,8 @@ router.post('/request-position', async (req: Request, res: Response) => {
  */
 router.post('/request-nodeinfo', async (req: Request, res: Response) => {
   try {
-    const user = (req as any).apiTokenUser;
-    if (!user?.isAdmin && !hasPermission(user?.permissions, 'messages', 'write')) {
+    const user = (req as any).user;
+    if (!user?.isAdmin && !(user ? await hasPermission(user, 'messages', 'write') : false)) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions', required: 'messages:write' });
     }
 
@@ -202,8 +202,8 @@ const NEIGHBOR_INFO_RATE_LIMIT_MS = 180_000;
 
 router.post('/request-neighbors', async (req: Request, res: Response) => {
   try {
-    const user = (req as any).apiTokenUser;
-    if (!user?.isAdmin && !hasPermission(user?.permissions, 'traceroute', 'write')) {
+    const user = (req as any).user;
+    if (!user?.isAdmin && !(user ? await hasPermission(user, 'traceroute', 'write') : false)) {
       return res.status(403).json({ success: false, error: 'Insufficient permissions', required: 'traceroute:write' });
     }
 
