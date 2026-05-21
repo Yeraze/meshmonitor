@@ -4,10 +4,10 @@ layout: home
 hero:
   name: "MeshMonitor"
   text: "One dashboard. Every mesh."
-  tagline: "Self-hosted Meshtastic monitoring for multi-source networks — real-time maps, alerts, per-source permissions, and full network awareness."
+  tagline: "Self-hosted multi-protocol mesh monitoring for Meshtastic, MeshCore, and MQTT — real-time maps, alerts, per-source permissions, and full network awareness."
   image:
     src: /images/features/dashboard-multi-source.png
-    alt: MeshMonitor dashboard showing multiple Meshtastic sources
+    alt: MeshMonitor dashboard showing Meshtastic, MeshCore, and MQTT sources side by side
   actions:
     - theme: brand
       text: Get Started
@@ -17,8 +17,8 @@ hero:
       link: https://github.com/yeraze/meshmonitor
 features:
   - icon: 🛰️
-    title: Multi-Source Networks
-    details: Connect to many Meshtastic nodes at once — TCP, Serial, or BLE. One dashboard, per-source maps, messages, telemetry, and traceroutes. No restart to add or remove a source.
+    title: Multi-Protocol, Multi-Source
+    details: Connect Meshtastic (TCP, Serial, BLE), MeshCore, and MQTT brokers all at once — mix and match in one dashboard. Per-source maps, messages, telemetry, and traceroutes. No restart to add or remove a source.
 
   - icon: 📡
     title: MeshCore Support
@@ -125,26 +125,32 @@ Access at `http://localhost:8080` and login with username `admin` and password `
 
 For production deployments, Kubernetes, reverse proxies, and advanced configurations, see the [Production Deployment Guide](/configuration/production).
 
-## What is Meshtastic?
+## What can MeshMonitor monitor?
 
-[Meshtastic](https://meshtastic.org/) is an open-source, off-grid, decentralized mesh network built on affordable, low-power devices. MeshMonitor provides a web-based interface to monitor and manage your Meshtastic network.
+MeshMonitor speaks three off-grid mesh ecosystems and treats them as peers in one deployment:
+
+- **[Meshtastic](https://meshtastic.org/)** — an open-source, off-grid, decentralized mesh network built on affordable, low-power devices. Connect over TCP, Serial (via the [Serial Bridge](/configuration/serial-bridge)), or BLE (via the [BLE Bridge](/configuration/ble-bridge)).
+- **[MeshCore](/features/meshcore)** — companions and repeaters connected over USB or TCP, alongside or instead of Meshtastic.
+- **MQTT** — connect to an external MQTT broker as a read-only source, or run the [embedded broker](/features/mqtt-broker) with bidirectional bridges to public upstreams.
+
+Pick one, mix all three — MeshMonitor's unified views, per-source permissions, and the same automation, telemetry, and map features apply to every source you add.
 
 ## Key Features
 
 ### Network Visualization
-View your entire mesh network on an interactive map, with nodes colored by their signal strength and connectivity status. Track node positions, signal quality, and network topology in real-time.
+View every connected mesh — Meshtastic, MeshCore, MQTT — on a single interactive map, with nodes colored by signal strength and connectivity status. Track node positions, signal quality, and network topology in real-time.
 
 ### Message History
-Access complete message history across all channels. Search, filter, and export messages for analysis or record-keeping.
+Access complete message history across every source and channel. Search, filter, and export messages for analysis or record-keeping.
 
 ### Node Management
-Monitor individual node health, battery levels, environmental telemetry, and connection status. View detailed statistics for each node in your network.
+Monitor individual node health, battery levels, environmental telemetry, and connection status. View detailed statistics for each node in your network, regardless of source protocol.
 
 ### Channel Configuration
-Manage multiple channels, view channel settings, and monitor message flow across different communication channels in your mesh.
+Manage multiple channels, view channel settings, and monitor message flow across different communication channels — Meshtastic channels, MeshCore channels, and MQTT topics alike.
 
 ### Security Monitoring
-Automatically detect and flag nodes with security vulnerabilities. MeshMonitor identifies low-entropy (weak) encryption keys and duplicate keys shared across multiple nodes. Visual warnings and filtering options help you maintain a secure mesh network.
+Automatically detect and flag nodes with security vulnerabilities. MeshMonitor identifies low-entropy (weak) encryption keys and duplicate keys shared across multiple Meshtastic nodes. Visual warnings and filtering options help you maintain a secure mesh.
 
 ## Deployment Options
 
@@ -157,7 +163,7 @@ MeshMonitor supports multiple deployment scenarios:
 ## Screenshots
 
 ### Multi-Source Dashboard
-Every source your deployment touches shows up in the sidebar with its own health, map pin colour, and unified or source-scoped views. Meshtastic TCP (with Serial/BLE via the bridge sidecars), USB-attached MeshCore, and the embedded MQTT broker are first-class today; TCP MeshCore is supported via the legacy env-var bootstrap path.
+Every source your deployment touches shows up in the sidebar with its own health, map pin colour, and unified or source-scoped views. Meshtastic (TCP, plus Serial/BLE via the bridge sidecars), MeshCore (USB or TCP), MQTT brokers, and the embedded MQTT bridge are all first-class — mix and match without a restart.
 
 ![Multi-Source Dashboard](/images/features/dashboard-multi-source.png)
 

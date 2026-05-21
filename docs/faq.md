@@ -145,54 +145,45 @@ docker compose up -d
 
 ## 📡 Node Management
 
-### Can I monitor multiple Meshtastic nodes with one MeshMonitor instance?
+### Can I monitor multiple nodes (or multiple mesh protocols) with one MeshMonitor instance?
 
-**No.** Each MeshMonitor instance connects to exactly **one** Meshtastic node at a time.
+**Yes.** As of 4.0, a single MeshMonitor instance is **multi-source** — it can connect to many Meshtastic nodes, MeshCore devices, and MQTT brokers at the same time.
 
-**Why:** MeshMonitor maintains a persistent TCP connection to a single node and stores all mesh data from that node's perspective.
+**How:** Each upstream connection is a **source** stored in the database. Sources are added, edited, or removed from **Dashboard → Sources** without restarting the container. Every source has its own Virtual Node, scheduler, auto-responder, permissions, and per-source views (maps, messages, telemetry, traceroutes), and there's a **unified** mode that aggregates across all of them.
 
-**Solution for multiple nodes:**
+See [Multi-Source](/features/multi-source) for the full feature description.
 
-Run multiple MeshMonitor instances, one per node:
+**Why you might still run multiple instances:** strict tenant isolation (separate databases per organization), separate auto-upgrade schedules, or running different MeshMonitor versions side by side. For most users, a single multi-source instance is the right answer — add nodes from the UI rather than spinning up a second container.
+
+**Bootstrap:** The `MESHTASTIC_NODE_IP` / `MESHTASTIC_TCP_PORT` env vars only seed the **first** source on first boot. Add additional sources (and additional protocols) from the dashboard:
 
 ```yaml
 services:
-  meshmonitor-node1:
+  meshmonitor:
     image: ghcr.io/yeraze/meshmonitor:latest
-    container_name: meshmonitor-node1
+    container_name: meshmonitor
     ports:
       - "8080:3001"
     volumes:
-      - meshmonitor-node1-data:/data
+      - meshmonitor-data:/data
     environment:
-      - MESHTASTIC_NODE_IP=192.168.1.100
+      - MESHTASTIC_NODE_IP=192.168.1.100  # Seeds source #1 on first boot
       - ALLOWED_ORIGINS=http://192.168.1.50:8080
     restart: unless-stopped
 
-  meshmonitor-node2:
-    image: ghcr.io/yeraze/meshmonitor:latest
-    container_name: meshmonitor-node2
-    ports:
-      - "8081:3001"  # Different port!
-    volumes:
-      - meshmonitor-node2-data:/data
-    environment:
-      - MESHTASTIC_NODE_IP=192.168.1.101
-      - ALLOWED_ORIGINS=http://192.168.1.50:8081
-    restart: unless-stopped
-
 volumes:
-  meshmonitor-node1-data:
-  meshmonitor-node2-data:
+  meshmonitor-data:
 ```
 
-Access them at:
-- Node 1: `http://192.168.1.50:8080`
-- Node 2: `http://192.168.1.50:8081`
+Then open **Dashboard → Sources → +** to add a second Meshtastic node, a MeshCore device, or an MQTT broker.
 
 ---
 
 ### I get CSRF errors when running multiple MeshMonitor instances on the same host
+
+::: tip First, do you actually need multiple instances?
+Since 4.0, one MeshMonitor instance is multi-source and can talk to many Meshtastic, MeshCore, and MQTT sources at once. The setup below only applies if you deliberately run multiple instances (e.g. tenant isolation, different versions).
+:::
 
 **Problem:** When running multiple MeshMonitor instances on the same host (same IP/domain, different ports), you experience random logouts, CSRF validation failures, or session conflicts.
 
@@ -499,6 +490,10 @@ cp data/meshmonitor.db ~/meshmonitor-backup-$(date +%Y%m%d).db
 ## 🌐 Network & Connectivity
 
 ### MeshMonitor can't connect to my Meshtastic node
+
+::: tip Connecting MeshCore or MQTT instead?
+The steps below apply to a Meshtastic TCP source. For MeshCore see [MeshCore](/features/meshcore); for MQTT see [Embedded MQTT Broker](/features/mqtt-broker) or check broker host, port, and credentials in **Dashboard → Sources → Edit**.
+:::
 
 **Checklist:**
 
