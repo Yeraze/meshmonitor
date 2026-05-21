@@ -300,6 +300,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                 {canShowResetButton && pathKnown && (
                   <button
                     type="button"
+                    className="btn-secondary"
                     onClick={handleResetPath}
                     disabled={resetting}
                     aria-label={t('meshcore.contact_details.reset_path_button', 'Reset Path')}
@@ -312,6 +313,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                 {canShowShareButton && (
                   <button
                     type="button"
+                    className="btn-secondary"
                     onClick={handleShareContact}
                     disabled={sharing}
                     aria-label={t('meshcore.contact_details.share_contact_button', 'Share Contact')}
@@ -324,6 +326,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                 {canShowEditButton && (
                   <button
                     type="button"
+                    className="btn-secondary"
                     onClick={openEditor}
                     aria-label={t('meshcore.contact_details.edit_path_button', 'Edit Path…')}
                   >
@@ -491,6 +494,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
               <button
                 type="button"
+                className="btn-secondary"
                 onClick={() => setEditorOpen(false)}
                 disabled={editorSaving}
               >
@@ -498,6 +502,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               </button>
               <button
                 type="button"
+                className="btn-primary"
                 onClick={handleSaveEditor}
                 disabled={editorSaving}
               >
