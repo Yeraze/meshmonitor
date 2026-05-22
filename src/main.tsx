@@ -64,7 +64,7 @@ function SourceApp() {
 
   if (source?.type === 'meshcore') {
     return (
-      <SourceProvider sourceId={sourceId} sourceName={source.name}>
+      <SourceProvider sourceId={sourceId} sourceName={source.name} sourceType={source.type}>
         <WebSocketProvider>
           <MeshCoreSourcePage key={sourceId} />
         </WebSocketProvider>
@@ -73,7 +73,7 @@ function SourceApp() {
   }
 
   return (
-    <SourceProvider sourceId={sourceId}>
+    <SourceProvider sourceId={sourceId} sourceName={source?.name ?? null} sourceType={source?.type ?? null}>
       <WebSocketProvider>
         {/* key={sourceId} forces full remount when switching sources, resetting all DataContext/MessagingContext state */}
         <App key={sourceId} />

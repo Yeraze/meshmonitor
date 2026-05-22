@@ -31,6 +31,12 @@ interface AppHeaderProps {
   sourceName?: string | null;
   /** Called when the user clicks the back-to-sources button */
   onBackToSources?: () => void;
+  /**
+   * MQTT-bridge mirror dashboard. Bridges have no local device, so the
+   * fallback `nodeAddress` (env-default Meshtastic IP) would otherwise leak
+   * into the header. Hides the node-info slot entirely when true.
+   */
+  mqttReadOnly?: boolean;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -51,6 +57,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onNodeClick,
   sourceName,
   onBackToSources,
+  mqttReadOnly = false,
 }) => {
   const { t } = useTranslation();
 
@@ -124,7 +131,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             <span className="header-source-name">{sourceName}</span>
           )}
         </div>
-        <div className="node-info">{renderNodeInfo()}</div>
+        {!mqttReadOnly && <div className="node-info">{renderNodeInfo()}</div>}
       </div>
       <div className="header-right">
         <div className="connection-status-container">

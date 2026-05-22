@@ -70,6 +70,12 @@ interface SidebarProps {
   baseUrl: string;
   connectedNodeName?: string;
   packetLogEnabled?: boolean;
+  /**
+   * When true (MQTT Bridge dashboard), hides Device Configuration and Remote
+   * Administration entries. These device-level controls don't apply to data
+   * sourced from an MQTT bridge.
+   */
+  mqttReadOnly?: boolean;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -85,7 +91,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSearchClick,
   baseUrl,
   connectedNodeName,
-  packetLogEnabled
+  packetLogEnabled,
+  mqttReadOnly = false,
 }) => {
   const { t } = useTranslation();
   const { iconStyle } = useSettings();
@@ -261,10 +268,10 @@ const Sidebar: React.FC<SidebarProps> = ({
           {hasPermission('settings', 'read') && (
             <NavItem id="settings" label={t('nav.settings')} icon={icon('settings')} />
           )}
-          {hasPermission('automation', 'read') && (
+          {!mqttReadOnly && hasPermission('automation', 'read') && (
             <NavItem id="automation" label={t('nav.automation')} icon={icon('automation')} />
           )}
-          {hasPermission('configuration', 'read') && (
+          {!mqttReadOnly && hasPermission('configuration', 'read') && (
             <NavItem id="configuration" label={t('nav.device')} icon={icon('configuration')} />
           )}
           {isAuthenticated && (
@@ -279,7 +286,9 @@ const Sidebar: React.FC<SidebarProps> = ({
               {isAdmin && (
                 <>
                   <NavItem id="users" label={t('nav.users')} icon={icon('users')} />
-                  <NavItem id="admin" label={t('nav.admin_commands')} icon={icon('admin')} />
+                  {!mqttReadOnly && (
+                    <NavItem id="admin" label={t('nav.admin_commands')} icon={icon('admin')} />
+                  )}
                 </>
               )}
               {hasPermission('audit', 'read') && (

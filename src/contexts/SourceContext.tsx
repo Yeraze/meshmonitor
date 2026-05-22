@@ -13,22 +13,26 @@ interface SourceContextType {
   sourceId: string | null;
   /** Display name of the active source, or null */
   sourceName: string | null;
+  /** Source type (e.g. 'meshtastic_tcp', 'mqtt_bridge', 'meshcore'), or null */
+  sourceType: string | null;
 }
 
 const SourceContext = createContext<SourceContextType>({
   sourceId: null,
   sourceName: null,
+  sourceType: null,
 });
 
 interface SourceProviderProps {
   sourceId: string;
   sourceName?: string | null;
+  sourceType?: string | null;
   children: React.ReactNode;
 }
 
-export function SourceProvider({ sourceId, sourceName = null, children }: SourceProviderProps) {
+export function SourceProvider({ sourceId, sourceName = null, sourceType = null, children }: SourceProviderProps) {
   return (
-    <SourceContext.Provider value={{ sourceId, sourceName }}>
+    <SourceContext.Provider value={{ sourceId, sourceName, sourceType }}>
       {children}
     </SourceContext.Provider>
   );
