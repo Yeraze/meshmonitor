@@ -13,7 +13,7 @@ I'm a new contributor to MeshMonitor. Please help me get started by:
 
 1. Reading the project instructions in /CLAUDE.md
 2. Reviewing docs/development/claude-getting-started.md for the full setup guide
-3. Reading docs/ARCHITECTURE_LESSONS.md to understand critical patterns
+3. Reading docs/internal/dev-notes/ARCHITECTURE_LESSONS.md to understand critical patterns
 
 Then give me a summary of:
 - What MeshMonitor is and its tech stack
@@ -246,11 +246,11 @@ Before implementing features, review these critical documents:
 
 | Document | When to Read |
 |----------|--------------|
-| [ARCHITECTURE_LESSONS.md](/ARCHITECTURE_LESSONS) | **Before ANY** node communication, state management, backup/restore, or async operations |
-| [SYSTEM_ARCHITECTURE.md](/architecture/SYSTEM_ARCHITECTURE) | Understanding overall system design |
-| [API Documentation](/development/api) | Working with REST API endpoints |
-| [SCHEMA.md](/database/SCHEMA) | Database schema and models |
-| [AUTHENTICATION.md](/AUTHENTICATION) | Auth implementation details |
+| [ARCHITECTURE_LESSONS.md](https://github.com/Yeraze/meshmonitor/blob/main/docs/internal/dev-notes/ARCHITECTURE_LESSONS.md) | **Before ANY** node communication, state management, backup/restore, or async operations |
+| [SYSTEM_ARCHITECTURE.md](https://github.com/Yeraze/meshmonitor/blob/main/docs/architecture/SYSTEM_ARCHITECTURE.md) | Understanding overall system design |
+| [API Documentation](/development/api-reference) | Working with REST API endpoints |
+| [SCHEMA.md](https://github.com/Yeraze/meshmonitor/blob/main/docs/database/SCHEMA.md) | Database schema and models |
+| [AUTHENTICATION.md](https://github.com/Yeraze/meshmonitor/blob/main/docs/internal/dev-notes/AUTHENTICATION.md) | Auth implementation details |
 | [FAQ.md](/faq) | Common issues and solutions |
 
 ---

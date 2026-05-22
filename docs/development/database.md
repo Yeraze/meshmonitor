@@ -710,7 +710,7 @@ if (this.drizzleDbType === 'sqlite') {
 
 ### Reference Documentation
 
-- [Architecture Lessons](/ARCHITECTURE_LESSONS#multi-database-architecture) - Detailed patterns and lessons learned
+- [Architecture Lessons](https://github.com/Yeraze/meshmonitor/blob/main/docs/internal/dev-notes/ARCHITECTURE_LESSONS.md#multi-database-architecture) - Detailed patterns and lessons learned
 - [Drizzle ORM Docs](https://orm.drizzle.team/) - Query building and schema definition
 
 ## Need Help?

@@ -81,7 +81,7 @@ export interface MeshCoreConfig {
   firmwareType?: 'companion' | 'repeater';
 
   // Heartbeat / auto-reconnect (native-backend only; default off).
-  // See docs/meshcore-heartbeat-proposal.md.
+  // See docs/internal/meshcore-design/meshcore-heartbeat-proposal.md.
   heartbeatIntervalSeconds?: number;   // 0 = disabled. v1 native default: 0.
   heartbeatTimeoutMs?: number;         // default 5000.
   heartbeatMaxFailures?: number;       // default 3.
@@ -2009,7 +2009,7 @@ class MeshCoreManager extends EventEmitter {
   // State machine: disconnected → connecting → connected → reconnecting → …
   // Probe is `getDeviceTime()` (cheap RTC read, no RF). N consecutive
   // failures triggers a teardown + exponential-backoff reconnect. See
-  // docs/meshcore-heartbeat-proposal.md for the full design.
+  // docs/internal/meshcore-design/meshcore-heartbeat-proposal.md for the full design.
 
   getHeartbeatStatus(): MeshCoreHeartbeatStatus {
     return {

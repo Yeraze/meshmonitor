@@ -560,7 +560,7 @@ claude "run the full test suite and fix any failures"
 ## Additional Resources
 
 - **Project Documentation**: See `docs/` directory
-- **Architecture Patterns**: `docs/ARCHITECTURE_LESSONS.md` (essential reading!)
+- **Architecture Patterns**: `docs/internal/dev-notes/ARCHITECTURE_LESSONS.md` (essential reading!)
 - **Contributing Guide**: `CONTRIBUTING.md`
 - **AI Agent Instructions**: `.claude/instructions.md`
 - **Main README**: `README.md` (project root)

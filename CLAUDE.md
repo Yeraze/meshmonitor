@@ -6,7 +6,7 @@
 ## Read order for new agents
 
 1. **This file** — invariants, rules, and gotchas. Skim end-to-end.
-2. **`docs/ARCHITECTURE_LESSONS.md`** — MUST-READ before touching node communication, state management, backup/restore, async operations, multi-database, or multi-source.
+2. **`docs/internal/dev-notes/ARCHITECTURE_LESSONS.md`** — MUST-READ before touching node communication, state management, backup/restore, async operations, multi-database, or multi-source.
 3. **`src/server/sourceManagerRegistry.ts`** + **`src/server/meshtasticManager.ts`** — read these two before any feature touching nodes/messages/telemetry. There is no global `meshtasticManager` singleton; everything is per-source.
 4. **One repository under `src/db/repositories/`** (e.g. `auth.ts`) — read before adding a query. Raw SQL outside this directory is ESLint-banned.
 

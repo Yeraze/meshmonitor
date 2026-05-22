@@ -384,7 +384,7 @@ nvm use 20
 
 - **[Architecture Guide](/development/architecture)** - Understand the system design
 - **[Database Schema](/development/database)** - Learn about data structures
-- **[API Documentation](/development/api)** - Explore API endpoints
+- **[API Documentation](/development/api-reference)** - Explore API endpoints
 - **[Authentication](/development/authentication)** - Understand auth implementation
 
 ## Contributing

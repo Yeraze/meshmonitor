@@ -307,6 +307,6 @@ Authorization: Required (configuration:read/write permission)
 
 ## See Also
 
-- [Disaster Recovery Guide](../operations/disaster-recovery.md) - Complete disaster recovery procedures
+- [Disaster Recovery Guide](https://github.com/Yeraze/meshmonitor/blob/main/docs/operations/disaster-recovery.md) - Complete disaster recovery procedures
 - [Settings Documentation](./settings.md) - All system settings including backup configuration
 - [Security Features](./security.md) - Security considerations and best practices
