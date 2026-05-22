@@ -83,7 +83,7 @@ export default defineConfig({
             { text: 'Security', link: '/features/security' },
             { text: 'Message Search', link: '/features/message-search' },
             { text: 'Store & Forward', link: '/features/store-forward' },
-            { text: 'Embedded MQTT Broker', link: '/features/mqtt-broker' },
+            { text: 'Embedded MQTT Broker & Bridge', link: '/features/mqtt-broker' },
             { text: 'Embed Maps', link: '/features/embed-maps' },
             { text: 'Map Analysis', link: '/features/map-analysis' },
             { text: 'Waypoints', link: '/features/waypoints' },

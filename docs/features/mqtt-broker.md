@@ -1,7 +1,7 @@
-# Embedded MQTT Broker
+# Embedded MQTT Broker & Bridge
 
 ::: tip Added in 4.6
-The embedded MQTT broker and bidirectional bridges shipped in MeshMonitor 4.6 (PR [#3053](https://github.com/Yeraze/meshmonitor/pull/3053), follow-up client-proxy bridge in PR [#3054](https://github.com/Yeraze/meshmonitor/pull/3054), resolving [issue #3003](https://github.com/Yeraze/meshmonitor/issues/3003)).
+The embedded MQTT broker and bidirectional bridges shipped in MeshMonitor 4.6 (PR [#3053](https://github.com/Yeraze/meshmonitor/pull/3053), follow-up client-proxy bridge in PR [#3054](https://github.com/Yeraze/meshmonitor/pull/3054), resolving [issue #3003](https://github.com/Yeraze/meshmonitor/issues/3003)). **Standalone bridges** (no parent broker required) were added in a later release ([issue #3134](https://github.com/Yeraze/meshmonitor/issues/3134)).
 :::
 
 MeshMonitor can run its own MQTT broker inside the same container, so your Meshtastic devices (and any other MQTT clients on your network) can publish directly to MeshMonitor — and MeshMonitor can relay that traffic, with **filtering rules**, to public upstream brokers like `mqtt.meshtastic.org`.
@@ -14,32 +14,99 @@ The embedded broker shifts this fight to the server, where MeshMonitor already h
 
 ## Two source types
 
-The feature adds two new source types in **Dashboard → Sources → Add Source**:
+The feature adds two new source types in **Dashboard → Sources → Add Source**: an `mqtt_broker` that **accepts** MQTT connections (a server), and an `mqtt_bridge` that **opens** an MQTT connection (a client). They can run together, separately, or in any combination — picking the right one (or both) is the most common configuration question, so the rest of this section walks through each in detail and ends with a side-by-side feature matrix.
 
-### `mqtt_broker` — the listener
+### `mqtt_broker` — accept connections from devices and other MQTT clients
 
-A self-contained MQTT broker, backed by [Aedes](https://github.com/moscajs/aedes) (a pure-Node, MQTT 3.1.1 broker, MIT-licensed). Listens on a configurable TCP port (default `1883`) with shared username/password authentication. Decodes [`ServiceEnvelope`](https://github.com/meshtastic/protobufs/blob/master/meshtastic/mqtt.proto) packets from any client that publishes, and ingests decodable payloads (NodeInfo, Position, TextMessage, Telemetry) into the database under this source's `sourceId`.
+A self-contained MQTT broker, backed by [Aedes](https://github.com/moscajs/aedes) (a pure-Node, MQTT 3.1.1 broker, MIT-licensed). MeshMonitor opens a TCP port (default `1883`), advertises shared username/password authentication, and accepts MQTT 3.1.1 clients that connect to it.
 
-### `mqtt_bridge` — the upstream connection
+**What it does**
 
-References a parent `mqtt_broker` by ID and connects to one upstream MQTT server via [MQTT.js](https://github.com/mqttjs/MQTT.js). Each bridge has independent **downlink** (upstream → local) and **uplink** (local → upstream) filter pipelines:
+- Listens on `0.0.0.0:<port>` (configurable; defaults to the IANA-registered MQTT port `1883`).
+- Authenticates every CONNECT with a single shared username/password pair (default-deny: connections without configured credentials are rejected).
+- Decodes [`ServiceEnvelope`](https://github.com/meshtastic/protobufs/blob/master/meshtastic/mqtt.proto) packets from any client that publishes under its `rootTopic` (default `msh`), and ingests decodable payloads (NodeInfo, Position, TextMessage, Telemetry) into the database under this source's `sourceId`. Other clients subscribed to the broker still see the raw byte-for-byte publish, so devices can fan out to each other over MQTT just like they would on a public broker.
+- Optionally clamps `hop_limit` to `0` on every Meshtastic packet it delivers to a connected client ("Zero-hop injection" — see below), matching `mqtt.meshtastic.org`'s behavior so MQTT-bridged packets don't trigger RF re-broadcasts.
+- Generates a synthetic gateway identity (`nodeNum`, `!nodeId`, longName, shortName) at create time so its publishes look like they're coming from a real node to upstream brokers.
 
-- **Topic patterns** (MQTT wildcards: `+` single-segment, `#` multi-segment tail)
-- **Channel name** allow / block lists
-- **Node ID** allow / block lists (`!xxxxxxxx`)
-- **PortNum** allow / block lists ([Meshtastic PortNum enum](https://github.com/meshtastic/protobufs/blob/master/meshtastic/portnums.proto))
-- **Geographic bounding box** — drop position packets whose `latitude_i / 1e7, longitude_i / 1e7` falls outside `{ minLat, maxLat, minLng, maxLng }`. Applied before republish so out-of-area positions never reach devices on the local broker.
+**When to use a broker**
 
-60-second `(topic, packetId)` echo suppression on both directions prevents bridge feedback loops.
+- You want **multiple devices** to share a single set of MQTT credentials and converge on MeshMonitor instead of each holding its own upstream credentials.
+- You want **other LAN clients** (Home Assistant, Grafana, custom scripts) to subscribe to the same Meshtastic traffic without setting up a separate broker.
+- You need **server-side ingestion** of locally-published traffic — every NodeInfo / Position / Telemetry your devices publish via MQTT lands in the database under this source's `sourceId`, with no extra wiring.
 
-## Two ways a device can reach the broker
+### `mqtt_bridge` — open a connection to an upstream broker
+
+A long-lived MQTT client, backed by [MQTT.js](https://github.com/mqttjs/MQTT.js). MeshMonitor opens a connection out to one upstream MQTT server (`mqtt.meshtastic.org`, a regional community broker, your own private one), subscribes to a list of topics, and decodes whatever comes back.
+
+**What it does**
+
+- Connects to one upstream URL (`mqtt://…` for plain TCP, `mqtts://…:8883` for TLS) with optional username/password.
+- Subscribes to a configured list of upstream topics (MQTT wildcards: `+` single-segment, `#` multi-segment tail).
+- Decodes inbound `ServiceEnvelope` packets and ingests them into the database under this bridge's `sourceId` — so traffic the bridge receives from upstream shows up as its own MeshMonitor source.
+- Applies an **independent downlink filter pipeline** before ingestion and republish:
+  - **Topic patterns** — allow / block lists
+  - **Channel name** — allow / block lists
+  - **Node ID** — allow / block lists (`!xxxxxxxx`)
+  - **PortNum** — allow / block lists ([Meshtastic PortNum enum](https://github.com/meshtastic/protobufs/blob/master/meshtastic/portnums.proto))
+  - **Geographic bounding box** — drop position packets whose `latitude_i / 1e7, longitude_i / 1e7` falls outside `{ minLat, maxLat, minLng, maxLng }`. Applied before republish so out-of-area positions never reach the local broker (when attached) or are injected into a device (when used as a client-proxy target).
+- Surfaces broker ACL state — if the upstream rejects authentication or denies your subscriptions, the bridge status shows `permissionMessage` so you know why traffic isn't flowing.
+- 60-second `(topic, packetId)` echo suppression on both directions prevents bridge feedback loops.
+
+**Two modes — with or without a parent broker**
+
+A bridge can run in either of two configurations, picked when you create it ("Parent broker (optional)" dropdown):
+
+1. **Attached to a parent `mqtt_broker`** (the default before the standalone option was added). In this mode the bridge is bidirectional:
+   - **Downlink** (upstream → local broker): ingests, applies the downlink filter pipeline, and republishes raw bytes onto the parent broker so locally-connected devices see the same wire format.
+   - **Uplink** (local broker → upstream): listens to the parent broker's `local-packet` event, applies an independent **uplink filter pipeline** (same filter shapes as downlink), and publishes raw bytes to the upstream broker.
+2. **Standalone** — no parent broker. The bridge runs as a pure MQTT client. Downlink still ingests; there's no local republish (no local broker to republish to) and no uplink event source. The bridge can still **act as a client-proxy target** for a `meshtastic_tcp` source's `mqttLink`: device traffic flows `device → MeshMonitor → bridge.publish() → upstream`, with no embedded broker in between.
+
+**When to use a bridge**
+
+- **Attached**: you have an embedded broker hosting one or more local devices and you want their traffic to fan out upstream — and/or you want upstream traffic from a curated topic set to reach those devices.
+- **Standalone, monitoring**: you want to watch what flows on an upstream broker (e.g. `mqtt.meshtastic.org` for a regional area) without hosting any local MQTT clients. The bridge subscribes, ingests, and persists; that data shows up as its own source in the sidebar.
+- **Standalone, client-proxy target**: you have a Meshtastic device in `proxy_to_client` mode and you want its MQTT traffic forwarded straight upstream without an intermediate embedded broker. The Meshtastic source's `mqttLink` points at the bridge directly. This is the **MQTT-client-proxy** use case ([issue #3134](https://github.com/Yeraze/meshmonitor/issues/3134)).
+
+### Broker vs Bridge — feature matrix
+
+| Capability | `mqtt_broker` | `mqtt_bridge` (attached) | `mqtt_bridge` (standalone) |
+|---|---|---|---|
+| **Role** | MQTT server — accepts connections | MQTT client — opens one connection | MQTT client — opens one connection |
+| **Opens a TCP listener port?** | Yes (configurable, default `1883`) | No | No |
+| **Connects to an upstream broker?** | No (it _is_ the broker) | Yes (one per bridge) | Yes (one per bridge) |
+| **Locally-connected MQTT clients (devices, LAN apps)?** | Yes, many | Via the parent broker | No |
+| **Multiple upstream brokers?** | n/a | Yes — N bridges, each independent | Yes — N bridges, each independent |
+| **Per-source filter pipeline (topic / channel / node / portnum / geo)?** | No (broker is dumb relay) | **Yes** — downlink _and_ uplink | **Yes** — downlink only |
+| **Server-side ingestion of decoded packets?** | Yes — under broker `sourceId` | Yes — under bridge `sourceId` (downlink) | Yes — under bridge `sourceId` (downlink) |
+| **Echo suppression (no feedback loops)?** | n/a | Yes (60s `topic+packetId` cache) | Yes |
+| **Zero-hop injection toggle?** | Yes ([details](#zero-hop-injection)) | n/a | n/a |
+| **Synthetic gateway identity for outbound publishes?** | Yes (auto-generated at create) | Inherited from parent broker | n/a (no outbound until used as proxy target) |
+| **Default-deny authentication on the listener?** | Yes | n/a | n/a |
+| **Can serve as a `mqttLink` client-proxy target?** | Yes | Yes | **Yes** — primary use case |
+| **TLS / WSS?** | Plain TCP only in v1 | `mqtts://` upstream supported | `mqtts://` upstream supported |
+| **Survives a sibling source restart?** | Independent — broker keeps listening if a bridge restarts | Detaches if parent broker stops; reattaches when it comes back | Independent — runs without any sibling |
+| **Status fields on `/api/sources/:id/status`** | `listening`, `clientCount`, `packetsIn`, `packetsIngested`, `packetsDropped`, `lastError` | `upstreamConnected`, `parentBrokerAttached`, `downlinkIn`, `downlinkIngested`, `downlinkRepublished`, `uplinkOut`, downlink/uplink drop counters, `permissionMessage` | Same as attached, but `parentBrokerAttached: false` and `uplinkOut` stays at 0 |
+| **Required pair?** | Standalone — no bridge required | Requires a sibling `mqtt_broker` | None |
+
+### Use-case recipes
+
+- **"Filtered window onto the public Meshtastic broker."** Create one **standalone bridge** to `mqtt://mqtt.meshtastic.org` with a topic pattern and geo bbox that matches your region. No broker needed. You get a sidebar source whose nodes / messages / positions are sourced from upstream, filtered before ingestion.
+- **"My devices on the LAN should fan out to each other, plus selectively reach a public broker."** Create one **broker** + one **attached bridge**. Devices connect to the broker (direct TCP or client-proxy). The bridge applies a filter pipeline in both directions and forwards the selected slice upstream.
+- **"My BLE-only node should publish MQTT through MeshMonitor straight to a public broker, no embedded broker required."** Create one **standalone bridge** pointed at the public broker. On the Meshtastic source, set `mqttLink → <bridge>` (Sources → Edit → "Bridge MQTT proxy to", or use the Quick Configure dropdown on Device → MQTT). Enable `proxy_to_client_enabled` on the firmware. Device → MeshMonitor (over BLE/serial) → bridge → upstream.
+- **"Same as above, plus I want a Home Assistant box on the LAN to subscribe to my devices."** Create one **broker** + one **attached bridge**. Devices use client-proxy mode pointing at the broker; Home Assistant subscribes to the broker on port 1883. Bridge handles the upstream fan-out.
+- **"Two upstream brokers, one regional and one global, with different filters per upstream."** Create one **broker** + **two attached bridges**, each with its own topic/geo/portnum rules. Devices publish once; each bridge independently decides what to forward.
+
+## Three ways a device can reach MQTT through MeshMonitor
 
 | Path | Firmware setup | MeshMonitor setup | When to use |
 |---|---|---|---|
-| **Direct TCP** | `mqtt.enabled = true`, `address = <host>:1883`, `proxy_to_client_enabled = false`, credentials match | Expose port 1883 in `docker-compose.yml` | Devices with reliable WiFi/Ethernet that can reach the MeshMonitor host on the LAN |
-| **Client-proxy** | `mqtt.enabled = true`, `proxy_to_client_enabled = true`, credentials/address still set on firmware (mostly decorative in proxy mode) | Set the Meshtastic source's `mqttLink` to the embedded broker (Sources → Edit → "Bridge MQTT proxy to") | Devices without WiFi (Serial/BLE-attached), behind NAT, or on networks where port 1883 isn't reachable |
+| **Direct TCP to broker** | `mqtt.enabled = true`, `address = <host>:1883`, `proxy_to_client_enabled = false`, credentials match | Create an `mqtt_broker` source; expose port 1883 in `docker-compose.yml` | Devices with reliable WiFi/Ethernet that can reach the MeshMonitor host on the LAN |
+| **Client-proxy → broker** | `mqtt.enabled = true`, `proxy_to_client_enabled = true`, credentials/address still set on firmware (mostly decorative in proxy mode) | Create an `mqtt_broker` source; set the Meshtastic source's `mqttLink` to the broker (Sources → Edit → "Bridge MQTT proxy to") | Devices without WiFi (Serial/BLE-attached), behind NAT, or on networks where port 1883 isn't reachable — and you also want **other LAN clients** to subscribe to the embedded broker |
+| **Client-proxy → standalone bridge** | Same firmware setup as above (`proxy_to_client_enabled = true`) | Create a **standalone** `mqtt_bridge` (no parent broker); set the Meshtastic source's `mqttLink` to the **bridge** | Same connectivity scenarios as client-proxy → broker, but you don't need a local broker — device traffic goes straight upstream through the bridge ([issue #3134](https://github.com/Yeraze/meshmonitor/issues/3134)) |
 
-In proxy mode, the firmware uses Meshtastic's [`MqttClientProxyMessage`](https://github.com/meshtastic/protobufs/blob/master/meshtastic/mesh.proto) protocol: the device hands every outbound publish off as a `FromRadio.mqttClientProxyMessage` over its existing TCP/serial connection to MeshMonitor, and MeshMonitor publishes on its behalf. Inbound messages from the broker are wrapped as `ToRadio.MqttClientProxyMessage` and injected back to the device. This is the same mechanism the Meshtastic mobile apps use when proxying.
+In proxy mode, the firmware uses Meshtastic's [`MqttClientProxyMessage`](https://github.com/meshtastic/protobufs/blob/master/meshtastic/mesh.proto) protocol: the device hands every outbound publish off as a `FromRadio.mqttClientProxyMessage` over its existing TCP/serial connection to MeshMonitor, and MeshMonitor publishes on its behalf. Inbound messages from the linked target (broker or bridge) are wrapped as `ToRadio.MqttClientProxyMessage` and injected back to the device. This is the same mechanism the Meshtastic mobile apps use when proxying.
+
+The Device → MQTT **Quick Configure** dropdown lists both brokers and bridges with type tags so you can pick either in one click; for bridges it parses the upstream URL into the firmware's MQTT address field so the device's local config reflects where its traffic is actually going.
 
 ## Quick setup
 
@@ -75,12 +142,14 @@ For each upstream broker (e.g. `mqtt.meshtastic.org`, regional community brokers
 
 | Field | Notes |
 |---|---|
-| Parent broker | Pick the `mqtt_broker` source created in step 1 |
+| Parent broker (optional) | Pick the `mqtt_broker` source from step 1 to make this an **attached** bridge, or leave as **"None — standalone client proxy"** for a pure upstream client. See [Two source types](#two-source-types) for which to pick. |
 | Upstream URL | `mqtt://mqtt.meshtastic.org` (or `mqtts://...:8883` for TLS) |
 | Username / Password | Whatever the upstream needs (e.g. `meshdev / large4cats` for `mqtt.meshtastic.org`) |
 | Upstream topics | One per line, MQTT wildcards allowed (e.g. `msh/US/FL/#`) |
 | Block topics | Optional — drop publishes matching these patterns (e.g. `msh/CA/QC/#`) |
 | Geographic bounding box | Optional — drop position packets outside the box |
+
+A standalone bridge is the right starting point when you have **no embedded broker** (pure upstream monitoring) or when you plan to wire a Meshtastic source's `mqttLink` directly at the bridge for client-proxy traffic — both are also covered in [Use-case recipes](#use-case-recipes) above.
 
 ### 3. Configure your Meshtastic devices
 
@@ -99,11 +168,16 @@ For each upstream broker (e.g. `mqtt.meshtastic.org`, regional community brokers
 | Field | Value |
 |---|---|
 | Enabled | true |
-| Address | Decorative in proxy mode, but conventionally set to the broker's hostname |
+| Address | Decorative in proxy mode, but conventionally set to the broker (or bridge upstream) hostname |
 | Username / Password | Decorative in proxy mode |
 | `proxy_to_client_enabled` | **true** (firmware hands every publish off via the TCP API) |
 
-Then on the Meshtastic source in MeshMonitor (**Dashboard → Sources → Edit → Bridge MQTT proxy to**), pick the embedded broker. MeshMonitor will forward `FromRadio.mqttClientProxyMessage` payloads to the broker, and inject broker messages back as `ToRadio.MqttClientProxyMessage`. The **Quick Configure** dropdown on the Device → MQTT page does all three of these things (firmware flag, firmware fields, source link) in one click.
+Then on the Meshtastic source in MeshMonitor (**Dashboard → Sources → Edit → Bridge MQTT proxy to**), pick either an embedded broker or a bridge as the target. The **Quick Configure** dropdown on the Device → MQTT page does all three of these things (firmware flag, firmware fields, source link) in one click and shows the target type next to the name.
+
+- Picking a **broker** routes the device's MQTT traffic into the embedded broker (and from there, optionally onward via any attached bridge). Other LAN clients connected to the broker also see this traffic.
+- Picking a **bridge** (typically a standalone one) routes the device's MQTT traffic straight to that bridge's upstream connection with no embedded broker in between. Useful when you have no other local MQTT clients.
+
+In both cases MeshMonitor forwards `FromRadio.mqttClientProxyMessage` payloads to the target's MQTT layer, and injects the target's inbound MQTT traffic back to the device as `ToRadio.MqttClientProxyMessage`.
 
 If `proxy_to_client_enabled` is on but no `mqttLink` is set, a yellow warning banner appears on the Device → MQTT page — without it, proxy traffic from the firmware would be silently dropped.
 
@@ -151,6 +225,7 @@ If you're seeing your private broker flood the mesh after attaching a bridge to 
 - **Node built-in MQTT** is fine if you have one node, one upstream broker, reliable WiFi, and no filtering needs.
 - **MQTT Proxy Sidecar** is the right answer if you mostly want a Serial/BLE node to still reach MQTT, without writing any new MeshMonitor source config — the sidecar is essentially a "mobile app, but always on".
 - **Embedded MQTT Broker** is the right answer when you want **selective bridging** (e.g. only forward msh/US/FL/PALM-BEACH traffic from `mqtt.meshtastic.org`, and only re-broadcast your own self-originated traffic), **multiple upstreams** from one local mesh, **server-side ingestion** (the bridged traffic shows up as MeshMonitor source data, not just relay-through), or you need **devices without WiFi** to publish to a broker that other LAN clients can also subscribe to. Both paths (direct TCP + client-proxy) work simultaneously — you can mix them on a per-device basis.
+- **Standalone MQTT Bridge** (no parent broker) is the right answer when you _don't_ need a local broker at all: either because you just want to **monitor** an upstream broker like `mqtt.meshtastic.org` without hosting anything, or because you have a single BLE/serial Meshtastic device in `proxy_to_client` mode whose MQTT traffic should go **straight upstream** with no intermediate broker. It's a smaller surface area than a broker + attached bridge — one source, one outbound TCP connection, no listener port to expose.
 
 ## Troubleshooting
 
@@ -177,7 +252,13 @@ The credentials configured on the bridge don't match what the upstream accepts f
 
 ### Deleting the broker source
 
-If any `mqtt_bridge` source still references the broker, the delete is refused with a 409 — delete or repoint dependent bridges first.
+Deleting an `mqtt_broker` that has dependent `mqtt_bridge` sources pointing at it **auto-detaches** the bridges instead of refusing the delete ([issue #3134](https://github.com/Yeraze/meshmonitor/issues/3134)). Each dependent bridge has its `brokerSourceId` cleared (it becomes a **standalone** bridge), and any enabled bridge is restarted with the new config; then the broker is removed. Standalone bridges are valid — they keep ingesting upstream and can still act as `mqttLink` client-proxy targets.
+
+If you also want the dependent bridges gone, delete them after the broker, or before — bridges don't require a parent.
+
+::: warning Pre-4.7 behavior
+Releases that shipped before the standalone-bridge feature refused this delete with a `409 Conflict` listing the dependent bridges. Repoint or delete those bridges first when running an older version.
+:::
 
 ## Limitations (v1)
 

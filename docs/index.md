@@ -25,8 +25,8 @@ features:
     details: First-class MeshCore companions and repeaters living alongside your Meshtastic nodes. Per-source permissions, a multi-pane page with channels, DMs, and telemetry, and contacts plotted on the unified map.
 
   - icon: 🌉
-    title: Embedded MQTT Broker
-    details: Run an MQTT broker inside MeshMonitor with bidirectional bridges to public upstreams. Filter what crosses the boundary by topic, channel, portnum, or geographic bounding box — your local mesh stays clean without firmware changes.
+    title: Embedded MQTT Broker & Bridge
+    details: Host an MQTT broker inside MeshMonitor, run standalone client bridges to upstreams, or combine the two. Filter what crosses the boundary by topic, channel, portnum, or geographic bounding box — your local mesh stays clean without firmware changes.
 
   - icon: 🔐
     title: Per-Source Permissions
