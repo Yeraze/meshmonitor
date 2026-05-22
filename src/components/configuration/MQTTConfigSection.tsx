@@ -75,12 +75,18 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   const { hasPermission } = useAuth();
   const canEditMqtt = hasPermission('sources', 'write', { sourceId: currentSourceId });
 
-  // Quick-configure: list of locally-configured mqtt_broker sources the user
-  // can point this device at with one click. Bridges are not offered here —
-  // devices publish to the embedded broker, the bridge fans out to upstream.
+  // Quick-configure: list of valid client-proxy targets the user can point
+  // this device at with one click. Two shapes (issue #3134):
+  //   - mqtt_broker: device's MQTT traffic flows into the embedded broker
+  //     (and from there, optionally upstream via an attached bridge).
+  //   - mqtt_bridge (standalone or not): device's MQTT traffic flows
+  //     directly upstream through the bridge's MQTT client connection.
   const { data: allSources = [] } = useDashboardSources();
-  const brokerSources = useMemo(
-    () => allSources.filter((s) => s.type === 'mqtt_broker' && s.enabled),
+  const proxyTargets = useMemo(
+    () =>
+      allSources.filter(
+        (s) => (s.type === 'mqtt_broker' || s.type === 'mqtt_bridge') && s.enabled,
+      ),
     [allSources],
   );
   const [quickConfigSelection, setQuickConfigSelection] = useState('');
@@ -88,37 +94,67 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
     (sourceId: string) => {
       setQuickConfigSelection(sourceId);
       if (!sourceId) return;
-      const src = brokerSources.find((s) => s.id === sourceId);
-      const cfg = src?.config as
-        | {
-            listener?: { port?: number };
-            auth?: { username?: string; password?: string };
-            rootTopic?: string;
-          }
-        | undefined;
-      if (!cfg) return;
-      // Address: use the hostname the operator is using to reach MeshMonitor
-      // as a best-guess LAN address for the broker. Operator can edit if it's
-      // wrong (e.g. when running behind a reverse proxy).
-      const host = window.location.hostname || 'localhost';
-      const port = cfg.listener?.port ?? 1883;
+      const src = proxyTargets.find((s) => s.id === sourceId);
+      if (!src) return;
+
       setMqttEnabled(true);
-      setMqttAddress(port === 1883 ? host : `${host}:${port}`);
-      if (cfg.auth?.username) setMqttUsername(cfg.auth.username);
-      if (cfg.auth?.password) setMqttPassword(cfg.auth.password);
-      if (cfg.rootTopic) setMqttRoot(cfg.rootTopic);
-      // Embedded broker v1 is plain TCP; firmware MQTT encryption is the
-      // device-payload encryption flag and is a sane default for any broker.
-      setTlsEnabled(false);
-      setMqttEncryptionEnabled(true);
       // Flip on the firmware's MQTT proxy mode so traffic flows through
       // MeshMonitor's TCP API rather than directly to the broker. The
-      // mqttLink stamp below is what actually relays the proxy traffic —
-      // see MeshtasticManager.setupMqttLink (issue #3003 follow-up).
+      // mqttLink stamp below is what actually relays the proxy traffic.
       setProxyToClientEnabled(true);
+      // Device-payload encryption is sane on either target.
+      setMqttEncryptionEnabled(true);
+
+      if (src.type === 'mqtt_broker') {
+        const cfg = src.config as
+          | {
+              listener?: { port?: number };
+              auth?: { username?: string; password?: string };
+              rootTopic?: string;
+            }
+          | undefined;
+        // Address: use the hostname the operator is using to reach MeshMonitor
+        // as a best-guess LAN address for the broker. Operator can edit if it's
+        // wrong (e.g. when running behind a reverse proxy).
+        const host = window.location.hostname || 'localhost';
+        const port = cfg?.listener?.port ?? 1883;
+        setMqttAddress(port === 1883 ? host : `${host}:${port}`);
+        if (cfg?.auth?.username) setMqttUsername(cfg.auth.username);
+        if (cfg?.auth?.password) setMqttPassword(cfg.auth.password);
+        if (cfg?.rootTopic) setMqttRoot(cfg.rootTopic);
+        // Embedded broker v1 is plain TCP.
+        setTlsEnabled(false);
+      } else {
+        // mqtt_bridge target — the device never opens its own connection
+        // (proxy mode), so the address/credentials are mostly metadata.
+        // Fill from the bridge's upstream URL so they match what the
+        // firmware would have used in a non-proxied setup.
+        const cfg = src.config as
+          | {
+              upstream?: { url?: string; username?: string };
+              subscriptions?: string[];
+            }
+          | undefined;
+        const url = cfg?.upstream?.url ?? '';
+        // Parse host:port out of mqtt[s]://host:port — leave alone if empty.
+        const match = url.match(/^mqtts?:\/\/([^/]+)/i);
+        if (match) {
+          setMqttAddress(match[1]);
+          setTlsEnabled(url.toLowerCase().startsWith('mqtts://'));
+        }
+        if (cfg?.upstream?.username) setMqttUsername(cfg.upstream.username);
+        // Password is admin-only and not round-tripped; leave field alone.
+        // Derive a sensible root topic from the first non-wildcard segment
+        // of the first subscription (e.g. `msh/US/CA/#` → `msh/US/CA`).
+        const firstSub = cfg?.subscriptions?.[0];
+        if (firstSub) {
+          const trimmed = firstSub.replace(/\/[+#].*$/, '').replace(/\/+$/, '');
+          if (trimmed) setMqttRoot(trimmed);
+        }
+      }
 
       // Stamp the parent Meshtastic source's mqttLink so MeshMonitor
-      // bridges this device's proxy traffic to the embedded broker. The
+      // relays this device's proxy traffic to the selected target. The
       // PUT triggers reconfigureMqttLink server-side without restarting
       // the transport. Best-effort — failure is logged, not surfaced.
       if (currentSourceId) {
@@ -138,7 +174,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
       }
     },
     [
-      brokerSources,
+      proxyTargets,
       allSources,
       currentSourceId,
       getToken,
@@ -195,9 +231,11 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
     if (!parent || parent.type !== 'meshtastic_tcp') return false;
     const link = (parent.config as { mqttLink?: { enabled?: boolean; mqttBrokerSourceId?: string } } | undefined)?.mqttLink;
     if (!link?.enabled || !link.mqttBrokerSourceId) return true;
-    // Link references a sourceId that's no longer present (broker was deleted).
-    const linkedBroker = allSources.find((s) => s.id === link.mqttBrokerSourceId);
-    if (!linkedBroker || linkedBroker.type !== 'mqtt_broker') return true;
+    // Link references a sourceId that's no longer present, or a type
+    // that can't serve as a proxy target. Both mqtt_broker and
+    // mqtt_bridge are valid targets (issue #3134).
+    const linkedTarget = allSources.find((s) => s.id === link.mqttBrokerSourceId);
+    if (!linkedTarget || (linkedTarget.type !== 'mqtt_broker' && linkedTarget.type !== 'mqtt_bridge')) return true;
     return false;
   }, [proxyToClientEnabled, currentSourceId, allSources]);
 
@@ -313,14 +351,14 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           </div>
           <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
             <li>
-              {brokerSources.length > 0
+              {proxyTargets.length > 0
                 ? t(
                     'mqtt_config.proxy_warning_link_option',
-                    'Pick an embedded broker from the dropdown below — that will both fill these fields and link this source to the broker.',
+                    'Pick an MQTT source from the dropdown below — either an embedded broker, or an MQTT bridge that will forward this device’s traffic straight upstream.',
                   )
                 : t(
                     'mqtt_config.proxy_warning_no_broker_option',
-                    'Create an embedded MQTT broker source first, then return here and pick it from the dropdown that will appear.',
+                    'Create an embedded MQTT broker or an MQTT bridge source first, then return here and pick it from the dropdown that will appear.',
                   )}
             </li>
             <li>
@@ -332,14 +370,14 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           </ul>
         </div>
       )}
-      {brokerSources.length > 0 && (
+      {proxyTargets.length > 0 && (
         <div className="setting-item">
           <label htmlFor="mqttQuickConfig">
-            {t('mqtt_config.quick_configure', 'Quick configure from MeshMonitor broker')}
+            {t('mqtt_config.quick_configure', 'Quick configure from a MeshMonitor MQTT source')}
             <span className="setting-description">
               {t(
                 'mqtt_config.quick_configure_description',
-                'Auto-fill these fields to point the device at an embedded MQTT broker configured in MeshMonitor.',
+                'Auto-fill these fields to point the device at an MQTT source configured in MeshMonitor. Brokers receive device traffic locally; bridges forward it straight upstream.',
               )}
             </span>
           </label>
@@ -350,9 +388,11 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
             onChange={(e) => applyQuickConfig(e.target.value)}
           >
             <option value="">{t('common.select', 'Select…')}</option>
-            {brokerSources.map((s) => (
+            {proxyTargets.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.name}
+                {s.type === 'mqtt_bridge'
+                  ? t('mqtt_config.quick_configure_bridge_option', '{{name}} (bridge → upstream)', { name: s.name })
+                  : t('mqtt_config.quick_configure_broker_option', '{{name}} (embedded broker)', { name: s.name })}
               </option>
             ))}
           </select>

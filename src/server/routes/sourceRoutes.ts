@@ -185,15 +185,23 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       return res.status(400).json({ error: 'type must be meshtastic_tcp, mqtt_broker, mqtt_bridge, or meshcore' });
     }
 
-    // mqtt_bridge requires an existing mqtt_broker to attach to.
+    // mqtt_bridge may optionally attach to a parent mqtt_broker. When
+    // brokerSourceId is omitted (or empty), the bridge runs standalone:
+    // an upstream-only MQTT client suitable for monitoring a remote
+    // broker or for serving as a client-proxy target via a
+    // meshtastic_tcp source's `mqttLink` (issue #3134). When provided,
+    // it must reference a real mqtt_broker so downlink republish and
+    // uplink listening can wire up.
     if (type === 'mqtt_bridge') {
       const parentId = config?.brokerSourceId;
-      if (typeof parentId !== 'string' || !parentId) {
-        return res.status(400).json({ error: 'mqtt_bridge config.brokerSourceId is required' });
-      }
-      const parent = await databaseService.sources.getSource(parentId);
-      if (!parent || parent.type !== 'mqtt_broker') {
-        return res.status(400).json({ error: `mqtt_bridge brokerSourceId ${parentId} does not reference an mqtt_broker source` });
+      if (parentId !== undefined && parentId !== null && parentId !== '') {
+        if (typeof parentId !== 'string') {
+          return res.status(400).json({ error: 'mqtt_bridge config.brokerSourceId must be a string when provided' });
+        }
+        const parent = await databaseService.sources.getSource(parentId);
+        if (!parent || parent.type !== 'mqtt_broker') {
+          return res.status(400).json({ error: `mqtt_bridge brokerSourceId ${parentId} does not reference an mqtt_broker source` });
+        }
       }
     }
     if (!config || typeof config !== 'object') {
@@ -528,17 +536,27 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
   try {
     const target = await databaseService.sources.getSource(req.params.id);
     if (target?.type === 'mqtt_broker') {
-      // Refuse to delete a broker that has bridges pointing at it — cascade
-      // would silently break the bridges' upstream-to-local routing.
+      // Detach dependent mqtt_bridge sources rather than blocking deletion
+      // (issue #3134). Standalone bridges are valid: they ingest upstream
+      // traffic and can still serve as proxy targets for a meshtastic_tcp
+      // source's `mqttLink`.
       const all = await databaseService.sources.getAllSources();
       const dependents = all.filter(
         (s) => s.type === 'mqtt_bridge' && (s.config as any)?.brokerSourceId === req.params.id,
       );
-      if (dependents.length > 0) {
-        return res.status(409).json({
-          error: `Cannot delete: ${dependents.length} mqtt_bridge source(s) reference this broker`,
-          dependents: dependents.map((s) => ({ id: s.id, name: s.name })),
-        });
+      for (const dep of dependents) {
+        const newCfg = { ...(dep.config as Record<string, unknown>) };
+        delete newCfg.brokerSourceId;
+        await databaseService.sources.updateSource(dep.id, { config: newCfg });
+        if (dep.enabled) {
+          try {
+            await sourceManagerRegistry.removeManager(dep.id);
+            const manager = buildMqttManagerForSource(dep.id, dep.name, dep.type as 'mqtt_bridge', newCfg);
+            await sourceManagerRegistry.addManager(manager);
+          } catch (err) {
+            logger.warn(`Could not restart bridge ${dep.id} after detaching from deleted broker ${req.params.id}:`, err);
+          }
+        }
       }
     }
 

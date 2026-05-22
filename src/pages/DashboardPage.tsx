@@ -412,10 +412,9 @@ function DashboardInner() {
         delete (cfg.auth as { password?: string }).password;
       }
     } else if (formType === 'mqtt_bridge') {
-      if (!formMqttBridgeBrokerId) {
-        setFormError(t('source.form.error_mqtt_broker_required', 'Select a parent broker'));
-        return;
-      }
+      // Parent broker is optional — empty selection means standalone
+      // client-proxy bridge (issue #3134). No validation needed; the
+      // backend treats an unset/empty `brokerSourceId` as standalone.
       if (!formMqttBridgeUrl.trim()) {
         setFormError(t('source.form.error_mqtt_url_required', 'Upstream URL is required'));
         return;
@@ -448,7 +447,9 @@ function DashboardInner() {
       if (topicBlock.length > 0) downlinkFilters.topics = { block: topicBlock };
       if (Object.keys(geo).length > 0) downlinkFilters.geo = geo;
       cfg = {
-        brokerSourceId: formMqttBridgeBrokerId,
+        // Omit `brokerSourceId` entirely when standalone — the backend
+        // treats an absent field as "no parent" (issue #3134).
+        ...(formMqttBridgeBrokerId ? { brokerSourceId: formMqttBridgeBrokerId } : {}),
         upstream: {
           url: formMqttBridgeUrl.trim(),
           username: formMqttBridgeUsername.trim() || undefined,
@@ -1010,13 +1011,13 @@ function DashboardInner() {
             ) : formType === 'mqtt_bridge' ? (
               <>
                 <label className="dashboard-form-field">
-                  <span className="dashboard-form-label">{t('source.form.mqtt_bridge_broker', 'Parent broker')}</span>
+                  <span className="dashboard-form-label">{t('source.form.mqtt_bridge_broker', 'Parent broker (optional)')}</span>
                   <select
                     className="dashboard-form-input"
                     value={formMqttBridgeBrokerId}
                     onChange={(e) => setFormMqttBridgeBrokerId(e.target.value)}
                   >
-                    <option value="">{t('common.select', 'Select…')}</option>
+                    <option value="">{t('source.form.mqtt_bridge_broker_none', 'None — standalone client proxy')}</option>
                     {sources
                       .filter((s) => s.type === 'mqtt_broker')
                       .map((s) => (
@@ -1025,6 +1026,12 @@ function DashboardInner() {
                         </option>
                       ))}
                   </select>
+                  <span style={{ fontSize: 11, color: 'var(--ctp-subtext0)', marginTop: 4 }}>
+                    {t(
+                      'source.form.mqtt_bridge_broker_help',
+                      'With a parent broker, the bridge also republishes upstream traffic to local devices and forwards their packets upstream. Without one, it runs as a pure MQTT client — useful for monitoring or as a client-proxy target for a Meshtastic source.',
+                    )}
+                  </span>
                 </label>
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('source.form.mqtt_upstream_url', 'Upstream URL')}</span>

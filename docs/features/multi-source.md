@@ -10,7 +10,7 @@ Multi-Source lets a single MeshMonitor deployment talk to **multiple meshes at o
 
 A **source** is one upstream connection MeshMonitor speaks to. Each source has:
 
-- A **type** — `meshtastic_tcp`, `meshcore`, `mqtt_broker` (external MQTT broker as a source), or `mqtt_bridge` (the embedded broker bridging to an upstream). Serial and BLE Meshtastic nodes connect through the Serial Bridge / BLE Bridge sidecars and appear as `meshtastic_tcp` sources pointing at the bridge container. MeshCore connects directly — USB through the UI, TCP via the legacy env-var bootstrap path. No sidecar either way.
+- A **type** — `meshtastic_tcp`, `meshcore`, `mqtt_broker` (embedded MQTT broker hosting locally-connected clients), or `mqtt_bridge` (MQTT client to one upstream broker, optionally attached to a sibling `mqtt_broker` for fan-out — see [Embedded MQTT Broker & Bridge](/features/mqtt-broker)). Serial and BLE Meshtastic nodes connect through the Serial Bridge / BLE Bridge sidecars and appear as `meshtastic_tcp` sources pointing at the bridge container. MeshCore connects directly — USB through the UI, TCP via the legacy env-var bootstrap path. No sidecar either way.
 - Its own **connection settings** (host, port, device path, credentials)
 - Its own **scheduler** (auto-responder, auto-announce, auto-traceroute, auto-ack)
 - Its own **Virtual Node** endpoint (TCP sources only)
