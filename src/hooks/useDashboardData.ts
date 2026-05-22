@@ -272,7 +272,12 @@ function mergeNodeRecords(records: any[]): any {
   for (const r of sortedNewestFirst) {
     for (const [k, v] of Object.entries(r)) {
       if (k === 'position' || k === 'isFavorite' || k === 'isIgnored' || k === 'lastHeard') continue;
-      if ((merged[k] === undefined || merged[k] === null) && v !== undefined && v !== null) {
+      // Treat empty strings the same as null — protobuf encodes absent string
+      // fields as "" which can arrive via MQTT bridges and must not suppress a
+      // real name from another source.
+      const mergedEmpty = merged[k] === undefined || merged[k] === null || merged[k] === '';
+      const valuePresent = v !== undefined && v !== null && v !== '';
+      if (mergedEmpty && valuePresent) {
         merged[k] = v;
       }
     }

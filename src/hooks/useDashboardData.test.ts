@@ -209,6 +209,31 @@ describe('mergeUnifiedSourceData', () => {
     expect((merged.nodes[0] as any).lastHeard).toBe(2000);
   });
 
+  it('prefers a real name from an older source over an empty-string name from a newer source (MQTT protobuf default)', () => {
+    // MQTT bridge forwards packets from nodes it has never received a full
+    // NodeInfo for, so the protobuf decoder emits longName/shortName as ""
+    // (the protobuf default for absent string fields).  That empty string
+    // must not suppress the real name stored by the direct TCP source.
+    const merged = mergeUnifiedSourceData([
+      {
+        nodes: [{ nodeNum: 100, lastHeard: 1000, longName: 'MyNode', shortName: 'MN' }],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+      },
+      {
+        nodes: [{ nodeNum: 100, lastHeard: 2000, longName: '', shortName: '' }],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+      },
+    ]);
+    expect(merged.nodes).toHaveLength(1);
+    expect((merged.nodes[0] as any).longName).toBe('MyNode');
+    expect((merged.nodes[0] as any).shortName).toBe('MN');
+    expect((merged.nodes[0] as any).lastHeard).toBe(2000);
+  });
+
   it('keeps an older source\'s position when the freshest record has none (field-level merge)', () => {
     // Reproduces the "node disappears on Unified" bug: source-1 hears the
     // node most recently but with no GPS; source-2's older record had a

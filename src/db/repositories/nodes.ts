@@ -313,8 +313,8 @@ export class NodesRepository extends BaseRepository {
         .update(nodes)
         .set({
           nodeId: nodeData.nodeId ?? existingNode.nodeId,
-          longName: nodeData.longName ?? existingNode.longName,
-          shortName: nodeData.shortName ?? existingNode.shortName,
+          longName: nodeData.longName || existingNode.longName || null,
+          shortName: nodeData.shortName || existingNode.shortName || null,
           hwModel: nodeData.hwModel ?? existingNode.hwModel,
           role: nodeData.role ?? existingNode.role,
           hopsAway: nodeData.hopsAway ?? existingNode.hopsAway,
@@ -363,8 +363,8 @@ export class NodesRepository extends BaseRepository {
       const newNode = {
         nodeNum: nodeData.nodeNum,
         nodeId: nodeData.nodeId,
-        longName: nodeData.longName ?? null,
-        shortName: nodeData.shortName ?? null,
+        longName: nodeData.longName || null,
+        shortName: nodeData.shortName || null,
         hwModel: nodeData.hwModel ?? null,
         role: nodeData.role ?? null,
         hopsAway: nodeData.hopsAway ?? null,
@@ -414,8 +414,8 @@ export class NodesRepository extends BaseRepository {
       // concurrent getNode() calls both return null and then both try to INSERT
       const upsertSet = {
         nodeId: nodeData.nodeId,
-        longName: nodeData.longName ?? null,
-        shortName: nodeData.shortName ?? null,
+        longName: nodeData.longName || null,
+        shortName: nodeData.shortName || null,
         hwModel: nodeData.hwModel ?? null,
         role: nodeData.role ?? null,
         hopsAway: nodeData.hopsAway ?? null,

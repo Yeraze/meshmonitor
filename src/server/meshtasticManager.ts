@@ -5531,8 +5531,8 @@ class MeshtasticManager implements ISourceManager {
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
-        longName: user.longName,
-        shortName: user.shortName,
+        longName: user.longName || null,
+        shortName: user.shortName || null,
         hwModel: user.hwModel,
         role: user.role,
         hopsAway: meshPacket.hopsAway,
