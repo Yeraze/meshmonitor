@@ -72,7 +72,7 @@ Database schema, migrations, and data models.
 ### [Authentication](/development/authentication)
 Authentication system implementation, including local auth and OIDC.
 
-### [API Documentation](/development/api)
+### [API Documentation](/development/api-reference)
 Complete API reference for all endpoints.
 
 ## Development Workflow
@@ -287,5 +287,5 @@ docs(readme): update installation instructions
 - [Get started with Claude Code](/development/claude-getting-started) - Recommended for new contributors
 - [Set up your development environment](/development/setup)
 - [Understand the architecture](/development/architecture)
-- [Explore the API](/development/api)
+- [Explore the API](/development/api-reference)
 - [Review the database schema](/development/database)

@@ -1772,11 +1772,11 @@ The log refreshes automatically every 30 seconds.
 - Start with the default 5-minute interval and 3 exchange attempts
 - Enable auto-purge only if you're comfortable with nodes being temporarily removed and re-discovered
 - Monitor the activity log after enabling to verify repairs are succeeding
-- For more information about encryption keys and key mismatches, see [Duplicate Encryption Keys](/security-duplicate-keys)
+- For more information about encryption keys and key mismatches, see [Duplicate Encryption Keys](https://github.com/Yeraze/meshmonitor/blob/main/docs/internal/dev-notes/security-duplicate-keys.md)
 
 ### Related Documentation
 
-- [Duplicate Encryption Keys](/security-duplicate-keys) - Understanding key mismatches and how to fix them manually
+- [Duplicate Encryption Keys](https://github.com/Yeraze/meshmonitor/blob/main/docs/internal/dev-notes/security-duplicate-keys.md) - Understanding key mismatches and how to fix them manually
 - [Security](/features/security) - Learn about node security and encryption
 
 ## Auto Favorite {#auto-favorite}

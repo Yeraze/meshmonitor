@@ -402,7 +402,7 @@ All endpoints require authentication. Setup and verification endpoints are rate-
 
 ## Related Documentation
 
-- [API Documentation](/development/api) - API reference and examples
+- [API Documentation](/development/api-reference) - API reference and examples
 - [Settings](/features/settings) - General settings and configuration
 - [Production Deployment](/configuration/production) - Security best practices for production
 - [Database Schema](https://github.com/Yeraze/meshmonitor/blob/main/docs/database/SCHEMA.md) - Complete database structure

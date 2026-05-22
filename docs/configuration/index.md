@@ -31,6 +31,9 @@ Set up NGINX, Apache, or other reverse proxies to handle SSL termination, load b
 ### [HTTP vs HTTPS](/configuration/http-vs-https)
 Understand the differences between HTTP and HTTPS deployments, security considerations, and how to configure SSL/TLS certificates.
 
+### [HTTPS with DuckDNS](/configuration/duckdns-https)
+Step-by-step guide for adding free DuckDNS dynamic DNS and Let's Encrypt certificates to a self-hosted MeshMonitor deployment.
+
 ### [Production Deployment](/configuration/production)
 Best practices and recommendations for deploying MeshMonitor in production environments, including high availability and monitoring.
 

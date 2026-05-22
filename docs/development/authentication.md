@@ -1,6 +1,6 @@
 # Authentication System
 
-For detailed authentication documentation, see the existing [Authentication Documentation](../../docs/AUTHENTICATION.md) in the repository.
+For detailed authentication documentation, see the existing [Authentication Documentation](https://github.com/Yeraze/meshmonitor/blob/main/docs/internal/dev-notes/AUTHENTICATION.md) in the repository.
 
 ## Coming Soon
 

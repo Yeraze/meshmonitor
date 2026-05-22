@@ -66,63 +66,139 @@ export default defineConfig({
     sidebar: {
       '/features/': [
         {
-          text: 'Features',
+          text: 'Core',
+          collapsed: false,
           items: [
             { text: 'Settings', link: '/features/settings' },
             { text: 'Global Settings', link: '/features/global-settings' },
             { text: 'Multi-Source', link: '/features/multi-source' },
-            { text: 'Per-Source Permissions', link: '/features/per-source-permissions' },
+            { text: 'Device Configuration', link: '/features/device' }
+          ]
+        },
+        {
+          text: 'Messaging & Channels',
+          collapsed: false,
+          items: [
+            { text: 'Message Search', link: '/features/message-search' },
+            { text: 'Channel Database', link: '/features/channel-database' },
+            { text: 'Store & Forward', link: '/features/store-forward' },
+            { text: 'Embedded MQTT Broker & Bridge', link: '/features/mqtt-broker' }
+          ]
+        },
+        {
+          text: 'Maps & Geography',
+          collapsed: false,
+          items: [
+            { text: 'Interactive Maps', link: '/features/maps' },
+            { text: 'Embed Maps', link: '/features/embed-maps' },
+            { text: 'Map Analysis', link: '/features/map-analysis' },
+            { text: 'Waypoints', link: '/features/waypoints' }
+          ]
+        },
+        {
+          text: 'Network Insight',
+          collapsed: false,
+          items: [
+            { text: 'Analytics', link: '/features/analytics' },
+            { text: 'Analysis & Reports', link: '/features/analysis-reports' },
+            { text: 'Link Quality & Smart Hops', link: '/features/link-quality' },
+            { text: 'Telemetry Widgets', link: '/features/telemetry-widgets' },
+            { text: 'Solar Monitoring', link: '/features/solar-monitoring' },
+            { text: 'Packet Monitor', link: '/features/packet-monitor' }
+          ]
+        },
+        {
+          text: 'Automation & Alerts',
+          collapsed: false,
+          items: [
             { text: 'Automation', link: '/features/automation' },
             { text: 'Geofence Triggers', link: '/features/geofence-triggers' },
             { text: 'Auto Heap Management', link: '/features/auto-heap-management' },
-            { text: 'Device Configuration', link: '/features/device' },
-            { text: 'Admin Commands', link: '/features/admin-commands' },
-            { text: 'Push Notifications', link: '/features/notifications' },
-            { text: 'Packet Monitor', link: '/features/packet-monitor' },
-            { text: 'Channel Database', link: '/features/channel-database' },
+            { text: 'Push Notifications', link: '/features/notifications' }
+          ]
+        },
+        {
+          text: 'Administration & Security',
+          collapsed: false,
+          items: [
             { text: 'Security', link: '/features/security' },
-            { text: 'Message Search', link: '/features/message-search' },
-            { text: 'Store & Forward', link: '/features/store-forward' },
-            { text: 'Embedded MQTT Broker & Bridge', link: '/features/mqtt-broker' },
-            { text: 'Embed Maps', link: '/features/embed-maps' },
-            { text: 'Map Analysis', link: '/features/map-analysis' },
-            { text: 'Waypoints', link: '/features/waypoints' },
-            { text: 'Link Quality & Smart Hops', link: '/features/link-quality' },
-            { text: 'Analytics', link: '/features/analytics' },
-            { text: 'Analysis & Reports', link: '/features/analysis-reports' },
-            { text: 'Telemetry Widgets', link: '/features/telemetry-widgets' },
-            { text: 'MeshCore', link: '/features/meshcore' },
-            { text: '🌍 Translations', link: '/features/translations' },
-            { text: '🎨 Theme Gallery', link: '/THEME_GALLERY' },
-            { text: '🌐 Site Gallery', link: '/site-gallery' },
-            { text: '📜 User Scripts', link: '/user-scripts' },
+            { text: 'Per-Source Permissions', link: '/features/per-source-permissions' },
+            { text: 'Admin Commands', link: '/features/admin-commands' },
+            { text: 'System Backup & Restore', link: '/features/system-backup' },
             { text: 'Firmware OTA Updates', link: '/firmware-ota-prerequisites' }
+          ]
+        },
+        {
+          text: 'Appearance & UX',
+          collapsed: true,
+          items: [
+            { text: '🎨 Custom Themes', link: '/features/custom-themes' },
+            { text: '🎨 Theme Gallery', link: '/THEME_GALLERY' },
+            { text: '🌍 Translations', link: '/features/translations' },
+            { text: '🌐 Site Gallery', link: '/site-gallery' },
+            { text: '📜 User Scripts', link: '/user-scripts' }
+          ]
+        },
+        {
+          text: 'Protocol-Specific',
+          collapsed: true,
+          items: [
+            { text: 'MeshCore', link: '/features/meshcore' }
           ]
         }
       ],
       '/configuration/': [
         {
-          text: 'Configuration',
+          text: 'Get Started',
+          collapsed: false,
           items: [
             { text: 'Overview', link: '/configuration/' },
-            { text: '🖥️ Desktop App', link: '/configuration/desktop' },
             { text: '⚡ Docker Compose Configurator', link: '/configurator' },
+            { text: '🖥️ Desktop App', link: '/configuration/desktop' }
+          ]
+        },
+        {
+          text: 'Connect Your Mesh',
+          collapsed: false,
+          items: [
+            { text: 'BLE Bridge (Bluetooth)', link: '/configuration/ble-bridge' },
+            { text: 'Serial Bridge (USB)', link: '/configuration/serial-bridge' },
+            { text: 'Virtual Node Server', link: '/configuration/virtual-node' },
             { text: 'Using meshtasticd', link: '/configuration/meshtasticd' },
-            { text: 'BLE Bridge', link: '/configuration/ble-bridge' },
-            { text: 'Serial Bridge', link: '/configuration/serial-bridge' },
-            { text: 'Virtual Node', link: '/configuration/virtual-node' },
-            { text: '🗺️ Custom Tile Servers', link: '/configuration/custom-tile-servers' },
-            { text: 'SSO Setup', link: '/configuration/sso' },
-            { text: 'Reverse Proxy', link: '/configuration/reverse-proxy' },
-            { text: 'HTTP vs HTTPS', link: '/configuration/http-vs-https' },
-            { text: 'Production Deployment', link: '/configuration/production' },
-            { text: '🔄 Automatic Self-Upgrade', link: '/configuration/auto-upgrade' },
-            { text: 'Push Notifications', link: '/features/notifications' },
             { text: '🧪 Tested Hardware', link: '/configuration/tested-hardware' }
           ]
         },
         {
-          text: 'Deployment',
+          text: 'Networking & TLS',
+          collapsed: false,
+          items: [
+            { text: 'HTTP vs HTTPS', link: '/configuration/http-vs-https' },
+            { text: 'Reverse Proxy', link: '/configuration/reverse-proxy' },
+            { text: 'HTTPS with DuckDNS', link: '/configuration/duckdns-https' }
+          ]
+        },
+        {
+          text: 'Authentication & Hardening',
+          collapsed: false,
+          items: [
+            { text: 'SSO (OpenID Connect)', link: '/configuration/sso' },
+            { text: 'Fail2ban Integration', link: '/configuration/fail2ban' }
+          ]
+        },
+        {
+          text: 'Production & Operations',
+          collapsed: false,
+          items: [
+            { text: 'Production Deployment', link: '/configuration/production' },
+            { text: '🔄 Automatic Self-Upgrade', link: '/configuration/auto-upgrade' },
+            { text: 'Reducing Node Load', link: '/configuration/node-load' },
+            { text: 'Push Notifications', link: '/features/notifications' },
+            { text: '🗺️ Custom Tile Servers', link: '/configuration/custom-tile-servers' }
+          ]
+        },
+        {
+          text: 'Deployment Guides',
+          collapsed: true,
           items: [
             { text: 'Deployment Guide', link: '/deployment/DEPLOYMENT_GUIDE' },
             { text: '📦 Proxmox LXC', link: '/deployment/PROXMOX_LXC_GUIDE' }
@@ -141,21 +217,38 @@ export default defineConfig({
       ],
       '/development/': [
         {
-          text: 'Development',
+          text: 'Getting Started',
+          collapsed: false,
           items: [
             { text: 'Overview', link: '/development/' },
             { text: 'Development Setup', link: '/development/setup' },
-            { text: 'Architecture', link: '/development/architecture' },
+            { text: 'Claude Code Quickstart', link: '/development/claude-getting-started' }
+          ]
+        },
+        {
+          text: 'Architecture',
+          collapsed: false,
+          items: [
+            { text: 'Architecture Overview', link: '/development/architecture' },
+            { text: 'Frontend Structure', link: '/development/FRONTEND_STRUCTURE' },
             { text: 'Database', link: '/development/database' },
-            { text: 'Authentication', link: '/development/authentication' },
-            { text: 'API Documentation', link: '/development/api' },
-            { text: 'API Reference', link: '/development/api-reference' }
+            { text: 'Authentication', link: '/development/authentication' }
+          ]
+        },
+        {
+          text: 'API & Testing',
+          collapsed: false,
+          items: [
+            { text: 'API Reference', link: '/development/api-reference' },
+            { text: 'Test Suite', link: '/development/TEST_SUITE' }
           ]
         },
         {
           text: 'Advanced Topics',
+          collapsed: true,
           items: [
-            { text: 'Auto Responder Scripting', link: '/developers/auto-responder-scripting' }
+            { text: 'Auto Responder Scripting', link: '/developers/auto-responder-scripting' },
+            { text: 'BLE Bridge Migration', link: '/development/BLE_BRIDGE_MIGRATION' }
           ]
         }
       ]
@@ -184,56 +277,24 @@ export default defineConfig({
     lineNumbers: true
   },
 
-  // Ignore dead links in old documentation files and excluded internal docs
+  // Ignore localhost links (used in examples); the build is the source of truth
+  // for everything else, so dead links surface as warnings.
   ignoreDeadLinks: [
-    /^http:\/\/localhost/,
-    (url) => {
-      // Ignore links to excluded directories
-      if (url.includes('/deployment/') || url.includes('/architecture/') || url.includes('/database/') || url.includes('/operations/')) {
-        return true;
-      }
-      // Ignore links to excluded internal documentation files
-      const excludedDocs = [
-        'ARCHITECTURE_LESSONS', 'AUTHENTICATION', 'AUTH_IMPLEMENTATION_SUMMARY',
-        'CHANGE_PASSWORD_FEATURE', 'development-learnings', 'mqtt-vs-http-analysis',
-        'proxy-compatibility-analysis', 'PUSH_NOTIFICATIONS', 'REFACTORING_PLAN',
-        'SECURITY_AUDIT', 'TEST_UPDATES', 'v2.0.0-authentication-plan',
-        'v2.16-IMPLEMENTATION-SUMMARY', 'MACOS_CODE_SIGNING_SETUP',
-        'PERMISSIONS_QUICK_REFERENCE', 'security-duplicate-keys', 'security-low-entropy-keys',
-        'database-migration', 'meshtastic-config-import'
-      ];
-      return excludedDocs.some(doc => url.includes(doc));
-    }
+    /^http:\/\/localhost/
   ],
 
-  // Exclude old documentation directories and internal development docs from VitePress processing
-  // These are available on GitHub for developers who need them
+  // Exclude internal-only documentation from VitePress processing.
+  // Anything under docs/internal/ stays in the repository for developers
+  // browsing on GitHub but does not ship to the public site.
   srcExclude: [
+    '**/internal/**',
+    // Legacy directories of design docs / planning that pre-date docs/internal/.
+    // Kept for now so the build still ignores them if any straggler is added.
     '**/architecture/**',
     '**/database/**',
     '**/api/**',
     '**/planning/**',
     '**/plans/**',
-    '**/operations/**',
-    // Internal development documentation (available on GitHub)
-    'ARCHITECTURE_LESSONS.md',
-    'AUTHENTICATION.md',
-    'AUTH_IMPLEMENTATION_SUMMARY.md',
-    'CHANGE_PASSWORD_FEATURE.md',
-    'development-learnings.md',
-    'mqtt-vs-http-analysis.md',
-    'proxy-compatibility-analysis.md',
-    'PUSH_NOTIFICATIONS.md',
-    'REFACTORING_PLAN.md',
-    'SECURITY_AUDIT.md',
-    'TEST_UPDATES.md',
-    'v2.0.0-authentication-plan.md',
-    'v2.16-IMPLEMENTATION-SUMMARY.md',
-    'MACOS_CODE_SIGNING_SETUP.md',
-    'PERMISSIONS_QUICK_REFERENCE.md',
-    'security-duplicate-keys.md',
-    'security-low-entropy-keys.md',
-    'database-migration.md',
-    'meshtastic-config-import.md'
+    '**/operations/**'
   ]
 })
