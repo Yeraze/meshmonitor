@@ -11,6 +11,7 @@ The LXC deployment option provides a lightweight alternative to Docker for Proxm
 ```
 lxc/
 ├── build-lxc-template.sh          # Main build script (requires root)
+├── update.sh                      # In-place update of an existing CT (run on Proxmox host)
 ├── systemd/
 │   ├── meshmonitor.service        # Main application systemd unit
 │   └── meshmonitor-apprise.service # Apprise notification service unit
@@ -88,9 +89,36 @@ Validate template structure before deployment:
 ./tests/test-lxc-template.sh lxc/build/meshmonitor-2.19.4-amd64.tar.gz
 ```
 
+## Updating an Existing Container
+
+`lxc/update.sh` automates the destroy-and-recreate update flow on the Proxmox host:
+
+```bash
+# Update CT 100 to the latest release (auto-detected from GitHub):
+./lxc/update.sh --ctid 100
+
+# Or pin a specific version:
+./lxc/update.sh --ctid 100 --version 4.6.5
+```
+
+What it does:
+
+1. Reads the existing container's resources (cores, memory, swap, storage, bridge, rootfs size) and IP/gateway.
+2. Takes a Proxmox snapshot (best-effort) and writes file backups of `/data` and `/etc/meshmonitor` to `/root/meshmonitor-lxc-backups/`.
+3. Downloads the requested release template into `/var/lib/vz/template/cache/`.
+4. Destroys the old CT and recreates it with the **same CTID and IP**, then restores `/data` and the env file.
+5. Restarts the MeshMonitor services using the canonical systemd units shipped in the template.
+
+Safety:
+
+- Requires explicit confirmation (interactive prompt, or `--yes` / `CONFIRM=YES_DESTROY` for unattended runs).
+- SSH root install and root-password restore are **opt-in** (`--install-ssh`, `--restore-root-password`).
+- Pass `--no-snapshot` to skip the Proxmox snapshot on storages that don't support snapshots.
+
+See `./lxc/update.sh --help` for the full flag list.
+
 ## Limitations
 
-- **No auto-upgrade**: Manual updates required (see deployment guide)
 - **Single architecture**: amd64/x86_64 only (ARM support may be added later)
 - **Community support**: LXC is best-effort, Docker remains primary method
 

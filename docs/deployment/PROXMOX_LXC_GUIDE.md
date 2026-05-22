@@ -575,64 +575,95 @@ pct set 100 --memory 4096
 
 ## Updating
 
+### Automated Update (Recommended)
+
+Use `lxc/update.sh` from the [MeshMonitor repository](https://github.com/Yeraze/meshmonitor/blob/main/lxc/update.sh) on your Proxmox host. It performs a destroy-and-recreate update while preserving the container's CTID, IP, `/data`, and `/etc/meshmonitor/meshmonitor.env`.
+
+```bash
+# Fetch the script:
+wget https://raw.githubusercontent.com/Yeraze/meshmonitor/main/lxc/update.sh
+chmod +x update.sh
+
+# Update CT 100 to the latest release (auto-detected):
+./update.sh --ctid 100
+
+# Or pin a specific version:
+./update.sh --ctid 100 --version 4.6.5
+
+# Non-interactive (e.g. cron):
+./update.sh --ctid 100 --yes
+```
+
+The script:
+
+- Reads cores/memory/swap/storage/bridge/rootfs size from the existing CT, so you don't have to re-specify them.
+- Takes a Proxmox snapshot (best-effort) and writes file backups of `/data` and `/etc/meshmonitor` to `/root/meshmonitor-lxc-backups/`.
+- Preserves the current static IP/gateway by default (use `--network dhcp` or `--custom-ip <cidr,gw=...>` to override).
+- Restarts the MeshMonitor systemd services after the rebuild.
+
+See `./update.sh --help` for all options (including `--install-ssh` and `--restore-root-password`, which are opt-in).
+
 ### Manual Update Process
 
-LXC deployments do not support auto-upgrade. To update:
+If you prefer to run each step yourself, follow this process. Replace `100` with your CTID and `4.6.5` with the version you want to install.
 
-**Important**: Check the [releases page](https://github.com/yeraze/meshmonitor/releases) for the latest version number and replace `2.19.5` in the examples below with the actual version you want to install.
-
-1. **Create snapshot** before updating (replace version in snapshot name):
+1. **Create snapshot** before updating:
    ```bash
-   pct snapshot 100 before-update-v2.19.5
+   pct snapshot 100 before-update-v4_6_5
    ```
 
-2. **Download new template** (replace `2.19.5` with desired version):
+2. **Download new template** into Proxmox's template cache:
    ```bash
-   wget https://github.com/yeraze/meshmonitor/releases/download/v2.19.5/meshmonitor-2.19.5-amd64.tar.gz
+   wget -O /var/lib/vz/template/cache/meshmonitor-4.6.5-amd64.tar.gz \
+     https://github.com/Yeraze/meshmonitor/releases/download/v4.6.5/meshmonitor-4.6.5-amd64.tar.gz
    ```
 
-3. **Upload to Proxmox**:
+3. **Back up data and env**:
    ```bash
-   scp meshmonitor-2.19.5-amd64.tar.gz root@proxmox:/var/lib/vz/template/cache/
+   pct exec 100 -- tar czf /tmp/meshmonitor-data.tar.gz /data /etc/meshmonitor
+   pct pull 100 /tmp/meshmonitor-data.tar.gz ./meshmonitor-data.tar.gz
    ```
 
-4. **Backup data**:
+4. **Note the current network config** so you can re-apply it:
    ```bash
-   pct exec 100 -- tar czf /tmp/meshmonitor-data-backup.tar.gz /data
-   pct pull 100 /tmp/meshmonitor-data-backup.tar.gz ./meshmonitor-data-backup.tar.gz
+   pct config 100 | grep net0
    ```
 
-5. **Stop and destroy old container**:
+5. **Stop and destroy** the old container:
    ```bash
    pct stop 100
    pct destroy 100
    ```
 
-6. **Create new container** from updated template (repeat Step 3 from Installation)
+6. **Create the new container** from the updated template (re-use the IP from step 4 — see Step 3 of Installation above for full `pct create` flags).
 
-7. **Restore data**:
+7. **Restore data and env**:
    ```bash
-   pct push 100 ./meshmonitor-data-backup.tar.gz /tmp/meshmonitor-data-backup.tar.gz
-   pct exec 100 -- tar xzf /tmp/meshmonitor-data-backup.tar.gz -C /
-   pct exec 100 -- rm /tmp/meshmonitor-data-backup.tar.gz
+   pct push 100 ./meshmonitor-data.tar.gz /tmp/meshmonitor-data.tar.gz
+   pct exec 100 -- tar xzf /tmp/meshmonitor-data.tar.gz -C /
+   pct exec 100 -- rm /tmp/meshmonitor-data.tar.gz
+   pct exec 100 -- chown -R meshmonitor:meshmonitor /data
    ```
 
-8. **Verify configuration** and start services
-
-**Note**: Future versions may support in-place updates without recreating the container.
+8. **Restart services** and verify:
+   ```bash
+   pct exec 100 -- systemctl daemon-reload
+   pct exec 100 -- systemctl restart meshmonitor meshmonitor-apprise
+   pct exec 100 -- systemctl status meshmonitor --no-pager
+   ```
 
 ## Limitations
 
 ### Feature Limitations
 
-- ❌ **No auto-upgrade**: Manual update process required
+- ❌ **No in-place upgrade**: Updates rebuild the container (the `lxc/update.sh` helper automates this)
 - ❌ **Single architecture**: amd64/x86_64 only (no ARM support yet)
 - ❌ **Community support**: LXC is best-effort, Docker is primary
 
 ### Deployment Considerations
 
-- Updates require recreating the container from new template
-- Data must be backed up before major updates
+- Updates recreate the container from a new template (automated by `lxc/update.sh`)
+- Data and env are preserved across updates via file backup + restore
 - Some Docker-specific features may not be available
 
 ### Supported Features
