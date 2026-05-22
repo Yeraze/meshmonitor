@@ -6,7 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
-_No changes yet._
+## Fixes
+- #3135 fix(unified): merge nodes across sources so labels show in the unified Nodes view — since the composite-keyed `nodes` table holds one row per `(nodeNum, sourceId)`, a node heard on both an RF source (with NodeInfo) and an MQTT-bridged source (with only a transit packet, so `longName/shortName = null`) appeared in the unified view twice — once labeled, once as `Node <nodeNum>`. `getAllNodesAsync` now collapses per-source rows into one entry per `nodeNum` when no `sourceId` is supplied: the newest row by `lastHeard` wins, empty fields are back-filled from older rows, and `isFavorite`/`isIgnored`/`favoriteLocked` are OR'd across sources.
 
 
 ## [4.6.3] - 2026-05-20
