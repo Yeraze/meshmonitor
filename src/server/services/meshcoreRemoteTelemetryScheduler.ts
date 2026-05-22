@@ -163,9 +163,21 @@ export function recordToTelemetryRows(
 ): DbTelemetry[] {
   if (record.type === null || record.type === undefined) return [];
   const naming = LPP_TYPE_NAMES[record.type] ?? { type: `lpp_${record.type}` };
-  const baseType = `${MC_TELEMETRY_PREFIX}${naming.type}`;
+  // Cayenne-LPP responses can carry several records of the same `type` under
+  // different `channel` bytes (e.g. battery on ch1=main, ch2=solar). Encode
+  // the channel into the telemetry-type string so each lands as a distinct
+  // chart instead of clobbering its peers. See issue #3139.
+  const channelSuffix = `_ch${record.channel}`;
+  const baseType = `${MC_TELEMETRY_PREFIX}${naming.type}${channelSuffix}`;
   const out: DbTelemetry[] = [];
 
+  // NOTE: we deliberately do NOT write `record.channel` into the row's
+  // `channel` column — that column is for the *mesh* channel the packet
+  // rode on (used by `maskTelemetryByChannel` for per-channel permission
+  // filtering, see src/server/utils/nodeEnhancer.ts). LPP's `channel` is a
+  // within-packet sensor-instance discriminator, an entirely different
+  // concept. Mixing the two would cause permission filtering to deny
+  // access to LPP channel 2/3/4 readings on private mesh channels.
   const pushScalar = (typeName: string, raw: unknown, unit?: string) => {
     const num = typeof raw === 'number' ? raw : Number(raw);
     if (!Number.isFinite(num)) return;

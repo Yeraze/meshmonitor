@@ -102,7 +102,7 @@ describe('recordToTelemetryRows', () => {
   it('produces one row for a scalar value with the right type+unit', () => {
     const rows = recordToTelemetryRows(baseRec, 'pk', 1, 1_000);
     expect(rows).toHaveLength(1);
-    expect(rows[0].telemetryType).toBe('mc_temperature');
+    expect(rows[0].telemetryType).toBe('mc_temperature_ch1');
     expect(rows[0].value).toBe(21.5);
     expect(rows[0].unit).toBe('°C');
     expect(rows[0].nodeId).toBe('pk');
@@ -124,9 +124,9 @@ describe('recordToTelemetryRows', () => {
     const rows = recordToTelemetryRows(rec, 'pk', 1, 0);
     const types = rows.map((r) => r.telemetryType).sort();
     expect(types).toEqual([
-      'mc_lpp_136_altitude',
-      'mc_lpp_136_latitude',
-      'mc_lpp_136_longitude',
+      'mc_lpp_136_ch1_altitude',
+      'mc_lpp_136_ch1_latitude',
+      'mc_lpp_136_ch1_longitude',
     ]);
   });
 
@@ -134,9 +134,9 @@ describe('recordToTelemetryRows', () => {
     const rec: MeshCoreTelemetryRecord = { channel: 1, type: 113, value: [1, 2, 3] };
     const rows = recordToTelemetryRows(rec, 'pk', 1, 0);
     expect(rows.map((r) => r.telemetryType)).toEqual([
-      'mc_lpp_113_0',
-      'mc_lpp_113_1',
-      'mc_lpp_113_2',
+      'mc_lpp_113_ch1_0',
+      'mc_lpp_113_ch1_1',
+      'mc_lpp_113_ch1_2',
     ]);
   });
 
@@ -144,7 +144,38 @@ describe('recordToTelemetryRows', () => {
     const rec: MeshCoreTelemetryRecord = { channel: 1, type: 9999, value: 42 };
     const rows = recordToTelemetryRows(rec, 'pk', 1, 0);
     expect(rows).toHaveLength(1);
-    expect(rows[0].telemetryType).toBe('mc_lpp_9999');
+    expect(rows[0].telemetryType).toBe('mc_lpp_9999_ch1');
+  });
+
+  // Regression for #3139: multiple LPP records of the same `type` on
+  // different `channel` bytes must produce distinct telemetryType strings.
+  // Before the fix, all four below collapsed onto `mc_battery_volts` and
+  // were indistinguishable on the chart-per-type frontend.
+  it('preserves the LPP channel byte in the telemetry type', () => {
+    const recs: MeshCoreTelemetryRecord[] = [
+      { channel: 1, type: 116, value: 4.10 }, // 116 = voltage → battery_volts in LPP_TYPE_NAMES
+      { channel: 2, type: 116, value: 12.50 },
+      { channel: 3, type: 116, value: 5.05 },
+      { channel: 4, type: 116, value: 3.30 },
+    ];
+    const rows = recs.flatMap((r) => recordToTelemetryRows(r, 'pk', 1, 1_000));
+    const types = rows.map((r) => r.telemetryType);
+    expect(types).toEqual([
+      'mc_battery_volts_ch1',
+      'mc_battery_volts_ch2',
+      'mc_battery_volts_ch3',
+      'mc_battery_volts_ch4',
+    ]);
+    expect(rows.map((r) => r.value)).toEqual([4.10, 12.50, 5.05, 3.30]);
+  });
+
+  it('does not write the LPP channel into the row\'s mesh-channel column', () => {
+    // The `channel` column on telemetry rows tracks the *mesh* channel slot
+    // (used by maskTelemetryByChannel for per-channel permissions). LPP's
+    // `channel` is a different concept — must not leak into that column.
+    const rec: MeshCoreTelemetryRecord = { channel: 3, type: 103, value: 21.5 };
+    const rows = recordToTelemetryRows(rec, 'pk', 1, 0);
+    expect(rows[0].channel).toBeUndefined();
   });
 });
 
