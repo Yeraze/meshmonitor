@@ -452,8 +452,16 @@ class MeshtasticManager implements ISourceManager {
   // auto re-sync the new connection would otherwise trigger.
   private suppressNextAutoSync = false;
   // mqttLink runtime state — set up in start()/reconfigureMqttLink().
+  // The link target can be either an mqtt_broker (devices connect to the
+  // embedded broker that we then bridge) or an mqtt_bridge (we forward
+  // straight upstream through the bridge's MQTT client). Both expose
+  // `publish()` and emit `local-packet`, so they share this code path
+  // (issue #3134).
   private mqttLink: MeshtasticMqttLink | null = null;
-  private mqttLinkBroker: import('./mqttBrokerManager.js').MqttBrokerManager | null = null;
+  private mqttLinkBroker:
+    | import('./mqttBrokerManager.js').MqttBrokerManager
+    | import('./mqttBridgeManager.js').MqttBridgeManager
+    | null = null;
   private mqttLinkBrokerListener: ((p: import('./mqttBrokerManager.js').MqttBrokerLocalPacket) => void) | null = null;
   private mqttLinkRegistryStartedListener: ((m: ISourceManager) => void) | null = null;
   private mqttLinkRegistryStoppedListener: ((m: ISourceManager) => void) | null = null;
@@ -673,34 +681,39 @@ class MeshtasticManager implements ISourceManager {
   }
 
   private setupMqttLink(): void {
-    const brokerId = this.mqttLink?.mqttBrokerSourceId;
-    if (!brokerId) return;
+    const targetId = this.mqttLink?.mqttBrokerSourceId;
+    if (!targetId) return;
 
     const attach = (mgr: ISourceManager) => {
-      if (mgr.sourceType !== 'mqtt_broker') return;
-      this.mqttLinkBroker = mgr as import('./mqttBrokerManager.js').MqttBrokerManager;
+      // Either an embedded broker (devices publish to it locally) or a
+      // standalone bridge (we go straight to the upstream broker). Both
+      // expose `on('local-packet')` and `publish()`.
+      if (mgr.sourceType !== 'mqtt_broker' && mgr.sourceType !== 'mqtt_bridge') return;
+      this.mqttLinkBroker = mgr as
+        | import('./mqttBrokerManager.js').MqttBrokerManager
+        | import('./mqttBridgeManager.js').MqttBridgeManager;
       const listener = (p: import('./mqttBrokerManager.js').MqttBrokerLocalPacket) => {
         this.handleLinkedBrokerLocalPacket(p);
       };
       this.mqttLinkBrokerListener = listener;
       this.mqttLinkBroker.on('local-packet', listener);
-      logger.info(`MQTT link attached: source ${this.sourceId} ↔ broker ${brokerId}`);
+      logger.info(`MQTT link attached: source ${this.sourceId} ↔ ${mgr.sourceType} ${targetId}`);
     };
 
-    const existing = sourceManagerRegistry.getManager(brokerId);
+    const existing = sourceManagerRegistry.getManager(targetId);
     if (existing) {
       attach(existing);
       return;
     }
-    // Defer until the broker starts.
+    // Defer until the target source starts.
     this.mqttLinkRegistryStartedListener = (m: ISourceManager) => {
-      if (m.sourceId === brokerId) attach(m);
+      if (m.sourceId === targetId) attach(m);
     };
     sourceManagerRegistry.on('manager-started', this.mqttLinkRegistryStartedListener);
 
     this.mqttLinkRegistryStoppedListener = (m: ISourceManager) => {
-      if (m.sourceId === brokerId) {
-        logger.warn(`MQTT link parent broker ${brokerId} stopped — detaching from source ${this.sourceId}`);
+      if (m.sourceId === targetId) {
+        logger.warn(`MQTT link target ${targetId} stopped — detaching from source ${this.sourceId}`);
         this.detachMqttLinkBroker();
       }
     };

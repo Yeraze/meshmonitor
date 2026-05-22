@@ -15,6 +15,12 @@
  * Echo suppression: each direction records (topic, packetId) of recently
  * forwarded messages; matching inbound packets are dropped to prevent
  * round-trip loops.
+ *
+ * Standalone mode (issue #3134): when `brokerSourceId` is omitted, the
+ * bridge runs without a parent broker — downlink still ingests upstream
+ * traffic (no local republish), and the bridge can act as a client-proxy
+ * target for a meshtastic_tcp source via `publish()` + `local-packet`
+ * events, the same shape exposed by MqttBrokerManager.
  */
 
 import { EventEmitter } from 'events';
@@ -36,7 +42,15 @@ import databaseService from '../services/database.js';
 import { logger } from '../utils/logger.js';
 
 export interface MqttBridgeSourceConfig {
-  brokerSourceId: string;
+  /**
+   * Optional parent mqtt_broker source. When set, downlink packets are
+   * republished to that broker (so locally-connected devices see them)
+   * and `local-packet` events from the broker drive uplink forwarding.
+   * When unset, the bridge runs as a pure upstream MQTT client — useful
+   * for monitoring a remote broker, or for acting as a `mqttLink`
+   * client-proxy target for a meshtastic_tcp source (issue #3134).
+   */
+  brokerSourceId?: string;
   upstream: {
     url: string;
     username?: string;
@@ -224,8 +238,26 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     return null;
   }
 
+  /**
+   * Publish a raw payload to the upstream broker through this bridge's
+   * client connection. Used by the client-proxy mqttLink path so a
+   * meshtastic_tcp source can route its device's MQTT traffic through a
+   * standalone bridge (issue #3134). Mirrors MqttBrokerManager.publish so
+   * a `mqttLink` target can be either type.
+   */
+  async publish(topic: string, payload: Buffer, retained = false): Promise<void> {
+    if (!this.client || !this.client.isConnected()) {
+      throw new Error(`MQTT bridge ${this.sourceId} not connected to upstream`);
+    }
+    await this.client.publish(topic, payload, retained);
+  }
+
   private attachParentBroker(): void {
-    const existing = sourceManagerRegistry.getManager(this.config.brokerSourceId);
+    // Standalone mode (no parent broker configured) — nothing to attach.
+    const brokerId = this.config.brokerSourceId;
+    if (!brokerId) return;
+
+    const existing = sourceManagerRegistry.getManager(brokerId);
     if (existing && existing.sourceType === 'mqtt_broker') {
       this.parentBroker = existing as MqttBrokerManager;
       this.bindParentListener();
@@ -234,7 +266,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
 
     // Defer until the broker is registered. Listen for manager-started.
     this.registryAddedListener = (m: ISourceManager) => {
-      if (m.sourceId === this.config.brokerSourceId && m.sourceType === 'mqtt_broker') {
+      if (m.sourceId === brokerId && m.sourceType === 'mqtt_broker') {
         this.parentBroker = m as MqttBrokerManager;
         this.bindParentListener();
         logger.info(
@@ -245,7 +277,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     sourceManagerRegistry.on('manager-started', this.registryAddedListener);
 
     this.registryRemovedListener = (m: ISourceManager) => {
-      if (m.sourceId === this.config.brokerSourceId) {
+      if (m.sourceId === brokerId) {
         this.unbindParentListener();
         this.parentBroker = null;
         logger.warn(
@@ -332,6 +364,18 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
         const msg = err instanceof Error ? err.message : String(err);
         logger.warn(`MQTT bridge ${this.sourceId} ingest failed: ${msg}`);
       });
+
+    // Emit local-packet so consumers (e.g. a meshtastic_tcp source using
+    // this bridge as its `mqttLink` client-proxy target — issue #3134) can
+    // relay the upstream packet to their device. Shape matches
+    // MqttBrokerLocalPacket so listeners can target either source type.
+    this.emit('local-packet', {
+      topic,
+      payload,
+      retained,
+      envelope,
+      clientId: null,
+    });
 
     // Republish to local broker so devices see it. Skip if no parent attached.
     if (this.parentBroker) {

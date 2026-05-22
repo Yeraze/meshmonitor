@@ -238,4 +238,93 @@ describe('MqttBridgeManager', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(bridge.getStatus().parentBrokerAttached).toBe(true);
   });
+
+  it('runs standalone without a parent broker: emits local-packet on downlink and publish() forwards upstream (#3134)', async () => {
+    // Standalone bridge — no brokerSourceId. Doesn't need (or use) the
+    // local broker fixture.
+    bridge = new MqttBridgeManager('standalone-bridge', 'Standalone', {
+      // brokerSourceId intentionally omitted
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: ['msh/#'],
+    });
+    await sourceManagerRegistry.addManager(bridge);
+
+    expect(bridge.getStatus().parentBrokerAttached).toBe(false);
+
+    // Capture local-packet emissions so we can prove the client-proxy
+    // event path works without a parent broker.
+    const localPackets: Array<{ topic: string; clientId: string | null }> = [];
+    bridge.on('local-packet', (p: { topic: string; clientId: string | null }) => {
+      localPackets.push({ topic: p.topic, clientId: p.clientId });
+    });
+
+    // A separate client subscribing to upstream lets us assert that
+    // bridge.publish() actually reaches the upstream broker.
+    upstreamClient = connect(`mqtt://127.0.0.1:${upstreamPort}`, { reconnectPeriod: 0 });
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('upstream connect timeout')), 3000);
+      upstreamClient!.once('connect', () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+    const upstreamSeen: Array<{ topic: string; payload: Buffer }> = [];
+    await new Promise<void>((resolve, reject) => {
+      upstreamClient!.subscribe('msh/#', { qos: 0 }, (err) => (err ? reject(err) : resolve()));
+    });
+    upstreamClient.on('message', (topic, payload) => {
+      upstreamSeen.push({ topic, payload });
+    });
+
+    // Drive downlink: a *different* upstream publisher emits a packet
+    // the bridge has subscribed to.
+    const pub = connect(`mqtt://127.0.0.1:${upstreamPort}`, { reconnectPeriod: 0 });
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('pub connect timeout')), 3000);
+      pub.once('connect', () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+
+    const envelope = buildPositionEnvelope({
+      from: 0xaabbccdd,
+      latI: 440_000_000,
+      lngI: -780_000_000,
+      channelId: 'LongFast',
+      gatewayId: '!aabbccdd',
+      packetId: 0x20000001,
+    });
+    pub.publish('msh/CA/ON/PTBO', envelope);
+    await new Promise((r) => setTimeout(r, 300));
+
+    expect(localPackets.length).toBeGreaterThanOrEqual(1);
+    expect(localPackets[0].topic).toBe('msh/CA/ON/PTBO');
+    expect(localPackets[0].clientId).toBeNull();
+
+    // And the explicit publish() path forwards straight upstream.
+    const outboundEnvelope = buildPositionEnvelope({
+      from: 0x11223344,
+      latI: 440_000_000,
+      lngI: -780_000_000,
+      channelId: 'LongFast',
+      gatewayId: '!11223344',
+      packetId: 0x20000002,
+    });
+    await bridge.publish('msh/proxy/out', outboundEnvelope);
+    await new Promise((r) => setTimeout(r, 300));
+
+    expect(upstreamSeen.some((m) => m.topic === 'msh/proxy/out')).toBe(true);
+
+    await new Promise<void>((r) => pub.end(true, {}, () => r()));
+  });
+
+  it('publish() throws when bridge is not connected to upstream (#3134)', async () => {
+    bridge = new MqttBridgeManager('disconnected-bridge', 'Disconnected', {
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: ['msh/#'],
+    });
+    // Don't start the bridge — client is null.
+    await expect(bridge.publish('msh/x', Buffer.from([1, 2, 3]))).rejects.toThrow(/not connected to upstream/);
+  });
 });
