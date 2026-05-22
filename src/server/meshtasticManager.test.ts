@@ -1503,4 +1503,49 @@ describe('MeshtasticManager - Configuration Polling', () => {
       expect(Object.keys(mockDb.nodes).length).toBe(1);
     });
   });
+
+  describe('DM PKI guard — keyMismatchDetected blocks pkiEncrypted flag', () => {
+    // Regression: when the key-repair flow purges a node from the firmware's
+    // NodeDB (sendRemoveNode), our DB still holds the (now-stale) publicKey,
+    // but the firmware no longer has a key to encrypt with. Sending
+    // pkiEncrypted=true in that state causes the firmware to silently drop
+    // the outbound DM. The guard checks keyMismatchDetected before requesting PKI.
+    //
+    // Mirrors the logic at src/server/meshtasticManager.ts:sendTextMessage —
+    // see the publicKey/keyMismatchDetected branch around line ~7782.
+    function decidePkiEncrypted(targetNode: { publicKey?: string | null; keyMismatchDetected?: boolean } | null | undefined): boolean {
+      if (!targetNode) return false;
+      if (!targetNode.publicKey) return false;
+      if (targetNode.keyMismatchDetected) return false;
+      return true;
+    }
+
+    it('sets pkiEncrypted=true when target has publicKey and no mismatch', () => {
+      expect(decidePkiEncrypted({ publicKey: 'AQID', keyMismatchDetected: false })).toBe(true);
+    });
+
+    it('omits pkiEncrypted when target has publicKey but keyMismatchDetected is true', () => {
+      // This is the bug case: after firmware NodeDB purge by processKeyRepairs,
+      // our DB row still carries publicKey, but the firmware can't encrypt.
+      // We must fall back to channel encryption.
+      expect(decidePkiEncrypted({ publicKey: 'AQID', keyMismatchDetected: true })).toBe(false);
+    });
+
+    it('omits pkiEncrypted when target has no publicKey', () => {
+      expect(decidePkiEncrypted({ publicKey: null, keyMismatchDetected: false })).toBe(false);
+      expect(decidePkiEncrypted({ publicKey: undefined })).toBe(false);
+      expect(decidePkiEncrypted({ publicKey: '' })).toBe(false);
+    });
+
+    it('omits pkiEncrypted when target lookup returns null/undefined', () => {
+      expect(decidePkiEncrypted(null)).toBe(false);
+      expect(decidePkiEncrypted(undefined)).toBe(false);
+    });
+
+    it('treats keyMismatchDetected as more authoritative than publicKey presence', () => {
+      // Even with a long, well-formed-looking key, mismatch wins.
+      const realisticKey = 'HsTA8jkJVxYBxqfm0V8KZ8wOlqL+R5vP3yEXRtY3p9c=';
+      expect(decidePkiEncrypted({ publicKey: realisticKey, keyMismatchDetected: true })).toBe(false);
+    });
+  });
 });
