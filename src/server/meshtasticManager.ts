@@ -7775,13 +7775,22 @@ class MeshtasticManager implements ISourceManager {
       // For DMs, check if the target node has a public key — if so, request PKI encryption.
       // The firmware handles the actual crypto, but for serial/TCP connections it only
       // PKI-encrypts when the packet explicitly has pkiEncrypted=true.
+      //
+      // Skip PKI when keyMismatchDetected is set: the key-repair flow may have purged
+      // the node from the firmware's NodeDB (sendRemoveNode in processKeyRepairs / immediate
+      // purge), so the firmware no longer has a key to encrypt with. Our DB column still
+      // holds the (now-stale) key, but trusting it would cause the firmware to silently
+      // drop the outbound DM. Fall back to channel encryption until a fresh NodeInfo
+      // exchange resolves the mismatch.
       let pkiEncrypted = false;
       if (destination) {
         try {
           const targetNode = await databaseService.nodes.getNode(destination, this.sourceId);
-          if (targetNode?.publicKey) {
+          if (targetNode?.publicKey && !targetNode.keyMismatchDetected) {
             pkiEncrypted = true;
             logger.debug(`🔐 DM to !${destination.toString(16).padStart(8, '0')} — requesting PKI encryption (node has public key)`);
+          } else if (targetNode?.publicKey && targetNode.keyMismatchDetected) {
+            logger.info(`🔐 DM to !${destination.toString(16).padStart(8, '0')} — skipping PKI (key mismatch active; firmware may lack key after purge), falling back to channel encryption`);
           }
         } catch {
           // If lookup fails, send without PKI — firmware will use channel encryption
