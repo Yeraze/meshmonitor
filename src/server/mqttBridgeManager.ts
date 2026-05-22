@@ -40,6 +40,8 @@ import type { MqttBrokerManager, MqttBrokerLocalPacket } from './mqttBrokerManag
 import type { Source } from '../db/repositories/sources.js';
 import databaseService from '../services/database.js';
 import { logger } from '../utils/logger.js';
+import { loadAllNodesAsDeviceInfo } from './utils/dbNodeMapper.js';
+import type { DeviceInfo } from './meshtasticManager.js';
 
 export interface MqttBridgeSourceConfig {
   /**
@@ -236,6 +238,62 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
 
   getLocalNodeInfo() {
     return null;
+  }
+
+  /**
+   * Meshtastic-shaped connection status, used by /api/poll and /api/connection
+   * when those endpoints are scoped to this source. A bridge has no local
+   * device so `nodeResponsive` is forced true (so the dashboard doesn't fall
+   * into the "node-offline" UX) and `configuring` is always false.
+   */
+  async getConnectionStatus(): Promise<{
+    connected: boolean;
+    nodeResponsive: boolean;
+    configuring: boolean;
+    nodeIp: string;
+    userDisconnected?: boolean;
+  }> {
+    const connected = this.client?.isConnected() ?? false;
+    return {
+      connected,
+      nodeResponsive: connected,
+      configuring: false,
+      nodeIp: '',
+      userDisconnected: false,
+    };
+  }
+
+  /**
+   * DB-backed node list, scoped to this bridge's source. Mirrors
+   * MeshtasticManager.getAllNodesAsync so the consolidated /api/poll endpoint
+   * doesn't have to special-case the manager type.
+   */
+  async getAllNodesAsync(sourceId?: string): Promise<DeviceInfo[]> {
+    return loadAllNodesAsDeviceInfo(sourceId);
+  }
+
+  /**
+   * Bridges have no local device, so there is no LoRa config to query. Used
+   * by /api/device/tx-status — return a permissive default so the UI doesn't
+   * gate features on a config that will never arrive.
+   */
+  async getDeviceConfig(): Promise<any> {
+    return null;
+  }
+
+  /**
+   * Bridges do not have device-resident node DBs. The Meshtastic concept of
+   * "is this node in the radio's NodeDB" doesn't apply here, so report empty.
+   */
+  getDeviceNodeNums(): number[] {
+    return [];
+  }
+
+  /**
+   * Bridges have no PKI keypair of their own.
+   */
+  getSecurityKeys(): { publicKey: string | null; privateKey: string | null } {
+    return { publicKey: null, privateKey: null };
   }
 
   /**

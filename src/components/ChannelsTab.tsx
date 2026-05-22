@@ -135,6 +135,13 @@ export interface ChannelsTabProps {
   // Search focus
   focusMessageId?: string | null;
   onFocusMessageHandled?: () => void;
+
+  /**
+   * When true (MQTT Bridge dashboard), hides the send-message composer so
+   * the channel view is read-only. The MQTT Bridge surface is a mirror with
+   * no transmit capability.
+   */
+  mqttReadOnly?: boolean;
 }
 
 export default function ChannelsTab({
@@ -179,6 +186,7 @@ export default function ChannelsTab({
   channelMessagesContainerRef,
   focusMessageId,
   onFocusMessageHandled,
+  mqttReadOnly = false,
 }: ChannelsTabProps) {
   const { t } = useTranslation();
   const { nodes } = useNodes();
@@ -388,6 +396,17 @@ export default function ChannelsTab({
           return false;
         }
 
+        // MQTT-bridge sources ingest packets from many distinct Meshtastic
+        // configs, so the channel slot index isn't bounded to 0-7 — we routinely
+        // see slots like 8/31 from upstream nodes with custom configs. The
+        // standard permission set only models channel_0..channel_7, so the
+        // usual gate would hide any slot >= 8 (and silently drop their
+        // messages). In the bridge mirror we already require the user has
+        // opened the bridge dashboard, so surface every channel we've heard.
+        if (mqttReadOnly) {
+          return true;
+        }
+
         // Check permissions: Channel Database channels (>= 100) use channel database permissions,
         // device channels (0-7) use standard channel permissions
         if (ch >= CHANNEL_DB_OFFSET) {
@@ -448,10 +467,12 @@ export default function ChannelsTab({
       <div className="channels-header">
         <h2>{t('channels.title_with_count', { count: availableChannels.length })}</h2>
         <div className="channels-controls">
-          <label className="mqtt-toggle">
-            <input type="checkbox" checked={showMqttMessages} onChange={e => setShowMqttMessages(e.target.checked)} />
-            {t('channels.show_mqtt_messages')}
-          </label>
+          {!mqttReadOnly && (
+            <label className="mqtt-toggle">
+              <input type="checkbox" checked={showMqttMessages} onChange={e => setShowMqttMessages(e.target.checked)} />
+              {t('channels.show_mqtt_messages')}
+            </label>
+          )}
         </div>
       </div>
 
@@ -778,8 +799,11 @@ export default function ChannelsTab({
                       const messageChannel = selectedChannel;
                       let messagesForChannel = channelMessages[messageChannel] || [];
 
-                      // Filter MQTT messages if the option is disabled
-                      if (!showMqttMessages) {
+                      // Filter MQTT messages if the option is disabled.
+                      // Skipped in the MQTT-bridge mirror dashboard — every
+                      // packet that source ingests is by definition MQTT, so
+                      // applying the filter would always blank the list.
+                      if (!mqttReadOnly && !showMqttMessages) {
                         messagesForChannel = messagesForChannel.filter(msg => !isMqttBridgeMessage(msg));
                       }
 
@@ -957,7 +981,7 @@ export default function ChannelsTab({
                   </div>
 
                   {/* Send message form */}
-                  {connectionStatus === 'connected' && (
+                  {!mqttReadOnly && connectionStatus === 'connected' && (
                     <div className="send-message-form">
                       {replyingTo && (
                         <div className="reply-indicator">

@@ -205,6 +205,12 @@ export interface MessagesTabProps {
   // Search focus
   focusMessageId?: string | null;
   onFocusMessageHandled?: () => void;
+
+  /**
+   * When true (MQTT Bridge dashboard), the DM message log and the send
+   * composer are hidden. Only the per-node telemetry block is shown.
+   */
+  mqttReadOnly?: boolean;
 }
 
 const MessagesTab: React.FC<MessagesTabProps> = ({
@@ -274,6 +280,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   dmMessagesContainerRef,
   focusMessageId,
   onFocusMessageHandled,
+  mqttReadOnly = false,
 }) => {
   const { t } = useTranslation();
   const { isDMMuted, muteDM, unmuteDM } = useNotificationMuteSettings();
@@ -1076,20 +1083,25 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           </>
                         )}
                         <div className="actions-menu-divider" />
-                        {/* Traceroute Actions */}
+                        {/* Traceroute Actions — the active Traceroute and
+                            request flows transmit to the mesh, so they're
+                            suppressed in the MQTT-bridge mirror. The history
+                            view is read-only and remains. */}
                         {hasPermission('traceroute', 'write') && (
                           <>
-                            <button
-                              className="actions-menu-item"
-                              onClick={() => {
-                                handleTraceroute(selectedDMNode);
-                                setShowActionsMenu(false);
-                              }}
-                              disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
-                            >
-                              🗺️ {t('messages.traceroute_button')}
-                              {tracerouteLoading === selectedDMNode && <span className="spinner"></span>}
-                            </button>
+                            {!mqttReadOnly && (
+                              <button
+                                className="actions-menu-item"
+                                onClick={() => {
+                                  handleTraceroute(selectedDMNode);
+                                  setShowActionsMenu(false);
+                                }}
+                                disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
+                              >
+                                🗺️ {t('messages.traceroute_button')}
+                                {tracerouteLoading === selectedDMNode && <span className="spinner"></span>}
+                              </button>
+                            )}
                             <button
                               className="actions-menu-item"
                               onClick={() => {
@@ -1102,8 +1114,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           </>
                         )}
 
-                        {/* Exchange Actions */}
-                        {hasPermission('messages', 'write') && (
+                        {/* Exchange Actions — every entry below transmits a
+                            packet to the mesh (position exchange, NodeInfo
+                            request, telemetry request). Hidden entirely in
+                            the MQTT-bridge mirror. */}
+                        {!mqttReadOnly && hasPermission('messages', 'write') && (
                           <>
                             <button
                               className="actions-menu-item"
@@ -1141,8 +1156,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           </>
                         )}
 
-                        {/* Admin Scan */}
-                        {hasPermission('settings', 'write') && (
+                        {/* Admin Scan — sends an admin probe packet to the
+                            remote node. No-op in the MQTT-bridge mirror. */}
+                        {!mqttReadOnly && hasPermission('settings', 'write') && (
                           <button
                             className="actions-menu-item"
                             onClick={() => {
@@ -1272,8 +1288,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               </div>
             )}
 
-            {/* Messages Container */}
-            <div className="messages-container" ref={dmMessagesContainerRef} style={{ position: 'relative' }}>
+            {/* Messages Container — hidden in MQTT-bridge read-only mode (telemetry-only DM view) */}
+            <div
+              className="messages-container"
+              ref={dmMessagesContainerRef}
+              style={{ position: 'relative', display: mqttReadOnly ? 'none' : undefined }}
+            >
               {showJumpToBottom && (
                 <div
                   style={{
@@ -1511,8 +1531,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               className={`dm-send-section ${isSendSectionResizing ? 'resizing' : ''}`}
               style={!isMobileLayout ? { height: `${sendSectionHeight}px` } : undefined}
             >
-              {/* Send DM form */}
-              {connectionStatus === 'connected' && (
+              {/* Send DM form — suppressed in MQTT-bridge read-only mode */}
+              {!mqttReadOnly && connectionStatus === 'connected' && (
                 <div className="send-message-form">
                 {replyingTo && (
                   <div className="reply-indicator">
@@ -1770,7 +1790,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               )}
 
               {/* Traceroute */}
-              {hasPermission('traceroute', 'write') && (
+              {!mqttReadOnly && hasPermission('traceroute', 'write') && (
                 <button
                   onClick={() => handleTraceroute(selectedDMNode)}
                   disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
@@ -1792,7 +1812,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               )}
 
               {/* Exchange Node Info */}
-              {hasPermission('messages', 'write') && (
+              {!mqttReadOnly && hasPermission('messages', 'write') && (
                 <button
                   onClick={() => handleExchangeNodeInfo(selectedDMNode)}
                   disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode}
@@ -1814,7 +1834,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               )}
 
               {/* Exchange Position - Split Button */}
-              {hasPermission('messages', 'write') && (
+              {!mqttReadOnly && hasPermission('messages', 'write') && (
                 <div style={{ display: 'flex', flex: '1 1 auto', minWidth: '120px', position: 'relative' }}>
                   <button
                     onClick={() => handleExchangePosition(selectedDMNode)}
@@ -1900,7 +1920,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               )}
 
               {/* Request Neighbor Info */}
-              {hasPermission('traceroute', 'write') && (
+              {!mqttReadOnly && hasPermission('traceroute', 'write') && (
                 <button
                   onClick={() => handleRequestNeighborInfo(selectedDMNode)}
                   disabled={connectionStatus !== 'connected' || neighborInfoLoading === selectedDMNode}

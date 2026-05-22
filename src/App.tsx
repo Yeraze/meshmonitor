@@ -118,7 +118,10 @@ function App() {
   const { t } = useTranslation();
   const { authStatus, hasPermission, loading: authLoading } = useAuth();
   const { getToken: getCsrfToken, refreshToken: refreshCsrfToken } = useCsrf();
-  const { sourceId, sourceName } = useSource();
+  const { sourceId, sourceName, sourceType } = useSource();
+  // MQTT Bridge mirror dashboard — strip send capability + device-config
+  // surfaces; the bridge feeds us inbound packets only.
+  const isMqttBridge = sourceType === 'mqtt_bridge';
   const navigate = useNavigate();
   const webSocketConnected = useWebSocketConnected();
   const { showToast } = useToast();
@@ -620,18 +623,21 @@ function App() {
       return false;
     };
 
-    // Define permission requirements for each protected tab
+    // Define permission requirements for each protected tab.
+    // For MQTT Bridge sources, `configuration` (Device Config) and `admin`
+    // (Remote Admin) surfaces are intentionally unavailable — the bridge has
+    // no transmit path to a device — so we deny those tabs outright.
     const tabPermissions: Record<string, () => boolean> = {
       dashboard: () => hasPermission('dashboard', 'read'),
       info: () => hasPermission('info', 'read'),
       messages: () => hasPermission('messages', 'read'),
       channels: hasAnyChannelPermission,
       settings: () => hasPermission('settings', 'read'),
-      automation: () => hasPermission('automation', 'read'),
-      configuration: () => hasPermission('configuration', 'read'),
+      automation: () => !isMqttBridge && hasPermission('automation', 'read'),
+      configuration: () => !isMqttBridge && hasPermission('configuration', 'read'),
       notifications: () => isAuthenticated,
       users: () => isAdmin,
-      admin: () => isAdmin,
+      admin: () => !isMqttBridge && isAdmin,
       audit: () => hasPermission('audit', 'read'),
       security: () => hasPermission('security', 'read'),
       packetmonitor: () => packetLogEnabled && hasPermission('packetmonitor', 'read'),
@@ -649,7 +655,7 @@ function App() {
       logger.info(`[Auth] Redirecting from '${activeTab}' tab - insufficient permissions`);
       setActiveTab('nodes');
     }
-  }, [activeTab, authStatus, authLoading, hasPermission, setActiveTab, packetLogEnabled]);
+  }, [activeTab, authStatus, authLoading, hasPermission, setActiveTab, packetLogEnabled, isMqttBridge]);
 
   // Helper function to safely parse node IDs to node numbers
   const parseNodeId = useCallback((nodeId: string): number => {
@@ -4559,6 +4565,7 @@ function App() {
         onNodeClick={handleNodeClick}
         sourceName={sourceName}
         onBackToSources={sourceId ? () => navigate('/', { state: { showList: true } }) : undefined}
+        mqttReadOnly={isMqttBridge}
       />
 
       <AppBanners
@@ -4695,6 +4702,7 @@ function App() {
         connectedNodeName={connectedNodeName}
         packetLogEnabled={packetLogEnabled}
         onSearchClick={() => setIsSearchOpen(true)}
+        mqttReadOnly={isMqttBridge}
       />
 
       <main id="main-content" className="app-main">
@@ -4779,6 +4787,7 @@ function App() {
             channelMessagesContainerRef={channelMessagesContainerRef}
             focusMessageId={focusMessageId}
             onFocusMessageHandled={() => setFocusMessageId(null)}
+            mqttReadOnly={isMqttBridge}
           />
           </ErrorBoundary>
         )}
@@ -4847,6 +4856,7 @@ function App() {
             dmMessagesContainerRef={dmMessagesContainerRef}
             focusMessageId={focusMessageId}
             onFocusMessageHandled={() => setFocusMessageId(null)}
+            mqttReadOnly={isMqttBridge}
             toggleIgnored={toggleIgnored}
             toggleFavorite={toggleFavorite}
             toggleFavoriteLock={toggleFavoriteLock}
