@@ -4175,6 +4175,7 @@
   "meshcore.nav.expand": "Expand",
   "meshcore.nav.nodes": "Nodes",
   "meshcore.nav.settings": "Settings",
+  "meshcore.nav.telemetry": "Telemetry",
   "meshcore.config.bandwidth": "Bandwidth (kHz)",
   "meshcore.config.cr": "Coding Rate",
   "meshcore.config.device_name": "Device name",

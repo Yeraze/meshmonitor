@@ -5,12 +5,16 @@ interface DashboardHeaderProps {
   favoritesCount: number;
   daysToView: number;
   onAddWidgetClick: () => void;
+  /** When false, the "Add Widget" button is suppressed — used for source
+   *  types (e.g. MeshCore) that don't yet have any custom-widget kinds. */
+  showAddWidget?: boolean;
 }
 
 const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   favoritesCount,
   daysToView,
   onAddWidgetClick,
+  showAddWidget = true,
 }) => {
   const { t } = useTranslation();
 
@@ -24,13 +28,15 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             : t('dashboard.subtitle_empty')}
         </p>
       </div>
-      <button
-        className="dashboard-add-widget-btn"
-        onClick={onAddWidgetClick}
-        title={t('dashboard.add_widget_title')}
-      >
-        {t('dashboard.add_widget_button')}
-      </button>
+      {showAddWidget && (
+        <button
+          className="dashboard-add-widget-btn"
+          onClick={onAddWidgetClick}
+          title={t('dashboard.add_widget_title')}
+        >
+          {t('dashboard.add_widget_button')}
+        </button>
+      )}
     </div>
   );
 };

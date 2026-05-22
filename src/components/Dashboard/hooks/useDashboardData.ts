@@ -4,12 +4,19 @@ import api from '../../../services/api';
 import { logger } from '../../../utils/logger';
 import { useSource } from '../../../contexts/SourceContext';
 import { type FavoriteChart, type NodeInfo, type CustomWidget } from '../types';
+import { type DashboardDataSource, meshtasticDashboardSource } from '../dataSources';
 
 interface UseDashboardDataOptions {
   /** Polling interval in milliseconds (default: 30000) */
   refetchInterval?: number;
   /** Whether queries are enabled (default: true) */
   enabled?: boolean;
+  /**
+   * Source adapter — controls which API the nodes come from and how to
+   * extract the lookup key. Defaults to the Meshtastic adapter so any
+   * legacy caller keeps prior behaviour byte-for-byte.
+   */
+  dataSource?: DashboardDataSource;
 }
 
 interface SettingsResponse {
@@ -46,7 +53,11 @@ export const dashboardQueryKeys = {
  * Uses TanStack Query for caching, automatic refetching, and background updates
  */
 export function useDashboardData(options?: UseDashboardDataOptions): UseDashboardDataResult {
-  const { refetchInterval = 30000, enabled = true } = options ?? {};
+  const {
+    refetchInterval = 30000,
+    enabled = true,
+    dataSource = meshtasticDashboardSource,
+  } = options ?? {};
   const queryClient = useQueryClient();
   const { sourceId } = useSource();
   const sourceQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
@@ -98,15 +109,18 @@ export function useDashboardData(options?: UseDashboardDataOptions): UseDashboar
     refetchIntervalInBackground: false, // Don't poll when tab is not visible
   });
 
-  // Fetch nodes
+  // Fetch nodes — endpoint, response shape, and lookup-key extraction all
+  // come from the active dataSource so the Dashboard can back either a
+  // Meshtastic or MeshCore source without forking.
   const nodesQuery = useQuery({
-    queryKey: dashboardQueryKeys.nodes(sourceId),
+    queryKey: [...dashboardQueryKeys.nodes(sourceId), dataSource.kind] as const,
     queryFn: async (): Promise<Map<string, NodeInfo>> => {
-      const nodesData = await api.get<NodeInfo[]>(`/api/nodes${sourceQuery}`);
+      const nodesData = await dataSource.fetchNodes(sourceId);
       const nodesMap = new Map<string, NodeInfo>();
-      nodesData.forEach((node: NodeInfo) => {
-        if (node.user?.id) {
-          nodesMap.set(node.user.id, node);
+      nodesData.forEach((node) => {
+        const key = dataSource.nodeKey(node);
+        if (key) {
+          nodesMap.set(key, node);
         }
       });
       return nodesMap;
