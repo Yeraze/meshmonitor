@@ -2,7 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 
-export type MeshCoreView = 'nodes' | 'channels' | 'dms' | 'info' | 'configuration' | 'settings';
+export type MeshCoreView = 'nodes' | 'channels' | 'dms' | 'telemetry' | 'info' | 'configuration' | 'settings';
 
 interface MeshCoreSubToolbarProps {
   view: MeshCoreView;
@@ -24,6 +24,7 @@ const ITEMS: Item[] = [
   { id: 'nodes', icon: '🛰', labelKey: 'meshcore.nav.nodes', fallback: 'Nodes' },
   { id: 'channels', icon: '💬', labelKey: 'meshcore.nav.channels', fallback: 'Channels' },
   { id: 'dms', icon: '📧', labelKey: 'meshcore.nav.dms', fallback: 'Direct Messages' },
+  { id: 'telemetry', icon: '📊', labelKey: 'meshcore.nav.telemetry', fallback: 'Telemetry' },
   { id: 'info', icon: 'ℹ', labelKey: 'meshcore.nav.info', fallback: 'Node Info' },
   { id: 'configuration', icon: '📡', labelKey: 'meshcore.nav.configuration', fallback: 'Configuration' },
   { id: 'settings', icon: '⚙', labelKey: 'meshcore.nav.settings', fallback: 'Settings' },

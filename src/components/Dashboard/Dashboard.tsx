@@ -11,17 +11,9 @@ import AddWidgetModal from '../AddWidgetModal';
 import { DashboardHeader, DashboardFilters, DashboardGrid } from './components';
 import { useDashboardData, useDashboardFilters, useCustomWidgets } from './hooks';
 import { type DashboardProps } from './types';
+import { meshtasticDashboardSource } from './dataSources';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSource } from '../../contexts/SourceContext';
-
-// Telemetry types that should show solar by default (power/environmental)
-const SOLAR_DEFAULT_ON_TYPES = new Set([
-  'batteryLevel', 'voltage', 'ch1Voltage', 'ch1Current',
-  'ch2Voltage', 'ch2Current', 'ch3Voltage', 'ch3Current',
-  'ch4Voltage', 'ch4Current', 'ch5Voltage', 'ch5Current',
-  'ch6Voltage', 'ch6Current', 'ch7Voltage', 'ch7Current',
-  'ch8Voltage', 'ch8Current', 'temperature', 'humidity', 'pressure',
-]);
 
 const Dashboard: React.FC<DashboardProps> = React.memo(
   ({
@@ -32,6 +24,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
     currentNodeId = null,
     canEdit = true,
     onOpenNodeDetails,
+    dataSource = meshtasticDashboardSource,
   }) => {
     const { t } = useTranslation();
     const csrfFetch = useCsrfFetch();
@@ -58,7 +51,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
       setSolarVisibility,
       loading,
       error,
-    } = useDashboardData();
+    } = useDashboardData({ dataSource });
 
     // Get solar visibility for a specific chart (uses type-based default if not set)
     const getSolarVisibility = useCallback((nodeId: string, telemetryType: string): boolean => {
@@ -66,9 +59,10 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
       if (key in solarVisibility) {
         return solarVisibility[key];
       }
-      // Default based on telemetry type
-      return SOLAR_DEFAULT_ON_TYPES.has(telemetryType);
-    }, [solarVisibility]);
+      // Default based on telemetry type (per-source — Meshtastic and MeshCore
+      // each carry their own default-on type lists).
+      return dataSource.solarDefaultTypes.has(telemetryType);
+    }, [solarVisibility, dataSource]);
 
     // Toggle solar visibility for a specific chart and save to server
     const handleToggleSolar = useCallback(async (nodeId: string, telemetryType: string, show: boolean) => {
@@ -120,6 +114,7 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
       customOrder,
       favoriteTelemetryStorageDays,
       defaultSortOption: preferredDashboardSortOption,
+      dataSource,
     });
 
     // Widgets hook
@@ -252,13 +247,16 @@ const Dashboard: React.FC<DashboardProps> = React.memo(
           favoritesCount={favorites.length}
           daysToView={daysToView}
           onAddWidgetClick={() => setShowAddWidgetModal(true)}
+          showAddWidget={dataSource.showCustomWidgets}
         />
 
-        <AddWidgetModal
-          isOpen={showAddWidgetModal}
-          onClose={() => setShowAddWidgetModal(false)}
-          onAddWidget={addWidget}
-        />
+        {dataSource.showCustomWidgets && (
+          <AddWidgetModal
+            isOpen={showAddWidgetModal}
+            onClose={() => setShowAddWidgetModal(false)}
+            onAddWidget={addWidget}
+          />
+        )}
 
         <DashboardFilters
           daysToView={daysToView}

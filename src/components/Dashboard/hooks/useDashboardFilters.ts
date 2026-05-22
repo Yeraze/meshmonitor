@@ -1,8 +1,8 @@
 import { useState, useMemo, useCallback } from 'react';
 import { getTelemetryLabel } from '../../TelemetryChart';
-import { getDeviceRoleName } from '../../../utils/deviceRole';
 import { logger } from '../../../utils/logger';
 import { type SortOption, type FavoriteChart, type NodeInfo } from '../types';
+import { type DashboardDataSource, meshtasticDashboardSource } from '../dataSources';
 
 interface UseDashboardFiltersOptions {
   favorites: FavoriteChart[];
@@ -10,6 +10,13 @@ interface UseDashboardFiltersOptions {
   customOrder: string[];
   favoriteTelemetryStorageDays: number;
   defaultSortOption?: SortOption;
+  /**
+   * Source adapter — provides display-name and role-label resolution so
+   * the filter/sort logic works equally for Meshtastic and MeshCore nodes.
+   * Defaults to the Meshtastic adapter so any legacy caller keeps prior
+   * behaviour.
+   */
+  dataSource?: DashboardDataSource;
 }
 
 interface UseDashboardFiltersResult {
@@ -48,6 +55,7 @@ export function useDashboardFilters({
   customOrder,
   favoriteTelemetryStorageDays,
   defaultSortOption = 'custom',
+  dataSource = meshtasticDashboardSource,
 }: UseDashboardFiltersOptions): UseDashboardFiltersResult {
   // Days to view control
   const [daysToView, setDaysToViewState] = useState<number>(() => {
@@ -108,11 +116,10 @@ export function useDashboardFilters({
     const nodesMap = new Map<string, string>();
     favorites.forEach(fav => {
       const node = nodes.get(fav.nodeId);
-      const nodeName = node?.user?.longName || node?.user?.shortName || fav.nodeId;
-      nodesMap.set(fav.nodeId, nodeName);
+      nodesMap.set(fav.nodeId, dataSource.getDisplayName(node, fav.nodeId));
     });
     return Array.from(nodesMap.entries()).sort((a, b) => a[1].localeCompare(b[1]));
-  }, [favorites, nodes]);
+  }, [favorites, nodes, dataSource]);
 
   // Get unique telemetry types for filter dropdown
   const uniqueTelemetryTypes = useMemo(() => {
@@ -126,13 +133,13 @@ export function useDashboardFilters({
     const roles = new Map<string, string>();
     favorites.forEach(fav => {
       const node = nodes.get(fav.nodeId);
-      if (node?.user?.role !== undefined) {
-        const roleName = getDeviceRoleName(node.user.role);
+      const roleName = dataSource.getRoleName(node);
+      if (roleName) {
         roles.set(roleName, roleName);
       }
     });
     return Array.from(roles.values()).sort();
-  }, [favorites, nodes]);
+  }, [favorites, nodes, dataSource]);
 
   // Filter and sort favorites
   const filteredAndSortedFavorites = useMemo(() => {
@@ -143,7 +150,7 @@ export function useDashboardFilters({
       const query = searchQuery.toLowerCase();
       result = result.filter(fav => {
         const node = nodes.get(fav.nodeId);
-        const nodeName = (node?.user?.longName || node?.user?.shortName || fav.nodeId).toLowerCase();
+        const nodeName = dataSource.getDisplayName(node, fav.nodeId).toLowerCase();
         const typeName = getTelemetryLabel(fav.telemetryType).toLowerCase();
         return nodeName.includes(query) || typeName.includes(query);
       });
@@ -160,8 +167,8 @@ export function useDashboardFilters({
     if (selectedRoles.size > 0) {
       result = result.filter(fav => {
         const node = nodes.get(fav.nodeId);
-        if (!node?.user?.role) return false;
-        const roleName = getDeviceRoleName(node.user.role);
+        const roleName = dataSource.getRoleName(node);
+        if (!roleName) return false;
         return selectedRoles.has(roleName);
       });
     }
@@ -180,18 +187,14 @@ export function useDashboardFilters({
       });
     } else if (sortOption === 'node-asc') {
       result.sort((a, b) => {
-        const nodeA = nodes.get(a.nodeId);
-        const nodeB = nodes.get(b.nodeId);
-        const nameA = (nodeA?.user?.longName || nodeA?.user?.shortName || a.nodeId).toLowerCase();
-        const nameB = (nodeB?.user?.longName || nodeB?.user?.shortName || b.nodeId).toLowerCase();
+        const nameA = dataSource.getDisplayName(nodes.get(a.nodeId), a.nodeId).toLowerCase();
+        const nameB = dataSource.getDisplayName(nodes.get(b.nodeId), b.nodeId).toLowerCase();
         return nameA.localeCompare(nameB);
       });
     } else if (sortOption === 'node-desc') {
       result.sort((a, b) => {
-        const nodeA = nodes.get(a.nodeId);
-        const nodeB = nodes.get(b.nodeId);
-        const nameA = (nodeA?.user?.longName || nodeA?.user?.shortName || a.nodeId).toLowerCase();
-        const nameB = (nodeB?.user?.longName || nodeB?.user?.shortName || b.nodeId).toLowerCase();
+        const nameA = dataSource.getDisplayName(nodes.get(a.nodeId), a.nodeId).toLowerCase();
+        const nameB = dataSource.getDisplayName(nodes.get(b.nodeId), b.nodeId).toLowerCase();
         return nameB.localeCompare(nameA);
       });
     } else if (sortOption === 'type-asc') {
@@ -201,7 +204,7 @@ export function useDashboardFilters({
     }
 
     return result;
-  }, [favorites, nodes, searchQuery, selectedNode, selectedType, selectedRoles, sortOption, customOrder]);
+  }, [favorites, nodes, searchQuery, selectedNode, selectedType, selectedRoles, sortOption, customOrder, dataSource]);
 
   return {
     searchQuery,

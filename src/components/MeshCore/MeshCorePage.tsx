@@ -21,6 +21,7 @@ import { MeshCoreNodesView } from './MeshCoreNodesView';
 import { MeshCoreChannelsView } from './MeshCoreChannelsView';
 import { MeshCoreDirectMessagesView } from './MeshCoreDirectMessagesView';
 import { MeshCoreInfoView } from './MeshCoreInfoView';
+import { MeshCoreTelemetryView } from './MeshCoreTelemetryView';
 import { MeshCoreConfigurationView } from './MeshCoreConfigurationView';
 import { MeshCoreSettingsView } from './MeshCoreSettingsView';
 import './MeshCoreTab.css';
@@ -102,6 +103,9 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               baseUrl={baseUrl}
               sourceId={sourceId}
             />
+          )}
+          {view === 'telemetry' && (
+            <MeshCoreTelemetryView baseUrl={baseUrl} />
           )}
           {view === 'info' && (
             <MeshCoreInfoView baseUrl={baseUrl} sourceId={sourceId} status={status} />

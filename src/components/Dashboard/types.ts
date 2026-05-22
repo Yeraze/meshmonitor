@@ -1,6 +1,7 @@
 import { type TemperatureUnit } from '../../utils/temperature';
 import { type TelemetryData } from '../../hooks/useTelemetry';
 import { type FavoriteChart, type NodeInfo } from '../TelemetryChart';
+import { type DashboardDataSource } from './dataSources';
 
 // Custom widget types for node status and traceroute
 export interface NodeStatusWidgetConfig {
@@ -44,6 +45,12 @@ export interface DashboardProps {
   currentNodeId?: string | null;
   canEdit?: boolean;
   onOpenNodeDetails?: (nodeId: string) => void;
+  /**
+   * Source-shape adapter. Defaults to the Meshtastic adapter so the
+   * App.tsx call site stays unchanged. MeshCore mounts this with
+   * `meshcoreDashboardSource` from `./dataSources`.
+   */
+  dataSource?: DashboardDataSource;
 }
 
 export interface DashboardFiltersState {

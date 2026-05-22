@@ -99,10 +99,76 @@ const TELEMETRY_LABELS: Record<string, string> = {
   // MeshMonitor system metrics (calculated by MeshMonitor)
   systemNodeCount: 'Active Nodes (MeshMonitor)',
   systemDirectNodeCount: 'Direct Nodes (MeshMonitor)',
+  // ---------------------------------------------------------------------
+  // MeshCore — base names (without `_ch<N>` suffix). The label lookup
+  // below strips that suffix and re-appends the channel as "(ch<N>)" so
+  // we don't have to enumerate every type×channel combination here.
+  // ---------------------------------------------------------------------
+  // LPP types from meshcoreRemoteTelemetryScheduler.LPP_TYPE_NAMES
+  mc_analog_input: 'Analog Input',
+  mc_analog_output: 'Analog Output',
+  mc_illuminance: 'Illuminance',
+  mc_presence: 'Presence',
+  mc_temperature: 'Temperature',
+  mc_humidity: 'Humidity',
+  mc_barometer: 'Pressure',
+  mc_battery_volts: 'Battery',
+  mc_current: 'Current',
+  mc_frequency: 'Frequency',
+  mc_percentage: 'Battery %',
+  mc_altitude: 'Altitude',
+  mc_load: 'Load',
+  mc_concentration: 'Concentration',
+  mc_power: 'Power',
+  mc_distance: 'Distance',
+  mc_energy: 'Energy',
+  mc_time: 'Time',
+  // Status fields from meshcoreRemoteTelemetryScheduler.STATUS_FIELD_MAP
+  mc_status_battery_volts: 'Battery (status)',
+  mc_status_uptime_secs: 'Uptime',
+  mc_status_queue_len: 'Queue Length',
+  mc_status_noise_floor: 'Noise Floor',
+  mc_status_last_rssi: 'Last RSSI',
+  mc_status_last_snr: 'Last SNR',
+  mc_status_packets_recv: 'Packets Received',
+  mc_status_packets_sent: 'Packets Sent',
+  mc_status_air_time_secs: 'Air Time',
+  mc_status_sent_flood: 'Sent (Flood)',
+  mc_status_sent_direct: 'Sent (Direct)',
+  mc_status_recv_flood: 'Received (Flood)',
+  mc_status_recv_direct: 'Received (Direct)',
+  mc_status_errors: 'Errors',
+  mc_status_direct_dups: 'Duplicates (Direct)',
+  mc_status_flood_dups: 'Duplicates (Flood)',
 };
 
+// MeshCore LPP records embed the Cayenne channel byte in the telemetry
+// type as `_ch<N>` (see #3139). We label them by stripping the suffix,
+// looking up the base name, and re-appending "(ch<N>)". Multi-axis
+// LPP types (gps, accelerometer) have a further `_<axisKey>` suffix
+// that lands AFTER the channel byte; we strip and re-append that too.
+const MC_CHANNEL_SUFFIX_RE = /^(mc_[a-z_]+?)_ch(\d+)(_[a-z]+)?$/i;
+
 // Export for external use (returns English labels for sorting/filtering compatibility)
-const getTelemetryLabel = (type: string): string => TELEMETRY_LABELS[type] || type;
+const getTelemetryLabel = (type: string): string => {
+  // Fast path — exact match
+  if (TELEMETRY_LABELS[type]) return TELEMETRY_LABELS[type];
+
+  // MeshCore channel-suffixed types: e.g. mc_battery_volts_ch2 → "Battery (ch2)"
+  const m = type.match(MC_CHANNEL_SUFFIX_RE);
+  if (m) {
+    const base = TELEMETRY_LABELS[m[1]];
+    if (base) {
+      const channel = `ch${m[2]}`;
+      const axisSuffix = m[3]; // e.g. "_latitude" for gps
+      return axisSuffix
+        ? `${base} ${axisSuffix.slice(1)} (${channel})`
+        : `${base} (${channel})`;
+    }
+  }
+
+  return type;
+};
 
 const TELEMETRY_COLORS: Record<string, string> = {
   batteryLevel: '#82ca9d',
