@@ -6,8 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+
+## [4.6.5] - 2026-05-22
+
+# MeshMonitor v4.6.5
+
+Patch release adding a **read-only MQTT Bridge dashboard**, a MeshCore telemetry tab in the source-agnostic dashboard, and a handful of cross-source / unified-view fixes. MQTT Bridge sources now have their own "Open" button on the source list and render the full Meshtastic dashboard with every transmit surface suppressed — bridges ingest but never send, so send composers, DM action buttons, Device Configuration, Remote Administration, and Automation tabs are all hidden. Server-side, `MqttBridgeManager` now implements the Meshtastic-shaped methods the consolidated `/api/poll` and `/api/connection` endpoints call through `resolveSourceManager` — without those, the bridge dashboard 500'd before any data could render. Standalone `mqtt_bridge` sources are also now valid targets for the meshtastic_tcp client-proxy `mqttLink`.
+
+## Features
+- #3143 feat(mqtt-bridge): mirror dashboard for MQTT Bridge sources — adds an Open button to `mqtt_bridge` cards and routes to a read-only mirror of the Meshtastic dashboard. Suppresses every TX surface: send composers (Channels + DM), the four top DM action buttons (Traceroute / Exchange Node Info / Exchange Position / Request Neighbor Info), the matching DM Actions dropdown entries (Traceroute / Exchange / Request Telemetry / Scan for Admin), and the Device Config / Remote Admin / Automation sidebar tabs. The Channels picker also relaxes the per-channel permission filter for bridge mode since bridges routinely see channel slots outside `0-7` from upstream nodes with custom configs, and the "Show MQTT messages" toggle is hidden because every bridge packet has `viaMqtt=true` and the filter would always blank the list.
+- #3142 feat(meshcore): add Telemetry dashboard tab via source-agnostic Dashboard (#3139)
+- #3136 feat(mqtt): allow standalone mqtt_bridge as client-proxy target (#3134) — a `meshtastic_tcp` source's `mqttLink` configuration now accepts either an `mqtt_broker` or a standalone `mqtt_bridge` source as its parent.
+
 ## Fixes
-- #3135 fix(unified): merge nodes across sources so labels show in the unified Nodes view — since the composite-keyed `nodes` table holds one row per `(nodeNum, sourceId)`, a node heard on both an RF source (with NodeInfo) and an MQTT-bridged source (with only a transit packet, so `longName/shortName = null`) appeared in the unified view twice — once labeled, once as `Node <nodeNum>`. `getAllNodesAsync` now collapses per-source rows into one entry per `nodeNum` when no `sourceId` is supplied: the newest row by `lastHeard` wins, empty fields are back-filled from older rows, and `isFavorite`/`isIgnored`/`favoriteLocked` are OR'd across sources.
+- #3143 fix(mqtt-bridge): wire `MqttBridgeManager` into the consolidated poll path — adds `getConnectionStatus`, `getAllNodesAsync`, `getDeviceConfig`, `getDeviceNodeNums`, and `getSecurityKeys` so `/api/poll?sourceId=<bridge>` and `/api/connection?sourceId=<bridge>` stop throwing `TypeError: ... is not a function`. `mapDbNodeToDeviceInfo` and `loadAllNodesAsDeviceInfo` extracted to `src/server/utils/dbNodeMapper.ts` so both managers share the projection.
+- #3143 fix(mqtt-bridge): suppress env-default Meshtastic IP leaking into the AppHeader node-info slot when the bridge has no local device.
+- #3141 fix(meshcore): preserve LPP channel byte in remote telemetry rows (#3139)
+- #3140 fix(dm): skip PKI flag when `keyMismatchDetected` — firmware may lack the key after a purge, so flagging would mark legitimate sessions as compromised.
+- #3137 fix(unified): merge nodes across sources so labels show in the unified Nodes view (#3135) — since the composite-keyed `nodes` table holds one row per `(nodeNum, sourceId)`, a node heard on both an RF source (with NodeInfo) and an MQTT-bridged source (with only a transit packet, so `longName/shortName = null`) appeared in the unified view twice — once labeled, once as `Node <nodeNum>`. `getAllNodesAsync` now collapses per-source rows into one entry per `nodeNum` when no `sourceId` is supplied: the newest row by `lastHeard` wins, empty fields are back-filled from older rows, and `isFavorite`/`isIgnored`/`favoriteLocked` are OR'd across sources.
+
+## Docs
+- #3138 docs: reorganize site for easier discovery; remove dead links
 
 
 ## [4.6.3] - 2026-05-20
