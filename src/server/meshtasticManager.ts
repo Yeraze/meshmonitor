@@ -27,6 +27,7 @@ import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { detectChannelMoves } from './utils/channelMoveDetection.js';
+import { mergeNodesAcrossSources } from './utils/mergeNodesAcrossSources.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
 import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName } from './constants/meshtastic.js';
 import { normalizeChannelRole } from './constants/channelRole.js';
@@ -12808,7 +12809,10 @@ class MeshtasticManager implements ISourceManager {
       sourceId,
     );
     const dbNodes = await databaseService.nodes.getAllNodes(sourceId);
-    return dbNodes.map(node => this.mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId)));
+    // Without a sourceId the caller wants the unified view, so collapse the
+    // per-source rows into one entry per nodeNum. Issue #3135.
+    const effective = sourceId ? dbNodes : mergeNodesAcrossSources(dbNodes);
+    return effective.map(node => this.mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId)));
   }
 
 
