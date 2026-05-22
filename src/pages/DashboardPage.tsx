@@ -90,6 +90,7 @@ function DashboardInner() {
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [showLogin, setShowLogin] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [pruneConfirm, setPruneConfirm] = useState<string | null>(null);
   const [pruneResult, setPruneResult] = useState<{ sourceId: string; count: number } | null>(null);
   const [pruneError, setPruneError] = useState<string | null>(null);
@@ -670,6 +671,7 @@ function DashboardInner() {
   };
 
   const onDeleteSource = (id: string) => {
+    setDeleteError(null);
     setDeleteConfirm(id);
   };
 
@@ -684,11 +686,22 @@ function DashboardInner() {
         'x-csrf-token': csrfToken || '',
       },
     });
-    if (selectedSourceId === deleteConfirm) {
-      setSelectedSourceId(null);
+    if (res.ok) {
+      if (selectedSourceId === deleteConfirm) {
+        setSelectedSourceId(null);
+      }
+      setDeleteConfirm(null);
+      setDeleteError(null);
+      refreshSources();
+    } else {
+      const data: { error?: string; dependents?: { id: string; name: string }[] } =
+        await res.json().catch(() => ({}));
+      let msg = data.error || t('errors.failed_delete');
+      if (data.dependents?.length) {
+        msg += ': ' + data.dependents.map((d) => d.name).join(', ');
+      }
+      setDeleteError(msg);
     }
-    setDeleteConfirm(null);
-    if (res.ok) refreshSources();
   };
 
   const onPruneOutsideRoi = (id: string) => {
@@ -849,8 +862,11 @@ function DashboardInner() {
           <div className="dashboard-confirm-dialog">
             <h3>{t('source.delete')}</h3>
             <p>{t('source.delete_confirm')}</p>
+            {deleteError && (
+              <p style={{ color: 'var(--ctp-red)', fontSize: 13 }}>{deleteError}</p>
+            )}
             <div className="dashboard-confirm-actions">
-              <button onClick={() => setDeleteConfirm(null)}>{t('common.cancel')}</button>
+              <button onClick={() => { setDeleteConfirm(null); setDeleteError(null); }}>{t('common.cancel')}</button>
               <button onClick={confirmDelete}>{t('source.kebab.delete')}</button>
             </div>
           </div>
