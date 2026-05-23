@@ -612,6 +612,28 @@ class UpgradeService {
     } catch (error) {
       logger.warn('Failed to read auto-upgrade block state:', error);
     }
+
+    // Auto-heal a stale persisted flag. If the breaker tripped on a previous
+    // run but the most recent upgrade completed successfully, the failure
+    // streak is over — clear the flag so the UI banner doesn't linger after a
+    // successful auto-upgrade where the explicit clear path
+    // (markCompleteAndClear) was missed (e.g. container restarted before the
+    // watchdog status sync had a chance to run).
+    if (blocked && databaseService.miscRepo) {
+      try {
+        const lastUpgrade = await databaseService.miscRepo.getLastUpgrade();
+        if (lastUpgrade?.status === 'complete') {
+          await this.clearAutoUpgradeBlock(
+            'Auto-cleared: most recent upgrade completed successfully'
+          );
+          blocked = false;
+          reason = null;
+        }
+      } catch (error) {
+        logger.warn('Failed to evaluate auto-upgrade block auto-heal:', error);
+      }
+    }
+
     return { blocked, reason, consecutiveFailures, threshold: AUTO_UPGRADE_FAILURE_THRESHOLD };
   }
 
