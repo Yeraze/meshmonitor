@@ -5,7 +5,7 @@ date: '2026-05-23T14:00:00Z'
 category: guide
 priority: normal
 ---
-The [Hurricane Preparedness guide](./2026-05-23-hurricane-preparedness.md) covers how to *operate* MeshMonitor through a storm. This one covers how to *build the box* you'll be operating from — a self-contained kit that boots cold, serves its own map tiles, and never reaches for the internet.
+The [Hurricane Preparedness guide](/blog/2026-05-23-hurricane-preparedness) covers how to *operate* MeshMonitor through a storm. This one covers how to *build the box* you'll be operating from — a self-contained kit that boots cold, serves its own map tiles, and never reaches for the internet.
 
 The target deployment: a single small computer, a LoRa node, a battery, and a map of your region pre-loaded to disk. Everything below assumes you want zero external dependencies once the grid is down.
 
@@ -21,62 +21,24 @@ The target deployment: a single small computer, a LoRa node, a battery, and a ma
 
 ## Local map tiles
 
-MeshMonitor's map will happily point at any XYZ raster or PMTiles endpoint. Two pragmatic options:
+MeshMonitor's map points at standard XYZ tile endpoints — vector (`.pbf`) or raster (`.png`). See [Custom Tile Servers](/configuration/custom-tile-servers) for the full configuration story; the offline-kit recipe is below.
 
-### Option A — PMTiles (simplest)
+### TileServer GL + MBTiles
 
-[PMTiles](https://protomaps.com/docs/pmtiles) is a single-file format you serve with plain HTTP. No tile-rendering service to manage.
-
-```bash
-# Install the pmtiles CLI (one-time)
-brew install protomaps/tap/pmtiles    # macOS
-# or download a release binary from github.com/protomaps/go-pmtiles
-
-# Grab a regional extract from Protomaps' build server
-# (replace bbox with your region — this is roughly Florida)
-pmtiles extract \
-  https://build.protomaps.com/20260501.pmtiles \
-  florida.pmtiles \
-  --bbox=-87.7,24.4,-79.9,31.1
-```
-
-Resulting file size depends on the region — a single US state is typically **150–600 MB**. A whole country is multi-GB; size it for the SD card you actually have.
-
-Serve it with anything that supports HTTP range requests (Caddy, nginx, even `python -m http.server` in a pinch):
-
-```yaml
-# in your docker-compose.yml
-tiles:
-  image: caddy:2
-  restart: unless-stopped
-  volumes:
-    - ./tiles:/srv:ro
-    - ./Caddyfile:/etc/caddy/Caddyfile:ro
-  ports:
-    - "8080:80"
-```
-
-```caddy
-# Caddyfile
-:80 {
-  root * /srv
-  file_server browse
-  header Access-Control-Allow-Origin *
-  header Cache-Control "public, max-age=2592000, immutable"
-}
-```
-
-### Option B — TileServer GL (raster XYZ)
-
-If you prefer classic XYZ raster tiles (more universally supported by older Leaflet setups), use [TileServer GL](https://tileserver.readthedocs.io/) with an MBTiles file:
+[TileServer GL](https://tileserver.readthedocs.io/) serves XYZ tiles from a single MBTiles file. Grab a regional MBTiles extract (Geofabrik, or build one with [planetiler](https://github.com/onthegomap/planetiler)) and run:
 
 ```bash
-# Download a regional MBTiles extract from Geofabrik or build with planetiler
 docker run --rm -it -v $(pwd)/tiles:/data -p 8080:8080 \
   maptiler/tileserver-gl --file /data/florida.mbtiles
 ```
 
-Point MeshMonitor's map base URL at `http://<host>:8080/styles/basic/{z}/{x}/{y}.png` (or whatever style your MBTiles exposes).
+Once the container is up, open MeshMonitor's **Settings → Map** and point the tile server URL at:
+
+```
+http://<host>:8080/styles/basic/{z}/{x}/{y}.png
+```
+
+(Substitute whatever style your MBTiles exposes — `tileserver-gl` lists them at `http://<host>:8080/`.) The MeshMonitor map config lives in the database, not in env vars, so the URL you set in the UI persists across restarts.
 
 **Sizing rule of thumb:** zoom 0–12 for an entire US state fits in ~1 GB; add zoom 13–14 only for the neighborhoods you actually care about — every additional zoom level roughly quadruples size.
 
@@ -91,32 +53,31 @@ services:
     image: ghcr.io/yeraze/meshmonitor:latest
     restart: unless-stopped
     ports:
-      - "8081:8080"
+      - "8081:8080"      # MeshMonitor UI
+      - "1883:1883"      # Embedded MQTT broker (v4.6.0+), if you enable it in Settings
     volumes:
       - ./meshmonitor-data:/data
-    environment:
-      # Point MeshMonitor at the local tile server
-      MAP_TILE_URL: "http://localhost:8080/florida.pmtiles"
-      # Embedded MQTT broker (v4.6.0+) — your mesh's home base, no external broker
-      MQTT_BROKER_ENABLED: "true"
-      MQTT_BROKER_PORT: "1883"
     devices:
       # Pass through your serial-attached node (adjust path for your hardware)
       - /dev/ttyUSB0:/dev/ttyUSB0
 
   tiles:
-    image: caddy:2
+    image: maptiler/tileserver-gl
     restart: unless-stopped
+    command: ["--file", "/data/florida.mbtiles"]
     volumes:
-      - ./tiles:/srv:ro
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./tiles:/data:ro
     ports:
-      - "8080:80"
+      - "8080:8080"
 ```
 
-Drop your `.pmtiles` file in `./tiles/`, your Caddyfile next to the compose file, and you're done. Total cold-boot footprint: ~250 MB RAM, ~2 GB disk before tiles.
+Drop your `.mbtiles` file in `./tiles/`, `docker compose up -d`, then open MeshMonitor and configure:
 
-> Confirm the exact `MAP_TILE_URL` (and any related) env-var names against your installed MeshMonitor version — the variable name has shifted across releases. `docker exec meshmonitor env | grep -i tile` is the fastest check.
+- **Settings → Map** → tile server URL → `http://<host>:8080/styles/basic/{z}/{x}/{y}.png`
+- **Sources** → add your local Meshtastic/MeshCore source
+- **Settings → MQTT Broker** → enable the embedded broker (v4.6.0+) if you want it; the `1883` port mapping above only matters once you turn it on
+
+Both the tile URL and broker config persist in MeshMonitor's database — no env-var ceremony, no compose rewrites when you change them. Total cold-boot footprint: ~250 MB RAM, ~2 GB disk before tiles.
 
 ## Hardware
 
@@ -172,6 +133,6 @@ Before you call the kit "done":
 
 ## Further reading
 
-- [MeshMonitor in a Hurricane](./2026-05-23-hurricane-preparedness.md) — operating the kit through a real event
+- [MeshMonitor in a Hurricane](/blog/2026-05-23-hurricane-preparedness) — operating the kit through a real event
 - [Embedded MQTT broker + bidirectional bridges](/blog/2026-05-17-embedded-mqtt-broker)
 - [Firmware management](/blog/2026-03-03-firmware-management)

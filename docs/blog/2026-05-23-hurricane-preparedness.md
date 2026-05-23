@@ -77,7 +77,7 @@ Be honest about the gaps:
 
 ## Further reading
 
-- [Offline Emergency Kit — Tiles, Compose, Hardware](./2026-05-23-offline-emergency-kit.md) — the companion piece on *building* the box this article assumes you're running.
+- [Offline Emergency Kit — Tiles, Compose, Hardware](/blog/2026-05-23-offline-emergency-kit) — the companion piece on *building* the box this article assumes you're running.
 - [Embedded MQTT broker + bidirectional bridges](/blog/2026-05-17-embedded-mqtt-broker)
 - [Geofence triggers](/blog/2026-01-28-geofence-triggers)
 - [Auto-ack](/blog/2026-02-08-autoack-mfa)
