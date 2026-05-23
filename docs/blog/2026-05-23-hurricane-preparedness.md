@@ -7,7 +7,7 @@ priority: normal
 ---
 Living in South Florida, hurricane season is a way of life. We've been fortunate the last few years that nothing too serious has blown our way, but the region has a long history of hurricane destruction — and when the power flickers, cell towers saturate, and your ISP's upstream goes dark, the mesh you spent months tuning becomes the thing your neighborhood actually relies on.
 
-Meshtastic (with MeshCore source support in active development) can be a real alternative to existing communications infrastructure in times of distress, but it takes foresight, planning, and an active community to make it truly powerful. This article walks through how to use MeshMonitor before, during, and after a storm — keeping situational awareness on your nodes when everything else is failing around them.
+[Meshtastic](https://meshtastic.org/) (with [MeshCore](https://meshcore.co.uk/) source support in active development) can be a real alternative to existing communications infrastructure in times of distress, but it takes foresight, planning, and an active community to make it truly powerful. This article walks through how to use MeshMonitor before, during, and after a storm — keeping situational awareness on your nodes when everything else is failing around them.
 
 ## Before the storm — preparedness
 
