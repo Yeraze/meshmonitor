@@ -1,0 +1,24 @@
+/* Blog index: full-width 3-tile layout.
+   VitePress default doc styles use scoped attribute selectors ([data-v-…]) on
+   .VPDoc/.content/.content-container which outrank plain class selectors, so
+   !important is required for these overrides. */
+.blog-index-page .VPDoc .container {
+  max-width: var(--vp-layout-max-width, 1440px) !important;
+}
+
+.blog-index-page .VPDoc .content {
+  max-width: none !important;
+  padding-left: 32px !important;
+  padding-right: 32px !important;
+}
+
+.blog-index-page .VPDoc .content-container {
+  max-width: none !important;
+}
+
+@media (max-width: 768px) {
+  .blog-index-page .VPDoc .content {
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+  }
+}
