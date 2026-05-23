@@ -47,6 +47,10 @@ SWAP="${SWAP:-}"
 UNPRIVILEGED="${UNPRIVILEGED:-}"
 ONBOOT="${ONBOOT:-}"
 
+# pct create --features value. Default matches the canonical template config.
+# Set to e.g. "nesting=1" to enable nested workloads inside the CT.
+CT_FEATURES="${CT_FEATURES:-nesting=0}"
+
 # Safety: must equal YES_DESTROY (or YES_DESTROY_<CTID>) to actually proceed.
 CONFIRM="${CONFIRM:-}"
 
@@ -59,6 +63,10 @@ RESTORE_ENV_FILE="${RESTORE_ENV_FILE:-1}"
 INSTALL_SSH="${INSTALL_SSH:-0}"          # opt-in: install + enable root SSH
 RESTORE_ROOT_PASSWORD="${RESTORE_ROOT_PASSWORD:-0}"  # opt-in
 KEEP_TEMPLATE="${KEEP_TEMPLATE:-1}"      # keep downloaded template after update
+
+# Backup retention: prune meshmonitor-ct<CTID>-* files in BACKUP_DIR older
+# than this many days. 0 = never prune (operator-managed).
+KEEP_BACKUPS_DAYS="${KEEP_BACKUPS_DAYS:-0}"
 
 BACKUP_DIR="${BACKUP_DIR:-/root/meshmonitor-lxc-backups}"
 TEMPLATE_DIR="${TEMPLATE_DIR:-/var/lib/vz/template/cache}"
@@ -81,6 +89,9 @@ Common options:
   --version <x.y.z>          MeshMonitor release to install (default: auto-detect latest).
   --network <mode>           preserve_current_static (default) | dhcp | custom_static
   --custom-ip <cidr,gw=...>  Used with --network custom_static (e.g. "192.168.1.50/24,gw=192.168.1.1").
+  --features <str>           pct create --features value (default: "nesting=0"). Use "nesting=1"
+                             if you need nested containers/Docker inside the CT.
+  --keep-backups-days <N>    Prune meshmonitor-ct<CTID>-* backups older than N days (default: 0 = never).
   --no-snapshot              Skip pre-update Proxmox snapshot.
   --install-ssh              Install/enable openssh-server with root password login (opt-in).
   --restore-root-password    Restore the old root password hash to the new container (opt-in).
@@ -97,6 +108,8 @@ while [ $# -gt 0 ]; do
         --version)            MESHMONITOR_VERSION="$2"; shift 2 ;;
         --network)            NETWORK_MODE="$2"; shift 2 ;;
         --custom-ip)          CUSTOM_IP_CONFIG="$2"; NETWORK_MODE="custom_static"; shift 2 ;;
+        --features)           CT_FEATURES="$2"; shift 2 ;;
+        --keep-backups-days)  KEEP_BACKUPS_DAYS="$2"; shift 2 ;;
         --no-snapshot)        TAKE_SNAPSHOT="0"; shift ;;
         --install-ssh)        INSTALL_SSH="1"; shift ;;
         --restore-root-password) RESTORE_ROOT_PASSWORD="1"; shift ;;
@@ -210,14 +223,32 @@ resolve_network_config() {
             log "Network mode: custom static (${EFFECTIVE_IP_CONFIG})"
             ;;
         preserve_current_static)
-            local ip_cidr gw
+            local ip_cidr gw net0 cfg_ip cfg_gw
             ip_cidr="$(pct exec "$CTID" -- bash -c "ip -o -4 addr show dev eth0 | awk '{print \$4; exit}'" 2>/dev/null || true)"
             gw="$(pct exec "$CTID" -- bash -c "ip route show default | awk '{print \$3; exit}'" 2>/dev/null || true)"
-            if [ -n "$ip_cidr" ] && [ -n "$gw" ]; then
-                EFFECTIVE_IP_CONFIG="${ip_cidr},gw=${gw}"
+
+            # Fallback: parse net0 from pct config when the CT is stopped or has no IP.
+            if [ -z "$ip_cidr" ] || [ -z "$gw" ]; then
+                net0="$(ct_config_value net0)"
+                # net0 looks like: name=eth0,bridge=vmbr0,ip=10.0.0.5/24,gw=10.0.0.1
+                cfg_ip="$(printf ',%s' "$net0" | sed -n 's/.*,ip=\([^,]*\).*/\1/p')"
+                cfg_gw="$(printf ',%s' "$net0" | sed -n 's/.*,gw=\([^,]*\).*/\1/p')"
+                if [ -n "$cfg_ip" ] && [ "$cfg_ip" != "dhcp" ]; then
+                    ip_cidr="$cfg_ip"
+                    [ -n "$cfg_gw" ] && gw="$cfg_gw"
+                fi
+            fi
+
+            if [ -n "$ip_cidr" ] && [ "$ip_cidr" != "dhcp" ]; then
+                if [ -n "$gw" ]; then
+                    EFFECTIVE_IP_CONFIG="${ip_cidr},gw=${gw}"
+                else
+                    EFFECTIVE_IP_CONFIG="${ip_cidr}"
+                    warn "Preserving IP but no default gateway found; the rebuilt CT may have no outbound route."
+                fi
                 log "Preserving network config: ${EFFECTIVE_IP_CONFIG}"
             else
-                warn "Could not read current IP/gateway from CT ${CTID}; falling back to DHCP."
+                warn "Could not read current IP/gateway for CT ${CTID}; falling back to DHCP."
                 warn "If a reverse proxy targets the CT by IP, update it after the rebuild."
                 EFFECTIVE_IP_CONFIG="dhcp"
             fi
@@ -324,6 +355,21 @@ backup_existing_container() {
     log "Backup complete."
 }
 
+prune_old_backups() {
+    if [ "$KEEP_BACKUPS_DAYS" = "0" ] || [ -z "$KEEP_BACKUPS_DAYS" ]; then
+        return 0
+    fi
+    if ! [ -d "$BACKUP_DIR" ]; then
+        return 0
+    fi
+    log "Pruning backups in ${BACKUP_DIR} older than ${KEEP_BACKUPS_DAYS} days..."
+    # Only prune files this script creates: meshmonitor-ct<CTID>-*.
+    find "$BACKUP_DIR" -maxdepth 1 -type f \
+        -name "meshmonitor-ct${CTID}-*" \
+        -mtime "+${KEEP_BACKUPS_DAYS}" \
+        -print -delete || true
+}
+
 destroy_and_recreate() {
     log "Stopping CT ${CTID}..."
     pct stop "$CTID" 2>/dev/null || true
@@ -334,7 +380,7 @@ destroy_and_recreate() {
     log "Creating CT ${CTID} from ${TEMPLATE_NAME}..."
     log "  hostname=${HOSTNAME_OVERRIDE} cores=${CORES} memory=${MEMORY} swap=${SWAP}"
     log "  storage=${STORAGE} rootfs=${ROOTFS_SIZE}G bridge=${BRIDGE} net=${EFFECTIVE_IP_CONFIG}"
-    log "  unprivileged=${UNPRIVILEGED} onboot=${ONBOOT}"
+    log "  unprivileged=${UNPRIVILEGED} onboot=${ONBOOT} features=${CT_FEATURES}"
 
     pct create "$CTID" "local:vztmpl/${TEMPLATE_NAME}" \
         --hostname "$HOSTNAME_OVERRIDE" \
@@ -345,7 +391,7 @@ destroy_and_recreate() {
         --storage "$STORAGE" \
         --rootfs "${STORAGE}:${ROOTFS_SIZE}" \
         --unprivileged "$UNPRIVILEGED" \
-        --features nesting=0 \
+        --features "$CT_FEATURES" \
         --onboot "$ONBOOT"
 
     pct start "$CTID"
@@ -481,6 +527,7 @@ confirm_destroy
 download_template
 snapshot_pre_update
 backup_existing_container
+prune_old_backups
 destroy_and_recreate
 
 if ! wait_for_network >/dev/null; then
