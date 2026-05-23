@@ -129,6 +129,41 @@ fail() { printf '[-] %s\n' "$*" >&2; exit 1; }
 
 need_cmd() { command -v "$1" >/dev/null 2>&1 || fail "Required command not found: $1"; }
 
+# -----------------------------------------------------------------------------
+# Input validation
+#
+# Every value below ends up interpolated into a `pct exec ... bash -c "..."`
+# subshell or a URL, so the inputs must be tightly constrained.
+# -----------------------------------------------------------------------------
+
+validate_ctid() {
+    [[ "$CTID" =~ ^[0-9]+$ ]] || fail "CTID must be numeric (got: '${CTID}')."
+}
+
+validate_github_repo() {
+    [[ "$GITHUB_REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] \
+        || fail "GITHUB_REPO must look like 'owner/repo' (got: '${GITHUB_REPO}')."
+}
+
+validate_version() {
+    # Semver core + optional pre-release; rejects shell metacharacters.
+    [[ "$MESHMONITOR_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] \
+        || fail "Version must be semver (e.g. 4.6.5); got: '${MESHMONITOR_VERSION}'."
+}
+
+validate_custom_ip() {
+    # CIDR + optional ",gw=<ipv4>". Strict IPv4 only — IPv6 would need a different
+    # pattern; users can drop down to env vars + pct create flags for that.
+    [[ "$CUSTOM_IP_CONFIG" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}(,gw=[0-9]{1,3}(\.[0-9]{1,3}){3})?$ ]] \
+        || fail "--custom-ip must look like '192.168.1.50/24,gw=192.168.1.1' (got: '${CUSTOM_IP_CONFIG}')."
+}
+
+validate_root_hash() {
+    # crypt(3) hashes look like $<id>$[<rounds>$]<salt>$<hash>; reject anything
+    # that doesn't match so we don't shell-inject through usermod -p.
+    [[ "$1" =~ ^\$[A-Za-z0-9]+\$[A-Za-z0-9./$=+_-]+$ ]]
+}
+
 ct_exists()  { pct status "$CTID" >/dev/null 2>&1; }
 ct_running() { pct status "$CTID" 2>/dev/null | grep -q "status: running"; }
 
@@ -219,6 +254,7 @@ resolve_network_config() {
             if [ -z "$CUSTOM_IP_CONFIG" ]; then
                 fail "NETWORK_MODE=custom_static requires --custom-ip or CUSTOM_IP_CONFIG."
             fi
+            validate_custom_ip
             EFFECTIVE_IP_CONFIG="$CUSTOM_IP_CONFIG"
             log "Network mode: custom static (${EFFECTIVE_IP_CONFIG})"
             ;;
@@ -424,14 +460,18 @@ restore_root_password() {
         warn "No root password hash backup found; skipping restore."
         return 0
     fi
-    local hash
-    hash="$(cat "$ROOT_HASH_FILE")"
-    if [ -z "$hash" ] || [ "$hash" = "!" ] || [ "$hash" = "*" ]; then
+    local root_hash
+    root_hash="$(cat "$ROOT_HASH_FILE")"
+    if [ -z "$root_hash" ] || [ "$root_hash" = "!" ] || [ "$root_hash" = "*" ]; then
         warn "Saved root hash is empty/locked; skipping restore."
         return 0
     fi
+    if ! validate_root_hash "$root_hash"; then
+        warn "Saved root hash does not look like a crypt(3) string; refusing to apply."
+        return 0
+    fi
     log "Restoring old root password hash..."
-    pct exec "$CTID" -- usermod -p "$hash" root
+    pct exec "$CTID" -- usermod -p "$root_hash" root
     pct exec "$CTID" -- passwd -u root >/dev/null 2>&1 || true
     pct exec "$CTID" -- usermod -s /bin/bash root >/dev/null 2>&1 || true
     warn "Delete ${ROOT_HASH_FILE} once you confirm root login works."
@@ -449,6 +489,14 @@ install_ssh_optional() {
         warn "apt-get not found inside CT; skipping SSH install."
         return 0
     fi
+
+    # Preserve any existing sshd_config so the operator can compare/restore if
+    # they had a custom one (rare for fresh templates, but cheap insurance).
+    pct exec "$CTID" -- bash -c '
+        if [ -f /etc/ssh/sshd_config ] && [ ! -f /etc/ssh/sshd_config.meshmonitor.bak ]; then
+            cp /etc/ssh/sshd_config /etc/ssh/sshd_config.meshmonitor.bak
+        fi
+    ' || true
 
     pct exec "$CTID" -- bash -c "cat > /etc/ssh/sshd_config" <<'SSHD_EOF'
 PermitRootLogin yes
@@ -505,6 +553,9 @@ show_summary() {
 [ "$(id -u)" = "0" ] || fail "Run this script as root on the Proxmox host."
 [ -n "$CTID" ] || { usage; fail "Missing required --ctid"; }
 
+validate_ctid
+validate_github_repo
+
 need_cmd pct
 need_cmd wget
 need_cmd curl
@@ -519,6 +570,7 @@ if [ -z "$MESHMONITOR_VERSION" ]; then
     MESHMONITOR_VERSION="$(detect_latest_version)"
     log "Latest release: v${MESHMONITOR_VERSION}"
 fi
+validate_version
 
 read_ct_resources
 [ -n "$STORAGE" ] || fail "Unable to determine target storage. Set STORAGE=<name> or pass it via env."
