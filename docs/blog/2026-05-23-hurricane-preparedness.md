@@ -5,9 +5,9 @@ date: '2026-05-23T12:00:00Z'
 category: guide
 priority: normal
 ---
-Hurricane season is the moment a Meshtastic deployment stops being a hobby and starts being infrastructure. When the power flickers, cell towers saturate, and your ISP's upstream goes dark, the mesh you spent months tuning becomes the thing your neighborhood actually relies on. This article walks through how to use MeshMonitor before, during, and after a storm — keeping situational awareness on your nodes when everything else is failing around them.
+Living in South Florida, hurricane season is a way of life. We've been fortunate the last few years that nothing too serious has blown our way, but the region has a long history of hurricane destruction — and when the power flickers, cell towers saturate, and your ISP's upstream goes dark, the mesh you spent months tuning becomes the thing your neighborhood actually relies on.
 
-Living in South Florida, Hurricane season is a way of life every year.  We've been fortunate the last few years that nothing too serious has blown our way, but not everyone is so lucky and South Florida has a long history of hurricane destruction. Meshtastic and Meshcore can be a great alternative to existing communications infrastructure in times of distress, but it requires foresight, planning, and an active community to make it truly powerful.
+Meshtastic (with MeshCore source support in active development) can be a real alternative to existing communications infrastructure in times of distress, but it takes foresight, planning, and an active community to make it truly powerful. This article walks through how to use MeshMonitor before, during, and after a storm — keeping situational awareness on your nodes when everything else is failing around them.
 
 ## Before the storm — preparedness
 
@@ -18,6 +18,14 @@ A hurricane is the worst time to discover that half your nodes have stale firmwa
 - **Firmware health** — Settings → Firmware Updates (admin-gated). Bring any straggler nodes up to a known-good version *now*, not during landfall.
 - **Battery telemetry** — Sort the node list by `battery` ascending. Anything below ~80% going into the storm is a node that may not survive a multi-day outage.
 - **Last-seen sweep** — Filter for nodes whose `lastHeard` is older than 24h. A node you can't see today is a node that isn't coming back tomorrow.
+
+### Physical hardening
+
+The kit itself takes a beating long before the radio link starts dropping. Walk every install before landfall:
+
+- **Antennas and masts** — guy your masts properly and lower whip antennas if you can spare the range. Expect to lose at least one antenna and plan for which one; high-site installs are particularly exposed.
+- **Solar nodes** — confirm the panel can withstand UV, rain, and impact, and that your battery can carry the load through an extended period of little-to-no sunlight.
+- **Weatherproofing** — gasket check on enclosures, drip loops on cables, gear raised off the floor at any flood-prone site.
 
 ### Test your fallback paths
 
@@ -39,15 +47,17 @@ When the grid goes down, your nodes start running off whatever battery + solar +
 
 The mesh keeps working when LTE is saturated and your fiber is cut. A few practical patterns:
 
-- **A "storm" channel** — pre-share a PSK with your immediate neighbors so you have a low-traffic channel that isn't drowning in public-channel noise.
-- **Position beacons cranked down** — during the storm, bump position broadcast intervals up (less frequent) to save airtime and battery on every node in range.
+- **A "storm" channel** — pre-share a PSK with your immediate neighbors so you have a low-traffic channel that isn't drowning in public-channel noise. The Meshtastic app's channel-share QR code is the simplest path: generate the channel on one device, scan it onto every neighbor's phone, done.
+- **Position beacons cranked down** — during the storm, bump position broadcast intervals up (less frequent) to save airtime and battery on every node in range. Be thoughtful in general: setting NodeInfo or Position to every few minutes burns mesh bandwidth for telemetry few people are actually consuming. A 4–6 hour interval is sufficient for most cases.
 - **Auto-ack on critical channels** — so you actually know whether your "is everyone okay?" message got delivered, instead of guessing.
-
-Be thoughtful about your broadcast intervals.  While it may seem great to set NodeInfo or Position intervals to every few minutes, be considerate of the mesh bandwidth and consider who is using that data and why.  Usually a 4-6 hour interval is sufficient for most telemetry.
 
 ### Geofencing for damage reports
 
 The geofence-trigger system can be repurposed during a storm: define a polygon over the worst-hit area, and have any node entering or reporting from inside it raise an alert. Useful for SAR coordination, or just knowing which neighbors are mobile post-landfall.
+
+### Mapping the event
+
+Use Waypoints (in MeshMonitor and Meshtastic) or GeoJSON overlays on the map to mark rally points, road blockages, and important supply locations — fuel, water distribution, shelters, charging stations. These persist across the dashboard and stay visible to everyone with access, which makes them far better than ad-hoc text messages for anything you want neighbors to find later.
 
 ## After the storm — recovery
 
@@ -61,7 +71,9 @@ The geofence-trigger system can be repurposed during a storm: define a polygon o
 
 When public MQTT brokers come back online post-storm, they're going to be *noisy*. Re-enable bridges one at a time, verify the bounding-box and portnum filters are still doing their job, and watch your ingest rate before turning on the firehose.
 
-Here in South Florida, we have an active community in the [AreYouMeshingWith.us](https://areyoumeshingwith.us/) community, and especially the "Tron Routers".  The Tron Routers are an array of very-well positioned Meshtastic and Meshcore routers (some over 700 feet high!) positioned along the eastern seaboard of Florida extending from the Keys up to Stuart.  While the group can't guarantee the nodes will survive a hurricane, they're an important part of the local community and many people come together to keep them updated and online.  Being an active part of the local community is key in any mesh-based networking.
+### Lean on the community
+
+Here in South Florida we have an active community in [AreYouMeshingWith.us](https://areyoumeshingwith.us/), and especially the "Tron Routers" — an array of very-well-positioned Meshtastic and MeshCore routers (some over 700 feet up) running along the eastern seaboard of Florida from the Keys to Stuart. The group can't guarantee the nodes will survive a hurricane, but they're an important part of the local mesh and many people come together to keep them updated and online. Being an active part of the local mesh community is key in any mesh-based networking — and it pays back fastest when things go sideways.
 
 ## What MeshMonitor doesn't do (yet)
 
@@ -70,7 +82,6 @@ Be honest about the gaps:
 - No built-in emergency-services integration. The mesh is *your* mesh; it's not talking to 911 or the NWS.
 - No automatic battery-runtime estimation per node — you have to eyeball voltage curves.
 - Push notifications depend on your phone having a network — useful at the start of an event, less useful at hour 36 of an outage.
-- Solar powered nodes are a great way to maintain uptime, but be careful that the panel can withstand the elements (UV, Rain, etc) and your battery can cover an extended period of little to no sunlight in the event of bad weather.
 
 ## Further reading
 
