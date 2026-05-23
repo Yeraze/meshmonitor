@@ -359,6 +359,37 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
               </div>
             )}
           </div>
+          {deviceRole === 2 && (
+            <div
+              role="alert"
+              className="router-role-warning"
+              style={{
+                marginTop: '0.75rem',
+                padding: '0.75rem 1rem',
+                background: 'var(--ctp-yellow-soft, rgba(249, 226, 175, 0.15))',
+                border: '1px solid var(--ctp-yellow, #f9e2af)',
+                borderLeft: '4px solid var(--ctp-yellow, #f9e2af)',
+                borderRadius: '6px',
+                color: 'var(--ctp-text)',
+                fontSize: '0.9em',
+                lineHeight: '1.5',
+                display: 'flex',
+                gap: '0.6rem',
+                alignItems: 'flex-start',
+                maxWidth: '800px',
+              }}
+            >
+              <span aria-hidden="true" style={{ fontSize: '1.1em', flexShrink: 0 }}>⚠️</span>
+              <span>
+                <strong>{t('admin_commands.router_mode_warning_title', 'Router mode')}</strong>
+                {' — '}
+                {t(
+                  'admin_commands.router_mode_warning',
+                  'This device will always rebroadcast packets. Reserve Router for infrastructure nodes with stable power and good antenna placement; setting this on a typical client adds noise to the mesh.'
+                )}
+              </span>
+            </div>
+          )}
         </div>
         <div className="setting-item">
           <label>
