@@ -60,6 +60,7 @@ import { getPacketStats } from './services/packetApi';
 import { logger } from './utils/logger';
 // generateArrowMarkers moved to useTraceroutePaths hook
 import { isNodeComplete, getEffectivePosition } from './utils/nodeHelpers';
+import { nodePassesTransportFilter } from './utils/nodeTransport';
 import { applyHomoglyphOptimization } from './utils/homoglyph';
 import Sidebar from './components/Sidebar';
 import { SearchModal } from './components/SearchModal/SearchModal.js';
@@ -344,6 +345,8 @@ function App() {
     showPaths,
     showRoute,
     showMqttNodes,
+    showUdpNodes,
+    showRfNodes,
     showEstimatedPositions,
     setMapCenterTarget,
     traceroutes,
@@ -4454,24 +4457,19 @@ function App() {
     [setSelectedNodeId, setMapCenterTarget]
   );
 
-  // Compute visible node numbers for traceroute path filtering
-  // This ensures route segments are hidden when their connected nodes are filtered out (Issue #1102)
+  // Compute visible node numbers for neighbor-info line and traceroute path filtering.
+  // Must mirror the per-marker filter in NodesTab so that lines are hidden whenever
+  // their endpoint nodes are hidden (Issues #1102, #3147).
   const visibleNodeNums = useMemo(() => {
-    // Start with processedNodes which already has age, text, and advanced filters applied
-    // Then apply the same map-specific filters used in NodesTab for rendering markers
     const visibleNodes = processedNodes.filter(node => {
-      // Must have position to be visible on map
       if (!node.position?.latitude || !node.position?.longitude) return false;
-      // Apply MQTT filter
-      if (!showMqttNodes && node.viaMqtt) return false;
-      // Apply incomplete nodes filter
+      if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes })) return false;
       if (!showIncompleteNodes && !isNodeComplete(node)) return false;
-      // Apply estimated positions filter
       if (!showEstimatedPositions && node.user?.id && nodesWithEstimatedPosition.has(node.user.id)) return false;
       return true;
     });
     return new Set(visibleNodes.map(n => n.nodeNum));
-  }, [processedNodes, showMqttNodes, showIncompleteNodes, showEstimatedPositions, nodesWithEstimatedPosition]);
+  }, [processedNodes, showRfNodes, showUdpNodes, showMqttNodes, showIncompleteNodes, showEstimatedPositions, nodesWithEstimatedPosition]);
 
   const { traceroutePathsElements, selectedNodeTraceroute, tracerouteNodeNums, tracerouteBounds } = useTraceroutePaths({
     showPaths,
