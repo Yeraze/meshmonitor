@@ -89,6 +89,58 @@ describe('upgradeService circuit breaker', () => {
     expect(state.reason).toBe('pinned image');
   });
 
+  it('auto-heals stale block flag when most recent upgrade is complete', async () => {
+    // Regression: production users reported the "auto-upgrade halted" red
+    // banner persisting after a successful auto-upgrade. The persisted
+    // `autoUpgradeBlocked` setting is supposed to be cleared by
+    // markCompleteAndClear() during the watchdog status sync, but that path
+    // can be skipped (e.g. no frontend session was open to poll
+    // /api/upgrade/status after the container restarted). Treat the persisted
+    // flag as a cache: if the most recent upgrade row is 'complete', the
+    // failure streak is over and the flag must clear on next status read.
+    settingsStore.set('autoUpgradeBlocked', 'true');
+    settingsStore.set('autoUpgradeBlockedReason', 'old failures');
+    mockDb.miscRepo.getLastUpgrade.mockResolvedValue({
+      id: 'abc',
+      status: 'complete',
+    });
+
+    const state = await upgradeService.getAutoUpgradeBlock();
+
+    expect(state.blocked).toBe(false);
+    expect(state.reason).toBeNull();
+    // The flag must be cleared in the store (durable), not just masked in
+    // this response — otherwise the next read would re-trigger the heal.
+    expect(settingsStore.get('autoUpgradeBlocked')).toBe('false');
+    expect(settingsStore.get('autoUpgradeBlockedReason')).toBe('');
+  });
+
+  it('does NOT auto-heal when most recent upgrade is failed', async () => {
+    settingsStore.set('autoUpgradeBlocked', 'true');
+    settingsStore.set('autoUpgradeBlockedReason', 'pinned image');
+    mockDb.miscRepo.getLastUpgrade.mockResolvedValue({
+      id: 'def',
+      status: 'failed',
+    });
+
+    const state = await upgradeService.getAutoUpgradeBlock();
+
+    expect(state.blocked).toBe(true);
+    expect(state.reason).toBe('pinned image');
+    expect(settingsStore.get('autoUpgradeBlocked')).toBe('true');
+  });
+
+  it('does NOT auto-heal when upgrade history is empty', async () => {
+    // Defensive: a manually-set flag with no upgrade history at all must
+    // not be cleared. (getLastUpgrade returns null by default.)
+    settingsStore.set('autoUpgradeBlocked', 'true');
+
+    const state = await upgradeService.getAutoUpgradeBlock();
+
+    expect(state.blocked).toBe(true);
+    expect(settingsStore.get('autoUpgradeBlocked')).toBe('true');
+  });
+
   it('clearAutoUpgradeBlock unsets persisted block', async () => {
     settingsStore.set('autoUpgradeBlocked', 'true');
     settingsStore.set('autoUpgradeBlockedReason', 'something');
