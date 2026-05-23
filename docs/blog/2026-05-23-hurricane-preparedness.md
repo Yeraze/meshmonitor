@@ -2,7 +2,7 @@
 id: news-2026-05-23-hurricane-preparedness
 title: MeshMonitor in a Hurricane — Off-Grid Comms, Power Outages, and Mesh Resilience
 date: '2026-05-23T12:00:00Z'
-category: feature
+category: guide
 priority: normal
 ---
 Hurricane season is the moment a Meshtastic deployment stops being a hobby and starts being infrastructure. When the power flickers, cell towers saturate, and your ISP's upstream goes dark, the mesh you spent months tuning becomes the thing your neighborhood actually relies on. This article walks through how to use MeshMonitor before, during, and after a storm — keeping situational awareness on your nodes when everything else is failing around them.
