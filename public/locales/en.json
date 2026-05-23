@@ -3637,6 +3637,8 @@
   "admin_commands.please_select_node_to_ignore": "Please select a node to ignore",
   "admin_commands.please_select_node_to_unignore": "Please select a node to un-ignore",
   "admin_commands.router_mode_confirmation": "Setting device to ROUTER mode will make it always rebroadcast packets. This is typically used for infrastructure nodes. Continue?",
+  "admin_commands.router_mode_warning_title": "Router mode",
+  "admin_commands.router_mode_warning": "This device will always rebroadcast packets. Reserve Router for infrastructure nodes with stable power and good antenna placement; setting this on a typical client adds noise to the mesh.",
   "admin_commands.channel_name_max_length": "Channel name must be 11 characters or less",
   "admin_commands.channel_name": "Channel Name",
   "admin_commands.channel_name_description": "Up to 11 characters",

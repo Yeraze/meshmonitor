@@ -1896,13 +1896,6 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   };
 
   const handleRoleChange = (newRole: number) => {
-    if (newRole === 2) {
-      const confirmed = window.confirm(t('admin_commands.router_mode_confirmation'));
-      if (!confirmed) {
-        setIsRoleDropdownOpen(false);
-        return;
-      }
-    }
     setDeviceConfig({ role: newRole });
     setIsRoleDropdownOpen(false);
   };
