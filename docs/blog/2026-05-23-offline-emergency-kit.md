@@ -97,7 +97,7 @@ Pick whichever protocol your local mesh actually runs:
 
 - **Meshtastic** — Heltec V3 (cheap, ubiquitous), RAK WisBlock 4631 (better antenna, expandable), LILYGO T-Beam (built-in GPS + 18650).
 - **MeshCore** — RAK 4631 with MeshCore firmware, or a Solo board.
-- **Both** — MeshMonitor handles multiple sources cleanly since v4.5; you can run one of each on USB and treat them as independent sources in the UI.
+- **Both** — MeshMonitor handles multiple sources cleanly since v4.0 (MeshCore added as a first-class source in v4.5); you can run one of each on USB and treat them as independent sources in the UI.
 
 Whichever you pick, **the antenna matters more than the radio**. A $20 fiberglass collinear on a mast beats a $200 board with the stock rubber-duck whip every time.
 

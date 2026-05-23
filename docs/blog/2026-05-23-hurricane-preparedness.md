@@ -15,8 +15,8 @@ A hurricane is the worst time to discover that half your nodes have stale firmwa
 
 ### Audit your nodes
 
-- **Firmware health** — Dashboard → Firmware. Bring any straggler nodes up to a known-good version *now*, not during landfall.
-- **Battery telemetry** — Sort the node list by `battery_level` ascending. Anything below ~80% going into the storm is a node that may not survive a multi-day outage.
+- **Firmware health** — Settings → Firmware Updates (admin-gated). Bring any straggler nodes up to a known-good version *now*, not during landfall.
+- **Battery telemetry** — Sort the node list by `battery` ascending. Anything below ~80% going into the storm is a node that may not survive a multi-day outage.
 - **Last-seen sweep** — Filter for nodes whose `lastHeard` is older than 24h. A node you can't see today is a node that isn't coming back tomorrow.
 
 ### Test your fallback paths

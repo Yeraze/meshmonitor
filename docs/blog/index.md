@@ -88,7 +88,7 @@ function fmtDate(iso) {
 .blog-card.category-feature { border-top-color: var(--vp-c-tip-1); }
 .blog-card.category-maintenance,
 .blog-card.category-bugfix { border-top-color: var(--vp-c-warning-1); }
-.blog-card.category-guide { border-top-color: var(--vp-c-indigo-1); }
+.blog-card.category-guide { border-top-color: var(--vp-c-purple-1); }
 
 .blog-card-meta {
   display: flex;
@@ -178,7 +178,7 @@ function fmtDate(iso) {
 .badge-feature { background: var(--vp-c-tip-soft); color: var(--vp-c-tip-1); }
 .badge-maintenance,
 .badge-bugfix { background: var(--vp-c-warning-soft); color: var(--vp-c-warning-1); }
-.badge-guide { background: var(--vp-c-indigo-soft); color: var(--vp-c-indigo-1); }
+.badge-guide { background: var(--vp-c-purple-soft); color: var(--vp-c-purple-1); }
 .badge-priority-critical { background: var(--vp-c-danger-soft); color: var(--vp-c-danger-1); }
 .badge-priority-important { background: var(--vp-c-warning-soft); color: var(--vp-c-warning-1); }
 </style>
