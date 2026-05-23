@@ -8,6 +8,18 @@ export interface BlogPost {
   priority?: string;
   minVersion?: string;
   excerpt?: string;
+  tags?: string[];
+}
+
+function normalizeTags(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    const out = value.filter(Boolean).map((v) => String(v));
+    return out.length ? out : undefined;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  return undefined;
 }
 
 declare const data: BlogPost[];
@@ -59,6 +71,7 @@ export default createContentLoader('blog/*.md', {
         priority: page.frontmatter.priority,
         minVersion: page.frontmatter.minVersion,
         excerpt: makeExcerpt(page.src ?? ''),
+        tags: normalizeTags(page.frontmatter.tags),
       }))
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   },

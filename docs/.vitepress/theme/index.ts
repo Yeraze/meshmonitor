@@ -4,6 +4,8 @@ import StarUs from './StarUs.vue'
 import DockerComposeConfigurator from './DockerComposeConfigurator.vue'
 import UserScriptsGallery from './UserScriptsGallery.vue'
 import HeroCarousel from './HeroCarousel.vue'
+import BlogPostHeader from './BlogPostHeader.vue'
+import './custom.css'
 
 export default {
   extends: DefaultTheme,
@@ -11,6 +13,7 @@ export default {
     return h(DefaultTheme.Layout, null, {
       'nav-bar-content-after': () => h(StarUs),
       'home-hero-image': () => h(HeroCarousel),
+      'doc-before': () => h(BlogPostHeader),
     })
   },
   enhanceApp({ app }) {

@@ -1,6 +1,7 @@
 ---
 title: Blog
 aside: false
+pageClass: blog-index-page
 ---
 
 # Blog
