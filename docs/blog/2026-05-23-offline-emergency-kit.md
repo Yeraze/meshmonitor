@@ -85,9 +85,9 @@ Both the tile URL and broker config persist in MeshMonitor's database — no env
 
 | Tier | Hardware | Idle draw | Notes |
 |---|---|---|---|
-| **Minimum** | Raspberry Pi 4 (4 GB) | ~3 W | Works fine for one node, light tile traffic |
-| **Recommended** | Raspberry Pi 5 (8 GB) + NVMe HAT | ~5 W | Headroom for MQTT broker, multiple sources, larger tile cache |
-| **Heavy** | Mini-PC (N100 / N305, e.g. Beelink S12) | ~10 W | Native x86, faster tile renders, more storage, runs the whole stack with room to spare |
+| **Minimum** | [Raspberry Pi 4 (4 GB)](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/) | ~3 W | Works fine for one node, light tile traffic |
+| **Recommended** | [Raspberry Pi 5 (8 GB)](https://www.raspberrypi.com/products/raspberry-pi-5/) + [NVMe HAT](https://www.raspberrypi.com/products/m2-hat-plus/) | ~5 W | Headroom for MQTT broker, multiple sources, larger tile cache |
+| **Heavy** | Mini-PC (N100 / N305, e.g. [Beelink S12](https://www.bee-link.com/products/beelink-mini-s12-pro-n100)) | ~10 W | Native x86, faster tile renders, more storage, runs the whole stack with room to spare |
 
 Avoid SD-card-only setups for long-running kits. SD cards fail under sustained write load — SQLite + telemetry will chew through a consumer card in months. **NVMe or USB SSD** for the data volume is worth the few extra dollars.
 
@@ -95,8 +95,8 @@ Avoid SD-card-only setups for long-running kits. SD cards fail under sustained w
 
 Pick whichever protocol your local mesh actually runs:
 
-- **Meshtastic** — Heltec V3 (cheap, ubiquitous), RAK WisBlock 4631 (better antenna, expandable), LILYGO T-Beam (built-in GPS + 18650).
-- **MeshCore** — RAK 4631 with MeshCore firmware, or a Solo board.
+- **Meshtastic** — [Heltec V3](https://heltec.org/project/wifi-lora-32-v3/) (cheap, ubiquitous), [RAK WisBlock 4631](https://store.rakwireless.com/products/wisblock-meshtastic-starter-kit) (better antenna, expandable), [LILYGO T-Beam](https://www.lilygo.cc/products/t-beam-v1-1-esp32-lora-module) (built-in GPS + 18650).
+- **MeshCore** — RAK 4631 with [MeshCore](https://meshcore.co.uk) firmware, or a Solo board.
 - **Both** — MeshMonitor handles multiple sources cleanly since v4.0 (MeshCore added as a first-class source in v4.5); you can run one of each on USB and treat them as independent sources in the UI.
 
 Whichever you pick, **the antenna matters more than the radio**. A $20 fiberglass collinear on a mast beats a $200 board with the stock rubber-duck whip every time.
@@ -111,15 +111,43 @@ Whichever you pick, **the antenna matters more than the radio**. A $20 fiberglas
 
 Round up for charging losses and call it **~250 Wh/day** for a Pi + node + screen.
 
-- **Bench / RV** — Bluetti EB3A (268 Wh) gets you ~1 day; Jackery 500/Bluetti AC50S (~500 Wh) gets you ~2.
+- **Bench / RV** — [Bluetti EB3A](https://www.bluettipower.com/products/bluetti-eb3a-portable-power-station) (268 Wh) gets you ~1 day; [Jackery 500](https://www.jackery.com/products/explorer-500w-portable-power-station)/[Bluetti AC50S](https://www.bluetti.com/products/bluetti-ac50s-500wh-300w-portable-power-station) (~500 Wh) gets you ~2.
 - **Field-portable** — 20 Ah USB-PD power bank → ~70 Wh, half a day headless.
 - **Indefinite** — 100 W solar panel + a 500 Wh battery in Florida sun keeps the kit running through the season; sized down to ~50 W in northern latitudes.
 
-A **PoE+ HAT on the Pi** is genuinely useful if your kit lives in a closet — one cable to a PoE switch backed by a UPS, no separate power brick, no wall-wart to lose.
+A **[PoE+ HAT](https://www.raspberrypi.com/products/poe-plus-hat/) on the Pi** is genuinely useful if your kit lives in a closet — one cable to a PoE switch backed by a UPS, no separate power brick, no wall-wart to lose.
 
 ### Display (optional)
 
-A headless kit accessed from a phone is the lightest option. If you want a glass-in-the-room dashboard, the official 7" Raspberry Pi Touch Display 2 or a generic HDMI display + Chromium kiosk mode pointed at `http://localhost:8081` works well. Budget another ~3 W.
+A headless kit accessed from a phone is the lightest option. If you want a glass-in-the-room dashboard, the official [7" Raspberry Pi Touch Display 2](https://www.raspberrypi.com/products/touch-display-2/) or a generic HDMI display + Chromium kiosk mode pointed at `http://localhost:8081` works well. Budget another ~3 W.
+
+## Component reference
+
+Visual reference for the hardware called out above — click through for the canonical product pages.
+
+### Host computer
+
+- [![Raspberry Pi 4 Model B](/images/blog/2026-05-23/raspberry-pi-4.png)](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/) — Raspberry Pi 4 Model B (4 GB)
+- [![Raspberry Pi 5](/images/blog/2026-05-23/raspberry-pi-5.png)](https://www.raspberrypi.com/products/raspberry-pi-5/) — Raspberry Pi 5 (8 GB)
+- [![Raspberry Pi M.2 HAT+](/images/blog/2026-05-23/pi-m2-nvme-hat.jpg)](https://www.raspberrypi.com/products/m2-hat-plus/) — Raspberry Pi M.2 HAT+ (NVMe)
+- [![Beelink Mini S12 Pro](/images/blog/2026-05-23/beelink-s12.jpg)](https://www.bee-link.com/products/beelink-mini-s12-pro-n100) — Beelink Mini S12 Pro (N100)
+
+### LoRa nodes
+
+- [![Heltec WiFi LoRa 32 V3](/images/blog/2026-05-23/heltec-v3.png)](https://heltec.org/project/wifi-lora-32-v3/) — Heltec WiFi LoRa 32 V3
+- [![RAK WisBlock Meshtastic Starter Kit (RAK4631)](/images/blog/2026-05-23/rak-4631.png)](https://store.rakwireless.com/products/wisblock-meshtastic-starter-kit) — RAK WisBlock Meshtastic Starter Kit (RAK4631)
+- [![LILYGO T-Beam](/images/blog/2026-05-23/lilygo-t-beam.jpg)](https://www.lilygo.cc/products/t-beam-v1-1-esp32-lora-module) — LILYGO T-Beam
+
+### Power
+
+- [![Bluetti EB3A](/images/blog/2026-05-23/bluetti-eb3a.jpg)](https://www.bluettipower.com/products/bluetti-eb3a-portable-power-station) — Bluetti EB3A (268 Wh)
+- [![Jackery Explorer 500](/images/blog/2026-05-23/jackery-explorer-500.png)](https://www.jackery.com/products/explorer-500w-portable-power-station) — Jackery Explorer 500
+- [![Bluetti AC50S](/images/blog/2026-05-23/bluetti-ac50s.png)](https://www.bluetti.com/products/bluetti-ac50s-500wh-300w-portable-power-station) — Bluetti AC50S (500 Wh)
+- [![Raspberry Pi PoE+ HAT](/images/blog/2026-05-23/pi-poe-plus-hat.jpg)](https://www.raspberrypi.com/products/poe-plus-hat/) — Raspberry Pi PoE+ HAT
+
+### Display
+
+- [![Raspberry Pi Touch Display 2](/images/blog/2026-05-23/pi-touch-display-2.jpg)](https://www.raspberrypi.com/products/touch-display-2/) — Raspberry Pi Touch Display 2 (7")
 
 ## Pre-flight checklist
 
