@@ -240,6 +240,24 @@
   font-size: 0.8rem;
 }
 
+.meshcore-sort-controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.meshcore-sort-controls .sort-dropdown {
+  font-size: 0.8rem;
+  padding: 0.15rem 0.35rem;
+}
+
+.meshcore-sort-controls .sort-direction-btn {
+  font-size: 0.85rem;
+  padding: 0.1rem 0.4rem;
+  line-height: 1;
+}
+
 .meshcore-list-pane-body {
   flex: 1;
   overflow-y: auto;

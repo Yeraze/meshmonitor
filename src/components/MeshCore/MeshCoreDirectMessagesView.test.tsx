@@ -227,6 +227,33 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     expect(screen.queryByTestId('telemetry-graphs')).toBeNull();
   });
 
+  it('sorts DM peers by name when the user picks "Name" and toggles to ascending', () => {
+    const contactsList: MeshCoreContact[] = [
+      { publicKey: REAL_PK, advName: 'Charlie', advType: 1, lastSeen: 1000 },
+      { publicKey: REAL_PK_2, advName: 'alpha', advType: 1, lastSeen: 3000 },
+      { publicKey: 'c'.repeat(64), advName: 'Bravo', advType: 1, lastSeen: 2000 },
+    ];
+
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={contactsList}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+
+    const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
+    fireEvent.change(dropdown, { target: { value: 'name' } });
+    // Direction starts 'desc' — click the direction button (titled
+    // "Descending" in that state) to flip to ascending.
+    fireEvent.click(screen.getByTitle('Descending'));
+
+    const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
+      .map((el) => el.querySelector('span')?.textContent || '');
+    expect(names).toEqual(['alpha', 'Bravo', 'Charlie']);
+  });
+
   it('refetches telemetry config when switching from one real-pubkey peer to another', async () => {
     render(
       <MeshCoreDirectMessagesView

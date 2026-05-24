@@ -26,6 +26,9 @@ interface MergedRow {
   hasPosition: boolean;
 }
 
+type SortField = 'name' | 'lastHeard';
+type SortDirection = 'asc' | 'desc';
+
 function mergeNodesAndContacts(
   nodes: MeshCoreNode[],
   contacts: MeshCoreContact[],
@@ -68,10 +71,18 @@ function mergeNodesAndContacts(
       });
     }
   }
-  return Array.from(byKey.values()).sort((a, b) => {
+  return Array.from(byKey.values());
+}
+
+function sortRows(rows: MergedRow[], field: SortField, direction: SortDirection): MergedRow[] {
+  const dir = direction === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    if (field === 'name') {
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) * dir;
+    }
     const at = a.lastHeard ?? 0;
     const bt = b.lastHeard ?? 0;
-    return bt - at;
+    return (at - bt) * dir;
   });
 }
 
@@ -81,8 +92,14 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
 }) => {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<SortField>('lastHeard');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  const rows = useMemo(() => mergeNodesAndContacts(nodes, contacts), [nodes, contacts]);
+  const merged = useMemo(() => mergeNodesAndContacts(nodes, contacts), [nodes, contacts]);
+  const rows = useMemo(
+    () => sortRows(merged, sortField, sortDirection),
+    [merged, sortField, sortDirection],
+  );
 
   return (
     <div className="meshcore-two-pane">
@@ -90,6 +107,31 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
         <div className="meshcore-list-pane-header">
           <span>{t('meshcore.nav.nodes', 'Nodes')}</span>
           <span className="pane-count">{rows.length}</span>
+          <div className="sort-controls meshcore-sort-controls">
+            <select
+              aria-label={t('meshcore.sort_by', 'Sort by')}
+              title={t('meshcore.sort_by', 'Sort by')}
+              value={sortField}
+              onChange={(e) => setSortField(e.target.value as SortField)}
+              className="sort-dropdown"
+            >
+              <option value="lastHeard">{t('meshcore.sort_last_heard', 'Last heard')}</option>
+              <option value="name">{t('meshcore.sort_name', 'Name')}</option>
+            </select>
+            <button
+              type="button"
+              className="sort-direction-btn"
+              onClick={() => setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))}
+              title={sortDirection === 'asc'
+                ? t('meshcore.ascending', 'Ascending')
+                : t('meshcore.descending', 'Descending')}
+              aria-label={sortDirection === 'asc'
+                ? t('meshcore.ascending', 'Ascending')
+                : t('meshcore.descending', 'Descending')}
+            >
+              {sortDirection === 'asc' ? '↑' : '↓'}
+            </button>
+          </div>
         </div>
         <div className="meshcore-list-pane-body">
           {rows.length === 0 ? (

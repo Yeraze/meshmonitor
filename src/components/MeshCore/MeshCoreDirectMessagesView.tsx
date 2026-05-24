@@ -30,6 +30,9 @@ function isRealNodeKey(key: string): boolean {
   return /^[0-9a-fA-F]{64}$/.test(key);
 }
 
+type DmSortField = 'name' | 'lastMessage';
+type DmSortDirection = 'asc' | 'desc';
+
 export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProps> = ({
   messages,
   contacts,
@@ -43,6 +46,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   const canSend = hasPermission('messages', 'write');
   const canWriteNodes = hasPermission('nodes', 'write');
   const [selected, setSelected] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<DmSortField>('lastMessage');
+  const [sortDirection, setSortDirection] = useState<DmSortDirection>('desc');
 
   const selfKey = status?.localNode?.publicKey;
   const connected = status?.connected ?? false;
@@ -114,14 +119,30 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
 
   const dmPeers = useMemo(() => {
     const peers = new Set<string>();
+    const lastMessageAt = new Map<string, number>();
+    const noteMessage = (key: string, ts: number | undefined) => {
+      if (typeof ts !== 'number') return;
+      const prev = lastMessageAt.get(key) ?? 0;
+      if (ts > prev) lastMessageAt.set(key, ts);
+    };
     for (const m of messages) {
       if (!m.toPublicKey) continue;
       if (isChannelPseudoKey(m.toPublicKey) || isChannelPseudoKey(m.fromPublicKey)) continue;
-      if (selfKey && keysMatch(m.fromPublicKey, selfKey)) peers.add(canonicalize(m.toPublicKey));
-      else if (selfKey && keysMatch(m.toPublicKey, selfKey)) peers.add(canonicalize(m.fromPublicKey));
-      else {
-        peers.add(canonicalize(m.fromPublicKey));
-        peers.add(canonicalize(m.toPublicKey));
+      if (selfKey && keysMatch(m.fromPublicKey, selfKey)) {
+        const peer = canonicalize(m.toPublicKey);
+        peers.add(peer);
+        noteMessage(peer, m.timestamp);
+      } else if (selfKey && keysMatch(m.toPublicKey, selfKey)) {
+        const peer = canonicalize(m.fromPublicKey);
+        peers.add(peer);
+        noteMessage(peer, m.timestamp);
+      } else {
+        const a = canonicalize(m.fromPublicKey);
+        const b = canonicalize(m.toPublicKey);
+        peers.add(a);
+        peers.add(b);
+        noteMessage(a, m.timestamp);
+        noteMessage(b, m.timestamp);
       }
     }
     // Always include all contacts so the user can start a new DM.
@@ -135,8 +156,20 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
         if (keysMatch(key, selfKey)) peers.delete(key);
       }
     }
-    return Array.from(peers);
-  }, [messages, contacts, selfKey, canonicalize]);
+    const peerNameFor = (key: string): string => {
+      const c = contactsByKey.get(key);
+      return c?.advName || c?.name || key;
+    };
+    const dir = sortDirection === 'asc' ? 1 : -1;
+    return Array.from(peers).sort((a, b) => {
+      if (sortField === 'name') {
+        return peerNameFor(a).localeCompare(peerNameFor(b), undefined, { sensitivity: 'base' }) * dir;
+      }
+      const at = lastMessageAt.get(a) ?? 0;
+      const bt = lastMessageAt.get(b) ?? 0;
+      return (at - bt) * dir;
+    });
+  }, [messages, contacts, selfKey, canonicalize, contactsByKey, sortField, sortDirection]);
 
   const filtered = useMemo(() => {
     if (!selected) return [];
@@ -156,6 +189,31 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
         <div className="meshcore-list-pane-header">
           <span>{t('meshcore.nav.dms', 'Direct Messages')}</span>
           <span className="pane-count">{dmPeers.length}</span>
+          <div className="sort-controls meshcore-sort-controls">
+            <select
+              aria-label={t('meshcore.sort_by', 'Sort by')}
+              title={t('meshcore.sort_by', 'Sort by')}
+              value={sortField}
+              onChange={(e) => setSortField(e.target.value as DmSortField)}
+              className="sort-dropdown"
+            >
+              <option value="lastMessage">{t('meshcore.sort_last_message', 'Last message')}</option>
+              <option value="name">{t('meshcore.sort_name', 'Name')}</option>
+            </select>
+            <button
+              type="button"
+              className="sort-direction-btn"
+              onClick={() => setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))}
+              title={sortDirection === 'asc'
+                ? t('meshcore.ascending', 'Ascending')
+                : t('meshcore.descending', 'Descending')}
+              aria-label={sortDirection === 'asc'
+                ? t('meshcore.ascending', 'Ascending')
+                : t('meshcore.descending', 'Descending')}
+            >
+              {sortDirection === 'asc' ? '↑' : '↓'}
+            </button>
+          </div>
         </div>
         <div className="meshcore-list-pane-body">
           {dmPeers.length === 0 ? (
