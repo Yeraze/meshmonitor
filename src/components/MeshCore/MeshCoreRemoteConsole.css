@@ -1,11 +1,21 @@
+/**
+ * MeshCoreRemoteConsole — Catppuccin-themed console for remote MeshCore admin.
+ *
+ * Uses --ctp-* tokens so the component picks up whatever Catppuccin flavor
+ * (Mocha / Macchiato / Frappe / Latte) is active, and matches the rest of
+ * the MeshCore UI (see MeshCorePage.css for the canonical conventions).
+ */
+
 .meshcore-remote-console {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
   padding: 0.75rem;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 6px;
-  background: var(--panel-bg, #fff);
+  margin-top: 0.75rem;
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-md, 6px);
+  background: var(--ctp-mantle);
+  color: var(--ctp-text);
 }
 
 .mrc-header {
@@ -19,28 +29,29 @@
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
+  color: var(--ctp-text);
 }
 
 .mrc-status-chip {
   font-size: 0.75rem;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  border-radius: var(--radius-full, 999px);
   font-weight: 500;
 }
 
 .mrc-status-ok {
-  background: var(--success-bg, #d4edda);
-  color: var(--success-fg, #155724);
+  background: var(--ctp-green);
+  color: var(--ctp-crust);
 }
 
 .mrc-status-idle {
-  background: var(--muted-bg, #e9ecef);
-  color: var(--muted-fg, #6c757d);
+  background: var(--ctp-surface2);
+  color: var(--ctp-subtext0);
 }
 
 .mrc-banner {
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius-md, 6px);
   font-size: 0.85rem;
   line-height: 1.4;
 }
@@ -49,20 +60,29 @@
   margin: 0.25rem 0;
 }
 
+.mrc-banner strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
 .mrc-banner-warn {
-  background: var(--warn-bg, #fff3cd);
-  color: var(--warn-fg, #856404);
-  border: 1px solid var(--warn-border, #ffeeba);
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-yellow);
+}
+
+.mrc-banner-warn strong {
+  color: var(--ctp-yellow);
 }
 
 .mrc-banner-info {
-  background: var(--info-bg, #d1ecf1);
-  color: var(--info-fg, #0c5460);
-  border: 1px solid var(--info-border, #bee5eb);
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-blue);
 }
 
 .mrc-muted {
-  opacity: 0.85;
+  color: var(--ctp-subtext0);
 }
 
 .mrc-actions {
@@ -73,36 +93,52 @@
 .mrc-link-btn {
   background: none;
   border: none;
-  color: inherit;
+  color: var(--ctp-blue);
   text-decoration: underline;
   cursor: pointer;
   padding: 0;
   font: inherit;
 }
 
+.mrc-link-btn:hover {
+  color: var(--ctp-lavender);
+}
+
 .mrc-btn-primary {
   padding: 0.4rem 0.9rem;
-  border: 1px solid var(--primary-color, #0d6efd);
-  background: var(--primary-color, #0d6efd);
-  color: #fff;
-  border-radius: 4px;
+  border: none;
+  background: var(--ctp-mauve);
+  color: var(--ctp-accent-text);
+  border-radius: var(--radius-md, 4px);
   cursor: pointer;
   font-size: 0.9rem;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.mrc-btn-primary:hover:not(:disabled) {
+  background: var(--ctp-pink);
 }
 
 .mrc-btn-primary:disabled {
-  opacity: 0.55;
+  background: var(--ctp-surface2);
+  color: var(--ctp-overlay0);
   cursor: not-allowed;
 }
 
 .mrc-btn-secondary {
   padding: 0.4rem 0.9rem;
-  border: 1px solid var(--border-color, #ccc);
+  border: 1px solid var(--ctp-surface2);
   background: transparent;
-  color: inherit;
-  border-radius: 4px;
+  color: var(--ctp-text);
+  border-radius: var(--radius-md, 4px);
   cursor: pointer;
   font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.mrc-btn-secondary:hover:not(:disabled) {
+  background: var(--ctp-surface1);
 }
 
 .mrc-btn-secondary:disabled {
@@ -113,10 +149,11 @@
 .mrc-transcript {
   max-height: 280px;
   overflow-y: auto;
-  background: var(--code-bg, #0d1117);
-  color: var(--code-fg, #e6edf3);
-  border-radius: 4px;
-  padding: 0.5rem 0.75rem;
+  background: var(--ctp-crust);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-surface0);
+  border-radius: var(--radius-md, 4px);
+  padding: 0.6rem 0.8rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.85rem;
 }
@@ -124,7 +161,7 @@
 .mrc-transcript-empty {
   margin: 0;
   font-style: italic;
-  opacity: 0.6;
+  color: var(--ctp-subtext0);
 }
 
 .mrc-line {
@@ -136,7 +173,7 @@
 .mrc-line-prefix {
   width: 1ch;
   flex-shrink: 0;
-  opacity: 0.6;
+  color: var(--ctp-overlay0);
 }
 
 .mrc-line-text {
@@ -147,19 +184,27 @@
 }
 
 .mrc-line-sent .mrc-line-text {
-  color: var(--accent-fg, #79c0ff);
+  color: var(--ctp-blue);
+}
+
+.mrc-line-sent .mrc-line-prefix {
+  color: var(--ctp-blue);
 }
 
 .mrc-line-reply .mrc-line-text {
-  color: inherit;
+  color: var(--ctp-text);
 }
 
 .mrc-line-error .mrc-line-text {
-  color: var(--error-fg, #ff7b72);
+  color: var(--ctp-red);
+}
+
+.mrc-line-error .mrc-line-prefix {
+  color: var(--ctp-red);
 }
 
 .mrc-line-info .mrc-line-text {
-  color: var(--muted-fg-on-dark, #8b949e);
+  color: var(--ctp-subtext0);
   font-style: italic;
 }
 
@@ -170,16 +215,29 @@
 
 .mrc-input {
   flex: 1;
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--border-color, #ccc);
-  border-radius: 4px;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--ctp-surface2);
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  border-radius: var(--radius-md, 4px);
   font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.mrc-input:focus {
+  outline: none;
+  border-color: var(--ctp-mauve);
+}
+
+.mrc-input::placeholder {
+  color: var(--ctp-overlay0);
 }
 
 .mrc-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -187,19 +245,22 @@
 }
 
 .mrc-modal {
-  background: var(--panel-bg, #fff);
-  color: var(--text-color, inherit);
-  border-radius: 6px;
+  background: var(--ctp-mantle);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-lg, 6px);
   padding: 1rem 1.25rem;
-  min-width: 320px;
+  min-width: 340px;
   max-width: 480px;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .mrc-modal h4 {
   margin: 0;
+  color: var(--ctp-text);
 }
 
 .mrc-modal-label {
@@ -207,12 +268,13 @@
   flex-direction: column;
   gap: 0.25rem;
   font-size: 0.9rem;
+  color: var(--ctp-subtext1, var(--ctp-text));
 }
 
 .mrc-modal-hint {
   margin: 0;
   font-size: 0.8rem;
-  opacity: 0.8;
+  color: var(--ctp-subtext0);
 }
 
 .mrc-modal-checkbox {
@@ -220,15 +282,17 @@
   align-items: center;
   gap: 0.5rem;
   font-size: 0.9rem;
+  color: var(--ctp-text);
+  cursor: pointer;
 }
 
 .mrc-modal-checkbox.mrc-disabled {
-  opacity: 0.55;
+  color: var(--ctp-subtext0);
   cursor: not-allowed;
 }
 
 .mrc-modal-error {
-  color: var(--error-fg, #c00);
+  color: var(--ctp-red);
   font-size: 0.85rem;
 }
 
@@ -236,4 +300,78 @@
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
+}
+
+.mrc-modal-body {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--ctp-text);
+}
+
+.mrc-modal-danger {
+  border-color: var(--ctp-red);
+}
+
+.mrc-modal-danger h4 {
+  color: var(--ctp-red);
+}
+
+/* Quick-action buttons row (Phase 4a) */
+
+.mrc-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.mrc-btn-quick {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--ctp-surface2);
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.mrc-btn-quick:hover:not(:disabled) {
+  background: var(--ctp-surface1);
+  border-color: var(--ctp-mauve);
+}
+
+.mrc-btn-quick:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mrc-btn-danger {
+  padding: 0.4rem 0.9rem;
+  border: none;
+  background: var(--ctp-red);
+  color: var(--ctp-accent-text);
+  border-radius: var(--radius-md, 4px);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.mrc-btn-danger:hover:not(:disabled) {
+  background: var(--ctp-maroon);
+}
+
+.mrc-btn-danger:disabled {
+  background: var(--ctp-surface2);
+  color: var(--ctp-overlay0);
+  cursor: not-allowed;
+}
+
+.mrc-quick-actions .mrc-btn-danger {
+  padding: 0.3rem 0.7rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  font-weight: normal;
 }

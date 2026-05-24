@@ -1,0 +1,132 @@
+/**
+ * MeshCoreRemoteStatsPanel — Catppuccin-themed status panel.
+ */
+
+.meshcore-remote-stats {
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-md, 6px);
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+}
+
+.mrs-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius-md, 6px) var(--radius-md, 6px) 0 0;
+  transition: background 0.15s;
+}
+
+.mrs-header:hover {
+  background: var(--ctp-surface1);
+}
+
+.mrs-chevron {
+  color: var(--ctp-subtext0);
+  font-size: 0.7em;
+}
+
+.mrs-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ctp-text);
+  flex: 1;
+}
+
+.mrs-updated {
+  font-size: 0.75rem;
+  color: var(--ctp-subtext0);
+}
+
+.mrs-refresh-btn {
+  padding: 0.2rem 0.7rem;
+  border: 1px solid var(--ctp-surface2);
+  background: transparent;
+  color: var(--ctp-text);
+  border-radius: var(--radius-sm, 3px);
+  cursor: pointer;
+  font-size: 0.78rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.mrs-refresh-btn:hover:not(:disabled) {
+  background: var(--ctp-surface1);
+  border-color: var(--ctp-mauve);
+}
+
+.mrs-refresh-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mrs-body {
+  padding: 0.5rem 0.75rem 0.75rem;
+  border-top: 1px solid var(--ctp-surface1);
+}
+
+.mrs-error,
+.mrs-loading {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--ctp-subtext0);
+  font-style: italic;
+}
+
+.mrs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.6rem 1rem;
+}
+
+.mrs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.mrs-field-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ctp-subtext0);
+}
+
+.mrs-field-value {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--ctp-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.mrs-field-compact .mrs-field-label {
+  font-size: 0.65rem;
+}
+
+.mrs-field-compact .mrs-field-value {
+  font-size: 0.85rem;
+}
+
+.mrs-section {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--ctp-surface1);
+  padding-top: 0.5rem;
+}
+
+.mrs-section h5 {
+  margin: 0 0 0.4rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ctp-mauve);
+  font-weight: 600;
+}
+
+.mrs-subgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 0.4rem 0.8rem;
+}

@@ -153,6 +153,33 @@ describe('MeshCoreCredentialStore', () => {
       expect(result.kind).toBe('key_rotated');
     });
 
+    it('listStored returns only entries whose kid matches the current secret', async () => {
+      const original = new MeshCoreCredentialStore('a'.repeat(64), true);
+      await original.store(SOURCE_A, PUBKEY_1, 'pw1');
+      await original.store(SOURCE_A, PUBKEY_2, 'pw2');
+
+      const stored = await original.listStored();
+      expect(stored).toHaveLength(2);
+      expect(stored.map((s) => s.publicKey).sort()).toEqual([PUBKEY_1, PUBKEY_2].sort());
+      for (const entry of stored) {
+        expect(entry.sourceId).toBe(SOURCE_A);
+      }
+
+      // Rotate → listStored now empty (everything is rotated).
+      const rotated = new MeshCoreCredentialStore('b'.repeat(64), true);
+      expect(await rotated.listStored()).toEqual([]);
+    });
+
+    it('listStored and listRotated are mutually exclusive for any given row', async () => {
+      const original = new MeshCoreCredentialStore('a'.repeat(64), true);
+      await original.store(SOURCE_A, PUBKEY_1, 'pw1');
+
+      const storedKeys = (await original.listStored()).map((s) => s.publicKey);
+      const rotatedKeys = (await original.listRotated()).map((r) => r.publicKey);
+      const intersection = storedKeys.filter((k) => rotatedKeys.includes(k));
+      expect(intersection).toEqual([]);
+    });
+
     it('listRotated returns only entries whose kid does not match the current secret', async () => {
       const original = new MeshCoreCredentialStore('a'.repeat(64), true);
       await original.store(SOURCE_A, PUBKEY_1, 'pw1');

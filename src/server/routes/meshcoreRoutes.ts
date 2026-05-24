@@ -88,6 +88,15 @@ const VALIDATION = {
 } as const;
 
 /**
+ * Destructive MeshCore CLI commands. Requests targeting any matching
+ * command must carry `confirm: true` in the body or the /admin/cli route
+ * rejects with DANGER_CONFIRM_REQUIRED. Keep in sync with the matching
+ * pattern in MeshCoreRemoteConsole.tsx so the client knows which commands
+ * to route through its typed-name confirmation modal.
+ */
+const DANGER_COMMAND_PATTERN = /(reboot|erase|clkreboot|factory)/i;
+
+/**
  * Validation helper functions
  */
 function isValidPublicKey(key: string | undefined): boolean {
@@ -771,10 +780,11 @@ router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
  */
 router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const { publicKey, command, timeoutMs } = req.body as {
+    const { publicKey, command, timeoutMs, confirm } = req.body as {
       publicKey?: string;
       command?: string;
       timeoutMs?: number;
+      confirm?: boolean;
     };
 
     if (typeof publicKey !== 'string' || !isValidPublicKey(publicKey)) {
@@ -787,6 +797,18 @@ router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermissio
       // LoRa packet MTU ceiling — anything larger will be truncated by the
       // firmware. Reject up front so the user gets a clear error.
       return res.status(400).json({ success: false, error: 'command too long (max 230 bytes)' });
+    }
+    // Defense-in-depth danger guard. The frontend opens a typed-name
+    // confirmation modal for these commands, but server-side enforcement
+    // means scripts and direct API calls cannot bypass the prompt by
+    // simply not rendering it. Keep the pattern in sync with the
+    // client-side DANGER_COMMAND_PATTERN in MeshCoreRemoteConsole.tsx.
+    if (DANGER_COMMAND_PATTERN.test(command) && confirm !== true) {
+      return res.status(400).json({
+        success: false,
+        error: 'Destructive command requires confirm:true in the request body',
+        code: 'DANGER_CONFIRM_REQUIRED',
+      });
     }
     const effectiveTimeout =
       typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0 && timeoutMs <= 60_000
@@ -831,8 +853,9 @@ router.get('/admin/credentials-capability', requireAuth(), requirePermission('re
   try {
     const sourceId = req.params.id!;
     const store = getMeshCoreCredentialStore();
-    const rotatedAll = await store.listRotated();
+    const [rotatedAll, storedAll] = await Promise.all([store.listRotated(), store.listStored()]);
     const rotated = rotatedAll.filter((r) => r.sourceId === sourceId);
+    const stored = storedAll.filter((s) => s.sourceId === sourceId);
     res.json({
       success: true,
       data: {
@@ -840,11 +863,75 @@ router.get('/admin/credentials-capability', requireAuth(), requirePermission('re
         reason: store.capability.reason,
         rotatedCount: rotated.length,
         rotated: rotated.map((r) => ({ publicKey: r.publicKey, name: r.name })),
+        stored: stored.map((s) => ({ publicKey: s.publicKey, name: s.name })),
       },
     });
   } catch (error) {
     logger.error('[API] Error reading credentials capability:', error);
     res.status(500).json({ success: false, error: 'Capability lookup failed' });
+  }
+});
+
+/**
+ * POST /api/meshcore/admin/login-with-saved
+ *
+ * Auto-login using a previously-saved admin credential. The console
+ * triggers this on mount when the capability endpoint reports a non-
+ * rotated stored credential for the target contact, so the user doesn't
+ * have to re-enter the password every session.
+ *
+ * SECURITY INVARIANT — the saved plaintext password NEVER leaves this
+ * process. The flow is:
+ *     1. Client sends only { publicKey }. No password.
+ *     2. Server reads the encrypted envelope from the DB and decrypts
+ *        it server-side via MeshCoreCredentialStore.
+ *     3. Server passes the plaintext to MeshCoreManager.loginToNode
+ *        IN-PROCESS — it is used to derive the per-contact shared
+ *        secret and discarded.
+ *     4. Server returns only { success, usedStored, code } — never
+ *        the plaintext, never the envelope, never the key fingerprint
+ *        (the fingerprint is opaque metadata, but still kept off the
+ *        client because exposing it would let a hostile script enumerate
+ *        SESSION_SECRET rotations).
+ *
+ * Response codes:
+ *   404 NO_STORED_CREDENTIAL — nothing saved for this (source, pubkey).
+ *   410 CREDENTIAL_KEY_ROTATED — SESSION_SECRET changed since the
+ *       password was saved; client should clear and prompt fresh.
+ *   401 STORED_CREDENTIAL_REJECTED — credential decrypted but the remote
+ *       rejected the login (remote's admin password probably changed).
+ */
+router.post('/admin/login-with-saved', meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { publicKey } = req.body as { publicKey?: string };
+    if (typeof publicKey !== 'string' || !isValidPublicKey(publicKey)) {
+      return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
+    }
+    const sourceId = req.params.id!;
+    const store = getMeshCoreCredentialStore();
+    const result = await store.load(sourceId, publicKey);
+    if (result.kind === 'none') {
+      return res.status(404).json({ success: false, error: 'No saved credential for this node', code: 'NO_STORED_CREDENTIAL' });
+    }
+    if (result.kind === 'key_rotated') {
+      return res.status(410).json({
+        success: false,
+        error: 'Saved credential was encrypted with a previous SESSION_SECRET',
+        code: 'CREDENTIAL_KEY_ROTATED',
+        // Deliberately NOT echoing result.storedKid back to the client —
+        // an attacker shouldn't be able to enumerate prior fingerprints.
+      });
+    }
+    // result.password is intentionally consumed in-process only; do not
+    // log it, do not echo it, do not include it in any response field.
+    const ok = await managerFor(req).loginToNode(publicKey, result.password);
+    if (!ok) {
+      return res.status(401).json({ success: false, error: 'Saved credential rejected by the remote', code: 'STORED_CREDENTIAL_REJECTED' });
+    }
+    res.json({ success: true, usedStored: true });
+  } catch (error) {
+    logger.error('[API] Error in login-with-saved:', error);
+    res.status(500).json({ success: false, error: 'Login error' });
   }
 });
 

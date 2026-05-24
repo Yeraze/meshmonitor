@@ -127,19 +127,70 @@ export interface MeshCoreActions {
   sendCliCommand: (
     publicKey: string,
     command: string,
-    opts?: { timeoutMs?: number },
+    opts?: { timeoutMs?: number; confirm?: boolean },
   ) => Promise<{ ok: true; reply: string; elapsedMs: number } | { ok: false; error: string; code?: string; status?: number }>;
   /** Query the credential-persistence capability for this source. Returns
    *  `canRemember=false` when SESSION_SECRET is auto-generated (along with a
-   *  human-readable reason), plus the list of stored credentials for this
-   *  source whose envelope no longer decrypts. */
+   *  human-readable reason), plus:
+   *    - `rotated`: stored credentials whose envelope no longer decrypts
+   *      under the current SESSION_SECRET (they need re-entry).
+   *    - `stored`: stored credentials that DO decrypt — used by the
+   *      console to decide whether to attempt silent auto-login on mount. */
   getRemoteAdminCapability: () => Promise<
-    | { canRemember: boolean; reason?: string; rotatedCount: number; rotated: Array<{ publicKey: string; name: string | null }> }
+    | {
+        canRemember: boolean;
+        reason?: string;
+        rotatedCount: number;
+        rotated: Array<{ publicKey: string; name: string | null }>;
+        stored: Array<{ publicKey: string; name: string | null }>;
+      }
     | null
   >;
+  /** Attempt to log in to a remote node using a previously-saved
+   *  credential. Returns the route's JSON response so the caller can
+   *  branch on `code` (NO_STORED_CREDENTIAL, CREDENTIAL_KEY_ROTATED,
+   *  STORED_CREDENTIAL_REJECTED) and fall back to the password modal. */
+  loginRemoteWithSaved: (
+    publicKey: string,
+  ) => Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string }>;
   /** Forget the saved admin password for a remote node. No-op when none is
    *  saved; resolves `true` on success. */
   forgetRemoteCredential: (publicKey: string) => Promise<boolean>;
+  /** Fetch typed status from a remote node (SendStatusReq → StatusResponse).
+   *  Populated fields depend on the remote's role: Repeater / Room Server
+   *  return the full counter set; Companion firmware returns only battery
+   *  and uptime. Returns null on any error so the panel can render an
+   *  "unavailable" state without a thrown promise. */
+  getRemoteStatus: (publicKey: string) => Promise<MeshCoreRemoteStatus | null>;
+}
+
+/**
+ * Typed status snapshot returned by `getRemoteStatus`. Mirrors the
+ * server-side `MeshCoreStatus` in src/server/meshcoreManager.ts; defined
+ * separately here so the frontend doesn't pull in server-only modules.
+ */
+export interface MeshCoreRemoteStatus {
+  batteryMv?: number;
+  uptimeSecs?: number;
+  queueLen?: number;
+  noiseFloor?: number;
+  lastRssi?: number;
+  lastSnr?: number;
+  packetsRecv?: number;
+  packetsSent?: number;
+  airTimeSecs?: number;
+  sentFlood?: number;
+  sentDirect?: number;
+  recvFlood?: number;
+  recvDirect?: number;
+  errors?: number;
+  directDups?: number;
+  floodDups?: number;
+  txPower?: number;
+  radioFreq?: number;
+  radioBw?: number;
+  radioSf?: number;
+  radioCr?: number;
 }
 
 export interface UseMeshCoreState {
@@ -504,13 +555,18 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const sendCliCommand = useCallback(async (
     publicKey: string,
     command: string,
-    opts?: { timeoutMs?: number },
+    opts?: { timeoutMs?: number; confirm?: boolean },
   ) => {
     try {
       const response = await csrfFetch(`${mcPrefix}/admin/cli`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publicKey, command, ...(opts?.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}) }),
+        body: JSON.stringify({
+          publicKey,
+          command,
+          ...(opts?.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}),
+          ...(opts?.confirm ? { confirm: true } : {}),
+        }),
       });
       const data = await response.json();
       if (data.success && data.data) {
@@ -533,6 +589,25 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const loginRemoteWithSaved = useCallback(async (publicKey: string) => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/admin/login-with-saved`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicKey }),
+      });
+      const data = await response.json();
+      return {
+        success: !!data.success,
+        usedStored: data.usedStored,
+        error: data.error,
+        code: data.code,
+      };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const forgetRemoteCredential = useCallback(async (publicKey: string): Promise<boolean> => {
     try {
       const response = await csrfFetch(
@@ -543,6 +618,19 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       return !!data.success;
     } catch (_err) {
       return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const getRemoteStatus = useCallback(async (publicKey: string): Promise<MeshCoreRemoteStatus | null> => {
+    try {
+      const response = await csrfFetch(
+        `${mcPrefix}/admin/status/${encodeURIComponent(publicKey)}`,
+      );
+      const data = await response.json();
+      if (data.success && data.data) return data.data as MeshCoreRemoteStatus;
+      return null;
+    } catch (_err) {
+      return null;
     }
   }, [mcPrefix, csrfFetch]);
 
@@ -786,6 +874,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       sendCliCommand,
       getRemoteAdminCapability,
       forgetRemoteCredential,
+      getRemoteStatus,
+      loginRemoteWithSaved,
     },
   };
 }
