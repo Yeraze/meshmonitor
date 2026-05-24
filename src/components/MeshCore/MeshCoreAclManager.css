@@ -1,0 +1,77 @@
+.meshcore-acl-manager {
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-md, 6px);
+  background: var(--ctp-surface0);
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.acl-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ctp-text);
+}
+
+.acl-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ctp-subtext0);
+  line-height: 1.4;
+}
+
+.acl-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+@media (max-width: 600px) {
+  .acl-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.acl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.acl-field-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ctp-subtext0);
+}
+
+.acl-input {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--ctp-surface2);
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  border-radius: var(--radius-md, 4px);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.acl-input:focus {
+  outline: none;
+  border-color: var(--ctp-mauve);
+}
+
+.acl-pubkey-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.acl-input-invalid {
+  border-color: var(--ctp-red);
+}
+
+.acl-error-hint {
+  font-size: 0.75rem;
+  color: var(--ctp-red);
+}

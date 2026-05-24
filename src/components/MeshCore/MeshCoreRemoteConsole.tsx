@@ -22,6 +22,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MeshCoreActions } from './hooks/useMeshCore';
 import { MeshCoreRemoteStatsPanel } from './MeshCoreRemoteStatsPanel';
+import { MeshCoreAclManager } from './MeshCoreAclManager';
 import { CliConsoleBody, type ActionCommand, type CliConsoleBodyHandle } from './CliConsoleBody';
 import './MeshCoreRemoteConsole.css';
 
@@ -239,6 +240,8 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
         actionCatalog={loggedIn ? REMOTE_ACTION_CATALOG : []}
         disabled={!loggedIn}
       />
+
+      {loggedIn && <MeshCoreAclManager bodyRef={bodyRef} />}
 
       {showLogin && (
         <div

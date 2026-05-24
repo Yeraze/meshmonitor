@@ -54,6 +54,12 @@ export interface CliConsoleBodyHandle {
   appendInfo: (text: string) => void;
   /** Clear the transcript. */
   clear: () => void;
+  /** Run a command exactly as if the user had typed it into the input
+   *  and pressed Send: the command lands in the transcript as a sent
+   *  line, the reply / error lands as a reply / error line, history is
+   *  updated. Used by sibling forms (e.g. ACL manager) so their output
+   *  shares one transcript with free-typed commands. */
+  runCommand: (command: string, opts?: { confirm?: boolean }) => Promise<void>;
 }
 
 interface TranscriptEntry {
@@ -112,6 +118,18 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
   const [dangerConfirm, setDangerConfirm] = useState<null | { command: string; typedName: string }>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
+  // Command history — ↑/↓ in the input row cycle through previously-sent
+  // commands. Cap at 50 to keep the buffer bounded; oldest entries are
+  // dropped when full. History is scoped to the component instance (not
+  // per-target) so a user can repeat the same command across different
+  // contacts without retyping. `draft` preserves an in-progress command
+  // when the user starts navigating history, so ArrowDown past the end
+  // restores what they were typing.
+  const historyRef = useRef<string[]>([]);
+  const historyIndexRef = useRef<number | null>(null);
+  const draftRef = useRef<string>('');
+  const HISTORY_MAX = 50;
+
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [transcript]);
@@ -128,16 +146,20 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
     setTranscript((prev) => [...prev, { id: nextId(), ts: Date.now(), ...entry }]);
   }, []);
 
-  useImperativeHandle(ref, () => ({
-    appendInfo: (text: string) => appendTranscript({ kind: 'info', text }),
-    clear: () => setTranscript([]),
-  }), [appendTranscript]);
-
   const runAndLog = useCallback(async (cmd: string, opts?: { confirm?: boolean }) => {
     if (sending) return;
     setSending(true);
     appendTranscript({ kind: 'sent', text: cmd });
     setCommand('');
+    // Push to history. Skip duplicates of the most recent entry so
+    // hammering Send on the same command doesn't bloat the buffer.
+    const prev = historyRef.current;
+    if (prev[prev.length - 1] !== cmd) {
+      prev.push(cmd);
+      if (prev.length > HISTORY_MAX) prev.shift();
+    }
+    historyIndexRef.current = null;
+    draftRef.current = '';
     const result = await runCommand(cmd, opts);
     setSending(false);
     if (result.ok) {
@@ -153,6 +175,12 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
       appendTranscript({ kind: 'error', text: `${result.error}${hint}` });
     }
   }, [appendTranscript, runCommand, sending, t]);
+
+  useImperativeHandle(ref, () => ({
+    appendInfo: (text: string) => appendTranscript({ kind: 'info', text }),
+    clear: () => setTranscript([]),
+    runCommand: (cmd: string, opts?: { confirm?: boolean }) => runAndLog(cmd, opts),
+  }), [appendTranscript, runAndLog]);
 
   const handleSend = useCallback(async () => {
     const trimmed = command.trim();
@@ -226,7 +254,44 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
         <input
           type="text"
           value={command}
-          onChange={(e) => setCommand(e.target.value)}
+          onChange={(e) => {
+            setCommand(e.target.value);
+            // User started typing fresh — drop the history cursor.
+            if (historyIndexRef.current !== null) {
+              historyIndexRef.current = null;
+              draftRef.current = '';
+            }
+          }}
+          onKeyDown={(e) => {
+            // History navigation. Only when not modified by Ctrl/Alt/Meta
+            // so we don't fight the browser's own shortcuts.
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+            const hist = historyRef.current;
+            if (hist.length === 0) return;
+            if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              if (historyIndexRef.current === null) {
+                // Save what the user was typing before we hijack the input.
+                draftRef.current = command;
+                historyIndexRef.current = hist.length - 1;
+              } else if (historyIndexRef.current > 0) {
+                historyIndexRef.current -= 1;
+              }
+              setCommand(hist[historyIndexRef.current]);
+            } else if (e.key === 'ArrowDown') {
+              if (historyIndexRef.current === null) return;
+              e.preventDefault();
+              if (historyIndexRef.current < hist.length - 1) {
+                historyIndexRef.current += 1;
+                setCommand(hist[historyIndexRef.current]);
+              } else {
+                // Moved past the newest entry — restore the saved draft.
+                historyIndexRef.current = null;
+                setCommand(draftRef.current);
+                draftRef.current = '';
+              }
+            }
+          }}
           placeholder={
             disabled
               ? disabledPlaceholder ?? t('meshcore.remoteConsole.command_placeholder_logged_out', 'Log in first')
