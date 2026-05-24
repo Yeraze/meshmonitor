@@ -88,6 +88,15 @@ const VALIDATION = {
 } as const;
 
 /**
+ * Destructive MeshCore CLI commands. Requests targeting any matching
+ * command must carry `confirm: true` in the body or the /admin/cli route
+ * rejects with DANGER_CONFIRM_REQUIRED. Keep in sync with the matching
+ * pattern in MeshCoreRemoteConsole.tsx so the client knows which commands
+ * to route through its typed-name confirmation modal.
+ */
+const DANGER_COMMAND_PATTERN = /(reboot|erase|clkreboot|factory)/i;
+
+/**
  * Validation helper functions
  */
 function isValidPublicKey(key: string | undefined): boolean {
@@ -771,10 +780,11 @@ router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
  */
 router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const { publicKey, command, timeoutMs } = req.body as {
+    const { publicKey, command, timeoutMs, confirm } = req.body as {
       publicKey?: string;
       command?: string;
       timeoutMs?: number;
+      confirm?: boolean;
     };
 
     if (typeof publicKey !== 'string' || !isValidPublicKey(publicKey)) {
@@ -787,6 +797,18 @@ router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermissio
       // LoRa packet MTU ceiling — anything larger will be truncated by the
       // firmware. Reject up front so the user gets a clear error.
       return res.status(400).json({ success: false, error: 'command too long (max 230 bytes)' });
+    }
+    // Defense-in-depth danger guard. The frontend opens a typed-name
+    // confirmation modal for these commands, but server-side enforcement
+    // means scripts and direct API calls cannot bypass the prompt by
+    // simply not rendering it. Keep the pattern in sync with the
+    // client-side DANGER_COMMAND_PATTERN in MeshCoreRemoteConsole.tsx.
+    if (DANGER_COMMAND_PATTERN.test(command) && confirm !== true) {
+      return res.status(400).json({
+        success: false,
+        error: 'Destructive command requires confirm:true in the request body',
+        code: 'DANGER_CONFIRM_REQUIRED',
+      });
     }
     const effectiveTimeout =
       typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0 && timeoutMs <= 60_000

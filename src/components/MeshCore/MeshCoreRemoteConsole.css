@@ -237,3 +237,59 @@
   justify-content: flex-end;
   gap: 0.5rem;
 }
+
+.mrc-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.mrc-btn-quick {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--border-color, #ccc);
+  background: var(--button-bg, #f8f9fa);
+  color: inherit;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.mrc-btn-quick:hover:not(:disabled) {
+  background: var(--button-hover-bg, #e9ecef);
+}
+
+.mrc-btn-quick:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mrc-btn-danger {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--danger-color, #dc3545);
+  background: var(--danger-color, #dc3545);
+  color: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.mrc-btn-danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mrc-quick-actions .mrc-btn-danger {
+  padding: 0.3rem 0.7rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.mrc-modal-danger h4 {
+  color: var(--danger-color, #dc3545);
+}
+
+.mrc-modal-body {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}

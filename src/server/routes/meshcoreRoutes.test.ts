@@ -477,6 +477,39 @@ describe('MeshCore Routes', () => {
         timeoutMs: 5000,
       });
     });
+
+    it.each([
+      ['reboot'],
+      ['Reboot'],
+      ['erase'],
+      ['clkreboot'],
+      ['factory reset'],
+      ['set factory mode'],
+    ])('rejects danger command %s without confirm', async (cmd) => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: cmd });
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('DANGER_CONFIRM_REQUIRED');
+      expect(meshcoreManager.sendCliCommand).not.toHaveBeenCalled();
+    });
+
+    it('accepts a danger command when confirm=true', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: 'reboot', confirm: true });
+      expect(response.status).toBe(200);
+      expect(meshcoreManager.sendCliCommand).toHaveBeenCalledWith(validKey, 'reboot', {
+        timeoutMs: undefined,
+      });
+    });
+
+    it('does not require confirm for non-danger commands', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: 'stats' });
+      expect(response.status).toBe(200);
+    });
   });
 
   describe('GET /api/sources/test-source/meshcore/admin/credentials-capability', () => {

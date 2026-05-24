@@ -48,7 +48,7 @@ interface MeshCoreContactDetailPanelProps {
    *  unset to hide the console (e.g. on read-only sources). */
   remoteAdminActions?: Pick<
     MeshCoreActions,
-    'loginRemote' | 'sendCliCommand' | 'getRemoteAdminCapability' | 'forgetRemoteCredential'
+    'loginRemote' | 'sendCliCommand' | 'getRemoteAdminCapability' | 'forgetRemoteCredential' | 'getRemoteStatus'
   >;
   /** Whether the current user may invoke write actions on this source's
    *  `remote_admin` resource. When false the console is hidden even if

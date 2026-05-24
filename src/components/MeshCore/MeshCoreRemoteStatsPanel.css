@@ -1,0 +1,112 @@
+.meshcore-remote-stats {
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  background: var(--panel-bg, #fff);
+}
+
+.mrs-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.mrs-chevron {
+  opacity: 0.6;
+  font-size: 0.7em;
+}
+
+.mrs-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  flex: 1;
+}
+
+.mrs-updated {
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
+.mrs-refresh-btn {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border-color, #ccc);
+  background: transparent;
+  color: inherit;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.mrs-refresh-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mrs-body {
+  padding: 0.5rem 0.75rem 0.75rem;
+}
+
+.mrs-error,
+.mrs-loading {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.mrs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.5rem 1rem;
+}
+
+.mrs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.mrs-field-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.65;
+}
+
+.mrs-field-value {
+  font-size: 0.95rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.mrs-field-compact .mrs-field-label {
+  font-size: 0.65rem;
+}
+
+.mrs-field-compact .mrs-field-value {
+  font-size: 0.85rem;
+}
+
+.mrs-section {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border-color, #eee);
+  padding-top: 0.5rem;
+}
+
+.mrs-section h5 {
+  margin: 0 0 0.4rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.65;
+  font-weight: 600;
+}
+
+.mrs-subgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 0.4rem 0.8rem;
+}

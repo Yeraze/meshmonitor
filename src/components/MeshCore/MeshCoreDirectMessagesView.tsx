@@ -266,6 +266,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   sendCliCommand: actions.sendCliCommand,
                   getRemoteAdminCapability: actions.getRemoteAdminCapability,
                   forgetRemoteCredential: actions.forgetRemoteCredential,
+                  getRemoteStatus: actions.getRemoteStatus,
                 }}
               />
               {!!sourceId && typeof baseUrl === 'string' && isRealNodeKey(selected) && (
