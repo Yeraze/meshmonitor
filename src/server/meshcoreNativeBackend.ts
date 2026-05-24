@@ -90,15 +90,25 @@ function bytesToHex(bytes: Uint8Array | number[]): string {
 
 /**
  * Render a MeshCore contact's `out_path` blob into a comma-separated hex
- * chain like "a3,7f,02". Returns null when the firmware's OUT_PATH_UNKNOWN
- * sentinel (0xFF — or -1 if meshcore.js read it as Int8) is set.
+ * chain like "a3,7f,02" (1-byte hashes) or "a37f,02b0" (2-byte hashes).
+ * Returns null when the firmware's OUT_PATH_UNKNOWN sentinel (0xFF — or -1
+ * if meshcore.js read it as Int8) is set.
  *
  * The wire-format `out_path` field is always a 64-byte buffer; only the
- * first `outPathLen` bytes are meaningful hop hashes.
+ * first `outPathLen` bytes are meaningful. Each hop occupies `hopHashBytes`
+ * bytes (default 1, MeshCore protocol supports 1/2/3). Some firmwares report
+ * an inflated `outPathLen` (e.g. the full 64) with trailing 0x00 padding;
+ * all-zero hop chunks are skipped and `pathLen` reflects only real hops.
+ *
+ * Note: MeshCore OTA packets pack hop hash width into the top 2 bits of the
+ * single `path_len` byte (`@liamcottle/meshcore.js/src/packet.js`), but
+ * contact records read `outPathLen` as a plain Int8 byte count, so we accept
+ * the width as an explicit parameter rather than decoding it from outPathLen.
  */
 export function formatOutPath(
   outPath: Uint8Array | number[] | null | undefined,
   outPathLen: number | null | undefined,
+  hopHashBytes: 1 | 2 | 3 = 1,
 ): { outPathHex: string | null; pathLen: number | null } {
   if (outPathLen === undefined || outPathLen === null) {
     return { outPathHex: null, pathLen: null };
@@ -116,11 +126,19 @@ export function formatOutPath(
   }
   const arr = outPath instanceof Uint8Array ? outPath : Uint8Array.from(outPath);
   const take = Math.min(outPathLen, arr.length);
-  const parts: string[] = [];
-  for (let i = 0; i < take; i++) {
-    parts.push(arr[i].toString(16).padStart(2, '0'));
+  const hops: string[] = [];
+  for (let i = 0; i + hopHashBytes <= take; i += hopHashBytes) {
+    let allZero = true;
+    let hex = '';
+    for (let j = 0; j < hopHashBytes; j++) {
+      const b = arr[i + j];
+      if (b !== 0) allZero = false;
+      hex += b.toString(16).padStart(2, '0');
+    }
+    if (allZero) continue;
+    hops.push(hex);
   }
-  return { outPathHex: parts.join(','), pathLen: take };
+  return { outPathHex: hops.join(','), pathLen: hops.length };
 }
 
 /** Manager passes telemetry mode as 'never' | 'device' | 'always'; firmware
