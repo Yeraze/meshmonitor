@@ -4,6 +4,7 @@ import { ConnectionStatus, MeshCoreActions, TelemetryMode } from './hooks/useMes
 import { RADIO_PRESETS, findPresetId } from './radioPresets';
 import { useAuth } from '../../contexts/AuthContext';
 import { MeshCoreChannelsConfigSection } from './MeshCoreChannelsConfigSection';
+import { MeshCoreLocalConsole } from './MeshCoreLocalConsole';
 
 const TELEMETRY_MODE_OPTIONS: TelemetryMode[] = ['always', 'device', 'never'];
 // MeshCore device types: COMPANION=1, REPEATER=2, ROOM_SERVER=3.
@@ -456,6 +457,19 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           baseUrl={baseUrl}
           sourceId={sourceId}
           canWrite={connected && canWriteConfig}
+        />
+      )}
+
+      {/* Local CLI console — gated on configuration:write (matches the
+          form fields above) and per-source via the route. Available for
+          all firmware types; the catalog adapts. */}
+      {sourceId && canWriteConfig && (
+        <MeshCoreLocalConsole
+          sourceId={sourceId}
+          deviceName={local?.name}
+          deviceType={local?.advType}
+          connected={connected}
+          actions={{ sendLocalCliCommand: actions.sendLocalCliCommand }}
         />
       )}
     </div>

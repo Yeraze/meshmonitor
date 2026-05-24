@@ -54,6 +54,7 @@ const meshcoreManager = {
   loginToNode: vi.fn().mockResolvedValue(true),
   requestNodeStatus: vi.fn().mockResolvedValue({ batteryMv: 4200, uptimeSecs: 3600 }),
   sendCliCommand: vi.fn().mockResolvedValue({ reply: 'ok', elapsedMs: 42 }),
+  sendLocalCliCommand: vi.fn().mockResolvedValue({ reply: 'v1.7.0', elapsedMs: 12 }),
   setName: vi.fn().mockResolvedValue(true),
   setRadio: vi.fn().mockResolvedValue(true),
   isConnected: vi.fn().mockReturnValue(false),
@@ -572,6 +573,95 @@ describe('MeshCore Routes', () => {
       expect(response.status).toBe(200);
       expect(response.body.data.rotatedCount).toBe(1);
       expect(response.body.data.rotated).toEqual([{ publicKey: pk1, name: 'Hill repeater' }]);
+    });
+  });
+
+  describe('POST /api/sources/test-source/meshcore/cli (local)', () => {
+    beforeEach(() => {
+      meshcoreManager.sendLocalCliCommand.mockReset();
+      meshcoreManager.sendLocalCliCommand.mockResolvedValue({ reply: 'v1.7.0', elapsedMs: 12 });
+    });
+
+    it('requires authentication', async () => {
+      const response = await request(app)
+        .post('/api/sources/test-source/meshcore/cli')
+        .send({ command: 'ver' });
+      expect(response.status).toBe(401);
+    });
+
+    it('rejects an empty command', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/cli')
+        .send({ command: '   ' });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('non-empty');
+    });
+
+    it('rejects a command longer than the LoRa MTU', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/cli')
+        .send({ command: 'x'.repeat(231) });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('too long');
+    });
+
+    it('returns the reply on the happy path', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/cli')
+        .send({ command: 'ver' });
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toEqual({ reply: 'v1.7.0', elapsedMs: 12 });
+      expect(meshcoreManager.sendLocalCliCommand).toHaveBeenCalledWith('ver', {
+        timeoutMs: undefined,
+      });
+    });
+
+    it.each([
+      ['reboot'],
+      ['Reboot'],
+      ['erase'],
+      ['clkreboot'],
+      ['factory reset'],
+    ])('rejects danger command %s without confirm', async (cmd) => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/cli')
+        .send({ command: cmd });
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('DANGER_CONFIRM_REQUIRED');
+      expect(meshcoreManager.sendLocalCliCommand).not.toHaveBeenCalled();
+    });
+
+    it('accepts a danger command when confirm=true', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/cli')
+        .send({ command: 'reboot', confirm: true });
+      expect(response.status).toBe(200);
+      expect(meshcoreManager.sendLocalCliCommand).toHaveBeenCalledWith('reboot', {
+        timeoutMs: undefined,
+      });
+    });
+
+    it('maps a timeout to 504', async () => {
+      meshcoreManager.sendLocalCliCommand.mockRejectedValueOnce(
+        new Error('CLI command timed out after 10000ms'),
+      );
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/cli')
+        .send({ command: 'stats' });
+      expect(response.status).toBe(504);
+      expect(response.body.code).toBe('CLI_TIMEOUT');
+    });
+
+    it('maps a "not available for this device type" failure to 400', async () => {
+      meshcoreManager.sendLocalCliCommand.mockRejectedValueOnce(
+        new Error('Local CLI not available for this device type'),
+      );
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/cli')
+        .send({ command: 'ver' });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('not available');
     });
   });
 

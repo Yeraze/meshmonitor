@@ -153,6 +153,15 @@ export interface MeshCoreActions {
   loginRemoteWithSaved: (
     publicKey: string,
   ) => Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string }>;
+  /** Send a CLI command to the LOCALLY connected MeshCore node (the one
+   *  this source is bound to). For Repeater / Room Server firmware this
+   *  drives the device's native text CLI; for Companion firmware a small
+   *  synthetic CLI interpreter on the server handles ver / stats / clock
+   *  / advert. Reuses the same danger-confirm flow as `sendCliCommand`. */
+  sendLocalCliCommand: (
+    command: string,
+    opts?: { timeoutMs?: number; confirm?: boolean },
+  ) => Promise<{ ok: true; reply: string; elapsedMs: number } | { ok: false; error: string; code?: string; status?: number }>;
   /** Forget the saved admin password for a remote node. No-op when none is
    *  saved; resolves `true` on success. */
   forgetRemoteCredential: (publicKey: string) => Promise<boolean>;
@@ -589,6 +598,30 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const sendLocalCliCommand = useCallback(async (
+    command: string,
+    opts?: { timeoutMs?: number; confirm?: boolean },
+  ) => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/cli`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          command,
+          ...(opts?.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}),
+          ...(opts?.confirm ? { confirm: true } : {}),
+        }),
+      });
+      const data = await response.json();
+      if (data.success && data.data) {
+        return { ok: true as const, reply: data.data.reply, elapsedMs: data.data.elapsedMs };
+      }
+      return { ok: false as const, error: data.error || 'Unknown error', code: data.code, status: response.status };
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : 'Network error' };
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const loginRemoteWithSaved = useCallback(async (publicKey: string) => {
     try {
       const response = await csrfFetch(`${mcPrefix}/admin/login-with-saved`, {
@@ -876,6 +909,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       forgetRemoteCredential,
       getRemoteStatus,
       loginRemoteWithSaved,
+      sendLocalCliCommand,
     },
   };
 }

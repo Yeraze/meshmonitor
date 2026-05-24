@@ -2,46 +2,36 @@
  * MeshCoreRemoteConsole
  *
  * Interactive remote-administration console for a single MeshCore contact
- * (Repeater or Room Server). Renders inside MeshCoreContactDetailPanel
- * when the selected contact's advType warrants it.
+ * (Repeater or Room Server). Mounted by MeshCoreContactDetailPanel when
+ * the user has `remote_admin:write` on the source.
  *
- * Wire model — see docs/internal/dev-notes/ARCHITECTURE_LESSONS.md and the
- * meshcoreCredentialStore service for the full design. In short:
- *   - "Login" sends CMD_SEND_LOGIN with the user-supplied password. The
- *     server may also persist that password (AES-256-GCM, see
- *     MeshCoreCredentialStore) when `rememberPassword=true` and
- *     SESSION_SECRET is explicitly configured.
- *   - "Send" issues a CLI command as an encrypted DM with txtType=CliData
- *     and shows the single-packet reply in the transcript.
- *   - A KEY_ROTATED banner appears when this contact has a stored
- *     credential that no longer decrypts under the current SESSION_SECRET.
+ * Responsibilities owned here (vs. CliConsoleBody, the shared primitive):
+ *  - Login modal (manual login + "remember password" checkbox).
+ *  - Capability fetch — disables remember when SESSION_SECRET is auto-
+ *    generated.
+ *  - Auto-login on mount when a non-rotated stored credential exists.
+ *  - KEY_ROTATED banner + "Forget stored password" action.
+ *  - Stats panel mounting (only once logged in).
+ *
+ * Wire model: see meshcoreCredentialStore + POST /admin/login-with-saved
+ * for the security invariant that the saved plaintext password never
+ * leaves the server process.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MeshCoreActions } from './hooks/useMeshCore';
 import { MeshCoreRemoteStatsPanel } from './MeshCoreRemoteStatsPanel';
+import { CliConsoleBody, type ActionCommand, type CliConsoleBodyHandle } from './CliConsoleBody';
 import './MeshCoreRemoteConsole.css';
 
 /**
- * Catalog of one-click CLI commands surfaced as buttons in the console.
+ * Quick-action catalog for remote Repeater / Room Server contacts.
  * Clicking a button pre-fills the command input — it does NOT auto-send,
- * so the user can edit before pressing Send and so danger commands route
- * through the confirmation modal naturally.
- *
- * `danger: true` triggers the typed-name confirmation modal and also gets
- * server-side enforcement via the DANGER_CONFIRM_REQUIRED guard in the
- * /admin/cli route.
+ * so the user can edit before pressing Send and danger commands route
+ * through the typed-name confirmation modal naturally.
  */
-interface ActionCommand {
-  key: string;
-  labelKey: string;
-  defaultLabel: string;
-  command: string;
-  danger?: boolean;
-}
-
-const ACTION_CATALOG: ActionCommand[] = [
+const REMOTE_ACTION_CATALOG: ActionCommand[] = [
   { key: 'ver',       labelKey: 'meshcore.remoteConsole.action.ver',       defaultLabel: 'Version',  command: 'ver' },
   { key: 'stats',     labelKey: 'meshcore.remoteConsole.action.stats',     defaultLabel: 'Stats',    command: 'stats' },
   { key: 'neighbors', labelKey: 'meshcore.remoteConsole.action.neighbors', defaultLabel: 'Neighbors', command: 'neighbors' },
@@ -50,18 +40,6 @@ const ACTION_CATALOG: ActionCommand[] = [
   { key: 'advert',    labelKey: 'meshcore.remoteConsole.action.advert',    defaultLabel: 'Send advert', command: 'advert' },
   { key: 'reboot',    labelKey: 'meshcore.remoteConsole.action.reboot',    defaultLabel: 'Reboot',   command: 'reboot', danger: true },
 ];
-
-/** Server-enforced regex for danger commands. Keep this in sync with the
- *  identically-named pattern in meshcoreRoutes.ts so the client can decide
- *  to open the confirmation modal even for free-typed commands. */
-const DANGER_COMMAND_PATTERN = /(reboot|erase|clkreboot|factory)/i;
-
-interface TranscriptEntry {
-  id: string;
-  kind: 'sent' | 'reply' | 'error' | 'info';
-  text: string;
-  ts: number;
-}
 
 interface CapabilitySnapshot {
   canRemember: boolean;
@@ -74,10 +52,8 @@ interface CapabilitySnapshot {
 interface MeshCoreRemoteConsoleProps {
   /** Full 64-char hex public key of the target contact. */
   publicKey: string;
-  /** Display name (for log lines). */
+  /** Display name (for log lines and the danger-confirm modal). */
   contactName: string;
-  /** Action callbacks from useMeshCore. We pull only the four we need so
-   *  this component is easy to host in tests without a full hook. */
   actions: Pick<
     MeshCoreActions,
     | 'loginRemote'
@@ -89,11 +65,6 @@ interface MeshCoreRemoteConsoleProps {
   >;
 }
 
-const nextId = (() => {
-  let counter = 0;
-  return () => `${Date.now()}-${counter++}`;
-})();
-
 export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   publicKey,
   contactName,
@@ -102,38 +73,24 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   const { t } = useTranslation();
   const [capability, setCapability] = useState<CapabilitySnapshot | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
-  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
-  const [command, setCommand] = useState('');
-  const [sending, setSending] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [loginPassword, setLoginPassword] = useState('');
   const [rememberPassword, setRememberPassword] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  // Danger-command confirmation state. Set when the user clicks a danger
-  // button OR presses Send while the typed command matches the danger
-  // regex. Stays null until the user explicitly opens the flow.
-  const [dangerConfirm, setDangerConfirm] = useState<null | { command: string; typedName: string }>(null);
+  // Imperative handle into the body — used to push "Logged in" info
+  // lines into the transcript without lifting transcript state.
+  const bodyRef = useRef<CliConsoleBodyHandle | null>(null);
 
-  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
-
-  // Auto-scroll the transcript when new entries arrive.
-  useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [transcript]);
-
-  // Reset state whenever the targeted contact changes — a stale "logged
+  // Reset auth state when the targeted contact changes — a stale "logged
   // in" badge against the wrong contact would be actively misleading.
   useEffect(() => {
     setLoggedIn(false);
-    setTranscript([]);
-    setCommand('');
     setShowLogin(false);
     setLoginPassword('');
     setRememberPassword(false);
     setLoginError(null);
-    setDangerConfirm(null);
   }, [publicKey]);
 
   const refreshCapability = useCallback(async () => {
@@ -144,8 +101,7 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
 
   // On mount (and on contact change): fetch capability, and if this
   // contact has a non-rotated stored credential, silently attempt
-  // auto-login. The plaintext password stays server-side throughout —
-  // see POST /admin/login-with-saved for the no-frontend-exposure flow.
+  // auto-login. The plaintext password stays server-side throughout.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -155,25 +111,14 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
       const isStored = cap.stored?.some((s) => s.publicKey.toLowerCase() === target);
       const isRotated = cap.rotated?.some((r) => r.publicKey.toLowerCase() === target);
       if (!isStored || isRotated) return;
-      // Try silent auto-login. Don't block the UI or open the modal.
       const result = await actions.loginRemoteWithSaved(publicKey);
       if (cancelled) return;
       if (result.success) {
         setLoggedIn(true);
-        setTranscript((prev) => [
-          ...prev,
-          {
-            id: nextId(),
-            ts: Date.now(),
-            kind: 'info',
-            text: t(
-              'meshcore.remoteConsole.auto_login_success',
-              'Logged in with saved password',
-            ),
-          },
-        ]);
+        bodyRef.current?.appendInfo(
+          t('meshcore.remoteConsole.auto_login_success', 'Logged in with saved password'),
+        );
       } else if (result.code === 'CREDENTIAL_KEY_ROTATED') {
-        // Pull capability again so the rotated banner shows for this contact.
         void refreshCapability();
       }
       // NO_STORED_CREDENTIAL / STORED_CREDENTIAL_REJECTED → silently fall
@@ -183,16 +128,6 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
       cancelled = true;
     };
   }, [publicKey, actions, refreshCapability, t]);
-
-  const appendTranscript = useCallback((entry: Omit<TranscriptEntry, 'id' | 'ts'>) => {
-    setTranscript((prev) => [
-      ...prev,
-      { id: nextId(), ts: Date.now(), ...entry },
-    ]);
-  }, []);
-
-  const isRotatedForThisContact =
-    capability?.rotated.some((r) => r.publicKey.toLowerCase() === publicKey.toLowerCase()) ?? false;
 
   const handleLogin = useCallback(async () => {
     setLoginBusy(true);
@@ -210,77 +145,31 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
     setLoggedIn(true);
     setShowLogin(false);
     setLoginPassword('');
-    appendTranscript({
-      kind: 'info',
-      text: result.persisted
+    bodyRef.current?.appendInfo(
+      result.persisted
         ? t('meshcore.remoteConsole.login_success_persisted', 'Logged in — password saved on this server')
         : t('meshcore.remoteConsole.login_success', 'Logged in'),
-    });
-    // Re-pull capability so the rotated list reflects any new persistence.
+    );
     void refreshCapability();
-  }, [actions, appendTranscript, loginPassword, publicKey, refreshCapability, rememberPassword, t]);
-
-  const runCommand = useCallback(async (cmd: string, opts?: { confirm?: boolean }) => {
-    if (sending) return;
-    setSending(true);
-    appendTranscript({ kind: 'sent', text: cmd });
-    setCommand('');
-    const result = await actions.sendCliCommand(publicKey, cmd, opts);
-    setSending(false);
-    if (result.ok) {
-      appendTranscript({ kind: 'reply', text: result.reply || '(empty reply)' });
-    } else {
-      // 401-shaped responses can indicate session eviction on the remote
-      // (the ACL slot was reused or the device rebooted). Hint that.
-      const hint =
-        result.code === 'CLI_TIMEOUT'
-          ? t(
-              'meshcore.remoteConsole.timeout_hint',
-              ' — the remote did not reply. Path may be stale, or the admin session may have expired.',
-            )
-          : '';
-      appendTranscript({ kind: 'error', text: `${result.error}${hint}` });
-    }
-  }, [actions, appendTranscript, publicKey, sending, t]);
-
-  const handleSend = useCallback(async () => {
-    const trimmed = command.trim();
-    if (!trimmed || sending) return;
-    // Free-typed danger command — route through the confirm modal even
-    // when the user typed it manually instead of clicking the button.
-    if (DANGER_COMMAND_PATTERN.test(trimmed)) {
-      setDangerConfirm({ command: trimmed, typedName: '' });
-      return;
-    }
-    await runCommand(trimmed);
-  }, [command, runCommand, sending]);
-
-  const handleActionClick = useCallback((action: ActionCommand) => {
-    if (action.danger) {
-      setDangerConfirm({ command: action.command, typedName: '' });
-      return;
-    }
-    // Pre-fill the input so the user can review/edit before pressing Send.
-    setCommand(action.command);
-  }, []);
-
-  const handleDangerConfirm = useCallback(async () => {
-    if (!dangerConfirm) return;
-    const cmd = dangerConfirm.command;
-    setDangerConfirm(null);
-    await runCommand(cmd, { confirm: true });
-  }, [dangerConfirm, runCommand]);
+  }, [actions, loginPassword, publicKey, refreshCapability, rememberPassword, t]);
 
   const handleForgetCredential = useCallback(async () => {
     const ok = await actions.forgetRemoteCredential(publicKey);
-    appendTranscript({
-      kind: 'info',
-      text: ok
+    bodyRef.current?.appendInfo(
+      ok
         ? t('meshcore.remoteConsole.credential_forgotten', 'Stored password forgotten')
         : t('meshcore.remoteConsole.credential_forget_failed', 'Failed to forget stored password'),
-    });
+    );
     void refreshCapability();
-  }, [actions, appendTranscript, publicKey, refreshCapability, t]);
+  }, [actions, publicKey, refreshCapability, t]);
+
+  const isRotatedForThisContact =
+    capability?.rotated.some((r) => r.publicKey.toLowerCase() === publicKey.toLowerCase()) ?? false;
+
+  const runCommand = useCallback(
+    (text: string, opts?: { confirm?: boolean }) => actions.sendCliCommand(publicKey, text, opts),
+    [actions, publicKey],
+  );
 
   return (
     <section className="meshcore-remote-console" aria-label={t('meshcore.remoteConsole.title', 'Remote administration')}>
@@ -318,10 +207,7 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
 
       {capability && !capability.canRemember && (
         <div className="mrc-banner mrc-banner-info" role="status">
-          {t(
-            'meshcore.remoteConsole.persistence_disabled_hint',
-            'Saving passwords is disabled. ',
-          )}
+          {t('meshcore.remoteConsole.persistence_disabled_hint', 'Saving passwords is disabled. ')}
           <span className="mrc-muted">{capability.reason}</span>
         </div>
       )}
@@ -345,72 +231,14 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
         />
       )}
 
-      {loggedIn && (
-        <div className="mrc-quick-actions" role="group" aria-label={t('meshcore.remoteConsole.quick_actions', 'Quick actions')}>
-          {ACTION_CATALOG.map((action) => (
-            <button
-              key={action.key}
-              type="button"
-              className={action.danger ? 'mrc-btn-danger' : 'mrc-btn-quick'}
-              onClick={() => handleActionClick(action)}
-              disabled={sending}
-              title={action.command}
-            >
-              {t(action.labelKey, action.defaultLabel)}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="mrc-transcript" role="log" aria-live="polite">
-        {transcript.length === 0 ? (
-          <p className="mrc-transcript-empty">
-            {loggedIn
-              ? t('meshcore.remoteConsole.empty_logged_in', 'Type a command below and press Send.')
-              : t('meshcore.remoteConsole.empty_logged_out', 'Log in to begin sending commands.')}
-          </p>
-        ) : (
-          transcript.map((entry) => (
-            <div key={entry.id} className={`mrc-line mrc-line-${entry.kind}`}>
-              <span className="mrc-line-prefix">{prefixFor(entry.kind)}</span>
-              <pre className="mrc-line-text">{entry.text}</pre>
-            </div>
-          ))
-        )}
-        <div ref={transcriptEndRef} />
-      </div>
-
-      <form
-        className="mrc-input-row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void handleSend();
-        }}
-      >
-        <input
-          type="text"
-          value={command}
-          onChange={(e) => setCommand(e.target.value)}
-          placeholder={
-            loggedIn
-              ? t('meshcore.remoteConsole.command_placeholder', 'Type a command (e.g. ver, stats, neighbors)')
-              : t('meshcore.remoteConsole.command_placeholder_logged_out', 'Log in first')
-          }
-          disabled={!loggedIn || sending}
-          className="mrc-input"
-          spellCheck={false}
-          autoComplete="off"
-        />
-        <button
-          type="submit"
-          disabled={!loggedIn || sending || command.trim().length === 0}
-          className="mrc-btn-primary"
-        >
-          {sending
-            ? t('meshcore.remoteConsole.sending', 'Sending…')
-            : t('meshcore.remoteConsole.send', 'Send')}
-        </button>
-      </form>
+      <CliConsoleBody
+        ref={bodyRef}
+        targetId={publicKey}
+        targetName={contactName}
+        runCommand={runCommand}
+        actionCatalog={loggedIn ? REMOTE_ACTION_CATALOG : []}
+        disabled={!loggedIn}
+      />
 
       {showLogin && (
         <div
@@ -477,65 +305,6 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
           </div>
         </div>
       )}
-
-      {dangerConfirm && (
-        <div
-          className="mrc-modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="mrc-danger-title"
-          onClick={() => setDangerConfirm(null)}
-        >
-          <div className="mrc-modal mrc-modal-danger" onClick={(e) => e.stopPropagation()}>
-            <h4 id="mrc-danger-title">
-              {t('meshcore.remoteConsole.danger_modal_title', 'Confirm destructive command')}
-            </h4>
-            <p className="mrc-modal-body">
-              {t(
-                'meshcore.remoteConsole.danger_modal_body',
-                'You are about to send "{{command}}" to {{name}}. This action may interrupt the remote node. Type the contact name to confirm:',
-                { command: dangerConfirm.command, name: contactName },
-              )}
-            </p>
-            <input
-              type="text"
-              value={dangerConfirm.typedName}
-              onChange={(e) => setDangerConfirm({ ...dangerConfirm, typedName: e.target.value })}
-              className="mrc-input"
-              autoFocus
-              spellCheck={false}
-              autoComplete="off"
-              placeholder={contactName}
-            />
-            <div className="mrc-modal-actions">
-              <button
-                type="button"
-                className="mrc-btn-secondary"
-                onClick={() => setDangerConfirm(null)}
-              >
-                {t('meshcore.remoteConsole.cancel', 'Cancel')}
-              </button>
-              <button
-                type="button"
-                className="mrc-btn-danger"
-                onClick={() => void handleDangerConfirm()}
-                disabled={dangerConfirm.typedName !== contactName}
-              >
-                {t('meshcore.remoteConsole.danger_confirm', 'Send {{command}}', { command: dangerConfirm.command })}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </section>
   );
 };
-
-function prefixFor(kind: TranscriptEntry['kind']): string {
-  switch (kind) {
-    case 'sent': return '>';
-    case 'reply': return '<';
-    case 'error': return '!';
-    case 'info': return '*';
-  }
-}

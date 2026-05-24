@@ -838,6 +838,77 @@ router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermissio
 });
 
 /**
+ * POST /api/meshcore/cli
+ *
+ * Send a CLI command to the LOCALLY connected MeshCore node. Returns the
+ * device's response text.
+ *
+ * Body: { command: string, confirm?: boolean, timeoutMs?: number }
+ *
+ * Dispatch depends on the local firmware (see
+ * `MeshCoreManager.sendLocalCliCommand`):
+ *   - Repeater / Room Server: forwarded to the device's native text CLI
+ *     over serial.
+ *   - Companion: handled by a small synthetic-CLI interpreter that
+ *     covers ver / stats / clock / advert / help. Unknown commands
+ *     return a usage hint.
+ *
+ * Reuses the same `DANGER_COMMAND_PATTERN` guard as the remote /admin/cli
+ * route — destructive verbs (reboot / erase / clkreboot / factory)
+ * require `confirm: true`.
+ *
+ * Gated on `configuration:write` per-source — matches the existing
+ * local-device config routes (`/config/name`, `/config/radio`, etc.).
+ */
+router.post('/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { command, confirm, timeoutMs } = req.body as {
+      command?: string;
+      confirm?: boolean;
+      timeoutMs?: number;
+    };
+
+    if (typeof command !== 'string' || command.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'command must be a non-empty string' });
+    }
+    if (command.length > 230) {
+      return res.status(400).json({ success: false, error: 'command too long (max 230 bytes)' });
+    }
+    if (DANGER_COMMAND_PATTERN.test(command) && confirm !== true) {
+      return res.status(400).json({
+        success: false,
+        error: 'Destructive command requires confirm:true in the request body',
+        code: 'DANGER_CONFIRM_REQUIRED',
+      });
+    }
+    const effectiveTimeout =
+      typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0 && timeoutMs <= 60_000
+        ? timeoutMs
+        : undefined;
+
+    try {
+      const result = await managerFor(req).sendLocalCliCommand(command, {
+        timeoutMs: effectiveTimeout,
+      });
+      res.json({ success: true, data: result });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/timed out/i.test(msg)) {
+        return res.status(504).json({ success: false, error: msg, code: 'CLI_TIMEOUT' });
+      }
+      if (/not connected|not available for this device type|Serial port not open/i.test(msg)) {
+        return res.status(400).json({ success: false, error: msg });
+      }
+      logger.error('[API] Local CLI command failed:', err);
+      res.status(502).json({ success: false, error: msg });
+    }
+  } catch (error) {
+    logger.error('[API] Unexpected error in /cli:', error);
+    res.status(500).json({ success: false, error: 'CLI error' });
+  }
+});
+
+/**
  * GET /api/meshcore/admin/credentials-capability
  *
  * Reports whether the server can persist MeshCore admin passwords. The
