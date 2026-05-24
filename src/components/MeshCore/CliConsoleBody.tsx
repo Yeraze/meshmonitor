@@ -112,11 +112,21 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
   ref,
 ) {
   const { t } = useTranslation();
+  // Transcript is restored from sessionStorage on mount via the targetId
+  // effect below, so a page refresh in the middle of a session doesn't
+  // wipe the user's context. The initial state stays [] and the effect
+  // overwrites it with whatever's saved for the current target.
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [command, setCommand] = useState('');
   const [sending, setSending] = useState(false);
   const [dangerConfirm, setDangerConfirm] = useState<null | { command: string; typedName: string }>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Hard cap on persisted transcript size. Generous enough for a long
+  // working session; tight enough that worst-case sessionStorage doesn't
+  // blow up. When the buffer overflows we drop the oldest entries.
+  const TRANSCRIPT_MAX = 200;
+  const storageKeyFor = (id: string) => `meshcore-cli-transcript:${id}`;
 
   // Command history — ↑/↓ in the input row cycle through previously-sent
   // commands. Cap at 50 to keep the buffer bounded; oldest entries are
@@ -134,13 +144,41 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [transcript]);
 
-  // Reset transcript whenever the target changes — a stale transcript
-  // labelled with a different target would be confusing.
+  // Restore transcript when the target changes. Each target gets its own
+  // sessionStorage slot so switching contacts doesn't bleed one history
+  // into another. On any restore failure (corrupt JSON, quota error,
+  // sessionStorage unavailable) silently fall back to an empty transcript
+  // — a non-fatal annoyance is much better than a thrown render.
   useEffect(() => {
-    setTranscript([]);
+    let restored: TranscriptEntry[] = [];
+    try {
+      const raw = sessionStorage.getItem(storageKeyFor(targetId));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) restored = parsed as TranscriptEntry[];
+      }
+    } catch {
+      // sessionStorage may be unavailable (private mode, quota, server-
+      // side render). Treat as "nothing saved" and move on.
+    }
+    setTranscript(restored);
     setCommand('');
     setDangerConfirm(null);
   }, [targetId]);
+
+  // Persist on every transcript change. Cap at TRANSCRIPT_MAX so a long
+  // session can't fill sessionStorage. Swallow quota errors — the
+  // in-memory transcript is the source of truth; persistence is a nicety.
+  useEffect(() => {
+    try {
+      const slice = transcript.length > TRANSCRIPT_MAX
+        ? transcript.slice(transcript.length - TRANSCRIPT_MAX)
+        : transcript;
+      sessionStorage.setItem(storageKeyFor(targetId), JSON.stringify(slice));
+    } catch {
+      // ignore (private mode / quota / SSR)
+    }
+  }, [transcript, targetId]);
 
   const appendTranscript = useCallback((entry: Omit<TranscriptEntry, 'id' | 'ts'>) => {
     setTranscript((prev) => [...prev, { id: nextId(), ts: Date.now(), ...entry }]);
@@ -178,7 +216,14 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
 
   useImperativeHandle(ref, () => ({
     appendInfo: (text: string) => appendTranscript({ kind: 'info', text }),
-    clear: () => setTranscript([]),
+    clear: () => {
+      setTranscript([]);
+      try {
+        sessionStorage.removeItem(storageKeyFor(targetId));
+      } catch {
+        // ignore — in-memory clear is what matters
+      }
+    },
     runCommand: (cmd: string, opts?: { confirm?: boolean }) => runAndLog(cmd, opts),
   }), [appendTranscript, runAndLog]);
 

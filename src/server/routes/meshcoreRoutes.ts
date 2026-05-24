@@ -105,6 +105,34 @@ function isValidPublicKey(key: string | undefined): boolean {
 }
 
 /**
+ * Fire-and-forget audit log helper for MeshCore admin / CLI routes.
+ *
+ * Matches the project's existing auditLogAsync usage: userId may be null
+ * for anonymous, `action` is a verb naming the operation, `resource` is
+ * one of the permission resources, and `details` is a JSON-serialized
+ * object with whatever's relevant.
+ *
+ * **NEVER pass a password (or any decrypted credential) in `details`.**
+ * The login routes call this only after stripping `password`,
+ * `rememberPassword`, and the decrypted plaintext from the body.
+ *
+ * Errors from the audit write itself are swallowed — losing a single
+ * audit row is preferable to failing the request the user cares about.
+ */
+function auditMeshcoreEvent(
+  req: Request,
+  action: string,
+  resource: 'remote_admin' | 'configuration',
+  details: Record<string, unknown>,
+): void {
+  const userId = req.session?.userId ?? null;
+  const ip = req.ip || req.socket?.remoteAddress || null;
+  databaseService
+    .auditLogAsync(userId, action, resource, JSON.stringify(details), ip)
+    .catch((err) => logger.error('[API] audit write failed:', err));
+}
+
+/**
  * Parse a comma-separated hex chain like "a3,7f,02" into a Uint8Array.
  * Empty string parses to a zero-length array (zero-hop direct path).
  * Returns null on any malformed token so the route can return a 400.
@@ -745,6 +773,10 @@ router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
 
     const success = await managerFor(req).loginToNode(publicKey, password);
     if (!success) {
+      auditMeshcoreEvent(req, 'meshcore_remote_login_failed', 'remote_admin', {
+        sourceId,
+        publicKey,
+      });
       return res.status(401).json({ success: false, error: 'Login failed' });
     }
 
@@ -753,15 +785,31 @@ router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
         await store.store(sourceId, publicKey, password);
       } catch (err) {
         logger.warn('[API] Login succeeded but credential persistence failed:', err);
+        auditMeshcoreEvent(req, 'meshcore_remote_login', 'remote_admin', {
+          sourceId,
+          publicKey,
+          persisted: false,
+          persistenceError: err instanceof Error ? err.message : String(err),
+        });
         return res.json({
           success: true,
           message: 'Login successful, but saving the password failed',
           persisted: false,
         });
       }
+      auditMeshcoreEvent(req, 'meshcore_remote_login', 'remote_admin', {
+        sourceId,
+        publicKey,
+        persisted: true,
+      });
       return res.json({ success: true, message: 'Login successful', persisted: true });
     }
 
+    auditMeshcoreEvent(req, 'meshcore_remote_login', 'remote_admin', {
+      sourceId,
+      publicKey,
+      persisted: false,
+    });
     res.json({ success: true, message: 'Login successful', persisted: false });
   } catch (error) {
     logger.error('[API] Error logging in:', error);
@@ -804,6 +852,12 @@ router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermissio
     // simply not rendering it. Keep the pattern in sync with the
     // client-side DANGER_COMMAND_PATTERN in MeshCoreRemoteConsole.tsx.
     if (DANGER_COMMAND_PATTERN.test(command) && confirm !== true) {
+      auditMeshcoreEvent(req, 'meshcore_remote_cli_blocked', 'remote_admin', {
+        sourceId: req.params.id,
+        publicKey,
+        command,
+        reason: 'DANGER_CONFIRM_REQUIRED',
+      });
       return res.status(400).json({
         success: false,
         error: 'Destructive command requires confirm:true in the request body',
@@ -819,9 +873,23 @@ router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermissio
       const result = await managerFor(req).sendCliCommand(publicKey, command, {
         timeoutMs: effectiveTimeout,
       });
+      auditMeshcoreEvent(req, 'meshcore_remote_cli', 'remote_admin', {
+        sourceId: req.params.id,
+        publicKey,
+        command,
+        confirm: confirm === true,
+        replyChars: result.reply?.length ?? 0,
+        elapsedMs: result.elapsedMs,
+      });
       res.json({ success: true, data: result });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      auditMeshcoreEvent(req, 'meshcore_remote_cli_failed', 'remote_admin', {
+        sourceId: req.params.id,
+        publicKey,
+        command,
+        error: msg,
+      });
       if (/timed out/i.test(msg)) {
         return res.status(504).json({ success: false, error: msg, code: 'CLI_TIMEOUT' });
       }
@@ -875,6 +943,11 @@ router.post('/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('con
       return res.status(400).json({ success: false, error: 'command too long (max 230 bytes)' });
     }
     if (DANGER_COMMAND_PATTERN.test(command) && confirm !== true) {
+      auditMeshcoreEvent(req, 'meshcore_local_cli_blocked', 'configuration', {
+        sourceId: req.params.id,
+        command,
+        reason: 'DANGER_CONFIRM_REQUIRED',
+      });
       return res.status(400).json({
         success: false,
         error: 'Destructive command requires confirm:true in the request body',
@@ -890,9 +963,21 @@ router.post('/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('con
       const result = await managerFor(req).sendLocalCliCommand(command, {
         timeoutMs: effectiveTimeout,
       });
+      auditMeshcoreEvent(req, 'meshcore_local_cli', 'configuration', {
+        sourceId: req.params.id,
+        command,
+        confirm: confirm === true,
+        replyChars: result.reply?.length ?? 0,
+        elapsedMs: result.elapsedMs,
+      });
       res.json({ success: true, data: result });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      auditMeshcoreEvent(req, 'meshcore_local_cli_failed', 'configuration', {
+        sourceId: req.params.id,
+        command,
+        error: msg,
+      });
       if (/timed out/i.test(msg)) {
         return res.status(504).json({ success: false, error: msg, code: 'CLI_TIMEOUT' });
       }
@@ -982,9 +1067,15 @@ router.post('/admin/login-with-saved', meshcoreDeviceLimiter, requireAuth(), req
     const store = getMeshCoreCredentialStore();
     const result = await store.load(sourceId, publicKey);
     if (result.kind === 'none') {
+      auditMeshcoreEvent(req, 'meshcore_remote_login_saved_failed', 'remote_admin', {
+        sourceId, publicKey, code: 'NO_STORED_CREDENTIAL',
+      });
       return res.status(404).json({ success: false, error: 'No saved credential for this node', code: 'NO_STORED_CREDENTIAL' });
     }
     if (result.kind === 'key_rotated') {
+      auditMeshcoreEvent(req, 'meshcore_remote_login_saved_failed', 'remote_admin', {
+        sourceId, publicKey, code: 'CREDENTIAL_KEY_ROTATED',
+      });
       return res.status(410).json({
         success: false,
         error: 'Saved credential was encrypted with a previous SESSION_SECRET',
@@ -997,8 +1088,14 @@ router.post('/admin/login-with-saved', meshcoreDeviceLimiter, requireAuth(), req
     // log it, do not echo it, do not include it in any response field.
     const ok = await managerFor(req).loginToNode(publicKey, result.password);
     if (!ok) {
+      auditMeshcoreEvent(req, 'meshcore_remote_login_saved_failed', 'remote_admin', {
+        sourceId, publicKey, code: 'STORED_CREDENTIAL_REJECTED',
+      });
       return res.status(401).json({ success: false, error: 'Saved credential rejected by the remote', code: 'STORED_CREDENTIAL_REJECTED' });
     }
+    auditMeshcoreEvent(req, 'meshcore_remote_login_saved', 'remote_admin', {
+      sourceId, publicKey,
+    });
     res.json({ success: true, usedStored: true });
   } catch (error) {
     logger.error('[API] Error in login-with-saved:', error);
@@ -1018,6 +1115,9 @@ router.delete('/admin/credentials/:publicKey', requireAuth(), requirePermission(
       return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
     }
     await getMeshCoreCredentialStore().clear(sourceId, publicKey);
+    auditMeshcoreEvent(req, 'meshcore_credential_forget', 'remote_admin', {
+      sourceId, publicKey,
+    });
     res.json({ success: true });
   } catch (error) {
     logger.error('[API] Error clearing credential:', error);
