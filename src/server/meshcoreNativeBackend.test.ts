@@ -958,6 +958,38 @@ describe('formatOutPath', () => {
   it('returns empty string when every reported byte is 0x00 padding', () => {
     expect(formatOutPath(new Uint8Array(64), 8)).toEqual({ outPathHex: '', pathLen: 0 });
   });
+
+  it('groups bytes into 2-byte hops when hopHashBytes=2', () => {
+    const buf = new Uint8Array(64);
+    buf[0] = 0xad; buf[1] = 0xb0; buf[2] = 0x12; buf[3] = 0x34;
+    expect(formatOutPath(buf, 4, 2)).toEqual({ outPathHex: 'adb0,1234', pathLen: 2 });
+  });
+
+  it('groups bytes into 3-byte hops when hopHashBytes=3', () => {
+    const buf = new Uint8Array(64);
+    buf[0] = 0xad; buf[1] = 0xb0; buf[2] = 0x12; buf[3] = 0x34; buf[4] = 0x56; buf[5] = 0x78;
+    expect(formatOutPath(buf, 6, 3)).toEqual({ outPathHex: 'adb012,345678', pathLen: 2 });
+  });
+
+  it('skips entirely-zero hop chunks at 2-byte width', () => {
+    const buf = new Uint8Array(64);
+    // Real hop at offset 0; zero-padded slot at offset 2; real hop at offset 4.
+    buf[0] = 0xad; buf[1] = 0xb0; buf[4] = 0x12; buf[5] = 0x34;
+    expect(formatOutPath(buf, 6, 2)).toEqual({ outPathHex: 'adb0,1234', pathLen: 2 });
+  });
+
+  it('preserves interior 0x00 bytes inside a wider hop chunk', () => {
+    // 2-byte hop "ad00" is NOT all-zero — must be kept, not stripped.
+    const buf = new Uint8Array(64);
+    buf[0] = 0xad; buf[1] = 0x00; buf[2] = 0x00; buf[3] = 0xb0;
+    expect(formatOutPath(buf, 4, 2)).toEqual({ outPathHex: 'ad00,00b0', pathLen: 2 });
+  });
+
+  it('discards a trailing partial hop that does not fit hopHashBytes', () => {
+    const buf = new Uint8Array(64);
+    buf[0] = 0xad; buf[1] = 0xb0; buf[2] = 0x12;  // 3 bytes, but hop width is 2
+    expect(formatOutPath(buf, 3, 2)).toEqual({ outPathHex: 'adb0', pathLen: 1 });
+  });
 });
 
 // ---------------- Heartbeat tests (manager-level, also using the mock) ----------------
