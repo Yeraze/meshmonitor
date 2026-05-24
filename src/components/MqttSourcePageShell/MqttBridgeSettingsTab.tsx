@@ -32,6 +32,8 @@ interface BridgeSourceResponse {
       topics?: { block?: string[] };
       geo?: { minLat?: number; maxLat?: number; minLng?: number; maxLng?: number };
     };
+    downlinkTopicRewrite?: { from?: string; to?: string };
+    uplinkTopicRewrite?: { from?: string; to?: string };
   };
 }
 
@@ -66,6 +68,14 @@ export function MqttBridgeSettingsTab({ sourceId }: MqttBridgeSettingsTabProps) 
   const [geoMaxLat, setGeoMaxLat] = useState('');
   const [geoMinLng, setGeoMinLng] = useState('');
   const [geoMaxLng, setGeoMaxLng] = useState('');
+
+  // Topic rewriting (#3166) — literal prefix substitution applied at
+  // publish time. Each direction is independent; empty fields disable
+  // that direction.
+  const [downlinkRewriteFrom, setDownlinkRewriteFrom] = useState('');
+  const [downlinkRewriteTo, setDownlinkRewriteTo] = useState('');
+  const [uplinkRewriteFrom, setUplinkRewriteFrom] = useState('');
+  const [uplinkRewriteTo, setUplinkRewriteTo] = useState('');
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -104,6 +114,13 @@ export function MqttBridgeSettingsTab({ sourceId }: MqttBridgeSettingsTabProps) 
         setGeoMaxLat(geo.maxLat != null ? String(geo.maxLat) : '');
         setGeoMinLng(geo.minLng != null ? String(geo.minLng) : '');
         setGeoMaxLng(geo.maxLng != null ? String(geo.maxLng) : '');
+
+        const dlRewrite = data.config?.downlinkTopicRewrite ?? {};
+        setDownlinkRewriteFrom(dlRewrite.from ?? '');
+        setDownlinkRewriteTo(dlRewrite.to ?? '');
+        const ulRewrite = data.config?.uplinkTopicRewrite ?? {};
+        setUplinkRewriteFrom(ulRewrite.from ?? '');
+        setUplinkRewriteTo(ulRewrite.to ?? '');
 
         setAvailableBrokers(listData.filter((s) => s.type === 'mqtt_broker'));
       } catch (err) {
@@ -161,6 +178,29 @@ export function MqttBridgeSettingsTab({ sourceId }: MqttBridgeSettingsTabProps) 
     if (block.length > 0) downlinkFilters.topics = { block };
     if (Object.keys(geo).length > 0) downlinkFilters.geo = geo;
 
+    // Topic rewriting (#3166) — server-side validator rejects rewrite
+    // fields on standalone bridges, so omit them entirely when there's
+    // no parent broker selected. Either direction is independent: omit
+    // when both from and to are empty after trim.
+    const dlFrom = downlinkRewriteFrom.trim();
+    const dlTo = downlinkRewriteTo.trim();
+    const ulFrom = uplinkRewriteFrom.trim();
+    const ulTo = uplinkRewriteTo.trim();
+    const wantDownlinkRewrite = brokerSourceId && (dlFrom || dlTo);
+    const wantUplinkRewrite = brokerSourceId && (ulFrom || ulTo);
+    if (wantDownlinkRewrite && (!dlFrom || !dlTo)) {
+      setSaveError(
+        t('source.form.error_rewrite_incomplete', 'Both from and to are required when a topic rewrite is set'),
+      );
+      return;
+    }
+    if (wantUplinkRewrite && (!ulFrom || !ulTo)) {
+      setSaveError(
+        t('source.form.error_rewrite_incomplete', 'Both from and to are required when a topic rewrite is set'),
+      );
+      return;
+    }
+
     const cfg: Record<string, unknown> = {
       ...(brokerSourceId ? { brokerSourceId } : {}),
       upstream: {
@@ -170,6 +210,8 @@ export function MqttBridgeSettingsTab({ sourceId }: MqttBridgeSettingsTabProps) 
       },
       subscriptions: subs.length > 0 ? subs : ['msh/#'],
       ...(Object.keys(downlinkFilters).length > 0 ? { downlinkFilters } : {}),
+      ...(wantDownlinkRewrite ? { downlinkTopicRewrite: { from: dlFrom, to: dlTo } } : {}),
+      ...(wantUplinkRewrite ? { uplinkTopicRewrite: { from: ulFrom, to: ulTo } } : {}),
     };
 
     setSaving(true);
@@ -438,12 +480,109 @@ export function MqttBridgeSettingsTab({ sourceId }: MqttBridgeSettingsTabProps) 
       )}
 
       <h3>{t('source.form.topic_rewrite_section', 'Topic rewriting')}</h3>
-      <p className="mqtt-settings-placeholder">
+      <p className="mqtt-settings-hint">
         {t(
-          'source.form.topic_rewrite_placeholder',
-          'Coming soon — bridge between meshes that use different MQTT root topics (e.g. msh/US/LA ↔ msh/US/TX). See issue #3166.',
+          'source.form.topic_rewrite_intro',
+          'Literal prefix replacement applied at publish time. Use this to bridge between meshes that publish under different MQTT root topics. Leave blank to disable.',
         )}
       </p>
+      {standalone ? (
+        <p className="mqtt-settings-readonly">
+          {t(
+            'source.form.topic_rewrite_standalone_warning',
+            'Topic rewriting requires a parent broker — attach one above to enable these fields.',
+          )}
+        </p>
+      ) : (
+        <>
+          <div className="mqtt-settings-field">
+            <label>
+              {t('source.form.topic_rewrite_downlink', 'Downlink (upstream → local broker)')}
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div>
+                <label htmlFor="bridge-rewrite-dl-from">
+                  {t('source.form.topic_rewrite_from', 'From prefix')}
+                </label>
+                <input
+                  id="bridge-rewrite-dl-from"
+                  type="text"
+                  value={downlinkRewriteFrom}
+                  onChange={(e) => setDownlinkRewriteFrom(e.target.value)}
+                  disabled={disabled}
+                  placeholder="msh/US/TX"
+                />
+              </div>
+              <div>
+                <label htmlFor="bridge-rewrite-dl-to">
+                  {t('source.form.topic_rewrite_to', 'To prefix')}
+                </label>
+                <input
+                  id="bridge-rewrite-dl-to"
+                  type="text"
+                  value={downlinkRewriteTo}
+                  onChange={(e) => setDownlinkRewriteTo(e.target.value)}
+                  disabled={disabled}
+                  placeholder="msh/US/LA"
+                />
+              </div>
+            </div>
+            <p className="mqtt-settings-hint">
+              {t(
+                'source.form.topic_rewrite_downlink_hint',
+                'Inbound packets whose topic starts with the From prefix are republished to the parent broker under the To prefix. Ingestion and filters still use the original topic.',
+              )}
+            </p>
+          </div>
+
+          <div className="mqtt-settings-field">
+            <label>
+              {t('source.form.topic_rewrite_uplink', 'Uplink (local broker → upstream)')}
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div>
+                <label htmlFor="bridge-rewrite-ul-from">
+                  {t('source.form.topic_rewrite_from', 'From prefix')}
+                </label>
+                <input
+                  id="bridge-rewrite-ul-from"
+                  type="text"
+                  value={uplinkRewriteFrom}
+                  onChange={(e) => setUplinkRewriteFrom(e.target.value)}
+                  disabled={disabled}
+                  placeholder="msh/US/LA"
+                />
+              </div>
+              <div>
+                <label htmlFor="bridge-rewrite-ul-to">
+                  {t('source.form.topic_rewrite_to', 'To prefix')}
+                </label>
+                <input
+                  id="bridge-rewrite-ul-to"
+                  type="text"
+                  value={uplinkRewriteTo}
+                  onChange={(e) => setUplinkRewriteTo(e.target.value)}
+                  disabled={disabled}
+                  placeholder="msh/US/TX"
+                />
+              </div>
+            </div>
+            <p className="mqtt-settings-hint">
+              {t(
+                'source.form.topic_rewrite_uplink_hint',
+                'Outbound packets from the parent broker whose topic starts with the From prefix are published upstream under the To prefix.',
+              )}
+            </p>
+          </div>
+
+          <p className="mqtt-settings-hint">
+            {t(
+              'source.form.topic_rewrite_caveats',
+              'Caveats: rewriting moves bytes, not encryption — the channel PSK must match between meshes for inter-mesh packets to decode. Pair with the broker\'s "Zero-hop injection" setting to keep cross-bridged packets from triggering extra RF hops. Literal prefix only (no MQTT + / # wildcards).',
+            )}
+          </p>
+        </>
+      )}
 
       {saveError && <p className="mqtt-settings-error">{saveError}</p>}
 

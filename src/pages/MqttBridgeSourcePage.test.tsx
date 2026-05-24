@@ -154,13 +154,15 @@ describe('MqttBridgeSourcePage', () => {
     expect(screen.getByLabelText('Upstream topics')).toHaveValue('msh/US/TX/#');
   });
 
-  it('shows the topic-rewrite placeholder ahead of PR B', async () => {
+  it('renders topic-rewrite fields for attached bridges (#3166)', async () => {
     authValue.hasPermission = () => true;
     renderPage();
     fireEvent.click(await screen.findByRole('tab', { name: 'Settings' }));
-    expect(
-      await screen.findByText(/Coming soon — bridge between meshes/),
-    ).toBeInTheDocument();
+    // Two from/to pairs (downlink + uplink) — at least one each.
+    await waitFor(() => {
+      expect(screen.getAllByLabelText('From prefix').length).toBeGreaterThanOrEqual(2);
+    });
+    expect(screen.getAllByLabelText('To prefix').length).toBeGreaterThanOrEqual(2);
   });
 
   it('hides the surface when connection:read is denied', async () => {
@@ -169,5 +171,36 @@ describe('MqttBridgeSourcePage', () => {
     expect(
       await screen.findByText('You do not have permission to view this source.'),
     ).toBeInTheDocument();
+  });
+
+  it('shows the standalone-warning when no parent broker is configured (#3166)', async () => {
+    authValue.hasPermission = () => true;
+    // Override the GET to return a standalone bridge.
+    const originalMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    (globalThis.fetch as ReturnType<typeof vi.fn>) = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.endsWith('/api/sources/bridge-1')) {
+        return new Response(
+          JSON.stringify({
+            id: 'bridge-1',
+            name: 'Standalone',
+            type: 'mqtt_bridge',
+            config: {
+              upstream: { url: 'mqtt://x.example.com' },
+              subscriptions: ['msh/#'],
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return originalMock(input, init);
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Settings' }));
+    expect(
+      await screen.findByText(/Topic rewriting requires a parent broker/),
+    ).toBeInTheDocument();
+    // Rewrite inputs must NOT render in the standalone case.
+    expect(screen.queryByLabelText('From prefix')).toBeNull();
   });
 });
