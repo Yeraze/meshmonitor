@@ -29,6 +29,7 @@ interface MeshCoreJsModule {
     SelfAdvertTypes: { ZeroHop: number; Flood: number };
     BinaryRequestTypes: { GetTelemetryData: number };
     AdvType: { None: number; Chat: number; Repeater: number; Room: number };
+    TxtTypes: { Plain: number; CliData: number; SignedPlain: number };
   };
   CayenneLpp: { parse: (bytes: Uint8Array | number[]) => Array<{ channel: number; type: number; value: any }> };
 }
@@ -245,14 +246,23 @@ export class MeshCoreNativeBackend extends EventEmitter {
     if (!this.connection || !this.constants) return;
     const { PushCodes, ResponseCodes } = this.constants;
 
-    // ContactMsgRecv → contact_message
+    // ContactMsgRecv → contact_message (plain DM) OR cli_reply (txtType=CliData).
+    // MeshCore overlays its remote-admin CLI on the same TXT_MSG packet type;
+    // the only distinguisher is the 1-byte txtType field. Routing the two to
+    // separate bridge events keeps CLI output out of the chat log and lets
+    // sendCliCommand correlate replies by source pubkey prefix.
+    const txtTypes = this.constants.TxtTypes;
     this.connection.on(ResponseCodes.ContactMsgRecv, (msg: any) => {
-      this.emitBridgeEvent('contact_message', {
+      const isCliReply =
+        txtTypes && typeof msg.txtType === 'number' && msg.txtType === txtTypes.CliData;
+      const payload = {
         pubkey_prefix: bytesToHex(msg.pubKeyPrefix),
         text: msg.text,
         sender_timestamp: msg.senderTimestamp,
+        txt_type: typeof msg.txtType === 'number' ? msg.txtType : undefined,
         snr: undefined,
-      });
+      };
+      this.emitBridgeEvent(isCliReply ? 'cli_reply' : 'contact_message', payload);
     });
 
     // ChannelMsgRecv → channel_message
@@ -470,6 +480,30 @@ export class MeshCoreNativeBackend extends EventEmitter {
       case 'send_advert':
         await c.sendAdvert(K.SelfAdvertTypes.Flood);
         return { sent: true };
+
+      case 'send_cli': {
+        // Remote-admin: send a CLI command to a distant node as an encrypted
+        // DM with txtType=CliData. The remote runs it through its
+        // CommonCLI::handleCommand() handler and replies as a normal contact
+        // message — also tagged with txtType=CliData — which we route to
+        // 'cli_reply' in the ContactMsgRecv handler above. The send path
+        // itself only resolves on the firmware's 'Sent' push; the reply is
+        // delivered asynchronously and correlated by the manager.
+        const to = params.public_key as string | null | undefined;
+        const text = String(params.text ?? '');
+        if (!to) {
+          throw new Error('send_cli requires public_key');
+        }
+        if (text.length === 0) {
+          throw new Error('send_cli requires non-empty text');
+        }
+        const fullKey = await this.resolvePublicKey(to);
+        if (!fullKey) {
+          throw new Error(`Contact not found for public key ${to.substring(0, 12)}…`);
+        }
+        await c.sendTextMessage(fullKey, text, K.TxtTypes.CliData);
+        return { sent: true };
+      }
 
       case 'login': {
         const publicKey = await this.resolvePublicKey(params.public_key as string);

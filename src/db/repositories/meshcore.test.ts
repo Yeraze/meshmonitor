@@ -47,6 +47,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastTelemetryRequestAt INTEGER,
         out_path TEXT,
         path_len INTEGER,
+        adminCredential TEXT,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       );
@@ -160,6 +161,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastTelemetryRequestAt INTEGER,
         out_path TEXT,
         path_len INTEGER,
+        adminCredential TEXT,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
         PRIMARY KEY (publicKey, sourceId)
@@ -314,6 +316,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastTelemetryRequestAt INTEGER,
         out_path TEXT,
         path_len INTEGER,
+        adminCredential TEXT,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
         PRIMARY KEY (publicKey, sourceId)
@@ -408,6 +411,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastTelemetryRequestAt INTEGER,
         out_path TEXT,
         path_len INTEGER,
+        adminCredential TEXT,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
         PRIMARY KEY (sourceId, publicKey)
@@ -470,6 +474,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastTelemetryRequestAt INTEGER,
         out_path TEXT,
         path_len INTEGER,
+        adminCredential TEXT,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
         PRIMARY KEY (sourceId, publicKey)

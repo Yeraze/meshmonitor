@@ -84,6 +84,7 @@ import { migration as addTransportMechanismToNodesMigration, runMigration066Post
 import { migration as addShowUdpRfNodesToMapPrefsMigration, runMigration067Postgres, runMigration067Mysql } from '../server/migrations/067_add_show_udp_rf_nodes_to_map_prefs.js';
 import { migration as meshcoreNodesOutPathMigration, runMigration068Postgres, runMigration068Mysql } from '../server/migrations/068_meshcore_nodes_out_path.js';
 import { migration as normalizeNodePublicKeysToBase64Migration, runMigration069Postgres, runMigration069Mysql } from '../server/migrations/069_normalize_node_public_keys_to_base64.js';
+import { migration as meshcoreAdminCredentialMigration, runMigration070Postgres, runMigration070Mysql } from '../server/migrations/070_meshcore_admin_credential.js';
 
 // ============================================================================
 // Registry
@@ -1096,4 +1097,22 @@ registry.register({
   sqlite: (db) => normalizeNodePublicKeysToBase64Migration.up(db),
   postgres: (client) => runMigration069Postgres(client),
   mysql: (pool) => runMigration069Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 070: Add `adminCredential` TEXT column to meshcore_nodes for
+// storing AES-256-GCM-encrypted MeshCore admin passwords. Persistence is
+// gated by MeshCoreCredentialStore on SESSION_SECRET being configured (not
+// auto-generated). Stored value is a JSON envelope with KDF version + key
+// fingerprint so a rotated SESSION_SECRET can be detected and surfaced to
+// the user instead of silently failing with an auth-tag error.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 70,
+  name: 'meshcore_admin_credential',
+  settingsKey: 'migration_070_meshcore_admin_credential',
+  sqlite: (db) => meshcoreAdminCredentialMigration.up(db),
+  postgres: (client) => runMigration070Postgres(client),
+  mysql: (pool) => runMigration070Mysql(pool),
 });

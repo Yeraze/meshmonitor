@@ -51,9 +51,13 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
 
   // Admin status
   hasAdminAccess: integer('hasAdminAccess', { mode: 'boolean' }).default(false),
-  // Note: adminPassword intentionally NOT stored - security risk to store plaintext passwords
-  // Users should enter the password each time they need admin access
   lastAdminCheck: integer('lastAdminCheck'),
+  // Optional saved admin password — AES-256-GCM ciphertext + metadata as JSON
+  // (see migration 070 and src/server/services/meshcoreCredentialStore.ts).
+  // NULL means "no saved credential, prompt the user". Persistence is only
+  // offered when SESSION_SECRET was explicitly configured (otherwise the
+  // ciphertext would be unrecoverable across restarts).
+  adminCredential: text('adminCredential'),
 
   // Local node indicator
   isLocalNode: integer('isLocalNode', { mode: 'boolean' }).default(false),
@@ -109,8 +113,8 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   lastHeard: pgBigint('lastHeard', { mode: 'number' }),
 
   hasAdminAccess: pgBoolean('hasAdminAccess').default(false),
-  // Note: adminPassword intentionally NOT stored - security risk
   lastAdminCheck: pgBigint('lastAdminCheck', { mode: 'number' }),
+  adminCredential: pgText('adminCredential'),
 
   isLocalNode: pgBoolean('isLocalNode').default(false),
 
@@ -156,8 +160,8 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   lastHeard: myBigint('lastHeard', { mode: 'number' }),
 
   hasAdminAccess: myBoolean('hasAdminAccess').default(false),
-  // Note: adminPassword intentionally NOT stored - security risk
   lastAdminCheck: myBigint('lastAdminCheck', { mode: 'number' }),
+  adminCredential: myVarchar('adminCredential', { length: 1024 }),
 
   isLocalNode: myBoolean('isLocalNode').default(false),
 
