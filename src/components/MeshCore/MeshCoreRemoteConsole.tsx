@@ -68,6 +68,7 @@ interface CapabilitySnapshot {
   reason?: string;
   rotatedCount: number;
   rotated: Array<{ publicKey: string; name: string | null }>;
+  stored: Array<{ publicKey: string; name: string | null }>;
 }
 
 interface MeshCoreRemoteConsoleProps {
@@ -79,7 +80,12 @@ interface MeshCoreRemoteConsoleProps {
    *  this component is easy to host in tests without a full hook. */
   actions: Pick<
     MeshCoreActions,
-    'loginRemote' | 'sendCliCommand' | 'getRemoteAdminCapability' | 'forgetRemoteCredential' | 'getRemoteStatus'
+    | 'loginRemote'
+    | 'loginRemoteWithSaved'
+    | 'sendCliCommand'
+    | 'getRemoteAdminCapability'
+    | 'forgetRemoteCredential'
+    | 'getRemoteStatus'
   >;
 }
 
@@ -133,11 +139,50 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   const refreshCapability = useCallback(async () => {
     const cap = await actions.getRemoteAdminCapability();
     setCapability(cap);
+    return cap;
   }, [actions]);
 
+  // On mount (and on contact change): fetch capability, and if this
+  // contact has a non-rotated stored credential, silently attempt
+  // auto-login. The plaintext password stays server-side throughout —
+  // see POST /admin/login-with-saved for the no-frontend-exposure flow.
   useEffect(() => {
-    void refreshCapability();
-  }, [refreshCapability]);
+    let cancelled = false;
+    (async () => {
+      const cap = await refreshCapability();
+      if (cancelled || !cap) return;
+      const target = publicKey.toLowerCase();
+      const isStored = cap.stored?.some((s) => s.publicKey.toLowerCase() === target);
+      const isRotated = cap.rotated?.some((r) => r.publicKey.toLowerCase() === target);
+      if (!isStored || isRotated) return;
+      // Try silent auto-login. Don't block the UI or open the modal.
+      const result = await actions.loginRemoteWithSaved(publicKey);
+      if (cancelled) return;
+      if (result.success) {
+        setLoggedIn(true);
+        setTranscript((prev) => [
+          ...prev,
+          {
+            id: nextId(),
+            ts: Date.now(),
+            kind: 'info',
+            text: t(
+              'meshcore.remoteConsole.auto_login_success',
+              'Logged in with saved password',
+            ),
+          },
+        ]);
+      } else if (result.code === 'CREDENTIAL_KEY_ROTATED') {
+        // Pull capability again so the rotated banner shows for this contact.
+        void refreshCapability();
+      }
+      // NO_STORED_CREDENTIAL / STORED_CREDENTIAL_REJECTED → silently fall
+      // through to the manual login modal.
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [publicKey, actions, refreshCapability, t]);
 
   const appendTranscript = useCallback((entry: Omit<TranscriptEntry, 'id' | 'ts'>) => {
     setTranscript((prev) => [

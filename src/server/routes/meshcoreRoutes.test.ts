@@ -88,15 +88,35 @@ vi.mock('../meshcoreRegistry.js', () => ({
 const fakeCredentialStore = {
   capability: { canRemember: true as boolean, reason: undefined as string | undefined },
   store: vi.fn(async (_sid: string, _pk: string, _pw: string) => undefined),
-  load: vi.fn(async () => ({ kind: 'none' as const })),
+  load: vi.fn(
+    async () =>
+      ({ kind: 'none' as const }) as
+        | { kind: 'none' }
+        | { kind: 'ok'; password: string }
+        | { kind: 'key_rotated'; storedKid: string },
+  ),
   clear: vi.fn(async (_sid: string, _pk: string) => undefined),
   listRotated: vi.fn(async () => [] as Array<{ sourceId: string; publicKey: string; name: string | null; storedKid: string }>),
+  listStored: vi.fn(async () => [] as Array<{ sourceId: string; publicKey: string; name: string | null }>),
   currentFingerprint: 'deadbeef',
 };
 vi.mock('../services/meshcoreCredentialStore.js', () => ({
   getMeshCoreCredentialStore: () => fakeCredentialStore,
   setMeshCoreCredentialStoreForTesting: vi.fn(),
 }));
+
+// Disable rate limiting in tests. The 60-req/min bucket is enough for the
+// original test set but pushed over by the new login-with-saved cases,
+// causing unrelated tests downstream to fail with 429s.
+vi.mock('../middleware/rateLimiters.js', () => {
+  const passthrough = (_req: any, _res: any, next: any) => next();
+  return {
+    apiLimiter: passthrough,
+    authLimiter: passthrough,
+    messageLimiter: passthrough,
+    meshcoreDeviceLimiter: passthrough,
+  };
+});
 
 // The `/info` route reads the last poll snapshot from the singleton poller.
 // We expose a mutable fake here so individual tests can decide whether to
@@ -599,6 +619,127 @@ describe('MeshCore Routes', () => {
         .send({ publicKey: validKey, password: '' });
       expect(response.status).toBe(200);
       expect(meshcoreManager.loginToNode).toHaveBeenCalledWith(validKey, '');
+    });
+  });
+
+  describe('POST /api/sources/test-source/meshcore/admin/login-with-saved', () => {
+    const validKey = 'a'.repeat(64);
+    const SECRET = 'top-secret-password-that-must-never-leak-to-the-client';
+
+    beforeEach(() => {
+      fakeCredentialStore.load.mockReset();
+      meshcoreManager.loginToNode.mockReset();
+      meshcoreManager.loginToNode.mockResolvedValue(true);
+    });
+
+    it('rejects an invalid public key', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login-with-saved')
+        .send({ publicKey: 'nope' });
+      expect(response.status).toBe(400);
+    });
+
+    it('returns 404 NO_STORED_CREDENTIAL when nothing is saved', async () => {
+      fakeCredentialStore.load.mockResolvedValue({ kind: 'none' });
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login-with-saved')
+        .send({ publicKey: validKey });
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('NO_STORED_CREDENTIAL');
+      expect(meshcoreManager.loginToNode).not.toHaveBeenCalled();
+    });
+
+    it('returns 410 CREDENTIAL_KEY_ROTATED when stored kid no longer matches', async () => {
+      fakeCredentialStore.load.mockResolvedValue({ kind: 'key_rotated', storedKid: 'feedface' });
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login-with-saved')
+        .send({ publicKey: validKey });
+      expect(response.status).toBe(410);
+      expect(response.body.code).toBe('CREDENTIAL_KEY_ROTATED');
+      // Stored fingerprint MUST NOT leak — even though it's "just" a 4-byte
+      // hash, exposing it would let a hostile script enumerate rotations.
+      expect(JSON.stringify(response.body)).not.toContain('feedface');
+      expect(meshcoreManager.loginToNode).not.toHaveBeenCalled();
+    });
+
+    it('returns 401 STORED_CREDENTIAL_REJECTED when the remote refuses the saved password', async () => {
+      fakeCredentialStore.load.mockResolvedValue({ kind: 'ok', password: SECRET });
+      meshcoreManager.loginToNode.mockResolvedValue(false);
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login-with-saved')
+        .send({ publicKey: validKey });
+      expect(response.status).toBe(401);
+      expect(response.body.code).toBe('STORED_CREDENTIAL_REJECTED');
+      // Even in the failure path, the password must not be echoed back.
+      expect(JSON.stringify(response.body)).not.toContain(SECRET);
+    });
+
+    it('succeeds when the saved credential decrypts and the remote accepts it', async () => {
+      fakeCredentialStore.load.mockResolvedValue({ kind: 'ok', password: SECRET });
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login-with-saved')
+        .send({ publicKey: validKey });
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.usedStored).toBe(true);
+      expect(meshcoreManager.loginToNode).toHaveBeenCalledWith(validKey, SECRET);
+    });
+
+    /**
+     * SECURITY INVARIANT: the saved plaintext password must NEVER appear
+     * in any HTTP response body, in any status code path. This test is
+     * the canary — if it fails, audit every change to the route since
+     * the last green run.
+     */
+    it('NEVER returns the saved password in the response body', async () => {
+      const cases: Array<[Awaited<ReturnType<typeof fakeCredentialStore.load>>, boolean]> = [
+        [{ kind: 'none' }, false],
+        [{ kind: 'key_rotated', storedKid: 'beefcafe' }, false],
+        [{ kind: 'ok', password: SECRET }, true],
+        [{ kind: 'ok', password: SECRET }, false], // remote rejects
+      ];
+      for (const [loadResult, remoteAccepts] of cases) {
+        fakeCredentialStore.load.mockResolvedValueOnce(loadResult);
+        meshcoreManager.loginToNode.mockResolvedValueOnce(remoteAccepts);
+        const response = await authenticatedAgent
+          .post('/api/sources/test-source/meshcore/admin/login-with-saved')
+          .send({ publicKey: validKey });
+        expect(JSON.stringify(response.body)).not.toContain(SECRET);
+      }
+    });
+
+    it('does not require client to send a password (body is { publicKey } only)', async () => {
+      fakeCredentialStore.load.mockResolvedValue({ kind: 'ok', password: SECRET });
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login-with-saved')
+        .send({ publicKey: validKey });
+      // loginToNode received the SERVER-side decrypted password, not
+      // anything the client supplied (the client supplied no password).
+      expect(meshcoreManager.loginToNode).toHaveBeenCalledWith(validKey, SECRET);
+    });
+  });
+
+  describe('GET /credentials-capability includes stored[]', () => {
+    beforeEach(() => {
+      fakeCredentialStore.capability = { canRemember: true, reason: undefined };
+      fakeCredentialStore.listRotated.mockReset();
+      fakeCredentialStore.listRotated.mockResolvedValue([]);
+      fakeCredentialStore.listStored.mockReset();
+      fakeCredentialStore.listStored.mockResolvedValue([]);
+    });
+
+    it('filters stored entries to the requested source', async () => {
+      const pk1 = 'a'.repeat(64);
+      const pk2 = 'b'.repeat(64);
+      fakeCredentialStore.listStored.mockResolvedValue([
+        { sourceId: 'test-source', publicKey: pk1, name: 'My repeater' },
+        { sourceId: 'other-source', publicKey: pk2, name: 'Other repeater' },
+      ]);
+      const response = await authenticatedAgent.get(
+        '/api/sources/test-source/meshcore/admin/credentials-capability',
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.data.stored).toEqual([{ publicKey: pk1, name: 'My repeater' }]);
     });
   });
 

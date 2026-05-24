@@ -131,12 +131,28 @@ export interface MeshCoreActions {
   ) => Promise<{ ok: true; reply: string; elapsedMs: number } | { ok: false; error: string; code?: string; status?: number }>;
   /** Query the credential-persistence capability for this source. Returns
    *  `canRemember=false` when SESSION_SECRET is auto-generated (along with a
-   *  human-readable reason), plus the list of stored credentials for this
-   *  source whose envelope no longer decrypts. */
+   *  human-readable reason), plus:
+   *    - `rotated`: stored credentials whose envelope no longer decrypts
+   *      under the current SESSION_SECRET (they need re-entry).
+   *    - `stored`: stored credentials that DO decrypt — used by the
+   *      console to decide whether to attempt silent auto-login on mount. */
   getRemoteAdminCapability: () => Promise<
-    | { canRemember: boolean; reason?: string; rotatedCount: number; rotated: Array<{ publicKey: string; name: string | null }> }
+    | {
+        canRemember: boolean;
+        reason?: string;
+        rotatedCount: number;
+        rotated: Array<{ publicKey: string; name: string | null }>;
+        stored: Array<{ publicKey: string; name: string | null }>;
+      }
     | null
   >;
+  /** Attempt to log in to a remote node using a previously-saved
+   *  credential. Returns the route's JSON response so the caller can
+   *  branch on `code` (NO_STORED_CREDENTIAL, CREDENTIAL_KEY_ROTATED,
+   *  STORED_CREDENTIAL_REJECTED) and fall back to the password modal. */
+  loginRemoteWithSaved: (
+    publicKey: string,
+  ) => Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string }>;
   /** Forget the saved admin password for a remote node. No-op when none is
    *  saved; resolves `true` on success. */
   forgetRemoteCredential: (publicKey: string) => Promise<boolean>;
@@ -573,6 +589,25 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const loginRemoteWithSaved = useCallback(async (publicKey: string) => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/admin/login-with-saved`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicKey }),
+      });
+      const data = await response.json();
+      return {
+        success: !!data.success,
+        usedStored: data.usedStored,
+        error: data.error,
+        code: data.code,
+      };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const forgetRemoteCredential = useCallback(async (publicKey: string): Promise<boolean> => {
     try {
       const response = await csrfFetch(
@@ -840,6 +875,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       getRemoteAdminCapability,
       forgetRemoteCredential,
       getRemoteStatus,
+      loginRemoteWithSaved,
     },
   };
 }

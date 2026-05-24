@@ -263,6 +263,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 canRemoteAdmin={canRemoteAdmin && connected}
                 remoteAdminActions={{
                   loginRemote: actions.loginRemote,
+                  loginRemoteWithSaved: actions.loginRemoteWithSaved,
                   sendCliCommand: actions.sendCliCommand,
                   getRemoteAdminCapability: actions.getRemoteAdminCapability,
                   forgetRemoteCredential: actions.forgetRemoteCredential,

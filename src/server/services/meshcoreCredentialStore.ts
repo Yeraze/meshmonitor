@@ -63,6 +63,12 @@ export interface RotatedCredentialEntry {
   storedKid: string;
 }
 
+export interface StoredCredentialEntry {
+  sourceId: string;
+  publicKey: string;
+  name: string | null;
+}
+
 export class MeshCoreCredentialStore {
   private readonly aeadKey: Buffer;
   private readonly currentKid: string;
@@ -211,6 +217,35 @@ export class MeshCoreCredentialStore {
           publicKey: row.publicKey,
           name: row.name,
           storedKid: env.kid ?? '?',
+        });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Enumerate every stored credential whose envelope CAN be decrypted by
+   * the current SESSION_SECRET (i.e. kid matches + KDF version current).
+   * The UI uses this on console mount to decide whether to silently
+   * attempt an auto-login or prompt for a password.
+   *
+   * Returns only metadata — never the password or the envelope itself.
+   */
+  async listStored(): Promise<StoredCredentialEntry[]> {
+    const rows = await databaseService.meshcore.listAdminCredentials();
+    const out: StoredCredentialEntry[] = [];
+    for (const row of rows) {
+      let env: StoredEnvelope;
+      try {
+        env = JSON.parse(row.adminCredential) as StoredEnvelope;
+      } catch {
+        continue;
+      }
+      if (env.v === KDF_VERSION && env.kid === this.currentKid) {
+        out.push({
+          sourceId: row.sourceId,
+          publicKey: row.publicKey,
+          name: row.name,
         });
       }
     }
