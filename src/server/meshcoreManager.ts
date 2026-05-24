@@ -1715,6 +1715,115 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
+   * Send a CLI command to the LOCALLY connected MeshCore node.
+   *
+   * Dispatch depends on the connected firmware:
+   *  - Repeater / Room Server: forwards to `sendRepeaterCommand`, which
+   *    drives the device's native serial text CLI. Whatever the device
+   *    prints comes back as `reply`.
+   *  - Companion: there is no native text CLI on the companion-protocol
+   *    wire, so we run a small synthetic-CLI interpreter that maps a
+   *    handful of read-only verbs (ver, stats, clock, advert) to existing
+   *    bridge commands and formats the structured response as text.
+   *
+   * No password / login flow — the local node is physically connected,
+   * so there is no admin ACL to authenticate against. The HTTP route
+   * separately gates this on the `configuration:write` permission.
+   */
+  async sendLocalCliCommand(
+    command: string,
+    opts: { timeoutMs?: number } = {},
+  ): Promise<{ reply: string; elapsedMs: number }> {
+    if (!this.connected) {
+      throw new Error('MeshCore source not connected');
+    }
+    const trimmed = command.trim();
+    if (trimmed.length === 0) {
+      throw new Error('Command must be non-empty');
+    }
+    const sentAt = Date.now();
+    const timeoutMs = opts.timeoutMs ?? 10_000;
+
+    if (this.deviceType === MeshCoreDeviceType.REPEATER || this.deviceType === MeshCoreDeviceType.ROOM_SERVER) {
+      const reply = await this.sendRepeaterCommand(trimmed, timeoutMs);
+      return { reply, elapsedMs: Date.now() - sentAt };
+    }
+
+    if (this.deviceType === MeshCoreDeviceType.COMPANION) {
+      const reply = await this.runSyntheticLocalCli(trimmed);
+      return { reply, elapsedMs: Date.now() - sentAt };
+    }
+
+    throw new Error('Local CLI not available for this device type');
+  }
+
+  /**
+   * Synthetic CLI for Companion firmware. Companion devices speak only
+   * the binary companion protocol on the wire; this method gives the
+   * UI the same "type a command, see structured output" shape as the
+   * Repeater path by mapping a small command vocabulary to existing
+   * bridge commands and formatting the result as readable text.
+   *
+   * Unrecognized commands return a usage hint instead of throwing —
+   * matches the Repeater path's behavior for the same input.
+   */
+  private async runSyntheticLocalCli(command: string): Promise<string> {
+    const parts = command.split(/\s+/);
+    const verb = parts[0]?.toLowerCase() ?? '';
+    const arg = parts[1]?.toLowerCase() ?? '';
+
+    if (verb === 'ver' || verb === 'version') {
+      const response = await this.sendBridgeCommand('device_query', {});
+      if (!response.success) throw new Error(response.error || 'device_query failed');
+      const d = response.data || {};
+      const lines: string[] = [];
+      if (d['fw ver'] !== undefined) lines.push(`Firmware: ${d['fw ver']}`);
+      if (d.ver) lines.push(`Version: ${d.ver}`);
+      if (d.fw_build) lines.push(`Build: ${d.fw_build}`);
+      if (d.model) lines.push(`Model: ${d.model}`);
+      return lines.length > 0 ? lines.join('\n') : 'No device info reported';
+    }
+
+    if (verb === 'stats') {
+      const type = arg === 'radio' || arg === 'packets' ? arg : 'core';
+      const response = await this.sendBridgeCommand('get_stats', { type });
+      if (!response.success) throw new Error(response.error || 'get_stats failed');
+      const d = response.data || {};
+      const lines = Object.entries(d)
+        .filter(([, v]) => v !== undefined && v !== null)
+        .map(([k, v]) => `${k}: ${v}`);
+      return lines.length > 0 ? `[${type}]\n${lines.join('\n')}` : `[${type}] (no data)`;
+    }
+
+    if (verb === 'clock' || verb === 'time') {
+      const response = await this.sendBridgeCommand('get_device_time', {});
+      if (!response.success) throw new Error(response.error || 'get_device_time failed');
+      const epoch = response.data?.time;
+      if (typeof epoch !== 'number') return 'Device clock unavailable';
+      return `${epoch}\n${new Date(epoch * 1000).toISOString()}`;
+    }
+
+    if (verb === 'advert') {
+      const response = await this.sendBridgeCommand('send_advert', {});
+      if (!response.success) throw new Error(response.error || 'send_advert failed');
+      return 'Advert sent (flood)';
+    }
+
+    if (verb === 'help' || verb === '?') {
+      return [
+        'Available local commands (Companion):',
+        '  ver           — firmware version + model',
+        '  stats [core|radio|packets] — local device stats',
+        '  clock         — device time',
+        '  advert        — broadcast a flood advert',
+        '  help          — this list',
+      ].join('\n');
+    }
+
+    return `Unknown command: ${command}\nType "help" for the list of available commands.`;
+  }
+
+  /**
    * Set device name
    */
   async setName(name: string): Promise<boolean> {
