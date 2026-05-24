@@ -201,6 +201,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { text: 'Deployment Guide', link: '/deployment/DEPLOYMENT_GUIDE' },
+            { text: '☸️ Kubernetes / Helm', link: '/deployment/HELM_GUIDE' },
             { text: '📦 Proxmox LXC', link: '/deployment/PROXMOX_LXC_GUIDE' }
           ]
         }

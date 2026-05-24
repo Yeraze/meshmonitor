@@ -54,6 +54,23 @@ docker compose up -d
 
 For detailed installation instructions, configuration options, and deployment scenarios, see the **[Getting Started Guide](https://meshmonitor.org/getting-started.html)**.
 
+### Kubernetes / Helm
+
+Running on Kubernetes? MeshMonitor ships a Helm chart under [`helm/meshmonitor/`](helm/meshmonitor/):
+
+```bash
+# Minimal custom-values.yaml
+cat > custom-values.yaml << 'EOF'
+env:
+  meshtasticNodeIp: "192.168.1.100"
+  meshtasticUseTls: "false"
+EOF
+
+helm install meshmonitor ./helm/meshmonitor -f custom-values.yaml
+```
+
+See the [Helm Chart README](helm/README.md) for ingress, TLS, persistence, and the full values reference, or the [Helm Deployment Guide](https://meshmonitor.org/deployment/HELM_GUIDE.html) on the docs site.
+
 ## Proxy Authentication
 
 MeshMonitor supports authentication via reverse proxy headers for seamless single sign-on (SSO) integration with Cloudflare Access, oauth2-proxy, Authelia, Traefik ForwardAuth, and similar solutions.
@@ -196,8 +213,9 @@ MeshMonitor supports multiple deployment methods:
   - [Docker Compose Guide](docs/deployment/DEPLOYMENT_GUIDE.md)
   - Platforms: amd64, arm64, armv7
 
-- **☸️ Kubernetes** - Helm charts for production clusters
-  - [Helm Chart](helm/meshmonitor/)
+- **☸️ Kubernetes / Helm** - Helm chart for production clusters
+  - [Helm Chart README](helm/README.md) — full install, values, ingress, and TLS reference
+  - [Helm Deployment Guide](https://meshmonitor.org/deployment/HELM_GUIDE.html) — quick-start on the docs site
   - GitOps-ready with ArgoCD/Flux support
 
 - **📦 Proxmox LXC** - Lightweight containers for Proxmox VE

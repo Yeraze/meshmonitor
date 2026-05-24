@@ -9,7 +9,7 @@ This guide covers various deployment scenarios for MeshMonitor, from development
 MeshMonitor supports several deployment options:
 
 - **🐳 Docker Compose** (Recommended) - Easiest setup with auto-upgrade support
-- **☸️ Kubernetes/Helm** - Production-grade orchestration
+- **☸️ Kubernetes/Helm** - Production-grade orchestration ([separate guide](HELM_GUIDE.md))
 - **📦 Proxmox LXC** - Lightweight containers for Proxmox VE ([separate guide](PROXMOX_LXC_GUIDE.md))
 - **🔧 Bare Metal (Node.js)** - Direct deployment without containers
 
@@ -69,6 +69,30 @@ docker compose up -d
 Default login: **admin** / **changeme** — change your password immediately after first login.
 
 For production deployments with HTTPS and reverse proxies, see the [Production Deployment Guide](/configuration/production).
+
+---
+
+## Kubernetes (Helm)
+
+MeshMonitor ships a Helm chart under [`helm/meshmonitor/`](https://github.com/Yeraze/meshmonitor/tree/main/helm/meshmonitor). See the [Kubernetes / Helm Guide](HELM_GUIDE.md) for the full walkthrough — ingress, TLS, persistence, subfolder deployment, and the complete `values.yaml` reference.
+
+Short version:
+
+```bash
+git clone --recurse-submodules https://github.com/Yeraze/meshmonitor.git
+cd meshmonitor
+
+cat > custom-values.yaml << 'EOF'
+env:
+  meshtasticNodeIp: "192.168.1.100"
+  meshtasticUseTls: "false"
+EOF
+
+helm install meshmonitor ./helm/meshmonitor -f custom-values.yaml
+kubectl port-forward svc/meshmonitor 8080:80
+```
+
+The canonical reference for every chart value lives in the [`helm/README.md`](https://github.com/Yeraze/meshmonitor/blob/main/helm/README.md) in the repository.
 
 ---
 
