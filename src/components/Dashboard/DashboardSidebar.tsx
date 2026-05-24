@@ -288,13 +288,17 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   const { hasPermission } = useAuth();
 
   // On mobile, wrap source selection so the drawer auto-closes after tap.
-  // Row-click selects the source for in-pane rendering (the dashboard's
-  // own preview area). The explicit "Open" button is what navigates to a
-  // source's dedicated page — applies to every source type including
-  // MQTT broker / bridge. An earlier version of this handler tried to be
-  // clever and auto-navigated for MQTT, but that hid the Open affordance
-  // and made the click feel inconsistent across source types.
+  // MQTT sources (broker, bridge) navigate to their per-source detail page
+  // instead of the legacy "select then render in-pane" flow. This matches
+  // PR #3169's design — the per-source pages ARE the bridge/broker
+  // dashboards, so a row-click takes the user there directly.
   const handleSelectSource = (id: string) => {
+    const source = sources.find((s) => s.id === id);
+    if (source && (source.type === 'mqtt_broker' || source.type === 'mqtt_bridge')) {
+      navigate(`/source/${id}/`);
+      onMobileClose?.();
+      return;
+    }
     onSelectSource(id);
     onMobileClose?.();
   };

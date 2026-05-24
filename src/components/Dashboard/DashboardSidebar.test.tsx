@@ -213,37 +213,22 @@ describe('DashboardSidebar', () => {
   });
 
   /**
-   * Regression coverage for the fix where MQTT row-click was auto-
-   * navigating to the per-source detail page (introduced in #3169),
-   * hiding the explicit Open affordance. The expected UX is identical
-   * across source types: row-click selects in-pane, the Open button
-   * navigates. Both broker and bridge must surface that Open button.
+   * The Open button on the broker card was hidden by a leftover
+   * `source.type !== 'mqtt_broker'` guard from the pre-#3169 era when
+   * the broker had no detail page. PR #3169 added the broker dashboard
+   * but forgot to flip this. This block locks in the fix: the broker
+   * gets the same Open affordance as every other source type.
+   *
+   * Row-click behavior for MQTT sources is intentionally left as #3169
+   * shipped it (auto-navigate to the per-source page) — the per-source
+   * pages ARE the bridge/broker dashboards, so a row-click takes the
+   * user there directly. Only the broker is affected by this fix.
    */
-  describe('MQTT source behavior parity', () => {
+  describe('MQTT broker Open button', () => {
     const makeMqttSources = (): DashboardSource[] => [
       { id: 'src-broker', name: 'Local Broker', type: 'mqtt_broker', enabled: true },
       { id: 'src-bridge', name: 'Upstream Bridge', type: 'mqtt_bridge', enabled: true },
     ];
-
-    it('row-click on an mqtt_broker calls onSelectSource (does NOT auto-navigate)', () => {
-      const onSelectSource = vi.fn();
-      const navigate = vi.fn();
-      vi.mocked(useNavigate).mockReturnValue(navigate);
-      renderSidebar({ sources: makeMqttSources(), onSelectSource });
-      fireEvent.click(screen.getByText('Local Broker').closest('.dashboard-source-card')!);
-      expect(onSelectSource).toHaveBeenCalledWith('src-broker');
-      expect(navigate).not.toHaveBeenCalled();
-    });
-
-    it('row-click on an mqtt_bridge calls onSelectSource (does NOT auto-navigate)', () => {
-      const onSelectSource = vi.fn();
-      const navigate = vi.fn();
-      vi.mocked(useNavigate).mockReturnValue(navigate);
-      renderSidebar({ sources: makeMqttSources(), onSelectSource });
-      fireEvent.click(screen.getByText('Upstream Bridge').closest('.dashboard-source-card')!);
-      expect(onSelectSource).toHaveBeenCalledWith('src-bridge');
-      expect(navigate).not.toHaveBeenCalled();
-    });
 
     it('renders an Open button on the mqtt_broker card', () => {
       renderSidebar({ sources: makeMqttSources() });
@@ -261,6 +246,17 @@ describe('DashboardSidebar', () => {
       const openBtn = brokerCard.querySelector('.dashboard-open-btn') as HTMLButtonElement;
       fireEvent.click(openBtn);
       expect(navigate).toHaveBeenCalledWith('/source/src-broker');
+    });
+
+    it('row-click on an MQTT source navigates to its detail page (PR #3169 behavior preserved)', () => {
+      // We are NOT changing MQTT row-click — the per-source page IS the
+      // dashboard for that source. This test guards against an accidental
+      // reintroduction of the "hijack onSelectSource" change.
+      const navigate = vi.fn();
+      vi.mocked(useNavigate).mockReturnValue(navigate);
+      renderSidebar({ sources: makeMqttSources() });
+      fireEvent.click(screen.getByText('Local Broker').closest('.dashboard-source-card')!);
+      expect(navigate).toHaveBeenCalledWith('/source/src-broker/');
     });
   });
 
