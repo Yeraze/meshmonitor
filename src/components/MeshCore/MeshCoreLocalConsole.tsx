@@ -19,10 +19,11 @@
  * commands that actually work on their hardware.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MeshCoreActions } from './hooks/useMeshCore';
-import { CliConsoleBody, type ActionCommand } from './CliConsoleBody';
+import { CliConsoleBody, type ActionCommand, type CliConsoleBodyHandle } from './CliConsoleBody';
+import { MeshCoreAclManager } from './MeshCoreAclManager';
 import './MeshCoreRemoteConsole.css';
 
 /** Verbs that the synthetic Companion CLI implements. Keep in sync with
@@ -88,6 +89,11 @@ export const MeshCoreLocalConsole: React.FC<MeshCoreLocalConsoleProps> = ({
     [actions],
   );
 
+  // ACL management is meaningful on Repeater (2) and Room Server (3)
+  // local firmware. Companion has no ACL concept.
+  const showAcl = connected && (deviceType === 2 || deviceType === 3);
+  const bodyRef = useRef<CliConsoleBodyHandle | null>(null);
+
   return (
     <section className="meshcore-remote-console" aria-label={t('meshcore.localConsole.title', 'Device console')}>
       <header className="mrc-header">
@@ -106,6 +112,7 @@ export const MeshCoreLocalConsole: React.FC<MeshCoreLocalConsoleProps> = ({
       </header>
 
       <CliConsoleBody
+        ref={bodyRef}
         targetId={sourceId}
         targetName={targetName}
         runCommand={runCommand}
@@ -132,6 +139,8 @@ export const MeshCoreLocalConsole: React.FC<MeshCoreLocalConsoleProps> = ({
           'Type a command below and press Send.',
         )}
       />
+
+      {showAcl && <MeshCoreAclManager bodyRef={bodyRef} />}
     </section>
   );
 };

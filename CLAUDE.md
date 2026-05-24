@@ -7,8 +7,9 @@
 
 1. **This file** — invariants, rules, and gotchas. Skim end-to-end.
 2. **`docs/internal/dev-notes/ARCHITECTURE_LESSONS.md`** — MUST-READ before touching node communication, state management, backup/restore, async operations, multi-database, or multi-source.
-3. **`src/server/sourceManagerRegistry.ts`** + **`src/server/meshtasticManager.ts`** — read these two before any feature touching nodes/messages/telemetry. There is no global `meshtasticManager` singleton; everything is per-source.
-4. **One repository under `src/db/repositories/`** (e.g. `auth.ts`) — read before adding a query. Raw SQL outside this directory is ESLint-banned.
+3. **`docs/internal/dev-notes/MESHCORE_REMOTE_ADMIN.md`** — MUST-READ before touching MeshCore CLI/admin routes, the credential store, the danger guard, or the shared `CliConsoleBody` primitive.
+4. **`src/server/sourceManagerRegistry.ts`** + **`src/server/meshtasticManager.ts`** — read these two before any feature touching nodes/messages/telemetry. There is no global `meshtasticManager` singleton; everything is per-source.
+5. **One repository under `src/db/repositories/`** (e.g. `auth.ts`) — read before adding a query. Raw SQL outside this directory is ESLint-banned.
 
 ## Where things live
 
