@@ -17,6 +17,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiters.js';
+import { getMeshCoreCredentialStore } from '../services/meshcoreCredentialStore.js';
 
 /**
  * Resolve the manager for a request. Mounted only under
@@ -693,32 +694,176 @@ router.post('/advert', meshcoreDeviceLimiter, requireAuth(), requirePermission('
 
 /**
  * POST /api/meshcore/admin/login
- * Login to a remote node for admin access
- * Requires authentication - sensitive admin operation
+ * Log into a remote node for admin access.
+ *
+ * Body: { publicKey: string, password: string, rememberPassword?: boolean }
+ *   - `password` may be empty for guest login.
+ *   - `rememberPassword: true` persists the password (AES-256-GCM, see
+ *     MeshCoreCredentialStore). Rejected with 400 when SESSION_SECRET was
+ *     auto-generated — check GET /admin/credentials-capability first.
+ *
+ * Gated on `remote_admin:write` per-source. (Pre-4.7 versions used
+ * `configuration:write`; remote_admin was split out so operators can grant
+ * one without the other.)
  */
-router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const { publicKey, password } = req.body;
+    const { publicKey, password, rememberPassword } = req.body as {
+      publicKey?: string;
+      password?: string;
+      rememberPassword?: boolean;
+    };
 
-    if (!publicKey || !password) {
-      return res.status(400).json({ success: false, error: 'Public key and password required' });
+    if (typeof publicKey !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ success: false, error: 'publicKey and password (string) required; password may be empty for guest login' });
     }
 
-    // Validate public key format
     if (!isValidPublicKey(publicKey)) {
       return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
     }
 
-    const success = await managerFor(req).loginToNode(publicKey, password);
+    const sourceId = req.params.id!;
+    const store = getMeshCoreCredentialStore();
 
-    if (success) {
-      res.json({ success: true, message: 'Login successful' });
-    } else {
-      res.status(401).json({ success: false, error: 'Login failed' });
+    if (rememberPassword && !store.capability.canRemember) {
+      return res.status(400).json({
+        success: false,
+        error: 'Saving credentials is disabled',
+        reason: store.capability.reason,
+        code: 'CREDENTIAL_PERSISTENCE_DISABLED',
+      });
     }
+
+    const success = await managerFor(req).loginToNode(publicKey, password);
+    if (!success) {
+      return res.status(401).json({ success: false, error: 'Login failed' });
+    }
+
+    if (rememberPassword) {
+      try {
+        await store.store(sourceId, publicKey, password);
+      } catch (err) {
+        logger.warn('[API] Login succeeded but credential persistence failed:', err);
+        return res.json({
+          success: true,
+          message: 'Login successful, but saving the password failed',
+          persisted: false,
+        });
+      }
+      return res.json({ success: true, message: 'Login successful', persisted: true });
+    }
+
+    res.json({ success: true, message: 'Login successful', persisted: false });
   } catch (error) {
     logger.error('[API] Error logging in:', error);
     res.status(500).json({ success: false, error: 'Login error' });
+  }
+});
+
+/**
+ * POST /api/meshcore/admin/cli
+ * Send a CLI command to a remote MeshCore node and await its single-packet
+ * reply. Body: { publicKey: string, command: string, timeoutMs?: number }.
+ *
+ * Returns 504 on timeout (no reply within the window — may indicate stale
+ * path, ACL eviction, or the remote being offline). Returns 502 when the
+ * underlying bridge rejected the send.
+ */
+router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { publicKey, command, timeoutMs } = req.body as {
+      publicKey?: string;
+      command?: string;
+      timeoutMs?: number;
+    };
+
+    if (typeof publicKey !== 'string' || !isValidPublicKey(publicKey)) {
+      return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
+    }
+    if (typeof command !== 'string' || command.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'command must be a non-empty string' });
+    }
+    if (command.length > 230) {
+      // LoRa packet MTU ceiling — anything larger will be truncated by the
+      // firmware. Reject up front so the user gets a clear error.
+      return res.status(400).json({ success: false, error: 'command too long (max 230 bytes)' });
+    }
+    const effectiveTimeout =
+      typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0 && timeoutMs <= 60_000
+        ? timeoutMs
+        : undefined;
+
+    try {
+      const result = await managerFor(req).sendCliCommand(publicKey, command, {
+        timeoutMs: effectiveTimeout,
+      });
+      res.json({ success: true, data: result });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/timed out/i.test(msg)) {
+        return res.status(504).json({ success: false, error: msg, code: 'CLI_TIMEOUT' });
+      }
+      if (/Companion firmware|not connected|Contact not found/i.test(msg)) {
+        return res.status(400).json({ success: false, error: msg });
+      }
+      logger.error('[API] CLI command failed:', err);
+      res.status(502).json({ success: false, error: msg });
+    }
+  } catch (error) {
+    logger.error('[API] Unexpected error in /admin/cli:', error);
+    res.status(500).json({ success: false, error: 'CLI error' });
+  }
+});
+
+/**
+ * GET /api/meshcore/admin/credentials-capability
+ *
+ * Reports whether the server can persist MeshCore admin passwords. The
+ * answer is determined by whether SESSION_SECRET was explicitly configured
+ * (vs auto-generated on boot). When `canRemember=false`, the UI hides the
+ * "Remember password" checkbox.
+ *
+ * Also returns the subset of stored credentials for THIS source whose
+ * envelope `kid` no longer matches the current SESSION_SECRET — used to
+ * surface a "N saved passwords need to be re-entered" banner.
+ */
+router.get('/admin/credentials-capability', requireAuth(), requirePermission('remote_admin', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const sourceId = req.params.id!;
+    const store = getMeshCoreCredentialStore();
+    const rotatedAll = await store.listRotated();
+    const rotated = rotatedAll.filter((r) => r.sourceId === sourceId);
+    res.json({
+      success: true,
+      data: {
+        canRemember: store.capability.canRemember,
+        reason: store.capability.reason,
+        rotatedCount: rotated.length,
+        rotated: rotated.map((r) => ({ publicKey: r.publicKey, name: r.name })),
+      },
+    });
+  } catch (error) {
+    logger.error('[API] Error reading credentials capability:', error);
+    res.status(500).json({ success: false, error: 'Capability lookup failed' });
+  }
+});
+
+/**
+ * DELETE /api/meshcore/admin/credentials/:publicKey
+ * Forget a previously-saved admin password. No-op if none is saved.
+ */
+router.delete('/admin/credentials/:publicKey', requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const sourceId = req.params.id!;
+    const publicKey = req.params.publicKey;
+    if (!isValidPublicKey(publicKey)) {
+      return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
+    }
+    await getMeshCoreCredentialStore().clear(sourceId, publicKey);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('[API] Error clearing credential:', error);
+    res.status(500).json({ success: false, error: 'Clear failed' });
   }
 });
 
@@ -727,7 +872,7 @@ router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
  * Get status from a remote node (requires prior login)
  * Requires authentication - queries remote node
  */
-router.get('/admin/status/:publicKey', requireAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.get('/admin/status/:publicKey', requireAuth(), requirePermission('remote_admin', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
     const { publicKey } = req.params;
 

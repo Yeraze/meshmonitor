@@ -110,6 +110,36 @@ export interface MeshCoreActions {
   setTelemetryModeEnv: (mode: TelemetryMode) => Promise<boolean>;
   refreshAll: () => Promise<void>;
   clearError: () => void;
+
+  // ----- MeshCore remote administration -----
+  /** Log in to a remote node. Pass `rememberPassword: true` to persist the
+   *  password server-side (encrypted) for use across server restarts —
+   *  see {@link getRemoteAdminCapability}. Returns the route's JSON
+   *  response so the caller can react to `persisted` and credential errors. */
+  loginRemote: (
+    publicKey: string,
+    password: string,
+    rememberPassword?: boolean,
+  ) => Promise<{ success: boolean; persisted?: boolean; error?: string; code?: string; reason?: string }>;
+  /** Send a CLI command to a remote node and await its single-packet reply.
+   *  Resolves the reply text + elapsedMs on success; `error` carries the
+   *  human message for any failure (timeouts, send rejections). */
+  sendCliCommand: (
+    publicKey: string,
+    command: string,
+    opts?: { timeoutMs?: number },
+  ) => Promise<{ ok: true; reply: string; elapsedMs: number } | { ok: false; error: string; code?: string; status?: number }>;
+  /** Query the credential-persistence capability for this source. Returns
+   *  `canRemember=false` when SESSION_SECRET is auto-generated (along with a
+   *  human-readable reason), plus the list of stored credentials for this
+   *  source whose envelope no longer decrypts. */
+  getRemoteAdminCapability: () => Promise<
+    | { canRemember: boolean; reason?: string; rotatedCount: number; rotated: Array<{ publicKey: string; name: string | null }> }
+    | null
+  >;
+  /** Forget the saved admin password for a remote node. No-op when none is
+   *  saved; resolves `true` on success. */
+  forgetRemoteCredential: (publicKey: string) => Promise<boolean>;
 }
 
 export interface UseMeshCoreState {
@@ -447,6 +477,75 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const loginRemote = useCallback(async (
+    publicKey: string,
+    password: string,
+    rememberPassword?: boolean,
+  ) => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicKey, password, rememberPassword }),
+      });
+      const data = await response.json();
+      return {
+        success: !!data.success,
+        persisted: data.persisted,
+        error: data.error,
+        code: data.code,
+        reason: data.reason,
+      };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const sendCliCommand = useCallback(async (
+    publicKey: string,
+    command: string,
+    opts?: { timeoutMs?: number },
+  ) => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/admin/cli`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicKey, command, ...(opts?.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}) }),
+      });
+      const data = await response.json();
+      if (data.success && data.data) {
+        return { ok: true as const, reply: data.data.reply, elapsedMs: data.data.elapsedMs };
+      }
+      return { ok: false as const, error: data.error || 'Unknown error', code: data.code, status: response.status };
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : 'Network error' };
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const getRemoteAdminCapability = useCallback(async () => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/admin/credentials-capability`);
+      const data = await response.json();
+      if (data.success && data.data) return data.data;
+      return null;
+    } catch (_err) {
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const forgetRemoteCredential = useCallback(async (publicKey: string): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(
+        `${mcPrefix}/admin/credentials/${encodeURIComponent(publicKey)}`,
+        { method: 'DELETE' },
+      );
+      const data = await response.json();
+      return !!data.success;
+    } catch (_err) {
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const shareContact = useCallback(async (publicKey: string): Promise<boolean> => {
     try {
       const response = await csrfFetch(
@@ -683,6 +782,10 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setTelemetryModeEnv,
       refreshAll,
       clearError,
+      loginRemote,
+      sendCliCommand,
+      getRemoteAdminCapability,
+      forgetRemoteCredential,
     },
   };
 }

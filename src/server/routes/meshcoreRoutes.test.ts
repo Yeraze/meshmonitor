@@ -53,6 +53,7 @@ const meshcoreManager = {
   setContactOutPath: vi.fn().mockResolvedValue(true),
   loginToNode: vi.fn().mockResolvedValue(true),
   requestNodeStatus: vi.fn().mockResolvedValue({ batteryMv: 4200, uptimeSecs: 3600 }),
+  sendCliCommand: vi.fn().mockResolvedValue({ reply: 'ok', elapsedMs: 42 }),
   setName: vi.fn().mockResolvedValue(true),
   setRadio: vi.fn().mockResolvedValue(true),
   isConnected: vi.fn().mockReturnValue(false),
@@ -80,6 +81,21 @@ vi.mock('../meshcoreRegistry.js', () => ({
     list: () => [meshcoreManager],
     get: (sourceId: string) => (REGISTERED_SOURCE_IDS.has(sourceId) ? meshcoreManager : undefined),
   },
+}));
+
+// Fake credential store with controllable capability + storage. Tests can
+// toggle `canRemember` and inspect calls to `store`/`clear`.
+const fakeCredentialStore = {
+  capability: { canRemember: true as boolean, reason: undefined as string | undefined },
+  store: vi.fn(async (_sid: string, _pk: string, _pw: string) => undefined),
+  load: vi.fn(async () => ({ kind: 'none' as const })),
+  clear: vi.fn(async (_sid: string, _pk: string) => undefined),
+  listRotated: vi.fn(async () => [] as Array<{ sourceId: string; publicKey: string; name: string | null; storedKid: string }>),
+  currentFingerprint: 'deadbeef',
+};
+vi.mock('../services/meshcoreCredentialStore.js', () => ({
+  getMeshCoreCredentialStore: () => fakeCredentialStore,
+  setMeshCoreCredentialStoreForTesting: vi.fn(),
 }));
 
 // The `/info` route reads the last poll snapshot from the singleton poller.
@@ -182,7 +198,7 @@ describe('MeshCore Routes', () => {
       password: 'anonymous123',
       authProvider: 'local',
     });
-    for (const resource of ['connection', 'nodes', 'messages', 'configuration'] as const) {
+    for (const resource of ['connection', 'nodes', 'messages', 'configuration', 'remote_admin'] as const) {
       await permissionModel.grant({
         userId: anonymousUser.id,
         resource,
@@ -210,7 +226,7 @@ describe('MeshCore Routes', () => {
       authProvider: 'local'
     });
 
-    for (const resource of ['connection', 'nodes', 'messages', 'configuration'] as const) {
+    for (const resource of ['connection', 'nodes', 'messages', 'configuration', 'remote_admin'] as const) {
       await permissionModel.grant({
         userId: user.id,
         resource,
@@ -388,6 +404,193 @@ describe('MeshCore Routes', () => {
         .get(`/api/sources/test-source/meshcore/admin/status/${validKey}`);
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
+    });
+  });
+
+  describe('POST /api/sources/test-source/meshcore/admin/cli', () => {
+    const validKey = 'a'.repeat(64);
+
+    beforeEach(() => {
+      meshcoreManager.sendCliCommand.mockReset();
+      meshcoreManager.sendCliCommand.mockResolvedValue({ reply: 'v1.7.0', elapsedMs: 73 });
+    });
+
+    it('requires authentication', async () => {
+      const response = await request(app)
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: 'ver' });
+      expect(response.status).toBe(401);
+    });
+
+    it('rejects an invalid public key', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: 'short', command: 'ver' });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('public key');
+    });
+
+    it('rejects an empty command', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: '   ' });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('non-empty');
+    });
+
+    it('rejects a command longer than the LoRa MTU', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: 'x'.repeat(231) });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('too long');
+    });
+
+    it('returns the reply on the happy path', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: 'ver' });
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toEqual({ reply: 'v1.7.0', elapsedMs: 73 });
+      expect(meshcoreManager.sendCliCommand).toHaveBeenCalledWith(validKey, 'ver', {
+        timeoutMs: undefined,
+      });
+    });
+
+    it('maps a timeout to 504', async () => {
+      meshcoreManager.sendCliCommand.mockRejectedValueOnce(
+        new Error('CLI command timed out after 15000ms'),
+      );
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: 'ver' });
+      expect(response.status).toBe(504);
+      expect(response.body.code).toBe('CLI_TIMEOUT');
+    });
+
+    it('honors a caller-supplied timeoutMs', async () => {
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: 'ver', timeoutMs: 5000 });
+      expect(meshcoreManager.sendCliCommand).toHaveBeenCalledWith(validKey, 'ver', {
+        timeoutMs: 5000,
+      });
+    });
+  });
+
+  describe('GET /api/sources/test-source/meshcore/admin/credentials-capability', () => {
+    beforeEach(() => {
+      fakeCredentialStore.capability = { canRemember: true, reason: undefined };
+      fakeCredentialStore.listRotated.mockReset();
+      fakeCredentialStore.listRotated.mockResolvedValue([]);
+    });
+
+    it('reports canRemember=true when SESSION_SECRET is configured', async () => {
+      const response = await authenticatedAgent.get(
+        '/api/sources/test-source/meshcore/admin/credentials-capability',
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.canRemember).toBe(true);
+      expect(response.body.data.rotatedCount).toBe(0);
+    });
+
+    it('reports canRemember=false when SESSION_SECRET is auto-generated', async () => {
+      fakeCredentialStore.capability = { canRemember: false, reason: 'SESSION_SECRET not configured' };
+      const response = await authenticatedAgent.get(
+        '/api/sources/test-source/meshcore/admin/credentials-capability',
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.data.canRemember).toBe(false);
+      expect(response.body.data.reason).toContain('SESSION_SECRET');
+    });
+
+    it('filters rotated entries to the requested source', async () => {
+      const pk1 = 'a'.repeat(64);
+      const pk2 = 'b'.repeat(64);
+      fakeCredentialStore.listRotated.mockResolvedValue([
+        { sourceId: 'test-source', publicKey: pk1, name: 'Hill repeater', storedKid: 'cafe1234' },
+        { sourceId: 'other-source', publicKey: pk2, name: 'Other repeater', storedKid: 'cafe1234' },
+      ]);
+      const response = await authenticatedAgent.get(
+        '/api/sources/test-source/meshcore/admin/credentials-capability',
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.data.rotatedCount).toBe(1);
+      expect(response.body.data.rotated).toEqual([{ publicKey: pk1, name: 'Hill repeater' }]);
+    });
+  });
+
+  describe('POST /admin/login with rememberPassword', () => {
+    const validKey = 'a'.repeat(64);
+
+    beforeEach(() => {
+      fakeCredentialStore.capability = { canRemember: true, reason: undefined };
+      fakeCredentialStore.store.mockReset();
+      fakeCredentialStore.store.mockResolvedValue(undefined);
+      meshcoreManager.loginToNode.mockResolvedValue(true);
+    });
+
+    it('rejects rememberPassword=true when SESSION_SECRET is ephemeral', async () => {
+      fakeCredentialStore.capability = { canRemember: false, reason: 'SESSION_SECRET not configured' };
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login')
+        .send({ publicKey: validKey, password: 'admin', rememberPassword: true });
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('CREDENTIAL_PERSISTENCE_DISABLED');
+      expect(fakeCredentialStore.store).not.toHaveBeenCalled();
+    });
+
+    it('persists the password when rememberPassword=true and capability allows', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login')
+        .send({ publicKey: validKey, password: 'admin', rememberPassword: true });
+      expect(response.status).toBe(200);
+      expect(response.body.persisted).toBe(true);
+      expect(fakeCredentialStore.store).toHaveBeenCalledWith('test-source', validKey, 'admin');
+    });
+
+    it('does not persist when rememberPassword is omitted', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login')
+        .send({ publicKey: validKey, password: 'admin' });
+      expect(response.status).toBe(200);
+      expect(response.body.persisted).toBe(false);
+      expect(fakeCredentialStore.store).not.toHaveBeenCalled();
+    });
+
+    it('accepts an empty password (guest login)', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login')
+        .send({ publicKey: validKey, password: '' });
+      expect(response.status).toBe(200);
+      expect(meshcoreManager.loginToNode).toHaveBeenCalledWith(validKey, '');
+    });
+  });
+
+  describe('DELETE /api/sources/test-source/meshcore/admin/credentials/:publicKey', () => {
+    const validKey = 'a'.repeat(64);
+
+    beforeEach(() => {
+      fakeCredentialStore.clear.mockReset();
+      fakeCredentialStore.clear.mockResolvedValue(undefined);
+    });
+
+    it('rejects an invalid public key', async () => {
+      const response = await authenticatedAgent.delete(
+        '/api/sources/test-source/meshcore/admin/credentials/not-hex',
+      );
+      expect(response.status).toBe(400);
+    });
+
+    it('clears a saved credential and returns success', async () => {
+      const response = await authenticatedAgent.delete(
+        `/api/sources/test-source/meshcore/admin/credentials/${validKey}`,
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(fakeCredentialStore.clear).toHaveBeenCalledWith('test-source', validKey);
     });
   });
 

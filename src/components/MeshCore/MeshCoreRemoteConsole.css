@@ -1,0 +1,239 @@
+.meshcore-remote-console {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  background: var(--panel-bg, #fff);
+}
+
+.mrc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mrc-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.mrc-status-chip {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.mrc-status-ok {
+  background: var(--success-bg, #d4edda);
+  color: var(--success-fg, #155724);
+}
+
+.mrc-status-idle {
+  background: var(--muted-bg, #e9ecef);
+  color: var(--muted-fg, #6c757d);
+}
+
+.mrc-banner {
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.mrc-banner p {
+  margin: 0.25rem 0;
+}
+
+.mrc-banner-warn {
+  background: var(--warn-bg, #fff3cd);
+  color: var(--warn-fg, #856404);
+  border: 1px solid var(--warn-border, #ffeeba);
+}
+
+.mrc-banner-info {
+  background: var(--info-bg, #d1ecf1);
+  color: var(--info-fg, #0c5460);
+  border: 1px solid var(--info-border, #bee5eb);
+}
+
+.mrc-muted {
+  opacity: 0.85;
+}
+
+.mrc-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mrc-link-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+
+.mrc-btn-primary {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--primary-color, #0d6efd);
+  background: var(--primary-color, #0d6efd);
+  color: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.mrc-btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mrc-btn-secondary {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--border-color, #ccc);
+  background: transparent;
+  color: inherit;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.mrc-btn-secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mrc-transcript {
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--code-bg, #0d1117);
+  color: var(--code-fg, #e6edf3);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.mrc-transcript-empty {
+  margin: 0;
+  font-style: italic;
+  opacity: 0.6;
+}
+
+.mrc-line {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.2rem 0;
+}
+
+.mrc-line-prefix {
+  width: 1ch;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.mrc-line-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: inherit;
+}
+
+.mrc-line-sent .mrc-line-text {
+  color: var(--accent-fg, #79c0ff);
+}
+
+.mrc-line-reply .mrc-line-text {
+  color: inherit;
+}
+
+.mrc-line-error .mrc-line-text {
+  color: var(--error-fg, #ff7b72);
+}
+
+.mrc-line-info .mrc-line-text {
+  color: var(--muted-fg-on-dark, #8b949e);
+  font-style: italic;
+}
+
+.mrc-input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mrc-input {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 4px;
+  font: inherit;
+}
+
+.mrc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.mrc-modal {
+  background: var(--panel-bg, #fff);
+  color: var(--text-color, inherit);
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  min-width: 320px;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.mrc-modal h4 {
+  margin: 0;
+}
+
+.mrc-modal-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.mrc-modal-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+.mrc-modal-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.mrc-modal-checkbox.mrc-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mrc-modal-error {
+  color: var(--error-fg, #c00);
+  font-size: 0.85rem;
+}
+
+.mrc-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}

@@ -27,7 +27,8 @@ export type ResourceType =
   | 'packetmonitor'
   | 'sources'
   | 'waypoints'
-  | 'channel_database';
+  | 'channel_database'
+  | 'remote_admin';
 
 export type PermissionAction = 'viewOnMap' | 'read' | 'write';
 
@@ -68,7 +69,7 @@ export const SOURCEY_RESOURCES: readonly ResourceType[] = [
   'channel_4', 'channel_5', 'channel_6', 'channel_7',
   'messages', 'nodes', 'nodes_private', 'traceroute',
   'packetmonitor', 'configuration', 'connection', 'automation',
-  'waypoints',
+  'waypoints', 'remote_admin',
 ] as const;
 
 const SOURCEY_RESOURCE_SET = new Set<ResourceType>(SOURCEY_RESOURCES);
@@ -119,6 +120,7 @@ export const RESOURCES: readonly ResourceDefinition[] = [
   { id: 'sources', name: 'Sources', description: 'Manage data sources (Meshtastic TCP, MQTT, MeshCore)' },
   { id: 'waypoints', name: 'Waypoints', description: 'View and manage map waypoints (Meshtastic WAYPOINT_APP)' },
   { id: 'channel_database', name: 'Channel Database', description: 'Manage global channel/PSK library used for MQTT decryption' },
+  { id: 'remote_admin', name: 'Remote Administration', description: 'Send admin/CLI commands to remote MeshCore nodes (login, reboot, configure) — per-source' },
 ] as const;
 
 // Default permissions for different user types
@@ -148,6 +150,7 @@ export const ADMIN_PERMISSIONS: PermissionSet = {
   sources: { read: true, write: true },
   waypoints: { read: true, write: true },
   channel_database: { read: true, write: true },
+  remote_admin: { read: true, write: true },
 };
 
 export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
@@ -176,4 +179,5 @@ export const DEFAULT_USER_PERMISSIONS: PermissionSet = {
   sources: { read: false, write: false },
   waypoints: { read: true, write: false },
   channel_database: { read: false, write: false },
+  remote_admin: { read: false, write: false },
 };

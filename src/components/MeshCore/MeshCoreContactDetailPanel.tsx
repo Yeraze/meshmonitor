@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { formatRelativeTime } from '../../utils/datetime';
 import { useSettings } from '../../contexts/SettingsContext';
+import { MeshCoreRemoteConsole } from './MeshCoreRemoteConsole';
+import type { MeshCoreActions } from './hooks/useMeshCore';
 import '../NodeDetailsBlock.css';
 
 const DEVICE_TYPE_KEYS: Record<number, string> = {
@@ -40,6 +42,18 @@ interface MeshCoreContactDetailPanelProps {
    *  When false the Edit Path… button is hidden even if onSetOutPath is
    *  supplied. The server route also enforces this for defense in depth. */
   advancedPathEditEnabled?: boolean;
+  /** When provided AND the contact is a Repeater (advType=2) or Room
+   *  Server (advType=3), the remote-administration console is mounted
+   *  below the details block. Pass the four hook actions it needs; leave
+   *  unset to hide the console (e.g. on read-only sources). */
+  remoteAdminActions?: Pick<
+    MeshCoreActions,
+    'loginRemote' | 'sendCliCommand' | 'getRemoteAdminCapability' | 'forgetRemoteCredential'
+  >;
+  /** Whether the current user may invoke write actions on this source's
+   *  `remote_admin` resource. When false the console is hidden even if
+   *  `remoteAdminActions` is supplied. */
+  canRemoteAdmin?: boolean;
 }
 
 const COLLAPSED_KEY = 'meshcoreContactDetailsCollapsed';
@@ -53,6 +67,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   canWriteNodes = false,
   isCompanion = true,
   advancedPathEditEnabled = false,
+  remoteAdminActions,
+  canRemoteAdmin = false,
 }) => {
   const { t } = useTranslation();
   const { timeFormat, dateFormat } = useSettings();
@@ -513,6 +529,17 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
             </div>
           </div>
         </div>
+      )}
+
+      {remoteAdminActions
+        && canRemoteAdmin
+        && isCompanion
+        && (advType === 2 || advType === 3) && (
+        <MeshCoreRemoteConsole
+          publicKey={publicKey}
+          contactName={name}
+          actions={remoteAdminActions}
+        />
       )}
     </div>
   );

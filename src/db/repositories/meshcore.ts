@@ -50,6 +50,13 @@ export interface DbMeshCoreNode {
    */
   outPath?: string | null;
   pathLen?: number | null;
+  /**
+   * Encrypted MeshCore admin password (migration 070). JSON envelope:
+   * `{v, kid, iv, ct, tag}`. NULL means "no saved credential". Managed
+   * exclusively by `MeshCoreCredentialStore`; callers outside that service
+   * should not read or write this directly.
+   */
+  adminCredential?: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -241,6 +248,81 @@ export class MeshCoreRepository extends BaseRepository {
       .update(meshcoreNodes)
       .set({ lastTelemetryRequestAt: when, updatedAt: when })
       .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+  }
+
+  /**
+   * Write (or clear) the encrypted admin-credential blob for a node.
+   * Pass `envelope = null` to clear. UPDATE-only — does not insert a stub
+   * row, because saving a credential for a node we've never seen is
+   * nonsensical (the user must have logged in first, which means the
+   * contact was already in our table).
+   */
+  async setAdminCredential(
+    sourceId: string,
+    publicKey: string,
+    envelope: string | null,
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.setAdminCredential requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    const now = this.now();
+    await this.db
+      .update(meshcoreNodes)
+      .set({ adminCredential: envelope, updatedAt: now })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+  }
+
+  /**
+   * Read the raw encrypted admin-credential blob for a node. Returns null
+   * when there is no row OR when the column is null. The caller (the
+   * credential store) decrypts and validates.
+   */
+  async getAdminCredential(sourceId: string, publicKey: string): Promise<string | null> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.getAdminCredential requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select({ adminCredential: meshcoreNodes.adminCredential })
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)))
+      .limit(1);
+    return (result[0]?.adminCredential as string | null) ?? null;
+  }
+
+  /**
+   * Return every row that has a saved admin credential, across all
+   * sources. Used by the startup banner to detect SESSION_SECRET rotation
+   * — the credential store inspects each envelope's `kid` and reports
+   * mismatches up to the UI.
+   */
+  async listAdminCredentials(): Promise<
+    Array<{ sourceId: string; publicKey: string; name: string | null; adminCredential: string }>
+  > {
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select({
+        sourceId: meshcoreNodes.sourceId,
+        publicKey: meshcoreNodes.publicKey,
+        name: meshcoreNodes.name,
+        adminCredential: meshcoreNodes.adminCredential,
+      })
+      .from(meshcoreNodes);
+    const rows = this.normalizeBigInts(result) as unknown as Array<{
+      sourceId: string;
+      publicKey: string;
+      name: string | null;
+      adminCredential: string | null;
+    }>;
+    return rows
+      .filter((r) => r.adminCredential != null)
+      .map((r) => ({
+        sourceId: r.sourceId,
+        publicKey: r.publicKey,
+        name: r.name,
+        adminCredential: r.adminCredential as string,
+      }));
   }
 
   /**

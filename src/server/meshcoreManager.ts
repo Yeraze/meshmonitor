@@ -648,6 +648,30 @@ class MeshCoreManager extends EventEmitter {
         dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
         logger.info(`[MeshCore] ${event_type} for ${publicKey} (${data.adv_name ?? ''})`);
       }
+    } else if (event_type === 'cli_reply') {
+      // Remote-admin: a contact message with txtType=CliData. Routed here by
+      // the native backend so CLI output never lands in the chat log. We
+      // resolve the first pending sendCliCommand whose target pubkey prefix
+      // matches the sender — there is no request ID in the MeshCore protocol,
+      // so per-pubkey serialization is the only sound correlation strategy.
+      const prefix = String(data.pubkey_prefix ?? '').toLowerCase();
+      const replyText = String(data.text ?? '');
+      const pending = this.pendingCliReplies.get(prefix);
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.pendingCliReplies.delete(prefix);
+        pending.resolve(replyText);
+        logger.debug(
+          `[MeshCore:${this.sourceId}] CLI reply from ${prefix} (${replyText.length}B, ${Date.now() - pending.sentAt}ms)`,
+        );
+      } else {
+        // No in-flight command for this sender. Most likely a late reply
+        // after a client-side timeout; surface for debugging but don't
+        // route it into the chat log either.
+        logger.debug(
+          `[MeshCore:${this.sourceId}] Unmatched CLI reply from ${prefix}: ${replyText.substring(0, 80)}`,
+        );
+      }
     } else if (event_type === 'contact_path_updated') {
       const publicKey: string = data.public_key;
       if (publicKey) {
@@ -1556,6 +1580,138 @@ class MeshCoreManager extends EventEmitter {
       this.guestLoggedInNodes.add(publicKey);
     }
     return ok;
+  }
+
+  /**
+   * In-flight CLI commands keyed by the target's pubkey *prefix* (first 12
+   * hex chars / 6 bytes). MeshCore ContactMsgRecv only carries the 6-byte
+   * prefix on the wire, so reply correlation has to match that width.
+   *
+   * Two distinct contacts colliding on a 6-byte prefix is a 2^-48 event;
+   * we tolerate it by serializing per-prefix (next entry below) so the
+   * earlier command always resolves first.
+   */
+  private pendingCliReplies: Map<string, {
+    prefixKey: string;
+    resolve: (text: string) => void;
+    reject: (err: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+    sentAt: number;
+  }> = new Map();
+
+  /**
+   * Per-prefix promise chain so only one CLI command is in flight at a
+   * time per remote. MeshCore has no request IDs; serialization is the
+   * only way to make reply-routing unambiguous.
+   */
+  private cliCommandLocks: Map<string, Promise<unknown>> = new Map();
+
+  /**
+   * Send a CLI command to a remote MeshCore node and await its reply.
+   *
+   * The command is sent as an encrypted DM with txtType=CliData; the remote
+   * runs it through CommonCLI::handleCommand() and replies as another
+   * txtType=CliData message. Single-packet only (≈130–180B LoRa MTU); long
+   * outputs are truncated at the firmware level.
+   *
+   * Caller is responsible for having an active admin session — call
+   * loginToNode() (or ensureGuestLogin() for read-only ops) first. A guest
+   * session is enough for `ver`, `stats`, `neighbors` etc.; mutating
+   * commands require admin permission.
+   *
+   * @throws if the publicKey is malformed, the backend isn't a Companion,
+   *         or the remote does not reply within `timeoutMs`.
+   */
+  async sendCliCommand(
+    publicKey: string,
+    command: string,
+    opts: { timeoutMs?: number } = {},
+  ): Promise<{ reply: string; elapsedMs: number }> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      throw new Error('Remote-admin CLI requires Companion firmware');
+    }
+    if (!this.connected) {
+      throw new Error('MeshCore source not connected');
+    }
+    const normalizedKey = publicKey.toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(normalizedKey)) {
+      throw new Error('publicKey must be a 64-char hex string');
+    }
+    const trimmed = command.trim();
+    if (trimmed.length === 0) {
+      throw new Error('CLI command must be non-empty');
+    }
+
+    const prefixKey = normalizedKey.substring(0, 12);
+    const timeoutMs = opts.timeoutMs ?? 15_000;
+
+    // Chain onto the per-prefix lock so two callers can't have overlapping
+    // pending entries for the same target. The chain itself ignores prior
+    // rejections — each command is independent.
+    const prior = this.cliCommandLocks.get(prefixKey) ?? Promise.resolve();
+    const runNext = prior.catch(() => undefined).then(() =>
+      this.runCliCommandLocked(normalizedKey, prefixKey, trimmed, timeoutMs),
+    );
+    this.cliCommandLocks.set(prefixKey, runNext);
+    try {
+      return await runNext;
+    } finally {
+      // If this is still the head of the chain, clear the slot so the
+      // map doesn't grow without bound. A subsequent caller would have
+      // already chained onto `runNext`.
+      if (this.cliCommandLocks.get(prefixKey) === runNext) {
+        this.cliCommandLocks.delete(prefixKey);
+      }
+    }
+  }
+
+  private runCliCommandLocked(
+    fullKey: string,
+    prefixKey: string,
+    command: string,
+    timeoutMs: number,
+  ): Promise<{ reply: string; elapsedMs: number }> {
+    return new Promise<{ reply: string; elapsedMs: number }>((resolve, reject) => {
+      // A stale pending entry should be impossible because of the
+      // per-prefix lock, but guard against it: an entry left over from a
+      // crashed prior call would silently steal our reply.
+      const existing = this.pendingCliReplies.get(prefixKey);
+      if (existing) {
+        clearTimeout(existing.timer);
+        existing.reject(new Error('Superseded by new CLI command on same prefix'));
+        this.pendingCliReplies.delete(prefixKey);
+      }
+
+      const sentAt = Date.now();
+      const timer = setTimeout(() => {
+        this.pendingCliReplies.delete(prefixKey);
+        reject(new Error(`CLI command timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      this.pendingCliReplies.set(prefixKey, {
+        prefixKey,
+        resolve: (text: string) => resolve({ reply: text, elapsedMs: Date.now() - sentAt }),
+        reject,
+        timer,
+        sentAt,
+      });
+
+      void this.sendBridgeCommand('send_cli', { public_key: fullKey, text: command }, timeoutMs)
+        .then((resp) => {
+          if (!resp.success) {
+            clearTimeout(timer);
+            this.pendingCliReplies.delete(prefixKey);
+            reject(new Error(resp.error || 'send_cli failed'));
+          }
+          // Success means the firmware accepted the outbound frame; the
+          // actual reply still arrives asynchronously via cli_reply.
+        })
+        .catch((err) => {
+          clearTimeout(timer);
+          this.pendingCliReplies.delete(prefixKey);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        });
+    });
   }
 
   /**

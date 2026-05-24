@@ -45,6 +45,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   const { hasPermission } = useAuth();
   const canSend = hasPermission('messages', 'write');
   const canWriteNodes = hasPermission('nodes', 'write');
+  const canRemoteAdmin = hasPermission('remote_admin', 'write');
   const [selected, setSelected] = useState<string | null>(null);
   const [sortField, setSortField] = useState<DmSortField>('lastMessage');
   const [sortDirection, setSortDirection] = useState<DmSortDirection>('desc');
@@ -259,6 +260,13 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 canWriteNodes={canWriteNodes && connected}
                 isCompanion={isCompanion}
                 advancedPathEditEnabled={advancedPathEditEnabled}
+                canRemoteAdmin={canRemoteAdmin && connected}
+                remoteAdminActions={{
+                  loginRemote: actions.loginRemote,
+                  sendCliCommand: actions.sendCliCommand,
+                  getRemoteAdminCapability: actions.getRemoteAdminCapability,
+                  forgetRemoteCredential: actions.forgetRemoteCredential,
+                }}
               />
               {!!sourceId && typeof baseUrl === 'string' && isRealNodeKey(selected) && (
                 <>
