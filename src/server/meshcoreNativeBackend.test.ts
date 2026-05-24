@@ -939,6 +939,25 @@ describe('formatOutPath', () => {
     buf[0] = 0xa3; buf[1] = 0x7f; buf[2] = 0x02; buf[3] = 0x10;
     expect(formatOutPath(buf, 3)).toEqual({ outPathHex: 'a3,7f,02', pathLen: 3 });
   });
+
+  it('filters out 0x00 padding bytes and reports the real hop count (issue #3149)', () => {
+    // Firmware sometimes reports outPathLen=64 with only a couple of real hops
+    // and the rest of the buffer zero-padded. The displayed path should only
+    // contain the real hops.
+    const buf = new Uint8Array(64);
+    buf[0] = 0xad; buf[1] = 0xb0;
+    expect(formatOutPath(buf, 64)).toEqual({ outPathHex: 'ad,b0', pathLen: 2 });
+  });
+
+  it('strips interior 0x00 bytes from the hex chain', () => {
+    const buf = new Uint8Array(64);
+    buf[0] = 0xa3; buf[1] = 0x00; buf[2] = 0x7f; buf[3] = 0x00; buf[4] = 0x02;
+    expect(formatOutPath(buf, 5)).toEqual({ outPathHex: 'a3,7f,02', pathLen: 3 });
+  });
+
+  it('returns empty string when every reported byte is 0x00 padding', () => {
+    expect(formatOutPath(new Uint8Array(64), 8)).toEqual({ outPathHex: '', pathLen: 0 });
+  });
 });
 
 // ---------------- Heartbeat tests (manager-level, also using the mock) ----------------

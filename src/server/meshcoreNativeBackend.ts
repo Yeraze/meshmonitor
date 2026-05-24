@@ -94,7 +94,9 @@ function bytesToHex(bytes: Uint8Array | number[]): string {
  * sentinel (0xFF — or -1 if meshcore.js read it as Int8) is set.
  *
  * The wire-format `out_path` field is always a 64-byte buffer; only the
- * first `outPathLen` bytes are meaningful hop hashes.
+ * first `outPathLen` bytes are meaningful hop hashes. Some firmwares report
+ * an inflated `outPathLen` (e.g. the full 64) with trailing 0x00 padding;
+ * 0x00 bytes are filtered out and `pathLen` reflects only real hops.
  */
 export function formatOutPath(
   outPath: Uint8Array | number[] | null | undefined,
@@ -118,9 +120,10 @@ export function formatOutPath(
   const take = Math.min(outPathLen, arr.length);
   const parts: string[] = [];
   for (let i = 0; i < take; i++) {
+    if (arr[i] === 0) continue;
     parts.push(arr[i].toString(16).padStart(2, '0'));
   }
-  return { outPathHex: parts.join(','), pathLen: take };
+  return { outPathHex: parts.join(','), pathLen: parts.length };
 }
 
 /** Manager passes telemetry mode as 'never' | 'device' | 'always'; firmware
