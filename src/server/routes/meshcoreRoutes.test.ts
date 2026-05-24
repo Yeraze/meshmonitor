@@ -182,6 +182,10 @@ describe('MeshCore Routes', () => {
     // Mock database service
     // permissionModel wired via checkPermissionAsync / getUserPermissionSetAsync below
     (DatabaseService as any).auditLog = () => {};
+    // Spy on auditLogAsync so tests can assert specific routes fired the
+    // expected event. Returns a resolved promise so the fire-and-forget
+    // .catch() in the route helper has something to chain.
+    (DatabaseService as any).auditLogAsync = vi.fn(async () => undefined);
     (DatabaseService as any).drizzleDbType = 'sqlite';
 
     // The out-path PUT route reads the advanced-path-edit toggle from
@@ -1329,6 +1333,179 @@ describe('MeshCore Routes', () => {
         .put(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/out-path`)
         .send({ outPath: 'a3' });
       expect(response.status).toBe(409);
+    });
+  });
+
+  /**
+   * Audit log entries are written via `auditLogAsync(userId, action,
+   * resource, JSON details, ip)`. These tests assert the right event
+   * fires on the right code path and — for the login routes — that the
+   * password never appears in the JSON details.
+   */
+  describe('Audit log entries', () => {
+    const validKey = 'a'.repeat(64);
+    const SENSITIVE = 'super-secret-password-must-never-be-audited';
+
+    /** Look up the most recent call to auditLogAsync; return parsed details. */
+    function lastAudit(): { userId: unknown; action: string; resource: string; details: any; ip: unknown } | null {
+      const mock = (DatabaseService as any).auditLogAsync as ReturnType<typeof vi.fn>;
+      const calls = mock.mock.calls;
+      if (calls.length === 0) return null;
+      const [userId, action, resource, detailsJson, ip] = calls[calls.length - 1] as [unknown, string, string, string, unknown];
+      return { userId, action, resource, details: JSON.parse(detailsJson), ip };
+    }
+
+    beforeEach(() => {
+      ((DatabaseService as any).auditLogAsync as ReturnType<typeof vi.fn>).mockClear();
+      meshcoreManager.loginToNode.mockReset();
+      meshcoreManager.loginToNode.mockResolvedValue(true);
+      meshcoreManager.sendCliCommand.mockReset();
+      meshcoreManager.sendCliCommand.mockResolvedValue({ reply: 'pong', elapsedMs: 11 });
+      meshcoreManager.sendLocalCliCommand.mockReset();
+      meshcoreManager.sendLocalCliCommand.mockResolvedValue({ reply: 'v1.7.0', elapsedMs: 9 });
+      fakeCredentialStore.load.mockReset();
+      fakeCredentialStore.clear.mockReset();
+      fakeCredentialStore.clear.mockResolvedValue(undefined);
+    });
+
+    it('logs meshcore_remote_login on /admin/login success (no password in details)', async () => {
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login')
+        .send({ publicKey: validKey, password: SENSITIVE });
+      const entry = lastAudit();
+      expect(entry?.action).toBe('meshcore_remote_login');
+      expect(entry?.resource).toBe('remote_admin');
+      expect(entry?.details).toMatchObject({ sourceId: 'test-source', publicKey: validKey, persisted: false });
+      const raw = JSON.stringify(entry);
+      expect(raw).not.toContain(SENSITIVE);
+    });
+
+    it('logs meshcore_remote_login_failed on /admin/login auth failure (no password in details)', async () => {
+      meshcoreManager.loginToNode.mockResolvedValue(false);
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login')
+        .send({ publicKey: validKey, password: SENSITIVE });
+      const entry = lastAudit();
+      expect(entry?.action).toBe('meshcore_remote_login_failed');
+      expect(JSON.stringify(entry)).not.toContain(SENSITIVE);
+    });
+
+    it('records persisted=true in the audit row when rememberPassword=true (still no password)', async () => {
+      fakeCredentialStore.capability = { canRemember: true, reason: undefined };
+      fakeCredentialStore.store.mockReset();
+      fakeCredentialStore.store.mockResolvedValue(undefined);
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login')
+        .send({ publicKey: validKey, password: SENSITIVE, rememberPassword: true });
+      const entry = lastAudit();
+      expect(entry?.action).toBe('meshcore_remote_login');
+      expect(entry?.details.persisted).toBe(true);
+      expect(JSON.stringify(entry)).not.toContain(SENSITIVE);
+    });
+
+    it('logs meshcore_remote_cli on /admin/cli success including command + elapsedMs', async () => {
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: 'ver' });
+      const entry = lastAudit();
+      expect(entry?.action).toBe('meshcore_remote_cli');
+      expect(entry?.details).toMatchObject({
+        sourceId: 'test-source',
+        publicKey: validKey,
+        command: 'ver',
+        replyChars: 4,
+        elapsedMs: 11,
+      });
+    });
+
+    it('logs meshcore_remote_cli_blocked when a danger command is rejected', async () => {
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: 'reboot' });
+      const entry = lastAudit();
+      expect(entry?.action).toBe('meshcore_remote_cli_blocked');
+      expect(entry?.details.reason).toBe('DANGER_CONFIRM_REQUIRED');
+    });
+
+    it('logs meshcore_remote_cli_failed when the manager throws', async () => {
+      meshcoreManager.sendCliCommand.mockRejectedValueOnce(new Error('CLI command timed out after 15000ms'));
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: 'stats' });
+      const entry = lastAudit();
+      expect(entry?.action).toBe('meshcore_remote_cli_failed');
+      expect(entry?.details.error).toContain('timed out');
+    });
+
+    it('logs meshcore_local_cli on /cli success', async () => {
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/cli')
+        .send({ command: 'ver' });
+      const entry = lastAudit();
+      expect(entry?.action).toBe('meshcore_local_cli');
+      expect(entry?.resource).toBe('configuration');
+      expect(entry?.details).toMatchObject({ sourceId: 'test-source', command: 'ver' });
+    });
+
+    it('logs meshcore_remote_login_saved on auto-login success (no password in details)', async () => {
+      fakeCredentialStore.load.mockResolvedValue({ kind: 'ok', password: SENSITIVE });
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login-with-saved')
+        .send({ publicKey: validKey });
+      const entry = lastAudit();
+      expect(entry?.action).toBe('meshcore_remote_login_saved');
+      expect(JSON.stringify(entry)).not.toContain(SENSITIVE);
+    });
+
+    it('logs meshcore_remote_login_saved_failed with the code on key rotation', async () => {
+      fakeCredentialStore.load.mockResolvedValue({ kind: 'key_rotated', storedKid: 'deadbeef' });
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login-with-saved')
+        .send({ publicKey: validKey });
+      const entry = lastAudit();
+      expect(entry?.action).toBe('meshcore_remote_login_saved_failed');
+      expect(entry?.details.code).toBe('CREDENTIAL_KEY_ROTATED');
+    });
+
+    it('logs meshcore_credential_forget on DELETE /admin/credentials/:publicKey', async () => {
+      await authenticatedAgent.delete(`/api/sources/test-source/meshcore/admin/credentials/${validKey}`);
+      const entry = lastAudit();
+      expect(entry?.action).toBe('meshcore_credential_forget');
+      expect(entry?.details).toMatchObject({ sourceId: 'test-source', publicKey: validKey });
+    });
+
+    /**
+     * Canary: across EVERY audit-emitting code path, the plaintext password
+     * must never appear in the JSON details. This is the test that catches
+     * "someone accidentally spread req.body into the details object."
+     */
+    it('NEVER includes the password in any audit details', async () => {
+      // login success
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login')
+        .send({ publicKey: validKey, password: SENSITIVE });
+      // login failure
+      meshcoreManager.loginToNode.mockResolvedValueOnce(false);
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login')
+        .send({ publicKey: validKey, password: SENSITIVE });
+      // login-with-saved success — credential store decrypts SENSITIVE
+      fakeCredentialStore.load.mockResolvedValueOnce({ kind: 'ok', password: SENSITIVE });
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login-with-saved')
+        .send({ publicKey: validKey });
+      // login-with-saved remote-reject — credential decrypts but loginToNode says no
+      fakeCredentialStore.load.mockResolvedValueOnce({ kind: 'ok', password: SENSITIVE });
+      meshcoreManager.loginToNode.mockResolvedValueOnce(false);
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/login-with-saved')
+        .send({ publicKey: validKey });
+
+      const mock = (DatabaseService as any).auditLogAsync as ReturnType<typeof vi.fn>;
+      for (const call of mock.mock.calls) {
+        // call = [userId, action, resource, detailsJson, ip]
+        expect(call[3]).not.toContain(SENSITIVE);
+      }
     });
   });
 });
