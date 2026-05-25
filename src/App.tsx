@@ -4749,6 +4749,7 @@ function App() {
             channelMessages={channelMessages}
             messages={messages}
             currentNodeId={currentNodeId}
+            sourceId={sourceId}
             connectionStatus={connectionStatus}
             selectedChannel={selectedChannel}
             setSelectedChannel={setSelectedChannel}
