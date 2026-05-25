@@ -3975,7 +3975,7 @@
     "unified.messages.failed_channels": "",
     "source.delete_confirm": "",
     "dashboard.widget.distance_distribution.no_home_position": "",
-    "firmware.ota_bootloader_learn_more": "Узнать больше",
+    "firmware.ota_bootloader_learn_more": "",
     "source.form.heartbeat_help": "Периодически отправляет на узел сигнал подтверждения соединения. Для узлов с параметром CLIENT_MUTE или других малоактивных узлов, получающих небольшой трафик в сети, попробуйте значение 30–60 секунд, в противном случае оставьте значение 0.",
     "source.kebab.disable": "",
     "dashboard.widget.distance_distribution.settings": "",
