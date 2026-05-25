@@ -327,6 +327,28 @@
   white-space: nowrap;
 }
 
+/* Per-gateway publisher count on mqtt_bridge cards. Green when every
+   pool entry is connected upstream; amber when one or more are down
+   so operators see at-a-glance that some gateways aren't reaching the
+   broker. Tooltip lists the individual publisher state. */
+.dashboard-publisher-badge {
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  background: color-mix(in srgb, var(--ctp-blue) 20%, transparent);
+  color: var(--ctp-blue);
+  cursor: help;
+  white-space: nowrap;
+}
+
+.dashboard-publisher-badge.dashboard-publisher-partial {
+  background: color-mix(in srgb, var(--ctp-yellow) 22%, transparent);
+  color: var(--ctp-yellow);
+}
+
 .dashboard-source-card-actions {
   display: flex;
   align-items: center;
