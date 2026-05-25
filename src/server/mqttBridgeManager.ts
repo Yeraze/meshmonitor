@@ -47,6 +47,7 @@ import {
   formatGatewayClientId,
   type PublisherStatus,
 } from './mqttBridgePublisherPool.js';
+import { channelDecryptionService } from './services/channelDecryptionService.js';
 
 /**
  * Direction the bridge is permitted to operate in against the upstream
@@ -123,6 +124,19 @@ export interface MqttBridgeSourceConfig {
    * (standalone bridges have no `local-packet` stream to dispatch over).
    */
   forwardingMode?: MqttBridgeForwardingMode;
+  /**
+   * When true, uplink every packet regardless of the originator's
+   * `ok_to_mqtt` preference (bit 0 of `Data.bitfield`, set firmware-side
+   * via `Config.LoRaConfig.config_ok_to_mqtt`). Default false — the bridge
+   * mirrors firmware MQTT::onSend behavior and drops packets whose
+   * originator opted out of MQTT relay.
+   *
+   * Setting this to true is a knowledgeable-operator override. It violates
+   * the originating node's stated preference and can republish private
+   * mesh traffic to a public broker. Only use on private/known-restricted
+   * upstreams where the operator has explicit consent from every gateway.
+   */
+  ignoreOkToMqtt?: boolean;
 }
 
 /** Literal prefix replacement rule applied to a Meshtastic MQTT topic. */
@@ -168,6 +182,14 @@ export interface MqttBridgeStatus extends SourceStatus {
   uplinkOut: number;
   downlinkDrops: ReturnType<MqttPacketFilter['getDropCounters']>;
   uplinkDrops: ReturnType<MqttPacketFilter['getDropCounters']>;
+  /**
+   * Count of uplink packets dropped because the originator's `ok_to_mqtt`
+   * preference forbade republish (or the packet was encrypted and we
+   * couldn't decrypt it to read the bit). Sits outside `uplinkDrops`
+   * because the gate isn't part of MqttPacketFilter — it's a bridge-level
+   * policy mirroring firmware MQTT::onSend.
+   */
+  uplinkOkToMqttDrops: number;
   lastError: string | null;
   /**
    * Inferred broker ACL state. `permissionMessage` is non-null when the
@@ -225,6 +247,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
   private downlinkIngested = 0;
   private downlinkRepublished = 0;
   private uplinkOut = 0;
+  private uplinkOkToMqttDrops = 0;
   private lastError: string | null = null;
   private readonly downlinkEchoes: EchoEntry[] = [];
   private readonly uplinkEchoes: EchoEntry[] = [];
@@ -426,7 +449,42 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       mode,
       forwardingMode: this.getForwardingMode(),
       publishers: this.publisherPool?.getStatus() ?? {},
+      uplinkOkToMqttDrops: this.uplinkOkToMqttDrops,
     };
+  }
+
+  /**
+   * Determine whether the originator's `ok_to_mqtt` preference allows
+   * this packet to be republished upstream. Mirrors firmware
+   * `MQTT::onSend` (MQTT.cpp:767-788) — checks bit 0 of `Data.bitfield`.
+   *
+   * - Decoded packet with bit set → allow.
+   * - Decoded packet with bit unset or `bitfield` absent → drop.
+   * - Encrypted packet → try server-side decryption via the channel DB,
+   *   then re-check. If decryption fails (no matching key), drop. This
+   *   matches firmware's fail-closed behavior on public brokers.
+   *
+   * Note: we deliberately do NOT special-case "private" upstream brokers
+   * (per design — operator picks the override per-bridge via
+   * `ignoreOkToMqtt` instead of relying on hostname heuristics).
+   */
+  private async evaluateOkToMqtt(envelope: ServiceEnvelopeShape): Promise<boolean> {
+    const decoded = envelope.packet?.decoded;
+    if (decoded && typeof decoded.bitfield === 'number') {
+      return (decoded.bitfield & 0x1) === 1;
+    }
+    // Encrypted path — try decryption against the channel DB so we can
+    // read the originator's bitfield. If we can't decrypt, fail closed.
+    const enc = envelope.packet?.encrypted;
+    const id = envelope.packet?.id;
+    const from = envelope.packet?.from;
+    if (!enc || typeof id !== 'number' || typeof from !== 'number') return false;
+    const channelHash = typeof envelope.packet?.channel === 'number'
+      ? envelope.packet.channel
+      : undefined;
+    const result = await channelDecryptionService.tryDecrypt(enc, id, from, channelHash);
+    if (!result.success || typeof result.bitfield !== 'number') return false;
+    return (result.bitfield & 0x1) === 1;
   }
 
   getLocalNodeInfo() {
@@ -653,7 +711,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     }
   }
 
-  private handleUplink(p: MqttBrokerLocalPacket): void {
+  private async handleUplink(p: MqttBrokerLocalPacket): Promise<void> {
     if (!this.client) return;
 
     const packetId = p.envelope.packet?.id !== undefined ? (p.envelope.packet.id >>> 0) : null;
@@ -662,6 +720,17 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     }
 
     if (!this.uplinkFilter.preFilter(p.topic, p.envelope)) return;
+
+    // Honor the originator's `ok_to_mqtt` preference unless the operator
+    // has explicitly opted out for this bridge. See evaluateOkToMqtt for
+    // the policy details — bridge-level gate, not part of the filter chain.
+    if (!this.config.ignoreOkToMqtt) {
+      const allow = await this.evaluateOkToMqtt(p.envelope);
+      if (!allow) {
+        this.uplinkOkToMqttDrops++;
+        return;
+      }
+    }
 
     // Apply uplink topic rewrite (#3166) — uplinkFilter ran on the original
     // topic; only the wire-level publish gets the rewrite. Echo recorded

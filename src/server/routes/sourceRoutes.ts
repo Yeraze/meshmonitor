@@ -111,6 +111,19 @@ function validateMqttBridgeForwardingMode(config: Record<string, any>): string |
   return null;
 }
 
+/**
+ * Validate the optional `ignoreOkToMqtt` override on an mqtt_bridge
+ * config. Absent (undefined) defaults to false (honor the bit).
+ */
+function validateMqttBridgeIgnoreOkToMqtt(config: Record<string, any>): string | null {
+  const value = config?.ignoreOkToMqtt;
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'boolean') {
+    return 'mqtt_bridge ignoreOkToMqtt must be a boolean';
+  }
+  return null;
+}
+
 function validateMqttBridgeRewrites(config: Record<string, any>): string | null {
   const isAttached =
     typeof config.brokerSourceId === 'string' && config.brokerSourceId.trim() !== '';
@@ -298,6 +311,10 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       if (forwardingModeError) {
         return res.status(400).json({ error: forwardingModeError });
       }
+      const ignoreOkErr = validateMqttBridgeIgnoreOkToMqtt(config ?? {});
+      if (ignoreOkErr) {
+        return res.status(400).json({ error: ignoreOkErr });
+      }
     }
     if (!config || typeof config !== 'object') {
       return res.status(400).json({ error: 'config is required and must be an object' });
@@ -426,6 +443,10 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         const forwardingModeError = validateMqttBridgeForwardingMode(config);
         if (forwardingModeError) {
           return res.status(400).json({ error: forwardingModeError });
+        }
+        const ignoreOkErr = validateMqttBridgeIgnoreOkToMqtt(config);
+        if (ignoreOkErr) {
+          return res.status(400).json({ error: ignoreOkErr });
         }
       }
 
