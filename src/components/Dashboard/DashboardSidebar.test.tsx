@@ -287,4 +287,97 @@ describe('DashboardSidebar', () => {
       expect(onSelectSource).toHaveBeenCalledWith(UNIFIED_SOURCE_ID);
     });
   });
+
+  describe('Per-gateway publisher badge (mqtt_bridge)', () => {
+    const bridgeSources: DashboardSource[] = [
+      { id: 'bridge-1', name: 'Bridge Up', type: 'mqtt_bridge', enabled: true },
+    ];
+
+    function statusWithPublishers(
+      publishers: Record<string, { connected: boolean; publishes: number; lastError: string | null }>,
+    ): Map<string, SourceStatus | null> {
+      return new Map([
+        [
+          'bridge-1',
+          {
+            sourceId: 'bridge-1',
+            connected: true,
+            publishers,
+          } as SourceStatus,
+        ],
+      ]);
+    }
+
+    it('renders a "N gateways" badge with the connected style when every pool entry is connected', () => {
+      renderSidebar({
+        sources: bridgeSources,
+        statusMap: statusWithPublishers({
+          '!aabbccdd': { connected: true, publishes: 5, lastError: null },
+          '!11223344': { connected: true, publishes: 2, lastError: null },
+        }),
+        nodeCounts: new Map([['bridge-1', 0]]),
+      });
+      const badge = document.querySelector('.dashboard-publisher-badge')!;
+      expect(badge).not.toBeNull();
+      // The i18n test mock returns keys verbatim — assert the "all
+      // connected" key wired through (interpolation isn't exercised).
+      expect(badge.textContent).toMatch(/source\.publishers_all_connected/);
+      // No partial modifier when everyone's connected.
+      expect(badge.classList.contains('dashboard-publisher-partial')).toBe(false);
+      // Tooltip lists each publisher's clientId + state + publish count.
+      const title = badge.getAttribute('title') ?? '';
+      expect(title).toContain('✓ !aabbccdd');
+      expect(title).toContain('(5 pubs)');
+      expect(title).toContain('✓ !11223344');
+      expect(title).toContain('(2 pubs)');
+    });
+
+    it('switches to partial style + alternate key when at least one publisher is down', () => {
+      renderSidebar({
+        sources: bridgeSources,
+        statusMap: statusWithPublishers({
+          '!aabbccdd': { connected: true, publishes: 5, lastError: null },
+          '!11223344': { connected: false, publishes: 0, lastError: 'CONNACK 5 NOT_AUTHORIZED' },
+        }),
+        nodeCounts: new Map([['bridge-1', 0]]),
+      });
+      const badge = document.querySelector('.dashboard-publisher-badge')!;
+      expect(badge.textContent).toMatch(/source\.publishers_partial/);
+      expect(badge.classList.contains('dashboard-publisher-partial')).toBe(true);
+      // Down entry's last error surfaces in the tooltip so the operator
+      // can diagnose without opening DevTools.
+      expect(badge.getAttribute('title') ?? '').toContain('CONNACK 5 NOT_AUTHORIZED');
+    });
+
+    it('renders no badge when the bridge is in single mode (publishers map empty)', () => {
+      renderSidebar({
+        sources: bridgeSources,
+        statusMap: statusWithPublishers({}),
+        nodeCounts: new Map([['bridge-1', 0]]),
+      });
+      expect(document.querySelector('.dashboard-publisher-badge')).toBeNull();
+    });
+
+    it('renders no badge for non-mqtt_bridge sources even if publishers field is present', () => {
+      const tcpSource: DashboardSource[] = [
+        { id: 'src-x', name: 'Some TCP', type: 'meshtastic_tcp', enabled: true },
+      ];
+      const statusMap: Map<string, SourceStatus | null> = new Map([
+        [
+          'src-x',
+          {
+            sourceId: 'src-x',
+            connected: true,
+            publishers: { '!aabbccdd': { connected: true, publishes: 1, lastError: null } },
+          } as SourceStatus,
+        ],
+      ]);
+      renderSidebar({
+        sources: tcpSource,
+        statusMap,
+        nodeCounts: new Map([['src-x', 0]]),
+      });
+      expect(document.querySelector('.dashboard-publisher-badge')).toBeNull();
+    });
+  });
 });
