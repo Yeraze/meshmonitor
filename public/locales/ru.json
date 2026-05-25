@@ -3850,7 +3850,7 @@
     "security.key_mismatch_old_key": "Старый ключ",
     "security.clock_offset": "Смещение",
     "source.form.auto_connect_help": "Если этот параметр отключен, MeshMonitor не будет подключаться к этому узлу при запуске. Для начала мониторинга необходимо нажать кнопку «Подключиться».",
-    "unified.close": "",
+    "unified.close": "Закрыть",
     "unified.messages.sign_in_required": "",
     "unified.messages.title": "",
     "network_config.rsyslog_server_description": "",
