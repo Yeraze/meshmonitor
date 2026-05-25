@@ -21,6 +21,27 @@ import apiService, { ChannelDatabaseEntry, RetroactiveDecryptionProgress } from 
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
 import { REBROADCAST_MODE_OPTIONS } from './constants';
+import { normalizeChannelUrlPskToBase64, getPskBase64ByteLength } from '../../utils/channelUrl';
+
+/**
+ * Shape of a decoded channel returned by `apiService.decodeChannelUrl`
+ * (mirrors `DecodedChannelSettings` on the server). `psk` may be a
+ * shorthand string like `'default'` or `'simpleN'` — `normalizeChannelUrlPskToBase64`
+ * converts these to a Channel-Database-compatible base64 PSK.
+ */
+interface DecodedUrlChannel {
+  name?: string;
+  psk?: string;
+  id?: number;
+  role?: number;
+  uplinkEnabled?: boolean;
+  downlinkEnabled?: boolean;
+}
+
+// Meshtastic Channel.Role enum (subset we render labels for).
+const ROLE_DISABLED = 0;
+const ROLE_PRIMARY = 1;
+const ROLE_SECONDARY = 2;
 
 interface ChannelDatabaseSectionProps {
   isAdmin: boolean;
@@ -221,8 +242,18 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
   const [editingChannel, setEditingChannel] = useState<ChannelEditState | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showUrlImportModal, setShowUrlImportModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [importFileContent, setImportFileContent] = useState<string>('');
+  // URL-import modal state. `urlDecodedChannels` is populated after a
+  // successful /api/channels/decode-url call. `urlSelectedIndexes` and
+  // `urlEditedNames` track per-row include/rename overrides.
+  const [urlImportInput, setUrlImportInput] = useState<string>('');
+  const [urlDecodedChannels, setUrlDecodedChannels] = useState<DecodedUrlChannel[]>([]);
+  const [urlSelectedIndexes, setUrlSelectedIndexes] = useState<Set<number>>(new Set());
+  const [urlEditedNames, setUrlEditedNames] = useState<Record<number, string>>({});
+  const [urlImportError, setUrlImportError] = useState<string | null>(null);
+  const [isDecodingUrl, setIsDecodingUrl] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [decryptionProgress, setDecryptionProgress] = useState<RetroactiveDecryptionProgress | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -582,6 +613,139 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
     }
   };
 
+  /**
+   * Reset the URL-import modal back to its initial empty state. Used both
+   * on close and after a successful batch import.
+   */
+  const resetUrlImportState = () => {
+    setUrlImportInput('');
+    setUrlDecodedChannels([]);
+    setUrlSelectedIndexes(new Set());
+    setUrlEditedNames({});
+    setUrlImportError(null);
+  };
+
+  /**
+   * Decode the pasted Meshtastic URL via the existing
+   * `/api/channels/decode-url` endpoint. Pre-selects all importable rows
+   * (skips role=DISABLED and PSK='none' — those can't go in the
+   * decryption store).
+   */
+  const handleDecodeUrl = async () => {
+    const url = urlImportInput.trim();
+    if (!url) {
+      setUrlImportError(t('channel_database.toast_url_required'));
+      return;
+    }
+    setIsDecodingUrl(true);
+    setUrlImportError(null);
+    try {
+      const decoded = await apiService.decodeChannelUrl(url);
+      const channels: DecodedUrlChannel[] = Array.isArray(decoded?.channels)
+        ? decoded.channels
+        : [];
+      if (channels.length === 0) {
+        setUrlImportError(t('channel_database.toast_url_no_channels'));
+        setUrlDecodedChannels([]);
+        setUrlSelectedIndexes(new Set());
+        setUrlEditedNames({});
+        return;
+      }
+      setUrlDecodedChannels(channels);
+      // Pre-select rows that have a usable key — skip DISABLED and no-crypto.
+      const preselected = new Set<number>();
+      const names: Record<number, string> = {};
+      channels.forEach((ch, idx) => {
+        names[idx] = ch.name ?? '';
+        const importable = ch.role !== ROLE_DISABLED && normalizeChannelUrlPskToBase64(ch.psk) !== null;
+        if (importable) preselected.add(idx);
+      });
+      setUrlSelectedIndexes(preselected);
+      setUrlEditedNames(names);
+    } catch (err) {
+      logger.error('Failed to decode channel URL:', err);
+      const msg = err instanceof Error ? err.message : t('channel_database.toast_url_decode_failed');
+      setUrlImportError(msg);
+      setUrlDecodedChannels([]);
+    } finally {
+      setIsDecodingUrl(false);
+    }
+  };
+
+  /**
+   * Toggle a single row's inclusion in the import batch.
+   */
+  const toggleUrlChannelSelected = (idx: number) => {
+    setUrlSelectedIndexes((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) {
+        next.delete(idx);
+      } else {
+        next.add(idx);
+      }
+      return next;
+    });
+  };
+
+  /**
+   * Create Channel Database rows for each selected decoded channel.
+   * Per-row failures don't abort the batch — we continue and report the
+   * imported / skipped / failed counts at the end.
+   */
+  const handleImportFromUrl = async () => {
+    if (urlSelectedIndexes.size === 0) {
+      showToast(t('channel_database.toast_url_no_selection'), 'error');
+      return;
+    }
+    setIsSaving(true);
+    let imported = 0;
+    let skipped = 0;
+    let failed = 0;
+    try {
+      for (const idx of urlSelectedIndexes) {
+        const ch = urlDecodedChannels[idx];
+        if (!ch) continue;
+        const psk = normalizeChannelUrlPskToBase64(ch.psk);
+        if (!psk) {
+          // No-crypto / unparseable PSK — nothing to store.
+          skipped++;
+          continue;
+        }
+        const name = (urlEditedNames[idx] ?? ch.name ?? '').trim()
+          || t('channel_database.imported_channel_default_name', { index: idx + 1 });
+        try {
+          await apiService.createChannelDatabaseEntry({
+            name,
+            psk,
+            pskLength: getPskBase64ByteLength(psk),
+            description: t('channel_database.imported_from_url_description'),
+            isEnabled: true,
+          });
+          imported++;
+        } catch (err) {
+          logger.error(`Failed to import channel ${name}:`, err);
+          failed++;
+        }
+      }
+      if (imported > 0) {
+        showToast(t('channel_database.toast_url_import_success', { count: imported }), 'success');
+      }
+      if (failed > 0 || (imported === 0 && skipped > 0)) {
+        const msg = failed > 0
+          ? t('channel_database.toast_url_import_partial', { imported, failed })
+          : t('channel_database.toast_url_import_all_skipped');
+        showToast(msg, failed > 0 ? 'error' : 'info');
+      }
+      if (imported > 0) {
+        await fetchChannels();
+        setShowUrlImportModal(false);
+        resetUrlImportState();
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const formatTimestamp = (timestamp: number | null): string => {
     if (!timestamp) return t('common.never');
     return new Date(timestamp).toLocaleString();
@@ -713,6 +877,20 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
             }}
           >
             {t('common.import')}
+          </button>
+          <button
+            onClick={() => setShowUrlImportModal(true)}
+            title={t('channel_database.import_from_url_title')}
+            style={{
+              padding: '0.5rem 1rem',
+              backgroundColor: 'var(--ctp-peach)',
+              color: 'var(--ctp-base)',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            {t('channel_database.import_from_url')}
           </button>
           <button
             onClick={handleExportChannels}
@@ -1062,6 +1240,214 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                   border: 'none',
                   borderRadius: '4px',
                   cursor: isSaving ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* URL Import Modal */}
+      {showUrlImportModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+          onClick={() => {
+            if (isSaving || isDecodingUrl) return;
+            setShowUrlImportModal(false);
+            resetUrlImportState();
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--ctp-base)',
+              borderRadius: '8px',
+              padding: '1.5rem',
+              maxWidth: '640px',
+              width: '90%',
+              maxHeight: '85vh',
+              overflowY: 'auto'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginTop: 0 }}>{t('channel_database.import_from_url')}</h3>
+            <p className="setting-description" style={{ marginBottom: '1rem' }}>
+              {t('channel_database.import_from_url_description')}
+            </p>
+
+            <div className="setting-item">
+              <label htmlFor="url-import-input">
+                {t('channel_database.url_label')}
+              </label>
+              <textarea
+                id="url-import-input"
+                value={urlImportInput}
+                onChange={(e) => setUrlImportInput(e.target.value)}
+                placeholder="https://meshtastic.org/e/#..."
+                rows={3}
+                disabled={isDecodingUrl || isSaving}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  marginTop: '0.5rem',
+                  fontFamily: 'monospace',
+                  fontSize: '0.85rem',
+                  wordBreak: 'break-all',
+                  resize: 'vertical'
+                }}
+              />
+              <button
+                onClick={handleDecodeUrl}
+                disabled={isDecodingUrl || isSaving || !urlImportInput.trim()}
+                style={{
+                  marginTop: '0.5rem',
+                  padding: '0.5rem 1rem',
+                  backgroundColor: 'var(--ctp-blue)',
+                  color: 'var(--ctp-base)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: (isDecodingUrl || isSaving || !urlImportInput.trim()) ? 'not-allowed' : 'pointer',
+                  opacity: (isDecodingUrl || isSaving || !urlImportInput.trim()) ? 0.6 : 1
+                }}
+              >
+                {isDecodingUrl ? t('common.loading') : t('channel_database.decode_url')}
+              </button>
+            </div>
+
+            {urlImportError && (
+              <div
+                style={{
+                  marginTop: '1rem',
+                  padding: '0.5rem 0.75rem',
+                  backgroundColor: 'var(--ctp-red)',
+                  color: 'var(--ctp-base)',
+                  borderRadius: '4px',
+                  fontSize: '0.9rem'
+                }}
+              >
+                {urlImportError}
+              </div>
+            )}
+
+            {urlDecodedChannels.length > 0 && (
+              <div style={{ marginTop: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem' }}>
+                  {t('channel_database.url_decoded_channels', { count: urlDecodedChannels.length })}
+                </label>
+                <div
+                  style={{
+                    backgroundColor: 'var(--ctp-surface0)',
+                    padding: '0.5rem',
+                    borderRadius: '4px',
+                    maxHeight: '320px',
+                    overflowY: 'auto'
+                  }}
+                >
+                  {urlDecodedChannels.map((ch, idx) => {
+                    const normalizedPsk = normalizeChannelUrlPskToBase64(ch.psk);
+                    const isImportable = normalizedPsk !== null && ch.role !== ROLE_DISABLED;
+                    const pskBytes = getPskBase64ByteLength(normalizedPsk);
+                    const roleLabel = ch.role === ROLE_PRIMARY
+                      ? t('channel_database.role_primary')
+                      : ch.role === ROLE_SECONDARY
+                        ? t('channel_database.role_secondary')
+                        : ch.role === ROLE_DISABLED
+                          ? t('channel_database.role_disabled')
+                          : t('channel_database.role_unknown');
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          gap: '0.5rem',
+                          padding: '0.5rem',
+                          borderBottom: idx < urlDecodedChannels.length - 1 ? '1px solid var(--ctp-surface1)' : 'none',
+                          opacity: isImportable ? 1 : 0.55
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={urlSelectedIndexes.has(idx)}
+                          onChange={() => toggleUrlChannelSelected(idx)}
+                          disabled={!isImportable || isSaving}
+                          style={{ marginTop: '0.5rem' }}
+                          aria-label={t('channel_database.url_include_channel', { name: ch.name || `#${idx + 1}` })}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <input
+                            type="text"
+                            value={urlEditedNames[idx] ?? ch.name ?? ''}
+                            onChange={(e) =>
+                              setUrlEditedNames((prev) => ({ ...prev, [idx]: e.target.value }))
+                            }
+                            placeholder={t('channel_database.imported_channel_default_name', { index: idx + 1 })}
+                            disabled={!isImportable || isSaving}
+                            style={{
+                              width: '100%',
+                              padding: '0.25rem 0.5rem',
+                              fontSize: '0.95rem'
+                            }}
+                          />
+                          <div style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
+                            <span>{roleLabel}</span>
+                            {' · '}
+                            {normalizedPsk
+                              ? t('channel_database.url_psk_summary', { bytes: pskBytes })
+                              : t('channel_database.url_psk_no_crypto')}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
+              <button
+                onClick={handleImportFromUrl}
+                disabled={isSaving || urlSelectedIndexes.size === 0}
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  backgroundColor: 'var(--ctp-green)',
+                  color: 'var(--ctp-base)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: (isSaving || urlSelectedIndexes.size === 0) ? 'not-allowed' : 'pointer',
+                  opacity: (isSaving || urlSelectedIndexes.size === 0) ? 0.6 : 1
+                }}
+              >
+                {isSaving
+                  ? t('common.importing')
+                  : t('channel_database.url_add_selected', { count: urlSelectedIndexes.size })}
+              </button>
+              <button
+                onClick={() => {
+                  setShowUrlImportModal(false);
+                  resetUrlImportState();
+                }}
+                disabled={isSaving || isDecodingUrl}
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  backgroundColor: 'var(--ctp-surface1)',
+                  color: 'var(--ctp-text)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: (isSaving || isDecodingUrl) ? 'not-allowed' : 'pointer'
                 }}
               >
                 {t('common.cancel')}
