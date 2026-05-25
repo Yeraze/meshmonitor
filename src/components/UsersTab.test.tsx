@@ -104,7 +104,12 @@ function setupApi(opts: {
       return { data: opts.channelDbPermissions ?? [] };
     }
     if (url.includes('/api/channels/all')) {
-      return [];
+      // Default fixture: a single primary channel — required for the
+      // per-source permission grid to render the channel_0 row at all
+      // now that the grid is gated on actually-configured channels
+      // (fix/users-perm-source-aware-channels). Specific tests can
+      // override via `opts.channels`.
+      return opts.channels ?? [{ id: 0, name: '' }];
     }
     return {};
   });
@@ -209,6 +214,39 @@ describe('UsersTab — PR-C grid additions', () => {
     );
     expect(screen.queryByText('users.channel_primary')).not.toBeInTheDocument();
     expect(screen.queryByText('users.channel_n')).not.toBeInTheDocument();
+  });
+
+  it('renders channel rows only for channels actually configured on the scoped source', async () => {
+    // Regression for issue: UsersTab used to paint all 8 channel_N rows
+    // unconditionally, so MeshCore sources (which have no per-slot
+    // channels) and Meshtastic sources with fewer than 8 channels showed
+    // empty/non-existent rows — e.g. "Channel 1 (Gauntlet)" lingered even
+    // after the underlying channel was disabled. The grid is now gated on
+    // the source's actual channel list returned by `/api/channels/all`.
+    setupApi({
+      sources: [
+        { id: 'tcp-1', name: 'TCP Source', type: 'meshtastic_tcp' },
+      ],
+      channels: [
+        { id: 0, name: '' }, // Primary, unnamed
+        { id: 2, name: 'Gauntlet' }, // configured secondary
+      ],
+    });
+    render(<UsersTab />);
+    fireEvent.click(await screen.findByText(/Alice/));
+    const select = (await screen.findByLabelText(/permission_scope/i)) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'tcp-1' } });
+
+    // channel_0 (primary, no name) → row appears.
+    await waitFor(() => expect(screen.getByText('users.channel_primary')).toBeInTheDocument());
+    // channel_2 → row appears, labelled with the channel name.
+    expect(screen.getByText(/Gauntlet/)).toBeInTheDocument();
+    // channel_1 / channel_3..7 → NOT configured, so no row should render.
+    // We assert by counting the channel_n label occurrences — should match
+    // exactly one channel (channel_2 here, since channel_0 uses the
+    // separate channel_primary key).
+    const channelNRows = screen.queryAllByText(/^users\.channel_n/);
+    expect(channelNRows).toHaveLength(1);
   });
 
   it('channel-database section renders a canWrite checkbox column', async () => {
