@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixes
+
+- #3205 fix(telemetry): show pretty labels for MeshCore status / LPP types on Node Details, Messages, and MeshCore DM telemetry — `TelemetryGraphs.tsx` carried a duplicate local `getTelemetryLabel` whose label map predated the MeshCore work and never received the `mc_status_*` / `mc_*` entries or the `_ch<N>` channel-suffix handling. Charts on InfoTab / MessagesTab / MeshCoreDirectMessagesView therefore fell through to the raw type name (`mc_status_air_time_secs` instead of "Air Time", etc.). Consolidates onto the canonical exported `getTelemetryLabel` from `TelemetryChart.tsx` and migrates the entries that lived only in the local map (signal quality, ch2-ch8 power, air quality, host metrics, extended environment, `timeOffset`) into the canonical `TELEMETRY_LABELS`. Regression tests added so the consolidated set can't silently regress again.
+
 ### Features
 
 - #3189 feat(mqtt-bridge): direction mode dropdown (`bidirectional` / `publish_only` / `subscribe_only`) — public/curated upstream brokers like `mqtt.meshtastic.org` accept gateway `PUBLISH` but ACL-reject `SUBSCRIBE`, and the bridge used to spam `permission-denied` warnings on every `SUBACK`. The new per-bridge **Mode** dropdown lets operators skip the upstream `subscribe()` call entirely (`publish_only`) or refuse outbound publishes (`subscribe_only`). Stored in the bridge `config` JSON blob — no schema migration; missing values are treated as `bidirectional` so existing rows keep working. Status now exposes the resolved mode and stops claiming "0 subscriptions denied" when none were ever attempted.
