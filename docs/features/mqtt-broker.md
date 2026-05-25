@@ -68,6 +68,18 @@ A bridge can run in either of two configurations, picked when you create it ("Pa
 - **Standalone, monitoring**: you want to watch what flows on an upstream broker (e.g. `mqtt.meshtastic.org` for a regional area) without hosting any local MQTT clients. The bridge subscribes, ingests, and persists; that data shows up as its own source in the sidebar.
 - **Standalone, client-proxy target**: you have a Meshtastic device in `proxy_to_client` mode and you want its MQTT traffic forwarded straight upstream without an intermediate embedded broker. The Meshtastic source's `mqttLink` points at the bridge directly. This is the **MQTT-client-proxy** use case ([issue #3134](https://github.com/Yeraze/meshmonitor/issues/3134)).
 
+**Direction — bridge `mode` dropdown**
+
+Independent of the attached/standalone choice, every bridge has a **Mode** dropdown that controls which direction(s) it talks to the upstream broker:
+
+| Mode | Upstream `SUBSCRIBE` | Uplink `PUBLISH` | Use case |
+|---|---|---|---|
+| `bidirectional` (default) | Yes | Yes | Default behavior — full round-trip bridging. |
+| `publish_only` | **Skipped** entirely — never sends a `SUBSCRIBE` packet, and `SUBACK`-denied warnings are suppressed | Yes | Public/curated brokers (e.g. `mqtt.meshtastic.org`) that accept `PUBLISH` from gateways but ACL-reject `SUBSCRIBE`. Stops the `permission-denied` log spam without losing the publish path. |
+| `subscribe_only` | Yes | **Refused** — the parent broker's `local-packet` listener is never bound, and explicit `publish()` calls throw `subscribe_only — publish refused` | Read-only monitoring of an upstream feed where you must not echo any local traffic outbound. |
+
+The field is stored in the bridge's `config.mode` JSON field; omitting it (or storing `bidirectional`) preserves pre-existing behavior so older rows keep working without migration.
+
 ### Broker vs Bridge — feature matrix
 
 | Capability | `mqtt_broker` | `mqtt_bridge` (attached) | `mqtt_bridge` (standalone) |

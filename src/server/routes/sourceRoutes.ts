@@ -82,6 +82,21 @@ export function buildMqttManagerForSource(
  *
  * Returns an error message string if invalid, or null if OK.
  */
+const MQTT_BRIDGE_MODES = ['bidirectional', 'publish_only', 'subscribe_only'] as const;
+
+/**
+ * Validate the optional `mode` field on an mqtt_bridge config. Absent
+ * (undefined) is allowed and the manager defaults to `bidirectional`.
+ */
+function validateMqttBridgeMode(config: Record<string, any>): string | null {
+  const mode = config?.mode;
+  if (mode === undefined || mode === null) return null;
+  if (!MQTT_BRIDGE_MODES.includes(mode)) {
+    return `mqtt_bridge mode must be one of ${MQTT_BRIDGE_MODES.join(', ')}`;
+  }
+  return null;
+}
+
 function validateMqttBridgeRewrites(config: Record<string, any>): string | null {
   const isAttached =
     typeof config.brokerSourceId === 'string' && config.brokerSourceId.trim() !== '';
@@ -261,6 +276,10 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       if (rewriteError) {
         return res.status(400).json({ error: rewriteError });
       }
+      const modeError = validateMqttBridgeMode(config ?? {});
+      if (modeError) {
+        return res.status(400).json({ error: modeError });
+      }
     }
     if (!config || typeof config !== 'object') {
       return res.status(400).json({ error: 'config is required and must be an object' });
@@ -381,6 +400,10 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         const rewriteError = validateMqttBridgeRewrites(config);
         if (rewriteError) {
           return res.status(400).json({ error: rewriteError });
+        }
+        const modeError = validateMqttBridgeMode(config);
+        if (modeError) {
+          return res.status(400).json({ error: modeError });
         }
       }
 

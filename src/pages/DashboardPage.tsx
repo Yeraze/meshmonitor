@@ -157,6 +157,12 @@ function DashboardInner() {
   const [formMqttBridgeUsername, setFormMqttBridgeUsername] = useState('');
   const [formMqttBridgePassword, setFormMqttBridgePassword] = useState('');
   const [formMqttBridgeSubscriptions, setFormMqttBridgeSubscriptions] = useState('msh/#');
+  // Bridge mode: bidirectional (default), publish_only (skip upstream
+  // subscribe — for public servers that reject SUBSCRIBE), or
+  // subscribe_only (skip uplink — read-only monitoring).
+  const [formMqttBridgeMode, setFormMqttBridgeMode] = useState<
+    'bidirectional' | 'publish_only' | 'subscribe_only'
+  >('bidirectional');
   // Each filter is opt-in via a checkbox so the form stays short for the
   // common case where the user just wants a topic-pattern subscription.
   const [formMqttBridgeUseTopicBlock, setFormMqttBridgeUseTopicBlock] = useState(false);
@@ -302,6 +308,7 @@ function DashboardInner() {
     setFormMqttBridgeUsername('');
     setFormMqttBridgePassword('');
     setFormMqttBridgeSubscriptions('msh/#');
+    setFormMqttBridgeMode('bidirectional');
     setFormMqttBridgeUseTopicBlock(false);
     setFormMqttBridgeTopicBlock('');
     setFormMqttBridgeUseGeo(false);
@@ -361,6 +368,12 @@ function DashboardInner() {
       setFormMqttBridgeUsername(cfg?.upstream?.username ?? '');
       setFormMqttBridgePassword('');
       setFormMqttBridgeSubscriptions((cfg?.subscriptions ?? []).join('\n'));
+      const savedMode = cfg?.mode;
+      setFormMqttBridgeMode(
+        savedMode === 'publish_only' || savedMode === 'subscribe_only'
+          ? savedMode
+          : 'bidirectional',
+      );
       const topicBlock: string[] = cfg?.downlinkFilters?.topics?.block ?? [];
       setFormMqttBridgeUseTopicBlock(topicBlock.length > 0);
       setFormMqttBridgeTopicBlock(topicBlock.join('\n'));
@@ -494,6 +507,8 @@ function DashboardInner() {
           password: formMqttBridgePassword || undefined,
         },
         subscriptions: subscriptions.length > 0 ? subscriptions : ['msh/#'],
+        // Omit when bidirectional (the default) so existing rows stay clean.
+        ...(formMqttBridgeMode !== 'bidirectional' ? { mode: formMqttBridgeMode } : {}),
         ...(Object.keys(downlinkFilters).length > 0 ? { downlinkFilters } : {}),
       };
       if (editingSourceId && !formMqttBridgePassword) {
@@ -1273,6 +1288,34 @@ function DashboardInner() {
                     {t(
                       'source.form.mqtt_bridge_broker_help',
                       'With a parent broker, the bridge also republishes upstream traffic to local devices and forwards their packets upstream. Without one, it runs as a pure MQTT client — useful for monitoring or as a client-proxy target for a Meshtastic source.',
+                    )}
+                  </span>
+                </label>
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.mqtt_bridge_mode', 'Mode')}</span>
+                  <select
+                    className="dashboard-form-input"
+                    value={formMqttBridgeMode}
+                    onChange={(e) =>
+                      setFormMqttBridgeMode(
+                        e.target.value as 'bidirectional' | 'publish_only' | 'subscribe_only',
+                      )
+                    }
+                  >
+                    <option value="bidirectional">
+                      {t('source.form.mqtt_bridge_mode_bidirectional', 'Bidirectional (subscribe + publish)')}
+                    </option>
+                    <option value="publish_only">
+                      {t('source.form.mqtt_bridge_mode_publish_only', 'Publish only (no subscribe)')}
+                    </option>
+                    <option value="subscribe_only">
+                      {t('source.form.mqtt_bridge_mode_subscribe_only', 'Subscribe only (no publish)')}
+                    </option>
+                  </select>
+                  <span style={{ fontSize: 11, color: 'var(--ctp-subtext0)', marginTop: 4 }}>
+                    {t(
+                      'source.form.mqtt_bridge_mode_help',
+                      'Use "Publish only" for public servers (e.g. mqtt.meshtastic.org) that reject SUBSCRIBE — avoids permission-denied noise. "Subscribe only" disables uplink forwarding for read-only monitoring.',
                     )}
                   </span>
                 </label>
