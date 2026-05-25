@@ -33,6 +33,11 @@ function isRealNodeKey(key: string): boolean {
 type DmSortField = 'name' | 'lastMessage';
 type DmSortDirection = 'asc' | 'desc';
 
+// Mobile viewport defaults the node list to collapsed so the conversation
+// pane takes the full width (matches Meshtastic MessagesTab behavior).
+const isMobileViewport = (): boolean =>
+  typeof window !== 'undefined' && window.innerWidth <= 768;
+
 export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProps> = ({
   messages,
   contacts,
@@ -49,6 +54,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   const [selected, setSelected] = useState<string | null>(null);
   const [sortField, setSortField] = useState<DmSortField>('lastMessage');
   const [sortDirection, setSortDirection] = useState<DmSortDirection>('desc');
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(isMobileViewport);
 
   const selfKey = status?.localNode?.publicKey;
   const connected = status?.connected ?? false;
@@ -186,58 +192,78 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
 
   return (
     <div className="meshcore-two-pane">
-      <div className="meshcore-list-pane">
+      <div className={`meshcore-list-pane ${isCollapsed ? 'collapsed' : ''}`}>
         <div className="meshcore-list-pane-header">
-          <span>{t('meshcore.nav.dms', 'Direct Messages')}</span>
-          <span className="pane-count">{dmPeers.length}</span>
-          <div className="sort-controls meshcore-sort-controls">
-            <select
-              aria-label={t('meshcore.sort_by', 'Sort by')}
-              title={t('meshcore.sort_by', 'Sort by')}
-              value={sortField}
-              onChange={(e) => setSortField(e.target.value as DmSortField)}
-              className="sort-dropdown"
-            >
-              <option value="lastMessage">{t('meshcore.sort_last_message', 'Last message')}</option>
-              <option value="name">{t('meshcore.sort_name', 'Name')}</option>
-            </select>
-            <button
-              type="button"
-              className="sort-direction-btn"
-              onClick={() => setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))}
-              title={sortDirection === 'asc'
-                ? t('meshcore.ascending', 'Ascending')
-                : t('meshcore.descending', 'Descending')}
-              aria-label={sortDirection === 'asc'
-                ? t('meshcore.ascending', 'Ascending')
-                : t('meshcore.descending', 'Descending')}
-            >
-              {sortDirection === 'asc' ? '↑' : '↓'}
-            </button>
+          <button
+            type="button"
+            className="meshcore-collapse-btn"
+            onClick={() => setIsCollapsed((c) => !c)}
+            title={isCollapsed
+              ? t('nodes.expand_node_list', 'Expand node list')
+              : t('nodes.collapse_node_list', 'Collapse node list')}
+            aria-label={isCollapsed
+              ? t('nodes.expand_node_list', 'Expand node list')
+              : t('nodes.collapse_node_list', 'Collapse node list')}
+            aria-expanded={!isCollapsed}
+          >
+            {isCollapsed ? '▶' : '◀'}
+          </button>
+          {!isCollapsed && (
+            <>
+              <span>{t('meshcore.nav.dms', 'Direct Messages')}</span>
+              <span className="pane-count">{dmPeers.length}</span>
+              <div className="sort-controls meshcore-sort-controls">
+                <select
+                  aria-label={t('meshcore.sort_by', 'Sort by')}
+                  title={t('meshcore.sort_by', 'Sort by')}
+                  value={sortField}
+                  onChange={(e) => setSortField(e.target.value as DmSortField)}
+                  className="sort-dropdown"
+                >
+                  <option value="lastMessage">{t('meshcore.sort_last_message', 'Last message')}</option>
+                  <option value="name">{t('meshcore.sort_name', 'Name')}</option>
+                </select>
+                <button
+                  type="button"
+                  className="sort-direction-btn"
+                  onClick={() => setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                  title={sortDirection === 'asc'
+                    ? t('meshcore.ascending', 'Ascending')
+                    : t('meshcore.descending', 'Descending')}
+                  aria-label={sortDirection === 'asc'
+                    ? t('meshcore.ascending', 'Ascending')
+                    : t('meshcore.descending', 'Descending')}
+                >
+                  {sortDirection === 'asc' ? '↑' : '↓'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+        {!isCollapsed && (
+          <div className="meshcore-list-pane-body">
+            {dmPeers.length === 0 ? (
+              <div className="meshcore-empty-state">
+                {t('meshcore.no_contacts', 'No contacts yet')}
+              </div>
+            ) : dmPeers.map(key => {
+              const c = contactsByKey.get(key);
+              const name = c?.advName || c?.name || `${key.substring(0, 8)}…`;
+              return (
+                <button
+                  key={key}
+                  className={`mc-node-row ${selected === key ? 'selected' : ''}`}
+                  onClick={() => setSelected(key)}
+                >
+                  <div className="mc-node-row-name">
+                    <span>{name}</span>
+                  </div>
+                  <div className="mc-node-row-key">{key.substring(0, 20)}…</div>
+                </button>
+              );
+            })}
           </div>
-        </div>
-        <div className="meshcore-list-pane-body">
-          {dmPeers.length === 0 ? (
-            <div className="meshcore-empty-state">
-              {t('meshcore.no_contacts', 'No contacts yet')}
-            </div>
-          ) : dmPeers.map(key => {
-            const c = contactsByKey.get(key);
-            const name = c?.advName || c?.name || `${key.substring(0, 8)}…`;
-            return (
-              <button
-                key={key}
-                className={`mc-node-row ${selected === key ? 'selected' : ''}`}
-                onClick={() => setSelected(key)}
-              >
-                <div className="mc-node-row-name">
-                  <span>{name}</span>
-                </div>
-                <div className="mc-node-row-key">{key.substring(0, 20)}…</div>
-              </button>
-            );
-          })}
-        </div>
+        )}
       </div>
       <div className="meshcore-main-pane">
         {selected ? (
