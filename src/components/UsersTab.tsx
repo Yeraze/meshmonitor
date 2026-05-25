@@ -107,6 +107,12 @@ const UsersTab: React.FC = () => {
   const [sources, setSources] = useState<Source[]>([]);
   const [permissionScope, setPermissionScope] = useState<string | null>(null);
   const [channelNames, setChannelNames] = useState<Map<number, string>>(new Map());
+  // Channel IDs the currently-scoped source actually has configured. Used to
+  // gate which `channel_N` rows appear in the per-source permission grid —
+  // without this, the UI hardcodes 8 slots regardless of source type, which
+  // is wrong for MeshCore (no per-slot channels) and confusing for any
+  // Meshtastic source that has fewer than 8 channels enabled.
+  const [configuredChannelIds, setConfiguredChannelIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     fetchUsers();
@@ -214,16 +220,30 @@ const UsersTab: React.FC = () => {
   };
 
   const fetchChannelNames = async (sourceId: string | null) => {
-    if (!sourceId) { setChannelNames(new Map()); return; }
+    if (!sourceId) {
+      setChannelNames(new Map());
+      setConfiguredChannelIds(new Set());
+      return;
+    }
     try {
       const channels = await api.get<{ id: number; name: string }[]>(`/api/channels/all?sourceId=${encodeURIComponent(sourceId)}`);
-      const map = new Map<number, string>();
+      const nameMap = new Map<number, string>();
+      const idSet = new Set<number>();
       if (Array.isArray(channels)) {
-        channels.forEach(ch => { if (ch.name) map.set(ch.id, ch.name); });
+        channels.forEach(ch => {
+          // Some channels (notably Primary / channel_0) come back without a
+          // name set — still configured, just unlabeled. Track IDs
+          // independently from names so we can render an unnamed Primary
+          // row but skip slots the source doesn't actually use.
+          if (typeof ch.id === 'number') idSet.add(ch.id);
+          if (ch.name) nameMap.set(ch.id, ch.name);
+        });
       }
-      setChannelNames(map);
+      setChannelNames(nameMap);
+      setConfiguredChannelIds(idSet);
     } catch {
       setChannelNames(new Map());
+      setConfiguredChannelIds(new Set());
     }
   };
 
@@ -927,6 +947,19 @@ const UsersTab: React.FC = () => {
                 const scopedSource = sources.find(s => s.id === permissionScope);
                 const isMqttScope = scopedSource?.type === 'mqtt_broker' || scopedSource?.type === 'mqtt_bridge';
                 if (isMqttScope && String(r).startsWith('channel_')) return false;
+                // Only render channel_N rows for channels actually
+                // configured on the scoped source. MeshCore sources have
+                // no per-slot channels, and Meshtastic sources with fewer
+                // than 8 active channels shouldn't expose empty slots
+                // (which was the source of "channel 1 (Gauntlet) still
+                // shows after disabling all perms" — the row was painted
+                // from hardcoded PERMISSION_KEYS, not from the source's
+                // real channel list).
+                const channelMatch = /^channel_(\d+)$/.exec(String(r));
+                if (channelMatch) {
+                  const id = Number(channelMatch[1]);
+                  if (!configuredChannelIds.has(id)) return false;
+                }
                 return true;
               }).map(resource => {
                 // Get label from translated map or format it
