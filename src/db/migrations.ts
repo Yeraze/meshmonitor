@@ -85,6 +85,7 @@ import { migration as addShowUdpRfNodesToMapPrefsMigration, runMigration067Postg
 import { migration as meshcoreNodesOutPathMigration, runMigration068Postgres, runMigration068Mysql } from '../server/migrations/068_meshcore_nodes_out_path.js';
 import { migration as normalizeNodePublicKeysToBase64Migration, runMigration069Postgres, runMigration069Mysql } from '../server/migrations/069_normalize_node_public_keys_to_base64.js';
 import { migration as meshcoreAdminCredentialMigration, runMigration070Postgres, runMigration070Mysql } from '../server/migrations/070_meshcore_admin_credential.js';
+import { migration as dropLegacyPskLengthCheckMigration, runMigration071Postgres, runMigration071Mysql } from '../server/migrations/071_drop_legacy_psk_length_check.js';
 
 // ============================================================================
 // Registry
@@ -1115,4 +1116,23 @@ registry.register({
   sqlite: (db) => meshcoreAdminCredentialMigration.up(db),
   postgres: (client) => runMigration070Postgres(client),
   mysql: (pool) => runMigration070Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 071: Drop the legacy `CHECK (psk_length IN (16, 32))` constraint
+// from the SQLite `channel_database` table on pre-v3.7 installs. The
+// constraint rejects `pskLength = 1` (shorthand `AQ==` default key) so MQTT
+// default-channel bootstrap fails on every source start. The constraint was
+// removed from the v3.7 baseline, but `CREATE TABLE IF NOT EXISTS` leaves
+// upgraded tables intact — this migration rebuilds the table to strip it.
+// PG/MySQL: no-op (constraint never existed there).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 71,
+  name: 'drop_legacy_psk_length_check',
+  settingsKey: 'migration_071_drop_legacy_psk_length_check',
+  sqlite: (db) => dropLegacyPskLengthCheckMigration.up(db),
+  postgres: (client) => runMigration071Postgres(client),
+  mysql: (pool) => runMigration071Mysql(pool),
 });
