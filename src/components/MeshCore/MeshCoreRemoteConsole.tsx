@@ -84,6 +84,15 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   // lines into the transcript without lifting transcript state.
   const bodyRef = useRef<CliConsoleBodyHandle | null>(null);
 
+  // Guard: auto-login runs from a useEffect whose deps include the
+  // `actions` object, and `useMeshCore` rebuilds `actions` on every
+  // poll refresh — so without this ref the effect re-fires and pushes
+  // a fresh "Logged in with saved password" line into the transcript
+  // every few seconds. Tracks the publicKey we've already auto-attempted
+  // in this mount cycle; the reset effect below clears it on contact
+  // change so navigating away and back still re-attempts.
+  const autoLoginAttemptedFor = useRef<string | null>(null);
+
   // Reset auth state when the targeted contact changes — a stale "logged
   // in" badge against the wrong contact would be actively misleading.
   useEffect(() => {
@@ -92,6 +101,7 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
     setLoginPassword('');
     setRememberPassword(false);
     setLoginError(null);
+    autoLoginAttemptedFor.current = null;
   }, [publicKey]);
 
   const refreshCapability = useCallback(async () => {
@@ -112,6 +122,8 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
       const isStored = cap.stored?.some((s) => s.publicKey.toLowerCase() === target);
       const isRotated = cap.rotated?.some((r) => r.publicKey.toLowerCase() === target);
       if (!isStored || isRotated) return;
+      if (autoLoginAttemptedFor.current === publicKey) return;
+      autoLoginAttemptedFor.current = publicKey;
       const result = await actions.loginRemoteWithSaved(publicKey);
       if (cancelled) return;
       if (result.success) {
