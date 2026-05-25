@@ -83,6 +83,7 @@ export function buildMqttManagerForSource(
  * Returns an error message string if invalid, or null if OK.
  */
 const MQTT_BRIDGE_MODES = ['bidirectional', 'publish_only', 'subscribe_only'] as const;
+const MQTT_BRIDGE_FORWARDING_MODES = ['per_gateway', 'single'] as const;
 
 /**
  * Validate the optional `mode` field on an mqtt_bridge config. Absent
@@ -93,6 +94,19 @@ function validateMqttBridgeMode(config: Record<string, any>): string | null {
   if (mode === undefined || mode === null) return null;
   if (!MQTT_BRIDGE_MODES.includes(mode)) {
     return `mqtt_bridge mode must be one of ${MQTT_BRIDGE_MODES.join(', ')}`;
+  }
+  return null;
+}
+
+/**
+ * Validate the optional `forwardingMode` field on an mqtt_bridge config.
+ * Absent (undefined) defaults to `per_gateway`.
+ */
+function validateMqttBridgeForwardingMode(config: Record<string, any>): string | null {
+  const value = config?.forwardingMode;
+  if (value === undefined || value === null) return null;
+  if (!MQTT_BRIDGE_FORWARDING_MODES.includes(value)) {
+    return `mqtt_bridge forwardingMode must be one of ${MQTT_BRIDGE_FORWARDING_MODES.join(', ')}`;
   }
   return null;
 }
@@ -280,6 +294,10 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       if (modeError) {
         return res.status(400).json({ error: modeError });
       }
+      const forwardingModeError = validateMqttBridgeForwardingMode(config ?? {});
+      if (forwardingModeError) {
+        return res.status(400).json({ error: forwardingModeError });
+      }
     }
     if (!config || typeof config !== 'object') {
       return res.status(400).json({ error: 'config is required and must be an object' });
@@ -404,6 +422,10 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         const modeError = validateMqttBridgeMode(config);
         if (modeError) {
           return res.status(400).json({ error: modeError });
+        }
+        const forwardingModeError = validateMqttBridgeForwardingMode(config);
+        if (forwardingModeError) {
+          return res.status(400).json({ error: forwardingModeError });
         }
       }
 

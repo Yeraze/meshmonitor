@@ -631,4 +631,125 @@ describe('MqttBridgeManager', () => {
     await new Promise<void>((r) => localClient.end(true, {}, () => r()));
     await new Promise<void>((r) => pub.end(true, {}, () => r()));
   });
+
+  it('in default per_gateway mode, dispatches uplink publishes through a per-gateway upstream connection', async () => {
+    // Record every CONNECT and every publish the upstream broker sees so
+    // we can prove the bridge opened a connection whose clientId matches
+    // the envelope's gateway_id, not the legacy `mm-bridge-…` prefix.
+    const connects: string[] = [];
+    const publishesByClient: Array<{ clientId: string | null; topic: string }> = [];
+    upstream.aedes.on('client', (c) => connects.push(c.id));
+    upstream.aedes.on('publish', (packet, client) => {
+      if (!client) return;
+      publishesByClient.push({ clientId: client.id, topic: packet.topic });
+    });
+
+    bridge = new MqttBridgeManager('per-gw-bridge', 'PerGW', {
+      brokerSourceId: 'local-broker',
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      // No explicit forwardingMode — should default to per_gateway.
+      subscriptions: [],
+      mode: 'publish_only',
+    });
+    await sourceManagerRegistry.addManager(bridge);
+
+    // A local Meshtastic client publishes through the embedded broker;
+    // gateway_id is intentionally DIFFERENT from the broker's own
+    // !deadbeef so the pool has to create a new entry.
+    const localClient = connect(`mqtt://127.0.0.1:${localPort}`, {
+      username: 'u',
+      password: 'p',
+      reconnectPeriod: 0,
+      clientId: '!11111111', // a local gateway node connecting to our embedded broker
+    });
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('local connect timeout')), 3000);
+      localClient.once('connect', () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+
+    const envelope = buildPositionEnvelope({
+      from: 0x11111111,
+      latI: 440_000_000,
+      lngI: -780_000_000,
+      channelId: 'LongFast',
+      gatewayId: '!11111111',
+      packetId: 0x30000001,
+    });
+    localClient.publish('msh/CA/ON/PTBO', envelope);
+
+    // Wait for the uplink chain: local → embedded broker → bridge.handleUplink
+    // → pool.publish → upstream Aedes records the publish.
+    await new Promise((r) => setTimeout(r, 600));
+
+    // The bridge's subscriber connected as the broker's gateway nodeId.
+    expect(connects).toContain('!deadbeef');
+    // The pool opened a separate per-gateway connection for the local node.
+    expect(connects).toContain('!11111111');
+
+    // The uplink publish rode the per-gateway connection, not the subscriber.
+    const fromGateway = publishesByClient.filter((p) => p.clientId === '!11111111');
+    expect(fromGateway.length).toBeGreaterThanOrEqual(1);
+    expect(fromGateway[0].topic).toBe('msh/CA/ON/PTBO');
+
+    // Status surface reports the publisher pool entry.
+    const status = bridge.getStatus();
+    expect(status.forwardingMode).toBe('per_gateway');
+    expect(Object.keys(status.publishers)).toContain('!11111111');
+
+    await new Promise<void>((r) => localClient.end(true, {}, () => r()));
+  });
+
+  it('in single mode, uplink rides the legacy `mm-bridge-…` connection with no publisher pool', async () => {
+    const connects: string[] = [];
+    upstream.aedes.on('client', (c) => connects.push(c.id));
+
+    bridge = new MqttBridgeManager('single-bridge', 'Single', {
+      brokerSourceId: 'local-broker',
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: [],
+      mode: 'publish_only',
+      forwardingMode: 'single',
+    });
+    await sourceManagerRegistry.addManager(bridge);
+
+    const localClient = connect(`mqtt://127.0.0.1:${localPort}`, {
+      username: 'u',
+      password: 'p',
+      reconnectPeriod: 0,
+      clientId: '!22222222',
+    });
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('local connect timeout')), 3000);
+      localClient.once('connect', () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+
+    const envelope = buildPositionEnvelope({
+      from: 0x22222222,
+      latI: 440_000_000,
+      lngI: -780_000_000,
+      channelId: 'LongFast',
+      gatewayId: '!22222222',
+      packetId: 0x30000002,
+    });
+    localClient.publish('msh/CA/ON/PTBO', envelope);
+
+    await new Promise((r) => setTimeout(r, 400));
+
+    // Only the legacy `mm-bridge-…` prefix shows up — no per-gateway
+    // connections were ever created.
+    expect(connects.some((id) => id.startsWith('mm-bridge-single-bridge-'))).toBe(true);
+    expect(connects).not.toContain('!22222222');
+
+    const status = bridge.getStatus();
+    expect(status.forwardingMode).toBe('single');
+    expect(status.publishers).toEqual({});
+
+    await new Promise<void>((r) => localClient.end(true, {}, () => r()));
+  });
 });
