@@ -434,6 +434,55 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                   </span>
                 ) : null;
               })()}
+              {(() => {
+                // Per-gateway publisher pool status — visible only on
+                // mqtt_bridge sources running in per_gateway mode that
+                // have actually opened at least one publisher connection.
+                // Tooltip lists each publisher's clientId + connected
+                // state + publish count so the operator can see at a
+                // glance which gateways are reaching the broker.
+                if (!isMqttBridge) return null;
+                const publishers = (status as {
+                  publishers?: Record<string, {
+                    connected: boolean;
+                    publishes: number;
+                    lastError: string | null;
+                  }>;
+                } | null | undefined)?.publishers;
+                if (!publishers) return null;
+                const entries = Object.entries(publishers);
+                if (entries.length === 0) return null;
+                const total = entries.length;
+                const connected = entries.filter(([, e]) => e.connected).length;
+                const allConnected = connected === total;
+                const lines = entries.map(([clientId, e]) => {
+                  const state = e.connected ? '✓' : '✗';
+                  const errSuffix = e.lastError ? ` — ${e.lastError}` : '';
+                  return `${state} ${clientId}  (${e.publishes} pub${e.publishes === 1 ? '' : 's'})${errSuffix}`;
+                });
+                const title = lines.join('\n');
+                return (
+                  <span
+                    className={
+                      'dashboard-publisher-badge' +
+                      (allConnected ? '' : ' dashboard-publisher-partial')
+                    }
+                    title={title}
+                    aria-label={title}
+                  >
+                    {allConnected
+                      ? t('source.publishers_all_connected', {
+                          defaultValue: '{{count}} gateways',
+                          count: total,
+                        })
+                      : t('source.publishers_partial', {
+                          defaultValue: '{{connected}}/{{total}} gateways',
+                          connected,
+                          total,
+                        })}
+                  </span>
+                );
+              })()}
             </div>
 
             <div className="dashboard-source-card-actions">
