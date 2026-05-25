@@ -181,7 +181,7 @@ The composite primary key on `meshcore_nodes` is `(sourceId, publicKey)`, so the
 ## Remote Administration
 
 ::: tip Added in 4.7
-The MeshCore Remote-Administration console ships in 4.7 — gated on the new per-source `remote_admin` permission. See [`docs/internal/dev-notes/MESHCORE_REMOTE_ADMIN.md`](../internal/dev-notes/MESHCORE_REMOTE_ADMIN.md) for the protocol-level architecture; this section is the operator-facing summary.
+The MeshCore Remote-Administration console ships in 4.7 — gated on the new per-source `remote_admin` permission. See [the internal architecture doc](https://github.com/Yeraze/meshmonitor/blob/main/docs/internal/dev-notes/MESHCORE_REMOTE_ADMIN.md) (`docs/internal/dev-notes/MESHCORE_REMOTE_ADMIN.md` in the repo) for the protocol-level architecture; this section is the operator-facing summary.
 :::
 
 MeshCore's remote-admin protocol is **CLI text sent as an encrypted DM** — the same `PAYLOAD_TYPE_TXT_MSG` packet a chat message uses, distinguished by a single `txt_type` byte (`CliData = 1` vs `Plain = 0`). The remote node dispatches the text into its `CommonCLI::handleCommand` handler and replies with one packet of text. MeshMonitor wraps the wire-level traffic behind two consoles.
