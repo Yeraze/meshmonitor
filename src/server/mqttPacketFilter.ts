@@ -35,7 +35,7 @@ export interface MeshPacketShape {
   rxRssi?: number;
   hopLimit?: number;
   hopStart?: number;
-  decoded?: { portnum?: number; payload?: Uint8Array };
+  decoded?: { portnum?: number; payload?: Uint8Array; bitfield?: number };
   encrypted?: Uint8Array;
 }
 

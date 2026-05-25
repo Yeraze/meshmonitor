@@ -171,6 +171,9 @@ function DashboardInner() {
   const [formMqttBridgeForwardingMode, setFormMqttBridgeForwardingMode] = useState<
     'per_gateway' | 'single'
   >('per_gateway');
+  // When true, bypass the firmware ok_to_mqtt opt-out and uplink every
+  // packet. Default false (honor the bit) — operator override only.
+  const [formMqttBridgeIgnoreOkToMqtt, setFormMqttBridgeIgnoreOkToMqtt] = useState(false);
   // Each filter is opt-in via a checkbox so the form stays short for the
   // common case where the user just wants a topic-pattern subscription.
   const [formMqttBridgeUseTopicBlock, setFormMqttBridgeUseTopicBlock] = useState(false);
@@ -333,6 +336,7 @@ function DashboardInner() {
     setFormMqttBridgeSubscriptions('msh/#');
     setFormMqttBridgeMode('bidirectional');
     setFormMqttBridgeForwardingMode('per_gateway');
+    setFormMqttBridgeIgnoreOkToMqtt(false);
     setFormMqttBridgeUseTopicBlock(false);
     setFormMqttBridgeTopicBlock('');
     setFormMqttBridgeUseGeo(false);
@@ -400,6 +404,7 @@ function DashboardInner() {
       );
       const savedForwarding = cfg?.forwardingMode;
       setFormMqttBridgeForwardingMode(savedForwarding === 'single' ? 'single' : 'per_gateway');
+      setFormMqttBridgeIgnoreOkToMqtt(cfg?.ignoreOkToMqtt === true);
       const topicBlock: string[] = cfg?.downlinkFilters?.topics?.block ?? [];
       setFormMqttBridgeUseTopicBlock(topicBlock.length > 0);
       setFormMqttBridgeTopicBlock(topicBlock.join('\n'));
@@ -540,6 +545,9 @@ function DashboardInner() {
         ...(formMqttBridgeForwardingMode !== 'per_gateway'
           ? { forwardingMode: formMqttBridgeForwardingMode }
           : {}),
+        // Operator override — only serialize when set. Defaults to honoring
+        // the originator's ok_to_mqtt preference.
+        ...(formMqttBridgeIgnoreOkToMqtt ? { ignoreOkToMqtt: true } : {}),
         ...(Object.keys(downlinkFilters).length > 0 ? { downlinkFilters } : {}),
       };
       if (editingSourceId && !formMqttBridgePassword) {
@@ -1379,6 +1387,25 @@ function DashboardInner() {
                       'source.form.mqtt_bridge_forwarding_help',
                       'Per-gateway lets each local node publish upstream under its own !<hex> Client ID — required for community brokers that filter CONNECT on Client ID (mqtt.areyoumeshingwith.us, etc.). Switch to Single only if the upstream broker has tight per-username connection caps.',
                     )}
+                  </span>
+                </label>
+                <label className="dashboard-form-field" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={formMqttBridgeIgnoreOkToMqtt}
+                    onChange={(e) => setFormMqttBridgeIgnoreOkToMqtt(e.target.checked)}
+                    style={{ marginTop: 3 }}
+                  />
+                  <span>
+                    <span className="dashboard-form-label" style={{ display: 'block' }}>
+                      {t('source.form.mqtt_bridge_ignore_ok_to_mqtt', 'Uplink all packets (ignore ok_to_mqtt bit)')}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--ctp-yellow)' }}>
+                      {t(
+                        'source.form.mqtt_bridge_ignore_ok_to_mqtt_help',
+                        '⚠ Overrides the originating node\'s "ok_to_mqtt" preference. By default, MeshMonitor drops uplink packets whose firmware-set ok_to_mqtt bit is unset (matching Meshtastic firmware on public brokers). Enabling this republishes every packet regardless — including from nodes that explicitly opted out of MQTT relay. Only enable for private bridges where every gateway has consented.',
+                      )}
+                    </span>
                   </span>
                 </label>
                 <label className="dashboard-form-field">
