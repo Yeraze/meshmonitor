@@ -64,6 +64,12 @@ function buildPositionEnvelope(opts: {
   channelId: string;
   gatewayId: string;
   packetId?: number;
+  /**
+   * `Data.bitfield` value. Defaults to 1 (ok_to_mqtt bit set) so existing
+   * tests pass the bridge's ok_to_mqtt gate without explicit opt-in. The
+   * gate test below uses bitfield=0 to verify the drop path.
+   */
+  bitfield?: number;
 }): Buffer {
   const r = getProtobufRoot();
   if (!r) throw new Error('protobuf root not loaded');
@@ -77,7 +83,11 @@ function buildPositionEnvelope(opts: {
       to: 0xffffffff,
       channel: 0,
       id: opts.packetId ?? 0xabcdef01,
-      decoded: { portnum: PortNum.POSITION_APP, payload: positionPayload },
+      decoded: {
+        portnum: PortNum.POSITION_APP,
+        payload: positionPayload,
+        bitfield: opts.bitfield ?? 1,
+      },
     },
     channelId: opts.channelId,
     gatewayId: opts.gatewayId,
@@ -749,6 +759,123 @@ describe('MqttBridgeManager', () => {
     const status = bridge.getStatus();
     expect(status.forwardingMode).toBe('single');
     expect(status.publishers).toEqual({});
+
+    await new Promise<void>((r) => localClient.end(true, {}, () => r()));
+  });
+
+  it('honors ok_to_mqtt: drops uplink packets whose Data.bitfield bit 0 is unset', async () => {
+    const publishesByClient: Array<{ clientId: string | null; topic: string }> = [];
+    upstream.aedes.on('publish', (packet, client) => {
+      if (!client) return;
+      publishesByClient.push({ clientId: client.id, topic: packet.topic });
+    });
+
+    bridge = new MqttBridgeManager('ok-bit-bridge', 'OkBit', {
+      brokerSourceId: 'local-broker',
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: [],
+      mode: 'publish_only',
+    });
+    await sourceManagerRegistry.addManager(bridge);
+
+    const localClient = connect(`mqtt://127.0.0.1:${localPort}`, {
+      username: 'u',
+      password: 'p',
+      reconnectPeriod: 0,
+      clientId: '!11111111',
+    });
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('local connect timeout')), 3000);
+      localClient.once('connect', () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+
+    // bit 0 unset → originator opted out of MQTT relay → bridge must drop.
+    const optOutEnvelope = buildPositionEnvelope({
+      from: 0x11111111,
+      latI: 440_000_000,
+      lngI: -780_000_000,
+      channelId: 'LongFast',
+      gatewayId: '!11111111',
+      packetId: 0x40000001,
+      bitfield: 0,
+    });
+    // bit 0 set → opt-in → bridge must republish.
+    const optInEnvelope = buildPositionEnvelope({
+      from: 0x11111111,
+      latI: 440_000_000,
+      lngI: -780_000_000,
+      channelId: 'LongFast',
+      gatewayId: '!11111111',
+      packetId: 0x40000002,
+      bitfield: 1,
+    });
+
+    localClient.publish('msh/CA/ON/PTBO', optOutEnvelope);
+    localClient.publish('msh/CA/ON/PTBO', optInEnvelope);
+
+    await new Promise((r) => setTimeout(r, 500));
+
+    // Only the opt-in packet should have reached the upstream broker.
+    const upstreamPublishes = publishesByClient.filter((p) => p.topic === 'msh/CA/ON/PTBO');
+    expect(upstreamPublishes.length).toBe(1);
+
+    // Drop counter recorded the opt-out packet.
+    expect(bridge.getStatus().uplinkOkToMqttDrops).toBeGreaterThanOrEqual(1);
+
+    await new Promise<void>((r) => localClient.end(true, {}, () => r()));
+  });
+
+  it('ignoreOkToMqtt: true uplinks packets regardless of the bit', async () => {
+    const publishesByClient: Array<{ clientId: string | null; topic: string }> = [];
+    upstream.aedes.on('publish', (packet, client) => {
+      if (!client) return;
+      publishesByClient.push({ clientId: client.id, topic: packet.topic });
+    });
+
+    bridge = new MqttBridgeManager('ignore-ok-bridge', 'IgnoreOk', {
+      brokerSourceId: 'local-broker',
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: [],
+      mode: 'publish_only',
+      ignoreOkToMqtt: true,
+    });
+    await sourceManagerRegistry.addManager(bridge);
+
+    const localClient = connect(`mqtt://127.0.0.1:${localPort}`, {
+      username: 'u',
+      password: 'p',
+      reconnectPeriod: 0,
+      clientId: '!22222222',
+    });
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('local connect timeout')), 3000);
+      localClient.once('connect', () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+
+    // bit 0 unset — but the override bypasses the gate.
+    const optOutEnvelope = buildPositionEnvelope({
+      from: 0x22222222,
+      latI: 440_000_000,
+      lngI: -780_000_000,
+      channelId: 'LongFast',
+      gatewayId: '!22222222',
+      packetId: 0x40000003,
+      bitfield: 0,
+    });
+    localClient.publish('msh/CA/ON/PTBO', optOutEnvelope);
+
+    await new Promise((r) => setTimeout(r, 500));
+
+    // Despite bit 0 being unset, the packet was forwarded upstream.
+    expect(publishesByClient.some((p) => p.topic === 'msh/CA/ON/PTBO')).toBe(true);
+    // And the drop counter stayed at zero.
+    expect(bridge.getStatus().uplinkOkToMqttDrops).toBe(0);
 
     await new Promise<void>((r) => localClient.end(true, {}, () => r()));
   });

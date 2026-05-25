@@ -30,6 +30,13 @@ export interface DecryptionResult {
    */
   emoji?: number;
   replyId?: number;
+  /**
+   * Raw `Data.bitfield` (protobuf field 9). Bit 0 carries the originator's
+   * `ok_to_mqtt` preference — see Router.h:177 in the firmware. Undefined
+   * when the proto field wasn't set, which firmware treats as "do not
+   * uplink". MqttBridgeManager reads this to gate uplink republishing.
+   */
+  bitfield?: number;
   error?: string;
 }
 
@@ -258,6 +265,7 @@ class ChannelDecryptionService {
     payload?: Uint8Array;
     emoji?: number;
     replyId?: number;
+    bitfield?: number;
   } {
     try {
       // Get the Data type from loaded protobuf definitions
@@ -284,12 +292,20 @@ class ChannelDecryptionService {
       const replyId =
         typeof rawReplyId === 'number' && rawReplyId > 0 ? rawReplyId >>> 0 : undefined;
 
+      // Bit 0 of Data.bitfield carries the originator's `ok_to_mqtt`
+      // preference. MqttBridgeManager reads this to gate uplink
+      // republishing. Undefined when the proto field wasn't set —
+      // firmware treats absent as "do not uplink" on public brokers.
+      const rawBitfield = decoded.bitfield;
+      const bitfield = typeof rawBitfield === 'number' ? rawBitfield >>> 0 : undefined;
+
       return {
         valid: true,
         portnum: portnum,
         payload: decoded.payload ? new Uint8Array(decoded.payload) : undefined,
         emoji,
         replyId,
+        bitfield,
       };
     } catch {
       // Parse failure means invalid protobuf
@@ -324,6 +340,7 @@ class ChannelDecryptionService {
       payload: validation.payload,
       emoji: validation.emoji,
       replyId: validation.replyId,
+      bitfield: validation.bitfield,
     };
   }
 
