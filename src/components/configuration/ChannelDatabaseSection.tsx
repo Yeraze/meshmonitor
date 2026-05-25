@@ -1359,11 +1359,15 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                     const normalizedPsk = normalizeChannelUrlPskToBase64(ch.psk);
                     const isImportable = normalizedPsk !== null && ch.role !== ROLE_DISABLED;
                     const pskBytes = getPskBase64ByteLength(normalizedPsk);
-                    const roleLabel = ch.role === ROLE_PRIMARY
+                    // Meshtastic omits `role` from the wire when it's the
+                    // default (PRIMARY) — treat undefined as PRIMARY rather
+                    // than showing "Unknown role".
+                    const effectiveRole = ch.role ?? ROLE_PRIMARY;
+                    const roleLabel = effectiveRole === ROLE_PRIMARY
                       ? t('channel_database.role_primary')
-                      : ch.role === ROLE_SECONDARY
+                      : effectiveRole === ROLE_SECONDARY
                         ? t('channel_database.role_secondary')
-                        : ch.role === ROLE_DISABLED
+                        : effectiveRole === ROLE_DISABLED
                           ? t('channel_database.role_disabled')
                           : t('channel_database.role_unknown');
                     return (

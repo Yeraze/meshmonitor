@@ -22,6 +22,34 @@
  */
 
 /**
+ * Browser-safe base64 byte count via `atob`. `atob` decodes a base64
+ * string into a binary string whose `.length` is the byte count. Returns
+ * 0 on invalid input rather than throwing so callers can treat unparseable
+ * PSKs as "no key" without try/catch boilerplate.
+ *
+ * Note: the implementation deliberately avoids `Buffer` — the helper is
+ * imported by `ChannelDatabaseSection.tsx` which ships to the browser
+ * bundle where `Buffer` is undefined (issue #3187 follow-up). `atob` is
+ * available in Node 16+ and every supported browser.
+ */
+function safeBase64ByteLength(base64: string): number {
+  try {
+    return atob(base64).length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Browser-safe base64 encode of a single byte value. Used to convert
+ * Meshtastic shorthand PSKs (`'simple1'`..`'simple9'`) back to their
+ * 1-byte representation.
+ */
+function byteToBase64(byteValue: number): string {
+  return btoa(String.fromCharCode(byteValue));
+}
+
+/**
  * Convert the PSK form produced by `channelUrlService.decodeUrl` into a
  * Channel Database-compatible base64 string. Returns `null` for inputs
  * that don't correspond to a stored key (no-crypto, empty, malformed).
@@ -36,17 +64,10 @@ export function normalizeChannelUrlPskToBase64(psk: string | undefined | null): 
   const simpleMatch = /^simple([1-9])$/.exec(psk);
   if (simpleMatch) {
     // simpleN encodes the byte (N+1), i.e. simple1 → 0x02, simple9 → 0x0a.
-    const byteValue = Number(simpleMatch[1]) + 1;
-    return Buffer.from([byteValue]).toString('base64');
+    return byteToBase64(Number(simpleMatch[1]) + 1);
   }
-  // Otherwise treat as a raw base64 key — validate by round-trip.
-  try {
-    const decoded = Buffer.from(psk, 'base64');
-    if (decoded.length === 0) return null;
-    return psk;
-  } catch {
-    return null;
-  }
+  // Otherwise treat as a raw base64 key — validate by round-trip decode.
+  return safeBase64ByteLength(psk) > 0 ? psk : null;
 }
 
 /**
@@ -56,9 +77,5 @@ export function normalizeChannelUrlPskToBase64(psk: string | undefined | null): 
  */
 export function getPskBase64ByteLength(base64: string | null | undefined): number {
   if (!base64) return 0;
-  try {
-    return Buffer.from(base64, 'base64').length;
-  } catch {
-    return 0;
-  }
+  return safeBase64ByteLength(base64);
 }
