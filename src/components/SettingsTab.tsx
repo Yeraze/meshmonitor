@@ -1255,6 +1255,18 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 <option value="unified">
                   {t('settings.default_landing_page_unified', 'Unified View (default)')}
                 </option>
+                <option value="unified-messages">
+                  {t('settings.default_landing_page_unified_messages', 'Unified Messages')}
+                </option>
+                <option value="unified-telemetry">
+                  {t('settings.default_landing_page_unified_telemetry', 'Unified Telemetry')}
+                </option>
+                <option value="map-analysis">
+                  {t('settings.default_landing_page_map_analysis', 'Map Analysis')}
+                </option>
+                <option value="reports">
+                  {t('settings.default_landing_page_reports', 'Reports')}
+                </option>
                 {availableSources.map((src) => (
                   <option key={src.id} value={src.id}>
                     {src.name}
