@@ -1335,7 +1335,7 @@
     "dashboard.widget.node_status.title": "Состояние узла",
     "dashboard.widget.node_status.description": "Мониторинг состояния и подключения выбранных узлов",
     "dashboard.widget.node_status.search_placeholder": "Выполните поиск для добавления узла...",
-    "dashboard.widget.node_status.remove_node": "Удалить узел",
+    "dashboard.widget.node_status.remove_node": "",
     "dashboard.widget.node_status.empty": "Узлы не настроены.",
     "dashboard.widget.node_status.empty_editable": "Воспользуйтесь поиском выше, чтобы добавить узлы для мониторинга.",
     "dashboard.widget.traceroute.title": "Маршрут",
