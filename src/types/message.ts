@@ -15,6 +15,18 @@ export interface MeshMessage {
   channel: number;
   portnum?: number;
   timestamp: Date;
+  /**
+   * Server-side ingest time (`messages.createdAt`). Always reflects when
+   * MeshMonitor actually received the message, independent of the sender
+   * node's clock. Prefer this over `timestamp` for sorting / "last
+   * message" comparisons — `timestamp` may be wildly wrong when the
+   * sending node has bad/uninitialized RTC (issue #3187).
+   *
+   * Optional only to preserve compat with pre-migration rows that may not
+   * have a stored `createdAt`; treat missing values as falling back to
+   * `timestamp`.
+   */
+  receivedAt?: Date;
   acknowledged?: boolean;
   ackFailed?: boolean;
   isLocalMessage?: boolean;

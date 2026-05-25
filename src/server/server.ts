@@ -2294,6 +2294,10 @@ function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
     channel: msg.channel,
     portnum: msg.portnum ?? undefined,
     timestamp: new Date(msg.rxTime ?? msg.timestamp),
+    // Server-side ingest time — robust against sender-clock drift, used by
+    // the client for sort order (issue #3187). Falls back to `timestamp` for
+    // pre-migration rows where `createdAt` was never written.
+    receivedAt: new Date(msg.createdAt ?? msg.rxTime ?? msg.timestamp),
     hopStart: msg.hopStart ?? undefined,
     hopLimit: msg.hopLimit ?? undefined,
     relayNode: msg.relayNode ?? undefined,

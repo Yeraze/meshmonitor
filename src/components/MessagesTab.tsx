@@ -22,6 +22,7 @@ import {
   shouldShowDateSeparator,
 } from '../utils/datetime';
 import { formatTracerouteRoute } from '../utils/traceroute';
+import { getMessageSortTime } from '../utils/messageSort';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
 import { calculateDistance, formatDistance, getDistanceToNode } from '../utils/distance';
@@ -624,7 +625,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
       const lastMessage =
         dmMessages.length > 0
-          ? dmMessages.reduce((latest, msg) => (msg.timestamp.getTime() > latest.timestamp.getTime() ? msg : latest))
+          ? dmMessages.reduce((latest, msg) => (getMessageSortTime(msg) > getMessageSortTime(latest) ? msg : latest))
           : null;
 
       const lastMessageText = lastMessage
@@ -635,7 +636,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
         ...node,
         messageCount: dmMessages.length,
         unreadCount,
-        lastMessageTime: dmMessages.length > 0 ? Math.max(...dmMessages.map(m => m.timestamp.getTime())) : 0,
+        lastMessageTime: dmMessages.length > 0 ? Math.max(...dmMessages.map(getMessageSortTime)) : 0,
         lastMessageText,
       };
     });
@@ -723,7 +724,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
   // Get DM messages for selected node
   const selectedDMMessages = selectedDMNode
-    ? getDMMessages(selectedDMNode).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+    ? getDMMessages(selectedDMNode).sort((a, b) => getMessageSortTime(a) - getMessageSortTime(b))
     : [];
 
   const selectedNode = selectedDMNode ? nodes.find(n => n.user?.id === selectedDMNode) : null;
