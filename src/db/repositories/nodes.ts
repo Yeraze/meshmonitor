@@ -8,6 +8,7 @@ import { eq, gt, lt, isNull, or, desc, asc, and, isNotNull, ne, sql, inArray, co
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
+import { isValidNodeNum } from '../../server/constants/meshtastic.js';
 
 /**
  * Hook for keeping an external in-memory node cache coherent with PG/MySQL writes.
@@ -127,6 +128,13 @@ export class NodesRepository extends BaseRepository {
    * lookups retained for back-compat with non-threaded callers).
    */
   async getNode(nodeNum: number, sourceId?: string): Promise<DbNode | null> {
+    if (!isValidNodeNum(nodeNum)) {
+      // Defensive guard: PG `bigint` rejects out-of-range JS numbers with
+      // `invalid input syntax for type bigint` (issue #3186). Treat the
+      // value as "no such node" rather than crashing the query.
+      logger.warn(`NodesRepository.getNode: rejecting out-of-range nodeNum ${nodeNum}`);
+      return null;
+    }
     const { nodes } = this.tables;
     const whereClause = sourceId
       ? and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId))
@@ -146,11 +154,20 @@ export class NodesRepository extends BaseRepository {
    */
   async getNodesByNums(nodeNums: number[]): Promise<Map<number, DbNode>> {
     if (nodeNums.length === 0) return new Map();
+    // Filter out-of-range values up front (issue #3186) — one bad entry would
+    // otherwise fail the whole batch query against a PG `bigint` column.
+    const validNums = nodeNums.filter((n) => {
+      if (isValidNodeNum(n)) return true;
+      logger.warn(`NodesRepository.getNodesByNums: dropping out-of-range nodeNum ${n}`);
+      return false;
+    });
+    if (validNums.length === 0) return new Map();
+
     const { nodes } = this.tables;
     const result = await this.db
       .select()
       .from(nodes)
-      .where(inArray(nodes.nodeNum, nodeNums));
+      .where(inArray(nodes.nodeNum, validNums));
 
     const map = new Map<number, DbNode>();
     for (const row of result) {
@@ -172,6 +189,31 @@ export class NodesRepository extends BaseRepository {
     const whereClause = sourceId
       ? and(eq(nodes.nodeId, nodeId), eq(nodes.sourceId, sourceId))
       : eq(nodes.nodeId, nodeId);
+    const result = await this.db
+      .select()
+      .from(nodes)
+      .where(whereClause)
+      .limit(1);
+
+    if (result.length === 0) return null;
+    return this.normalizeBigInts(result[0]) as DbNode;
+  }
+
+  /**
+   * Get a node by its 32-byte public key (base64-encoded), optionally scoped
+   * to a source. Used by request-routing helpers to resolve a 64-hex-char
+   * public-key destination to the node's `nodeNum` so the protocol-level
+   * 32-bit address can be used for sending. See `parseDestinationNum`.
+   *
+   * The repository stores publicKey as base64. Callers passing a hex string
+   * should convert via `Buffer.from(hex, 'hex').toString('base64')` first.
+   */
+  async getNodeByPublicKey(publicKey: string, sourceId?: string): Promise<DbNode | null> {
+    if (!publicKey) return null;
+    const { nodes } = this.tables;
+    const whereClause = sourceId
+      ? and(eq(nodes.publicKey, publicKey), eq(nodes.sourceId, sourceId))
+      : eq(nodes.publicKey, publicKey);
     const result = await this.db
       .select()
       .from(nodes)
