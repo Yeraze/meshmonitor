@@ -747,6 +747,17 @@ async function checkForAutoUpgrade(): Promise<void> {
     return;
   }
 
+  // Skip if the DatabaseService hasn't finished initializing repositories yet.
+  // The initial-check setTimeout fires 60s after process start; on installs
+  // with long-running migrations (e.g. PG migration 030 rebuilding hundreds
+  // of thousands of route_segments rows) that timer can fire mid-migration
+  // and crash on the `settings` getter with `Database not initialized`.
+  // The next 4-hour interval tick will retry once the DB is up.
+  if (!databaseService.isDatabaseReady()) {
+    logger.debug('Skipping auto-upgrade check: database not ready yet (migrations in progress)');
+    return;
+  }
+
   // Skip if autoUpgradeImmediate is not enabled
   const autoUpgradeImmediate = await databaseService.settings.getSetting('autoUpgradeImmediate') === 'true';
   if (!autoUpgradeImmediate) {
