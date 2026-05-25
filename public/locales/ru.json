@@ -4093,7 +4093,7 @@
     "security.offset_minutes_one": "{{count}} минута",
     "automation.auto_ping.elapsed": "Прошедшее",
     "map.legend.neighbor": "Сосед",
-    "firmware.wizard_cancel": "",
+    "firmware.wizard_cancel": "Отмена обновления",
     "firmware.save_channel": "",
     "settings.analytics_website_id_description": "",
     "dashboard.widget.distance_distribution.km": "",
