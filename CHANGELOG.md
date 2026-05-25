@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 
+## [4.7.1] - 2026-05-25
+
+# MeshMonitor v4.7.1
+
+Patch release. Fixes a per-source dashboard regression where the Channels tab inflated its visible channel list with the global Channel Database (server-side MQTT decryption PSK storage). A meshtastic_tcp source like "Sandbox" — with three real channels configured on the device — was showing ~25 entries because every MQTT-bridge-observed channel name across every other source got merged in.
+
+## Fixes
+
+- #3175 fix(channels): hide global Channel Database entries in per-source view — `ChannelsTab` gains a `sourceId` prop; when set (per-source view via `/source/:id/*`), the global `channel_database` entries are NOT merged into `getAvailableChannels`. The unified / cross-source view keeps merging them as before. The `messages` and `channels` arrays were already source-scoped by the poll endpoint on the server, so no client-side filter is needed for those.
+
+
 ## [4.7.0] - 2026-05-24
 
 # MeshMonitor v4.7.0
