@@ -199,7 +199,7 @@ By default an `mqtt_bridge` is a byte-for-byte relay — it republishes inbound 
 | `downlinkTopicRewrite` | upstream → parent broker | Republish an inbound topic on the parent broker under a different prefix, so locally-subscribed devices see it. |
 | `uplinkTopicRewrite` | parent broker → upstream | Publish a parent-broker topic upstream under a different prefix, so the foreign mesh sees your local traffic. |
 
-Each rule is `{ from, to }` — literal prefix match (no MQTT `+` / `#` wildcards), trailing slashes normalized away. Set in the bridge's **Settings tab** (Sources → click the bridge → Settings → Topic rewriting), or via the API.
+Each rule is `{ from, to }` — literal prefix match (no MQTT `+` / `#` wildcards), trailing slashes normalized away. Configured from the **broker's edit modal** (Sources → kebab on the broker → Edit → **Bridge topic rewrites**) — one collapsible panel per bridge attached to that broker, so an operator can manage every rewrite for a given broker in one place. Equivalent fields are also accepted via the source API on the bridge itself (`PUT /api/sources/<bridgeId>` with `config.downlinkTopicRewrite` and `config.uplinkTopicRewrite`).
 
 ### Example — LA ↔ TX cross-mesh bridge
 

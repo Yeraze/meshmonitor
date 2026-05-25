@@ -178,6 +178,65 @@ The config requires `configuration:write` on the source. Read-only users see the
 
 The composite primary key on `meshcore_nodes` is `(sourceId, publicKey)`, so the same device advertising under two different sources is tracked independently.
 
+## Remote Administration
+
+::: tip Added in 4.7
+The MeshCore Remote-Administration console ships in 4.7 — gated on the new per-source `remote_admin` permission. See [the internal architecture doc](https://github.com/Yeraze/meshmonitor/blob/main/docs/internal/dev-notes/MESHCORE_REMOTE_ADMIN.md) (`docs/internal/dev-notes/MESHCORE_REMOTE_ADMIN.md` in the repo) for the protocol-level architecture; this section is the operator-facing summary.
+:::
+
+MeshCore's remote-admin protocol is **CLI text sent as an encrypted DM** — the same `PAYLOAD_TYPE_TXT_MSG` packet a chat message uses, distinguished by a single `txt_type` byte (`CliData = 1` vs `Plain = 0`). The remote node dispatches the text into its `CommonCLI::handleCommand` handler and replies with one packet of text. MeshMonitor wraps the wire-level traffic behind two consoles.
+
+### Remote console (per contact)
+
+For any Repeater (advType=2) or Room Server (advType=3) contact in your MeshCore source, the contact-detail panel surfaces a **Remote administration** section. The user with `remote_admin:write` on that source can:
+
+- **Log in** with the node's admin password (or blank for guest access). Optionally tick "Remember this password" — see *Credential store* below.
+- **Send arbitrary CLI commands** (e.g. `ver`, `stats`, `neighbors`, `set radio …`) and see the reply inline in the transcript.
+- **Click quick-action buttons** that pre-fill the input for the most-common commands. `Reboot` is flagged danger — see *Danger commands* below.
+- **Read live stats** in a structured panel (battery, queue, packet counts, air time, last SNR / RSSI) auto-refreshed every 30 s while logged in.
+- **Manage the ACL** via a `setperm` form: paste a 64-char hex pubkey, pick **Remove / Guest / ReadWrite / Admin**, click Apply. The built command (`setperm <pubkey> <level>`) lands in the same transcript as free-typed commands.
+
+The console only renders for Repeater / Room Server advTypes since Companion firmware doesn't expose a remote-admin surface. Replies are single-packet (≈130 – 180 byte MTU) and there is no chunking — long output is truncated at the firmware level.
+
+### Local console (Configuration view)
+
+The Configuration tab gets a **Device console** for the locally connected node. Dispatch depends on the firmware:
+
+| Local firmware | Console behavior |
+|---|---|
+| Repeater / Room Server | Forwards to the device's native serial CLI via `sendRepeaterCommand`. Same command set as a remote Repeater. |
+| Companion | A small synthetic interpreter on the server side maps `ver` / `stats [core\|radio\|packets]` / `clock` / `advert` / `help` to existing companion-protocol bridge commands and formats the response as text. Mutating verbs (`set name`, `set radio` …) are intentionally NOT in the synthetic CLI — the existing form fields on the same Configuration tab handle those with proper validation. |
+
+No login flow: the connection is physical (USB serial or direct TCP), so there's no admin password concept. Gated on the existing `configuration:write` permission.
+
+### Credential store
+
+When the user ticks "Remember this password" at login, the plaintext is encrypted with **AES-256-GCM** using a key derived from `SESSION_SECRET` via HKDF and stored in `meshcore_nodes.adminCredential` (added by migration 070). Each envelope includes a 4-byte `kid` fingerprint of the current secret; on subsequent visits the console silently logs in using the saved password if `kid` matches. If `SESSION_SECRET` rotates, the mismatched `kid` triggers a yellow banner asking the user to re-enter the password — never a silent auth-tag failure.
+
+::: warning Capability gating
+When `SESSION_SECRET` was auto-generated rather than explicitly configured, the "Remember password" checkbox is disabled with a tooltip explanation. Persisting against an ephemeral key would lose every saved password on every restart, which is worse than re-prompting. Set `SESSION_SECRET=$(openssl rand -hex 32)` in your environment to enable credential persistence.
+:::
+
+**Security boundary**: the credential store defends against a DB-file-only exfil (someone grabs `meshmonitor.db` without the host environment). It does **not** defend against a host compromise — anyone running code on the host has `SESSION_SECRET` and the DB. Same posture as the existing channel-PSK storage. The plaintext password **never** leaves the server process: the auto-login route reads the encrypted envelope, decrypts in-process, and calls `loginToNode(pubkey, plaintext)` without echoing the password to the client. A test canary in `meshcoreRoutes.test.ts` walks every audit-emitting login code path and asserts the plaintext is absent from each response body and audit row.
+
+### Danger commands
+
+Destructive verbs matching `/(reboot|erase|clkreboot|factory)/i` are gated by a typed-name confirmation modal: the user must type the contact name (or local device name) exactly to enable the Confirm button. The same regex is mirrored server-side — `POST /admin/cli` and `POST /cli` both reject without `confirm: true` in the body with `code: DANGER_CONFIRM_REQUIRED`. Mirrored deliberately so a script bypassing the modal still gets the prompt-as-requirement.
+
+### Audit log
+
+Every CLI command, login outcome, and credential mutation writes an `audit_log` row through a new `auditMeshcoreEvent` helper. Distinct `action` values per outcome:
+
+| Action | When |
+|---|---|
+| `meshcore_remote_login` / `_failed` | manual `/admin/login` success / auth failure |
+| `meshcore_remote_login_saved` / `_failed` | auto-login via saved credential (failures carry the specific code) |
+| `meshcore_remote_cli` / `_failed` / `_blocked` | per-CLI command on a remote node |
+| `meshcore_local_cli` / `_failed` / `_blocked` | per-CLI command on the local node |
+| `meshcore_credential_forget` | `DELETE /admin/credentials/:pubkey` |
+
+The `details` JSON captures `sourceId`, `publicKey` (where relevant), command text, reply length, and elapsed milliseconds. **The plaintext password never appears in audit details**, verified by the canary test referenced above.
+
 ## Multi-Source Dashboard
 
 MeshCore sources appear as styled cards in the dashboard sidebar — same visual language as Meshtastic sources, with a MeshCore logo and per-source status.

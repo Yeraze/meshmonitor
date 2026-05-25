@@ -7,6 +7,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 
+## [4.7.0] - 2026-05-24
+
+# MeshMonitor v4.7.0
+
+Minor release. Headline features are **MeshCore Remote Administration** — a full CLI-over-encrypted-DM admin surface for distant MeshCore nodes plus an in-app console for the locally connected device — and **MQTT bridge topic rewriting**, restored from the (briefly merged + reverted) #3170 with the configuration UI moved to the **broker** edit modal so a single dialog covers every bridge attached to that broker. Also reverts the #3169 / #3170 per-source MQTT dashboard shell that replaced the full v4.6.6 dashboard for broker and bridge sources; those source types fall through to the full Meshtastic dashboard again with all the Channels / Telemetry / DMs / Map surfaces intact.
+
+## Features
+
+### MeshCore Remote Administration
+
+- #3160 feat(meshcore): add remote-administration console with encrypted credentials — new `MeshCoreRemoteConsole` mounted in the contact-detail panel for Repeater / Room Server contacts. Sends CLI commands as encrypted DMs (txt_type=CliData) via meshcore.js, routes replies through a new `cli_reply` bridge event so admin output never lands in the chat log. `loginToNode` populates the remote's ACL; saved passwords are AES-256-GCM-encrypted with an HKDF-derived key from `SESSION_SECRET` and persisted in `meshcore_nodes.adminCredential` (migration 070). A 4-byte `kid` fingerprint on each envelope makes `SESSION_SECRET` rotation detectable and surfaced as a banner instead of a silent auth-tag failure. New `remote_admin` per-source permission resource gates the entire surface.
+- #3161 feat(meshcore): stats panel, quick-action buttons, danger-command guard — `MeshCoreRemoteStatsPanel` renders `getStatus` output (uptime, battery, queue, RSSI/SNR, packets RX/TX, air time, errors) with 30 s auto-refresh. Quick-action buttons pre-fill the input for `ver` / `stats` / `neighbors` / `clock` / `clock sync` / `advert` / `reboot`. Destructive commands matching `/(reboot|erase|clkreboot|factory)/i` route through a typed-name confirmation modal client-side AND a `DANGER_CONFIRM_REQUIRED` 400 server-side, enforced on every CLI route.
+- #3162 feat(meshcore): local-device CLI console in Configuration view — `MeshCoreLocalConsole` for the physically-connected node. Dispatch is device-type-aware: Repeater / Room Server → forwarded to `sendRepeaterCommand` (native serial CLI); Companion → `runSyntheticLocalCli` interprets `ver` / `stats [core|radio|packets]` / `clock` / `advert` / `help` against existing companion-protocol bridge commands. `CliConsoleBody` extracted as a shared primitive consumed by both consoles.
+- #3165 feat(meshcore): ACL setperm form, command history, internal docs — `MeshCoreAclManager` provides a structured `setperm <pubkey> <level>` form (pubkey input + Remove / Guest / ReadWrite / Admin dropdown) mounted alongside the body for Repeater / Room Server targets. `CliConsoleBody` gains ↑/↓ command history (50 entries, de-duped, draft preserved) and a `runCommand` imperative handle so the ACL form shares one transcript with free-typed commands. New `docs/internal/dev-notes/MESHCORE_REMOTE_ADMIN.md` documents the protocol, credential store design, danger guard, and the local / remote dispatch table.
+- #3167 feat(meshcore): persistent transcript + per-command audit log — transcript restored from `sessionStorage` on mount and persisted on every change, keyed by `targetId` (cap 200 entries). Every CLI command + login outcome + credential mutation writes a distinct audit row via a new `auditMeshcoreEvent` helper. Canary test asserts the plaintext password never appears in any audit details across every emission path.
+
+### MQTT topic rewriting (broker-managed)
+
+- #3173 feat(mqtt): bridge topic rewrites managed from broker settings — re-introduces the topic-rewriting feature originally from #3170 (which was reverted in #3172 alongside the #3169 dashboard shell), with the configuration UI moved into the broker's legacy edit modal. Operators see one collapsible panel per bridge attached to that broker; each panel exposes Downlink and Uplink columns with literal `from` → `to` prefix rules. Broker save fires first; per-bridge PUTs follow for any changed bridge config. Backend (`applyTopicRewrite`, publish-path integration, validator) is unchanged from #3170 — see [`docs/features/mqtt-broker.md`](docs/features/mqtt-broker.md#topic-rewriting).
+
+## Fixes
+
+- #3172 revert(mqtt): restore v4.6.6 per-source dashboard for broker and bridge — reverts PR #3169 (per-source detail dashboard shell) and #3170 (bridge topic rewriting, which depended on #3169's UI files). The #3169 shell replaced the full v4.6.6 MQTT dashboard (Channels / Telemetry / DMs / Map) with a thin Map + Settings tab pair, regressing significant functionality. MQTT broker and bridge sources fall through to `App` again as they did in v4.6.6. The topic-rewriting feature is re-introduced in #3173 with the config UI hosted on the broker side.
+
+## Docs
+
+- #3165 docs: new `docs/internal/dev-notes/MESHCORE_REMOTE_ADMIN.md` covering the protocol surface, credential store / HKDF / kid design, danger guard (client + server enforcement), local-vs-remote dispatch table, `CliConsoleBody` primitive, and an explicit "tempting but not worth doing" section. CLAUDE.md read-order updated to point new agents at it before they touch MeshCore admin code.
+- This release: `docs/features/meshcore.md` adds a Remote Administration section covering the remote and local consoles, credential store, and audit log. `docs/features/mqtt-broker.md` updates the topic-rewriting section to reflect the broker-side configuration UI.
+
+
 ## [4.6.5] - 2026-05-22
 
 # MeshMonitor v4.6.5
