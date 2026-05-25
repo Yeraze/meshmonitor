@@ -280,6 +280,30 @@ export const MIN_TRACEROUTE_INTERVAL_MS = 30 * 1000;
 export const MAX_MESSAGE_BYTES = 200;
 
 /**
+ * Maximum valid Meshtastic node number.
+ *
+ * `nodeNum` is a 32-bit unsigned integer in the Meshtastic protocol — values
+ * outside `[0, 0xFFFFFFFF]` cannot represent a real node, and pushing them into
+ * a PostgreSQL `bigint` column triggers a query error (issue #3186). Use
+ * {@link isValidNodeNum} as a guard before any DB op or routing decision.
+ *
+ * `0xFFFFFFFF` itself is the broadcast address.
+ */
+export const MAX_NODE_NUM = 0xFFFFFFFF; // 4,294,967,295
+
+/**
+ * Returns true if `n` is a safe-integer in the 32-bit unsigned `nodeNum` range.
+ *
+ * Rejects NaN, Infinity, negatives, non-integers (the floating-point values
+ * `parseInt(longHexString, 16)` can produce when the input is longer than 8
+ * hex chars — e.g. a 64-char public key — overflow into ~1e+76, which still
+ * passes `Number.isFinite` but cannot fit in any DB column).
+ */
+export function isValidNodeNum(n: unknown): n is number {
+  return typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= MAX_NODE_NUM;
+}
+
+/**
  * Meshtastic default channel encryption key.
  * This is the well-known key used when PSK is set to shorthand value 1 (AQ== in base64).
  */

@@ -51,6 +51,7 @@ import { rewriteHtml } from './utils/htmlRewriter.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { safeFetch, SsrfBlockedError } from './utils/ssrfGuard.js';
 import { resolveRequestSourceId } from './utils/sourceResolver.js';
+import { parseDestinationNum } from './utils/parseDestination.js';
 import { PortNum, modemPresetChannelName } from './constants/meshtastic.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 import { applyManagerSettings } from './applyManagerSettings.js';
@@ -3714,11 +3715,16 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
       return res.status(400).json({ error: 'Invalid emoji flag: must be 0 or 1' });
     }
 
-    // Convert destination nodeId to nodeNum if provided
+    // Convert destination nodeId to nodeNum if provided. Accepts an 8-hex
+    // nodeId (`!ad8c9eff`) or a 64-hex publicKey; rejects anything else with
+    // 400 so a long-string input can't overflow PG bigint (issue #3186).
     let destinationNum: number | undefined = undefined;
     if (destination) {
-      const nodeIdStr = destination.replace('!', '');
-      destinationNum = parseInt(nodeIdStr, 16);
+      const resolved = await parseDestinationNum(destination, reqSourceId, databaseService);
+      if (resolved === null) {
+        return res.status(400).json({ error: `Invalid destination: ${destination}` });
+      }
+      destinationNum = resolved;
     }
 
     // Map channel to mesh network
@@ -3795,7 +3801,10 @@ apiRouter.post('/traceroute', requirePermission('traceroute', 'write'), async (r
       return res.status(400).json({ error: 'Destination node number is required' });
     }
 
-    const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
+    const destinationNum = await parseDestinationNum(destination, traceSourceId, databaseService);
+    if (destinationNum === null) {
+      return res.status(400).json({ error: `Invalid destination: ${destination}` });
+    }
 
     // Look up the node to get its channel — scope to this source so the channel
     // reflects the mesh this traceroute will actually traverse.
@@ -3822,7 +3831,10 @@ apiRouter.post('/position/request', requirePermission('messages', 'write'), asyn
       return res.status(400).json({ error: 'Destination node number is required' });
     }
 
-    const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
+    const destinationNum = await parseDestinationNum(destination, posSourceId, databaseService);
+    if (destinationNum === null) {
+      return res.status(400).json({ error: `Invalid destination: ${destination}` });
+    }
 
     // Look up the node to get its channel (scoped to this source)
     const node = await databaseService.nodes.getNode(destinationNum, posSourceId);
@@ -3895,7 +3907,10 @@ apiRouter.post('/nodeinfo/request', requirePermission('messages', 'write'), asyn
       return res.status(400).json({ error: 'Destination node number is required' });
     }
 
-    const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
+    const destinationNum = await parseDestinationNum(destination, niSourceId, databaseService);
+    if (destinationNum === null) {
+      return res.status(400).json({ error: `Invalid destination: ${destination}` });
+    }
 
     // Look up the node to get its channel (scoped to this source)
     const node = await databaseService.nodes.getNode(destinationNum, niSourceId);
@@ -3966,10 +3981,13 @@ apiRouter.post('/neighborinfo/request', requirePermission('traceroute', 'write')
       return res.status(400).json({ error: 'Destination node number is required' });
     }
 
-    const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
+    const { sourceId: neighborSourceId } = req.body;
+    const destinationNum = await parseDestinationNum(destination, neighborSourceId, databaseService);
+    if (destinationNum === null) {
+      return res.status(400).json({ error: `Invalid destination: ${destination}` });
+    }
 
     // Eligibility check: only allow requests to local node or 0-hop nodes
-    const { sourceId: neighborSourceId } = req.body;
     const neighborManager = (resolveSourceManager(neighborSourceId));
     const localNodeNum = neighborManager.getLocalNodeInfo()?.nodeNum;
     // Scope to the target source so hopsAway/channel reflect this mesh
@@ -4032,7 +4050,10 @@ apiRouter.post('/telemetry/request', requirePermission('messages', 'write'), asy
       return res.status(400).json({ error: `Invalid telemetry type. Must be one of: ${validTypes.join(', ')}` });
     }
 
-    const destinationNum = typeof destination === 'string' ? parseInt(destination, 16) : destination;
+    const destinationNum = await parseDestinationNum(destination, telSourceId, databaseService);
+    if (destinationNum === null) {
+      return res.status(400).json({ error: `Invalid destination: ${destination}` });
+    }
 
     // Look up the node to get its channel (scoped to this source)
     const node = await databaseService.nodes.getNode(destinationNum, telSourceId);

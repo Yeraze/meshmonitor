@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isViaMqtt, TransportMechanism, getTransportMechanismName, RoutingError, isPkiError, getPortNumName, StoreForwardRequestResponse, getStoreForwardRequestResponseName } from './meshtastic.js';
+import { isViaMqtt, TransportMechanism, getTransportMechanismName, RoutingError, isPkiError, getPortNumName, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isValidNodeNum, MAX_NODE_NUM } from './meshtastic.js';
 
 describe('isViaMqtt', () => {
   it('should return true for MQTT transport mechanism', () => {
@@ -177,5 +177,33 @@ describe('getStoreForwardRequestResponseName', () => {
   it('returns UNKNOWN for unknown values', () => {
     expect(getStoreForwardRequestResponseName(99)).toBe('UNKNOWN_99');
     expect(getStoreForwardRequestResponseName(255)).toBe('UNKNOWN_255');
+  });
+});
+
+describe('isValidNodeNum', () => {
+  it('accepts the full uint32 range', () => {
+    expect(isValidNodeNum(0)).toBe(true);
+    expect(isValidNodeNum(1)).toBe(true);
+    expect(isValidNodeNum(MAX_NODE_NUM)).toBe(true);
+    expect(MAX_NODE_NUM).toBe(0xFFFFFFFF);
+  });
+
+  it('rejects negative, fractional, and out-of-range numbers', () => {
+    expect(isValidNodeNum(-1)).toBe(false);
+    expect(isValidNodeNum(1.5)).toBe(false);
+    expect(isValidNodeNum(MAX_NODE_NUM + 1)).toBe(false);
+    // The exact magnitude reported in issue #3186 — a 64-hex-char publicKey
+    // parsed via `parseInt(_, 16)` lands here.
+    expect(isValidNodeNum(2.7130620829267897e+76)).toBe(false);
+  });
+
+  it('rejects non-finite numbers and non-number types', () => {
+    expect(isValidNodeNum(NaN)).toBe(false);
+    expect(isValidNodeNum(Infinity)).toBe(false);
+    expect(isValidNodeNum(-Infinity)).toBe(false);
+    expect(isValidNodeNum('123')).toBe(false);
+    expect(isValidNodeNum(null)).toBe(false);
+    expect(isValidNodeNum(undefined)).toBe(false);
+    expect(isValidNodeNum({})).toBe(false);
   });
 });
