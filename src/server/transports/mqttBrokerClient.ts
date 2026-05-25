@@ -14,6 +14,14 @@ export interface MqttBrokerClientOptions {
   url: string;
   username?: string;
   password?: string;
+  /**
+   * Explicit MQTT Client ID. When set, used verbatim on CONNECT (no random
+   * suffix). Takes precedence over `clientIdPrefix`. Use this when the
+   * upstream broker filters CONNECT on Client ID — e.g. community brokers
+   * that whitelist `!<8-hex>` patterns. See `MqttBridgePublisherPool` for
+   * the per-gateway-identity use case.
+   */
+  clientId?: string;
   clientIdPrefix?: string;
   rejectUnauthorized?: boolean;
 }
@@ -75,9 +83,15 @@ export class MqttBrokerClient extends EventEmitter {
 
     const url = normalizeBrokerUrl(this.options.url);
     const clientId =
+      this.options.clientId ??
       (this.options.clientIdPrefix ?? 'meshmonitor') +
-      '-' +
-      Math.random().toString(36).slice(2, 10);
+        '-' +
+        Math.random().toString(36).slice(2, 10);
+
+    // Per-client reconnect jitter: when N publisher-pool entries reconnect
+    // after an upstream broker bounce, a flat 5000ms period would have them
+    // all CONNECT in the same window. Random 4000-6000ms spreads the herd.
+    const reconnectPeriod = 5000 + Math.floor((Math.random() - 0.5) * 2000);
 
     this.client = connect(url, {
       clientId,
@@ -86,7 +100,7 @@ export class MqttBrokerClient extends EventEmitter {
       protocolVersion: 4, // MQTT 3.1.1
       clean: true,
       keepalive: 60,
-      reconnectPeriod: 5000,
+      reconnectPeriod,
       connectTimeout: 30_000,
       rejectUnauthorized: this.options.rejectUnauthorized ?? true,
     });
