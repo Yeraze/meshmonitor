@@ -959,14 +959,15 @@ const UsersTab: React.FC = () => {
                           />
                           {t('users.read')}
                         </label>
-                      ) : (resource === 'connection' || resource === 'traceroute') ? (
-                        // Connection and traceroute permissions use a single checkbox
+                      ) : resource === 'traceroute' ? (
+                        // Traceroute is a single action — read is implicit for any
+                        // viewer of the source, only the "initiate" capability
+                        // needs gating.
                         <label>
                           <input
                             type="checkbox"
                             checked={permissions[resource]?.write || false}
                             onChange={() => {
-                              // For these permissions, both read and write are set together
                               const newValue = !permissions[resource]?.write;
                               setPermissions({
                                 ...permissions,
@@ -974,8 +975,34 @@ const UsersTab: React.FC = () => {
                               });
                             }}
                           />
-                          {resource === 'connection' ? t('users.can_control_connection') : t('users.can_initiate_traceroutes')}
+                          {t('users.can_initiate_traceroutes')}
                         </label>
+                      ) : resource === 'connection' ? (
+                        // Connection is split: `read` gates viewing source status
+                        // (e.g. MeshCore source pages), `write` gates disconnect/
+                        // reconnect. Previously bundled into a single "Can Control
+                        // Connection" checkbox, which forced admins to grant write
+                        // just to expose read-only views to a user (issue: anonymous
+                        // MeshCore viewer needed `connection:read` without the
+                        // ability to disconnect the radio).
+                        <>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={permissions[resource]?.read || false}
+                              onChange={() => togglePermission(resource, 'read')}
+                            />
+                            {t('users.connection_view_status', 'View status')}
+                          </label>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={permissions[resource]?.write || false}
+                              onChange={() => togglePermission(resource, 'write')}
+                            />
+                            {t('users.connection_control_device', 'Control device')}
+                          </label>
+                        </>
                       ) : resource.startsWith('channel_') ? (
                         // Channel permissions use three checkboxes: viewOnMap, read, write
                         <>

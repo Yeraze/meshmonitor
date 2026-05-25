@@ -2116,6 +2116,8 @@
   "users.channel_primary": "Channel 0 (Primary)",
   "users.channel_n": "Channel {{n}}",
   "users.can_control_connection": "Can Control Connection",
+  "users.connection_view_status": "View status",
+  "users.connection_control_device": "Control device",
   "users.can_initiate_traceroutes": "Can Initiate Traceroutes",
   "users.read": "Read",
   "users.write": "Write",
