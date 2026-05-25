@@ -164,6 +164,13 @@ function DashboardInner() {
   const [formMqttBridgeMode, setFormMqttBridgeMode] = useState<
     'bidirectional' | 'publish_only' | 'subscribe_only'
   >('bidirectional');
+  // Per-gateway upstream identity (default) opens one upstream MQTT
+  // connection per local gateway; single keeps the legacy
+  // `mm-bridge-<sourceId>-…` shared connection for brokers with tight
+  // per-username connection caps.
+  const [formMqttBridgeForwardingMode, setFormMqttBridgeForwardingMode] = useState<
+    'per_gateway' | 'single'
+  >('per_gateway');
   // Each filter is opt-in via a checkbox so the form stays short for the
   // common case where the user just wants a topic-pattern subscription.
   const [formMqttBridgeUseTopicBlock, setFormMqttBridgeUseTopicBlock] = useState(false);
@@ -325,6 +332,7 @@ function DashboardInner() {
     setFormMqttBridgePassword('');
     setFormMqttBridgeSubscriptions('msh/#');
     setFormMqttBridgeMode('bidirectional');
+    setFormMqttBridgeForwardingMode('per_gateway');
     setFormMqttBridgeUseTopicBlock(false);
     setFormMqttBridgeTopicBlock('');
     setFormMqttBridgeUseGeo(false);
@@ -390,6 +398,8 @@ function DashboardInner() {
           ? savedMode
           : 'bidirectional',
       );
+      const savedForwarding = cfg?.forwardingMode;
+      setFormMqttBridgeForwardingMode(savedForwarding === 'single' ? 'single' : 'per_gateway');
       const topicBlock: string[] = cfg?.downlinkFilters?.topics?.block ?? [];
       setFormMqttBridgeUseTopicBlock(topicBlock.length > 0);
       setFormMqttBridgeTopicBlock(topicBlock.join('\n'));
@@ -525,6 +535,11 @@ function DashboardInner() {
         subscriptions: subscriptions.length > 0 ? subscriptions : ['msh/#'],
         // Omit when bidirectional (the default) so existing rows stay clean.
         ...(formMqttBridgeMode !== 'bidirectional' ? { mode: formMqttBridgeMode } : {}),
+        // Omit when per_gateway (the default) so existing rows on upgrade
+        // adopt the new behavior without an explicit config change.
+        ...(formMqttBridgeForwardingMode !== 'per_gateway'
+          ? { forwardingMode: formMqttBridgeForwardingMode }
+          : {}),
         ...(Object.keys(downlinkFilters).length > 0 ? { downlinkFilters } : {}),
       };
       if (editingSourceId && !formMqttBridgePassword) {
@@ -1332,6 +1347,37 @@ function DashboardInner() {
                     {t(
                       'source.form.mqtt_bridge_mode_help',
                       'Use "Publish only" for public servers (e.g. mqtt.meshtastic.org) that reject SUBSCRIBE — avoids permission-denied noise. "Subscribe only" disables uplink forwarding for read-only monitoring.',
+                    )}
+                  </span>
+                </label>
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">
+                    {t('source.form.mqtt_bridge_forwarding_mode', 'Upstream identity')}
+                  </span>
+                  <select
+                    className="dashboard-form-input"
+                    value={formMqttBridgeForwardingMode}
+                    onChange={(e) =>
+                      setFormMqttBridgeForwardingMode(e.target.value as 'per_gateway' | 'single')
+                    }
+                  >
+                    <option value="per_gateway">
+                      {t(
+                        'source.form.mqtt_bridge_forwarding_per_gateway',
+                        'Per-gateway (one connection per local node)',
+                      )}
+                    </option>
+                    <option value="single">
+                      {t(
+                        'source.form.mqtt_bridge_forwarding_single',
+                        'Single (one shared bridge connection — legacy)',
+                      )}
+                    </option>
+                  </select>
+                  <span style={{ fontSize: 11, color: 'var(--ctp-subtext0)', marginTop: 4 }}>
+                    {t(
+                      'source.form.mqtt_bridge_forwarding_help',
+                      'Per-gateway lets each local node publish upstream under its own !<hex> Client ID — required for community brokers that filter CONNECT on Client ID (mqtt.areyoumeshingwith.us, etc.). Switch to Single only if the upstream broker has tight per-username connection caps.',
                     )}
                   </span>
                 </label>
