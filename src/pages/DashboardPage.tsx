@@ -136,6 +136,21 @@ function DashboardInner() {
   const [formMqttPassword, setFormMqttPassword] = useState('');
   const [formMqttRootTopic, setFormMqttRootTopic] = useState('msh');
   const [formMqttZeroHopInjection, setFormMqttZeroHopInjection] = useState(false);
+  // Per-bridge topic-rewrite form state, surfaced inside the broker's
+  // edit modal so an operator can manage all rewrites for the bridges
+  // attached to this broker in one place. Keyed by bridge source id.
+  // Schema: { downlinkFrom, downlinkTo, uplinkFrom, uplinkTo } — empty
+  // strings mean "not configured" and a partial entry (only `from` or
+  // only `to` filled in) is a client-side validation error matching the
+  // server-side `error_rewrite_incomplete` rule.
+  const [formBrokerBridgeRewrites, setFormBrokerBridgeRewrites] = useState<
+    Record<string, { downlinkFrom: string; downlinkTo: string; uplinkFrom: string; uplinkTo: string }>
+  >({});
+  // Snapshot at modal-open time so onSaveSource knows which bridges
+  // actually changed and skips PUTs for the rest.
+  const [originalBrokerBridgeRewrites, setOriginalBrokerBridgeRewrites] = useState<
+    Record<string, { downlinkFrom: string; downlinkTo: string; uplinkFrom: string; uplinkTo: string }>
+  >({});
   // MQTT bridge (mqtt_bridge) form state.
   const [formMqttBridgeBrokerId, setFormMqttBridgeBrokerId] = useState('');
   const [formMqttBridgeUrl, setFormMqttBridgeUrl] = useState('');
@@ -292,6 +307,8 @@ function DashboardInner() {
     setFormMqttBridgeUseGeo(false);
     setFormMqttBridgeGeo({ minLat: '', maxLat: '', minLng: '', maxLng: '' });
     setFormMtMqttLinkBrokerId('');
+    setFormBrokerBridgeRewrites({});
+    setOriginalBrokerBridgeRewrites({});
     setFormError('');
     setShowSourceModal(true);
   };
@@ -311,6 +328,27 @@ function DashboardInner() {
       setFormMqttPassword('');
       setFormMqttRootTopic(cfg?.rootTopic ?? 'msh');
       setFormMqttZeroHopInjection(Boolean(cfg?.zeroHopInjection));
+      // Build the per-bridge rewrite form data from every mqtt_bridge
+      // source that points at this broker. Empty rewrites are fine —
+      // the UI just shows blank inputs.
+      const attached = sources.filter(
+        (s) => s.type === 'mqtt_bridge' && (s.config as any)?.brokerSourceId === id,
+      );
+      const rewrites: Record<string, { downlinkFrom: string; downlinkTo: string; uplinkFrom: string; uplinkTo: string }> = {};
+      for (const b of attached) {
+        const bcfg = b.config as any;
+        rewrites[b.id] = {
+          downlinkFrom: bcfg?.downlinkTopicRewrite?.from ?? '',
+          downlinkTo: bcfg?.downlinkTopicRewrite?.to ?? '',
+          uplinkFrom: bcfg?.uplinkTopicRewrite?.from ?? '',
+          uplinkTo: bcfg?.uplinkTopicRewrite?.to ?? '',
+        };
+      }
+      setFormBrokerBridgeRewrites(rewrites);
+      // Deep clone for the comparison-on-save baseline. Object spread
+      // would alias the nested rewrite objects and falsely report "no
+      // changes" once the user edits.
+      setOriginalBrokerBridgeRewrites(JSON.parse(JSON.stringify(rewrites)));
       setFormError('');
       setShowSourceModal(true);
       return;
@@ -578,6 +616,106 @@ function DashboardInner() {
         setFormError((err as any).error ?? t('source.form.error_save_failed'));
         return;
       }
+
+      // Broker save succeeded — now push per-bridge topic-rewrite
+      // changes for any bridges whose rewrite config differs from the
+      // snapshot taken at modal-open. Each bridge gets its own PUT so a
+      // failure on one doesn't roll back the others; we collect errors
+      // and surface them at the end instead of aborting.
+      if (formType === 'mqtt_broker' && editingSourceId) {
+        const bridgeErrors: string[] = [];
+        for (const [bridgeId, rewrites] of Object.entries(formBrokerBridgeRewrites)) {
+          const before = originalBrokerBridgeRewrites[bridgeId];
+          const unchanged =
+            before &&
+            before.downlinkFrom === rewrites.downlinkFrom &&
+            before.downlinkTo === rewrites.downlinkTo &&
+            before.uplinkFrom === rewrites.uplinkFrom &&
+            before.uplinkTo === rewrites.uplinkTo;
+          if (unchanged) continue;
+
+          // Client-side mirror of the server's `error_rewrite_incomplete`
+          // rule — both From and To are required for a direction, or
+          // both must be empty.
+          const dlPartial =
+            (rewrites.downlinkFrom && !rewrites.downlinkTo) ||
+            (!rewrites.downlinkFrom && rewrites.downlinkTo);
+          const ulPartial =
+            (rewrites.uplinkFrom && !rewrites.uplinkTo) ||
+            (!rewrites.uplinkFrom && rewrites.uplinkTo);
+          if (dlPartial || ulPartial) {
+            const bridge = sources.find((s) => s.id === bridgeId);
+            bridgeErrors.push(
+              `${bridge?.name ?? bridgeId}: ${t(
+                'source.form.error_rewrite_incomplete',
+                'Both from and to are required when a topic rewrite is set',
+              )}`,
+            );
+            continue;
+          }
+
+          const bridge = sources.find((s) => s.id === bridgeId);
+          if (!bridge) continue;
+          const bridgeConfig: Record<string, any> = { ...(bridge.config as any) };
+          if (rewrites.downlinkFrom && rewrites.downlinkTo) {
+            bridgeConfig.downlinkTopicRewrite = {
+              from: rewrites.downlinkFrom,
+              to: rewrites.downlinkTo,
+            };
+          } else {
+            delete bridgeConfig.downlinkTopicRewrite;
+          }
+          if (rewrites.uplinkFrom && rewrites.uplinkTo) {
+            bridgeConfig.uplinkTopicRewrite = {
+              from: rewrites.uplinkFrom,
+              to: rewrites.uplinkTo,
+            };
+          } else {
+            delete bridgeConfig.uplinkTopicRewrite;
+          }
+          // GETs strip credential fields for non-admins; defensively drop
+          // any masked password marker so we don't try to round-trip it.
+          if (bridgeConfig.upstream?.password === '••••••••') {
+            delete bridgeConfig.upstream.password;
+          }
+          try {
+            const bres = await fetch(`${appBasename}/api/sources/${bridgeId}`, {
+              method: 'PUT',
+              credentials: 'include',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-csrf-token': csrfToken || '',
+              },
+              body: JSON.stringify({
+                name: bridge.name,
+                type: 'mqtt_bridge',
+                config: bridgeConfig,
+                enabled: bridge.enabled,
+              }),
+            });
+            if (!bres.ok) {
+              const err = await bres.json().catch(() => ({}));
+              bridgeErrors.push(`${bridge.name}: ${(err as any).error ?? 'save failed'}`);
+            }
+          } catch (e) {
+            bridgeErrors.push(`${bridge.name}: ${(e as Error).message}`);
+          }
+        }
+        if (bridgeErrors.length > 0) {
+          // Broker is saved; only the bridge updates partially failed.
+          // Keep the modal open so the user can correct the issues
+          // (probably partial-row validation problems above).
+          setFormError(
+            t(
+              'source.form.bridge_rewrite_partial_error',
+              'Broker saved but some bridge rewrites failed: ',
+            ) + bridgeErrors.join('; '),
+          );
+          refreshSources();
+          return;
+        }
+      }
+
       setShowSourceModal(false);
       refreshSources();
     } catch {
@@ -1007,6 +1145,111 @@ function DashboardInner() {
                     </span>
                   </span>
                 </label>
+
+                {/* Per-bridge topic rewrites. Only meaningful when editing
+                    an existing broker — a brand-new broker has no bridges
+                    attached yet, so we render nothing in that case. */}
+                {editingSourceId && (() => {
+                  const attachedBridges = sources.filter(
+                    (s) => s.type === 'mqtt_bridge' && (s.config as any)?.brokerSourceId === editingSourceId,
+                  );
+                  if (attachedBridges.length === 0) return null;
+                  return (
+                    <div className="dashboard-form-field">
+                      <span className="dashboard-form-label">
+                        {t('source.form.bridge_topic_rewrites', 'Bridge topic rewrites')}
+                      </span>
+                      <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 8px' }}>
+                        {t(
+                          'source.form.bridge_topic_rewrites_help',
+                          'For each bridge attached to this broker, replace a literal topic prefix on inbound (downlink) or outbound (uplink) messages. Leave both From and To empty to disable that direction.',
+                        )}
+                      </p>
+                      {attachedBridges.map((bridge) => {
+                        const rw = formBrokerBridgeRewrites[bridge.id] ?? {
+                          downlinkFrom: '',
+                          downlinkTo: '',
+                          uplinkFrom: '',
+                          uplinkTo: '',
+                        };
+                        const patch = (next: Partial<typeof rw>) => {
+                          setFormBrokerBridgeRewrites((prev) => ({
+                            ...prev,
+                            [bridge.id]: { ...rw, ...next },
+                          }));
+                        };
+                        const hasAny =
+                          rw.downlinkFrom || rw.downlinkTo || rw.uplinkFrom || rw.uplinkTo;
+                        return (
+                          <details
+                            key={bridge.id}
+                            open={Boolean(hasAny)}
+                            style={{
+                              border: '1px solid var(--ctp-surface1)',
+                              borderRadius: 4,
+                              padding: '6px 10px',
+                              marginBottom: 6,
+                              background: 'var(--ctp-surface0)',
+                            }}
+                          >
+                            <summary style={{ cursor: 'pointer', fontWeight: 500 }}>
+                              {bridge.name}
+                              {hasAny && (
+                                <span style={{ marginLeft: 8, fontSize: 10, color: 'var(--ctp-blue)' }}>
+                                  • {t('source.form.bridge_topic_rewrites_active', 'configured')}
+                                </span>
+                              )}
+                            </summary>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+                              <div>
+                                <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ctp-subtext0)' }}>
+                                  {t('source.form.bridge_topic_rewrites_downlink', 'Downlink (to local broker)')}
+                                </span>
+                                <input
+                                  type="text"
+                                  className="dashboard-form-input"
+                                  placeholder={t('source.form.bridge_topic_rewrites_from', 'From prefix') as string}
+                                  value={rw.downlinkFrom}
+                                  onChange={(e) => patch({ downlinkFrom: e.target.value })}
+                                  style={{ marginTop: 4 }}
+                                />
+                                <input
+                                  type="text"
+                                  className="dashboard-form-input"
+                                  placeholder={t('source.form.bridge_topic_rewrites_to', 'To prefix') as string}
+                                  value={rw.downlinkTo}
+                                  onChange={(e) => patch({ downlinkTo: e.target.value })}
+                                  style={{ marginTop: 4 }}
+                                />
+                              </div>
+                              <div>
+                                <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ctp-subtext0)' }}>
+                                  {t('source.form.bridge_topic_rewrites_uplink', 'Uplink (to upstream)')}
+                                </span>
+                                <input
+                                  type="text"
+                                  className="dashboard-form-input"
+                                  placeholder={t('source.form.bridge_topic_rewrites_from', 'From prefix') as string}
+                                  value={rw.uplinkFrom}
+                                  onChange={(e) => patch({ uplinkFrom: e.target.value })}
+                                  style={{ marginTop: 4 }}
+                                />
+                                <input
+                                  type="text"
+                                  className="dashboard-form-input"
+                                  placeholder={t('source.form.bridge_topic_rewrites_to', 'To prefix') as string}
+                                  value={rw.uplinkTo}
+                                  onChange={(e) => patch({ uplinkTo: e.target.value })}
+                                  style={{ marginTop: 4 }}
+                                />
+                              </div>
+                            </div>
+                          </details>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </>
             ) : formType === 'mqtt_bridge' ? (
               <>
