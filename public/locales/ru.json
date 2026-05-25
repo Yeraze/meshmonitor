@@ -3794,7 +3794,7 @@
     "automation.auto_ping.settings_saved": "Сохранены настройки автоматического пинга",
     "settings.analytics_provider_matomo": "",
     "security.offset_behind": "{{value}} назад",
-    "unified.telemetry.all_sources": "",
+    "unified.telemetry.all_sources": "Все источники",
     "source.kebab.enable": "",
     "channel_database.toast_export_success": "",
     "automation.auto_ack.cooldown_description": "После ответа на узел игнорировать дальнейшие триггеры от этого узла в течение указанного времени. Предотвращает злоупотребления со стороны узлов, спамящих триггерные слова.",
