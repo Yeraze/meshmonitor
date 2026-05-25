@@ -186,7 +186,7 @@
     "nodes.channel_utilization": "Использование канала",
     "nodes.air_util_tx": "Использование эфира",
     "nodes.uptime": "Время работы",
-    "nodes.neighbors": "",
+    "nodes.neighbors": "Соседи",
     "nodes.total_nodes": "Всего нод",
     "nodes.online_nodes": "Онлайн ноды",
     "nodes.unknown": "Неизвестно",
