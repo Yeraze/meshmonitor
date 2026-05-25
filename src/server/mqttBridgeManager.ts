@@ -61,6 +61,56 @@ export interface MqttBridgeSourceConfig {
   subscriptions: string[];
   downlinkFilters?: MqttFilterConfig;
   uplinkFilters?: MqttFilterConfig;
+  /**
+   * Literal prefix replacement applied to the topic immediately before
+   * republish to the parent broker (downlink) or publish upstream
+   * (uplink). Useful for bridging between meshes that use different MQTT
+   * root topics (e.g. msh/US/TX ↔ msh/US/LA — issue #3166).
+   *
+   * Semantics: filters run on the ORIGINAL (received) topic, rewrites
+   * apply only at publish time, and the echo cache is keyed on the
+   * post-rewrite topic so feedback loops are still suppressed.
+   *
+   * MQTT wildcards (+, #) are NOT supported — `from` must be a literal
+   * prefix (the validator on sourceRoutes rejects wildcards). Trailing
+   * slashes on `from`/`to` are normalized away.
+   */
+  downlinkTopicRewrite?: TopicRewriteRule;
+  uplinkTopicRewrite?: TopicRewriteRule;
+}
+
+/** Literal prefix replacement rule applied to a Meshtastic MQTT topic. */
+export interface TopicRewriteRule {
+  from: string;
+  to: string;
+}
+
+/**
+ * Apply a literal prefix-replacement rule to a topic.
+ *
+ * - Returns the topic unchanged when the rule is null/undefined, when
+ *   `from` or `to` are empty after trimming trailing slashes, or when
+ *   `from` doesn't match the topic's prefix.
+ * - Trailing slashes on `from` and `to` are normalized away so
+ *   `{from: "msh/US/TX/", to: "msh/US/LA"}` works the same as
+ *   `{from: "msh/US/TX", to: "msh/US/LA/"}`.
+ * - Replaces the literal prefix `from` (and the segment separator `/`
+ *   that follows it) with `to`, preserving the rest of the topic
+ *   unchanged. An exact match (topic equals `from`) returns `to`.
+ *
+ * Exported for unit testing.
+ */
+export function applyTopicRewrite(
+  topic: string,
+  rule: TopicRewriteRule | null | undefined,
+): string {
+  if (!rule) return topic;
+  const from = rule.from.replace(/\/+$/, '');
+  const to = rule.to.replace(/\/+$/, '');
+  if (!from || !to || from === to) return topic;
+  if (topic === from) return to;
+  if (topic.startsWith(from + '/')) return to + topic.slice(from.length);
+  return topic;
 }
 
 export interface MqttBridgeStatus extends SourceStatus {
@@ -437,11 +487,16 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
 
     // Republish to local broker so devices see it. Skip if no parent attached.
     if (this.parentBroker) {
+      // Apply downlink topic rewrite (#3166) right at the publish boundary —
+      // ingestion, filters, and the local-packet event all stay on the
+      // original topic. Echo recorded under the post-rewrite topic so the
+      // uplink direction sees the same topic the parent broker emits.
+      const publishTopic = applyTopicRewrite(topic, this.config.downlinkTopicRewrite);
       this.parentBroker
-        .publish(topic, payload, retained)
+        .publish(publishTopic, payload, retained)
         .then(() => {
           this.downlinkRepublished++;
-          this.recordEcho(this.downlinkEchoes, topic, packetId);
+          this.recordEcho(this.downlinkEchoes, publishTopic, packetId);
         })
         .catch((err) => {
           this.lastError = `local republish failed: ${err.message}`;
@@ -459,11 +514,16 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
 
     if (!this.uplinkFilter.preFilter(p.topic, p.envelope)) return;
 
+    // Apply uplink topic rewrite (#3166) — uplinkFilter ran on the original
+    // topic; only the wire-level publish gets the rewrite. Echo recorded
+    // under the post-rewrite topic so the downlink direction can suppress
+    // the upstream broker's re-emission of this same packet.
+    const publishTopic = applyTopicRewrite(p.topic, this.config.uplinkTopicRewrite);
     this.client
-      .publish(p.topic, p.payload, p.retained)
+      .publish(publishTopic, p.payload, p.retained)
       .then(() => {
         this.uplinkOut++;
-        this.recordEcho(this.uplinkEchoes, p.topic, packetId);
+        this.recordEcho(this.uplinkEchoes, publishTopic, packetId);
       })
       .catch((err) => {
         this.lastError = `upstream publish failed: ${err.message}`;

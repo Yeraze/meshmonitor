@@ -49,6 +49,7 @@ A long-lived MQTT client, backed by [MQTT.js](https://github.com/mqttjs/MQTT.js)
   - **Node ID** — allow / block lists (`!xxxxxxxx`)
   - **PortNum** — allow / block lists ([Meshtastic PortNum enum](https://github.com/meshtastic/protobufs/blob/master/meshtastic/portnums.proto))
   - **Geographic bounding box** — drop position packets whose `latitude_i / 1e7, longitude_i / 1e7` falls outside `{ minLat, maxLat, minLng, maxLng }`. Applied before republish so out-of-area positions never reach the local broker (when attached) or are injected into a device (when used as a client-proxy target).
+- Optionally rewrites topics on republish via `downlinkTopicRewrite` / `uplinkTopicRewrite` ([Topic rewriting](#topic-rewriting)) for bridging between meshes that publish under different MQTT roots.
 - Surfaces broker ACL state — if the upstream rejects authentication or denies your subscriptions, the bridge status shows `permissionMessage` so you know why traffic isn't flowing.
 - 60-second `(topic, packetId)` echo suppression on both directions prevents bridge feedback loops.
 
@@ -77,6 +78,7 @@ A bridge can run in either of two configurations, picked when you create it ("Pa
 | **Locally-connected MQTT clients (devices, LAN apps)?** | Yes, many | Via the parent broker | No |
 | **Multiple upstream brokers?** | n/a | Yes — N bridges, each independent | Yes — N bridges, each independent |
 | **Per-source filter pipeline (topic / channel / node / portnum / geo)?** | No (broker is dumb relay) | **Yes** — downlink _and_ uplink | **Yes** — downlink only |
+| **Topic rewriting (cross-root bridging)?** | No | **Yes** — `downlinkTopicRewrite` + `uplinkTopicRewrite` ([details](#topic-rewriting)) | No (requires parent broker) |
 | **Server-side ingestion of decoded packets?** | Yes — under broker `sourceId` | Yes — under bridge `sourceId` (downlink) | Yes — under bridge `sourceId` (downlink) |
 | **Echo suppression (no feedback loops)?** | n/a | Yes (60s `topic+packetId` cache) | Yes |
 | **Zero-hop injection toggle?** | Yes ([details](#zero-hop-injection)) | n/a | n/a |
@@ -95,6 +97,7 @@ A bridge can run in either of two configurations, picked when you create it ("Pa
 - **"My BLE-only node should publish MQTT through MeshMonitor straight to a public broker, no embedded broker required."** Create one **standalone bridge** pointed at the public broker. On the Meshtastic source, set `mqttLink → <bridge>` (Sources → Edit → "Bridge MQTT proxy to", or use the Quick Configure dropdown on Device → MQTT). Enable `proxy_to_client_enabled` on the firmware. Device → MeshMonitor (over BLE/serial) → bridge → upstream.
 - **"Same as above, plus I want a Home Assistant box on the LAN to subscribe to my devices."** Create one **broker** + one **attached bridge**. Devices use client-proxy mode pointing at the broker; Home Assistant subscribes to the broker on port 1883. Bridge handles the upstream fan-out.
 - **"Two upstream brokers, one regional and one global, with different filters per upstream."** Create one **broker** + **two attached bridges**, each with its own topic/geo/portnum rules. Devices publish once; each bridge independently decides what to forward.
+- **"Cross-mesh routing between two MQTT roots (e.g. our LA mesh on `msh/US/LA` and the Houston mesh on `msh/US/TX`)."** Create one **broker** + one **attached bridge** to the foreign upstream. Set the bridge's downlink rewrite `msh/US/TX → msh/US/LA` and uplink rewrite `msh/US/LA → msh/US/TX` so the foreign-root traffic appears under your local root (and vice versa). See [Topic rewriting](#topic-rewriting) below for the details and caveats (PSK match, zero-hop, loop suppression).
 
 ## Three ways a device can reach MQTT through MeshMonitor
 
@@ -180,6 +183,59 @@ Then on the Meshtastic source in MeshMonitor (**Dashboard → Sources → Edit �
 In both cases MeshMonitor forwards `FromRadio.mqttClientProxyMessage` payloads to the target's MQTT layer, and injects the target's inbound MQTT traffic back to the device as `ToRadio.MqttClientProxyMessage`.
 
 If `proxy_to_client_enabled` is on but no `mqttLink` is set, a yellow warning banner appears on the Device → MQTT page — without it, proxy traffic from the firmware would be silently dropped.
+
+## Topic rewriting
+
+::: tip Added in 4.7
+Bridge **topic rewriting** ships in 4.7 ([issue #3166](https://github.com/Yeraze/meshmonitor/issues/3166)), driven by [discussion #3159](https://github.com/Yeraze/meshmonitor/discussions/3159) — operators bridging between meshes that publish under different MQTT root topics.
+:::
+
+By default an `mqtt_bridge` is a byte-for-byte relay — it republishes inbound traffic to the parent broker on the same topic, and forwards outbound traffic upstream on the same topic. That works when both ends use the same root, but breaks when the two ends use different roots (e.g. your LA mesh publishes under `msh/US/LA` while the Houston public mesh uses `msh/US/TX`). Locally-attached LA devices subscribe to `msh/US/LA/#`, so they never see `msh/US/TX/...` republishes — the traffic is ingested into the database fine, but never crosses to RF.
+
+**Topic rewriting** adds a literal prefix-replacement step on each direction of the bridge:
+
+| Field | Direction | Effect |
+|---|---|---|
+| `downlinkTopicRewrite` | upstream → parent broker | Republish an inbound topic on the parent broker under a different prefix, so locally-subscribed devices see it. |
+| `uplinkTopicRewrite` | parent broker → upstream | Publish a parent-broker topic upstream under a different prefix, so the foreign mesh sees your local traffic. |
+
+Each rule is `{ from, to }` — literal prefix match (no MQTT `+` / `#` wildcards), trailing slashes normalized away. Set in the bridge's **Settings tab** (Sources → click the bridge → Settings → Topic rewriting), or via the API.
+
+### Example — LA ↔ TX cross-mesh bridge
+
+Local mesh on `msh/US/LA`, Houston public mesh on `mqtt.meshtastic.org` under `msh/US/TX`. Operator wants the two meshes to see each other's traffic on RF.
+
+1. Run the embedded broker with `rootTopic = msh/US/LA` (or `msh`).
+2. Create an attached `mqtt_bridge` to `mqtt://mqtt.meshtastic.org` subscribed to `msh/US/TX/#`.
+3. Configure the rewrite rules:
+
+```yaml
+downlinkTopicRewrite:
+  from: msh/US/TX        # foreign root
+  to:   msh/US/LA        # local root — what LA devices subscribe to
+uplinkTopicRewrite:
+  from: msh/US/LA        # local root — what LA devices publish under
+  to:   msh/US/TX        # foreign root — what Houston subscribers see
+```
+
+4. Optionally pair with a **geographic bounding box** in the downlink filter to drop TX traffic from outside the area you care about, and **Zero-hop injection** on the broker to keep the bridged packets from triggering extra RF hops.
+
+Filters run on the original (pre-rewrite) topic; the rewrite only changes what gets published. Ingestion records and the bridge's `local-packet` event also use the original topic, so dashboards stay accurate.
+
+### Loop suppression
+
+Echo suppression is keyed on the **post-rewrite** topic — so an inbound TX packet republished to the parent broker as `msh/US/LA/...` is recorded under that rewritten topic. When the parent broker re-emits the same packet through the uplink path, the bridge sees `msh/US/LA/...` + the same packetId in the downlink echo cache and suppresses the uplink. The reverse direction works the same way. The existing 60-second `(topic, packetId)` cache covers it; no new infrastructure was needed.
+
+### Caveats
+
+::: warning Read before deploying
+- **PSKs must match.** Topic rewriting moves bytes, not encryption. If the two meshes use different channel PSKs, the relayed packets arrive at devices on the other side as undecodable noise.
+- **Filter the firehose first.** Without a topic block-list, channel allow-list, portnum allow-list, or **geographic bounding box** in the downlink filter, dropping the entire `msh/US/TX/#` into a local mesh can saturate RF.
+- **Pair with Zero-hop injection** on the broker. Without it, inbound foreign-mesh packets arrive carrying their original `hop_limit` and devices on the receiving side will re-broadcast them over RF — re-flooding the foreign mesh's traffic across your local airwaves.
+- **Standalone bridges cannot rewrite.** A bridge without a parent broker has no parent-broker republish path (downlink) and no `local-packet` event source (uplink), so rewriting would silently do nothing. The validator rejects rewrite fields on standalone bridges.
+- **No wildcards.** `from` / `to` are literal prefixes only. `msh/US/+` is rejected by the validator.
+- **Single rule per direction.** v1 supports one `{from, to}` per direction. Folding multiple foreign roots into one local root (`msh/US/TX/* → msh/US/LA/*` AND `msh/CA/QC/* → msh/US/LA/*`) would need separate bridges today.
+:::
 
 ## Zero-hop injection
 
