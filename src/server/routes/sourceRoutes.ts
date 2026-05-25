@@ -62,60 +62,6 @@ export function buildMqttManagerForSource(
   return new MqttBridgeManager(id, name, config as unknown as MqttBridgeSourceConfig);
 }
 
-/**
- * Validate the optional downlink/uplink topic-rewrite fields on an
- * mqtt_bridge config (#3166).
- *
- * Rules:
- * - Each rule (if present) must be an object with non-empty string
- *   `from` and `to` fields. Trailing whitespace and slashes are
- *   meaningful here only when both fields end up empty post-trim (the
- *   runtime helper normalizes trailing slashes itself).
- * - MQTT wildcards `+` and `#` are rejected — the rule is a literal
- *   prefix replacement.
- * - `from === to` is rejected (no-op config).
- * - Rewrites only apply when the bridge is attached to a parent broker
- *   (downlink republish has nowhere to go without one, and uplink fires
- *   off the parent broker's `local-packet` event). When the bridge is
- *   standalone (no `brokerSourceId`), rewrite fields are rejected so
- *   the user doesn't ship a setting that will silently do nothing.
- *
- * Returns an error message string if invalid, or null if OK.
- */
-function validateMqttBridgeRewrites(config: Record<string, any>): string | null {
-  const isAttached =
-    typeof config.brokerSourceId === 'string' && config.brokerSourceId.trim() !== '';
-  const checkOne = (label: string, rule: unknown): string | null => {
-    if (rule === undefined || rule === null) return null;
-    if (typeof rule !== 'object' || Array.isArray(rule)) {
-      return `${label} must be an object with from and to string fields`;
-    }
-    if (!isAttached) {
-      return `${label} requires a parent broker — standalone bridges cannot rewrite topics`;
-    }
-    const r = rule as { from?: unknown; to?: unknown };
-    if (typeof r.from !== 'string' || typeof r.to !== 'string') {
-      return `${label}.from and ${label}.to must be strings`;
-    }
-    const from = r.from.trim().replace(/\/+$/, '');
-    const to = r.to.trim().replace(/\/+$/, '');
-    if (!from || !to) {
-      return `${label}.from and ${label}.to must be non-empty`;
-    }
-    if (/[+#]/.test(from) || /[+#]/.test(to)) {
-      return `${label} must not contain MQTT wildcards (+, #) — rewrites are literal prefix replacement`;
-    }
-    if (from === to) {
-      return `${label}.from and ${label}.to must differ`;
-    }
-    return null;
-  };
-  return (
-    checkOne('downlinkTopicRewrite', config.downlinkTopicRewrite) ??
-    checkOne('uplinkTopicRewrite', config.uplinkTopicRewrite)
-  );
-}
-
 // Restore credentials the edit UI intentionally omitted from the save
 // payload. The source-edit form clears the password field on load (the GET
 // endpoint strips it for non-admins) and drops the field from the PUT body
@@ -257,10 +203,6 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
           return res.status(400).json({ error: `mqtt_bridge brokerSourceId ${parentId} does not reference an mqtt_broker source` });
         }
       }
-      const rewriteError = validateMqttBridgeRewrites(config ?? {});
-      if (rewriteError) {
-        return res.status(400).json({ error: rewriteError });
-      }
     }
     if (!config || typeof config !== 'object') {
       return res.status(400).json({ error: 'config is required and must be an object' });
@@ -371,17 +313,6 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
       const vnErr = await validateVirtualNodeConfig(existing.type, config, existing.id);
       if (vnErr) {
         return res.status(vnErr.status).json({ error: vnErr.error });
-      }
-
-      // Validate mqtt_bridge topic rewrites (#3166) against the incoming
-      // config — preserveSourceCredentials only round-trips passwords, so
-      // the rewrite fields and the brokerSourceId in `config` reflect the
-      // post-save state.
-      if (existing.type === 'mqtt_bridge') {
-        const rewriteError = validateMqttBridgeRewrites(config);
-        if (rewriteError) {
-          return res.status(400).json({ error: rewriteError });
-        }
       }
 
       // Prevent duplicate host:port combinations (exclude self)

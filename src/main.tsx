@@ -19,8 +19,6 @@ import UnifiedTelemetryPage from './pages/UnifiedTelemetryPage.tsx';
 import GlobalSettingsPage from './pages/GlobalSettingsPage.tsx';
 import UsersPage from './pages/UsersPage.tsx';
 import MeshCoreSourcePage from './pages/MeshCoreSourcePage.tsx';
-import MqttBrokerSourcePage from './pages/MqttBrokerSourcePage.tsx';
-import MqttBridgeSourcePage from './pages/MqttBridgeSourcePage.tsx';
 import { useDashboardSources } from './hooks/useDashboardData';
 import './index.css';
 import { AuthProvider } from './contexts/AuthContext';
@@ -69,26 +67,6 @@ function SourceApp() {
       <SourceProvider sourceId={sourceId} sourceName={source.name} sourceType={source.type}>
         <WebSocketProvider>
           <MeshCoreSourcePage key={sourceId} />
-        </WebSocketProvider>
-      </SourceProvider>
-    );
-  }
-
-  if (source?.type === 'mqtt_broker') {
-    return (
-      <SourceProvider sourceId={sourceId} sourceName={source.name} sourceType={source.type}>
-        <WebSocketProvider>
-          <MqttBrokerSourcePage key={sourceId} />
-        </WebSocketProvider>
-      </SourceProvider>
-    );
-  }
-
-  if (source?.type === 'mqtt_bridge') {
-    return (
-      <SourceProvider sourceId={sourceId} sourceName={source.name} sourceType={source.type}>
-        <WebSocketProvider>
-          <MqttBridgeSourcePage key={sourceId} />
         </WebSocketProvider>
       </SourceProvider>
     );

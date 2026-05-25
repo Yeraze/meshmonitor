@@ -104,7 +104,6 @@ function getStatusInfo(
 
 interface KebabMenuProps {
   sourceId: string;
-  sourceType: string;
   sourceEnabled: boolean;
   /** When true, render a "Disconnect" item (manager running + autoConnect=false). */
   canDisconnect?: boolean;
@@ -112,8 +111,6 @@ interface KebabMenuProps {
   canPruneOutsideRoi?: boolean;
   /** When true, render a "Resync" item (meshtastic_tcp source currently connected). */
   canResync?: boolean;
-  /** Required for MQTT sources — Open/Edit navigate to the per-source detail page. */
-  onOpen?: (id: string) => void;
   onEdit: (id: string) => void;
   onToggle: (id: string, enabled: boolean) => void;
   onDelete: (id: string) => void;
@@ -124,12 +121,10 @@ interface KebabMenuProps {
 
 const KebabMenu: React.FC<KebabMenuProps> = ({
   sourceId,
-  sourceType,
   sourceEnabled,
   canDisconnect,
   canPruneOutsideRoi,
   canResync,
-  onOpen,
   onEdit,
   onToggle,
   onDelete,
@@ -137,11 +132,6 @@ const KebabMenu: React.FC<KebabMenuProps> = ({
   onPruneOutsideRoi,
   onResync,
 }) => {
-  // MQTT sources get a per-source detail page (Map + Settings tabs) rather
-  // than an inline modal. For those, "Open" replaces "Edit" in the kebab and
-  // the row body click navigates to the same place. Other source types keep
-  // the legacy modal-based edit flow until they grow their own detail pages.
-  const isMqttSource = sourceType === 'mqtt_broker' || sourceType === 'mqtt_bridge';
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -171,29 +161,16 @@ const KebabMenu: React.FC<KebabMenuProps> = ({
       </button>
       {open && (
         <div className="dashboard-kebab-menu">
-          {isMqttSource && onOpen ? (
-            <button
-              className="dashboard-kebab-item"
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpen(false);
-                onOpen(sourceId);
-              }}
-            >
-              {t('source.kebab.open', 'Open')}
-            </button>
-          ) : (
-            <button
-              className="dashboard-kebab-item"
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpen(false);
-                onEdit(sourceId);
-              }}
-            >
-              {t('source.kebab.edit')}
-            </button>
-          )}
+          <button
+            className="dashboard-kebab-item"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              onEdit(sourceId);
+            }}
+          >
+            {t('source.kebab.edit')}
+          </button>
           <button
             className="dashboard-kebab-item"
             onClick={(e) => {
@@ -288,23 +265,8 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   const { hasPermission } = useAuth();
 
   // On mobile, wrap source selection so the drawer auto-closes after tap.
-  // MQTT sources (broker, bridge) navigate to their per-source detail page
-  // instead of the legacy "select then render in-pane" flow.
   const handleSelectSource = (id: string) => {
-    const source = sources.find((s) => s.id === id);
-    if (source && (source.type === 'mqtt_broker' || source.type === 'mqtt_bridge')) {
-      navigate(`/source/${id}/`);
-      onMobileClose?.();
-      return;
-    }
     onSelectSource(id);
-    onMobileClose?.();
-  };
-
-  // Dedicated handler for the kebab "Open" action — always navigates,
-  // bypasses the type check (only MQTT sources surface this action anyway).
-  const handleOpenSource = (id: string) => {
-    navigate(`/source/${id}/`);
     onMobileClose?.();
   };
 
@@ -420,7 +382,6 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                 return (
                   <KebabMenu
                     sourceId={source.id}
-                    sourceType={source.type}
                     sourceEnabled={source.enabled}
                     canDisconnect={
                       (source.config as any)?.autoConnect === false &&
@@ -431,7 +392,6 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                       source.type === 'meshtastic_tcp' &&
                       status?.connected === true
                     }
-                    onOpen={handleOpenSource}
                     onEdit={onEditSource}
                     onToggle={onToggleSource}
                     onDelete={onDeleteSource}
