@@ -34,6 +34,7 @@ import { ToastProvider } from '../components/ToastContainer';
 import api from '../services/api';
 import { logger } from '../utils/logger';
 import { appBasename } from '../init';
+import { getReservedLandingPath, isReservedLandingValue } from '../utils/defaultLandingPage';
 import '../styles/dashboard.css';
 
 // Helper: parse the four bbox text fields into a BBoxValue, or null if any
@@ -184,16 +185,31 @@ function DashboardInner() {
   const { data: sources = [], isSuccess } = useDashboardSources();
   const sourceIds = sources.map((s) => s.id);
 
-  // Apply admin-configured default landing page (issue #2917). When the
-  // user lands on `/`, redirect to /source/:sourceId/ if the setting points
-  // at a real source. The "Sources" button always passes
-  // location.state.showList=true so users can return to the unified view
-  // even if a default has been configured.
+  // Apply admin-configured default landing page (issue #2917, expanded
+  // for issue #3183 to allow cross-source unified pages). When the user
+  // lands on `/`:
+  //   - `'unified'` (or unset / unknown): stay here.
+  //   - Other reserved values: redirect to the matching unified route
+  //     (e.g. `unified-messages` → `/unified/messages`).
+  //   - Source UUID: redirect to `/source/<id>/`.
+  // The "Sources" button always passes `location.state.showList=true` so
+  // users can return to the unified dashboard even with a default
+  // configured.
   const skipDefaultLanding = (location.state as { showList?: boolean } | null)?.showList === true;
   useEffect(() => {
     if (skipDefaultLanding) return;
     if (!isSuccess) return;
     if (!defaultLandingPage || defaultLandingPage === 'unified') return;
+
+    // Reserved values (built-in unified routes) take precedence over the
+    // source-id lookup so a legitimate keyword can't be shadowed by a
+    // hypothetical source whose UUID happens to collide.
+    if (isReservedLandingValue(defaultLandingPage)) {
+      const reservedPath = getReservedLandingPath(defaultLandingPage);
+      if (reservedPath) navigate(reservedPath, { replace: true });
+      return;
+    }
+
     const target = sources.find((s) => s.id === defaultLandingPage);
     if (!target) return;
     navigate(`/source/${target.id}/`, { replace: true });
