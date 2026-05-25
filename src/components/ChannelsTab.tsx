@@ -68,6 +68,22 @@ export interface ChannelsTabProps {
   channelMessages: Record<number, MeshMessage[]>;
   messages: MeshMessage[];
   currentNodeId: string;
+  /**
+   * Active source id when this tab is rendered inside a per-source view
+   * (`/source/:id/...`). `null` in the legacy/unified view that aggregates
+   * every source.
+   *
+   * When set, the global `channelDatabaseEntries` (server-side MQTT
+   * decryption PSKs that grow as MQTT ingest sees new channel names
+   * across every source) are NOT merged into the visible list. Those
+   * are a cross-source concept and live in Global Settings → Channel
+   * Database; they belong only in the unified / cross-source view.
+   *
+   * The poll endpoint already filters `messages` and `channels` by
+   * `sourceId` on the server, so no per-source filtering of those two
+   * arrays is needed in this component.
+   */
+  sourceId?: string | null;
 
   // Connection state
   connectionStatus: string;
@@ -150,6 +166,7 @@ export default function ChannelsTab({
   channelMessages,
   messages,
   currentNodeId,
+  sourceId = null,
   connectionStatus,
   selectedChannel,
   setSelectedChannel,
@@ -369,15 +386,27 @@ export default function ChannelsTab({
   const getAvailableChannels = (): number[] => {
     const channelSet = new Set<number>();
 
-    // Add channels from channel configurations first (these are authoritative)
+    // Add channels from channel configurations first (these are authoritative).
+    // The poll endpoint already scopes these by sourceId on the server side
+    // when `sourceId` is set, so this is the correctly-scoped baseline.
     channels.forEach(ch => channelSet.add(ch.id));
 
-    // Add virtual channels from Channel Database
-    channelDatabaseEntries.forEach(entry => {
-      channelSet.add(CHANNEL_DB_OFFSET + entry.id);
-    });
+    // Add virtual channels from Channel Database — ONLY in the unified /
+    // legacy cross-source view. In a per-source view these are noise: the
+    // Channel Database is global (auto-seeded from MQTT ingest for
+    // server-side decryption) and not bound to any specific source. The
+    // table lives in Global Settings → Channel Database; surfacing it on a
+    // per-source Channels tab made a Sandbox view look like it had dozens
+    // of foreign channels.
+    if (!sourceId) {
+      channelDatabaseEntries.forEach(entry => {
+        channelSet.add(CHANNEL_DB_OFFSET + entry.id);
+      });
+    }
 
-    // Add channels from messages
+    // Add channels from messages. The messages array is already
+    // source-scoped by the poll endpoint when sourceId is non-null, so
+    // no per-source filter is needed here.
     messages.forEach(msg => {
       channelSet.add(msg.channel);
     });
