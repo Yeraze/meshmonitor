@@ -42,6 +42,11 @@ import databaseService from '../services/database.js';
 import { logger } from '../utils/logger.js';
 import { loadAllNodesAsDeviceInfo } from './utils/dbNodeMapper.js';
 import type { DeviceInfo } from './meshtasticManager.js';
+import {
+  MqttBridgePublisherPool,
+  formatGatewayClientId,
+  type PublisherStatus,
+} from './mqttBridgePublisherPool.js';
 
 /**
  * Direction the bridge is permitted to operate in against the upstream
@@ -59,6 +64,22 @@ import type { DeviceInfo } from './meshtasticManager.js';
  *   Use this for read-only monitoring.
  */
 export type MqttBridgeMode = 'bidirectional' | 'publish_only' | 'subscribe_only';
+
+/**
+ * Per-bridge upstream forwarding identity model.
+ *
+ * - `per_gateway` (default): each `local-packet`'s `gateway_id` is
+ *   dispatched through its own upstream MQTT connection with
+ *   `clientId = '!' + hex8(gatewayNum)`. The parent broker's own
+ *   gateway nodeId doubles as the subscriber connection so MQTT 3.1.1
+ *   §3.1.4's mandatory-disconnect rule for duplicate Client IDs cannot
+ *   trip. Required for upstream brokers that filter CONNECT on Client
+ *   ID (e.g. community brokers that whitelist `!<8-hex>`).
+ * - `single`: legacy behavior — one upstream connection with
+ *   `mm-bridge-<sourceId>-<random>` Client ID handles every uplink.
+ *   Useful for upstream brokers with tight per-username connection caps.
+ */
+export type MqttBridgeForwardingMode = 'per_gateway' | 'single';
 
 export interface MqttBridgeSourceConfig {
   /**
@@ -96,6 +117,12 @@ export interface MqttBridgeSourceConfig {
    */
   downlinkTopicRewrite?: TopicRewriteRule;
   uplinkTopicRewrite?: TopicRewriteRule;
+  /**
+   * See {@link MqttBridgeForwardingMode}. Defaults to `per_gateway` when
+   * unset. Only meaningful when the bridge has a `brokerSourceId`
+   * (standalone bridges have no `local-packet` stream to dispatch over).
+   */
+  forwardingMode?: MqttBridgeForwardingMode;
 }
 
 /** Literal prefix replacement rule applied to a Meshtastic MQTT topic. */
@@ -153,12 +180,34 @@ export interface MqttBridgeStatus extends SourceStatus {
   permissionMessage: string | null;
   /** Resolved bridge mode (defaults to `bidirectional`). */
   mode: MqttBridgeMode;
+  /** Resolved forwarding mode (defaults to `per_gateway`). */
+  forwardingMode: MqttBridgeForwardingMode;
+  /**
+   * Per-gateway publisher status when `forwardingMode === 'per_gateway'`.
+   * Keyed by `!<8-hex>` Client ID. Empty when the bridge is in `single`
+   * mode or when no `local-packet` traffic has been seen yet.
+   */
+  publishers: Record<string, PublisherStatus>;
 }
 
 interface EchoEntry { topic: string; packetId: number; expiresAt: number }
 
 const ECHO_TTL_MS = 60_000;
 const ECHO_MAX = 256;
+
+/**
+ * Parse a Meshtastic ServiceEnvelope `gateway_id` string (`!<8-hex>`) into
+ * the unsigned 32-bit nodeNum. Returns null for unparseable input so the
+ * caller can fall back to the subscriber connection — we never want a
+ * malformed envelope to take down the uplink path.
+ */
+export function extractGatewayNum(gatewayId: string | undefined): number | null {
+  if (typeof gatewayId !== 'string') return null;
+  const hex = gatewayId.startsWith('!') ? gatewayId.slice(1) : gatewayId;
+  if (!/^[0-9a-fA-F]{1,8}$/.test(hex)) return null;
+  const n = parseInt(hex, 16);
+  return Number.isFinite(n) ? n >>> 0 : null;
+}
 
 export class MqttBridgeManager extends EventEmitter implements ISourceManager {
   readonly sourceId: string;
@@ -179,6 +228,20 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
   private lastError: string | null = null;
   private readonly downlinkEchoes: EchoEntry[] = [];
   private readonly uplinkEchoes: EchoEntry[] = [];
+  /**
+   * Per-gateway publisher pool. Non-null only while the bridge is
+   * running in `per_gateway` mode with a parent broker attached.
+   * Holds one MQTT connection per `gateway_id` seen in `local-packet`.
+   */
+  private publisherPool: MqttBridgePublisherPool | null = null;
+  /**
+   * In `per_gateway` mode, the gatewayNum whose pool entry doubles as
+   * the subscriber connection (i.e., the parent broker's own gateway
+   * nodeId). When `gateway_id` of an uplink packet matches this, the
+   * publish rides `this.client` instead of being dispatched into a
+   * separate pool entry — see MQTT 3.1.1 §3.1.4 duplicate-clientId rule.
+   */
+  private brokerGatewayNum: number | null = null;
 
   constructor(sourceId: string, sourceName: string, config: MqttBridgeSourceConfig) {
     super();
@@ -189,17 +252,47 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     this.uplinkFilter = new MqttPacketFilter(config.uplinkFilters);
   }
 
+  /** Resolves the configured forwarding mode, defaulting to `'per_gateway'`. */
+  private getForwardingMode(): MqttBridgeForwardingMode {
+    return this.config.forwardingMode ?? 'per_gateway';
+  }
+
   async start(): Promise<void> {
     this.attachParentBroker();
     await bootstrapMqttChannelDatabase(this.sourceId);
     await this.seedDownlinkMembership();
 
     const mode = this.getMode();
+    const forwardingMode = this.getForwardingMode();
+
+    // In per_gateway mode with a parent broker attached, the bridge's
+    // subscriber connection takes the broker's gateway nodeId as its
+    // Client ID — so the upstream broker sees the bridge as the broker
+    // node, not as an opaque `mm-bridge-…`. The same connection is also
+    // the publisher for traffic whose gateway_id IS the broker's nodeId
+    // (avoids the MQTT 3.1.1 §3.1.4 duplicate-clientId disconnect).
+    let subscriberClientId: string | undefined;
+    if (forwardingMode === 'per_gateway' && this.parentBroker) {
+      const localInfo = this.parentBroker.getLocalNodeInfo();
+      this.brokerGatewayNum = localInfo.nodeNum >>> 0;
+      subscriberClientId = formatGatewayClientId(this.brokerGatewayNum);
+      this.publisherPool = new MqttBridgePublisherPool({
+        url: this.config.upstream.url,
+        username: this.config.upstream.username,
+        password: this.config.upstream.password,
+        poolLabel: this.sourceId,
+      });
+    }
+
     this.client = new MqttBrokerClient({
       url: this.config.upstream.url,
       username: this.config.upstream.username,
       password: this.config.upstream.password,
-      clientIdPrefix: `mm-bridge-${this.sourceId}`,
+      // Explicit clientId in per_gateway mode (broker's gateway nodeId);
+      // fall back to the legacy `mm-bridge-…` prefix in single mode or
+      // when no parent broker is attached (standalone bridge).
+      clientId: subscriberClientId,
+      clientIdPrefix: subscriberClientId ? undefined : `mm-bridge-${this.sourceId}`,
     });
     this.client.on('error', (err) => {
       this.lastError = err.message;
@@ -231,7 +324,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       await this.client.subscribe(this.config.subscriptions);
     }
     logger.info(
-      `MQTT bridge ${this.sourceId} subscribed to ${this.config.subscriptions.length} upstream topic(s) (mode=${mode})`,
+      `MQTT bridge ${this.sourceId} subscribed to ${this.config.subscriptions.length} upstream topic(s) (mode=${mode}, forwarding=${forwardingMode})`,
     );
   }
 
@@ -242,10 +335,15 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
 
   async stop(): Promise<void> {
     this.detachParentBroker();
+    if (this.publisherPool) {
+      await this.publisherPool.close();
+      this.publisherPool = null;
+    }
     if (this.client) {
       await this.client.disconnect();
       this.client = null;
     }
+    this.brokerGatewayNum = null;
   }
 
   /**
@@ -326,6 +424,8 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       capabilities,
       permissionMessage: buildPermissionMessage(capabilities, requestedSubs),
       mode,
+      forwardingMode: this.getForwardingMode(),
+      publishers: this.publisherPool?.getStatus() ?? {},
     };
   }
 
@@ -554,7 +654,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
   }
 
   private handleUplink(p: MqttBrokerLocalPacket): void {
-    if (!this.client || !this.client.isConnected()) return;
+    if (!this.client) return;
 
     const packetId = p.envelope.packet?.id !== undefined ? (p.envelope.packet.id >>> 0) : null;
     if (packetId !== null && this.matchesEcho(this.downlinkEchoes, p.topic, packetId)) {
@@ -568,15 +668,39 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     // under the post-rewrite topic so the downlink direction can suppress
     // the upstream broker's re-emission of this same packet.
     const publishTopic = applyTopicRewrite(p.topic, this.config.uplinkTopicRewrite);
-    this.client
-      .publish(publishTopic, p.payload, p.retained)
-      .then(() => {
-        this.uplinkOut++;
-        this.recordEcho(this.uplinkEchoes, publishTopic, packetId);
-      })
-      .catch((err) => {
-        this.lastError = `upstream publish failed: ${err.message}`;
-      });
+    // Per-gateway dispatch: when the pool is active and the envelope's
+    // gateway_id parses to a nodeNum different from the broker's own
+    // gateway nodeId, publish through the pool entry whose clientId is
+    // `!<gatewayHex>`. Otherwise (single mode, no pool, broker-self-
+    // originated packet, or unparseable gateway_id) ride the subscriber
+    // connection — which in per_gateway mode already uses the broker's
+    // own nodeId as its Client ID.
+    const gatewayNum = this.publisherPool ? extractGatewayNum(p.envelope.gatewayId) : null;
+    const dispatchToPool =
+      this.publisherPool !== null &&
+      gatewayNum !== null &&
+      gatewayNum !== this.brokerGatewayNum;
+
+    const onSuccess = () => {
+      this.uplinkOut++;
+      this.recordEcho(this.uplinkEchoes, publishTopic, packetId);
+    };
+    const onError = (err: Error) => {
+      this.lastError = `upstream publish failed: ${err.message}`;
+    };
+
+    if (dispatchToPool && this.publisherPool && gatewayNum !== null) {
+      this.publisherPool
+        .publish(gatewayNum, publishTopic, p.payload, p.retained)
+        .then(onSuccess)
+        .catch(onError);
+    } else {
+      if (!this.client.isConnected()) return;
+      this.client
+        .publish(publishTopic, p.payload, p.retained)
+        .then(onSuccess)
+        .catch(onError);
+    }
   }
 
   private recordEcho(store: EchoEntry[], topic: string, packetId: number | null): void {
