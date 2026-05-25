@@ -43,6 +43,23 @@ import { logger } from '../utils/logger.js';
 import { loadAllNodesAsDeviceInfo } from './utils/dbNodeMapper.js';
 import type { DeviceInfo } from './meshtasticManager.js';
 
+/**
+ * Direction the bridge is permitted to operate in against the upstream
+ * broker. Defaults to `bidirectional` for back-compat with rows saved
+ * before this field existed.
+ *
+ * - `bidirectional`: subscribe to upstream topics AND forward local
+ *   traffic upstream. Original behavior.
+ * - `publish_only`: skip the upstream `subscribe()` call entirely. Use
+ *   this for public servers (e.g. mqtt.meshtastic.org) that allow
+ *   PUBLISH from gateways but deny SUBSCRIBE — without this, the bridge
+ *   spams permission-denied warnings on every SUBACK.
+ * - `subscribe_only`: skip uplink forwarding (don't bind the parent
+ *   broker's `local-packet` listener and reject calls to `publish()`).
+ *   Use this for read-only monitoring.
+ */
+export type MqttBridgeMode = 'bidirectional' | 'publish_only' | 'subscribe_only';
+
 export interface MqttBridgeSourceConfig {
   /**
    * Optional parent mqtt_broker source. When set, downlink packets are
@@ -59,6 +76,8 @@ export interface MqttBridgeSourceConfig {
     password?: string;
   };
   subscriptions: string[];
+  /** See {@link MqttBridgeMode}. Defaults to `'bidirectional'` when unset. */
+  mode?: MqttBridgeMode;
   downlinkFilters?: MqttFilterConfig;
   uplinkFilters?: MqttFilterConfig;
   /**
@@ -132,6 +151,8 @@ export interface MqttBridgeStatus extends SourceStatus {
    */
   capabilities: MqttClientCapabilities;
   permissionMessage: string | null;
+  /** Resolved bridge mode (defaults to `bidirectional`). */
+  mode: MqttBridgeMode;
 }
 
 interface EchoEntry { topic: string; packetId: number; expiresAt: number }
@@ -173,6 +194,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     await bootstrapMqttChannelDatabase(this.sourceId);
     await this.seedDownlinkMembership();
 
+    const mode = this.getMode();
     this.client = new MqttBrokerClient({
       url: this.config.upstream.url,
       username: this.config.upstream.username,
@@ -183,6 +205,10 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       this.lastError = err.message;
     });
     this.client.on('permission-denied', (info: { kind: 'auth' | 'subscribe'; message: string }) => {
+      // In publish_only mode the operator has explicitly opted out of
+      // subscribing, so suppress SUBACK-denied noise — only surface auth
+      // failures, which are still actionable.
+      if (mode === 'publish_only' && info.kind === 'subscribe') return;
       // Mirror to lastError so legacy UI tooltips (which only show on
       // disconnect) still pick it up. The dedicated permissionMessage
       // surface is preferred for connected-but-restricted bridges.
@@ -195,12 +221,23 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     this.client.on('message', (msg) => this.handleDownlink(msg.topic, msg.payload, msg.retained));
 
     await this.client.connect();
+    if (mode === 'publish_only') {
+      logger.info(
+        `MQTT bridge ${this.sourceId} started in publish_only mode — skipping upstream subscribe`,
+      );
+      return;
+    }
     if (this.config.subscriptions.length > 0) {
       await this.client.subscribe(this.config.subscriptions);
     }
     logger.info(
-      `MQTT bridge ${this.sourceId} subscribed to ${this.config.subscriptions.length} upstream topic(s)`,
+      `MQTT bridge ${this.sourceId} subscribed to ${this.config.subscriptions.length} upstream topic(s) (mode=${mode})`,
     );
+  }
+
+  /** Resolves the configured mode, defaulting to `'bidirectional'`. */
+  private getMode(): MqttBridgeMode {
+    return this.config.mode ?? 'bidirectional';
   }
 
   async stop(): Promise<void> {
@@ -267,6 +304,11 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     const capabilities: MqttClientCapabilities = this.client
       ? this.client.getCapabilities()
       : { canSubscribe: true, canPublish: 'unknown', authFailed: false, deniedSubscriptions: [] };
+    const mode = this.getMode();
+    // publish_only never attempts to subscribe, so requestedSubscriptionCount
+    // is effectively zero — passing 0 keeps buildPermissionMessage from
+    // reporting "0 subscriptions denied" when there's no real failure.
+    const requestedSubs = mode === 'publish_only' ? 0 : this.config.subscriptions.length;
     return {
       sourceId: this.sourceId,
       sourceName: this.sourceName,
@@ -282,7 +324,8 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       uplinkDrops: this.uplinkFilter.getDropCounters(),
       lastError: this.lastError ?? this.client?.getLastError() ?? null,
       capabilities,
-      permissionMessage: buildPermissionMessage(capabilities, this.config.subscriptions.length),
+      permissionMessage: buildPermissionMessage(capabilities, requestedSubs),
+      mode,
     };
   }
 
@@ -354,6 +397,9 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
    * a `mqttLink` target can be either type.
    */
   async publish(topic: string, payload: Buffer, retained = false): Promise<void> {
+    if (this.getMode() === 'subscribe_only') {
+      throw new Error(`MQTT bridge ${this.sourceId} is subscribe_only — publish refused`);
+    }
     if (!this.client || !this.client.isConnected()) {
       throw new Error(`MQTT bridge ${this.sourceId} not connected to upstream`);
     }
@@ -411,6 +457,9 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
 
   private bindParentListener(): void {
     if (!this.parentBroker || this.parentListener) return;
+    // subscribe_only mode forwards nothing upstream — don't subscribe to the
+    // parent broker's local-packet stream at all so we can't even race on it.
+    if (this.getMode() === 'subscribe_only') return;
     this.parentListener = (p) => this.handleUplink(p);
     this.parentBroker.on('local-packet', this.parentListener);
   }

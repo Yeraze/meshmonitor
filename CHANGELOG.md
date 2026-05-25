@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Features
+
+- #3189 feat(mqtt-bridge): direction mode dropdown (`bidirectional` / `publish_only` / `subscribe_only`) — public/curated upstream brokers like `mqtt.meshtastic.org` accept gateway `PUBLISH` but ACL-reject `SUBSCRIBE`, and the bridge used to spam `permission-denied` warnings on every `SUBACK`. The new per-bridge **Mode** dropdown lets operators skip the upstream `subscribe()` call entirely (`publish_only`) or refuse outbound publishes (`subscribe_only`). Stored in the bridge `config` JSON blob — no schema migration; missing values are treated as `bidirectional` so existing rows keep working. Status now exposes the resolved mode and stops claiming "0 subscriptions denied" when none were ever attempted.
+
 
 ## [4.7.1] - 2026-05-25
 
