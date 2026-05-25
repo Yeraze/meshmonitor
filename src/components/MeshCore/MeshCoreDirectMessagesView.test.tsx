@@ -254,6 +254,33 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     expect(names).toEqual(['alpha', 'Bravo', 'Charlie']);
   });
 
+  it('collapses the node list when the toggle button is clicked, and restores it on re-click', () => {
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={[realContact]}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+
+    // Starts expanded — peer is visible and the toggle reads "Collapse node list".
+    expect(screen.getByText('Remote Bob')).toBeTruthy();
+    const toggle = screen.getByTitle('Collapse node list');
+    expect(toggle.textContent).toBe('◀');
+
+    // Click collapses — peer row is unmounted, toggle now reads "Expand…".
+    fireEvent.click(toggle);
+    expect(screen.queryByText('Remote Bob')).toBeNull();
+    const expandToggle = screen.getByTitle('Expand node list');
+    expect(expandToggle.textContent).toBe('▶');
+
+    // Click again restores the list.
+    fireEvent.click(expandToggle);
+    expect(screen.getByText('Remote Bob')).toBeTruthy();
+    expect(screen.getByTitle('Collapse node list')).toBeTruthy();
+  });
+
   it('refetches telemetry config when switching from one real-pubkey peer to another', async () => {
     render(
       <MeshCoreDirectMessagesView

@@ -264,6 +264,44 @@
   padding: 0.5rem 0;
 }
 
+/* Collapsed sidebar — only the toggle button is visible. */
+.meshcore-list-pane.collapsed {
+  width: auto;
+  border-right: none;
+  background: transparent;
+}
+
+.meshcore-list-pane.collapsed .meshcore-list-pane-header {
+  background: transparent;
+  border-bottom: none;
+  padding: 0.5rem;
+  justify-content: flex-start;
+}
+
+.meshcore-collapse-btn {
+  background: var(--ctp-surface1);
+  border: 2px solid var(--ctp-surface2);
+  color: var(--ctp-text);
+  padding: 0;
+  border-radius: var(--radius-sm);
+  font-size: 0.6rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-right: 0.4rem;
+}
+
+.meshcore-collapse-btn:hover {
+  background: var(--ctp-blue);
+  border-color: var(--ctp-blue);
+  color: var(--ctp-accent-text);
+}
+
 .meshcore-main-pane {
   flex: 1;
   min-width: 0;
