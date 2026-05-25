@@ -3780,7 +3780,7 @@
     "auth.session_expired": "Ваша сессия истекла. Пожалуйста, обновите страницу и попробуйте снова.",
     "messages.exchange_position_channel": "Выберите канал для обмена позиционированием",
     "channels.location_enabled": "Включено (местоположение предоставляется)",
-    "security.have_time_offset": "",
+    "security.have_time_offset": "Смещение времени",
     "security.time_offset_count": "Смещение времени ({{count}} нод)",
     "security.time_offset_description": "Ноды с часами, значительно расходящимися с сервером времени. Это может указывать на некорректно настроенные устройства или проблемы с GPS.",
     "security.node_reported_time": "Время, зарегистрированное нодой",
