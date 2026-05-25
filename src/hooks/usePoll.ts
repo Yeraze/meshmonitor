@@ -130,6 +130,13 @@ export interface RawMessage {
   channel: number;
   portnum?: number;
   timestamp: string | number;
+  /**
+   * Server-side ingest time. JSON-serialized as an ISO string by `new Date(...)`
+   * on the server (see transformDbMessageToMeshMessage). Optional only for
+   * back-compat with older server builds; clients should fall back to
+   * `timestamp` when missing.
+   */
+  receivedAt?: string | number;
   acknowledged?: boolean;
   ackFailed?: boolean;
   isLocalMessage?: boolean;

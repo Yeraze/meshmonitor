@@ -1635,6 +1635,7 @@ function App() {
         const processedMessages = result.messages.map(msg => ({
           ...msg,
           timestamp: new Date(msg.timestamp),
+          receivedAt: new Date(msg.receivedAt ?? msg.timestamp),
         }));
 
         // Prepend older messages to the existing list, deduplicating by id
@@ -1705,6 +1706,7 @@ function App() {
         const processedMessages = result.messages.map(msg => ({
           ...msg,
           timestamp: new Date(msg.timestamp),
+          receivedAt: new Date(msg.receivedAt ?? msg.timestamp),
         }));
 
         // Prepend older messages to the existing list
@@ -2458,6 +2460,7 @@ function App() {
         const processedMessages = messagesData.map((msg: any) => ({
           ...msg,
           timestamp: new Date(msg.timestamp),
+          receivedAt: new Date(msg.receivedAt ?? msg.timestamp),
         }));
 
         // Play notification sound if new messages arrived from OTHER users

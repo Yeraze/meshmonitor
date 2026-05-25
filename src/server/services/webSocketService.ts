@@ -33,6 +33,8 @@ function transformMessageForClient(msg: DbMessage): unknown {
     channel: msg.channel,
     portnum: msg.portnum,
     timestamp: new Date(msg.rxTime ?? msg.timestamp),  // Convert to Date (serializes as ISO string)
+    // Server-side ingest time used by the client for sort order (issue #3187).
+    receivedAt: new Date(msg.createdAt ?? msg.rxTime ?? msg.timestamp),
     hopStart: msg.hopStart,
     hopLimit: msg.hopLimit,
     relayNode: msg.relayNode,

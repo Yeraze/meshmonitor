@@ -15,6 +15,7 @@ import { TimeFormat, DateFormat, useSettings, useNotificationMuteSettings } from
 import { formatPrecisionAccuracy } from '../utils/distance';
 import apiService, { type ChannelDatabaseEntry } from '../services/api';
 import { formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
+import { getMessageSortTime } from '../utils/messageSort';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
 import { scrollInputIntoView } from '../utils/scrollInputIntoView';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
@@ -841,9 +842,11 @@ export default function ChannelsTab({
                         messagesForChannel = messagesForChannel.filter(msg => msg.portnum !== 70);
                       }
 
-                      // Sort messages by timestamp (oldest first)
+                      // Sort messages by server-side receipt time (#3187)
+                      // so messages from nodes with bad clocks don't jump.
+                      // Oldest first.
                       messagesForChannel = messagesForChannel.sort(
-                        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                        (a, b) => getMessageSortTime(a) - getMessageSortTime(b)
                       );
 
                       return messagesForChannel && messagesForChannel.length > 0 ? (
