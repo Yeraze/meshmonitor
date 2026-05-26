@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreNode } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
@@ -14,6 +14,7 @@ const DEVICE_TYPE_KEYS: Record<number, string> = {
 interface MeshCoreNodesViewProps {
   nodes: MeshCoreNode[];
   contacts: MeshCoreContact[];
+  onImportContact?: (advertBytes: number[]) => Promise<boolean>;
 }
 
 interface MergedRow {
@@ -89,11 +90,42 @@ function sortRows(rows: MergedRow[], field: SortField, direction: SortDirection)
 export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   nodes,
   contacts,
+  onImportContact,
 }) => {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('lastHeard');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importHex, setImportHex] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  const handleImport = useCallback(async () => {
+    if (!onImportContact || importing) return;
+    const hex = importHex.trim().replace(/\s+/g, '');
+    if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length < 2 || hex.length % 2 !== 0) {
+      setImportError(t('meshcore.import_contact.invalid_hex', 'Invalid hex — paste the full exported contact blob.'));
+      return;
+    }
+    const bytes: number[] = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      bytes.push(parseInt(hex.substring(i, i + 2), 16));
+    }
+    setImporting(true);
+    setImportError(null);
+    try {
+      const ok = await onImportContact(bytes);
+      if (ok) {
+        setImportDialogOpen(false);
+        setImportHex('');
+      } else {
+        setImportError(t('meshcore.import_contact.failed', 'Import failed — invalid advert data or device not connected.'));
+      }
+    } finally {
+      setImporting(false);
+    }
+  }, [onImportContact, importing, importHex, t]);
 
   const merged = useMemo(() => mergeNodesAndContacts(nodes, contacts), [nodes, contacts]);
   const rows = useMemo(
@@ -107,6 +139,16 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
         <div className="meshcore-list-pane-header">
           <span>{t('meshcore.nav.nodes', 'Nodes')}</span>
           <span className="pane-count">{rows.length}</span>
+          {onImportContact && (
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ fontSize: '0.8em', padding: '0.15rem 0.5rem', marginLeft: '0.5rem' }}
+              onClick={() => { setImportHex(''); setImportError(null); setImportDialogOpen(true); }}
+            >
+              {t('meshcore.import_contact.button', 'Import')}
+            </button>
+          )}
           <div className="sort-controls meshcore-sort-controls">
             <select
               aria-label={t('meshcore.sort_by', 'Sort by')}
@@ -170,6 +212,87 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
       <div className="meshcore-main-pane">
         <MeshCoreMap contacts={contacts} selectedPublicKey={selected} />
       </div>
+      {importDialogOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('meshcore.import_contact.dialog_title', 'Import Contact')}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget && !importing) setImportDialogOpen(false); }}
+        >
+          <div
+            style={{
+              background: 'var(--ctp-base, #1e1e2e)',
+              color: 'var(--ctp-text, #cdd6f4)',
+              padding: '1.25rem 1.5rem',
+              borderRadius: '8px',
+              maxWidth: '32rem',
+              width: '90%',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>
+              {t('meshcore.import_contact.dialog_title', 'Import Contact')}
+            </h3>
+            <p style={{ marginBottom: '0.75rem' }}>
+              {t(
+                'meshcore.import_contact.dialog_hint',
+                'Paste the hex-encoded signed advert blob exported from another node.',
+              )}
+            </p>
+            <textarea
+              value={importHex}
+              onChange={(e) => setImportHex(e.target.value)}
+              disabled={importing}
+              placeholder="e.g. 04a3b7c2d1..."
+              rows={4}
+              style={{
+                width: '100%',
+                padding: '0.5rem',
+                marginBottom: '0.5rem',
+                fontFamily: 'var(--font-mono, monospace)',
+                fontSize: '0.85em',
+                boxSizing: 'border-box',
+                resize: 'vertical',
+              }}
+              autoFocus
+            />
+            {importError && (
+              <div style={{ color: 'var(--ctp-red)', marginBottom: '0.75rem' }} role="alert">
+                {importError}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setImportDialogOpen(false)}
+                disabled={importing}
+              >
+                {t('meshcore.import_contact.cancel', 'Cancel')}
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleImport}
+                disabled={importing || importHex.trim().length === 0}
+              >
+                {importing
+                  ? t('meshcore.import_contact.importing', 'Importing…')
+                  : t('meshcore.import_contact.import', 'Import')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

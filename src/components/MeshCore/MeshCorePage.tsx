@@ -83,6 +83,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             <MeshCoreNodesView
               nodes={nodes}
               contacts={contacts}
+              onImportContact={actions.importContact}
             />
           )}
           {view === 'channels' && (
