@@ -120,7 +120,17 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
   const [command, setCommand] = useState('');
   const [sending, setSending] = useState(false);
   const [dangerConfirm, setDangerConfirm] = useState<null | { command: string; typedName: string }>(null);
-  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+  // Ref on the scrollable transcript container itself (not a sentinel
+   // inside it). Auto-scroll updates `scrollTop` directly on this element
+   // so the scroll stays confined to the transcript pane — `scrollIntoView`
+   // also drags outer scrollable ancestors (now the DM right pane after
+   // #3205) which makes the whole page jump on every Send.
+  const transcriptRef = useRef<HTMLDivElement | null>(null);
+  // Whether the user is currently near the bottom of the transcript.
+  // If they've scrolled up to read history we leave their position alone
+  // when new lines arrive — the existing scroll position is more useful
+  // than auto-scrolling back to the latest output.
+  const userAtBottomRef = useRef(true);
 
   // Hard cap on persisted transcript size. Generous enough for a long
   // working session; tight enough that worst-case sessionStorage doesn't
@@ -141,7 +151,11 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
   const HISTORY_MAX = 50;
 
   useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    const el = transcriptRef.current;
+    if (!el) return;
+    if (userAtBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [transcript]);
 
   // Restore transcript when the target changes. Each target gets its own
@@ -164,6 +178,7 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
     setTranscript(restored);
     setCommand('');
     setDangerConfirm(null);
+    userAtBottomRef.current = true;
   }, [targetId]);
 
   // Persist on every transcript change. Cap at TRANSCRIPT_MAX so a long
@@ -271,7 +286,17 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
         </div>
       )}
 
-      <div className="mrc-transcript" role="log" aria-live="polite">
+      <div
+        ref={transcriptRef}
+        className="mrc-transcript"
+        role="log"
+        aria-live="polite"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          userAtBottomRef.current =
+            el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+        }}
+      >
         {transcript.length === 0 ? (
           <p className="mrc-transcript-empty">
             {disabled
@@ -286,7 +311,6 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
             </div>
           ))
         )}
-        <div ref={transcriptEndRef} />
       </div>
 
       <form

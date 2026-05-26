@@ -310,6 +310,18 @@
   overflow: hidden;
 }
 
+/* DM view variant — the right pane stacks message stream + contact
+   details + telemetry as a single page-level scrolling column. The
+   stream gets a bounded height (rule on `.meshcore-message-stream`
+   under this selector below) so messages still scroll internally and
+   the composer stays pinned to the bottom of the stream block; the
+   pane scrolls past the composer to reveal contact details and
+   telemetry below. Other views (Channels, Nodes) keep the original
+   single-child-fills-pane behavior. */
+.meshcore-main-pane--dm {
+  overflow-y: auto;
+}
+
 /* Map area */
 .meshcore-map-pane {
   flex: 1;
@@ -440,6 +452,16 @@
   background: var(--ctp-base);
 }
 
+/* DM-variant stream: bounded height so the inner message list scrolls
+   internally and the composer stays pinned to the bottom of the stream
+   block, while the surrounding `.meshcore-main-pane--dm` scrolls past
+   to reveal contact details and telemetry below. */
+.meshcore-main-pane--dm .meshcore-message-stream {
+  flex: 0 0 auto;
+  height: 60vh;
+  min-height: 24rem;
+}
+
 .meshcore-message-list {
   flex: 1;
   overflow-y: auto;
@@ -517,11 +539,12 @@
   cursor: not-allowed;
 }
 
-/* Contact detail pane (below the message stream in the DM view) */
+/* Contact detail pane (below the message stream in the DM view).
+   No longer height-capped — the surrounding `.meshcore-main-pane` is the
+   page-level scroll container, so this block flows naturally below the
+   composer. Scroll the right pane to reach it. */
 .meshcore-detail-pane {
   flex-shrink: 0;
-  max-height: 45%;
-  overflow-y: auto;
   background: var(--ctp-base);
   border-top: 1px solid var(--ctp-surface1);
   padding: 0.75rem;

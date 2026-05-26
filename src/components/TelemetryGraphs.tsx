@@ -18,6 +18,7 @@ import { useSource } from '../contexts/SourceContext';
 import { getLatestValue } from '../utils/telemetry';
 import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
+import { getTelemetryLabel } from './TelemetryChart';
 
 /** Telemetry types that represent discrete integer values where fractional display is meaningless */
 const INTEGER_TELEMETRY_TYPES = new Set([
@@ -681,104 +682,6 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
       }
 
       return dataWithGaps;
-    };
-
-    const getTelemetryLabel = (type: string): string => {
-      const labels: { [key: string]: string } = {
-        batteryLevel: 'Battery Level',
-        voltage: 'Voltage',
-        channelUtilization: 'Channel Utilization',
-        airUtilTx: 'Air Utilization (TX)',
-        temperature: 'Temperature',
-        humidity: 'Humidity',
-        pressure: 'Barometric Pressure',
-        snr: 'Signal-to-Noise Ratio (SNR)',
-        snr_local: 'SNR - Local (Our Measurements)',
-        snr_remote: 'SNR - Remote (Node Reports)',
-        rssi: 'Signal Strength (RSSI)',
-        ch1Voltage: 'Channel 1 Voltage',
-        ch1Current: 'Channel 1 Current',
-        ch2Voltage: 'Channel 2 Voltage',
-        ch2Current: 'Channel 2 Current',
-        ch3Voltage: 'Channel 3 Voltage',
-        ch3Current: 'Channel 3 Current',
-        ch4Voltage: 'Channel 4 Voltage',
-        ch4Current: 'Channel 4 Current',
-        ch5Voltage: 'Channel 5 Voltage',
-        ch5Current: 'Channel 5 Current',
-        ch6Voltage: 'Channel 6 Voltage',
-        ch6Current: 'Channel 6 Current',
-        ch7Voltage: 'Channel 7 Voltage',
-        ch7Current: 'Channel 7 Current',
-        ch8Voltage: 'Channel 8 Voltage',
-        ch8Current: 'Channel 8 Current',
-        altitude: 'Altitude',
-        sats_in_view: 'GPS Satellites',
-        // Air Quality metrics
-        pm10Standard: 'PM1.0 (Standard)',
-        pm25Standard: 'PM2.5 (Standard)',
-        pm100Standard: 'PM10 (Standard)',
-        pm10Environmental: 'PM1.0 (Environmental)',
-        pm25Environmental: 'PM2.5 (Environmental)',
-        pm100Environmental: 'PM10 (Environmental)',
-        particles03um: 'Particles 0.3µm',
-        particles05um: 'Particles 0.5µm',
-        particles10um: 'Particles 1.0µm',
-        particles25um: 'Particles 2.5µm',
-        particles50um: 'Particles 5.0µm',
-        particles100um: 'Particles 10µm',
-        co2: 'CO₂',
-        co2Temperature: 'CO₂ Sensor Temperature',
-        co2Humidity: 'CO₂ Sensor Humidity',
-        // Paxcounter metrics
-        paxcounterWifi: 'Paxcounter WiFi',
-        paxcounterBle: 'Paxcounter BLE',
-        paxcounterUptime: 'Paxcounter Uptime',
-        // LocalStats metrics (from connected Meshtastic device)
-        uptimeSeconds: 'Device Uptime',
-        numOnlineNodes: 'Online Nodes (Device)',
-        numTotalNodes: 'Total Nodes (Device)',
-        numPacketsTx: 'Packets TX (Device)',
-        numPacketsRx: 'Packets RX (Device)',
-        numPacketsRxBad: 'Bad Packets RX (Device)',
-        numRxDupe: 'Duplicate Packets (Device)',
-        numTxRelay: 'Relayed TX (Device)',
-        numTxRelayCanceled: 'Canceled Relay TX (Device)',
-        numTxDropped: 'Dropped TX (Device)',
-        heapTotalBytes: 'Heap Total (Device)',
-        heapFreeBytes: 'Heap Free (Device)',
-        // MeshMonitor system metrics (calculated by MeshMonitor)
-        systemNodeCount: 'Active Nodes (MeshMonitor)',
-        systemDirectNodeCount: 'Direct Nodes (MeshMonitor)',
-        timeOffset: 'Clock Offset (Server \u2212 Node)',
-        // HostMetrics (for Linux devices)
-        hostUptimeSeconds: 'Host Uptime',
-        hostFreememBytes: 'Host Free Memory',
-        hostLoad1: 'Host Load (1 min)',
-        hostLoad5: 'Host Load (5 min)',
-        hostLoad15: 'Host Load (15 min)',
-        // Extended Environment metrics
-        gasResistance: 'Gas Resistance',
-        iaq: 'Indoor Air Quality (IAQ)',
-        lux: 'Ambient Light',
-        whiteLux: 'White Light',
-        irLux: 'Infrared Light',
-        uvLux: 'UV Light',
-        windDirection: 'Wind Direction',
-        windSpeed: 'Wind Speed',
-        windGust: 'Wind Gust',
-        windLull: 'Wind Lull',
-        rainfall1h: 'Rainfall (1 hour)',
-        rainfall24h: 'Rainfall (24 hours)',
-        soilMoisture: 'Soil Moisture',
-        soilTemperature: 'Soil Temperature',
-        radiation: 'Radiation',
-        distance: 'Distance (Water Level)',
-        weight: 'Weight',
-        envVoltage: 'Environment Voltage',
-        envCurrent: 'Environment Current',
-      };
-      return labels[type] || type;
     };
 
     const getColor = (type: string): string => {

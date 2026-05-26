@@ -308,4 +308,21 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
       expect(urls.some(u => u.includes(REAL_PK_2))).toBe(true);
     });
   });
+
+  // Regression: the right pane carries the `meshcore-main-pane--dm` modifier
+  // class that opts into the page-scrolling layout (bounded message stream
+  // height + flowing contact-detail / telemetry block below). Dropping it
+  // would revert to the 45%-capped detail pane.
+  it('applies the meshcore-main-pane--dm modifier to opt into page-scroll layout', () => {
+    const { container } = render(
+      <MeshCoreDirectMessagesView
+        messages={messages}
+        contacts={[realContact]}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+    const mainPane = container.querySelector('.meshcore-main-pane');
+    expect(mainPane?.classList.contains('meshcore-main-pane--dm')).toBe(true);
+  });
 });
