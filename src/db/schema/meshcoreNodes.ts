@@ -72,6 +72,13 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   telemetryIntervalMinutes: integer('telemetryIntervalMinutes').default(60),
   lastTelemetryRequestAt: integer('lastTelemetryRequestAt'),
 
+  // Per-room-server sync config (migration 072).
+  roomSyncEnabled: integer('roomSyncEnabled', { mode: 'boolean' }).default(false),
+  roomSyncIntervalMinutes: integer('roomSyncIntervalMinutes').default(60),
+  lastRoomSyncAt: integer('lastRoomSyncAt'),
+  lastRoomPostAt: integer('lastRoomPostAt'),
+  roomCredential: text('roomCredential'),
+
   // MeshCore per-contact forwarding route (migration 068).
   // `outPath` is a comma-separated hex chain of hop hashes ("a3,7f,02");
   // `pathLen` is the hop count. Both NULL when the firmware's
@@ -124,6 +131,12 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   telemetryIntervalMinutes: pgInteger('telemetryIntervalMinutes').default(60),
   lastTelemetryRequestAt: pgBigint('lastTelemetryRequestAt', { mode: 'number' }),
 
+  roomSyncEnabled: pgBoolean('roomSyncEnabled').default(false),
+  roomSyncIntervalMinutes: pgInteger('roomSyncIntervalMinutes').default(60),
+  lastRoomSyncAt: pgBigint('lastRoomSyncAt', { mode: 'number' }),
+  lastRoomPostAt: pgBigint('lastRoomPostAt', { mode: 'number' }),
+  roomCredential: pgText('roomCredential'),
+
   outPath: pgText('out_path'),
   pathLen: pgInteger('path_len'),
 
@@ -170,6 +183,12 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   telemetryEnabled: myBoolean('telemetryEnabled').default(false),
   telemetryIntervalMinutes: myInt('telemetryIntervalMinutes').default(60),
   lastTelemetryRequestAt: myBigint('lastTelemetryRequestAt', { mode: 'number' }),
+
+  roomSyncEnabled: myBoolean('roomSyncEnabled').default(false),
+  roomSyncIntervalMinutes: myInt('roomSyncIntervalMinutes').default(60),
+  lastRoomSyncAt: myBigint('lastRoomSyncAt', { mode: 'number' }),
+  lastRoomPostAt: myBigint('lastRoomPostAt', { mode: 'number' }),
+  roomCredential: myVarchar('roomCredential', { length: 1024 }),
 
   outPath: myVarchar('out_path', { length: 255 }),
   pathLen: myInt('path_len'),
