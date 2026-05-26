@@ -125,6 +125,12 @@ export interface MeshCoreActions {
     total: number;
     neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[];
   } | null>;
+  /** Reboot the locally connected device. Destructive — requires confirm flow. */
+  rebootDevice: (opts?: { confirm?: boolean }) => Promise<boolean>;
+  /** Export the device's Ed25519 private key as a hex string for backup. */
+  exportPrivateKey: () => Promise<string | null>;
+  /** Import an Ed25519 private key onto the device. Destructive — replaces identity. */
+  importPrivateKey: (hexKey: string, opts?: { confirm?: boolean }) => Promise<boolean>;
   sendAdvert: () => Promise<void>;
   sendMessage: (text: string, toPublicKey?: string, channelIdx?: number) => Promise<boolean>;
   setDeviceName: (name: string) => Promise<boolean>;
@@ -871,6 +877,59 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const rebootDevice = useCallback(async (opts?: { confirm?: boolean }): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/reboot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: opts?.confirm ?? true }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Reboot failed');
+        return false;
+      }
+      return true;
+    } catch (_err) {
+      setError('Reboot failed');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const exportPrivateKey = useCallback(async (): Promise<string | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/private-key`);
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to export private key');
+        return null;
+      }
+      return data.data?.privateKey ?? null;
+    } catch (_err) {
+      setError('Failed to export private key');
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const importPrivateKey = useCallback(async (hexKey: string, opts?: { confirm?: boolean }): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/private-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ privateKey: hexKey, confirm: opts?.confirm ?? true }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to import private key');
+        return false;
+      }
+      return true;
+    } catch (_err) {
+      setError('Failed to import private key');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const sendAdvert = useCallback(async () => {
     try {
       const response = await csrfFetch(`${mcPrefix}/advert`, { method: 'POST' });
@@ -1143,6 +1202,9 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       importContact,
       syncDeviceTime,
       getNeighbours,
+      rebootDevice,
+      exportPrivateKey,
+      importPrivateKey,
       sendAdvert,
       sendMessage,
       setDeviceName,

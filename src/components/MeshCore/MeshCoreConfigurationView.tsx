@@ -533,6 +533,196 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           actions={{ sendLocalCliCommand: actions.sendLocalCliCommand }}
         />
       )}
+
+      {/* Device Management — danger zone operations. Companion only. */}
+      {connected && canWriteConfig && !COMPANION_ONLY_DEVICES.has(local?.advType ?? 1) && (
+        <MeshCoreDeviceManagement actions={actions} deviceName={local?.name} />
+      )}
+    </div>
+  );
+};
+
+/**
+ * Danger-zone device management: reboot + key backup/restore.
+ * Extracted as a sub-component to keep ConfigurationView manageable.
+ */
+const MeshCoreDeviceManagement: React.FC<{
+  actions: MeshCoreActions;
+  deviceName?: string;
+}> = ({ actions, deviceName }) => {
+  const { t } = useTranslation();
+  const [rebooting, setRebooting] = useState(false);
+  const [exportingKey, setExportingKey] = useState(false);
+  const [exportedKey, setExportedKey] = useState<string | null>(null);
+  const [importKeyOpen, setImportKeyOpen] = useState(false);
+  const [importKeyDraft, setImportKeyDraft] = useState('');
+  const [importingKey, setImportingKey] = useState(false);
+  const [importKeyError, setImportKeyError] = useState<string | null>(null);
+
+  const handleReboot = async () => {
+    const msg = t(
+      'meshcore.config.reboot_confirm',
+      `Reboot ${deviceName ?? 'the device'}? It will disconnect and restart.`,
+    );
+    if (typeof window !== 'undefined' && !window.confirm(msg)) return;
+    setRebooting(true);
+    try {
+      await actions.rebootDevice({ confirm: true });
+    } finally {
+      setRebooting(false);
+    }
+  };
+
+  const handleExportKey = async () => {
+    setExportingKey(true);
+    setExportedKey(null);
+    try {
+      const hex = await actions.exportPrivateKey();
+      if (hex) {
+        setExportedKey(hex);
+      }
+    } finally {
+      setExportingKey(false);
+    }
+  };
+
+  const handleCopyKey = async () => {
+    if (!exportedKey) return;
+    await navigator.clipboard.writeText(exportedKey);
+  };
+
+  const handleImportKey = async () => {
+    if (importingKey) return;
+    const hex = importKeyDraft.trim();
+    if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+      setImportKeyError(t('meshcore.config.import_key_invalid', 'Key must be a 64-character hex string.'));
+      return;
+    }
+    const msg = t(
+      'meshcore.config.import_key_confirm',
+      'Import this private key? This REPLACES the device identity. All contacts will need to re-discover this node.',
+    );
+    if (typeof window !== 'undefined' && !window.confirm(msg)) return;
+    setImportingKey(true);
+    setImportKeyError(null);
+    try {
+      const ok = await actions.importPrivateKey(hex, { confirm: true });
+      if (ok) {
+        setImportKeyOpen(false);
+        setImportKeyDraft('');
+      } else {
+        setImportKeyError(t('meshcore.config.import_key_failed', 'Import failed.'));
+      }
+    } finally {
+      setImportingKey(false);
+    }
+  };
+
+  return (
+    <div className="meshcore-config-section" style={{ borderTop: '2px solid var(--ctp-red, #f38ba8)', marginTop: '1.5rem', paddingTop: '1rem' }}>
+      <h3 style={{ color: 'var(--ctp-red, #f38ba8)' }}>
+        {t('meshcore.config.device_management', 'Device Management')}
+      </h3>
+
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={handleReboot}
+          disabled={rebooting}
+          style={{ color: 'var(--ctp-red)' }}
+        >
+          {rebooting
+            ? t('meshcore.config.rebooting', 'Rebooting…')
+            : t('meshcore.config.reboot_button', 'Reboot Device')}
+        </button>
+
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={handleExportKey}
+          disabled={exportingKey}
+        >
+          {exportingKey
+            ? t('meshcore.config.exporting_key', 'Exporting…')
+            : t('meshcore.config.export_key_button', 'Backup Private Key')}
+        </button>
+
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => { setImportKeyDraft(''); setImportKeyError(null); setImportKeyOpen(true); }}
+          style={{ color: 'var(--ctp-red)' }}
+        >
+          {t('meshcore.config.import_key_button', 'Restore Private Key')}
+        </button>
+      </div>
+
+      {exportedKey && (
+        <div style={{
+          background: 'var(--ctp-surface0, #313244)',
+          padding: '0.75rem',
+          borderRadius: '6px',
+          marginBottom: '1rem',
+          fontFamily: 'var(--font-mono, monospace)',
+          fontSize: '0.85em',
+          wordBreak: 'break-all',
+        }}>
+          <div style={{ marginBottom: '0.5rem', color: 'var(--ctp-yellow, #f9e2af)' }}>
+            {t('meshcore.config.export_key_warning', 'Store this key securely. Anyone with it can impersonate this device.')}
+          </div>
+          <div>{exportedKey}</div>
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{ marginTop: '0.5rem', fontSize: '0.85em' }}
+            onClick={handleCopyKey}
+          >
+            {t('meshcore.config.copy_key', 'Copy to clipboard')}
+          </button>
+        </div>
+      )}
+
+      {importKeyOpen && (
+        <div style={{
+          background: 'var(--ctp-surface0, #313244)',
+          padding: '0.75rem',
+          borderRadius: '6px',
+          marginBottom: '1rem',
+        }}>
+          <div style={{ marginBottom: '0.5rem', color: 'var(--ctp-red, #f38ba8)' }}>
+            {t('meshcore.config.import_key_warning', 'This replaces the device identity. All contacts will need to re-discover this node.')}
+          </div>
+          <input
+            type="text"
+            value={importKeyDraft}
+            onChange={(e) => setImportKeyDraft(e.target.value)}
+            disabled={importingKey}
+            placeholder="64-character hex private key"
+            style={{
+              width: '100%',
+              padding: '0.5rem',
+              fontFamily: 'var(--font-mono, monospace)',
+              boxSizing: 'border-box',
+              marginBottom: '0.5rem',
+            }}
+          />
+          {importKeyError && (
+            <div style={{ color: 'var(--ctp-red)', marginBottom: '0.5rem' }} role="alert">{importKeyError}</div>
+          )}
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button type="button" className="btn-secondary" onClick={() => setImportKeyOpen(false)} disabled={importingKey}>
+              {t('meshcore.config.cancel', 'Cancel')}
+            </button>
+            <button type="button" className="btn-primary" onClick={handleImportKey} disabled={importingKey || importKeyDraft.trim().length === 0}
+              style={{ color: 'var(--ctp-red)' }}>
+              {importingKey
+                ? t('meshcore.config.importing_key', 'Importing…')
+                : t('meshcore.config.import_key_confirm_button', 'Import Key')}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

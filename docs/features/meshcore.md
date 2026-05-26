@@ -22,6 +22,7 @@ When a MeshCore source is connected, you get:
 - **Contact management** — Remove contacts from the device, export as `meshcore://` URLs for sharing, import from pasted URLs or hex blobs
 - **Repeater neighbour list** — Query a repeater's neighbour table with SNR and last-heard timestamps
 - **Device time sync** — One-click RTC sync from the Node Info page
+- **Device management** — Reboot device, backup/restore Ed25519 private key (danger-gated with confirmation)
 - **Telemetry-mode configuration** — Toggle base / location / environment telemetry on the device itself
 - **UI permission gating** — Write controls are disabled (not just rejected) for users without the right permission
 
