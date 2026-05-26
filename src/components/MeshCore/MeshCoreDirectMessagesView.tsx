@@ -265,7 +265,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
           </div>
         )}
       </div>
-      <div className="meshcore-main-pane">
+      <div className="meshcore-main-pane meshcore-main-pane--dm">
         {selected ? (
           <>
             <MeshCoreMessageStream
