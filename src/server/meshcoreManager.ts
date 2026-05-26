@@ -704,6 +704,19 @@ class MeshCoreManager extends EventEmitter {
           `[MeshCore:${this.sourceId}] Unmatched CLI reply from ${prefix}: ${replyText.substring(0, 80)}`,
         );
       }
+    } else if (event_type === 'send_confirmed') {
+      this.emit('send_confirmed', {
+        sourceId: this.sourceId,
+        ackCode: data.ack_code,
+        roundTripMs: data.round_trip_ms,
+      });
+      dataEventEmitter.emitMeshCoreSendConfirmed(
+        { ackCode: data.ack_code, roundTripMs: data.round_trip_ms },
+        this.sourceId,
+      );
+      logger.debug(
+        `[MeshCore:${this.sourceId}] Send confirmed: RTT=${data.round_trip_ms}ms`,
+      );
     } else if (event_type === 'contact_path_updated') {
       const publicKey: string = data.public_key;
       if (publicKey) {
@@ -1558,6 +1571,152 @@ class MeshCoreManager extends EventEmitter {
     } catch (error) {
       logger.error('[MeshCore] setContactOutPath threw:', error);
       return false;
+    }
+  }
+
+  /**
+   * Remove a contact from the device's contact list. On success, the
+   * in-memory contact map and meshcore_nodes row are cleared. Companion only.
+   */
+  async removeContact(publicKey: string): Promise<boolean> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Remove-contact requires Companion firmware');
+      return false;
+    }
+    if (!this.connected) return false;
+    try {
+      const response = await this.sendBridgeCommand('remove_contact', { public_key: publicKey });
+      if (!response.success) {
+        logger.warn(`[MeshCore] remove_contact failed for ${publicKey}: ${response.error}`);
+        return false;
+      }
+      this.contacts.delete(publicKey);
+      try {
+        await databaseService.meshcore.deleteNode(publicKey, this.sourceId);
+      } catch (err) {
+        logger.warn(`[MeshCore:${this.sourceId}] deleteNode after remove_contact failed: ${(err as Error).message}`);
+      }
+      this.emit('contact_removed', { sourceId: this.sourceId, publicKey });
+      dataEventEmitter.emitMeshCoreContactUpdated({ publicKey, removed: true } as any, this.sourceId);
+      logger.info(`[MeshCore] Removed contact ${publicKey.substring(0, 16)}…`);
+      return true;
+    } catch (error) {
+      logger.error('[MeshCore] removeContact threw:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Export a contact as a signed advert blob (for QR/URL/NFC sharing).
+   * Pass null publicKey to export the local node's own identity.
+   * Returns the raw advert bytes as a number array, or null on failure.
+   */
+  async exportContact(publicKey: string | null): Promise<number[] | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Export-contact requires Companion firmware');
+      return null;
+    }
+    if (!this.connected) return null;
+    try {
+      const params: Record<string, unknown> = {};
+      if (publicKey) params.public_key = publicKey;
+      const response = await this.sendBridgeCommand('export_contact', params);
+      if (!response.success) {
+        logger.warn(`[MeshCore] export_contact failed: ${response.error}`);
+        return null;
+      }
+      const bytes = response.data?.advert_bytes;
+      if (!Array.isArray(bytes)) return null;
+      logger.info(`[MeshCore] Exported contact ${publicKey ? publicKey.substring(0, 16) + '…' : '(self)'} (${bytes.length}B)`);
+      return bytes;
+    } catch (error) {
+      logger.error('[MeshCore] exportContact threw:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Import a contact from a signed advert blob. On success, refreshes
+   * the contact list so the new contact appears in the UI.
+   */
+  async importContact(advertBytes: number[]): Promise<boolean> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Import-contact requires Companion firmware');
+      return false;
+    }
+    if (!this.connected) return false;
+    try {
+      const response = await this.sendBridgeCommand('import_contact', { advert_bytes: advertBytes });
+      if (!response.success) {
+        logger.warn(`[MeshCore] import_contact failed: ${response.error}`);
+        return false;
+      }
+      await this.refreshContacts();
+      logger.info(`[MeshCore] Imported contact (${advertBytes.length}B advert)`);
+      return true;
+    } catch (error) {
+      logger.error('[MeshCore] importContact threw:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Sync the device's RTC to the server's clock. Companion only.
+   */
+  async syncDeviceTime(): Promise<boolean> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Sync-device-time requires Companion firmware');
+      return false;
+    }
+    if (!this.connected) return false;
+    try {
+      const response = await this.sendBridgeCommand('set_device_time', {});
+      if (!response.success) {
+        logger.warn(`[MeshCore] set_device_time failed: ${response.error}`);
+        return false;
+      }
+      logger.info(`[MeshCore:${this.sourceId}] Device time synced to server clock`);
+      return true;
+    } catch (error) {
+      logger.error('[MeshCore] syncDeviceTime threw:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Query the neighbour list from a remote repeater node. Returns an array
+   * of neighbour entries with pubkey prefix, last-heard age, and SNR.
+   * Requires firmware v1.9.0+ on the target repeater.
+   */
+  async getNeighbours(publicKey: string, opts?: { count?: number; offset?: number; orderBy?: number }): Promise<{
+    total: number;
+    neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[];
+  } | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
+    if (!this.connected) return null;
+    try {
+      const response = await this.sendBridgeCommand('get_neighbours', {
+        public_key: publicKey,
+        count: opts?.count ?? 10,
+        offset: opts?.offset ?? 0,
+        order_by: opts?.orderBy ?? 0,
+      }, 30000);
+      if (!response.success) {
+        logger.warn(`[MeshCore] get_neighbours failed for ${publicKey}: ${response.error}`);
+        return null;
+      }
+      const d = response.data ?? {};
+      return {
+        total: d.total ?? 0,
+        neighbours: (d.neighbours ?? []).map((n: any) => ({
+          publicKeyPrefix: n.public_key_prefix,
+          heardSecondsAgo: n.heard_seconds_ago,
+          snr: n.snr,
+        })),
+      };
+    } catch (error) {
+      logger.error('[MeshCore] getNeighbours threw:', error);
+      return null;
     }
   }
 

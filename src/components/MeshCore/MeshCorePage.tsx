@@ -119,7 +119,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             <MeshCoreTelemetryView baseUrl={baseUrl} />
           )}
           {view === 'info' && (
-            <MeshCoreInfoView baseUrl={baseUrl} sourceId={sourceId} status={status} />
+            <MeshCoreInfoView baseUrl={baseUrl} sourceId={sourceId} status={status} onSyncTime={actions.syncDeviceTime} />
           )}
           {view === 'configuration' && (
             <MeshCoreConfigurationView

@@ -109,6 +109,22 @@ export interface MeshCoreActions {
   /** Send a trace-path diagnostic along the contact's cached forwarding
    *  route and return per-hop SNR data. Resolves `null` on failure. */
   traceContactPath: (publicKey: string) => Promise<TracePathResult | null>;
+  /** Remove a contact from the device's contact list. Resolves `true` when
+   *  the device ACKed the removal; `false` for any error. */
+  removeContact: (publicKey: string) => Promise<boolean>;
+  /** Export a contact as a signed advert blob for sharing. Pass 'self' to
+   *  export the local node's identity. Returns the raw bytes or null. */
+  exportContact: (publicKey: string) => Promise<number[] | null>;
+  /** Import a contact from a signed advert blob. Refreshes contacts on
+   *  success. */
+  importContact: (advertBytes: number[]) => Promise<boolean>;
+  /** Sync the device's RTC to the server's current time. */
+  syncDeviceTime: () => Promise<boolean>;
+  /** Query the neighbour list from a remote repeater. */
+  getNeighbours: (publicKey: string, opts?: { count?: number; offset?: number; orderBy?: number }) => Promise<{
+    total: number;
+    neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[];
+  } | null>;
   sendAdvert: () => Promise<void>;
   sendMessage: (text: string, toPublicKey?: string, channelIdx?: number) => Promise<boolean>;
   setDeviceName: (name: string) => Promise<boolean>;
@@ -761,6 +777,100 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const removeContact = useCallback(async (publicKey: string): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(
+        `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}`,
+        { method: 'DELETE' },
+      );
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to remove contact');
+        return false;
+      }
+      setContacts(prev => prev.filter(c => c.publicKey !== publicKey));
+      contactsRef.current.delete(publicKey);
+      recomputeNodes();
+      return true;
+    } catch (_err) {
+      setError('Failed to remove contact');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch, recomputeNodes]);
+
+  const exportContact = useCallback(async (publicKey: string): Promise<number[] | null> => {
+    try {
+      const response = await csrfFetch(
+        `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/export`,
+      );
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to export contact');
+        return null;
+      }
+      return data.data?.advertBytes ?? null;
+    } catch (_err) {
+      setError('Failed to export contact');
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const importContact = useCallback(async (advertBytes: number[]): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/contacts/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ advertBytes }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to import contact');
+        return false;
+      }
+      await refreshContacts();
+      return true;
+    } catch (_err) {
+      setError('Failed to import contact');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch, refreshContacts]);
+
+  const syncDeviceTime = useCallback(async (): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/sync-time`, { method: 'POST' });
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to sync device time');
+        return false;
+      }
+      return true;
+    } catch (_err) {
+      setError('Failed to sync device time');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const getNeighbours = useCallback(async (
+    publicKey: string,
+    opts?: { count?: number; offset?: number; orderBy?: number },
+  ) => {
+    try {
+      const params = new URLSearchParams();
+      if (opts?.count) params.set('count', String(opts.count));
+      if (opts?.offset) params.set('offset', String(opts.offset));
+      if (opts?.orderBy !== undefined) params.set('orderBy', String(opts.orderBy));
+      const qs = params.toString();
+      const response = await csrfFetch(
+        `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/neighbours${qs ? '?' + qs : ''}`,
+      );
+      const data = await response.json();
+      if (!data.success) return null;
+      return data.data as { total: number; neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[] };
+    } catch (_err) {
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const sendAdvert = useCallback(async () => {
     try {
       const response = await csrfFetch(`${mcPrefix}/advert`, { method: 'POST' });
@@ -1028,6 +1138,11 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       shareContact,
       setContactOutPath,
       traceContactPath,
+      removeContact,
+      exportContact,
+      importContact,
+      syncDeviceTime,
+      getNeighbours,
       sendAdvert,
       sendMessage,
       setDeviceName,

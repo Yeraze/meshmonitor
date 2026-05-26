@@ -45,6 +45,16 @@ interface MeshCoreContactDetailPanelProps {
    *  When false the Edit Path… button is hidden even if onSetOutPath is
    *  supplied. The server route also enforces this for defense in depth. */
   advancedPathEditEnabled?: boolean;
+  /** Remove a contact from the device. Unset hides the Remove button. */
+  onRemoveContact?: (publicKey: string) => Promise<boolean>;
+  /** Export a contact as a signed advert blob. Unset hides the Export button. */
+  onExportContact?: (publicKey: string) => Promise<number[] | null>;
+  /** Query the neighbour list from a remote repeater. Unset hides the
+   *  Neighbours button. */
+  onGetNeighbours?: (publicKey: string, opts?: { count?: number }) => Promise<{
+    total: number;
+    neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[];
+  } | null>;
   /** When provided AND the contact is a Repeater (advType=2) or Room
    *  Server (advType=3), the remote-administration console is mounted
    *  below the details block. Pass the four hook actions it needs; leave
@@ -73,6 +83,9 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   onShareContact,
   onSetOutPath,
   onTracePath,
+  onRemoveContact,
+  onExportContact,
+  onGetNeighbours,
   canWriteNodes = false,
   isCompanion = true,
   advancedPathEditEnabled = false,
@@ -94,6 +107,21 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const [tracing, setTracing] = useState(false);
   const [traceResult, setTraceResult] = useState<TracePathResult | null>(null);
   const [traceError, setTraceError] = useState<string | null>(null);
+
+  // Remove contact state
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+
+  // Export contact state
+  const [exporting, setExporting] = useState(false);
+  const [exportSuccess, setExportSuccess] = useState(false);
+
+  // Neighbours state
+  const [neighboursLoading, setNeighboursLoading] = useState(false);
+  const [neighboursData, setNeighboursData] = useState<{
+    total: number;
+    neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[];
+  } | null>(null);
 
   // Path-editor modal state. Only mounted when advancedPathEditEnabled.
   const [editorOpen, setEditorOpen] = useState(false);
@@ -119,6 +147,12 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     setTracing(false);
     setTraceResult(null);
     setTraceError(null);
+    setRemoving(false);
+    setRemoveError(null);
+    setExporting(false);
+    setExportSuccess(false);
+    setNeighboursLoading(false);
+    setNeighboursData(null);
   }, [publicKey]);
 
   const name = contact?.advName || contact?.name || `${publicKey.substring(0, 8)}…`;
@@ -141,6 +175,12 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     !!onSetOutPath && canWriteNodes && isCompanion && advancedPathEditEnabled;
   const canShowTraceButton =
     !!onTracePath && canWriteNodes && isCompanion && pathKnown && pathLen! > 0;
+  const canShowRemoveButton =
+    !!onRemoveContact && canWriteNodes && isCompanion;
+  const canShowExportButton =
+    !!onExportContact && isCompanion;
+  const canShowNeighboursButton =
+    !!onGetNeighbours && isCompanion && advType === 2;
 
   const handleTracePath = async () => {
     if (!onTracePath || tracing) return;
@@ -257,6 +297,54 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     }
   };
 
+  const handleRemoveContact = async () => {
+    if (!onRemoveContact || removing) return;
+    const confirmMessage = t(
+      'meshcore.contact_details.remove_contact_confirm',
+      `Remove ${name} from the device's contact list? This cannot be undone.`,
+    );
+    if (typeof window !== 'undefined' && !window.confirm(confirmMessage)) return;
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      const ok = await onRemoveContact(publicKey);
+      if (!ok) {
+        setRemoveError(t('meshcore.contact_details.remove_contact_error', 'Remove contact failed.'));
+      }
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const handleExportContact = async () => {
+    if (!onExportContact || exporting) return;
+    setExporting(true);
+    setExportSuccess(false);
+    try {
+      const bytes = await onExportContact(publicKey);
+      if (bytes) {
+        const hex = bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+        await navigator.clipboard.writeText(hex);
+        setExportSuccess(true);
+        window.setTimeout(() => setExportSuccess(false), 2200);
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleGetNeighbours = async () => {
+    if (!onGetNeighbours || neighboursLoading) return;
+    setNeighboursLoading(true);
+    setNeighboursData(null);
+    try {
+      const result = await onGetNeighbours(publicKey, { count: 20 });
+      setNeighboursData(result);
+    } finally {
+      setNeighboursLoading(false);
+    }
+  };
+
   const getSignalClass = (value: number | undefined): string => {
     if (value === undefined || value === null) return '';
     if (value > 10) return 'signal-good';
@@ -344,8 +432,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               available because the device retransmits the stored advert
               regardless of route state. Rendered in one card so the
               actions stay grouped at the bottom of the grid. */}
-          {(canShowResetButton || canShowShareButton || canShowEditButton || canShowTraceButton) &&
-            (canShowShareButton || canShowEditButton || canShowTraceButton || pathKnown) && (
+          {(canShowResetButton || canShowShareButton || canShowEditButton || canShowTraceButton || canShowRemoveButton || canShowExportButton || canShowNeighboursButton) &&
+            (canShowShareButton || canShowEditButton || canShowTraceButton || canShowRemoveButton || canShowExportButton || canShowNeighboursButton || pathKnown) && (
             <div className="node-detail-card node-detail-card-2col">
               <div className="node-detail-label">
                 {t('meshcore.contact_details.actions_label', 'Actions')}
@@ -400,15 +488,63 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                       : t('meshcore.contact_details.trace_path_button', 'Trace Path')}
                   </button>
                 )}
+                {canShowExportButton && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleExportContact}
+                    disabled={exporting}
+                    aria-label={t('meshcore.contact_details.export_contact_button', 'Export')}
+                  >
+                    {exporting
+                      ? t('meshcore.contact_details.export_contact_running', 'Exporting…')
+                      : t('meshcore.contact_details.export_contact_button', 'Export')}
+                  </button>
+                )}
+                {canShowNeighboursButton && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleGetNeighbours}
+                    disabled={neighboursLoading}
+                    aria-label={t('meshcore.contact_details.neighbours_button', 'Neighbours')}
+                  >
+                    {neighboursLoading
+                      ? t('meshcore.contact_details.neighbours_loading', 'Loading…')
+                      : t('meshcore.contact_details.neighbours_button', 'Neighbours')}
+                  </button>
+                )}
+                {canShowRemoveButton && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleRemoveContact}
+                    disabled={removing}
+                    style={{ color: 'var(--ctp-red)' }}
+                    aria-label={t('meshcore.contact_details.remove_contact_button', 'Remove')}
+                  >
+                    {removing
+                      ? t('meshcore.contact_details.remove_contact_running', 'Removing…')
+                      : t('meshcore.contact_details.remove_contact_button', 'Remove')}
+                  </button>
+                )}
                 {resetError && (
                   <span style={{ color: 'var(--ctp-red)' }} role="alert">{resetError}</span>
                 )}
                 {shareError && (
                   <span style={{ color: 'var(--ctp-red)' }} role="alert">{shareError}</span>
                 )}
+                {removeError && (
+                  <span style={{ color: 'var(--ctp-red)' }} role="alert">{removeError}</span>
+                )}
                 {shareSuccess && (
                   <span style={{ color: 'var(--ctp-green)' }} role="status">
                     {t('meshcore.contact_details.share_contact_success', 'Advert broadcast.')}
+                  </span>
+                )}
+                {exportSuccess && (
+                  <span style={{ color: 'var(--ctp-green)' }} role="status">
+                    {t('meshcore.contact_details.export_contact_success', 'Copied to clipboard.')}
                   </span>
                 )}
                 {traceError && (
@@ -464,6 +600,57 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     </tr>
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* Neighbours results */}
+          {neighboursData && (
+            <div className="node-detail-card node-detail-card-2col">
+              <div className="node-detail-label">
+                {t('meshcore.contact_details.neighbours_results', 'Neighbours')}
+                {' '}({neighboursData.total} {t('meshcore.contact_details.neighbours_total', 'total')})
+              </div>
+              <div className="node-detail-value">
+                {neighboursData.neighbours.length === 0 ? (
+                  <span style={{ opacity: 0.7 }}>
+                    {t('meshcore.contact_details.neighbours_none', 'No neighbours reported.')}
+                  </span>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono, monospace)', fontSize: '0.9em' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--ctp-surface1, #45475a)' }}>
+                        <th style={{ textAlign: 'left', padding: '0.25rem 0.5rem' }}>
+                          {t('meshcore.contact_details.neighbours_prefix', 'Key Prefix')}
+                        </th>
+                        <th style={{ textAlign: 'right', padding: '0.25rem 0.5rem' }}>
+                          {t('meshcore.contact_details.neighbours_snr', 'SNR')}
+                        </th>
+                        <th style={{ textAlign: 'right', padding: '0.25rem 0.5rem' }}>
+                          {t('meshcore.contact_details.neighbours_heard', 'Last Heard')}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {neighboursData.neighbours.map((n, i) => (
+                        <tr key={i}>
+                          <td style={{ padding: '0.25rem 0.5rem' }}>{n.publicKeyPrefix}</td>
+                          <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right' }}
+                              className={getSignalClass(n.snr)}>
+                            {n.snr.toFixed(2)} dB
+                          </td>
+                          <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right' }}>
+                            {n.heardSecondsAgo < 60
+                              ? `${n.heardSecondsAgo}s ago`
+                              : n.heardSecondsAgo < 3600
+                                ? `${Math.floor(n.heardSecondsAgo / 60)}m ago`
+                                : `${Math.floor(n.heardSecondsAgo / 3600)}h ago`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
           )}

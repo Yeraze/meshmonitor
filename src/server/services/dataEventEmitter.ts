@@ -26,7 +26,8 @@ export type DataEventType =
   | 'meshcore:message'
   | 'meshcore:contact:updated'
   | 'meshcore:status:updated'
-  | 'meshcore:local-node:updated';
+  | 'meshcore:local-node:updated'
+  | 'meshcore:send-confirmed';
 
 export interface DataEvent {
   type: DataEventType;
@@ -334,6 +335,20 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] MeshCore status: ${data.connected ? 'connected' : 'disconnected'} (source: ${sourceId})`);
+  }
+
+  /**
+   * Emit a MeshCore send-confirmed event (message ACK with round-trip time)
+   */
+  emitMeshCoreSendConfirmed(data: { ackCode: number; roundTripMs: number }, sourceId: string): void {
+    const event: DataEvent = {
+      type: 'meshcore:send-confirmed',
+      data: { sourceId, ...data },
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] MeshCore send confirmed: RTT=${data.roundTripMs}ms (source: ${sourceId})`);
   }
 
   /**
