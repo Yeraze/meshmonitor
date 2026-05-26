@@ -567,6 +567,221 @@ router.post(
 );
 
 /**
+ * DELETE /api/sources/:id/meshcore/contacts/:publicKey
+ *
+ * Remove a contact from the device's contact list. Deletes the in-memory
+ * entry, the meshcore_nodes DB row, and fires a contact-updated push so
+ * the UI removes the row without a full refresh.
+ */
+router.delete(
+  '/contacts/:publicKey',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const publicKey = req.params.publicKey;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid public key — must be 64-char hex',
+        });
+      }
+      const ok = await managerFor(req).removeContact(publicKey);
+      if (!ok) {
+        return res.status(409).json({
+          success: false,
+          error: 'Remove contact failed — contact may be unknown, source disconnected, or not a Companion device',
+        });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('[API] Error removing contact:', error);
+      res.status(500).json({ success: false, error: 'Failed to remove contact' });
+    }
+  },
+);
+
+/**
+ * GET /api/sources/:id/meshcore/contacts/:publicKey/export
+ *
+ * Export a contact as a signed advert blob suitable for sharing via
+ * QR code, NFC, or meshcore:// URL. Returns the raw bytes as a JSON
+ * number array. Omit :publicKey (use 'self') to export the local node.
+ */
+router.get(
+  '/contacts/:publicKey/export',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const publicKey = req.params.publicKey;
+      const isSelf = publicKey === 'self';
+      if (!isSelf && !isValidPublicKey(publicKey)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid public key — must be 64-char hex or "self"',
+        });
+      }
+      const bytes = await managerFor(req).exportContact(isSelf ? null : publicKey);
+      if (!bytes) {
+        return res.status(409).json({
+          success: false,
+          error: 'Export contact failed — contact may be unknown, source disconnected, or not a Companion device',
+        });
+      }
+      res.json({ success: true, data: { advertBytes: bytes } });
+    } catch (error) {
+      logger.error('[API] Error exporting contact:', error);
+      res.status(500).json({ success: false, error: 'Failed to export contact' });
+    }
+  },
+);
+
+/**
+ * POST /api/sources/:id/meshcore/contacts/import
+ *
+ * Import a contact from a signed advert blob. Refreshes contacts on
+ * success. Body: { advertBytes: number[] }
+ */
+router.post(
+  '/contacts/import',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const advertBytes = (req.body ?? {}).advertBytes;
+      if (!Array.isArray(advertBytes) || advertBytes.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Body must include advertBytes as a non-empty number array',
+        });
+      }
+      if (advertBytes.some((b: unknown) => typeof b !== 'number' || b < 0 || b > 255)) {
+        return res.status(400).json({
+          success: false,
+          error: 'advertBytes must contain only integers 0-255',
+        });
+      }
+      const ok = await managerFor(req).importContact(advertBytes);
+      if (!ok) {
+        return res.status(409).json({
+          success: false,
+          error: 'Import contact failed — may be invalid advert data, source disconnected, or not a Companion device',
+        });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('[API] Error importing contact:', error);
+      res.status(500).json({ success: false, error: 'Failed to import contact' });
+    }
+  },
+);
+
+/**
+ * GET /api/sources/:id/meshcore/contacts/:publicKey/neighbours
+ *
+ * Query the neighbour list from a remote repeater node. Returns an array
+ * of { publicKeyPrefix, heardSecondsAgo, snr } entries. Requires the
+ * target to be a repeater running firmware v1.9.0+.
+ *
+ * Query params: count (default 10), offset (default 0),
+ *   orderBy (0=newest, 1=oldest, 2=strongest, 3=weakest)
+ */
+router.get(
+  '/contacts/:publicKey/neighbours',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const publicKey = req.params.publicKey;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid public key — must be 64-char hex',
+        });
+      }
+      const count = Math.min(Math.max(parseInt(req.query.count as string || '10', 10) || 10, 1), 50);
+      const offset = Math.max(parseInt(req.query.offset as string || '0', 10) || 0, 0);
+      const orderBy = Math.min(Math.max(parseInt(req.query.orderBy as string || '0', 10) || 0, 0), 3);
+      const result = await managerFor(req).getNeighbours(publicKey, { count, offset, orderBy });
+      if (!result) {
+        return res.status(409).json({
+          success: false,
+          error: 'Get neighbours failed — source disconnected, not a Companion, or firmware too old',
+        });
+      }
+      res.json({ success: true, data: result });
+    } catch (error) {
+      logger.error('[API] Error getting neighbours:', error);
+      res.status(500).json({ success: false, error: 'Failed to get neighbours' });
+    }
+  },
+);
+
+/**
+ * POST /api/sources/:id/meshcore/config/sync-time
+ *
+ * Sync the device's RTC to the server's current time. Companion only.
+ */
+router.post(
+  '/config/sync-time',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const ok = await managerFor(req).syncDeviceTime();
+      if (!ok) {
+        return res.status(409).json({
+          success: false,
+          error: 'Sync time failed — source disconnected or not a Companion device',
+        });
+      }
+      res.json({ success: true, message: 'Device time synced' });
+    } catch (error) {
+      logger.error('[API] Error syncing device time:', error);
+      res.status(500).json({ success: false, error: 'Failed to sync time' });
+    }
+  },
+);
+
+/**
+ * GET /api/sources/:id/meshcore/stats/:type
+ *
+ * Read local-node stats (core, radio, or packets). These hit the directly-
+ * connected companion node over the local link — no RF transmission.
+ */
+router.get(
+  '/stats/:type',
+  optionalAuth(),
+  requirePermission('connection', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const manager = managerFor(req);
+      const type = req.params.type;
+      let data: any = null;
+      if (type === 'core') data = await manager.getStatsCore();
+      else if (type === 'radio') data = await manager.getStatsRadio();
+      else if (type === 'packets') data = await manager.getStatsPackets();
+      else {
+        return res.status(400).json({ success: false, error: 'type must be core, radio, or packets' });
+      }
+      if (!data) {
+        return res.status(409).json({ success: false, error: 'Stats unavailable — source disconnected or not a Companion' });
+      }
+      res.json({ success: true, data });
+    } catch (error) {
+      logger.error('[API] Error getting stats:', error);
+      res.status(500).json({ success: false, error: 'Failed to get stats' });
+    }
+  },
+);
+
+/**
  * GET /api/meshcore/messages
  * Get recent messages. Optional ?since=<ms-timestamp> returns only messages newer than that time.
  */

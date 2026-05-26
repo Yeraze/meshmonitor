@@ -118,6 +118,7 @@ interface MeshCoreInfoViewProps {
   baseUrl: string;
   sourceId: string;
   status: ConnectionStatus | null;
+  onSyncTime?: () => Promise<boolean>;
 }
 
 function fmtUptime(secs?: number): string {
@@ -159,7 +160,7 @@ function fmtFreq(mhz?: number): string {
   return `${mhz.toFixed(3)} MHz`;
 }
 
-export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sourceId, status }) => {
+export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sourceId, status, onSyncTime }) => {
   const { t } = useTranslation();
   const [hours, setHours] = useState<HoursOption>(24);
 
@@ -309,7 +310,19 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
               <dt>{t('meshcore.info.last_snr', 'Last SNR')}</dt>
               <dd>{fmtNumber(latest.lastSnr, ' dB')}</dd>
               <dt>{t('meshcore.info.rtc_drift', 'RTC drift vs server')}</dt>
-              <dd>{fmtDrift(latest.rtcDriftSecs)}</dd>
+              <dd style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {fmtDrift(latest.rtcDriftSecs)}
+                {onSyncTime && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ fontSize: '0.8em', padding: '0.15rem 0.5rem' }}
+                    onClick={() => void onSyncTime()}
+                  >
+                    {t('meshcore.info.sync_time_button', 'Sync')}
+                  </button>
+                )}
+              </dd>
               <dt>{t('meshcore.info.last_poll', 'Last poll')}</dt>
               <dd>{new Date(latest.timestamp).toLocaleString()}</dd>
             </dl>
