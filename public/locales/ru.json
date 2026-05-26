@@ -4031,7 +4031,7 @@
     "source.form.enable_virtual_node": "Включить виртуальный узел",
     "unified.messages.subtitle_channel": "",
     "firmware.reboot_warning": "В ходе обновления узел перезагрузится и на короткое время станет недоступен.",
-    "settings.analytics_provider_cloudflare": "",
+    "settings.analytics_provider_cloudflare": "Cloudflare Web Analytics",
     "automation.auto_ping.active_sessions": "Активные сессии",
     "unified.messages.heard_by_source": "Услышано {{name}}",
     "source.form.host": "",
