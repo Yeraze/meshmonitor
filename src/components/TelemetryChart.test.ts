@@ -52,6 +52,28 @@ describe('getTelemetryLabel', () => {
     expect(getTelemetryLabel('ch8Current')).toBe('Channel 8 Current');
   });
 
+  it('returns the explicit label for MeshCore local-node poller types', () => {
+    expect(getTelemetryLabel('mc_queue_len')).toBe('Queue Length');
+    expect(getTelemetryLabel('mc_noise_floor')).toBe('Noise Floor');
+    expect(getTelemetryLabel('mc_last_rssi')).toBe('Last RSSI');
+    expect(getTelemetryLabel('mc_last_snr')).toBe('Last SNR');
+    expect(getTelemetryLabel('mc_uptime_secs')).toBe('Uptime');
+    expect(getTelemetryLabel('mc_tx_duty_pct')).toBe('TX Duty Cycle');
+    expect(getTelemetryLabel('mc_rx_duty_pct')).toBe('RX Duty Cycle');
+    expect(getTelemetryLabel('mc_pkt_sent_rate')).toBe('Packets Sent Rate');
+    expect(getTelemetryLabel('mc_pkt_recv_rate')).toBe('Packets Received Rate');
+    expect(getTelemetryLabel('mc_rtc_drift_secs')).toBe('RTC Drift');
+  });
+
+  it('returns the explicit label for MeshCore cumulative counter types', () => {
+    expect(getTelemetryLabel('mc_pkt_recv')).toBe('Packets Received (total)');
+    expect(getTelemetryLabel('mc_pkt_sent')).toBe('Packets Sent (total)');
+    expect(getTelemetryLabel('mc_pkt_flood_tx')).toBe('Flood TX');
+    expect(getTelemetryLabel('mc_pkt_direct_tx')).toBe('Direct TX');
+    expect(getTelemetryLabel('mc_tx_air_secs')).toBe('TX Air Time');
+    expect(getTelemetryLabel('mc_rx_air_secs')).toBe('RX Air Time');
+  });
+
   it('returns the explicit label for air-quality, host, and extended-environment metrics', () => {
     expect(getTelemetryLabel('pm25Standard')).toBe('PM2.5 (Standard)');
     expect(getTelemetryLabel('co2')).toBe('CO₂');
