@@ -730,7 +730,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
 
         // Fetch security keys (public/private) separately
         try {
-          const securityKeys = await apiService.getSecurityKeys();
+          const securityKeys = await apiService.getSecurityKeys(sourceId);
           if (securityKeys.publicKey) {
             setSecurityPublicKey(securityKeys.publicKey);
           }
