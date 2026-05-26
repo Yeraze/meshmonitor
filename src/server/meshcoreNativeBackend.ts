@@ -340,6 +340,14 @@ export class MeshCoreNativeBackend extends EventEmitter {
       });
     });
 
+    // SendConfirmed → send_confirmed (message ACK with round-trip time)
+    this.connection.on(PushCodes.SendConfirmed, (push: any) => {
+      this.emitBridgeEvent('send_confirmed', {
+        ack_code: push.ackCode,
+        round_trip_ms: push.roundTrip,
+      });
+    });
+
     // MsgWaiting → drain via syncNextMessage; meshcore.js does NOT auto-drain
     // the way python-meshcore did. Pulling the messages causes ContactMsgRecv
     // / ChannelMsgRecv to fire normally.
@@ -748,6 +756,60 @@ export class MeshCoreNativeBackend extends EventEmitter {
         }
         await c.deleteChannel(idx);
         return { ok: true };
+      }
+
+      case 'remove_contact': {
+        const publicKey = await this.resolvePublicKey(params.public_key as string);
+        if (!publicKey) throw new Error('Remove-contact target not found');
+        await c.removeContact(publicKey);
+        return { ok: true };
+      }
+
+      case 'export_contact': {
+        const publicKey = params.public_key
+          ? await this.resolvePublicKey(params.public_key as string)
+          : null;
+        const response = await c.exportContact(publicKey ?? undefined);
+        return {
+          advert_bytes: response?.advertPacketBytes
+            ? Array.from(response.advertPacketBytes as Uint8Array)
+            : null,
+        };
+      }
+
+      case 'import_contact': {
+        const bytes = params.advert_bytes as number[] | Uint8Array;
+        if (!bytes) throw new Error('import_contact requires advert_bytes');
+        const arr = bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes);
+        await c.importContact(arr);
+        return { ok: true };
+      }
+
+      case 'set_device_time': {
+        const epoch = params.epoch as number | undefined;
+        if (epoch !== undefined) {
+          await c.setDeviceTime(epoch);
+        } else {
+          await c.syncDeviceTime();
+        }
+        return { ok: true };
+      }
+
+      case 'get_neighbours': {
+        const publicKey = await this.resolvePublicKey(params.public_key as string);
+        if (!publicKey) throw new Error('Neighbours target not found');
+        const count = typeof params.count === 'number' ? params.count : 10;
+        const offset = typeof params.offset === 'number' ? params.offset : 0;
+        const orderBy = typeof params.order_by === 'number' ? params.order_by : 0;
+        const result = await c.getNeighbours(publicKey, count, offset, orderBy, 8);
+        return {
+          total: result.totalNeighboursCount,
+          neighbours: (result.neighbours ?? []).map((n: any) => ({
+            public_key_prefix: bytesToHex(n.publicKeyPrefix),
+            heard_seconds_ago: n.heardSecondsAgo,
+            snr: n.snr,
+          })),
+        };
       }
 
       case 'shutdown':
