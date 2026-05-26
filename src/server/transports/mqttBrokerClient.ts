@@ -72,6 +72,10 @@ export class MqttBrokerClient extends EventEmitter {
   private connected = false;
   private lastError: string | null = null;
   private authFailed = false;
+  private reconnectBackoffMs = 1000;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly BACKOFF_MIN_MS = 1000;
+  private static readonly BACKOFF_MAX_MS = 60_000;
 
   constructor(options: MqttBrokerClientOptions) {
     super();
@@ -88,19 +92,17 @@ export class MqttBrokerClient extends EventEmitter {
         '-' +
         Math.random().toString(36).slice(2, 10);
 
-    // Per-client reconnect jitter: when N publisher-pool entries reconnect
-    // after an upstream broker bounce, a flat 5000ms period would have them
-    // all CONNECT in the same window. Random 4000-6000ms spreads the herd.
-    const reconnectPeriod = 5000 + Math.floor((Math.random() - 0.5) * 2000);
-
+    // Disable mqtt.js auto-reconnect — we manage reconnection ourselves
+    // with exponential backoff (1s → 60s) to avoid hammering brokers that
+    // reject auth or are temporarily down.
     this.client = connect(url, {
       clientId,
       username: this.options.username,
       password: this.options.password,
       protocolVersion: 4, // MQTT 3.1.1
       clean: true,
-      keepalive: 60,
-      reconnectPeriod,
+      keepalive: 15, // match Meshtastic firmware (PubSubClient default)
+      reconnectPeriod: 0, // we handle reconnect ourselves
       connectTimeout: 30_000,
       rejectUnauthorized: this.options.rejectUnauthorized ?? true,
     });
@@ -109,6 +111,7 @@ export class MqttBrokerClient extends EventEmitter {
       this.connected = true;
       this.lastError = null;
       this.authFailed = false;
+      this.reconnectBackoffMs = MqttBrokerClient.BACKOFF_MIN_MS;
       logger.info(`📡 MQTT client connected to ${url}`);
       // Re-subscribe on every connect (covers reconnects with clean=true).
       // Clear previously-tracked denials too — a fresh session may have
@@ -130,6 +133,7 @@ export class MqttBrokerClient extends EventEmitter {
     });
     this.client.on('close', () => {
       this.connected = false;
+      this.scheduleReconnect();
       this.emit('close');
     });
     this.client.on('error', (err) => {
@@ -161,12 +165,16 @@ export class MqttBrokerClient extends EventEmitter {
     });
 
     return new Promise<void>((resolve) => {
-      const onConnect = () => {
-        this.client!.off('connect', onConnect);
+      const done = () => {
+        this.client!.off('connect', done);
+        this.client!.off('error', done);
         resolve();
       };
-      this.client!.on('connect', onConnect);
-      // Don't reject on initial failure — mqtt.js will reconnect.
+      this.client!.on('connect', done);
+      // Also resolve on the first error (e.g. CONNACK auth rejection) so
+      // callers like MqttBridgeManager.start() are not blocked forever.
+      // mqtt.js continues reconnecting in the background regardless.
+      this.client!.on('error', done);
     });
   }
 
@@ -197,7 +205,28 @@ export class MqttBrokerClient extends EventEmitter {
     });
   }
 
+  private scheduleReconnect(): void {
+    if (!this.client || this.reconnectTimer) return;
+    // Add ±20% jitter to spread reconnects across pool entries.
+    const jitter = this.reconnectBackoffMs * 0.2 * (Math.random() - 0.5);
+    const delay = Math.round(this.reconnectBackoffMs + jitter);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.client) {
+        this.client.reconnect();
+      }
+    }, delay);
+    this.reconnectBackoffMs = Math.min(
+      this.reconnectBackoffMs * 2,
+      MqttBrokerClient.BACKOFF_MAX_MS,
+    );
+  }
+
   async disconnect(): Promise<void> {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (!this.client) return;
     await new Promise<void>((resolve) => {
       this.client!.end(true, {}, () => resolve());
