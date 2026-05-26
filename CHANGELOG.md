@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Features
 
 - feat(meshcore): add Tier 1 protocol gap features — contact remove/export/import, repeater neighbour list, device time sync, enhanced stats endpoints, and send-confirmed RTT event. Export produces `meshcore://` URLs; import accepts both raw hex and `meshcore://` URLs via a paste dialog in the Nodes view. Neighbour query uses the binary request protocol for structured data (pubkey prefix, SNR, last-heard). Sync Time button appears next to the RTC drift display in the Info view.
+- feat(meshcore): add Tier 2 features — device reboot (danger-gated), Ed25519 private key backup/restore in the Configuration view's new Device Management section. All operations require confirmation and are audit-logged.
 - #3189 feat(mqtt-bridge): direction mode dropdown (`bidirectional` / `publish_only` / `subscribe_only`) — public/curated upstream brokers like `mqtt.meshtastic.org` accept gateway `PUBLISH` but ACL-reject `SUBSCRIBE`, and the bridge used to spam `permission-denied` warnings on every `SUBACK`. The new per-bridge **Mode** dropdown lets operators skip the upstream `subscribe()` call entirely (`publish_only`) or refuse outbound publishes (`subscribe_only`). Stored in the bridge `config` JSON blob — no schema migration; missing values are treated as `bidirectional` so existing rows keep working. Status now exposes the resolved mode and stops claiming "0 subscriptions denied" when none were ever attempted.
 
 
