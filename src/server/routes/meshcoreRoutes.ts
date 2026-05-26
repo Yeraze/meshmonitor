@@ -846,14 +846,16 @@ router.get('/rooms/servers', optionalAuth(), requirePermission('messages', 'read
 /**
  * POST /api/meshcore/rooms/login
  * Login to a room server to receive posts and (if permitted) submit new ones.
- * Body: { publicKey: string, password: string }
+ * Body: { publicKey: string, password: string, rememberPassword?: boolean }
  *   - `password` may be empty for guest/read-only access.
+ *   - `rememberPassword: true` persists the password (AES-256-GCM via credential store).
  */
 router.post('/rooms/login', meshcoreDeviceLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const { publicKey, password } = req.body as {
+    const { publicKey, password, rememberPassword } = req.body as {
       publicKey?: string;
       password?: string;
+      rememberPassword?: boolean;
     };
 
     if (typeof publicKey !== 'string' || !isValidPublicKey(publicKey)) {
@@ -863,14 +865,92 @@ router.post('/rooms/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
       return res.status(400).json({ success: false, error: 'password (string) required; may be empty for guest login' });
     }
 
+    const sourceId = req.params.id!;
+    const store = getMeshCoreCredentialStore();
+
+    if (rememberPassword && !store.capability.canRemember) {
+      return res.status(400).json({
+        success: false,
+        error: 'Saving credentials is disabled',
+        reason: store.capability.reason,
+        code: 'CREDENTIAL_PERSISTENCE_DISABLED',
+      });
+    }
+
     const success = await managerFor(req).loginToRoom(publicKey, password);
     if (!success) {
       return res.status(401).json({ success: false, error: 'Room login failed' });
     }
-    res.json({ success: true, message: 'Room login successful' });
+
+    if (rememberPassword) {
+      try {
+        await store.storeRoom(sourceId, publicKey, password);
+      } catch (err) {
+        logger.warn('[API] Room login succeeded but credential persistence failed:', err);
+        return res.json({ success: true, message: 'Room login successful, but saving the password failed', persisted: false });
+      }
+      return res.json({ success: true, message: 'Room login successful', persisted: true });
+    }
+
+    res.json({ success: true, message: 'Room login successful', persisted: false });
   } catch (error) {
     logger.error('[API] Error logging into room:', error);
     res.status(500).json({ success: false, error: 'Room login error' });
+  }
+});
+
+/**
+ * POST /api/meshcore/rooms/login-with-saved
+ * Login to a room server using a previously saved credential.
+ * Body: { publicKey: string }
+ */
+router.post('/rooms/login-with-saved', meshcoreDeviceLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { publicKey } = req.body as { publicKey?: string };
+    if (typeof publicKey !== 'string' || !isValidPublicKey(publicKey)) {
+      return res.status(400).json({ success: false, error: 'Invalid public key format' });
+    }
+
+    const sourceId = req.params.id!;
+    const store = getMeshCoreCredentialStore();
+    const result = await store.loadRoom(sourceId, publicKey);
+
+    if (result.kind === 'none') {
+      return res.status(404).json({ success: false, error: 'No saved room credential', code: 'NO_STORED_CREDENTIAL' });
+    }
+    if (result.kind === 'key_rotated') {
+      return res.status(409).json({ success: false, error: 'Saved credential was encrypted with a different key', code: 'CREDENTIAL_KEY_ROTATED' });
+    }
+
+    const success = await managerFor(req).loginToRoom(publicKey, result.password);
+    if (!success) {
+      return res.status(401).json({ success: false, error: 'Saved credential rejected by room server', code: 'STORED_CREDENTIAL_REJECTED' });
+    }
+    res.json({ success: true, usedStored: true });
+  } catch (error) {
+    logger.error('[API] Error logging into room with saved credential:', error);
+    res.status(500).json({ success: false, error: 'Room login error' });
+  }
+});
+
+/**
+ * GET /api/meshcore/rooms/credentials
+ * List room servers with saved credentials for this source.
+ */
+router.get('/rooms/credentials', requireAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const sourceId = req.params.id!;
+    const store = getMeshCoreCredentialStore();
+    const stored = await store.listStoredRoom(sourceId);
+    res.json({
+      success: true,
+      canRemember: store.capability.canRemember,
+      reason: store.capability.reason,
+      stored,
+    });
+  } catch (error) {
+    logger.error('[API] Error listing room credentials:', error);
+    res.status(500).json({ success: false, error: 'Failed to list room credentials' });
   }
 });
 
@@ -903,6 +983,42 @@ router.post('/rooms/post', messageLimiter, requireAuth(), requirePermission('mes
   } catch (error) {
     logger.error('[API] Error sending room post:', error);
     res.status(500).json({ success: false, error: 'Room post error' });
+  }
+});
+
+/**
+ * PATCH /api/meshcore/rooms/sync-config
+ * Configure periodic room sync for a room server.
+ * Body: { publicKey: string, enabled: boolean, intervalMinutes?: number }
+ *   - `intervalMinutes` must be >= 60. Defaults to 60.
+ */
+router.patch('/rooms/sync-config', requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { publicKey, enabled, intervalMinutes } = req.body as {
+      publicKey?: string;
+      enabled?: boolean;
+      intervalMinutes?: number;
+    };
+    if (typeof publicKey !== 'string' || !isValidPublicKey(publicKey)) {
+      return res.status(400).json({ success: false, error: 'Invalid public key format' });
+    }
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'enabled (boolean) required' });
+    }
+    const interval = intervalMinutes ?? 60;
+    if (!Number.isInteger(interval) || interval < 60 || interval > 1440) {
+      return res.status(400).json({ success: false, error: 'intervalMinutes must be 60-1440' });
+    }
+
+    const sourceId = req.params.id!;
+    await databaseService.meshcore.setRoomSyncConfig(sourceId, publicKey, {
+      roomSyncEnabled: enabled,
+      roomSyncIntervalMinutes: interval,
+    });
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('[API] Error setting room sync config:', error);
+    res.status(500).json({ success: false, error: 'Failed to set room sync config' });
   }
 });
 

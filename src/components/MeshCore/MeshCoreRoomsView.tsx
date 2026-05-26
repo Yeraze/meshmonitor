@@ -6,10 +6,13 @@
  * lists discovered room servers, right pane shows the selected room's message
  * stream via the shared MeshCoreMessageStream component.
  *
- * Room posts are distinguished from DMs/channel messages by
- * `messageType === 'room_post'` and scoped to a room via `toPublicKey`.
+ * Features:
+ *   - Credential persistence (remember password / auto-login with saved creds)
+ *   - Room stats header (post count from message stream)
+ *   - Sync-since tracking (newest post timestamp)
+ *   - Auto-sync configuration (periodic re-login interval)
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreMessage, MeshCoreActions, ConnectionStatus } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
@@ -35,6 +38,10 @@ function buildRoomFilter(roomPubkey: string): (m: MeshCoreMessage) => boolean {
   };
 }
 
+function formatTimestamp(ts: number): string {
+  return new Date(ts).toLocaleString();
+}
+
 export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   messages,
   contacts,
@@ -45,12 +52,35 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
   const canSend = hasPermission('messages', 'write');
+  const canConfig = hasPermission('configuration', 'write');
 
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
   const [loggedInRooms, setLoggedInRooms] = useState<Set<string>>(new Set());
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginLoading, setLoginLoading] = useState(false);
+  const [rememberPassword, setRememberPassword] = useState(false);
+
+  // Credential persistence state
+  const [canRemember, setCanRemember] = useState(false);
+  const [storedCreds, setStoredCreds] = useState<Set<string>>(new Set());
+  const autoLoginAttempted = useRef<Set<string>>(new Set());
+
+  // Sync config state (for selected room)
+  const [syncEnabled, setSyncEnabled] = useState(false);
+  const [syncInterval, setSyncInterval] = useState(60);
+  const [syncConfigDirty, setSyncConfigDirty] = useState(false);
+
+  // Fetch credential capability on mount
+  useEffect(() => {
+    (async () => {
+      const creds = await actions.getRoomCredentials();
+      if (creds) {
+        setCanRemember(creds.canRemember);
+        setStoredCreds(new Set(creds.stored.map(s => s.publicKey)));
+      }
+    })();
+  }, [actions]);
 
   const roomServers = useMemo(
     () => contacts.filter(c => c.advType === 3),
@@ -72,15 +102,40 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     [messages, activeFilter],
   );
 
+  const newestPostTs = useMemo(() => {
+    if (filtered.length === 0) return null;
+    return Math.max(...filtered.map(m => m.timestamp));
+  }, [filtered]);
+
   const isLoggedIn = useCallback(
     (pubkey: string) => loggedInRooms.has(pubkey),
     [loggedInRooms],
   );
 
+  // Auto-login when selecting a room with saved credentials
+  useEffect(() => {
+    if (!selectedRoom) return;
+    if (loggedInRooms.has(selectedRoom)) return;
+    if (!storedCreds.has(selectedRoom)) return;
+    if (autoLoginAttempted.current.has(selectedRoom)) return;
+
+    autoLoginAttempted.current.add(selectedRoom);
+    (async () => {
+      setLoginLoading(true);
+      const result = await actions.loginRoomWithSaved(selectedRoom);
+      if (result.success) {
+        setLoggedInRooms(prev => new Set(prev).add(selectedRoom));
+      }
+      setLoginLoading(false);
+    })();
+  }, [selectedRoom, loggedInRooms, storedCreds, actions]);
+
   const handleSelectRoom = useCallback((pubkey: string) => {
     setSelectedRoom(pubkey);
     setLoginError(null);
     setLoginPassword('');
+    setRememberPassword(false);
+    setSyncConfigDirty(false);
   }, []);
 
   const handleLogin = useCallback(async () => {
@@ -88,9 +143,12 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     setLoginLoading(true);
     setLoginError(null);
     try {
-      const result = await actions.loginRoom(selectedRoom, loginPassword);
+      const result = await actions.loginRoom(selectedRoom, loginPassword, rememberPassword);
       if (result.success) {
         setLoggedInRooms(prev => new Set(prev).add(selectedRoom));
+        if (result.persisted) {
+          setStoredCreds(prev => new Set(prev).add(selectedRoom));
+        }
         setLoginPassword('');
       } else {
         setLoginError(result.error || t('meshcore.rooms.login_failed', 'Login failed'));
@@ -100,17 +158,23 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     } finally {
       setLoginLoading(false);
     }
-  }, [selectedRoom, loginPassword, actions, t]);
+  }, [selectedRoom, loginPassword, rememberPassword, actions, t]);
 
   const handleSend = useCallback(async (text: string): Promise<boolean> => {
     if (!selectedRoom) return false;
     return actions.sendRoomPost(selectedRoom, text);
   }, [selectedRoom, actions]);
 
+  const handleSaveSyncConfig = useCallback(async () => {
+    if (!selectedRoom) return;
+    const ok = await actions.setRoomSyncConfig(selectedRoom, syncEnabled, syncInterval);
+    if (ok) setSyncConfigDirty(false);
+  }, [selectedRoom, syncEnabled, syncInterval, actions]);
+
   const selfKey = status?.localNode?.publicKey;
   const connected = status?.connected ?? false;
 
-  const showLoginOverlay = selectedRoom && !isLoggedIn(selectedRoom);
+  const showLoginOverlay = selectedRoom && !isLoggedIn(selectedRoom) && !loginLoading;
 
   return (
     <div className="meshcore-two-pane">
@@ -131,6 +195,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
             const filter = buildRoomFilter(room.publicKey);
             const count = messages.filter(filter).length;
             const loggedIn = isLoggedIn(room.publicKey);
+            const hasSaved = storedCreds.has(room.publicKey);
             return (
               <button
                 key={room.publicKey}
@@ -138,8 +203,8 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
                 onClick={() => handleSelectRoom(room.publicKey)}
               >
                 <div className="mc-channel-row-name">
-                  <span className={`mc-room-row-status ${loggedIn ? 'logged-in' : 'not-logged-in'}`}>
-                    {loggedIn ? '●' : '○'}
+                  <span className={`mc-room-row-status ${loggedIn ? 'logged-in' : hasSaved ? 'has-saved' : 'not-logged-in'}`}>
+                    {loggedIn ? '●' : hasSaved ? '◐' : '○'}
                   </span>
                   {' '}
                   {room.advName || room.name || room.publicKey.substring(0, 12) + '…'}
@@ -156,6 +221,12 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
         {!selectedRoom && (
           <div className="meshcore-empty-state">
             {t('meshcore.rooms.select_room', 'Select a room server to view posts')}
+          </div>
+        )}
+
+        {selectedRoom && loginLoading && (
+          <div className="meshcore-empty-state">
+            {t('meshcore.rooms.logging_in', 'Logging in…')}
           </div>
         )}
 
@@ -176,6 +247,16 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
                 disabled={loginLoading}
                 autoFocus
               />
+              {canRemember && (
+                <label className="meshcore-room-login-remember">
+                  <input
+                    type="checkbox"
+                    checked={rememberPassword}
+                    onChange={e => setRememberPassword(e.target.checked)}
+                  />
+                  {t('meshcore.rooms.remember_password', 'Remember password')}
+                </label>
+              )}
               <button
                 className="meshcore-room-login-btn"
                 onClick={handleLogin}
@@ -193,14 +274,59 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
         )}
 
         {selectedRoom && isLoggedIn(selectedRoom) && (
-          <MeshCoreMessageStream
-            messages={filtered}
-            contacts={contacts}
-            selfPublicKey={selfKey}
-            disabled={!connected || !canSend}
-            emptyText={t('meshcore.rooms.no_messages', 'No posts in this room yet')}
-            onSend={handleSend}
-          />
+          <>
+            {/* Room stats header */}
+            <div className="meshcore-room-stats-header">
+              <span className="meshcore-room-stats-name">
+                {activeRoom?.advName || activeRoom?.name || selectedRoom.substring(0, 16) + '…'}
+              </span>
+              <span className="meshcore-room-stats-info">
+                {filtered.length} {t('meshcore.rooms.posts', 'posts')}
+                {newestPostTs && (
+                  <> &middot; {t('meshcore.rooms.last_post', 'last')}: {formatTimestamp(newestPostTs)}</>
+                )}
+              </span>
+              {/* Sync config toggle */}
+              {canConfig && (
+                <span className="meshcore-room-sync-config">
+                  <label title={t('meshcore.rooms.sync_enabled_tooltip', 'Periodically re-login to fetch new posts')}>
+                    <input
+                      type="checkbox"
+                      checked={syncEnabled}
+                      onChange={e => { setSyncEnabled(e.target.checked); setSyncConfigDirty(true); }}
+                    />
+                    {t('meshcore.rooms.auto_sync', 'Auto-sync')}
+                  </label>
+                  {syncEnabled && (
+                    <select
+                      value={syncInterval}
+                      onChange={e => { setSyncInterval(Number(e.target.value)); setSyncConfigDirty(true); }}
+                    >
+                      <option value={60}>1h</option>
+                      <option value={120}>2h</option>
+                      <option value={240}>4h</option>
+                      <option value={480}>8h</option>
+                      <option value={720}>12h</option>
+                      <option value={1440}>24h</option>
+                    </select>
+                  )}
+                  {syncConfigDirty && (
+                    <button className="meshcore-room-sync-save" onClick={handleSaveSyncConfig}>
+                      {t('meshcore.rooms.save_sync', 'Save')}
+                    </button>
+                  )}
+                </span>
+              )}
+            </div>
+            <MeshCoreMessageStream
+              messages={filtered}
+              contacts={contacts}
+              selfPublicKey={selfKey}
+              disabled={!connected || !canSend}
+              emptyText={t('meshcore.rooms.no_messages', 'No posts in this room yet')}
+              onSend={handleSend}
+            />
+          </>
         )}
       </div>
     </div>

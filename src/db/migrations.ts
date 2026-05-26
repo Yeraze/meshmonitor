@@ -86,6 +86,7 @@ import { migration as meshcoreNodesOutPathMigration, runMigration068Postgres, ru
 import { migration as normalizeNodePublicKeysToBase64Migration, runMigration069Postgres, runMigration069Mysql } from '../server/migrations/069_normalize_node_public_keys_to_base64.js';
 import { migration as meshcoreAdminCredentialMigration, runMigration070Postgres, runMigration070Mysql } from '../server/migrations/070_meshcore_admin_credential.js';
 import { migration as dropLegacyPskLengthCheckMigration, runMigration071Postgres, runMigration071Mysql } from '../server/migrations/071_drop_legacy_psk_length_check.js';
+import { migration as meshcoreRoomSyncMigration, runMigration072Postgres, runMigration072Mysql } from '../server/migrations/072_meshcore_room_sync.js';
 
 // ============================================================================
 // Registry
@@ -1135,4 +1136,17 @@ registry.register({
   sqlite: (db) => dropLegacyPskLengthCheckMigration.up(db),
   postgres: (client) => runMigration071Postgres(client),
   mysql: (pool) => runMigration071Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 072: Room server sync and credential columns on meshcore_nodes
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 72,
+  name: 'meshcore_room_sync',
+  settingsKey: 'migration_072_meshcore_room_sync',
+  sqlite: (db) => meshcoreRoomSyncMigration.up(db),
+  postgres: (client) => runMigration072Postgres(client),
+  mysql: (pool) => runMigration072Mysql(pool),
 });

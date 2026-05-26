@@ -729,6 +729,22 @@ setTimeout(async () => {
   }
 }, 8000); // After local poller so we never race the first per-manager TX.
 
+// MeshCore Room Sync Scheduler — periodically re-logins to room servers
+// with saved credentials to trigger post push-sync.
+const meshcoreRoomSyncScheduler = new MeshCoreRoomSyncScheduler({
+  registry: meshcoreManagerRegistry,
+  credentialStore: getMeshCoreCredentialStore(),
+});
+setMeshCoreRoomSyncScheduler(meshcoreRoomSyncScheduler);
+setTimeout(async () => {
+  try {
+    await databaseService.waitForReady();
+    meshcoreRoomSyncScheduler.start();
+  } catch (error) {
+    logger.error('Failed to start MeshCore room-sync scheduler:', error);
+  }
+}, 10000); // After telemetry scheduler.
+
 // ==========================================
 // Scheduled Auto-Upgrade Check
 // ==========================================
@@ -876,6 +892,11 @@ import {
   MeshCoreRemoteTelemetryScheduler,
   setMeshCoreRemoteTelemetryScheduler,
 } from './services/meshcoreRemoteTelemetryScheduler.js';
+import {
+  MeshCoreRoomSyncScheduler,
+  setMeshCoreRoomSyncScheduler,
+} from './services/meshcoreRoomSyncScheduler.js';
+import { getMeshCoreCredentialStore } from './services/meshcoreCredentialStore.js';
 import embedProfileRoutes from './routes/embedProfileRoutes.js';
 import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';

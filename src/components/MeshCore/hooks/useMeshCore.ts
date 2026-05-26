@@ -176,9 +176,15 @@ export interface MeshCoreActions {
 
   // ----- Room server -----
   /** Login to a room server. Password may be empty for guest access. */
-  loginRoom: (publicKey: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  loginRoom: (publicKey: string, password: string, rememberPassword?: boolean) => Promise<{ success: boolean; persisted?: boolean; error?: string }>;
+  /** Login to a room server using a previously saved credential. */
+  loginRoomWithSaved: (publicKey: string) => Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string }>;
   /** Send a text post to a room server. */
   sendRoomPost: (roomPublicKey: string, text: string) => Promise<boolean>;
+  /** Get room credential info for this source. */
+  getRoomCredentials: () => Promise<{ canRemember: boolean; stored: Array<{ publicKey: string }> } | null>;
+  /** Configure periodic room sync. */
+  setRoomSyncConfig: (publicKey: string, enabled: boolean, intervalMinutes?: number) => Promise<boolean>;
 }
 
 /**
@@ -888,17 +894,31 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
 
   // ----- Room server -----
 
-  const loginRoom = useCallback(async (publicKey: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const loginRoom = useCallback(async (publicKey: string, password: string, rememberPassword?: boolean): Promise<{ success: boolean; persisted?: boolean; error?: string }> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/rooms/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publicKey, password }),
+        body: JSON.stringify({ publicKey, password, rememberPassword }),
       });
       const data = await response.json();
-      return { success: !!data.success, error: data.error };
+      return { success: !!data.success, persisted: data.persisted, error: data.error };
     } catch (_err) {
       return { success: false, error: 'Room login request failed' };
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const loginRoomWithSaved = useCallback(async (publicKey: string): Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string }> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/rooms/login-with-saved`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicKey }),
+      });
+      const data = await response.json();
+      return { success: !!data.success, usedStored: data.usedStored, error: data.error, code: data.code };
+    } catch (_err) {
+      return { success: false, error: 'Room auto-login request failed' };
     }
   }, [mcPrefix, csrfFetch]);
 
@@ -917,6 +937,31 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       return true;
     } catch (_err) {
       setError('Failed to send room post');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const getRoomCredentials = useCallback(async (): Promise<{ canRemember: boolean; stored: Array<{ publicKey: string }> } | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/rooms/credentials`);
+      const data = await response.json();
+      if (data.success) return { canRemember: data.canRemember, stored: data.stored ?? [] };
+      return null;
+    } catch (_err) {
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const setRoomSyncConfig = useCallback(async (publicKey: string, enabled: boolean, intervalMinutes?: number): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/rooms/sync-config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicKey, enabled, intervalMinutes }),
+      });
+      const data = await response.json();
+      return !!data.success;
+    } catch (_err) {
       return false;
     }
   }, [mcPrefix, csrfFetch]);
@@ -954,7 +999,10 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       loginRemoteWithSaved,
       sendLocalCliCommand,
       loginRoom,
+      loginRoomWithSaved,
       sendRoomPost,
+      getRoomCredentials,
+      setRoomSyncConfig,
     },
   };
 }

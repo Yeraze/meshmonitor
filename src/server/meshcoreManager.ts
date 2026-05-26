@@ -651,6 +651,9 @@ class MeshCoreManager extends EventEmitter {
       this.addMessage(message);
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
+      // Track newest post timestamp for sync-since and UI display.
+      databaseService.meshcore.updateLastRoomPostAt(this.sourceId, roomFullKey, message.timestamp)
+        .catch(err => logger.warn(`[MeshCore:${this.sourceId}] Failed to update lastRoomPostAt:`, err));
       logger.info(`[MeshCore:${this.sourceId}] Room post from ${authorPrefixHex} in room ${roomPubkeyPrefix}: ${data.text.substring(0, 50)}`);
     } else if (event_type === 'contact_advertised' || event_type === 'contact_added') {
       const publicKey: string = data.public_key;
