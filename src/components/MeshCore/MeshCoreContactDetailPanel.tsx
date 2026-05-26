@@ -323,8 +323,15 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     try {
       const bytes = await onExportContact(publicKey);
       if (bytes) {
-        const hex = bytes.map(b => b.toString(16).padStart(2, '0')).join('');
-        await navigator.clipboard.writeText(`meshcore://${hex}`);
+        const url = `meshcore://${bytes.map(b => b.toString(16).padStart(2, '0')).join('')}`;
+        try {
+          await navigator.clipboard.writeText(url);
+        } catch {
+          window.prompt(
+            t('meshcore.contact_details.export_contact_copy_fallback', 'Copy this meshcore:// URL:'),
+            url,
+          );
+        }
         setExportSuccess(true);
         window.setTimeout(() => setExportSuccess(false), 2200);
       }
