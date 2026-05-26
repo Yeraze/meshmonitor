@@ -207,6 +207,28 @@ const TELEMETRY_LABELS: Record<string, string> = {
   mc_status_errors: 'Errors',
   mc_status_direct_dups: 'Duplicates (Direct)',
   mc_status_flood_dups: 'Duplicates (Flood)',
+  // Local-node poller types (meshcoreTelemetryPoller) — shorter names than
+  // the remote-status path above; both can appear in the telemetry store.
+  mc_queue_len: 'Queue Length',
+  mc_noise_floor: 'Noise Floor',
+  mc_last_rssi: 'Last RSSI',
+  mc_last_snr: 'Last SNR',
+  mc_uptime_secs: 'Uptime',
+  mc_tx_duty_pct: 'TX Duty Cycle',
+  mc_rx_duty_pct: 'RX Duty Cycle',
+  mc_pkt_sent_rate: 'Packets Sent Rate',
+  mc_pkt_recv_rate: 'Packets Received Rate',
+  mc_rtc_drift_secs: 'RTC Drift',
+  // Cumulative counters
+  mc_pkt_recv: 'Packets Received (total)',
+  mc_pkt_sent: 'Packets Sent (total)',
+  mc_pkt_flood_tx: 'Flood TX',
+  mc_pkt_direct_tx: 'Direct TX',
+  mc_pkt_flood_rx: 'Flood RX',
+  mc_pkt_direct_rx: 'Direct RX',
+  mc_pkt_recv_errors: 'Receive Errors',
+  mc_tx_air_secs: 'TX Air Time',
+  mc_rx_air_secs: 'RX Air Time',
 };
 
 // MeshCore LPP records embed the Cayenne channel byte in the telemetry
@@ -368,7 +390,8 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     const getTranslatedLabel = useCallback(
       (type: string): string => {
         const key = TELEMETRY_LABEL_KEYS[type];
-        return key ? t(key) : type;
+        if (key) return t(key);
+        return getTelemetryLabel(type);
       },
       [t]
     );
