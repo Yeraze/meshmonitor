@@ -251,6 +251,70 @@ export class MeshCoreCredentialStore {
     }
     return out;
   }
+
+  // ---- Room credential (identical encryption, separate DB column) ----
+
+  async storeRoom(sourceId: string, publicKey: string, password: string): Promise<void> {
+    if (!this._capability.canRemember) {
+      throw new Error('Cannot persist room credential: SESSION_SECRET is auto-generated');
+    }
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', this.aeadKey, iv);
+    const ct = Buffer.concat([cipher.update(Buffer.from(password, 'utf8')), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    const envelope: StoredEnvelope = {
+      v: KDF_VERSION,
+      kid: this.currentKid,
+      iv: iv.toString('hex'),
+      ct: ct.toString('hex'),
+      tag: tag.toString('hex'),
+    };
+    await databaseService.meshcore.setRoomCredential(sourceId, publicKey, JSON.stringify(envelope));
+  }
+
+  async loadRoom(sourceId: string, publicKey: string): Promise<CredentialLoadResult> {
+    const raw = await databaseService.meshcore.getRoomCredential(sourceId, publicKey);
+    if (!raw) return { kind: 'none' };
+    let env: StoredEnvelope;
+    try {
+      env = JSON.parse(raw) as StoredEnvelope;
+    } catch {
+      return { kind: 'key_rotated', storedKid: '?' };
+    }
+    if (env.v !== KDF_VERSION || env.kid !== this.currentKid) {
+      return { kind: 'key_rotated', storedKid: env.kid ?? '?' };
+    }
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', this.aeadKey, Buffer.from(env.iv, 'hex'));
+      decipher.setAuthTag(Buffer.from(env.tag, 'hex'));
+      const pt = Buffer.concat([decipher.update(Buffer.from(env.ct, 'hex')), decipher.final()]);
+      return { kind: 'ok', password: pt.toString('utf8') };
+    } catch {
+      return { kind: 'key_rotated', storedKid: env.kid };
+    }
+  }
+
+  async clearRoom(sourceId: string, publicKey: string): Promise<void> {
+    await databaseService.meshcore.setRoomCredential(sourceId, publicKey, null);
+  }
+
+  async listStoredRoom(sourceId?: string): Promise<StoredCredentialEntry[]> {
+    const rows = await databaseService.meshcore.listRoomCredentials();
+    const out: StoredCredentialEntry[] = [];
+    for (const row of rows) {
+      if (sourceId && row.sourceId !== sourceId) continue;
+      let env: StoredEnvelope;
+      try {
+        env = JSON.parse(row.roomCredential) as StoredEnvelope;
+      } catch {
+        continue;
+      }
+      if (env.v === KDF_VERSION && env.kid === this.currentKid) {
+        out.push({ sourceId: row.sourceId, publicKey: row.publicKey, name: row.name });
+      }
+    }
+    return out;
+  }
 }
 
 /**

@@ -855,3 +855,157 @@
   color: var(--ctp-text);
   margin-bottom: 0.75rem;
 }
+
+/* ---- Room server ---- */
+
+.mc-room-row-status {
+  font-size: 0.65rem;
+  vertical-align: middle;
+}
+.mc-room-row-status.logged-in {
+  color: var(--ctp-green);
+}
+.mc-room-row-status.has-saved {
+  color: var(--ctp-yellow);
+}
+.mc-room-row-status.not-logged-in {
+  color: var(--ctp-overlay0);
+}
+
+.meshcore-room-login-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 2rem;
+}
+
+.meshcore-room-login-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.5rem 2rem;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 8px;
+  max-width: 320px;
+  width: 100%;
+  text-align: center;
+}
+
+.meshcore-room-login-card h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--ctp-text);
+}
+
+.meshcore-room-login-name {
+  color: var(--ctp-subtext0);
+  font-size: 0.9rem;
+  margin: 0;
+  word-break: break-all;
+}
+
+.meshcore-room-login-input {
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--ctp-surface2);
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  font-size: 0.9rem;
+}
+.meshcore-room-login-input:focus {
+  outline: none;
+  border-color: var(--ctp-blue);
+}
+
+.meshcore-room-login-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: none;
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.meshcore-room-login-btn:hover:not(:disabled) {
+  background: var(--ctp-sapphire);
+}
+.meshcore-room-login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.meshcore-room-login-error {
+  color: var(--ctp-red);
+  font-size: 0.85rem;
+}
+
+.meshcore-room-login-remember {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--ctp-subtext0);
+  cursor: pointer;
+}
+.meshcore-room-login-remember input {
+  margin: 0;
+}
+
+.meshcore-room-stats-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--ctp-surface0);
+  border-bottom: 1px solid var(--ctp-surface1);
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+.meshcore-room-stats-name {
+  font-weight: 600;
+  color: var(--ctp-text);
+}
+.meshcore-room-stats-info {
+  color: var(--ctp-subtext0);
+}
+.meshcore-room-sync-config {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--ctp-subtext0);
+}
+.meshcore-room-sync-config label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+}
+.meshcore-room-sync-config select {
+  padding: 0.15rem 0.3rem;
+  border-radius: 3px;
+  border: 1px solid var(--ctp-surface2);
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  font-size: 0.8rem;
+}
+.meshcore-room-sync-save {
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  border: none;
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.meshcore-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--ctp-subtext0);
+  font-size: 0.95rem;
+}

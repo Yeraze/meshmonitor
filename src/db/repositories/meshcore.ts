@@ -291,6 +291,98 @@ export class MeshCoreRepository extends BaseRepository {
     return (result[0]?.adminCredential as string | null) ?? null;
   }
 
+  // ---- Room credential (same envelope format as adminCredential) ----
+
+  async setRoomCredential(
+    sourceId: string,
+    publicKey: string,
+    envelope: string | null,
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.setRoomCredential requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    const now = this.now();
+    await this.db
+      .update(meshcoreNodes)
+      .set({ roomCredential: envelope, updatedAt: now })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+  }
+
+  async getRoomCredential(sourceId: string, publicKey: string): Promise<string | null> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.getRoomCredential requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select({ roomCredential: meshcoreNodes.roomCredential })
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)))
+      .limit(1);
+    return (result[0]?.roomCredential as string | null) ?? null;
+  }
+
+  async listRoomCredentials(): Promise<
+    Array<{ sourceId: string; publicKey: string; name: string | null; roomCredential: string }>
+  > {
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select({
+        sourceId: meshcoreNodes.sourceId,
+        publicKey: meshcoreNodes.publicKey,
+        name: meshcoreNodes.name,
+        roomCredential: meshcoreNodes.roomCredential,
+      })
+      .from(meshcoreNodes);
+    const rows = this.normalizeBigInts(result) as unknown as Array<{
+      sourceId: string;
+      publicKey: string;
+      name: string | null;
+      roomCredential: string | null;
+    }>;
+    return rows
+      .filter((r) => r.roomCredential != null)
+      .map((r) => ({
+        sourceId: r.sourceId,
+        publicKey: r.publicKey,
+        name: r.name,
+        roomCredential: r.roomCredential as string,
+      }));
+  }
+
+  // ---- Room sync config ----
+
+  async setRoomSyncConfig(
+    sourceId: string,
+    publicKey: string,
+    config: { roomSyncEnabled?: boolean; roomSyncIntervalMinutes?: number },
+  ): Promise<void> {
+    const { meshcoreNodes } = this.tables;
+    const now = this.now();
+    await this.db
+      .update(meshcoreNodes)
+      .set({ ...config, updatedAt: now })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+  }
+
+  async updateLastRoomSyncAt(sourceId: string, publicKey: string): Promise<void> {
+    const { meshcoreNodes } = this.tables;
+    const now = this.now();
+    await this.db
+      .update(meshcoreNodes)
+      .set({ lastRoomSyncAt: now, updatedAt: now })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+  }
+
+  async updateLastRoomPostAt(sourceId: string, publicKey: string, timestamp: number): Promise<void> {
+    const { meshcoreNodes } = this.tables;
+    const now = this.now();
+    await this.db
+      .update(meshcoreNodes)
+      .set({ lastRoomPostAt: timestamp, updatedAt: now })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+  }
+
   /**
    * Return every row that has a saved admin credential, across all
    * sources. Used by the startup banner to detect SESSION_SECRET rotation
@@ -337,6 +429,18 @@ export class MeshCoreRepository extends BaseRepository {
       .select()
       .from(meshcoreNodes)
       .where(and(eq(meshcoreNodes.sourceId, sourceId), eq(meshcoreNodes.telemetryEnabled, true)));
+    return this.normalizeBigInts(result) as unknown as DbMeshCoreNode[];
+  }
+
+  async getRoomSyncEnabledNodes(sourceId: string): Promise<DbMeshCoreNode[]> {
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreNodes)
+      .where(and(
+        eq(meshcoreNodes.sourceId, sourceId),
+        eq(meshcoreNodes.roomSyncEnabled, true),
+      ));
     return this.normalizeBigInts(result) as unknown as DbMeshCoreNode[];
   }
 

@@ -38,6 +38,7 @@ const StatsTypes = { Core: 0, Radio: 1, Packets: 2 };
 const SelfAdvertTypes = { ZeroHop: 0, Flood: 1 };
 const BinaryRequestTypes = { GetTelemetryData: 0x03 };
 const AdvType = { None: 0, Chat: 1, Repeater: 2, Room: 3 };
+const TxtTypes = { Plain: 0, CliData: 1, SignedPlain: 2 };
 
 /** Mock Connection that surfaces every method the backend touches. */
 class MockConnection extends EventEmitter {
@@ -240,6 +241,7 @@ function installMockModule(MockConn: typeof MockConnection): MockConnection {
       SelfAdvertTypes,
       BinaryRequestTypes,
       AdvType,
+      TxtTypes,
     } as any,
     CayenneLpp: {
       parse: (bytes: Uint8Array | number[]) => {
@@ -440,6 +442,56 @@ describe('MeshCoreNativeBackend', () => {
         longitude: 20,
       }),
     );
+  });
+
+  it('routes SignedPlain (txtType=2) as room_message', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    const events: any[] = [];
+    backend.on('event', (e) => events.push(e));
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    // SignedPlain: 4-byte author prefix (binary) + text body
+    const authorPrefix = String.fromCharCode(0xab, 0xcd, 0x12, 0x34);
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([0x01, 0x02, 0x03, 0x04, 0x05, 0x06]),
+      pathLen: 2,
+      txtType: 2, // SignedPlain
+      senderTimestamp: 1700000099,
+      text: authorPrefix + 'Hello from room!',
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0].event_type).toBe('room_message');
+    expect(events[0].data.room_pubkey_prefix).toBe('010203040506');
+    expect(events[0].data.author_pubkey_prefix).toBe('abcd1234');
+    expect(events[0].data.text).toBe('Hello from room!');
+    expect(events[0].data.sender_timestamp).toBe(1700000099);
+  });
+
+  it('routes CliData (txtType=1) as cli_reply', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    const events: any[] = [];
+    backend.on('event', (e) => events.push(e));
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([0x01, 0x02, 0x03, 0x04, 0x05, 0x06]),
+      pathLen: 1,
+      txtType: 1, // CliData
+      senderTimestamp: 1700000100,
+      text: 'ver 1.2.3',
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0].event_type).toBe('cli_reply');
   });
 
   it('maps get_stats to snake_case bridge shape', async () => {
