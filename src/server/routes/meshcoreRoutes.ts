@@ -420,6 +420,42 @@ router.post(
 );
 
 /**
+ * POST /api/sources/:id/meshcore/contacts/:publicKey/trace-path
+ *
+ * Send a diagnostic trace along the contact's cached forwarding path,
+ * collecting per-hop SNR. Requires a known out_path (pathLen > 0).
+ * Returns { success, hops: [{ index, snr }], lastSnr }.
+ */
+router.post(
+  '/contacts/:publicKey/trace-path',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const publicKey = req.params.publicKey;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid public key — must be 64-char hex',
+        });
+      }
+      const result = await managerFor(req).traceContactPath(publicKey);
+      if (!result) {
+        return res.status(409).json({
+          success: false,
+          error: 'Trace path failed — contact may have no known path, source disconnected, timed out, or not a Companion device',
+        });
+      }
+      res.json({ success: true, hops: result.hops, lastSnr: result.lastSnr });
+    } catch (error) {
+      logger.error('[API] Error tracing contact path:', error);
+      res.status(500).json({ success: false, error: 'Failed to trace path' });
+    }
+  },
+);
+
+/**
  * PUT /api/sources/:id/meshcore/contacts/:publicKey/out-path
  *
  * Manually set the cached forwarding route ("out_path") for a contact.
