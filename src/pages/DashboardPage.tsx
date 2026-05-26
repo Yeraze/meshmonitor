@@ -1114,12 +1114,7 @@ function DashboardInner() {
                   <option value="meshtastic_tcp">{t('source.form.type_meshtastic', 'Meshtastic (TCP)')}</option>
                   <option value="meshcore">{t('source.form.type_meshcore', 'MeshCore')}</option>
                   <option value="mqtt_broker">{t('source.form.type_mqtt_broker', 'Embedded MQTT Broker (devices connect here)')}</option>
-                  {/* Bridge requires a parent broker — only offer it once an
-                      embedded broker exists, otherwise the user lands on a
-                      form with an empty parent-broker dropdown. */}
-                  {sources.some((s) => s.type === 'mqtt_broker') && (
-                    <option value="mqtt_bridge">{t('source.form.type_mqtt_bridge', 'MQTT Bridge (forward to/from an upstream broker)')}</option>
-                  )}
+                  <option value="mqtt_bridge">{t('source.form.type_mqtt_bridge', 'MQTT Bridge (forward to/from an upstream broker)')}</option>
                 </select>
               </label>
             )}
