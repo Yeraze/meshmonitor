@@ -3897,7 +3897,7 @@
     "automation.auto_key_management.log_old_key": "Старый ключ",
     "settings.analytics_api_key_label": "Ключ API",
     "unified.messages.modal.col_heard": "Слышал(а)",
-    "meshcore.connecting": "",
+    "meshcore.connecting": "Подключение...",
     "security.offset_seconds_other": "{{count}} секунды",
     "auto_responder.cooldown_description": "После того как этот триггер сработает на узле, игнорировать дальнейшие совпадения с этого узла в течение указанного интервала времени.",
     "unified.messages.no_channels": "Нет каналов",
