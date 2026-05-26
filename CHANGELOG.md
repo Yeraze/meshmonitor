@@ -6,19 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
-### Fixes
+## [4.7.4] - 2026-05-26
 
-- #3205 fix(telemetry): show pretty labels for MeshCore status / LPP types on Node Details, Messages, and MeshCore DM telemetry — `TelemetryGraphs.tsx` carried a duplicate local `getTelemetryLabel` whose label map predated the MeshCore work and never received the `mc_status_*` / `mc_*` entries or the `_ch<N>` channel-suffix handling. Charts on InfoTab / MessagesTab / MeshCoreDirectMessagesView therefore fell through to the raw type name (`mc_status_air_time_secs` instead of "Air Time", etc.). Consolidates onto the canonical exported `getTelemetryLabel` from `TelemetryChart.tsx` and migrates the entries that lived only in the local map (signal quality, ch2-ch8 power, air quality, host metrics, extended environment, `timeOffset`) into the canonical `TELEMETRY_LABELS`. Regression tests added so the consolidated set can't silently regress again.
-- #3205 fix(meshcore): page-scroll the DM view's right pane so contact details + telemetry flow naturally below the messages — previously the detail pane was hard-capped at 45 % of the available height with its own internal scroll, squeezing the conversation and forcing telemetry into a narrow strip. Adds a `.meshcore-main-pane--dm` modifier scoped to the DM view: the main pane becomes the scroll container, the message stream gets a bounded `60vh / 24rem` height so messages still scroll internally and the composer stays pinned at the bottom of the stream block, and the detail pane drops its `max-height` cap. Channels and Nodes views are unaffected. Regression test asserts the modifier class is applied.
-- #3205 fix(meshcore): keep Remote / Local Console auto-scroll confined to the transcript pane — `CliConsoleBody`'s auto-scroll effect used `scrollIntoView` on a sentinel div at the end of the transcript. With the DM right pane now a scroll container (per the DM page-scroll refactor above), `scrollIntoView` also dragged the right pane to put the transcript-end in view, making the whole page jump every time the user hit Send. Switched to setting `scrollTop = scrollHeight` directly on the transcript container (it already has `max-height: 280px; overflow-y: auto`), guarded by a near-bottom check so scrolling up to read history isn't yanked back to the latest output. Resets to "near bottom" on contact change.
-- #3205 fix(meshcore): suppress repeated "Logged in with saved password" log line on every poll refresh in Remote Administration console — `MeshCoreRemoteConsole`'s auto-login `useEffect` depended on the `actions` object, and `useMeshCore` rebuilds `actions` on every poll (every few seconds), so the effect re-ran each tick and pushed a fresh info line into the CLI transcript. Added a per-contact `useRef` guard that records the publicKey we've already auto-attempted in this mount cycle; the existing reset-on-contact-change effect clears it so navigating away and back still re-attempts. Regression test added asserting `loginRemoteWithSaved` is called exactly once across multiple `actions`-identity changes for the same contact.
+# MeshMonitor v4.7.4
 
-### Features
+Patch release focused on MeshCore protocol completeness and multi-source improvements. Adds Tier 1 and Tier 2 MeshCore protocol features (contact management, time sync, reboot, key management), room server integration, trace path diagnostics with per-hop SNR, TX power configuration, and cross-source NodeInfo copying. Also fixes MQTT bridge creation without an existing broker and clipboard handling in non-HTTPS contexts.
 
-- feat(meshcore): add Tier 1 protocol gap features — contact remove/export/import, repeater neighbour list, device time sync, enhanced stats endpoints, and send-confirmed RTT event. Export produces `meshcore://` URLs; import accepts both raw hex and `meshcore://` URLs via a paste dialog in the Nodes view. Neighbour query uses the binary request protocol for structured data (pubkey prefix, SNR, last-heard). Sync Time button appears next to the RTC drift display in the Info view.
-- feat(meshcore): add Tier 2 features — device reboot (danger-gated), Ed25519 private key backup/restore in the Configuration view's new Device Management section. All operations require confirmation and are audit-logged.
-- #3189 feat(mqtt-bridge): direction mode dropdown (`bidirectional` / `publish_only` / `subscribe_only`) — public/curated upstream brokers like `mqtt.meshtastic.org` accept gateway `PUBLISH` but ACL-reject `SUBSCRIBE`, and the bridge used to spam `permission-denied` warnings on every `SUBACK`. The new per-bridge **Mode** dropdown lets operators skip the upstream `subscribe()` call entirely (`publish_only`) or refuse outbound publishes (`subscribe_only`). Stored in the bridge `config` JSON blob — no schema migration; missing values are treated as `bidirectional` so existing rows keep working. Status now exposes the resolved mode and stops claiming "0 subscriptions denied" when none were ever attempted.
+## Features
 
+- #3218 feat(meshcore): add Tier 1 protocol gap features — contact remove/export/import, repeater neighbour list, device time sync, enhanced stats endpoints, and send-confirmed RTT event. Export produces `meshcore://` URLs; import accepts both raw hex and `meshcore://` URLs via a paste dialog in the Nodes view. Neighbour query uses the binary request protocol for structured data (pubkey prefix, SNR, last-heard). Sync Time button appears next to the RTC drift display in the Info view.
+- #3219 feat(meshcore): add Tier 2 protocol features — device reboot (danger-gated), Ed25519 private key backup/restore in the Configuration view's new Device Management section. All operations require confirmation and are audit-logged.
+- #3214 feat(meshcore): add room server integration — room server protocol support for MeshCore sources.
+- #3212 feat(meshcore): add trace path diagnostic for per-hop SNR measurement — trace path command with structured per-hop signal quality data for MeshCore routes.
+- #3210 feat(meshcore): add TX power configuration — TX power level setting for MeshCore devices.
+- #3213 #3215 feat(nodes): add Copy NodeInfo from another source — cross-source node information copying with button visibility and API routing fixes.
+
+## Fixes
+
+- #3221 fix(meshcore): add pretty labels for local-node poller telemetry types — display friendly names for MeshCore telemetry types instead of raw identifiers.
+- #3220 fix(meshcore): clipboard fallback for non-HTTPS contexts — clipboard operations work correctly when the app is not served over HTTPS.
+- #3217 fix(sources): allow MQTT Bridge creation without an existing Broker — removes the requirement for a pre-existing broker when creating an MQTT bridge source.
+- #3216 fix(nodes): Copy NodeInfo button visibility and API routing — fixes UI visibility and API endpoint routing for the cross-source NodeInfo copy feature.
 
 ## [4.7.1] - 2026-05-25
 
