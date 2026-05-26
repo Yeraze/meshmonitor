@@ -44,6 +44,7 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import api from '../services/api';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 import type { MapStyle } from '../server/services/mapStyleService.js';
+import { CopyNodeInfoModal } from './CopyNodeInfoModal';
 
 /**
  * Spiderfier initialization constants
@@ -396,6 +397,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   const { hasPermission } = useAuth();
   const csrfFetch = useCsrfFetch();
+
+  // ----- Copy NodeInfo modal state -----
+  const [copyNodeInfoTarget, setCopyNodeInfoTarget] = useState<DeviceInfo | null>(null);
 
   // ----- Waypoint authoring state -----
   const canWriteWaypoints = hasPermission('waypoints', 'write');
@@ -923,6 +927,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       setActiveTab('messages');
     };
   }, [setSelectedDMNode, setActiveTab]);
+
+  const handleCopyNodeInfoClick = useCallback((node: DeviceInfo) => {
+    return (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setCopyNodeInfoTarget(node);
+    };
+  }, []);
 
   const handlePopupDMClick = useCallback((node: DeviceInfo) => {
     return () => {
@@ -1570,6 +1581,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           onClick={handleDMClick(node)}
                         >
                           💬
+                        </button>
+                      )}
+                      {!node.user?.longName && hasPermission('nodes', 'write') && (
+                        <button
+                          className="dm-icon"
+                          title={t('nodes.copy_nodeinfo')}
+                          onClick={handleCopyNodeInfoClick(node)}
+                        >
+                          📋
                         </button>
                       )}
                       {(node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) && (
@@ -2427,6 +2447,20 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         selfNodeNum={localNodeNum ?? null}
         onClose={() => setWaypointEditorOpen(false)}
         onSave={handleSaveWaypoint}
+      />
+
+      <CopyNodeInfoModal
+        isOpen={copyNodeInfoTarget !== null}
+        nodeNum={copyNodeInfoTarget?.nodeNum ?? null}
+        currentNode={copyNodeInfoTarget ? {
+          longName: copyNodeInfoTarget.user?.longName,
+          shortName: copyNodeInfoTarget.user?.shortName,
+          hwModel: copyNodeInfoTarget.user?.hwModel,
+          role: copyNodeInfoTarget.user?.role != null ? Number(copyNodeInfoTarget.user.role) : null,
+          publicKey: copyNodeInfoTarget.user?.publicKey,
+        } : null}
+        onClose={() => setCopyNodeInfoTarget(null)}
+        onCopied={() => setCopyNodeInfoTarget(null)}
       />
     </div>
   );

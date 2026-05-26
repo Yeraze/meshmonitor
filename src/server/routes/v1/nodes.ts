@@ -9,6 +9,7 @@ import express, { Request, Response } from 'express';
 import databaseService, { DbNode } from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
 import { filterNodesByChannelPermission, maskNodeLocationByChannel } from '../../utils/nodeEnhancer.js';
+import { findCopyCandidates, copyNodeInfo } from '../../services/nodeInfoCopyService.js';
 
 // mergeParams so this router picks up :sourceId when mounted under
 // /sources/:sourceId (new shape). At the root /nodes mount it's undefined
@@ -179,6 +180,118 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
       success: false,
       error: 'Internal Server Error',
       message: 'Failed to retrieve node'
+    });
+  }
+});
+
+/**
+ * GET /api/v1/nodes/:nodeNum/copy-candidates
+ * List other sources that have NodeInfo for this node.
+ * Requires nodes:read permission on the target source.
+ */
+router.get('/:nodeNum/copy-candidates', async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const userId = user?.id ?? null;
+    const isAdmin = user?.isAdmin ?? false;
+
+    const sourceId = getScopedSourceId(req);
+    if (!sourceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'sourceId is required',
+      });
+    }
+
+    if (!await hasNodesReadPermission(userId, isAdmin, sourceId)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Insufficient permissions',
+        required: { resource: 'nodes', action: 'read' },
+      });
+    }
+
+    const nodeNum = Number(req.params.nodeNum);
+    if (isNaN(nodeNum)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'nodeNum must be a number',
+      });
+    }
+
+    const candidates = await findCopyCandidates(nodeNum, sourceId);
+    res.json({ success: true, data: candidates });
+  } catch (error) {
+    logger.error('Error getting copy candidates:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal Server Error',
+      message: 'Failed to retrieve copy candidates',
+    });
+  }
+});
+
+/**
+ * POST /api/v1/nodes/:nodeNum/copy-nodeinfo
+ * Copy NodeInfo fields from one source to another.
+ * Requires nodes:read on fromSourceId and nodes:write on toSourceId.
+ *
+ * Body: { fromSourceId: string, toSourceId: string, pushToNodeDb?: boolean }
+ */
+router.post('/:nodeNum/copy-nodeinfo', async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const userId = user?.id ?? null;
+    const isAdmin = user?.isAdmin ?? false;
+
+    const nodeNum = Number(req.params.nodeNum);
+    if (isNaN(nodeNum)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'nodeNum must be a number',
+      });
+    }
+
+    const { fromSourceId, toSourceId, pushToNodeDb } = req.body ?? {};
+    if (!fromSourceId || !toSourceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'fromSourceId and toSourceId are required',
+      });
+    }
+
+    if (!await hasNodesReadPermission(userId, isAdmin, fromSourceId)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Insufficient read permission on source',
+      });
+    }
+
+    const hasWritePermission = isAdmin || (userId !== null &&
+      await databaseService.checkPermissionAsync(userId, 'nodes', 'write', toSourceId));
+    if (!hasWritePermission) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Insufficient write permission on target source',
+      });
+    }
+
+    const result = await copyNodeInfo(nodeNum, fromSourceId, toSourceId, !!pushToNodeDb);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    logger.error('Error copying node info:', error);
+    const status = error.message?.includes('not found') ? 404 : 500;
+    res.status(status).json({
+      success: false,
+      error: status === 404 ? 'Not Found' : 'Internal Server Error',
+      message: error.message || 'Failed to copy node info',
     });
   }
 });

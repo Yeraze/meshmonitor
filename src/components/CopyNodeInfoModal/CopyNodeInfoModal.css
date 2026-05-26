@@ -1,0 +1,166 @@
+.copy-nodeinfo-modal .modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.copy-nodeinfo-description {
+  margin: 0;
+  color: var(--text-secondary, #aaa);
+  font-size: 0.9em;
+}
+
+.copy-nodeinfo-loading,
+.copy-nodeinfo-empty {
+  text-align: center;
+  padding: 20px 0;
+  color: var(--text-secondary, #aaa);
+}
+
+.copy-nodeinfo-source-select {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.copy-nodeinfo-source-select label {
+  font-weight: 600;
+  font-size: 0.85em;
+  color: var(--text-secondary, #aaa);
+}
+
+.copy-nodeinfo-source-select select {
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color, #444);
+  background: var(--bg-secondary, #2a2a2a);
+  color: var(--text-primary, #eee);
+  font-size: 0.9em;
+}
+
+.copy-nodeinfo-diff {
+  overflow-x: auto;
+}
+
+.copy-nodeinfo-diff table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+
+.copy-nodeinfo-diff th {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 2px solid var(--border-color, #444);
+  color: var(--text-secondary, #aaa);
+  font-weight: 600;
+}
+
+.copy-nodeinfo-diff td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-color, #333);
+  vertical-align: middle;
+}
+
+.copy-nodeinfo-diff .field-name {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.copy-nodeinfo-diff .field-current {
+  color: var(--text-secondary, #888);
+}
+
+.copy-nodeinfo-diff .field-incoming.new-value {
+  color: var(--success-color, #4caf50);
+  font-weight: 600;
+}
+
+.copy-nodeinfo-diff tr.diff-new {
+  background: rgba(76, 175, 80, 0.08);
+}
+
+.copy-nodeinfo-no-changes {
+  text-align: center;
+  color: var(--text-secondary, #aaa);
+  font-style: italic;
+  margin: 4px 0;
+}
+
+.copy-nodeinfo-push-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 4px;
+  background: var(--bg-secondary, #2a2a2a);
+}
+
+.copy-nodeinfo-push-option label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.copy-nodeinfo-push-option .push-help {
+  font-size: 0.8em;
+  color: var(--text-secondary, #888);
+  margin-left: 24px;
+}
+
+.copy-nodeinfo-error {
+  color: var(--error-color, #f44336);
+  font-size: 0.9em;
+  padding: 8px;
+  border-radius: 4px;
+  background: rgba(244, 67, 54, 0.1);
+}
+
+.copy-nodeinfo-success {
+  text-align: center;
+  padding: 16px 0;
+}
+
+.copy-nodeinfo-success p {
+  color: var(--success-color, #4caf50);
+  font-weight: 500;
+  margin: 0 0 16px;
+}
+
+.copy-nodeinfo-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.copy-nodeinfo-btn {
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color, #444);
+  background: var(--bg-secondary, #2a2a2a);
+  color: var(--text-primary, #eee);
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+.copy-nodeinfo-btn:hover:not(:disabled) {
+  background: var(--bg-hover, #333);
+}
+
+.copy-nodeinfo-btn.primary {
+  background: var(--primary-color, #2196f3);
+  border-color: var(--primary-color, #2196f3);
+  color: white;
+}
+
+.copy-nodeinfo-btn.primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.copy-nodeinfo-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
