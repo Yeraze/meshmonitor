@@ -106,7 +106,7 @@ export const CopyNodeInfoModal: React.FC<CopyNodeInfoModalProps> = ({
     api.getBaseUrl()
       .then(baseUrl =>
         fetch(
-          `${baseUrl}/api/v1/nodes/${nodeNum}/copy-candidates?sourceId=${encodeURIComponent(sourceId)}`,
+          `${baseUrl}/api/nodes/${nodeNum}/copy-candidates?sourceId=${encodeURIComponent(sourceId)}`,
           { credentials: 'include' },
         ),
       )
@@ -149,7 +149,7 @@ export const CopyNodeInfoModal: React.FC<CopyNodeInfoModalProps> = ({
     try {
       const baseUrl = await api.getBaseUrl();
       const res = await csrfFetch(
-        `${baseUrl}/api/v1/nodes/${nodeNum}/copy-nodeinfo`,
+        `${baseUrl}/api/nodes/${nodeNum}/copy-nodeinfo`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

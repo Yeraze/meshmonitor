@@ -69,7 +69,7 @@ export async function findCopyCandidates(
     });
   }
 
-  candidates.sort((a, b) => b.node.updatedAt - a.node.updatedAt);
+  candidates.sort((a, b) => b.fieldsFilled - a.fieldsFilled || b.node.updatedAt - a.node.updatedAt);
   return candidates;
 }
 
