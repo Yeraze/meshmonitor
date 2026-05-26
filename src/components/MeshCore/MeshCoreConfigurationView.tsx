@@ -588,7 +588,11 @@ const MeshCoreDeviceManagement: React.FC<{
 
   const handleCopyKey = async () => {
     if (!exportedKey) return;
-    await navigator.clipboard.writeText(exportedKey);
+    try {
+      await navigator.clipboard.writeText(exportedKey);
+    } catch {
+      window.prompt('Copy this private key:', exportedKey);
+    }
   };
 
   const handleImportKey = async () => {
