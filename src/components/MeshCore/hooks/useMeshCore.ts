@@ -103,6 +103,7 @@ export interface MeshCoreActions {
   sendMessage: (text: string, toPublicKey?: string, channelIdx?: number) => Promise<boolean>;
   setDeviceName: (name: string) => Promise<boolean>;
   setRadioParams: (params: { freq: number; bw: number; sf: number; cr: number }) => Promise<boolean>;
+  setTxPower: (power: number) => Promise<boolean>;
   setCoords: (lat: number, lon: number) => Promise<boolean>;
   setAdvertLocPolicy: (policy: number) => Promise<boolean>;
   setTelemetryModeBase: (mode: TelemetryMode) => Promise<boolean>;
@@ -795,6 +796,26 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, fetchStatus]);
 
+  const setTxPower = useCallback(async (power: number): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/tx-power`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ power }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchStatus();
+        return true;
+      }
+      setError(data.error || 'Failed to update TX power');
+      return false;
+    } catch (_err) {
+      setError('Failed to update TX power');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch, fetchStatus]);
+
   const setCoords = useCallback(async (lat: number, lon: number): Promise<boolean> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/config/coords`, {
@@ -896,6 +917,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       sendMessage,
       setDeviceName,
       setRadioParams,
+      setTxPower,
       setCoords,
       setAdvertLocPolicy,
       setTelemetryModeBase,
