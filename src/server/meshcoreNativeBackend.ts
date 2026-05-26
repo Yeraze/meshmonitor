@@ -812,6 +812,27 @@ export class MeshCoreNativeBackend extends EventEmitter {
         };
       }
 
+      case 'reboot':
+        await c.sendCommandReboot();
+        return { ok: true };
+
+      case 'export_private_key': {
+        const response = await c.exportPrivateKey();
+        return {
+          private_key: response?.privateKey
+            ? bytesToHex(response.privateKey as Uint8Array)
+            : null,
+        };
+      }
+
+      case 'import_private_key': {
+        const hexKey = params.private_key as string;
+        if (!hexKey || hexKey.length !== 64) throw new Error('import_private_key requires a 64-char hex private key');
+        const keyBytes = Uint8Array.from(hexToBytes(hexKey));
+        await c.importPrivateKey(keyBytes);
+        return { ok: true };
+      }
+
       case 'shutdown':
         await this.disconnect();
         return { ok: true };

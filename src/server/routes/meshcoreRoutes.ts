@@ -750,6 +750,121 @@ router.post(
 );
 
 /**
+ * POST /api/sources/:id/meshcore/config/reboot
+ *
+ * Reboot the locally connected device. Destructive — requires confirm:true.
+ * The device will disconnect and restart; the source will need to reconnect.
+ */
+router.post(
+  '/config/reboot',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const { confirm } = req.body as { confirm?: boolean };
+      if (confirm !== true) {
+        return res.status(400).json({
+          success: false,
+          error: 'Reboot requires confirm:true in the request body',
+          code: 'DANGER_CONFIRM_REQUIRED',
+        });
+      }
+      const ok = await managerFor(req).rebootDevice();
+      if (!ok) {
+        return res.status(409).json({
+          success: false,
+          error: 'Reboot failed — source disconnected or not a Companion device',
+        });
+      }
+      auditMeshcoreEvent(req, 'meshcore_reboot', 'configuration', {
+        sourceId: req.params.id,
+      });
+      res.json({ success: true, message: 'Reboot command sent' });
+    } catch (error) {
+      logger.error('[API] Error rebooting device:', error);
+      res.status(500).json({ success: false, error: 'Failed to reboot' });
+    }
+  },
+);
+
+/**
+ * GET /api/sources/:id/meshcore/config/private-key
+ *
+ * Export the device's Ed25519 private key for backup. Returns the hex
+ * string. SECURITY-SENSITIVE — gated on configuration:write.
+ */
+router.get(
+  '/config/private-key',
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const hex = await managerFor(req).exportPrivateKey();
+      if (!hex) {
+        return res.status(409).json({
+          success: false,
+          error: 'Export private key failed — source disconnected or not a Companion device',
+        });
+      }
+      auditMeshcoreEvent(req, 'meshcore_export_private_key', 'configuration', {
+        sourceId: req.params.id,
+      });
+      res.json({ success: true, data: { privateKey: hex } });
+    } catch (error) {
+      logger.error('[API] Error exporting private key:', error);
+      res.status(500).json({ success: false, error: 'Failed to export private key' });
+    }
+  },
+);
+
+/**
+ * POST /api/sources/:id/meshcore/config/private-key
+ *
+ * Import an Ed25519 private key onto the device. Replaces the device
+ * identity. DESTRUCTIVE + SECURITY-SENSITIVE — requires confirm:true.
+ * Body: { privateKey: string (64-char hex), confirm: true }
+ */
+router.post(
+  '/config/private-key',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const { privateKey, confirm } = req.body as { privateKey?: string; confirm?: boolean };
+      if (confirm !== true) {
+        return res.status(400).json({
+          success: false,
+          error: 'Import private key requires confirm:true — this replaces the device identity',
+          code: 'DANGER_CONFIRM_REQUIRED',
+        });
+      }
+      if (typeof privateKey !== 'string' || !/^[0-9a-fA-F]{64}$/.test(privateKey)) {
+        return res.status(400).json({
+          success: false,
+          error: 'privateKey must be a 64-character hex string',
+        });
+      }
+      const ok = await managerFor(req).importPrivateKey(privateKey);
+      if (!ok) {
+        return res.status(409).json({
+          success: false,
+          error: 'Import private key failed — source disconnected or not a Companion device',
+        });
+      }
+      auditMeshcoreEvent(req, 'meshcore_import_private_key', 'configuration', {
+        sourceId: req.params.id,
+      });
+      res.json({ success: true, message: 'Private key imported — device identity changed' });
+    } catch (error) {
+      logger.error('[API] Error importing private key:', error);
+      res.status(500).json({ success: false, error: 'Failed to import private key' });
+    }
+  },
+);
+
+/**
  * GET /api/sources/:id/meshcore/stats/:type
  *
  * Read local-node stats (core, radio, or packets). These hit the directly-

@@ -1721,6 +1721,86 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
+   * Reboot the locally connected device. Companion only. This is a
+   * destructive operation — the device will disconnect and restart.
+   */
+  async rebootDevice(): Promise<boolean> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Reboot requires Companion firmware');
+      return false;
+    }
+    if (!this.connected) return false;
+    try {
+      const response = await this.sendBridgeCommand('reboot', {}, 10000);
+      if (!response.success) {
+        logger.warn(`[MeshCore] reboot failed: ${response.error}`);
+        return false;
+      }
+      logger.info(`[MeshCore:${this.sourceId}] Reboot command sent`);
+      return true;
+    } catch (error) {
+      logger.error('[MeshCore] rebootDevice threw:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Export the device's Ed25519 private key for backup. Returns the 64-char
+   * hex string, or null on failure. Companion only. SECURITY-SENSITIVE —
+   * the caller is responsible for gating access.
+   */
+  async exportPrivateKey(): Promise<string | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Export private key requires Companion firmware');
+      return null;
+    }
+    if (!this.connected) return null;
+    try {
+      const response = await this.sendBridgeCommand('export_private_key', {});
+      if (!response.success) {
+        logger.warn(`[MeshCore] export_private_key failed: ${response.error}`);
+        return null;
+      }
+      const hex = response.data?.private_key;
+      if (typeof hex !== 'string') return null;
+      logger.info(`[MeshCore:${this.sourceId}] Private key exported`);
+      return hex;
+    } catch (error) {
+      logger.error('[MeshCore] exportPrivateKey threw:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Import an Ed25519 private key onto the device. This replaces the
+   * device's identity — all existing contacts will need to re-discover
+   * it. Companion only. DESTRUCTIVE + SECURITY-SENSITIVE.
+   */
+  async importPrivateKey(hexKey: string): Promise<boolean> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Import private key requires Companion firmware');
+      return false;
+    }
+    if (!this.connected) return false;
+    if (!/^[0-9a-fA-F]{64}$/.test(hexKey)) {
+      logger.warn('[MeshCore] importPrivateKey: invalid key format');
+      return false;
+    }
+    try {
+      const response = await this.sendBridgeCommand('import_private_key', { private_key: hexKey });
+      if (!response.success) {
+        logger.warn(`[MeshCore] import_private_key failed: ${response.error}`);
+        return false;
+      }
+      logger.info(`[MeshCore:${this.sourceId}] Private key imported — device identity changed`);
+      return true;
+    } catch (error) {
+      logger.error('[MeshCore] importPrivateKey threw:', error);
+      return false;
+    }
+  }
+
+  /**
    * Login to a remote node for admin access
    */
   async loginToNode(publicKey: string, password: string): Promise<boolean> {
