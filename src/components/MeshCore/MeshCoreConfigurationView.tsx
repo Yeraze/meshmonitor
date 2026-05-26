@@ -56,19 +56,28 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
     setCr(preset.cr);
   };
 
+  const [txPower, setTxPower] = useState<number>(local?.txPower ?? 0);
+  const maxTxPower = local?.maxTxPower ?? 22;
+
   const [savingName, setSavingName] = useState(false);
   const [savingRadio, setSavingRadio] = useState(false);
+  const [savingTxPower, setSavingTxPower] = useState(false);
   const [savingLocation, setSavingLocation] = useState(false);
   const [savingAdvLoc, setSavingAdvLoc] = useState(false);
   const [savingTelemetry, setSavingTelemetry] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
   const [radioSaved, setRadioSaved] = useState(false);
+  const [txPowerSaved, setTxPowerSaved] = useState(false);
   const [locationSaved, setLocationSaved] = useState(false);
   const [telemetrySaved, setTelemetrySaved] = useState(false);
 
   useEffect(() => {
     if (local?.name) setName(local.name);
   }, [local?.name]);
+
+  useEffect(() => {
+    if (typeof local?.txPower === 'number') setTxPower(local.txPower);
+  }, [local?.txPower]);
 
   useEffect(() => {
     if (!local) return;
@@ -112,6 +121,17 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
     if (ok) {
       setRadioSaved(true);
       setTimeout(() => setRadioSaved(false), 2500);
+    }
+  };
+
+  const handleSaveTxPower = async () => {
+    setSavingTxPower(true);
+    setTxPowerSaved(false);
+    const ok = await actions.setTxPower(txPower);
+    setSavingTxPower(false);
+    if (ok) {
+      setTxPowerSaved(true);
+      setTimeout(() => setTxPowerSaved(false), 2500);
     }
   };
 
@@ -358,6 +378,47 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
               : t('meshcore.config.save_radio', 'Save radio settings')}
           </button>
           {radioSaved && (
+            <span style={{ marginLeft: '0.75rem', color: 'var(--ctp-green)' }}>
+              ✓ {t('meshcore.config.saved', 'Saved')}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="form-section">
+        <h3>{t('meshcore.config.tx_power', 'TX Power')}</h3>
+        <p className="hint">
+          {t('meshcore.config.tx_power_hint',
+            `Transmit power in dBm (1–${maxTxPower}). This controls the LoRa chip output only; boards with an external PA may amplify further.`)}
+        </p>
+        <div className="form-row" style={{ alignItems: 'center' }}>
+          <div style={{ flex: 1 }}>
+            <label htmlFor="mc-cfg-txpower">{t('meshcore.config.tx_power_label', 'Power (dBm)')}</label>
+            <input
+              id="mc-cfg-txpower"
+              type="range"
+              min={1}
+              max={maxTxPower}
+              step={1}
+              value={txPower}
+              onChange={e => setTxPower(parseInt(e.target.value, 10))}
+              disabled={!connected || savingTxPower || !canWriteConfig}
+            />
+          </div>
+          <div style={{ minWidth: '4rem', textAlign: 'center', fontWeight: 600, fontSize: '1.1rem' }}>
+            {txPower} dBm
+          </div>
+        </div>
+        <div>
+          <button
+            onClick={() => void handleSaveTxPower()}
+            disabled={!connected || savingTxPower || !canWriteConfig || txPower < 1 || txPower > maxTxPower}
+          >
+            {savingTxPower
+              ? t('meshcore.config.saving', 'Saving…')
+              : t('meshcore.config.save_tx_power', 'Save TX power')}
+          </button>
+          {txPowerSaved && (
             <span style={{ marginLeft: '0.75rem', color: 'var(--ctp-green)' }}>
               ✓ {t('meshcore.config.saved', 'Saved')}
             </span>

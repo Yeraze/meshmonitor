@@ -565,6 +565,15 @@ export class MeshCoreNativeBackend extends EventEmitter {
         if (this.cachedSelfInfo) this.cachedSelfInfo.name = String(params.name ?? '');
         return { ok: true };
 
+      case 'set_tx_power': {
+        const power = Number(params.power);
+        await c.setTxPower(power);
+        if (this.cachedSelfInfo) {
+          this.cachedSelfInfo.txPower = power;
+        }
+        return { ok: true };
+      }
+
       case 'set_radio': {
         const freqMhz = Number(params.freq);
         const bwKhz = Number(params.bw);
