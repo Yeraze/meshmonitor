@@ -283,6 +283,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 onResetPath={actions.resetContactPath}
                 onShareContact={actions.shareContact}
                 onSetOutPath={actions.setContactOutPath}
+                onTracePath={actions.traceContactPath}
                 canWriteNodes={canWriteNodes && connected}
                 isCompanion={isCompanion}
                 advancedPathEditEnabled={advancedPathEditEnabled}
