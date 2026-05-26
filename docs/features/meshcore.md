@@ -19,6 +19,9 @@ When a MeshCore source is connected, you get:
 - **Per-node remote telemetry** — Scheduled cross-mesh telemetry pulls from other MeshCore nodes, written into the same telemetry store as Meshtastic
 - **Radio preset selector** — Pick from the official MeshCore preset list instead of hand-tuning freq/bw/sf/cr
 - **Contact-detail panel** — Hops, RSSI/SNR, last heard, position, and the full public key shown next to DM threads
+- **Contact management** — Remove contacts from the device, export as `meshcore://` URLs for sharing, import from pasted URLs or hex blobs
+- **Repeater neighbour list** — Query a repeater's neighbour table with SNR and last-heard timestamps
+- **Device time sync** — One-click RTC sync from the Node Info page
 - **Telemetry-mode configuration** — Toggle base / location / environment telemetry on the device itself
 - **UI permission gating** — Write controls are disabled (not just rejected) for users without the right permission
 
