@@ -817,6 +817,95 @@ router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
   }
 });
 
+// ============ Room Server Endpoints ============
+
+/**
+ * GET /api/meshcore/rooms/servers
+ * List discovered room servers (advType=3) with login state.
+ */
+router.get('/rooms/servers', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const manager = managerFor(req);
+    const rooms = manager.getRoomServers();
+    const result = rooms.map(r => ({
+      publicKey: r.publicKey,
+      advName: r.advName,
+      name: r.name,
+      lastSeen: r.lastSeen,
+      rssi: r.rssi,
+      snr: r.snr,
+      loggedIn: manager.isRoomLoggedIn(r.publicKey),
+    }));
+    res.json({ success: true, data: result });
+  } catch (error) {
+    logger.error('[API] Error listing room servers:', error);
+    res.status(500).json({ success: false, error: 'Failed to list room servers' });
+  }
+});
+
+/**
+ * POST /api/meshcore/rooms/login
+ * Login to a room server to receive posts and (if permitted) submit new ones.
+ * Body: { publicKey: string, password: string }
+ *   - `password` may be empty for guest/read-only access.
+ */
+router.post('/rooms/login', meshcoreDeviceLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { publicKey, password } = req.body as {
+      publicKey?: string;
+      password?: string;
+    };
+
+    if (typeof publicKey !== 'string' || !isValidPublicKey(publicKey)) {
+      return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
+    }
+    if (typeof password !== 'string') {
+      return res.status(400).json({ success: false, error: 'password (string) required; may be empty for guest login' });
+    }
+
+    const success = await managerFor(req).loginToRoom(publicKey, password);
+    if (!success) {
+      return res.status(401).json({ success: false, error: 'Room login failed' });
+    }
+    res.json({ success: true, message: 'Room login successful' });
+  } catch (error) {
+    logger.error('[API] Error logging into room:', error);
+    res.status(500).json({ success: false, error: 'Room login error' });
+  }
+});
+
+/**
+ * POST /api/meshcore/rooms/post
+ * Send a text post to a room server.
+ * Body: { roomPublicKey: string, text: string }
+ */
+router.post('/rooms/post', messageLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { roomPublicKey, text } = req.body as {
+      roomPublicKey?: string;
+      text?: string;
+    };
+
+    if (typeof roomPublicKey !== 'string' || !isValidPublicKey(roomPublicKey)) {
+      return res.status(400).json({ success: false, error: 'Invalid roomPublicKey format (expected 64-character hex string)' });
+    }
+    const textValidation = isValidMessage(text);
+    if (!textValidation.valid) {
+      return res.status(400).json({ success: false, error: textValidation.error });
+    }
+
+    const success = await managerFor(req).sendRoomPost(text!, roomPublicKey);
+    if (success) {
+      res.json({ success: true, message: 'Room post sent' });
+    } else {
+      res.status(400).json({ success: false, error: 'Failed to send room post' });
+    }
+  } catch (error) {
+    logger.error('[API] Error sending room post:', error);
+    res.status(500).json({ success: false, error: 'Room post error' });
+  }
+});
+
 /**
  * POST /api/meshcore/admin/cli
  * Send a CLI command to a remote MeshCore node and await its single-packet

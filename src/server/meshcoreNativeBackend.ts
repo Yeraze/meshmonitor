@@ -264,15 +264,40 @@ export class MeshCoreNativeBackend extends EventEmitter {
     if (!this.connection || !this.constants) return;
     const { PushCodes, ResponseCodes } = this.constants;
 
-    // ContactMsgRecv → contact_message (plain DM) OR cli_reply (txtType=CliData).
+    // ContactMsgRecv → contact_message (plain DM), cli_reply (txtType=CliData),
+    // or room_message (txtType=SignedPlain, pushed by a room server).
     // MeshCore overlays its remote-admin CLI on the same TXT_MSG packet type;
-    // the only distinguisher is the 1-byte txtType field. Routing the two to
-    // separate bridge events keeps CLI output out of the chat log and lets
-    // sendCliCommand correlate replies by source pubkey prefix.
+    // the only distinguisher is the 1-byte txtType field. Routing the three to
+    // separate bridge events keeps CLI output out of the chat log, room posts
+    // out of the DM stream, and lets sendCliCommand correlate replies by
+    // source pubkey prefix.
     const txtTypes = this.constants.TxtTypes;
     this.connection.on(ResponseCodes.ContactMsgRecv, (msg: any) => {
       const isCliReply =
         txtTypes && typeof msg.txtType === 'number' && msg.txtType === txtTypes.CliData;
+      const isRoomPost =
+        txtTypes && typeof msg.txtType === 'number' && msg.txtType === txtTypes.SignedPlain;
+
+      if (isRoomPost) {
+        // SignedPlain: room server post. The first 4 bytes of the text body
+        // are the original author's public-key prefix (raw binary); the
+        // remainder is the post text.
+        const rawText: string = msg.text ?? '';
+        const authorPrefixHex = Array.from(rawText.substring(0, 4))
+          .map((ch: string) => ch.charCodeAt(0).toString(16).padStart(2, '0'))
+          .join('');
+        const postBody = rawText.substring(4);
+
+        this.emitBridgeEvent('room_message', {
+          room_pubkey_prefix: bytesToHex(msg.pubKeyPrefix),
+          author_pubkey_prefix: authorPrefixHex,
+          text: postBody,
+          sender_timestamp: msg.senderTimestamp,
+          snr: undefined,
+        });
+        return;
+      }
+
       const payload = {
         pubkey_prefix: bytesToHex(msg.pubKeyPrefix),
         text: msg.text,

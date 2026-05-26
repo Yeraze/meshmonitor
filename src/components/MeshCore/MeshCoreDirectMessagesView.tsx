@@ -134,6 +134,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     };
     for (const m of messages) {
       if (!m.toPublicKey) continue;
+      if (m.messageType === 'room_post') continue;
       if (isChannelPseudoKey(m.toPublicKey) || isChannelPseudoKey(m.fromPublicKey)) continue;
       if (selfKey && keysMatch(m.fromPublicKey, selfKey)) {
         const peer = canonicalize(m.toPublicKey);
@@ -153,8 +154,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
       }
     }
     // Always include all contacts so the user can start a new DM.
+    // Exclude room servers (advType=3) — they belong in the Rooms view.
     for (const c of contacts) {
-      if (c.publicKey && !isChannelPseudoKey(c.publicKey)) peers.add(c.publicKey);
+      if (c.publicKey && !isChannelPseudoKey(c.publicKey) && c.advType !== 3) peers.add(c.publicKey);
     }
     // Drop the local node — DMing yourself is meaningless and the local node
     // sometimes appears in the contacts list as a side-effect of seeding.
@@ -182,6 +184,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     if (!selected) return [];
     return messages.filter(m => {
       if (!m.toPublicKey) return false;
+      if (m.messageType === 'room_post') return false;
       if (isChannelPseudoKey(m.toPublicKey) || isChannelPseudoKey(m.fromPublicKey)) return false;
       if (selfKey && keysMatch(m.fromPublicKey, selfKey) && keysMatch(m.toPublicKey, selected)) return true;
       if (selfKey && keysMatch(m.toPublicKey, selfKey) && keysMatch(m.fromPublicKey, selected)) return true;

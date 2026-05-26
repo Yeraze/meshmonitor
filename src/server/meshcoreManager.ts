@@ -177,6 +177,8 @@ export interface MeshCoreMessage {
    * per source.
    */
   sourceId?: string;
+  /** 'text' (default, DMs + channel) or 'room_post' (room server posts). */
+  messageType?: string;
 }
 
 export interface MeshCoreStatus {
@@ -522,6 +524,7 @@ class MeshCoreManager extends EventEmitter {
     this.localNode = null;
     this.contacts.clear();
     this.guestLoggedInNodes.clear();
+    this.roomLoggedInNodes.clear();
 
     this.emit('disconnected');
     dataEventEmitter.emitMeshCoreStatusUpdated({ connected: false }, this.sourceId);
@@ -623,6 +626,32 @@ class MeshCoreManager extends EventEmitter {
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore] Channel ${data.channel_idx} message: ${data.text}`);
+    } else if (event_type === 'room_message') {
+      // Room server post (TXT_TYPE_SIGNED_PLAIN). The room's pubkey prefix
+      // identifies which room, and the author prefix identifies the poster.
+      const roomPubkeyPrefix: string = data.room_pubkey_prefix;
+      const authorPrefixHex: string = data.author_pubkey_prefix;
+
+      const roomContact = this.resolveContactByPrefix(roomPubkeyPrefix);
+      const roomFullKey = roomContact?.publicKey ?? roomPubkeyPrefix;
+      const authorContact = this.resolveContactByPrefix(authorPrefixHex);
+      const authorName = authorContact?.advName ?? authorContact?.name ?? undefined;
+
+      const message: MeshCoreMessage = {
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        fromPublicKey: authorPrefixHex,
+        fromName: authorName,
+        toPublicKey: roomFullKey,
+        text: data.text,
+        timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
+        snr: data.snr,
+        sourceId: this.sourceId,
+        messageType: 'room_post',
+      };
+      this.addMessage(message);
+      this.emit('message', message);
+      dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
+      logger.info(`[MeshCore:${this.sourceId}] Room post from ${authorPrefixHex} in room ${roomPubkeyPrefix}: ${data.text.substring(0, 50)}`);
     } else if (event_type === 'contact_advertised' || event_type === 'contact_added') {
       const publicKey: string = data.public_key;
       if (publicKey) {
@@ -973,7 +1002,7 @@ class MeshCoreManager extends EventEmitter {
         timestamp: message.timestamp,
         rssi: message.rssi ?? null,
         snr: message.snr ?? null,
-        messageType: 'text',
+        messageType: message.messageType ?? 'text',
         sourceId: this.sourceId,
         createdAt: Date.now(),
       },
@@ -1566,6 +1595,12 @@ class MeshCoreManager extends EventEmitter {
   private guestLoggedInNodes: Set<string> = new Set();
 
   /**
+   * In-memory map of room server public keys we've successfully logged into.
+   * Cleared on disconnect — firmware drops sessions on reconnect.
+   */
+  private roomLoggedInNodes: Map<string, { loggedIn: boolean; loginTime: number }> = new Map();
+
+  /**
    * Ensure a guest (empty-password) login session exists for `publicKey`.
    * Returns true if already logged in, or if a fresh login attempt
    * succeeded. Safe to call before every binary request to a repeater:
@@ -1580,6 +1615,87 @@ class MeshCoreManager extends EventEmitter {
       this.guestLoggedInNodes.add(publicKey);
     }
     return ok;
+  }
+
+  // ============ Room Server Support ============
+
+  /**
+   * Login to a room server. Uses the same underlying login command but
+   * tracks state in roomLoggedInNodes so the UI can show login status.
+   */
+  async loginToRoom(publicKey: string, password: string): Promise<boolean> {
+    const ok = await this.loginToNode(publicKey, password);
+    if (ok) {
+      this.roomLoggedInNodes.set(publicKey, { loggedIn: true, loginTime: Date.now() });
+    }
+    return ok;
+  }
+
+  isRoomLoggedIn(publicKey: string): boolean {
+    return this.roomLoggedInNodes.get(publicKey)?.loggedIn ?? false;
+  }
+
+  getRoomServers(): MeshCoreContact[] {
+    const rooms: MeshCoreContact[] = [];
+    for (const c of this.contacts.values()) {
+      if (c.advType === 3) rooms.push(c);
+    }
+    return rooms;
+  }
+
+  /**
+   * Send a post to a room server. The protocol sends a plain DM to the
+   * room's pubkey; the room server adds it to the post queue. The locally-
+   * stored copy is tagged messageType='room_post' for filtering.
+   */
+  async sendRoomPost(text: string, roomPublicKey: string): Promise<boolean> {
+    if (!this.connected) {
+      logger.error('[MeshCore] Not connected');
+      return false;
+    }
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      logger.warn('[MeshCore] Repeaters cannot send messages');
+      return false;
+    }
+    try {
+      const response = await this.sendBridgeCommand('send_message', {
+        text,
+        to: roomPublicKey,
+      });
+      if (response.success) {
+        const sentMessage: MeshCoreMessage = {
+          id: `sent-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+          fromPublicKey: this.localNode?.publicKey || 'local',
+          toPublicKey: roomPublicKey,
+          text,
+          timestamp: Date.now(),
+          sourceId: this.sourceId,
+          messageType: 'room_post',
+        };
+        this.addMessage(sentMessage);
+        this.emit('message', sentMessage);
+        dataEventEmitter.emitMeshCoreMessage(sentMessage, this.sourceId);
+        return true;
+      }
+      logger.error('[MeshCore] Room post send failed:', response.error);
+      return false;
+    } catch (error) {
+      logger.error('[MeshCore] Failed to send room post:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Find a contact whose publicKey starts with the given hex prefix.
+   */
+  private resolveContactByPrefix(prefix: string): MeshCoreContact | undefined {
+    if (!prefix) return undefined;
+    const exact = this.contacts.get(prefix);
+    if (exact) return exact;
+    for (const c of this.contacts.values()) {
+      if (c.publicKey.startsWith(prefix)) return c;
+    }
+    return undefined;
   }
 
   /**

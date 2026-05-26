@@ -855,3 +855,94 @@
   color: var(--ctp-text);
   margin-bottom: 0.75rem;
 }
+
+/* ---- Room server ---- */
+
+.mc-room-row-status {
+  font-size: 0.65rem;
+  vertical-align: middle;
+}
+.mc-room-row-status.logged-in {
+  color: var(--ctp-green);
+}
+.mc-room-row-status.not-logged-in {
+  color: var(--ctp-overlay0);
+}
+
+.meshcore-room-login-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 2rem;
+}
+
+.meshcore-room-login-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.5rem 2rem;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 8px;
+  max-width: 320px;
+  width: 100%;
+  text-align: center;
+}
+
+.meshcore-room-login-card h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--ctp-text);
+}
+
+.meshcore-room-login-name {
+  color: var(--ctp-subtext0);
+  font-size: 0.9rem;
+  margin: 0;
+  word-break: break-all;
+}
+
+.meshcore-room-login-input {
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--ctp-surface2);
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  font-size: 0.9rem;
+}
+.meshcore-room-login-input:focus {
+  outline: none;
+  border-color: var(--ctp-blue);
+}
+
+.meshcore-room-login-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: none;
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.meshcore-room-login-btn:hover:not(:disabled) {
+  background: var(--ctp-sapphire);
+}
+.meshcore-room-login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.meshcore-room-login-error {
+  color: var(--ctp-red);
+  font-size: 0.85rem;
+}
+
+.meshcore-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--ctp-subtext0);
+  font-size: 0.95rem;
+}

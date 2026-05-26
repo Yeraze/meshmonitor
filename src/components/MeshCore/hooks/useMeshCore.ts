@@ -65,6 +65,8 @@ export interface MeshCoreMessage {
   toPublicKey?: string;
   text: string;
   timestamp: number;
+  /** 'text' (default, DMs + channel) or 'room_post' (room server posts). */
+  messageType?: string;
 }
 
 export interface ConnectionStatus {
@@ -171,6 +173,12 @@ export interface MeshCoreActions {
    *  and uptime. Returns null on any error so the panel can render an
    *  "unavailable" state without a thrown promise. */
   getRemoteStatus: (publicKey: string) => Promise<MeshCoreRemoteStatus | null>;
+
+  // ----- Room server -----
+  /** Login to a room server. Password may be empty for guest access. */
+  loginRoom: (publicKey: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  /** Send a text post to a room server. */
+  sendRoomPost: (roomPublicKey: string, text: string) => Promise<boolean>;
 }
 
 /**
@@ -878,6 +886,41 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
 
   const clearError = useCallback(() => setError(null), []);
 
+  // ----- Room server -----
+
+  const loginRoom = useCallback(async (publicKey: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/rooms/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicKey, password }),
+      });
+      const data = await response.json();
+      return { success: !!data.success, error: data.error };
+    } catch (_err) {
+      return { success: false, error: 'Room login request failed' };
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const sendRoomPost = useCallback(async (roomPublicKey: string, text: string): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/rooms/post`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomPublicKey, text }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to send room post');
+        return false;
+      }
+      return true;
+    } catch (_err) {
+      setError('Failed to send room post');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   return {
     status,
     nodes,
@@ -910,6 +953,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       getRemoteStatus,
       loginRemoteWithSaved,
       sendLocalCliCommand,
+      loginRoom,
+      sendRoomPost,
     },
   };
 }
