@@ -1583,7 +1583,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           💬
                         </button>
                       )}
-                      {!node.user?.longName && hasPermission('nodes', 'write') && (
+                      {!isNodeComplete(node) && hasPermission('nodes', 'write') && (
                         <button
                           className="dm-icon"
                           title={t('nodes.copy_nodeinfo')}
@@ -2138,6 +2138,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       traceroutes={traceroutes}
                       hasPermission={hasPermission}
                       onDMNode={handlePopupDMClick(node)}
+                      onCopyNodeInfo={() => setCopyNodeInfoTarget(node)}
                       onTraceroute={onTraceroute ? () => onTraceroute(node.user!.id) : undefined}
                       connectionStatus={connectionStatus}
                       tracerouteLoading={tracerouteLoading}

@@ -85,15 +85,15 @@ describe('findCopyCandidates', () => {
     expect(result).toHaveLength(0);
   });
 
-  it('sorts candidates by most recent updatedAt first', async () => {
+  it('sorts candidates by most fields filled first, then by updatedAt', async () => {
     h.getNodeMock
-      .mockResolvedValueOnce(makeNode({ longName: 'Older', updatedAt: 1000 })) // src-B
-      .mockResolvedValueOnce(makeNode({ longName: 'Newer', updatedAt: 3000 })); // src-C
+      .mockResolvedValueOnce(makeNode({ longName: 'Fewer', updatedAt: 3000 })) // src-B: 1 field
+      .mockResolvedValueOnce(makeNode({ longName: 'More', shortName: 'MR', hwModel: 42, updatedAt: 1000 })); // src-C: 3 fields
 
     const result = await findCopyCandidates(100, 'src-A');
 
     expect(result).toHaveLength(2);
-    expect(result[0].sourceName).toBe('Source C');
+    expect(result[0].sourceName).toBe('Source C'); // more fields wins despite older
     expect(result[1].sourceName).toBe('Source B');
   });
 });

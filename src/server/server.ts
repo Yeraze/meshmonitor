@@ -1182,6 +1182,46 @@ apiRouter.get('/nodes/active', optionalAuth(), async (req, res) => {
   }
 });
 
+// Copy NodeInfo from another source
+import { findCopyCandidates, copyNodeInfo } from './services/nodeInfoCopyService.js';
+
+apiRouter.get('/nodes/:nodeNum/copy-candidates', requirePermission('nodes', 'read'), async (req, res) => {
+  try {
+    const sourceId = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+    if (!sourceId) {
+      return res.status(400).json({ error: 'sourceId query parameter is required' });
+    }
+    const nodeNum = Number(req.params.nodeNum);
+    if (isNaN(nodeNum)) {
+      return res.status(400).json({ error: 'nodeNum must be a number' });
+    }
+    const candidates = await findCopyCandidates(nodeNum, sourceId);
+    res.json({ success: true, data: candidates });
+  } catch (error) {
+    logger.error('Error getting copy candidates:', error);
+    res.status(500).json({ error: 'Failed to retrieve copy candidates' });
+  }
+});
+
+apiRouter.post('/nodes/:nodeNum/copy-nodeinfo', requirePermission('nodes', 'write'), async (req, res) => {
+  try {
+    const nodeNum = Number(req.params.nodeNum);
+    if (isNaN(nodeNum)) {
+      return res.status(400).json({ error: 'nodeNum must be a number' });
+    }
+    const { fromSourceId, toSourceId, pushToNodeDb } = req.body ?? {};
+    if (!fromSourceId || !toSourceId) {
+      return res.status(400).json({ error: 'fromSourceId and toSourceId are required' });
+    }
+    const result = await copyNodeInfo(nodeNum, fromSourceId, toSourceId, !!pushToNodeDb);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    logger.error('Error copying node info:', error);
+    const status = error.message?.includes('not found') ? 404 : 500;
+    res.status(status).json({ error: error.message || 'Failed to copy node info' });
+  }
+});
+
 // Get position history for a node (for mobile node visualization)
 apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res) => {
   try {
