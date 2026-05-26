@@ -1181,6 +1181,38 @@ router.post('/config/name', meshcoreDeviceLimiter, requireAuth(), requirePermiss
 });
 
 /**
+ * POST /api/meshcore/config/tx-power
+ * Set TX power (dBm)
+ * Requires authentication - modifies device radio configuration
+ */
+router.post('/config/tx-power', meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { power } = req.body;
+
+    if (power === undefined) {
+      return res.status(400).json({ success: false, error: 'power is required' });
+    }
+
+    const parsedPower = parseInt(power, 10);
+
+    if (isNaN(parsedPower) || parsedPower < 1 || parsedPower > 22) {
+      return res.status(400).json({ success: false, error: 'TX power must be between 1 and 22 dBm' });
+    }
+
+    const success = await managerFor(req).setTxPower(parsedPower);
+
+    if (success) {
+      res.json({ success: true, message: 'TX power updated' });
+    } else {
+      res.status(400).json({ success: false, error: 'Failed to update TX power' });
+    }
+  } catch (error) {
+    logger.error('[API] Error setting TX power:', error);
+    res.status(500).json({ success: false, error: 'Config error' });
+  }
+});
+
+/**
  * POST /api/meshcore/config/radio
  * Set radio parameters
  * Requires authentication - modifies device radio configuration

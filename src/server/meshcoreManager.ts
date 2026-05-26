@@ -1893,6 +1893,43 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
+   * Set TX power (dBm). Range: 1–22.
+   */
+  async setTxPower(power: number): Promise<boolean> {
+    if (!Number.isFinite(power) || power < 1 || power > 22) {
+      throw new Error('Invalid TX power: must be between 1 and 22 dBm');
+    }
+
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      try {
+        await this.sendRepeaterCommand(`set tx ${power}`);
+        return true;
+      } catch (error) {
+        logger.error('[MeshCore] Failed to set TX power:', error);
+        return false;
+      }
+    } else {
+      try {
+        const response = await this.sendBridgeCommand('set_tx_power', { power });
+        if (response.success) {
+          if (this.localNode) {
+            this.localNode.txPower = power;
+          }
+          try {
+            await this.refreshLocalNode();
+          } catch (refreshErr) {
+            logger.warn('[MeshCore] refreshLocalNode after set_tx_power failed:', refreshErr);
+          }
+        }
+        return response.success;
+      } catch (error) {
+        logger.error('[MeshCore] Failed to set TX power:', error);
+        return false;
+      }
+    }
+  }
+
+  /**
    * Set device coordinates (companion only)
    */
   async setCoords(lat: number, lon: number): Promise<boolean> {
