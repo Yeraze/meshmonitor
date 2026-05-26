@@ -4,7 +4,7 @@ import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { formatRelativeTime } from '../../utils/datetime';
 import { useSettings } from '../../contexts/SettingsContext';
 import { MeshCoreRemoteConsole } from './MeshCoreRemoteConsole';
-import type { MeshCoreActions } from './hooks/useMeshCore';
+import type { MeshCoreActions, TracePathResult } from './hooks/useMeshCore';
 import '../NodeDetailsBlock.css';
 
 const DEVICE_TYPE_KEYS: Record<number, string> = {
@@ -29,6 +29,9 @@ interface MeshCoreContactDetailPanelProps {
    *  ("a3,7f,02"). Unset OR `advancedPathEditEnabled=false` hides the
    *  Edit Path… button. */
   onSetOutPath?: (publicKey: string, outPath: string) => Promise<boolean>;
+  /** Send a trace-path diagnostic along the contact's cached path and
+   *  return per-hop SNR data. Unset hides the Trace Path button. */
+  onTracePath?: (publicKey: string) => Promise<TracePathResult | null>;
   /** Whether the current user may invoke write actions on this source's
    *  `nodes` resource. Required to gate the Reset Path / Share / Edit
    *  buttons. */
@@ -69,6 +72,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   onResetPath,
   onShareContact,
   onSetOutPath,
+  onTracePath,
   canWriteNodes = false,
   isCompanion = true,
   advancedPathEditEnabled = false,
@@ -85,6 +89,11 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   const [shareSuccess, setShareSuccess] = useState(false);
+
+  // Trace-path state
+  const [tracing, setTracing] = useState(false);
+  const [traceResult, setTraceResult] = useState<TracePathResult | null>(null);
+  const [traceError, setTraceError] = useState<string | null>(null);
 
   // Path-editor modal state. Only mounted when advancedPathEditEnabled.
   const [editorOpen, setEditorOpen] = useState(false);
@@ -107,6 +116,9 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     setEditorOpen(false);
     setEditorError(null);
     setEditorSaving(false);
+    setTracing(false);
+    setTraceResult(null);
+    setTraceError(null);
   }, [publicKey]);
 
   const name = contact?.advName || contact?.name || `${publicKey.substring(0, 8)}…`;
@@ -127,6 +139,27 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     !!onShareContact && canWriteNodes && isCompanion;
   const canShowEditButton =
     !!onSetOutPath && canWriteNodes && isCompanion && advancedPathEditEnabled;
+  const canShowTraceButton =
+    !!onTracePath && canWriteNodes && isCompanion && pathKnown && pathLen! > 0;
+
+  const handleTracePath = async () => {
+    if (!onTracePath || tracing) return;
+    setTracing(true);
+    setTraceError(null);
+    setTraceResult(null);
+    try {
+      const result = await onTracePath(publicKey);
+      if (result) {
+        setTraceResult(result);
+      } else {
+        setTraceError(
+          t('meshcore.contact_details.trace_path_error', 'Trace path failed or timed out.'),
+        );
+      }
+    } finally {
+      setTracing(false);
+    }
+  };
 
   const handleResetPath = async () => {
     if (!onResetPath || resetting) return;
@@ -311,8 +344,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               available because the device retransmits the stored advert
               regardless of route state. Rendered in one card so the
               actions stay grouped at the bottom of the grid. */}
-          {(canShowResetButton || canShowShareButton || canShowEditButton) &&
-            (canShowShareButton || canShowEditButton || pathKnown) && (
+          {(canShowResetButton || canShowShareButton || canShowEditButton || canShowTraceButton) &&
+            (canShowShareButton || canShowEditButton || canShowTraceButton || pathKnown) && (
             <div className="node-detail-card node-detail-card-2col">
               <div className="node-detail-label">
                 {t('meshcore.contact_details.actions_label', 'Actions')}
@@ -354,6 +387,19 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     {t('meshcore.contact_details.edit_path_button', 'Edit Path…')}
                   </button>
                 )}
+                {canShowTraceButton && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleTracePath}
+                    disabled={tracing}
+                    aria-label={t('meshcore.contact_details.trace_path_button', 'Trace Path')}
+                  >
+                    {tracing
+                      ? t('meshcore.contact_details.trace_path_running', 'Tracing…')
+                      : t('meshcore.contact_details.trace_path_button', 'Trace Path')}
+                  </button>
+                )}
                 {resetError && (
                   <span style={{ color: 'var(--ctp-red)' }} role="alert">{resetError}</span>
                 )}
@@ -365,6 +411,59 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     {t('meshcore.contact_details.share_contact_success', 'Advert broadcast.')}
                   </span>
                 )}
+                {traceError && (
+                  <span style={{ color: 'var(--ctp-red)' }} role="alert">{traceError}</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Trace Path results */}
+          {traceResult && (
+            <div className="node-detail-card node-detail-card-2col">
+              <div className="node-detail-label">
+                {t('meshcore.contact_details.trace_path_results', 'Trace Path Results')}
+              </div>
+              <div className="node-detail-value">
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono, monospace)', fontSize: '0.9em' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--ctp-surface1, #45475a)' }}>
+                      <th style={{ textAlign: 'left', padding: '0.25rem 0.5rem' }}>
+                        {t('meshcore.contact_details.trace_hop', 'Hop')}
+                      </th>
+                      <th style={{ textAlign: 'left', padding: '0.25rem 0.5rem' }}>
+                        {t('meshcore.contact_details.trace_hash', 'Hash')}
+                      </th>
+                      <th style={{ textAlign: 'right', padding: '0.25rem 0.5rem' }}>
+                        {t('meshcore.contact_details.trace_snr', 'SNR')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {traceResult.hops.map((hop) => {
+                      const pathHashes = outPath?.split(',') ?? [];
+                      return (
+                        <tr key={hop.index}>
+                          <td style={{ padding: '0.25rem 0.5rem' }}>{hop.index + 1}</td>
+                          <td style={{ padding: '0.25rem 0.5rem' }}>{pathHashes[hop.index] ?? '??'}</td>
+                          <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right' }}
+                              className={getSignalClass(hop.snr)}>
+                            {hop.snr.toFixed(2)} dB
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    <tr style={{ borderTop: '1px solid var(--ctp-surface1, #45475a)' }}>
+                      <td style={{ padding: '0.25rem 0.5rem' }} colSpan={2}>
+                        {t('meshcore.contact_details.trace_destination', 'Destination')}
+                      </td>
+                      <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right' }}
+                          className={getSignalClass(traceResult.lastSnr)}>
+                        {traceResult.lastSnr.toFixed(2)} dB
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           )}

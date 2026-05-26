@@ -425,6 +425,22 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { ok: true };
       }
 
+      case 'trace_path': {
+        const pathBytes = params.path as Uint8Array | number[] | undefined;
+        if (!pathBytes || (Array.isArray(pathBytes) ? pathBytes.length : pathBytes.byteLength) === 0) {
+          throw new Error('trace_path requires a non-empty path');
+        }
+        const path = pathBytes instanceof Uint8Array ? pathBytes : Uint8Array.from(pathBytes);
+        const result = await c.tracePath(path, params.extra_timeout as number | undefined);
+        return {
+          ok: true,
+          pathLen: result.pathLen,
+          flags: result.flags,
+          pathSnrs: Array.from(result.pathSnrs as Uint8Array),
+          lastSnr: result.lastSnr,
+        };
+      }
+
       case 'share_contact': {
         // Broadcasts the contact's saved advert as a zero-hop frame so
         // nearby nodes can pick it up. Wraps the firmware's

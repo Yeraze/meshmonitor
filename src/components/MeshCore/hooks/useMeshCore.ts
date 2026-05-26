@@ -30,6 +30,11 @@ import { MeshCoreContact, mapContactsToNodes } from '../../../utils/meshcoreHelp
 
 export type TelemetryMode = 'always' | 'device' | 'never';
 
+export interface TracePathResult {
+  hops: { index: number; snr: number }[];
+  lastSnr: number;
+}
+
 export interface MeshCoreNode {
   publicKey: string;
   name: string;
@@ -99,6 +104,9 @@ export interface MeshCoreActions {
    *  `meshcoreAdvancedPathEdit` toggle, so a 403 is expected when the
    *  setting is off. */
   setContactOutPath: (publicKey: string, outPath: string) => Promise<boolean>;
+  /** Send a trace-path diagnostic along the contact's cached forwarding
+   *  route and return per-hop SNR data. Resolves `null` on failure. */
+  traceContactPath: (publicKey: string) => Promise<TracePathResult | null>;
   sendAdvert: () => Promise<void>;
   sendMessage: (text: string, toPublicKey?: string, channelIdx?: number) => Promise<boolean>;
   setDeviceName: (name: string) => Promise<boolean>;
@@ -720,6 +728,24 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const traceContactPath = useCallback(async (publicKey: string): Promise<TracePathResult | null> => {
+    try {
+      const response = await csrfFetch(
+        `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/trace-path`,
+        { method: 'POST' },
+      );
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Trace path failed');
+        return null;
+      }
+      return { hops: data.hops, lastSnr: data.lastSnr };
+    } catch (_err) {
+      setError('Trace path failed');
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const sendAdvert = useCallback(async () => {
     try {
       const response = await csrfFetch(`${mcPrefix}/advert`, { method: 'POST' });
@@ -892,6 +918,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       resetContactPath,
       shareContact,
       setContactOutPath,
+      traceContactPath,
       sendAdvert,
       sendMessage,
       setDeviceName,

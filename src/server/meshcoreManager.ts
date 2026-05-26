@@ -1385,6 +1385,55 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
+   * Trace the cached forwarding path to a contact, collecting per-hop SNR.
+   * The contact must have a known `outPath`; trace path sends a diagnostic
+   * packet along that exact route and each repeater appends its received
+   * SNR. Returns the per-hop SNR array plus the final-hop SNR, or `null`
+   * on failure (no path, timeout, not Companion).
+   */
+  async traceContactPath(publicKey: string): Promise<{
+    hops: { index: number; snr: number }[];
+    lastSnr: number;
+  } | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Trace-path requires Companion firmware');
+      return null;
+    }
+    if (!this.connected) {
+      return null;
+    }
+    const contact = this.contacts.get(publicKey);
+    if (!contact?.outPath || contact.pathLen == null || contact.pathLen <= 0) {
+      logger.warn(`[MeshCore] Trace-path: no known path for ${publicKey.substring(0, 16)}…`);
+      return null;
+    }
+    const pathBytes = Uint8Array.from(
+      contact.outPath.split(',').map((h) => parseInt(h, 16)),
+    );
+    try {
+      const response = await this.sendBridgeCommand('trace_path', {
+        path: pathBytes,
+      }, 60000);
+      if (!response.success) {
+        logger.warn(`[MeshCore] trace_path failed for ${publicKey}: ${response.error}`);
+        return null;
+      }
+      const d = response.data ?? {};
+      const snrs: number[] = d.pathSnrs ?? [];
+      const hops = snrs.map((raw: number, i: number) => ({
+        index: i,
+        snr: raw / 4,
+      }));
+      const lastSnr: number = d.lastSnr ?? 0;
+      logger.info(`[MeshCore] Trace path to ${publicKey.substring(0, 16)}…: ${hops.length} hops, lastSnr=${lastSnr}`);
+      return { hops, lastSnr };
+    } catch (error) {
+      logger.error('[MeshCore] traceContactPath threw:', error);
+      return null;
+    }
+  }
+
+  /**
    * Broadcast the device's saved advert for a contact as a zero-hop frame
    * so nearby nodes can add this contact themselves. Wraps the firmware's
    * CMD_SHARE_CONTACT; the device only retransmits — no local state is
