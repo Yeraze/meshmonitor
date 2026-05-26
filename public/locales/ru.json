@@ -2712,7 +2712,7 @@
     "theme_gallery.category_high_contrast": "Высокая контрастность",
     "device_config.button_gpio": "Кнопка GPIO",
     "telemetry.show_solar": "Показать солнечные накладки",
-    "settings.solar_fetch_description": "",
+    "settings.solar_fetch_description": "Ручной запуск солнечной оценки из Прогноза. Солнечная. Оценки автоматически загружаются каждый час в :05 в течение часа.",
     "admin_commands.mqtt_config_loaded": "Настройка MQTT успешно загружена",
     "automation.auto_traceroute.target_selection": "Выбор цели",
     "cannedmsg_config.enabled": "Включить шаблонные сообщения",
