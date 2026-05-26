@@ -2138,6 +2138,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       traceroutes={traceroutes}
                       hasPermission={hasPermission}
                       onDMNode={handlePopupDMClick(node)}
+                      onCopyNodeInfo={() => setCopyNodeInfoTarget(node)}
                       onTraceroute={onTraceroute ? () => onTraceroute(node.user!.id) : undefined}
                       connectionStatus={connectionStatus}
                       tracerouteLoading={tracerouteLoading}

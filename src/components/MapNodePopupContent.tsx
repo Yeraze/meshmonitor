@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { DeviceInfo } from '../types/device';
 import type { DbTraceroute } from '../services/database';
 import type { ResourceType } from '../types/permission';
-import { getHardwareModelName, getRoleName, parseNodeId, TRACEROUTE_DISPLAY_HOURS } from '../utils/nodeHelpers';
+import { getHardwareModelName, getRoleName, parseNodeId, isNodeComplete, TRACEROUTE_DISPLAY_HOURS } from '../utils/nodeHelpers';
 import { formatDateTime, formatRelativeTime } from '../utils/datetime';
 import { formatTracerouteRoute } from '../utils/traceroute';
 
@@ -19,6 +19,7 @@ interface MapNodePopupContentProps {
   traceroutes: DbTraceroute[];
   hasPermission: (resource: ResourceType, action: 'read' | 'write') => boolean;
   onDMNode: () => void;
+  onCopyNodeInfo?: () => void;
   onTraceroute?: () => void;
   connectionStatus?: string;
   tracerouteLoading?: string | null;
@@ -35,6 +36,7 @@ export const MapNodePopupContent: React.FC<MapNodePopupContentProps> = ({
   traceroutes,
   hasPermission,
   onDMNode,
+  onCopyNodeInfo,
   onTraceroute,
   connectionStatus,
   tracerouteLoading,
@@ -162,6 +164,11 @@ export const MapNodePopupContent: React.FC<MapNodePopupContentProps> = ({
           {node.user?.id && hasPermission('messages', 'read') && (
             <button className="node-popup-btn" onClick={onDMNode}>
               🔍 More Details
+            </button>
+          )}
+          {!isNodeComplete(node) && onCopyNodeInfo && hasPermission('nodes', 'write') && (
+            <button className="node-popup-btn" onClick={onCopyNodeInfo}>
+              📋 {t('nodes.copy_nodeinfo_title')}
             </button>
           )}
         </div>
