@@ -324,7 +324,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
       const bytes = await onExportContact(publicKey);
       if (bytes) {
         const hex = bytes.map(b => b.toString(16).padStart(2, '0')).join('');
-        await navigator.clipboard.writeText(hex);
+        await navigator.clipboard.writeText(`meshcore://${hex}`);
         setExportSuccess(true);
         window.setTimeout(() => setExportSuccess(false), 2200);
       }

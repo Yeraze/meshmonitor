@@ -103,7 +103,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
 
   const handleImport = useCallback(async () => {
     if (!onImportContact || importing) return;
-    const hex = importHex.trim().replace(/\s+/g, '');
+    const hex = importHex.trim().replace(/^meshcore:\/\//i, '').replace(/\s+/g, '');
     if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length < 2 || hex.length % 2 !== 0) {
       setImportError(t('meshcore.import_contact.invalid_hex', 'Invalid hex — paste the full exported contact blob.'));
       return;
@@ -245,7 +245,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             <p style={{ marginBottom: '0.75rem' }}>
               {t(
                 'meshcore.import_contact.dialog_hint',
-                'Paste the hex-encoded signed advert blob exported from another node.',
+                'Paste the hex-encoded signed advert blob or a meshcore:// URL exported from another node.',
               )}
             </p>
             <textarea
