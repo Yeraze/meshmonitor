@@ -145,14 +145,27 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     })();
   }, [selectedRoom, loggedInRooms, storedCreds, actions]);
 
+  const loadSyncConfig = useCallback(async (pubkey: string) => {
+    const config = await actions.getRoomSyncConfig(pubkey);
+    if (config) {
+      setSyncEnabled(config.enabled);
+      setSyncInterval(config.intervalMinutes);
+    } else {
+      setSyncEnabled(false);
+      setSyncInterval(60);
+    }
+    setSyncConfigDirty(false);
+  }, [actions]);
+
   const handleSelectRoom = useCallback((pubkey: string) => {
     setSelectedRoom(pubkey);
     setLoginError(null);
     setLoginPassword('');
     setRememberPassword(false);
     setSyncConfigDirty(false);
+    loadSyncConfig(pubkey);
     if (isMobileViewport()) setMobileShowContent(true);
-  }, []);
+  }, [loadSyncConfig]);
 
   const handleLogin = useCallback(async () => {
     if (!selectedRoom) return;

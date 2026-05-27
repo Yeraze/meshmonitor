@@ -1391,6 +1391,28 @@ router.post('/rooms/post', messageLimiter, requireAuth(), requirePermission('mes
 });
 
 /**
+ * GET /api/meshcore/rooms/sync-config?publicKey=...
+ * Retrieve the current room sync configuration for a room server.
+ */
+router.get('/rooms/sync-config', requireAuth(), requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const publicKey = req.query.publicKey as string | undefined;
+    if (typeof publicKey !== 'string' || !isValidPublicKey(publicKey)) {
+      return res.status(400).json({ success: false, error: 'Invalid public key format' });
+    }
+    const sourceId = req.params.id!;
+    const config = await databaseService.meshcore.getRoomSyncConfig(sourceId, publicKey);
+    if (!config) {
+      return res.json({ success: true, enabled: false, intervalMinutes: 60 });
+    }
+    res.json({ success: true, enabled: config.enabled, intervalMinutes: config.intervalMinutes });
+  } catch (error) {
+    logger.error('[API] Error getting room sync config:', error);
+    res.status(500).json({ success: false, error: 'Failed to get room sync config' });
+  }
+});
+
+/**
  * PATCH /api/meshcore/rooms/sync-config
  * Configure periodic room sync for a room server.
  * Body: { publicKey: string, enabled: boolean, intervalMinutes?: number }

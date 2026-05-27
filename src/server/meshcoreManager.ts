@@ -2010,11 +2010,19 @@ class MeshCoreManager extends EventEmitter {
    * tracks state in roomLoggedInNodes so the UI can show login status.
    */
   async loginToRoom(publicKey: string, password: string): Promise<boolean> {
-    const ok = await this.loginToNode(publicKey, password);
-    if (ok) {
-      this.roomLoggedInNodes.set(publicKey, { loggedIn: true, loginTime: Date.now() });
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const ok = await this.loginToNode(publicKey, password);
+      if (ok) {
+        this.roomLoggedInNodes.set(publicKey, { loggedIn: true, loginTime: Date.now() });
+        return true;
+      }
+      if (attempt < maxAttempts) {
+        logger.warn(`[MeshCore] Room login attempt ${attempt}/${maxAttempts} failed for ${publicKey.substring(0, 8)}…, retrying`);
+        await new Promise(r => setTimeout(r, 2000));
+      }
     }
-    return ok;
+    return false;
   }
 
   isRoomLoggedIn(publicKey: string): boolean {
