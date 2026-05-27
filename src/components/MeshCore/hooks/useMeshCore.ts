@@ -63,6 +63,8 @@ export interface MeshCoreNode {
   ver?: string;
 }
 
+export type MessageDeliveryStatus = 'sending' | 'sent' | 'delivered' | 'failed';
+
 export interface MeshCoreMessage {
   id: string;
   fromPublicKey: string;
@@ -72,6 +74,10 @@ export interface MeshCoreMessage {
   timestamp: number;
   /** 'text' (default, DMs + channel) or 'room_post' (room server posts). */
   messageType?: string;
+  expectedAckCrc?: number;
+  estTimeout?: number;
+  deliveryStatus?: MessageDeliveryStatus;
+  roundTripMs?: number;
 }
 
 export interface ConnectionStatus {
@@ -397,10 +403,31 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     if (socket.connected) joinRoom();
     socket.on('connect', joinRoom);
 
+    const ackTimers = new Map<number, NodeJS.Timeout>();
+
+    const startAckTimeout = (ackCrc: number, timeoutMs: number) => {
+      if (ackTimers.has(ackCrc)) return;
+      const timer = setTimeout(() => {
+        ackTimers.delete(ackCrc);
+        setMessages(prev => prev.map(m =>
+          m.expectedAckCrc === ackCrc && m.deliveryStatus === 'sent'
+            ? { ...m, deliveryStatus: 'failed' as const }
+            : m,
+        ));
+      }, timeoutMs + 5000);
+      ackTimers.set(ackCrc, timer);
+    };
+
     const onMessage = (msg: MeshCoreMessageEvent) => {
       setMessages(prev => {
         if (prev.some(m => m.id === msg.id)) return prev;
-        return [...prev, msg];
+        const enriched: MeshCoreMessage = msg.expectedAckCrc
+          ? { ...msg, deliveryStatus: 'sent' as const }
+          : msg;
+        if (enriched.expectedAckCrc && enriched.estTimeout) {
+          startAckTimeout(enriched.expectedAckCrc, enriched.estTimeout);
+        }
+        return [...prev, enriched];
       });
       if (msg.timestamp > seqCursorRef.current) seqCursorRef.current = msg.timestamp;
     };
@@ -471,18 +498,36 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       })();
     };
 
+    const onSendConfirmed = (evt: { sourceId: string; ackCode: number; roundTripMs: number }) => {
+      if (evt.sourceId !== sourceId) return;
+      const timer = ackTimers.get(evt.ackCode);
+      if (timer) {
+        clearTimeout(timer);
+        ackTimers.delete(evt.ackCode);
+      }
+      setMessages(prev => prev.map(m =>
+        m.expectedAckCrc === evt.ackCode
+          ? { ...m, deliveryStatus: 'delivered' as const, roundTripMs: evt.roundTripMs }
+          : m,
+      ));
+    };
+
     socket.on('meshcore:message', onMessage);
     socket.on('meshcore:contact:updated', onContactUpdated);
     socket.on('meshcore:status:updated', onStatusUpdated);
     socket.on('meshcore:local-node:updated', onLocalNodeUpdated);
+    socket.on('meshcore:send-confirmed', onSendConfirmed);
     socket.io.on('reconnect', onReconnect);
 
     return () => {
+      for (const timer of ackTimers.values()) clearTimeout(timer);
+      ackTimers.clear();
       socket.off('connect', joinRoom);
       socket.off('meshcore:message', onMessage);
       socket.off('meshcore:contact:updated', onContactUpdated);
       socket.off('meshcore:status:updated', onStatusUpdated);
       socket.off('meshcore:local-node:updated', onLocalNodeUpdated);
+      socket.off('meshcore:send-confirmed', onSendConfirmed);
       socket.io.off('reconnect', onReconnect);
     };
   }, [enabled, sourceId, socket, mcPrefix, csrfFetch, setMeshCoreNodes, recomputeNodes]);

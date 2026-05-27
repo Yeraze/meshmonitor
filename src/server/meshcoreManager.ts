@@ -179,6 +179,12 @@ export interface MeshCoreMessage {
   sourceId?: string;
   /** 'text' (default, DMs + channel) or 'room_post' (room server posts). */
   messageType?: string;
+  /** 4-byte CRC from RESP_CODE_SENT — correlates with PUSH_CODE_SEND_CONFIRMED
+   *  to confirm delivery. Only set on outgoing DMs (not channels). */
+  expectedAckCrc?: number;
+  /** Estimated timeout in ms before the message should be considered failed.
+   *  Only set on outgoing DMs. */
+  estTimeout?: number;
 }
 
 export interface MeshCoreStatus {
@@ -1364,19 +1370,24 @@ class MeshCoreManager extends EventEmitter {
       });
 
       if (response.success) {
-        logger.info(`[MeshCore] Message sent: ${text.substring(0, 50)}...`);
+        const ackCrc: number | null = response.data?.expectedAckCrc ?? null;
+        const estTimeout: number | null = response.data?.estTimeout ?? null;
+        logger.info(`[MeshCore] Message sent: ${text.substring(0, 50)}... (ackCrc=${ackCrc}, estTimeout=${estTimeout})`);
 
         const sentToPublicKey = isChannelSend
           ? MeshCoreManager.channelPublicKey(channelIdx!)
           : (toPublicKey || undefined);
 
+        const msgId = `sent-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
         const sentMessage: MeshCoreMessage = {
-          id: `sent-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+          id: msgId,
           fromPublicKey: this.localNode?.publicKey || 'local',
           toPublicKey: sentToPublicKey,
           text: text,
           timestamp: Date.now(),
           sourceId: this.sourceId,
+          expectedAckCrc: ackCrc ?? undefined,
+          estTimeout: estTimeout ?? undefined,
         };
         this.addMessage(sentMessage);
         this.emit('message', sentMessage);
