@@ -352,6 +352,30 @@ export class MeshCoreRepository extends BaseRepository {
 
   // ---- Room sync config ----
 
+  async getRoomSyncConfig(
+    sourceId: string,
+    publicKey: string,
+  ): Promise<{ enabled: boolean; intervalMinutes: number } | null> {
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select({
+        roomSyncEnabled: meshcoreNodes.roomSyncEnabled,
+        roomSyncIntervalMinutes: meshcoreNodes.roomSyncIntervalMinutes,
+      })
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+    const rows = this.normalizeBigInts(result) as unknown as Array<{
+      roomSyncEnabled: boolean | number | null;
+      roomSyncIntervalMinutes: number | null;
+    }>;
+    if (rows.length === 0) return null;
+    const row = rows[0];
+    return {
+      enabled: row.roomSyncEnabled === true || row.roomSyncEnabled === 1,
+      intervalMinutes: row.roomSyncIntervalMinutes ?? 60,
+    };
+  }
+
   async setRoomSyncConfig(
     sourceId: string,
     publicKey: string,

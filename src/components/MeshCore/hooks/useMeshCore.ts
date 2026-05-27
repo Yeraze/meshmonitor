@@ -228,6 +228,8 @@ export interface MeshCoreActions {
   getRoomCredentials: () => Promise<{ canRemember: boolean; stored: Array<{ publicKey: string }> } | null>;
   /** Configure periodic room sync. */
   setRoomSyncConfig: (publicKey: string, enabled: boolean, intervalMinutes?: number) => Promise<boolean>;
+  /** Get current room sync config. */
+  getRoomSyncConfig: (publicKey: string) => Promise<{ enabled: boolean; intervalMinutes: number } | null>;
 }
 
 /**
@@ -1237,6 +1239,17 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const getRoomSyncConfig = useCallback(async (publicKey: string): Promise<{ enabled: boolean; intervalMinutes: number } | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/rooms/sync-config?publicKey=${encodeURIComponent(publicKey)}`);
+      const data = await response.json();
+      if (data.success) return { enabled: data.enabled, intervalMinutes: data.intervalMinutes };
+      return null;
+    } catch (_err) {
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const setRoomSyncConfig = useCallback(async (publicKey: string, enabled: boolean, intervalMinutes?: number): Promise<boolean> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/rooms/sync-config`, {
@@ -1298,6 +1311,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       loginRoomWithSaved,
       sendRoomPost,
       getRoomCredentials,
+      getRoomSyncConfig,
       setRoomSyncConfig,
     },
   };
