@@ -23,6 +23,8 @@ interface MeshCoreDirectMessagesViewProps {
    * contact-detail panel.
    */
   sourceId?: string;
+  /** When set, auto-selects this contact on mount or when the value changes. */
+  initialSelectedContact?: string | null;
 }
 
 /** True when the publicKey is a real 64-char hex (i.e. not a synthetic / prefix key). */
@@ -44,6 +46,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   actions,
   baseUrl,
   sourceId,
+  initialSelectedContact,
 }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
@@ -51,6 +54,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   const canWriteNodes = hasPermission('nodes', 'write');
   const canRemoteAdmin = hasPermission('remote_admin', 'write');
   const [selected, setSelected] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<DmSortField>('lastMessage');
   const [sortDirection, setSortDirection] = useState<DmSortDirection>('desc');
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
@@ -63,6 +67,13 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  useEffect(() => {
+    if (initialSelectedContact) {
+      setSelected(initialSelectedContact);
+      if (isMobileViewport()) setMobileShowContent(true);
+    }
+  }, [initialSelectedContact]);
 
   const selfKey = status?.localNode?.publicKey;
   const connected = status?.connected ?? false;
@@ -188,6 +199,16 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     });
   }, [messages, contacts, selfKey, canonicalize, contactsByKey, sortField, sortDirection]);
 
+  const filteredPeers = useMemo(() => {
+    if (!searchQuery.trim()) return dmPeers;
+    const q = searchQuery.toLowerCase();
+    return dmPeers.filter(key => {
+      const c = contactsByKey.get(key);
+      const name = c?.advName || c?.name || '';
+      return name.toLowerCase().includes(q) || key.toLowerCase().includes(q);
+    });
+  }, [dmPeers, searchQuery, contactsByKey]);
+
   const filtered = useMemo(() => {
     if (!selected) return [];
     return messages.filter(m => {
@@ -263,12 +284,34 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
           )}
         </div>
         {!isCollapsed && (
+          <>
+          <div className="meshcore-search-bar">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder={t('meshcore.search_contacts', 'Search contacts…')}
+              className="meshcore-search-input"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="meshcore-search-clear"
+                onClick={() => setSearchQuery('')}
+                aria-label={t('common.clear', 'Clear')}
+              >
+                ×
+              </button>
+            )}
+          </div>
           <div className="meshcore-list-pane-body">
-            {dmPeers.length === 0 ? (
+            {filteredPeers.length === 0 ? (
               <div className="meshcore-empty-state">
-                {t('meshcore.no_contacts', 'No contacts yet')}
+                {searchQuery
+                  ? t('meshcore.no_search_results', 'No contacts match your search')
+                  : t('meshcore.no_contacts', 'No contacts yet')}
               </div>
-            ) : dmPeers.map(key => {
+            ) : filteredPeers.map(key => {
               const c = contactsByKey.get(key);
               const name = c?.advName || c?.name || `${key.substring(0, 8)}…`;
               return (
@@ -285,6 +328,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               );
             })}
           </div>
+          </>
         )}
       </div>
       <div className="meshcore-main-pane meshcore-main-pane--dm">
@@ -311,6 +355,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               disabled={!connected || !canSend}
               emptyText={t('meshcore.no_messages', 'No messages with this contact yet')}
               onSend={text => actions.sendMessage(text, selected)}
+              conversationKey={`dm-${selected}`}
             />
             <div className="meshcore-detail-pane">
               <MeshCoreContactDetailPanel

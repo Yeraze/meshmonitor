@@ -30,6 +30,7 @@ interface MeshCoreRoomsViewProps {
   actions: MeshCoreActions;
   baseUrl: string;
   sourceId: string;
+  onNodeNameClick?: (publicKey: string) => void;
 }
 
 function buildRoomFilter(roomPubkey: string): (m: MeshCoreMessage) => boolean {
@@ -52,6 +53,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   status,
   actions,
   sourceId: _sourceId,
+  onNodeNameClick,
 }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
@@ -357,6 +359,8 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               disabled={!connected || !canSend}
               emptyText={t('meshcore.rooms.no_messages', 'No posts in this room yet')}
               onSend={handleSend}
+              onNodeNameClick={onNodeNameClick}
+              conversationKey={`room-${selectedRoom}`}
             />
           </>
         )}
