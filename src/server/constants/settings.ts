@@ -151,6 +151,12 @@ export const VALID_SETTINGS_KEYS = [
   // silently drop direct sends, so this is gated behind an explicit
   // toggle (off by default).
   'meshcoreAdvancedPathEdit',
+  // MeshCore auto-pathfinding
+  'meshcoreAutoPathfindingEnabled',
+  'meshcoreAutoPathfindingPathDiscoveryEnabled',
+  'meshcoreAutoPathfindingNeighborsEnabled',
+  'meshcoreAutoPathfindingIntervalMinutes',
+  'meshcoreAutoPathfindingRepeatHours',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];
@@ -236,6 +242,12 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'autoWelcomeMessage',
   'autoWelcomeTarget',
   'autoWelcomeWaitForName',
+  // MeshCore auto-pathfinding
+  'meshcoreAutoPathfindingEnabled',
+  'meshcoreAutoPathfindingPathDiscoveryEnabled',
+  'meshcoreAutoPathfindingNeighborsEnabled',
+  'meshcoreAutoPathfindingIntervalMinutes',
+  'meshcoreAutoPathfindingRepeatHours',
   // Misc per-source
   'externalUrl',
   'geofenceTriggers',
