@@ -16,6 +16,35 @@ function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString();
 }
 
+const MENTION_RE = /@\[([^\]]+)\]/g;
+
+function renderMessageText(text: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  MENTION_RE.lastIndex = 0;
+  while ((match = MENTION_RE.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.substring(lastIndex, match.index));
+    }
+    const name = match[1];
+    parts.push(
+      <span
+        key={match.index}
+        className="mc-mention"
+        title={name}
+      >
+        @{name}
+      </span>,
+    );
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex));
+  }
+  return parts.length > 0 ? parts : text;
+}
+
 export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   messages,
   contacts,
@@ -150,9 +179,30 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                 <span className="mc-message-from" title={outgoing ? undefined : m.fromPublicKey}>
                   {fromLabel}
                 </span>
-                <span className="mc-message-time">{formatTime(m.timestamp)}</span>
+                <span className="mc-message-time">
+                  {formatTime(m.timestamp)}
+                  {outgoing && m.deliveryStatus && (
+                    <span
+                      className={`mc-delivery-status mc-delivery-${m.deliveryStatus}`}
+                      title={
+                        m.deliveryStatus === 'delivered'
+                          ? `Delivered (${m.roundTripMs}ms)`
+                          : m.deliveryStatus === 'failed'
+                            ? 'Delivery failed'
+                            : m.deliveryStatus === 'sent'
+                              ? 'Sent, awaiting confirmation'
+                              : 'Sending…'
+                      }
+                    >
+                      {m.deliveryStatus === 'delivered' ? ' ✓✓'
+                        : m.deliveryStatus === 'failed' ? ' ✗'
+                        : m.deliveryStatus === 'sent' ? ' ✓'
+                        : ' …'}
+                    </span>
+                  )}
+                </span>
               </div>
-              <div className="mc-message-text">{m.text}</div>
+              <div className="mc-message-text">{renderMessageText(m.text)}</div>
             </div>
           );
         })}

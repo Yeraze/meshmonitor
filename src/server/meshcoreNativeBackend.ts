@@ -596,8 +596,12 @@ export class MeshCoreNativeBackend extends EventEmitter {
           if (!fullKey) {
             throw new Error(`Contact not found for public key ${to.substring(0, 12)}…`);
           }
-          await c.sendTextMessage(fullKey, text);
-          return { sent: true };
+          const sentResp = await c.sendTextMessage(fullKey, text);
+          return {
+            sent: true,
+            expectedAckCrc: sentResp?.expectedAckCrc ?? null,
+            estTimeout: sentResp?.estTimeout ?? null,
+          };
         }
         // No recipient → broadcast on a channel. `channel_idx` is optional;
         // historical callers omit it and get channel 0, which the firmware's
