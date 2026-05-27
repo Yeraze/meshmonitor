@@ -25,6 +25,9 @@ import { MeshCoreTelemetryView } from './MeshCoreTelemetryView';
 import { MeshCoreConfigurationView } from './MeshCoreConfigurationView';
 import { MeshCoreSettingsView } from './MeshCoreSettingsView';
 import { MeshCoreRoomsView } from './MeshCoreRoomsView';
+import { MeshCoreAutomationsView } from './MeshCoreAutomationsView';
+import { SaveBarProvider } from '../../contexts/SaveBarContext';
+import { SaveBar } from '../SaveBar';
 import './MeshCoreTab.css';
 import './MeshCorePage.css';
 
@@ -143,6 +146,15 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               baseUrl={baseUrl}
               sourceId={sourceId}
             />
+          )}
+          {view === 'automations' && (
+            <SaveBarProvider>
+              <MeshCoreAutomationsView
+                baseUrl={baseUrl}
+                sourceId={sourceId}
+              />
+              <SaveBar />
+            </SaveBarProvider>
           )}
           {view === 'settings' && (
             <MeshCoreSettingsView

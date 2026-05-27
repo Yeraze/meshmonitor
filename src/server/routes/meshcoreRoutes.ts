@@ -2138,4 +2138,98 @@ router.patch(
   },
 );
 
+// ============ Auto-Pathfinding Automation ============
+
+router.get(
+  '/automation/pathfinding',
+  optionalAuth(),
+  requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const mgr = managerFor(req);
+      const sourceId = (req.params as { id?: string }).id!;
+      const status = mgr.getAutoPathfindingStatus();
+
+      const enabled = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreAutoPathfindingEnabled');
+      const pathDiscoveryEnabled = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreAutoPathfindingPathDiscoveryEnabled');
+      const neighborsEnabled = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreAutoPathfindingNeighborsEnabled');
+      const intervalMinutes = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreAutoPathfindingIntervalMinutes');
+      const repeatHours = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreAutoPathfindingRepeatHours');
+
+      res.json({
+        success: true,
+        data: {
+          enabled: enabled === 'true',
+          pathDiscoveryEnabled: pathDiscoveryEnabled === 'true',
+          neighborsEnabled: neighborsEnabled === 'true',
+          intervalMinutes: parseInt(intervalMinutes || '5', 10) || 5,
+          repeatHours: parseInt(repeatHours || '24', 10) || 24,
+          schedulerRunning: status.enabled,
+          lastRunAt: status.lastRunAt || null,
+        },
+      });
+    } catch (error) {
+      logger.error('[API] Error reading auto-pathfinding settings:', error);
+      res.status(500).json({ success: false, error: 'Failed to read auto-pathfinding settings' });
+    }
+  },
+);
+
+router.post(
+  '/automation/pathfinding',
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const mgr = managerFor(req);
+      const sourceId = (req.params as { id?: string }).id!;
+      const {
+        enabled,
+        pathDiscoveryEnabled,
+        neighborsEnabled,
+        intervalMinutes,
+        repeatHours,
+      } = req.body as {
+        enabled?: boolean;
+        pathDiscoveryEnabled?: boolean;
+        neighborsEnabled?: boolean;
+        intervalMinutes?: number;
+        repeatHours?: number;
+      };
+
+      if (enabled !== undefined) {
+        await databaseService.settings.setSourceSetting(sourceId, 'meshcoreAutoPathfindingEnabled', String(enabled));
+      }
+      if (pathDiscoveryEnabled !== undefined) {
+        await databaseService.settings.setSourceSetting(sourceId, 'meshcoreAutoPathfindingPathDiscoveryEnabled', String(pathDiscoveryEnabled));
+      }
+      if (neighborsEnabled !== undefined) {
+        await databaseService.settings.setSourceSetting(sourceId, 'meshcoreAutoPathfindingNeighborsEnabled', String(neighborsEnabled));
+      }
+      if (intervalMinutes !== undefined) {
+        const clamped = Math.max(3, Math.min(60, intervalMinutes));
+        await databaseService.settings.setSourceSetting(sourceId, 'meshcoreAutoPathfindingIntervalMinutes', String(clamped));
+      }
+      if (repeatHours !== undefined) {
+        const clamped = Math.max(1, Math.min(168, repeatHours));
+        await databaseService.settings.setSourceSetting(sourceId, 'meshcoreAutoPathfindingRepeatHours', String(clamped));
+      }
+
+      await mgr.startAutoPathfinding();
+
+      const status = mgr.getAutoPathfindingStatus();
+      res.json({
+        success: true,
+        data: {
+          schedulerRunning: status.enabled,
+          lastRunAt: status.lastRunAt || null,
+        },
+      });
+    } catch (error) {
+      logger.error('[API] Error saving auto-pathfinding settings:', error);
+      res.status(500).json({ success: false, error: 'Failed to save auto-pathfinding settings' });
+    }
+  },
+);
+
 export default router;

@@ -2,7 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 
-export type MeshCoreView = 'nodes' | 'channels' | 'rooms' | 'dms' | 'telemetry' | 'info' | 'configuration' | 'settings';
+export type MeshCoreView = 'nodes' | 'channels' | 'rooms' | 'dms' | 'telemetry' | 'info' | 'configuration' | 'automations' | 'settings';
 
 interface MeshCoreSubToolbarProps {
   view: MeshCoreView;
@@ -28,6 +28,7 @@ const ITEMS: Item[] = [
   { id: 'telemetry', icon: '📊', labelKey: 'meshcore.nav.telemetry', fallback: 'Telemetry' },
   { id: 'info', icon: 'ℹ', labelKey: 'meshcore.nav.info', fallback: 'Node Info' },
   { id: 'configuration', icon: '📡', labelKey: 'meshcore.nav.configuration', fallback: 'Configuration' },
+  { id: 'automations', icon: '🤖', labelKey: 'meshcore.nav.automations', fallback: 'Automations' },
   { id: 'settings', icon: '⚙', labelKey: 'meshcore.nav.settings', fallback: 'Settings' },
 ];
 
@@ -41,11 +42,13 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
   const canReadConfig = hasPermission('configuration', 'read');
+  const canReadAutomation = hasPermission('automation', 'read');
 
   return (
     <aside className={`meshcore-sub-toolbar ${expanded ? 'expanded' : 'collapsed'}`}>
       {ITEMS.map(item => {
         if (item.id === 'configuration' && !canReadConfig) return null;
+        if (item.id === 'automations' && !canReadAutomation) return null;
         // Info is per-source only — it reads /api/sources/:id/meshcore/info.
         if (item.id === 'info' && !showInfo) return null;
         const label = t(item.labelKey, item.fallback);
