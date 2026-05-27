@@ -2096,10 +2096,15 @@ class MeshCoreManager extends EventEmitter {
   } | null> {
     const { parseMeshcoreNeighborsResponse } = await import('./utils/parseMeshcoreNeighbors.js');
 
+    if (publicKey && !/^[0-9a-f]{64}$/.test(publicKey.toLowerCase())) {
+      throw new Error('publicKey must be a 64-char hex string');
+    }
+
     let reply: string;
     if (publicKey) {
-      await this.ensureGuestLogin(publicKey);
-      const result = await this.sendCliCommand(publicKey, 'neighbors');
+      const normalizedKey = publicKey.toLowerCase();
+      await this.ensureGuestLogin(normalizedKey);
+      const result = await this.sendCliCommand(normalizedKey, 'neighbors');
       reply = result.reply;
     } else {
       const result = await this.sendLocalCliCommand('neighbors');
