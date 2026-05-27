@@ -34,6 +34,7 @@ interface MeshCoreMapProps {
   contacts: MeshCoreContact[];
   selectedPublicKey: string | null;
   localNodePosition?: { lat: number; lng: number } | null;
+  onNavigateToDm?: (publicKey: string) => void;
 }
 
 function makeIcon(name: string): L.DivIcon {
@@ -72,7 +73,7 @@ function makeIcon(name: string): L.DivIcon {
   });
 }
 
-export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition }) => {
+export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition, onNavigateToDm }) => {
   const { mapTileset, customTilesets } = useSettings();
   const tileset = getTilesetById(mapTileset, customTilesets);
   const [showPaths, setShowPaths] = useState(true);
@@ -158,6 +159,28 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
                   {typeof c.pathLen === 'number' && <><br />Path: {hopCountLabel(c.pathLen)}</>}
                   {c.outPath && <><br />Route: {c.outPath}</>}
                   {c.lastSeen && <><br />Last seen: {new Date(c.lastSeen).toLocaleString()}</>}
+                  {onNavigateToDm && (
+                    <>
+                      <br />
+                      <button
+                        onClick={() => onNavigateToDm(c.publicKey)}
+                        style={{
+                          marginTop: '0.5rem',
+                          padding: '0.3rem 0.7rem',
+                          background: MESHCORE_COLOR,
+                          color: '#1e1e2e',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontWeight: 'bold',
+                          fontSize: '0.85em',
+                          width: '100%',
+                        }}
+                      >
+                        More Details
+                      </button>
+                    </>
+                  )}
                 </div>
               </Popup>
             </Marker>

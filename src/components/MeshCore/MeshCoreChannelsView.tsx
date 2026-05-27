@@ -33,6 +33,7 @@ interface MeshCoreChannelsViewProps {
   actions: MeshCoreActions;
   baseUrl: string;
   sourceId: string;
+  onNodeNameClick?: (publicKey: string) => void;
 }
 
 interface ChannelRow {
@@ -73,6 +74,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   actions,
   baseUrl,
   sourceId,
+  onNodeNameClick,
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -218,6 +220,8 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           disabled={!connected || !canSend}
           emptyText={t('meshcore.no_messages', 'No messages on this channel yet')}
           onSend={text => actions.sendMessage(text, undefined, active.id)}
+          onNodeNameClick={onNodeNameClick}
+          conversationKey={`channel-${active.id}`}
         />
       </div>
     </div>

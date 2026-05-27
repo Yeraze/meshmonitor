@@ -19,6 +19,7 @@ interface MeshCoreNodesViewProps {
   nodes: MeshCoreNode[];
   contacts: MeshCoreContact[];
   onImportContact?: (advertBytes: number[]) => Promise<boolean>;
+  onNavigateToDm?: (publicKey: string) => void;
 }
 
 interface MergedRow {
@@ -95,12 +96,14 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   nodes,
   contacts,
   onImportContact,
+  onNavigateToDm,
 }) => {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('lastHeard');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [mobileShowContent, setMobileShowContent] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importHex, setImportHex] = useState('');
   const [importing, setImporting] = useState(false);
@@ -146,10 +149,16 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   }, []);
 
   const merged = useMemo(() => mergeNodesAndContacts(nodes, contacts), [nodes, contacts]);
-  const rows = useMemo(
+  const sorted = useMemo(
     () => sortRows(merged, sortField, sortDirection),
     [merged, sortField, sortDirection],
   );
+  const rows = useMemo(() => {
+    if (!searchQuery.trim()) return sorted;
+    const q = searchQuery.toLowerCase();
+    return sorted.filter(r =>
+      r.name.toLowerCase().includes(q) || r.publicKey.toLowerCase().includes(q));
+  }, [sorted, searchQuery]);
 
   const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';
   const selectedRow = rows.find(r => r.publicKey === selected);
@@ -196,10 +205,31 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             </button>
           </div>
         </div>
+        <div className="meshcore-search-bar">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder={t('meshcore.search_nodes', 'Search nodes…')}
+            className="meshcore-search-input"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              className="meshcore-search-clear"
+              onClick={() => setSearchQuery('')}
+              aria-label={t('common.clear', 'Clear')}
+            >
+              ×
+            </button>
+          )}
+        </div>
         <div className="meshcore-list-pane-body">
           {rows.length === 0 ? (
             <div className="meshcore-empty-state">
-              {t('meshcore.no_nodes', 'No nodes seen yet')}
+              {searchQuery
+                ? t('meshcore.no_search_results', 'No nodes match your search')
+                : t('meshcore.no_nodes', 'No nodes seen yet')}
             </div>
           ) : rows.map(row => (
             <button
@@ -245,7 +275,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             )}
           </div>
         )}
-        <MeshCoreMap contacts={contacts} selectedPublicKey={selected} />
+        <MeshCoreMap contacts={contacts} selectedPublicKey={selected} onNavigateToDm={onNavigateToDm} />
       </div>
       {importDialogOpen && (
         <div

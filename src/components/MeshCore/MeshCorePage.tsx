@@ -12,7 +12,7 @@
  *
  * Talks to /api/sources/:id/meshcore/* via useMeshCore.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMeshCore, ConnectionStatus } from './hooks/useMeshCore';
 import { MeshCoreStatusBar } from './MeshCoreStatusBar';
@@ -46,10 +46,20 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
 
   const [view, setView] = useState<MeshCoreView>('nodes');
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
+  const [pendingDmContact, setPendingDmContact] = useState<string | null>(null);
+
+  const navigateToDm = useCallback((publicKey: string) => {
+    setPendingDmContact(publicKey);
+    setView('dms');
+  }, []);
 
   useEffect(() => {
     onStatusChange?.(status);
   }, [status, onStatusChange]);
+
+  useEffect(() => {
+    if (view !== 'dms') setPendingDmContact(null);
+  }, [view]);
 
   return (
     <div className="meshcore-page">
@@ -84,6 +94,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               nodes={nodes}
               contacts={contacts}
               onImportContact={actions.importContact}
+              onNavigateToDm={navigateToDm}
             />
           )}
           {view === 'channels' && (
@@ -94,6 +105,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               actions={actions}
               baseUrl={baseUrl}
               sourceId={sourceId}
+              onNodeNameClick={navigateToDm}
             />
           )}
           {view === 'rooms' && (
@@ -104,6 +116,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               actions={actions}
               baseUrl={baseUrl}
               sourceId={sourceId}
+              onNodeNameClick={navigateToDm}
             />
           )}
           {view === 'dms' && (
@@ -114,6 +127,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               actions={actions}
               baseUrl={baseUrl}
               sourceId={sourceId}
+              initialSelectedContact={pendingDmContact}
             />
           )}
           {view === 'telemetry' && (
