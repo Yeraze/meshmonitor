@@ -331,8 +331,16 @@ export default function DashboardMap({
           />
         ))}
 
-        {neighborInfo.map((link, idx) => {
-          const { nodeLatitude, nodeLongitude, neighborLatitude, neighborLongitude, bidirectional } = link;
+        {neighborInfo
+          .filter((link: any) => {
+            const tc = link.transportClass ?? 'rf';
+            if (tc === 'mqtt' && !showMqttNodes) return false;
+            if (tc === 'udp' && !showUdpNodes) return false;
+            if (tc === 'rf' && !showRfNodes) return false;
+            return true;
+          })
+          .map((link: any, idx: number) => {
+          const { nodeLatitude, nodeLongitude, neighborLatitude, neighborLongitude, bidirectional, transportClass } = link;
           if (
             nodeLatitude == null ||
             nodeLongitude == null ||
@@ -347,9 +355,11 @@ export default function DashboardMap({
             [neighborLatitude, neighborLongitude],
           ];
 
+          const tc = transportClass ?? 'rf';
+          const colorByTransport = tc === 'mqtt' ? '#22c55e' : tc === 'udp' ? '#f97316' : 'blue';
           const pathOptions = bidirectional
-            ? { color: 'blue', weight: 2, opacity: 0.6 }
-            : { color: 'gray', weight: 1, opacity: 0.6, dashArray: '5, 5' };
+            ? { color: colorByTransport, weight: 2, opacity: 0.6 }
+            : { color: colorByTransport, weight: 1, opacity: 0.6, dashArray: '5, 5' };
 
           return (
             <Polyline

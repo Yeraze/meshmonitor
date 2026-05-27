@@ -1046,6 +1046,14 @@ router.get('/:id/neighbor-info', requirePermission('nodes', 'read', { sourceIdFr
       const nodePos = getEffectivePosition(node);
       const neighborPos = getEffectivePosition(neighbor);
 
+      const TX_MQTT = 5;
+      const TX_UDP = 6;
+      const nTx = (node as any)?.transportMechanism;
+      const nbTx = (neighbor as any)?.transportMechanism;
+      const isMqtt = nTx === TX_MQTT || nbTx === TX_MQTT || (node as any)?.viaMqtt || (neighbor as any)?.viaMqtt;
+      const isUdp = nTx === TX_UDP || nbTx === TX_UDP;
+      const transportClass: 'rf' | 'udp' | 'mqtt' = isMqtt ? 'mqtt' : isUdp ? 'udp' : 'rf';
+
       return {
         ...ni,
         nodeId: node?.nodeId || `!${ni.nodeNum.toString(16).padStart(8, '0')}`,
@@ -1053,6 +1061,7 @@ router.get('/:id/neighbor-info', requirePermission('nodes', 'read', { sourceIdFr
         neighborNodeId: neighbor?.nodeId || `!${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
         neighborName: neighbor?.longName || `Node !${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
         bidirectional: linkKeys.has(`${ni.neighborNodeNum}-${ni.nodeNum}`),
+        transportClass,
         nodeLatitude: nodePos.latitude,
         nodeLongitude: nodePos.longitude,
         neighborLatitude: neighborPos.latitude,
