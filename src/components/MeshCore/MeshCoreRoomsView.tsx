@@ -19,6 +19,10 @@ import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
 
+const MOBILE_BREAKPOINT = 768;
+const isMobileViewport = (): boolean =>
+  typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
+
 interface MeshCoreRoomsViewProps {
   messages: MeshCoreMessage[];
   contacts: MeshCoreContact[];
@@ -60,6 +64,15 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [rememberPassword, setRememberPassword] = useState(false);
+  const [mobileShowContent, setMobileShowContent] = useState(false);
+
+  useEffect(() => {
+    const onResize = () => {
+      if (!isMobileViewport()) setMobileShowContent(false);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   // Credential persistence state
   const [canRemember, setCanRemember] = useState(false);
@@ -136,6 +149,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     setLoginPassword('');
     setRememberPassword(false);
     setSyncConfigDirty(false);
+    if (isMobileViewport()) setMobileShowContent(true);
   }, []);
 
   const handleLogin = useCallback(async () => {
@@ -176,8 +190,10 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
 
   const showLoginOverlay = selectedRoom && !isLoggedIn(selectedRoom) && !loginLoading;
 
+  const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';
+
   return (
-    <div className="meshcore-two-pane">
+    <div className={`meshcore-two-pane ${mobileClass}`}>
       <div className="meshcore-list-pane">
         <div className="meshcore-list-pane-header">
           <span>{t('meshcore.nav.rooms', 'Rooms')}</span>
@@ -218,6 +234,22 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
         </div>
       </div>
       <div className="meshcore-main-pane">
+        {mobileShowContent && (
+          <div className="meshcore-mobile-back-header">
+            <button
+              type="button"
+              className="meshcore-mobile-back-btn"
+              onClick={() => setMobileShowContent(false)}
+            >
+              ◀ {t('common.back', 'Back')}
+            </button>
+            {activeRoom && (
+              <span className="meshcore-mobile-back-title">
+                {activeRoom.advName || activeRoom.name || selectedRoom?.substring(0, 12) + '…'}
+              </span>
+            )}
+          </div>
+        )}
         {!selectedRoom && (
           <div className="meshcore-empty-state">
             {t('meshcore.rooms.select_room', 'Select a room server to view posts')}

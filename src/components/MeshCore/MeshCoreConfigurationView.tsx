@@ -5,6 +5,7 @@ import { RADIO_PRESETS, findPresetId } from './radioPresets';
 import { useAuth } from '../../contexts/AuthContext';
 import { MeshCoreChannelsConfigSection } from './MeshCoreChannelsConfigSection';
 import { MeshCoreLocalConsole } from './MeshCoreLocalConsole';
+import { CollapsibleSection } from './CollapsibleSection';
 
 const TELEMETRY_MODE_OPTIONS: TelemetryMode[] = ['always', 'device', 'never'];
 // MeshCore device types: COMPANION=1, REPEATER=2, ROOM_SERVER=3.
@@ -202,8 +203,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
         </div>
       )}
 
-      <div className="form-section">
-        <h3>{t('meshcore.config.device_name', 'Device name')}</h3>
+      <CollapsibleSection title={t('meshcore.config.device_name', 'Device name')} className="form-section">
         <p className="hint">
           {t('meshcore.config.device_name_hint', 'Friendly name advertised to other nodes (max 32 chars).')}
         </p>
@@ -231,10 +231,9 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
             </span>
           )}
         </div>
-      </div>
+      </CollapsibleSection>
 
-      <div className="form-section">
-        <h3>{t('meshcore.config.location', 'Location')}</h3>
+      <CollapsibleSection title={t('meshcore.config.location', 'Location')} className="form-section">
         <p className="hint">
           {t('meshcore.config.location_hint',
             'GPS coordinates reported by the device. Latitude (-90 to 90), Longitude (-180 to 180).')}
@@ -295,10 +294,9 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
             {t('meshcore.config.advert_loc_policy', 'Include location in adverts')}
           </label>
         </div>
-      </div>
+      </CollapsibleSection>
 
-      <div className="form-section">
-        <h3>{t('meshcore.config.radio_params', 'Radio parameters')}</h3>
+      <CollapsibleSection title={t('meshcore.config.radio_params', 'Radio parameters')} className="form-section">
         <p className="hint">
           {t('meshcore.config.radio_hint',
             'Frequency (137–1020 MHz), Bandwidth (kHz), Spreading Factor (5–12), Coding Rate (5–8 → 4/5 – 4/8).')}
@@ -383,10 +381,9 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
             </span>
           )}
         </div>
-      </div>
+      </CollapsibleSection>
 
-      <div className="form-section">
-        <h3>{t('meshcore.config.tx_power', 'TX Power')}</h3>
+      <CollapsibleSection title={t('meshcore.config.tx_power', 'TX Power')} className="form-section">
         <p className="hint">
           {t('meshcore.config.tx_power_hint',
             `Transmit power in dBm (1–${maxTxPower}). This controls the LoRa chip output only; boards with an external PA may amplify further.`)}
@@ -424,10 +421,9 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
             </span>
           )}
         </div>
-      </div>
+      </CollapsibleSection>
 
-      <div className="form-section">
-        <h3>{t('meshcore.config.telemetry', 'Telemetry')}</h3>
+      <CollapsibleSection title={t('meshcore.config.telemetry', 'Telemetry')} className="form-section">
         <p className="hint">
           {t('meshcore.config.telemetry_hint',
             'Control what telemetry this node shares. Always = broadcast on advert; Device only = only respond to direct requests from your contacts; Never = disable.')}
@@ -509,7 +505,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
             </span>
           )}
         </div>
-      </div>
+      </CollapsibleSection>
 
       {/* Channels — Companion-only and only when the per-source addressing
           props are available (sourceId/baseUrl come from the MeshCorePage). */}
