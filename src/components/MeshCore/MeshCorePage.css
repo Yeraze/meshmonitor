@@ -1011,6 +1011,55 @@
 }
 
 /* ============================================================
+ * MeshCore map controls (Features panel overlay)
+ * ============================================================ */
+
+.meshcore-map-pane .map-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+  background: var(--ctp-surface0);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  user-select: none;
+}
+
+.meshcore-map-pane .map-controls-body {
+  padding: 0.75rem;
+}
+
+.meshcore-map-pane .map-controls-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ctp-mauve);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.4rem;
+}
+
+.meshcore-map-pane .map-control-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.meshcore-map-pane .map-control-item input[type='checkbox'] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--ctp-mauve);
+}
+
+.meshcore-map-pane .map-control-item span {
+  color: var(--ctp-text);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* ============================================================
  * Mobile back button (shown in content pane header on mobile)
  * ============================================================ */
 
