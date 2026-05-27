@@ -360,6 +360,11 @@ class MeshCoreManager extends EventEmitter {
    */
   private lastMeshTxAt: number = 0;
 
+  // Auto-pathfinding scheduler state
+  private autoPathfindingTimer: NodeJS.Timeout | null = null;
+  private autoPathfindingJitterTimeout: NodeJS.Timeout | null = null;
+  private autoPathfindingLastRunAt: number = 0;
+
   constructor(sourceId: string) {
     super();
     if (!sourceId) {
@@ -497,6 +502,9 @@ class MeshCoreManager extends EventEmitter {
     // Cancel any pending path-refresh — refreshContacts() against a torn-
     // down connection would just log an error.
     this.clearPathRefreshTimer();
+
+    // Stop auto-pathfinding scheduler.
+    this.stopAutoPathfinding();
 
     // Tear down native backend, if active.
     if (this.nativeBackend) {
@@ -2938,6 +2946,117 @@ class MeshCoreManager extends EventEmitter {
       if (!this.shouldReconnect) return;
       void this.attemptReconnect();
     }, delay);
+  }
+
+  // ============ Auto-Pathfinding Scheduler ============
+
+  async startAutoPathfinding(): Promise<void> {
+    this.stopAutoPathfinding();
+
+    const enabledRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoPathfindingEnabled');
+    if (enabledRaw !== 'true') {
+      logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding disabled`);
+      return;
+    }
+
+    const pathDiscoveryEnabled = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoPathfindingPathDiscoveryEnabled')) === 'true';
+    const neighborsEnabled = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoPathfindingNeighborsEnabled')) === 'true';
+
+    if (!pathDiscoveryEnabled && !neighborsEnabled) {
+      logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: both sub-features disabled`);
+      return;
+    }
+
+    const intervalSecondsRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoPathfindingIntervalSeconds');
+    const intervalSeconds = Math.max(10, parseInt(intervalSecondsRaw || '30', 10) || 30);
+
+    const repeatHoursRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoPathfindingRepeatHours');
+    const repeatHours = Math.max(1, parseInt(repeatHoursRaw || '24', 10) || 24);
+    const repeatMs = repeatHours * 60 * 60 * 1000;
+
+    const maxJitterMs = Math.min(repeatMs, 5 * 60 * 1000);
+    const initialJitterMs = Math.random() * maxJitterMs;
+
+    logger.info(`[MeshCore:${this.sourceId}] Auto-pathfinding: starting (pathDiscovery=${pathDiscoveryEnabled}, neighbors=${neighborsEnabled}, interval=${intervalSeconds}s, repeat=${repeatHours}h, jitter=${Math.round(initialJitterMs / 1000)}s)`);
+
+    const executeRun = async () => {
+      if (!this.connected) {
+        logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: skipping — not connected`);
+        return;
+      }
+
+      const contacts = this.getContacts();
+      if (contacts.length === 0) {
+        logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: no contacts`);
+        return;
+      }
+
+      const companions = pathDiscoveryEnabled
+        ? contacts.filter(c => c.advType === MeshCoreDeviceType.COMPANION)
+        : [];
+      const repeaters = neighborsEnabled
+        ? contacts.filter(c => c.advType === MeshCoreDeviceType.REPEATER)
+        : [];
+
+      const targets = [
+        ...companions.map(c => ({ key: c.publicKey, name: c.advName || c.name || c.publicKey.substring(0, 16), op: 'discover_path' as const })),
+        ...repeaters.map(c => ({ key: c.publicKey, name: c.advName || c.name || c.publicKey.substring(0, 16), op: 'get_neighbours' as const })),
+      ];
+
+      if (targets.length === 0) {
+        logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: no eligible targets`);
+        return;
+      }
+
+      logger.info(`[MeshCore:${this.sourceId}] Auto-pathfinding: running on ${companions.length} companions + ${repeaters.length} repeaters`);
+
+      for (let i = 0; i < targets.length; i++) {
+        if (!this.connected) break;
+        const t = targets[i];
+        try {
+          if (t.op === 'discover_path') {
+            const ok = await this.discoverContactPath(t.key);
+            logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: discover_path ${t.name} → ${ok ? 'sent' : 'failed'}`);
+          } else {
+            const result = await this.getNeighbours(t.key);
+            logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: get_neighbours ${t.name} → ${result ? result.total + ' neighbours' : 'failed'}`);
+          }
+        } catch (err) {
+          logger.warn(`[MeshCore:${this.sourceId}] Auto-pathfinding: ${t.op} ${t.name} threw: ${(err as Error).message}`);
+        }
+
+        if (i < targets.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, intervalSeconds * 1000));
+        }
+      }
+
+      this.autoPathfindingLastRunAt = Date.now();
+      logger.info(`[MeshCore:${this.sourceId}] Auto-pathfinding: run complete`);
+    };
+
+    this.autoPathfindingJitterTimeout = setTimeout(() => {
+      this.autoPathfindingJitterTimeout = null;
+      executeRun();
+      this.autoPathfindingTimer = setInterval(executeRun, repeatMs);
+    }, initialJitterMs);
+  }
+
+  stopAutoPathfinding(): void {
+    if (this.autoPathfindingJitterTimeout) {
+      clearTimeout(this.autoPathfindingJitterTimeout);
+      this.autoPathfindingJitterTimeout = null;
+    }
+    if (this.autoPathfindingTimer) {
+      clearInterval(this.autoPathfindingTimer);
+      this.autoPathfindingTimer = null;
+    }
+  }
+
+  getAutoPathfindingStatus(): { enabled: boolean; lastRunAt: number } {
+    return {
+      enabled: this.autoPathfindingTimer !== null || this.autoPathfindingJitterTimeout !== null,
+      lastRunAt: this.autoPathfindingLastRunAt,
+    };
   }
 
   private async attemptReconnect(): Promise<void> {

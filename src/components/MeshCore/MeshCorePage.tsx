@@ -25,6 +25,7 @@ import { MeshCoreTelemetryView } from './MeshCoreTelemetryView';
 import { MeshCoreConfigurationView } from './MeshCoreConfigurationView';
 import { MeshCoreSettingsView } from './MeshCoreSettingsView';
 import { MeshCoreRoomsView } from './MeshCoreRoomsView';
+import { MeshCoreAutomationsView } from './MeshCoreAutomationsView';
 import './MeshCoreTab.css';
 import './MeshCorePage.css';
 
@@ -140,6 +141,12 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             <MeshCoreConfigurationView
               status={status}
               actions={actions}
+              baseUrl={baseUrl}
+              sourceId={sourceId}
+            />
+          )}
+          {view === 'automations' && (
+            <MeshCoreAutomationsView
               baseUrl={baseUrl}
               sourceId={sourceId}
             />
