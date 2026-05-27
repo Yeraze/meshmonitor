@@ -462,6 +462,11 @@ class MeshCoreManager extends EventEmitter {
         this.startHeartbeat();
       }
 
+      // Start auto-pathfinding scheduler if configured for this source.
+      this.startAutoPathfinding().catch(err =>
+        logger.warn(`[MeshCore:${this.sourceId}] Failed to start auto-pathfinding: ${(err as Error).message}`),
+      );
+
       return true;
     } catch (error) {
       // meshcore.js rejects some promises with `undefined` (no Error object),
