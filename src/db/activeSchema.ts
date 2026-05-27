@@ -92,6 +92,9 @@ import {
 import {
   meshcoreMessagesSqlite, meshcoreMessagesPostgres, meshcoreMessagesMysql,
 } from './schema/meshcoreMessages.js';
+import {
+  meshcoreNeighborsSqlite, meshcoreNeighborsPostgres, meshcoreNeighborsMysql,
+} from './schema/meshcoreNeighbors.js';
 
 // Embed Profiles table
 import {
@@ -168,6 +171,7 @@ export interface ActiveSchema {
   // MeshCore tables
   meshcoreNodes: any;
   meshcoreMessages: any;
+  meshcoreNeighbors: any;
 
   // Embed Profiles
   embedProfiles: any;
@@ -224,6 +228,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     ignoredNodes: ignoredNodesSqlite,
     meshcoreNodes: meshcoreNodesSqlite,
     meshcoreMessages: meshcoreMessagesSqlite,
+    meshcoreNeighbors: meshcoreNeighborsSqlite,
     embedProfiles: embedProfilesSqlite,
     waypoints: waypointsSqlite,
     sources: sourcesSqlite,
@@ -266,6 +271,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     ignoredNodes: ignoredNodesPostgres,
     meshcoreNodes: meshcoreNodesPostgres,
     meshcoreMessages: meshcoreMessagesPostgres,
+    meshcoreNeighbors: meshcoreNeighborsPostgres,
     embedProfiles: embedProfilesPostgres,
     waypoints: waypointsPostgres,
     sources: sourcesPostgres,
@@ -308,6 +314,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     ignoredNodes: ignoredNodesMysql,
     meshcoreNodes: meshcoreNodesMysql,
     meshcoreMessages: meshcoreMessagesMysql,
+    meshcoreNeighbors: meshcoreNeighborsMysql,
     embedProfiles: embedProfilesMysql,
     waypoints: waypointsMysql,
     sources: sourcesMysql,

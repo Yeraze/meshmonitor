@@ -1,12 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useSettings } from '../../contexts/SettingsContext';
+import { useSource } from '../../contexts/SourceContext';
 import { getTilesetById } from '../../config/tilesets';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
+import api from '../../services/api';
 
 const MESHCORE_COLOR = '#cba6f7';
+const NEIGHBOR_COLOR = '#06b6d4';
 const DEFAULT_CENTER: [number, number] = [0, 0];
 const DEFAULT_ZOOM = 2;
 
@@ -28,6 +31,14 @@ function hopCountLabel(hops: number | null | undefined): string {
   if (hops === null || hops === undefined) return 'Unknown';
   if (hops === 0) return 'Direct';
   return `${hops} hop${hops > 1 ? 's' : ''}`;
+}
+
+interface NeighborEdge {
+  publicKey: string;
+  neighborPublicKey: string;
+  nodeName: string | null;
+  neighborName: string | null;
+  snr: number | null;
 }
 
 interface MeshCoreMapProps {
@@ -75,8 +86,11 @@ function makeIcon(name: string): L.DivIcon {
 
 export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition, onNavigateToDm }) => {
   const { mapTileset, customTilesets } = useSettings();
+  const { sourceId } = useSource();
   const tileset = getTilesetById(mapTileset, customTilesets);
   const [showPaths, setShowPaths] = useState(true);
+  const [showNeighbors, setShowNeighbors] = useState(true);
+  const [neighborEdges, setNeighborEdges] = useState<NeighborEdge[]>([]);
 
   const positioned = useMemo(
     () => contacts.filter(c =>
@@ -107,6 +121,36 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
         hops: c.pathLen ?? -1,
       }));
   }, [showPaths, localPos, positioned]);
+
+  useEffect(() => {
+    if (!sourceId) return;
+    let cancelled = false;
+    api.get<{ success: boolean; data: { items: NeighborEdge[] } }>(
+      `/api/sources/${sourceId}/meshcore/neighbors?since=0`,
+    ).then((resp) => {
+      if (!cancelled && resp.success && Array.isArray(resp.data?.items)) {
+        setNeighborEdges(resp.data.items);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [sourceId]);
+
+  const neighborSegments = useMemo(() => {
+    if (!showNeighbors || !neighborEdges?.length) return [];
+    const posByKey = new Map<string, [number, number]>();
+    for (const c of positioned) {
+      posByKey.set(c.publicKey, [c.latitude!, c.longitude!]);
+    }
+    return neighborEdges
+      .map((e) => {
+        const a = posByKey.get(e.publicKey);
+        const b = posByKey.get(e.neighborPublicKey);
+        if (!a || !b) return null;
+        const label = `${e.nodeName || e.publicKey.substring(0, 8)} ↔ ${e.neighborName || e.neighborPublicKey.substring(0, 8)}${e.snr != null ? ` (${e.snr.toFixed(1)} dB)` : ''}`;
+        return { key: `nb-${e.publicKey}-${e.neighborPublicKey}`, from: a, to: b, label };
+      })
+      .filter((s): s is NonNullable<typeof s> => s !== null);
+  }, [showNeighbors, neighborEdges, positioned]);
 
   const { center, zoom } = useMemo(() => {
     if (selectedPublicKey) {
@@ -201,6 +245,21 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
             <Tooltip sticky>{s.label}</Tooltip>
           </Polyline>
         ))}
+
+        {neighborSegments.map(s => (
+          <Polyline
+            key={s.key}
+            positions={[s.from, s.to]}
+            pathOptions={{
+              color: NEIGHBOR_COLOR,
+              weight: 1.5,
+              opacity: 0.7,
+              dashArray: '6 4',
+            }}
+          >
+            <Tooltip sticky>{s.label}</Tooltip>
+          </Polyline>
+        ))}
       </MapContainer>
 
       <div className="map-controls dashboard-map-controls">
@@ -213,6 +272,14 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
               onChange={(e) => setShowPaths(e.target.checked)}
             />
             <span>Show Paths</span>
+          </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showNeighbors}
+              onChange={(e) => setShowNeighbors(e.target.checked)}
+            />
+            <span>Show Neighbors</span>
           </label>
         </div>
       </div>
