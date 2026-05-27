@@ -47,6 +47,7 @@ import { MessageEmojiButton } from './MessageEmojiButton';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
 import RelayNodeModal from './RelayNodeModal';
 import TelemetryRequestModal, { TelemetryType } from './TelemetryRequestModal';
+import { CopyNodeInfoModal } from './CopyNodeInfoModal';
 import { useToast } from './ToastContainer';
 import apiService from '../services/api';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
@@ -303,6 +304,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const [selectedMessageRssi, setSelectedMessageRssi] = useState<number | undefined>(undefined);
   const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
   const [homoglyphEnabled, setHomoglyphEnabled] = useState(false);
+
+  // Copy NodeInfo modal state
+  const [showCopyNodeInfoModal, setShowCopyNodeInfoModal] = useState(false);
 
   // State for "Jump to Bottom" button
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
@@ -1155,6 +1159,20 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               {telemetryRequestLoading === selectedDMNode && <span className="spinner"></span>}
                             </button>
                           </>
+                        )}
+
+                        {/* Copy NodeInfo from Another Source — local DB
+                            operation, no packet transmitted. */}
+                        {selectedNode && !isNodeComplete(selectedNode) && hasPermission('nodes', 'write') && (
+                          <button
+                            className="actions-menu-item"
+                            onClick={() => {
+                              setShowCopyNodeInfoModal(true);
+                              setShowActionsMenu(false);
+                            }}
+                          >
+                            📋 {t('nodes.copy_nodeinfo_title')}
+                          </button>
                         )}
 
                         {/* Admin Scan — sends an admin probe packet to the
@@ -2080,6 +2098,21 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
           nodeName={selectedNode?.user?.longName || selectedNode?.user?.shortName || selectedDMNode}
         />
       )}
+
+      {/* Copy NodeInfo from Another Source modal */}
+      <CopyNodeInfoModal
+        isOpen={showCopyNodeInfoModal}
+        nodeNum={selectedNode?.nodeNum ?? null}
+        currentNode={selectedNode ? {
+          longName: selectedNode.user?.longName,
+          shortName: selectedNode.user?.shortName,
+          hwModel: selectedNode.user?.hwModel,
+          role: selectedNode.user?.role != null ? Number(selectedNode.user.role) : null,
+          publicKey: selectedNode.user?.publicKey,
+        } : null}
+        onClose={() => setShowCopyNodeInfoModal(false)}
+        onCopied={() => setShowCopyNodeInfoModal(false)}
+      />
     </div>
   );
 };
