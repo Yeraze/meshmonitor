@@ -22,6 +22,8 @@ interface MeshCoreNeighborEdge {
   sourceId: string;
   snr: number | null;
   timestamp: number;
+  nodeName: string | null;
+  neighborName: string | null;
 }
 
 interface MCNodeRecord extends MaybePositionedNode {
@@ -70,6 +72,8 @@ export default function MeshCoreNeighborLinksLayer() {
       sourceId: string;
       publicKey: string;
       neighborPublicKey: string;
+      nodeName: string | null;
+      neighborName: string | null;
       snr: number | null;
       timestamp: number;
     }> = [];
@@ -88,6 +92,8 @@ export default function MeshCoreNeighborLinksLayer() {
         sourceId: e.sourceId,
         publicKey: e.publicKey,
         neighborPublicKey: e.neighborPublicKey,
+        nodeName: e.nodeName,
+        neighborName: e.neighborName,
         snr: e.snr,
         timestamp: e.timestamp,
       });
@@ -110,6 +116,8 @@ export default function MeshCoreNeighborLinksLayer() {
                 sourceId: e.sourceId,
                 publicKey: e.publicKey,
                 neighborPublicKey: e.neighborPublicKey,
+                nodeName: e.nodeName,
+                neighborName: e.neighborName,
                 snr: e.snr,
                 timestamp: e.timestamp,
                 nodeNum: 0,

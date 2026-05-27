@@ -215,17 +215,21 @@ export default function AnalysisInspectorPanel() {
   }
 
   if (selected.type === 'neighbor') {
-    const fromNode = findNode(selected.nodeNum ?? 0, selected.sourceId);
-    const toNode = findNode(selected.neighborNum ?? 0, selected.sourceId);
-    const fromName = nodeName(fromNode, selected.nodeNum ?? 0);
-    const toName = nodeName(toNode, selected.neighborNum ?? 0);
+    const isMeshCore = !!selected.publicKey;
+    const fromName = isMeshCore
+      ? (selected.nodeName ?? selected.publicKey?.substring(0, 12) ?? '?')
+      : nodeName(findNode(selected.nodeNum ?? 0, selected.sourceId), selected.nodeNum ?? 0);
+    const toName = isMeshCore
+      ? (selected.neighborName ?? selected.neighborPublicKey?.substring(0, 12) ?? '?')
+      : nodeName(findNode(selected.neighborNum ?? 0, selected.sourceId), selected.neighborNum ?? 0);
+    const subtitle = isMeshCore
+      ? `${selected.publicKey?.substring(0, 8) ?? ''} ↔ ${selected.neighborPublicKey?.substring(0, 8) ?? ''}`
+      : `!${(selected.nodeNum ?? 0).toString(16)} ↔ !${(selected.neighborNum ?? 0).toString(16)}`;
     const snr = selected.snr;
     return wrap(
       <>
         <h3>Neighbor Link</h3>
-        <div className="subtitle">
-          !{(selected.nodeNum ?? 0).toString(16)} ↔ !{(selected.neighborNum ?? 0).toString(16)}
-        </div>
+        <div className="subtitle">{subtitle}</div>
         <hr />
         <dl>
           <dt>Node</dt>

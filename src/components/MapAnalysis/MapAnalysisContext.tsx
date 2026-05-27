@@ -14,6 +14,8 @@ export interface SelectedTarget {
   // MeshCore neighbor-specific
   publicKey?: string;
   neighborPublicKey?: string;
+  nodeName?: string | null;
+  neighborName?: string | null;
   // trail-specific
   pointCount?: number;
   startMs?: number;

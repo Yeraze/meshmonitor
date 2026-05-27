@@ -621,8 +621,8 @@ export class MeshCoreRepository extends BaseRepository {
   async getNeighbors(
     sourceIds: string[],
     sinceMs: number = 0,
-  ): Promise<Array<{ id: number; sourceId: string; publicKey: string; neighborPublicKey: string; snr: number | null; timestamp: number }>> {
-    const { meshcoreNeighbors } = this.tables;
+  ): Promise<Array<{ id: number; sourceId: string; publicKey: string; neighborPublicKey: string; snr: number | null; timestamp: number; nodeName: string | null; neighborName: string | null }>> {
+    const { meshcoreNeighbors, meshcoreNodes } = this.tables;
     if (sourceIds.length === 0) return [];
 
     const conditions: SQL[] = [
@@ -632,7 +632,7 @@ export class MeshCoreRepository extends BaseRepository {
       conditions.push(gte(meshcoreNeighbors.timestamp, sinceMs));
     }
 
-    return this.db
+    const rows = await this.db
       .select({
         id: meshcoreNeighbors.id,
         sourceId: meshcoreNeighbors.sourceId,
@@ -644,6 +644,29 @@ export class MeshCoreRepository extends BaseRepository {
       .from(meshcoreNeighbors)
       .where(and(...conditions))
       .orderBy(desc(meshcoreNeighbors.timestamp));
+
+    if (rows.length === 0) return [];
+
+    const allKeys = new Set<string>();
+    for (const r of rows) {
+      allKeys.add(r.publicKey);
+      allKeys.add(r.neighborPublicKey);
+    }
+
+    const nodes = await this.db
+      .select({ publicKey: meshcoreNodes.publicKey, name: meshcoreNodes.name })
+      .from(meshcoreNodes)
+      .where(and(
+        inArray(meshcoreNodes.sourceId, sourceIds),
+        inArray(meshcoreNodes.publicKey, [...allKeys]),
+      ));
+    const nameMap = new Map(nodes.map((n: { publicKey: string; name: string | null }) => [n.publicKey, n.name]));
+
+    return rows.map((r: typeof rows[number]) => ({
+      ...r,
+      nodeName: nameMap.get(r.publicKey) ?? null,
+      neighborName: nameMap.get(r.neighborPublicKey) ?? null,
+    }));
   }
 
   async deleteNeighborsForNode(sourceId: string, publicKey: string): Promise<void> {
