@@ -320,6 +320,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 onShareContact={actions.shareContact}
                 onSetOutPath={actions.setContactOutPath}
                 onTracePath={actions.traceContactPath}
+                onDiscoverPath={actions.discoverContactPath}
                 onRemoveContact={actions.removeContact}
                 onExportContact={actions.exportContact}
                 onGetNeighbours={actions.getNeighbours}

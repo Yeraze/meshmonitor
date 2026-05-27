@@ -1430,6 +1430,36 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
+   * Send a path-discovery request (firmware CMD 52) for a contact. This
+   * floods a lightweight telemetry request to the contact; when the
+   * response arrives, the firmware learns the forwarding route via its
+   * normal PATH return mechanism and fires a PathUpdated push. The path
+   * update is handled asynchronously by the existing push listener —
+   * this method only confirms the flood was accepted by the device.
+   */
+  async discoverContactPath(publicKey: string): Promise<boolean> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Discover-path requires Companion firmware');
+      return false;
+    }
+    if (!this.connected) {
+      return false;
+    }
+    try {
+      const response = await this.sendBridgeCommand('discover_path', { public_key: publicKey }, 15000);
+      if (!response.success) {
+        logger.warn(`[MeshCore] discover_path failed for ${publicKey}: ${response.error}`);
+        return false;
+      }
+      logger.info(`[MeshCore] Path discovery sent for ${publicKey.substring(0, 16)}…`);
+      return true;
+    } catch (error) {
+      logger.error('[MeshCore] discoverContactPath threw:', error);
+      return false;
+    }
+  }
+
+  /**
    * Trace the cached forwarding path to a contact, collecting per-hop SNR.
    * The contact must have a known `outPath`; trace path sends a diagnostic
    * packet along that exact route and each repeater appends its received

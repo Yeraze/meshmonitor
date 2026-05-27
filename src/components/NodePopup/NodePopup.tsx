@@ -27,6 +27,9 @@ interface NodePopupProps {
   onTraceroute?: (nodeId: string) => void;
   connectionStatus?: string;
   tracerouteLoading?: string | null;
+  onDeleteNode?: (nodeNum: number) => void;
+  onPurgeNodeFromDevice?: (nodeNum: number) => void;
+  currentNodeNum?: number | null;
 }
 
 export const NodePopup: React.FC<NodePopupProps> = ({
@@ -45,6 +48,9 @@ export const NodePopup: React.FC<NodePopupProps> = ({
   onTraceroute,
   connectionStatus,
   tracerouteLoading,
+  onDeleteNode,
+  onPurgeNodeFromDevice,
+  currentNodeNum,
 }) => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<PopupTab>('info');
@@ -187,6 +193,34 @@ export const NodePopup: React.FC<NodePopupProps> = ({
             >
               🗺️ {t('node_popup.show_on_map', 'Show on Map')}
             </button>
+          )}
+
+          {/* Delete / Purge actions */}
+          {hasPermission('messages', 'write') && node.nodeNum !== currentNodeNum && (
+            <div className="node-popup-danger-actions">
+              {onDeleteNode && (
+                <button
+                  className="popup-dm-btn popup-danger-btn"
+                  onClick={() => {
+                    onDeleteNode(node.nodeNum);
+                    onClose();
+                  }}
+                >
+                  🗑️ {t('node_popup.delete_node', 'Delete')}
+                </button>
+              )}
+              {onPurgeNodeFromDevice && connectionStatus === 'connected' && (
+                <button
+                  className="popup-dm-btn popup-danger-btn popup-danger-btn-severe"
+                  onClick={() => {
+                    onPurgeNodeFromDevice(node.nodeNum);
+                    onClose();
+                  }}
+                >
+                  ⚠️ {t('node_popup.purge_node', 'Purge from Device')}
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}

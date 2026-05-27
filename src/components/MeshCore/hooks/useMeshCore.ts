@@ -109,6 +109,12 @@ export interface MeshCoreActions {
   /** Send a trace-path diagnostic along the contact's cached forwarding
    *  route and return per-hop SNR data. Resolves `null` on failure. */
   traceContactPath: (publicKey: string) => Promise<TracePathResult | null>;
+  /** Flood a path-discovery request to the contact. The device sends a
+   *  lightweight telemetry request via flood; when the contact replies,
+   *  the PATH return mechanism establishes the forwarding route. The path
+   *  update arrives asynchronously — this resolves `true` when the flood
+   *  was accepted. */
+  discoverContactPath: (publicKey: string) => Promise<boolean>;
   /** Remove a contact from the device's contact list. Resolves `true` when
    *  the device ACKed the removal; `false` for any error. */
   removeContact: (publicKey: string) => Promise<boolean>;
@@ -578,6 +584,24 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       return true;
     } catch (_err) {
       setError('Failed to reset path');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const discoverContactPath = useCallback(async (publicKey: string): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(
+        `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/discover-path`,
+        { method: 'POST' },
+      );
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to discover path');
+        return false;
+      }
+      return true;
+    } catch (_err) {
+      setError('Failed to discover path');
       return false;
     }
   }, [mcPrefix, csrfFetch]);
@@ -1194,6 +1218,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       disconnect,
       refreshContacts,
       resetContactPath,
+      discoverContactPath,
       shareContact,
       setContactOutPath,
       traceContactPath,

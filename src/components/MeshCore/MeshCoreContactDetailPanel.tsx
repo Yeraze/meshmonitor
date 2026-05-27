@@ -32,6 +32,9 @@ interface MeshCoreContactDetailPanelProps {
   /** Send a trace-path diagnostic along the contact's cached path and
    *  return per-hop SNR data. Unset hides the Trace Path button. */
   onTracePath?: (publicKey: string) => Promise<TracePathResult | null>;
+  /** Flood a path-discovery request to learn the forwarding route. The
+   *  path update arrives asynchronously. Unset hides the button. */
+  onDiscoverPath?: (publicKey: string) => Promise<boolean>;
   /** Whether the current user may invoke write actions on this source's
    *  `nodes` resource. Required to gate the Reset Path / Share / Edit
    *  buttons. */
@@ -83,6 +86,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   onShareContact,
   onSetOutPath,
   onTracePath,
+  onDiscoverPath,
   onRemoveContact,
   onExportContact,
   onGetNeighbours,
@@ -107,6 +111,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const [tracing, setTracing] = useState(false);
   const [traceResult, setTraceResult] = useState<TracePathResult | null>(null);
   const [traceError, setTraceError] = useState<string | null>(null);
+  const [discovering, setDiscovering] = useState(false);
 
   // Remove contact state
   const [removing, setRemoving] = useState(false);
@@ -147,6 +152,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     setTracing(false);
     setTraceResult(null);
     setTraceError(null);
+    setDiscovering(false);
     setRemoving(false);
     setRemoveError(null);
     setExporting(false);
@@ -175,6 +181,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     !!onSetOutPath && canWriteNodes && isCompanion && advancedPathEditEnabled;
   const canShowTraceButton =
     !!onTracePath && canWriteNodes && isCompanion && pathKnown && pathLen! > 0;
+  const canShowDiscoverButton =
+    !!onDiscoverPath && canWriteNodes && isCompanion;
   const canShowRemoveButton =
     !!onRemoveContact && canWriteNodes && isCompanion;
   const canShowExportButton =
@@ -221,6 +229,16 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
       }
     } finally {
       setResetting(false);
+    }
+  };
+
+  const handleDiscoverPath = async () => {
+    if (!onDiscoverPath || discovering) return;
+    setDiscovering(true);
+    try {
+      await onDiscoverPath(publicKey);
+    } finally {
+      setDiscovering(false);
     }
   };
 
@@ -439,8 +457,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               available because the device retransmits the stored advert
               regardless of route state. Rendered in one card so the
               actions stay grouped at the bottom of the grid. */}
-          {(canShowResetButton || canShowShareButton || canShowEditButton || canShowTraceButton || canShowRemoveButton || canShowExportButton || canShowNeighboursButton) &&
-            (canShowShareButton || canShowEditButton || canShowTraceButton || canShowRemoveButton || canShowExportButton || canShowNeighboursButton || pathKnown) && (
+          {(canShowResetButton || canShowShareButton || canShowEditButton || canShowTraceButton || canShowDiscoverButton || canShowRemoveButton || canShowExportButton || canShowNeighboursButton) &&
+            (canShowShareButton || canShowEditButton || canShowTraceButton || canShowDiscoverButton || canShowRemoveButton || canShowExportButton || canShowNeighboursButton || pathKnown) && (
             <div className="node-detail-card node-detail-card-2col">
               <div className="node-detail-label">
                 {t('meshcore.contact_details.actions_label', 'Actions')}
@@ -493,6 +511,19 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     {tracing
                       ? t('meshcore.contact_details.trace_path_running', 'Tracing…')
                       : t('meshcore.contact_details.trace_path_button', 'Trace Path')}
+                  </button>
+                )}
+                {canShowDiscoverButton && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleDiscoverPath}
+                    disabled={discovering}
+                    aria-label={t('meshcore.contact_details.discover_path_button', 'Discover Path')}
+                  >
+                    {discovering
+                      ? t('meshcore.contact_details.discover_path_running', 'Discovering…')
+                      : t('meshcore.contact_details.discover_path_button', 'Discover Path')}
                   </button>
                 )}
                 {canShowExportButton && (
