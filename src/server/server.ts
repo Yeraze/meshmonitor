@@ -858,6 +858,22 @@ setInterval(() => {
   });
 }, AUTO_UPGRADE_CHECK_INTERVAL_MS);
 
+// Boot-time upgrade reconciliation: resolve any pending upgrade_history row
+// left behind by the previous container before the 60-second auto-upgrade
+// check timer fires. Without this, the pending row sits until it ages past
+// STALE_TIMEOUT_MS (30 min) and is wrongly marked failed, eventually tripping
+// the circuit breaker even though the watchdog succeeded (issue #3228).
+setTimeout(async () => {
+  try {
+    if (upgradeService.isEnabled()) {
+      await databaseService.waitForReady();
+      await upgradeService.syncPendingUpgradeStatusOnBoot();
+    }
+  } catch (error) {
+    logger.error('Error in boot-time upgrade status sync:', error);
+  }
+}, 10 * 1000); // 10 seconds — well before the 60-second auto-upgrade check
+
 // Run initial auto-upgrade check after a delay to allow system to stabilize
 setTimeout(() => {
   checkForAutoUpgrade().catch(error => {

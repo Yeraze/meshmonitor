@@ -410,16 +410,41 @@ class UpgradeService {
       const staleUpgrades = await databaseService.miscRepo.findStaleUpgrades(staleThreshold);
 
       if (staleUpgrades.length > 0) {
-        logger.warn(`⚠️ Found ${staleUpgrades.length} stale upgrade(s), marking as failed`);
+        logger.warn(`⚠️ Found ${staleUpgrades.length} stale upgrade(s), reconciling...`);
 
         for (const staleUpgrade of staleUpgrades) {
           const minutesStuck = Math.round((Date.now() - (staleUpgrade.startedAt || 0)) / 60000);
           logger.warn(`⚠️ Upgrade ${staleUpgrade.id} stuck at "${staleUpgrade.currentStep}" for ${minutesStuck} minutes`);
 
-          await this.markFailedAndEvaluate(
-            staleUpgrade.id,
-            `Upgrade timed out after ${minutesStuck} minutes (stuck at: ${staleUpgrade.currentStep})`
-          );
+          // Before declaring failure, check whether the watchdog actually
+          // completed the upgrade. On a post-recreate boot the container may
+          // have been replaced before the old backend could update the row,
+          // leaving the status file at 'complete' while the DB still shows
+          // 'pending'. Marking it failed here would trip the circuit breaker
+          // even though the upgrade succeeded (issue #3228).
+          let resolvedAsComplete = false;
+          try {
+            if (fs.existsSync(UPGRADE_STATUS_FILE)) {
+              const fileStatus = fs.readFileSync(UPGRADE_STATUS_FILE, 'utf-8').trim().toLowerCase();
+              if (fileStatus === 'complete' || fileStatus === 'ready') {
+                logger.info(
+                  `🔄 Stale-upgrade reconcile: upgrade ${staleUpgrade.id} actually succeeded — ` +
+                  `marking complete (watchdog status: ${fileStatus})`
+                );
+                await this.markCompleteAndClear(staleUpgrade.id);
+                resolvedAsComplete = true;
+              }
+            }
+          } catch (fileError) {
+            logger.debug('Could not read upgrade status file during stale check:', fileError);
+          }
+
+          if (!resolvedAsComplete) {
+            await this.markFailedAndEvaluate(
+              staleUpgrade.id,
+              `Upgrade timed out after ${minutesStuck} minutes (stuck at: ${staleUpgrade.currentStep})`
+            );
+          }
 
           // Also remove trigger file if it exists
           if (fs.existsSync(UPGRADE_TRIGGER_FILE)) {
@@ -666,6 +691,79 @@ class UpgradeService {
     if (!databaseService.miscRepo) return;
     await databaseService.miscRepo.markUpgradeComplete(id);
     await this.clearAutoUpgradeBlock('Cleared by successful upgrade');
+  }
+
+  /**
+   * Boot-time reconciliation: if a previous container exited during an
+   * upgrade, the upgrade_history row may still show a pending/in-progress
+   * status even though the watchdog completed the upgrade and wrote the
+   * status file. This is the primary trigger for false circuit-breaker trips
+   * (issue #3228).
+   *
+   * Called once on server startup, BEFORE the 60-second auto-upgrade check
+   * timer fires, so the pending row is resolved before isUpgradeInProgress()
+   * is called for the next scheduled check.
+   *
+   * Unlike the stale-timeout reconciler in isUpgradeInProgress(), this check
+   * is NOT bounded by STALE_TIMEOUT_MS — it catches upgrades that completed
+   * quickly (< 30 min), which is the common case on fast hardware.
+   *
+   * Idempotent: if no pending row exists or the status file has already been
+   * consumed (deleted), this method is a no-op.
+   */
+  async syncPendingUpgradeStatusOnBoot(): Promise<void> {
+    if (!databaseService.miscRepo) return;
+
+    try {
+      if (!fs.existsSync(UPGRADE_STATUS_FILE)) {
+        // No status file → either no upgrade happened since last boot, or a
+        // prior boot already consumed and deleted it. Nothing to do.
+        return;
+      }
+
+      const fileStatus = fs.readFileSync(UPGRADE_STATUS_FILE, 'utf-8').trim().toLowerCase();
+      const isTerminal = fileStatus === 'complete' || fileStatus === 'ready' || fileStatus === 'failed';
+      if (!isTerminal) {
+        // Status file exists but contains a non-terminal value (e.g. 'downloading').
+        // A live upgrade may be in progress; leave it for isUpgradeInProgress().
+        return;
+      }
+
+      // Find the most recent pending/in-progress row, regardless of age.
+      const pendingRow = await databaseService.miscRepo.findMostRecentPendingUpgrade();
+      if (!pendingRow) {
+        // No pending row. The status file is a leftover from a previously-synced
+        // upgrade (e.g. the prior boot already reconciled it). Clean it up so
+        // subsequent boots don't attempt to re-process it.
+        try { fs.unlinkSync(UPGRADE_STATUS_FILE); } catch (_) { /* best-effort */ }
+        return;
+      }
+
+      if (fileStatus === 'complete' || fileStatus === 'ready') {
+        logger.info(
+          `🔄 Boot-time upgrade sync: marking ${pendingRow.id} complete ` +
+          `(${pendingRow.fromVersion} → ${pendingRow.toVersion}, ` +
+          `watchdog status: ${fileStatus})`
+        );
+        await this.markCompleteAndClear(pendingRow.id);
+      } else {
+        // fileStatus === 'failed'
+        logger.info(
+          `🔄 Boot-time upgrade sync: marking ${pendingRow.id} failed ` +
+          `(${pendingRow.fromVersion} → ${pendingRow.toVersion}, watchdog status: failed)`
+        );
+        await this.markFailedAndEvaluate(
+          pendingRow.id,
+          'Upgrade failed (detected from watchdog status on boot)'
+        );
+      }
+
+      // Remove the status file so subsequent reboots of the same container
+      // (e.g. manual restarts) don't re-process it.
+      try { fs.unlinkSync(UPGRADE_STATUS_FILE); } catch (_) { /* best-effort */ }
+    } catch (error) {
+      logger.warn('⚠️ Boot-time upgrade status sync failed (non-fatal):', error);
+    }
   }
 
   /**

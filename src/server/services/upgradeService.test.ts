@@ -1,10 +1,16 @@
 /**
- * Tests for the upgradeService auto-upgrade circuit breaker.
+ * Tests for the upgradeService auto-upgrade circuit breaker and boot-time
+ * upgrade status reconciliation.
  *
  * Issue #2871: when AUTO_UPGRADE_ENABLED=true on a deployment whose image is
  * pinned in docker-compose.yml, scheduled upgrades fail forever in a silent
  * loop. The circuit breaker trips after N consecutive failures so retries
  * stop until the operator acknowledges.
+ *
+ * Issue #3228: on a successful Docker+watchdog auto-upgrade the
+ * upgrade_history row stays pending after container recreate. After 30 min
+ * the stale-timeout reconciler marks it failed, eventually tripping the
+ * circuit breaker even though the upgrade succeeded.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -19,6 +25,7 @@ const mockDb = vi.hoisted(() => ({
     findStaleUpgrades: vi.fn().mockResolvedValue([]),
     countInProgressUpgrades: vi.fn().mockResolvedValue(0),
     getLastUpgrade: vi.fn().mockResolvedValue(null),
+    findMostRecentPendingUpgrade: vi.fn().mockResolvedValue(null),
   },
   settings: {
     getSetting: vi.fn(async (key: string) => settingsStore.get(key) ?? null),
@@ -230,5 +237,164 @@ describe('upgradeService circuit breaker', () => {
     // Either the manual attempt succeeded or it failed for an unrelated reason
     // (e.g. mocked filesystem), but it must NOT be the breaker rejection.
     expect(result.message ?? '').not.toMatch(/blocked after .* consecutive/i);
+  });
+
+  // ── Issue #3228: isUpgradeInProgress stale-check respects watchdog status ──
+
+  it('isUpgradeInProgress marks stale row complete (not failed) when status file says complete', async () => {
+    // Regression: the stale-timeout path in isUpgradeInProgress() called
+    // markFailedAndEvaluate() unconditionally, even when the watchdog had
+    // already written 'complete' to the status file. This falsely incremented
+    // the consecutive-failure counter and could trip the circuit breaker.
+    const staleRow = {
+      id: 'stale-1',
+      status: 'pending',
+      currentStep: 'Preparing upgrade',
+      startedAt: Date.now() - 35 * 60 * 1000, // 35 min ago
+      fromVersion: '4.6.0',
+      toVersion: '4.6.1',
+    };
+    mockDb.miscRepo.findStaleUpgrades.mockResolvedValue([staleRow]);
+    mockDb.miscRepo.countInProgressUpgrades.mockResolvedValue(0);
+
+    const STATUS_FILE = '/data/.upgrade-status';
+    fsMocks.existsSync.mockImplementation((p: string) =>
+      p === STATUS_FILE
+    );
+    fsMocks.readFileSync.mockImplementation((p: string) =>
+      p === STATUS_FILE ? 'complete' : ''
+    );
+
+    await upgradeService.isUpgradeInProgress();
+
+    // Must have marked complete, not failed
+    expect(mockDb.miscRepo.markUpgradeComplete).toHaveBeenCalledWith('stale-1');
+    expect(mockDb.miscRepo.markUpgradeFailed).not.toHaveBeenCalled();
+    // Circuit breaker must NOT have been tripped
+    expect(settingsStore.get('autoUpgradeBlocked')).not.toBe('true');
+  });
+
+  it('isUpgradeInProgress still marks stale row failed when status file is absent', async () => {
+    const staleRow = {
+      id: 'stale-2',
+      status: 'pending',
+      currentStep: 'Preparing upgrade',
+      startedAt: Date.now() - 35 * 60 * 1000,
+      fromVersion: '4.6.0',
+      toVersion: '4.6.1',
+    };
+    mockDb.miscRepo.findStaleUpgrades.mockResolvedValue([staleRow]);
+    mockDb.miscRepo.countInProgressUpgrades.mockResolvedValue(0);
+    fsMocks.existsSync.mockReturnValue(false);
+
+    await upgradeService.isUpgradeInProgress();
+
+    expect(mockDb.miscRepo.markUpgradeFailed).toHaveBeenCalledWith(
+      'stale-2',
+      expect.stringContaining('timed out')
+    );
+    expect(mockDb.miscRepo.markUpgradeComplete).not.toHaveBeenCalled();
+  });
+
+  // ── Issue #3228: syncPendingUpgradeStatusOnBoot ────────────────────────────
+
+  it('syncPendingUpgradeStatusOnBoot marks pending row complete when status file says complete', async () => {
+    const pendingRow = {
+      id: 'boot-1',
+      status: 'pending',
+      fromVersion: '4.6.3',
+      toVersion: '4.6.4',
+    };
+    mockDb.miscRepo.findMostRecentPendingUpgrade.mockResolvedValue(pendingRow);
+
+    const STATUS_FILE = '/data/.upgrade-status';
+    fsMocks.existsSync.mockImplementation((p: string) => p === STATUS_FILE);
+    fsMocks.readFileSync.mockImplementation((p: string) =>
+      p === STATUS_FILE ? 'complete' : ''
+    );
+
+    await upgradeService.syncPendingUpgradeStatusOnBoot();
+
+    expect(mockDb.miscRepo.markUpgradeComplete).toHaveBeenCalledWith('boot-1');
+    expect(mockDb.miscRepo.markUpgradeFailed).not.toHaveBeenCalled();
+    // Status file must be deleted after sync
+    expect(fsMocks.unlinkSync).toHaveBeenCalledWith(STATUS_FILE);
+    // Circuit breaker must be cleared (markCompleteAndClear)
+    expect(settingsStore.get('autoUpgradeBlocked')).toBe('false');
+  });
+
+  it('syncPendingUpgradeStatusOnBoot marks pending row complete when status file says ready', async () => {
+    const pendingRow = { id: 'boot-2', status: 'pending', fromVersion: '4.6.3', toVersion: '4.6.4' };
+    mockDb.miscRepo.findMostRecentPendingUpgrade.mockResolvedValue(pendingRow);
+
+    const STATUS_FILE = '/data/.upgrade-status';
+    fsMocks.existsSync.mockImplementation((p: string) => p === STATUS_FILE);
+    fsMocks.readFileSync.mockImplementation((p: string) =>
+      p === STATUS_FILE ? 'ready' : ''
+    );
+
+    await upgradeService.syncPendingUpgradeStatusOnBoot();
+
+    expect(mockDb.miscRepo.markUpgradeComplete).toHaveBeenCalledWith('boot-2');
+    expect(mockDb.miscRepo.markUpgradeFailed).not.toHaveBeenCalled();
+  });
+
+  it('syncPendingUpgradeStatusOnBoot marks pending row failed when status file says failed', async () => {
+    const pendingRow = { id: 'boot-3', status: 'pending', fromVersion: '4.6.3', toVersion: '4.6.4' };
+    mockDb.miscRepo.findMostRecentPendingUpgrade.mockResolvedValue(pendingRow);
+
+    const STATUS_FILE = '/data/.upgrade-status';
+    fsMocks.existsSync.mockImplementation((p: string) => p === STATUS_FILE);
+    fsMocks.readFileSync.mockImplementation((p: string) =>
+      p === STATUS_FILE ? 'failed' : ''
+    );
+
+    await upgradeService.syncPendingUpgradeStatusOnBoot();
+
+    expect(mockDb.miscRepo.markUpgradeFailed).toHaveBeenCalledWith(
+      'boot-3',
+      expect.stringContaining('watchdog status on boot')
+    );
+    expect(mockDb.miscRepo.markUpgradeComplete).not.toHaveBeenCalled();
+  });
+
+  it('syncPendingUpgradeStatusOnBoot is a no-op when status file does not exist', async () => {
+    fsMocks.existsSync.mockReturnValue(false);
+
+    await upgradeService.syncPendingUpgradeStatusOnBoot();
+
+    expect(mockDb.miscRepo.findMostRecentPendingUpgrade).not.toHaveBeenCalled();
+    expect(mockDb.miscRepo.markUpgradeComplete).not.toHaveBeenCalled();
+    expect(mockDb.miscRepo.markUpgradeFailed).not.toHaveBeenCalled();
+  });
+
+  it('syncPendingUpgradeStatusOnBoot is a no-op when status file contains non-terminal value', async () => {
+    const STATUS_FILE = '/data/.upgrade-status';
+    fsMocks.existsSync.mockImplementation((p: string) => p === STATUS_FILE);
+    fsMocks.readFileSync.mockImplementation((p: string) =>
+      p === STATUS_FILE ? 'downloading' : ''
+    );
+
+    await upgradeService.syncPendingUpgradeStatusOnBoot();
+
+    expect(mockDb.miscRepo.findMostRecentPendingUpgrade).not.toHaveBeenCalled();
+    expect(mockDb.miscRepo.markUpgradeComplete).not.toHaveBeenCalled();
+  });
+
+  it('syncPendingUpgradeStatusOnBoot deletes orphaned status file when no pending row exists', async () => {
+    mockDb.miscRepo.findMostRecentPendingUpgrade.mockResolvedValue(null);
+
+    const STATUS_FILE = '/data/.upgrade-status';
+    fsMocks.existsSync.mockImplementation((p: string) => p === STATUS_FILE);
+    fsMocks.readFileSync.mockImplementation((p: string) =>
+      p === STATUS_FILE ? 'complete' : ''
+    );
+
+    await upgradeService.syncPendingUpgradeStatusOnBoot();
+
+    // No DB mutation — just file cleanup
+    expect(mockDb.miscRepo.markUpgradeComplete).not.toHaveBeenCalled();
+    expect(mockDb.miscRepo.markUpgradeFailed).not.toHaveBeenCalled();
+    expect(fsMocks.unlinkSync).toHaveBeenCalledWith(STATUS_FILE);
   });
 });
