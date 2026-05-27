@@ -730,6 +730,47 @@ class MeshCoreManager extends EventEmitter {
         this.schedulePathRefresh(publicKey);
         logger.info(`[MeshCore] contact_path_updated for ${publicKey} (refresh scheduled)`);
       }
+    } else if (event_type === 'path_discovery_response') {
+      // 0x8D push from CMD 52 — carries the actual bidirectional path
+      // bytes so we can update the contact directly without a device
+      // round-trip. The pubkey_prefix is 6 bytes; resolve to full key.
+      const prefix: string = data.pubkey_prefix;
+      const outHops: number = data.out_path_len ?? 0;
+      const outPathHex: string = data.out_path_hex ?? '';
+      const outHashSize: number = data.out_hash_size ?? 1;
+      const inHops: number = data.in_path_len ?? 0;
+      const inPathHex: string = data.in_path_hex ?? '';
+
+      const contact = this.resolveContactByPrefix(prefix);
+      if (!contact) {
+        logger.warn(`[MeshCore] path_discovery_response for unknown prefix ${prefix}`);
+        return;
+      }
+
+      const formatPathHex = (hex: string, hashSize: number): string => {
+        if (!hex) return '';
+        const bytes: string[] = [];
+        for (let i = 0; i < hex.length; i += hashSize * 2) {
+          bytes.push(hex.substring(i, i + hashSize * 2));
+        }
+        return bytes.join(',');
+      };
+
+      const outPathFormatted = formatPathHex(outPathHex, outHashSize);
+      const updated: MeshCoreContact = {
+        ...contact,
+        outPath: outPathFormatted || null,
+        pathLen: outHops,
+        lastSeen: Date.now(),
+      };
+      this.contacts.set(contact.publicKey, updated);
+      void this.persistContact(updated);
+      this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+      dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+      logger.info(
+        `[MeshCore] Path discovery response for ${contact.publicKey.substring(0, 16)}…: ` +
+        `out=${outHops} hops [${outPathFormatted}], in=${inHops} hops [${formatPathHex(inPathHex, data.in_hash_size ?? 1)}]`,
+      );
     } else {
       logger.debug(`[MeshCore] Unknown push event: ${event_type}`);
     }
