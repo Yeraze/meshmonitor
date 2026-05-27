@@ -2153,7 +2153,7 @@ router.get(
       const enabled = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreAutoPathfindingEnabled');
       const pathDiscoveryEnabled = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreAutoPathfindingPathDiscoveryEnabled');
       const neighborsEnabled = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreAutoPathfindingNeighborsEnabled');
-      const intervalSeconds = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreAutoPathfindingIntervalSeconds');
+      const intervalMinutes = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreAutoPathfindingIntervalMinutes');
       const repeatHours = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreAutoPathfindingRepeatHours');
 
       res.json({
@@ -2162,7 +2162,7 @@ router.get(
           enabled: enabled === 'true',
           pathDiscoveryEnabled: pathDiscoveryEnabled === 'true',
           neighborsEnabled: neighborsEnabled === 'true',
-          intervalSeconds: parseInt(intervalSeconds || '30', 10) || 30,
+          intervalMinutes: parseInt(intervalMinutes || '5', 10) || 5,
           repeatHours: parseInt(repeatHours || '24', 10) || 24,
           schedulerRunning: status.enabled,
           lastRunAt: status.lastRunAt || null,
@@ -2187,13 +2187,13 @@ router.post(
         enabled,
         pathDiscoveryEnabled,
         neighborsEnabled,
-        intervalSeconds,
+        intervalMinutes,
         repeatHours,
       } = req.body as {
         enabled?: boolean;
         pathDiscoveryEnabled?: boolean;
         neighborsEnabled?: boolean;
-        intervalSeconds?: number;
+        intervalMinutes?: number;
         repeatHours?: number;
       };
 
@@ -2206,9 +2206,9 @@ router.post(
       if (neighborsEnabled !== undefined) {
         await databaseService.settings.setSourceSetting(sourceId, 'meshcoreAutoPathfindingNeighborsEnabled', String(neighborsEnabled));
       }
-      if (intervalSeconds !== undefined) {
-        const clamped = Math.max(10, Math.min(300, intervalSeconds));
-        await databaseService.settings.setSourceSetting(sourceId, 'meshcoreAutoPathfindingIntervalSeconds', String(clamped));
+      if (intervalMinutes !== undefined) {
+        const clamped = Math.max(3, Math.min(60, intervalMinutes));
+        await databaseService.settings.setSourceSetting(sourceId, 'meshcoreAutoPathfindingIntervalMinutes', String(clamped));
       }
       if (repeatHours !== undefined) {
         const clamped = Math.max(1, Math.min(168, repeatHours));

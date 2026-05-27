@@ -155,7 +155,7 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreAutoPathfindingEnabled',
   'meshcoreAutoPathfindingPathDiscoveryEnabled',
   'meshcoreAutoPathfindingNeighborsEnabled',
-  'meshcoreAutoPathfindingIntervalSeconds',
+  'meshcoreAutoPathfindingIntervalMinutes',
   'meshcoreAutoPathfindingRepeatHours',
 ] as const;
 
@@ -246,7 +246,7 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreAutoPathfindingEnabled',
   'meshcoreAutoPathfindingPathDiscoveryEnabled',
   'meshcoreAutoPathfindingNeighborsEnabled',
-  'meshcoreAutoPathfindingIntervalSeconds',
+  'meshcoreAutoPathfindingIntervalMinutes',
   'meshcoreAutoPathfindingRepeatHours',
   // Misc per-source
   'externalUrl',

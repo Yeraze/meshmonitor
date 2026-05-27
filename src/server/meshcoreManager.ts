@@ -2967,8 +2967,9 @@ class MeshCoreManager extends EventEmitter {
       return;
     }
 
-    const intervalSecondsRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoPathfindingIntervalSeconds');
-    const intervalSeconds = Math.max(10, parseInt(intervalSecondsRaw || '30', 10) || 30);
+    const intervalMinutesRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoPathfindingIntervalMinutes');
+    const intervalMinutes = Math.max(3, parseInt(intervalMinutesRaw || '5', 10) || 5);
+    const intervalMs = intervalMinutes * 60 * 1000;
 
     const repeatHoursRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoPathfindingRepeatHours');
     const repeatHours = Math.max(1, parseInt(repeatHoursRaw || '24', 10) || 24);
@@ -2977,7 +2978,7 @@ class MeshCoreManager extends EventEmitter {
     const maxJitterMs = Math.min(repeatMs, 5 * 60 * 1000);
     const initialJitterMs = Math.random() * maxJitterMs;
 
-    logger.info(`[MeshCore:${this.sourceId}] Auto-pathfinding: starting (pathDiscovery=${pathDiscoveryEnabled}, neighbors=${neighborsEnabled}, interval=${intervalSeconds}s, repeat=${repeatHours}h, jitter=${Math.round(initialJitterMs / 1000)}s)`);
+    logger.info(`[MeshCore:${this.sourceId}] Auto-pathfinding: starting (pathDiscovery=${pathDiscoveryEnabled}, neighbors=${neighborsEnabled}, interval=${intervalMinutes}m, repeat=${repeatHours}h, jitter=${Math.round(initialJitterMs / 1000)}s)`);
 
     const executeRun = async () => {
       if (!this.connected) {
@@ -3026,7 +3027,7 @@ class MeshCoreManager extends EventEmitter {
         }
 
         if (i < targets.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, intervalSeconds * 1000));
+          await new Promise(resolve => setTimeout(resolve, intervalMs));
         }
       }
 

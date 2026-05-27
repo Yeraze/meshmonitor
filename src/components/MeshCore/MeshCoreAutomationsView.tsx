@@ -13,7 +13,7 @@ interface PathfindingSettings {
   enabled: boolean;
   pathDiscoveryEnabled: boolean;
   neighborsEnabled: boolean;
-  intervalSeconds: number;
+  intervalMinutes: number;
   repeatHours: number;
   schedulerRunning: boolean;
   lastRunAt: number | null;
@@ -23,7 +23,7 @@ const DEFAULTS: PathfindingSettings = {
   enabled: false,
   pathDiscoveryEnabled: true,
   neighborsEnabled: true,
-  intervalSeconds: 30,
+  intervalMinutes: 5,
   repeatHours: 24,
   schedulerRunning: false,
   lastRunAt: null,
@@ -51,7 +51,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
             enabled: json.data.enabled ?? false,
             pathDiscoveryEnabled: json.data.pathDiscoveryEnabled ?? true,
             neighborsEnabled: json.data.neighborsEnabled ?? true,
-            intervalSeconds: json.data.intervalSeconds ?? 30,
+            intervalMinutes: json.data.intervalMinutes ?? 5,
             repeatHours: json.data.repeatHours ?? 24,
             schedulerRunning: json.data.schedulerRunning ?? false,
             lastRunAt: json.data.lastRunAt ?? null,
@@ -76,7 +76,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
       settings.enabled !== initial.enabled ||
       settings.pathDiscoveryEnabled !== initial.pathDiscoveryEnabled ||
       settings.neighborsEnabled !== initial.neighborsEnabled ||
-      settings.intervalSeconds !== initial.intervalSeconds ||
+      settings.intervalMinutes !== initial.intervalMinutes ||
       settings.repeatHours !== initial.repeatHours;
     setHasChanges(changed);
   }, [settings, initial, loaded]);
@@ -91,7 +91,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
           enabled: settings.enabled,
           pathDiscoveryEnabled: settings.pathDiscoveryEnabled,
           neighborsEnabled: settings.neighborsEnabled,
-          intervalSeconds: settings.intervalSeconds,
+          intervalMinutes: settings.intervalMinutes,
           repeatHours: settings.repeatHours,
         }),
       });
@@ -238,7 +238,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
         {/* Interval between commands */}
         <div className="setting-item" style={{ marginBottom: '1rem' }}>
           <label htmlFor="pathfindingInterval">
-            {t('meshcore.automation.pathfinding.interval', 'Time between commands (seconds)')}
+            {t('meshcore.automation.pathfinding.interval', 'Time between commands (minutes)')}
             <span className="setting-description" style={{ display: 'block', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
               {t('meshcore.automation.pathfinding.interval_desc',
                 'Delay between each individual path discovery or neighbor request to avoid flooding the mesh.')}
@@ -247,10 +247,10 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
           <input
             id="pathfindingInterval"
             type="number"
-            min={10}
-            max={300}
-            value={settings.intervalSeconds}
-            onChange={(e) => update('intervalSeconds', Math.max(10, parseInt(e.target.value) || 10))}
+            min={3}
+            max={60}
+            value={settings.intervalMinutes}
+            onChange={(e) => update('intervalMinutes', Math.max(3, parseInt(e.target.value) || 3))}
             disabled={!canWrite}
             className="setting-input"
             style={{ width: '100px', marginTop: '0.5rem' }}
