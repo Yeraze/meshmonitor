@@ -10,6 +10,10 @@ interface MeshCoreMessageStreamProps {
   emptyText?: string;
   disabled?: boolean;
   onSend: (text: string) => Promise<boolean>;
+  onNodeNameClick?: (publicKey: string) => void;
+  /** Stable key identifying the current conversation. When it changes, the
+   *  stream scrolls to the bottom. */
+  conversationKey?: string;
 }
 
 function formatTime(ts: number): string {
@@ -52,6 +56,8 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   emptyText,
   disabled,
   onSend,
+  onNodeNameClick,
+  conversationKey,
 }) => {
   const { t } = useTranslation();
   const [draft, setDraft] = useState('');
@@ -76,7 +82,41 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     };
   }, [contacts]);
 
-  // Only auto-scroll on new messages when the user is already near the bottom.
+  const fullKeyFor = useMemo(() => {
+    const list = contacts ?? [];
+    const exact = new Set(list.map(c => c.publicKey).filter(Boolean));
+    return (key: string): string => {
+      if (!key) return key;
+      if (exact.has(key)) return key;
+      const hit = list.find(c => c.publicKey && c.publicKey.startsWith(key));
+      return hit?.publicKey ?? key;
+    };
+  }, [contacts]);
+
+  const contactKeyForName = useMemo(() => {
+    const list = contacts ?? [];
+    return (name: string): string | null => {
+      if (!name) return null;
+      const lower = name.toLowerCase();
+      const hit = list.find(c =>
+        (c.advName && c.advName.toLowerCase() === lower) ||
+        (c.name && c.name.toLowerCase() === lower));
+      return hit?.publicKey ?? null;
+    };
+  }, [contacts]);
+
+  // Scroll to bottom whenever the conversation changes.
+  const prevKeyRef = useRef(conversationKey);
+  useEffect(() => {
+    const container = listRef.current;
+    if (!container) return;
+    prevKeyRef.current = conversationKey;
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
+  }, [conversationKey]);
+
+  // Auto-scroll on new messages only when the user is already near the bottom.
   useEffect(() => {
     const container = listRef.current;
     if (!container) return;
@@ -173,12 +213,27 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           const fromLabel = outgoing
             ? t('meshcore.you', 'You')
             : m.fromName ?? friendlyName ?? `${m.fromPublicKey.substring(0, 8)}…`;
+          const isChannel = m.fromPublicKey.startsWith('channel-');
+          const clickTarget = isChannel
+            ? (m.fromName ? contactKeyForName(m.fromName) : null)
+            : fullKeyFor(m.fromPublicKey);
+          const canClick = !outgoing && onNodeNameClick && clickTarget;
           return (
             <div key={m.id} className={`mc-message-row ${outgoing ? 'outgoing' : ''}`}>
               <div className="mc-message-header">
-                <span className="mc-message-from" title={outgoing ? undefined : m.fromPublicKey}>
-                  {fromLabel}
-                </span>
+                {canClick ? (
+                  <button
+                    className="mc-message-from mc-message-from-link"
+                    title={isChannel ? m.fromName : m.fromPublicKey}
+                    onClick={() => onNodeNameClick(clickTarget)}
+                  >
+                    {fromLabel}
+                  </button>
+                ) : (
+                  <span className="mc-message-from" title={outgoing ? undefined : m.fromPublicKey}>
+                    {fromLabel}
+                  </span>
+                )}
                 <span className="mc-message-time">
                   {formatTime(m.timestamp)}
                   {outgoing && m.deliveryStatus && (
