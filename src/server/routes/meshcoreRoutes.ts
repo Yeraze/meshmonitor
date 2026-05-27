@@ -787,14 +787,26 @@ router.get(
           error: 'Get neighbours failed — source disconnected, not a Companion, or firmware too old',
         });
       }
-      const enhanced = {
-        ...result,
-        neighbours: result.neighbours.map((n: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }) => {
-          const contact = manager.resolveContactByPrefix(n.publicKeyPrefix);
-          return { ...n, name: contact?.advName ?? contact?.name ?? null };
-        }),
-      };
-      res.json({ success: true, data: enhanced });
+      const sourceId = (req.params as { id?: string }).id!;
+      const resolved = result.neighbours.map((n: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }) => {
+        const contact = manager.resolveContactByPrefix(n.publicKeyPrefix);
+        return { ...n, name: contact?.advName ?? contact?.name ?? null, fullPublicKey: contact?.publicKey ?? null };
+      });
+
+      // Persist to meshcore_neighbor_info so the data survives page refreshes.
+      const toStore = resolved
+        .filter((n: { fullPublicKey: string | null }) => n.fullPublicKey != null)
+        .map((n: { fullPublicKey: string | null; snr: number; heardSecondsAgo: number }) => ({
+          neighborPublicKey: n.fullPublicKey!,
+          snr: n.snr,
+          lastHeardSecs: n.heardSecondsAgo,
+        }));
+      if (toStore.length > 0) {
+        databaseService.meshcore.insertNeighborsBatch(sourceId, publicKey, toStore)
+          .catch((err: Error) => logger.warn('[API] Failed to persist neighbours:', err.message));
+      }
+
+      res.json({ success: true, data: { ...result, neighbours: resolved } });
     } catch (error) {
       logger.error('[API] Error getting neighbours:', error);
       res.status(500).json({ success: false, error: 'Failed to get neighbours' });
