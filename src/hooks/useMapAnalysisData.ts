@@ -4,6 +4,7 @@ import {
   fetchPositionsPage,
   fetchTraceroutesPage,
   fetchNeighbors,
+  fetchMeshCoreNeighbors,
   fetchCoverageGrid,
   fetchHopCounts,
 } from '../services/analysisApi';
@@ -125,6 +126,19 @@ export function useNeighbors(args: PaginatedHookArgs) {
     enabled: args.enabled && args.sources.length > 0,
     queryFn: ({ signal }: { signal: AbortSignal }) =>
       fetchNeighbors({
+        sources: args.sources,
+        sinceMs: lookbackToSinceMs(args.lookbackHours),
+        signal,
+      }),
+  });
+}
+
+export function useMeshCoreNeighbors(args: PaginatedHookArgs) {
+  return useQuery({
+    queryKey: ['analysis', 'meshcoreNeighbors', args.sources, args.lookbackHours],
+    enabled: args.enabled && args.sources.length > 0,
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      fetchMeshCoreNeighbors({
         sources: args.sources,
         sinceMs: lookbackToSinceMs(args.lookbackHours),
         signal,

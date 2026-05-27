@@ -2082,7 +2082,7 @@ class MeshCoreManager extends EventEmitter {
   /**
    * Find a contact whose publicKey starts with the given hex prefix.
    */
-  private resolveContactByPrefix(prefix: string): MeshCoreContact | undefined {
+  resolveContactByPrefix(prefix: string): MeshCoreContact | undefined {
     if (!prefix) return undefined;
     const exact = this.contacts.get(prefix);
     if (exact) return exact;
@@ -2090,6 +2090,69 @@ class MeshCoreManager extends EventEmitter {
       if (c.publicKey.startsWith(prefix)) return c;
     }
     return undefined;
+  }
+
+  /**
+   * Request and store neighbor data from a MeshCore repeater.
+   *
+   * @param publicKey — target repeater's 64-char hex key (remote request via
+   *   companion bridge). Omit for local repeater (serial CLI).
+   * @returns Resolved neighbor entries, or null if the device said "not supported".
+   */
+  async requestNeighbors(publicKey?: string): Promise<{
+    neighbors: Array<{ publicKey: string; name: string | null; snr: number; lastHeardSecs: number }>;
+  } | null> {
+    const { parseMeshcoreNeighborsResponse } = await import('./utils/parseMeshcoreNeighbors.js');
+
+    let reply: string;
+    if (publicKey) {
+      await this.ensureGuestLogin(publicKey);
+      const result = await this.sendCliCommand(publicKey, 'neighbors');
+      reply = result.reply;
+    } else {
+      const result = await this.sendLocalCliCommand('neighbors');
+      reply = result.reply;
+    }
+
+    const parsed = parseMeshcoreNeighborsResponse(reply);
+    if (parsed === null) return null;
+
+    const reporterKey = publicKey ?? this.localNode?.publicKey;
+    if (!reporterKey) {
+      logger.warn(`[MeshCore:${this.sourceId}] requestNeighbors: no reporter key available`);
+      return { neighbors: [] };
+    }
+
+    const resolved: Array<{ publicKey: string; name: string | null; snr: number; lastHeardSecs: number }> = [];
+    for (const entry of parsed) {
+      const contact = this.resolveContactByPrefix(entry.pubkeyPrefix);
+      if (!contact) {
+        logger.debug(`[MeshCore:${this.sourceId}] neighbor prefix ${entry.pubkeyPrefix} not in contact list, skipping`);
+        continue;
+      }
+      resolved.push({
+        publicKey: contact.publicKey,
+        name: contact.advName ?? contact.name ?? null,
+        snr: entry.snr,
+        lastHeardSecs: entry.lastHeardSecondsAgo,
+      });
+    }
+
+    try {
+      await databaseService.meshcore.insertNeighborsBatch(
+        this.sourceId,
+        reporterKey,
+        resolved.map((r) => ({
+          neighborPublicKey: r.publicKey,
+          snr: r.snr,
+          lastHeardSecs: r.lastHeardSecs,
+        })),
+      );
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] failed to persist neighbors: ${(err as Error).message}`);
+    }
+
+    return { neighbors: resolved };
   }
 
   /**

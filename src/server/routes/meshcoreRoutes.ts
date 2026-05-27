@@ -133,6 +133,40 @@ function auditMeshcoreEvent(
 }
 
 /**
+ * Enhance a raw `neighbors` CLI reply with resolved node names.
+ * Replaces each `{8-char-prefix}:{secs}:{snr*4}` line with a
+ * human-readable version showing the contact name, SNR in dB,
+ * and last-heard time.
+ */
+function enhanceNeighborsReply(reply: string, manager: ReturnType<typeof managerFor>): string {
+  const trimmed = reply.trim();
+  if (!trimmed || trimmed === '-none-' || /not supported/i.test(trimmed)) return reply;
+
+  const lines = trimmed.split('\n');
+  const enhanced: string[] = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    const parts = line.split(':');
+    if (parts.length < 3) { enhanced.push(line); continue; }
+
+    const prefix = parts[0].toLowerCase();
+    if (!/^[0-9a-f]{8}$/.test(prefix)) { enhanced.push(line); continue; }
+
+    const secs = parseInt(parts[1], 10);
+    const snrRaw = parseInt(parts[2], 10);
+    if (Number.isNaN(secs) || Number.isNaN(snrRaw)) { enhanced.push(line); continue; }
+
+    const contact = manager.resolveContactByPrefix(prefix);
+    const name = contact?.advName ?? contact?.name ?? prefix;
+    const snrDb = (snrRaw / 4).toFixed(1);
+    const ago = secs < 60 ? `${secs}s` : secs < 3600 ? `${Math.floor(secs / 60)}m` : `${Math.floor(secs / 3600)}h${Math.floor((secs % 3600) / 60)}m`;
+    enhanced.push(`${name}  SNR: ${snrDb} dB  heard: ${ago} ago`);
+  }
+  return enhanced.join('\n');
+}
+
+/**
  * Parse a comma-separated hex chain like "a3,7f,02" into a Uint8Array.
  * Empty string parses to a zero-length array (zero-hop direct path).
  * Returns null on any malformed token so the route can return a 400.
@@ -745,14 +779,34 @@ router.get(
       const count = Math.min(Math.max(parseInt(req.query.count as string || '10', 10) || 10, 1), 50);
       const offset = Math.max(parseInt(req.query.offset as string || '0', 10) || 0, 0);
       const orderBy = Math.min(Math.max(parseInt(req.query.orderBy as string || '0', 10) || 0, 0), 3);
-      const result = await managerFor(req).getNeighbours(publicKey, { count, offset, orderBy });
+      const manager = managerFor(req);
+      const result = await manager.getNeighbours(publicKey, { count, offset, orderBy });
       if (!result) {
         return res.status(409).json({
           success: false,
           error: 'Get neighbours failed — source disconnected, not a Companion, or firmware too old',
         });
       }
-      res.json({ success: true, data: result });
+      const sourceId = (req.params as { id?: string }).id!;
+      const resolved = result.neighbours.map((n: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }) => {
+        const contact = manager.resolveContactByPrefix(n.publicKeyPrefix);
+        return { ...n, name: contact?.advName ?? contact?.name ?? null, fullPublicKey: contact?.publicKey ?? null };
+      });
+
+      // Persist to meshcore_neighbor_info so the data survives page refreshes.
+      const toStore = resolved
+        .filter((n: { fullPublicKey: string | null }) => n.fullPublicKey != null)
+        .map((n: { fullPublicKey: string | null; snr: number; heardSecondsAgo: number }) => ({
+          neighborPublicKey: n.fullPublicKey!,
+          snr: n.snr,
+          lastHeardSecs: n.heardSecondsAgo,
+        }));
+      if (toStore.length > 0) {
+        databaseService.meshcore.insertNeighborsBatch(sourceId, publicKey, toStore)
+          .catch((err: Error) => logger.warn('[API] Failed to persist neighbours:', err.message));
+      }
+
+      res.json({ success: true, data: { ...result, neighbours: resolved } });
     } catch (error) {
       logger.error('[API] Error getting neighbours:', error);
       res.status(500).json({ success: false, error: 'Failed to get neighbours' });
@@ -1501,9 +1555,13 @@ router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermissio
         : undefined;
 
     try {
-      const result = await managerFor(req).sendCliCommand(publicKey, command, {
+      const manager = managerFor(req);
+      const result = await manager.sendCliCommand(publicKey, command, {
         timeoutMs: effectiveTimeout,
       });
+      if (/^neighbors$/i.test(command.trim())) {
+        result.reply = enhanceNeighborsReply(result.reply, manager);
+      }
       auditMeshcoreEvent(req, 'meshcore_remote_cli', 'remote_admin', {
         sourceId: req.params.id,
         publicKey,
@@ -1591,9 +1649,13 @@ router.post('/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('con
         : undefined;
 
     try {
-      const result = await managerFor(req).sendLocalCliCommand(command, {
+      const manager = managerFor(req);
+      const result = await manager.sendLocalCliCommand(command, {
         timeoutMs: effectiveTimeout,
       });
+      if (/^neighbors$/i.test(command.trim())) {
+        result.reply = enhanceNeighborsReply(result.reply, manager);
+      }
       auditMeshcoreEvent(req, 'meshcore_local_cli', 'configuration', {
         sourceId: req.params.id,
         command,
@@ -2254,4 +2316,73 @@ router.post(
   },
 );
 
+// ---------------------------------------------------------------------------
+// POST /api/sources/:id/meshcore/neighbors/request
+// Request neighbor data from a MeshCore repeater (remote or local).
+// ---------------------------------------------------------------------------
+
+router.post('/neighbors/request', meshcoreDeviceLimiter, requireAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  const sourceId = (req.params as { id?: string }).id!;
+  const { publicKey } = req.body as { publicKey?: string };
+
+  try {
+    const manager = managerFor(req);
+
+    if (publicKey) {
+      const normalizedKey = publicKey.toLowerCase();
+      if (!/^[0-9a-f]{64}$/.test(normalizedKey)) {
+        return res.status(400).json({ success: false, error: 'publicKey must be a 64-char hex string' });
+      }
+      const contact = manager.resolveContactByPrefix(normalizedKey);
+      if (!contact) {
+        return res.status(404).json({ success: false, error: 'Contact not found' });
+      }
+      if (contact.advType !== 2) {
+        return res.status(400).json({ success: false, error: 'Neighbors request is only supported for Repeaters (advType=2)' });
+      }
+    }
+
+    const result = await manager.requestNeighbors(publicKey);
+    if (result === null) {
+      return res.json({ success: true, data: { neighbors: [], count: 0, notSupported: true } });
+    }
+
+    auditMeshcoreEvent(req, 'meshcore_neighbors_request', 'configuration', {
+      sourceId,
+      publicKey: publicKey ?? '(local)',
+      neighborCount: result.neighbors.length,
+    });
+
+    res.json({ success: true, data: { neighbors: result.neighbors, count: result.neighbors.length } });
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    if (msg.includes('timed out')) {
+      return res.status(504).json({ success: false, error: msg, code: 'CLI_TIMEOUT' });
+    }
+    logger.error('[API] MeshCore neighbors request failed:', err);
+    res.status(500).json({ success: false, error: 'Neighbors request failed' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/sources/:id/meshcore/neighbors
+// Query stored MeshCore neighbor data (for map rendering).
+// ---------------------------------------------------------------------------
+
+router.get('/neighbors', requireAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  const sourceId = (req.params as { id?: string }).id!;
+  const sinceMs = Number(req.query.since) || 0;
+  const nodeFilter = typeof req.query.node === 'string' ? req.query.node : undefined;
+
+  try {
+    let items = await databaseService.meshcore.getNeighbors([sourceId], sinceMs);
+    if (nodeFilter) {
+      items = items.filter((i) => i.publicKey === nodeFilter);
+    }
+    res.json({ success: true, data: { items } });
+  } catch (error) {
+    logger.error('[API] Error fetching MeshCore neighbors:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch neighbors' });
+  }
+});
 export default router;

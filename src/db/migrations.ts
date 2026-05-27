@@ -87,6 +87,7 @@ import { migration as normalizeNodePublicKeysToBase64Migration, runMigration069P
 import { migration as meshcoreAdminCredentialMigration, runMigration070Postgres, runMigration070Mysql } from '../server/migrations/070_meshcore_admin_credential.js';
 import { migration as dropLegacyPskLengthCheckMigration, runMigration071Postgres, runMigration071Mysql } from '../server/migrations/071_drop_legacy_psk_length_check.js';
 import { migration as meshcoreRoomSyncMigration, runMigration072Postgres, runMigration072Mysql } from '../server/migrations/072_meshcore_room_sync.js';
+import { migration as meshcoreNeighborInfoMigration, runMigration073Postgres, runMigration073Mysql } from '../server/migrations/073_meshcore_neighbor_info.js';
 
 // ============================================================================
 // Registry
@@ -1149,4 +1150,18 @@ registry.register({
   sqlite: (db) => meshcoreRoomSyncMigration.up(db),
   postgres: (client) => runMigration072Postgres(client),
   mysql: (pool) => runMigration072Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 073: Create meshcore_neighbor_info table for storing parsed
+// neighbor data from MeshCore repeaters' CLI `neighbors` command.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 73,
+  name: 'meshcore_neighbor_info',
+  settingsKey: 'migration_073_meshcore_neighbor_info',
+  sqlite: (db) => meshcoreNeighborInfoMigration.up(db),
+  postgres: (client) => runMigration073Postgres(client),
+  mysql: (pool) => runMigration073Mysql(pool),
 });

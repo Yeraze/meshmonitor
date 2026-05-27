@@ -834,6 +834,7 @@ router.get('/:id/nodes', requirePermission('nodes', 'read', { sourceIdFrom: 'par
             nodeNum: 0,
             sourceId: mcManager.sourceId,
             isMeshCore: true,
+            publicKey: pubKey,
             isIgnored: false,
             isFavorite: false,
             user: { id: nodeId, longName: n.name, shortName: (n.name || '').substring(0, 4) },
