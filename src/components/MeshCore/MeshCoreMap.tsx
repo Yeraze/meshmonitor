@@ -128,13 +128,15 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
     api.get<{ success: boolean; data: { items: NeighborEdge[] } }>(
       `/api/sources/${sourceId}/meshcore/neighbors?since=0`,
     ).then((resp) => {
-      if (!cancelled && resp.success) setNeighborEdges(resp.data.items);
+      if (!cancelled && resp.success && Array.isArray(resp.data?.items)) {
+        setNeighborEdges(resp.data.items);
+      }
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [sourceId]);
 
   const neighborSegments = useMemo(() => {
-    if (!showNeighbors || neighborEdges.length === 0) return [];
+    if (!showNeighbors || !neighborEdges?.length) return [];
     const posByKey = new Map<string, [number, number]>();
     for (const c of positioned) {
       posByKey.set(c.publicKey, [c.latitude!, c.longitude!]);
