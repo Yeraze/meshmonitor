@@ -2148,10 +2148,15 @@ class MeshCoreManager extends EventEmitter {
   } | null> {
     const { parseMeshcoreNeighborsResponse } = await import('./utils/parseMeshcoreNeighbors.js');
 
+    if (publicKey && !/^[0-9a-f]{64}$/.test(publicKey.toLowerCase())) {
+      throw new Error('publicKey must be a 64-char hex string');
+    }
+
     let reply: string;
     if (publicKey) {
-      await this.ensureGuestLogin(publicKey);
-      const result = await this.sendCliCommand(publicKey, 'neighbors');
+      const normalizedKey = publicKey.toLowerCase();
+      await this.ensureGuestLogin(normalizedKey);
+      const result = await this.sendCliCommand(normalizedKey, 'neighbors');
       reply = result.reply;
     } else {
       const result = await this.sendLocalCliCommand('neighbors');
@@ -3151,6 +3156,20 @@ class MeshCoreManager extends EventEmitter {
             logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: discover_path ${t.name} → ${ok ? 'sent' : 'failed'}`);
           } else {
             const result = await this.getNeighbours(t.key);
+            if (result && result.neighbours.length > 0) {
+              const toStore = result.neighbours
+                .map(n => {
+                  const contact = this.resolveContactByPrefix(n.publicKeyPrefix);
+                  return contact?.publicKey
+                    ? { neighborPublicKey: contact.publicKey, snr: n.snr, lastHeardSecs: n.heardSecondsAgo }
+                    : null;
+                })
+                .filter((n): n is NonNullable<typeof n> => n !== null);
+              if (toStore.length > 0) {
+                databaseService.meshcore.insertNeighborsBatch(this.sourceId, t.key, toStore)
+                  .catch((err: Error) => logger.warn(`[MeshCore:${this.sourceId}] Auto-pathfinding: failed to persist neighbours: ${err.message}`));
+              }
+            }
             logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: get_neighbours ${t.name} → ${result ? result.total + ' neighbours' : 'failed'}`);
           }
         } catch (err) {

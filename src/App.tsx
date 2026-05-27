@@ -2936,13 +2936,18 @@ function App() {
       setNeighborInfoLoading(nodeId);
 
       if (sourceType === 'meshcore' && sourceId) {
-        // MeshCore: nodeId is the 64-char hex public key
+        const normalized = nodeId.toLowerCase();
+        if (!/^[0-9a-f]{64}$/.test(normalized)) {
+          logger.warn(`🏠 Invalid MeshCore publicKey: ${nodeId.substring(0, 16)}…`);
+          setNeighborInfoLoading(null);
+          return;
+        }
         await authFetch(`${baseUrl}/api/sources/${sourceId}/meshcore/neighbors/request`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ publicKey: nodeId }),
+          body: JSON.stringify({ publicKey: normalized }),
         });
-        logger.debug(`🏠 MeshCore neighbors request sent for ${nodeId.substring(0, 16)}…`);
+        logger.debug(`🏠 MeshCore neighbors request sent for ${normalized.substring(0, 16)}…`);
       } else {
         // Meshtastic: convert hex nodeId to numeric destination
         const nodeNumStr = nodeId.replace('!', '');
