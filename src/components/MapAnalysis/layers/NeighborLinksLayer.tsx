@@ -7,10 +7,17 @@ import {
 import { useNeighbors } from '../../../hooks/useMapAnalysisData';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
 import { resolveNodeLatLng, type MaybePositionedNode } from '../nodePositionUtil';
+import { classifyNodeTransport, type NodeTransportClass } from '../../../utils/nodeTransport';
 
 function snrToOpacity(snr: number | null): number {
   if (snr === null) return 0.4;
   return Math.max(0.2, Math.min(1, (snr + 10) / 20));
+}
+
+function transportColor(tc: NodeTransportClass): string {
+  if (tc === 'mqtt') return '#22c55e';
+  if (tc === 'udp') return '#f97316';
+  return '#06b6d4';
 }
 
 interface NeighborEdge {
@@ -55,6 +62,14 @@ export default function NeighborLinksLayer() {
     return map;
   }, [nodes]);
 
+  const transportByKey = useMemo(() => {
+    const map = new Map<string, NodeTransportClass>();
+    for (const n of (nodes ?? []) as NodeRecord[]) {
+      map.set(`${n.sourceId ?? ''}:${Number(n.nodeNum)}`, classifyNodeTransport(n as any));
+    }
+    return map;
+  }, [nodes]);
+
   const ts = config.timeSlider;
   const inWindow = (t: number): boolean =>
     !ts.enabled ||
@@ -72,13 +87,19 @@ export default function NeighborLinksLayer() {
       neighborNum: number;
       snr: number | null;
       timestamp?: number;
+      transportClass: NodeTransportClass;
     }> = [];
     const items = (data as { items?: NeighborEdge[] } | undefined)?.items ?? [];
     const filtered = items.filter((e) => inWindow(e.timestamp ?? 0));
     for (const e of filtered) {
-      const a = positionByKey.get(`${e.sourceId}:${Number(e.nodeNum)}`);
-      const b = positionByKey.get(`${e.sourceId}:${Number(e.neighborNum)}`);
+      const aKey = `${e.sourceId}:${Number(e.nodeNum)}`;
+      const bKey = `${e.sourceId}:${Number(e.neighborNum)}`;
+      const a = positionByKey.get(aKey);
+      const b = positionByKey.get(bKey);
       if (!a || !b) continue;
+      const aTx = transportByKey.get(aKey) ?? 'rf';
+      const bTx = transportByKey.get(bKey) ?? 'rf';
+      const tc: NodeTransportClass = aTx === 'mqtt' || bTx === 'mqtt' ? 'mqtt' : aTx === 'udp' || bTx === 'udp' ? 'udp' : 'rf';
       out.push({
         key: String(e.id),
         positions: [a, b],
@@ -88,11 +109,12 @@ export default function NeighborLinksLayer() {
         neighborNum: Number(e.neighborNum),
         snr: e.snr,
         timestamp: e.timestamp,
+        transportClass: tc,
       });
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, positionByKey, ts.enabled, ts.windowStartMs, ts.windowEndMs]);
+  }, [data, positionByKey, transportByKey, ts.enabled, ts.windowStartMs, ts.windowEndMs]);
 
   return (
     <>
@@ -100,7 +122,7 @@ export default function NeighborLinksLayer() {
         <Polyline
           key={e.key}
           positions={e.positions}
-          pathOptions={{ color: '#06b6d4', weight: 1, opacity: e.opacity, dashArray: '4 4' }}
+          pathOptions={{ color: transportColor(e.transportClass), weight: 1, opacity: e.opacity, dashArray: '4 4' }}
           eventHandlers={{
             click: () =>
               setSelected({
