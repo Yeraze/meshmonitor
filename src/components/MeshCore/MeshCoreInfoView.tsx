@@ -23,6 +23,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { ConnectionStatus } from './hooks/useMeshCore';
 import { useTelemetry } from '../../hooks/useTelemetry';
+import { CollapsibleSection } from './CollapsibleSection';
 
 const HOURS_OPTIONS = [1, 6, 24, 72, 168] as const;
 type HoursOption = typeof HOURS_OPTIONS[number];
@@ -244,7 +245,7 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
     <div className="meshcore-info-view" data-testid="meshcore-info-view">
       <div className="meshcore-info-grid">
         <section className="meshcore-info-card" data-testid="meshcore-info-identity">
-          <h3>{t('meshcore.info.identity', 'Identity')}</h3>
+          <CollapsibleSection title={t('meshcore.info.identity', 'Identity')}>
           <dl>
             <dt>{t('meshcore.info.name', 'Name')}</dt>
             <dd>{identity.name || '—'}</dd>
@@ -267,10 +268,11 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
                 : '—'}
             </dd>
           </dl>
+          </CollapsibleSection>
         </section>
 
         <section className="meshcore-info-card" data-testid="meshcore-info-radio">
-          <h3>{t('meshcore.info.radio', 'Radio')}</h3>
+          <CollapsibleSection title={t('meshcore.info.radio', 'Radio')}>
           <dl>
             <dt>{t('meshcore.info.frequency', 'Frequency')}</dt>
             <dd>{fmtFreq(identity.radioFreq)}</dd>
@@ -287,10 +289,11 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
                 : '—'}
             </dd>
           </dl>
+          </CollapsibleSection>
         </section>
 
         <section className="meshcore-info-card" data-testid="meshcore-info-health">
-          <h3>{t('meshcore.info.health', 'Current health')}</h3>
+          <CollapsibleSection title={t('meshcore.info.health', 'Current health')}>
           {!isCompanion ? (
             <p className="meshcore-info-note">
               {t('meshcore.info.repeater_no_stats', 'Local stats are only available for Companion devices.')}
@@ -331,10 +334,11 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
               {t('meshcore.info.awaiting_poll', 'Waiting for first telemetry poll…')}
             </p>
           )}
+          </CollapsibleSection>
         </section>
 
         <section className="meshcore-info-card" data-testid="meshcore-info-counters">
-          <h3>{t('meshcore.info.counters', 'Cumulative counters')}</h3>
+          <CollapsibleSection title={t('meshcore.info.counters', 'Cumulative counters')}>
           {counterValues.size === 0 ? (
             <p className="meshcore-info-note">{t('meshcore.info.no_counters', 'No counter data yet.')}</p>
           ) : (
@@ -349,24 +353,23 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
               ))}
             </dl>
           )}
+          </CollapsibleSection>
         </section>
       </div>
 
       {isCompanion && (
         <section className="meshcore-info-graphs" data-testid="meshcore-info-graphs">
-          <div className="meshcore-info-graphs-header">
-            <h3>{t('meshcore.info.history', 'History')}</h3>
-            <div className="meshcore-info-range" role="group" aria-label="Time range">
-              {HOURS_OPTIONS.map((h) => (
-                <button
-                  key={h}
-                  className={`mc-range-btn ${hours === h ? 'active' : ''}`}
-                  onClick={() => setHours(h)}
-                >
-                  {h < 24 ? `${h}h` : `${h / 24}d`}
-                </button>
-              ))}
-            </div>
+          <CollapsibleSection title={t('meshcore.info.history', 'History')}>
+          <div className="meshcore-info-range" role="group" aria-label="Time range" style={{ marginBottom: '1rem' }}>
+            {HOURS_OPTIONS.map((h) => (
+              <button
+                key={h}
+                className={`mc-range-btn ${hours === h ? 'active' : ''}`}
+                onClick={() => setHours(h)}
+              >
+                {h < 24 ? `${h}h` : `${h / 24}d`}
+              </button>
+            ))}
           </div>
 
           {telLoading && telemetryRows.length === 0 ? (
@@ -423,6 +426,7 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
               })}
             </div>
           )}
+          </CollapsibleSection>
         </section>
       )}
     </div>

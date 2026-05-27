@@ -47,6 +47,10 @@
   letter-spacing: -0.01em;
 }
 
+.dashboard-topbar-title-short {
+  display: none;
+}
+
 .dashboard-topbar-actions {
   margin-left: auto;
   display: flex;
@@ -729,14 +733,49 @@
     justify-content: center;
   }
 
-  /* Tighten up the topbar on mobile so the logo/title still fit */
+  /* Tighten up the topbar on mobile */
   .dashboard-topbar {
-    padding: 0 12px;
-    gap: 8px;
+    padding: 0 8px;
+    gap: 6px;
   }
 
-  .dashboard-topbar-title {
-    font-size: 1.2rem;
+  .dashboard-topbar-logo-img {
+    display: none;
+  }
+
+  .dashboard-topbar-title-full {
+    display: none;
+  }
+
+  .dashboard-topbar-title-short {
+    display: inline;
+    font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+  }
+
+  .dashboard-topbar .node-info {
+    display: none;
+  }
+
+  .dashboard-topbar .back-to-sources-btn {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .dashboard-topbar-actions {
+    gap: 6px;
+  }
+
+  .dashboard-topbar .connection-status span:not(.status-indicator) {
+    display: none;
+  }
+
+  .dashboard-signin-btn {
+    padding: 5px 10px;
+    font-size: 0.8rem;
   }
 
   /* Sidebar becomes a slide-in overlay drawer */

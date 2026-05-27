@@ -1,8 +1,12 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreNode } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMap } from './MeshCoreMap';
+
+const MOBILE_BREAKPOINT = 768;
+const isMobileViewport = (): boolean =>
+  typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
 
 const DEVICE_TYPE_KEYS: Record<number, string> = {
   0: 'meshcore.device_type.unknown',
@@ -96,6 +100,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   const [selected, setSelected] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('lastHeard');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [mobileShowContent, setMobileShowContent] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importHex, setImportHex] = useState('');
   const [importing, setImporting] = useState(false);
@@ -127,14 +132,30 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     }
   }, [onImportContact, importing, importHex, t]);
 
+  useEffect(() => {
+    const onResize = () => {
+      if (!isMobileViewport()) setMobileShowContent(false);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const handleSelectNode = useCallback((key: string) => {
+    setSelected(key);
+    if (isMobileViewport()) setMobileShowContent(true);
+  }, []);
+
   const merged = useMemo(() => mergeNodesAndContacts(nodes, contacts), [nodes, contacts]);
   const rows = useMemo(
     () => sortRows(merged, sortField, sortDirection),
     [merged, sortField, sortDirection],
   );
 
+  const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';
+  const selectedRow = rows.find(r => r.publicKey === selected);
+
   return (
-    <div className="meshcore-two-pane">
+    <div className={`meshcore-two-pane ${mobileClass}`}>
       <div className="meshcore-list-pane">
         <div className="meshcore-list-pane-header">
           <span>{t('meshcore.nav.nodes', 'Nodes')}</span>
@@ -184,7 +205,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             <button
               key={row.publicKey}
               className={`mc-node-row ${selected === row.publicKey ? 'selected' : ''}`}
-              onClick={() => setSelected(row.publicKey)}
+              onClick={() => handleSelectNode(row.publicKey)}
             >
               <div className="mc-node-row-name">
                 <span>{row.name}</span>
@@ -210,6 +231,20 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
         </div>
       </div>
       <div className="meshcore-main-pane">
+        {mobileShowContent && (
+          <div className="meshcore-mobile-back-header">
+            <button
+              type="button"
+              className="meshcore-mobile-back-btn"
+              onClick={() => setMobileShowContent(false)}
+            >
+              ◀ {t('common.back', 'Back')}
+            </button>
+            {selectedRow && (
+              <span className="meshcore-mobile-back-title">{selectedRow.name}</span>
+            )}
+          </div>
+        )}
         <MeshCoreMap contacts={contacts} selectedPublicKey={selected} />
       </div>
       {importDialogOpen && (

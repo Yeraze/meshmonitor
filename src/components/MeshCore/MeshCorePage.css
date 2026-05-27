@@ -1009,3 +1009,293 @@
   color: var(--ctp-subtext0);
   font-size: 0.95rem;
 }
+
+/* ============================================================
+ * Mobile back button (shown in content pane header on mobile)
+ * ============================================================ */
+
+.meshcore-mobile-back-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--ctp-mantle);
+  border-bottom: 1px solid var(--ctp-surface1);
+  flex-shrink: 0;
+}
+
+.meshcore-mobile-back-btn {
+  background: transparent;
+  border: 1px solid var(--ctp-surface2);
+  color: var(--ctp-text);
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.meshcore-mobile-back-btn:hover {
+  background: var(--ctp-surface1);
+}
+
+.meshcore-mobile-back-title {
+  font-weight: 500;
+  color: var(--ctp-text);
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================
+ * Collapsible section
+ * ============================================================ */
+
+.meshcore-collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.meshcore-collapsible-header h3 {
+  margin-bottom: 0;
+}
+
+.meshcore-collapsible-chevron {
+  font-size: 0.75rem;
+  color: var(--ctp-subtext0);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+}
+
+.meshcore-collapsible-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.meshcore-collapsible-body {
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+}
+
+.meshcore-collapsible-body.collapsed {
+  max-height: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.meshcore-collapsible-body.expanded {
+  max-height: none;
+  opacity: 1;
+  margin-top: 0.75rem;
+}
+
+/* ============================================================
+ * Mobile responsive — 768px breakpoint
+ * ============================================================ */
+
+@media (max-width: 768px) {
+
+  /* --- Page body: toolbar moves to bottom --- */
+  .meshcore-page-body {
+    flex-direction: column-reverse;
+  }
+
+  /* --- Sub-toolbar: horizontal bottom bar --- */
+  .meshcore-sub-toolbar {
+    width: 100%;
+    flex-direction: row;
+    border-right: none;
+    border-top: 1px solid var(--ctp-surface1);
+    padding: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    flex-shrink: 0;
+  }
+
+  .meshcore-sub-toolbar.expanded {
+    width: 100%;
+  }
+
+  .meshcore-sub-toolbar-item {
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.5rem 0.4rem;
+    margin: 0;
+    border-radius: 0;
+    width: auto;
+    min-width: 56px;
+    flex-shrink: 0;
+    text-align: center;
+    justify-content: center;
+    font-size: 0.7rem;
+  }
+
+  .meshcore-sub-toolbar-item .icon {
+    font-size: 1.2rem;
+  }
+
+  .meshcore-sub-toolbar-item .label {
+    display: block !important;
+    font-size: 0.65rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 64px;
+  }
+
+  .meshcore-sub-toolbar-spacer {
+    display: none;
+  }
+
+  .meshcore-sub-toolbar-toggle {
+    display: none;
+  }
+
+  /* --- Status bar: compact --- */
+  .meshcore-status-bar {
+    padding: 0.4rem 0.75rem;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .meshcore-status-bar .status-text {
+    font-size: 0.85rem;
+  }
+
+  .meshcore-status-bar .status-meta {
+    display: none;
+  }
+
+  .meshcore-status-bar button {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.8rem;
+  }
+
+  /* --- Two-pane: full-width stacking --- */
+  .meshcore-two-pane {
+    flex-direction: column;
+  }
+
+  .meshcore-list-pane {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--ctp-surface1);
+  }
+
+  .meshcore-main-pane {
+    flex: 1;
+  }
+
+  /* Mobile pane toggle: show list OR content */
+  .meshcore-two-pane.mobile-show-content .meshcore-list-pane {
+    display: none;
+  }
+
+  .meshcore-two-pane.mobile-show-list .meshcore-main-pane {
+    display: none;
+  }
+
+  .meshcore-two-pane.mobile-show-list .meshcore-list-pane {
+    flex: 1;
+    max-height: none;
+  }
+
+  /* Collapsed list pane — force back to visible on mobile-show-list */
+  .meshcore-list-pane.collapsed {
+    width: 100%;
+  }
+
+  /* --- Form views: tighter padding --- */
+  .meshcore-form-view {
+    padding: 0.75rem;
+  }
+
+  .meshcore-form-view .form-section {
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .meshcore-form-view .form-section h3 {
+    font-size: 1.1rem;
+  }
+
+  .meshcore-form-view input,
+  .meshcore-form-view select {
+    max-width: none;
+  }
+
+  /* --- Info view: single column cards --- */
+  .meshcore-info-view {
+    padding: 0.75rem;
+    gap: 0.75rem;
+  }
+
+  .meshcore-info-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .meshcore-info-card {
+    padding: 1rem;
+  }
+
+  .meshcore-info-card h3 {
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .meshcore-info-graphs {
+    padding: 1rem;
+  }
+
+  .meshcore-info-graphs-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .meshcore-info-graphs-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  /* --- DM variant: taller stream on mobile --- */
+  .meshcore-main-pane--dm .meshcore-message-stream {
+    height: 50vh;
+    min-height: 16rem;
+  }
+
+  /* --- Message bubbles: wider on mobile --- */
+  .mc-message-row {
+    max-width: 90%;
+  }
+
+  /* --- Channel rows: tighter on mobile --- */
+  .mc-channel-row {
+    padding: 0.75rem 1rem;
+    margin: 0 0.25rem 0.4rem;
+  }
+
+  /* --- Room stats header: wrap --- */
+  .meshcore-room-stats-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .meshcore-room-sync-config {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  /* --- Disconnected hero: smaller --- */
+  .meshcore-disconnected-hero-inner {
+    padding: 1.25rem;
+  }
+}

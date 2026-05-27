@@ -14,13 +14,17 @@
  * send (meshcoreManager.ts:sendMessage, phase 2 addition). The per-channel
  * filter therefore matches either direction.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { MeshCoreMessage, MeshCoreActions, ConnectionStatus } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
+
+const MOBILE_BREAKPOINT = 768;
+const isMobileViewport = (): boolean =>
+  typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
 
 interface MeshCoreChannelsViewProps {
   messages: MeshCoreMessage[];
@@ -78,6 +82,20 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
   const [loadingChannels, setLoadingChannels] = useState(false);
+  const [mobileShowContent, setMobileShowContent] = useState(false);
+
+  useEffect(() => {
+    const onResize = () => {
+      if (!isMobileViewport()) setMobileShowContent(false);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const handleSelectChannel = useCallback((idx: number) => {
+    setSelectedIdx(idx);
+    if (isMobileViewport()) setMobileShowContent(true);
+  }, []);
 
   // Fetch the synced channel list for this source. We use /api/channels/all
   // (rather than /api/channels) so MeshCore rows with idx > 7 aren't dropped
@@ -141,8 +159,10 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const selfKey = status?.localNode?.publicKey;
   const connected = status?.connected ?? false;
 
+  const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';
+
   return (
-    <div className="meshcore-two-pane">
+    <div className={`meshcore-two-pane ${mobileClass}`}>
       <div className="meshcore-list-pane">
         <div className="meshcore-list-pane-header">
           <span>{t('meshcore.nav.channels', 'Channels')}</span>
@@ -163,7 +183,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
               <button
                 key={c.id}
                 className={`mc-channel-row ${active.id === c.id ? 'selected' : ''}`}
-                onClick={() => setSelectedIdx(c.id)}
+                onClick={() => handleSelectChannel(c.id)}
               >
                 <div className="mc-channel-row-name">
                   # {c.name || t('meshcore.channels.unnamed', 'Channel {{idx}}', { idx: c.id })}
@@ -177,6 +197,20 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
         </div>
       </div>
       <div className="meshcore-main-pane">
+        {mobileShowContent && (
+          <div className="meshcore-mobile-back-header">
+            <button
+              type="button"
+              className="meshcore-mobile-back-btn"
+              onClick={() => setMobileShowContent(false)}
+            >
+              ◀ {t('common.back', 'Back')}
+            </button>
+            <span className="meshcore-mobile-back-title">
+              # {active.name || t('meshcore.channels.unnamed', 'Channel {{idx}}', { idx: active.id })}
+            </span>
+          </div>
+        )}
         <MeshCoreMessageStream
           messages={filtered}
           contacts={contacts}

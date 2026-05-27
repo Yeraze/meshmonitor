@@ -33,10 +33,9 @@ function isRealNodeKey(key: string): boolean {
 type DmSortField = 'name' | 'lastMessage';
 type DmSortDirection = 'asc' | 'desc';
 
-// Mobile viewport defaults the node list to collapsed so the conversation
-// pane takes the full width (matches Meshtastic MessagesTab behavior).
+const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = (): boolean =>
-  typeof window !== 'undefined' && window.innerWidth <= 768;
+  typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
 
 export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProps> = ({
   messages,
@@ -54,7 +53,16 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   const [selected, setSelected] = useState<string | null>(null);
   const [sortField, setSortField] = useState<DmSortField>('lastMessage');
   const [sortDirection, setSortDirection] = useState<DmSortDirection>('desc');
-  const [isCollapsed, setIsCollapsed] = useState<boolean>(isMobileViewport);
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
+  const [mobileShowContent, setMobileShowContent] = useState(false);
+
+  useEffect(() => {
+    const onResize = () => {
+      if (!isMobileViewport()) setMobileShowContent(false);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const selfKey = status?.localNode?.publicKey;
   const connected = status?.connected ?? false;
@@ -193,8 +201,19 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     });
   }, [messages, selected, selfKey]);
 
+  const handleSelectContact = (key: string) => {
+    setSelected(key);
+    if (isMobileViewport()) setMobileShowContent(true);
+  };
+
+  const selectedContactName = selected
+    ? (contactsByKey.get(selected)?.advName || contactsByKey.get(selected)?.name || `${selected.substring(0, 8)}…`)
+    : '';
+
+  const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';
+
   return (
-    <div className="meshcore-two-pane">
+    <div className={`meshcore-two-pane ${mobileClass}`}>
       <div className={`meshcore-list-pane ${isCollapsed ? 'collapsed' : ''}`}>
         <div className="meshcore-list-pane-header">
           <button
@@ -256,7 +275,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 <button
                   key={key}
                   className={`mc-node-row ${selected === key ? 'selected' : ''}`}
-                  onClick={() => setSelected(key)}
+                  onClick={() => handleSelectContact(key)}
                 >
                   <div className="mc-node-row-name">
                     <span>{name}</span>
@@ -269,6 +288,20 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
         )}
       </div>
       <div className="meshcore-main-pane meshcore-main-pane--dm">
+        {mobileShowContent && (
+          <div className="meshcore-mobile-back-header">
+            <button
+              type="button"
+              className="meshcore-mobile-back-btn"
+              onClick={() => setMobileShowContent(false)}
+            >
+              ◀ {t('common.back', 'Back')}
+            </button>
+            {selected && (
+              <span className="meshcore-mobile-back-title">{selectedContactName}</span>
+            )}
+          </div>
+        )}
         {selected ? (
           <>
             <MeshCoreMessageStream
