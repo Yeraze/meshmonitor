@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { formatRelativeTime } from '../../utils/datetime';
 import { useSettings } from '../../contexts/SettingsContext';
+import { useSource } from '../../contexts/SourceContext';
 import { MeshCoreRemoteConsole } from './MeshCoreRemoteConsole';
 import type { MeshCoreActions, TracePathResult } from './hooks/useMeshCore';
+import api from '../../services/api';
 import '../NodeDetailsBlock.css';
 
 const DEVICE_TYPE_KEYS: Record<number, string> = {
@@ -98,6 +100,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
 }) => {
   const { t } = useTranslation();
   const { timeFormat, dateFormat } = useSettings();
+  const { sourceId } = useSource();
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     return localStorage.getItem(COLLAPSED_KEY) === 'true';
   });
@@ -125,7 +128,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const [neighboursLoading, setNeighboursLoading] = useState(false);
   const [neighboursData, setNeighboursData] = useState<{
     total: number;
-    neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[];
+    neighbours: { publicKeyPrefix: string; name?: string | null; heardSecondsAgo: number; snr: number }[];
+    fetchedAt?: number;
   } | null>(null);
 
   // Path-editor modal state. Only mounted when advancedPathEditEnabled.
@@ -160,6 +164,37 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     setNeighboursLoading(false);
     setNeighboursData(null);
   }, [publicKey]);
+
+  // Auto-load stored neighbor data from the database for repeaters.
+  const loadStoredNeighbors = useCallback(async () => {
+    if (!sourceId || contact?.advType !== 2) return;
+    try {
+      const resp = await api.get<{
+        success: boolean;
+        data: { items: Array<{ neighborPublicKey: string; neighborName: string | null; snr: number | null; timestamp: number }> };
+      }>(`/api/sources/${sourceId}/meshcore/neighbors?since=0&node=${encodeURIComponent(publicKey)}`);
+      if (resp.success && resp.data.items.length > 0) {
+        const ts = resp.data.items[0].timestamp;
+        setNeighboursData({
+          total: resp.data.items.length,
+          neighbours: resp.data.items.map((n) => ({
+            publicKeyPrefix: n.neighborPublicKey.substring(0, 8),
+            name: n.neighborName,
+            heardSecondsAgo: 0,
+            snr: n.snr ?? 0,
+          })),
+          fetchedAt: ts,
+        });
+      }
+    } catch {
+      // Stored data is a nicety — if the fetch fails, the user can
+      // still click Neighbours to fetch live data.
+    }
+  }, [sourceId, publicKey, contact?.advType]);
+
+  useEffect(() => {
+    void loadStoredNeighbors();
+  }, [loadStoredNeighbors]);
 
   const name = contact?.advName || contact?.name || `${publicKey.substring(0, 8)}…`;
   const advType = contact?.advType;
@@ -364,7 +399,9 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     setNeighboursData(null);
     try {
       const result = await onGetNeighbours(publicKey, { count: 20 });
-      setNeighboursData(result);
+      if (result) {
+        setNeighboursData({ ...result, fetchedAt: Date.now() });
+      }
     } finally {
       setNeighboursLoading(false);
     }
@@ -648,6 +685,11 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               <div className="node-detail-label">
                 {t('meshcore.contact_details.neighbours_results', 'Neighbours')}
                 {' '}({neighboursData.total} {t('meshcore.contact_details.neighbours_total', 'total')})
+                {neighboursData.fetchedAt && (
+                  <span style={{ fontSize: '0.8em', opacity: 0.6, marginLeft: '0.5rem' }}>
+                    {formatRelativeTime(neighboursData.fetchedAt, timeFormat, dateFormat)}
+                  </span>
+                )}
               </div>
               <div className="node-detail-value">
                 {neighboursData.neighbours.length === 0 ? (
@@ -659,7 +701,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     <thead>
                       <tr style={{ borderBottom: '1px solid var(--ctp-surface1, #45475a)' }}>
                         <th style={{ textAlign: 'left', padding: '0.25rem 0.5rem' }}>
-                          {t('meshcore.contact_details.neighbours_prefix', 'Key Prefix')}
+                          {t('meshcore.contact_details.neighbours_name', 'Node')}
                         </th>
                         <th style={{ textAlign: 'right', padding: '0.25rem 0.5rem' }}>
                           {t('meshcore.contact_details.neighbours_snr', 'SNR')}
@@ -672,7 +714,9 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     <tbody>
                       {neighboursData.neighbours.map((n, i) => (
                         <tr key={i}>
-                          <td style={{ padding: '0.25rem 0.5rem' }}>{n.publicKeyPrefix}</td>
+                          <td style={{ padding: '0.25rem 0.5rem' }} title={n.publicKeyPrefix}>
+                            {n.name || n.publicKeyPrefix}
+                          </td>
                           <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right' }}
                               className={getSignalClass(n.snr)}>
                             {n.snr.toFixed(2)} dB
