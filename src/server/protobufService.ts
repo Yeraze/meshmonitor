@@ -777,6 +777,41 @@ class ProtobufService {
     }
   }
 
+  createAddContactMessage(nodeNum: number, nodeId: string, longName: string, shortName: string, publicKeyBase64: string, hwModel?: number): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found in loaded proto files');
+      }
+
+      const userData: any = {
+        id: nodeId,
+        longName,
+        shortName,
+        publicKey: Buffer.from(publicKeyBase64, 'base64'),
+      };
+      if (hwModel !== undefined) {
+        userData.hwModel = hwModel;
+      }
+
+      const adminMsg = AdminMessage.create({
+        addContact: {
+          nodeNum,
+          user: userData,
+          manuallyVerified: false,
+        },
+      });
+
+      const encoded = AdminMessage.encode(adminMsg).finish();
+      logger.debug(`⚙️ Created AddContact admin message for node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+      return encoded;
+    } catch (error) {
+      logger.error('Failed to create AddContact message:', error);
+      throw error;
+    }
+  }
+
   /**
    * Decode an AdminMessage response
    */
