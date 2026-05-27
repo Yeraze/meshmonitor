@@ -4,7 +4,7 @@
  * Handles MeshCore node and message database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, sql, isNull, and, lt, type SQL } from 'drizzle-orm';
+import { eq, desc, sql, isNull, and, lt, gte, inArray, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -587,5 +587,78 @@ export class MeshCoreRepository extends BaseRepository {
     const { meshcoreMessages } = this.tables;
     await this.db.delete(meshcoreMessages);
     return count;
+  }
+
+  // ============ Neighbor Methods ============
+
+  async insertNeighborsBatch(
+    sourceId: string,
+    publicKey: string,
+    neighbors: Array<{ neighborPublicKey: string; snr: number | null; lastHeardSecs: number | null }>,
+  ): Promise<void> {
+    const { meshcoreNeighbors } = this.tables;
+    const nowMs = Date.now();
+
+    await this.db
+      .delete(meshcoreNeighbors)
+      .where(and(eq(meshcoreNeighbors.sourceId, sourceId), eq(meshcoreNeighbors.publicKey, publicKey)));
+
+    if (neighbors.length === 0) return;
+
+    await this.db.insert(meshcoreNeighbors).values(
+      neighbors.map((n) => ({
+        sourceId,
+        publicKey,
+        neighborPublicKey: n.neighborPublicKey,
+        snr: n.snr,
+        lastHeardSecs: n.lastHeardSecs,
+        timestamp: nowMs,
+        createdAt: nowMs,
+      })),
+    );
+  }
+
+  async getNeighbors(
+    sourceIds: string[],
+    sinceMs: number = 0,
+  ): Promise<Array<{ id: number; sourceId: string; publicKey: string; neighborPublicKey: string; snr: number | null; timestamp: number }>> {
+    const { meshcoreNeighbors } = this.tables;
+    if (sourceIds.length === 0) return [];
+
+    const conditions: SQL[] = [
+      inArray(meshcoreNeighbors.sourceId, sourceIds),
+    ];
+    if (sinceMs > 0) {
+      conditions.push(gte(meshcoreNeighbors.timestamp, sinceMs));
+    }
+
+    return this.db
+      .select({
+        id: meshcoreNeighbors.id,
+        sourceId: meshcoreNeighbors.sourceId,
+        publicKey: meshcoreNeighbors.publicKey,
+        neighborPublicKey: meshcoreNeighbors.neighborPublicKey,
+        snr: meshcoreNeighbors.snr,
+        timestamp: meshcoreNeighbors.timestamp,
+      })
+      .from(meshcoreNeighbors)
+      .where(and(...conditions))
+      .orderBy(desc(meshcoreNeighbors.timestamp));
+  }
+
+  async deleteNeighborsForNode(sourceId: string, publicKey: string): Promise<void> {
+    const { meshcoreNeighbors } = this.tables;
+    await this.db
+      .delete(meshcoreNeighbors)
+      .where(and(eq(meshcoreNeighbors.sourceId, sourceId), eq(meshcoreNeighbors.publicKey, publicKey)));
+  }
+
+  async deleteAllNeighbors(sourceId?: string): Promise<void> {
+    const { meshcoreNeighbors } = this.tables;
+    if (sourceId) {
+      await this.db.delete(meshcoreNeighbors).where(eq(meshcoreNeighbors.sourceId, sourceId));
+    } else {
+      await this.db.delete(meshcoreNeighbors);
+    }
   }
 }

@@ -69,6 +69,21 @@ export async function fetchNeighbors(
   );
 }
 
+export async function fetchMeshCoreNeighbors(
+  args: { sources: string[]; sinceMs: number; signal?: AbortSignal },
+): Promise<{ items: any[] }> {
+  const results = await Promise.all(
+    args.sources.map((sourceId) =>
+      authedGet<{ success: boolean; data: { items: any[] } }>(
+        `/api/sources/${sourceId}/meshcore/neighbors?since=${args.sinceMs}`,
+        args.signal,
+      ).catch(() => ({ success: false, data: { items: [] } })),
+    ),
+  );
+  const items = results.flatMap((r) => (r.success ? r.data.items : []));
+  return { items };
+}
+
 export async function fetchCoverageGrid(
   args: Omit<FetchArgs, 'pageSize' | 'cursor'> & { zoom: number },
 ): Promise<{ cells: any[]; binSizeDeg: number }> {

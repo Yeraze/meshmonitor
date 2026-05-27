@@ -1860,6 +1860,20 @@ class DatabaseService {
       );
     `);
 
+    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS meshcore_neighbor_info (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sourceId TEXT NOT NULL,
+        publicKey TEXT NOT NULL,
+        neighborPublicKey TEXT NOT NULL,
+        snr REAL,
+        lastHeardSecs INTEGER,
+        timestamp INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL
+      );
+    `);
+
     // ============================================================
     // NEWS TABLES
     // ============================================================

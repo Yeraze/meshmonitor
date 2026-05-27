@@ -7,6 +7,7 @@ import { TilesetSelector } from '../TilesetSelector';
 import NodeMarkersLayer from './layers/NodeMarkersLayer';
 import TraceroutePathsLayer from './layers/TraceroutePathsLayer';
 import NeighborLinksLayer from './layers/NeighborLinksLayer';
+import MeshCoreNeighborLinksLayer from './layers/MeshCoreNeighborLinksLayer';
 import PositionTrailsLayer from './layers/PositionTrailsLayer';
 import CoverageHeatmapLayer from './layers/CoverageHeatmapLayer';
 import SnrOverlayLayer from './layers/SnrOverlayLayer';
@@ -55,6 +56,7 @@ export default function MapAnalysisCanvas() {
         </Pane>
         <Pane name="neighbors" style={{ zIndex: 450 }}>
           {config.layers.neighbors.enabled && <NeighborLinksLayer />}
+          {config.layers.neighbors.enabled && <MeshCoreNeighborLinksLayer />}
         </Pane>
         <Pane name="snrOverlay" style={{ zIndex: 420 }}>
           {config.layers.snrOverlay.enabled && <SnrOverlayLayer />}

@@ -2232,4 +2232,69 @@ router.post(
   },
 );
 
+// ---------------------------------------------------------------------------
+// POST /api/sources/:id/meshcore/neighbors/request
+// Request neighbor data from a MeshCore repeater (remote or local).
+// ---------------------------------------------------------------------------
+
+router.post('/neighbors/request', meshcoreDeviceLimiter, requireAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  const sourceId = (req.params as { id?: string }).id!;
+  const { publicKey } = req.body as { publicKey?: string };
+
+  try {
+    const manager = managerFor(req);
+
+    if (publicKey) {
+      const normalizedKey = publicKey.toLowerCase();
+      if (!/^[0-9a-f]{64}$/.test(normalizedKey)) {
+        return res.status(400).json({ success: false, error: 'publicKey must be a 64-char hex string' });
+      }
+      const contact = manager.resolveContactByPrefix(normalizedKey);
+      if (!contact) {
+        return res.status(404).json({ success: false, error: 'Contact not found' });
+      }
+      if (contact.advType !== 2) {
+        return res.status(400).json({ success: false, error: 'Neighbors request is only supported for Repeaters (advType=2)' });
+      }
+    }
+
+    const result = await manager.requestNeighbors(publicKey);
+    if (result === null) {
+      return res.json({ success: true, data: { neighbors: [], count: 0, notSupported: true } });
+    }
+
+    auditMeshcoreEvent(req, 'meshcore_neighbors_request', 'configuration', {
+      sourceId,
+      publicKey: publicKey ?? '(local)',
+      neighborCount: result.neighbors.length,
+    });
+
+    res.json({ success: true, data: { neighbors: result.neighbors, count: result.neighbors.length } });
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    if (msg.includes('timed out')) {
+      return res.status(504).json({ success: false, error: msg, code: 'CLI_TIMEOUT' });
+    }
+    logger.error('[API] MeshCore neighbors request failed:', err);
+    res.status(500).json({ success: false, error: 'Neighbors request failed' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/sources/:id/meshcore/neighbors
+// Query stored MeshCore neighbor data (for map rendering).
+// ---------------------------------------------------------------------------
+
+router.get('/neighbors', requireAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  const sourceId = (req.params as { id?: string }).id!;
+  const sinceMs = Number(req.query.since) || 0;
+
+  try {
+    const items = await databaseService.meshcore.getNeighbors([sourceId], sinceMs);
+    res.json({ success: true, data: { items } });
+  } catch (error) {
+    logger.error('[API] Error fetching MeshCore neighbors:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch neighbors' });
+  }
+});
 export default router;

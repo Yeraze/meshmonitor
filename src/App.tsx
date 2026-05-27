@@ -2935,22 +2935,27 @@ function App() {
       // Set loading state
       setNeighborInfoLoading(nodeId);
 
-      // Convert nodeId to node number for backend
-      const nodeNumStr = nodeId.replace('!', '');
-      const nodeNum = parseInt(nodeNumStr, 16);
+      if (sourceType === 'meshcore' && sourceId) {
+        // MeshCore: nodeId is the 64-char hex public key
+        await authFetch(`${baseUrl}/api/sources/${sourceId}/meshcore/neighbors/request`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ publicKey: nodeId }),
+        });
+        logger.debug(`🏠 MeshCore neighbors request sent for ${nodeId.substring(0, 16)}…`);
+      } else {
+        // Meshtastic: convert hex nodeId to numeric destination
+        const nodeNumStr = nodeId.replace('!', '');
+        const nodeNum = parseInt(nodeNumStr, 16);
+        await authFetch(`${baseUrl}/api/neighborinfo/request`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ destination: nodeNum, sourceId: sourceId || undefined }),
+        });
+        logger.debug(`🏠 NeighborInfo request sent to ${nodeId}`);
+      }
 
-      // Use direct fetch with CSRF token
-      await authFetch(`${baseUrl}/api/neighborinfo/request`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ destination: nodeNum, sourceId: sourceId || undefined }),
-      });
-
-      logger.debug(`🏠 NeighborInfo request sent to ${nodeId}`);
-
-      // Clear loading state after 30 seconds (firmware rate-limits to 3 min anyway)
+      // Clear loading state after 30 seconds
       setTimeout(() => {
         setNeighborInfoLoading(null);
       }, 30000);
