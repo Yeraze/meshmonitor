@@ -461,6 +461,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
       case 'discover_path': {
         const publicKey = await this.resolvePublicKey(params.public_key as string);
         if (!publicKey) throw new Error('Discover-path target not found');
+        if (publicKey.length !== 32) {
+          throw new Error(`Expected 32-byte public key, got ${publicKey.length}`);
+        }
         // CMD_SEND_PATH_DISCOVERY_REQ (firmware opcode 52) is not in
         // meshcore.js, so we build and send the raw frame directly.
         // Frame format: [52, 0x00, ...pubkey(32 bytes)]

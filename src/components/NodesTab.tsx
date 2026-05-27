@@ -79,6 +79,10 @@ interface NodesTabProps {
   connectionStatus?: string;
   /** Node ID currently being tracerouted (for loading state) */
   tracerouteLoading?: string | null;
+  /** Handler for deleting a node from local database */
+  onDeleteNode?: (nodeNum: number) => void;
+  /** Handler for purging a node from device and local database */
+  onPurgeNodeFromDevice?: (nodeNum: number) => void;
 }
 
 // Helper function to check if a date is today
@@ -287,6 +291,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   onTraceroute,
   connectionStatus,
   tracerouteLoading,
+  onDeleteNode,
+  onPurgeNodeFromDevice,
 }) => {
   const { t } = useTranslation();
   // Use context hooks
@@ -2143,6 +2149,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       connectionStatus={connectionStatus}
                       tracerouteLoading={tracerouteLoading}
                       getEffectiveHops={(n) => getEffectiveHops(n, nodeHopsCalculation, traceroutes, currentNodeNum)}
+                      onDeleteNode={onDeleteNode}
+                      onPurgeNodeFromDevice={onPurgeNodeFromDevice}
+                      currentNodeNum={currentNodeNum}
                     />
                   </Popup>
                 )}

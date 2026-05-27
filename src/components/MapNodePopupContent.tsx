@@ -24,6 +24,9 @@ interface MapNodePopupContentProps {
   connectionStatus?: string;
   tracerouteLoading?: string | null;
   getEffectiveHops: (node: DeviceInfo) => number;
+  onDeleteNode?: (nodeNum: number) => void;
+  onPurgeNodeFromDevice?: (nodeNum: number) => void;
+  currentNodeNum?: number | null;
 }
 
 export const MapNodePopupContent: React.FC<MapNodePopupContentProps> = ({
@@ -41,6 +44,9 @@ export const MapNodePopupContent: React.FC<MapNodePopupContentProps> = ({
   connectionStatus,
   tracerouteLoading,
   getEffectiveHops,
+  onDeleteNode,
+  onPurgeNodeFromDevice,
+  currentNodeNum,
 }) => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<PopupTab>('info');
@@ -170,6 +176,27 @@ export const MapNodePopupContent: React.FC<MapNodePopupContentProps> = ({
             <button className="node-popup-btn" onClick={onCopyNodeInfo}>
               📋 {t('nodes.copy_nodeinfo_title')}
             </button>
+          )}
+
+          {hasPermission('messages', 'write') && node.nodeNum !== currentNodeNum && (
+            <div className="node-popup-danger-actions">
+              {onDeleteNode && (
+                <button
+                  className="node-popup-btn popup-danger-btn"
+                  onClick={() => onDeleteNode(node.nodeNum)}
+                >
+                  🗑️ {t('node_popup.delete_node', 'Delete')}
+                </button>
+              )}
+              {onPurgeNodeFromDevice && connectionStatus === 'connected' && (
+                <button
+                  className="node-popup-btn popup-danger-btn popup-danger-btn-severe"
+                  onClick={() => onPurgeNodeFromDevice(node.nodeNum)}
+                >
+                  ⚠️ {t('node_popup.purge_node', 'Purge from Device')}
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}

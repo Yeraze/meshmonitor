@@ -61,4 +61,32 @@ describe('MeshCoreContactDetailPanel', () => {
     render(<MeshCoreContactDetailPanel contact={contact} publicKey={PK} />);
     expect(screen.getByText('Direct')).toBeTruthy();
   });
+
+  it('renders Discover Path button when onDiscoverPath is provided and canWriteNodes is true', () => {
+    const contact: MeshCoreContact = { publicKey: PK, advType: 1 };
+    render(
+      <MeshCoreContactDetailPanel
+        contact={contact}
+        publicKey={PK}
+        onDiscoverPath={vi.fn().mockResolvedValue(true)}
+        canWriteNodes
+        isCompanion
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Discover Path' })).toBeTruthy();
+  });
+
+  it('does not render Discover Path button when canWriteNodes is false', () => {
+    const contact: MeshCoreContact = { publicKey: PK, advType: 1 };
+    render(
+      <MeshCoreContactDetailPanel
+        contact={contact}
+        publicKey={PK}
+        onDiscoverPath={vi.fn().mockResolvedValue(true)}
+        canWriteNodes={false}
+        isCompanion
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Discover Path' })).toBeNull();
+  });
 });
