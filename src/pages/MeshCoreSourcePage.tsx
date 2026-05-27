@@ -30,7 +30,7 @@ import '../components/AppHeader/AppHeader.css';
 function MeshCoreSourceInner() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { sourceId } = useSource();
+  const { sourceId, sourceName } = useSource();
   const { authStatus, hasPermission } = useAuth();
   const isAuthenticated = authStatus?.authenticated ?? false;
 
@@ -81,7 +81,10 @@ function MeshCoreSourceInner() {
             alt="MeshMonitor"
             className="dashboard-topbar-logo-img"
           />
-          <span className="dashboard-topbar-title">MeshMonitor — MeshCore</span>
+          <span className="dashboard-topbar-title dashboard-topbar-title-full">MeshMonitor — MeshCore</span>
+          {sourceName && (
+            <span className="dashboard-topbar-title dashboard-topbar-title-short">{sourceName}</span>
+          )}
         </div>
         {localNodeLabel && (
           <div className="node-info">
