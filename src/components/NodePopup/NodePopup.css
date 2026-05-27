@@ -168,3 +168,36 @@
   font-style: italic;
   padding: 0.5rem 0;
 }
+
+/* Danger action buttons (Delete / Purge) */
+.node-popup-danger-actions {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--ctp-surface1);
+  display: flex;
+  gap: 0.375rem;
+}
+
+.node-popup-danger-actions .popup-danger-btn {
+  flex: 1;
+  font-size: 0.75rem;
+  padding: 0.375rem 0.5rem;
+  color: var(--ctp-red);
+  border-color: var(--ctp-red);
+  background: transparent;
+}
+
+.node-popup-danger-actions .popup-danger-btn:hover {
+  background: var(--ctp-red);
+  color: var(--ctp-base);
+}
+
+.node-popup-danger-actions .popup-danger-btn-severe {
+  color: var(--ctp-maroon);
+  border-color: var(--ctp-maroon);
+}
+
+.node-popup-danger-actions .popup-danger-btn-severe:hover {
+  background: var(--ctp-maroon);
+  color: var(--ctp-base);
+}

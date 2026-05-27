@@ -4741,6 +4741,8 @@ function App() {
             onTraceroute={handleTraceroute}
             connectionStatus={connectionStatus}
             tracerouteLoading={tracerouteLoading}
+            onDeleteNode={handleDeleteNode}
+            onPurgeNodeFromDevice={handlePurgeNodeFromDevice}
           />
           </ErrorBoundary>
         )}
@@ -5244,6 +5246,9 @@ function App() {
         onTraceroute={handleTraceroute}
         connectionStatus={connectionStatus}
         tracerouteLoading={tracerouteLoading}
+        onDeleteNode={handleDeleteNode}
+        onPurgeNodeFromDevice={handlePurgeNodeFromDevice}
+        currentNodeNum={currentNodeId ? (nodes.find(n => n.user?.id === currentNodeId)?.nodeNum ?? null) : null}
       />
 
       {/* News Popup */}
