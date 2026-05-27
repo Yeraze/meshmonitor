@@ -343,6 +343,22 @@ export class MiscRepository extends BaseRepository {
   }
 
   /**
+   * Find the most recent in-progress upgrade, regardless of age.
+   * Used for boot-time status sync only — do not use for the stale-timeout
+   * path, which uses findStaleUpgrades / findActiveUpgrade with a threshold.
+   */
+  async findMostRecentPendingUpgrade(): Promise<UpgradeHistoryRecord | null> {
+    const { upgradeHistory } = this.tables;
+    const results = await this.db
+      .select()
+      .from(upgradeHistory)
+      .where(inArray(upgradeHistory.status, this.IN_PROGRESS_STATUSES))
+      .orderBy(desc(upgradeHistory.startedAt))
+      .limit(1);
+    return results.length > 0 ? this.normalizeBigInts(results[0]) : null;
+  }
+
+  /**
    * Mark an upgrade as failed
    */
   async markUpgradeFailed(id: string, errorMessage: string): Promise<void> {
