@@ -458,6 +458,34 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { ok: true };
       }
 
+      case 'discover_path': {
+        const publicKey = await this.resolvePublicKey(params.public_key as string);
+        if (!publicKey) throw new Error('Discover-path target not found');
+        // CMD_SEND_PATH_DISCOVERY_REQ (firmware opcode 52) is not in
+        // meshcore.js, so we build and send the raw frame directly.
+        // Frame format: [52, 0x00, ...pubkey(32 bytes)]
+        const frame = new Uint8Array(2 + publicKey.length);
+        frame[0] = 52;
+        frame[1] = 0x00;
+        frame.set(publicKey, 2);
+        await new Promise<void>((resolve, reject) => {
+          const onSent = () => {
+            c.off(this.constants!.ResponseCodes.Sent, onSent);
+            c.off(this.constants!.ResponseCodes.Err, onErr);
+            resolve();
+          };
+          const onErr = () => {
+            c.off(this.constants!.ResponseCodes.Sent, onSent);
+            c.off(this.constants!.ResponseCodes.Err, onErr);
+            reject(new Error('Device rejected path discovery request'));
+          };
+          c.once(this.constants!.ResponseCodes.Sent, onSent);
+          c.once(this.constants!.ResponseCodes.Err, onErr);
+          c.sendToRadioFrame(frame);
+        });
+        return { ok: true };
+      }
+
       case 'trace_path': {
         const pathBytes = params.path as Uint8Array | number[] | undefined;
         if (!pathBytes || (Array.isArray(pathBytes) ? pathBytes.length : pathBytes.byteLength) === 0) {

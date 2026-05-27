@@ -420,6 +420,44 @@ router.post(
 );
 
 /**
+ * POST /api/sources/:id/meshcore/contacts/:publicKey/discover-path
+ *
+ * Flood a lightweight telemetry request to the contact to trigger path
+ * discovery. The device temporarily forces flood routing, and when the
+ * contact responds, the normal PATH return mechanism establishes the
+ * forwarding route. The actual path update arrives asynchronously via
+ * the PathUpdated push — this endpoint only confirms the flood was sent.
+ */
+router.post(
+  '/contacts/:publicKey/discover-path',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const publicKey = req.params.publicKey;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid public key — must be 64-char hex',
+        });
+      }
+      const ok = await managerFor(req).discoverContactPath(publicKey);
+      if (!ok) {
+        return res.status(409).json({
+          success: false,
+          error: 'Path discovery failed — contact may be unknown, source disconnected, or not a Companion device',
+        });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('[API] Error discovering contact path:', error);
+      res.status(500).json({ success: false, error: 'Failed to discover path' });
+    }
+  },
+);
+
+/**
  * POST /api/sources/:id/meshcore/contacts/:publicKey/trace-path
  *
  * Send a diagnostic trace along the contact's cached forwarding path,
