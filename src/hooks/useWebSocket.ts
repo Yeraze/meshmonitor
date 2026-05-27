@@ -51,6 +51,8 @@ export interface MeshCoreMessageEvent {
   rssi?: number;
   snr?: number;
   sourceId?: string;
+  expectedAckCrc?: number;
+  estTimeout?: number;
 }
 
 export interface MeshCoreContactPayload {
