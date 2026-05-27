@@ -340,6 +340,46 @@ export class MeshCoreNativeBackend extends EventEmitter {
       });
     });
 
+    // PathDiscoveryResponse (0x8D) — not in meshcore.js PushCodes, so we
+    // intercept raw frames. Contains the bidirectional paths discovered by
+    // CMD_SEND_PATH_DISCOVERY_REQ (52). Frame format:
+    //   [0x8D] [reserved] [pubkey_prefix 6B] [out_path_len] [out_path...] [in_path_len] [in_path...]
+    // path_len is packed: top 2 bits = hash_size-1, bottom 6 = hop_count.
+    const PUSH_PATH_DISCOVERY_RESPONSE = 0x8D;
+    this.connection.on('rx', (frame: Uint8Array) => {
+      if (!frame || frame.length < 2 || frame[0] !== PUSH_PATH_DISCOVERY_RESPONSE) return;
+      try {
+        let offset = 2; // skip code + reserved
+        const pubkeyPrefix = bytesToHex(frame.slice(offset, offset + 6));
+        offset += 6;
+
+        const outPathLenRaw = frame[offset++];
+        const outHashSize = ((outPathLenRaw >> 6) & 0x03) + 1;
+        const outHopCount = outPathLenRaw & 0x3F;
+        const outPathBytes = outHopCount * outHashSize;
+        const outPath = bytesToHex(frame.slice(offset, offset + outPathBytes));
+        offset += outPathBytes;
+
+        const inPathLenRaw = frame[offset++];
+        const inHashSize = ((inPathLenRaw >> 6) & 0x03) + 1;
+        const inHopCount = inPathLenRaw & 0x3F;
+        const inPathBytes = inHopCount * inHashSize;
+        const inPath = bytesToHex(frame.slice(offset, offset + inPathBytes));
+
+        this.emitBridgeEvent('path_discovery_response', {
+          pubkey_prefix: pubkeyPrefix,
+          out_path_len: outHopCount,
+          out_path_hex: outPath,
+          out_hash_size: outHashSize,
+          in_path_len: inHopCount,
+          in_path_hex: inPath,
+          in_hash_size: inHashSize,
+        });
+      } catch (err) {
+        logger.warn(`[MeshCore:native] Failed to parse 0x8D frame: ${(err as Error).message}`);
+      }
+    });
+
     // SendConfirmed → send_confirmed (message ACK with round-trip time)
     this.connection.on(PushCodes.SendConfirmed, (push: any) => {
       this.emitBridgeEvent('send_confirmed', {
