@@ -3868,7 +3868,7 @@
         "polarGridDisabledTooltip": "Требуется собственная позиция узла",
         "showAnimations": "Показать анимацию",
         "showEstimatedPositions": "Показать предполагаеме местоположение",
-        "showAccuracyRegions": "Показать области погрешности",
+        "showAccuracyRegions": "Показать радиус точности",
         "showUdp": "Показать UDP",
         "showRf": "Показать RF"
     },
