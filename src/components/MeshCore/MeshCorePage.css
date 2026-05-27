@@ -500,6 +500,25 @@
 .mc-message-time { color: var(--ctp-overlay0); }
 .mc-message-text { color: var(--ctp-text); font-size: 0.9rem; word-wrap: break-word; }
 
+.mc-mention {
+  color: var(--ctp-blue);
+  font-weight: 600;
+  cursor: default;
+  border-radius: var(--radius-sm);
+  padding: 0 0.15rem;
+  background: color-mix(in srgb, var(--ctp-blue) 12%, transparent);
+}
+
+.mc-delivery-status {
+  font-size: 0.75rem;
+  margin-left: 0.25rem;
+}
+
+.mc-delivery-sent { color: var(--ctp-overlay0); }
+.mc-delivery-delivered { color: var(--ctp-green); }
+.mc-delivery-failed { color: var(--ctp-red); }
+.mc-delivery-sending { color: var(--ctp-overlay0); }
+
 .meshcore-send-bar {
   display: flex;
   gap: 0.5rem;
