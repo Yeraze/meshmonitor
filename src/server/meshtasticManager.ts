@@ -7789,6 +7789,11 @@ class MeshtasticManager implements ISourceManager {
           if (targetNode?.publicKey && !targetNode.keyMismatchDetected) {
             pkiEncrypted = true;
             logger.debug(`🔐 DM to !${destination.toString(16).padStart(8, '0')} — requesting PKI encryption (node has public key)`);
+            try {
+              await this.pushContactToRadio(targetNode);
+            } catch {
+              // Non-fatal — radio may already have the contact
+            }
           } else if (targetNode?.publicKey && targetNode.keyMismatchDetected) {
             logger.info(`🔐 DM to !${destination.toString(16).padStart(8, '0')} — skipping PKI (key mismatch active; firmware may lack key after purge), falling back to channel encryption`);
           }
@@ -11587,6 +11592,28 @@ class MeshtasticManager implements ISourceManager {
       logger.error('❌ Error sending remove node admin message:', error);
       throw error;
     }
+  }
+
+  private async pushContactToRadio(targetNode: { nodeNum: number; nodeId: string; longName?: string | null; shortName?: string | null; publicKey?: string | null; hwModel?: number | null }): Promise<void> {
+    if (!this.isConnected || !this.transport || !this.localNodeInfo?.nodeNum) {
+      return;
+    }
+    if (!targetNode.publicKey || !targetNode.nodeId || !targetNode.longName || !targetNode.shortName) {
+      return;
+    }
+
+    const localNodeNum = this.localNodeInfo.nodeNum;
+    const addContactMsg = protobufService.createAddContactMessage(
+      targetNode.nodeNum,
+      targetNode.nodeId,
+      targetNode.longName,
+      targetNode.shortName,
+      targetNode.publicKey,
+      targetNode.hwModel ?? undefined,
+    );
+    const adminPacket = protobufService.createAdminPacket(addContactMsg, localNodeNum, localNodeNum);
+    await this.transport.send(adminPacket);
+    logger.debug(`📇 Pushed contact for !${targetNode.nodeNum.toString(16).padStart(8, '0')} to radio NodeDB before PKI DM`);
   }
 
   /**

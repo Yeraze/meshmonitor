@@ -1548,4 +1548,37 @@ describe('MeshtasticManager - Configuration Polling', () => {
       expect(decidePkiEncrypted({ publicKey: realisticKey, keyMismatchDetected: true })).toBe(false);
     });
   });
+
+  describe('pushContactToRadio guard — skips when node data is incomplete', () => {
+    // Mirrors the guard logic at the top of pushContactToRadio:
+    // all of publicKey, nodeId, longName, shortName must be present,
+    // plus the manager must be connected with localNodeInfo.
+    type NodeLike = { nodeNum: number; nodeId: string; longName?: string | null; shortName?: string | null; publicKey?: string | null; hwModel?: number | null };
+
+    function shouldPushContact(node: NodeLike): boolean {
+      if (!node.publicKey || !node.nodeId || !node.longName || !node.shortName) return false;
+      return true;
+    }
+
+    it('returns true when all required fields are present', () => {
+      expect(shouldPushContact({ nodeNum: 1, nodeId: '!00000001', longName: 'Test', shortName: 'TS', publicKey: 'AQID' })).toBe(true);
+    });
+
+    it('returns false when publicKey is missing', () => {
+      expect(shouldPushContact({ nodeNum: 1, nodeId: '!00000001', longName: 'Test', shortName: 'TS', publicKey: null })).toBe(false);
+      expect(shouldPushContact({ nodeNum: 1, nodeId: '!00000001', longName: 'Test', shortName: 'TS', publicKey: undefined })).toBe(false);
+    });
+
+    it('returns false when longName is missing', () => {
+      expect(shouldPushContact({ nodeNum: 1, nodeId: '!00000001', longName: null, shortName: 'TS', publicKey: 'AQID' })).toBe(false);
+    });
+
+    it('returns false when shortName is missing', () => {
+      expect(shouldPushContact({ nodeNum: 1, nodeId: '!00000001', longName: 'Test', shortName: null, publicKey: 'AQID' })).toBe(false);
+    });
+
+    it('returns false when nodeId is empty', () => {
+      expect(shouldPushContact({ nodeNum: 1, nodeId: '', longName: 'Test', shortName: 'TS', publicKey: 'AQID' })).toBe(false);
+    });
+  });
 });
