@@ -30,6 +30,12 @@ import { SaveBarProvider } from '../../contexts/SaveBarContext';
 import { SaveBar } from '../SaveBar';
 import './MeshCoreTab.css';
 import './MeshCorePage.css';
+// The automation views (auto-ack, auto-announce, auto-responder, timer
+// triggers) lean on the shared settings stylesheet — .setting-item,
+// .setting-input, .automation-section-header. Without this import the
+// form controls render unstyled.
+import '../../styles/settings.css';
+import './MeshCoreAutomation.css';
 
 interface MeshCorePageProps {
   baseUrl: string;

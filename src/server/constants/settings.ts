@@ -166,6 +166,22 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreAutoAckUseDM',
   'meshcoreAutoAckCooldownSeconds',
   'meshcoreAutoAckTestMessages',
+  // MeshCore auto-announce
+  'meshcoreAutoAnnounceEnabled',
+  'meshcoreAutoAnnounceIntervalHours',
+  'meshcoreAutoAnnounceMessage',
+  'meshcoreAutoAnnounceChannelIndexes',
+  'meshcoreAutoAnnounceOnStart',
+  'meshcoreAutoAnnounceUseSchedule',
+  'meshcoreAutoAnnounceSchedule',
+  'meshcoreAutoAnnounceAdvertEnabled',
+  'meshcoreAutoAnnounceAdvertDelaySeconds',
+  'meshcoreAutoAnnounceLastRunAt',
+  // MeshCore auto-responder
+  'meshcoreAutoResponderEnabled',
+  'meshcoreAutoResponderTriggers',
+  // MeshCore timer triggers
+  'meshcoreTimerTriggers',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];
@@ -266,6 +282,22 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreAutoAckUseDM',
   'meshcoreAutoAckCooldownSeconds',
   'meshcoreAutoAckTestMessages',
+  // MeshCore auto-announce
+  'meshcoreAutoAnnounceEnabled',
+  'meshcoreAutoAnnounceIntervalHours',
+  'meshcoreAutoAnnounceMessage',
+  'meshcoreAutoAnnounceChannelIndexes',
+  'meshcoreAutoAnnounceOnStart',
+  'meshcoreAutoAnnounceUseSchedule',
+  'meshcoreAutoAnnounceSchedule',
+  'meshcoreAutoAnnounceAdvertEnabled',
+  'meshcoreAutoAnnounceAdvertDelaySeconds',
+  'meshcoreAutoAnnounceLastRunAt',
+  // MeshCore auto-responder
+  'meshcoreAutoResponderEnabled',
+  'meshcoreAutoResponderTriggers',
+  // MeshCore timer triggers
+  'meshcoreTimerTriggers',
   // Misc per-source
   'externalUrl',
   'geofenceTriggers',
