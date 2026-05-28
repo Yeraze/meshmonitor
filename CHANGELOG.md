@@ -6,12 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
-### Added
-- **MeshCore automation suite** — three new per-source automations in the MeshCore Automation view:
+## [4.8.1] - 2026-05-28
+
+# MeshMonitor v4.8.1
+
+Patch release combining a **MeshCore automation suite**, an auto-acknowledge automation tier, a connection-stability fix for TCP Meshtastic sources, and a round of security and input-validation hardening from CodeQL.
+
+## Features
+
+### MeshCore Automations
+
+- #3249 feat(meshcore): auto-announce, auto-responder, and timer triggers — three new per-source automations in the MeshCore Automation view:
   - **Auto-Announce** — periodically broadcast a templated status message to selected channels on an interval or cron schedule, with an optional advert burst, live preview, and Send Now.
   - **Auto-Responder** — reply to incoming messages matching an operator-defined regex with a text response or a script, with per-channel/DM filtering and per-sender cooldown.
   - **Timer Triggers** — schedule recurring text/advert/script actions, each on its own cron or interval.
   - Shared token expansion (`{VERSION}`, `{DURATION}`, `{CONTACTCOUNT}`, `{COMPANIONCOUNT}`, `{REPEATERCOUNT}`, `{ROOMCOUNT}`, `{NODE_NAME}`, `{NODE_ID}`) across all three, surfaced in the UI via an inline token legend.
+- #3245 feat(meshcore): auto-acknowledge automation with channels, DM, and macros — operator-configurable auto-ACK rules per source with per-channel/DM scope and templated macro responses.
+
+## Fixes
+
+- #3248 fix(stability): guard handleConnected against transport-swap race (#3247) — on TCP Meshtastic sources, `handleConnected` could observe `this.transport` get nulled during its own async setup chain (notifyNodeConnected, channel snapshot), causing `sendWantConfigId` to throw `Transport not initialized`. The catch block then treated that as a transient post-connect reset and tore down the (still-healthy) session, reproducing the same race on the next reconnect — producing a deterministic 3×/min reconnect loop on otherwise-fine TCP sockets. The handler now captures the transport reference at entry and the catch block distinguishes "transport went away mid-handshake" (silent bail) from a genuine transport-layer send failure (existing teardown path).
+- #3240 fix: add input validation for MeshCore neighbor publicKey parameters — validate-and-extract pubkey for neighbor endpoints to address CodeQL `js/user-controlled-bypass`.
+
+## Security
+
+- #3246 fix(security): remediate polynomial-ReDoS, log-injection, and regex-DoS CodeQL findings — hardens several user-input code paths against denial-of-service via crafted regular expressions and log-injection patterns surfaced by CodeQL static analysis.
+
+## Other
+
+- #3208 chore(i18n): translations update from Hosted Weblate.
 
 ## [4.8.0] - 2026-05-27
 
