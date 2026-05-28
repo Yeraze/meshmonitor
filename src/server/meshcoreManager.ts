@@ -12,6 +12,7 @@ import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 import databaseService from '../services/database.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
+import { compileAutoAckRegex } from './utils/autoAckRegex.js';
 import { MeshCoreNativeBackend, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
 
 // Dynamic imports for optional serialport dependency
@@ -40,6 +41,29 @@ function parseTelemetryMode(value: unknown): TelemetryMode | undefined {
   if (value === 1) return 'device';
   if (value === 2) return 'always';
   return undefined;
+}
+
+/**
+ * Decode the hop count from the packed MeshCore `pathLen` byte. The wire
+ * format packs the hash-size in the top 2 bits and the hop count in the
+ * bottom 6 bits. The sentinel value 0xFF means "sent direct" (no flood),
+ * which we report as 0 hops. Returns null when no value is available.
+ */
+function decodePathLenHopCount(pathLen: number | undefined | null): number | null {
+  if (pathLen === undefined || pathLen === null) return null;
+  if (pathLen === 0xff) return 0;
+  return pathLen & 0x3f;
+}
+
+/**
+ * Render a relay-hash hop list (already-hex strings from LogRxData parsing)
+ * into the comma-separated form `replaceAutoAckTokens` expects for
+ * {ROUTE}. Returns null when no hops are present.
+ */
+function formatPathHops(hops: unknown): string | null {
+  if (!Array.isArray(hops) || hops.length === 0) return null;
+  const filtered = hops.filter((h): h is string => typeof h === 'string' && h.length > 0);
+  return filtered.length > 0 ? filtered.join(',') : null;
 }
 
 /**
@@ -371,6 +395,11 @@ class MeshCoreManager extends EventEmitter {
   private autoPathfindingJitterTimeout: NodeJS.Timeout | null = null;
   private autoPathfindingLastRunAt: number = 0;
 
+  // Auto-acknowledge per-sender cooldown (keyed by sender pubkey prefix).
+  // Records the last time we acknowledged a sender so a chatty contact
+  // doesn't burn airtime if they spam the trigger phrase.
+  private autoAckCooldowns: Map<string, number> = new Map();
+
   constructor(sourceId: string) {
     super();
     if (!sourceId) {
@@ -624,6 +653,15 @@ class MeshCoreManager extends EventEmitter {
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix}: ${data.text}`);
+      // Prefer the per-packet relay-hash chain recovered from LogRxData
+      // (the actual hops THIS packet traversed). Fall back to the
+      // sender contact's cached outPath if the native backend didn't
+      // surface a LogRxData event for this packet (e.g. mid-buffer race
+      // or a backend that doesn't subscribe to raw logging).
+      const hopCount = decodePathLenHopCount(data.path_len);
+      const senderContact = this.resolveContactByPrefix(data.pubkey_prefix);
+      const route = formatPathHops(data.path_hops) || senderContact?.outPath || null;
+      void this.checkAutoAcknowledge(message, true, undefined, hopCount, route);
     } else if (event_type === 'channel_message') {
       // MeshCore channel packets have no sender field on the wire — the sender's
       // device prefixes "Name: " onto the text body. Split it out so the UI can
@@ -645,6 +683,12 @@ class MeshCoreManager extends EventEmitter {
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore] Channel ${data.channel_idx} message: ${data.text}`);
+      // Channel messages carry no sender pubkey on the wire, so there
+      // is no contact outPath fallback for {ROUTE}. The LogRxData
+      // path_hops (when present) is the only source of relay identities.
+      const hopCount = decodePathLenHopCount(data.path_len);
+      const route = formatPathHops(data.path_hops);
+      void this.checkAutoAcknowledge(message, false, data.channel_idx, hopCount, route);
     } else if (event_type === 'room_message') {
       // Room server post (TXT_TYPE_SIGNED_PLAIN). The room's pubkey prefix
       // identifies which room, and the author prefix identifies the poster.
@@ -3145,6 +3189,181 @@ class MeshCoreManager extends EventEmitter {
       enabled: this.autoPathfindingTimer !== null || this.autoPathfindingJitterTimeout !== null,
       lastRunAt: this.autoPathfindingLastRunAt,
     };
+  }
+
+  // ============ Auto-Acknowledge ============
+  //
+  // Mirrors the Meshtastic auto-acknowledge feature: when an incoming
+  // contact_message (DM) or channel_message matches the configured regex,
+  // we send a reply. The reply destination is either the same channel,
+  // a DM back to the sender, or — if `autoAckUseDM` is set — always a DM
+  // regardless of how the message arrived. The reply text supports the
+  // same {NODE_ID}/{NODE_NAME}/{DATE}/{TIME}/{SNR}/{VERSION} macros so a
+  // single template behaves consistently across both stacks.
+
+  private static readonly AUTO_ACK_DEFAULT_MESSAGE = '🤖 Copy, {NODE_NAME}! {HOPS} hops @ {TIME}';
+  private static readonly AUTO_ACK_DEFAULT_REGEX = '^(test|ping)';
+
+  private validateAutoAckRegex(pattern: string): RegExp | null {
+    return compileAutoAckRegex(pattern).regex;
+  }
+
+  private replaceAutoAckTokens(
+    template: string,
+    senderPubKey: string,
+    senderName: string | undefined,
+    snr: number | undefined,
+    timestamp: number,
+    hops: number | null,
+    route: string | null,
+  ): string {
+    const date = new Date(timestamp);
+    const longName = senderName || `${senderPubKey.substring(0, 8)}…`;
+    const shortName = senderName ? senderName.substring(0, 4) : senderPubKey.substring(0, 4);
+    const nodeId = `!${senderPubKey.substring(0, 8)}`;
+    const snrStr = snr !== undefined && snr !== null ? snr.toFixed(1) : '—';
+    const dateStr = date.toLocaleDateString('en-US');
+    const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const hopsStr = hops !== null ? String(hops) : '—';
+    // {ROUTE} expands the cached hop-hash chain into a readable
+    // arrow-separated list (e.g. "a3 → 7f → 02"). Empty / unknown
+    // route falls back to "direct" when hop count is 0 or "—" otherwise.
+    let routeStr: string;
+    if (route && route.length > 0) {
+      routeStr = route
+        .split(',')
+        .map(h => h.trim())
+        .filter(Boolean)
+        .join(' → ');
+    } else if (hops === 0) {
+      routeStr = 'direct';
+    } else {
+      routeStr = '—';
+    }
+
+    return template
+      .replace(/\{NODE_ID\}/g, nodeId)
+      .replace(/\{NODE_NAME\}/g, longName)
+      .replace(/\{LONG_NAME\}/g, longName)
+      .replace(/\{SHORT_NAME\}/g, shortName)
+      .replace(/\{DATE\}/g, dateStr)
+      .replace(/\{TIME\}/g, timeStr)
+      .replace(/\{SNR\}/g, snrStr)
+      .replace(/\{HOPS\}/g, hopsStr)
+      .replace(/\{NUMBER_HOPS\}/g, hopsStr)
+      .replace(/\{ROUTE\}/g, routeStr)
+      .replace(/\{VERSION\}/g, '4.8.0');
+  }
+
+  /**
+   * Check an incoming message against the auto-ack configuration and send
+   * a reply if it matches.
+   *
+   * @param message - the just-received message (DM or channel)
+   * @param isDirectMessage - true if this arrived as a contact_message (DM)
+   * @param channelIdx - channel index when not a DM; undefined for DMs
+   */
+  private async checkAutoAcknowledge(
+    message: MeshCoreMessage,
+    isDirectMessage: boolean,
+    channelIdx: number | undefined,
+    hops: number | null,
+    route: string | null,
+  ): Promise<void> {
+    try {
+      const settings = databaseService.settings;
+      const sourceId = this.sourceId;
+
+      const enabled = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckEnabled');
+      if (enabled !== 'true') return;
+
+      const regexStr = (await settings.getSettingForSource(sourceId, 'meshcoreAutoAckRegex')) || MeshCoreManager.AUTO_ACK_DEFAULT_REGEX;
+      const regex = this.validateAutoAckRegex(regexStr);
+      if (!regex) {
+        logger.warn(`[MeshCore:${sourceId}] Auto-ack: invalid regex "${regexStr}", skipping`);
+        return;
+      }
+
+      const text = message.text || '';
+      if (!regex.test(text)) return;
+
+      // Channel allowlist / DM gate
+      if (isDirectMessage) {
+        const dmEnabled = (await settings.getSettingForSource(sourceId, 'meshcoreAutoAckDirectMessages')) === 'true';
+        if (!dmEnabled) {
+          logger.debug(`[MeshCore:${sourceId}] Auto-ack: DM trigger ignored (DM auto-ack disabled)`);
+          return;
+        }
+      } else {
+        const channelsRaw = (await settings.getSettingForSource(sourceId, 'meshcoreAutoAckChannels')) || '';
+        const enabledChannels = new Set(
+          channelsRaw.split(',').map(s => s.trim()).filter(Boolean).map(s => parseInt(s, 10)).filter(n => Number.isFinite(n)),
+        );
+        if (channelIdx === undefined || !enabledChannels.has(channelIdx)) {
+          logger.debug(`[MeshCore:${sourceId}] Auto-ack: channel ${channelIdx} not in allowlist`);
+          return;
+        }
+      }
+
+      // Per-sender cooldown
+      const cooldownRaw = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckCooldownSeconds');
+      const cooldownSeconds = Math.max(0, parseInt(cooldownRaw || '0', 10) || 0);
+      if (cooldownSeconds > 0) {
+        const cooldownKey = isDirectMessage
+          ? `dm:${message.fromPublicKey}`
+          : `ch${channelIdx}:${message.fromPublicKey}`;
+        const last = this.autoAckCooldowns.get(cooldownKey) || 0;
+        if (Date.now() - last < cooldownSeconds * 1000) {
+          logger.debug(`[MeshCore:${sourceId}] Auto-ack: cooldown active for ${cooldownKey}`);
+          return;
+        }
+        this.autoAckCooldowns.set(cooldownKey, Date.now());
+      }
+
+      const useDM = (await settings.getSettingForSource(sourceId, 'meshcoreAutoAckUseDM')) === 'true';
+      const template = (await settings.getSettingForSource(sourceId, 'meshcoreAutoAckMessage')) || MeshCoreManager.AUTO_ACK_DEFAULT_MESSAGE;
+
+      // Resolve sender's display name from contacts when available
+      let senderName = message.fromName;
+      if (!senderName && !isDirectMessage) {
+        // Channel sender is in the prefix-split fromName; nothing to do
+      } else if (!senderName && isDirectMessage) {
+        const contact = this.resolveContactByPrefix(message.fromPublicKey);
+        senderName = contact?.advName ?? contact?.name ?? undefined;
+      }
+
+      const replyText = this.replaceAutoAckTokens(
+        template,
+        message.fromPublicKey,
+        senderName,
+        message.snr,
+        message.timestamp,
+        hops,
+        route,
+      );
+
+      // Decide destination:
+      //  - DM trigger or "always DM" → send as DM (need contact pubkey)
+      //  - otherwise → reply on the channel it came in on
+      const sendAsDM = isDirectMessage || useDM;
+
+      if (sendAsDM) {
+        // Need the full contact pubkey to address a DM. The DM event
+        // gives us a prefix; resolve via the contact map.
+        const contact = this.resolveContactByPrefix(message.fromPublicKey);
+        if (!contact) {
+          logger.warn(`[MeshCore:${sourceId}] Auto-ack: cannot DM unknown contact ${message.fromPublicKey}`);
+          return;
+        }
+        logger.info(`[MeshCore:${sourceId}] Auto-ack DM → ${contact.advName ?? contact.publicKey.substring(0, 8)}: "${replyText}"`);
+        await this.sendMessage(replyText, contact.publicKey);
+      } else {
+        logger.info(`[MeshCore:${sourceId}] Auto-ack channel ${channelIdx} → "${replyText}"`);
+        await this.sendMessage(replyText, undefined, channelIdx);
+      }
+    } catch (err) {
+      logger.error(`[MeshCore:${this.sourceId}] Auto-ack handler threw: ${(err as Error).message}`);
+    }
   }
 
   private async attemptReconnect(): Promise<void> {

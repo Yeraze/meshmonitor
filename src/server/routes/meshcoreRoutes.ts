@@ -16,6 +16,7 @@ import { MAX_INTERVAL_MINUTES } from '../services/meshcoreRemoteTelemetrySchedul
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
+import { validateAutoAckRegex } from '../utils/autoAckRegex.js';
 import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiters.js';
 import { getMeshCoreCredentialStore } from '../services/meshcoreCredentialStore.js';
 
@@ -2312,6 +2313,129 @@ router.post(
     } catch (error) {
       logger.error('[API] Error saving auto-pathfinding settings:', error);
       res.status(500).json({ success: false, error: 'Failed to save auto-pathfinding settings' });
+    }
+  },
+);
+
+// ============ Auto-Acknowledge Automation ============
+//
+// Per-source settings store for MeshCore auto-acknowledge. The trigger
+// fires from the manager's incoming-message handler (handleBridgeEvent),
+// so this endpoint is just a CRUD wrapper — no scheduler.
+
+router.get(
+  '/automation/autoack',
+  optionalAuth(),
+  requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const settings = databaseService.settings;
+
+      const enabled = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckEnabled');
+      const regex = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckRegex');
+      const message = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckMessage');
+      const channels = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckChannels');
+      const directMessages = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckDirectMessages');
+      const useDM = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckUseDM');
+      const cooldownSeconds = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckCooldownSeconds');
+      const testMessages = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckTestMessages');
+
+      res.json({
+        success: true,
+        data: {
+          enabled: enabled === 'true',
+          regex: regex || '^(test|ping)',
+          message: message || '🤖 Copy, {NODE_NAME}! {HOPS} hops @ {TIME}',
+          channels: (channels || '')
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
+            .map(s => parseInt(s, 10))
+            .filter(n => Number.isFinite(n)),
+          directMessages: directMessages === 'true',
+          useDM: useDM === 'true',
+          cooldownSeconds: parseInt(cooldownSeconds || '0', 10) || 0,
+          testMessages: testMessages || 'test\nTest message\nping\nPING\nHello world\nTESTING 123',
+        },
+      });
+    } catch (error) {
+      logger.error('[API] Error reading meshcore auto-ack settings:', error);
+      res.status(500).json({ success: false, error: 'Failed to read auto-ack settings' });
+    }
+  },
+);
+
+router.post(
+  '/automation/autoack',
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const settings = databaseService.settings;
+      const {
+        enabled,
+        regex,
+        message,
+        channels,
+        directMessages,
+        useDM,
+        cooldownSeconds,
+        testMessages,
+      } = req.body as {
+        enabled?: boolean;
+        regex?: string;
+        message?: string;
+        channels?: number[];
+        directMessages?: boolean;
+        useDM?: boolean;
+        cooldownSeconds?: number;
+        testMessages?: string;
+      };
+
+      if (enabled !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAckEnabled', String(enabled));
+      }
+      if (regex !== undefined) {
+        // Store-time safety gate. The shared validator rejects unsafe
+        // shapes (catastrophic backtracking, oversized patterns) and
+        // confirms the value is a syntactically valid RegExp. Centralised
+        // with the manager's execution-time check so the two stay in
+        // sync; this also satisfies CodeQL's js/regex-injection check.
+        const validation = validateAutoAckRegex(regex);
+        if (!validation.ok) {
+          return res.status(400).json({ success: false, error: `Invalid regex pattern: ${validation.error}` });
+        }
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAckRegex', regex);
+      }
+      if (message !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAckMessage', message);
+      }
+      if (channels !== undefined) {
+        const csv = Array.isArray(channels)
+          ? channels.filter(n => Number.isFinite(n)).join(',')
+          : '';
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAckChannels', csv);
+      }
+      if (directMessages !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAckDirectMessages', String(directMessages));
+      }
+      if (useDM !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAckUseDM', String(useDM));
+      }
+      if (cooldownSeconds !== undefined) {
+        const clamped = Math.max(0, Math.min(3600, cooldownSeconds));
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAckCooldownSeconds', String(clamped));
+      }
+      if (testMessages !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAckTestMessages', testMessages);
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('[API] Error saving meshcore auto-ack settings:', error);
+      res.status(500).json({ success: false, error: 'Failed to save auto-ack settings' });
     }
   },
 );

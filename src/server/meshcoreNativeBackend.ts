@@ -32,6 +32,17 @@ interface MeshCoreJsModule {
     TxtTypes: { Plain: number; CliData: number; SignedPlain: number };
   };
   CayenneLpp: { parse: (bytes: Uint8Array | number[]) => Array<{ channel: number; type: number; value: any }> };
+  /** OTA packet parser used to recover relay-hash chains from LogRxData. */
+  Packet: {
+    PAYLOAD_TYPE_TXT_MSG: number;
+    fromBytes(bytes: Uint8Array | number[]): {
+      payload_type: number;
+      pathLen: number;
+      path: Uint8Array;
+    };
+    extractPathHashSize(pathLen: number): number;
+    extractPathHashCount(pathLen: number): number;
+  };
 }
 
 let meshcoreJsModulePromise: Promise<MeshCoreJsModule> | null = null;
@@ -192,6 +203,17 @@ export class MeshCoreNativeBackend extends EventEmitter {
   private connected: boolean = false;
   private commandSeq: number = 0;
   private drainInFlight: boolean = false;
+  /**
+   * Most recent LogRxData-derived TXT_MSG packet metadata. The firmware
+   * emits LogRxData immediately before dispatching the txt-msg-specific
+   * recv event (ContactMsgRecv / ChannelMsgRecv) for the same packet, so
+   * we buffer the parsed path here and consume it on the next message
+   * recv to give the bridge event the real relay-hash chain rather than
+   * just the packed pathLen byte.
+   */
+  private pendingTxtMsgPath: { hops: string[]; rawPathLen: number } | null = null;
+  /** Constructor reference for the meshcore.js Packet parser, populated when the module loads. */
+  private PacketCtor: MeshCoreJsModule['Packet'] | null = null;
 
   constructor(sourceId: string, config: NativeBackendConfig) {
     super();
@@ -206,6 +228,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
   async connect(): Promise<void> {
     const mod = await loadMeshCoreJs();
     this.constants = mod.Constants;
+    this.PacketCtor = mod.Packet ?? null;
 
     if (this.config.connectionType === 'tcp') {
       if (!this.config.tcpHost || !this.config.tcpPort) {
@@ -260,9 +283,57 @@ export class MeshCoreNativeBackend extends EventEmitter {
 
   // ---------------- push event wiring ----------------
 
+  /**
+   * Pretty-print the relay-hash chain extracted from an OTA `path` field.
+   * `pathLen` is the packed wire byte (top 2 bits = hash size index, bottom
+   * 6 bits = hop count). Returns an array of lowercase hex strings per
+   * hop, or [] if no path is present.
+   */
+  private decodePathHops(path: Uint8Array, pathLen: number): string[] {
+    if (!this.PacketCtor) return [];
+    if (pathLen === 0xff) return []; // direct route — no relay hashes
+    const hashSize = this.PacketCtor.extractPathHashSize(pathLen);
+    const hopCount = this.PacketCtor.extractPathHashCount(pathLen);
+    if (hopCount <= 0 || hashSize <= 0) return [];
+    const hops: string[] = [];
+    for (let i = 0; i < hopCount; i++) {
+      const offset = i * hashSize;
+      const slice = path.subarray(offset, offset + hashSize);
+      if (slice.length === 0) break;
+      const hex = Array.from(slice).map(b => b.toString(16).padStart(2, '0')).join('');
+      hops.push(hex);
+    }
+    return hops;
+  }
+
   private wirePushEvents(): void {
     if (!this.connection || !this.constants) return;
     const { PushCodes, ResponseCodes } = this.constants;
+
+    // LogRxData: emitted for every received OTA packet (when a serial
+    // client is attached). The companion-level txt-msg recv events
+    // (ContactMsgRecv / ChannelMsgRecv) strip the relay-hash chain, so
+    // we parse the raw bytes here, buffer the path for TXT_MSG packets
+    // only, and let the next message-recv handler consume it. The
+    // single-buffer design is intentional — under the wire-level
+    // serialization the firmware uses, LogRxData is emitted right
+    // before the corresponding txt-msg event for the same packet.
+    if (typeof PushCodes?.LogRxData === 'number' && this.PacketCtor) {
+      const PacketCtor = this.PacketCtor;
+      const TXT_MSG = PacketCtor.PAYLOAD_TYPE_TXT_MSG;
+      this.connection.on(PushCodes.LogRxData, (rx: any) => {
+        try {
+          const raw: Uint8Array | undefined = rx?.raw;
+          if (!raw || raw.length === 0) return;
+          const pkt = PacketCtor.fromBytes(raw);
+          if (pkt.payload_type !== TXT_MSG) return;
+          const hops = this.decodePathHops(pkt.path, pkt.pathLen);
+          this.pendingTxtMsgPath = { hops, rawPathLen: pkt.pathLen };
+        } catch {
+          // Best-effort: a malformed log line shouldn't break the message stream.
+        }
+      });
+    }
 
     // ContactMsgRecv → contact_message (plain DM), cli_reply (txtType=CliData),
     // or room_message (txtType=SignedPlain, pushed by a room server).
@@ -298,11 +369,24 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return;
       }
 
+      // Consume the path buffered by the preceding LogRxData event (if any).
+      // Same-tick consumption: clear the buffer so a subsequent recv that
+      // didn't get a matching LogRxData (rare) doesn't reuse stale hops.
+      const consumedPath = this.pendingTxtMsgPath;
+      this.pendingTxtMsgPath = null;
       const payload = {
         pubkey_prefix: bytesToHex(msg.pubKeyPrefix),
         text: msg.text,
         sender_timestamp: msg.senderTimestamp,
         txt_type: typeof msg.txtType === 'number' ? msg.txtType : undefined,
+        // ContactMsgRecv pathLen is the packed wire byte (top 2 bits =
+        // hash size - 1, bottom 6 bits = hop count). 0xFF marks "sent
+        // direct"; otherwise the hop count is `pathLen & 0x3F`.
+        path_len: typeof msg.pathLen === 'number' ? msg.pathLen : undefined,
+        // Per-packet relay-hash chain recovered from the preceding
+        // LogRxData event (raw OTA bytes). undefined when LogRxData is
+        // not available (e.g. backend started without raw logging).
+        path_hops: consumedPath?.hops,
         snr: undefined,
       };
       this.emitBridgeEvent(isCliReply ? 'cli_reply' : 'contact_message', payload);
@@ -310,10 +394,15 @@ export class MeshCoreNativeBackend extends EventEmitter {
 
     // ChannelMsgRecv → channel_message
     this.connection.on(ResponseCodes.ChannelMsgRecv, (msg: any) => {
+      const consumedPath = this.pendingTxtMsgPath;
+      this.pendingTxtMsgPath = null;
       this.emitBridgeEvent('channel_message', {
         channel_idx: msg.channelIdx,
         text: msg.text,
         sender_timestamp: msg.senderTimestamp,
+        // Same packed-byte semantics as contact_message above.
+        path_len: typeof msg.pathLen === 'number' ? msg.pathLen : undefined,
+        path_hops: consumedPath?.hops,
         snr: undefined,
       });
     });
