@@ -24,7 +24,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { MqttBrokerClient, type MqttClientCapabilities } from './transports/mqttBrokerClient.js';
+import { MqttBrokerClient, MqttReconnectCoordinator, type MqttClientCapabilities } from './transports/mqttBrokerClient.js';
 import {
   MqttPacketFilter,
   type MqttFilterConfig,
@@ -257,6 +257,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
    * Holds one MQTT connection per `gateway_id` seen in `local-packet`.
    */
   private publisherPool: MqttBridgePublisherPool | null = null;
+  private reconnectCoordinator: MqttReconnectCoordinator | null = null;
   /**
    * In `per_gateway` mode, the gatewayNum whose pool entry doubles as
    * the subscriber connection (i.e., the parent broker's own gateway
@@ -294,6 +295,8 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     // node, not as an opaque `mm-bridge-…`. The same connection is also
     // the publisher for traffic whose gateway_id IS the broker's nodeId
     // (avoids the MQTT 3.1.1 §3.1.4 duplicate-clientId disconnect).
+    this.reconnectCoordinator = new MqttReconnectCoordinator();
+
     let subscriberClientId: string | undefined;
     if (forwardingMode === 'per_gateway' && this.parentBroker) {
       const localInfo = this.parentBroker.getLocalNodeInfo();
@@ -304,6 +307,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
         username: this.config.upstream.username,
         password: this.config.upstream.password,
         poolLabel: this.sourceId,
+        reconnectCoordinator: this.reconnectCoordinator,
       });
     }
 
@@ -317,6 +321,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       clientId: subscriberClientId,
       clientIdPrefix: subscriberClientId ? undefined : `mm-bridge-${this.sourceId}`,
     });
+    this.client.setCoordinator(this.reconnectCoordinator);
     this.client.on('error', (err) => {
       this.lastError = err.message;
     });
@@ -365,6 +370,10 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     if (this.client) {
       await this.client.disconnect();
       this.client = null;
+    }
+    if (this.reconnectCoordinator) {
+      this.reconnectCoordinator.dispose();
+      this.reconnectCoordinator = null;
     }
     this.brokerGatewayNum = null;
   }

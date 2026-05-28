@@ -64,6 +64,53 @@ export interface MqttClientCapabilities {
  * - 'permission-denied' (reason: { kind: 'subscribe' | 'auth'; topics?: string[]; message: string })
  *     fired when the broker denied subscribe or rejected the CONNACK on auth grounds.
  */
+/**
+ * Coordinates reconnection across multiple MqttBrokerClient instances
+ * targeting the same broker. Instead of N independent backoff timers
+ * (which interleave to produce once-per-second aggregate retry storms),
+ * a single shared timer fires and reconnects all registered clients together.
+ */
+export class MqttReconnectCoordinator {
+  private readonly clients = new Set<MqttBrokerClient>();
+  private backoffMs = 1000;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly BACKOFF_MIN_MS = 1000;
+  private static readonly BACKOFF_MAX_MS = 60_000;
+
+  register(client: MqttBrokerClient): void {
+    this.clients.add(client);
+  }
+
+  unregister(client: MqttBrokerClient): void {
+    this.clients.delete(client);
+  }
+
+  requestReconnect(): void {
+    if (this.timer) return;
+    const jitter = this.backoffMs * 0.2 * (Math.random() - 0.5);
+    const delay = Math.round(this.backoffMs + jitter);
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      for (const client of this.clients) {
+        client.doReconnect();
+      }
+    }, delay);
+    this.backoffMs = Math.min(this.backoffMs * 2, MqttReconnectCoordinator.BACKOFF_MAX_MS);
+  }
+
+  resetBackoff(): void {
+    this.backoffMs = MqttReconnectCoordinator.BACKOFF_MIN_MS;
+  }
+
+  dispose(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    this.clients.clear();
+  }
+}
+
 export class MqttBrokerClient extends EventEmitter {
   private readonly options: MqttBrokerClientOptions;
   private client: MqttClient | null = null;
@@ -74,12 +121,18 @@ export class MqttBrokerClient extends EventEmitter {
   private authFailed = false;
   private reconnectBackoffMs = 1000;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private coordinator: MqttReconnectCoordinator | null = null;
   private static readonly BACKOFF_MIN_MS = 1000;
   private static readonly BACKOFF_MAX_MS = 60_000;
 
   constructor(options: MqttBrokerClientOptions) {
     super();
     this.options = options;
+  }
+
+  setCoordinator(coordinator: MqttReconnectCoordinator): void {
+    this.coordinator = coordinator;
+    coordinator.register(this);
   }
 
   connect(): Promise<void> {
@@ -112,6 +165,7 @@ export class MqttBrokerClient extends EventEmitter {
       this.lastError = null;
       this.authFailed = false;
       this.reconnectBackoffMs = MqttBrokerClient.BACKOFF_MIN_MS;
+      if (this.coordinator) this.coordinator.resetBackoff();
       logger.info(`📡 MQTT client connected to ${url}`);
       // Re-subscribe on every connect (covers reconnects with clean=true).
       // Clear previously-tracked denials too — a fresh session may have
@@ -205,9 +259,17 @@ export class MqttBrokerClient extends EventEmitter {
     });
   }
 
+  doReconnect(): void {
+    if (this.client) this.client.reconnect();
+  }
+
   private scheduleReconnect(): void {
-    if (!this.client || this.reconnectTimer) return;
-    // Add ±20% jitter to spread reconnects across pool entries.
+    if (!this.client) return;
+    if (this.coordinator) {
+      this.coordinator.requestReconnect();
+      return;
+    }
+    if (this.reconnectTimer) return;
     const jitter = this.reconnectBackoffMs * 0.2 * (Math.random() - 0.5);
     const delay = Math.round(this.reconnectBackoffMs + jitter);
     this.reconnectTimer = setTimeout(() => {
@@ -223,6 +285,10 @@ export class MqttBrokerClient extends EventEmitter {
   }
 
   async disconnect(): Promise<void> {
+    if (this.coordinator) {
+      this.coordinator.unregister(this);
+      this.coordinator = null;
+    }
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
