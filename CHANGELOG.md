@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.8.0] - 2026-05-27
+
+# MeshMonitor v4.8.0
+
+Minor release focused on **MeshCore path intelligence and UX refinements**. Adds route visualization on the map, automatic path discovery and neighbor collection from repeaters, @mention highlighting with delivery status indicators, and a fully mobile-responsive MeshCore layout. Also improves MQTT reconnection behavior and fixes room server auto-sync persistence.
+
+## Features
+
+### MeshCore Path Intelligence
+
+- #3231 feat(meshcore): Show Paths map feature with hop-count colored lines — visualize MeshCore contact routes on the map. Lines are colored by hop count (green for direct, orange for 2-3 hops, red for 4+ hops). Toggle paths on/off from the map toolbar.
+- #3232 feat(meshcore): add Discover Path button using firmware CMD 52 — manually trigger path discovery to any companion contact. The button appears in the contact-detail panel and sends the MeshCore binary request for route establishment.
+- #3234 feat(meshcore): handle path discovery response push (0x8D) — process firmware push responses that return discovered paths. Routes are stored and used for map rendering and the contact-detail panel.
+- #3238 feat(meshcore): neighbors support for repeaters with CLI parsing, name resolution, and map rendering — query repeater neighbor tables via the binary protocol, parse structured responses (pubkey prefix, SNR, last-heard), resolve prefixes to full contact names, persist to `meshcore_neighbor_info`, and render neighbor links on the map and in the Map Analysis inspector panel.
+
+### MeshCore Auto-Pathfinding
+
+- #3237 feat(meshcore): add Auto-Pathfinding automation tab — new Automation view for MeshCore sources with configurable periodic path discovery and neighbor collection. Discovers paths to all companion contacts and queries neighbor lists from all repeaters on a configurable schedule (default: every 5 minutes between requests, repeat every 24 hours). Supports independent toggles for path discovery and neighbor collection, with configurable inter-request delay to avoid RF flooding.
+
+### MeshCore UX Improvements
+
+- #3236 feat(meshcore): @mention highlighting and delivery status indicators — messages containing `@YourName` are visually highlighted. Sent DMs now show delivery status (pending / confirmed / failed) with timestamp tooltips.
+- #3235 feat(meshcore): add node navigation, clickable names, and search filtering — contact names in messages are clickable and navigate to that contact's DM thread. Added search/filter bar to the Nodes view for quick lookup by name or public key.
+- #3230 feat(meshcore): add mobile-responsive layout and collapsible sections — the MeshCore page adapts to mobile viewports with a list/detail toggle pattern, collapsible sections, and touch-friendly controls.
+
+### General
+
+- #3233 feat: add Delete/Purge buttons to map node popup — quickly remove stale nodes directly from the map without navigating to the nodes list.
+- #3224 feat: pre-populate radio NodeDB via add_contact before PKI DMs — when sending a PKI-encrypted DM to a node not yet in the radio's NodeDB, MeshMonitor first inserts it via `add_contact` so the radio can encrypt and route correctly.
+
+## Fixes
+
+- #3239 fix(meshcore): load saved room Auto-Sync config and retry room login — room auto-sync checkbox and interval were never loaded from the database. Added GET endpoint and frontend loading. Also added 3-attempt retry with 2s delay to room login for reliability over lossy RF links.
+- #3241 fix(mqtt): shared reconnect coordinator to prevent aggregate retry storms — multiple MQTT clients per bridge (subscriber + publisher pool entries) each ran independent backoff timers, producing once-per-second aggregate retries. Added `MqttReconnectCoordinator` that manages a single shared exponential backoff timer (1s to 60s) for all clients targeting the same broker.
+- #3223 fix: prevent false circuit-breaker trips when watchdog upgrade succeeds — watchdog upgrade success was incorrectly counted as a failure, triggering the circuit breaker.
+- fix: classify neighbor links by transport type and filter by RF/UDP/unknown — neighbor link lines on the map analysis layer now distinguish transport types with appropriate styling.
+
 ## [4.7.4] - 2026-05-26
 
 # MeshMonitor v4.7.4
