@@ -20,7 +20,14 @@ When a MeshCore source is connected, you get:
 - **Radio preset selector** — Pick from the official MeshCore preset list instead of hand-tuning freq/bw/sf/cr
 - **Contact-detail panel** — Hops, RSSI/SNR, last heard, position, and the full public key shown next to DM threads
 - **Contact management** — Remove contacts from the device, export as `meshcore://` URLs for sharing, import from pasted URLs or hex blobs
-- **Repeater neighbour list** — Query a repeater's neighbour table with SNR and last-heard timestamps
+- **Repeater neighbour list** — Query a repeater's neighbour table with SNR and last-heard timestamps, with results rendered on the map
+- **Path visualization** — Show route lines on the map colored by hop count, with Discover Path buttons for manual route establishment
+- **Auto-pathfinding** — Scheduled path discovery and neighbor collection across your entire mesh
+- **Room server support** — Login, post, and auto-sync with MeshCore room servers (BBS-style message boards)
+- **@mention highlighting** — Messages mentioning your name are visually highlighted
+- **Delivery status** — Sent DMs show pending/confirmed/failed indicators
+- **Clickable contact names** — Names in messages navigate to that contact's DM thread
+- **Mobile-responsive layout** — Full MeshCore page works on mobile with list/detail toggle
 - **Device time sync** — One-click RTC sync from the Node Info page
 - **Device management** — Reboot device, backup/restore Ed25519 private key (danger-gated with confirmation)
 - **Telemetry-mode configuration** — Toggle base / location / environment telemetry on the device itself
@@ -108,7 +115,7 @@ Each MeshCore source has its own multi-pane page accessible by clicking the sour
 
 ### Nodes
 
-A map of every contact with valid coordinates, plus a styled row list aligned to the same visual vocabulary as the Meshtastic nodes view. The map honours zoom-based label visibility and falls through to the dashboard map when the source is selected at the dashboard level.
+A map of every contact with valid coordinates, plus a styled row list aligned to the same visual vocabulary as the Meshtastic nodes view. The map honours zoom-based label visibility and falls through to the dashboard map when the source is selected at the dashboard level. A search/filter bar lets you quickly find contacts by name or public key prefix.
 
 ### Channels
 
@@ -124,6 +131,10 @@ Per-contact DM view with a **contact-detail panel** that mirrors the Meshtastic 
 - Last heard and last advert
 - Position (if known)
 - Full public key
+- **Discover Path** button — triggers firmware CMD 52 to establish/refresh the route to a companion contact
+- **Delivery status** — sent DMs show pending / confirmed / failed indicators with timestamp tooltips
+
+Contact names in messages are **clickable** — clicking a name navigates directly to that contact's DM thread. Messages containing **@YourName** are visually highlighted.
 
 The panel is collapsible with state persisted to localStorage.
 
@@ -241,6 +252,48 @@ Every CLI command, login outcome, and credential mutation writes an `audit_log` 
 
 The `details` JSON captures `sourceId`, `publicKey` (where relevant), command text, reply length, and elapsed milliseconds. **The plaintext password never appears in audit details**, verified by the canary test referenced above.
 
+## Path Visualization
+
+The MeshCore map can render **route lines** between your local node and each contact, colored by hop count:
+
+- **Green** — direct (1 hop)
+- **Orange** — 2-3 hops
+- **Red** — 4+ hops
+
+Toggle path visibility from the map toolbar. Paths are populated by the **Discover Path** button in the contact-detail panel (sends firmware CMD 52) or automatically by the [Auto-Pathfinding](#auto-pathfinding) scheduler. When the firmware responds with path discovery results (push code 0x8D), the route is stored and rendered immediately.
+
+## Neighbor Discovery
+
+Repeaters maintain a neighbor table of other repeaters heard via zero-hop adverts. MeshMonitor can query this table and display the results:
+
+- **Contact-detail panel** — a "Get Neighbours" button appears for repeater contacts. Results show each neighbor's name (resolved from pubkey prefix), SNR, and last-heard time.
+- **Map rendering** — neighbor links appear on the map as dashed lines between repeaters.
+- **Map Analysis** — the inspector panel in Map Analysis mode includes a MeshCore neighbor links layer with transport-type filtering (RF / UDP / unknown).
+- **Database persistence** — neighbor data is stored in `meshcore_neighbor_info` and survives page refreshes.
+
+Neighbor queries require authentication to the repeater (guest or admin login). See [the MeshCore protocol details](/features/meshcore#remote-administration) for auth requirements.
+
+## Auto-Pathfinding
+
+The **Automation** view (accessible from the MeshCore page sub-toolbar) provides scheduled path discovery and neighbor collection:
+
+- **Path Discovery** — periodically sends Discover Path requests to all companion contacts to keep route information fresh.
+- **Neighbors for Repeaters** — periodically queries the neighbor list from all repeater contacts and persists results to the database for map rendering.
+- **Configurable schedule** — set the delay between individual requests (default: 5 minutes) and how often the full cycle repeats (default: every 24 hours).
+- **Independent toggles** — enable/disable path discovery and neighbor collection independently.
+- **RF-aware throttling** — requests are spaced by the configured interval to avoid flooding the mesh. A global 60-second minimum spacing between any two scheduled mesh operations on the same source is also enforced.
+
+Retrieved neighbor data is automatically resolved (pubkey prefixes mapped to full contact records) and persisted to `meshcore_neighbor_info` for map rendering and the Map Analysis inspector panel.
+
+## Room Servers
+
+Room servers (advType=3) are BBS-style MeshCore nodes that store posts and push-sync them to connected clients. The **Rooms** view in the MeshCore page lists discovered room servers and provides:
+
+- **Login / auto-login** — enter a password to join a room, or save credentials for automatic login on future visits. Login retries up to 3 times automatically to handle RF packet loss.
+- **Post stream** — read and send posts in the room's message board.
+- **Auto-sync** — configure periodic re-login to fetch new posts on a schedule (1h to 24h intervals). The auto-sync setting is persisted per-room and loaded when the room is selected.
+- **Credential persistence** — saved room passwords are AES-256-GCM encrypted via the same credential store used for remote admin passwords.
+
 ## Multi-Source Dashboard
 
 MeshCore sources appear as styled cards in the dashboard sidebar — same visual language as Meshtastic sources, with a MeshCore logo and per-source status.
@@ -283,18 +336,15 @@ Saved radio params are now persisted authoritatively: the backend propagates dev
 
 ## Still Early
 
-This is the part that's worth being honest about. MeshCore support is **basic** today — the core "see your network, send messages, watch telemetry" loop works, but plenty is missing.
+MeshCore support has come a long way since 4.5 — remote administration, path visualization, neighbor discovery, auto-pathfinding, room servers, and a mobile-responsive layout are all shipping. But there are still gaps:
 
 Known gaps and limitations:
 
-- **Repeater / Room Server per-source parity** is behind Companion. Repeater is selectable as a USB device type, but most new 4.5 features (local telemetry poller, remote-telemetry scheduler, telemetry-mode toggles) require a Companion connection on the source side.
-- **No remote-admin equivalent** for MeshCore yet — the Meshtastic-side admin scanner, password rotation, OTA flow, etc. don't have MeshCore counterparts.
-- **No auto-responder / auto-announce / auto-traceroute** schedulers for MeshCore. The per-source scheduler primitives are wired up, but the user-facing features haven't been built yet.
+- **Repeater / Room Server per-source parity** is behind Companion. Repeater is selectable as a USB device type, but features like local telemetry polling and telemetry-mode toggles require a Companion connection on the source side.
 - **Notifications** for MeshCore events are minimal — apprise/push surfaces aren't yet first-class.
-- **Map rendering** uses the dashboard map's existing primitives, so MeshCore-specific link visualization (direct radio links, route quality) is not yet there.
 - **Companion-only telemetry mode toggles** — Repeaters report what they report; the base/loc/env toggle is meaningful on Companions.
 
-The roadmap is incremental: keep landing one or two MeshCore features per release, keep aligning the UI vocabulary with Meshtastic, and gradually close the parity gap.
+The roadmap is incremental: keep landing MeshCore features each release, keep aligning the UI vocabulary with Meshtastic, and gradually close the remaining parity gap.
 
 ## Troubleshooting
 
