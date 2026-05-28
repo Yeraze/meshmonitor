@@ -165,12 +165,20 @@ export function applyTopicRewrite(
   rule: TopicRewriteRule | null | undefined,
 ): string {
   if (!rule) return topic;
-  const from = rule.from.replace(/\/+$/, '');
-  const to = rule.to.replace(/\/+$/, '');
+  const from = stripTrailingSlashes(rule.from);
+  const to = stripTrailingSlashes(rule.to);
   if (!from || !to || from === to) return topic;
   if (topic === from) return to;
   if (topic.startsWith(from + '/')) return to + topic.slice(from.length);
   return topic;
+}
+
+// Linear-time trailing-slash strip. Replaces `.replace(/\/+$/, '')` which
+// CodeQL flags as polynomial-ReDoS on user-controlled input (js/polynomial-redos).
+function stripTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 0x2f) end--;
+  return end === s.length ? s : s.slice(0, end);
 }
 
 export interface MqttBridgeStatus extends SourceStatus {

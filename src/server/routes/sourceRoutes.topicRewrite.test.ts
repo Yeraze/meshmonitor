@@ -312,6 +312,31 @@ describe('sourceRoutes — POST mqtt_bridge topic rewrite validation (#3166)', (
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/must be an object/);
   });
+
+  // Regression for CodeQL js/polynomial-redos (alerts #143, #144). The old
+  // implementation used `.replace(/\/+$/, '')` which CodeQL flags as polynomial
+  // backtrackable on adversarial all-slash input. The validator must handle a
+  // long run of trailing slashes without stalling the request handler. We use
+  // 50 KB per side (well under Express's body limit) — far smaller than the
+  // megabyte the unit-level applyTopicRewrite test uses, but still well past
+  // anything a quadratic-time regex would breeze through.
+  it('handles an adversarial run of trailing slashes in linear time', async () => {
+    const app = createApp();
+    mockDb.sources.getSource.mockResolvedValue(brokerRecord);
+
+    const longTail = '/'.repeat(50_000);
+    const start = Date.now();
+    const res = await request(app)
+      .post('/')
+      .send(
+        attachedBridgeBody({
+          downlinkTopicRewrite: { from: 'msh/US/TX' + longTail, to: 'msh/US/LA' + longTail },
+        }),
+      );
+    const elapsed = Date.now() - start;
+    expect(res.status).toBe(201);
+    expect(elapsed).toBeLessThan(5000);
+  });
 });
 
 describe('sourceRoutes — PUT mqtt_bridge topic rewrite validation (#3166)', () => {

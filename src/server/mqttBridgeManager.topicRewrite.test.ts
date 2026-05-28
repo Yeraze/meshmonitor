@@ -94,4 +94,19 @@ describe('applyTopicRewrite', () => {
     // Reversing rewritten through the downlink rule should land back on the original.
     expect(applyTopicRewrite(rewritten, downlink)).toBe(original);
   });
+
+  // Regression for CodeQL js/polynomial-redos (alerts #141, #142). The old
+  // implementation used `.replace(/\/+$/, '')` which CodeQL flags as polynomial
+  // backtrackable on adversarial all-slash input. The linear-time helper must
+  // handle a megabyte of trailing slashes in milliseconds, not seconds.
+  it('strips an adversarial run of trailing slashes in linear time', () => {
+    const giantTail = '/'.repeat(1_000_000);
+    const rule = { from: 'msh/US/TX' + giantTail, to: 'msh/US/LA' + giantTail };
+    const start = Date.now();
+    const out = applyTopicRewrite('msh/US/TX/2/e/Foo', rule);
+    const elapsed = Date.now() - start;
+    expect(out).toBe('msh/US/LA/2/e/Foo');
+    // 1M-char strip should be well under a second even on a slow CI box.
+    expect(elapsed).toBeLessThan(1000);
+  });
 });

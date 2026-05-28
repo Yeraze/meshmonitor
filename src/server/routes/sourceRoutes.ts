@@ -16,6 +16,14 @@ import type { ResourceType } from '../../types/permission.js';
 
 const router = Router();
 
+// Linear-time trailing-slash strip. Replaces `.replace(/\/+$/, '')` which
+// CodeQL flags as polynomial-ReDoS on user-controlled input (js/polynomial-redos).
+function stripTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 0x2f) end--;
+  return end === s.length ? s : s.slice(0, end);
+}
+
 // Validate virtualNode config nested inside a source config blob.
 // Returns null on success, or { status, error } on failure.
 async function validateVirtualNodeConfig(
@@ -139,8 +147,8 @@ function validateMqttBridgeRewrites(config: Record<string, any>): string | null 
     if (typeof r.from !== 'string' || typeof r.to !== 'string') {
       return `${label}.from and ${label}.to must be strings`;
     }
-    const from = r.from.trim().replace(/\/+$/, '');
-    const to = r.to.trim().replace(/\/+$/, '');
+    const from = stripTrailingSlashes(r.from.trim());
+    const to = stripTrailingSlashes(r.to.trim());
     if (!from || !to) {
       return `${label}.from and ${label}.to must be non-empty`;
     }
