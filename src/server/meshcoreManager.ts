@@ -55,6 +55,17 @@ function decodePathLenHopCount(pathLen: number | undefined | null): number | nul
 }
 
 /**
+ * Render a relay-hash hop list (already-hex strings from LogRxData parsing)
+ * into the comma-separated form `replaceAutoAckTokens` expects for
+ * {ROUTE}. Returns null when no hops are present.
+ */
+function formatPathHops(hops: unknown): string | null {
+  if (!Array.isArray(hops) || hops.length === 0) return null;
+  const filtered = hops.filter((h): h is string => typeof h === 'string' && h.length > 0);
+  return filtered.length > 0 ? filtered.join(',') : null;
+}
+
+/**
  * Decide whether a channel slot reported by the firmware is actually in use.
  * MeshCore Companion firmware doesn't error on unconfigured slots — it
  * returns success with an empty name and a 16-byte all-zero secret. We
@@ -641,12 +652,14 @@ class MeshCoreManager extends EventEmitter {
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix}: ${data.text}`);
-      // For DMs we have the sender's pubkey, so {ROUTE} falls back to the
-      // contact record's cached outPath (firmware updates it from inbound
-      // flood-packet paths, so it reflects the route this packet took).
+      // Prefer the per-packet relay-hash chain recovered from LogRxData
+      // (the actual hops THIS packet traversed). Fall back to the
+      // sender contact's cached outPath if the native backend didn't
+      // surface a LogRxData event for this packet (e.g. mid-buffer race
+      // or a backend that doesn't subscribe to raw logging).
       const hopCount = decodePathLenHopCount(data.path_len);
       const senderContact = this.resolveContactByPrefix(data.pubkey_prefix);
-      const route = senderContact?.outPath || null;
+      const route = formatPathHops(data.path_hops) || senderContact?.outPath || null;
       void this.checkAutoAcknowledge(message, true, undefined, hopCount, route);
     } else if (event_type === 'channel_message') {
       // MeshCore channel packets have no sender field on the wire — the sender's
@@ -669,10 +682,12 @@ class MeshCoreManager extends EventEmitter {
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore] Channel ${data.channel_idx} message: ${data.text}`);
-      // Channel messages carry no sender pubkey on the wire, so we can't
-      // look up an outPath for {ROUTE}. Hop count is still available.
+      // Channel messages carry no sender pubkey on the wire, so there
+      // is no contact outPath fallback for {ROUTE}. The LogRxData
+      // path_hops (when present) is the only source of relay identities.
       const hopCount = decodePathLenHopCount(data.path_len);
-      void this.checkAutoAcknowledge(message, false, data.channel_idx, hopCount, null);
+      const route = formatPathHops(data.path_hops);
+      void this.checkAutoAcknowledge(message, false, data.channel_idx, hopCount, route);
     } else if (event_type === 'room_message') {
       // Room server post (TXT_TYPE_SIGNED_PLAIN). The room's pubkey prefix
       // identifies which room, and the author prefix identifies the poster.
