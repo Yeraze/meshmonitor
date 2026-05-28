@@ -285,6 +285,31 @@ The **Automation** view (accessible from the MeshCore page sub-toolbar) provides
 
 Retrieved neighbor data is automatically resolved (pubkey prefixes mapped to full contact records) and persisted to `meshcore_neighbor_info` for map rendering and the Map Analysis inspector panel.
 
+## Auto-Announce
+
+The **Automation** view also hosts a per-source Auto-Announce that periodically broadcasts a status message to one or more MeshCore channels:
+
+- **Scheduling** — choose either a simple interval (every N hours, 1–168) or a standard 5-field cron expression. An optional *announce on connection* fires a single message whenever the source reconnects.
+- **Message template** — the message body supports token expansion. Available tokens: `{VERSION}`, `{DURATION}`, `{CONTACTCOUNT}`, `{COMPANIONCOUNT}`, `{REPEATERCOUNT}`, `{ROOMCOUNT}`, `{NODE_NAME}`, `{NODE_ID}`. A live preview shows the rendered text, and clickable token buttons insert at the cursor.
+- **Target channels** — the announcement is broadcast to every selected channel each run.
+- **Optional advert burst** — fire a MeshCore advert N seconds (0–600) after each announcement so neighbours rediscover the node.
+- **Send Now** — manually fire the configured announcement for testing without waiting for the schedule.
+
+## Auto-Responder
+
+Auto-Responder matches incoming messages against operator-defined patterns and replies automatically:
+
+- **Per-trigger pattern** — match incoming text via a regular expression, with per-channel filtering, DM listening, and a per-sender cooldown to avoid loops.
+- **Two actions** — reply with a **text response** (same token expansion as Auto-Announce) or **run a script** (with token-expanded script args). Script execution reuses the shared script runner, with `MESHCORE_*` environment variables injected so a script can branch on which stack invoked it.
+
+## Timer Triggers
+
+Timer Triggers schedule recurring actions independent of incoming traffic:
+
+- **Per-trigger schedule** — each trigger runs on its own cron or interval.
+- **Three actions** — send a **text** message (token expansion supported) to a channel or contact, fire a MeshCore **advert**, or **run a script** (token-expanded args).
+- **Last-run telemetry** — the UI surfaces the last fire time and outcome per trigger.
+
 ## Room Servers
 
 Room servers (advType=3) are BBS-style MeshCore nodes that store posts and push-sync them to connected clients. The **Rooms** view in the MeshCore page lists discovered room servers and provides:

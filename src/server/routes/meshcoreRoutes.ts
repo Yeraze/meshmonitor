@@ -2440,6 +2440,328 @@ router.post(
   },
 );
 
+// ============ Auto-Announce Automation ============
+//
+// Per-source settings + actions for MeshCore auto-announce. The
+// scheduler lives on the manager (`startAutoAnnounce`,
+// `runAutoAnnounceCycle`); this surface is the CRUD + manual-fire +
+// preview wrapper the UI calls.
+
+router.get(
+  '/automation/announce',
+  optionalAuth(),
+  requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const settings = databaseService.settings;
+
+      const enabled = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceEnabled');
+      const intervalHours = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceIntervalHours');
+      const message = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceMessage');
+      const channelIndexesRaw = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceChannelIndexes');
+      const announceOnStart = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceOnStart');
+      const useSchedule = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceUseSchedule');
+      const schedule = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceSchedule');
+      const advertEnabled = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceAdvertEnabled');
+      const advertDelaySeconds = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceAdvertDelaySeconds');
+      const lastRunAt = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceLastRunAt');
+
+      res.json({
+        success: true,
+        data: {
+          enabled: enabled === 'true',
+          intervalHours: parseInt(intervalHours || '6', 10) || 6,
+          message: message || 'MeshMonitor {VERSION} online for {DURATION} — {CONTACTCOUNT} contacts',
+          channelIndexes: (channelIndexesRaw || '')
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
+            .map(s => parseInt(s, 10))
+            .filter(n => Number.isFinite(n)),
+          announceOnStart: announceOnStart === 'true',
+          useSchedule: useSchedule === 'true',
+          schedule: schedule || '0 */6 * * *',
+          advertEnabled: advertEnabled === 'true',
+          advertDelaySeconds: parseInt(advertDelaySeconds || '30', 10) || 30,
+          lastRunAt: lastRunAt ? parseInt(lastRunAt, 10) || null : null,
+        },
+      });
+    } catch (error) {
+      logger.error('[API] Error reading meshcore auto-announce settings:', error);
+      res.status(500).json({ success: false, error: 'Failed to read auto-announce settings' });
+    }
+  },
+);
+
+router.post(
+  '/automation/announce',
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const settings = databaseService.settings;
+      const {
+        enabled,
+        intervalHours,
+        message,
+        channelIndexes,
+        announceOnStart,
+        useSchedule,
+        schedule,
+        advertEnabled,
+        advertDelaySeconds,
+      } = req.body as {
+        enabled?: boolean;
+        intervalHours?: number;
+        message?: string;
+        channelIndexes?: number[];
+        announceOnStart?: boolean;
+        useSchedule?: boolean;
+        schedule?: string;
+        advertEnabled?: boolean;
+        advertDelaySeconds?: number;
+      };
+
+      if (enabled !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceEnabled', String(enabled));
+      }
+      if (intervalHours !== undefined) {
+        const clamped = Math.max(1, Math.min(168, Math.floor(intervalHours) || 6));
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceIntervalHours', String(clamped));
+      }
+      if (message !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceMessage', String(message));
+      }
+      if (channelIndexes !== undefined) {
+        const csv = Array.isArray(channelIndexes)
+          ? channelIndexes.filter(n => Number.isFinite(n)).join(',')
+          : '';
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceChannelIndexes', csv);
+      }
+      if (announceOnStart !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceOnStart', String(announceOnStart));
+      }
+      if (useSchedule !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceUseSchedule', String(useSchedule));
+      }
+      if (schedule !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceSchedule', String(schedule));
+      }
+      if (advertEnabled !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceAdvertEnabled', String(advertEnabled));
+      }
+      if (advertDelaySeconds !== undefined) {
+        const clamped = Math.max(0, Math.min(600, Math.floor(advertDelaySeconds) || 30));
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceAdvertDelaySeconds', String(clamped));
+      }
+
+      // Re-arm the scheduler so the new settings take effect immediately.
+      const mgr = meshcoreManagerRegistry.get(sourceId);
+      if (mgr) {
+        await mgr.startAutoAnnounce().catch((err: Error) =>
+          logger.warn(`[API] auto-announce restart after save failed: ${err.message}`));
+      }
+
+      const lastRunRaw = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceLastRunAt');
+      res.json({
+        success: true,
+        data: {
+          lastRunAt: lastRunRaw ? parseInt(lastRunRaw, 10) || null : null,
+        },
+      });
+    } catch (error) {
+      logger.error('[API] Error saving meshcore auto-announce settings:', error);
+      res.status(500).json({ success: false, error: 'Failed to save auto-announce settings' });
+    }
+  },
+);
+
+router.get(
+  '/automation/announce/preview',
+  optionalAuth(),
+  requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const mgr = managerFor(req);
+      const message = String(req.query.message ?? '');
+      if (!message) {
+        return res.status(400).json({ success: false, error: 'Missing message parameter' });
+      }
+      const preview = await mgr.previewAnnouncementMessage(message);
+      res.json({ success: true, preview });
+    } catch (error) {
+      logger.error('[API] Error generating meshcore announce preview:', error);
+      res.status(500).json({ success: false, error: 'Failed to generate preview' });
+    }
+  },
+);
+
+router.post(
+  '/automation/announce/send',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const mgr = managerFor(req);
+      const result = await mgr.runAutoAnnounceCycle('manual');
+      const status = mgr.getAutoAnnounceStatus();
+      res.json({ success: true, data: { ...result, lastRunAt: status.lastRunAt || null } });
+    } catch (error) {
+      logger.error('[API] Error sending manual meshcore announce:', error);
+      res.status(500).json({ success: false, error: 'Failed to send announcement' });
+    }
+  },
+);
+
+// ============ Timer Triggers Automation ============
+//
+// Triggers persist as a JSON array; the manager re-reads on schedule
+// fire so a freshly-saved template applies on the next tick. The
+// shared MeshCoreTimerTrigger type lives in src/server/meshcoreManager.ts.
+
+router.get(
+  '/automation/timers',
+  optionalAuth(),
+  requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const raw = (await databaseService.settings.getSettingForSource(sourceId, 'meshcoreTimerTriggers')) || '[]';
+      let triggers: unknown = [];
+      try { triggers = JSON.parse(raw); } catch { triggers = []; }
+      res.json({ success: true, data: { triggers: Array.isArray(triggers) ? triggers : [] } });
+    } catch (error) {
+      logger.error('[API] Error reading meshcore timer triggers:', error);
+      res.status(500).json({ success: false, error: 'Failed to read timer triggers' });
+    }
+  },
+);
+
+router.post(
+  '/automation/timers',
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const body = req.body as { triggers?: unknown };
+      if (!Array.isArray(body.triggers)) {
+        return res.status(400).json({ success: false, error: 'triggers must be an array' });
+      }
+      await databaseService.settings.setSourceSetting(sourceId, 'meshcoreTimerTriggers', JSON.stringify(body.triggers));
+
+      const mgr = meshcoreManagerRegistry.get(sourceId);
+      if (mgr) {
+        await mgr.startTimerTriggers().catch((err: Error) =>
+          logger.warn(`[API] timer-trigger restart after save failed: ${err.message}`));
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('[API] Error saving meshcore timer triggers:', error);
+      res.status(500).json({ success: false, error: 'Failed to save timer triggers' });
+    }
+  },
+);
+
+router.post(
+  '/automation/timers/:triggerId/run',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const mgr = managerFor(req);
+      const triggerId = String((req.params as { triggerId?: string }).triggerId || '');
+      if (!triggerId) {
+        return res.status(400).json({ success: false, error: 'triggerId required' });
+      }
+      const result = await mgr.runTimerTrigger(triggerId);
+      res.json({ success: result.ok, data: result });
+    } catch (error) {
+      logger.error('[API] Error running meshcore timer trigger:', error);
+      res.status(500).json({ success: false, error: 'Failed to run timer trigger' });
+    }
+  },
+);
+
+// ============ Auto-Responder Automation ============
+//
+// Multi-pattern reactor. Triggers persist as a JSON array and the
+// manager re-reads them on every incoming message so a saved pattern
+// fires on the next packet without a restart.
+
+router.get(
+  '/automation/responder',
+  optionalAuth(),
+  requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const enabled = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreAutoResponderEnabled');
+      const raw = (await databaseService.settings.getSettingForSource(sourceId, 'meshcoreAutoResponderTriggers')) || '[]';
+      let triggers: unknown = [];
+      try { triggers = JSON.parse(raw); } catch { triggers = []; }
+      res.json({
+        success: true,
+        data: {
+          enabled: enabled === 'true',
+          triggers: Array.isArray(triggers) ? triggers : [],
+        },
+      });
+    } catch (error) {
+      logger.error('[API] Error reading meshcore auto-responder settings:', error);
+      res.status(500).json({ success: false, error: 'Failed to read auto-responder settings' });
+    }
+  },
+);
+
+router.post(
+  '/automation/responder',
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const body = req.body as { enabled?: boolean; triggers?: unknown };
+
+      if (body.enabled !== undefined) {
+        await databaseService.settings.setSourceSetting(sourceId, 'meshcoreAutoResponderEnabled', String(body.enabled));
+      }
+      if (body.triggers !== undefined) {
+        if (!Array.isArray(body.triggers)) {
+          return res.status(400).json({ success: false, error: 'triggers must be an array' });
+        }
+        // Validate each trigger's regex up front so a broken pattern
+        // never reaches the message loop. Reuses the same validator
+        // the manager applies at execution time.
+        for (const tr of body.triggers as Array<{ id?: string; pattern?: string }>) {
+          if (typeof tr?.pattern !== 'string') continue;
+          const v = validateAutoAckRegex(tr.pattern);
+          if (!v.ok) {
+            return res.status(400).json({
+              success: false,
+              error: `Invalid regex for trigger ${tr.id || '(unnamed)'}: ${v.error}`,
+            });
+          }
+        }
+        await databaseService.settings.setSourceSetting(sourceId, 'meshcoreAutoResponderTriggers', JSON.stringify(body.triggers));
+      }
+
+      const mgr = meshcoreManagerRegistry.get(sourceId);
+      if (mgr) mgr.resetAutoResponderRegexCache();
+
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('[API] Error saving meshcore auto-responder settings:', error);
+      res.status(500).json({ success: false, error: 'Failed to save auto-responder settings' });
+    }
+  },
+);
+
 // ---------------------------------------------------------------------------
 // POST /api/sources/:id/meshcore/neighbors/request
 // Request neighbor data from a MeshCore repeater (remote or local).

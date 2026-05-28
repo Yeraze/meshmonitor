@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+- **MeshCore automation suite** — three new per-source automations in the MeshCore Automation view:
+  - **Auto-Announce** — periodically broadcast a templated status message to selected channels on an interval or cron schedule, with an optional advert burst, live preview, and Send Now.
+  - **Auto-Responder** — reply to incoming messages matching an operator-defined regex with a text response or a script, with per-channel/DM filtering and per-sender cooldown.
+  - **Timer Triggers** — schedule recurring text/advert/script actions, each on its own cron or interval.
+  - Shared token expansion (`{VERSION}`, `{DURATION}`, `{CONTACTCOUNT}`, `{COMPANIONCOUNT}`, `{REPEATERCOUNT}`, `{ROOMCOUNT}`, `{NODE_NAME}`, `{NODE_ID}`) across all three, surfaced in the UI via an inline token legend.
+
 ## [4.8.0] - 2026-05-27
 
 # MeshMonitor v4.8.0

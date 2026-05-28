@@ -4,6 +4,9 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { useAuth } from '../../contexts/AuthContext';
 import { MeshCoreAutoAckSection } from './MeshCoreAutoAckSection';
+import { MeshCoreAutoAnnounceSection } from './MeshCoreAutoAnnounceSection';
+import { MeshCoreAutoResponderSection } from './MeshCoreAutoResponderSection';
+import { MeshCoreTimerTriggersSection } from './MeshCoreTimerTriggersSection';
 
 interface MeshCoreAutomationsViewProps {
   baseUrl: string;
@@ -290,6 +293,15 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
 
       {/* Auto-Acknowledge Section */}
       <MeshCoreAutoAckSection baseUrl={baseUrl} sourceId={sourceId} />
+
+      {/* Auto-Announce Section */}
+      <MeshCoreAutoAnnounceSection baseUrl={baseUrl} sourceId={sourceId} />
+
+      {/* Auto-Responder Section */}
+      <MeshCoreAutoResponderSection baseUrl={baseUrl} sourceId={sourceId} />
+
+      {/* Timer Triggers Section */}
+      <MeshCoreTimerTriggersSection baseUrl={baseUrl} sourceId={sourceId} />
     </div>
   );
 };

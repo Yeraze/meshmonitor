@@ -13,6 +13,9 @@ import { logger } from '../utils/logger.js';
 import databaseService from '../services/database.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { compileAutoAckRegex } from './utils/autoAckRegex.js';
+import { scheduleCron, validateCron, type CronJob } from './utils/cronScheduler.js';
+import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js';
+import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
 import { MeshCoreNativeBackend, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
 
 // Dynamic imports for optional serialport dependency
@@ -117,6 +120,80 @@ export enum MeshCoreDeviceType {
 export enum ConnectionType {
   SERIAL = 'serial',
   TCP = 'tcp',
+}
+
+/**
+ * Operator-defined auto-responder trigger, persisted per source as a
+ * JSON array at the `meshcoreAutoResponderTriggers` setting key. Fires
+ * from the manager's incoming-message handler — one regex per row, one
+ * text response per match. Intentionally narrower than the Meshtastic
+ * AutoResponder (no HTTP/script/traceroute response types) so v1 can
+ * land without dragging the script-runner sandbox into the MeshCore
+ * surface.
+ */
+export interface MeshCoreAutoResponderTrigger {
+  id: string;
+  name: string;
+  enabled: boolean;
+  /** Case-insensitive regex matched against incoming message text. */
+  pattern: string;
+  /**
+   * Action to take on match. `text` sends `response` rendered against
+   * announce tokens; `script` runs `scriptPath` and sends each entry of
+   * the script's `wouldSendMessages` output.
+   */
+  responseType?: 'text' | 'script';
+  /** Response template (only consulted for responseType === 'text'). */
+  response: string;
+  /** Script filename inside /data/scripts (responseType === 'script'). */
+  scriptPath?: string;
+  /** Whitespace-separated argv passed to the script. Token-expanded. */
+  scriptArgs?: string;
+  /** Channel indexes the trigger should listen on. Omit/empty = none. */
+  channels: number[];
+  /** Listen on DMs in addition to channels. */
+  listenDMs: boolean;
+  /** Always answer as a DM, even when the trigger came from a channel. */
+  replyAsDM: boolean;
+  /** Per-sender cooldown in seconds. 0 disables. */
+  cooldownSeconds: number;
+}
+
+/**
+ * Operator-defined timer trigger persisted (per source) as a JSON array
+ * at the `meshcoreTimerTriggers` setting key. One scheduler entry per
+ * row; the runner reads the row by id at fire time so a freshly-saved
+ * template applies on the next tick.
+ */
+export interface MeshCoreTimerTrigger {
+  id: string;
+  name: string;
+  enabled: boolean;
+  /** `cron` uses cronExpression; `interval` uses intervalMinutes. */
+  scheduleType: 'cron' | 'interval';
+  cronExpression?: string;
+  intervalMinutes?: number;
+  /**
+   * `text` sends `response` rendered against announce tokens;
+   * `advert` ignores `response`;
+   * `script` runs `scriptPath` and routes wouldSendMessages to
+   * `destination` (channel or dm).
+   */
+  responseType: 'text' | 'advert' | 'script';
+  response?: string;
+  /** Script filename inside /data/scripts (responseType === 'script'). */
+  scriptPath?: string;
+  /** Whitespace-separated argv passed to the script. Token-expanded. */
+  scriptArgs?: string;
+  /** Where to send a `text` / `script` response. `channel` requires `channelIndex`; `dm` requires `contactPublicKey`. */
+  destination?: 'channel' | 'dm';
+  channelIndex?: number;
+  contactPublicKey?: string;
+  // Last-run telemetry. Written by `runTimerTrigger` so the UI can show
+  // "ran 5m ago" without re-querying the device.
+  lastRun?: number;
+  lastResult?: 'success' | 'error';
+  lastError?: string;
 }
 
 export interface MeshCoreConfig {
@@ -418,6 +495,28 @@ class MeshCoreManager extends EventEmitter {
   private autoPathfindingJitterTimeout: NodeJS.Timeout | null = null;
   private autoPathfindingLastRunAt: number = 0;
 
+  // Auto-announce scheduler state. One of these holds the recurring
+  // trigger: cron job when useSchedule=true, setInterval handle when
+  // running on a plain hour interval. lastRunAt is exposed to the UI so
+  // operators can confirm the scheduler is actually firing.
+  private autoAnnounceTimer: NodeJS.Timeout | null = null;
+  private autoAnnounceCron: CronJob | null = null;
+  private autoAnnounceLastRunAt: number = 0;
+  private autoAnnounceAdvertTimer: NodeJS.Timeout | null = null;
+
+  // Timer-trigger scheduler state. Each configured timer trigger gets
+  // either a CronJob (cron mode) or a setInterval handle (interval
+  // mode); they're parallel because the UI lets the operator switch
+  // modes per-trigger. lastRun is persisted via settings so it survives
+  // a process restart and the UI can show "ran 5m ago" reliably.
+  private timerTriggerCrons: Map<string, CronJob> = new Map();
+  private timerTriggerIntervals: Map<string, NodeJS.Timeout> = new Map();
+
+  // Per-trigger × per-sender cooldown for the auto-responder. Key is
+  // `${triggerId}:${pubkeyPrefix}` so two triggers can each answer the
+  // same chatty sender without stomping each other's cooldown.
+  private autoResponderCooldowns: Map<string, number> = new Map();
+
   // Auto-acknowledge per-sender cooldown (keyed by sender pubkey prefix).
   // Records the last time we acknowledged a sender so a chatty contact
   // doesn't burn airtime if they spam the trigger phrase.
@@ -525,6 +624,26 @@ class MeshCoreManager extends EventEmitter {
         logger.warn(`[MeshCore:${this.sourceId}] Failed to start auto-pathfinding: ${(err as Error).message}`),
       );
 
+      // Start auto-announce scheduler. Fires once now if announceOnStart is set.
+      this.startAutoAnnounce().then(async () => {
+        const onStart = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceOnStart')) === 'true';
+        const enabled = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceEnabled')) === 'true';
+        if (onStart && enabled) {
+          // Small delay so the device-side AppStart settles before chat goes out.
+          setTimeout(() => {
+            void this.runAutoAnnounceCycle('on_start').catch((err: Error) =>
+              logger.warn(`[MeshCore:${this.sourceId}] on-start announce failed: ${err.message}`));
+          }, 2500);
+        }
+      }).catch(err =>
+        logger.warn(`[MeshCore:${this.sourceId}] Failed to start auto-announce: ${(err as Error).message}`),
+      );
+
+      // Arm any operator-defined timer triggers.
+      this.startTimerTriggers().catch(err =>
+        logger.warn(`[MeshCore:${this.sourceId}] Failed to start timer triggers: ${(err as Error).message}`),
+      );
+
       return true;
     } catch (error) {
       // meshcore.js rejects some promises with `undefined` (no Error object),
@@ -568,6 +687,10 @@ class MeshCoreManager extends EventEmitter {
 
     // Stop auto-pathfinding scheduler.
     this.stopAutoPathfinding();
+
+    // Stop auto-announce + timer-trigger schedulers.
+    this.stopAutoAnnounce();
+    this.stopTimerTriggers();
 
     // Tear down native backend, if active.
     if (this.nativeBackend) {
@@ -685,6 +808,7 @@ class MeshCoreManager extends EventEmitter {
       const senderContact = this.resolveContactByPrefix(data.pubkey_prefix);
       const route = formatPathHops(data.path_hops) || senderContact?.outPath || null;
       void this.checkAutoAcknowledge(message, true, undefined, hopCount, route);
+      void this.checkAutoResponder(message, true, undefined);
     } else if (event_type === 'channel_message') {
       // MeshCore channel packets have no sender field on the wire — the sender's
       // device prefixes "Name: " onto the text body. Split it out so the UI can
@@ -712,6 +836,7 @@ class MeshCoreManager extends EventEmitter {
       const hopCount = decodePathLenHopCount(data.path_len);
       const route = formatPathHops(data.path_hops);
       void this.checkAutoAcknowledge(message, false, data.channel_idx, hopCount, route);
+      void this.checkAutoResponder(message, false, data.channel_idx);
     } else if (event_type === 'room_message') {
       // Room server post (TXT_TYPE_SIGNED_PLAIN). The room's pubkey prefix
       // identifies which room, and the author prefix identifies the poster.
@@ -3234,6 +3359,566 @@ class MeshCoreManager extends EventEmitter {
       enabled: this.autoPathfindingTimer !== null || this.autoPathfindingJitterTimeout !== null,
       lastRunAt: this.autoPathfindingLastRunAt,
     };
+  }
+
+  // ============ Auto-Announce ============
+  //
+  // Periodic broadcast of an operator-defined status message to one or
+  // more MeshCore channels. Mirrors the Meshtastic auto-announce
+  // feature, but the firing primitive here is a per-source scheduler
+  // (cron OR setInterval) since MeshCore manager instances are 1:N with
+  // sources. Both modes call the same runner; the cron path runs from
+  // croner with missed-execution recovery, the interval path uses
+  // setInterval.
+
+  /**
+   * Render a message template against this source's current state.
+   * Pulled into an instance method so the announce-preview route can
+   * resolve tokens with the right contact list / local node.
+   */
+  async previewAnnouncementMessage(template: string): Promise<string> {
+    return replaceMeshCoreAnnounceTokens(template, this);
+  }
+
+  /**
+   * (Re)start the auto-announce scheduler based on the current settings
+   * for this source. Always stops first so a settings change re-arms
+   * the timer cleanly. Safe to call when not yet connected — the runner
+   * is a no-op until `connected` is true.
+   */
+  async startAutoAnnounce(): Promise<void> {
+    this.stopAutoAnnounce();
+
+    const enabledRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceEnabled');
+    if (enabledRaw !== 'true') {
+      logger.debug(`[MeshCore:${this.sourceId}] Auto-announce disabled`);
+      return;
+    }
+
+    const useScheduleRaw = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceUseSchedule')) === 'true';
+    const schedule = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceSchedule')) || '0 */6 * * *';
+    const intervalHoursRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceIntervalHours');
+    const intervalHours = Math.max(1, parseInt(intervalHoursRaw || '6', 10) || 6);
+
+    if (useScheduleRaw) {
+      if (!validateCron(schedule)) {
+        logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: invalid cron expression "${schedule}", not scheduling`);
+        return;
+      }
+      try {
+        this.autoAnnounceCron = scheduleCron(schedule, () => {
+          void this.runAutoAnnounceCycle('cron');
+        });
+        logger.info(`[MeshCore:${this.sourceId}] Auto-announce: cron scheduled (${schedule})`);
+      } catch (err) {
+        logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: failed to schedule cron "${schedule}": ${(err as Error).message}`);
+      }
+    } else {
+      const periodMs = intervalHours * 60 * 60 * 1000;
+      this.autoAnnounceTimer = setInterval(() => {
+        void this.runAutoAnnounceCycle('interval');
+      }, periodMs);
+      logger.info(`[MeshCore:${this.sourceId}] Auto-announce: interval scheduled every ${intervalHours}h`);
+    }
+  }
+
+  /** Cancel any scheduled auto-announce timers. Idempotent. */
+  stopAutoAnnounce(): void {
+    if (this.autoAnnounceCron) {
+      try { this.autoAnnounceCron.stop(); } catch { /* ignore */ }
+      this.autoAnnounceCron = null;
+    }
+    if (this.autoAnnounceTimer) {
+      clearInterval(this.autoAnnounceTimer);
+      this.autoAnnounceTimer = null;
+    }
+    if (this.autoAnnounceAdvertTimer) {
+      clearTimeout(this.autoAnnounceAdvertTimer);
+      this.autoAnnounceAdvertTimer = null;
+    }
+  }
+
+  /**
+   * Fire one announcement cycle immediately — broadcast the rendered
+   * template to every configured channel, optionally followed by an
+   * advert. Returns the number of channels successfully transmitted to
+   * so the route handler can surface partial failures.
+   */
+  async runAutoAnnounceCycle(reason: 'cron' | 'interval' | 'on_start' | 'manual'): Promise<{ sent: number; total: number }> {
+    if (!this.connected) {
+      logger.debug(`[MeshCore:${this.sourceId}] Auto-announce: skipping (${reason}) — not connected`);
+      return { sent: 0, total: 0 };
+    }
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      logger.debug(`[MeshCore:${this.sourceId}] Auto-announce: skipping (${reason}) — repeater cannot transmit chat`);
+      return { sent: 0, total: 0 };
+    }
+
+    const message = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceMessage')) || '';
+    if (!message.trim()) {
+      logger.debug(`[MeshCore:${this.sourceId}] Auto-announce: skipping (${reason}) — empty template`);
+      return { sent: 0, total: 0 };
+    }
+
+    const channelsCsv = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceChannelIndexes')) || '';
+    const channelIndexes = channelsCsv
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(s => parseInt(s, 10))
+      .filter(n => Number.isFinite(n));
+
+    if (channelIndexes.length === 0) {
+      logger.debug(`[MeshCore:${this.sourceId}] Auto-announce: skipping (${reason}) — no channels configured`);
+      return { sent: 0, total: 0 };
+    }
+
+    const rendered = await replaceMeshCoreAnnounceTokens(message, this);
+    let sent = 0;
+    for (const idx of channelIndexes) {
+      try {
+        const ok = await this.sendMessage(rendered, undefined, idx);
+        if (ok) sent += 1;
+      } catch (err) {
+        logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: send to channel ${idx} threw: ${(err as Error).message}`);
+      }
+    }
+
+    this.autoAnnounceLastRunAt = Date.now();
+    await databaseService.settings.setSourceSetting(this.sourceId, 'meshcoreAutoAnnounceLastRunAt', String(this.autoAnnounceLastRunAt));
+    logger.info(`[MeshCore:${this.sourceId}] Auto-announce (${reason}): ${sent}/${channelIndexes.length} channels`);
+
+    // Optional advert burst N seconds after the announcement.
+    const advertEnabled = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceAdvertEnabled')) === 'true';
+    if (advertEnabled) {
+      const delayRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceAdvertDelaySeconds');
+      const delaySec = Math.max(0, Math.min(600, parseInt(delayRaw || '30', 10) || 30));
+      if (this.autoAnnounceAdvertTimer) clearTimeout(this.autoAnnounceAdvertTimer);
+      this.autoAnnounceAdvertTimer = setTimeout(() => {
+        this.autoAnnounceAdvertTimer = null;
+        if (!this.connected) return;
+        void this.sendAdvert().catch((err: Error) => {
+          logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: advert burst failed: ${err.message}`);
+        });
+      }, delaySec * 1000);
+    }
+
+    return { sent, total: channelIndexes.length };
+  }
+
+  /** Read-only view for the route handler / UI. */
+  getAutoAnnounceStatus(): { enabled: boolean; lastRunAt: number } {
+    return {
+      enabled: this.autoAnnounceCron !== null || this.autoAnnounceTimer !== null,
+      lastRunAt: this.autoAnnounceLastRunAt,
+    };
+  }
+
+  // ============ Timer Triggers ============
+  //
+  // Operator-defined recurring jobs. Each trigger persists as an entry
+  // in the JSON blob at `meshcoreTimerTriggers` and gets scheduled on
+  // start (or whenever settings are saved). A trigger may either:
+  //   - send a text message to a channel/contact (with token expansion)
+  //   - run an advert
+  // Script execution is intentionally not wired here yet — the
+  // existing /api/scripts surface is shared with Meshtastic and the
+  // sandbox semantics need a follow-up to handle MeshCore context.
+
+  /**
+   * Reload all timer-trigger schedules from settings. Idempotent —
+   * cancels existing schedules first.
+   */
+  async startTimerTriggers(): Promise<void> {
+    this.stopTimerTriggers();
+    const raw = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreTimerTriggers')) || '[]';
+    let triggers: MeshCoreTimerTrigger[] = [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) triggers = parsed as MeshCoreTimerTrigger[];
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] Timer triggers: failed to parse JSON: ${(err as Error).message}`);
+      return;
+    }
+
+    for (const trigger of triggers) {
+      if (!trigger || !trigger.id || !trigger.enabled) continue;
+      this.armTimerTrigger(trigger);
+    }
+  }
+
+  /** Cancel every armed timer trigger. */
+  stopTimerTriggers(): void {
+    for (const job of this.timerTriggerCrons.values()) {
+      try { job.stop(); } catch { /* ignore */ }
+    }
+    this.timerTriggerCrons.clear();
+    for (const handle of this.timerTriggerIntervals.values()) {
+      clearInterval(handle);
+    }
+    this.timerTriggerIntervals.clear();
+  }
+
+  private armTimerTrigger(trigger: MeshCoreTimerTrigger): void {
+    if (trigger.scheduleType === 'interval') {
+      const minutes = Math.max(1, Math.min(60 * 24 * 7, trigger.intervalMinutes || 0));
+      if (!Number.isFinite(minutes) || minutes <= 0) {
+        logger.warn(`[MeshCore:${this.sourceId}] Timer trigger ${trigger.id}: invalid interval, skipping`);
+        return;
+      }
+      const handle = setInterval(() => {
+        void this.runTimerTrigger(trigger.id).catch((err: Error) => {
+          logger.warn(`[MeshCore:${this.sourceId}] Timer trigger ${trigger.id} run failed: ${err.message}`);
+        });
+      }, minutes * 60 * 1000);
+      this.timerTriggerIntervals.set(trigger.id, handle);
+      logger.info(`[MeshCore:${this.sourceId}] Timer trigger "${trigger.name}" (interval ${minutes}m) armed`);
+    } else {
+      const expr = trigger.cronExpression || '';
+      if (!validateCron(expr)) {
+        logger.warn(`[MeshCore:${this.sourceId}] Timer trigger ${trigger.id}: invalid cron "${expr}", skipping`);
+        return;
+      }
+      try {
+        const job = scheduleCron(expr, () => {
+          void this.runTimerTrigger(trigger.id).catch((err: Error) => {
+            logger.warn(`[MeshCore:${this.sourceId}] Timer trigger ${trigger.id} run failed: ${err.message}`);
+          });
+        });
+        this.timerTriggerCrons.set(trigger.id, job);
+        logger.info(`[MeshCore:${this.sourceId}] Timer trigger "${trigger.name}" (cron ${expr}) armed`);
+      } catch (err) {
+        logger.warn(`[MeshCore:${this.sourceId}] Timer trigger ${trigger.id}: failed to schedule cron: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  /**
+   * Execute a single timer trigger by ID (used both by the scheduler
+   * callback and by the manual "Test trigger" button). Re-reads the
+   * trigger from settings so a freshly-saved template fires on the
+   * next tick without a restart.
+   */
+  async runTimerTrigger(triggerId: string): Promise<{ ok: boolean; reason?: string }> {
+    if (!this.connected) return { ok: false, reason: 'not connected' };
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) return { ok: false, reason: 'repeater cannot transmit chat' };
+
+    const raw = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreTimerTriggers')) || '[]';
+    let triggers: MeshCoreTimerTrigger[] = [];
+    try { triggers = JSON.parse(raw); } catch { triggers = []; }
+    const trigger = triggers.find(t => t?.id === triggerId);
+    if (!trigger) return { ok: false, reason: 'trigger not found' };
+
+    // Pre-build the dispatch closure so the script + text paths route
+    // through identical destination logic. Returns false when the
+    // trigger has no destination — the caller surfaces that reason.
+    const dispatch = async (text: string): Promise<boolean> => {
+      if (trigger.destination === 'dm' && trigger.contactPublicKey) {
+        return this.sendMessage(text, trigger.contactPublicKey);
+      }
+      if (typeof trigger.channelIndex === 'number') {
+        return this.sendMessage(text, undefined, trigger.channelIndex);
+      }
+      return false;
+    };
+
+    let ok = true;
+    let reason: string | undefined;
+    try {
+      if (trigger.responseType === 'advert') {
+        ok = await this.sendAdvert();
+        if (!ok) reason = 'advert failed';
+      } else if (trigger.responseType === 'script') {
+        if (!trigger.scriptPath) {
+          ok = false;
+          reason = 'script trigger missing scriptPath';
+        } else if (trigger.destination !== 'dm' && typeof trigger.channelIndex !== 'number') {
+          ok = false;
+          reason = 'no destination configured';
+        } else {
+          const env = this.buildMeshCoreTimerScriptEnv(trigger);
+          const result = await this.runMeshCoreScript(trigger.scriptPath, trigger.scriptArgs, env, dispatch, `Timer ${trigger.id}`);
+          ok = result.success;
+          if (!ok) reason = result.error || 'script execution failed';
+        }
+      } else {
+        const body = await replaceMeshCoreAnnounceTokens(trigger.response || '', this);
+        if (trigger.destination === 'dm' && trigger.contactPublicKey) {
+          ok = await dispatch(body);
+          if (!ok) reason = 'DM send failed';
+        } else if (typeof trigger.channelIndex === 'number') {
+          ok = await dispatch(body);
+          if (!ok) reason = 'channel send failed';
+        } else {
+          ok = false;
+          reason = 'no destination configured';
+        }
+      }
+    } catch (err) {
+      ok = false;
+      reason = (err as Error).message;
+    }
+
+    // Persist last-run state back into the trigger row.
+    const updated = triggers.map(t => t?.id === triggerId
+      ? { ...t, lastRun: Date.now(), lastResult: ok ? 'success' as const : 'error' as const, lastError: ok ? undefined : reason }
+      : t);
+    await databaseService.settings.setSourceSetting(this.sourceId, 'meshcoreTimerTriggers', JSON.stringify(updated));
+
+    return { ok, reason };
+  }
+
+  // ============ Auto-Responder ============
+  //
+  // Multi-pattern incoming-message reactor. Mirrors the high-level
+  // shape of the Meshtastic AutoResponder but intentionally narrower:
+  // text responses only, no script/HTTP/traceroute branches in v1.
+  // Triggers are read live on each message so a settings save takes
+  // effect on the next incoming packet without a restart.
+
+  private autoResponderRegexCache: Map<string, RegExp | null> = new Map();
+
+  /**
+   * Build the env map for a script invocation triggered by an incoming
+   * message. Variable names are intentionally shared with the
+   * Meshtastic side (MESSAGE, FROM_NODE, NODE_ID, CHANNEL, IS_DIRECT,
+   * SNR, FROM_LONG_NAME, FROM_SHORT_NAME) so a script that targets
+   * common fields runs on both stacks. MeshCore-specific values get
+   * MESHCORE_-prefixed names.
+   */
+  private buildMeshCoreResponderScriptEnv(
+    message: MeshCoreMessage,
+    isDM: boolean,
+    channelIdx: number | undefined,
+    trigger: MeshCoreAutoResponderTrigger,
+  ): Record<string, string> {
+    const env: Record<string, string> = {
+      MESSAGE: message.text || '',
+      FROM_NODE: message.fromPublicKey || '',
+      NODE_ID: message.fromPublicKey ? message.fromPublicKey.substring(0, 16) : '',
+      CHANNEL: typeof channelIdx === 'number' ? String(channelIdx) : '',
+      IS_DIRECT: String(isDM),
+      TRIGGER: trigger.pattern || '',
+      MESHCORE_SOURCE_ID: this.sourceId,
+      MESHCORE_DEVICE_TYPE: this.deviceType === MeshCoreDeviceType.COMPANION ? 'companion'
+                          : this.deviceType === MeshCoreDeviceType.REPEATER ? 'repeater'
+                          : this.deviceType === MeshCoreDeviceType.ROOM_SERVER ? 'room_server'
+                          : 'unknown',
+    };
+    if (message.snr !== undefined && message.snr !== null) {
+      env.SNR = String(message.snr);
+    }
+    if (message.fromName) {
+      env.FROM_LONG_NAME = message.fromName;
+      env.LONG_NAME = message.fromName;
+    }
+    // Resolve the sender contact to fill in the names — handleBridgeEvent
+    // only carries `pubkey_prefix`, so the friendly name lives on the
+    // cached contact, not the message itself.
+    const contact = this.resolveContactByPrefix(message.fromPublicKey);
+    if (contact) {
+      if (contact.advName || contact.name) {
+        const long = contact.advName || contact.name || '';
+        env.FROM_LONG_NAME = long;
+        env.LONG_NAME = long;
+        env.FROM_SHORT_NAME = long.substring(0, 4);
+        env.SHORT_NAME = long.substring(0, 4);
+      }
+      env.FROM_PUBLIC_KEY = contact.publicKey;
+    }
+    if (this.localNode?.name) env.NODE_LONG_NAME = this.localNode.name;
+    return env;
+  }
+
+  /**
+   * Build the env map for a script invocation triggered by a timer.
+   * Lighter than the responder env — there's no incoming-message
+   * context — but keeps TIMER_NAME / TIMER_ID so a timer script can
+   * branch on which trigger fired it.
+   */
+  private buildMeshCoreTimerScriptEnv(trigger: MeshCoreTimerTrigger): Record<string, string> {
+    const env: Record<string, string> = {
+      TIMER_NAME: trigger.name || '',
+      TIMER_ID: trigger.id,
+      TIMER_SCRIPT: trigger.scriptPath || '',
+      MESHCORE_SOURCE_ID: this.sourceId,
+      MESHCORE_DEVICE_TYPE: this.deviceType === MeshCoreDeviceType.COMPANION ? 'companion'
+                          : this.deviceType === MeshCoreDeviceType.REPEATER ? 'repeater'
+                          : this.deviceType === MeshCoreDeviceType.ROOM_SERVER ? 'room_server'
+                          : 'unknown',
+    };
+    if (typeof trigger.channelIndex === 'number') env.CHANNEL = String(trigger.channelIndex);
+    if (this.localNode?.name) env.NODE_LONG_NAME = this.localNode.name;
+    return env;
+  }
+
+  /** Whitespace-tokenize an argv string. Quoted segments stay intact. */
+  private parseScriptArgsString(s: string): string[] {
+    if (!s) return [];
+    const out: string[] = [];
+    const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(s)) !== null) {
+      out.push(m[1] ?? m[2] ?? m[3] ?? '');
+    }
+    return out;
+  }
+
+  /**
+   * Common script-execution path used by both auto-responder and timer
+   * trigger code. Runs the script, then sends each `wouldSendMessages`
+   * entry through the supplied dispatch callback. Errors are logged
+   * but never thrown — message-loop callers shouldn't crash on a bad
+   * script.
+   */
+  private async runMeshCoreScript(
+    scriptPath: string,
+    scriptArgsString: string | undefined,
+    env: Record<string, string>,
+    dispatch: (text: string) => Promise<boolean>,
+    triggerLabel: string,
+  ): Promise<RunScriptResult> {
+    const expandedArgs = scriptArgsString
+      ? await replaceMeshCoreAnnounceTokens(scriptArgsString, this)
+      : '';
+    const argv = this.parseScriptArgsString(expandedArgs);
+    const result = await runScript({ scriptPath, scriptArgs: argv, env });
+
+    if (!result.success) {
+      logger.warn(`[MeshCore:${this.sourceId}] ${triggerLabel} script error: ${result.error}${result.stderr ? ` | stderr: ${result.stderr.substring(0, 200)}` : ''}`);
+      return result;
+    }
+
+    for (const msg of result.wouldSendMessages) {
+      const trimmed = (msg || '').trim();
+      if (!trimmed) continue;
+      try {
+        const ok = await dispatch(trimmed);
+        if (!ok) {
+          logger.warn(`[MeshCore:${this.sourceId}] ${triggerLabel} script: send failed for "${trimmed.substring(0, 50)}"`);
+        }
+      } catch (err) {
+        logger.warn(`[MeshCore:${this.sourceId}] ${triggerLabel} script: send threw: ${(err as Error).message}`);
+      }
+    }
+    return result;
+  }
+
+  private getAutoResponderRegex(pattern: string): RegExp | null {
+    if (this.autoResponderRegexCache.has(pattern)) {
+      return this.autoResponderRegexCache.get(pattern)!;
+    }
+    // Reuse the auto-ack validator so ReDoS-shaped patterns are
+    // rejected the same way at both surfaces.
+    const compiled = compileAutoAckRegex(pattern).regex;
+    this.autoResponderRegexCache.set(pattern, compiled);
+    return compiled;
+  }
+
+  /**
+   * On every incoming MeshCore message, run every enabled trigger's
+   * regex; on the first match, render the response template and send
+   * it. Subsequent triggers are still checked — multiple matches mean
+   * multiple replies, which is the documented behavior.
+   */
+  private async checkAutoResponder(
+    message: MeshCoreMessage,
+    isDM: boolean,
+    channelIdx: number | undefined,
+  ): Promise<void> {
+    try {
+      const enabledRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoResponderEnabled');
+      if (enabledRaw !== 'true') return;
+
+      const raw = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoResponderTriggers')) || '[]';
+      let triggers: MeshCoreAutoResponderTrigger[] = [];
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) triggers = parsed as MeshCoreAutoResponderTrigger[];
+      } catch {
+        return;
+      }
+
+      const text = message.text || '';
+      if (!text) return;
+
+      // Don't self-reply.
+      if (this.localNode && message.fromPublicKey === this.localNode.publicKey) {
+        return;
+      }
+
+      for (const trigger of triggers) {
+        if (!trigger || !trigger.enabled || !trigger.pattern) continue;
+
+        // Channel / DM filter.
+        if (isDM && !trigger.listenDMs) continue;
+        if (!isDM) {
+          if (!Array.isArray(trigger.channels) || trigger.channels.length === 0) continue;
+          if (typeof channelIdx !== 'number' || !trigger.channels.includes(channelIdx)) continue;
+        }
+
+        const regex = this.getAutoResponderRegex(trigger.pattern);
+        if (!regex) {
+          logger.warn(`[MeshCore:${this.sourceId}] Auto-responder ${trigger.id}: invalid regex "${trigger.pattern}"`);
+          continue;
+        }
+        if (!regex.test(text)) continue;
+
+        // Cooldown gate.
+        const cooldownMs = Math.max(0, Math.min(3600, trigger.cooldownSeconds || 0)) * 1000;
+        if (cooldownMs > 0) {
+          const cooldownKey = `${trigger.id}:${message.fromPublicKey || 'unknown'}`;
+          const last = this.autoResponderCooldowns.get(cooldownKey) || 0;
+          if (Date.now() - last < cooldownMs) continue;
+          this.autoResponderCooldowns.set(cooldownKey, Date.now());
+        }
+
+        // Build the dispatch closure once — it captures where the
+        // response should go (DM to sender vs channel) so the script
+        // path and text path can share it.
+        const senderContact = this.resolveContactByPrefix(message.fromPublicKey);
+        const dispatch = async (text: string): Promise<boolean> => {
+          if (trigger.replyAsDM || isDM) {
+            const targetKey = senderContact?.publicKey || message.fromPublicKey;
+            return this.sendMessage(text, targetKey);
+          }
+          if (typeof channelIdx === 'number') {
+            return this.sendMessage(text, undefined, channelIdx);
+          }
+          return false;
+        };
+
+        if (trigger.responseType === 'script') {
+          if (!trigger.scriptPath) {
+            logger.warn(`[MeshCore:${this.sourceId}] Auto-responder ${trigger.id}: script trigger missing scriptPath`);
+            continue;
+          }
+          const env = this.buildMeshCoreResponderScriptEnv(message, isDM, channelIdx, trigger);
+          await this.runMeshCoreScript(trigger.scriptPath, trigger.scriptArgs, env, dispatch, `Auto-responder ${trigger.id}`);
+          continue;
+        }
+
+        const body = await replaceMeshCoreAnnounceTokens(trigger.response || '', this);
+        if (!body.trim()) continue;
+
+        try {
+          await dispatch(body);
+        } catch (err) {
+          logger.warn(`[MeshCore:${this.sourceId}] Auto-responder ${trigger.id} send failed: ${(err as Error).message}`);
+        }
+      }
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] Auto-responder check threw: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Drop the cached compiled-regex Map so a freshly-saved pattern
+   * recompiles on the next message. Called by the save route after a
+   * triggers update.
+   */
+  resetAutoResponderRegexCache(): void {
+    this.autoResponderRegexCache.clear();
   }
 
   // ============ Auto-Acknowledge ============

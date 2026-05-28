@@ -9725,6 +9725,12 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
       timerId,
       // Mock node info (optional)
       mockNode,
+      // Protocol discriminator. Defaults to 'meshtastic' for backwards
+      // compatibility. When 'meshcore', adds MESHCORE_* env vars so a
+      // MeshCore-targeting script can branch on which stack invoked it.
+      protocol = 'meshtastic',
+      meshcoreSourceId,
+      meshcoreDeviceType,
     } = req.body;
 
     // Validate based on trigger type
@@ -9998,6 +10004,14 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
     scriptEnv.MESHTASTIC_IP = meshtasticIp;
     scriptEnv.MESHTASTIC_PORT = meshtasticPort;
     scriptEnv.VERSION = process.env.VERSION || 'test';
+
+    // Protocol discriminator. Leaves the MESHTASTIC_* vars in place
+    // (harmless for MeshCore scripts) but adds MESHCORE_* so scripts
+    // can branch on which stack invoked them.
+    if (protocol === 'meshcore') {
+      scriptEnv.MESHCORE_SOURCE_ID = String(meshcoreSourceId || 'test-source');
+      scriptEnv.MESHCORE_DEVICE_TYPE = String(meshcoreDeviceType || 'companion');
+    }
 
     // Build script arguments if provided
     const scriptArgList: string[] = [resolvedPath];
