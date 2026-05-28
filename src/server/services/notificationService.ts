@@ -3,6 +3,7 @@ import { getHardwareModelName } from '../../utils/nodeHelpers.js';
 import { pushNotificationService } from './pushNotificationService.js';
 import { appriseNotificationService, AppriseNotificationPayload } from './appriseNotificationService.js';
 import { desktopNotificationService } from './desktopNotificationService.js';
+import { telegramService } from './telegramService.js';
 
 export interface NotificationPayload {
   title: string;
@@ -195,7 +196,8 @@ class NotificationService {
       await Promise.allSettled([
         pushNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload, undefined, sourceId),
         appriseNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload, undefined, sourceId),
-        desktopNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload, sourceId)
+        desktopNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload, sourceId),
+        telegramService.onNewNode({ nodeId, longName, shortName, hopsAway, sourceName }),
       ]);
 
       logger.info(`📤 Sent new node notification for ${longName} (${shortName}) [${nodeId}] on ${sourceId}`);

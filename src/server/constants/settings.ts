@@ -182,6 +182,37 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreAutoResponderTriggers',
   // MeshCore timer triggers
   'meshcoreTimerTriggers',
+  // REB / GPS-spoofing protection
+  'telemetryTrustedNodes',
+  // Native Telegram integration
+  'telegramEnabled',
+  'telegramBotToken',
+  'telegramChatId',
+  'telegramAdminUserIds',
+  'telegramBridgeChannelIndex',
+  'telegramBridgeSourceId',
+  'telegramForwardMessages',
+  'telegramForwardDMs',
+  'telegramNotifyNewNodes',
+  'telegramNotifyInactive',
+  'telegramPrefix',
+  // Native AI Bot
+  'botEnabled',
+  'botProvider',
+  'botApiKey',
+  'botApiUrl',
+  'botModel',
+  'botSystemPrompt',
+  'botMaxTokens',
+  'botMaxChars',
+  'botTemperature',
+  'botTriggerWord',
+  'botListenChannels',
+  'botListenDM',
+  'botCooldownSeconds',
+  'botSkipIncompleteNodes',
+  'botContextMessages',
+  'botAppendNodeInfo',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];

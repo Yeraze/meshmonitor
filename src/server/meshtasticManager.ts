@@ -14,6 +14,7 @@ import { logger } from '../utils/logger.js';
 import { calculateLoRaFrequency } from '../utils/loraFrequency.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
+import { telegramService } from './services/telegramService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import packetLogService from './services/packetLogService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
@@ -298,6 +299,67 @@ export function isPhantomInternalPacket(
   if (!hasNotTraveled) return false;
 
   return true;
+}
+
+/**
+ * Sanitize rxTime received from a mesh node against GPS jamming / spoofing (РЭБ).
+ *
+ * A node under EW influence may broadcast rxTime that is completely wrong
+ * (past epoch, far future, or hours off). This function validates the node's
+ * reported time against the server clock and returns a safe millisecond
+ * timestamp. The original rxTime is never stored in sorting-critical fields;
+ * it stays only in packet-log metadata where it is preserved for diagnostics.
+ *
+ * Rules (all thresholds configurable here):
+ *  - No rxTime / zero  → server time, no warning (normal for some packets)
+ *  - rxTime < 2020-01-01 → server time + warn  (GPS epoch reset / spoofed past)
+ *  - rxTime > now + 365 days → server time + warn  (spoofed future)
+ *  - |offset from server| > MAX_CLOCK_OFFSET_SECONDS → server time + warn
+ *
+ * @returns timestamp in milliseconds safe for storage/sorting
+ */
+const MAX_CLOCK_OFFSET_SECONDS = 3600; // 1 hour — normal GPS drift is <1 min
+const MIN_VALID_UNIX_SEC = 1577836800; // 2020-01-01 00:00:00 UTC
+
+function sanitizeRxTime(rxTime: number | bigint | null | undefined, nodeId?: string): number {
+  const nowMs = Date.now();
+  const nowSec = Math.floor(nowMs / 1000);
+
+  if (!rxTime || rxTime === 0n || Number(rxTime) === 0) {
+    return nowMs; // absent — use server time silently
+  }
+
+  const rxSec = Number(rxTime);
+
+  if (rxSec < MIN_VALID_UNIX_SEC) {
+    logger.warn(
+      `⚠️ [REB-DETECT] Node ${nodeId ?? 'unknown'}: rxTime=${rxSec} is before 2020-01-01 ` +
+      `(GPS epoch reset or spoof). Replacing with server time.`
+    );
+    return nowMs;
+  }
+
+  const maxFutureSec = nowSec + 365 * 24 * 3600;
+  if (rxSec > maxFutureSec) {
+    logger.warn(
+      `⚠️ [REB-DETECT] Node ${nodeId ?? 'unknown'}: rxTime=${rxSec} is >1 year in the future ` +
+      `(${new Date(rxSec * 1000).toISOString()}). Likely GPS spoof. Replacing with server time.`
+    );
+    return nowMs;
+  }
+
+  const offsetSec = nowSec - rxSec;
+  if (Math.abs(offsetSec) > MAX_CLOCK_OFFSET_SECONDS) {
+    logger.warn(
+      `⚠️ [REB-DETECT] Node ${nodeId ?? 'unknown'}: rxTime offset ${offsetSec > 0 ? '+' : ''}${offsetSec}s ` +
+      `exceeds ±${MAX_CLOCK_OFFSET_SECONDS}s threshold. ` +
+      `node_time=${new Date(rxSec * 1000).toISOString()}, server=${new Date(nowMs).toISOString()}. ` +
+      `Replacing with server time.`
+    );
+    return nowMs;
+  }
+
+  return rxSec * 1000;
 }
 
 type TextMessage = {
@@ -4790,9 +4852,10 @@ class MeshtasticManager implements ISourceManager {
       await databaseService.nodes.upsertNode(nodeData, this.sourceId);
 
       // Capture server-vs-node clock offset for time-offset telemetry
-      if (meshPacket.rxTime && Number(meshPacket.rxTime) > 1600000000) {
+      if (meshPacket.rxTime && Number(meshPacket.rxTime) > MIN_VALID_UNIX_SEC) {
         const offset = Date.now() / 1000 - Number(meshPacket.rxTime);
-        if (Math.abs(offset) < 86400) {
+        // Only track offsets within ±1 hour — larger values are GPS spoof/jam artifacts
+        if (Math.abs(offset) < MAX_CLOCK_OFFSET_SECONDS) {
           this.timeOffsetSamples.push(offset);
         }
       }
@@ -5114,8 +5177,8 @@ class MeshtasticManager implements ISourceManager {
           text: messageText,
           channel: channelIndex,
           portnum: PortNum.TEXT_MESSAGE_APP,
-          timestamp: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
-          rxTime: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
+          timestamp: sanitizeRxTime(meshPacket.rxTime, fromNodeId), // GPS/REB-safe: validated against server clock
+          rxTime: sanitizeRxTime(meshPacket.rxTime, fromNodeId),     // GPS/REB-safe: validated against server clock
           hopStart: hopStart,
           hopLimit: hopLimit,
           relayNode: meshPacket.relayNode ?? undefined, // Last byte of the node that relayed this message
@@ -5324,6 +5387,38 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * REB / GPS-spoofing protection: check if a node is allowed to update position & telemetry.
+   *
+   * When `telemetryTrustedNodes` is empty (default), ALL nodes are trusted — existing behaviour.
+   * When it contains a comma-separated list of nodeIds (!aabbccdd), only those nodes can write
+   * position and telemetry data. Messages (text) and routing are NOT affected by this filter.
+   *
+   * Result is cached for 60 s to avoid a DB read on every incoming packet.
+   */
+  private _telemetryTrustedCache: { nodeIds: Set<string>; fetchedAt: number } | null = null;
+
+  private async isTelemetryTrusted(nodeId: string): Promise<boolean> {
+    const CACHE_TTL_MS = 60_000;
+    const now = Date.now();
+
+    if (!this._telemetryTrustedCache || (now - this._telemetryTrustedCache.fetchedAt) > CACHE_TTL_MS) {
+      const raw = await databaseService.settings.getSettingForSource(this.sourceId, 'telemetryTrustedNodes');
+      const nodeIds = new Set(
+        (raw ?? '')
+          .split(',')
+          .map((s: string) => s.trim().toLowerCase())
+          .filter(Boolean)
+      );
+      this._telemetryTrustedCache = { nodeIds, fetchedAt: now };
+    }
+
+    // Empty list = trust all nodes (default behaviour, no performance impact)
+    if (this._telemetryTrustedCache.nodeIds.size === 0) return true;
+
+    return this._telemetryTrustedCache.nodeIds.has(nodeId.toLowerCase());
+  }
+
+  /**
    * Process position message using protobuf types
    */
   private async processPositionMessageProtobuf(meshPacket: any, position: any): Promise<void> {
@@ -5342,6 +5437,14 @@ class MeshtasticManager implements ISourceManager {
 
         const fromNum = Number(meshPacket.from);
         const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+
+        // REB protection: if a trusted-node list is configured, reject position from unlisted nodes
+        // (a jammed/spoofed node can broadcast false coordinates that would poison the map)
+        if (!(await this.isTelemetryTrusted(nodeId))) {
+          logger.warn(`🛡️ [REB-FILTER] Position from ${nodeId} rejected — not in telemetryTrustedNodes list`);
+          return;
+        }
+
         // Use server receive time instead of packet time to avoid issues with nodes having incorrect time offsets
         const now = Date.now();
         const timestamp = now; // Store in milliseconds (Unix timestamp in ms)
@@ -5784,6 +5887,14 @@ class MeshtasticManager implements ISourceManager {
 
       const fromNum = Number(meshPacket.from);
       const nodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+
+      // REB protection: if a trusted-node list is configured, reject telemetry from unlisted nodes
+      // (a jammed node may broadcast garbage battery/sensor readings that pollute history graphs)
+      if (!(await this.isTelemetryTrusted(nodeId))) {
+        logger.warn(`🛡️ [REB-FILTER] Telemetry from ${nodeId} rejected — not in telemetryTrustedNodes list`);
+        return;
+      }
+
       // Use server receive time instead of packet time to avoid issues with nodes having incorrect time offsets
       const now = Date.now();
       const timestamp = now; // Store in milliseconds (Unix timestamp in ms)
@@ -6430,7 +6541,7 @@ class MeshtasticManager implements ISourceManager {
       // Traceroute responses are direct messages, not channel messages
       const isDirectMessage = toNum !== 4294967295;
       const channelIndex = isDirectMessage ? -1 : (meshPacket.channel !== undefined ? meshPacket.channel : 0);
-      const timestamp = meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now();
+      const timestamp = sanitizeRxTime(meshPacket.rxTime, fromNodeId); // GPS/REB-safe: validated against server clock
 
       // Save as a special message in the database
       // Use meshPacket.id for deduplication (same as text messages)
@@ -8464,6 +8575,16 @@ class MeshtasticManager implements ISourceManager {
         `(Push: ${result.webPush.sent}/${result.webPush.failed}/${result.webPush.filtered}, ` +
         `Apprise: ${result.apprise.sent}/${result.apprise.failed}/${result.apprise.filtered})`
       );
+
+      // Forward to Telegram bridge (fire-and-forget, failures must not block processing)
+      telegramService.onMeshMessage({
+        senderName,
+        channelName: isDirectMessage ? 'DM' : (await databaseService.channels.getChannelById(message.channel, this.sourceId))?.name ?? `Channel ${message.channel}`,
+        text: messageText,
+        isDirectMessage,
+        sourceId: this.sourceId,
+        sourceName,
+      }).catch((err: Error) => logger.debug('[Telegram] onMeshMessage error:', err?.message));
     } catch (error) {
       logger.error('❌ Error sending message push notification:', error);
       // Don't throw - push notification failures shouldn't break message processing

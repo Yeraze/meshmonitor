@@ -2,6 +2,7 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { notificationService } from './notificationService.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { telegramService } from './telegramService.js';
 
 interface InactiveNodeCheck {
   nodeId: string;
@@ -219,6 +220,14 @@ class InactiveNodeNotificationService {
 
       // Send to this specific user (they have the preference enabled and node is in their list)
       await notificationService.broadcastToPreferenceUsers('notifyOnInactiveNode', payload, userId);
+
+      // Telegram — fires once per inactive event (not per-user), deduplication is handled above
+      telegramService.onNodeInactive({
+        longName: node.longName,
+        shortName: node.shortName,
+        inactiveHours: node.inactiveHours,
+        sourceName: node.sourceName,
+      }).catch((err: Error) => logger.debug('[Telegram] onNodeInactive error:', err?.message));
 
       logger.info(
         `📤 Sent inactive node notification to user ${userId} for ${node.nodeId} (${node.inactiveHours} hours inactive)`

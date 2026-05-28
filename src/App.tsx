@@ -35,6 +35,8 @@ import AutoPingSection from './components/AutoPingSection';
 import AutoFavoriteSection from './components/AutoFavoriteSection';
 import AutoHeapManagementSection from './components/AutoHeapManagementSection';
 import IgnoredNodesSection from './components/IgnoredNodesSection';
+import AutoBotSection from './components/AutoBotSection';
+import TelegramSection from './components/TelegramSection';
 import SectionNav from './components/SectionNav';
 import { ToastProvider, useToast } from './components/ToastContainer';
 import { RebootModal } from './components/RebootModal';
@@ -5000,6 +5002,8 @@ function App() {
                 { id: 'geofence-triggers', label: t('automation.geofence_triggers.title', 'Geofence Triggers') },
                 { id: 'auto-delete-by-distance', label: t('automation.distance_delete.title', 'Auto Delete by Distance') },
                 { id: 'ignored-nodes', label: t('automation.ignored_nodes.title', 'Ignored Nodes') },
+                { id: 'auto-bot', label: '🤖 AI Bot' },
+                { id: 'telegram', label: '✈️ Telegram' },
               ]}
             />
             <div className="settings-content">
@@ -5182,6 +5186,17 @@ function App() {
               </div>
               <div id="ignored-nodes">
                 <IgnoredNodesSection
+                  baseUrl={baseUrl}
+                />
+              </div>
+              <div id="auto-bot">
+                <AutoBotSection
+                  channels={channels}
+                  baseUrl={baseUrl}
+                />
+              </div>
+              <div id="telegram">
+                <TelegramSection
                   baseUrl={baseUrl}
                 />
               </div>

@@ -15,6 +15,8 @@ import protobufService from './protobufService.js';
 
 // Make meshtasticManager available globally for routes that need it
 (global as any).meshtasticManager = meshtasticManager;
+// Make sourceManagerRegistry available globally so TelegramService can resolve managers lazily
+(global as any).sourceManagerRegistry = sourceManagerRegistry;
 import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
 import { normalizeTriggerPatterns } from '../utils/autoResponderUtils.js';
@@ -42,6 +44,7 @@ import { newsService } from './services/newsService.js';
 import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
+import { telegramService } from './services/telegramService.js';
 import { getUserNotificationPreferencesAsync, saveUserNotificationPreferencesAsync, applyNodeNamePrefixAsync } from './utils/notificationFiltering.js';
 import { upgradeService } from './services/upgradeService.js';
 import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess, getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
@@ -629,6 +632,9 @@ setTimeout(async () => {
 
     inactiveNodeNotificationService.start(inactiveThresholdHours, inactiveCheckIntervalMinutes, inactiveCooldownHours);
     logger.info('✅ Inactive node notification service started');
+
+    telegramService.start().catch(err => logger.error('Failed to start Telegram service:', err));
+    logger.info('✅ Telegram service started');
 
     // Auto-delete-by-distance scheduler is now started per-source inside
     // MeshtasticManager.startDistanceDeleteScheduler() as part of the normal
@@ -9259,6 +9265,42 @@ apiRouter.post(
   }
   }
 );
+
+// ─── Telegram API ─────────────────────────────────────────────────────────────
+
+// Test Telegram bot token
+apiRouter.post('/telegram/test-token', requireAdmin(), async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ ok: false, error: 'token is required' });
+    }
+    const result = await telegramService.testConnection(token.trim());
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ ok: false, error: err?.message ?? 'Connection failed' });
+  }
+});
+
+// Send a test message to the configured chat
+apiRouter.post('/telegram/test-message', requireAdmin(), async (req, res) => {
+  try {
+    const { token, chatId } = req.body;
+    if (!token || !chatId) {
+      return res.status(400).json({ ok: false, error: 'token and chatId are required' });
+    }
+    await telegramService.sendTestMessage(String(token).trim(), String(chatId).trim());
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(400).json({ ok: false, error: err?.message ?? 'Failed to send test message' });
+  }
+});
+
+// Invalidate settings cache (called after settings save so bot picks up new config immediately)
+apiRouter.post('/telegram/reload', requireAdmin(), (_req, res) => {
+  telegramService.invalidateCache();
+  res.json({ ok: true });
+});
 
 // Get configured Apprise URLs (admin only)
 apiRouter.get('/apprise/urls', requireAdmin(), async (_req, res) => {
