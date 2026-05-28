@@ -12,6 +12,7 @@ import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 import databaseService from '../services/database.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
+import { compileAutoAckRegex } from './utils/autoAckRegex.js';
 import { MeshCoreNativeBackend, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
 
 // Dynamic imports for optional serialport dependency
@@ -3204,16 +3205,7 @@ class MeshCoreManager extends EventEmitter {
   private static readonly AUTO_ACK_DEFAULT_REGEX = '^(test|ping)';
 
   private validateAutoAckRegex(pattern: string): RegExp | null {
-    if (!pattern || pattern.length > 100) return null;
-    // Reject patterns with obvious catastrophic-backtracking shapes
-    if (/(\.\*){2,}|(\+.*\+)|(\*.*\*)|(\{[0-9]{3,}\})|(\{[0-9]+,\})/.test(pattern)) {
-      return null;
-    }
-    try {
-      return new RegExp(pattern, 'i');
-    } catch {
-      return null;
-    }
+    return compileAutoAckRegex(pattern).regex;
   }
 
   private replaceAutoAckTokens(

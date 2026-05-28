@@ -16,6 +16,7 @@ import { MAX_INTERVAL_MINUTES } from '../services/meshcoreRemoteTelemetrySchedul
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
+import { validateAutoAckRegex } from '../utils/autoAckRegex.js';
 import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiters.js';
 import { getMeshCoreCredentialStore } from '../services/meshcoreCredentialStore.js';
 
@@ -2397,13 +2398,14 @@ router.post(
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAckEnabled', String(enabled));
       }
       if (regex !== undefined) {
-        if (regex.length > 100) {
-          return res.status(400).json({ success: false, error: 'Regex pattern too long (max 100 chars)' });
-        }
-        try {
-          new RegExp(regex, 'i');
-        } catch {
-          return res.status(400).json({ success: false, error: 'Invalid regex pattern' });
+        // Store-time safety gate. The shared validator rejects unsafe
+        // shapes (catastrophic backtracking, oversized patterns) and
+        // confirms the value is a syntactically valid RegExp. Centralised
+        // with the manager's execution-time check so the two stay in
+        // sync; this also satisfies CodeQL's js/regex-injection check.
+        const validation = validateAutoAckRegex(regex);
+        if (!validation.ok) {
+          return res.status(400).json({ success: false, error: `Invalid regex pattern: ${validation.error}` });
         }
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAckRegex', regex);
       }
