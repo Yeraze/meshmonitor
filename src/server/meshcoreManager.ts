@@ -67,6 +67,29 @@ function formatPathHops(hops: unknown): string | null {
 }
 
 /**
+ * Validate-and-extract barrier for a caller-supplied MeshCore public key.
+ *
+ * Used by code paths that may either target a remote contact (64-char
+ * hex pubkey) or fall through to a local CLI variant when no key is
+ * supplied. Returning the sanitised value as a NEW variable — rather
+ * than just throwing on bad input — gives CodeQL a recognisable
+ * sanitiser barrier for the `js/user-controlled-bypass` query: every
+ * downstream branch reads `sanitizedKey`, not the original input.
+ *
+ *  - undefined / null / '' → null  (route to the local variant)
+ *  - 64-char hex string    → lowercase normalised form
+ *  - anything else         → throws an explanatory Error
+ */
+function validateMeshCorePubKey(input: string | null | undefined): string | null {
+  if (input === undefined || input === null || input === '') return null;
+  const normalized = input.toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(normalized)) {
+    throw new Error('publicKey must be a 64-char hex string');
+  }
+  return normalized;
+}
+
+/**
  * Decide whether a channel slot reported by the firmware is actually in use.
  * MeshCore Companion firmware doesn't error on unconfigured slots — it
  * returns success with an empty name and a 16-byte all-zero secret. We
@@ -2148,10 +2171,18 @@ class MeshCoreManager extends EventEmitter {
   } | null> {
     const { parseMeshcoreNeighborsResponse } = await import('./utils/parseMeshcoreNeighbors.js');
 
+    // Validate-and-extract: the user-supplied publicKey is either absent
+    // (route to local CLI) or must be a 64-char lowercase hex string
+    // (route to remote CLI with that target). The validator returns the
+    // normalised key as a *new variable* so downstream branching reads
+    // the sanitised value rather than the user input — this is what
+    // CodeQL recognises as a sanitiser barrier for js/user-controlled-bypass.
+    const sanitizedTargetKey = validateMeshCorePubKey(publicKey);
+
     let reply: string;
-    if (publicKey) {
-      await this.ensureGuestLogin(publicKey);
-      const result = await this.sendCliCommand(publicKey, 'neighbors');
+    if (sanitizedTargetKey !== null) {
+      await this.ensureGuestLogin(sanitizedTargetKey);
+      const result = await this.sendCliCommand(sanitizedTargetKey, 'neighbors');
       reply = result.reply;
     } else {
       const result = await this.sendLocalCliCommand('neighbors');
@@ -2161,7 +2192,7 @@ class MeshCoreManager extends EventEmitter {
     const parsed = parseMeshcoreNeighborsResponse(reply);
     if (parsed === null) return null;
 
-    const reporterKey = publicKey ?? this.localNode?.publicKey;
+    const reporterKey = sanitizedTargetKey ?? this.localNode?.publicKey;
     if (!reporterKey) {
       logger.warn(`[MeshCore:${this.sourceId}] requestNeighbors: no reporter key available`);
       return { neighbors: [] };
@@ -3151,6 +3182,20 @@ class MeshCoreManager extends EventEmitter {
             logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: discover_path ${t.name} → ${ok ? 'sent' : 'failed'}`);
           } else {
             const result = await this.getNeighbours(t.key);
+            if (result && result.neighbours.length > 0) {
+              const toStore = result.neighbours
+                .map(n => {
+                  const contact = this.resolveContactByPrefix(n.publicKeyPrefix);
+                  return contact?.publicKey
+                    ? { neighborPublicKey: contact.publicKey, snr: n.snr, lastHeardSecs: n.heardSecondsAgo }
+                    : null;
+                })
+                .filter((n): n is NonNullable<typeof n> => n !== null);
+              if (toStore.length > 0) {
+                databaseService.meshcore.insertNeighborsBatch(this.sourceId, t.key, toStore)
+                  .catch((err: Error) => logger.warn(`[MeshCore:${this.sourceId}] Auto-pathfinding: failed to persist neighbours: ${err.message}`));
+              }
+            }
             logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: get_neighbours ${t.name} → ${result ? result.total + ' neighbours' : 'failed'}`);
           }
         } catch (err) {
