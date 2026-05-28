@@ -157,6 +157,15 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreAutoPathfindingNeighborsEnabled',
   'meshcoreAutoPathfindingIntervalMinutes',
   'meshcoreAutoPathfindingRepeatHours',
+  // MeshCore auto-acknowledge
+  'meshcoreAutoAckEnabled',
+  'meshcoreAutoAckRegex',
+  'meshcoreAutoAckMessage',
+  'meshcoreAutoAckChannels',
+  'meshcoreAutoAckDirectMessages',
+  'meshcoreAutoAckUseDM',
+  'meshcoreAutoAckCooldownSeconds',
+  'meshcoreAutoAckTestMessages',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];
@@ -248,6 +257,15 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreAutoPathfindingNeighborsEnabled',
   'meshcoreAutoPathfindingIntervalMinutes',
   'meshcoreAutoPathfindingRepeatHours',
+  // MeshCore auto-acknowledge
+  'meshcoreAutoAckEnabled',
+  'meshcoreAutoAckRegex',
+  'meshcoreAutoAckMessage',
+  'meshcoreAutoAckChannels',
+  'meshcoreAutoAckDirectMessages',
+  'meshcoreAutoAckUseDM',
+  'meshcoreAutoAckCooldownSeconds',
+  'meshcoreAutoAckTestMessages',
   // Misc per-source
   'externalUrl',
   'geofenceTriggers',

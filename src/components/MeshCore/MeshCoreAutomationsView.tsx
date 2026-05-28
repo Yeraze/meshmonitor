@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { useAuth } from '../../contexts/AuthContext';
+import { MeshCoreAutoAckSection } from './MeshCoreAutoAckSection';
 
 interface MeshCoreAutomationsViewProps {
   baseUrl: string;
@@ -286,6 +287,9 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
           </p>
         ) : null}
       </div>
+
+      {/* Auto-Acknowledge Section */}
+      <MeshCoreAutoAckSection baseUrl={baseUrl} sourceId={sourceId} />
     </div>
   );
 };
