@@ -43,6 +43,18 @@ function parseTelemetryMode(value: unknown): TelemetryMode | undefined {
 }
 
 /**
+ * Decode the hop count from the packed MeshCore `pathLen` byte. The wire
+ * format packs the hash-size in the top 2 bits and the hop count in the
+ * bottom 6 bits. The sentinel value 0xFF means "sent direct" (no flood),
+ * which we report as 0 hops. Returns null when no value is available.
+ */
+function decodePathLenHopCount(pathLen: number | undefined | null): number | null {
+  if (pathLen === undefined || pathLen === null) return null;
+  if (pathLen === 0xff) return 0;
+  return pathLen & 0x3f;
+}
+
+/**
  * Decide whether a channel slot reported by the firmware is actually in use.
  * MeshCore Companion firmware doesn't error on unconfigured slots — it
  * returns success with an empty name and a 16-byte all-zero secret. We
@@ -629,7 +641,13 @@ class MeshCoreManager extends EventEmitter {
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix}: ${data.text}`);
-      void this.checkAutoAcknowledge(message, true, undefined);
+      // For DMs we have the sender's pubkey, so {ROUTE} falls back to the
+      // contact record's cached outPath (firmware updates it from inbound
+      // flood-packet paths, so it reflects the route this packet took).
+      const hopCount = decodePathLenHopCount(data.path_len);
+      const senderContact = this.resolveContactByPrefix(data.pubkey_prefix);
+      const route = senderContact?.outPath || null;
+      void this.checkAutoAcknowledge(message, true, undefined, hopCount, route);
     } else if (event_type === 'channel_message') {
       // MeshCore channel packets have no sender field on the wire — the sender's
       // device prefixes "Name: " onto the text body. Split it out so the UI can
@@ -651,7 +669,10 @@ class MeshCoreManager extends EventEmitter {
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore] Channel ${data.channel_idx} message: ${data.text}`);
-      void this.checkAutoAcknowledge(message, false, data.channel_idx);
+      // Channel messages carry no sender pubkey on the wire, so we can't
+      // look up an outPath for {ROUTE}. Hop count is still available.
+      const hopCount = decodePathLenHopCount(data.path_len);
+      void this.checkAutoAcknowledge(message, false, data.channel_idx, hopCount, null);
     } else if (event_type === 'room_message') {
       // Room server post (TXT_TYPE_SIGNED_PLAIN). The room's pubkey prefix
       // identifies which room, and the author prefix identifies the poster.
@@ -3164,7 +3185,7 @@ class MeshCoreManager extends EventEmitter {
   // same {NODE_ID}/{NODE_NAME}/{DATE}/{TIME}/{SNR}/{VERSION} macros so a
   // single template behaves consistently across both stacks.
 
-  private static readonly AUTO_ACK_DEFAULT_MESSAGE = '🤖 Copy, {NODE_NAME}! @ {TIME}';
+  private static readonly AUTO_ACK_DEFAULT_MESSAGE = '🤖 Copy, {NODE_NAME}! {HOPS} hops @ {TIME}';
   private static readonly AUTO_ACK_DEFAULT_REGEX = '^(test|ping)';
 
   private validateAutoAckRegex(pattern: string): RegExp | null {
@@ -3186,6 +3207,8 @@ class MeshCoreManager extends EventEmitter {
     senderName: string | undefined,
     snr: number | undefined,
     timestamp: number,
+    hops: number | null,
+    route: string | null,
   ): string {
     const date = new Date(timestamp);
     const longName = senderName || `${senderPubKey.substring(0, 8)}…`;
@@ -3194,6 +3217,22 @@ class MeshCoreManager extends EventEmitter {
     const snrStr = snr !== undefined && snr !== null ? snr.toFixed(1) : '—';
     const dateStr = date.toLocaleDateString('en-US');
     const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const hopsStr = hops !== null ? String(hops) : '—';
+    // {ROUTE} expands the cached hop-hash chain into a readable
+    // arrow-separated list (e.g. "a3 → 7f → 02"). Empty / unknown
+    // route falls back to "direct" when hop count is 0 or "—" otherwise.
+    let routeStr: string;
+    if (route && route.length > 0) {
+      routeStr = route
+        .split(',')
+        .map(h => h.trim())
+        .filter(Boolean)
+        .join(' → ');
+    } else if (hops === 0) {
+      routeStr = 'direct';
+    } else {
+      routeStr = '—';
+    }
 
     return template
       .replace(/\{NODE_ID\}/g, nodeId)
@@ -3203,6 +3242,9 @@ class MeshCoreManager extends EventEmitter {
       .replace(/\{DATE\}/g, dateStr)
       .replace(/\{TIME\}/g, timeStr)
       .replace(/\{SNR\}/g, snrStr)
+      .replace(/\{HOPS\}/g, hopsStr)
+      .replace(/\{NUMBER_HOPS\}/g, hopsStr)
+      .replace(/\{ROUTE\}/g, routeStr)
       .replace(/\{VERSION\}/g, '4.8.0');
   }
 
@@ -3218,6 +3260,8 @@ class MeshCoreManager extends EventEmitter {
     message: MeshCoreMessage,
     isDirectMessage: boolean,
     channelIdx: number | undefined,
+    hops: number | null,
+    route: string | null,
   ): Promise<void> {
     try {
       const settings = databaseService.settings;
@@ -3287,6 +3331,8 @@ class MeshCoreManager extends EventEmitter {
         senderName,
         message.snr,
         message.timestamp,
+        hops,
+        route,
       );
 
       // Decide destination:

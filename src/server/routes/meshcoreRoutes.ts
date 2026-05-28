@@ -2345,7 +2345,7 @@ router.get(
         data: {
           enabled: enabled === 'true',
           regex: regex || '^(test|ping)',
-          message: message || '🤖 Copy, {NODE_NAME}! @ {TIME}',
+          message: message || '🤖 Copy, {NODE_NAME}! {HOPS} hops @ {TIME}',
           channels: (channels || '')
             .split(',')
             .map(s => s.trim())

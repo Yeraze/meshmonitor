@@ -303,6 +303,10 @@ export class MeshCoreNativeBackend extends EventEmitter {
         text: msg.text,
         sender_timestamp: msg.senderTimestamp,
         txt_type: typeof msg.txtType === 'number' ? msg.txtType : undefined,
+        // ContactMsgRecv pathLen is the packed wire byte (top 2 bits =
+        // hash size - 1, bottom 6 bits = hop count). 0xFF marks "sent
+        // direct"; otherwise the hop count is `pathLen & 0x3F`.
+        path_len: typeof msg.pathLen === 'number' ? msg.pathLen : undefined,
         snr: undefined,
       };
       this.emitBridgeEvent(isCliReply ? 'cli_reply' : 'contact_message', payload);
@@ -314,6 +318,8 @@ export class MeshCoreNativeBackend extends EventEmitter {
         channel_idx: msg.channelIdx,
         text: msg.text,
         sender_timestamp: msg.senderTimestamp,
+        // Same packed-byte semantics as contact_message above.
+        path_len: typeof msg.pathLen === 'number' ? msg.pathLen : undefined,
         snr: undefined,
       });
     });

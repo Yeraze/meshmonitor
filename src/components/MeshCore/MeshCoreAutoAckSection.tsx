@@ -26,7 +26,7 @@ interface MeshCoreChannelRow {
   name: string;
 }
 
-const DEFAULT_MESSAGE = '🤖 Copy, {NODE_NAME}! @ {TIME}';
+const DEFAULT_MESSAGE = '🤖 Copy, {NODE_NAME}! {HOPS} hops @ {TIME}';
 const DEFAULT_REGEX = '^(test|ping)';
 const DEFAULT_TEST_MESSAGES = 'test\nTest message\nping\nPING\nHello world\nTESTING 123';
 
@@ -64,6 +64,9 @@ const generateSample = (template: string): string => {
     .replace(/\{DATE\}/g, now.toLocaleDateString('en-US'))
     .replace(/\{TIME\}/g, now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }))
     .replace(/\{SNR\}/g, '7.5')
+    .replace(/\{HOPS\}/g, '3')
+    .replace(/\{NUMBER_HOPS\}/g, '3')
+    .replace(/\{ROUTE\}/g, 'a3 → 7f → 02')
     .replace(/\{VERSION\}/g, '4.8.0');
 };
 
@@ -400,7 +403,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
             {t('meshcore.automation.autoack.message_label', 'Acknowledgement Message')}
             <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
               {t('meshcore.automation.autoack.available_tokens', 'Available tokens:')}{' '}
-              {'{NODE_ID}'}, {'{NODE_NAME}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{DATE}'}, {'{TIME}'}, {'{SNR}'}, {'{VERSION}'}
+              {'{NODE_ID}'}, {'{NODE_NAME}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{DATE}'}, {'{TIME}'}, {'{SNR}'}, {'{HOPS}'}, {'{ROUTE}'}, {'{VERSION}'}
             </span>
           </label>
           <textarea
