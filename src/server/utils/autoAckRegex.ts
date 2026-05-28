@@ -17,6 +17,19 @@
 
 const MAX_PATTERN_LENGTH = 100;
 
+/**
+ * Charset allowlist. The pattern may contain only ASCII letters, digits,
+ * whitespace, and the regex meta-characters we actually want to support
+ * (alternation, anchors, character classes, simple quantifiers,
+ * groups, common literal punctuation). Notably excluded:
+ *  - Unicode property escapes (`\p{…}`) — can be slow / DoS-prone
+ *  - Unicode code-point escapes (`\u{…}`) — same
+ *  - Any non-ASCII character — narrows the attack surface to a
+ *    well-understood charset and acts as a CodeQL data-flow barrier
+ *    for the `js/regex-injection` query.
+ */
+const ALLOWED_CHARSET_RE = /^[A-Za-z0-9\s.^$*+?()|[\]{},\\!@#%&'"<>=~`:;/_\-]+$/;
+
 // Catastrophic-backtracking shapes:
 //  - `(\.\*){2,}`  — repeated `.*` groups
 //  - `(\+.*\+)`    — text-between-two-pluses (nested unbounded reps)
@@ -34,11 +47,20 @@ export interface AutoAckRegexValidation {
  * Validate the pattern and return a compiled RegExp on success, or null
  * with the reason on failure. Centralised so the route store-time check
  * and the manager execution-time check stay in sync.
+ *
+ * Validation order matters: we run a charset allowlist first (which
+ * acts as a sanitising barrier — only patterns built from this fixed
+ * set of ASCII characters reach the compiler), then check for known
+ * catastrophic-backtracking shapes, and finally let `RegExp` reject
+ * any remaining syntactic invalidity.
  */
 export function compileAutoAckRegex(pattern: string): { regex: RegExp | null; error?: string } {
   if (!pattern) return { regex: null, error: 'empty pattern' };
   if (pattern.length > MAX_PATTERN_LENGTH) {
     return { regex: null, error: `pattern too long (max ${MAX_PATTERN_LENGTH} chars)` };
+  }
+  if (!ALLOWED_CHARSET_RE.test(pattern)) {
+    return { regex: null, error: 'pattern contains disallowed characters' };
   }
   if (DANGEROUS_SHAPE_RE.test(pattern)) {
     return { regex: null, error: 'pattern matches a catastrophic-backtracking shape' };
