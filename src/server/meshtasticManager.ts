@@ -1224,6 +1224,21 @@ class MeshtasticManager implements ISourceManager {
 
   private async handleConnected(): Promise<void> {
     logger.debug('TCP connection established, requesting configuration...');
+    // Capture the transport reference we connected with. Several awaits below
+    // (notifyNodeConnected, channel snapshot, sendWantConfigId) yield the
+    // event loop, during which a parallel disconnect/reconnect cycle can
+    // null or replace `this.transport`. When that happens, `sendWantConfigId`
+    // throws "Transport not initialized" and the connect-error path treats
+    // it as a transient post-connect reset, producing a 3×/min reconnect
+    // loop on otherwise-healthy TCP sessions (#3247). Holding the original
+    // reference lets the catch block tell "transport went away under me"
+    // (silent bail — the new connect already in flight will retry) apart
+    // from a genuine transport-layer send failure.
+    const transportAtConnect = this.transport;
+    if (!transportAtConnect) {
+      logger.debug('🟡 [connect-race] handleConnected fired with no transport — skipping handshake (#3247)');
+      return;
+    }
     this.isConnected = true;
 
     // Emit WebSocket event for connection status change
@@ -1326,6 +1341,20 @@ class MeshtasticManager implements ISourceManager {
         await this.sendWantConfigId();
       } catch (sendErr) {
         const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+        // If `this.transport` was nulled or replaced while we were awaiting
+        // earlier init work, the failing send was against a stale generation
+        // of the handler — the actual TCP session is unaffected and a new
+        // connect cycle is already in flight (or the source is being shut
+        // down). Tearing down here would create the 3×/min reconnect loop
+        // documented in #3247, so bail out quietly instead.
+        if (this.transport !== transportAtConnect) {
+          logger.debug(`🟡 [connect-race] sendWantConfigId aborted — transport replaced during handshake (${msg}) (#3247)`);
+          return;
+        }
+        // Genuine transport-layer failure (e.g. tcpTransport.send throwing
+        // "Not connected to TCP server" because the node closed the socket
+        // mid-OTA-reboot). The existing post-reset cooldown path is correct
+        // for this case.
         logger.warn(`⚠️ Initial sendWantConfigId failed (${msg}) — treating as transient post-connect reset, clearing state for clean reconnect`);
         this.postResetCooldownUntil = Date.now() + POST_RESET_COOLDOWN_MS;
         this.isConnected = false;
