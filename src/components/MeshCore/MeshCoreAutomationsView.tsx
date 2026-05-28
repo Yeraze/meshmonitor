@@ -135,7 +135,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
   };
 
   return (
-    <div className="meshcore-automations-view" style={{ padding: '1rem' }}>
+    <div className="meshcore-automations-view" style={{ padding: '1rem', overflowY: 'auto', height: '100%', minHeight: 0 }}>
       <h1 style={{ marginBottom: '1.5rem' }}>
         {t('meshcore.automation.title', 'Automations')}
       </h1>
