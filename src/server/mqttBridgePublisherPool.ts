@@ -27,7 +27,7 @@
  *   - `gateway_id` provenance check against known local nodes.
  */
 
-import { MqttBrokerClient } from './transports/mqttBrokerClient.js';
+import { MqttBrokerClient, type MqttReconnectCoordinator } from './transports/mqttBrokerClient.js';
 import { logger } from '../utils/logger.js';
 
 export interface PublisherPoolOptions {
@@ -38,6 +38,8 @@ export interface PublisherPoolOptions {
   password?: string;
   /** Pool diagnostic label — usually the owning bridge's sourceId. */
   poolLabel: string;
+  /** Shared reconnect coordinator — all pool entries use the same backoff timer. */
+  reconnectCoordinator?: MqttReconnectCoordinator;
 }
 
 export interface PublisherStatus {
@@ -184,6 +186,9 @@ export class MqttBridgePublisherPool {
       password: this.options.password,
       clientId,
     });
+    if (this.options.reconnectCoordinator) {
+      client.setCoordinator(this.options.reconnectCoordinator);
+    }
     const entry: PoolEntry = {
       client,
       clientId,
