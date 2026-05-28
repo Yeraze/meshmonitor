@@ -9886,6 +9886,14 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
           }
         }
 
+        // Length cap on the assembled regex so a pathological combination of
+        // param patterns (each up to /[^\s]+/) plus a long pattern string can't
+        // produce a multi-kilobyte regex that the engine spends real CPU
+        // compiling. Triggers are admin-configured and 100 chars max each, so
+        // 2000 chars is generous headroom. Closes CodeQL js/regex-injection #32.
+        if (regexPattern.length > 2000) {
+          continue;
+        }
         const triggerRegex = new RegExp(`^${regexPattern}$`, 'i');
         const triggerMatch = testMessage.match(triggerRegex);
 
