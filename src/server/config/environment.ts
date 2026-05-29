@@ -66,6 +66,22 @@ function parseInt32(
 }
 
 /**
+ * Parse a positive integer environment variable.
+ */
+function parsePositiveInt(
+  name: string,
+  envValue: string | undefined,
+  defaultValue: number
+): { value: number; wasProvided: boolean } {
+  const parsed = parseInt32(name, envValue, defaultValue);
+  if (parsed.value < 1) {
+    logger.warn(`⚠️  Invalid ${name} value: "${envValue}". Expected positive integer. Using default: ${defaultValue}`);
+    return { value: defaultValue, wasProvided: false };
+  }
+  return parsed;
+}
+
+/**
  * Parse a rate limit environment variable.
  * Accepts positive integers (normal limit), or special values to disable:
  *   "unlimited" (case-insensitive), "0", "-1" → returns 0 (sentinel for disabled)
@@ -200,6 +216,8 @@ export interface EnvironmentConfig {
   databaseUrl: string | undefined;
   databaseUrlProvided: boolean;
   databaseType: 'sqlite' | 'postgres' | 'mysql';
+  tracerouteHistoryLimit: number;
+  tracerouteHistoryLimitProvided: boolean;
 
   // Meshtastic
   meshtasticNodeIp: string;
@@ -458,6 +476,12 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     logger.debug('📦 Database: SQLite (default)');
   }
 
+  const tracerouteHistoryLimit = parsePositiveInt(
+    'TRACEROUTE_HISTORY_LIMIT',
+    process.env.TRACEROUTE_HISTORY_LIMIT,
+    50
+  );
+
   const versionCheckDisabled = process.env.VERSION_CHECK_DISABLED == "true";
 
   // Meshtastic
@@ -675,6 +699,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   } else {
     logger.info(`   DATABASE_PATH: ${databasePath.value} (${src(databasePath.wasProvided)})`);
   }
+  logger.info(`   TRACEROUTE_HISTORY_LIMIT: ${tracerouteHistoryLimit.value} (${src(tracerouteHistoryLimit.wasProvided)})`);
   logger.info('   --- Meshtastic ---');
   logger.info(`   MESHTASTIC_NODE_IP: ${meshtasticNodeIp.value} (${src(meshtasticNodeIp.wasProvided)})`);
   logger.info(`   MESHTASTIC_NODE_PORT / MESHTASTIC_TCP_PORT: ${meshtasticTcpPort.value} (${src(meshtasticTcpPort.wasProvided)})`);
@@ -763,6 +788,8 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     databaseUrl: databaseUrl.value,
     databaseUrlProvided: databaseUrl.wasProvided,
     databaseType,
+    tracerouteHistoryLimit: tracerouteHistoryLimit.value,
+    tracerouteHistoryLimitProvided: tracerouteHistoryLimit.wasProvided,
 
     // Meshtastic
     meshtasticNodeIp: meshtasticNodeIp.value,

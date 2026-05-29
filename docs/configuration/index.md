@@ -67,6 +67,7 @@ MeshMonitor can be configured using environment variables. Here are the most imp
 | `SESSION_SECRET` | Secret key for session encryption (REQUIRED in production) | Auto-generated |
 | `NODE_ENV` | Environment mode (`development` or `production`) | `development` |
 | `DATABASE_PATH` | SQLite database file path | `/data/meshmonitor.db` |
+| `TRACEROUTE_HISTORY_LIMIT` | Traceroute history rows to keep per node pair | `50` |
 | `BASE_URL` | Base path if serving from subfolder (e.g., `/meshmonitor`) | `/` (root) |
 | `TZ` | Timezone for log timestamps and scheduled tasks | `America/New_York` |
 
