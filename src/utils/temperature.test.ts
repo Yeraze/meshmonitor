@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatTemperature, getTemperatureUnit } from './temperature';
+import { formatTemperature, getTemperatureUnit, isTemperatureType } from './temperature';
 
 describe('temperature utilities', () => {
   describe('formatTemperature', () => {
@@ -53,6 +53,21 @@ describe('temperature utilities', () => {
 
     it('should return correct unit symbol for Fahrenheit', () => {
       expect(getTemperatureUnit('F')).toBe('°F');
+    });
+  });
+
+  describe('isTemperatureType', () => {
+    it('matches all Celsius-bearing telemetry types', () => {
+      expect(isTemperatureType('temperature')).toBe(true);
+      expect(isTemperatureType('soilTemperature')).toBe(true);
+      expect(isTemperatureType('co2Temperature')).toBe(true);
+    });
+
+    it('does not match non-temperature types', () => {
+      expect(isTemperatureType('humidity')).toBe(false);
+      expect(isTemperatureType('voltage')).toBe(false);
+      expect(isTemperatureType('batteryLevel')).toBe(false);
+      expect(isTemperatureType('')).toBe(false);
     });
   });
 });

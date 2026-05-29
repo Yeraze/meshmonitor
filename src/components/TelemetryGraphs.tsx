@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import './TelemetryGraphs.css';
-import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../utils/temperature';
+import { type TemperatureUnit, formatTemperature, getTemperatureUnit, isTemperatureType } from '../utils/temperature';
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
@@ -150,7 +150,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
   const [mode, setMode] = useWidgetMode(nodeId, type, baseUrl);
   const [range, setRange] = useWidgetRange(nodeId, type, baseUrl);
 
-  const isTemperature = type === 'temperature';
+  const isTemperature = isTemperatureType(type);
   const chartData = prepareChartData(data, isTemperature, globalMinTime);
   const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : data[0]?.unit || '';
   const label = isPaxcounterCombined ? 'Paxcounter' : getTelemetryLabel(type);
@@ -181,6 +181,16 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
   }
 
   const latest = getLatestValue(data);
+
+  // Gauge/numeric modes display a single raw value, so convert it (and the
+  // gauge range) to the selected unit. Ranges persist in Celsius, so edits
+  // made while displaying Fahrenheit are converted back before saving.
+  const toDisplayTemp = (v: number) =>
+    isTemperature ? formatTemperature(v, 'C', temperatureUnit) : v;
+  const toStoredTemp = (v: number) =>
+    isTemperature ? formatTemperature(v, temperatureUnit, 'C') : v;
+  const handleRangeChange = (r: { min: number; max: number }) =>
+    setRange({ min: toStoredTemp(r.min), max: toStoredTemp(r.max) });
 
   return (
     <div key={type} className="graph-container">
@@ -262,14 +272,14 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
       {mode === 'gauge' ? (
         latest ? (
           <TelemetryGauge
-            value={latest.value}
-            min={range.min}
-            max={range.max}
+            value={toDisplayTemp(latest.value)}
+            min={toDisplayTemp(range.min)}
+            max={toDisplayTemp(range.max)}
             unit={unit}
             color={color}
             timestamp={latest.timestamp}
             nodeId={nodeId}
-            onRangeChange={setRange}
+            onRangeChange={handleRangeChange}
             canEditRange={canEditSettings}
           />
         ) : (
@@ -278,7 +288,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
       ) : mode === 'numeric' ? (
         latest ? (
           <TelemetryNumericLabel
-            value={latest.value}
+            value={toDisplayTemp(latest.value)}
             unit={unit}
             color={color}
             timestamp={latest.timestamp}
