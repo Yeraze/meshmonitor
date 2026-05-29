@@ -54,6 +54,8 @@ interface MapContextType {
   setShowRfNodes: (show: boolean) => void;
   showMeshCoreNodes: boolean;
   setShowMeshCoreNodes: (show: boolean) => void;
+  showWaypoints: boolean;
+  setShowWaypoints: (show: boolean) => void;
   showAnimations: boolean;
   setShowAnimations: (show: boolean) => void;
   showEstimatedPositions: boolean;
@@ -105,6 +107,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [showUdpNodes, setShowUdpNodesState] = useState<boolean>(false);
   const [showRfNodes, setShowRfNodesState] = useState<boolean>(true);
   const [showMeshCoreNodes, setShowMeshCoreNodesState] = useState<boolean>(true);
+  // Waypoint markers default on (#3253) — opt-out toggle in the Map Features panel.
+  const [showWaypoints, setShowWaypointsState] = useState<boolean>(true);
   const [showAnimations, setShowAnimationsState] = useState<boolean>(false);
   const [meshCoreNodes, setMeshCoreNodes] = useState<MeshCoreMapNode[]>([]);
   const [showEstimatedPositions, setShowEstimatedPositionsState] = useState<boolean>(() => {
@@ -181,6 +185,11 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const setShowMeshCoreNodes = React.useCallback((value: boolean) => {
     setShowMeshCoreNodesState(value);
     savePreferenceToServer({ showMeshCoreNodes: value });
+  }, []);
+
+  const setShowWaypoints = React.useCallback((value: boolean) => {
+    setShowWaypointsState(value);
+    savePreferenceToServer({ showWaypoints: value });
   }, []);
 
   const setShowAnimations = React.useCallback((value: boolean) => {
@@ -293,6 +302,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
             if (preferences.showMeshCoreNodes !== undefined) {
               setShowMeshCoreNodesState(preferences.showMeshCoreNodes);
             }
+            if (preferences.showWaypoints !== undefined) {
+              setShowWaypointsState(preferences.showWaypoints);
+            }
             if (preferences.showAnimations !== undefined) {
               setShowAnimationsState(preferences.showAnimations);
             }
@@ -370,6 +382,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
         setShowRfNodes,
         showMeshCoreNodes,
         setShowMeshCoreNodes,
+        showWaypoints,
+        setShowWaypoints,
         meshCoreNodes,
         setMeshCoreNodes,
         showAnimations,

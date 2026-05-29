@@ -311,6 +311,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowUdpNodes,
     showRfNodes,
     setShowRfNodes,
+    showWaypoints,
+    setShowWaypoints,
     showAnimations,
     setShowAnimations,
     showEstimatedPositions,
@@ -1804,6 +1806,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   <label className="map-control-item">
                     <input
                       type="checkbox"
+                      checked={showWaypoints}
+                      onChange={(e) => setShowWaypoints(e.target.checked)}
+                    />
+                    <span>{t('map.showWaypoints', 'Show Waypoints')}</span>
+                  </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
                       checked={showMotion}
                       onChange={(e) => setShowMotion(e.target.checked)}
                     />
@@ -2029,7 +2039,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 canCreate={canWriteWaypoints}
                 onPick={(lat, lon) => startCreateAtCoords(lat, lon)}
               />
-              <DashboardWaypoints sourceId={currentSourceId ?? null} actions={waypointActions} />
+              {showWaypoints && <DashboardWaypoints sourceId={currentSourceId ?? null} actions={waypointActions} />}
               <DefaultCenterController
                 lat={defaultMapCenterLat}
                 lon={defaultMapCenterLon}

@@ -8869,6 +8869,7 @@ class DatabaseService {
     showUdpNodes?: boolean;
     showRfNodes?: boolean;
     showMeshCoreNodes?: boolean;
+    showWaypoints?: boolean;
     showAnimations?: boolean;
     showAccuracyRegions?: boolean;
     showEstimatedPositions?: boolean;

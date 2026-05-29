@@ -106,6 +106,9 @@ export const userMapPreferencesSqlite = sqliteTable('user_map_preferences', {
   showUdpNodes: integer('show_udp_nodes', { mode: 'boolean' }).default(false),
   showRfNodes: integer('show_rf_nodes', { mode: 'boolean' }).default(true),
   showMeshcoreNodes: integer('show_meshcore_nodes', { mode: 'boolean' }).default(true),
+  // Waypoint marker visibility (#3253). Default true so existing users keep
+  // seeing waypoints they've placed; opt-out via the Map Features panel.
+  showWaypoints: integer('show_waypoints', { mode: 'boolean' }).default(true),
   showAnimations: integer('show_animations', { mode: 'boolean' }).default(false),
   showAccuracyRegions: integer('show_accuracy_regions', { mode: 'boolean' }).default(false),
   showEstimatedPositions: integer('show_estimated_positions', { mode: 'boolean' }).default(false),
@@ -130,6 +133,7 @@ export const userMapPreferencesPostgres = pgTable('user_map_preferences', {
   showUdpNodes: pgBoolean('show_udp_nodes').default(false),
   showRfNodes: pgBoolean('show_rf_nodes').default(true),
   showMeshcoreNodes: pgBoolean('show_meshcore_nodes').default(true),
+  showWaypoints: pgBoolean('show_waypoints').default(true),
   showAnimations: pgBoolean('show_animations').default(false),
   showAccuracyRegions: pgBoolean('show_accuracy_regions').default(false),
   showEstimatedPositions: pgBoolean('show_estimated_positions').default(false),
@@ -387,6 +391,7 @@ export const userMapPreferencesMysql = mysqlTable('user_map_preferences', {
   showUdpNodes: myBoolean('show_udp_nodes').default(false),
   showRfNodes: myBoolean('show_rf_nodes').default(true),
   showMeshcoreNodes: myBoolean('show_meshcore_nodes').default(true),
+  showWaypoints: myBoolean('show_waypoints').default(true),
   showAnimations: myBoolean('show_animations').default(false),
   showAccuracyRegions: myBoolean('show_accuracy_regions').default(false),
   showEstimatedPositions: myBoolean('show_estimated_positions').default(false),

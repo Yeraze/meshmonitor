@@ -22,3 +22,20 @@ describe('userMapPreferencesSqlite — SQL column alignment (#2713)', () => {
     expect(col.name).toBe('user_id');
   });
 });
+
+describe('userMapPreferences — showWaypoints toggle (#3253)', () => {
+  it('maps JS `showWaypoints` → SQL column `show_waypoints` on all three backends', () => {
+    const sqlite = (schema.userMapPreferencesSqlite as unknown as {
+      showWaypoints: { name: string };
+    }).showWaypoints;
+    const pg = (schema.userMapPreferencesPostgres as unknown as {
+      showWaypoints: { name: string };
+    }).showWaypoints;
+    const mysql = (schema.userMapPreferencesMysql as unknown as {
+      showWaypoints: { name: string };
+    }).showWaypoints;
+    expect(sqlite.name).toBe('show_waypoints');
+    expect(pg.name).toBe('show_waypoints');
+    expect(mysql.name).toBe('show_waypoints');
+  });
+});

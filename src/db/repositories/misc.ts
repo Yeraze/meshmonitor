@@ -1831,7 +1831,10 @@ export class MiscRepository extends BaseRepository {
         showRoute: row.showRoute ?? true,
         showMotion: row.showMotion ?? true,
         showMqttNodes: row.showMqttNodes ?? true,
+        showUdpNodes: row.showUdpNodes ?? false,
+        showRfNodes: row.showRfNodes ?? true,
         showMeshCoreNodes: row.showMeshcoreNodes ?? true,
+        showWaypoints: row.showWaypoints ?? true,
         showAnimations: row.showAnimations ?? false,
         showAccuracyRegions: row.showAccuracyRegions ?? false,
         showEstimatedPositions: row.showEstimatedPositions ?? false,
@@ -1856,6 +1859,7 @@ export class MiscRepository extends BaseRepository {
     showUdpNodes?: boolean;
     showRfNodes?: boolean;
     showMeshCoreNodes?: boolean;
+    showWaypoints?: boolean;
     showAnimations?: boolean;
     showAccuracyRegions?: boolean;
     showEstimatedPositions?: boolean;
@@ -1880,6 +1884,7 @@ export class MiscRepository extends BaseRepository {
         if (preferences.showUdpNodes !== undefined) set.showUdpNodes = preferences.showUdpNodes;
         if (preferences.showRfNodes !== undefined) set.showRfNodes = preferences.showRfNodes;
         if (preferences.showMeshCoreNodes !== undefined) set.showMeshcoreNodes = preferences.showMeshCoreNodes;
+        if (preferences.showWaypoints !== undefined) set.showWaypoints = preferences.showWaypoints;
         if (preferences.showAnimations !== undefined) set.showAnimations = preferences.showAnimations;
         if (preferences.showAccuracyRegions !== undefined) set.showAccuracyRegions = preferences.showAccuracyRegions;
         if (preferences.showEstimatedPositions !== undefined) set.showEstimatedPositions = preferences.showEstimatedPositions;
@@ -1901,6 +1906,7 @@ export class MiscRepository extends BaseRepository {
           showUdpNodes: preferences.showUdpNodes ?? false,
           showRfNodes: preferences.showRfNodes ?? true,
           showMeshcoreNodes: preferences.showMeshCoreNodes ?? true,
+          showWaypoints: preferences.showWaypoints ?? true,
           showAnimations: preferences.showAnimations ?? false,
           showAccuracyRegions: preferences.showAccuracyRegions ?? false,
           showEstimatedPositions: preferences.showEstimatedPositions ?? true,
