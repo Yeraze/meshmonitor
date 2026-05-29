@@ -236,7 +236,7 @@ function DashboardInner() {
   // Run both data hooks but disable whichever is not active so we don't fan
   // out N parallel fetches when the user is on a single-source view.
   const singleSourceData = useDashboardSourceData(isUnifiedSelected ? null : selectedSourceId);
-  const unifiedSourceData = useDashboardUnifiedData(sourceIds, isUnifiedSelected);
+  const unifiedSourceData = useDashboardUnifiedData(sources, isUnifiedSelected);
   const sourceData = isUnifiedSelected ? unifiedSourceData : singleSourceData;
 
   // Synthetic Unified pseudo-source for the sidebar. Recognized by its sentinel ID
