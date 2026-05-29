@@ -49,6 +49,10 @@ vi.mock('../hooks/useDashboardData', () => ({
   UNIFIED_SOURCE_ID: '__unified__',
 }));
 
+vi.mock('../hooks/useMapAnalysisData', () => ({
+  useMeshCoreNeighbors: vi.fn(() => ({ data: { items: [] }, isLoading: false, isError: false })),
+}));
+
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: vi.fn(() => ({
     authStatus: { authenticated: false, user: null },

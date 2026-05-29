@@ -1981,6 +1981,11 @@ class MeshCoreManager extends EventEmitter {
   } | null> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
     if (!this.connected) return null;
+    // Establish a session with the saved password first — repeaters gate the
+    // neighbours query behind a guest/admin login, and this binary path (like
+    // the CLI `neighbors` path) otherwise fails with no session. Never
+    // anonymous-logs-in (see ensureSavedLogin).
+    await this.ensureSavedLogin(publicKey);
     try {
       const response = await this.sendBridgeCommand('get_neighbours', {
         public_key: publicKey,
@@ -2195,6 +2200,53 @@ class MeshCoreManager extends EventEmitter {
     return ok;
   }
 
+  /**
+   * Establish a login session for a remote repeater before a read command,
+   * using ONLY the SAVED password for this (source, node). Repeaters gate
+   * `neighbors`/`stats` behind a guest (or admin) password; the saved
+   * credential is that password.
+   *
+   * Deliberately does NOT fall back to an empty-password ("anonymous") login:
+   * on firmware that requires the guest password, an empty login silently
+   * downgrades to anonymous — the command then returns nothing and the only
+   * symptom is a CLI timeout. So if no password is saved, or every attempt is
+   * dropped, this returns false and the caller proceeds without masquerading
+   * as anonymous.
+   *
+   * Retries a few times (like `loginToRoom`) because the login round-trip is
+   * easily dropped on a lossy LoRa link to a distant repeater — a single miss
+   * must not be treated as "no session".
+   *
+   * The decrypted plaintext is used in-process only; it never leaves the
+   * server (same invariant as the login-with-saved route).
+   */
+  async ensureSavedLogin(publicKey: string): Promise<boolean> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return false;
+    if (!this.connected) return false;
+
+    let cred;
+    try {
+      const { getMeshCoreCredentialStore } = await import('./services/meshcoreCredentialStore.js');
+      cred = await getMeshCoreCredentialStore().load(this.sourceId, publicKey);
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] credential lookup failed for ${publicKey.substring(0, 8)}…: ${(err as Error).message}`);
+      return false;
+    }
+    // No saved password (or unreadable/rotated): do NOT anonymous-login.
+    if (cred.kind !== 'ok') return false;
+
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (await this.loginToNode(publicKey, cred.password)) return true;
+      if (attempt < maxAttempts) {
+        logger.debug(`[MeshCore:${this.sourceId}] saved-credential login attempt ${attempt}/${maxAttempts} got no reply for ${publicKey.substring(0, 8)}…, retrying`);
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+    logger.warn(`[MeshCore:${this.sourceId}] saved-credential login failed after ${maxAttempts} attempts for ${publicKey.substring(0, 8)}…`);
+    return false;
+  }
+
   // ============ Room Server Support ============
 
   /**
@@ -2306,7 +2358,10 @@ class MeshCoreManager extends EventEmitter {
 
     let reply: string;
     if (sanitizedTargetKey !== null) {
-      await this.ensureGuestLogin(sanitizedTargetKey);
+      // Log in with the SAVED password (repeaters gate `neighbors` behind a
+      // guest/admin password). Never anonymous-login: an empty-password login
+      // downgrades to anonymous and the command returns nothing.
+      await this.ensureSavedLogin(sanitizedTargetKey);
       const result = await this.sendCliCommand(sanitizedTargetKey, 'neighbors');
       reply = result.reply;
     } else {

@@ -13,7 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { SettingsProvider, useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useCsrf } from '../contexts/CsrfContext';
-import { MapProvider } from '../contexts/MapContext';
+import { MapProvider, useMapContext } from '../contexts/MapContext';
 import {
   useDashboardSources,
   useSourceStatuses,
@@ -22,6 +22,7 @@ import {
   useUnifiedStatus,
   UNIFIED_SOURCE_ID,
 } from '../hooks/useDashboardData';
+import { useMeshCoreNeighbors } from '../hooks/useMapAnalysisData';
 import type { DashboardSource } from '../hooks/useDashboardData';
 import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import DashboardMap from '../components/Dashboard/DashboardMap';
@@ -238,6 +239,21 @@ function DashboardInner() {
   const singleSourceData = useDashboardSourceData(isUnifiedSelected ? null : selectedSourceId);
   const unifiedSourceData = useDashboardUnifiedData(sources, isUnifiedSelected);
   const sourceData = isUnifiedSelected ? unifiedSourceData : singleSourceData;
+
+  // MeshCore neighbor links for the map. Fetched only when the "Show Neighbors"
+  // toggle is on (DashboardInner sits inside MapProvider, so we can read it
+  // here to gate the request). Unified pulls every source; single-source pulls
+  // just the selected one. Non-MeshCore sources simply return no edges.
+  const { showNeighborInfo } = useMapContext();
+  const neighborSourceIds = isUnifiedSelected
+    ? sourceIds
+    : (selectedSourceId && selectedSourceId !== UNIFIED_SOURCE_ID ? [selectedSourceId] : []);
+  const meshcoreNeighborsQuery = useMeshCoreNeighbors({
+    enabled: showNeighborInfo && neighborSourceIds.length > 0,
+    sources: neighborSourceIds,
+    lookbackHours: maxNodeAgeHours,
+  });
+  const meshcoreNeighbors = (meshcoreNeighborsQuery.data?.items as unknown[] | undefined) ?? [];
 
   // Synthetic Unified pseudo-source for the sidebar. Recognized by its sentinel ID
   // so DashboardSidebar can hide admin/open controls that don't apply.
@@ -1013,6 +1029,7 @@ function DashboardInner() {
           nodes={sourceData.nodes}
           traceroutes={sourceData.traceroutes}
           neighborInfo={sourceData.neighborInfo}
+          meshcoreNeighbors={meshcoreNeighbors}
           channels={sourceData.channels}
           tilesetId={mapTileset}
           customTilesets={customTilesets}

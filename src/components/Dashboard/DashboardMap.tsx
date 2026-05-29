@@ -26,6 +26,12 @@ import { nodePassesTransportFilter } from '../../utils/nodeTransport';
 export interface DashboardMapProps {
   nodes: any[];
   neighborInfo: any[];
+  /**
+   * MeshCore neighbor edges (from `/api/sources/:id/meshcore/neighbors`), keyed
+   * by publicKey. Rendered as links between MeshCore node markers when the
+   * "Show Neighbors" toggle is on. Empty for non-MeshCore sources.
+   */
+  meshcoreNeighbors?: any[];
   traceroutes: any[];
   channels: any[];
   tilesetId: string;
@@ -53,6 +59,12 @@ function snrToColor(snr: number): string {
   if (snr >= 0) return '#eab308';
   if (snr >= -5) return '#f97316';
   return '#ef4444';
+}
+
+/** SNR → line opacity for MeshCore neighbor links, matching MeshCoreNeighborLinksLayer. */
+function snrToOpacity(snr: number | null | undefined): number {
+  if (snr == null) return 0.4;
+  return Math.max(0.2, Math.min(1, (snr + 10) / 20));
 }
 
 /** Safe JSON.parse that yields [] on bad/empty input. */
@@ -119,6 +131,7 @@ function MapBoundsUpdater({ positions, sourceId }: MapBoundsUpdaterProps) {
 export default function DashboardMap({
   nodes,
   neighborInfo,
+  meshcoreNeighbors = [],
   traceroutes,
   tilesetId,
   customTilesets,
@@ -141,6 +154,8 @@ export default function DashboardMap({
     setShowUdpNodes,
     showMqttNodes,
     setShowMqttNodes,
+    showNeighborInfo,
+    setShowNeighborInfo,
     showWaypoints,
     setShowWaypoints,
   } = useMapContext();
@@ -170,6 +185,44 @@ export default function DashboardMap({
     }
     return map;
   }, [nodesWithPosition]);
+
+  // publicKey → [lat, lng] for resolving MeshCore neighbor-link endpoints.
+  // MeshCore nodes carry no meshtastic nodeNum; their stable identity (and the
+  // key the neighbor edges reference) is the public key.
+  const positionByPublicKey = useMemo(() => {
+    const map = new Map<string, [number, number]>();
+    for (const { node, pos } of nodesWithPosition) {
+      if (node.isMeshCore && typeof node.publicKey === 'string' && node.publicKey.length > 0) {
+        map.set(node.publicKey, [pos.lat, pos.lng]);
+      }
+    }
+    return map;
+  }, [nodesWithPosition]);
+
+  // MeshCore neighbor links: one Polyline per edge whose BOTH endpoints resolve
+  // to a currently-visible MeshCore node. Gated by the "Show Neighbors" toggle.
+  // Endpoints are filtered through the same node pipeline above, so links to a
+  // hidden node (stale / ignored / RF off) naturally drop out. Deduped by the
+  // unordered {publicKey, neighborPublicKey} pair so the same link reported by
+  // multiple sources (Unified view) draws once.
+  const meshcoreSegments = useMemo(() => {
+    if (!showNeighborInfo) return [];
+    const seen = new Set<string>();
+    const segs: Array<{ key: string; positions: [number, number][]; opacity: number }> = [];
+    for (const e of (meshcoreNeighbors ?? [])) {
+      const pk = e?.publicKey;
+      const npk = e?.neighborPublicKey;
+      if (typeof pk !== 'string' || typeof npk !== 'string') continue;
+      const a = positionByPublicKey.get(pk);
+      const b = positionByPublicKey.get(npk);
+      if (!a || !b) continue;
+      const pairKey = pk < npk ? `${pk}~${npk}` : `${npk}~${pk}`;
+      if (seen.has(pairKey)) continue;
+      seen.add(pairKey);
+      segs.push({ key: pairKey, positions: [a, b], opacity: snrToOpacity(e?.snr) });
+    }
+    return segs;
+  }, [meshcoreNeighbors, positionByPublicKey, showNeighborInfo]);
 
   // Traceroute segments: one Polyline per hop, colored by snrTowards. Empty
   // unless the user has enabled "Show Route Segments" or "Show Traceroute".
@@ -320,7 +373,16 @@ export default function DashboardMap({
           />
         ))}
 
-        {neighborInfo
+        {/* MeshCore neighbor links — cyan dashed, resolved by public key. */}
+        {meshcoreSegments.map((s) => (
+          <Polyline
+            key={`mc-neighbor-${s.key}`}
+            positions={s.positions}
+            pathOptions={{ color: '#06b6d4', weight: 1.5, opacity: s.opacity, dashArray: '6 4' }}
+          />
+        ))}
+
+        {showNeighborInfo && neighborInfo
           .filter((link: any) => {
             const tc = link.transportClass ?? 'rf';
             if (tc === 'mqtt' && !showMqttNodes) return false;
@@ -380,6 +442,14 @@ export default function DashboardMap({
               onChange={(e) => setShowRoute(e.target.checked)}
             />
             <span>Show Traceroute</span>
+          </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showNeighborInfo}
+              onChange={(e) => setShowNeighborInfo(e.target.checked)}
+            />
+            <span>Show Neighbors</span>
           </label>
           <label className="map-control-item">
             <input
