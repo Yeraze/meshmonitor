@@ -19,6 +19,7 @@ import { createNodeIcon } from '../../utils/mapIcons';
 import { getTilesetById } from '../../config/tilesets';
 import type { CustomTileset } from '../../config/tilesets';
 import DashboardWaypoints from './DashboardWaypoints';
+import DashboardNodePopup from './DashboardNodePopup';
 import { useMapContext } from '../../contexts/MapContext';
 import { nodePassesTransportFilter } from '../../utils/nodeTransport';
 
@@ -239,7 +240,6 @@ export default function DashboardMap({
         {nodesWithPosition.map(({ node, pos }) => {
           const hops = node.hopsAway ?? 999;
           const shortName = node.shortName ?? node.user?.shortName;
-          const longName = node.longName ?? node.user?.longName ?? 'Unknown';
           const nodeId = node.nodeId ?? node.user?.id;
           const isRouter = node.role === 2;
           const icon = createNodeIcon({
@@ -257,20 +257,7 @@ export default function DashboardMap({
               icon={icon}
             >
               <Popup>
-                <div>
-                  <strong>{longName}</strong>
-                  {shortName && <span> ({shortName})</span>}
-                  <br />
-                  <span>
-                    {pos.lat.toFixed(5)}, {pos.lng.toFixed(5)}
-                  </span>
-                  {hops !== 999 && (
-                    <>
-                      <br />
-                      <span>Hops: {hops}</span>
-                    </>
-                  )}
-                </div>
+                <DashboardNodePopup node={node} pos={pos} />
               </Popup>
             </Marker>
           );

@@ -40,6 +40,13 @@ vi.mock('../../contexts/MapContext', () => ({
   }),
 }));
 
+// The marker popup (DashboardNodePopup) reads time/date format from
+// SettingsContext; mock the display-settings hook so tests don't need a
+// SettingsProvider.
+vi.mock('../../contexts/SettingsContext', () => ({
+  useDisplaySettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
+}));
+
 vi.mock('leaflet', () => ({
   default: {
     divIcon: () => ({}),

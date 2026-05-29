@@ -335,6 +335,106 @@ describe('mergeUnifiedSourceData', () => {
     ]);
     expect(merged.channels).toEqual([{ id: 0, name: 'LongFast' }]);
   });
+
+  it('attaches a deduped sources list (id/name/protocol) to each merged node', () => {
+    const merged = mergeUnifiedSourceData([
+      {
+        sourceId: 'src-1',
+        sourceName: 'Tower Alpha',
+        protocol: 'Meshtastic',
+        nodes: [{ nodeNum: 500, lastHeard: 100 }],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+      },
+      {
+        sourceId: 'src-2',
+        sourceName: 'Core Bravo',
+        protocol: 'MeshCore',
+        nodes: [{ nodeNum: 500, lastHeard: 200 }],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+      },
+    ]);
+    expect(merged.nodes).toHaveLength(1);
+    expect((merged.nodes[0] as any).sources).toEqual([
+      { sourceId: 'src-1', sourceName: 'Tower Alpha', protocol: 'Meshtastic' },
+      { sourceId: 'src-2', sourceName: 'Core Bravo', protocol: 'MeshCore' },
+    ]);
+  });
+
+  it('omits the sources list when source metadata is not supplied', () => {
+    const merged = mergeUnifiedSourceData([
+      { nodes: [{ nodeNum: 600, lastHeard: 100 }], traceroutes: [], neighborInfo: [], channels: [] },
+    ]);
+    expect((merged.nodes[0] as any).sources).toBeUndefined();
+  });
+
+  it('merges a MeshCore node across sources by publicKey (not the source-scoped nodeId)', () => {
+    // Regression: the server builds MeshCore nodeId as `mc:<sourceId>:<pubkey>`,
+    // so the same physical contact heard by two sources had two different
+    // nodeIds and never merged — always showing "seen by 1 source". Keying on
+    // publicKey must collapse them into one node listing both sources.
+    const PUBKEY = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
+    const merged = mergeUnifiedSourceData([
+      {
+        sourceId: 'mc-1',
+        sourceName: 'Core One',
+        protocol: 'MeshCore',
+        nodes: [{
+          isMeshCore: true,
+          nodeNum: 0,
+          nodeId: `mc:mc-1:${PUBKEY.substring(0, 12)}`,
+          publicKey: PUBKEY,
+          lastHeard: 100,
+          longName: 'Repeater',
+        }],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+      },
+      {
+        sourceId: 'mc-2',
+        sourceName: 'Core Two',
+        protocol: 'MeshCore',
+        nodes: [{
+          isMeshCore: true,
+          nodeNum: 0,
+          nodeId: `mc:mc-2:${PUBKEY.substring(0, 12)}`,
+          publicKey: PUBKEY,
+          lastHeard: 200,
+          longName: 'Repeater',
+        }],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+      },
+    ]);
+    expect(merged.nodes).toHaveLength(1);
+    expect((merged.nodes[0] as any).sources).toEqual([
+      { sourceId: 'mc-1', sourceName: 'Core One', protocol: 'MeshCore' },
+      { sourceId: 'mc-2', sourceName: 'Core Two', protocol: 'MeshCore' },
+    ]);
+  });
+
+  it('keeps distinct MeshCore nodes (different publicKeys) separate', () => {
+    const merged = mergeUnifiedSourceData([
+      {
+        sourceId: 'mc-1',
+        sourceName: 'Core One',
+        protocol: 'MeshCore',
+        nodes: [
+          { isMeshCore: true, nodeNum: 0, nodeId: 'mc:mc-1:aaaaaaaaaaaa', publicKey: 'aaaa', lastHeard: 100 },
+          { isMeshCore: true, nodeNum: 0, nodeId: 'mc:mc-1:bbbbbbbbbbbb', publicKey: 'bbbb', lastHeard: 100 },
+        ],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+      },
+    ]);
+    expect(merged.nodes).toHaveLength(2);
+  });
 });
 
 describe('useDashboardUnifiedData', () => {
@@ -347,9 +447,14 @@ describe('useDashboardUnifiedData', () => {
     vi.restoreAllMocks();
   });
 
+  const unifiedSources: DashboardSource[] = [
+    { id: 'src-1', name: 'Source One', type: 'meshtastic_tcp', enabled: true },
+    { id: 'src-2', name: 'Source Two', type: 'meshcore', enabled: true },
+  ];
+
   it('returns empty defaults without fetching when disabled', async () => {
     const { result } = renderHook(
-      () => useDashboardUnifiedData(['src-1', 'src-2'], false),
+      () => useDashboardUnifiedData(unifiedSources, false),
       { wrapper: createWrapper() },
     );
 
@@ -395,7 +500,7 @@ describe('useDashboardUnifiedData', () => {
     });
 
     const { result } = renderHook(
-      () => useDashboardUnifiedData(['src-1', 'src-2'], true),
+      () => useDashboardUnifiedData(unifiedSources, true),
       { wrapper: createWrapper() },
     );
 
@@ -410,5 +515,11 @@ describe('useDashboardUnifiedData', () => {
     expect(result.current.traceroutes).toEqual([{ id: 'tr-1' }, { id: 'tr-2' }]);
     expect(result.current.neighborInfo).toEqual([{ id: 'ni-1' }]);
     expect(result.current.channels).toEqual([{ id: 0, name: 'LongFast' }]);
+    // Node 42 was heard by both sources — both should be listed with the
+    // protocol derived from each source's type.
+    expect((result.current.nodes[0] as any).sources).toEqual([
+      { sourceId: 'src-1', sourceName: 'Source One', protocol: 'Meshtastic' },
+      { sourceId: 'src-2', sourceName: 'Source Two', protocol: 'MeshCore' },
+    ]);
   });
 });

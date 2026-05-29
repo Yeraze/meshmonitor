@@ -300,10 +300,38 @@ function mergeNodeRecords(records: any[]): any {
 }
 
 /**
+ * Describes one source that reported a node, attached to each merged Unified
+ * node so the map popup can list "seen by source X over protocol Y".
+ */
+export interface NodeSourceRef {
+  sourceId: string;
+  sourceName: string;
+  protocol: 'Meshtastic' | 'MeshCore';
+}
+
+/**
+ * One source's data bundle plus its identifying metadata. The metadata is
+ * optional so legacy callers (and tests) that only pass data still work — when
+ * absent, merged nodes simply carry no `sources` array.
+ */
+export interface UnifiedSourceBundle {
+  sourceId?: string;
+  sourceName?: string;
+  protocol?: 'Meshtastic' | 'MeshCore';
+  nodes: unknown[];
+  traceroutes: unknown[];
+  neighborInfo: unknown[];
+  channels: unknown[];
+}
+
+/**
  * Merge the same record type fetched from N sources into a single array.
  *
  * - **Nodes**: grouped by nodeNum, then field-level merged via
- *   `mergeNodeRecords` so position/user/role survive across sources.
+ *   `mergeNodeRecords` so position/user/role survive across sources. Each
+ *   merged node also gets a `sources` array (deduped by sourceId) naming every
+ *   source that reported it and its protocol — consumed by the map popup on
+ *   the Unified view.
  * - **NeighborInfo / Traceroutes**: simply concatenated; each row is a
  *   per-source observation and the map renders one polyline per row.
  * - **Channels**: taken from the first source that returned any. The
@@ -311,29 +339,50 @@ function mergeNodeRecords(records: any[]): any {
  *   array so other consumers don't break.
  */
 export function mergeUnifiedSourceData(
-  perSource: Array<{ nodes: unknown[]; traceroutes: unknown[]; neighborInfo: unknown[]; channels: unknown[] }>,
+  perSource: UnifiedSourceBundle[],
 ): { nodes: unknown[]; traceroutes: unknown[]; neighborInfo: unknown[]; channels: unknown[] } {
-  // Keys are stringified so MeshCore contacts (which don't have a meshtastic
-  // nodeNum and instead carry an `mc:<source>:<pubkey>` nodeId) don't all
-  // collapse into the bucket for nodeNum=0.
-  const recordsByKey = new Map<string, any[]>();
+  // Keys are stringified and namespaced (`mt:`/`mc:`) so MeshCore contacts
+  // (which carry no meshtastic nodeNum) don't collapse into the nodeNum=0
+  // bucket. MeshCore nodes key on publicKey so the same physical node merges
+  // across sources (see keying block below). Each bucket entry pairs the raw
+  // node record with the source it came from so we can rebuild `sources` after
+  // the field-level merge collapses the records.
+  const recordsByKey = new Map<string, Array<{ node: any; source: NodeSourceRef | null }>>();
   const traceroutes: unknown[] = [];
   const neighborInfo: unknown[] = [];
   let channels: unknown[] = [];
 
   for (const ps of perSource) {
+    const source: NodeSourceRef | null = ps.sourceId
+      ? {
+          sourceId: ps.sourceId,
+          sourceName: ps.sourceName ?? ps.sourceId,
+          protocol: ps.protocol ?? 'Meshtastic',
+        }
+      : null;
     for (const n of ps.nodes as any[]) {
       if (n == null) continue;
       let key: string | null = null;
-      if (n.isMeshCore && typeof n.nodeId === 'string' && n.nodeId.length > 0) {
-        key = `mc:${n.nodeId}`;
+      if (n.isMeshCore) {
+        // A MeshCore contact's identity is its public key — stable across
+        // sources. The server-built `nodeId` embeds the reporting source
+        // (`mc:<sourceId>:<pubkeyPrefix>`), so keying on it would put the same
+        // physical node into a separate bucket per source and it would always
+        // show as "seen by 1 source". Key on publicKey so the same node merges
+        // across MeshCore sources; fall back to nodeId only when no key exists.
+        if (typeof n.publicKey === 'string' && n.publicKey.length > 0) {
+          key = `mc:${n.publicKey}`;
+        } else if (typeof n.nodeId === 'string' && n.nodeId.length > 0) {
+          key = `mc:${n.nodeId}`;
+        }
       } else if (typeof n.nodeNum === 'number') {
         key = `mt:${n.nodeNum}`;
       }
       if (key == null) continue;
+      const entry = { node: n, source };
       const bucket = recordsByKey.get(key);
-      if (bucket) bucket.push(n);
-      else recordsByKey.set(key, [n]);
+      if (bucket) bucket.push(entry);
+      else recordsByKey.set(key, [entry]);
     }
     traceroutes.push(...ps.traceroutes);
     neighborInfo.push(...ps.neighborInfo);
@@ -342,7 +391,15 @@ export function mergeUnifiedSourceData(
     }
   }
 
-  const nodes = Array.from(recordsByKey.values()).map(mergeNodeRecords);
+  const nodes = Array.from(recordsByKey.values()).map((entries) => {
+    const merged = mergeNodeRecords(entries.map((e) => e.node));
+    const seen = new Map<string, NodeSourceRef>();
+    for (const e of entries) {
+      if (e.source && !seen.has(e.source.sourceId)) seen.set(e.source.sourceId, e.source);
+    }
+    if (seen.size > 0) merged.sources = Array.from(seen.values());
+    return merged;
+  });
 
   return {
     nodes,
@@ -360,11 +417,16 @@ export function mergeUnifiedSourceData(
  * tab.
  */
 export function useDashboardUnifiedData(
-  sourceIds: string[],
+  sources: Array<string | DashboardSource>,
   enabled: boolean,
 ): DashboardSourceData {
   const { authStatus } = useAuth();
   const isAuthenticated = authStatus?.authenticated ?? false;
+  // Accept either bare source-id strings (MapAnalysis layers, which never use
+  // the per-node `sources` field) or full DashboardSource objects (the Unified
+  // dashboard map, which needs source names + protocol for the popup).
+  const sourceList = sources.map((s) => (typeof s === 'string' ? { id: s } : s));
+  const sourceIds = sourceList.map((s) => s.id);
 
   const queries = useQueries({
     queries: sourceIds.flatMap((id) => [
@@ -416,7 +478,14 @@ export function useDashboardUnifiedData(
 
   // Group every 4 sequential queries back into one source's bundle, mirroring
   // the order we registered them in (nodes, traceroutes, neighborInfo, channels).
-  const perSource = sourceIds.map((_, i) => ({
+  // When given full DashboardSource objects we carry id/name/protocol so the
+  // merge can stamp `sources` onto every node (MeshCore source types map to the
+  // MeshCore protocol; everything else is Meshtastic). Bare-string callers get
+  // no metadata, so merged nodes carry no `sources` field.
+  const perSource: UnifiedSourceBundle[] = sourceList.map((s, i) => ({
+    sourceId: 'name' in s ? s.id : undefined,
+    sourceName: 'name' in s ? s.name : undefined,
+    protocol: 'type' in s ? (s.type === 'meshcore' ? 'MeshCore' : 'Meshtastic') : undefined,
     nodes: (queries[i * 4 + 0]?.data as unknown[] | undefined) ?? [],
     traceroutes: (queries[i * 4 + 1]?.data as unknown[] | undefined) ?? [],
     neighborInfo: (queries[i * 4 + 2]?.data as unknown[] | undefined) ?? [],

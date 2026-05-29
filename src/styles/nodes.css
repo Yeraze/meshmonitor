@@ -1906,6 +1906,56 @@
   color: var(--ctp-base);
 }
 
+/* Node Popup Sources Section (Unified map only) — which sources reported this
+   node and over which protocol. */
+.node-popup-sources {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--ctp-surface1);
+}
+
+.node-popup-sources-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ctp-subtext0);
+  margin-bottom: 0.35rem;
+}
+
+.node-popup-source-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0;
+  font-size: 0.82rem;
+}
+
+.node-popup-source-name {
+  color: var(--ctp-text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-popup-protocol-badge {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  color: var(--ctp-base);
+}
+
+.node-popup-protocol-badge.protocol-meshtastic {
+  background: var(--ctp-green);
+}
+
+.node-popup-protocol-badge.protocol-meshcore {
+  background: var(--ctp-peach);
+}
+
 /* Node Popup Traceroute Section */
 .node-popup-traceroute {
   margin: 0.75rem 0;
