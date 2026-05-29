@@ -5,7 +5,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TelemetryGraphs from './TelemetryGraphs';
 import { ToastProvider } from './ToastContainer';
@@ -737,6 +736,92 @@ describe('TelemetryGraphs Component', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Temperature (°F)')).toBeInTheDocument();
+      });
+    });
+
+    it('should convert the gauge value to Fahrenheit, not just the unit label', async () => {
+      // Regression: gauge/numeric modes previously rendered the raw Celsius
+      // value with a °F label (e.g. a 25°C node showed "25 °F").
+      const mockData = [
+        {
+          nodeId: mockNodeId,
+          nodeNum: 1,
+          telemetryType: 'temperature',
+          value: 25, // Celsius from API → should display as 77 °F
+          unit: '°C',
+          timestamp: Date.now(),
+          createdAt: Date.now(),
+        },
+      ];
+
+      (global.fetch as Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/settings')) {
+          return Promise.resolve({
+            ok: true,
+            // Force this widget into gauge mode
+            json: async () => ({
+              telemetryWidgetModes: JSON.stringify({ [`${mockNodeId}_temperature`]: 'gauge' }),
+            }),
+          });
+        }
+        if (url.includes('/api/solar/estimates')) {
+          return Promise.resolve({ ok: true, json: async () => ({ count: 0, estimates: [] }) });
+        }
+        if (url.includes('/api/csrf-token')) {
+          return Promise.resolve({ ok: true, json: async () => ({ token: 'test-csrf-token' }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => mockData });
+      });
+
+      renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);
+
+      await waitFor(() => {
+        // 25°C → 77°F. The TelemetryGauge exposes "Gauge: <value> <unit>" as its aria-label.
+        expect(screen.getByLabelText('Gauge: 77 °F')).toBeInTheDocument();
+      });
+      expect(screen.queryByLabelText('Gauge: 25 °F')).not.toBeInTheDocument();
+    });
+
+    it('should also convert soilTemperature and co2Temperature, not just temperature', async () => {
+      const mockData = [
+        {
+          nodeId: mockNodeId,
+          nodeNum: 1,
+          telemetryType: 'soilTemperature',
+          value: 0, // 0°C → 32°F
+          unit: '°C',
+          timestamp: Date.now(),
+          createdAt: Date.now(),
+        },
+        {
+          nodeId: mockNodeId,
+          nodeNum: 1,
+          telemetryType: 'co2Temperature',
+          value: 100, // 100°C → 212°F
+          unit: '°C',
+          timestamp: Date.now(),
+          createdAt: Date.now(),
+        },
+      ];
+
+      (global.fetch as Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/settings')) {
+          return Promise.resolve({ ok: true, json: async () => ({}) });
+        }
+        if (url.includes('/api/solar/estimates')) {
+          return Promise.resolve({ ok: true, json: async () => ({ count: 0, estimates: [] }) });
+        }
+        if (url.includes('/api/csrf-token')) {
+          return Promise.resolve({ ok: true, json: async () => ({ token: 'test-csrf-token' }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => mockData });
+      });
+
+      renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} temperatureUnit="F" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Soil Temperature (°F)')).toBeInTheDocument();
+        expect(screen.getByText('CO₂ Sensor Temperature (°F)')).toBeInTheDocument();
       });
     });
 

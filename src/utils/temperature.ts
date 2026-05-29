@@ -27,3 +27,13 @@ export function formatTemperature(value: number, fromUnit: TemperatureUnit, toUn
 export function getTemperatureUnit(unit: TemperatureUnit): string {
   return unit === 'C' ? '°C' : '°F';
 }
+
+/**
+ * Telemetry types that carry a Celsius temperature value from the device and
+ * should honor the user's temperature-unit preference.
+ */
+const TEMPERATURE_TELEMETRY_TYPES = new Set(['temperature', 'soilTemperature', 'co2Temperature']);
+
+export function isTemperatureType(type: string): boolean {
+  return TEMPERATURE_TELEMETRY_TYPES.has(type);
+}

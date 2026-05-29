@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { appBasename } from '../init';
+import { type TemperatureUnit, formatTemperature, getTemperatureUnit, isTemperatureType } from '../utils/temperature';
 import '../styles/unified.css';
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
@@ -267,6 +268,9 @@ export default function UnifiedTelemetryPage() {
   const [sourceFilter, setSourceFilter] = useState('');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('newest');
+  // This page renders outside SettingsProvider, so read the persisted
+  // temperature-unit preference directly (same localStorage key SettingsContext uses).
+  const temperatureUnit: TemperatureUnit = localStorage.getItem('temperatureUnit') === 'F' ? 'F' : 'C';
 
   const fetchTelemetry = useCallback(async () => {
     try {
@@ -491,14 +495,19 @@ export default function UnifiedTelemetryPage() {
                       <div className="unified-node-card__readings">
                         {readings.map(r => {
                           const label = TYPE_LABELS[r.telemetryType] ?? r.telemetryType;
-                          const unit = r.unit ?? inferUnit(r.telemetryType);
+                          // Device temperatures arrive in Celsius — honor the unit preference.
+                          const isTemp = isTemperatureType(r.telemetryType);
+                          const value = isTemp ? formatTemperature(r.value, 'C', temperatureUnit) : r.value;
+                          const unit = isTemp
+                            ? getTemperatureUnit(temperatureUnit)
+                            : (r.unit ?? inferUnit(r.telemetryType));
                           return (
                             <div key={r.telemetryType} className="unified-reading">
                               <div className="unified-reading__label" title={r.telemetryType}>
                                 {label}
                               </div>
                               <div className="unified-reading__value">
-                                {formatValue(r.telemetryType, r.value)}
+                                {formatValue(r.telemetryType, value)}
                                 {unit && <span className="unified-reading__unit">{unit}</span>}
                               </div>
                             </div>

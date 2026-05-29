@@ -19,7 +19,7 @@ import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, Respon
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useTelemetry, type TelemetryData } from '../hooks/useTelemetry';
-import { type TemperatureUnit, formatTemperature, getTemperatureUnit } from '../utils/temperature';
+import { type TemperatureUnit, formatTemperature, getTemperatureUnit, isTemperatureType } from '../utils/temperature';
 import { formatChartAxisTimestamp, formatTime } from '../utils/datetime';
 import { useSettings, type TimeFormat } from '../contexts/SettingsContext';
 import type { TelemetryNodeInfo } from '../types/device';
@@ -450,7 +450,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
     };
 
     const nodeName = formatNodeName(node, favorite.nodeId);
-    const isTemperature = favorite.telemetryType === 'temperature';
+    const isTemperature = isTemperatureType(favorite.telemetryType);
     const color = getColor(favorite.telemetryType);
     const label = isPaxcounterCombined ? 'Paxcounter' : getTranslatedLabel(favorite.telemetryType);
 
@@ -561,6 +561,16 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
 
     const latest = getLatestValue(telemetryData);
 
+    // Gauge/numeric modes display a single raw value, so convert it (and the
+    // gauge range) to the selected unit. Ranges persist in Celsius, so edits
+    // made while displaying Fahrenheit are converted back before saving.
+    const toDisplayTemp = (v: number) =>
+      isTemperature ? formatTemperature(v, 'C', temperatureUnit) : v;
+    const toStoredTemp = (v: number) =>
+      isTemperature ? formatTemperature(v, temperatureUnit, 'C') : v;
+    const handleRangeChange = (r: { min: number; max: number }) =>
+      setRange({ min: toStoredTemp(r.min), max: toStoredTemp(r.max) });
+
     return (
       <div ref={setNodeRef} style={style} className="dashboard-chart-container">
         <div className="dashboard-chart-header">
@@ -620,14 +630,14 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
         {mode === 'gauge' ? (
           latest ? (
             <TelemetryGauge
-              value={latest.value}
-              min={range.min}
-              max={range.max}
+              value={toDisplayTemp(latest.value)}
+              min={toDisplayTemp(range.min)}
+              max={toDisplayTemp(range.max)}
               unit={unit}
               color={color}
               timestamp={latest.timestamp}
               nodeId={favorite.nodeId}
-              onRangeChange={setRange}
+              onRangeChange={handleRangeChange}
             />
           ) : (
             <div className="dashboard-no-data">{t('dashboard.no_chart_data')}</div>
@@ -635,7 +645,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
         ) : mode === 'numeric' ? (
           latest ? (
             <TelemetryNumericLabel
-              value={latest.value}
+              value={toDisplayTemp(latest.value)}
               unit={unit}
               color={color}
               timestamp={latest.timestamp}
