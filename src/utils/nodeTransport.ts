@@ -22,7 +22,22 @@ export const TX_API = 7;
 
 export type NodeTransportClass = 'rf' | 'udp' | 'mqtt';
 
-/** Classify a node's most-recent transport for the map filter. */
+/** A node carrying a precomputed union of transport classes (set by the
+ *  Unified merge — see `mergeUnifiedSourceData`). */
+export interface NodeTransportFields {
+  transportMechanism?: number | null;
+  viaMqtt?: boolean | null;
+  /**
+   * Union of transport classes this node has been observed on, across every
+   * source that reported it. Present on Unified-merged nodes so the map's
+   * RF/UDP/MQTT toggles are *additive* — a node heard via RF on one source and
+   * MQTT on another stays visible while "Show RF" is on even if "Show MQTT" is
+   * off. Absent on single-source rows (which have exactly one class).
+   */
+  transportClasses?: NodeTransportClass[] | null;
+}
+
+/** Classify a single node record's most-recent transport for the map filter. */
 export function classifyNodeTransport(node: {
   transportMechanism?: number | null;
   viaMqtt?: boolean | null;
@@ -41,17 +56,33 @@ export function classifyNodeTransport(node: {
 }
 
 /**
- * Returns true when a node should be visible on the map given the
- * three transport-class toggles. Keep this small/inlined — it's
- * called from inside large `.filter()` chains.
+ * The set of transport classes a node should be filtered against. Prefers the
+ * precomputed `transportClasses` union (Unified view), falling back to the
+ * single classification of this record (single-source view / unmerged rows).
+ */
+export function getNodeTransportClasses(node: NodeTransportFields): NodeTransportClass[] {
+  if (Array.isArray(node.transportClasses) && node.transportClasses.length > 0) {
+    return node.transportClasses;
+  }
+  return [classifyNodeTransport(node)];
+}
+
+/**
+ * Returns true when a node should be visible on the map given the three
+ * transport-class toggles. Additive: a node is shown when ANY transport class
+ * it has been seen on (across sources) has its toggle enabled — so toggling
+ * MQTT off no longer hides a node that is also reachable via RF. Keep this
+ * small — it's called from inside large `.filter()` chains.
  */
 export function nodePassesTransportFilter(
-  node: { transportMechanism?: number | null; viaMqtt?: boolean | null },
+  node: NodeTransportFields,
   flags: { showRfNodes: boolean; showUdpNodes: boolean; showMqttNodes: boolean },
 ): boolean {
-  switch (classifyNodeTransport(node)) {
-    case 'mqtt': return flags.showMqttNodes;
-    case 'udp':  return flags.showUdpNodes;
-    case 'rf':   return flags.showRfNodes;
-  }
+  return getNodeTransportClasses(node).some((c) => {
+    switch (c) {
+      case 'mqtt': return flags.showMqttNodes;
+      case 'udp':  return flags.showUdpNodes;
+      case 'rf':   return flags.showRfNodes;
+    }
+  });
 }

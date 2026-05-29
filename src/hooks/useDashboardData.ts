@@ -8,6 +8,7 @@
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { appBasename } from '../init';
 import { useAuth } from '../contexts/AuthContext';
+import { classifyNodeTransport, type NodeTransportClass } from '../utils/nodeTransport';
 
 /**
  * A data source configured in MeshMonitor
@@ -398,6 +399,14 @@ export function mergeUnifiedSourceData(
       if (e.source && !seen.has(e.source.sourceId)) seen.set(e.source.sourceId, e.source);
     }
     if (seen.size > 0) merged.sources = Array.from(seen.values());
+    // Union of transport classes across every per-source record so the map's
+    // RF/UDP/MQTT toggles are additive — a node heard via RF on one source and
+    // MQTT on another stays visible under "Show RF" even with "Show MQTT" off.
+    // The whole-record merge keeps only the newest transportMechanism, which
+    // would otherwise drop the other transports.
+    const classes = new Set<NodeTransportClass>();
+    for (const e of entries) classes.add(classifyNodeTransport(e.node));
+    merged.transportClasses = Array.from(classes);
     return merged;
   });
 

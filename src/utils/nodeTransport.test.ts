@@ -115,3 +115,46 @@ describe('nodePassesTransportFilter', () => {
     }
   });
 });
+
+describe('nodePassesTransportFilter — additive transportClasses (Unified)', () => {
+  // A node heard via RF on one source and MQTT on another carries both classes.
+  const rfAndMqtt = { transportClasses: ['rf', 'mqtt'] as const, transportMechanism: TX_MQTT };
+
+  it('stays visible under "Show RF" even when MQTT is off (the reported bug)', () => {
+    expect(
+      nodePassesTransportFilter(rfAndMqtt, { showRfNodes: true, showUdpNodes: false, showMqttNodes: false }),
+    ).toBe(true);
+  });
+
+  it('stays visible under "Show MQTT" even when RF is off', () => {
+    expect(
+      nodePassesTransportFilter(rfAndMqtt, { showRfNodes: false, showUdpNodes: false, showMqttNodes: true }),
+    ).toBe(true);
+  });
+
+  it('is hidden only when ALL of its classes are toggled off', () => {
+    expect(
+      nodePassesTransportFilter(rfAndMqtt, { showRfNodes: false, showUdpNodes: true, showMqttNodes: false }),
+    ).toBe(false);
+  });
+
+  it('ignores the collapsed transportMechanism when a transportClasses union is present', () => {
+    // transportMechanism says MQTT (newest-wins from the merge), but the union
+    // includes rf — RF-only filter must still show it.
+    expect(
+      nodePassesTransportFilter(
+        { transportClasses: ['rf'], transportMechanism: TX_MQTT },
+        { showRfNodes: true, showUdpNodes: false, showMqttNodes: false },
+      ),
+    ).toBe(true);
+  });
+
+  it('falls back to single-class classification when transportClasses is empty/absent', () => {
+    expect(
+      nodePassesTransportFilter(
+        { transportClasses: [], transportMechanism: TX_MQTT },
+        { showRfNodes: true, showUdpNodes: false, showMqttNodes: false },
+      ),
+    ).toBe(false);
+  });
+});
