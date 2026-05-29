@@ -84,15 +84,6 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   // lines into the transcript without lifting transcript state.
   const bodyRef = useRef<CliConsoleBodyHandle | null>(null);
 
-  // Guard: auto-login runs from a useEffect whose deps include the
-  // `actions` object, and `useMeshCore` rebuilds `actions` on every
-  // poll refresh — so without this ref the effect re-fires and pushes
-  // a fresh "Logged in with saved password" line into the transcript
-  // every few seconds. Tracks the publicKey we've already auto-attempted
-  // in this mount cycle; the reset effect below clears it on contact
-  // change so navigating away and back still re-attempts.
-  const autoLoginAttemptedFor = useRef<string | null>(null);
-
   // Reset auth state when the targeted contact changes — a stale "logged
   // in" badge against the wrong contact would be actively misleading.
   useEffect(() => {
@@ -101,7 +92,6 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
     setLoginPassword('');
     setRememberPassword(false);
     setLoginError(null);
-    autoLoginAttemptedFor.current = null;
   }, [publicKey]);
 
   const refreshCapability = useCallback(async () => {
@@ -110,37 +100,14 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
     return cap;
   }, [actions]);
 
-  // On mount (and on contact change): fetch capability, and if this
-  // contact has a non-rotated stored credential, silently attempt
-  // auto-login. The plaintext password stays server-side throughout.
+  // On mount (and on contact change): fetch the credential capability so the
+  // UI can show whether a saved password exists. This is a local server/DB
+  // lookup — NO radio airtime. We intentionally do NOT auto-login: logging in
+  // costs airtime, so it's an explicit user action (the "Log in with saved
+  // password" button below).
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const cap = await refreshCapability();
-      if (cancelled || !cap) return;
-      const target = publicKey.toLowerCase();
-      const isStored = cap.stored?.some((s) => s.publicKey.toLowerCase() === target);
-      const isRotated = cap.rotated?.some((r) => r.publicKey.toLowerCase() === target);
-      if (!isStored || isRotated) return;
-      if (autoLoginAttemptedFor.current === publicKey) return;
-      autoLoginAttemptedFor.current = publicKey;
-      const result = await actions.loginRemoteWithSaved(publicKey);
-      if (cancelled) return;
-      if (result.success) {
-        setLoggedIn(true);
-        bodyRef.current?.appendInfo(
-          t('meshcore.remoteConsole.auto_login_success', 'Logged in with saved password'),
-        );
-      } else if (result.code === 'CREDENTIAL_KEY_ROTATED') {
-        void refreshCapability();
-      }
-      // NO_STORED_CREDENTIAL / STORED_CREDENTIAL_REJECTED → silently fall
-      // through to the manual login modal.
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [publicKey, actions, refreshCapability, t]);
+    void refreshCapability();
+  }, [publicKey, refreshCapability]);
 
   const handleLogin = useCallback(async () => {
     setLoginBusy(true);
@@ -166,6 +133,28 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
     void refreshCapability();
   }, [actions, loginPassword, publicKey, refreshCapability, rememberPassword, t]);
 
+  // On-demand login using the saved password (one click, no re-typing). This
+  // is the only place the saved credential is used from the console, and only
+  // when the user explicitly asks — never automatically.
+  const handleLoginWithSaved = useCallback(async () => {
+    setLoginBusy(true);
+    setLoginError(null);
+    const result = await actions.loginRemoteWithSaved(publicKey);
+    setLoginBusy(false);
+    if (result.success) {
+      setLoggedIn(true);
+      bodyRef.current?.appendInfo(
+        t('meshcore.remoteConsole.login_success_saved', 'Logged in with saved password'),
+      );
+      void refreshCapability();
+      return;
+    }
+    if (result.code === 'CREDENTIAL_KEY_ROTATED') {
+      void refreshCapability();
+    }
+    setLoginError(result.error || t('meshcore.remoteConsole.login_failed', 'Login failed'));
+  }, [actions, publicKey, refreshCapability, t]);
+
   const handleForgetCredential = useCallback(async () => {
     const ok = await actions.forgetRemoteCredential(publicKey);
     bodyRef.current?.appendInfo(
@@ -178,6 +167,13 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
 
   const isRotatedForThisContact =
     capability?.rotated.some((r) => r.publicKey.toLowerCase() === publicKey.toLowerCase()) ?? false;
+
+  // A usable saved password exists for this contact (stored and decryptable —
+  // i.e. not key-rotated). Drives the "✓ Saved password" indicator and the
+  // one-click login button.
+  const hasSavedCredential =
+    (capability?.stored.some((s) => s.publicKey.toLowerCase() === publicKey.toLowerCase()) ?? false) &&
+    !isRotatedForThisContact;
 
   const runCommand = useCallback(
     (text: string, opts?: { confirm?: boolean }) => actions.sendCliCommand(publicKey, text, opts),
@@ -194,6 +190,10 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
           {loggedIn ? (
             <span className="mrc-status-chip mrc-status-ok">
               {t('meshcore.remoteConsole.session_active', 'Session active')}
+            </span>
+          ) : hasSavedCredential ? (
+            <span className="mrc-status-chip mrc-status-saved">
+              ✓ {t('meshcore.remoteConsole.saved_password', 'Saved password')}
             </span>
           ) : (
             <span className="mrc-status-chip mrc-status-idle">
@@ -226,13 +226,34 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
       )}
 
       <div className="mrc-actions">
-        {!loggedIn ? (
-          <button type="button" className="mrc-btn-primary" onClick={() => setShowLogin(true)}>
-            {t('meshcore.remoteConsole.login_button', 'Log in to {{name}}', { name: contactName })}
-          </button>
-        ) : (
+        {loggedIn ? (
           <button type="button" className="mrc-btn-secondary" onClick={handleForgetCredential}>
             {t('meshcore.remoteConsole.forget_credential', 'Forget stored password')}
+          </button>
+        ) : hasSavedCredential ? (
+          <>
+            <button
+              type="button"
+              className="mrc-btn-primary"
+              onClick={() => void handleLoginWithSaved()}
+              disabled={loginBusy}
+            >
+              {loginBusy
+                ? t('meshcore.remoteConsole.logging_in', 'Logging in…')
+                : t('meshcore.remoteConsole.login_with_saved_button', 'Log in with saved password')}
+            </button>
+            <button
+              type="button"
+              className="mrc-btn-secondary"
+              onClick={() => setShowLogin(true)}
+              disabled={loginBusy}
+            >
+              {t('meshcore.remoteConsole.login_different', 'Use a different password')}
+            </button>
+          </>
+        ) : (
+          <button type="button" className="mrc-btn-primary" onClick={() => setShowLogin(true)}>
+            {t('meshcore.remoteConsole.login_button', 'Log in to {{name}}', { name: contactName })}
           </button>
         )}
       </div>

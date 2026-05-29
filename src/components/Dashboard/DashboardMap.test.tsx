@@ -37,6 +37,10 @@ vi.mock('../../contexts/MapContext', () => ({
     setShowUdpNodes: vi.fn(),
     showMqttNodes: true,
     setShowMqttNodes: vi.fn(),
+    showNeighborInfo: true,
+    setShowNeighborInfo: vi.fn(),
+    showWaypoints: false,
+    setShowWaypoints: vi.fn(),
   }),
 }));
 
@@ -152,6 +156,7 @@ const neighborLinkMissingPositions = {
 const defaultProps = {
   nodes: [],
   neighborInfo: [],
+  meshcoreNeighbors: [],
   traceroutes: [],
   channels: [],
   tilesetId: 'osm',
@@ -274,5 +279,46 @@ describe('DashboardMap', () => {
     );
     const markers = screen.getAllByTestId('map-marker');
     expect(markers.length).toBe(1);
+  });
+
+  // --- MeshCore neighbor links ------------------------------------------------
+
+  const mcNodeA = {
+    isMeshCore: true, publicKey: 'AAAA', nodeNum: 0,
+    user: { id: 'mc:s:AAAA', shortName: 'A', longName: 'MC A' },
+    position: { latitude: 35.0, longitude: -80.0 },
+    hopsAway: 0, role: 0, lastHeard: recent,
+  };
+  const mcNodeB = {
+    isMeshCore: true, publicKey: 'BBBB', nodeNum: 0,
+    user: { id: 'mc:s:BBBB', shortName: 'B', longName: 'MC B' },
+    position: { latitude: 36.0, longitude: -81.0 },
+    hopsAway: 0, role: 0, lastHeard: recent,
+  };
+  const mcEdge = { id: 1, publicKey: 'AAAA', neighborPublicKey: 'BBBB', sourceId: 's', snr: 5, timestamp: recent * 1000 };
+
+  it('renders a MeshCore neighbor link between two positioned MeshCore nodes', () => {
+    render(
+      <DashboardMap {...defaultProps} nodes={[mcNodeA, mcNodeB]} meshcoreNeighbors={[mcEdge]} />,
+    );
+    expect(screen.getAllByTestId('map-marker')).toHaveLength(2);
+    // One MeshCore neighbor polyline (no traceroute/meshtastic-neighbor lines here).
+    expect(screen.getAllByTestId('map-polyline')).toHaveLength(1);
+  });
+
+  it('does not render a MeshCore neighbor link when one endpoint node is not visible', () => {
+    render(
+      <DashboardMap {...defaultProps} nodes={[mcNodeA]} meshcoreNeighbors={[mcEdge]} />,
+    );
+    expect(screen.getAllByTestId('map-marker')).toHaveLength(1);
+    expect(screen.queryAllByTestId('map-polyline')).toHaveLength(0);
+  });
+
+  it('deduplicates a MeshCore link reported by multiple sources (drawn once)', () => {
+    const reverseEdge = { id: 2, publicKey: 'BBBB', neighborPublicKey: 'AAAA', sourceId: 's2', snr: 4, timestamp: recent * 1000 };
+    render(
+      <DashboardMap {...defaultProps} nodes={[mcNodeA, mcNodeB]} meshcoreNeighbors={[mcEdge, reverseEdge]} />,
+    );
+    expect(screen.getAllByTestId('map-polyline')).toHaveLength(1);
   });
 });

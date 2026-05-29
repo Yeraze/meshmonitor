@@ -76,6 +76,38 @@
   font-style: italic;
 }
 
+/* On-demand empty state: prompt + Fetch button before the first request. */
+.mrs-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.mrs-empty-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ctp-subtext0);
+  font-style: italic;
+}
+
+.mrs-fetch-btn {
+  padding: 0.35rem 1rem;
+  border: 1px solid var(--ctp-mauve);
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+  border-radius: var(--radius-sm, 3px);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+
+.mrs-fetch-btn:hover {
+  background: var(--ctp-surface1);
+}
+
 .mrs-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

@@ -5,14 +5,15 @@
  * (wrapped by GET /admin/status/:publicKey → `getRemoteStatus`). Mounted
  * inside MeshCoreRemoteConsole once the user has an active admin session.
  *
- * Auto-refresh: a low-frequency poll (30s by default) so the panel stays
- * fresh without hammering the radio. Manual refresh button bypasses the
- * timer. Failures render a soft "unavailable" state — typical when the
- * remote firmware is a Companion (which doesn't populate the full counter
- * set) or the path has gone stale since login.
+ * On-demand only: status is fetched when the user clicks "Fetch stats" (or
+ * "Refresh"). It does NOT auto-fetch on mount or poll on a timer — querying a
+ * remote repeater costs radio airtime, so it's an explicit user action.
+ * Failures render a soft "unavailable" state — typical when the remote
+ * firmware is a Companion (which doesn't populate the full counter set) or the
+ * path has gone stale since login.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MeshCoreActions, MeshCoreRemoteStatus } from './hooks/useMeshCore';
 import './MeshCoreRemoteStatsPanel.css';
@@ -21,14 +22,11 @@ interface Props {
   publicKey: string;
   /** Pulled from the same useMeshCore actions bundle the console uses. */
   fetchStatus: MeshCoreActions['getRemoteStatus'];
-  /** Auto-refresh interval in ms. 0 disables auto-refresh. Default 30s. */
-  refreshIntervalMs?: number;
 }
 
 export const MeshCoreRemoteStatsPanel: React.FC<Props> = ({
   publicKey,
   fetchStatus,
-  refreshIntervalMs = 30_000,
 }) => {
   const { t } = useTranslation();
   const [status, setStatus] = useState<MeshCoreRemoteStatus | null>(null);
@@ -60,14 +58,9 @@ export const MeshCoreRemoteStatsPanel: React.FC<Props> = ({
     }
   }, [fetchStatus, publicKey, t]);
 
-  // Initial fetch + interval. Reset whenever the targeted contact changes
-  // so a stale interval tick can't hit the previously-selected node.
-  useEffect(() => {
-    void load();
-    if (refreshIntervalMs <= 0) return;
-    const id = setInterval(() => { void load(); }, refreshIntervalMs);
-    return () => clearInterval(id);
-  }, [load, refreshIntervalMs]);
+  // No auto-fetch and no polling — status is loaded only when the user asks
+  // (the "Fetch stats" / "Refresh" buttons below), to avoid spending radio
+  // airtime on a remote query the user didn't request.
 
   return (
     <section className="meshcore-remote-stats" aria-label={t('meshcore.remoteStats.title', 'Remote node status')}>
@@ -94,7 +87,11 @@ export const MeshCoreRemoteStatsPanel: React.FC<Props> = ({
           onClick={(e) => { e.stopPropagation(); void load(); }}
           disabled={loading}
         >
-          {loading ? t('meshcore.remoteStats.refreshing', 'Refreshing…') : t('meshcore.remoteStats.refresh', 'Refresh')}
+          {loading
+            ? t('meshcore.remoteStats.refreshing', 'Refreshing…')
+            : status
+              ? t('meshcore.remoteStats.refresh', 'Refresh')
+              : t('meshcore.remoteStats.fetch', 'Fetch stats')}
         </button>
       </header>
 
@@ -137,6 +134,16 @@ export const MeshCoreRemoteStatsPanel: React.FC<Props> = ({
           )}
           {loading && !status && (
             <p className="mrs-loading">{t('meshcore.remoteStats.loading', 'Loading status…')}</p>
+          )}
+          {!status && !loading && (
+            <div className="mrs-empty">
+              <p className="mrs-empty-hint">
+                {t('meshcore.remoteStats.empty_hint', 'Status is not fetched automatically.')}
+              </p>
+              <button type="button" className="mrs-fetch-btn" onClick={() => void load()}>
+                {t('meshcore.remoteStats.fetch', 'Fetch stats')}
+              </button>
+            </div>
           )}
         </div>
       )}

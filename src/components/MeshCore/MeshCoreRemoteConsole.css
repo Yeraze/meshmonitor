@@ -49,6 +49,13 @@
   color: var(--ctp-subtext0);
 }
 
+/* Saved-password-available (not yet logged in): teal, distinct from the
+   green "session active" so it doesn't read as an active session. */
+.mrc-status-saved {
+  background: var(--ctp-teal);
+  color: var(--ctp-crust);
+}
+
 .mrc-banner {
   padding: 0.6rem 0.8rem;
   border-radius: var(--radius-md, 6px);

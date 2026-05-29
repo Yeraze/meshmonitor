@@ -1,17 +1,15 @@
 /**
  * @vitest-environment jsdom
  *
- * Regression tests for MeshCoreRemoteConsole's auto-login flow.
+ * Tests for MeshCoreRemoteConsole's credential handling.
  *
- * The auto-login `useEffect` depends on `actions`, and `useMeshCore`
- * rebuilds the `actions` object on every poll refresh (every few
- * seconds). Without an attempted-for-key guard, the effect re-fires
- * on every poll and pushes a fresh "Logged in with saved password"
- * line into the transcript each time — visible as continuous log
- * spam in the Remote Administration console.
+ * The console must NEVER auto-login (that spends radio airtime the user
+ * didn't ask for). On mount it only fetches the credential *capability* (a
+ * local server lookup) so it can show a "Saved password" indicator; the saved
+ * password is used only when the user explicitly clicks the login button.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MeshCoreRemoteConsole } from './MeshCoreRemoteConsole';
 
 vi.mock('react-i18next', () => ({
@@ -23,8 +21,7 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-// Stub the heavy children — we're only exercising the auto-login effect
-// and its interaction with the `actions` prop identity.
+// Stub the heavy children — we're only exercising the console's own UI.
 vi.mock('./MeshCoreRemoteStatsPanel', () => ({
   MeshCoreRemoteStatsPanel: () => null,
 }));
@@ -38,10 +35,9 @@ vi.mock('./CliConsoleBody', () => ({
 const PK = 'a'.repeat(64);
 
 function makeActions(overrides?: Partial<Record<string, ReturnType<typeof vi.fn>>>) {
-  const loginRemoteWithSaved = vi.fn().mockResolvedValue({ success: true });
   return {
     loginRemote: vi.fn(),
-    loginRemoteWithSaved,
+    loginRemoteWithSaved: vi.fn().mockResolvedValue({ success: true }),
     sendCliCommand: vi.fn(),
     getRemoteAdminCapability: vi.fn().mockResolvedValue({
       canRemember: true,
@@ -55,70 +51,56 @@ function makeActions(overrides?: Partial<Record<string, ReturnType<typeof vi.fn>
   };
 }
 
-describe('MeshCoreRemoteConsole auto-login', () => {
+describe('MeshCoreRemoteConsole credential handling', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('attempts auto-login exactly once across multiple actions-identity changes for the same contact', async () => {
-    // Shared mock instance so re-renders see the same call counter even
-    // though the wrapping `actions` object identity changes each time.
-    const sharedLoginWithSaved = vi.fn().mockResolvedValue({ success: true });
+  it('does NOT auto-login on mount (no radio airtime), but fetches capability', async () => {
+    const actions = makeActions();
+    render(<MeshCoreRemoteConsole publicKey={PK} contactName="Repeater" actions={actions as any} />);
 
-    const buildActions = () => ({
-      ...makeActions(),
-      loginRemoteWithSaved: sharedLoginWithSaved,
-    });
-
-    const { rerender } = render(
-      <MeshCoreRemoteConsole publicKey={PK} contactName="Repeater" actions={buildActions()} />,
-    );
-
-    // Wait for the first auto-login attempt to resolve.
-    await waitFor(() => expect(sharedLoginWithSaved).toHaveBeenCalledTimes(1));
-
-    // Simulate several poll refreshes — useMeshCore would hand down a new
-    // `actions` object each time. Without the guard the effect re-fires
-    // and `loginRemoteWithSaved` is called once per re-render.
-    for (let i = 0; i < 5; i += 1) {
-      await act(async () => {
-        rerender(
-          <MeshCoreRemoteConsole publicKey={PK} contactName="Repeater" actions={buildActions()} />,
-        );
-      });
-    }
-
-    // Still exactly one auto-login attempt.
-    expect(sharedLoginWithSaved).toHaveBeenCalledTimes(1);
+    // Capability is fetched (local lookup) so the UI can reflect saved state…
+    await waitFor(() => expect(actions.getRemoteAdminCapability).toHaveBeenCalled());
+    // …but the saved password is never used automatically.
+    expect(actions.loginRemoteWithSaved).not.toHaveBeenCalled();
   });
 
-  it('re-attempts auto-login after the targeted contact changes', async () => {
-    const sharedLoginWithSaved = vi.fn().mockResolvedValue({ success: true });
-    const PK2 = 'b'.repeat(64);
+  it('shows a "Saved password" indicator when a credential is stored', async () => {
+    const actions = makeActions();
+    render(<MeshCoreRemoteConsole publicKey={PK} contactName="Repeater" actions={actions as any} />);
 
-    const buildActionsFor = (key: string) => ({
-      ...makeActions({
-        getRemoteAdminCapability: vi.fn().mockResolvedValue({
-          canRemember: true,
-          rotatedCount: 0,
-          rotated: [],
-          stored: [{ publicKey: key, name: 'Stored' }],
-        }),
+    // Chip text is "✓ Saved password" — match the substring.
+    await waitFor(() => expect(screen.getByText(/Saved password/)).toBeInTheDocument());
+    expect(actions.loginRemoteWithSaved).not.toHaveBeenCalled();
+  });
+
+  it('logs in with the saved password only when the user clicks the button', async () => {
+    const actions = makeActions();
+    render(<MeshCoreRemoteConsole publicKey={PK} contactName="Repeater" actions={actions as any} />);
+
+    const btn = await screen.findByText('Log in with saved password');
+    expect(actions.loginRemoteWithSaved).not.toHaveBeenCalled(); // not yet
+
+    fireEvent.click(btn);
+
+    await waitFor(() => expect(actions.loginRemoteWithSaved).toHaveBeenCalledTimes(1));
+    expect(actions.loginRemoteWithSaved).toHaveBeenCalledWith(PK);
+  });
+
+  it('shows the plain "Log in" button (no saved indicator) when nothing is stored', async () => {
+    const actions = makeActions({
+      getRemoteAdminCapability: vi.fn().mockResolvedValue({
+        canRemember: true,
+        rotatedCount: 0,
+        rotated: [],
+        stored: [],
       }),
-      loginRemoteWithSaved: sharedLoginWithSaved,
     });
+    render(<MeshCoreRemoteConsole publicKey={PK} contactName="Repeater" actions={actions as any} />);
 
-    const { rerender } = render(
-      <MeshCoreRemoteConsole publicKey={PK} contactName="Repeater A" actions={buildActionsFor(PK)} />,
-    );
-    await waitFor(() => expect(sharedLoginWithSaved).toHaveBeenCalledWith(PK));
-
-    await act(async () => {
-      rerender(
-        <MeshCoreRemoteConsole publicKey={PK2} contactName="Repeater B" actions={buildActionsFor(PK2)} />,
-      );
-    });
-    await waitFor(() => expect(sharedLoginWithSaved).toHaveBeenCalledWith(PK2));
-    expect(sharedLoginWithSaved).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(actions.getRemoteAdminCapability).toHaveBeenCalled());
+    expect(screen.queryByText('Saved password')).not.toBeInTheDocument();
+    expect(screen.queryByText('Log in with saved password')).not.toBeInTheDocument();
   });
 });
