@@ -1265,12 +1265,15 @@
   .meshcore-sub-toolbar-item {
     flex-direction: column;
     gap: 0.2rem;
-    padding: 0.5rem 0.4rem;
+    padding: 0.5rem 0.2rem;
     margin: 0;
     border-radius: 0;
+    /* Share the row equally so every tab (up to 9: …Configuration,
+       Automations, Settings) stays on-screen without relying on a
+       horizontal scroll the user can't see. */
+    flex: 1 1 0;
+    min-width: 0;
     width: auto;
-    min-width: 56px;
-    flex-shrink: 0;
     text-align: center;
     justify-content: center;
     font-size: 0.7rem;
@@ -1286,7 +1289,7 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 64px;
+    max-width: 100%;
   }
 
   .meshcore-sub-toolbar-spacer {
