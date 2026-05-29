@@ -418,6 +418,27 @@ describe('mergeUnifiedSourceData', () => {
     ]);
   });
 
+  it('attaches a union of transport classes across sources (additive map filter)', () => {
+    // Same node heard via RF (LORA=1) on source 1 and MQTT (5) on source 2.
+    // The whole-record merge keeps the newest transportMechanism (MQTT), but
+    // transportClasses must list BOTH so "Show RF" keeps the node visible.
+    const merged = mergeUnifiedSourceData([
+      {
+        sourceId: 's1', sourceName: 'Direct', protocol: 'Meshtastic',
+        nodes: [{ nodeNum: 700, lastHeard: 100, transportMechanism: 1 }],
+        traceroutes: [], neighborInfo: [], channels: [],
+      },
+      {
+        sourceId: 's2', sourceName: 'MQTT Bridge', protocol: 'Meshtastic',
+        nodes: [{ nodeNum: 700, lastHeard: 200, transportMechanism: 5 }],
+        traceroutes: [], neighborInfo: [], channels: [],
+      },
+    ]);
+    expect(merged.nodes).toHaveLength(1);
+    const classes = (merged.nodes[0] as any).transportClasses;
+    expect([...classes].sort()).toEqual(['mqtt', 'rf']);
+  });
+
   it('keeps distinct MeshCore nodes (different publicKeys) separate', () => {
     const merged = mergeUnifiedSourceData([
       {
