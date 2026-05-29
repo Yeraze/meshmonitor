@@ -40,6 +40,10 @@ The unified "all sources" dashboard renders waypoints from every source you can 
 
 The Map Analysis canvas exposes a **Waypoints** layer in the toolbar. Toggle it to overlay every visible waypoint on top of the existing analysis layers (heatmap, traceroutes, etc.).
 
+### Showing and hiding waypoints
+
+The **Map Features** panel on both the per-source dashboard map and the Nodes map includes a **Show Waypoints** checkbox. Unchecking it hides all waypoint markers from that map without deleting any waypoints. The setting defaults to on, is saved per-user alongside the other Map Features toggles (Show RF / UDP / MQTT, Show Traceroute, etc.) via your map preferences, and persists across reloads and devices.
+
 ## Creating, editing, and deleting waypoints
 
 Authoring is available on the per-source dashboard map for users with `waypoints:write`.

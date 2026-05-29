@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+- **Show Waypoints map toggle** (#3253): The Map Features panel on the dashboard and Nodes maps now has a **Show Waypoints** checkbox that controls waypoint marker visibility. Defaults to on and is persisted per-user via map preferences, alongside the existing Show RF / UDP / MQTT / Traceroute toggles.
+
 ## [4.8.1] - 2026-05-28
 
 # MeshMonitor v4.8.1

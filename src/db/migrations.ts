@@ -88,6 +88,7 @@ import { migration as meshcoreAdminCredentialMigration, runMigration070Postgres,
 import { migration as dropLegacyPskLengthCheckMigration, runMigration071Postgres, runMigration071Mysql } from '../server/migrations/071_drop_legacy_psk_length_check.js';
 import { migration as meshcoreRoomSyncMigration, runMigration072Postgres, runMigration072Mysql } from '../server/migrations/072_meshcore_room_sync.js';
 import { migration as meshcoreNeighborInfoMigration, runMigration073Postgres, runMigration073Mysql } from '../server/migrations/073_meshcore_neighbor_info.js';
+import { migration as addShowWaypointsToMapPrefsMigration, runMigration074Postgres, runMigration074Mysql } from '../server/migrations/074_add_show_waypoints_to_map_prefs.js';
 
 // ============================================================================
 // Registry
@@ -1164,4 +1165,19 @@ registry.register({
   sqlite: (db) => meshcoreNeighborInfoMigration.up(db),
   postgres: (client) => runMigration073Postgres(client),
   mysql: (pool) => runMigration073Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 074: Add `show_waypoints` column to user_map_preferences. Persists
+// the waypoint marker visibility toggle alongside the other Map Features
+// toggles. Default TRUE (opt-out) so existing installs keep showing waypoints.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 74,
+  name: 'add_show_waypoints_to_map_prefs',
+  settingsKey: 'migration_074_add_show_waypoints_to_map_prefs',
+  sqlite: (db) => addShowWaypointsToMapPrefsMigration.up(db),
+  postgres: (client) => runMigration074Postgres(client),
+  mysql: (pool) => runMigration074Mysql(pool),
 });

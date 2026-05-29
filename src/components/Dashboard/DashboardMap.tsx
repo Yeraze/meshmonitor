@@ -140,6 +140,8 @@ export default function DashboardMap({
     setShowUdpNodes,
     showMqttNodes,
     setShowMqttNodes,
+    showWaypoints,
+    setShowWaypoints,
   } = useMapContext();
 
   // Build array of nodes that have valid positions, with their resolved lat/lng.
@@ -232,7 +234,7 @@ export default function DashboardMap({
 
         <MapBoundsUpdater positions={nodePositions} sourceId={sourceId} />
 
-        <DashboardWaypoints sourceId={sourceId} />
+        {showWaypoints && <DashboardWaypoints sourceId={sourceId} />}
 
         {nodesWithPosition.map(({ node, pos }) => {
           const hops = node.hopsAway ?? 999;
@@ -423,6 +425,14 @@ export default function DashboardMap({
               onChange={(e) => setShowMqttNodes(e.target.checked)}
             />
             <span>Show MQTT</span>
+          </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showWaypoints}
+              onChange={(e) => setShowWaypoints(e.target.checked)}
+            />
+            <span>Show Waypoints</span>
           </label>
         </div>
       </div>

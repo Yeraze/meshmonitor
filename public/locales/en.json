@@ -4327,6 +4327,7 @@
     "showUdp": "Show UDP",
     "showRf": "Show RF",
     "showMeshCore": "Show MeshCore",
+    "showWaypoints": "Show Waypoints",
     "showPositionHistory": "Show Position History",
     "showAnimations": "Show Animations",
     "showEstimatedPositions": "Show Estimated Positions",
