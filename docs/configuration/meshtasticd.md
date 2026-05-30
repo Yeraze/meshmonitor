@@ -1,26 +1,25 @@
-# Using meshtasticd for Virtual Nodes
+# Using meshtasticd
 
-`meshtasticd` is a virtual Meshtastic node daemon that runs Meshtastic firmware on Linux using portduino. It's perfect for development, testing, and running virtual mesh networks without physical hardware.
+`meshtasticd` runs Meshtastic firmware on Linux using portduino. It supports both **simulated virtual nodes** (no hardware needed) and **physical LoRa radios** connected via USB.
 
 ## What is meshtasticd?
 
-`meshtasticd` provides **virtual node simulation** - running a software Meshtastic node without physical hardware.
+`meshtasticd` provides a software Meshtastic node that can run with or without physical LoRa hardware.
 
 Use cases include:
 
-- Testing MeshMonitor without physical hardware
-- Running a virtual Meshtastic node on a server or Raspberry Pi
+- **Testing MeshMonitor** without physical hardware (use `-s` flag)
+- **Running node software with a real LoRa radio** on a server or Raspberry Pi (omit `-s`)
 - Developing and testing mesh applications
 - Creating virtual mesh networks for simulation and testing
 
 ## Physical Device Connections
 
-**For physical Meshtastic devices, use the appropriate bridge:**
+`meshtasticd` can connect to **physical LoRa radios via USB** using Portduino. Simply omit the `-s` flag and pass through the USB device to the container.
 
-- **Serial/USB devices:** Use the [Meshtastic Serial Bridge](/configuration/serial-bridge) instead
-- **Bluetooth (BLE) devices:** Use the [MeshMonitor BLE Bridge](/configuration/ble-bridge) instead
+**For Serial/USB Meshtastic devices (non-LoRa):** Use the [Meshtastic Serial Bridge](/configuration/serial-bridge) instead
 
-`meshtasticd` is designed for virtual node simulation, not for connecting physical hardware.
+**For Bluetooth (BLE) devices:** Use the [MeshMonitor BLE Bridge](/configuration/ble-bridge) instead
 
 ## Installing meshtasticd
 
@@ -170,6 +169,58 @@ MeshMonitor will be accessible at `http://localhost:8080`.
 - MeshMonitor's internal port is **3001**, not 8080. Always map to port 3001.
 - Use the Docker service name (`meshtasticd`) as the IP address when using bridge networking.
 - Do **not** use `network_mode: host` with port mappings - they are mutually exclusive.
+:::
+
+### Docker Compose with Physical LoRa Hardware (No Simulation)
+
+To run `meshtasticd` with a **real USB LoRa radio** (e.g., Heltec, RAK, Lilygo):
+
+1. **Omit the `-s` flag** from the command
+2. **Pass through the USB device** to the container
+
+::: tip Credit
+This configuration was contributed by @Saucesquatch (corvock). Thanks!
+:::
+
+```yaml
+services:
+  meshtasticd:
+    image: meshtastic/meshtasticd:latest
+    container_name: meshtasticd
+    command: meshtasticd  # No -s flag = real hardware mode
+    volumes:
+      - ./config.yaml:/etc/meshtasticd/config.yaml:ro
+    devices:
+      - /dev/bus/usb:/dev/bus/usb  # Pass through USB LoRa radio
+    ports:
+      - "4403:4403"
+    restart: unless-stopped
+
+  meshmonitor:
+    image: ghcr.io/yeraze/meshmonitor:latest
+    container_name: meshmonitor
+    environment:
+      - MESHTASTIC_NODE_IP=meshtasticd
+      - MESHTASTIC_NODE_PORT=4403
+    ports:
+      - "8080:3001"
+    depends_on:
+      - meshtasticd
+    restart: unless-stopped
+```
+
+You'll also need a `config.yaml` configured for your specific radio hardware (pin mappings, module type, etc.). See the [Meshtastic Portduino documentation](https://meshtastic.org/docs/hardware/devices/linux-native-hardware/) for pinout details per board.
+
+::: warning USB Permissions
+If the container can't access the USB device, ensure your user has permissions:
+
+```bash
+# Check device is detected
+lsusb
+
+# Add your user to the dialout group (log out and back in)
+sudo usermod -a -G dialout $USER
+```
 :::
 
 ### Using Docker Host Network
