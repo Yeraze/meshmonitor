@@ -15,6 +15,7 @@ import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import type { DbMessage } from '../../services/database.js';
 import databaseService from '../../services/database.js';
+import { canonicalMessageTime, messageReceivedAt } from '../utils/messageTime.js';
 
 /**
  * Transform a DbMessage to the format expected by the client (MeshMessage)
@@ -32,9 +33,9 @@ function transformMessageForClient(msg: DbMessage): unknown {
     text: msg.text,
     channel: msg.channel,
     portnum: msg.portnum,
-    timestamp: new Date(msg.rxTime ?? msg.timestamp),  // Convert to Date (serializes as ISO string)
+    timestamp: new Date(canonicalMessageTime(msg)),  // Convert to Date (serializes as ISO string)
     // Server-side ingest time used by the client for sort order (issue #3187).
-    receivedAt: new Date(msg.createdAt ?? msg.rxTime ?? msg.timestamp),
+    receivedAt: new Date(messageReceivedAt(msg)),
     hopStart: msg.hopStart,
     hopLimit: msg.hopLimit,
     relayNode: msg.relayNode,

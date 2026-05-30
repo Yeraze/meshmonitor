@@ -550,7 +550,12 @@ router.get('/messages', async (req: Request, res: Response) => {
         }
 
         for (const m of msgs) {
-          const canonical = (m.rxTime ?? m.timestamp) as number;
+          // Treat rxTime <= 0 as missing, not as a real device time. MQTT
+          // gateway packets can carry rxTime === 0 (unset receive time); a
+          // plain `rxTime ?? timestamp` would pick 0 (nullish coalescing only
+          // falls through on null/undefined) and render Unix epoch (Dec 1969).
+          const rxTime = typeof m.rxTime === 'number' && m.rxTime > 0 ? m.rxTime : null;
+          const canonical = (rxTime ?? m.timestamp) as number;
           const reqId = (m.requestId ?? null) as number | null;
           const fromNum = Number(m.fromNodeNum);
           // Dedup key priority:
@@ -572,7 +577,7 @@ router.get('/messages', async (req: Request, res: Response) => {
             hopLimit: m.hopLimit ?? null,
             rxSnr: m.rxSnr ?? null,
             rxRssi: m.rxRssi ?? null,
-            rxTime: m.rxTime ?? null,
+            rxTime,
             timestamp: m.timestamp,
           };
 
