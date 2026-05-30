@@ -31,6 +31,9 @@ export interface PacketLog {
   decrypted_by?: 'node' | 'server' | null;
   decrypted_channel_id?: number | null;
   transport_mechanism?: number;
+  /** Present on cross-source (unified) packet rows — the source that received it. */
+  sourceId?: string;
+  sourceName?: string;
 }
 
 export interface PacketLogResponse {
@@ -61,6 +64,43 @@ export interface PacketFilters {
   relay_node?: number | 'unknown';
   transport_mechanism?: number;
   sourceId?: string;
+}
+
+/** Filters accepted by the unified packet stream (no offset — keyset cursor). */
+export interface UnifiedPacketFilters {
+  portnum?: number;
+  encrypted?: boolean;
+  transport_mechanism?: number;
+  from_node?: number;
+  /** Restrict the stream to a single source within the unified view. */
+  sourceId?: string;
+}
+
+export interface UnifiedSourceRef {
+  id: string;
+  name: string;
+}
+
+export interface UnifiedPacketsResponse {
+  packets: PacketLog[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  /** Every source the user can read (drives the source filter dropdown). */
+  sources: UnifiedSourceRef[];
+}
+
+export interface UnifiedPacketBySource {
+  sourceId: string;
+  sourceName: string;
+  count: number;
+}
+
+export interface UnifiedPacketDistribution {
+  byDevice: PacketCountByDevice[];
+  byType: PacketCountByType[];
+  bySource: UnifiedPacketBySource[];
+  total: number;
+  enabled: boolean;
 }
 
 export interface PacketMonitorSettings {

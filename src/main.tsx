@@ -16,6 +16,7 @@ import MapAnalysisPage from './pages/MapAnalysisPage.tsx';
 import ReportsPage from './pages/ReportsPage.tsx';
 import UnifiedMessagesPage from './pages/UnifiedMessagesPage.tsx';
 import UnifiedTelemetryPage from './pages/UnifiedTelemetryPage.tsx';
+import UnifiedPacketMonitorPage from './pages/UnifiedPacketMonitorPage.tsx';
 import GlobalSettingsPage from './pages/GlobalSettingsPage.tsx';
 import UsersPage from './pages/UsersPage.tsx';
 import MeshCoreSourcePage from './pages/MeshCoreSourcePage.tsx';
@@ -125,6 +126,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route
               path="unified/telemetry"
               element={sharedProviders(<UnifiedTelemetryPage />)}
+            />
+            <Route
+              path="unified/packets"
+              element={sharedProviders(<UnifiedPacketMonitorPage />)}
             />
 
             {/* Analysis workspace */}

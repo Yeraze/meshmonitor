@@ -7,10 +7,12 @@
  */
 import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
+import packetLogService from '../services/packetLogService.js';
 import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { PortNum, CHANNEL_DB_OFFSET, modemPresetChannelName } from '../constants/meshtastic.js';
-import type { DbChannelDatabase } from '../../db/types.js';
+import { filterPacketsByPermissions, getAllowedChannels } from './packetPermissions.js';
+import type { DbChannelDatabase, DbPacketLog } from '../../db/types.js';
 
 const router = Router();
 
@@ -738,6 +740,257 @@ router.get('/telemetry', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error fetching unified telemetry:', error);
     res.status(500).json({ error: 'Failed to fetch unified telemetry' });
+  }
+});
+
+// Normalize a `since` timestamp to milliseconds (auto-detect seconds vs ms).
+function normalizeSinceToMs(value: string): number | undefined {
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n)) return undefined;
+  return n < 10_000_000_000 ? n * 1000 : n;
+}
+
+const ALL_CHANNELS = new Set<number>([0, 1, 2, 3, 4, 5, 6, 7]);
+
+/**
+ * Resolve the per-source packet-visibility context (allowed channels + DM read)
+ * for the authenticated user, mirroring `requirePacketPermissions` but applied
+ * per source because permissions are per-source.
+ */
+async function packetVisibilityForSource(
+  user: { id: number } | undefined,
+  isAdmin: boolean,
+  sourceId: string
+): Promise<{ allowedChannels: Set<number>; canReadMessages: boolean }> {
+  if (isAdmin) return { allowedChannels: ALL_CHANNELS, canReadMessages: true };
+  if (!user) return { allowedChannels: new Set<number>(), canReadMessages: false };
+  const perms = await databaseService.getUserPermissionSetAsync(user.id, sourceId);
+  return {
+    allowedChannels: getAllowedChannels(perms),
+    canReadMessages: perms.messages?.read === true,
+  };
+}
+
+/**
+ * GET /api/unified/packets
+ *
+ * Live packet stream merged across every source the authenticated user can read,
+ * tagged with `{ sourceId, sourceName }`. This is an RF-level monitor, so packets
+ * are NOT deduplicated: a single mesh packet heard by N sources appears as N rows
+ * (one per receiving radio). Paginated with a composite keyset cursor that mirrors
+ * the `timestamp DESC, id DESC` row order, so paging never skips/duplicates rows
+ * that share a millisecond timestamp.
+ *
+ * Query:
+ *   ?cursor=<ts>_<id>       keyset cursor; omit for the newest page
+ *   ?limit=N                page size (default 100, max 200)
+ *   ?portnum=N              filter by PortNum
+ *   ?encrypted=true|false   filter encrypted/decoded
+ *   ?transport_mechanism=N  filter by transport mechanism
+ *   ?from_node=N            filter by sender nodeNum
+ *   ?sourceId=<id>          restrict the stream to a single source
+ *
+ * Response: { packets, hasMore, nextCursor, sources: [{ id, name }] }
+ *   `sources` always lists every readable source (for the filter dropdown),
+ *   regardless of an active `sourceId` filter.
+ */
+router.get('/packets', async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const isAdmin = user?.isAdmin ?? false;
+    const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '100', 10) || 100, 1), 200);
+
+    // Parse the composite "ts_id" cursor.
+    let untilTs: number | undefined;
+    let untilId: number | undefined;
+    if (typeof req.query.cursor === 'string' && req.query.cursor.includes('_')) {
+      const [tsStr, idStr] = req.query.cursor.split('_');
+      const ts = Number(tsStr);
+      const id = Number(idStr);
+      if (Number.isFinite(ts) && Number.isFinite(id)) {
+        untilTs = ts;
+        untilId = id;
+      }
+    }
+
+    const portnum = req.query.portnum ? parseInt(req.query.portnum as string, 10) : undefined;
+    const transport_mechanism =
+      req.query.transport_mechanism !== undefined && req.query.transport_mechanism !== ''
+        ? parseInt(req.query.transport_mechanism as string, 10)
+        : undefined;
+    const from_node = req.query.from_node ? parseInt(req.query.from_node as string, 10) : undefined;
+    const encrypted =
+      req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
+    const sourceFilter = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+
+    const allSources = await databaseService.sources.getAllSources();
+
+    // Determine every readable source up front (drives the filter dropdown).
+    const access = await Promise.all(
+      allSources.map(async (source) => ({
+        source,
+        canRead:
+          isAdmin ||
+          (user
+            ? await databaseService.checkPermissionAsync(user.id, 'packetmonitor', 'read', source.id)
+            : false),
+      }))
+    );
+    const readableSources = access.filter((a) => a.canRead).map((a) => a.source);
+    const fetchSources = sourceFilter
+      ? readableSources.filter((s) => s.id === sourceFilter)
+      : readableSources;
+
+    // Over-fetch per source so per-source permission filtering can't starve the page.
+    const fetchLimit = limit * 2;
+
+    type TaggedPacket = DbPacketLog & { sourceId: string; sourceName: string };
+
+    const perSource = await Promise.allSettled(
+      fetchSources.map(async (source): Promise<{ rows: TaggedPacket[]; saturated: boolean }> => {
+        const raw = await packetLogService.getPacketsAsync({
+          sourceId: source.id,
+          limit: fetchLimit,
+          untilTs,
+          untilId,
+          portnum,
+          transport_mechanism,
+          from_node,
+          encrypted,
+        });
+        const { allowedChannels, canReadMessages } = await packetVisibilityForSource(
+          user,
+          isAdmin,
+          source.id
+        );
+        const visible = filterPacketsByPermissions(raw, allowedChannels, isAdmin, canReadMessages);
+        const tagged = visible.map((r) => ({
+          ...r,
+          sourceId: source.id,
+          sourceName: source.name,
+        })) as TaggedPacket[];
+        return { rows: tagged, saturated: raw.length >= fetchLimit };
+      })
+    );
+
+    const mergedAll: TaggedPacket[] = [];
+    let anySaturated = false;
+    for (const result of perSource) {
+      if (result.status === 'fulfilled') {
+        mergedAll.push(...result.value.rows);
+        if (result.value.saturated) anySaturated = true;
+      } else {
+        logger.warn('Failed to load unified packets for a source:', result.reason);
+      }
+    }
+
+    // Sort by the same total order as the per-source query: timestamp desc, id
+    // desc, then sourceId to keep cross-source ties deterministic across polls.
+    mergedAll.sort((a, b) => {
+      if (b.timestamp !== a.timestamp) return Number(b.timestamp) - Number(a.timestamp);
+      if (Number(b.id) !== Number(a.id)) return Number(b.id) - Number(a.id);
+      return a.sourceId < b.sourceId ? 1 : a.sourceId > b.sourceId ? -1 : 0;
+    });
+
+    const sliced = mergedAll.slice(0, limit);
+    const hasMore = mergedAll.length > limit || anySaturated;
+    const last = sliced[sliced.length - 1];
+    const nextCursor = hasMore && last ? `${Number(last.timestamp)}_${Number(last.id)}` : null;
+
+    res.json({
+      packets: sliced,
+      hasMore,
+      nextCursor,
+      sources: readableSources.map((s) => ({ id: s.id, name: s.name })),
+    });
+  } catch (error) {
+    logger.error('Error fetching unified packets:', error);
+    res.status(500).json({ error: 'Failed to fetch unified packets' });
+  }
+});
+
+/**
+ * GET /api/unified/packets/distribution?since=<ms>
+ *
+ * Packet distribution aggregated across every readable source: by device
+ * (top 10 senders), by type (PortNum), and by source. Powers the charts on the
+ * Unified Packet Monitor.
+ *
+ * Note: like the single-source `/api/packets/stats/distribution`, counts are
+ * gated only by `packetmonitor:read` per source (not channel-level reads) — an
+ * acceptable v1 parity item.
+ */
+router.get('/packets/distribution', async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const isAdmin = user?.isAdmin ?? false;
+    const since = req.query.since ? normalizeSinceToMs(req.query.since as string) : undefined;
+
+    const allSources = await databaseService.sources.getAllSources();
+    const access = await Promise.all(
+      allSources.map(async (source) => ({
+        source,
+        canRead:
+          isAdmin ||
+          (user
+            ? await databaseService.checkPermissionAsync(user.id, 'packetmonitor', 'read', source.id)
+            : false),
+      }))
+    );
+    const readableSources = access.filter((a) => a.canRead).map((a) => a.source);
+
+    const perSource = await Promise.all(
+      readableSources.map(async (source) => {
+        const [byDevice, byType] = await Promise.all([
+          packetLogService.getPacketCountsByNodeAsync({ since, limit: 10, sourceId: source.id }),
+          packetLogService.getPacketCountsByPortnumAsync({ since, sourceId: source.id }),
+        ]);
+        return { source, byDevice, byType };
+      })
+    );
+
+    // Merge byDevice (sum per nodeNum), byType (sum per portnum), and tally per source.
+    const deviceMap = new Map<number, { from_node: number; from_node_id: string | null; from_node_longName: string | null; count: number }>();
+    const typeMap = new Map<number, { portnum: number; portnum_name: string; count: number }>();
+    const bySource: Array<{ sourceId: string; sourceName: string; count: number }> = [];
+
+    for (const { source, byDevice, byType } of perSource) {
+      let sourceTotal = 0;
+      for (const d of byDevice as any[]) {
+        const key = Number(d.from_node);
+        const existing = deviceMap.get(key);
+        if (existing) {
+          existing.count += d.count;
+          if (!existing.from_node_longName && d.from_node_longName) existing.from_node_longName = d.from_node_longName;
+          if (!existing.from_node_id && d.from_node_id) existing.from_node_id = d.from_node_id;
+        } else {
+          deviceMap.set(key, {
+            from_node: key,
+            from_node_id: d.from_node_id ?? null,
+            from_node_longName: d.from_node_longName ?? null,
+            count: d.count,
+          });
+        }
+      }
+      for (const t of byType as any[]) {
+        const key = Number(t.portnum);
+        const existing = typeMap.get(key);
+        if (existing) existing.count += t.count;
+        else typeMap.set(key, { portnum: key, portnum_name: t.portnum_name, count: t.count });
+        sourceTotal += t.count;
+      }
+      bySource.push({ sourceId: source.id, sourceName: source.name, count: sourceTotal });
+    }
+
+    const byDevice = Array.from(deviceMap.values()).sort((a, b) => b.count - a.count).slice(0, 10);
+    const byType = Array.from(typeMap.values()).sort((a, b) => b.count - a.count);
+    bySource.sort((a, b) => b.count - a.count);
+    const total = bySource.reduce((sum, s) => sum + s.count, 0);
+
+    res.json({ byDevice, byType, bySource, total, enabled: await packetLogService.isEnabled() });
+  } catch (error) {
+    logger.error('Error fetching unified packet distribution:', error);
+    res.status(500).json({ error: 'Failed to fetch unified packet distribution' });
   }
 });
 

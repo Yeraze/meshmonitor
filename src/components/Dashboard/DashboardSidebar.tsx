@@ -542,6 +542,12 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         </button>
         <button
           className="dashboard-sidebar-link dashboard-sidebar-link--active"
+          onClick={() => navigate('/unified/packets')}
+        >
+          {t('source.sidebar.unified_packets', 'Unified Packets')}
+        </button>
+        <button
+          className="dashboard-sidebar-link dashboard-sidebar-link--active"
           onClick={() => navigate('/analysis')}
         >
           {t('source.sidebar.map_analysis')}
