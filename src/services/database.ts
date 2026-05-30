@@ -39,7 +39,7 @@ import {
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 
 // Configuration constants for traceroute history
-const TRACEROUTE_HISTORY_LIMIT = 50;
+const TRACEROUTE_HISTORY_LIMIT = getEnvironmentConfig().tracerouteHistoryLimit;
 const PENDING_TRACEROUTE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 export interface DbNode {
