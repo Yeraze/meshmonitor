@@ -446,6 +446,26 @@ describe('Unified Routes', () => {
       expect(res.body[1].receptions[0].sourceName).toBe('Source B');
     });
 
+    it('falls back to server timestamp when rxTime is 0 (MQTT unset-time epoch bug)', async () => {
+      // Regression: an MQTT row stored rxTime === 0 (gateway never set a
+      // receive time). `rxTime ?? timestamp` would pick 0 — nullish coalescing
+      // only falls through on null/undefined — and render Unix epoch (Dec 1969).
+      // Canonical must fall back to the real server timestamp, and the reception
+      // must report rxTime as null rather than 0.
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.messages.getMessages.mockResolvedValueOnce([
+        mkMsg({ id: 'z', text: 'Happy Friday Mesh', timestamp: 1_700_000_000_000, rxTime: 0, createdAt: 1_700_000_000_000 }),
+      ]);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/messages?limit=50');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].timestamp).toBe(1_700_000_000_000);
+      expect(res.body[0].receptions[0].rxTime).toBeNull();
+    });
+
     it('de-duplicates the same (fromNodeNum, requestId) across sources into one entry with two receptions', async () => {
       mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
       // Same mesh packet heard by both sources — same fromNodeNum + requestId.

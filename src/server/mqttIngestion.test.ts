@@ -300,6 +300,47 @@ describe('ingestServiceEnvelope — TEXT_MESSAGE_APP tapbacks', () => {
   });
 });
 
+describe('ingestServiceEnvelope — TEXT_MESSAGE_APP rxTime', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const textEnvelope = (rxTime?: number): ServiceEnvelopeShape => ({
+    channelId: 'LongFast',
+    gatewayId: '!00000001',
+    packet: {
+      id: 0xdeadbeef,
+      from: NODE_IN,
+      to: 0xffffffff,
+      channel: 0,
+      ...(rxTime !== undefined ? { rxTime } : {}),
+      decoded: {
+        portnum: 1 /* TEXT_MESSAGE_APP */,
+        payload: new Uint8Array([0]),
+      } as any,
+    },
+  });
+
+  it('drops rxTime === 0 (unset gateway time) instead of storing Unix epoch', async () => {
+    // Regression: MQTT gateway packets frequently carry rxTime === 0. Storing
+    // 0 made the unified view canonical (`rxTime ?? timestamp`) resolve to the
+    // Unix epoch and render "December 31, 1969". rxTime must be undefined so
+    // display falls back to the server timestamp.
+    const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: textEnvelope(0) });
+    expect(result.ingested).toBe(true);
+    const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
+    expect(inserted.rxTime).toBeUndefined();
+    expect(inserted.timestamp).toBeGreaterThan(0);
+  });
+
+  it('preserves a real rxTime, converting seconds to milliseconds', async () => {
+    const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: textEnvelope(1_700_000_000) });
+    expect(result.ingested).toBe(true);
+    const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
+    expect(inserted.rxTime).toBe(1_700_000_000_000);
+  });
+});
+
 describe('ingestServiceEnvelope — TRACEROUTE_APP', () => {
   beforeEach(() => {
     vi.clearAllMocks();

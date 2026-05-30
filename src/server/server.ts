@@ -11,6 +11,7 @@ import meshtasticManager from './meshtasticManager.js';
 import { MeshtasticManager } from './meshtasticManager.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { resolveSourceManager } from './utils/resolveSourceManager.js';
+import { canonicalMessageTime, messageReceivedAt } from './utils/messageTime.js';
 import protobufService from './protobufService.js';
 
 // Make meshtasticManager available globally for routes that need it
@@ -2381,11 +2382,11 @@ function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
     text: msg.text,
     channel: msg.channel,
     portnum: msg.portnum ?? undefined,
-    timestamp: new Date(msg.rxTime ?? msg.timestamp),
+    timestamp: new Date(canonicalMessageTime(msg)),
     // Server-side ingest time — robust against sender-clock drift, used by
     // the client for sort order (issue #3187). Falls back to `timestamp` for
     // pre-migration rows where `createdAt` was never written.
-    receivedAt: new Date(msg.createdAt ?? msg.rxTime ?? msg.timestamp),
+    receivedAt: new Date(messageReceivedAt(msg)),
     hopStart: msg.hopStart ?? undefined,
     hopLimit: msg.hopLimit ?? undefined,
     relayNode: msg.relayNode ?? undefined,

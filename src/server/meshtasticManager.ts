@@ -23,6 +23,7 @@ import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceServ
 import { MessageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
+import { canonicalMessageTime } from './utils/messageTime.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
@@ -13030,7 +13031,7 @@ class MeshtasticManager implements ISourceManager {
       text: msg.text,
       channel: msg.channel,
       portnum: msg.portnum ?? undefined,
-      timestamp: new Date(msg.rxTime ?? msg.timestamp),
+      timestamp: new Date(canonicalMessageTime(msg)),
       hopStart: msg.hopStart ?? undefined,
       hopLimit: msg.hopLimit ?? undefined,
       relayNode: msg.relayNode ?? undefined,

@@ -312,7 +312,11 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         channel: effectiveChannel,
         portnum,
         timestamp: nowMs,
-        rxTime: typeof packet.rxTime === 'number' ? packet.rxTime * 1000 : undefined,
+        // Guard against rxTime === 0: MQTT gateway packets frequently arrive
+        // with an unset (0) receive time. Storing 0 makes the unified view's
+        // `rxTime ?? timestamp` canonical resolve to Unix epoch (Dec 31 1969).
+        // Treat anything <= 0 as "no rxTime" so display falls back to timestamp.
+        rxTime: typeof packet.rxTime === 'number' && packet.rxTime > 0 ? packet.rxTime * 1000 : undefined,
         rxSnr: typeof packet.rxSnr === 'number' ? packet.rxSnr : undefined,
         rxRssi: typeof packet.rxRssi === 'number' ? packet.rxRssi : undefined,
         viaMqtt: true,
@@ -815,7 +819,9 @@ async function ingestStoreForward(
       channel: effectiveChannel,
       portnum: PortNum.TEXT_MESSAGE_APP,
       timestamp: nowMs,
-      rxTime: typeof packet.rxTime === 'number' ? packet.rxTime * 1000 : undefined,
+      // See TEXT_MESSAGE_APP case: drop rxTime === 0 (unset gateway time) so it
+      // doesn't render as Unix epoch in the unified view's canonical timestamp.
+      rxTime: typeof packet.rxTime === 'number' && packet.rxTime > 0 ? packet.rxTime * 1000 : undefined,
       rxSnr: typeof packet.rxSnr === 'number' ? packet.rxSnr : undefined,
       rxRssi: typeof packet.rxRssi === 'number' ? packet.rxRssi : undefined,
       viaMqtt: true,
