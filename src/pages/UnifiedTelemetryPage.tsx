@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { appBasename } from '../init';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit, isTemperatureType } from '../utils/temperature';
+import { unitScale, formatDuration, isUptimeType } from '../utils/telemetryFormat';
 import '../styles/unified.css';
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
@@ -202,19 +203,9 @@ function formatBytes(v: number): string {
   return String(Math.round(v));
 }
 
-/** Human-readable duration from seconds. */
-function formatDuration(seconds: number): string {
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
-
 function formatValue(type: string, value: number): string {
   // Durations (seconds) → human-readable
-  if (type === 'uptimeSeconds' || type === 'hostUptimeSeconds' || type === 'paxcounterUptime') {
+  if (isUptimeType(type)) {
     return formatDuration(value);
   }
   // Bytes → KB / MB
@@ -497,10 +488,19 @@ export default function UnifiedTelemetryPage() {
                           const label = TYPE_LABELS[r.telemetryType] ?? r.telemetryType;
                           // Device temperatures arrive in Celsius — honor the unit preference.
                           const isTemp = isTemperatureType(r.telemetryType);
-                          const value = isTemp ? formatTemperature(r.value, 'C', temperatureUnit) : r.value;
+                          const rawUnit = r.unit ?? inferUnit(r.telemetryType);
+                          // Auto-scale current/power (A↔mA, W↔mW/kW) so sub-1
+                          // readings read naturally; uptime renders as a
+                          // duration with no unit suffix (#3261).
+                          const scaled = isTemp ? null : unitScale(rawUnit, Math.abs(r.value));
+                          const value = isTemp
+                            ? formatTemperature(r.value, 'C', temperatureUnit)
+                            : r.value * (scaled ? scaled.factor : 1);
                           const unit = isTemp
                             ? getTemperatureUnit(temperatureUnit)
-                            : (r.unit ?? inferUnit(r.telemetryType));
+                            : isUptimeType(r.telemetryType)
+                              ? ''
+                              : (scaled ? scaled.unit : rawUnit);
                           return (
                             <div key={r.telemetryType} className="unified-reading">
                               <div className="unified-reading__label" title={r.telemetryType}>

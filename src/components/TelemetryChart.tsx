@@ -28,6 +28,7 @@ import { useWidgetMode } from '../hooks/useWidgetMode';
 import { useWidgetRange } from '../hooks/useWidgetRange';
 import { useSource } from '../contexts/SourceContext';
 import { getLatestValue } from '../utils/telemetry';
+import { unitScale } from '../utils/telemetryFormat';
 import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
 
@@ -532,7 +533,17 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
 
     // Prepare chart data
     const chartData = prepareChartData(telemetryData, isTemperature, temperatureUnit, solarEstimates, globalMinTime, timeFormat);
-    const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : telemetryData[0]?.unit || '';
+    // Auto-scale current/power so a sub-1 A/W series reads as mA/mW (#3261).
+    // One factor for the whole series (chosen from its largest magnitude)
+    // keeps every point, the axis, the gauge range and the numeric readout on
+    // the same prefix. Temperature keeps its own C/F handling below.
+    const baseUnit = telemetryData[0]?.unit || '';
+    const seriesMaxAbs = telemetryData.reduce(
+      (m, d) => (typeof d.value === 'number' ? Math.max(m, Math.abs(d.value)) : m),
+      0
+    );
+    const valueScale = isTemperature ? null : unitScale(baseUnit, seriesMaxAbs);
+    const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : (valueScale ? valueScale.unit : baseUnit);
 
     // For combined paxcounter chart, merge BLE data
     if (isPaxcounterCombined) {
@@ -561,15 +572,26 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
 
     const latest = getLatestValue(telemetryData);
 
+    // Apply the chart's display scale to the plotted series. The solar overlay
+    // lives on its own axis (watt-hours) and is left untouched.
+    const scaledChartData = valueScale && valueScale.factor !== 1
+      ? chartData.map((d) => ({ ...d, value: d.value == null ? d.value : d.value * valueScale.factor }))
+      : chartData;
+
     // Gauge/numeric modes display a single raw value, so convert it (and the
-    // gauge range) to the selected unit. Ranges persist in Celsius, so edits
-    // made while displaying Fahrenheit are converted back before saving.
-    const toDisplayTemp = (v: number) =>
-      isTemperature ? formatTemperature(v, 'C', temperatureUnit) : v;
-    const toStoredTemp = (v: number) =>
-      isTemperature ? formatTemperature(v, temperatureUnit, 'C') : v;
+    // gauge range) to the display unit. Ranges persist in base units (Celsius
+    // for temperature, the stored A/W for current/power), so edits made in the
+    // displayed unit are converted back before saving.
+    const toDisplay = (v: number) =>
+      isTemperature
+        ? formatTemperature(v, 'C', temperatureUnit)
+        : v * (valueScale ? valueScale.factor : 1);
+    const toStored = (v: number) =>
+      isTemperature
+        ? formatTemperature(v, temperatureUnit, 'C')
+        : v / (valueScale ? valueScale.factor : 1);
     const handleRangeChange = (r: { min: number; max: number }) =>
-      setRange({ min: toStoredTemp(r.min), max: toStoredTemp(r.max) });
+      setRange({ min: toStored(r.min), max: toStored(r.max) });
 
     return (
       <div ref={setNodeRef} style={style} className="dashboard-chart-container">
@@ -630,9 +652,9 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
         {mode === 'gauge' ? (
           latest ? (
             <TelemetryGauge
-              value={toDisplayTemp(latest.value)}
-              min={toDisplayTemp(range.min)}
-              max={toDisplayTemp(range.max)}
+              value={toDisplay(latest.value)}
+              min={toDisplay(range.min)}
+              max={toDisplay(range.max)}
               unit={unit}
               color={color}
               timestamp={latest.timestamp}
@@ -645,7 +667,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
         ) : mode === 'numeric' ? (
           latest ? (
             <TelemetryNumericLabel
-              value={toDisplayTemp(latest.value)}
+              value={toDisplay(latest.value)}
               unit={unit}
               color={color}
               timestamp={latest.timestamp}
@@ -655,7 +677,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
           )
         ) : (
           <ResponsiveContainer width="100%" height={200}>
-            <ComposedChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+            <ComposedChart data={scaledChartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
               <XAxis
                 dataKey="timestamp"
