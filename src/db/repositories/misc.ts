@@ -908,9 +908,14 @@ export class MiscRepository extends BaseRepository {
    */
   private buildPacketLogWhere(options: PacketLogFilterOptions): { conditions: any[]; } {
     const conditions: any[] = [];
-    const { portnum, from_node, to_node, channel, encrypted, since, relay_node, transport_mechanism, sourceId } = options;
+    const { portnum, from_node, to_node, channel, encrypted, since, relay_node, transport_mechanism, sourceId, untilTs, untilId } = options;
 
     if (sourceId !== undefined) conditions.push(sql`pl.${sql.identifier('sourceId')} = ${sourceId}`);
+    // Keyset cursor — mirrors ORDER BY pl.timestamp DESC, pl.id DESC so paging never
+    // skips/duplicates rows that share a millisecond timestamp.
+    if (untilTs !== undefined && untilId !== undefined) {
+      conditions.push(sql`(pl.timestamp < ${untilTs} OR (pl.timestamp = ${untilTs} AND pl.id < ${untilId}))`);
+    }
     if (portnum !== undefined) conditions.push(sql`pl.portnum = ${portnum}`);
     if (from_node !== undefined) conditions.push(sql`pl.from_node = ${from_node}`);
     if (to_node !== undefined) conditions.push(sql`pl.to_node = ${to_node}`);
@@ -2164,4 +2169,15 @@ export interface PacketLogFilterOptions {
   relay_node?: number | 'unknown';
   transport_mechanism?: number;
   sourceId?: string;
+  /**
+   * Keyset (composite) cursor for descending pagination. When both are provided,
+   * only rows strictly "older" than (untilTs, untilId) in the
+   * `timestamp DESC, id DESC` ordering are returned:
+   *   timestamp < untilTs OR (timestamp = untilTs AND id < untilId)
+   * This mirrors the ORDER BY in getPacketLogs so paging across rows that share a
+   * millisecond timestamp (e.g. one mesh packet logged by multiple sources) never
+   * skips or duplicates rows. Used by the unified packet monitor.
+   */
+  untilTs?: number;
+  untilId?: number;
 }

@@ -129,6 +129,60 @@ describe('MiscRepository - Packet Log Queries', () => {
     });
   });
 
+  describe('getPacketLogs keyset cursor (untilTs/untilId)', () => {
+    // Insert a block of packets that all share the SAME millisecond timestamp,
+    // straddling typical page boundaries. This is the case a bare `timestamp <`
+    // cursor mishandles (the unified packet monitor relies on the composite cursor).
+    const TIE_TS = 1_700_000_000_000;
+    beforeEach(() => {
+      // Clear seed rows so the tie-timestamp set is the only data.
+      db.exec(`DELETE FROM packet_log`);
+      for (let i = 0; i < 10; i++) {
+        db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, portnum, direction, created_at, sourceId) VALUES (${i}, ${TIE_TS}, 100, 1, 'rx', ${TIE_TS}, 'default')`);
+      }
+      // Plus a few older rows at a distinct timestamp.
+      for (let i = 0; i < 3; i++) {
+        db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, portnum, direction, created_at, sourceId) VALUES (${100 + i}, ${TIE_TS - 1000}, 100, 1, 'rx', ${TIE_TS - 1000}, 'default')`);
+      }
+    });
+
+    it('pages through tied timestamps without skipping or duplicating rows', async () => {
+      const pageSize = 4;
+      const seen: number[] = [];
+      let cursor: { ts: number; id: number } | undefined;
+
+      // Page until exhausted.
+      for (let guard = 0; guard < 20; guard++) {
+        const page = await repo.getPacketLogs({
+          limit: pageSize,
+          untilTs: cursor?.ts,
+          untilId: cursor?.id,
+        });
+        if (page.length === 0) break;
+        for (const row of page) seen.push(row.id!);
+        const last = page[page.length - 1];
+        cursor = { ts: last.timestamp, id: last.id! };
+        if (page.length < pageSize) break;
+      }
+
+      // 13 rows total, each returned exactly once.
+      expect(seen.length).toBe(13);
+      expect(new Set(seen).size).toBe(13);
+    });
+
+    it('honors the composite predicate (timestamp = untilTs AND id < untilId)', async () => {
+      const all = await repo.getPacketLogs({});
+      // Pick a mid-point row inside the tied-timestamp block.
+      const pivot = all.find(p => p.timestamp === TIE_TS && all.filter(x => x.timestamp === TIE_TS && x.id! > p.id!).length === 3)!;
+      const after = await repo.getPacketLogs({ untilTs: pivot.timestamp, untilId: pivot.id! });
+      // No returned row may be >= the pivot in (ts, id) order.
+      for (const row of after) {
+        const isOlder = row.timestamp < pivot.timestamp || (row.timestamp === pivot.timestamp && row.id! < pivot.id!);
+        expect(isOlder).toBe(true);
+      }
+    });
+  });
+
   describe('getPacketLogById', () => {
     it('returns a single packet with joined node names', async () => {
       const packets = await repo.getPacketLogs({});

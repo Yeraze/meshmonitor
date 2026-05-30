@@ -1,0 +1,111 @@
+/* Unified Packet Monitor page — full-height flex column so the stream table
+   gets a bounded scroll container for virtualization. */
+.unified-packets-page {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg-primary, var(--ctp-base));
+  color: var(--text-primary, var(--ctp-text));
+}
+
+.unified-packets-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--ctp-surface0, var(--border-color));
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.unified-packets-back {
+  background: var(--ctp-surface0, transparent);
+  color: var(--text-secondary, var(--ctp-subtext0));
+  border: 1px solid var(--ctp-surface1, var(--border-color));
+  border-radius: 6px;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.unified-packets-back:hover { background: var(--ctp-surface1); }
+
+.unified-packets-title { flex: 1; min-width: 180px; }
+.unified-packets-title h1 { margin: 0; font-size: 1.1rem; }
+.unified-packets-title p { margin: 0.1rem 0 0; font-size: 0.8rem; color: var(--text-secondary, var(--ctp-subtext0)); }
+
+.unified-packets-count {
+  font-size: 0.85rem;
+  color: var(--text-secondary, var(--ctp-subtext0));
+  white-space: nowrap;
+}
+
+.unified-packets-controls { display: flex; gap: 0.4rem; }
+
+/* Reuse the .control-btn look from PacketMonitorPanel.css; add an active state. */
+.unified-packets-controls .control-btn.active {
+  background: var(--ctp-blue, #4a9eff);
+  color: var(--ctp-base, #fff);
+  border-color: var(--ctp-blue, #4a9eff);
+}
+
+.unified-packets-filters { flex-shrink: 0; }
+
+/* ── Charts ─────────────────────────────────────────────────────────────── */
+.unified-packets-charts {
+  flex-shrink: 0;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--ctp-surface0, var(--border-color));
+  max-height: 38vh;
+  overflow-y: auto;
+}
+
+.unified-packets-charts__range {
+  display: inline-flex;
+  gap: 2px;
+  margin-bottom: 0.75rem;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.unified-packets-charts__range button {
+  background: var(--ctp-surface0, transparent);
+  color: var(--text-secondary, var(--ctp-subtext0));
+  border: 1px solid var(--ctp-surface1, var(--border-color));
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.unified-packets-charts__range button.active {
+  background: var(--ctp-blue, #4a9eff);
+  color: var(--ctp-base, #fff);
+  border-color: var(--ctp-blue, #4a9eff);
+}
+
+.unified-packets-charts__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+/* ── Stream table ───────────────────────────────────────────────────────── */
+.unified-packets-table {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.unified-packets-source-cell { overflow: hidden; }
+.unified-packets-source-badge {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
