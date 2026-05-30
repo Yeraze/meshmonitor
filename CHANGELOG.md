@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Added
+- **Unified Telemetry source jump buttons** (#3262): The source labels at the top of the Unified Telemetry page are now clickable pills that smooth-scroll to their section's card grid. The header bar is sticky so the pills stay reachable while scrolling, and the pill for the section nearest the top is highlighted as the active jump target.
 - **Show Waypoints map toggle** (#3253): The Map Features panel on the dashboard and Nodes maps now has a **Show Waypoints** checkbox that controls waypoint marker visibility. Defaults to on and is persisted per-user via map preferences, alongside the existing Show RF / UDP / MQTT / Traceroute toggles.
 
 ## [4.8.1] - 2026-05-28

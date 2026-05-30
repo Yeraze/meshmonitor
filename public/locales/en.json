@@ -4467,6 +4467,7 @@
   "unified.telemetry.age_minutes": "{{count}}m ago",
   "unified.telemetry.age_hours": "{{count}}h ago",
   "unified.telemetry.age_days": "{{count}}d ago",
+  "unified.telemetry.jump_to_source": "Jump to {{name}}",
 
   "admin.back_to_dashboard": "← Back to Dashboard",
 
