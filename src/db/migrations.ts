@@ -89,6 +89,7 @@ import { migration as dropLegacyPskLengthCheckMigration, runMigration071Postgres
 import { migration as meshcoreRoomSyncMigration, runMigration072Postgres, runMigration072Mysql } from '../server/migrations/072_meshcore_room_sync.js';
 import { migration as meshcoreNeighborInfoMigration, runMigration073Postgres, runMigration073Mysql } from '../server/migrations/073_meshcore_neighbor_info.js';
 import { migration as addShowWaypointsToMapPrefsMigration, runMigration074Postgres, runMigration074Mysql } from '../server/migrations/074_add_show_waypoints_to_map_prefs.js';
+import { migration as meshcorePacketLogMigration, runMigration075Postgres, runMigration075Mysql } from '../server/migrations/075_meshcore_packet_log.js';
 
 // ============================================================================
 // Registry
@@ -1180,4 +1181,19 @@ registry.register({
   sqlite: (db) => addShowWaypointsToMapPrefsMigration.up(db),
   postgres: (client) => runMigration074Postgres(client),
   mysql: (pool) => runMigration074Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 075: Create meshcore_packet_log table for the MeshCore Packet
+// Monitor. One row per OTA packet seen via the companion LogRxData (0x88)
+// push; capture is opt-in via the `meshcore_packet_log_enabled` setting.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 75,
+  name: 'meshcore_packet_log',
+  settingsKey: 'migration_075_meshcore_packet_log',
+  sqlite: (db) => meshcorePacketLogMigration.up(db),
+  postgres: (client) => runMigration075Postgres(client),
+  mysql: (pool) => runMigration075Mysql(pool),
 });

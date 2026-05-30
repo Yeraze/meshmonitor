@@ -18,9 +18,10 @@
 | Multi-source registry | `src/server/sourceManagerRegistry.ts`, `src/server/meshtasticManager.ts`, `src/server/meshcoreManager.ts` (parallel Meshcore protocol; not a fallback), `src/contexts/SourceContext.tsx` |
 | Auth + permissions | `src/server/auth/`, `src/db/repositories/auth.ts`, `src/db/repositories/permissions.ts` |
 | Database backends | `src/db/drivers/{sqlite,postgres,mysql}.ts`, `src/db/schema/`, `src/db/repositories/` |
-| Migrations | `src/server/migrations/NNN_*.ts` (63+ total), registry in `src/db/migrations.ts` |
+| Migrations | `src/server/migrations/NNN_*.ts` (75+ total), registry in `src/db/migrations.ts` |
 | Backup/restore | `src/server/services/systemBackupService.ts`, `systemRestoreService.ts` |
 | Routes | `src/server/routes/*` |
+| Packet monitors | Meshtastic: `packet_log` table + `packetLogService.ts` + `packetRoutes.ts` + `PacketMonitorPanel.tsx`. MeshCore (OTA via `LogRxData`): `meshcore_packet_log` table + `meshcorePacketLogService.ts` + `/packets` routes in `meshcoreRoutes.ts` + `MeshCorePacketMonitorView.tsx`. Both opt-in (`*_packet_log_enabled`). |
 | Frontend pages | `src/pages/*` (`Unified*Page` = multi-source aware) |
 | ESLint config | `eslint.config.mjs` (raw-SQL ban lives here) |
 
@@ -97,7 +98,7 @@ For per-source permission tests, mock `getUserPermissionSetAsync(userId, sourceI
 ### Migration Registry
 Migrations use a centralized registry in `src/db/migrations.ts`. Each migration has functions for all three backends.
 
-**Current migration count:** 63 (latest: `063_drop_source_id_from_channel_database`).
+**Current migration count:** 75 (latest: `075_meshcore_packet_log`).
 
 For the full "adding a migration" recipe see [Migration recipe](#migration-recipe) below.
 

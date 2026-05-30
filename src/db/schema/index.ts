@@ -34,6 +34,7 @@ export * from './ignoredNodes.js';
 export * from './meshcoreNodes.js';
 export * from './meshcoreMessages.js';
 export * from './meshcoreNeighbors.js';
+export * from './meshcorePacketLog.js';
 
 // Embed Profiles table
 export * from './embedProfiles.js';

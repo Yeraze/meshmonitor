@@ -22,6 +22,7 @@ import { MeshCoreChannelsView } from './MeshCoreChannelsView';
 import { MeshCoreDirectMessagesView } from './MeshCoreDirectMessagesView';
 import { MeshCoreInfoView } from './MeshCoreInfoView';
 import { MeshCoreTelemetryView } from './MeshCoreTelemetryView';
+import { MeshCorePacketMonitorView } from './MeshCorePacketMonitorView';
 import { MeshCoreConfigurationView } from './MeshCoreConfigurationView';
 import { MeshCoreSettingsView } from './MeshCoreSettingsView';
 import { MeshCoreRoomsView } from './MeshCoreRoomsView';
@@ -141,6 +142,9 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
           )}
           {view === 'telemetry' && (
             <MeshCoreTelemetryView baseUrl={baseUrl} />
+          )}
+          {view === 'packets' && (
+            <MeshCorePacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />
           )}
           {view === 'info' && (
             <MeshCoreInfoView baseUrl={baseUrl} sourceId={sourceId} status={status} onSyncTime={actions.syncDeviceTime} />

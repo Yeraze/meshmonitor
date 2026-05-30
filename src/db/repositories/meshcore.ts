@@ -83,6 +83,44 @@ export interface DbMeshCoreMessage {
 }
 
 /**
+ * MeshCore OTA packet-log row. One per packet observed via the companion
+ * `LogRxData` (0x88) push. See `src/db/schema/meshcorePacketLog.ts`.
+ */
+export interface DbMeshCorePacket {
+  id?: number;
+  /** Owning source id; required on writes. */
+  sourceId: string;
+  /** Server capture time (ms). */
+  timestamp: number;
+  payloadType: number;
+  payloadTypeName?: string | null;
+  routeType?: number | null;
+  routeTypeName?: string | null;
+  pathLenRaw?: number | null;
+  hopCount?: number | null;
+  /** Comma-separated lowercase hex relay-hash chain ("a3,7f,02"), or null. */
+  pathHops?: string | null;
+  snr?: number | null;
+  rssi?: number | null;
+  payloadSize?: number | null;
+  rawHex?: string | null;
+  createdAt: number;
+}
+
+/**
+ * Filters accepted by the MeshCore packet-log query/count methods.
+ */
+export interface MeshCorePacketQuery {
+  sourceId?: string;
+  offset?: number;
+  limit?: number;
+  payloadType?: number;
+  routeType?: number;
+  /** Only return packets with `timestamp >= since` (ms). */
+  since?: number;
+}
+
+/**
  * Repository for MeshCore operations
  */
 export class MeshCoreRepository extends BaseRepository {
@@ -707,5 +745,139 @@ export class MeshCoreRepository extends BaseRepository {
     } else {
       await this.db.delete(meshcoreNeighbors);
     }
+  }
+
+  // ============ Packet-log Methods ============
+
+  /**
+   * Build the WHERE clause shared by packet-log query and count.
+   */
+  private buildPacketConditions(query: MeshCorePacketQuery): SQL[] {
+    const { meshcorePacketLog } = this.tables;
+    const conditions: SQL[] = [];
+    if (query.sourceId) {
+      conditions.push(eq(meshcorePacketLog.sourceId, query.sourceId));
+    }
+    if (typeof query.payloadType === 'number') {
+      conditions.push(eq(meshcorePacketLog.payloadType, query.payloadType));
+    }
+    if (typeof query.routeType === 'number') {
+      conditions.push(eq(meshcorePacketLog.routeType, query.routeType));
+    }
+    if (typeof query.since === 'number') {
+      conditions.push(gte(meshcorePacketLog.timestamp, query.since));
+    }
+    return conditions;
+  }
+
+  /**
+   * Insert an OTA packet-log row. `sourceId` is required so every row is
+   * stamped with its owning source.
+   */
+  async insertPacket(packet: DbMeshCorePacket): Promise<void> {
+    if (!packet.sourceId) {
+      throw new Error('MeshCoreRepository.insertPacket requires a sourceId');
+    }
+    const { meshcorePacketLog } = this.tables;
+    await this.db.insert(meshcorePacketLog).values(packet);
+  }
+
+  /**
+   * Query packet-log rows newest-first with optional filters and pagination.
+   */
+  async getPackets(query: MeshCorePacketQuery = {}): Promise<DbMeshCorePacket[]> {
+    const { meshcorePacketLog } = this.tables;
+    const conditions = this.buildPacketConditions(query);
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const result = await this.db
+      .select()
+      .from(meshcorePacketLog)
+      .where(whereClause)
+      .orderBy(desc(meshcorePacketLog.timestamp), desc(meshcorePacketLog.id))
+      .limit(query.limit ?? 100)
+      .offset(query.offset ?? 0);
+    return this.normalizeBigInts(result) as unknown as DbMeshCorePacket[];
+  }
+
+  /**
+   * Count packet-log rows matching the given filters (no pagination).
+   */
+  async getPacketCount(query: MeshCorePacketQuery = {}): Promise<number> {
+    const { meshcorePacketLog } = this.tables;
+    const conditions = this.buildPacketConditions(query);
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const result = await this.db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(meshcorePacketLog)
+      .where(whereClause);
+    return Number(result[0]?.count ?? 0);
+  }
+
+  /**
+   * Delete packets older than a timestamp (ms). Returns rows removed.
+   */
+  async deletePacketsOlderThan(timestamp: number, sourceId?: string): Promise<number> {
+    const { meshcorePacketLog } = this.tables;
+    const conditions: SQL[] = [lt(meshcorePacketLog.timestamp, timestamp)];
+    if (sourceId) {
+      conditions.push(eq(meshcorePacketLog.sourceId, sourceId));
+    }
+    const before = await this.getPacketCount({ sourceId });
+    await this.db.delete(meshcorePacketLog).where(and(...conditions));
+    const after = await this.getPacketCount({ sourceId });
+    return Math.max(0, before - after);
+  }
+
+  /**
+   * Trim a source's packet log down to its newest `maxCount` rows.
+   * Returns the number of rows removed.
+   */
+  async trimPacketsToCount(sourceId: string, maxCount: number): Promise<number> {
+    if (!sourceId || maxCount <= 0) return 0;
+    const { meshcorePacketLog } = this.tables;
+    const total = await this.getPacketCount({ sourceId });
+    if (total <= maxCount) return 0;
+
+    // Find the cutoff id: keep the newest `maxCount` rows, delete the rest.
+    const survivors = await this.db
+      .select({ id: meshcorePacketLog.id })
+      .from(meshcorePacketLog)
+      .where(eq(meshcorePacketLog.sourceId, sourceId))
+      .orderBy(desc(meshcorePacketLog.timestamp), desc(meshcorePacketLog.id))
+      .limit(maxCount);
+    if (survivors.length === 0) return 0;
+    const oldestKeptId = Number(survivors[survivors.length - 1].id);
+
+    await this.db
+      .delete(meshcorePacketLog)
+      .where(and(eq(meshcorePacketLog.sourceId, sourceId), lt(meshcorePacketLog.id, oldestKeptId)));
+    return total - survivors.length;
+  }
+
+  /**
+   * Distinct source ids currently present in the packet log (for per-source
+   * retention trimming).
+   */
+  async getPacketLogSourceIds(): Promise<string[]> {
+    const { meshcorePacketLog } = this.tables;
+    const rows = await this.db
+      .selectDistinct({ sourceId: meshcorePacketLog.sourceId })
+      .from(meshcorePacketLog);
+    return rows.map((r: { sourceId: string }) => r.sourceId).filter(Boolean);
+  }
+
+  /**
+   * Delete all packet-log rows, optionally scoped to one source.
+   * Returns the number of rows removed.
+   */
+  async deleteAllPackets(sourceId?: string): Promise<number> {
+    const { meshcorePacketLog } = this.tables;
+    const count = await this.getPacketCount({ sourceId });
+    if (sourceId) {
+      await this.db.delete(meshcorePacketLog).where(eq(meshcorePacketLog.sourceId, sourceId));
+    } else {
+      await this.db.delete(meshcorePacketLog);
+    }
+    return count;
   }
 }

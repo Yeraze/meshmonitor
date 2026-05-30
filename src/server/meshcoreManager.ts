@@ -17,6 +17,8 @@ import { scheduleCron, validateCron, type CronJob } from './utils/cronScheduler.
 import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js';
 import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
 import { MeshCoreNativeBackend, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
+import meshcorePacketLogService from './services/meshcorePacketLogService.js';
+import type { DbMeshCorePacket } from '../db/repositories/meshcore.js';
 
 // Dynamic imports for optional serialport dependency
 // These are loaded only when MeshCore is enabled to avoid requiring native build tools
@@ -982,8 +984,48 @@ class MeshCoreManager extends EventEmitter {
         `[MeshCore] Path discovery response for ${contact.publicKey.substring(0, 16)}…: ` +
         `out=${outHops} hops [${outPathFormatted}], in=${inHops} hops [${formatPathHex(inPathHex, data.in_hash_size ?? 1)}]`,
       );
+    } else if (event_type === 'ota_packet') {
+      // Full OTA packet metadata for the MeshCore Packet Monitor. Capture is
+      // opt-in; gate persistence on the setting so we don't write a row for
+      // every received packet unless the user has turned the monitor on.
+      void this.handleOtaPacket(data);
     } else {
       logger.debug(`[MeshCore] Unknown push event: ${event_type}`);
+    }
+  }
+
+  /**
+   * Persist and broadcast a parsed OTA packet for the MeshCore Packet
+   * Monitor. No-op unless the user has enabled `meshcore_packet_log_enabled`.
+   * Best-effort: capture failures must never break the message stream.
+   */
+  private async handleOtaPacket(data: any): Promise<void> {
+    try {
+      if (!(await meshcorePacketLogService.isEnabled())) return;
+
+      const now = Date.now();
+      const pathHops: string[] = Array.isArray(data.path_hops) ? data.path_hops : [];
+      const packet: DbMeshCorePacket = {
+        sourceId: this.sourceId,
+        timestamp: now,
+        payloadType: data.payload_type,
+        payloadTypeName: data.payload_type_string ?? null,
+        routeType: typeof data.route_type === 'number' ? data.route_type : null,
+        routeTypeName: data.route_type_string ?? null,
+        pathLenRaw: typeof data.path_len_raw === 'number' ? data.path_len_raw : null,
+        hopCount: typeof data.hop_count === 'number' ? data.hop_count : pathHops.length,
+        pathHops: pathHops.length > 0 ? pathHops.join(',') : null,
+        snr: typeof data.snr === 'number' ? data.snr : null,
+        rssi: typeof data.rssi === 'number' ? data.rssi : null,
+        payloadSize: typeof data.payload_size === 'number' ? data.payload_size : null,
+        rawHex: data.raw_hex ?? null,
+        createdAt: now,
+      };
+
+      await meshcorePacketLogService.logPacket(packet);
+      dataEventEmitter.emitMeshCoreOtaPacket(packet, this.sourceId);
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] Failed to handle OTA packet:`, err);
     }
   }
 

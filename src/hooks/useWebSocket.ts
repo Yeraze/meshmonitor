@@ -55,6 +55,27 @@ export interface MeshCoreMessageEvent {
   estTimeout?: number;
 }
 
+/**
+ * MeshCore OTA packet observed via the companion LogRxData push. Mirrors the
+ * server's `DbMeshCorePacket`; powers the MeshCore Packet Monitor live feed.
+ */
+export interface MeshCoreOtaPacketEvent {
+  id?: number;
+  sourceId?: string;
+  timestamp: number;
+  payloadType: number;
+  payloadTypeName?: string | null;
+  routeType?: number | null;
+  routeTypeName?: string | null;
+  pathLenRaw?: number | null;
+  hopCount?: number | null;
+  pathHops?: string | null;
+  snr?: number | null;
+  rssi?: number | null;
+  payloadSize?: number | null;
+  rawHex?: string | null;
+}
+
 export interface MeshCoreContactPayload {
   publicKey: string;
   advName?: string;
