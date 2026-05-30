@@ -5,7 +5,7 @@
  * Grouped by source, with color-coded source tags. Fleet overview.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { appBasename } from '../init';
@@ -268,6 +268,11 @@ export default function UnifiedTelemetryPage() {
   const [sourceFilter, setSourceFilter] = useState('');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('newest');
+  // Source the legend pills jump to. `activeSource` highlights the pill for the
+  // section nearest the top of the viewport (tracked via IntersectionObserver).
+  const [activeSource, setActiveSource] = useState<string>('');
+  const headerRef = useRef<HTMLDivElement>(null);
+  const sectionRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   // This page renders outside SettingsProvider, so read the persisted
   // temperature-unit preference directly (same localStorage key SettingsContext uses).
   const temperatureUnit: TemperatureUnit = localStorage.getItem('temperatureUnit') === 'F' ? 'F' : 'C';
@@ -359,9 +364,56 @@ export default function UnifiedTelemetryPage() {
     }
   };
 
+  // Source sections currently rendered (after filters). Drives the legend's
+  // jump targets + active-state tracking. Joined into a string for a stable
+  // effect dependency.
+  const renderedSourceIds = Object.keys(bySource);
+  const renderedKey = renderedSourceIds.join('|');
+
+  const setSectionRef = useCallback(
+    (sid: string) => (el: HTMLDivElement | null) => {
+      if (el) sectionRefs.current.set(sid, el);
+      else sectionRefs.current.delete(sid);
+    },
+    [],
+  );
+
+  // Smooth-scroll a source section to just below the sticky header. We compute
+  // the offset manually (rather than CSS scroll-margin) because the header
+  // height changes as the controls wrap on narrow viewports.
+  const scrollToSource = useCallback((sid: string) => {
+    const el = sectionRefs.current.get(sid);
+    if (!el) return;
+    const headerH = headerRef.current?.offsetHeight ?? 0;
+    const top = el.getBoundingClientRect().top + window.scrollY - headerH - 12;
+    window.scrollTo({ top, behavior: 'smooth' });
+    setActiveSource(sid);
+  }, []);
+
+  // Highlight the legend pill for the section nearest the top of the viewport.
+  // The negative top rootMargin keeps the active section under the sticky header
+  // from counting as "at the top"; the -70% bottom margin biases toward the
+  // section whose header has just scrolled into the upper band.
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return;
+    const headerH = headerRef.current?.offsetHeight ?? 0;
+    const observer = new IntersectionObserver(
+      (obsEntries) => {
+        const visible = obsEntries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        const sid = visible[0]?.target.getAttribute('data-source-id');
+        if (sid) setActiveSource(sid);
+      },
+      { rootMargin: `-${headerH + 8}px 0px -70% 0px`, threshold: 0 },
+    );
+    for (const el of sectionRefs.current.values()) observer.observe(el);
+    return () => observer.disconnect();
+  }, [renderedKey]);
+
   return (
     <div className="unified-page">
-      <div className="unified-header">
+      <div className="unified-header unified-header--sticky" ref={headerRef}>
         <button className="unified-header__back" onClick={() => navigate('/', { state: { showList: true } })}>{t('unified.back_to_sources')}</button>
 
         <div className="unified-header__title">
@@ -427,21 +479,32 @@ export default function UnifiedTelemetryPage() {
           </select>
         </div>
 
-        <div className="unified-source-legend">
-          {sourceIds.map(sid => {
-            const name = entries.find(e => e.sourceId === sid)?.sourceName ?? sid;
-            const color = getSourceColor(sid, sourceIds);
-            return (
-              <span
-                key={sid}
-                className="unified-source-pill"
-                style={{ background: `color-mix(in srgb, ${color} 15%, transparent)`, color, border: `1px solid color-mix(in srgb, ${color} 35%, transparent)` }}
-              >
-                {name}
-              </span>
-            );
-          })}
-        </div>
+        {sourceIds.length > 0 && (
+          <div className="unified-source-legend">
+            {sourceIds.map(sid => {
+              const name = entries.find(e => e.sourceId === sid)?.sourceName ?? sid;
+              const color = getSourceColor(sid, sourceIds);
+              // A pill can only jump if its section is currently rendered (it
+              // gets filtered out by the source/type/search controls otherwise).
+              const hasSection = Object.prototype.hasOwnProperty.call(bySource, sid);
+              const isActive = hasSection && sid === activeSource;
+              return (
+                <button
+                  key={sid}
+                  type="button"
+                  className={`unified-source-pill${isActive ? ' is-active' : ''}`}
+                  style={{ background: `color-mix(in srgb, ${color} 15%, transparent)`, color, border: `1px solid color-mix(in srgb, ${color} 35%, transparent)` }}
+                  disabled={!hasSection}
+                  aria-current={isActive ? 'true' : undefined}
+                  title={t('unified.telemetry.jump_to_source', { name })}
+                  onClick={() => scrollToSource(sid)}
+                >
+                  {name}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="unified-body unified-body--wide">
@@ -462,7 +525,12 @@ export default function UnifiedTelemetryPage() {
           const nodeEntries = sortNodes(nodeMap);
 
           return (
-            <div key={sourceId} className="unified-telem-source">
+            <div
+              key={sourceId}
+              className="unified-telem-source"
+              ref={setSectionRef(sourceId)}
+              data-source-id={sourceId}
+            >
               <div className="unified-telem-source__header">
                 <div className="unified-telem-source__bar" style={{ background: color }} />
                 <span className="unified-telem-source__name" style={{ color }}>{sourceName}</span>

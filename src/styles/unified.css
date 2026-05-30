@@ -48,6 +48,15 @@
   flex-wrap: wrap;
 }
 
+/* Telemetry page pins the header so the source jump-pills stay reachable while
+   the card grids scroll underneath. Scoped to a modifier so the chat-style
+   messages page (which manages its own scroll surface) is unaffected. */
+.unified-header--sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
 .unified-header__back {
   background: var(--ctp-surface1);
   color: var(--ctp-subtext0);
@@ -94,6 +103,29 @@
   padding: 3px 10px;
   font-size: 12px;
   font-weight: 600;
+}
+
+/* Pills double as in-page jump buttons. Reset the native button chrome and
+   layer interaction states on top of the inline color styling. */
+button.unified-source-pill {
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.4;
+  transition: filter 0.15s, box-shadow 0.15s;
+}
+
+button.unified-source-pill:hover:not(:disabled) {
+  filter: brightness(1.25);
+}
+
+button.unified-source-pill:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* currentColor is the source color (set inline), so the ring matches the pill. */
+button.unified-source-pill.is-active {
+  box-shadow: 0 0 0 2px currentColor inset;
 }
 
 /* Controls: time range / type filter */
