@@ -24,6 +24,11 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
+import {
+  deriveHashtagSecretHex,
+  formatMeshCoreChannelName,
+  isHashtagChannelName,
+} from '../../utils/meshcoreHelpers';
 
 interface MeshCoreChannelsConfigSectionProps {
   baseUrl: string;
@@ -146,6 +151,30 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
     return 255;
   }, [channels]);
 
+  // A channel whose name starts with `#` is a hashtag channel: its secret is
+  // derived from the name (SHA-256("#name")[0:16]) rather than randomized, so
+  // it matches the well-known key everyone else on that public topic shares.
+  const isHashtag = isHashtagChannelName(editName);
+
+  // Live-derive the secret whenever the (trimmed) name is a hashtag, mirroring
+  // the official MeshCore app: typing `#general` deterministically yields the
+  // shared key. Non-hashtag names keep whatever secret is in the field.
+  useEffect(() => {
+    if (editingIdx === null) return;
+    const name = editName.trim();
+    if (!name.startsWith('#')) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const hex = await deriveHashtagSecretHex(name);
+        if (!cancelled) setEditSecretHex(hex);
+      } catch (err) {
+        if (!cancelled) logger.error('Failed to derive hashtag channel secret:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [editName, editingIdx]);
+
   const startEdit = useCallback((row: ChannelRow) => {
     setEditingIdx(row.id);
     setEditName(row.name);
@@ -250,7 +279,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
       <p className="hint">
         {t(
           'meshcore.channels.hint',
-          'Channels on this MeshCore device. Each channel is a name plus a 16-byte (AES-128) shared secret.',
+          'Channels on this MeshCore device. Each channel is a name plus a 16-byte (AES-128) shared secret. Name a channel with a leading "#" (e.g. #general) to join a public hashtag channel — its secret is derived from the name so it matches everyone else on that topic.',
         )}
       </p>
 
@@ -285,7 +314,10 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 'bold' }}>
-                        # {row.name || t('meshcore.channels.unnamed', 'Channel {{idx}}', { idx: row.id })}
+                        {formatMeshCoreChannelName(
+                          row.name,
+                          t('meshcore.channels.unnamed', 'Channel {{idx}}', { idx: row.id }),
+                        )}
                       </div>
                       <div className="hint" style={{ fontSize: '0.8rem' }}>
                         {t('meshcore.channels.idx_label', 'Index')}: {row.id}
@@ -323,6 +355,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
                     onSave={handleSave}
                     onCancel={cancelEdit}
                     saving={saving}
+                    derivedFromHashtag={isHashtag}
                   />
                 )}
               </li>
@@ -358,6 +391,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
             onSave={handleSave}
             onCancel={cancelEdit}
             saving={saving}
+            derivedFromHashtag={isHashtag}
           />
         </div>
       )}
@@ -390,6 +424,9 @@ interface ChannelEditorProps {
   onSave: () => void;
   onCancel: () => void;
   saving: boolean;
+  /** True when the name is a `#hashtag`: the secret is auto-derived and the
+   *  field is locked read-only (regenerating a random secret makes no sense). */
+  derivedFromHashtag: boolean;
 }
 
 const ChannelEditor: React.FC<ChannelEditorProps> = ({
@@ -405,6 +442,7 @@ const ChannelEditor: React.FC<ChannelEditorProps> = ({
   onSave,
   onCancel,
   saving,
+  derivedFromHashtag,
 }) => {
   const { t } = useTranslation();
   return (
@@ -436,6 +474,7 @@ const ChannelEditor: React.FC<ChannelEditorProps> = ({
           spellCheck={false}
           autoComplete="off"
           disabled={saving}
+          readOnly={derivedFromHashtag}
           style={{ flex: 1, fontFamily: 'monospace' }}
         />
         <button
@@ -459,12 +498,21 @@ const ChannelEditor: React.FC<ChannelEditorProps> = ({
         <button
           type="button"
           onClick={onRegenerate}
-          disabled={saving}
+          disabled={saving || derivedFromHashtag}
           title={t('meshcore.channels.regen_title', 'Generate a new random secret')}
         >
           {t('meshcore.channels.regen', 'Regenerate')}
         </button>
       </div>
+      {derivedFromHashtag && (
+        <p className="hint" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
+          {t(
+            'meshcore.channels.hashtag_derived',
+            'Hashtag channel — secret is derived from the name (SHA-256) and shared by everyone using #{{name}}.',
+            { name: name.trim().replace(/^#+/, '') },
+          )}
+        </p>
+      )}
     </div>
     <div style={{ display: 'flex', gap: '0.5rem' }}>
       <button

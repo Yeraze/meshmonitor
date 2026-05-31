@@ -46,3 +46,52 @@ export function mapContactsToNodes(contacts: MeshCoreContact[]): MeshCoreMapNode
       };
     });
 }
+
+// --- MeshCore channels -----------------------------------------------------
+
+/** Number of bytes in a MeshCore channel secret (AES-128). */
+export const MESHCORE_SECRET_BYTES = 16;
+
+/**
+ * A MeshCore "hashtag channel" is a public topic channel (`#general`, `#test`)
+ * whose secret is deterministically derived from its name, so anyone using the
+ * same `#name` shares the key with no key exchange. MeshCore classifies a
+ * channel as a hashtag channel precisely when its name starts with `#`.
+ */
+export function isHashtagChannelName(name: string | null | undefined): boolean {
+  return (name ?? '').trim().startsWith('#');
+}
+
+/**
+ * Format a MeshCore channel name for display.
+ *
+ * Names are shown with a leading `# ` as a decorative convention. Hashtag
+ * channels already store the `#` as part of the name (e.g. `#general`), so we
+ * must NOT prepend another one or they render as `# #general`. Empty names fall
+ * back to the supplied label (e.g. "Channel 0").
+ */
+export function formatMeshCoreChannelName(name: string | null | undefined, fallback: string): string {
+  const trimmed = (name ?? '').trim();
+  if (!trimmed) return `# ${fallback}`;
+  if (trimmed.startsWith('#')) return trimmed;
+  return `# ${trimmed}`;
+}
+
+/**
+ * Derive the 16-byte AES-128 secret for a MeshCore hashtag channel.
+ *
+ * Matches the official MeshCore app: `SHA-256("#" + room)[0:16]`, where the
+ * literal name string — INCLUDING the leading `#` — is hashed verbatim (the
+ * derivation is case-sensitive). Pass the channel name exactly as it will be
+ * stored (`#general`); a missing leading `#` is added before hashing.
+ *
+ * Returns the secret as a lowercase hex string (32 chars).
+ */
+export async function deriveHashtagSecretHex(name: string): Promise<string> {
+  const normalized = name.trim().startsWith('#') ? name.trim() : `#${name.trim()}`;
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalized));
+  const full = new Uint8Array(digest);
+  let hex = '';
+  for (let i = 0; i < MESHCORE_SECRET_BYTES; i++) hex += full[i].toString(16).padStart(2, '0');
+  return hex;
+}
