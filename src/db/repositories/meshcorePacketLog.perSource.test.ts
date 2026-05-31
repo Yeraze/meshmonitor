@@ -104,6 +104,22 @@ describe('MeshCoreRepository — packet-log per-source isolation', () => {
     expect(advert[0].routeType).toBe(0x02);
   });
 
+  it('honours the keyset cursor (untilTs/untilId) used by the unified stream', async () => {
+    // Three rows at the same timestamp plus an older one; ids ascend with insert.
+    await repo.insertPacket(makePacket('src-a', { timestamp: 200 })); // id 1
+    await repo.insertPacket(makePacket('src-a', { timestamp: 200 })); // id 2
+    await repo.insertPacket(makePacket('src-a', { timestamp: 200 })); // id 3
+    await repo.insertPacket(makePacket('src-a', { timestamp: 100 })); // id 4
+
+    const all = await repo.getPackets({ sourceId: 'src-a' });
+    // Newest-first by (timestamp desc, id desc): ids 3, 2, 1, then 4.
+    expect(all.map(p => p.id)).toEqual([3, 2, 1, 4]);
+
+    // Cursor at (200, id 2) returns only rows strictly older: id 1 (same ts) and id 4.
+    const page = await repo.getPackets({ sourceId: 'src-a', untilTs: 200, untilId: 2 });
+    expect(page.map(p => p.id)).toEqual([1, 4]);
+  });
+
   it('filters by since timestamp', async () => {
     await repo.insertPacket(makePacket('src-a', { timestamp: 100 }));
     await repo.insertPacket(makePacket('src-a', { timestamp: 500 }));

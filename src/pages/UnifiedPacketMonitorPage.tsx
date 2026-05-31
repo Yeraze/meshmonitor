@@ -405,7 +405,7 @@ export default function UnifiedPacketMonitorPage() {
                         <td className="date">{formatPacketDateColumn(packet.timestamp, dateFormat, t('packet_monitor.today', 'Today'))}</td>
                         <td className="timestamp">{formatPacketTimestamp(packet.timestamp, timeFormat)}</td>
                         <td className="from-node" title={packet.from_node_longName || packet.from_node_id || ''}>
-                          {packet.from_node_longName || packet.from_node_id || packet.from_node}
+                          {packet.from_node_longName || packet.from_node_id || packet.from_node || t('common.na')}
                         </td>
                         <td className="to-node" title={packet.to_node_longName || packet.to_node_id || ''}>
                           {packet.to_node_id === '!ffffffff'

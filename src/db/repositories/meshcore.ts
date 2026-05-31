@@ -4,7 +4,7 @@
  * Handles MeshCore node and message database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, sql, isNull, and, lt, gte, inArray, type SQL } from 'drizzle-orm';
+import { eq, desc, sql, isNull, and, or, lt, gte, inArray, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -118,6 +118,14 @@ export interface MeshCorePacketQuery {
   routeType?: number;
   /** Only return packets with `timestamp >= since` (ms). */
   since?: number;
+  /**
+   * Keyset cursor (paired with `untilId`): return only rows strictly "older"
+   * than `(untilTs, untilId)` in the table's `timestamp DESC, id DESC` order —
+   * `timestamp < untilTs OR (timestamp = untilTs AND id < untilId)`. Mirrors the
+   * Meshtastic packet-log cursor so both logs can share one unified keyset page.
+   */
+  untilTs?: number;
+  untilId?: number;
 }
 
 /**
@@ -766,6 +774,13 @@ export class MeshCoreRepository extends BaseRepository {
     }
     if (typeof query.since === 'number') {
       conditions.push(gte(meshcorePacketLog.timestamp, query.since));
+    }
+    if (typeof query.untilTs === 'number' && typeof query.untilId === 'number') {
+      const keyset = or(
+        lt(meshcorePacketLog.timestamp, query.untilTs),
+        and(eq(meshcorePacketLog.timestamp, query.untilTs), lt(meshcorePacketLog.id, query.untilId))
+      );
+      if (keyset) conditions.push(keyset);
     }
     return conditions;
   }
