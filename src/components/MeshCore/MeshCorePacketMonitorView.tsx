@@ -13,12 +13,18 @@
  * already joined by the parent MeshCorePage's useMeshCore hook).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Filter, Trash2, Pause, Play, RefreshCw } from 'lucide-react';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useWebSocketContext } from '../../contexts/WebSocketContext';
 import { useAuth } from '../../contexts/AuthContext';
 import type { MeshCoreOtaPacketEvent } from '../../hooks/useWebSocket';
+import {
+  MESHCORE_PAYLOAD_TYPES as PAYLOAD_TYPES,
+  MESHCORE_ROUTE_TYPES as ROUTE_TYPES,
+} from '../../utils/meshcorePacketDecode';
+import MeshCorePacketDetailModal from './MeshCorePacketDetailModal';
 import './MeshCorePacketMonitor.css';
 
 interface MeshCorePacketMonitorViewProps {
@@ -27,29 +33,6 @@ interface MeshCorePacketMonitorViewProps {
 }
 
 type Packet = MeshCoreOtaPacketEvent;
-
-/** meshcore.js Packet.PAYLOAD_TYPE_* — kept in sync with the firmware enum. */
-const PAYLOAD_TYPES: { value: number; label: string }[] = [
-  { value: 0x00, label: 'REQ' },
-  { value: 0x01, label: 'RESPONSE' },
-  { value: 0x02, label: 'TXT_MSG' },
-  { value: 0x03, label: 'ACK' },
-  { value: 0x04, label: 'ADVERT' },
-  { value: 0x05, label: 'GRP_TXT' },
-  { value: 0x06, label: 'GRP_DATA' },
-  { value: 0x07, label: 'ANON_REQ' },
-  { value: 0x08, label: 'PATH' },
-  { value: 0x09, label: 'TRACE' },
-  { value: 0x0f, label: 'RAW_CUSTOM' },
-];
-
-/** meshcore.js Packet.ROUTE_TYPE_* */
-const ROUTE_TYPES: { value: number; label: string }[] = [
-  { value: 0x00, label: 'TRANSPORT_FLOOD' },
-  { value: 0x01, label: 'FLOOD' },
-  { value: 0x02, label: 'DIRECT' },
-  { value: 0x03, label: 'TRANSPORT_DIRECT' },
-];
 
 const MAX_BUFFER = 2000;
 const PAGE_LIMIT = 200;
@@ -95,7 +78,7 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
 
   const [payloadFilter, setPayloadFilter] = useState<number | ''>('');
   const [routeFilter, setRouteFilter] = useState<number | ''>('');
-  const [expandedId, setExpandedId] = useState<number | string | null>(null);
+  const [selectedPacket, setSelectedPacket] = useState<Packet | null>(null);
 
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
@@ -314,38 +297,34 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
             <tbody>
               {visiblePackets.map((p, idx) => {
                 const key = p.id ?? `${p.timestamp}-${idx}`;
-                const isExpanded = expandedId === key;
                 return (
-                  <React.Fragment key={key}>
-                    <tr className="mcpm-row" onClick={() => setExpandedId(isExpanded ? null : key)}>
-                      <td className="mcpm-mono">{formatTime(p.timestamp)}</td>
-                      <td><span className="mcpm-badge">{payloadLabel(p)}</span></td>
-                      <td className="mcpm-route">{routeLabel(p)}</td>
-                      <td className="mcpm-mono">{typeof p.hopCount === 'number' ? p.hopCount : '—'}</td>
-                      <td className="mcpm-mono">{typeof p.snr === 'number' ? p.snr.toFixed(2) : '—'}</td>
-                      <td className="mcpm-mono">{typeof p.rssi === 'number' ? p.rssi : '—'}</td>
-                      <td className="mcpm-mono">{typeof p.payloadSize === 'number' ? p.payloadSize : '—'}</td>
-                      <td className="mcpm-mono mcpm-path">{p.pathHops || (p.pathLenRaw === 255 ? 'direct' : '—')}</td>
-                    </tr>
-                    {isExpanded && (
-                      <tr className="mcpm-detail-row">
-                        <td colSpan={8}>
-                          <div className="mcpm-detail">
-                            <span><strong>{t('meshcore.packets.payloadType', 'Payload')}:</strong> {payloadLabel(p)} (0x{p.payloadType.toString(16).padStart(2, '0')})</span>
-                            <span><strong>{t('meshcore.packets.routeType', 'Route')}:</strong> {routeLabel(p)}</span>
-                            <span><strong>path_len:</strong> {typeof p.pathLenRaw === 'number' ? `0x${p.pathLenRaw.toString(16)}` : '—'}</span>
-                            <span className="mcpm-raw"><strong>{t('meshcore.packets.raw', 'Raw')}:</strong> {p.rawHex || '—'}</span>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
+                  <tr
+                    key={key}
+                    className="mcpm-row"
+                    onClick={() => setSelectedPacket(p)}
+                    title={t('meshcore.packets.clickToDecode', 'Click to decode this packet')}
+                  >
+                    <td className="mcpm-mono">{formatTime(p.timestamp)}</td>
+                    <td><span className="mcpm-badge">{payloadLabel(p)}</span></td>
+                    <td className="mcpm-route">{routeLabel(p)}</td>
+                    <td className="mcpm-mono">{typeof p.hopCount === 'number' ? p.hopCount : '—'}</td>
+                    <td className="mcpm-mono">{typeof p.snr === 'number' ? p.snr.toFixed(2) : '—'}</td>
+                    <td className="mcpm-mono">{typeof p.rssi === 'number' ? p.rssi : '—'}</td>
+                    <td className="mcpm-mono">{typeof p.payloadSize === 'number' ? p.payloadSize : '—'}</td>
+                    <td className="mcpm-mono mcpm-path">{p.pathHops || (p.pathLenRaw === 255 ? 'direct' : '—')}</td>
+                  </tr>
                 );
               })}
             </tbody>
           </table>
         )}
       </div>
+
+      {selectedPacket &&
+        createPortal(
+          <MeshCorePacketDetailModal packet={selectedPacket} onClose={() => setSelectedPacket(null)} />,
+          document.body
+        )}
     </div>
   );
 };

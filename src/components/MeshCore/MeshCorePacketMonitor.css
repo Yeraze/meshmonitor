@@ -229,3 +229,118 @@
   word-break: break-all;
   white-space: normal;
 }
+
+/* ── Packet decode modal ──────────────────────────────────────────────────── */
+.mcpm-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.mcpm-modal-content {
+  background: var(--ctp-base);
+  border: 2px solid var(--ctp-blue);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  max-width: 640px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mcpm-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: var(--ctp-mantle);
+  border-bottom: 1px solid var(--ctp-surface2);
+}
+
+.mcpm-modal-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--ctp-text);
+}
+
+.mcpm-modal-close {
+  background: none;
+  border: none;
+  color: var(--ctp-subtext0);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+}
+.mcpm-modal-close:hover { color: var(--ctp-text); }
+
+.mcpm-modal-body {
+  padding: 0.75rem 1rem 1rem;
+  overflow-y: auto;
+}
+
+.mcpm-dl-section {
+  margin-bottom: 0.85rem;
+}
+
+.mcpm-dl-section h5 {
+  margin: 0 0 0.4rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ctp-blue);
+  border-bottom: 1px solid var(--ctp-surface1);
+  padding-bottom: 0.2rem;
+}
+
+.mcpm-dl-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 0.5rem;
+  padding: 2px 0;
+  font-size: 0.82rem;
+  align-items: baseline;
+}
+
+.mcpm-dl-label {
+  color: var(--ctp-subtext0);
+}
+
+.mcpm-dl-value {
+  color: var(--ctp-text);
+  min-width: 0;
+}
+
+.mcpm-dl-wrap {
+  word-break: break-all;
+  white-space: normal;
+}
+
+.mcpm-raw-hex {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--ctp-subtext1);
+  background: var(--ctp-crust);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 4px;
+  padding: 0.5rem;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.mcpm-decode-note {
+  font-size: 0.78rem;
+  color: var(--ctp-yellow);
+  background: color-mix(in srgb, var(--ctp-yellow) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ctp-yellow) 30%, transparent);
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+}
