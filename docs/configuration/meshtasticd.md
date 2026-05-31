@@ -15,7 +15,7 @@ Use cases include:
 
 ## Physical Device Connections
 
-`meshtasticd` can connect to **physical LoRa radios via USB** using Portduino. Simply omit the `-s` flag and pass through the USB device to the container.
+`meshtasticd` can connect to **physical LoRa radios** using Portduino — most commonly a radio exposed as a USB serial device, though some boards present the radio over SPI/GPIO (a HAT). Simply omit the `-s` flag and pass the radio's device node(s) through to the container.
 
 **For Serial/USB Meshtastic devices (non-LoRa):** Use the [Meshtastic Serial Bridge](/configuration/serial-bridge) instead
 
@@ -171,16 +171,16 @@ MeshMonitor will be accessible at `http://localhost:8080`.
 - Do **not** use `network_mode: host` with port mappings - they are mutually exclusive.
 :::
 
+::: tip Using a real radio?
+The example above runs in **simulation mode** (the `-s` flag) and does **not** talk to attached hardware. To use a physical USB LoRa radio, drop `-s` and pass the radio's device(s) into the container — see [Docker Compose with Physical LoRa Hardware](#docker-compose-with-physical-lora-hardware-no-simulation) below.
+:::
+
 ### Docker Compose with Physical LoRa Hardware (No Simulation)
 
 To run `meshtasticd` with a **real USB LoRa radio** (e.g., Heltec, RAK, Lilygo):
 
 1. **Omit the `-s` flag** from the command
 2. **Pass through the USB device** to the container
-
-::: tip Credit
-This configuration was contributed by @Saucesquatch (corvock). Thanks!
-:::
 
 ```yaml
 services:
@@ -209,7 +209,16 @@ services:
     restart: unless-stopped
 ```
 
-You'll also need a `config.yaml` configured for your specific radio hardware (pin mappings, module type, etc.). See the [Meshtastic Portduino documentation](https://meshtastic.org/docs/hardware/devices/linux-native-hardware/) for pinout details per board.
+You'll also need a `config.yaml` configured for your specific radio. Set `Lora.Module` to match your chipset — commonly `sx1262`, `sx1276`, `sx1280`, or `llcc68` — along with the correct pin mappings for your board. See the [Meshtastic Portduino documentation](https://meshtastic.org/docs/hardware/devices/linux-native-hardware/) for per-board pinouts and the full list of supported modules.
+
+::: tip Passing through additional devices
+`/dev/bus/usb` covers most USB-attached radios, but depending on your hardware you may need to pass through additional device nodes — for example a specific serial adapter (`/dev/ttyUSB0`, `/dev/ttyACM0`), or, for SPI/GPIO HAT radios, `/dev/spidev*` and `/dev/gpiochip*`. List your devices before and after plugging in the radio to see which nodes appear, then add each one under the service's `devices:` list:
+
+```bash
+lsusb
+ls /dev/ttyUSB* /dev/ttyACM* /dev/spidev* /dev/gpiochip* 2>/dev/null
+```
+:::
 
 ::: warning USB Permissions
 If the container can't access the USB device, ensure your user has permissions:
@@ -221,6 +230,10 @@ lsusb
 # Add your user to the dialout group (log out and back in)
 sudo usermod -a -G dialout $USER
 ```
+:::
+
+::: tip Credit
+The physical-hardware configuration above was contributed by @Saucesquatch (corvock). Thanks!
 :::
 
 ### Using Docker Host Network
