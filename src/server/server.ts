@@ -525,6 +525,8 @@ setTimeout(async () => {
               heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
               virtualNode: cfg.virtualNode,
               mqttLink: cfg.mqttLink,
+              passiveMode: cfg.passiveMode === true,
+              passiveResyncStaleMs: typeof cfg.passiveResyncStaleMs === 'number' ? cfg.passiveResyncStaleMs : null,
             }, source.id);
             await applyManagerSettings(meshtasticManager, source.id, databaseService);
             await sourceManagerRegistry.addManager(meshtasticManager);
@@ -538,6 +540,8 @@ setTimeout(async () => {
               heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
               virtualNode: cfg.virtualNode,
               mqttLink: cfg.mqttLink,
+              passiveMode: cfg.passiveMode === true,
+              passiveResyncStaleMs: typeof cfg.passiveResyncStaleMs === 'number' ? cfg.passiveResyncStaleMs : null,
             });
             await applyManagerSettings(manager, source.id, databaseService);
             await sourceManagerRegistry.addManager(manager);
