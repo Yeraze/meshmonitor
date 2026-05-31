@@ -1,5 +1,15 @@
 import api from './api';
-import { PacketLog, PacketLogResponse, PacketStats, PacketFilters, PacketDistributionStats, RelayNodeOption } from '../types/packet';
+import {
+  PacketLog,
+  PacketLogResponse,
+  PacketStats,
+  PacketFilters,
+  PacketDistributionStats,
+  RelayNodeOption,
+  UnifiedPacketFilters,
+  UnifiedPacketsResponse,
+  UnifiedPacketDistribution,
+} from '../types/packet';
 
 /**
  * Fetch packet logs with optional filters
@@ -151,6 +161,35 @@ export const getPacketDistributionStats = async (since?: number, from_node?: num
   return api.get<PacketDistributionStats>(`/api/packets/stats/distribution${query ? `?${query}` : ''}`);
 };
 
+
+/**
+ * Fetch a page of the cross-source unified packet stream.
+ * Pagination is keyset-based: pass the `nextCursor` from the previous page.
+ */
+export const getUnifiedPackets = async (
+  cursor: string | null = null,
+  limit: number = 100,
+  filters?: UnifiedPacketFilters
+): Promise<UnifiedPacketsResponse> => {
+  const params = new URLSearchParams({ limit: limit.toString() });
+  if (cursor) params.append('cursor', cursor);
+  if (filters?.portnum !== undefined) params.append('portnum', filters.portnum.toString());
+  if (filters?.encrypted !== undefined) params.append('encrypted', filters.encrypted.toString());
+  if (filters?.transport_mechanism !== undefined) params.append('transport_mechanism', filters.transport_mechanism.toString());
+  if (filters?.from_node !== undefined) params.append('from_node', filters.from_node.toString());
+  if (filters?.sourceId !== undefined) params.append('sourceId', filters.sourceId);
+  return api.get<UnifiedPacketsResponse>(`/api/unified/packets?${params.toString()}`);
+};
+
+/**
+ * Fetch cross-source packet distribution (by device, by type, by source).
+ */
+export const getUnifiedPacketDistribution = async (since?: number): Promise<UnifiedPacketDistribution> => {
+  const params = new URLSearchParams();
+  if (since !== undefined) params.append('since', since.toString());
+  const query = params.toString();
+  return api.get<UnifiedPacketDistribution>(`/api/unified/packets/distribution${query ? `?${query}` : ''}`);
+};
 
 /**
  * Fetch distinct relay nodes for filter dropdowns

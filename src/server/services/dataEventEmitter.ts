@@ -9,6 +9,7 @@
 import { EventEmitter } from 'events';
 import type { DbNode, DbMessage, DbTelemetry, DbChannel, DbTraceroute } from '../../services/database.js';
 import type { MeshCoreMessage, MeshCoreContact, MeshCoreNode } from '../meshcoreManager.js';
+import type { DbMeshCorePacket } from '../../db/repositories/meshcore.js';
 import { logger } from '../../utils/logger.js';
 
 export type DataEventType =
@@ -27,7 +28,8 @@ export type DataEventType =
   | 'meshcore:contact:updated'
   | 'meshcore:status:updated'
   | 'meshcore:local-node:updated'
-  | 'meshcore:send-confirmed';
+  | 'meshcore:send-confirmed'
+  | 'meshcore:ota-packet';
 
 export interface DataEvent {
   type: DataEventType;
@@ -349,6 +351,20 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] MeshCore send confirmed: RTT=${data.roundTripMs}ms (source: ${sourceId})`);
+  }
+
+  /**
+   * Emit a MeshCore OTA packet event for the Packet Monitor. Fires once per
+   * received OTA packet when capture is enabled; room-scoped by sourceId.
+   */
+  emitMeshCoreOtaPacket(packet: DbMeshCorePacket, sourceId: string): void {
+    const event: DataEvent = {
+      type: 'meshcore:ota-packet',
+      data: packet,
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
   }
 
   /**

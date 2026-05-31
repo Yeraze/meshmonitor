@@ -19,6 +19,7 @@ import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddle
 import { validateAutoAckRegex } from '../utils/autoAckRegex.js';
 import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiters.js';
 import { getMeshCoreCredentialStore } from '../services/meshcoreCredentialStore.js';
+import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
 
 /**
  * Resolve the manager for a request. Mounted only under
@@ -2831,4 +2832,103 @@ router.get('/neighbors', requireAuth(), requirePermission('nodes', 'read', { sou
     res.status(500).json({ success: false, error: 'Failed to fetch neighbors' });
   }
 });
+
+/**
+ * GET /api/sources/:id/meshcore/packets
+ *
+ * Paginated OTA packet log for the MeshCore Packet Monitor (newest first).
+ * Filters: payload_type, route_type, since (ms). Returns the same envelope
+ * shape as the Meshtastic packet monitor so the frontend can share logic.
+ */
+const MESHCORE_PACKET_MAX_LIMIT = 1000;
+
+router.get(
+  '/packets',
+  optionalAuth(),
+  requirePermission('packetmonitor', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const offset = Math.max(parseInt(req.query.offset as string, 10) || 0, 0);
+      const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 100, 1), MESHCORE_PACKET_MAX_LIMIT);
+      const payloadType = req.query.payload_type !== undefined ? parseInt(req.query.payload_type as string, 10) : undefined;
+      const routeType = req.query.route_type !== undefined ? parseInt(req.query.route_type as string, 10) : undefined;
+      let since = req.query.since !== undefined ? parseInt(req.query.since as string, 10) : undefined;
+      // Accept seconds or milliseconds (mirror Meshtastic packet routes).
+      if (since !== undefined && since < 1e12) since = since * 1000;
+
+      const query = {
+        sourceId,
+        offset,
+        limit,
+        payloadType: Number.isFinite(payloadType as number) ? payloadType : undefined,
+        routeType: Number.isFinite(routeType as number) ? routeType : undefined,
+        since: Number.isFinite(since as number) ? since : undefined,
+      };
+
+      const [packets, total, enabled, maxCount, maxAgeHours] = await Promise.all([
+        meshcorePacketLogService.getPackets(query),
+        meshcorePacketLogService.getPacketCount({ sourceId, payloadType: query.payloadType, routeType: query.routeType, since: query.since }),
+        meshcorePacketLogService.isEnabled(),
+        meshcorePacketLogService.getMaxCount(),
+        meshcorePacketLogService.getMaxAgeHours(),
+      ]);
+
+      res.json({ packets, total, offset, limit, enabled, maxCount, maxAgeHours });
+    } catch (error) {
+      logger.error('[API] Error fetching MeshCore packets:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch packets' });
+    }
+  },
+);
+
+/**
+ * GET /api/sources/:id/meshcore/packets/stats
+ *
+ * Summary stats for the MeshCore Packet Monitor: total count, enabled flag,
+ * and the retention limits.
+ */
+router.get(
+  '/packets/stats',
+  optionalAuth(),
+  requirePermission('packetmonitor', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const [total, enabled, maxCount, maxAgeHours] = await Promise.all([
+        meshcorePacketLogService.getPacketCount({ sourceId }),
+        meshcorePacketLogService.isEnabled(),
+        meshcorePacketLogService.getMaxCount(),
+        meshcorePacketLogService.getMaxAgeHours(),
+      ]);
+      res.json({ total, enabled, maxCount, maxAgeHours });
+    } catch (error) {
+      logger.error('[API] Error fetching MeshCore packet stats:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch packet stats' });
+    }
+  },
+);
+
+/**
+ * DELETE /api/sources/:id/meshcore/packets
+ *
+ * Clear this source's OTA packet log. Requires packetmonitor:write.
+ */
+router.delete(
+  '/packets',
+  requireAuth(),
+  requirePermission('packetmonitor', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const deleted = await meshcorePacketLogService.clearPackets(sourceId);
+      auditMeshcoreEvent(req, 'meshcore_packets_cleared', 'configuration', { sourceId, deleted });
+      res.json({ success: true, deleted });
+    } catch (error) {
+      logger.error('[API] Error clearing MeshCore packets:', error);
+      res.status(500).json({ success: false, error: 'Failed to clear packets' });
+    }
+  },
+);
+
 export default router;

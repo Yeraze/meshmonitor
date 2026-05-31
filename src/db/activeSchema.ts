@@ -95,6 +95,9 @@ import {
 import {
   meshcoreNeighborsSqlite, meshcoreNeighborsPostgres, meshcoreNeighborsMysql,
 } from './schema/meshcoreNeighbors.js';
+import {
+  meshcorePacketLogSqlite, meshcorePacketLogPostgres, meshcorePacketLogMysql,
+} from './schema/meshcorePacketLog.js';
 
 // Embed Profiles table
 import {
@@ -172,6 +175,7 @@ export interface ActiveSchema {
   meshcoreNodes: any;
   meshcoreMessages: any;
   meshcoreNeighbors: any;
+  meshcorePacketLog: any;
 
   // Embed Profiles
   embedProfiles: any;
@@ -229,6 +233,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNodes: meshcoreNodesSqlite,
     meshcoreMessages: meshcoreMessagesSqlite,
     meshcoreNeighbors: meshcoreNeighborsSqlite,
+    meshcorePacketLog: meshcorePacketLogSqlite,
     embedProfiles: embedProfilesSqlite,
     waypoints: waypointsSqlite,
     sources: sourcesSqlite,
@@ -272,6 +277,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNodes: meshcoreNodesPostgres,
     meshcoreMessages: meshcoreMessagesPostgres,
     meshcoreNeighbors: meshcoreNeighborsPostgres,
+    meshcorePacketLog: meshcorePacketLogPostgres,
     embedProfiles: embedProfilesPostgres,
     waypoints: waypointsPostgres,
     sources: sourcesPostgres,
@@ -315,6 +321,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNodes: meshcoreNodesMysql,
     meshcoreMessages: meshcoreMessagesMysql,
     meshcoreNeighbors: meshcoreNeighborsMysql,
+    meshcorePacketLog: meshcorePacketLogMysql,
     embedProfiles: embedProfilesMysql,
     waypoints: waypointsMysql,
     sources: sourcesMysql,

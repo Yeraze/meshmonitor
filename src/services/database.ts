@@ -8048,6 +8048,7 @@ class DatabaseService {
     offset?: number; limit?: number; portnum?: number; from_node?: number;
     to_node?: number; channel?: number; encrypted?: boolean; since?: number;
     relay_node?: number | 'unknown'; transport_mechanism?: number; sourceId?: string;
+    untilTs?: number; untilId?: number;
   }): Promise<DbPacketLog[]> {
     return this.misc.getPacketLogs(options);
   }
