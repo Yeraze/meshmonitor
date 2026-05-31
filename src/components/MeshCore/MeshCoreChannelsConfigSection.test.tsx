@@ -177,6 +177,93 @@ describe('MeshCoreChannelsConfigSection — add channel', () => {
   });
 });
 
+describe('MeshCoreChannelsConfigSection — hashtag channels', () => {
+  it('renders a synced hashtag channel without doubling the # prefix', async () => {
+    csrfFetchMock.mockResolvedValueOnce(
+      jsonResponse([
+        // SHA-256("#general")[0:16] = 4c49f3f24629f5ee4ad5b3965db47985 → base64 below.
+        { id: 0, name: '#general', psk: 'TEnz8kYp9e5K1bOWXbR5hQ==' },
+      ]),
+    );
+
+    render(
+      <MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('#general')).toBeTruthy();
+      // The decorative-prefixed form must NOT appear.
+      expect(screen.queryByText('# #general')).toBeNull();
+    });
+  });
+
+  it('auto-derives the secret from a #hashtag name and locks the field', async () => {
+    csrfFetchMock.mockResolvedValueOnce(jsonResponse([]));
+
+    render(
+      <MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText('No channels reported by the device yet.')).toBeTruthy(),
+    );
+
+    fireEvent.click(screen.getByText('+ Add channel'));
+    const nameInput = screen.getByLabelText('Name') as HTMLInputElement;
+    const secretInput = screen.getByLabelText('Secret (hex, 32 chars)') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.change(nameInput, { target: { value: '#test' } });
+    });
+
+    // SHA-256("#test")[0:16].
+    await waitFor(() =>
+      expect(secretInput.value).toBe('9cd8fcf22a47333b591d96a2b848b73f'),
+    );
+    // The derived secret is read-only and Regenerate is disabled.
+    expect(secretInput.readOnly).toBe(true);
+    expect((screen.getByText('Regenerate') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('Save sends the # name and the derived PSK to the device', async () => {
+    csrfFetchMock
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse({ success: true }))
+      .mockResolvedValueOnce(jsonResponse([
+        { id: 0, name: '#test', psk: 'nNj88ipHMztZHZaiuEi3Pw==' },
+      ]));
+
+    render(
+      <MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText('No channels reported by the device yet.')).toBeTruthy(),
+    );
+
+    fireEvent.click(screen.getByText('+ Add channel'));
+    const nameInput = screen.getByLabelText('Name') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(nameInput, { target: { value: '#test' } });
+    });
+    const secretInput = screen.getByLabelText('Secret (hex, 32 chars)') as HTMLInputElement;
+    await waitFor(() =>
+      expect(secretInput.value).toBe('9cd8fcf22a47333b591d96a2b848b73f'),
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Save'));
+    });
+
+    const putCall = csrfFetchMock.mock.calls.find(
+      c => typeof c[1]?.method === 'string' && c[1].method === 'PUT',
+    );
+    expect(putCall).toBeDefined();
+    const body = JSON.parse(putCall![1].body);
+    expect(body.name).toBe('#test');
+    // base64 of 9cd8fcf22a47333b591d96a2b848b73f.
+    expect(body.psk).toBe('nNj88ipHMztZHZaiuEi3Pw==');
+  });
+});
+
 describe('MeshCoreChannelsConfigSection — delete + secret-visibility', () => {
   it('Delete sends DELETE to /api/channels/<idx>?sourceId=<src> and refetches', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);

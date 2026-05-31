@@ -18,7 +18,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { MeshCoreMessage, MeshCoreActions, ConnectionStatus } from './hooks/useMeshCore';
-import { MeshCoreContact } from '../../utils/meshcoreHelpers';
+import { MeshCoreContact, formatMeshCoreChannelName } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -188,7 +188,10 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                 onClick={() => handleSelectChannel(c.id)}
               >
                 <div className="mc-channel-row-name">
-                  # {c.name || t('meshcore.channels.unnamed', 'Channel {{idx}}', { idx: c.id })}
+                  {formatMeshCoreChannelName(
+                    c.name,
+                    t('meshcore.channels.unnamed', 'Channel {{idx}}', { idx: c.id }),
+                  )}
                 </div>
                 <div className="mc-channel-row-meta">
                   {count} {t('meshcore.messages', 'messages')}
@@ -209,7 +212,10 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
               ◀ {t('common.back', 'Back')}
             </button>
             <span className="meshcore-mobile-back-title">
-              # {active.name || t('meshcore.channels.unnamed', 'Channel {{idx}}', { idx: active.id })}
+              {formatMeshCoreChannelName(
+                active.name,
+                t('meshcore.channels.unnamed', 'Channel {{idx}}', { idx: active.id }),
+              )}
             </span>
           </div>
         )}
