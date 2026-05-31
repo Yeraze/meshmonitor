@@ -2,7 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 
-export type MeshCoreView = 'nodes' | 'channels' | 'rooms' | 'dms' | 'telemetry' | 'info' | 'configuration' | 'automations' | 'settings';
+export type MeshCoreView = 'nodes' | 'channels' | 'rooms' | 'dms' | 'telemetry' | 'packets' | 'info' | 'configuration' | 'automations' | 'settings';
 
 interface MeshCoreSubToolbarProps {
   view: MeshCoreView;
@@ -26,6 +26,7 @@ const ITEMS: Item[] = [
   { id: 'rooms', icon: '🏠', labelKey: 'meshcore.nav.rooms', fallback: 'Rooms' },
   { id: 'dms', icon: '📧', labelKey: 'meshcore.nav.dms', fallback: 'Direct Messages' },
   { id: 'telemetry', icon: '📊', labelKey: 'meshcore.nav.telemetry', fallback: 'Telemetry' },
+  { id: 'packets', icon: '📡', labelKey: 'meshcore.nav.packets', fallback: 'Packet Monitor' },
   { id: 'info', icon: 'ℹ', labelKey: 'meshcore.nav.info', fallback: 'Node Info' },
   { id: 'configuration', icon: '📡', labelKey: 'meshcore.nav.configuration', fallback: 'Configuration' },
   { id: 'automations', icon: '🤖', labelKey: 'meshcore.nav.automations', fallback: 'Automations' },
@@ -43,12 +44,14 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
   const { hasPermission } = useAuth();
   const canReadConfig = hasPermission('configuration', 'read');
   const canReadAutomation = hasPermission('automation', 'read');
+  const canReadPackets = hasPermission('packetmonitor', 'read');
 
   return (
     <aside className={`meshcore-sub-toolbar ${expanded ? 'expanded' : 'collapsed'}`}>
       {ITEMS.map(item => {
         if (item.id === 'configuration' && !canReadConfig) return null;
         if (item.id === 'automations' && !canReadAutomation) return null;
+        if (item.id === 'packets' && !canReadPackets) return null;
         // Info is per-source only — it reads /api/sources/:id/meshcore/info.
         if (item.id === 'info' && !showInfo) return null;
         const label = t(item.labelKey, item.fallback);

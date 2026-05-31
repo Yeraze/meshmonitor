@@ -1,0 +1,231 @@
+/* MeshCore Packet Monitor — mirrors the Meshtastic PacketMonitorPanel look. */
+.meshcore-packet-monitor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--ctp-base);
+  overflow: hidden;
+}
+
+.mcpm-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--ctp-mantle);
+  border-bottom: 1px solid var(--ctp-surface2);
+  flex-shrink: 0;
+}
+
+.mcpm-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ctp-text);
+}
+
+.mcpm-count {
+  font-size: 12px;
+  color: var(--ctp-subtext0);
+  padding: 4px 8px;
+  background: var(--ctp-crust);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+}
+
+.mcpm-header-controls {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  align-items: center;
+}
+
+.mcpm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ctp-text);
+  transition: all 0.2s;
+}
+
+.mcpm-btn:hover:not(:disabled) {
+  background: var(--ctp-crust);
+  border-color: var(--ctp-blue);
+}
+
+.mcpm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mcpm-btn.active {
+  border-color: var(--ctp-blue);
+  color: var(--ctp-blue);
+}
+
+.mcpm-btn-danger:hover:not(:disabled) {
+  border-color: var(--ctp-red);
+  color: var(--ctp-red);
+}
+
+.mcpm-disabled-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--ctp-mantle);
+  border-bottom: 1px solid var(--ctp-surface2);
+  color: var(--ctp-subtext0);
+  font-size: 13px;
+}
+
+.mcpm-disabled-banner span {
+  flex: 1;
+}
+
+.mcpm-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--ctp-mantle);
+  border-bottom: 1px solid var(--ctp-surface2);
+}
+
+.mcpm-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ctp-subtext0);
+}
+
+.mcpm-filters select,
+.mcpm-filters input[type='number'] {
+  padding: 6px 10px;
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-sm);
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  font-size: 13px;
+}
+
+.mcpm-filters .mcpm-toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-end;
+}
+
+.mcpm-error {
+  padding: 8px 16px;
+  background: var(--ctp-crust);
+  color: var(--ctp-red);
+  font-size: 13px;
+  border-bottom: 1px solid var(--ctp-surface2);
+}
+
+.mcpm-table-container {
+  flex: 1;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mcpm-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 32px;
+  text-align: center;
+  color: var(--ctp-subtext0);
+}
+
+.mcpm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.mcpm-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 8px 12px;
+  background: var(--ctp-mantle);
+  color: var(--ctp-subtext0);
+  font-weight: 600;
+  border-bottom: 1px solid var(--ctp-surface2);
+  white-space: nowrap;
+}
+
+.mcpm-row {
+  cursor: pointer;
+  border-bottom: 1px solid var(--ctp-surface0);
+}
+
+.mcpm-row:hover {
+  background: var(--ctp-mantle);
+}
+
+.mcpm-row td {
+  padding: 6px 12px;
+  color: var(--ctp-text);
+  white-space: nowrap;
+}
+
+.mcpm-mono {
+  font-family: var(--font-mono);
+}
+
+.mcpm-path {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mcpm-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--ctp-crust);
+  color: var(--ctp-blue);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.mcpm-route {
+  color: var(--ctp-subtext0);
+  font-size: 12px;
+}
+
+.mcpm-detail-row td {
+  padding: 8px 16px;
+  background: var(--ctp-crust);
+  border-bottom: 1px solid var(--ctp-surface2);
+}
+
+.mcpm-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ctp-subtext1);
+}
+
+.mcpm-detail strong {
+  color: var(--ctp-text);
+}
+
+.mcpm-raw {
+  font-family: var(--font-mono);
+  word-break: break-all;
+  white-space: normal;
+}

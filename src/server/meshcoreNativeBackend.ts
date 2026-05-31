@@ -37,6 +37,9 @@ interface MeshCoreJsModule {
     PAYLOAD_TYPE_TXT_MSG: number;
     fromBytes(bytes: Uint8Array | number[]): {
       payload_type: number;
+      payload_type_string?: string;
+      route_type?: number;
+      route_type_string?: string;
       pathLen: number;
       path: Uint8Array;
     };
@@ -318,6 +321,11 @@ export class MeshCoreNativeBackend extends EventEmitter {
     // single-buffer design is intentional — under the wire-level
     // serialization the firmware uses, LogRxData is emitted right
     // before the corresponding txt-msg event for the same packet.
+    //
+    // We also surface EVERY parsed packet as an `ota_packet` bridge event
+    // so the MeshCore Packet Monitor can show full OTA metadata (route
+    // type, payload type, relay path, SNR/RSSI, raw bytes). The monitor is
+    // opt-in and gated downstream in the manager, so emitting here is cheap.
     if (typeof PushCodes?.LogRxData === 'number' && this.PacketCtor) {
       const PacketCtor = this.PacketCtor;
       const TXT_MSG = PacketCtor.PAYLOAD_TYPE_TXT_MSG;
@@ -326,9 +334,30 @@ export class MeshCoreNativeBackend extends EventEmitter {
           const raw: Uint8Array | undefined = rx?.raw;
           if (!raw || raw.length === 0) return;
           const pkt = PacketCtor.fromBytes(raw);
-          if (pkt.payload_type !== TXT_MSG) return;
           const hops = this.decodePathHops(pkt.path, pkt.pathLen);
-          this.pendingTxtMsgPath = { hops, rawPathLen: pkt.pathLen };
+
+          // Buffer the relay-hash chain for the next TXT_MSG recv event.
+          if (pkt.payload_type === TXT_MSG) {
+            this.pendingTxtMsgPath = { hops, rawPathLen: pkt.pathLen };
+          }
+
+          // Surface the full packet for the Packet Monitor. `lastSnr`/
+          // `lastRssi` come from the LogRxData metadata (connection.js).
+          const snr = typeof rx?.lastSnr === 'number' ? rx.lastSnr : undefined;
+          const rssi = typeof rx?.lastRssi === 'number' ? rx.lastRssi : undefined;
+          this.emitBridgeEvent('ota_packet', {
+            payload_type: pkt.payload_type,
+            payload_type_string: pkt.payload_type_string,
+            route_type: pkt.route_type,
+            route_type_string: pkt.route_type_string,
+            path_len_raw: pkt.pathLen,
+            hop_count: hops.length,
+            path_hops: hops,
+            snr,
+            rssi,
+            payload_size: raw.length,
+            raw_hex: bytesToHex(raw),
+          });
         } catch {
           // Best-effort: a malformed log line shouldn't break the message stream.
         }
