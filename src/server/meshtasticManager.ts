@@ -1085,6 +1085,32 @@ class MeshtasticManager implements ISourceManager {
       const config = await this.getConfig();
       logger.debug(`Connecting to Meshtastic node at ${config.nodeIp}:${config.tcpPort}...`);
 
+      // Tear down any existing transport before creating a new one. Without
+      // this, a second connect() call — refreshNodeDatabase() landing in a
+      // transient disconnect window, a user reconnect, or a startup race —
+      // orphans the previous TcpTransport: its socket stays open, its
+      // 'connect'/'disconnect' listeners stay bound to this manager, and its
+      // internal shouldReconnect flag keeps it auto-reconnecting forever.
+      // Two live transports against the same meshtasticd — whose single
+      // API-client policy force-closes the older socket whenever a new one
+      // arrives — then ping-pong indefinitely, producing the 25–60s
+      // disconnect/reconnect flap with a ~2:1 daemon-force-close ratio and
+      // no want_config_id errors (#3270). Disconnecting the old transport
+      // first (clears shouldReconnect, removes listeners, destroys the socket)
+      // guarantees exactly one live transport per manager. Skip when the
+      // caller re-injects the same transport (test/VN injection path).
+      if (this.transport && this.transport !== injectedTransport) {
+        logger.debug('🔌 Tearing down existing transport before reconnect (prevents orphaned-transport flap #3270)');
+        try {
+          this.transport.removeAllListeners();
+          this.transport.disconnect();
+        } catch (teardownErr) {
+          const msg = teardownErr instanceof Error ? teardownErr.message : String(teardownErr);
+          logger.debug(`Ignoring error tearing down previous transport: ${msg}`);
+        }
+        this.transport = null;
+      }
+
       // Initialize protobuf service first
       await meshtasticProtobufService.initialize();
 
