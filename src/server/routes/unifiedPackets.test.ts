@@ -15,6 +15,7 @@ import request from 'supertest';
 import unifiedRoutes from './unifiedRoutes.js';
 import databaseService from '../../services/database.js';
 import packetLogService from '../services/packetLogService.js';
+import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
 
 vi.mock('../../services/database.js', () => ({
   default: {
@@ -37,18 +38,44 @@ vi.mock('../services/packetLogService.js', () => ({
   },
 }));
 
+vi.mock('../services/meshcorePacketLogService.js', () => ({
+  default: {
+    getPackets: vi.fn().mockResolvedValue([]),
+    getPacketCount: vi.fn().mockResolvedValue(0),
+    isEnabled: vi.fn().mockResolvedValue(true),
+  },
+}));
+
 vi.mock('../sourceManagerRegistry.js', () => ({
   sourceManagerRegistry: { getManager: vi.fn().mockReturnValue(null) },
 }));
 
 const mockDb = databaseService as any;
 const mockPackets = packetLogService as any;
+const mockMeshcore = meshcorePacketLogService as any;
 
 const adminUser = { id: 1, username: 'admin', isActive: true, isAdmin: true };
 const regularUser = { id: 2, username: 'user', isActive: true, isAdmin: false };
 
 const SOURCE_A = { id: 'src-a', name: 'Source A', type: 'meshtastic_tcp', enabled: true };
 const SOURCE_B = { id: 'src-b', name: 'Source B', type: 'meshtastic_tcp', enabled: true };
+const SOURCE_MC = { id: 'src-mc', name: 'MeshCore', type: 'meshcore', enabled: true };
+
+/** Minimal MeshCore OTA packet row shaped like the repo layer (post-normalize). */
+function mkMeshcorePkt(overrides: Record<string, any> = {}) {
+  return {
+    id: 1,
+    sourceId: 'src-mc',
+    timestamp: 1_700_000_000_000,
+    payloadType: 4,
+    payloadTypeName: 'TXT_MSG',
+    snr: 7.25,
+    rssi: -88,
+    payloadSize: 42,
+    createdAt: 1_700_000_000_000,
+    ...overrides,
+  };
+}
 
 const createApp = (user: any = null): Express => {
   const app = express();
@@ -83,6 +110,9 @@ function mkPkt(overrides: Record<string, any> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   mockPackets.isEnabled.mockResolvedValue(true);
+  mockMeshcore.isEnabled.mockResolvedValue(true);
+  mockMeshcore.getPackets.mockResolvedValue([]);
+  mockMeshcore.getPacketCount.mockResolvedValue(0);
   mockDb.channelDatabase.getPermissionsForUserAsync.mockResolvedValue([]);
 });
 
@@ -154,6 +184,65 @@ describe('GET /api/unified/packets', () => {
     expect(res.body.hasMore).toBe(true);
     expect(res.body.nextCursor).toMatch(/^\d+_\d+$/);
   });
+
+  it('includes MeshCore OTA packets, mapped onto the packet-log shape', async () => {
+    mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_MC]);
+    mockDb.checkPermissionAsync.mockResolvedValue(true);
+    mockPackets.getPacketsAsync.mockResolvedValue([
+      mkPkt({ id: 10, timestamp: 1_700_000_000_500 }),
+    ]);
+    mockMeshcore.getPackets.mockResolvedValue([
+      mkMeshcorePkt({ id: 7, timestamp: 1_700_000_000_900 }),
+    ]);
+
+    const res = await request(createApp(adminUser)).get('/packets');
+    expect(res.status).toBe(200);
+    // Both Meshtastic and MeshCore sources were queried via their own services.
+    expect(mockMeshcore.getPackets).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceId: 'src-mc' })
+    );
+    // MeshCore row sorts first (newer timestamp) and is mapped onto DbPacketLog.
+    const mc = res.body.packets.find((p: any) => p.sourceId === 'src-mc');
+    expect(mc).toBeDefined();
+    expect(mc).toMatchObject({
+      portnum: 4,
+      portnum_name: 'TXT_MSG',
+      snr: 7.25,
+      rssi: -88,
+      payload_size: 42,
+      direction: 'rx',
+      encrypted: false,
+      from_node: 0,
+      channel: null,
+    });
+    // The dropdown lists the MeshCore source too.
+    expect(res.body.sources).toContainEqual({ id: 'src-mc', name: 'MeshCore' });
+  });
+
+  it('forwards the keyset cursor to the MeshCore query', async () => {
+    mockDb.sources.getAllSources.mockResolvedValue([SOURCE_MC]);
+    mockDb.checkPermissionAsync.mockResolvedValue(true);
+    mockMeshcore.getPackets.mockResolvedValue([mkMeshcorePkt()]);
+
+    await request(createApp(adminUser)).get('/packets?limit=5&cursor=1700000000050_77');
+    const opts = mockMeshcore.getPackets.mock.calls[0][0];
+    expect(opts.limit).toBe(10); // fetchLimit = 2 * limit
+    expect(opts.untilTs).toBe(1700000000050);
+    expect(opts.untilId).toBe(77);
+  });
+
+  it('excludes MeshCore sources when a Meshtastic-namespace filter is active', async () => {
+    mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_MC]);
+    mockDb.checkPermissionAsync.mockResolvedValue(true);
+    mockPackets.getPacketsAsync.mockResolvedValue([mkPkt({ id: 10, portnum: 3 })]);
+    mockMeshcore.getPackets.mockResolvedValue([mkMeshcorePkt({ id: 7 })]);
+
+    const res = await request(createApp(adminUser)).get('/packets?portnum=3');
+    expect(res.status).toBe(200);
+    // A portnum filter can't be satisfied by MeshCore's payloadType namespace.
+    expect(mockMeshcore.getPackets).not.toHaveBeenCalled();
+    expect(res.body.packets.every((p: any) => p.sourceId === 'src-a')).toBe(true);
+  });
 });
 
 describe('GET /api/unified/packets/distribution', () => {
@@ -196,5 +285,25 @@ describe('GET /api/unified/packets/distribution', () => {
     expect(res.status).toBe(200);
     expect(res.body.bySource).toEqual([{ sourceId: 'src-a', sourceName: 'Source A', count: 7 }]);
     expect(mockPackets.getPacketCountsByPortnumAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts MeshCore sources in bySource without polluting byDevice/byType', async () => {
+    mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_MC]);
+    mockDb.checkPermissionAsync.mockResolvedValue(true);
+    mockPackets.getPacketCountsByNodeAsync.mockResolvedValue([]);
+    mockPackets.getPacketCountsByPortnumAsync.mockResolvedValue([
+      { portnum: 3, portnum_name: 'POSITION_APP', count: 4 },
+    ]);
+    mockMeshcore.getPacketCount.mockResolvedValue(9);
+
+    const res = await request(createApp(adminUser)).get('/packets/distribution');
+    expect(res.status).toBe(200);
+    // MeshCore contributes a source total but no device/type rows.
+    expect(mockMeshcore.getPacketCount).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceId: 'src-mc' })
+    );
+    expect(res.body.bySource).toContainEqual({ sourceId: 'src-mc', sourceName: 'MeshCore', count: 9 });
+    expect(res.body.byType).toEqual([{ portnum: 3, portnum_name: 'POSITION_APP', count: 4 }]);
+    expect(res.body.total).toBe(13); // 4 (Meshtastic) + 9 (MeshCore)
   });
 });

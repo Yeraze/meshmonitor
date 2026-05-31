@@ -8,13 +8,64 @@
 import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
 import packetLogService from '../services/packetLogService.js';
+import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
 import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { PortNum, CHANNEL_DB_OFFSET, modemPresetChannelName } from '../constants/meshtastic.js';
 import { filterPacketsByPermissions, getAllowedChannels } from './packetPermissions.js';
 import type { DbChannelDatabase, DbPacketLog } from '../../db/types.js';
+import type { DbMeshCorePacket } from '../../db/repositories/meshcore.js';
 
 const router = Router();
+
+/**
+ * Project a MeshCore OTA packet-log row onto the Meshtastic `DbPacketLog` shape
+ * so it can ride in the unified packet stream alongside Meshtastic rows.
+ *
+ * MeshCore OTA captures are far sparser than Meshtastic: there is no sender,
+ * recipient, channel, direction-other-than-RX, or decoded payload. Those fields
+ * are left null so the frontend renders them as N/A. `payloadType`/Name map onto
+ * `portnum`/`portnum_name`, and SNR/RSSI/size carry across directly.
+ */
+function mapMeshCorePacketToTagged(
+  p: DbMeshCorePacket,
+  sourceId: string,
+  sourceName: string
+): DbPacketLog & { sourceId: string; sourceName: string } {
+  return {
+    id: p.id,
+    packet_id: null,
+    timestamp: p.timestamp,
+    // OTA logs have no sender identity; 0 + null name → frontend shows N/A.
+    from_node: 0,
+    from_node_id: null,
+    from_node_longName: null,
+    to_node: null,
+    to_node_id: null,
+    to_node_longName: null,
+    channel: null,
+    portnum: p.payloadType,
+    portnum_name: p.payloadTypeName ?? null,
+    encrypted: false,
+    snr: p.snr ?? null,
+    rssi: p.rssi ?? null,
+    hop_limit: null,
+    hop_start: null,
+    relay_node: null,
+    payload_size: p.payloadSize ?? null,
+    want_ack: null,
+    priority: null,
+    payload_preview: null,
+    metadata: null,
+    direction: 'rx',
+    created_at: p.createdAt,
+    decrypted_by: null,
+    decrypted_channel_id: null,
+    transport_mechanism: null,
+    sourceId,
+    sourceName,
+  };
+}
 
 // All unified routes allow optional auth (some data may be public)
 router.use(optionalAuth());
@@ -846,8 +897,32 @@ router.get('/packets', async (req: Request, res: Response) => {
 
     type TaggedPacket = DbPacketLog & { sourceId: string; sourceName: string };
 
+    // MeshCore OTA rows carry no node/channel/transport/decoded-message info, so
+    // they can't satisfy these Meshtastic-namespace filters. When one is active,
+    // exclude MeshCore sources entirely rather than returning rows that wrongly
+    // match (e.g. a MeshCore payloadType colliding with a Meshtastic PortNum).
+    const meshcoreEligible =
+      portnum === undefined &&
+      from_node === undefined &&
+      transport_mechanism === undefined &&
+      encrypted !== true;
+
     const perSource = await Promise.allSettled(
       fetchSources.map(async (source): Promise<{ rows: TaggedPacket[]; saturated: boolean }> => {
+        if (source.type === 'meshcore') {
+          if (!meshcoreEligible) return { rows: [], saturated: false };
+          const raw = await meshcorePacketLogService.getPackets({
+            sourceId: source.id,
+            limit: fetchLimit,
+            untilTs,
+            untilId,
+          });
+          // No channel/message content to redact — viewing is already authorized
+          // by the source-level packetmonitor:read check above.
+          const tagged = raw.map((p) => mapMeshCorePacketToTagged(p, source.id, source.name));
+          return { rows: tagged, saturated: raw.length >= fetchLimit };
+        }
+
         const raw = await packetLogService.getPacketsAsync({
           sourceId: source.id,
           limit: fetchLimit,
@@ -941,11 +1016,17 @@ router.get('/packets/distribution', async (req: Request, res: Response) => {
 
     const perSource = await Promise.all(
       readableSources.map(async (source) => {
+        // MeshCore OTA rows have no per-node/per-PortNum breakdown that aligns
+        // with the Meshtastic namespace, so they only contribute a source total.
+        if (source.type === 'meshcore') {
+          const count = await meshcorePacketLogService.getPacketCount({ sourceId: source.id, since });
+          return { source, byDevice: [], byType: [], meshcoreCount: count };
+        }
         const [byDevice, byType] = await Promise.all([
           packetLogService.getPacketCountsByNodeAsync({ since, limit: 10, sourceId: source.id }),
           packetLogService.getPacketCountsByPortnumAsync({ since, sourceId: source.id }),
         ]);
-        return { source, byDevice, byType };
+        return { source, byDevice, byType, meshcoreCount: 0 };
       })
     );
 
@@ -954,8 +1035,8 @@ router.get('/packets/distribution', async (req: Request, res: Response) => {
     const typeMap = new Map<number, { portnum: number; portnum_name: string; count: number }>();
     const bySource: Array<{ sourceId: string; sourceName: string; count: number }> = [];
 
-    for (const { source, byDevice, byType } of perSource) {
-      let sourceTotal = 0;
+    for (const { source, byDevice, byType, meshcoreCount } of perSource) {
+      let sourceTotal = meshcoreCount;
       for (const d of byDevice as any[]) {
         const key = Number(d.from_node);
         const existing = deviceMap.get(key);
@@ -987,7 +1068,11 @@ router.get('/packets/distribution', async (req: Request, res: Response) => {
     bySource.sort((a, b) => b.count - a.count);
     const total = bySource.reduce((sum, s) => sum + s.count, 0);
 
-    res.json({ byDevice, byType, bySource, total, enabled: await packetLogService.isEnabled() });
+    const [meshtasticEnabled, meshcoreEnabled] = await Promise.all([
+      packetLogService.isEnabled(),
+      meshcorePacketLogService.isEnabled(),
+    ]);
+    res.json({ byDevice, byType, bySource, total, enabled: meshtasticEnabled || meshcoreEnabled });
   } catch (error) {
     logger.error('Error fetching unified packet distribution:', error);
     res.status(500).json({ error: 'Failed to fetch unified packet distribution' });
