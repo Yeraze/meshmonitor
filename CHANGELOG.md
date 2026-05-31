@@ -6,9 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
-### Added
-- **Unified Telemetry source jump buttons** (#3262): The source labels at the top of the Unified Telemetry page are now clickable pills that smooth-scroll to their section's card grid. The header bar is sticky so the pills stay reachable while scrolling, and the pill for the section nearest the top is highlighted as the active jump target.
-- **Show Waypoints map toggle** (#3253): The Map Features panel on the dashboard and Nodes maps now has a **Show Waypoints** checkbox that controls waypoint marker visibility. Defaults to on and is persisted per-user via map preferences, alongside the existing Show RF / UDP / MQTT / Traceroute toggles.
+## [4.8.2] - 2026-05-31
+
+# MeshMonitor v4.8.2
+
+Patch release centered on packet observability: a new **Unified Packet Monitor** spanning every source and a dedicated **MeshCore Packet Monitor** with click-to-open packet decoding and hashtag-channel support. Also adds telemetry unit auto-scaling, richer dashboard map popups, and a round of stability and rendering fixes.
+
+## Features
+
+### Packet Monitoring
+
+- #3252 feat(packets): add Unified Packet Monitor across all sources — a cross-source packet monitor that aggregates packet activity from every connected source into one view.
+- #3268 feat(meshcore): MeshCore Packet Monitor via LogRxData — opt-in capture of MeshCore OTA packets through the `LogRxData` stream, persisted to `meshcore_packet_log`, with its own monitor view.
+- #3273 feat(meshcore): decode packet contents in a click-to-open modal — click any captured MeshCore packet to open a modal that decodes its contents.
+
+### MeshCore
+
+- #3277 feat(meshcore): support hashtag channels — recognize and handle MeshCore hashtag (`#`) channels.
+- #3259 feat(meshcore): dashboard neighbor links, saved-password neighbor queries, on-demand remote console — render MeshCore neighbor links on the dashboard, allow neighbor queries using saved passwords, and open the remote console on demand.
+
+### Telemetry
+
+- #3261 feat(telemetry): auto-scale current/power units and humanize uptime — current/power telemetry values auto-scale to appropriate units and uptime is rendered in human-readable form.
+- #3262 feat(telemetry): clickable source jump buttons on Unified Telemetry — the source labels at the top of the Unified Telemetry page are now clickable pills that smooth-scroll to their section's card grid. The header bar is sticky so the pills stay reachable while scrolling, and the pill for the section nearest the top is highlighted as the active jump target.
+- #3258 Make traceroute history limit configurable — the traceroute history retention limit is now operator-configurable.
+
+### Map
+
+- #3256 feat(dashboard-map): rich node popup with per-source/protocol breakdown — the dashboard map node popup now shows a per-source and per-protocol breakdown.
+- #3253 feat(map): add persisted Show Waypoints visibility toggle — the Map Features panel on the dashboard and Nodes maps now has a **Show Waypoints** checkbox that controls waypoint marker visibility. Defaults to on and is persisted per-user via map preferences, alongside the existing Show RF / UDP / MQTT / Traceroute toggles.
+
+## Fixes
+
+- #3270 fix(stability): tear down orphaned transport on reconnect — on reconnect, an orphaned transport left over from a prior session is now torn down rather than leaking.
+- #3274 fix(packets): include MeshCore OTA packets in Unified Packet Monitor — MeshCore OTA packets now appear alongside Meshtastic packets in the Unified Packet Monitor.
+- #3263 fix(mqtt): stop rxTime=0 from rendering messages at Unix epoch (Dec 1969) — messages with `rxTime=0` no longer render with a December 1969 timestamp.
+- #3260 fix(telemetry): convert temperature values, not just unit labels — temperature conversion now converts the underlying value, not only the displayed unit label.
+- #3257 fix(map): make RF/UDP/MQTT visibility toggles additive per node — the RF/UDP/MQTT map visibility toggles now combine additively per node instead of overriding one another.
+- #3254 fix(meshcore): make all mobile bottom-bar tabs reachable — every MeshCore mobile bottom-bar tab is now reachable.
+
+## Documentation
+
+- #3267 docs(meshtasticd): add physical LoRa hardware compose example — adds a Docker Compose example for physical LoRa hardware with meshtasticd.
 
 ## [4.8.1] - 2026-05-28
 
