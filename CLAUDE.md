@@ -168,6 +168,6 @@ When adding a new user-configurable setting:
 
 ## Versioning & Release
 
-- When updating the version, update all five files: `package.json`, `package-lock.json` (regenerate via `npm install --package-lock-only --legacy-peer-deps`), `helm/meshmonitor/Chart.yaml`, `desktop/src-tauri/tauri.conf.json`, `desktop/package.json`.
+- When updating the version, update all five files: `package.json`, `package-lock.json` (regenerate via `npm install --package-lock-only` — `.npmrc` now pins `legacy-peer-deps=true`, so the explicit flag is no longer needed), `helm/meshmonitor/Chart.yaml`, `desktop/src-tauri/tauri.conf.json`, `desktop/package.json`.
 - Use shared constants from `src/server/constants/meshtastic.ts` for PortNum, RoutingError, and helper functions — never magic numbers for protocol values.
 - Official Meshtastic protobuf definitions: https://github.com/meshtastic/protobufs/
