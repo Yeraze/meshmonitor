@@ -10,6 +10,7 @@ import './App.css';
 import InfoTab from './components/InfoTab';
 import SettingsTab from './components/SettingsTab';
 import ConfigurationTab from './components/ConfigurationTab';
+import MqttBridgeConfigurationView from './components/MQTT/MqttBridgeConfigurationView';
 import NotificationsTab from './components/NotificationsTab';
 import UsersTab from './components/UsersTab';
 import AuditLogTab from './components/AuditLogTab';
@@ -638,6 +639,7 @@ function App() {
       settings: () => hasPermission('settings', 'read'),
       automation: () => !isMqttBridge && hasPermission('automation', 'read'),
       configuration: () => !isMqttBridge && hasPermission('configuration', 'read'),
+      'mqtt-config': () => isMqttBridge && hasPermission('sources', 'read'),
       notifications: () => isAuthenticated,
       users: () => isAdmin,
       admin: () => !isMqttBridge && isAdmin,
@@ -5201,6 +5203,11 @@ function App() {
             onChannelsUpdated={() => fetchChannels()}
             refreshTrigger={configRefreshTrigger}
           />
+          </ErrorBoundary>
+        )}
+        {activeTab === 'mqtt-config' && isMqttBridge && sourceId && (
+          <ErrorBoundary fallbackTitle="Configuration failed to load">
+            <MqttBridgeConfigurationView key={sourceId} sourceId={sourceId} />
           </ErrorBoundary>
         )}
         {activeTab === 'notifications' && <ErrorBoundary fallbackTitle="Notifications failed to load"><NotificationsTab isAdmin={authStatus?.user?.isAdmin || false} /></ErrorBoundary>}

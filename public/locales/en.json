@@ -6,6 +6,7 @@
   "nav.dashboard": "Dashboard",
   "nav.settings": "Settings",
   "nav.configuration": "Device",
+  "nav.mqtt_bridge_config": "Configuration",
   "nav.automation": "Automation",
   "nav.notifications": "Notifications",
   "nav.users": "Users",

@@ -13,7 +13,8 @@ export type TabType =
   | 'security'
   | 'themes'
   | 'admin'
-  | 'packetmonitor';
+  | 'packetmonitor'
+  | 'mqtt-config';
 
 export type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'hops';
 
