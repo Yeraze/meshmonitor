@@ -27,6 +27,7 @@ import type { DashboardSource } from '../hooks/useDashboardData';
 import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import DashboardMap from '../components/Dashboard/DashboardMap';
 import BBoxMapEditor, { type BBoxValue } from '../components/BBoxMapEditor';
+import { buildBridgeConfig, formFromBridgeConfig } from '../components/MQTT/mqttBridgeConfig';
 import { bboxToFormStrings, boundsFromDetectedNodes } from './DashboardPage.bboxSeed';
 import LoginModal from '../components/LoginModal';
 import UserMenu from '../components/UserMenu';
@@ -405,36 +406,23 @@ function DashboardInner() {
       return;
     }
     if (source.type === 'mqtt_bridge') {
+      // Hydrate via the shared serializer so the modal and the dedicated
+      // bridge Configuration page never drift on config shape.
+      const bf = formFromBridgeConfig(cfg);
       setFormType('mqtt_bridge');
       setFormName(source.name);
-      setFormMqttBridgeBrokerId(cfg?.brokerSourceId ?? '');
-      setFormMqttBridgeUrl(cfg?.upstream?.url ?? '');
-      setFormMqttBridgeUsername(cfg?.upstream?.username ?? '');
+      setFormMqttBridgeBrokerId(bf.brokerId);
+      setFormMqttBridgeUrl(bf.url);
+      setFormMqttBridgeUsername(bf.username);
       setFormMqttBridgePassword('');
-      setFormMqttBridgeSubscriptions((cfg?.subscriptions ?? []).join('\n'));
-      const savedMode = cfg?.mode;
-      setFormMqttBridgeMode(
-        savedMode === 'publish_only' || savedMode === 'subscribe_only'
-          ? savedMode
-          : 'bidirectional',
-      );
-      const savedForwarding = cfg?.forwardingMode;
-      setFormMqttBridgeForwardingMode(savedForwarding === 'single' ? 'single' : 'per_gateway');
-      setFormMqttBridgeIgnoreOkToMqtt(cfg?.ignoreOkToMqtt === true);
-      const topicBlock: string[] = cfg?.downlinkFilters?.topics?.block ?? [];
-      setFormMqttBridgeUseTopicBlock(topicBlock.length > 0);
-      setFormMqttBridgeTopicBlock(topicBlock.join('\n'));
-      const geo = cfg?.downlinkFilters?.geo ?? {};
-      const hasGeo = ['minLat', 'maxLat', 'minLng', 'maxLng'].some(
-        (k) => geo[k] != null,
-      );
-      setFormMqttBridgeUseGeo(hasGeo);
-      setFormMqttBridgeGeo({
-        minLat: geo.minLat != null ? String(geo.minLat) : '',
-        maxLat: geo.maxLat != null ? String(geo.maxLat) : '',
-        minLng: geo.minLng != null ? String(geo.minLng) : '',
-        maxLng: geo.maxLng != null ? String(geo.maxLng) : '',
-      });
+      setFormMqttBridgeSubscriptions(bf.subscriptions);
+      setFormMqttBridgeMode(bf.mode);
+      setFormMqttBridgeForwardingMode(bf.forwardingMode);
+      setFormMqttBridgeIgnoreOkToMqtt(bf.ignoreOkToMqtt);
+      setFormMqttBridgeUseTopicBlock(bf.useTopicBlock);
+      setFormMqttBridgeTopicBlock(bf.topicBlock);
+      setFormMqttBridgeUseGeo(bf.useGeo);
+      setFormMqttBridgeGeo(bf.geo);
       setFormError('');
       setShowSourceModal(true);
       return;
@@ -510,65 +498,36 @@ function DashboardInner() {
         delete (cfg.auth as { password?: string }).password;
       }
     } else if (formType === 'mqtt_bridge') {
-      // Parent broker is optional — empty selection means standalone
-      // client-proxy bridge (issue #3134). No validation needed; the
-      // backend treats an unset/empty `brokerSourceId` as standalone.
-      if (!formMqttBridgeUrl.trim()) {
-        setFormError(t('source.form.error_mqtt_url_required', 'Upstream URL is required'));
+      // Serialize via the shared helper. The modal manages connection /
+      // forwarding / subscribe-side fields; publish (uplink) filters and topic
+      // rewrites are edited on the dedicated Configuration page, so we pass the
+      // existing config as `base` to preserve them instead of clobbering.
+      const base = editingSourceId
+        ? (sources.find((s) => s.id === editingSourceId)?.config as Record<string, any> | undefined)
+        : undefined;
+      const result = buildBridgeConfig(
+        {
+          brokerId: formMqttBridgeBrokerId,
+          url: formMqttBridgeUrl,
+          username: formMqttBridgeUsername,
+          password: formMqttBridgePassword,
+          subscriptions: formMqttBridgeSubscriptions,
+          mode: formMqttBridgeMode,
+          forwardingMode: formMqttBridgeForwardingMode,
+          ignoreOkToMqtt: formMqttBridgeIgnoreOkToMqtt,
+          useTopicBlock: formMqttBridgeUseTopicBlock,
+          topicBlock: formMqttBridgeTopicBlock,
+          useGeo: formMqttBridgeUseGeo,
+          geo: formMqttBridgeGeo,
+          // uplink filters / rewrites intentionally omitted — preserved via base.
+        },
+        { editing: !!editingSourceId, base },
+      );
+      if (result.error) {
+        setFormError(t(result.error.key, result.error.fallback));
         return;
       }
-      const subscriptions = formMqttBridgeSubscriptions
-        .split('\n')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const topicBlock = formMqttBridgeUseTopicBlock
-        ? formMqttBridgeTopicBlock
-            .split('\n')
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : [];
-      const geo: Record<string, number> = {};
-      if (formMqttBridgeUseGeo) {
-        for (const k of ['minLat', 'maxLat', 'minLng', 'maxLng'] as const) {
-          const v = formMqttBridgeGeo[k];
-          if (v) {
-            const n = Number(v);
-            if (Number.isNaN(n)) {
-              setFormError(t('source.form.error_geo_invalid', 'Geo bounds must be numbers'));
-              return;
-            }
-            geo[k] = n;
-          }
-        }
-      }
-      const downlinkFilters: Record<string, unknown> = {};
-      if (topicBlock.length > 0) downlinkFilters.topics = { block: topicBlock };
-      if (Object.keys(geo).length > 0) downlinkFilters.geo = geo;
-      cfg = {
-        // Omit `brokerSourceId` entirely when standalone — the backend
-        // treats an absent field as "no parent" (issue #3134).
-        ...(formMqttBridgeBrokerId ? { brokerSourceId: formMqttBridgeBrokerId } : {}),
-        upstream: {
-          url: formMqttBridgeUrl.trim(),
-          username: formMqttBridgeUsername.trim() || undefined,
-          password: formMqttBridgePassword || undefined,
-        },
-        subscriptions: subscriptions.length > 0 ? subscriptions : ['msh/#'],
-        // Omit when bidirectional (the default) so existing rows stay clean.
-        ...(formMqttBridgeMode !== 'bidirectional' ? { mode: formMqttBridgeMode } : {}),
-        // Omit when per_gateway (the default) so existing rows on upgrade
-        // adopt the new behavior without an explicit config change.
-        ...(formMqttBridgeForwardingMode !== 'per_gateway'
-          ? { forwardingMode: formMqttBridgeForwardingMode }
-          : {}),
-        // Operator override — only serialize when set. Defaults to honoring
-        // the originator's ok_to_mqtt preference.
-        ...(formMqttBridgeIgnoreOkToMqtt ? { ignoreOkToMqtt: true } : {}),
-        ...(Object.keys(downlinkFilters).length > 0 ? { downlinkFilters } : {}),
-      };
-      if (editingSourceId && !formMqttBridgePassword) {
-        delete (cfg.upstream as { password?: string }).password;
-      }
+      cfg = result.config!;
     } else if (formType === 'meshcore') {
       // MeshCore source: USB/serial or TCP. Both transports flow through the
       // same MeshCoreManager via the Python bridge — only the connect params

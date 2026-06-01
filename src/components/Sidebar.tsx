@@ -274,6 +274,11 @@ const Sidebar: React.FC<SidebarProps> = ({
           {!mqttReadOnly && hasPermission('configuration', 'read') && (
             <NavItem id="configuration" label={t('nav.device')} icon={icon('configuration')} />
           )}
+          {/* MQTT Bridge sources have no device-config surface; surface a
+              dedicated bridge Configuration page instead. */}
+          {mqttReadOnly && hasPermission('sources', 'read') && (
+            <NavItem id="mqtt-config" label={t('nav.mqtt_bridge_config', 'Configuration')} icon={icon('configuration')} />
+          )}
           {isAuthenticated && (
             <NavItem id="notifications" label={t('nav.notifications')} icon={icon('notifications')} />
           )}
