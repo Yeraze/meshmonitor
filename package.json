@@ -71,7 +71,7 @@
     "node-notifier": "^10.0.1",
     "openid-client": "^6.8.4",
     "otplib": "^13.4.1",
-    "pbf": "^4.0.2",
+    "pbf": "^5.1.0",
     "pg": "^8.21.0",
     "protobufjs": "^8.4.2",
     "qrcode": "^1.5.4",
