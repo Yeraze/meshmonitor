@@ -472,6 +472,10 @@ class MeshtasticManager implements ISourceManager {
   private postResetCooldownUntil: number = 0;
   private virtualNodeServer?: VirtualNodeServer;
   private transport: ITransport | null = null;
+  // Single-flight latch for connect(): holds the in-flight attempt so a
+  // concurrent connect() joins it instead of building a second (orphan)
+  // transport (#3270). Cleared in a finally when the attempt settles.
+  private connectInFlight: Promise<boolean> | null = null;
   private isConnected = false;
   private userDisconnectedState = false;  // Track user-initiated disconnect
   private tracerouteInterval: NodeJS.Timeout | null = null;
@@ -1080,7 +1084,33 @@ class MeshtasticManager implements ISourceManager {
     }
   }
 
+  /**
+   * Connect to the node, serialized so overlapping callers never build two
+   * transports.
+   *
+   * #3270 follow-up: connect() has several `await`s (getConfig, protobuf init,
+   * the up-to-10s transport.connect) before it assigns `this.transport`. The
+   * legacy singleton is hit by routes that call connect() whenever
+   * `isConnected` is false (e.g. refreshNodeDatabase). If a second connect()
+   * lands during the first one's handshake window, both pass the
+   * teardown-existing-transport check (this.transport is still null/stale) and
+   * each constructs a TcpTransport. The first then becomes an unreferenced
+   * orphan that auto-reconnects forever — the residual flap the #3276 teardown
+   * cannot reach because it only tears down the transport currently in
+   * `this.transport`. A single-flight latch makes a concurrent connect() join
+   * the in-flight attempt instead of racing it.
+   */
   async connect(injectedTransport?: ITransport): Promise<boolean> {
+    if (this.connectInFlight) {
+      logger.debug('connect() already in progress — joining the in-flight attempt (prevents orphaned-transport flap #3270)');
+      return this.connectInFlight;
+    }
+    this.connectInFlight = this.doConnectInternal(injectedTransport)
+      .finally(() => { this.connectInFlight = null; });
+    return this.connectInFlight;
+  }
+
+  private async doConnectInternal(injectedTransport?: ITransport): Promise<boolean> {
     try {
       const config = await this.getConfig();
       logger.debug(`Connecting to Meshtastic node at ${config.nodeIp}:${config.tcpPort}...`);

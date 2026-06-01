@@ -16,6 +16,13 @@ export class TcpTransport extends EventEmitter implements ITransport {
   private isConnected = false;
   private isConnecting = false;
   private shouldReconnect = true;
+  // Set once disconnect() has been called. A destroyed transport must never
+  // reconnect again — even if a straggler 'close' handler or racing timer
+  // calls scheduleReconnect() after teardown. This is the transport-level
+  // half of the #3270 orphan-flap fix: once the manager lets go of a
+  // transport it can no longer reach, the transport must not resurrect itself.
+  // Re-armed to false by the public connect() (an explicit fresh intent).
+  private destroyed = false;
   private config: TcpTransportConfig | null = null;
 
   // Stale connection detection
@@ -165,6 +172,8 @@ export class TcpTransport extends EventEmitter implements ITransport {
 
     this.config = { host, port };
     this.shouldReconnect = true;
+    // A fresh explicit connect re-arms a previously torn-down transport.
+    this.destroyed = false;
 
     return this.doConnect();
   }
@@ -174,6 +183,23 @@ export class TcpTransport extends EventEmitter implements ITransport {
       if (!this.config) {
         reject(new Error('No configuration set'));
         return;
+      }
+
+      // A torn-down transport must never open another socket (#3270).
+      if (this.destroyed) {
+        reject(new Error('Transport has been disconnected'));
+        return;
+      }
+
+      // Reclaim any pre-existing socket before opening a new one. Without this
+      // a single transport could leak two live sockets at the daemon — the
+      // 2:1 "Force close previous TCP connection" fingerprint from #3270.
+      if (this.socket) {
+        try {
+          this.socket.removeAllListeners();
+          this.socket.destroy();
+        } catch { /* ignore */ }
+        this.socket = null;
       }
 
       this.isConnecting = true;
@@ -245,8 +271,9 @@ export class TcpTransport extends EventEmitter implements ITransport {
           this.emit('disconnect');
         }
 
-        // Attempt reconnection if enabled (will retry forever with exponential backoff up to 60s)
-        if (this.shouldReconnect) {
+        // Attempt reconnection if enabled (will retry forever with exponential backoff up to 60s).
+        // Never reconnect once the transport has been torn down (#3270).
+        if (this.shouldReconnect && !this.destroyed) {
           this.scheduleReconnect();
         }
       });
@@ -256,6 +283,12 @@ export class TcpTransport extends EventEmitter implements ITransport {
   }
 
   private scheduleReconnect(): void {
+    // Guard against resurrection: a transport torn down via disconnect() must
+    // not schedule another connect, no matter who calls this (#3270).
+    if (this.destroyed) {
+      return;
+    }
+
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
     }
@@ -281,6 +314,9 @@ export class TcpTransport extends EventEmitter implements ITransport {
 
   disconnect(): void {
     this.shouldReconnect = false;
+    // Mark torn-down so any late scheduleReconnect()/'close' straggler can't
+    // resurrect this transport into a zombie auto-reconnect loop (#3270).
+    this.destroyed = true;
 
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
