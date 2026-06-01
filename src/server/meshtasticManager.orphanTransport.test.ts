@@ -197,6 +197,39 @@ describe('MeshtasticManager - issue #3270 orphaned-transport flap', () => {
     expect(manager.transport).toBe(createdTransports[0]);
   });
 
+  it('serializes concurrent connect() calls into a single transport (#3270 follow-up: startup-race orphan)', async () => {
+    manager.transport = null;
+
+    // Fire two connect() calls without awaiting the first. This reproduces the
+    // residual #3270 flap: on the legacy singleton, a startup connect() is
+    // still mid-handshake (awaiting getConfig / protobuf init / transport
+    // connect) while a legacy route's refreshNodeDatabase() — which calls
+    // connect() whenever isConnected is false — fires a second connect().
+    // Without a connect mutex, both calls pass the null-transport teardown
+    // check and each constructs a TcpTransport; the first becomes an
+    // unreferenced orphan that auto-reconnects forever (the transport-level
+    // flap the #3276 teardown can no longer reach).
+    const [r1, r2] = await Promise.all([manager.connect(), manager.connect()]);
+
+    expect(r1).toBe(true);
+    expect(r2).toBe(true);
+
+    // Exactly one transport was constructed — the second call joined the
+    // in-flight attempt instead of building a parallel (orphan) transport.
+    expect(createdTransports.length).toBe(1);
+    expect(manager.transport).toBe(createdTransports[0]);
+  });
+
+  it('allows a fresh connect() after the previous attempt settles (mutex clears)', async () => {
+    await manager.connect();
+    expect(createdTransports.length).toBe(1);
+
+    // Once the in-flight attempt has resolved, a later connect() must proceed
+    // normally (the mutex must not latch permanently).
+    await manager.connect();
+    expect(createdTransports.length).toBe(2);
+  });
+
   it('does not tear down an injected transport that is reused as-is', async () => {
     const injected = makeFakeTransport();
     manager.transport = injected;
