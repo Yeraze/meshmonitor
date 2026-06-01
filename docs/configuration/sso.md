@@ -205,9 +205,15 @@ When a user logs in via OIDC for the first time:
 
 ### Admin Privileges
 
-OIDC users are created as regular (non-admin) accounts. Admin access must be granted explicitly by an existing admin — SSO login does not elevate privileges automatically, even for the first user.
+**The first OIDC user to log in is automatically promoted to admin.** This bootstrap exists so a deployment isn't locked out when local authentication is disabled — without it there would be no way to administer the instance via SSO. The first OIDC user receives full admin rights and permissions on all resources.
 
-To grant admin to an OIDC user:
+**All subsequent OIDC users are created as regular (non-admin) accounts.** SSO login does not elevate their privileges automatically; admin access must be granted explicitly by an existing admin.
+
+::: warning
+"First OIDC user" means the first user whose authentication method is OIDC — it is independent of any local accounts (such as the built-in `admin` account) that may already exist. If you do **not** want the first SSO sign-in to gain admin rights, create and configure your admins ahead of time, or keep local authentication enabled and manage permissions from a local admin account.
+:::
+
+To grant admin to an additional OIDC user:
 
 1. Log in as an existing admin (e.g. the built-in `admin` local account)
 2. Navigate to **Settings → Users**
