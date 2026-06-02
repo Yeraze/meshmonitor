@@ -1020,7 +1020,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
 
       case 'import_private_key': {
         const hexKey = params.private_key as string;
-        if (!hexKey || hexKey.length !== 64) throw new Error('import_private_key requires a 64-char hex private key');
+        if (!hexKey || hexKey.length !== 128) throw new Error('import_private_key requires a 128-char hex private key');
         const keyBytes = Uint8Array.from(hexToBytes(hexKey));
         await c.importPrivateKey(keyBytes);
         return { ok: true };

@@ -58,6 +58,8 @@ const meshcoreManager = {
   sendLocalCliCommand: vi.fn().mockResolvedValue({ reply: 'v1.7.0', elapsedMs: 12 }),
   setName: vi.fn().mockResolvedValue(true),
   setRadio: vi.fn().mockResolvedValue(true),
+  importPrivateKey: vi.fn().mockResolvedValue(true),
+  exportPrivateKey: vi.fn().mockResolvedValue('a'.repeat(128)),
   isConnected: vi.fn().mockReturnValue(false),
 };
 
@@ -1552,6 +1554,96 @@ describe('MeshCore Routes', () => {
         // call = [userId, action, resource, detailsJson, ip]
         expect(call[3]).not.toContain(SENSITIVE);
       }
+    });
+  });
+
+  // Coverage for the private-key import/export endpoints (#3301). meshcore.js
+  // exports Ed25519 *expanded* keys (64 bytes = 128 hex chars), so validation
+  // must accept 128 hex chars — not 64.
+  describe('Private Key Management (/config/private-key)', () => {
+    const VALID_KEY = 'a'.repeat(128); // 128 hex chars = 64-byte expanded key
+
+    describe('POST (import)', () => {
+      it('requires authentication', async () => {
+        const response = await request(app)
+          .post('/api/sources/test-source/meshcore/config/private-key')
+          .send({ privateKey: VALID_KEY, confirm: true });
+        expect(response.status).toBe(401);
+      });
+
+      it('requires confirm:true (destructive identity replace)', async () => {
+        const response = await authenticatedAgent
+          .post('/api/sources/test-source/meshcore/config/private-key')
+          .send({ privateKey: VALID_KEY });
+        expect(response.status).toBe(400);
+        expect(response.body.code).toBe('DANGER_CONFIRM_REQUIRED');
+        expect(meshcoreManager.importPrivateKey).not.toHaveBeenCalled();
+      });
+
+      it('rejects keys shorter than 128 hex chars', async () => {
+        const response = await authenticatedAgent
+          .post('/api/sources/test-source/meshcore/config/private-key')
+          .send({ privateKey: 'a'.repeat(64), confirm: true }); // 64 hex = old (wrong) length
+        expect(response.status).toBe(400);
+        expect(response.body.error).toMatch(/128-character hex string/);
+        expect(meshcoreManager.importPrivateKey).not.toHaveBeenCalled();
+      });
+
+      it('rejects keys with invalid hex characters', async () => {
+        const response = await authenticatedAgent
+          .post('/api/sources/test-source/meshcore/config/private-key')
+          .send({ privateKey: 'g'.repeat(128), confirm: true });
+        expect(response.status).toBe(400);
+        expect(response.body.error).toMatch(/128-character hex string/);
+        expect(meshcoreManager.importPrivateKey).not.toHaveBeenCalled();
+      });
+
+      it('accepts a valid 128-char hex key', async () => {
+        meshcoreManager.importPrivateKey.mockResolvedValueOnce(true);
+        const response = await authenticatedAgent
+          .post('/api/sources/test-source/meshcore/config/private-key')
+          .send({ privateKey: VALID_KEY, confirm: true });
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(meshcoreManager.importPrivateKey).toHaveBeenCalledWith(VALID_KEY);
+      });
+
+      it('returns 409 when the device rejects the import', async () => {
+        meshcoreManager.importPrivateKey.mockResolvedValueOnce(false);
+        const response = await authenticatedAgent
+          .post('/api/sources/test-source/meshcore/config/private-key')
+          .send({ privateKey: VALID_KEY, confirm: true });
+        expect(response.status).toBe(409);
+        expect(response.body.success).toBe(false);
+      });
+    });
+
+    describe('GET (export)', () => {
+      it('requires authentication', async () => {
+        const response = await request(app).get(
+          '/api/sources/test-source/meshcore/config/private-key',
+        );
+        expect(response.status).toBe(401);
+      });
+
+      it('returns the exported 128-char hex key', async () => {
+        meshcoreManager.exportPrivateKey.mockResolvedValueOnce(VALID_KEY);
+        const response = await authenticatedAgent.get(
+          '/api/sources/test-source/meshcore/config/private-key',
+        );
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
+        expect(response.body.data.privateKey).toBe(VALID_KEY);
+      });
+
+      it('returns 409 when export is unavailable (disconnected / non-Companion)', async () => {
+        meshcoreManager.exportPrivateKey.mockResolvedValueOnce(null);
+        const response = await authenticatedAgent.get(
+          '/api/sources/test-source/meshcore/config/private-key',
+        );
+        expect(response.status).toBe(409);
+        expect(response.body.success).toBe(false);
+      });
     });
   });
 });

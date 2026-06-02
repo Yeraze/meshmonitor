@@ -917,7 +917,7 @@ router.get(
  *
  * Import an Ed25519 private key onto the device. Replaces the device
  * identity. DESTRUCTIVE + SECURITY-SENSITIVE — requires confirm:true.
- * Body: { privateKey: string (64-char hex), confirm: true }
+ * Body: { privateKey: string (128-char hex), confirm: true }
  */
 router.post(
   '/config/private-key',
@@ -934,10 +934,10 @@ router.post(
           code: 'DANGER_CONFIRM_REQUIRED',
         });
       }
-      if (typeof privateKey !== 'string' || !/^[0-9a-fA-F]{64}$/.test(privateKey)) {
+      if (typeof privateKey !== 'string' || !/^[0-9a-fA-F]{128}$/.test(privateKey)) {
         return res.status(400).json({
           success: false,
-          error: 'privateKey must be a 64-character hex string',
+          error: 'privateKey must be a 128-character hex string',
         });
       }
       const ok = await managerFor(req).importPrivateKey(privateKey);
