@@ -917,7 +917,7 @@ router.get(
  *
  * Import an Ed25519 private key onto the device. Replaces the device
  * identity. DESTRUCTIVE + SECURITY-SENSITIVE — requires confirm:true.
- * Body: { privateKey: string (64-char hex), confirm: true }
+ * Body: { privateKey: string (128-char hex), confirm: true }
  */
 router.post(
   '/config/private-key',
