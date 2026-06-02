@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.8.3] - 2026-06-02
+
+# MeshMonitor v4.8.3
+
+Patch release adding **active MeshCore node discovery** (and reciprocal discoverability), a dedicated **MQTT bridge Configuration page** with per-bridge publish filtering, plus correctness fixes to MeshCore private-key validation, hashtag-channel creation, and reconnect stability.
+
+## Features
+
+### MeshCore
+
+- #3302 feat(meshcore): active node discovery (Discover Nearby Nodes / Repeaters) — proactively discover nearby MeshCore nodes and repeaters on demand.
+- #3303 feat(meshcore): respond to discovery requests (be discoverable) — answer inbound discovery requests so this node is itself discoverable by peers.
+
+### MQTT
+
+- #3294 feat(mqtt): dedicated bridge Configuration page with per-bridge publish filter — manage MQTT bridges from a dedicated Configuration page, including a per-bridge publish filter.
+- #3299 feat(mqtt): slim bridge source-edit modal to basics, deep-link to Configuration page — the per-source bridge edit modal is trimmed to the essentials and deep-links to the full Configuration page.
+
+## Fixes
+
+- #3301 fix: correct MeshCore private key validation to 128 hex chars (64 bytes) — MeshCore private keys are now validated as 128 hex characters (64 bytes).
+- #3298 fix(meshcore): allow adding new hashtag channels (fixes #3297) — adding a brand-new MeshCore hashtag channel now works.
+- #3270 fix(stability): close transport-level orphan-reconnect flap — a transport-level reconnect flap from orphaned connections is now closed out.
+- #3283 fix(build): pin legacy-peer-deps in .npmrc so npm ci stays in sync — pins `legacy-peer-deps=true` in `.npmrc` so `npm ci` and `npm install` resolve dependencies identically.
+
+## Documentation
+
+- #3292 docs: document OIDC first-user auto-admin behavior — documents that the first user to log in via OIDC is automatically granted admin.
+
+## Maintenance
+
+- Dependency bumps via Dependabot: production dependencies group (7 updates), development dependencies group, `react-router-dom` 7.15.1→7.16.0, `puppeteer` 25.0.4→25.1.0, `concurrently` 9.2.1→10.0.1, `@typescript-eslint/eslint-plugin` and `@typescript-eslint/parser`, and Rollup linux ARM binaries.
+
 ## [4.8.2] - 2026-05-31
 
 # MeshMonitor v4.8.2
