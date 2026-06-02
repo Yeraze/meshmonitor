@@ -2116,7 +2116,7 @@ class MeshCoreManager extends EventEmitter {
       return false;
     }
     if (!this.connected) return false;
-    if (!/^[0-9a-fA-F]{64}$/.test(hexKey)) {
+    if (!/^[0-9a-fA-F]{128}$/.test(hexKey)) {
       logger.warn('[MeshCore] importPrivateKey: invalid key format');
       return false;
     }

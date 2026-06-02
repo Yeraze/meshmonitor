@@ -594,8 +594,8 @@ const MeshCoreDeviceManagement: React.FC<{
   const handleImportKey = async () => {
     if (importingKey) return;
     const hex = importKeyDraft.trim();
-    if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
-      setImportKeyError(t('meshcore.config.import_key_invalid', 'Key must be a 64-character hex string.'));
+    if (!/^[0-9a-fA-F]{128}$/.test(hex)) {
+      setImportKeyError(t('meshcore.config.import_key_invalid', 'Key must be a 128-character hex string.'));
       return;
     }
     const msg = t(
@@ -698,7 +698,7 @@ const MeshCoreDeviceManagement: React.FC<{
             value={importKeyDraft}
             onChange={(e) => setImportKeyDraft(e.target.value)}
             disabled={importingKey}
-            placeholder="64-character hex private key"
+            placeholder="128-character hex private key"
             style={{
               width: '100%',
               padding: '0.5rem',
