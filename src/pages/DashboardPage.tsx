@@ -26,9 +26,7 @@ import { useMeshCoreNeighbors } from '../hooks/useMapAnalysisData';
 import type { DashboardSource } from '../hooks/useDashboardData';
 import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import DashboardMap from '../components/Dashboard/DashboardMap';
-import BBoxMapEditor, { type BBoxValue } from '../components/BBoxMapEditor';
 import { buildBridgeConfig, formFromBridgeConfig } from '../components/MQTT/mqttBridgeConfig';
-import { bboxToFormStrings, boundsFromDetectedNodes } from './DashboardPage.bboxSeed';
 import LoginModal from '../components/LoginModal';
 import UserMenu from '../components/UserMenu';
 import { NewsPopup } from '../components/NewsPopup';
@@ -38,25 +36,6 @@ import { logger } from '../utils/logger';
 import { appBasename } from '../init';
 import { getReservedLandingPath, isReservedLandingValue } from '../utils/defaultLandingPage';
 import '../styles/dashboard.css';
-
-// Helper: parse the four bbox text fields into a BBoxValue, or null if any
-// is empty / not a number. The map editor needs a fully-defined bbox; the
-// numeric inputs let the user type values one at a time, so we tolerate
-// partial state and just don't render the rectangle until all four parse.
-function bboxFromForm(geo: {
-  minLat: string;
-  maxLat: string;
-  minLng: string;
-  maxLng: string;
-}): BBoxValue | null {
-  const minLat = Number(geo.minLat);
-  const maxLat = Number(geo.maxLat);
-  const minLng = Number(geo.minLng);
-  const maxLng = Number(geo.maxLng);
-  if ([minLat, maxLat, minLng, maxLng].some((n) => Number.isNaN(n))) return null;
-  if (minLat > maxLat || minLng > maxLng) return null;
-  return { minLat, maxLat, minLng, maxLng };
-}
 
 
 // ---------------------------------------------------------------------------
@@ -160,33 +139,9 @@ function DashboardInner() {
   const [formMqttBridgeUsername, setFormMqttBridgeUsername] = useState('');
   const [formMqttBridgePassword, setFormMqttBridgePassword] = useState('');
   const [formMqttBridgeSubscriptions, setFormMqttBridgeSubscriptions] = useState('msh/#');
-  // Bridge mode: bidirectional (default), publish_only (skip upstream
-  // subscribe — for public servers that reject SUBSCRIBE), or
-  // subscribe_only (skip uplink — read-only monitoring).
-  const [formMqttBridgeMode, setFormMqttBridgeMode] = useState<
-    'bidirectional' | 'publish_only' | 'subscribe_only'
-  >('bidirectional');
-  // Per-gateway upstream identity (default) opens one upstream MQTT
-  // connection per local gateway; single keeps the legacy
-  // `mm-bridge-<sourceId>-…` shared connection for brokers with tight
-  // per-username connection caps.
-  const [formMqttBridgeForwardingMode, setFormMqttBridgeForwardingMode] = useState<
-    'per_gateway' | 'single'
-  >('per_gateway');
-  // When true, bypass the firmware ok_to_mqtt opt-out and uplink every
-  // packet. Default false (honor the bit) — operator override only.
-  const [formMqttBridgeIgnoreOkToMqtt, setFormMqttBridgeIgnoreOkToMqtt] = useState(false);
-  // Each filter is opt-in via a checkbox so the form stays short for the
-  // common case where the user just wants a topic-pattern subscription.
-  const [formMqttBridgeUseTopicBlock, setFormMqttBridgeUseTopicBlock] = useState(false);
-  const [formMqttBridgeTopicBlock, setFormMqttBridgeTopicBlock] = useState('');
-  const [formMqttBridgeUseGeo, setFormMqttBridgeUseGeo] = useState(false);
-  const [formMqttBridgeGeo, setFormMqttBridgeGeo] = useState({
-    minLat: '',
-    maxLat: '',
-    minLng: '',
-    maxLng: '',
-  });
+  // Advanced bridge settings (mode, forwarding, ok_to_mqtt, publish/subscribe
+  // filters, geofence, topic rewrites) are NOT edited here — they live on the
+  // bridge's Configuration page. buildBridgeConfig preserves them on save.
   // Meshtastic source ↔ embedded MQTT broker proxy link (issue #3003
   // follow-up). Empty string = unset / no proxy bridge.
   const [formMtMqttLinkBrokerId, setFormMtMqttLinkBrokerId] = useState('');
@@ -351,13 +306,6 @@ function DashboardInner() {
     setFormMqttBridgeUsername('');
     setFormMqttBridgePassword('');
     setFormMqttBridgeSubscriptions('msh/#');
-    setFormMqttBridgeMode('bidirectional');
-    setFormMqttBridgeForwardingMode('per_gateway');
-    setFormMqttBridgeIgnoreOkToMqtt(false);
-    setFormMqttBridgeUseTopicBlock(false);
-    setFormMqttBridgeTopicBlock('');
-    setFormMqttBridgeUseGeo(false);
-    setFormMqttBridgeGeo({ minLat: '', maxLat: '', minLng: '', maxLng: '' });
     setFormMtMqttLinkBrokerId('');
     setFormBrokerBridgeRewrites({});
     setOriginalBrokerBridgeRewrites({});
@@ -408,6 +356,9 @@ function DashboardInner() {
     if (source.type === 'mqtt_bridge') {
       // Hydrate via the shared serializer so the modal and the dedicated
       // bridge Configuration page never drift on config shape.
+      // Only the basics are edited here; advanced settings are preserved on
+      // save (buildBridgeConfig merges over the existing config) and edited on
+      // the Configuration page.
       const bf = formFromBridgeConfig(cfg);
       setFormType('mqtt_bridge');
       setFormName(source.name);
@@ -416,13 +367,6 @@ function DashboardInner() {
       setFormMqttBridgeUsername(bf.username);
       setFormMqttBridgePassword('');
       setFormMqttBridgeSubscriptions(bf.subscriptions);
-      setFormMqttBridgeMode(bf.mode);
-      setFormMqttBridgeForwardingMode(bf.forwardingMode);
-      setFormMqttBridgeIgnoreOkToMqtt(bf.ignoreOkToMqtt);
-      setFormMqttBridgeUseTopicBlock(bf.useTopicBlock);
-      setFormMqttBridgeTopicBlock(bf.topicBlock);
-      setFormMqttBridgeUseGeo(bf.useGeo);
-      setFormMqttBridgeGeo(bf.geo);
       setFormError('');
       setShowSourceModal(true);
       return;
@@ -505,6 +449,9 @@ function DashboardInner() {
       const base = editingSourceId
         ? (sources.find((s) => s.id === editingSourceId)?.config as Record<string, any> | undefined)
         : undefined;
+      // Only the basics are posted from the modal; every advanced field
+      // (mode, forwarding, ok_to_mqtt, downlink/uplink filters, geofence,
+      // rewrites) is omitted so buildBridgeConfig preserves it from `base`.
       const result = buildBridgeConfig(
         {
           brokerId: formMqttBridgeBrokerId,
@@ -512,14 +459,6 @@ function DashboardInner() {
           username: formMqttBridgeUsername,
           password: formMqttBridgePassword,
           subscriptions: formMqttBridgeSubscriptions,
-          mode: formMqttBridgeMode,
-          forwardingMode: formMqttBridgeForwardingMode,
-          ignoreOkToMqtt: formMqttBridgeIgnoreOkToMqtt,
-          useTopicBlock: formMqttBridgeUseTopicBlock,
-          topicBlock: formMqttBridgeTopicBlock,
-          useGeo: formMqttBridgeUseGeo,
-          geo: formMqttBridgeGeo,
-          // uplink filters / rewrites intentionally omitted — preserved via base.
         },
         { editing: !!editingSourceId, base },
       );
@@ -1302,84 +1241,6 @@ function DashboardInner() {
                   </span>
                 </label>
                 <label className="dashboard-form-field">
-                  <span className="dashboard-form-label">{t('source.form.mqtt_bridge_mode', 'Mode')}</span>
-                  <select
-                    className="dashboard-form-input"
-                    value={formMqttBridgeMode}
-                    onChange={(e) =>
-                      setFormMqttBridgeMode(
-                        e.target.value as 'bidirectional' | 'publish_only' | 'subscribe_only',
-                      )
-                    }
-                  >
-                    <option value="bidirectional">
-                      {t('source.form.mqtt_bridge_mode_bidirectional', 'Bidirectional (subscribe + publish)')}
-                    </option>
-                    <option value="publish_only">
-                      {t('source.form.mqtt_bridge_mode_publish_only', 'Publish only (no subscribe)')}
-                    </option>
-                    <option value="subscribe_only">
-                      {t('source.form.mqtt_bridge_mode_subscribe_only', 'Subscribe only (no publish)')}
-                    </option>
-                  </select>
-                  <span style={{ fontSize: 11, color: 'var(--ctp-subtext0)', marginTop: 4 }}>
-                    {t(
-                      'source.form.mqtt_bridge_mode_help',
-                      'Use "Publish only" for public servers (e.g. mqtt.meshtastic.org) that reject SUBSCRIBE — avoids permission-denied noise. "Subscribe only" disables uplink forwarding for read-only monitoring.',
-                    )}
-                  </span>
-                </label>
-                <label className="dashboard-form-field">
-                  <span className="dashboard-form-label">
-                    {t('source.form.mqtt_bridge_forwarding_mode', 'Upstream identity')}
-                  </span>
-                  <select
-                    className="dashboard-form-input"
-                    value={formMqttBridgeForwardingMode}
-                    onChange={(e) =>
-                      setFormMqttBridgeForwardingMode(e.target.value as 'per_gateway' | 'single')
-                    }
-                  >
-                    <option value="per_gateway">
-                      {t(
-                        'source.form.mqtt_bridge_forwarding_per_gateway',
-                        'Per-gateway (one connection per local node)',
-                      )}
-                    </option>
-                    <option value="single">
-                      {t(
-                        'source.form.mqtt_bridge_forwarding_single',
-                        'Single (one shared bridge connection — legacy)',
-                      )}
-                    </option>
-                  </select>
-                  <span style={{ fontSize: 11, color: 'var(--ctp-subtext0)', marginTop: 4 }}>
-                    {t(
-                      'source.form.mqtt_bridge_forwarding_help',
-                      'Per-gateway lets each local node publish upstream under its own !<hex> Client ID — required for community brokers that filter CONNECT on Client ID (mqtt.areyoumeshingwith.us, etc.). Switch to Single only if the upstream broker has tight per-username connection caps.',
-                    )}
-                  </span>
-                </label>
-                <label className="dashboard-form-field" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                  <input
-                    type="checkbox"
-                    checked={formMqttBridgeIgnoreOkToMqtt}
-                    onChange={(e) => setFormMqttBridgeIgnoreOkToMqtt(e.target.checked)}
-                    style={{ marginTop: 3 }}
-                  />
-                  <span>
-                    <span className="dashboard-form-label" style={{ display: 'block' }}>
-                      {t('source.form.mqtt_bridge_ignore_ok_to_mqtt', 'Uplink all packets (ignore ok_to_mqtt bit)')}
-                    </span>
-                    <span style={{ fontSize: 11, color: 'var(--ctp-yellow)' }}>
-                      {t(
-                        'source.form.mqtt_bridge_ignore_ok_to_mqtt_help',
-                        '⚠ Overrides the originating node\'s "ok_to_mqtt" preference. By default, MeshMonitor drops uplink packets whose firmware-set ok_to_mqtt bit is unset (matching Meshtastic firmware on public brokers). Enabling this republishes every packet regardless — including from nodes that explicitly opted out of MQTT relay. Only enable for private bridges where every gateway has consented.',
-                      )}
-                    </span>
-                  </span>
-                </label>
-                <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('source.form.mqtt_upstream_url', 'Upstream URL')}</span>
                   <input
                     className="dashboard-form-input"
@@ -1417,95 +1278,42 @@ function DashboardInner() {
                     onChange={(e) => setFormMqttBridgeSubscriptions(e.target.value)}
                   />
                 </label>
-                <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
-                  <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={formMqttBridgeUseTopicBlock}
-                        onChange={(e) => setFormMqttBridgeUseTopicBlock(e.target.checked)}
-                      />
-                      {t('source.form.mqtt_topic_block_enable', 'Block specific topics')}
-                    </label>
-                  </legend>
-                  {formMqttBridgeUseTopicBlock && (
-                    <label className="dashboard-form-field" style={{ marginTop: 4 }}>
-                      <span className="dashboard-form-label">{t('source.form.mqtt_topic_block_label', 'Topics to drop (one per line, MQTT wildcards allowed)')}</span>
-                      <textarea
-                        className="dashboard-form-input"
-                        rows={3}
-                        value={formMqttBridgeTopicBlock}
-                        onChange={(e) => setFormMqttBridgeTopicBlock(e.target.value)}
-                        placeholder="msh/CA/QC/#"
-                      />
-                    </label>
+                {/* Advanced bridge settings (mode, forwarding, ok_to_mqtt,
+                    publish channel/topic filters, geofence, topic rewrites)
+                    live on the bridge's Configuration page so they're
+                    maintained in one place — not duplicated here. When editing
+                    an existing source we can deep-link straight to it. */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 4 }}>
+                  <span style={{ fontSize: 11, color: 'var(--ctp-subtext0)', flex: 1 }}>
+                    {t(
+                      'source.form.mqtt_bridge_advanced_hint',
+                      'Mode, forwarding, publish/subscribe filters, geofence, and topic rewrites are on the bridge’s Configuration page.',
+                    )}
+                  </span>
+                  {editingSourceId && (
+                    <button
+                      type="button"
+                      style={{
+                        flexShrink: 0,
+                        whiteSpace: 'nowrap',
+                        fontSize: 11,
+                        padding: '4px 8px',
+                        background: 'transparent',
+                        color: 'var(--ctp-blue)',
+                        border: '1px solid var(--ctp-blue)',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                      }}
+                      title={t('source.form.mqtt_bridge_advanced_open', 'Open Configuration page')}
+                      onClick={() => {
+                        setShowSourceModal(false);
+                        navigate(`/source/${editingSourceId}/#mqtt-config`);
+                      }}
+                    >
+                      {t('source.form.mqtt_bridge_advanced_open', 'Configuration')} →
+                    </button>
                   )}
-                </fieldset>
-                <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
-                  <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={formMqttBridgeUseGeo}
-                        onChange={(e) => {
-                          const enabled = e.target.checked;
-                          setFormMqttBridgeUseGeo(enabled);
-                          // Seed the bbox from currently-detected node positions
-                          // when the user first enables the filter and the form is
-                          // empty. Saves them having to pan/zoom from the middle
-                          // of the ocean on a fresh source.
-                          if (
-                            enabled &&
-                            !formMqttBridgeGeo.minLat &&
-                            !formMqttBridgeGeo.maxLat &&
-                            !formMqttBridgeGeo.minLng &&
-                            !formMqttBridgeGeo.maxLng
-                          ) {
-                            const allNodes = [
-                              ...(unifiedSourceData.nodes as Array<{ latitude?: number | null; longitude?: number | null }>),
-                              ...(sourceData.nodes as Array<{ latitude?: number | null; longitude?: number | null }>),
-                            ];
-                            const seeded = boundsFromDetectedNodes(allNodes);
-                            if (seeded) setFormMqttBridgeGeo(bboxToFormStrings(seeded));
-                          }
-                        }}
-                      />
-                      {t('source.form.mqtt_geo_enable', 'Restrict to geographic bounding box')}
-                    </label>
-                  </legend>
-                  {formMqttBridgeUseGeo && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-                      <BBoxMapEditor
-                        bbox={bboxFromForm(formMqttBridgeGeo)}
-                        onChange={(next) => {
-                          if (next) {
-                            setFormMqttBridgeGeo(bboxToFormStrings(next));
-                          } else {
-                            setFormMqttBridgeGeo({ minLat: '', maxLat: '', minLng: '', maxLng: '' });
-                          }
-                        }}
-                      />
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        <label className="dashboard-form-field">
-                          <span className="dashboard-form-label">minLat</span>
-                          <input className="dashboard-form-input" value={formMqttBridgeGeo.minLat} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, minLat: e.target.value })} />
-                        </label>
-                        <label className="dashboard-form-field">
-                          <span className="dashboard-form-label">maxLat</span>
-                          <input className="dashboard-form-input" value={formMqttBridgeGeo.maxLat} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, maxLat: e.target.value })} />
-                        </label>
-                        <label className="dashboard-form-field">
-                          <span className="dashboard-form-label">minLng</span>
-                          <input className="dashboard-form-input" value={formMqttBridgeGeo.minLng} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, minLng: e.target.value })} />
-                        </label>
-                        <label className="dashboard-form-field">
-                          <span className="dashboard-form-label">maxLng</span>
-                          <input className="dashboard-form-input" value={formMqttBridgeGeo.maxLng} onChange={(e) => setFormMqttBridgeGeo({ ...formMqttBridgeGeo, maxLng: e.target.value })} />
-                        </label>
-                      </div>
-                    </div>
-                  )}
-                </fieldset>
+                </div>
               </>
             ) : formType === 'meshcore' ? (
               <>
