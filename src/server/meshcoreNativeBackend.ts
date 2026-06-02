@@ -217,6 +217,14 @@ export class MeshCoreNativeBackend extends EventEmitter {
   private pendingTxtMsgPath: { hops: string[]; rawPathLen: number } | null = null;
   /** Constructor reference for the meshcore.js Packet parser, populated when the module loads. */
   private PacketCtor: MeshCoreJsModule['Packet'] | null = null;
+  /**
+   * Correlation tag of the most recent node-discovery request (CMD 55,
+   * CTL_TYPE_NODE_DISCOVER_REQ). NODE_DISCOVER_RESP pushes (0x8E) echo the
+   * tag; we only surface responses whose tag matches, so stale replies from
+   * a prior discovery don't leak into the current one. Each new discovery
+   * overwrites this; late matching replies still auto-add (desirable).
+   */
+  private pendingDiscoverTag: number | null = null;
 
   constructor(sourceId: string, config: NativeBackendConfig) {
     super();
@@ -498,6 +506,73 @@ export class MeshCoreNativeBackend extends EventEmitter {
       }
     });
 
+    // ControlData (0x8E, firmware v8+) — not in meshcore.js PushCodes, so we
+    // intercept raw frames. Carries the responses to CMD_SEND_CONTROL_DATA
+    // (55). We only handle NODE_DISCOVER_RESP here (the active discovery
+    // feature: "Discover Nearby Nodes / Repeaters"). Frame format:
+    //   [0x8E] [snr×4 int8] [rssi int8] [path_len] [control_payload...]
+    // control_payload for a discovery response (from src/Mesh.cpp +
+    // examples/simple_repeater/MyMesh.cpp):
+    //   [0] CTL_TYPE_NODE_DISCOVER_RESP(0x90) | nodeType(low 4 bits)
+    //   [1] responder's inbound SNR (×4)
+    //   [2..5] tag (uint32 LE, echoed from our request)
+    //   [6..] public key — full 32 bytes when we requested prefix_only=false
+    // We request prefix_only=false so we always get a full key (needed to
+    // register a real, message-able contact). SNR shown to the user is the
+    // companion's inbound SNR (frame[1]) — how well WE hear the responder.
+    const PUSH_CONTROL_DATA = 0x8E;
+    const CTL_TYPE_NODE_DISCOVER_RESP = 0x90;
+    this.connection.on('rx', (frame: Uint8Array) => {
+      if (!frame || frame.length < 4 || frame[0] !== PUSH_CONTROL_DATA) return;
+      const ctlByte = frame[4];
+      if (typeof ctlByte !== 'number' || (ctlByte & 0xf0) !== CTL_TYPE_NODE_DISCOVER_RESP) return;
+      try {
+        const snr = (frame[1] << 24 >> 24) / 4; // int8 → signed, ×4 scaled
+        const nodeType = ctlByte & 0x0f;
+        // tag is uint32 LE at control_payload offset 2 → frame offset 6
+        const tag =
+          (frame[6] | (frame[7] << 8) | (frame[8] << 16) | (frame[9] << 24)) >>> 0;
+        if (this.pendingDiscoverTag === null || tag !== this.pendingDiscoverTag) return;
+
+        // public key follows the tag (control_payload offset 6 → frame offset 10)
+        const keyBytes = frame.slice(10);
+        if (keyBytes.length < 32) {
+          logger.warn(
+            `[MeshCore:native] DISCOVER_RESP pubkey too short (${keyBytes.length}B); ` +
+            `prefix_only response cannot be auto-added`,
+          );
+          return;
+        }
+        const publicKeyBytes = keyBytes.slice(0, 32);
+        const publicKey = bytesToHex(publicKeyBytes);
+
+        // Auto-add to the DEVICE contact store so the node is actually
+        // message-able and survives the next refreshContacts() (a
+        // MeshMonitor-only mirror would be clobbered by the device's list).
+        // We have no name/position/path from a discovery response, so use
+        // empty name + flood path (outPathLen 0xFF) and let the device
+        // learn the route. addOrUpdateContact is idempotent (Ok/Err only),
+        // so re-discovering an existing contact is harmless. Best-effort:
+        // a device-side failure must not break response parsing.
+        const c = this.connection;
+        if (c) {
+          void c
+            .addOrUpdateContact(publicKeyBytes, nodeType, 0, 0xff, new Uint8Array(64), '', 0, 0, 0)
+            .catch((err: Error) =>
+              logger.warn(`[MeshCore:native] discover auto-add failed for ${publicKey.substring(0, 16)}…: ${err.message}`),
+            );
+        }
+
+        this.emitBridgeEvent('node_discovered', {
+          public_key: publicKey,
+          adv_type: nodeType,
+          snr,
+        });
+      } catch (err) {
+        logger.warn(`[MeshCore:native] Failed to parse 0x8E discover frame: ${(err as Error).message}`);
+      }
+    });
+
     // SendConfirmed → send_confirmed (message ACK with round-trip time)
     this.connection.on(PushCodes.SendConfirmed, (push: any) => {
       this.emitBridgeEvent('send_confirmed', {
@@ -641,6 +716,46 @@ export class MeshCoreNativeBackend extends EventEmitter {
             reject(new Error('Device rejected path discovery request'));
           };
           c.once(this.constants!.ResponseCodes.Sent, onSent);
+          c.once(this.constants!.ResponseCodes.Err, onErr);
+          c.sendToRadioFrame(frame);
+        });
+        return { ok: true };
+      }
+
+      case 'discover_nodes': {
+        // CMD_SEND_CONTROL_DATA (firmware opcode 55, v8+) with a
+        // CTL_TYPE_NODE_DISCOVER_REQ control payload. Not in meshcore.js, so
+        // we build the raw frame. The firmware sends this zero-hop, so only
+        // nodes in DIRECT radio range hear it and respond (also zero-hop).
+        // Frame: [55, control_type, filter, tag(4B LE)]
+        //   control_type = 0x80 (NODE_DISCOVER_REQ); bit 0 = prefix_only.
+        //   We leave bit 0 clear so responders return their FULL public key.
+        //   filter = bitmask of (1 << ADV_TYPE) selecting which node types reply.
+        // Responses arrive asynchronously as 0x8E pushes (see wirePushEvents).
+        const filter = Number(params.filter) & 0xff;
+        const tag = (Number(params.tag) >>> 0) || 0;
+        this.pendingDiscoverTag = tag;
+        const frame = new Uint8Array(2 + 1 + 4);
+        frame[0] = 55; // CMD_SEND_CONTROL_DATA
+        frame[1] = 0x80; // CTL_TYPE_NODE_DISCOVER_REQ, prefix_only = false
+        frame[2] = filter;
+        frame[3] = tag & 0xff;
+        frame[4] = (tag >>> 8) & 0xff;
+        frame[5] = (tag >>> 16) & 0xff;
+        frame[6] = (tag >>> 24) & 0xff;
+        // The firmware acks CMD_SEND_CONTROL_DATA with an OK frame (not Sent).
+        await new Promise<void>((resolve, reject) => {
+          const onOk = () => {
+            c.off(this.constants!.ResponseCodes.Ok, onOk);
+            c.off(this.constants!.ResponseCodes.Err, onErr);
+            resolve();
+          };
+          const onErr = () => {
+            c.off(this.constants!.ResponseCodes.Ok, onOk);
+            c.off(this.constants!.ResponseCodes.Err, onErr);
+            reject(new Error('Device rejected node discovery request'));
+          };
+          c.once(this.constants!.ResponseCodes.Ok, onOk);
           c.once(this.constants!.ResponseCodes.Err, onErr);
           c.sendToRadioFrame(frame);
         });

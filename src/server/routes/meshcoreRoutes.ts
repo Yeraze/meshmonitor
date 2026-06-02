@@ -9,7 +9,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { ConnectionType, MeshCoreDeviceType, MeshCoreManager } from '../meshcoreManager.js';
+import { ConnectionType, MeshCoreDeviceType, MeshCoreManager, MeshCoreDiscoverFilter, type MeshCoreDiscoverMode } from '../meshcoreManager.js';
 import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
 import { getMeshCoreTelemetryPoller, nodeNumFromPubkey } from '../services/meshcoreTelemetryPoller.js';
 import { MAX_INTERVAL_MINUTES } from '../services/meshcoreRemoteTelemetryScheduler.js';
@@ -489,6 +489,43 @@ router.post(
     } catch (error) {
       logger.error('[API] Error discovering contact path:', error);
       res.status(500).json({ success: false, error: 'Failed to discover path' });
+    }
+  },
+);
+
+/**
+ * POST /api/sources/:id/meshcore/discover
+ *
+ * Active node discovery — broadcasts a zero-hop NODE_DISCOVER_REQ so nodes in
+ * direct radio range announce themselves, and auto-adds each responder as a
+ * contact. Body: { mode: 'nearby' | 'repeaters' }.
+ *   - 'nearby'    → all node types (repeaters/rooms/sensors answer; companion
+ *                   devices don't reply to discovery in current firmware)
+ *   - 'repeaters' → repeaters + room servers only
+ * Responses are collected over a few-second window; returns the count of
+ * unique responders and how many were newly discovered.
+ */
+router.post(
+  '/discover',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const mode = req.body?.mode as MeshCoreDiscoverMode | undefined;
+      if (mode !== 'nearby' && mode !== 'repeaters') {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid mode — must be 'nearby' or 'repeaters'",
+        });
+      }
+      const filter =
+        mode === 'repeaters' ? MeshCoreDiscoverFilter.REPEATERS : MeshCoreDiscoverFilter.NEARBY;
+      const { returned, newCount } = await managerFor(req).discoverNodes(filter);
+      res.json({ success: true, returned, new: newCount });
+    } catch (error) {
+      logger.error('[API] Error discovering nodes:', error);
+      res.status(500).json({ success: false, error: 'Failed to discover nodes' });
     }
   },
 );

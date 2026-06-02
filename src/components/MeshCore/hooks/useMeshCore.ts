@@ -121,6 +121,8 @@ export interface MeshCoreActions {
    *  update arrives asynchronously — this resolves `true` when the flood
    *  was accepted. */
   discoverContactPath: (publicKey: string) => Promise<boolean>;
+  /** Active node discovery; resolves with responder counts, or null on error. */
+  discoverNodes: (mode: 'nearby' | 'repeaters') => Promise<{ returned: number; newCount: number } | null>;
   /** Remove a contact from the device's contact list. Resolves `true` when
    *  the device ACKed the removal; `false` for any error. */
   removeContact: (publicKey: string) => Promise<boolean>;
@@ -652,6 +654,32 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       return false;
     }
   }, [mcPrefix, csrfFetch]);
+
+  const discoverNodes = useCallback(async (
+    mode: 'nearby' | 'repeaters',
+  ): Promise<{ returned: number; newCount: number } | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/discover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to discover nodes');
+        return null;
+      }
+      // Auto-added responders are already mirrored server-side; refresh so
+      // they appear in the contact/node lists immediately.
+      if (data.returned > 0) {
+        await refreshContacts();
+      }
+      return { returned: data.returned ?? 0, newCount: data.new ?? 0 };
+    } catch (_err) {
+      setError('Failed to discover nodes');
+      return null;
+    }
+  }, [mcPrefix, csrfFetch, refreshContacts]);
 
   const loginRemote = useCallback(async (
     publicKey: string,
@@ -1277,6 +1305,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       refreshContacts,
       resetContactPath,
       discoverContactPath,
+      discoverNodes,
       shareContact,
       setContactOutPath,
       traceContactPath,

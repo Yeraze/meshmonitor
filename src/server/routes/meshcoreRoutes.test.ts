@@ -50,6 +50,7 @@ const meshcoreManager = {
   refreshContacts: vi.fn().mockResolvedValue(new Map()),
   resetContactPath: vi.fn().mockResolvedValue(true),
   discoverContactPath: vi.fn().mockResolvedValue(true),
+  discoverNodes: vi.fn().mockResolvedValue({ returned: 0, newCount: 0 }),
   shareContact: vi.fn().mockResolvedValue(true),
   setContactOutPath: vi.fn().mockResolvedValue(true),
   loginToNode: vi.fn().mockResolvedValue(true),
@@ -73,6 +74,10 @@ vi.mock('../meshcoreManager.js', () => ({
     1: 'Companion',
     2: 'Repeater',
     3: 'RoomServer',
+  },
+  MeshCoreDiscoverFilter: {
+    NEARBY: 0x1e,
+    REPEATERS: 0x0c,
   },
   MeshCoreManager: class {},
 }));
@@ -1244,6 +1249,52 @@ describe('MeshCore Routes', () => {
     it('returns 404 when the source has no registered manager', async () => {
       const response = await authenticatedAgent
         .post(`/api/sources/no-such-source/meshcore/contacts/${VALID_PUBKEY}/discover-path`);
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('POST /api/sources/test-source/meshcore/discover', () => {
+    beforeEach(() => {
+      meshcoreManager.discoverNodes.mockReset();
+      meshcoreManager.discoverNodes.mockResolvedValue({ returned: 3, newCount: 2 });
+    });
+
+    it('requires authentication', async () => {
+      const response = await request(app)
+        .post('/api/sources/test-source/meshcore/discover')
+        .send({ mode: 'nearby' });
+      expect(response.status).toBe(401);
+    });
+
+    it('rejects an invalid mode', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/discover')
+        .send({ mode: 'everything' });
+      expect(response.status).toBe(400);
+      expect(meshcoreManager.discoverNodes).not.toHaveBeenCalled();
+    });
+
+    it('maps "repeaters" to the Repeater|Room filter (0x0c)', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/discover')
+        .send({ mode: 'repeaters' });
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, returned: 3, new: 2 });
+      expect(meshcoreManager.discoverNodes).toHaveBeenCalledWith(0x0c);
+    });
+
+    it('maps "nearby" to the all-types filter (0x1e)', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/discover')
+        .send({ mode: 'nearby' });
+      expect(response.status).toBe(200);
+      expect(meshcoreManager.discoverNodes).toHaveBeenCalledWith(0x1e);
+    });
+
+    it('returns 404 when the source has no registered manager', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/no-such-source/meshcore/discover')
+        .send({ mode: 'nearby' });
       expect(response.status).toBe(404);
     });
   });
