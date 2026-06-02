@@ -12,7 +12,7 @@
  * `./mqttBridgeConfig` so the two editors can never drift.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
@@ -76,6 +76,9 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saved, setSaved] = useState(false);
+  // Raw loaded config — passed as `base` on save so any config sub-keys this
+  // page doesn't render (e.g. node/portnum filters) are preserved, not wiped.
+  const baseConfigRef = useRef<Record<string, any> | null>(null);
 
   // Shallow patch helper for the form state.
   const patch = useCallback(
@@ -104,6 +107,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
         if (!srcRes.ok) throw new Error(`GET source failed: ${srcRes.status}`);
         const src = await srcRes.json();
         if (cancelled) return;
+        baseConfigRef.current = (src?.config as Record<string, any>) ?? {};
         setForm(formFromBridgeConfig(src?.config));
         if (listRes.ok) {
           const list: SourceSummary[] = await listRes.json();
@@ -145,7 +149,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
   const handleSave = useCallback(async () => {
     setSaveError('');
     setSaved(false);
-    const result = buildBridgeConfig(form, { editing: true });
+    const result = buildBridgeConfig(form, { editing: true, base: baseConfigRef.current });
     if (result.error) {
       setSaveError(t(result.error.key, result.error.fallback));
       return;
@@ -164,6 +168,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
       const updated = await res.json();
       // Re-hydrate from the server's stored config (clears the password field
       // and reflects any server-side normalization).
+      baseConfigRef.current = (updated?.config as Record<string, any>) ?? {};
       setForm(formFromBridgeConfig(updated?.config));
       setSaved(true);
     } catch (err) {

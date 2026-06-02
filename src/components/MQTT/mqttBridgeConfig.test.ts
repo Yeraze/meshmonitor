@@ -130,6 +130,42 @@ describe('mqttBridgeConfig', () => {
       expect(config).not.toHaveProperty('uplinkFilters');
     });
 
+    it('preserves all advanced fields when the modal posts only the basics', () => {
+      // The lightweight modal sends just broker/url/creds/subscriptions.
+      const base = {
+        brokerSourceId: 'broker-1',
+        upstream: { url: 'mqtt://old:1883', username: 'old', password: 'secret' },
+        subscriptions: ['msh/#'],
+        mode: 'subscribe_only',
+        forwardingMode: 'single',
+        ignoreOkToMqtt: true,
+        downlinkFilters: { topics: { block: ['msh/CA/#'] }, geo: { minLat: 1 } },
+        uplinkFilters: { channels: { allow: ['LongFast'] } },
+        downlinkTopicRewrite: { from: 'msh/US', to: 'msh/local' },
+      };
+      const { config } = buildBridgeConfig(
+        {
+          brokerId: 'broker-1',
+          url: 'mqtt://new:1883',
+          username: 'new',
+          password: '',
+          subscriptions: 'msh/US/#',
+        },
+        { editing: true, base },
+      );
+      // Basics updated:
+      expect(config?.upstream.url).toBe('mqtt://new:1883');
+      expect(config?.upstream.username).toBe('new');
+      expect(config?.subscriptions).toEqual(['msh/US/#']);
+      // Everything the modal doesn't render is preserved verbatim:
+      expect(config?.mode).toBe('subscribe_only');
+      expect(config?.forwardingMode).toBe('single');
+      expect(config?.ignoreOkToMqtt).toBe(true);
+      expect(config?.downlinkFilters).toEqual({ topics: { block: ['msh/CA/#'] }, geo: { minLat: 1 } });
+      expect(config?.uplinkFilters).toEqual({ channels: { allow: ['LongFast'] } });
+      expect(config?.downlinkTopicRewrite).toEqual({ from: 'msh/US', to: 'msh/local' });
+    });
+
     it('preserves base.uplinkFilters when the caller does not manage uplink (modal)', () => {
       const base = { uplinkFilters: { topics: { block: ['keep'] } } };
       // Modal-style form: uplinkTopicMode omitted.

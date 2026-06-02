@@ -144,12 +144,20 @@ function applyRewrite(
 /**
  * Serialize a bridge form into the `config` blob posted to /api/sources.
  * Returns `{ config }` on success or `{ error }` with a translatable key.
+ *
+ * Accepts a *partial* form: every field is managed only when the caller
+ * supplies it; anything omitted is preserved from `opts.base`. This lets the
+ * lightweight create/edit modal post just the basics (broker, URL, creds,
+ * subscriptions) while the full Configuration page manages everything — the
+ * advanced settings (mode, forwarding, filters, rewrites) survive a modal
+ * edit untouched.
  */
 export function buildBridgeConfig(
-  form: BridgeConfigForm,
+  form: Partial<BridgeConfigForm>,
   opts: BuildBridgeOptions,
 ): { config?: Record<string, any>; error?: BridgeConfigError } {
-  if (!form.url.trim()) {
+  const url = form.url?.trim();
+  if (!url) {
     return {
       error: { key: 'source.form.error_mqtt_url_required', fallback: 'Upstream URL is required' },
     };
@@ -158,45 +166,62 @@ export function buildBridgeConfig(
   const cfg: Record<string, any> = { ...(opts.base ?? {}) };
 
   // Parent broker — omit entirely when standalone (issue #3134).
-  if (form.brokerId) cfg.brokerSourceId = form.brokerId;
-  else delete cfg.brokerSourceId;
+  if (form.brokerId !== undefined) {
+    if (form.brokerId) cfg.brokerSourceId = form.brokerId;
+    else delete cfg.brokerSourceId;
+  }
 
   // Upstream is rebuilt fresh (never spread from base — avoids leaking the
   // stored password back through). Empty password => undefined => server keeps.
   cfg.upstream = {
-    url: form.url.trim(),
-    username: form.username.trim() || undefined,
+    url,
+    username: form.username?.trim() || undefined,
     password: form.password || undefined,
   };
 
-  const subs = splitLines(form.subscriptions);
-  cfg.subscriptions = subs.length > 0 ? subs : ['msh/#'];
+  if (form.subscriptions !== undefined) {
+    const subs = splitLines(form.subscriptions);
+    cfg.subscriptions = subs.length > 0 ? subs : ['msh/#'];
+  }
 
   // Omit defaults so existing rows stay clean / adopt new defaults on upgrade.
-  if (form.mode !== 'bidirectional') cfg.mode = form.mode;
-  else delete cfg.mode;
-  if (form.forwardingMode !== 'per_gateway') cfg.forwardingMode = form.forwardingMode;
-  else delete cfg.forwardingMode;
-  if (form.ignoreOkToMqtt) cfg.ignoreOkToMqtt = true;
-  else delete cfg.ignoreOkToMqtt;
-
-  // --- Subscribe-side (downlink) filters: manage topics.block + geo,
-  // preserve any other downlink subkeys (channels/nodes/portnums). ---
-  const downlink: Record<string, any> = { ...(opts.base?.downlinkFilters ?? {}) };
-  const topicBlock = form.useTopicBlock ? splitLines(form.topicBlock) : [];
-  if (topicBlock.length > 0) {
-    downlink.topics = { ...clearTopicLists(downlink.topics), block: topicBlock };
-  } else {
-    const rest = clearTopicLists(downlink.topics);
-    if (Object.keys(rest).length > 0) downlink.topics = rest;
-    else delete downlink.topics;
+  if (form.mode !== undefined) {
+    if (form.mode !== 'bidirectional') cfg.mode = form.mode;
+    else delete cfg.mode;
   }
-  const downGeo = parseGeo(form.useGeo, form.geo);
-  if (downGeo.error) return { error: downGeo.error };
-  if (downGeo.geo) downlink.geo = downGeo.geo;
-  else delete downlink.geo;
-  if (Object.keys(downlink).length > 0) cfg.downlinkFilters = downlink;
-  else delete cfg.downlinkFilters;
+  if (form.forwardingMode !== undefined) {
+    if (form.forwardingMode !== 'per_gateway') cfg.forwardingMode = form.forwardingMode;
+    else delete cfg.forwardingMode;
+  }
+  if (form.ignoreOkToMqtt !== undefined) {
+    if (form.ignoreOkToMqtt) cfg.ignoreOkToMqtt = true;
+    else delete cfg.ignoreOkToMqtt;
+  }
+
+  // --- Subscribe-side (downlink) filters: manage topics.block / geo only when
+  // the caller supplies them; preserve other downlink subkeys (channels/nodes/
+  // portnums) and the whole block when neither is managed (modal). ---
+  if (form.useTopicBlock !== undefined || form.useGeo !== undefined) {
+    const downlink: Record<string, any> = { ...(opts.base?.downlinkFilters ?? {}) };
+    if (form.useTopicBlock !== undefined) {
+      const topicBlock = form.useTopicBlock ? splitLines(form.topicBlock ?? '') : [];
+      if (topicBlock.length > 0) {
+        downlink.topics = { ...clearTopicLists(downlink.topics), block: topicBlock };
+      } else {
+        const rest = clearTopicLists(downlink.topics);
+        if (Object.keys(rest).length > 0) downlink.topics = rest;
+        else delete downlink.topics;
+      }
+    }
+    if (form.useGeo !== undefined) {
+      const downGeo = parseGeo(form.useGeo, form.geo ?? { minLat: '', maxLat: '', minLng: '', maxLng: '' });
+      if (downGeo.error) return { error: downGeo.error };
+      if (downGeo.geo) downlink.geo = downGeo.geo;
+      else delete downlink.geo;
+    }
+    if (Object.keys(downlink).length > 0) cfg.downlinkFilters = downlink;
+    else delete cfg.downlinkFilters;
+  }
 
   // --- Publish-side (uplink) filters (#3294): channel allow-list (primary)
   // and raw topic filter (advanced). Each sub-field is only managed when the
