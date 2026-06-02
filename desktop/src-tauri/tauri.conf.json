@@ -36,6 +36,11 @@
       "digestAlgorithm": "sha256",
       "timestampUrl": ""
     },
+    "macOS": {
+      "signingIdentity": null,
+      "providerShortName": null,
+      "entitlements": null
+    },
     "shortDescription": "MeshMonitor - Meshtastic Node Monitoring",
     "longDescription": "MeshMonitor is a web application for monitoring Meshtastic nodes over IP. This desktop version runs as a system tray application.",
     "category": "Utility",

@@ -380,10 +380,11 @@ jobs:
         run: npm install
 
       # Build the Tauri app (app bundle only, we'll create DMG after re-signing)
+      # Note: When APPLE_SIGNING_IDENTITY is not set, Tauri will build unsigned
       - name: Build Tauri app (release)
         working-directory: desktop
         env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '' }}
         run: npm run tauri:build -- --bundles app
 
       # Re-sign node binary inside the app bundle with JIT entitlements
@@ -729,10 +730,11 @@ jobs:
 
       # Build the Tauri app (app bundle only, we'll create DMG after re-signing)
       # IMPORTANT: --target is required because this runs on ARM64 (macos-14) but builds for x64
+      # Note: When APPLE_SIGNING_IDENTITY is not set, Tauri will build unsigned
       - name: Build Tauri app (release)
         working-directory: desktop
         env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '' }}
         run: npm run tauri:build -- --target x86_64-apple-darwin --bundles app
 
       # Re-sign node binary inside the app bundle with JIT entitlements
