@@ -273,6 +273,15 @@ Repeaters maintain a neighbor table of other repeaters heard via zero-hop advert
 
 Neighbor queries require authentication to the repeater (guest or admin login). See [the MeshCore protocol details](/features/meshcore#remote-administration) for auth requirements.
 
+## Active Node Discovery
+
+Beyond passively reading a repeater's neighbor table, MeshMonitor can actively probe the airwaves for nearby MeshCore devices (added in 4.8.3). The MeshCore **Settings** view exposes two buttons:
+
+- **Discover Nearby Nodes** — sweep for any MeshCore node in zero-hop (direct RF) range, matching the mobile app's discovery behaviour. Responders are added/refreshed as contacts.
+- **Discover Repeaters** — the same sweep scoped to repeater-class devices.
+
+Discovery is direct-range only (zero-hop) — it surfaces devices you can hear without relaying. MeshMonitor is also **discoverable** in the other direction: it answers inbound discovery requests from peers, so your source shows up when another node runs the same sweep.
+
 ## Auto-Pathfinding
 
 The **Automation** view (accessible from the MeshCore page sub-toolbar) provides scheduled path discovery and neighbor collection:
