@@ -795,6 +795,19 @@ class MeshCoreManager extends EventEmitter {
     logger.info(`[MeshCore:${this.sourceId}] Starting native backend (meshcore.js)`);
     await this.nativeBackend.connect();
     logger.info(`[MeshCore:${this.sourceId}] Native backend ready`);
+
+    // Apply the "be discoverable" preference so we answer inbound discovery
+    // requests once connected (opt-in; default off).
+    try {
+      const discoverable =
+        (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreRespondToDiscovery')) === 'true';
+      this.nativeBackend.setRespondToDiscovery(discoverable);
+      if (discoverable) {
+        logger.info(`[MeshCore:${this.sourceId}] Discovery responder enabled (node is discoverable)`);
+      }
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] Failed to read meshcoreRespondToDiscovery:`, err);
+    }
   }
 
   /**
@@ -1872,6 +1885,25 @@ class MeshCoreManager extends EventEmitter {
     } finally {
       this.activeDiscovery = null;
     }
+  }
+
+  /**
+   * Whether this node currently answers inbound discovery requests (is
+   * discoverable by others). Reads the persisted per-source preference.
+   */
+  async getRespondToDiscovery(): Promise<boolean> {
+    return (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreRespondToDiscovery')) === 'true';
+  }
+
+  /**
+   * Enable/disable answering inbound discovery requests. Persists the per-source
+   * preference and applies it to the live backend (companion-only — repeaters
+   * already self-respond in firmware).
+   */
+  async setRespondToDiscovery(enabled: boolean): Promise<void> {
+    await databaseService.settings.setSourceSetting(this.sourceId, 'meshcoreRespondToDiscovery', enabled ? 'true' : 'false');
+    this.nativeBackend?.setRespondToDiscovery(enabled);
+    logger.info(`[MeshCore:${this.sourceId}] Discovery responder ${enabled ? 'enabled' : 'disabled'}`);
   }
 
   /**

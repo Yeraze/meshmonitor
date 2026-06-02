@@ -531,6 +531,54 @@ router.post(
 );
 
 /**
+ * GET /api/sources/:id/meshcore/config/discoverable
+ *
+ * Whether this node answers inbound discovery requests (is discoverable by
+ * others). Reciprocal of the discovery feature — see MeshCore issue #1027.
+ */
+router.get(
+  '/config/discoverable',
+  requireAuth(),
+  requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const enabled = await managerFor(req).getRespondToDiscovery();
+      res.json({ success: true, enabled });
+    } catch (error) {
+      logger.error('[API] Error reading discoverable setting:', error);
+      res.status(500).json({ success: false, error: 'Failed to read setting' });
+    }
+  },
+);
+
+/**
+ * POST /api/sources/:id/meshcore/config/discoverable
+ *
+ * Enable/disable answering inbound discovery requests. Body: { enabled: bool }.
+ * When enabled, this companion replies to NODE_DISCOVER_REQ with a zero-hop
+ * advert of its public key so nearby nodes can discover it.
+ */
+router.post(
+  '/config/discoverable',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const enabled = req.body?.enabled;
+      if (typeof enabled !== 'boolean') {
+        return res.status(400).json({ success: false, error: 'enabled must be a boolean' });
+      }
+      await managerFor(req).setRespondToDiscovery(enabled);
+      res.json({ success: true, enabled });
+    } catch (error) {
+      logger.error('[API] Error setting discoverable:', error);
+      res.status(500).json({ success: false, error: 'Failed to update setting' });
+    }
+  },
+);
+
+/**
  * POST /api/sources/:id/meshcore/contacts/:publicKey/trace-path
  *
  * Send a diagnostic trace along the contact's cached forwarding path,

@@ -51,6 +51,8 @@ const meshcoreManager = {
   resetContactPath: vi.fn().mockResolvedValue(true),
   discoverContactPath: vi.fn().mockResolvedValue(true),
   discoverNodes: vi.fn().mockResolvedValue({ returned: 0, newCount: 0 }),
+  getRespondToDiscovery: vi.fn().mockResolvedValue(false),
+  setRespondToDiscovery: vi.fn().mockResolvedValue(undefined),
   shareContact: vi.fn().mockResolvedValue(true),
   setContactOutPath: vi.fn().mockResolvedValue(true),
   loginToNode: vi.fn().mockResolvedValue(true),
@@ -1295,6 +1297,53 @@ describe('MeshCore Routes', () => {
       const response = await authenticatedAgent
         .post('/api/sources/no-such-source/meshcore/discover')
         .send({ mode: 'nearby' });
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('GET/POST /api/sources/test-source/meshcore/config/discoverable', () => {
+    beforeEach(() => {
+      meshcoreManager.getRespondToDiscovery.mockReset();
+      meshcoreManager.getRespondToDiscovery.mockResolvedValue(false);
+      meshcoreManager.setRespondToDiscovery.mockReset();
+      meshcoreManager.setRespondToDiscovery.mockResolvedValue(undefined);
+    });
+
+    it('GET requires authentication', async () => {
+      const response = await request(app)
+        .get('/api/sources/test-source/meshcore/config/discoverable');
+      expect(response.status).toBe(401);
+    });
+
+    it('GET returns the current discoverable state', async () => {
+      meshcoreManager.getRespondToDiscovery.mockResolvedValueOnce(true);
+      const response = await authenticatedAgent
+        .get('/api/sources/test-source/meshcore/config/discoverable');
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, enabled: true });
+    });
+
+    it('POST rejects a non-boolean enabled', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/config/discoverable')
+        .send({ enabled: 'yes' });
+      expect(response.status).toBe(400);
+      expect(meshcoreManager.setRespondToDiscovery).not.toHaveBeenCalled();
+    });
+
+    it('POST forwards the boolean to the manager', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/config/discoverable')
+        .send({ enabled: true });
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, enabled: true });
+      expect(meshcoreManager.setRespondToDiscovery).toHaveBeenCalledWith(true);
+    });
+
+    it('returns 404 when the source has no registered manager', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/no-such-source/meshcore/config/discoverable')
+        .send({ enabled: true });
       expect(response.status).toBe(404);
     });
   });

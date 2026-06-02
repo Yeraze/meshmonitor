@@ -123,6 +123,10 @@ export interface MeshCoreActions {
   discoverContactPath: (publicKey: string) => Promise<boolean>;
   /** Active node discovery; resolves with responder counts, or null on error. */
   discoverNodes: (mode: 'nearby' | 'repeaters') => Promise<{ returned: number; newCount: number } | null>;
+  /** Whether this node answers inbound discovery requests (is discoverable). */
+  getDiscoverable: () => Promise<boolean>;
+  /** Enable/disable answering inbound discovery requests. */
+  setDiscoverable: (enabled: boolean) => Promise<boolean>;
   /** Remove a contact from the device's contact list. Resolves `true` when
    *  the device ACKed the removal; `false` for any error. */
   removeContact: (publicKey: string) => Promise<boolean>;
@@ -680,6 +684,35 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       return null;
     }
   }, [mcPrefix, csrfFetch, refreshContacts]);
+
+  const getDiscoverable = useCallback(async (): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/discoverable`);
+      const data = await response.json();
+      return data.success ? !!data.enabled : false;
+    } catch (_err) {
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const setDiscoverable = useCallback(async (enabled: boolean): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/discoverable`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to update discoverable setting');
+        return false;
+      }
+      return true;
+    } catch (_err) {
+      setError('Failed to update discoverable setting');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
 
   const loginRemote = useCallback(async (
     publicKey: string,
@@ -1306,6 +1339,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       resetContactPath,
       discoverContactPath,
       discoverNodes,
+      getDiscoverable,
+      setDiscoverable,
       shareContact,
       setContactOutPath,
       traceContactPath,

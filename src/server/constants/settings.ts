@@ -160,6 +160,8 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreAutoPathfindingNeighborsEnabled',
   'meshcoreAutoPathfindingIntervalMinutes',
   'meshcoreAutoPathfindingRepeatHours',
+  // MeshCore discovery responder (be discoverable; see issue #1027)
+  'meshcoreRespondToDiscovery',
   // MeshCore auto-acknowledge
   'meshcoreAutoAckEnabled',
   'meshcoreAutoAckRegex',
@@ -276,6 +278,8 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreAutoPathfindingNeighborsEnabled',
   'meshcoreAutoPathfindingIntervalMinutes',
   'meshcoreAutoPathfindingRepeatHours',
+  // MeshCore discovery responder (be discoverable; see issue #1027)
+  'meshcoreRespondToDiscovery',
   // MeshCore auto-acknowledge
   'meshcoreAutoAckEnabled',
   'meshcoreAutoAckRegex',

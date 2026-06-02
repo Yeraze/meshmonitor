@@ -225,6 +225,20 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * overwrites this; late matching replies still auto-add (desirable).
    */
   private pendingDiscoverTag: number | null = null;
+  /**
+   * When true, reply to incoming NODE_DISCOVER_REQ control packets with a
+   * zero-hop NODE_DISCOVER_RESP carrying our public key — i.e. make this
+   * companion discoverable by others (MeshCore firmware doesn't do this for
+   * companions; see issue #1027). Opt-in: it transmits our presence. Set by
+   * the manager from the per-source `meshcoreRespondToDiscovery` setting.
+   */
+  private respondToDiscovery: boolean = false;
+  /**
+   * Timestamps (ms) of recent discovery responses we've sent, for rate
+   * limiting. Mirrors the firmware repeater's "max 4 per 120s" guard so an
+   * abusive/looping requester can't make us beacon continuously.
+   */
+  private discoverRespTimes: number[] = [];
 
   constructor(sourceId: string, config: NativeBackendConfig) {
     super();
@@ -521,11 +535,23 @@ export class MeshCoreNativeBackend extends EventEmitter {
     // register a real, message-able contact). SNR shown to the user is the
     // companion's inbound SNR (frame[1]) — how well WE hear the responder.
     const PUSH_CONTROL_DATA = 0x8E;
+    const CTL_TYPE_NODE_DISCOVER_REQ = 0x80;
     const CTL_TYPE_NODE_DISCOVER_RESP = 0x90;
     this.connection.on('rx', (frame: Uint8Array) => {
-      if (!frame || frame.length < 4 || frame[0] !== PUSH_CONTROL_DATA) return;
+      if (!frame || frame.length < 5 || frame[0] !== PUSH_CONTROL_DATA) return;
       const ctlByte = frame[4];
-      if (typeof ctlByte !== 'number' || (ctlByte & 0xf0) !== CTL_TYPE_NODE_DISCOVER_RESP) return;
+      if (typeof ctlByte !== 'number') return;
+      const ctlType = ctlByte & 0xf0;
+
+      // Inbound discovery REQUEST — another node is asking who's nearby. The
+      // firmware forwards it to us but does NOT auto-answer for companions, so
+      // we reply ourselves (opt-in) to become discoverable. See #1027.
+      if (ctlType === CTL_TYPE_NODE_DISCOVER_REQ) {
+        this.handleDiscoverRequest(frame);
+        return;
+      }
+
+      if (ctlType !== CTL_TYPE_NODE_DISCOVER_RESP) return;
       try {
         const snr = (frame[1] << 24 >> 24) / 4; // int8 → signed, ×4 scaled
         const nodeType = ctlByte & 0x0f;
@@ -587,6 +613,69 @@ export class MeshCoreNativeBackend extends EventEmitter {
     this.connection.on(PushCodes.MsgWaiting, () => {
       this.drainWaitingMessages();
     });
+  }
+
+  /**
+   * Enable/disable replying to inbound discovery requests (being discoverable).
+   * Driven by the manager from the per-source `meshcoreRespondToDiscovery`
+   * setting.
+   */
+  setRespondToDiscovery(enabled: boolean): void {
+    this.respondToDiscovery = enabled;
+  }
+
+  /**
+   * Reply to an inbound NODE_DISCOVER_REQ (0x8E control push) with a zero-hop
+   * NODE_DISCOVER_RESP carrying our public key, so the requester discovers us.
+   * Mirrors the firmware repeater's responder, but for our companion node.
+   *
+   * REQ frame: [0x8E][our inbound SNR×4][rssi][path_len]
+   *            [ctl=0x80|prefix_only][filter][tag(4 LE)][since(4 LE, optional)]
+   * RESP we send via CMD_SEND_CONTROL_DATA (55):
+   *   [55][0x90|selfType][our inbound SNR×4][tag(4 LE)][pubkey (32B, or 8B if prefix_only)]
+   *
+   * Gated on the opt-in flag, a type-filter match, and a 4-per-120s rate limit.
+   */
+  private handleDiscoverRequest(frame: Uint8Array): void {
+    if (!this.respondToDiscovery) return;
+    const c = this.connection;
+    const selfKey: Uint8Array | undefined = this.cachedSelfInfo?.publicKey;
+    if (!c || !selfKey || selfKey.length < 32) return;
+
+    try {
+      const prefixOnly = (frame[4] & 0x01) !== 0;
+      const filter = frame[5];
+      const selfType = (typeof this.cachedSelfInfo?.type === 'number'
+        ? this.cachedSelfInfo.type
+        : (this.constants?.AdvType.Chat ?? 1)) & 0x0f;
+      // Only respond if the requester asked for our node type.
+      if ((filter & (1 << selfType)) === 0) return;
+
+      // Rate limit: max 4 responses per 120s (matches firmware).
+      const now = Date.now();
+      this.discoverRespTimes = this.discoverRespTimes.filter((t) => now - t < 120_000);
+      if (this.discoverRespTimes.length >= 4) {
+        logger.debug('[MeshCore:native] discovery response rate-limited');
+        return;
+      }
+      this.discoverRespTimes.push(now);
+
+      const inboundSnrByte = frame[1]; // echo the SNR we heard the request at
+      const keyLen = prefixOnly ? 8 : 32;
+      // [55, ctl, snr, tag(4), pubkey(keyLen)]
+      const out = new Uint8Array(3 + 4 + keyLen);
+      out[0] = 55; // CMD_SEND_CONTROL_DATA
+      out[1] = (0x90 | selfType) & 0xff; // CTL_TYPE_NODE_DISCOVER_RESP | type
+      out[2] = inboundSnrByte & 0xff;
+      out[3] = frame[6]; out[4] = frame[7]; out[5] = frame[8]; out[6] = frame[9]; // tag
+      out.set(selfKey.slice(0, keyLen), 7);
+      c.sendToRadioFrame(out);
+      logger.debug(
+        `[MeshCore:native] Responded to discovery (type=${selfType}, prefix_only=${prefixOnly})`,
+      );
+    } catch (err) {
+      logger.warn(`[MeshCore:native] Failed to answer discovery request: ${(err as Error).message}`);
+    }
   }
 
   private advertToContactData(a: any): Record<string, unknown> {
