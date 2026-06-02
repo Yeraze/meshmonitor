@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ConnectionStatus, MeshCoreActions } from './hooks/useMeshCore';
 import { useToast } from '../ToastContainer';
@@ -24,6 +24,25 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   // Which discovery (if any) is currently running, so we can disable both
   // buttons and label the active one "Discovering…".
   const [discovering, setDiscovering] = useState<'nearby' | 'repeaters' | null>(null);
+  // "Be discoverable" toggle — whether we answer inbound discovery requests.
+  const [discoverable, setDiscoverableState] = useState(false);
+  const { getDiscoverable, setDiscoverable } = actions;
+
+  useEffect(() => {
+    if (connected && isCompanion) {
+      void getDiscoverable().then(setDiscoverableState);
+    }
+  }, [connected, isCompanion, getDiscoverable]);
+
+  const handleToggleDiscoverable = async () => {
+    const next = !discoverable;
+    setDiscoverableState(next); // optimistic
+    const ok = await setDiscoverable(next);
+    if (!ok) {
+      setDiscoverableState(!next); // revert on failure
+      showToast(t('meshcore.discover.toggle_failed', 'Failed to update setting'), 'error');
+    }
+  };
 
   const handleDiscover = async (mode: 'nearby' | 'repeaters') => {
     setDiscovering(mode);
@@ -130,6 +149,21 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
                 : t('meshcore.discover.repeaters', 'Discover Repeaters')}
             </button>
           </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}>
+            <input
+              type="checkbox"
+              checked={discoverable}
+              disabled={!connected || loading}
+              onChange={() => void handleToggleDiscoverable()}
+            />
+            <span>{t('meshcore.discover.respond_label', 'Respond to discovery requests (let other nodes discover this one)')}</span>
+          </label>
+          <p className="hint">
+            {t('meshcore.discover.respond_hint',
+              'MeshCore companion firmware does not answer discovery on its own, so other nodes can only ' +
+              'find this one when this is enabled. Replies are zero-hop (direct range) and rate-limited.')}
+          </p>
         </div>
       )}
 

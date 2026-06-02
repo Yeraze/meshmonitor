@@ -91,6 +91,24 @@ function buildDiscoverResp(opts: {
   return Uint8Array.from([...head, ...opts.pubkey]);
 }
 
+/** Build an inbound NODE_DISCOVER_REQ 0x8E push frame (what we'd receive). */
+function buildDiscoverReq(opts: {
+  snrX4: number; filter: number; tag: number; prefixOnly?: boolean;
+}): Uint8Array {
+  return Uint8Array.from([
+    0x8e,
+    opts.snrX4 & 0xff,
+    0x00, // rssi
+    0xff, // path_len
+    (0x80 | (opts.prefixOnly ? 1 : 0)) & 0xff, // CTL_TYPE_NODE_DISCOVER_REQ
+    opts.filter & 0xff,
+    opts.tag & 0xff,
+    (opts.tag >>> 8) & 0xff,
+    (opts.tag >>> 16) & 0xff,
+    (opts.tag >>> 24) & 0xff,
+  ]);
+}
+
 describe('MeshCoreNativeBackend — node discovery', () => {
   beforeEach(() => installMockModule());
   afterEach(() => __setMeshCoreModule(null));
@@ -166,5 +184,60 @@ describe('MeshCoreNativeBackend — node discovery', () => {
 
     expect(events.find((e) => e.event_type === 'node_discovered')).toBeUndefined();
     expect(conn.addOrUpdateContact).not.toHaveBeenCalled();
+  });
+});
+
+describe('MeshCoreNativeBackend — discovery responder', () => {
+  beforeEach(() => installMockModule());
+  afterEach(() => __setMeshCoreModule(null));
+
+  // Our mock self is a Chat (companion) node with an all-zero 32-byte key.
+  const selfTypeBit = 1 << AdvType.Chat; // 0x02
+
+  it('does not respond when discoverable is disabled', async () => {
+    const { conn } = await connectedBackend();
+    conn.emit('rx', buildDiscoverReq({ snrX4: 20, filter: 0x1e, tag: 0x11111111 }));
+    expect(conn.sentFrames.some((f) => f[0] === 55)).toBe(false);
+  });
+
+  it('responds with NODE_DISCOVER_RESP when enabled and the filter matches our type', async () => {
+    const { backend, conn } = await connectedBackend();
+    backend.setRespondToDiscovery(true);
+    conn.emit('rx', buildDiscoverReq({ snrX4: 24, filter: selfTypeBit, tag: 0xaabbccdd }));
+
+    const resp = conn.sentFrames.find((f) => f[0] === 55);
+    expect(resp).toBeDefined();
+    expect(resp![1]).toBe(0x90 | AdvType.Chat); // 0x91
+    expect(resp![2]).toBe(24); // echoed inbound SNR byte
+    // tag echoed (LE)
+    expect(Array.from(resp!.slice(3, 7))).toEqual([0xdd, 0xcc, 0xbb, 0xaa]);
+    // full 32-byte key (prefix_only=false)
+    expect(resp!.length).toBe(7 + 32);
+  });
+
+  it('ignores a request whose filter excludes our node type', async () => {
+    const { backend, conn } = await connectedBackend();
+    backend.setRespondToDiscovery(true);
+    // 0x0c = Repeater|Room only — our Chat bit (0x02) is not set
+    conn.emit('rx', buildDiscoverReq({ snrX4: 10, filter: 0x0c, tag: 0x22222222 }));
+    expect(conn.sentFrames.some((f) => f[0] === 55)).toBe(false);
+  });
+
+  it('returns an 8-byte key when the request asks for prefix_only', async () => {
+    const { backend, conn } = await connectedBackend();
+    backend.setRespondToDiscovery(true);
+    conn.emit('rx', buildDiscoverReq({ snrX4: 5, filter: selfTypeBit, tag: 0x33333333, prefixOnly: true }));
+    const resp = conn.sentFrames.find((f) => f[0] === 55);
+    expect(resp).toBeDefined();
+    expect(resp!.length).toBe(7 + 8);
+  });
+
+  it('rate-limits to 4 responses per window', async () => {
+    const { backend, conn } = await connectedBackend();
+    backend.setRespondToDiscovery(true);
+    for (let i = 0; i < 6; i++) {
+      conn.emit('rx', buildDiscoverReq({ snrX4: 12, filter: selfTypeBit, tag: 0x40000000 + i }));
+    }
+    expect(conn.sentFrames.filter((f) => f[0] === 55).length).toBe(4);
   });
 });
