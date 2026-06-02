@@ -1,6 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ConnectionStatus, MeshCoreActions } from './hooks/useMeshCore';
+import { useToast } from '../ToastContainer';
+
+// MeshCoreDeviceType.COMPANION — active discovery is companion-only.
+const DEVICE_TYPE_COMPANION = 1;
 
 interface MeshCoreSettingsViewProps {
   status: ConnectionStatus | null;
@@ -14,7 +18,32 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   actions,
 }) => {
   const { t } = useTranslation();
+  const { showToast } = useToast();
   const connected = status?.connected ?? false;
+  const isCompanion = status?.deviceType === DEVICE_TYPE_COMPANION;
+  // Which discovery (if any) is currently running, so we can disable both
+  // buttons and label the active one "Discovering…".
+  const [discovering, setDiscovering] = useState<'nearby' | 'repeaters' | null>(null);
+
+  const handleDiscover = async (mode: 'nearby' | 'repeaters') => {
+    setDiscovering(mode);
+    try {
+      const result = await actions.discoverNodes(mode);
+      if (result) {
+        showToast(
+          t('meshcore.discover.result', '{{returned}} contacts returned ({{new}} new)', {
+            returned: result.returned,
+            new: result.newCount,
+          }),
+          'success',
+        );
+      } else {
+        showToast(t('meshcore.discover.failed', 'Discovery failed'), 'error');
+      }
+    } finally {
+      setDiscovering(null);
+    }
+  };
 
   const handleConnect = async () => {
     // Connection params live in the saved source.config — the hook posts to
@@ -74,6 +103,35 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
           </button>
         </div>
       </div>
+
+      {isCompanion && (
+        <div className="form-section">
+          <h3>{t('meshcore.discover.title', 'Discover nodes')}</h3>
+          <p className="hint">
+            {t('meshcore.discover.hint',
+              'Ask nodes in direct radio range to announce themselves. Responders are added as contacts. ' +
+              'Multi-hop nodes will not appear — discovery is zero-hop.')}
+          </p>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={() => void handleDiscover('nearby')}
+              disabled={!connected || loading || discovering !== null}
+            >
+              {discovering === 'nearby'
+                ? t('meshcore.discover.running', 'Discovering…')
+                : t('meshcore.discover.nearby', 'Discover Nearby Nodes')}
+            </button>
+            <button
+              onClick={() => void handleDiscover('repeaters')}
+              disabled={!connected || loading || discovering !== null}
+            >
+              {discovering === 'repeaters'
+                ? t('meshcore.discover.running', 'Discovering…')
+                : t('meshcore.discover.repeaters', 'Discover Repeaters')}
+            </button>
+          </div>
+        </div>
+      )}
 
       {status?.localNode && (
         <div className="form-section">

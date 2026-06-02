@@ -118,6 +118,28 @@ export enum MeshCoreDeviceType {
   ROOM_SERVER = 3,
 }
 
+/**
+ * Node-type filter bitmasks for active discovery (CTL_TYPE_NODE_DISCOVER_REQ).
+ * The wire `filter` byte is a bitmask of `(1 << ADV_TYPE)` — only nodes whose
+ * advert type bit is set will respond. ADV_TYPE values (firmware): Chat=1,
+ * Repeater=2, Room=3, Sensor=4. See `reference_meshcore_node_discovery_protocol`.
+ */
+export const MeshCoreDiscoverFilter = {
+  /**
+   * All node types (Chat | Repeater | Room | Sensor) — the broad "nearby"
+   * sweep, matching the mobile app's "Discover Nearby Nodes". In practice
+   * only repeaters/room-servers/sensors answer (their firmware self-responds);
+   * companion (Chat) devices do not reply to discovery in current MeshCore
+   * firmware, so they won't appear here. The Chat bit is still set so they'd
+   * be surfaced if a responder ever exists (see MeshCore issue #1027).
+   */
+  NEARBY: (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4), // 0x1E
+  /** Infrastructure only: repeaters + room servers (ADV_TYPE_REPEATER | ADV_TYPE_ROOM). */
+  REPEATERS: (1 << 2) | (1 << 3), // 0x0C
+} as const;
+
+export type MeshCoreDiscoverMode = 'nearby' | 'repeaters';
+
 // Connection types
 export enum ConnectionType {
   SERIAL = 'serial',
@@ -468,6 +490,13 @@ class MeshCoreManager extends EventEmitter {
   // Shared state
   private localNode: MeshCoreNode | null = null;
   private contacts: Map<string, MeshCoreContact> = new Map();
+  /**
+   * Collector for an in-flight `discoverNodes()` burst. NODE_DISCOVER_RESP
+   * pushes arrive asynchronously over a few seconds; `node_discovered` bridge
+   * events feed this so the awaiting call can report how many unique nodes
+   * responded and how many were not previously known. Null when idle.
+   */
+  private activeDiscovery: { seen: Set<string>; returned: number; newCount: number } | null = null;
   private messages: MeshCoreMessage[] = [];
   private pendingCommands: Map<string, { resolve: (value: any) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout }> = new Map();
   private commandId: number = 0;
@@ -984,6 +1013,39 @@ class MeshCoreManager extends EventEmitter {
         `[MeshCore] Path discovery response for ${contact.publicKey.substring(0, 16)}…: ` +
         `out=${outHops} hops [${outPathFormatted}], in=${inHops} hops [${formatPathHex(inPathHex, data.in_hash_size ?? 1)}]`,
       );
+    } else if (event_type === 'node_discovered') {
+      // 0x8E NODE_DISCOVER_RESP from an active discovery burst (CMD 55).
+      // The native backend already registered the node on the device; here
+      // we mirror it into MeshMonitor's contact store (so it shows up in the
+      // UI) and tally the in-flight discovery session for the result toast.
+      // A discovery response carries only the key, type, and SNR — name and
+      // position arrive later via the normal advert path.
+      const publicKey: string = data.public_key;
+      if (publicKey) {
+        const isNew = !this.contacts.has(publicKey);
+        const existing = this.contacts.get(publicKey) ?? { publicKey };
+        const updated: MeshCoreContact = {
+          ...existing,
+          publicKey,
+          advType: data.adv_type ?? existing.advType,
+          lastSeen: Date.now(),
+        };
+        this.contacts.set(publicKey, updated);
+        void this.persistContact(updated);
+        this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+        dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+
+        // Tally the burst, de-duplicating repeated responses from the same node.
+        if (this.activeDiscovery && !this.activeDiscovery.seen.has(publicKey)) {
+          this.activeDiscovery.seen.add(publicKey);
+          this.activeDiscovery.returned++;
+          if (isNew) this.activeDiscovery.newCount++;
+        }
+        logger.info(
+          `[MeshCore:${this.sourceId}] Discovered node ${publicKey.substring(0, 16)}… ` +
+          `(type=${data.adv_type}, snr=${data.snr}, ${isNew ? 'new' : 'known'})`,
+        );
+      }
     } else if (event_type === 'ota_packet') {
       // Full OTA packet metadata for the MeshCore Packet Monitor. Capture is
       // opt-in; gate persistence on the setting so we don't write a row for
@@ -1755,6 +1817,60 @@ class MeshCoreManager extends EventEmitter {
     } catch (error) {
       logger.error('[MeshCore] discoverContactPath threw:', error);
       return false;
+    }
+  }
+
+  /**
+   * Active node discovery ("Discover Nearby Nodes" / "Discover Repeaters").
+   * Broadcasts a zero-hop NODE_DISCOVER_REQ (CMD 55) with a node-type filter;
+   * nodes in DIRECT radio range whose type matches reply (also zero-hop,
+   * rate-limited and jittered by firmware) over the next few seconds. Each
+   * responder is auto-added as a contact by the native backend and mirrored
+   * here via the `node_discovered` bridge event. Resolves after the collection
+   * window with the count of unique responders and how many were new.
+   *
+   * Companion-only — repeaters/room servers cannot initiate discovery.
+   *
+   * @param filter  bitmask of (1 << ADV_TYPE); see `MeshCoreDiscoverFilter`.
+   * @param windowMs how long to collect responses before resolving (default 8s).
+   */
+  async discoverNodes(
+    filter: number,
+    windowMs: number = 8000,
+  ): Promise<{ returned: number; newCount: number }> {
+    const empty = { returned: 0, newCount: 0 };
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      logger.warn('[MeshCore] Node discovery requires Companion firmware');
+      return empty;
+    }
+    if (!this.connected) {
+      return empty;
+    }
+    // 32-bit correlation tag so responses can be matched to this request.
+    const tag = Math.floor(Math.random() * 0xffffffff) >>> 0;
+    this.activeDiscovery = { seen: new Set(), returned: 0, newCount: 0 };
+    try {
+      const response = await this.sendBridgeCommand('discover_nodes', { filter, tag }, 15000);
+      if (!response.success) {
+        logger.warn(`[MeshCore] discover_nodes failed (filter=0x${filter.toString(16)}): ${response.error}`);
+        return empty;
+      }
+      logger.info(
+        `[MeshCore] Node discovery sent (filter=0x${filter.toString(16)}, tag=${tag}); ` +
+        `collecting for ${windowMs}ms`,
+      );
+      await new Promise<void>(resolve => setTimeout(resolve, windowMs));
+      const result = {
+        returned: this.activeDiscovery.returned,
+        newCount: this.activeDiscovery.newCount,
+      };
+      logger.info(`[MeshCore] Node discovery complete: ${result.returned} returned, ${result.newCount} new`);
+      return result;
+    } catch (error) {
+      logger.error('[MeshCore] discoverNodes threw:', error);
+      return empty;
+    } finally {
+      this.activeDiscovery = null;
     }
   }
 
