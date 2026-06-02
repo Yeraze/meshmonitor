@@ -3011,9 +3011,14 @@ apiRouter.put('/channels/:id', requireAuth(), async (req, res) => {
       return res.status(400).json({ error: 'Invalid position precision. Must be between 0-32' });
     }
 
-    // Get existing channel
-    const existingChannel = await databaseService.channels.getChannelById(channelId);
-    if (!existingChannel) {
+    // MeshCore channels are created on-device (setChannel + syncChannelsFromDevice),
+    // so there is no pre-existing DB row when adding a new slot. Skip the
+    // existence check for MeshCore; enforce 404 only for Meshtastic, which
+    // always pre-creates 8 slots.
+    const existingChannel = sourceType !== 'meshcore'
+      ? await databaseService.channels.getChannelById(channelId)
+      : null;
+    if (sourceType !== 'meshcore' && !existingChannel) {
       return res.status(404).json({ error: 'Channel not found' });
     }
 
@@ -3023,15 +3028,15 @@ apiRouter.put('/channels/:id', requireAuth(), async (req, res) => {
     // Prepare the updated channel data
     const updatedChannelData = {
       id: channelId,
-      name: name !== undefined && name !== null ? name : existingChannel.name,
-      psk: psk !== undefined && psk !== null ? psk : existingChannel.psk,
-      role: role !== undefined && role !== null ? role : existingChannel.role,
-      uplinkEnabled: uplinkEnabled !== undefined ? uplinkEnabled : existingChannel.uplinkEnabled,
-      downlinkEnabled: downlinkEnabled !== undefined ? downlinkEnabled : existingChannel.downlinkEnabled,
+      name: name !== undefined && name !== null ? name : (existingChannel?.name ?? ''),
+      psk: psk !== undefined && psk !== null ? psk : (existingChannel?.psk ?? null),
+      role: role !== undefined && role !== null ? role : (existingChannel?.role ?? null),
+      uplinkEnabled: uplinkEnabled !== undefined ? uplinkEnabled : (existingChannel?.uplinkEnabled ?? null),
+      downlinkEnabled: downlinkEnabled !== undefined ? downlinkEnabled : (existingChannel?.downlinkEnabled ?? null),
       positionPrecision:
         positionPrecision !== undefined && positionPrecision !== null
           ? positionPrecision
-          : existingChannel.positionPrecision,
+          : (existingChannel?.positionPrecision ?? null),
     };
 
     if (sourceType === 'meshcore') {
