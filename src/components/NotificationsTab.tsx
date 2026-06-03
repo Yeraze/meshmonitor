@@ -24,6 +24,8 @@ interface NotificationPreferences {
   notifyOnNewNode: boolean;
   notifyOnTraceroute: boolean;
   notifyOnInactiveNode: boolean;
+  notifyOnLowBattery: boolean;
+  lowBatteryThreshold: number;
   notifyOnServerEvents: boolean;
   prefixWithNodeName: boolean;
   monitoredNodes: string[];
@@ -61,6 +63,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     notifyOnNewNode: true,
     notifyOnTraceroute: true,
     notifyOnInactiveNode: false,
+    notifyOnLowBattery: false,
+    lowBatteryThreshold: 20,
     notifyOnServerEvents: false,
     prefixWithNodeName: false,
     monitoredNodes: [],
@@ -192,7 +196,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       const qs = currentSourceId ? `?sourceId=${encodeURIComponent(currentSourceId)}` : '';
       const response = await api.get<NotificationPreferences>(`/api/push/preferences${qs}`);
 
-      setPreferences(response);
+      setPreferences(prev => ({ ...prev, ...response }));
       setWhitelistText(response.whitelist.join('\n'));
       setBlacklistText(response.blacklist.join('\n'));
       setSelectedMonitoredNodes(response.monitoredNodes || []);
@@ -717,8 +721,55 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   />
                   <span style={{ fontWeight: '500' }}>⚠️ {t('notifications.notify_on_inactive_node')}</span>
                 </label>
-                
-                {preferences.notifyOnInactiveNode && (
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: '12px 0 0 0' }}>
+                  <input
+                    type="checkbox"
+                    checked={preferences.notifyOnLowBattery}
+                    onChange={(e) => {
+                      setPreferences(prev => ({
+                        ...prev,
+                        notifyOnLowBattery: e.target.checked
+                      }));
+                    }}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span style={{ fontWeight: '500' }}>🔋 {t('notifications.notify_on_low_battery')}</span>
+                </label>
+
+                {preferences.notifyOnLowBattery && (
+                  <div style={{ marginLeft: '28px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <label htmlFor="lowBatteryThreshold" style={{ margin: 0, fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                      {t('notifications.low_battery_threshold_label')}
+                    </label>
+                    <input
+                      id="lowBatteryThreshold"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={preferences.lowBatteryThreshold}
+                      onChange={(e) => {
+                        const raw = parseInt(e.target.value, 10);
+                        const clamped = isNaN(raw) ? 0 : Math.max(0, Math.min(100, raw));
+                        setPreferences(prev => ({
+                          ...prev,
+                          lowBatteryThreshold: clamped
+                        }));
+                      }}
+                      style={{
+                        width: '70px',
+                        padding: '0.35rem 0.5rem',
+                        background: 'var(--ctp-base)',
+                        border: '1px solid var(--ctp-surface2)',
+                        borderRadius: '4px',
+                        color: 'var(--ctp-text)'
+                      }}
+                    />
+                    <span style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>%</span>
+                  </div>
+                )}
+
+                {(preferences.notifyOnInactiveNode || preferences.notifyOnLowBattery) && (
                   <div style={{ 
                     marginLeft: '28px', 
                     marginTop: '12px',

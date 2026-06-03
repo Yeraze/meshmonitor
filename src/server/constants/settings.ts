@@ -83,6 +83,8 @@ export const VALID_SETTINGS_KEYS = [
   'inactiveNodeThresholdHours',
   'inactiveNodeCheckIntervalMinutes',
   'inactiveNodeCooldownHours',
+  'lowBatteryCheckIntervalMinutes',
+  'lowBatteryCooldownHours',
   'autoUpgradeImmediate',
   'autoUpgradeBlocked',
   'autoUpgradeBlockedReason',

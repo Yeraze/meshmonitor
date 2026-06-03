@@ -130,6 +130,8 @@ function validTestValue(key: string, suffix = ''): string {
     inactiveNodeThresholdHours: '24',
     inactiveNodeCheckIntervalMinutes: '60',
     inactiveNodeCooldownHours: '24',
+    lowBatteryCheckIntervalMinutes: '60',
+    lowBatteryCooldownHours: '24',
     autoResponderTriggers: JSON.stringify([
       { id: '1', trigger: 'test', responseType: 'text', response: 'hi' },
     ]),
