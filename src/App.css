@@ -1406,13 +1406,42 @@ body {
     /* Create flexbox layout for mobile to prevent scrolling */
     display: flex;
     flex-direction: column;
-    /* Account for header + top padding + bottom padding + safe area */
-    /* Use dvh (dynamic viewport height) for proper behavior with virtual keyboard */
-    height: calc(100vh - var(--header-height) - 0.5rem - max(0.5rem, env(safe-area-inset-bottom)));
-    height: calc(100dvh - var(--header-height) - 0.5rem - max(0.5rem, env(safe-area-inset-bottom)));
+    /* Fill the parent's content box instead of recomputing from 100dvh.
+       In an installed PWA (display: standalone, viewport-fit=cover) dvh
+       under-resolves versus the real webview height, leaving dead space
+       below the message input. The % height chain + flex parent below give
+       the true viewport height; .app-main's padding already reserves the
+       header and bottom safe-area space. */
+    flex: 1 1 auto;
+    min-height: 0;
     overflow: hidden;
     /* Prevent scroll chaining to body */
     overscroll-behavior: contain;
+  }
+
+  /* The chat view is a fixed-height, internally-scrolling layout. Anchor its
+     height chain to % (reliable in standalone PWAs, unlike dvh) and let the
+     active tab flex to fill .app-main. Scoped to the channels tab via :has()
+     so naturally-scrolling tabs (nodes, map, etc.) are unaffected. */
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  .app:has(.channels-tab-content) {
+    height: 100%;
+  }
+
+  .app-main:has(.channels-tab-content) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* The page-level bottom spacer (.app-main::after) would add dead space
+     below the message input on the channels tab — suppress it there. */
+  .app-main:has(.channels-tab-content)::after {
+    display: none;
   }
 
   /* Fixed header section */
