@@ -31,6 +31,22 @@ export function normalizeRateLimitKey(req: { ip?: string }): string {
   return ipKeyGenerator(normalized);
 }
 
+// RFC 1918 private network ranges and loopback — never routable from the public
+// internet, so rate limiting them provides no security benefit for local deployments.
+const PRIVATE_IP_PATTERNS = [
+  /^127\./,                             // IPv4 loopback (127.0.0.0/8)
+  /^10\./,                              // 10.0.0.0/8
+  /^192\.168\./,                        // 192.168.0.0/16
+  /^172\.(1[6-9]|2[0-9]|3[01])\./,     // 172.16.0.0/12
+  /^::1$/,                              // IPv6 loopback
+  /^f[cd]/i,                            // IPv6 ULA (fc00::/7)
+];
+
+export function isPrivateNetworkIp(ip: string): boolean {
+  const normalized = ip.startsWith(IPV4_MAPPED_PREFIX) ? ip.slice(IPV4_MAPPED_PREFIX.length) : ip;
+  return PRIVATE_IP_PATTERNS.some(pattern => pattern.test(normalized));
+}
+
 // When TRUST_PROXY is set, we need to skip express-rate-limit's validation
 // We're relying on Express's trust proxy configuration which is set at the app level
 const rateLimitConfig = {
@@ -45,6 +61,7 @@ const rateLimitConfig = {
 // Log rate limit configuration at startup
 logger.info('⏱️  Rate limit configuration:');
 logger.info(`   - API: ${env.rateLimitApi === 0 ? 'unlimited (disabled)' : `${env.rateLimitApi} requests per 15 minutes`}${env.rateLimitApiProvided ? ' (custom)' : ' (default)'}`);
+logger.info('   - API private/local network addresses: always exempt (RFC 1918 + loopback)');
 logger.info(`   - Auth: ${env.rateLimitAuth === 0 ? 'unlimited (disabled)' : `${env.rateLimitAuth} attempts per 15 minutes`}${env.rateLimitAuthProvided ? ' (custom)' : ' (default)'}`);
 logger.info(`   - Messages: ${env.rateLimitMessages === 0 ? 'unlimited (disabled)' : `${env.rateLimitMessages} messages per minute`}${env.rateLimitMessagesProvided ? ' (custom)' : ' (default)'}`);
 
@@ -57,10 +74,14 @@ if (!env.trustProxyProvided && env.isProduction) {
 // General API rate limiting
 // Configurable via RATE_LIMIT_API environment variable
 // Default: 1000 requests per 15 minutes (~1 req/sec) in production, 10000 in development
+// Private network IPs (RFC 1918 + loopback) are always exempt — a single active
+// MeshMonitor browser session generates ~900+ API requests per 15 minutes via its
+// polling hooks, and local-network deployments have no security need for rate limiting.
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: env.rateLimitApi,
   message: 'Too many requests from this IP, please try again later',
+  skip: (req) => env.rateLimitApi === 0 || isPrivateNetworkIp(req.ip ?? ''),
   handler: (req, res) => {
     const ip = req.ip || 'unknown';
     logger.warn(`🚫 Rate limit exceeded for API - IP: ${ip}, Path: ${req.path}`);
@@ -70,7 +91,6 @@ export const apiLimiter = rateLimit({
     });
   },
   ...rateLimitConfig,
-  ...(env.rateLimitApi === 0 ? { skip: () => true } : {}),
 });
 
 // Strict rate limiting for authentication endpoints
