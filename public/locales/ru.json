@@ -4226,5 +4226,6 @@
     "channel_database.toast_url_no_selection": "Выберите хотя бы один канал для импорта",
     "channel_database.toast_url_import_success": "Импортировано {{count}} канал(ов) по URL",
     "channel_database.toast_url_import_partial": "Импортировано: {{imported}}, не удалось импортировать: {{failed}}",
-    "channel_database.toast_url_import_all_skipped": "Нечего импортировать — все выбранные строки не содержат криптоданных"
+    "channel_database.toast_url_import_all_skipped": "Нечего импортировать — все выбранные строки не содержат криптоданных",
+    "nav.mqtt_bridge_config": "Настройки"
 }
