@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixes
 
 - fix(telemetry): scale graph averaging to a manageable point count for any window on all database backends. Previously PostgreSQL/MySQL returned only the newest ~5000 rows with no averaging, so long windows (e.g. "Last 168 hours") were silently truncated to roughly the most recent 12 hours on chatty nodes. Short windows now keep near-full resolution while long windows return the full history downsampled.
+- **Ignored nodes auto-reapply (#2601)**: The per-source ignore list is now authoritative. When a device's on-board node database fills up it silently drops ignores and reports the node as un-ignored; MeshMonitor now re-applies the ignore flag for any listed node that reappears without it — for both newly discovered and existing nodes, across SQLite/PostgreSQL/MySQL. Previously the flag was only restored for nodes that had been fully pruned and rediscovered. In addition, the ignore is re-pushed to the locally-connected node (a local admin command, no mesh traffic) so the radio resumes blackholing the node's packets at the firmware level, with a per-node cooldown to avoid command storms.
 
 ## [4.8.3] - 2026-06-02
 

@@ -247,6 +247,60 @@ function runIgnoredNodesTests(getBackend: () => TestBackend) {
     expect(nodes[0].shortName).toBeNull();
     expect(nodes[0].ignoredBy).toBeNull();
   });
+
+  // --- In-memory cache mirror (issue #2601 auto-reapply) ---
+
+  it('isIgnoredCached - reflects adds and removes without re-priming', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    expect(repo.isIgnoredCached(12345, SRC_A)).toBe(false);
+
+    await repo.addIgnoredNodeAsync(12345, SRC_A, '!abcd1234', 'Test Node', 'TN', 'admin');
+    expect(repo.isIgnoredCached(12345, SRC_A)).toBe(true);
+
+    await repo.removeIgnoredNodeAsync(12345, SRC_A);
+    expect(repo.isIgnoredCached(12345, SRC_A)).toBe(false);
+  });
+
+  it('isIgnoredCached - is per-source scoped', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.addIgnoredNodeAsync(12345, SRC_A, '!abcd1234', 'On A', 'A', 'admin');
+
+    expect(repo.isIgnoredCached(12345, SRC_A)).toBe(true);
+    expect(repo.isIgnoredCached(12345, SRC_B)).toBe(false);
+    expect(repo.isIgnoredCached(99999, SRC_A)).toBe(false);
+  });
+
+  it('primeCacheAsync - loads existing rows from the table into the cache', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // Persist rows directly through the repo, then build a fresh repo whose
+    // cache starts empty — simulating a process restart with a populated table.
+    await repo.addIgnoredNodeAsync(11111, SRC_A, '!node1', 'Node One', 'N1', 'admin');
+    await repo.addIgnoredNodeAsync(22222, SRC_B, '!node2', 'Node Two', 'N2', null);
+
+    const freshRepo = new IgnoredNodesRepository(backend.drizzleDb, backend.dbType);
+    expect(freshRepo.isIgnoredCached(11111, SRC_A)).toBe(false);
+
+    const primed = await freshRepo.primeCacheAsync();
+    expect(primed).toBe(true);
+    expect(freshRepo.isIgnoredCached(11111, SRC_A)).toBe(true);
+    expect(freshRepo.isIgnoredCached(22222, SRC_B)).toBe(true);
+    expect(freshRepo.isIgnoredCached(33333, SRC_A)).toBe(false);
+  });
 }
 
 // --- SQLite Backend ---
@@ -262,6 +316,21 @@ describe('IgnoredNodesRepository - SQLite Backend', () => {
   });
 
   runIgnoredNodesTests(() => backend);
+
+  it('primeCacheSqlite - synchronously loads existing rows into the cache', async () => {
+    const repo = new IgnoredNodesRepository(backend.drizzleDb, backend.dbType);
+    await repo.addIgnoredNodeAsync(44444, SRC_A, '!node4', 'Node Four', 'N4', 'admin');
+
+    // Fresh repo: cache empty until primed (synchronously, mirroring the
+    // DatabaseService SQLite constructor path).
+    const freshRepo = new IgnoredNodesRepository(backend.drizzleDb, backend.dbType);
+    expect(freshRepo.isIgnoredCached(44444, SRC_A)).toBe(false);
+
+    const primed = freshRepo.primeCacheSqlite();
+    expect(primed).toBe(true);
+    expect(freshRepo.isIgnoredCached(44444, SRC_A)).toBe(true);
+    expect(freshRepo.isIgnoredCached(44444, SRC_B)).toBe(false);
+  });
 });
 
 // --- PostgreSQL Backend ---
