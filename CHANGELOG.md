@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **Ignored nodes auto-reapply (#2601)**: The per-source ignore list is now authoritative. When a device's on-board node database fills up it silently drops ignores and reports the node as un-ignored; MeshMonitor now re-applies the ignore flag for any listed node that reappears without it — for both newly discovered and existing nodes, across SQLite/PostgreSQL/MySQL. Previously the flag was only restored for nodes that had been fully pruned and rediscovered.
+
 ## [4.8.3] - 2026-06-02
 
 # MeshMonitor v4.8.3
