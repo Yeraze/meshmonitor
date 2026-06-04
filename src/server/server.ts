@@ -1129,6 +1129,16 @@ setSettingsCallbacks({
       }
     }
   },
+  setAutomationAirtimeCutoffThreshold: (threshold: number, sourceId?: string | null) => {
+    if (sourceId) {
+      const mgr = sourceManagerRegistry.getManager(sourceId) as typeof meshtasticManager | undefined;
+      mgr?.setAutomationAirtimeCutoffThreshold(threshold);
+    } else {
+      for (const mgr of sourceManagerRegistry.getAllManagers() as (typeof meshtasticManager)[]) {
+        mgr.setAutomationAirtimeCutoffThreshold(threshold);
+      }
+    }
+  },
   handleAutoWelcomeEnabled: () => { databaseService.handleAutoWelcomeEnabledAsync().catch(() => {}); return 0; },
   invalidateHtmlCache,
   restartAutoDeleteByDistanceService: (intervalHours: number) =>
@@ -6788,6 +6798,20 @@ apiRouter.get('/announce/last', requirePermission('automation', 'read'), async (
   } catch (error) {
     logger.error('Error fetching last announcement time:', error);
     res.status(500).json({ error: 'Failed to fetch last announcement time' });
+  }
+});
+
+// Airtime cutoff status — drives the live banner on the Automation page.
+// Returns the configured threshold, the local node's current Channel
+// Utilization (null if no telemetry yet), and whether automations are paused.
+apiRouter.get('/automation/airtime-status', requirePermission('automation', 'read'), (req, res) => {
+  try {
+    const airtimeSourceId = (req.query.sourceId as string) || null;
+    const mgr = resolveSourceManager(airtimeSourceId);
+    res.json(mgr.getAirtimeCutoffStatus());
+  } catch (error) {
+    logger.error('Error fetching airtime cutoff status:', error);
+    res.status(500).json({ error: 'Failed to fetch airtime cutoff status' });
   }
 });
 

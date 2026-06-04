@@ -23,6 +23,7 @@ import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceServ
 import { MessageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
+import { shouldGateAutomations, DEFAULT_AIRTIME_CUTOFF_THRESHOLD } from './utils/airtimeCutoff.js';
 import { canonicalMessageTime } from './utils/messageTime.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
@@ -487,6 +488,14 @@ class MeshtasticManager implements ISourceManager {
 
   private tracerouteIntervalMinutes: number = 0;
   private lastTracerouteSentTime: number = 0;
+  // Airtime cutoff: pause all transmitting automations when the local node's
+  // Channel Utilization exceeds this percent. 0 disables the feature.
+  private automationAirtimeCutoffThreshold: number = DEFAULT_AIRTIME_CUTOFF_THRESHOLD;
+  // Most recent Channel Utilization (%) self-reported by the local node, or null
+  // if no device telemetry has been seen yet.
+  private localChannelUtilization: number | null = null;
+  // Throttle the "automations gated" log so a busy mesh doesn't spam.
+  private lastAirtimeGateLogTime: number = 0;
   private localStatsInterval: NodeJS.Timeout | null = null;
   private timeOffsetSamples: number[] = [];
   private timeOffsetInterval: NodeJS.Timeout | null = null;
@@ -1482,6 +1491,10 @@ class MeshtasticManager implements ISourceManager {
         setTimeout(() => this.startTimerScheduler().catch(e =>
           logger.error('❌ Error starting timer scheduler:', e)), S * 7);
 
+        // Load the airtime cutoff threshold (local value, no outbound traffic)
+        this.loadAirtimeCutoffThreshold().catch(e =>
+          logger.error('❌ Error loading airtime cutoff threshold:', e));
+
         // Start geofence engine (no outbound traffic, safe immediately)
         this.initGeofenceEngine().catch(e =>
           logger.error('❌ Error initializing geofence engine:', e));
@@ -1814,6 +1827,11 @@ class MeshtasticManager implements ISourceManager {
         }
       }
 
+      // Airtime cutoff: skip auto-traceroute while the mesh is congested
+      if (this.isAutomationAirtimeGated()) {
+        return;
+      }
+
       if (this.isConnected && this.localNodeInfo) {
         try {
           // Enforce minimum interval between traceroute sends (Meshtastic firmware rate limit)
@@ -1927,6 +1945,77 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * Set the airtime cutoff threshold (percent Channel Utilization).
+   * When the local node's ChUtil exceeds this value, all transmitting
+   * automations are paused. 0 disables the feature.
+   * @param threshold Cutoff percent (0-100; 0 = disabled)
+   */
+  setAutomationAirtimeCutoffThreshold(threshold: number): void {
+    if (!Number.isFinite(threshold) || threshold < 0 || threshold > 100) {
+      throw new Error('Airtime cutoff threshold must be between 0 and 100 (0 = disabled)');
+    }
+    this.automationAirtimeCutoffThreshold = threshold;
+    if (threshold === 0) {
+      logger.debug('📡 Airtime cutoff disabled (threshold 0)');
+    } else {
+      logger.debug(`📡 Airtime cutoff threshold set to ${threshold}% Channel Utilization`);
+    }
+  }
+
+  /**
+   * Load the persisted airtime cutoff threshold for this source from settings.
+   * Falls back to the default when unset or invalid.
+   */
+  private async loadAirtimeCutoffThreshold(): Promise<void> {
+    try {
+      const saved = await databaseService.settings.getSettingForSource(this.sourceId, 'automationAirtimeCutoffThreshold');
+      const parsed = saved != null ? parseInt(saved, 10) : NaN;
+      this.automationAirtimeCutoffThreshold =
+        Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? parsed : DEFAULT_AIRTIME_CUTOFF_THRESHOLD;
+      logger.debug(
+        `📡 Airtime cutoff threshold for ${this.sourceId}: ${this.automationAirtimeCutoffThreshold}%` +
+          (this.automationAirtimeCutoffThreshold === 0 ? ' (disabled)' : '')
+      );
+    } catch (error) {
+      logger.error(`Failed to load airtime cutoff threshold for ${this.sourceId}:`, error);
+      this.automationAirtimeCutoffThreshold = DEFAULT_AIRTIME_CUTOFF_THRESHOLD;
+    }
+  }
+
+  /**
+   * Whether automations are currently gated (paused) because the local node's
+   * self-reported Channel Utilization exceeds the configured cutoff threshold.
+   * Logs (throttled) the first time gating engages. Fail-open: never gates when
+   * the feature is disabled or no telemetry has been seen yet.
+   */
+  isAutomationAirtimeGated(): boolean {
+    const gated = shouldGateAutomations(this.localChannelUtilization, this.automationAirtimeCutoffThreshold);
+    if (gated) {
+      const now = Date.now();
+      if (now - this.lastAirtimeGateLogTime > 60000) {
+        this.lastAirtimeGateLogTime = now;
+        logger.info(
+          `⏸️  Automations paused on ${this.sourceId}: Channel Utilization ${this.localChannelUtilization}% exceeds cutoff ${this.automationAirtimeCutoffThreshold}%`
+        );
+      }
+    }
+    return gated;
+  }
+
+  /**
+   * Current airtime-cutoff status for this source: the configured threshold,
+   * the local node's most recent Channel Utilization (or null if unknown), and
+   * whether automations are currently gated. Used by the Automation page banner.
+   */
+  getAirtimeCutoffStatus(): { threshold: number; channelUtilization: number | null; gated: boolean } {
+    return {
+      threshold: this.automationAirtimeCutoffThreshold,
+      channelUtilization: this.localChannelUtilization,
+      gated: shouldGateAutomations(this.localChannelUtilization, this.automationAirtimeCutoffThreshold),
+    };
+  }
+
+  /**
    * Set the remote admin scanner interval
    * @param minutes Interval in minutes (0 = disabled, 1-60)
    */
@@ -1984,6 +2073,11 @@ class MeshtasticManager implements ISourceManager {
           logger.debug(`🔑 Remote admin scanner: Skipping - outside schedule window (${start}-${end})`);
           return;
         }
+      }
+
+      // Airtime cutoff: skip remote admin scanning while the mesh is congested
+      if (this.isAutomationAirtimeGated()) {
+        return;
       }
 
       if (this.isConnected && this.localNodeInfo) {
@@ -2072,6 +2166,11 @@ class MeshtasticManager implements ISourceManager {
   private async syncNextNodeTime(): Promise<void> {
     if (!this.localNodeInfo) {
       logger.debug('🕐 Time sync: No local node info');
+      return;
+    }
+
+    // Airtime cutoff: skip time sync while the mesh is congested
+    if (this.isAutomationAirtimeGated()) {
       return;
     }
 
@@ -2199,6 +2298,11 @@ class MeshtasticManager implements ISourceManager {
   private async processKeyRepairs(): Promise<void> {
     if (this.rebootMergeInProgress) {
       logger.debug('🔐 Key repair: skipping - reboot merge in progress');
+      return;
+    }
+
+    // Airtime cutoff: skip key repair (NodeInfo exchanges) while the mesh is congested
+    if (this.isAutomationAirtimeGated()) {
       return;
     }
 
@@ -2539,7 +2643,7 @@ class MeshtasticManager implements ISourceManager {
           logger.debug(`📢 Cron job triggered (connected: ${this.isConnected})`);
           if (this.isConnected) {
             try {
-              await this.sendAutoAnnouncement();
+              await this.sendAutoAnnouncement(true);
             } catch (error) {
               logger.error('❌ Error in cron auto-announce:', error);
             }
@@ -2564,7 +2668,7 @@ class MeshtasticManager implements ISourceManager {
         logger.debug(`📢 Announce interval triggered (connected: ${this.isConnected})`);
         if (this.isConnected) {
           try {
-            await this.sendAutoAnnouncement();
+            await this.sendAutoAnnouncement(true);
           } catch (error) {
             logger.error('❌ Error in auto-announce:', error);
           }
@@ -2595,7 +2699,7 @@ class MeshtasticManager implements ISourceManager {
           setTimeout(async () => {
             if (this.isConnected) {
               try {
-                await this.sendAutoAnnouncement();
+                await this.sendAutoAnnouncement(true);
               } catch (error) {
                 logger.error('❌ Error in startup announcement:', error);
               }
@@ -2609,7 +2713,7 @@ class MeshtasticManager implements ISourceManager {
         setTimeout(async () => {
           if (this.isConnected) {
             try {
-              await this.sendAutoAnnouncement();
+              await this.sendAutoAnnouncement(true);
             } catch (error) {
               logger.error('❌ Error in startup announcement:', error);
             }
@@ -2702,6 +2806,10 @@ class MeshtasticManager implements ISourceManager {
       // Schedule the cron job
       const job = scheduleCron(trigger.cronExpression, async () => {
         logger.info(`⏱️ Timer "${trigger.name}" triggered (cron: ${trigger.cronExpression})`);
+        // Airtime cutoff: skip timer automations while the mesh is congested
+        if (this.isAutomationAirtimeGated()) {
+          return;
+        }
         const responseType = trigger.responseType || 'script'; // Default to script for backward compatibility
         if (responseType === 'text' && trigger.response?.trim()) {
           await this.executeTimerTextMessage(trigger.id, trigger.name, trigger.response, trigger.channel ?? 0);
@@ -2928,6 +3036,11 @@ class MeshtasticManager implements ISourceManager {
     eventType: 'entry' | 'exit' | 'while_inside'
   ): Promise<void> {
     try {
+      // Airtime cutoff: skip geofence automations while the mesh is congested
+      if (this.isAutomationAirtimeGated()) {
+        return;
+      }
+
       if (trigger.responseType === 'text' && trigger.response?.trim()) {
         const expanded = await this.replaceGeofenceTokens(trigger.response, trigger, nodeNum, lat, lng, eventType);
         const truncated = this.truncateMessageForMeshtastic(expanded, 200);
@@ -5877,6 +5990,17 @@ class MeshtasticManager implements ISourceManager {
         nodeData.channelUtilization = deviceMetrics.channelUtilization;
         nodeData.airUtilTx = deviceMetrics.airUtilTx;
 
+        // Airtime cutoff: cache the local node's Channel Utilization so the
+        // automation gate can consult it cheaply (no per-fire DB read).
+        if (
+          fromNum === this.localNodeInfo?.nodeNum &&
+          deviceMetrics.channelUtilization !== undefined &&
+          deviceMetrics.channelUtilization !== null &&
+          !isNaN(deviceMetrics.channelUtilization)
+        ) {
+          this.localChannelUtilization = deviceMetrics.channelUtilization;
+        }
+
         // Save all telemetry values from actual TELEMETRY_APP packets (no deduplication)
         if (deviceMetrics.batteryLevel !== undefined && deviceMetrics.batteryLevel !== null && !isNaN(deviceMetrics.batteryLevel)) {
           await databaseService.telemetry.insertTelemetry({
@@ -8564,6 +8688,11 @@ class MeshtasticManager implements ISourceManager {
         return;
       }
 
+      // Airtime cutoff: skip while the mesh is congested
+      if (this.isAutomationAirtimeGated()) {
+        return;
+      }
+
       // Check channel-specific settings
       const autoAckChannels = await settings.getSettingForSource(sourceId, 'autoAckChannels');
       const autoAckDirectMessages = await settings.getSettingForSource(sourceId, 'autoAckDirectMessages');
@@ -8865,6 +8994,11 @@ class MeshtasticManager implements ISourceManager {
     const autoPingEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'autoPingEnabled');
     if (autoPingEnabled !== 'true') {
       logger.debug('⏭️  Auto-ping command received but feature is disabled');
+      return false;
+    }
+
+    // Airtime cutoff: skip auto-ping while the mesh is congested
+    if (this.isAutomationAirtimeGated()) {
       return false;
     }
 
@@ -9223,6 +9357,11 @@ class MeshtasticManager implements ISourceManager {
 
       // Skip if auto-responder is disabled
       if (autoResponderEnabled !== 'true') {
+        return;
+      }
+
+      // Airtime cutoff: skip while the mesh is congested
+      if (this.isAutomationAirtimeGated()) {
         return;
       }
 
@@ -10160,6 +10299,11 @@ class MeshtasticManager implements ISourceManager {
         return;
       }
 
+      // Airtime cutoff: skip while the mesh is congested
+      if (this.isAutomationAirtimeGated()) {
+        return;
+      }
+
       // Skip messages from our own locally connected node
       const localNodeNum = await settings.getSetting(this.localNodeSettingKey('localNodeNum'));
       if (localNodeNum && parseInt(localNodeNum) === nodeNum) {
@@ -10691,9 +10835,16 @@ class MeshtasticManager implements ISourceManager {
     return result;
   }
 
-  async sendAutoAnnouncement(): Promise<void> {
+  async sendAutoAnnouncement(triggeredByAutomation = false): Promise<void> {
     if (this.rebootMergeInProgress) {
       logger.debug('📢 Skipping auto-announcement - reboot merge in progress');
+      return;
+    }
+
+    // Airtime cutoff: skip scheduled announcements while the mesh is congested.
+    // Manual "Send Announcement" requests (triggeredByAutomation = false) are
+    // always allowed through.
+    if (triggeredByAutomation && this.isAutomationAirtimeGated()) {
       return;
     }
 

@@ -132,6 +132,7 @@ function validTestValue(key: string, suffix = ''): string {
     inactiveNodeCooldownHours: '24',
     lowBatteryCheckIntervalMinutes: '60',
     lowBatteryCooldownHours: '24',
+    automationAirtimeCutoffThreshold: '30',
     autoResponderTriggers: JSON.stringify([
       { id: '1', trigger: 'test', responseType: 'text', response: 'hi' },
     ]),
