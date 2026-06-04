@@ -973,6 +973,89 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
+   * PostgreSQL/MySQL async counterpart to getTelemetryByNodeAveragedSqlite.
+   *
+   * Buckets timestamps into fixed `intervalMinutes` windows and averages
+   * continuous telemetry types; discrete/cumulative types listed in
+   * RAW_VALUE_TYPES are returned raw (averaging a counter is meaningless).
+   * Both PostgreSQL and MySQL support FLOOR()/AVG(), so the same Drizzle
+   * builder works for either dialect. The bucket-start expression is reused
+   * verbatim in GROUP BY (rather than grouping by the bare quotient) so the
+   * query satisfies MySQL's ONLY_FULL_GROUP_BY mode.
+   *
+   * Averaging bounds the row count to ~TARGET buckets per type, so unlike the
+   * old newest-N path there is no LIMIT that could truncate a long window.
+   */
+  async getTelemetryByNodeAveragedSql(
+    nodeId: string,
+    sinceTimestamp: number | undefined,
+    intervalMinutes: number,
+    _maxHours: number | undefined,
+    sourceId: string | undefined
+  ): Promise<DbTelemetry[]> {
+    const { telemetry } = this.tables;
+    const rawTypes = TelemetryRepository.RAW_VALUE_TYPES;
+    const intervalMs = intervalMinutes * 60 * 1000;
+
+    const baseConditions: SQL[] = [eq(telemetry.nodeId, nodeId)];
+    const sourceScope = this.withSourceScope(telemetry, sourceId);
+    if (sourceScope) baseConditions.push(sourceScope);
+    if (sinceTimestamp !== undefined) {
+      baseConditions.push(gte(telemetry.timestamp, sinceTimestamp));
+    }
+
+    // Bucket start in ms. FLOOR(timestamp / intervalMs) * intervalMs.
+    const bucketExpr = sql<number>`(FLOOR(${telemetry.timestamp} / ${intervalMs}) * ${intervalMs})`;
+
+    const averagedRows = await this.db
+      .select({
+        nodeId: telemetry.nodeId,
+        nodeNum: telemetry.nodeNum,
+        telemetryType: telemetry.telemetryType,
+        timestamp: bucketExpr.as('timestamp'),
+        value: sql<number>`AVG(${telemetry.value})`.as('value'),
+        unit: telemetry.unit,
+        createdAt: sql<number>`MIN(${telemetry.createdAt})`.as('createdAt'),
+      })
+      .from(telemetry)
+      .where(and(...baseConditions, not(inArray(telemetry.telemetryType, rawTypes))))
+      .groupBy(
+        telemetry.nodeId,
+        telemetry.nodeNum,
+        telemetry.telemetryType,
+        bucketExpr,
+        telemetry.unit
+      )
+      .orderBy(sql`timestamp DESC`);
+
+    const rawRows = await this.db
+      .select({
+        nodeId: telemetry.nodeId,
+        nodeNum: telemetry.nodeNum,
+        telemetryType: telemetry.telemetryType,
+        timestamp: telemetry.timestamp,
+        value: telemetry.value,
+        unit: telemetry.unit,
+        createdAt: telemetry.createdAt,
+      })
+      .from(telemetry)
+      .where(and(...baseConditions, inArray(telemetry.telemetryType, rawTypes)))
+      .orderBy(desc(telemetry.timestamp));
+
+    const toDbTelemetry = (r: any): DbTelemetry => ({
+      nodeId: r.nodeId,
+      nodeNum: Number(r.nodeNum),
+      telemetryType: r.telemetryType,
+      timestamp: Number(r.timestamp),
+      value: Number(r.value),
+      unit: r.unit ?? undefined,
+      createdAt: Number(r.createdAt),
+    });
+
+    return [...averagedRows.map(toDbTelemetry), ...rawRows.map(toDbTelemetry)];
+  }
+
+  /**
    * Get latest telemetry record with non-null packetTimestamp per node.
    * Used by time-offset diagnostics. SQLite/MySQL use INNER JOIN on MAX,
    * PostgreSQL uses DISTINCT ON for efficiency.
