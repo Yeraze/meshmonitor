@@ -52,6 +52,9 @@ const packageJson = require('../../package.json');
 // 30s rate-limit so a slow backend can't fully consume the budget.
 const HTTP_AUTO_RESPONDER_TIMEOUT_MS = 5_000;
 const SCRIPT_AUTO_RESPONDER_TIMEOUT_MS = 30_000;
+// Minimum gap between local "re-ignore" admin pushes for the same node (#2601),
+// so a device that can't durably hold the ignore doesn't trigger a command storm.
+const IGNORE_REAPPLY_COOLDOWN_MS = 60_000;
 
 /** Parsed auto-responder payload: list of messages to send, plus the
  * raw decoded JSON object (or `{}` if the payload was plain text) so
@@ -507,6 +510,7 @@ class MeshtasticManager implements ISourceManager {
   }> = new Map(); // Track user-initiated traceroutes from the autoresponder
   private pendingTracerouteTimestamps: Map<number, number> = new Map(); // Track when traceroutes were initiated for timeout detection
   private nodeLinkQuality: Map<number, { quality: number; lastHops: number }> = new Map(); // Track link quality per node
+  private ignoreReapplyCooldown: Map<number, number> = new Map(); // nodeNum -> last local re-ignore push timestamp (#2601), coalesces bursts
   private remoteAdminScannerInterval: NodeJS.Timeout | null = null;
   private remoteAdminScannerIntervalMinutes: number = 0; // 0 = disabled
   private pendingRemoteAdminScans: Set<number> = new Set(); // Track nodes being scanned
@@ -7390,11 +7394,44 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // Always sync isIgnored from device to keep in sync with changes made while offline
-      // This ensures ignored nodes are updated when reconnecting
+      // This ensures ignored nodes are updated when reconnecting.
+      //
+      // Exception (#2601): our per-source ignore list is authoritative. A device's
+      // on-board ignore list is small, so when its node database fills up it drops
+      // ignores and reports the node as un-ignored. If the node is still on our
+      // blocklist, keep it ignored AND re-push the ignore to the LOCAL connected
+      // node — this is a local admin command (no destination), so it never touches
+      // the mesh. Mirrors the favoriteLocked re-sync above.
       if (nodeInfo.isIgnored !== undefined) {
-        nodeData.isIgnored = nodeInfo.isIgnored;
-        if (existingNode && existingNode.isIgnored !== nodeInfo.isIgnored) {
-          logger.debug(`🚫 Updating ignored status for node ${nodeId} from ${existingNode.isIgnored} to ${nodeInfo.isIgnored}`);
+        const onBlocklist = databaseService.ignoredNodes.isIgnoredCached(nodeNum, this.sourceId);
+        if (onBlocklist && !nodeInfo.isIgnored) {
+          nodeData.isIgnored = true;
+          // Coalesce bursts: a thrashing device that can't durably hold the ignore
+          // would otherwise trigger a local admin command on every NodeInfo.
+          const now = Date.now();
+          const lastPush = this.ignoreReapplyCooldown.get(nodeNum) ?? 0;
+          if (now - lastPush >= IGNORE_REAPPLY_COOLDOWN_MS) {
+            this.ignoreReapplyCooldown.set(nodeNum, now);
+            logger.info(`🚫 Node ${nodeId} on persistent ignore list but device reports un-ignored — re-applying on local device (#2601)`);
+            void (async () => {
+              try {
+                await this.sendIgnoredNode(nodeNum); // no destination = local node, no mesh traffic
+              } catch (err) {
+                if (err instanceof Error && err.message === 'FIRMWARE_NOT_SUPPORTED') {
+                  logger.debug(`Device firmware does not support ignored nodes (requires >= 2.7.0); DB flag re-applied only for ${nodeId}`);
+                } else {
+                  logger.warn(`⚠️ Failed to re-apply ignore on local device for node ${nodeId}:`, err);
+                }
+              }
+            })();
+          } else {
+            logger.debug(`🚫 Node ${nodeId} re-ignore suppressed by cooldown; DB flag kept ignored`);
+          }
+        } else {
+          nodeData.isIgnored = nodeInfo.isIgnored;
+          if (existingNode && existingNode.isIgnored !== nodeInfo.isIgnored) {
+            logger.debug(`🚫 Updating ignored status for node ${nodeId} from ${existingNode.isIgnored} to ${nodeInfo.isIgnored}`);
+          }
         }
       }
 
