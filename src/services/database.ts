@@ -9,6 +9,7 @@ import { getEnvironmentConfig } from '../server/config/environment.js';
 import { registry } from '../db/migrations.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 import { isSourceyResource } from '../types/permission.js';
+import { computeAveragingIntervalMinutes } from '../utils/telemetryAveraging.js';
 // Drizzle ORM imports for dual-database support
 import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3';
 import * as drizzleSchema from '../db/schema/index.js';
@@ -4148,22 +4149,7 @@ class DatabaseService {
     }
     // Dynamic bucketing: automatically choose interval based on time range
     // This prevents data cutoff for long time periods or chatty nodes
-    let actualIntervalMinutes = intervalMinutes;
-    if (actualIntervalMinutes === undefined && maxHours !== undefined) {
-      if (maxHours <= 24) {
-        // Short period (0-24 hours): 3-minute intervals for high detail
-        actualIntervalMinutes = 3;
-      } else if (maxHours <= 168) {
-        // Medium period (1-7 days): 30-minute intervals to reduce data points
-        actualIntervalMinutes = 30;
-      } else {
-        // Long period (7+ days): 2-hour intervals for manageable data size
-        actualIntervalMinutes = 120;
-      }
-    } else if (actualIntervalMinutes === undefined) {
-      // Default to 3 minutes if no maxHours specified
-      actualIntervalMinutes = 3;
-    }
+    const actualIntervalMinutes = intervalMinutes ?? computeAveragingIntervalMinutes(maxHours);
 
     // SQLite: delegate to Drizzle-backed repo sync helper. Keeps column names
     // aligned with the schema (fixes issue #2631 where raw SQL used
@@ -9068,7 +9054,34 @@ class DatabaseService {
   }
 
   async getTelemetryByNodeAveragedAsync(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number, sourceId?: string): Promise<DbTelemetry[]> {
-    return this.getTelemetryByNodeAveraged(nodeId, sinceTimestamp, intervalMinutes, maxHours, sourceId);
+    if (!this.telemetryRepo) {
+      return [];
+    }
+    const actualIntervalMinutes = intervalMinutes ?? computeAveragingIntervalMinutes(maxHours);
+
+    // PostgreSQL/MySQL: run the averaged query asynchronously against the
+    // backend (previously these dialects fell through to a raw newest-N fetch
+    // with no averaging, which truncated long windows to ~the last few hours
+    // on chatty nodes). SQLite continues to use the synchronous repo helper.
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const rows = await this.telemetryRepo.getTelemetryByNodeAveragedSql(
+        nodeId,
+        sinceTimestamp,
+        actualIntervalMinutes,
+        maxHours,
+        sourceId
+      );
+      return rows.map(t => this.normalizeBigInts(t));
+    }
+
+    const rows = this.telemetryRepo.getTelemetryByNodeAveragedSqlite(
+      nodeId,
+      sinceTimestamp,
+      actualIntervalMinutes,
+      maxHours,
+      sourceId
+    );
+    return rows.map(t => this.normalizeBigInts(t));
   }
 
   // Group 6: Ghost Nodes (in-memory, but async-compatible wrappers)

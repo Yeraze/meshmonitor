@@ -7,7 +7,7 @@
  * refetch capabilities.
  */
 
-import { useQuery, useQueries } from '@tanstack/react-query';
+import { useQuery, useQueries, keepPreviousData } from '@tanstack/react-query';
 
 /**
  * Telemetry data point from the backend
@@ -100,6 +100,9 @@ export function useTelemetry({ nodeId, hours = 24, baseUrl = '', sourceId, enabl
       return response.json();
     },
     enabled: enabled && !!nodeId,
+    // Keep showing the prior result while a new window/node loads so the time
+    // range selector and charts don't flash a loading state on every change.
+    placeholderData: keepPreviousData,
     refetchInterval: 30000, // Refetch every 30 seconds
     staleTime: 25000, // Data considered fresh for 25 seconds
     gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes

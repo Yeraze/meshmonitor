@@ -120,9 +120,12 @@ export interface SettingsCallbacks {
   }) => void;
   restartInactiveNodeService?: (threshold: number, check: number, cooldown: number) => void;
   stopInactiveNodeService?: () => void;
+  restartLowBatteryService?: (check: number, cooldown: number) => void;
+  stopLowBatteryService?: () => void;
   restartAnnounceScheduler?: (sourceId?: string | null) => void;
   restartTimerScheduler?: (sourceId?: string | null) => void;
   restartGeofenceEngine?: (sourceId?: string | null) => void;
+  setAutomationAirtimeCutoffThreshold?: (threshold: number, sourceId?: string | null) => void;
   handleAutoWelcomeEnabled?: () => number;
   invalidateHtmlCache?: () => void;
   restartAutoDeleteByDistanceService?: (intervalHours: number, sourceId?: string | null) => void;
@@ -253,6 +256,33 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
       const cooldown = parseInt(filteredSettings.inactiveNodeCooldownHours, 10);
       if (isNaN(cooldown) || cooldown < 1 || cooldown > 720) {
         return res.status(400).json({ error: 'inactiveNodeCooldownHours must be between 1 and 720 hours' });
+      }
+    }
+
+    // Validate low battery notification settings
+    if ('lowBatteryCheckIntervalMinutes' in filteredSettings) {
+      const interval = parseInt(filteredSettings.lowBatteryCheckIntervalMinutes, 10);
+      if (isNaN(interval) || interval < 1 || interval > 1440) {
+        return res
+          .status(400)
+          .json({ error: 'lowBatteryCheckIntervalMinutes must be between 1 and 1440 minutes' });
+      }
+    }
+
+    if ('lowBatteryCooldownHours' in filteredSettings) {
+      const cooldown = parseInt(filteredSettings.lowBatteryCooldownHours, 10);
+      if (isNaN(cooldown) || cooldown < 1 || cooldown > 720) {
+        return res.status(400).json({ error: 'lowBatteryCooldownHours must be between 1 and 720 hours' });
+      }
+    }
+
+    // Validate airtime cutoff threshold (0 = disabled, 1-100 = percent Channel Utilization)
+    if ('automationAirtimeCutoffThreshold' in filteredSettings) {
+      const threshold = parseInt(filteredSettings.automationAirtimeCutoffThreshold, 10);
+      if (isNaN(threshold) || threshold < 0 || threshold > 100) {
+        return res
+          .status(400)
+          .json({ error: 'automationAirtimeCutoffThreshold must be between 0 and 100 (0 = disabled)' });
       }
     }
 
@@ -581,6 +611,12 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
       if ('geofenceTriggers' in filteredSettings) {
         callbacks.restartGeofenceEngine?.(sourceId);
       }
+      if ('automationAirtimeCutoffThreshold' in filteredSettings) {
+        const threshold = parseInt(filteredSettings.automationAirtimeCutoffThreshold, 10);
+        if (!isNaN(threshold)) {
+          callbacks.setAutomationAirtimeCutoffThreshold?.(threshold, sourceId);
+        }
+      }
 
       return res.json({ success: true });
     }
@@ -628,6 +664,13 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
       const interval = parseInt(filteredSettings.localStatsIntervalMinutes);
       if (!isNaN(interval) && interval >= 0 && interval <= 60) {
         callbacks.setLocalStatsInterval?.(interval);
+      }
+    }
+
+    if ('automationAirtimeCutoffThreshold' in filteredSettings) {
+      const threshold = parseInt(filteredSettings.automationAirtimeCutoffThreshold, 10);
+      if (!isNaN(threshold) && threshold >= 0 && threshold <= 100) {
+        callbacks.setAutomationAirtimeCutoffThreshold?.(threshold, sourceId);
       }
     }
 
@@ -706,6 +749,36 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
         callbacks.restartInactiveNodeService?.(threshold, checkInterval, cooldown);
         logger.info(
           `✅ Inactive node notification service restarted (threshold: ${threshold}h, check: ${checkInterval}min, cooldown: ${cooldown}h)`
+        );
+      }
+    }
+
+    const lowBatterySettings = [
+      'lowBatteryCheckIntervalMinutes',
+      'lowBatteryCooldownHours',
+    ];
+    const lowBatterySettingsChanged = lowBatterySettings.some((key) => key in filteredSettings);
+    if (lowBatterySettingsChanged) {
+      const dbCheckInterval = await databaseService.settings.getSetting('lowBatteryCheckIntervalMinutes');
+      const dbCooldown = await databaseService.settings.getSetting('lowBatteryCooldownHours');
+      const checkInterval = parseInt(
+        filteredSettings.lowBatteryCheckIntervalMinutes ||
+          dbCheckInterval ||
+          '60',
+        10
+      );
+      const cooldown = parseInt(
+        filteredSettings.lowBatteryCooldownHours ||
+          dbCooldown ||
+          '24',
+        10
+      );
+
+      if (!isNaN(checkInterval) && checkInterval > 0 && !isNaN(cooldown) && cooldown > 0) {
+        callbacks.stopLowBatteryService?.();
+        callbacks.restartLowBatteryService?.(checkInterval, cooldown);
+        logger.info(
+          `✅ Low battery notification service restarted (check: ${checkInterval}min, cooldown: ${cooldown}h)`
         );
       }
     }

@@ -125,20 +125,37 @@ describe('Rate Limiters Middleware', () => {
   });
 
   describe('When rate limits are set to a small positive value', () => {
-    it('should enforce API rate limit after max requests exceeded', async () => {
+    it('should enforce API rate limit after max requests exceeded from a public IP', async () => {
       const app = await createTestApp({
         rateLimitApi: 2,
         rateLimitApiProvided: true,
       });
+      // Enable trust proxy so X-Forwarded-For is honoured, bypassing the private-IP exemption
+      app.set('trust proxy', 1);
+
+      const makeRequest = () => request(app).get('/api').set('X-Forwarded-For', '1.2.3.4');
 
       // First 2 should succeed
-      expect((await request(app).get('/api')).status).toBe(200);
-      expect((await request(app).get('/api')).status).toBe(200);
+      expect((await makeRequest()).status).toBe(200);
+      expect((await makeRequest()).status).toBe(200);
 
       // Third should be rate-limited
-      const res = await request(app).get('/api');
+      const res = await makeRequest();
       expect(res.status).toBe(429);
       expect(res.body.error).toContain('Too many requests');
+    });
+
+    it('should not throttle private/local network IPs regardless of limit', async () => {
+      const app = await createTestApp({
+        rateLimitApi: 2, // very tight limit
+        rateLimitApiProvided: true,
+      });
+
+      // Supertest connects from 127.0.0.1 (loopback) — should always pass
+      for (let i = 0; i < 5; i++) {
+        const res = await request(app).get('/api');
+        expect(res.status).toBe(200);
+      }
     });
 
     it('should enforce auth rate limit after max requests exceeded', async () => {
@@ -256,11 +273,16 @@ describe('Rate Limiters Middleware', () => {
         expect.stringContaining('unlimited (disabled)')
       );
 
-      // All three should show disabled
+      // API, Auth, and Messages should all show disabled
       const disabledLogs = infoCalls.filter((msg: string) =>
         msg.includes('unlimited (disabled)')
       );
       expect(disabledLogs).toHaveLength(3);
+
+      // Private-IP exemption line should always be logged
+      expect(infoCalls).toContainEqual(
+        expect.stringContaining('private/local network addresses: always exempt')
+      );
     });
 
     it('should log normal values when rate limit is a positive number', async () => {
@@ -299,6 +321,85 @@ describe('Rate Limiters Middleware', () => {
       expect(infoCalls).toContainEqual(
         expect.stringContaining('30 messages per minute')
       );
+    });
+  });
+
+  describe('isPrivateNetworkIp', () => {
+    async function getIsPrivateNetworkIp() {
+      vi.resetModules();
+      vi.doMock('../config/environment.js', () => ({
+        getEnvironmentConfig: () => ({
+          rateLimitApi: 10000,
+          rateLimitApiProvided: false,
+          rateLimitAuth: 100,
+          rateLimitAuthProvided: false,
+          rateLimitMessages: 100,
+          rateLimitMessagesProvided: false,
+          isProduction: false,
+          trustProxyProvided: true,
+        }),
+      }));
+      vi.doMock('../../utils/logger.js', () => ({
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+      }));
+      const { isPrivateNetworkIp } = await import('./rateLimiters.js');
+      return isPrivateNetworkIp;
+    }
+
+    it('should return true for IPv4 loopback', async () => {
+      const fn = await getIsPrivateNetworkIp();
+      expect(fn('127.0.0.1')).toBe(true);
+    });
+
+    it('should return true for 10.x.x.x', async () => {
+      const fn = await getIsPrivateNetworkIp();
+      expect(fn('10.0.0.1')).toBe(true);
+      expect(fn('10.255.255.255')).toBe(true);
+    });
+
+    it('should return true for 192.168.x.x', async () => {
+      const fn = await getIsPrivateNetworkIp();
+      expect(fn('192.168.1.100')).toBe(true);
+      expect(fn('192.168.0.1')).toBe(true);
+    });
+
+    it('should return true for 172.16-31.x.x', async () => {
+      const fn = await getIsPrivateNetworkIp();
+      expect(fn('172.16.0.1')).toBe(true);
+      expect(fn('172.31.255.255')).toBe(true);
+      expect(fn('172.20.10.5')).toBe(true);
+    });
+
+    it('should return false for public IPv4 addresses', async () => {
+      const fn = await getIsPrivateNetworkIp();
+      expect(fn('1.2.3.4')).toBe(false);
+      expect(fn('8.8.8.8')).toBe(false);
+      expect(fn('172.15.0.1')).toBe(false);  // just outside 172.16/12
+      expect(fn('172.32.0.1')).toBe(false);  // just outside 172.16/12
+    });
+
+    it('should return true for IPv6 loopback (::1)', async () => {
+      const fn = await getIsPrivateNetworkIp();
+      expect(fn('::1')).toBe(true);
+    });
+
+    it('should return true for IPv6 ULA (fc/fd prefix)', async () => {
+      const fn = await getIsPrivateNetworkIp();
+      expect(fn('fc00::1')).toBe(true);
+      expect(fn('fd12:3456:789a::1')).toBe(true);
+    });
+
+    it('should return true for IPv4-mapped private addresses (::ffff:192.168.x.x)', async () => {
+      const fn = await getIsPrivateNetworkIp();
+      expect(fn('::ffff:192.168.1.1')).toBe(true);
+      expect(fn('::ffff:10.0.0.1')).toBe(true);
+      expect(fn('::ffff:127.0.0.1')).toBe(true);
+    });
+
+    it('should return false for IPv4-mapped public addresses', async () => {
+      const fn = await getIsPrivateNetworkIp();
+      expect(fn('::ffff:1.2.3.4')).toBe(false);
+      expect(fn('::ffff:8.8.8.8')).toBe(false);
     });
   });
 

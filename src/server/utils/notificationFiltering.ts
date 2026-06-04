@@ -34,6 +34,8 @@ export interface NotificationPreferences {
   notifyOnNewNode: boolean;
   notifyOnTraceroute: boolean;
   notifyOnInactiveNode: boolean;
+  notifyOnLowBattery: boolean;
+  lowBatteryThreshold: number;
   notifyOnServerEvents: boolean;
   prefixWithNodeName: boolean;
   monitoredNodes: string[];
@@ -119,6 +121,8 @@ export async function getUserNotificationPreferencesAsync(userId: number, source
         notifyOnNewNode: boolOr(oldPrefs.notifyOnNewNode, true),
         notifyOnTraceroute: boolOr(oldPrefs.notifyOnTraceroute, true),
         notifyOnInactiveNode: boolOr(oldPrefs.notifyOnInactiveNode, false),
+        notifyOnLowBattery: boolOr(oldPrefs.notifyOnLowBattery, false),
+        lowBatteryThreshold: typeof oldPrefs.lowBatteryThreshold === 'number' ? oldPrefs.lowBatteryThreshold : 20,
         notifyOnServerEvents: boolOr(oldPrefs.notifyOnServerEvents, false),
         prefixWithNodeName: boolOr(oldPrefs.prefixWithNodeName, false),
         monitoredNodes: oldPrefs.monitoredNodes || [],

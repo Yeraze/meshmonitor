@@ -1836,4 +1836,40 @@ export class NodesRepository extends BaseRepository {
       return [];
     }
   }
+
+  /**
+   * Returns monitored nodes whose battery has dropped below the given threshold (percent).
+   * Used by the low-battery notification service. Only Meshtastic nodes report batteryLevel
+   * as a 0-100 percentage; a value of 101 means the node is externally powered / has no
+   * battery, so it is excluded (lt 101). Source-scoped so checks don't bleed across sources.
+   */
+  async getLowBatteryMonitoredNodes(
+    nodeIds: string[],
+    thresholdPercent: number,
+    sourceId?: string
+  ): Promise<Array<{ nodeNum: number; nodeId: string; longName: string | null; shortName: string | null; batteryLevel: number | null }>> {
+    if (nodeIds.length === 0) return [];
+
+    try {
+      const { nodes } = this.tables;
+      const conditions = [
+        inArray(nodes.nodeId, nodeIds),
+        isNotNull(nodes.batteryLevel),
+        lt(nodes.batteryLevel, thresholdPercent),
+        lt(nodes.batteryLevel, 101), // exclude 101 = externally powered / no battery
+      ];
+      if (sourceId) {
+        conditions.push(eq(nodes.sourceId, sourceId));
+      }
+      const rows = await this.db
+        .select({ nodeNum: nodes.nodeNum, nodeId: nodes.nodeId, longName: nodes.longName, shortName: nodes.shortName, batteryLevel: nodes.batteryLevel })
+        .from(nodes)
+        .where(and(...conditions))
+        .orderBy(asc(nodes.batteryLevel));
+      return rows.map((r: any) => ({ ...r, nodeNum: Number(r.nodeNum) }));
+    } catch (error) {
+      logger.error('Failed to query low battery monitored nodes:', error);
+      return [];
+    }
+  }
 }

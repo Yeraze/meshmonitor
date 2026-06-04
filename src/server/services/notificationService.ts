@@ -243,7 +243,7 @@ class NotificationService {
    * Optionally target a specific user ID
    */
   public async broadcastToPreferenceUsers(
-    preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute' | 'notifyOnInactiveNode' | 'notifyOnServerEvents',
+    preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute' | 'notifyOnInactiveNode' | 'notifyOnLowBattery' | 'notifyOnServerEvents',
     payload: NotificationPayload,
     targetUserId?: number
   ): Promise<void> {

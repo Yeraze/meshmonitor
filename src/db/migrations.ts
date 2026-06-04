@@ -90,6 +90,7 @@ import { migration as meshcoreRoomSyncMigration, runMigration072Postgres, runMig
 import { migration as meshcoreNeighborInfoMigration, runMigration073Postgres, runMigration073Mysql } from '../server/migrations/073_meshcore_neighbor_info.js';
 import { migration as addShowWaypointsToMapPrefsMigration, runMigration074Postgres, runMigration074Mysql } from '../server/migrations/074_add_show_waypoints_to_map_prefs.js';
 import { migration as meshcorePacketLogMigration, runMigration075Postgres, runMigration075Mysql } from '../server/migrations/075_meshcore_packet_log.js';
+import { migration as lowBatteryColumnsMigration, runMigration076Postgres, runMigration076Mysql } from '../server/migrations/076_add_low_battery_columns.js';
 
 // ============================================================================
 // Registry
@@ -1196,4 +1197,19 @@ registry.register({
   sqlite: (db) => meshcorePacketLogMigration.up(db),
   postgres: (client) => runMigration075Postgres(client),
   mysql: (pool) => runMigration075Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 076: Add notifyOnLowBattery / lowBatteryThreshold columns to
+// user_notification_preferences for per-user low-battery alerts on monitored
+// nodes. Reuses the inactive-node monitored_nodes list. Implements #3305.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 76,
+  name: 'add_low_battery_columns',
+  settingsKey: 'migration_076_add_low_battery_columns',
+  sqlite: (db) => lowBatteryColumnsMigration.up(db),
+  postgres: (client) => runMigration076Postgres(client),
+  mysql: (pool) => runMigration076Mysql(pool),
 });

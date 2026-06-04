@@ -41,6 +41,7 @@ import { securityDigestService } from './services/securityDigestService.js';
 import { solarMonitoringService } from './services/solarMonitoringService.js';
 import { newsService } from './services/newsService.js';
 import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
+import { lowBatteryNotificationService } from './services/lowBatteryNotificationService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
 import { getUserNotificationPreferencesAsync, saveUserNotificationPreferencesAsync, applyNodeNamePrefixAsync } from './utils/notificationFiltering.js';
@@ -631,6 +632,38 @@ setTimeout(async () => {
     inactiveNodeNotificationService.start(inactiveThresholdHours, inactiveCheckIntervalMinutes, inactiveCooldownHours);
     logger.info('✅ Inactive node notification service started');
 
+    // Start low battery notification service with validation.
+    // Per-user threshold is read from notification preferences at check time;
+    // only the check interval and cooldown are global admin settings here.
+    const lowBatteryCheckIntervalMinutesRaw = parseInt(
+      await databaseService.settings.getSetting('lowBatteryCheckIntervalMinutes') || '60',
+      10
+    );
+    const lowBatteryCooldownHoursRaw = parseInt(await databaseService.settings.getSetting('lowBatteryCooldownHours') || '24', 10);
+
+    const lowBatteryCheckIntervalMinutes =
+      !isNaN(lowBatteryCheckIntervalMinutesRaw) &&
+      lowBatteryCheckIntervalMinutesRaw >= 1 &&
+      lowBatteryCheckIntervalMinutesRaw <= 1440
+        ? lowBatteryCheckIntervalMinutesRaw
+        : 60;
+    const lowBatteryCooldownHours =
+      !isNaN(lowBatteryCooldownHoursRaw) && lowBatteryCooldownHoursRaw >= 1 && lowBatteryCooldownHoursRaw <= 720
+        ? lowBatteryCooldownHoursRaw
+        : 24;
+
+    if (
+      lowBatteryCheckIntervalMinutes !== lowBatteryCheckIntervalMinutesRaw ||
+      lowBatteryCooldownHours !== lowBatteryCooldownHoursRaw
+    ) {
+      logger.warn(
+        `⚠️  Invalid low battery notification settings found in database, using defaults (check: ${lowBatteryCheckIntervalMinutes}min, cooldown: ${lowBatteryCooldownHours}h)`
+      );
+    }
+
+    lowBatteryNotificationService.start(lowBatteryCheckIntervalMinutes, lowBatteryCooldownHours);
+    logger.info('✅ Low battery notification service started');
+
     // Auto-delete-by-distance scheduler is now started per-source inside
     // MeshtasticManager.startDistanceDeleteScheduler() as part of the normal
     // scheduler stagger after configComplete.
@@ -1063,6 +1096,9 @@ setSettingsCallbacks({
   restartInactiveNodeService: (threshold, check, cooldown) =>
     inactiveNodeNotificationService.start(threshold, check, cooldown),
   stopInactiveNodeService: () => inactiveNodeNotificationService.stop(),
+  restartLowBatteryService: (check, cooldown) =>
+    lowBatteryNotificationService.start(check, cooldown),
+  stopLowBatteryService: () => lowBatteryNotificationService.stop(),
   restartAnnounceScheduler: (sourceId?: string | null) => {
     if (sourceId) {
       const mgr = sourceManagerRegistry.getManager(sourceId) as typeof meshtasticManager | undefined;
@@ -1090,6 +1126,16 @@ setSettingsCallbacks({
     } else {
       for (const mgr of sourceManagerRegistry.getAllManagers() as (typeof meshtasticManager)[]) {
         mgr.restartGeofenceEngine();
+      }
+    }
+  },
+  setAutomationAirtimeCutoffThreshold: (threshold: number, sourceId?: string | null) => {
+    if (sourceId) {
+      const mgr = sourceManagerRegistry.getManager(sourceId) as typeof meshtasticManager | undefined;
+      mgr?.setAutomationAirtimeCutoffThreshold(threshold);
+    } else {
+      for (const mgr of sourceManagerRegistry.getAllManagers() as (typeof meshtasticManager)[]) {
+        mgr.setAutomationAirtimeCutoffThreshold(threshold);
       }
     }
   },
@@ -4484,7 +4530,10 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
     if (!await checkNodeChannelAccess(nodeId, req.user)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
-    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
+    // parseFloat (not parseInt) so sub-hour windows like 0.25h (15 minutes)
+    // from the Device Info time-range selector survive the round-trip.
+    const rawHours = req.query.hours ? parseFloat(req.query.hours as string) : 24;
+    const hoursParam = Number.isFinite(rawHours) && rawHours > 0 ? rawHours : 24;
     const telSourceId = req.query.sourceId as string | undefined;
 
     // Calculate cutoff timestamp for filtering
@@ -4496,19 +4545,12 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
     const isPrivate = node?.positionOverrideIsPrivate === true;
     const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
 
-    let telemetry: any[];
-    // For PostgreSQL/MySQL, use async repo directly
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      const limit = Math.min(hoursParam * 60, 5000);
-      telemetry = await databaseService.telemetry.getTelemetryByNode(nodeId, limit, cutoffTime, undefined, 0, undefined, telSourceId);
-    } else {
-      // Use averaged query for graph data to reduce data points
-      // Dynamic bucketing automatically adjusts interval based on time range:
-      // - 0-24h: 3-minute intervals (high detail)
-      // - 1-7d: 30-minute intervals (medium detail)
-      // - 7d+: 2-hour intervals (low detail, full coverage)
-      telemetry = await databaseService.getTelemetryByNodeAveragedAsync(nodeId, cutoffTime, undefined, hoursParam, telSourceId);
-    }
+    // Use the averaged query for graph data on every backend (SQLite,
+    // PostgreSQL, MySQL). The interval is chosen dynamically to target a
+    // manageable, roughly fixed number of points per telemetry type, so short
+    // windows keep near-full resolution while long windows return the full
+    // history downsampled instead of being truncated to the newest N rows.
+    const telemetry = await databaseService.getTelemetryByNodeAveragedAsync(nodeId, cutoffTime, undefined, hoursParam, telSourceId);
 
     // Filter out location telemetry if private and unauthorized
     let processedTelemetry = telemetry;
@@ -6752,6 +6794,20 @@ apiRouter.get('/announce/last', requirePermission('automation', 'read'), async (
   } catch (error) {
     logger.error('Error fetching last announcement time:', error);
     res.status(500).json({ error: 'Failed to fetch last announcement time' });
+  }
+});
+
+// Airtime cutoff status — drives the live banner on the Automation page.
+// Returns the configured threshold, the local node's current Channel
+// Utilization (null if no telemetry yet), and whether automations are paused.
+apiRouter.get('/automation/airtime-status', requirePermission('automation', 'read'), (req, res) => {
+  try {
+    const airtimeSourceId = (req.query.sourceId as string) || null;
+    const mgr = resolveSourceManager(airtimeSourceId);
+    res.json(mgr.getAirtimeCutoffStatus());
+  } catch (error) {
+    logger.error('Error fetching airtime cutoff status:', error);
+    res.status(500).json({ error: 'Failed to fetch airtime cutoff status' });
   }
 });
 
@@ -9031,6 +9087,8 @@ apiRouter.get(
         notifyOnNewNode: true,
         notifyOnTraceroute: true,
         notifyOnInactiveNode: false,
+        notifyOnLowBattery: false,
+        lowBatteryThreshold: 20,
         notifyOnServerEvents: false,
         prefixWithNodeName: false,
         monitoredNodes: [],
@@ -9074,6 +9132,8 @@ apiRouter.post(
       notifyOnNewNode,
       notifyOnTraceroute,
       notifyOnInactiveNode,
+      notifyOnLowBattery,
+      lowBatteryThreshold,
       notifyOnServerEvents,
       prefixWithNodeName,
       monitoredNodes,
@@ -9111,6 +9171,20 @@ apiRouter.post(
     // Validate each element is a string
     if (monitoredNodes && monitoredNodes.some((id: any) => typeof id !== 'string')) {
       return res.status(400).json({ error: 'monitoredNodes must be an array of strings' });
+    }
+
+    // notifyOnLowBattery / lowBatteryThreshold are optional (older clients omit them)
+    if (notifyOnLowBattery !== undefined && typeof notifyOnLowBattery !== 'boolean') {
+      return res.status(400).json({ error: 'notifyOnLowBattery must be a boolean' });
+    }
+    if (
+      lowBatteryThreshold !== undefined &&
+      (typeof lowBatteryThreshold !== 'number' ||
+        !Number.isFinite(lowBatteryThreshold) ||
+        lowBatteryThreshold < 0 ||
+        lowBatteryThreshold > 100)
+    ) {
+      return res.status(400).json({ error: 'lowBatteryThreshold must be a number between 0 and 100' });
     }
 
     // Validate appriseUrls is an array of strings if provided
@@ -9155,6 +9229,8 @@ apiRouter.post(
       notifyOnNewNode,
       notifyOnTraceroute,
       notifyOnInactiveNode: notifyOnInactiveNode ?? false,
+      notifyOnLowBattery: notifyOnLowBattery ?? false,
+      lowBatteryThreshold: lowBatteryThreshold ?? 20,
       notifyOnServerEvents: notifyOnServerEvents ?? false,
       prefixWithNodeName: prefixWithNodeName ?? false,
       monitoredNodes: monitoredNodes ?? [],

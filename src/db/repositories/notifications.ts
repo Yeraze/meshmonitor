@@ -46,6 +46,8 @@ export interface NotificationPreferences {
   notifyOnNewNode: boolean;
   notifyOnTraceroute: boolean;
   notifyOnInactiveNode: boolean;
+  notifyOnLowBattery: boolean;
+  lowBatteryThreshold: number;
   notifyOnServerEvents: boolean;
   prefixWithNodeName: boolean;
   monitoredNodes: string[];
@@ -243,6 +245,8 @@ export class NotificationsRepository extends BaseRepository {
       notifyOnNewNode: prefs.notifyOnNewNode,
       notifyOnTraceroute: prefs.notifyOnTraceroute,
       notifyOnInactiveNode: prefs.notifyOnInactiveNode,
+      notifyOnLowBattery: prefs.notifyOnLowBattery,
+      lowBatteryThreshold: prefs.lowBatteryThreshold,
       notifyOnServerEvents: prefs.notifyOnServerEvents,
       prefixWithNodeName: prefs.prefixWithNodeName,
       appriseEnabled: prefs.enableApprise,
@@ -355,6 +359,32 @@ export class NotificationsRepository extends BaseRepository {
       return rows;
     } catch (error) {
       logger.debug('Failed to query users with inactive node notifications:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get users who have low-battery notifications enabled and at least one notification channel active.
+   * Returns each user's monitored node list (shared with the inactive-node feature) and their
+   * per-user battery threshold (percent).
+   */
+  async getUsersWithLowBatteryNotifications(): Promise<Array<{ userId: number; monitoredNodes: string | null; lowBatteryThreshold: number | null }>> {
+    try {
+      const { userNotificationPreferences: t } = this.tables;
+      const rows = await this.db
+        .select({ userId: t.userId, monitoredNodes: t.monitoredNodes, lowBatteryThreshold: t.lowBatteryThreshold })
+        .from(t)
+        .where(and(
+          eq(t.notifyOnLowBattery, true),
+          or(eq(t.notifyOnMessage, true), eq(t.appriseEnabled, true))
+        ));
+      return rows.map((r: any) => ({
+        userId: r.userId,
+        monitoredNodes: r.monitoredNodes,
+        lowBatteryThreshold: r.lowBatteryThreshold != null ? Number(r.lowBatteryThreshold) : null,
+      }));
+    } catch (error) {
+      logger.debug('Failed to query users with low battery notifications:', error);
       return [];
     }
   }
@@ -929,6 +959,8 @@ export class NotificationsRepository extends BaseRepository {
       notifyOnNewNode: row.notifyOnNewNode !== undefined ? Boolean(row.notifyOnNewNode) : true,
       notifyOnTraceroute: row.notifyOnTraceroute !== undefined ? Boolean(row.notifyOnTraceroute) : true,
       notifyOnInactiveNode: row.notifyOnInactiveNode !== undefined ? Boolean(row.notifyOnInactiveNode) : false,
+      notifyOnLowBattery: row.notifyOnLowBattery !== undefined ? Boolean(row.notifyOnLowBattery) : false,
+      lowBatteryThreshold: row.lowBatteryThreshold != null ? Number(row.lowBatteryThreshold) : 20,
       notifyOnServerEvents: row.notifyOnServerEvents !== undefined ? Boolean(row.notifyOnServerEvents) : false,
       prefixWithNodeName: row.prefixWithNodeName !== undefined ? Boolean(row.prefixWithNodeName) : false,
       monitoredNodes: parseJsonArray(row.monitoredNodes) as string[],

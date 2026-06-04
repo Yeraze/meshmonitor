@@ -950,7 +950,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
       {currentNodeId && connectionStatus === 'connected' && (
         <div className="info-section-full-width">
           <h3>{t('info.local_telemetry')}</h3>
-          <TelemetryGraphs nodeId={currentNodeId} temperatureUnit={temperatureUnit} telemetryHours={telemetryHours} baseUrl={baseUrl} />
+          <TelemetryGraphs nodeId={currentNodeId} temperatureUnit={temperatureUnit} telemetryHours={telemetryHours} baseUrl={baseUrl} showTimeRangeSelector />
         </div>
       )}
 
