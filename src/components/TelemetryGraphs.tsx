@@ -40,7 +40,41 @@ interface TelemetryGraphsProps {
   temperatureUnit?: TemperatureUnit;
   telemetryHours?: number;
   baseUrl?: string;
+  /**
+   * When true, render a row of time-range buttons (15m … 7d) above the graphs
+   * that let the user choose how much history to load. The chosen range is
+   * remembered in localStorage. Used on the Device Info page for the locally
+   * connected node, where telemetry volume is high enough that a fixed window
+   * either truncates the history or floods the chart. Other usages (remote
+   * nodes in the Messages/MeshCore views) leave this off and keep the fixed
+   * `telemetryHours` window.
+   */
+  showTimeRangeSelector?: boolean;
 }
+
+/** localStorage key for the Device Info telemetry time-range selection. */
+const TELEMETRY_RANGE_STORAGE_KEY = 'deviceInfoTelemetryHours';
+
+/** Server-side telemetry retention window (see TELEMETRY_RETENTION_HOURS). */
+const TELEMETRY_RETENTION_HOURS = 168;
+
+/**
+ * Selectable telemetry windows, shortest to longest. Capped at the retention
+ * window so no button can request data that has already been purged. Hours are
+ * fractional where needed (0.25h = 15 minutes); the backend parses with
+ * parseFloat and averages each window down to a manageable point count.
+ */
+const TELEMETRY_RANGE_PRESETS: { label: string; hours: number }[] = [
+  { label: '15m', hours: 0.25 },
+  { label: '1h', hours: 1 },
+  { label: '3h', hours: 3 },
+  { label: '6h', hours: 6 },
+  { label: '12h', hours: 12 },
+  { label: '24h', hours: 24 },
+  { label: '48h', hours: 48 },
+  { label: '3d', hours: 72 },
+  { label: '7d', hours: 168 },
+].filter(p => p.hours <= TELEMETRY_RETENTION_HOURS);
 
 /**
  * Helper function to calculate minimum timestamp from telemetry data
@@ -399,7 +433,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
 };
 
 const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
-  ({ nodeId, temperatureUnit = 'C', telemetryHours = 24, baseUrl = '' }) => {
+  ({ nodeId, temperatureUnit = 'C', telemetryHours = 24, baseUrl = '', showTimeRangeSelector = false }) => {
     const { t } = useTranslation();
     const csrfFetch = useCsrfFetch();
     const { showToast } = useToast();
@@ -415,6 +449,35 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
     // Track solar visibility per telemetry type
     const [solarVisibility, setSolarVisibility] = useState<Map<string, boolean>>(new Map());
 
+    // Selected telemetry window (hours). Only meaningful when the time-range
+    // selector is shown; otherwise the fixed `telemetryHours` prop is used.
+    // Seeds from the user's last Device Info choice (localStorage), falling
+    // back to the configured default window.
+    const [selectedHours, setSelectedHours] = useState<number>(() => {
+      if (!showTimeRangeSelector) return telemetryHours;
+      try {
+        const stored = window.localStorage.getItem(TELEMETRY_RANGE_STORAGE_KEY);
+        const parsed = stored !== null ? parseFloat(stored) : NaN;
+        if (Number.isFinite(parsed) && parsed > 0 && parsed <= TELEMETRY_RETENTION_HOURS) {
+          return parsed;
+        }
+      } catch {
+        // localStorage may be unavailable (e.g. private mode); fall through.
+      }
+      return telemetryHours;
+    });
+
+    const effectiveHours = showTimeRangeSelector ? selectedHours : telemetryHours;
+
+    const handleSelectRange = useCallback((hours: number) => {
+      setSelectedHours(hours);
+      try {
+        window.localStorage.setItem(TELEMETRY_RANGE_STORAGE_KEY, String(hours));
+      } catch {
+        // Persisting is best-effort; ignore storage failures.
+      }
+    }, []);
+
     // Fetch telemetry data using TanStack Query
     const {
       data: telemetryData = [],
@@ -423,7 +486,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
       refetch: refetchTelemetry,
     } = useTelemetry({
       nodeId,
-      hours: telemetryHours,
+      hours: effectiveHours,
       baseUrl,
       sourceId,
     });
@@ -842,9 +905,36 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
       return true;
     });
 
+    // Sub-hour windows (e.g. the 15-minute preset) read awkwardly as
+    // fractional hours, so render those with a minutes-based title instead.
+    const titleText = effectiveHours < 1
+      ? t('telemetry.title_minutes', { count: Math.round(effectiveHours * 60) })
+      : t('telemetry.title', { count: effectiveHours });
+
     return (
       <div className="telemetry-graphs">
-        <h3 className="telemetry-title">{t('telemetry.title', { count: telemetryHours })}</h3>
+        <div className="telemetry-graphs-header">
+          <h3 className="telemetry-title">{titleText}</h3>
+          {showTimeRangeSelector && (
+            <div
+              className="telemetry-range-selector"
+              role="group"
+              aria-label={t('telemetry.time_range')}
+            >
+              {TELEMETRY_RANGE_PRESETS.map(preset => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  className={`telemetry-range-btn ${effectiveHours === preset.hours ? 'active' : ''}`}
+                  onClick={() => handleSelectRange(preset.hours)}
+                  aria-pressed={effectiveHours === preset.hours}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="graphs-grid">
           {filteredData.map(([type, data]) => (
             <TelemetryGraphWidget

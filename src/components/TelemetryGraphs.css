@@ -6,11 +6,51 @@
   border-radius: var(--radius-lg);
 }
 
+.telemetry-graphs-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
 .telemetry-title {
   color: var(--ctp-text);
-  margin: 0 0 20px 0;
+  margin: 0;
   font-size: 1.2rem;
   font-weight: 600;
+}
+
+/* Time-range selector (Device Info page) */
+.telemetry-range-selector {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.telemetry-range-btn {
+  background-color: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-sm);
+  color: var(--ctp-subtext1);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 4px 10px;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.telemetry-range-btn:hover {
+  color: var(--ctp-text);
+  border-color: var(--ctp-surface2);
+}
+
+.telemetry-range-btn.active {
+  background-color: var(--ctp-blue);
+  border-color: var(--ctp-blue);
+  color: var(--ctp-crust);
 }
 
 .telemetry-loading,

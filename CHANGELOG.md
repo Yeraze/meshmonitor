@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Features
+
+- feat(telemetry): add a time-range selector (15m–7d) to the Device Info telemetry graphs for the locally connected node. The selected window is remembered per browser.
+
+### Fixes
+
+- fix(telemetry): scale graph averaging to a manageable point count for any window on all database backends. Previously PostgreSQL/MySQL returned only the newest ~5000 rows with no averaging, so long windows (e.g. "Last 168 hours") were silently truncated to roughly the most recent 12 hours on chatty nodes. Short windows now keep near-full resolution while long windows return the full history downsampled.
+
 ## [4.8.3] - 2026-06-02
 
 # MeshMonitor v4.8.3

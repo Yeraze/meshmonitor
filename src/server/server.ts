@@ -4484,7 +4484,10 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
     if (!await checkNodeChannelAccess(nodeId, req.user)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
-    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
+    // parseFloat (not parseInt) so sub-hour windows like 0.25h (15 minutes)
+    // from the Device Info time-range selector survive the round-trip.
+    const rawHours = req.query.hours ? parseFloat(req.query.hours as string) : 24;
+    const hoursParam = Number.isFinite(rawHours) && rawHours > 0 ? rawHours : 24;
     const telSourceId = req.query.sourceId as string | undefined;
 
     // Calculate cutoff timestamp for filtering
@@ -4496,19 +4499,12 @@ apiRouter.get('/telemetry/:nodeId', optionalAuth(), async (req, res) => {
     const isPrivate = node?.positionOverrideIsPrivate === true;
     const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
 
-    let telemetry: any[];
-    // For PostgreSQL/MySQL, use async repo directly
-    if (databaseService.drizzleDbType === 'postgres' || databaseService.drizzleDbType === 'mysql') {
-      const limit = Math.min(hoursParam * 60, 5000);
-      telemetry = await databaseService.telemetry.getTelemetryByNode(nodeId, limit, cutoffTime, undefined, 0, undefined, telSourceId);
-    } else {
-      // Use averaged query for graph data to reduce data points
-      // Dynamic bucketing automatically adjusts interval based on time range:
-      // - 0-24h: 3-minute intervals (high detail)
-      // - 1-7d: 30-minute intervals (medium detail)
-      // - 7d+: 2-hour intervals (low detail, full coverage)
-      telemetry = await databaseService.getTelemetryByNodeAveragedAsync(nodeId, cutoffTime, undefined, hoursParam, telSourceId);
-    }
+    // Use the averaged query for graph data on every backend (SQLite,
+    // PostgreSQL, MySQL). The interval is chosen dynamically to target a
+    // manageable, roughly fixed number of points per telemetry type, so short
+    // windows keep near-full resolution while long windows return the full
+    // history downsampled instead of being truncated to the newest N rows.
+    const telemetry = await databaseService.getTelemetryByNodeAveragedAsync(nodeId, cutoffTime, undefined, hoursParam, telSourceId);
 
     // Filter out location telemetry if private and unauthorized
     let processedTelemetry = telemetry;

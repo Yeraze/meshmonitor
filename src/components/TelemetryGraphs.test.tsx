@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TelemetryGraphs from './TelemetryGraphs';
 import { ToastProvider } from './ToastContainer';
@@ -950,6 +950,89 @@ describe('TelemetryGraphs Component', () => {
         // Should still be in Fahrenheit after refresh
         expect(screen.getByText('Temperature (°F)')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('time range selector', () => {
+    beforeEach(() => {
+      window.localStorage.clear();
+    });
+
+    it('does not render the selector by default', async () => {
+      renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Battery Level')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByRole('button', { name: '24h' })).not.toBeInTheDocument();
+    });
+
+    it('renders preset buttons and marks the active window when enabled', async () => {
+      renderWithProviders(
+        <TelemetryGraphs nodeId={mockNodeId} telemetryHours={24} showTimeRangeSelector />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: '15m' })).toBeInTheDocument();
+      });
+
+      // Caps at the 7-day retention window.
+      expect(screen.getByRole('button', { name: '7d' })).toBeInTheDocument();
+
+      // Defaults to the configured telemetryHours window.
+      const active = screen.getByRole('button', { name: '24h' });
+      expect(active).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('refetches with the selected window and persists the choice', async () => {
+      renderWithProviders(
+        <TelemetryGraphs nodeId={mockNodeId} telemetryHours={24} showTimeRangeSelector />
+      );
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=24`);
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: '1h' }));
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=1`);
+      });
+
+      expect(window.localStorage.getItem('deviceInfoTelemetryHours')).toBe('1');
+    });
+
+    it('requests a fractional window and shows a minutes title for 15m', async () => {
+      renderWithProviders(
+        <TelemetryGraphs nodeId={mockNodeId} telemetryHours={24} showTimeRangeSelector />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: '15m' })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: '15m' }));
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=0.25`);
+      });
+
+      expect(screen.getByText('telemetry.title_minutes')).toBeInTheDocument();
+    });
+
+    it('seeds the initial window from a persisted choice', async () => {
+      window.localStorage.setItem('deviceInfoTelemetryHours', '48');
+
+      renderWithProviders(
+        <TelemetryGraphs nodeId={mockNodeId} telemetryHours={24} showTimeRangeSelector />
+      );
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=48`);
+      });
+
+      expect(screen.getByRole('button', { name: '48h' })).toHaveAttribute('aria-pressed', 'true');
     });
   });
 });
