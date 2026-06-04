@@ -402,6 +402,46 @@ function runNodesTests(getBackend: () => TestBackend) {
     expect(map.size).toBe(0);
   });
 
+  // --- getLowBatteryMonitoredNodes ---
+
+  it('getLowBatteryMonitoredNodes - returns only monitored nodes below threshold, excluding 101 and nulls', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const low = makeNode(500, { batteryLevel: 8 });    // below threshold → included
+    const mid = makeNode(501, { batteryLevel: 50 });   // above threshold → excluded
+    const powered = makeNode(502, { batteryLevel: 101 }); // externally powered → excluded
+    const unknown = makeNode(503, { batteryLevel: null }); // no reading → excluded
+    const notMonitored = makeNode(504, { batteryLevel: 5 }); // low but not in list → excluded
+    await repo.upsertNode(low);
+    await repo.upsertNode(mid);
+    await repo.upsertNode(powered);
+    await repo.upsertNode(unknown);
+    await repo.upsertNode(notMonitored);
+
+    const monitored = [low.nodeId, mid.nodeId, powered.nodeId, unknown.nodeId];
+    const result = await repo.getLowBatteryMonitoredNodes(monitored, 20, 'default');
+
+    const ids = result.map((r) => r.nodeId);
+    expect(ids).toEqual([low.nodeId]);
+    expect(result[0].batteryLevel).toBe(8);
+    expect(typeof result[0].nodeNum).toBe('number');
+  });
+
+  it('getLowBatteryMonitoredNodes - returns empty array for empty node list', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const result = await repo.getLowBatteryMonitoredNodes([], 20, 'default');
+    expect(result).toEqual([]);
+  });
+
   // --- getAllNodes / getNodeCount ---
 
   it('getAllNodes - returns all inserted nodes', async () => {

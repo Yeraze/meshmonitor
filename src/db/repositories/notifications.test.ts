@@ -98,6 +98,8 @@ const SQLITE_CREATE = `
     notify_on_new_node INTEGER DEFAULT 1,
     notify_on_traceroute INTEGER DEFAULT 1,
     notify_on_inactive_node INTEGER DEFAULT 0,
+    notify_on_low_battery INTEGER DEFAULT 0,
+    low_battery_threshold INTEGER DEFAULT 20,
     notify_on_server_events INTEGER DEFAULT 0,
     prefix_with_node_name INTEGER DEFAULT 0,
     enable_apprise INTEGER DEFAULT 1,
@@ -226,6 +228,8 @@ const POSTGRES_CREATE = `
     "notifyOnNewNode" BOOLEAN DEFAULT TRUE,
     "notifyOnTraceroute" BOOLEAN DEFAULT TRUE,
     "notifyOnInactiveNode" BOOLEAN DEFAULT FALSE,
+    "notifyOnLowBattery" BOOLEAN DEFAULT FALSE,
+    "lowBatteryThreshold" INTEGER DEFAULT 20,
     "notifyOnServerEvents" BOOLEAN DEFAULT FALSE,
     "prefixWithNodeName" BOOLEAN DEFAULT FALSE,
     "appriseEnabled" BOOLEAN DEFAULT TRUE,
@@ -359,6 +363,8 @@ const MYSQL_CREATE = `
     notifyOnNewNode BOOLEAN DEFAULT TRUE,
     notifyOnTraceroute BOOLEAN DEFAULT TRUE,
     notifyOnInactiveNode BOOLEAN DEFAULT FALSE,
+    notifyOnLowBattery BOOLEAN DEFAULT FALSE,
+    lowBatteryThreshold INT DEFAULT 20,
     notifyOnServerEvents BOOLEAN DEFAULT FALSE,
     prefixWithNodeName BOOLEAN DEFAULT FALSE,
     appriseEnabled BOOLEAN DEFAULT TRUE,
@@ -419,6 +425,8 @@ function makeDefaultPrefs(overrides: Partial<NotificationPreferences> = {}): Not
     notifyOnNewNode: false,
     notifyOnTraceroute: false,
     notifyOnInactiveNode: false,
+    notifyOnLowBattery: false,
+    lowBatteryThreshold: 20,
     notifyOnServerEvents: false,
     prefixWithNodeName: false,
     monitoredNodes: [],
@@ -629,6 +637,8 @@ function runNotificationsTests(getBackend: () => TestBackend) {
         enableWebPush: true,
         enableApprise: true,
         notifyOnNewNode: true,
+        notifyOnLowBattery: true,
+        lowBatteryThreshold: 15,
         appriseUrls: ['http://apprise.example.com'],
         monitoredNodes: ['!node1', '!node2'],
         enabledChannels: [0, 1],
@@ -642,6 +652,8 @@ function runNotificationsTests(getBackend: () => TestBackend) {
       expect(result!.enableWebPush).toBe(true);
       expect(result!.enableApprise).toBe(true);
       expect(result!.notifyOnNewNode).toBe(true);
+      expect(result!.notifyOnLowBattery).toBe(true);
+      expect(result!.lowBatteryThreshold).toBe(15);
       expect(result!.appriseUrls).toEqual(['http://apprise.example.com']);
       expect(result!.monitoredNodes).toEqual(['!node1', '!node2']);
       expect(result!.enabledChannels).toEqual([0, 1]);
@@ -751,6 +763,54 @@ function runNotificationsTests(getBackend: () => TestBackend) {
       const userIds = await repo.getUsersWithAppriseEnabled();
       expect(userIds).toContain(1);
       expect(userIds).not.toContain(2);
+    });
+  });
+
+  // ============ getUsersWithLowBatteryNotifications ============
+
+  describe('getUsersWithLowBatteryNotifications', () => {
+    it('returns users with low-battery notifications and an active channel, including threshold and monitored nodes', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'user1'));
+      await backend.exec(insertUserSql(backend, 2, 'user2'));
+      await backend.exec(insertUserSql(backend, 3, 'user3'));
+
+      // user1: enabled + web push on, custom threshold + monitored nodes
+      await repo.saveUserPreferences(1, makeDefaultPrefs({
+        enableWebPush: true,
+        notifyOnLowBattery: true,
+        lowBatteryThreshold: 10,
+        monitoredNodes: ['!node1'],
+      }));
+      // user2: low battery on but no active channel (web push + apprise both off) → excluded
+      await repo.saveUserPreferences(2, makeDefaultPrefs({
+        enableWebPush: false,
+        enableApprise: false,
+        notifyOnLowBattery: true,
+      }));
+      // user3: low battery off → excluded
+      await repo.saveUserPreferences(3, makeDefaultPrefs({
+        enableApprise: true,
+        notifyOnLowBattery: false,
+      }));
+
+      const users = await repo.getUsersWithLowBatteryNotifications();
+      const user1 = users.find((u) => u.userId === 1);
+      expect(user1).toBeDefined();
+      expect(user1!.lowBatteryThreshold).toBe(10);
+      expect(JSON.parse(user1!.monitoredNodes || '[]')).toEqual(['!node1']);
+      expect(users.find((u) => u.userId === 2)).toBeUndefined();
+      expect(users.find((u) => u.userId === 3)).toBeUndefined();
+    });
+
+    it('returns empty array when no users have low-battery notifications enabled', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      const users = await repo.getUsersWithLowBatteryNotifications();
+      expect(users).toEqual([]);
     });
   });
 

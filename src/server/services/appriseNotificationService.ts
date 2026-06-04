@@ -394,7 +394,7 @@ class AppriseNotificationService {
    * Used for special notifications like new nodes, traceroutes, and inactive nodes
    */
   public async broadcastToPreferenceUsers(
-    preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute' | 'notifyOnInactiveNode' | 'notifyOnServerEvents',
+    preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute' | 'notifyOnInactiveNode' | 'notifyOnLowBattery' | 'notifyOnServerEvents',
     payload: AppriseNotificationPayload,
     targetUserId?: number,
     sourceId?: string

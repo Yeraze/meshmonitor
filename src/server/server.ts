@@ -41,6 +41,7 @@ import { securityDigestService } from './services/securityDigestService.js';
 import { solarMonitoringService } from './services/solarMonitoringService.js';
 import { newsService } from './services/newsService.js';
 import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
+import { lowBatteryNotificationService } from './services/lowBatteryNotificationService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
 import { getUserNotificationPreferencesAsync, saveUserNotificationPreferencesAsync, applyNodeNamePrefixAsync } from './utils/notificationFiltering.js';
@@ -631,6 +632,38 @@ setTimeout(async () => {
     inactiveNodeNotificationService.start(inactiveThresholdHours, inactiveCheckIntervalMinutes, inactiveCooldownHours);
     logger.info('✅ Inactive node notification service started');
 
+    // Start low battery notification service with validation.
+    // Per-user threshold is read from notification preferences at check time;
+    // only the check interval and cooldown are global admin settings here.
+    const lowBatteryCheckIntervalMinutesRaw = parseInt(
+      await databaseService.settings.getSetting('lowBatteryCheckIntervalMinutes') || '60',
+      10
+    );
+    const lowBatteryCooldownHoursRaw = parseInt(await databaseService.settings.getSetting('lowBatteryCooldownHours') || '24', 10);
+
+    const lowBatteryCheckIntervalMinutes =
+      !isNaN(lowBatteryCheckIntervalMinutesRaw) &&
+      lowBatteryCheckIntervalMinutesRaw >= 1 &&
+      lowBatteryCheckIntervalMinutesRaw <= 1440
+        ? lowBatteryCheckIntervalMinutesRaw
+        : 60;
+    const lowBatteryCooldownHours =
+      !isNaN(lowBatteryCooldownHoursRaw) && lowBatteryCooldownHoursRaw >= 1 && lowBatteryCooldownHoursRaw <= 720
+        ? lowBatteryCooldownHoursRaw
+        : 24;
+
+    if (
+      lowBatteryCheckIntervalMinutes !== lowBatteryCheckIntervalMinutesRaw ||
+      lowBatteryCooldownHours !== lowBatteryCooldownHoursRaw
+    ) {
+      logger.warn(
+        `⚠️  Invalid low battery notification settings found in database, using defaults (check: ${lowBatteryCheckIntervalMinutes}min, cooldown: ${lowBatteryCooldownHours}h)`
+      );
+    }
+
+    lowBatteryNotificationService.start(lowBatteryCheckIntervalMinutes, lowBatteryCooldownHours);
+    logger.info('✅ Low battery notification service started');
+
     // Auto-delete-by-distance scheduler is now started per-source inside
     // MeshtasticManager.startDistanceDeleteScheduler() as part of the normal
     // scheduler stagger after configComplete.
@@ -1063,6 +1096,9 @@ setSettingsCallbacks({
   restartInactiveNodeService: (threshold, check, cooldown) =>
     inactiveNodeNotificationService.start(threshold, check, cooldown),
   stopInactiveNodeService: () => inactiveNodeNotificationService.stop(),
+  restartLowBatteryService: (check, cooldown) =>
+    lowBatteryNotificationService.start(check, cooldown),
+  stopLowBatteryService: () => lowBatteryNotificationService.stop(),
   restartAnnounceScheduler: (sourceId?: string | null) => {
     if (sourceId) {
       const mgr = sourceManagerRegistry.getManager(sourceId) as typeof meshtasticManager | undefined;
@@ -9031,6 +9067,8 @@ apiRouter.get(
         notifyOnNewNode: true,
         notifyOnTraceroute: true,
         notifyOnInactiveNode: false,
+        notifyOnLowBattery: false,
+        lowBatteryThreshold: 20,
         notifyOnServerEvents: false,
         prefixWithNodeName: false,
         monitoredNodes: [],
@@ -9074,6 +9112,8 @@ apiRouter.post(
       notifyOnNewNode,
       notifyOnTraceroute,
       notifyOnInactiveNode,
+      notifyOnLowBattery,
+      lowBatteryThreshold,
       notifyOnServerEvents,
       prefixWithNodeName,
       monitoredNodes,
@@ -9111,6 +9151,20 @@ apiRouter.post(
     // Validate each element is a string
     if (monitoredNodes && monitoredNodes.some((id: any) => typeof id !== 'string')) {
       return res.status(400).json({ error: 'monitoredNodes must be an array of strings' });
+    }
+
+    // notifyOnLowBattery / lowBatteryThreshold are optional (older clients omit them)
+    if (notifyOnLowBattery !== undefined && typeof notifyOnLowBattery !== 'boolean') {
+      return res.status(400).json({ error: 'notifyOnLowBattery must be a boolean' });
+    }
+    if (
+      lowBatteryThreshold !== undefined &&
+      (typeof lowBatteryThreshold !== 'number' ||
+        !Number.isFinite(lowBatteryThreshold) ||
+        lowBatteryThreshold < 0 ||
+        lowBatteryThreshold > 100)
+    ) {
+      return res.status(400).json({ error: 'lowBatteryThreshold must be a number between 0 and 100' });
     }
 
     // Validate appriseUrls is an array of strings if provided
@@ -9155,6 +9209,8 @@ apiRouter.post(
       notifyOnNewNode,
       notifyOnTraceroute,
       notifyOnInactiveNode: notifyOnInactiveNode ?? false,
+      notifyOnLowBattery: notifyOnLowBattery ?? false,
+      lowBatteryThreshold: lowBatteryThreshold ?? 20,
       notifyOnServerEvents: notifyOnServerEvents ?? false,
       prefixWithNodeName: prefixWithNodeName ?? false,
       monitoredNodes: monitoredNodes ?? [],
