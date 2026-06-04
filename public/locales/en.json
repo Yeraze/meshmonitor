@@ -4538,6 +4538,16 @@
 
   "admin.back_to_dashboard": "← Back to Dashboard",
 
+  "automation.airtime_cutoff.title": "Cutoff Airtime Utilization Threshold",
+  "automation.airtime_cutoff.description": "Pauses all automations (auto-traceroute, auto-announce, timers, etc.) whenever the connected node's Channel Utilization rises above this threshold, so bots stop adding traffic while the mesh is busy with real activity. Automations resume automatically once utilization drops back below the threshold. Set to 0 to disable.",
+  "automation.airtime_cutoff.threshold_label": "Cutoff Airtime Utilization Threshold (%)",
+  "automation.airtime_cutoff.threshold_hint": "Channel Utilization percent above which automations pause. 0 disables; default 30.",
+  "automation.airtime_cutoff.status_disabled": "Airtime cutoff is disabled (threshold 0).",
+  "automation.airtime_cutoff.status_unknown": "Waiting for the connected node to report Channel Utilization…",
+  "automation.airtime_cutoff.status_paused": "⏸ Automations paused — Channel Utilization {{util}}% exceeds {{threshold}}%.",
+  "automation.airtime_cutoff.status_active": "✓ Automations active — Channel Utilization {{util}}% is under {{threshold}}%.",
+  "automation.airtime_cutoff.saved": "Airtime cutoff settings saved",
+  "automation.airtime_cutoff.save_error": "Failed to save settings",
   "automation.auto_heap.title": "Auto Heap Management",
   "automation.auto_heap.saved": "Auto Heap Management settings saved",
   "automation.auto_heap.save_error": "Failed to save settings",

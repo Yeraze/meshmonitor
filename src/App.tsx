@@ -35,6 +35,7 @@ import AutoTimeSyncSection from './components/AutoTimeSyncSection';
 import AutoPingSection from './components/AutoPingSection';
 import AutoFavoriteSection from './components/AutoFavoriteSection';
 import AutoHeapManagementSection from './components/AutoHeapManagementSection';
+import AirtimeCutoffSection from './components/AirtimeCutoffSection';
 import IgnoredNodesSection from './components/IgnoredNodesSection';
 import SectionNav from './components/SectionNav';
 import { ToastProvider, useToast } from './components/ToastContainer';
@@ -4987,6 +4988,7 @@ function App() {
           <div className="settings-tab">
             <SectionNav
               items={[
+                { id: 'airtime-cutoff', label: t('automation.airtime_cutoff.title', 'Cutoff Airtime Utilization Threshold') },
                 { id: 'auto-welcome', label: t('automation.welcome.title', 'Auto Welcome') },
                 { id: 'auto-favorite', label: t('automation.auto_favorite.title', 'Auto Favorite') },
                 { id: 'auto-traceroute', label: t('automation.traceroute.title', 'Auto Traceroute') },
@@ -5005,6 +5007,9 @@ function App() {
               ]}
             />
             <div className="settings-content">
+              <div id="airtime-cutoff">
+                <AirtimeCutoffSection baseUrl={baseUrl} />
+              </div>
               <div id="auto-welcome">
                 <AutoWelcomeSection
                   enabled={autoWelcomeEnabled}
