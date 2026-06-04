@@ -39,8 +39,83 @@ export interface IgnoredNodeRecord {
  * migration 048.
  */
 export class IgnoredNodesRepository extends BaseRepository {
+  /**
+   * In-memory mirror of the per-source blocklist, keyed by `${sourceId}:${nodeNum}`.
+   *
+   * `upsertNode` runs on the hot packet path (potentially every packet from
+   * every node) and must decide synchronously whether to re-apply the ignore
+   * flag — issuing a DB query per upsert is not viable, especially for the
+   * PostgreSQL/MySQL round-trip cost. This Set is primed once at startup
+   * (`primeCacheAsync` / `primeCacheSqlite`) and kept in lock-step by every
+   * add/remove below, so `isIgnoredCached` is an O(1) lookup. All mutations to
+   * `ignored_nodes` route through this repository, so the cache cannot drift.
+   */
+  private ignoredCache = new Set<string>();
+
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
     super(db, dbType);
+  }
+
+  /** Build the composite cache key. nodeNum is always the trailing numeric
+   *  segment, so a ':' separator can never produce an ambiguous key. */
+  private cacheKey(nodeNum: number, sourceId: string): string {
+    return `${sourceId}:${nodeNum}`;
+  }
+
+  /**
+   * Load the entire blocklist into the in-memory cache. Used by PostgreSQL/MySQL
+   * (and any async caller) at startup. Safe to call repeatedly — it rebuilds the
+   * set from scratch. Returns false if the table can't be read yet.
+   */
+  async primeCacheAsync(): Promise<boolean> {
+    try {
+      const rows = await this.getIgnoredNodesAsync();
+      this.ignoredCache.clear();
+      for (const row of rows) {
+        this.ignoredCache.add(this.cacheKey(row.nodeNum, row.sourceId));
+      }
+      logger.debug(`Primed ignored-node cache with ${this.ignoredCache.size} entr${this.ignoredCache.size === 1 ? 'y' : 'ies'}`);
+      return true;
+    } catch (err) {
+      logger.debug('Could not prime ignored-node cache (table may not exist yet):', err);
+      return false;
+    }
+  }
+
+  /**
+   * Synchronous cache prime for the SQLite path, where the constructor builds
+   * repositories and runs migrations synchronously and the hot upsert path is
+   * fully synchronous. Returns false if the table doesn't exist yet.
+   */
+  primeCacheSqlite(): boolean {
+    if (!this.sqliteDb) throw new Error('primeCacheSqlite is SQLite-only');
+    const db = this.sqliteDb;
+    const { ignoredNodes } = this.tables;
+    try {
+      const rows = db
+        .select({ nodeNum: ignoredNodes.nodeNum, sourceId: ignoredNodes.sourceId })
+        .from(ignoredNodes)
+        .all() as Array<{ nodeNum: number; sourceId: string }>;
+      this.ignoredCache.clear();
+      for (const row of rows) {
+        this.ignoredCache.add(this.cacheKey(Number(row.nodeNum), row.sourceId));
+      }
+      logger.debug(`Primed ignored-node cache (SQLite) with ${this.ignoredCache.size} entr${this.ignoredCache.size === 1 ? 'y' : 'ies'}`);
+      return true;
+    } catch (err) {
+      logger.debug('Could not prime ignored-node cache, table may not exist yet:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Synchronous O(1) check against the in-memory blocklist mirror. Used by the
+   * `upsertNode` hot path to decide whether to re-apply the ignore flag to a
+   * node the device just reported as un-ignored (issue #2601). Reflects the
+   * cache state, which is primed at startup and updated on every add/remove.
+   */
+  isIgnoredCached(nodeNum: number, sourceId: string): boolean {
+    return this.ignoredCache.has(this.cacheKey(nodeNum, sourceId));
   }
 
   /**
@@ -65,6 +140,11 @@ export class IgnoredNodesRepository extends BaseRepository {
     };
     const insertData: any = { nodeNum, sourceId, ...setData };
 
+    // Update the in-memory mirror before the DB write so fire-and-forget callers
+    // (e.g. DatabaseService.setNodeIgnored) make the change visible to the
+    // synchronous upsert path immediately, with no microtask-window race.
+    this.ignoredCache.add(this.cacheKey(nodeNum, sourceId));
+
     await this.upsert(
       ignoredNodes,
       insertData,
@@ -80,6 +160,9 @@ export class IgnoredNodesRepository extends BaseRepository {
    */
   async removeIgnoredNodeAsync(nodeNum: number, sourceId: string): Promise<void> {
     const { ignoredNodes } = this.tables;
+    // Mirror update first (see addIgnoredNodeAsync) so the un-ignore is visible
+    // to the synchronous upsert path without waiting on the DB round-trip.
+    this.ignoredCache.delete(this.cacheKey(nodeNum, sourceId));
     await this.db
       .delete(ignoredNodes)
       .where(and(eq(ignoredNodes.nodeNum, nodeNum), eq(ignoredNodes.sourceId, sourceId)));

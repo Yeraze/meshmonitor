@@ -235,6 +235,91 @@ describe('DatabaseService - Phase 6 Per-Source Isolation (composite PK)', () => 
     });
   });
 
+  describe('auto-reapply ignore flag (issue #2601)', () => {
+    it('re-applies the ignore flag when an existing ignored node reappears un-ignored', async () => {
+      // Node starts ignored and is on the per-source blocklist.
+      insertNode(dbService.db, 9001, '!00002329', 'spammer', SOURCE_A, { isIgnored: 1 });
+      await dbService.ignoredNodes.addIgnoredNodeAsync(9001, SOURCE_A, '!00002329', 'spammer', 'SPM');
+
+      // Device nodeDB churns and reports the node as no longer ignored.
+      dbService.upsertNode({
+        nodeNum: 9001,
+        nodeId: '!00002329',
+        longName: 'spammer',
+        isIgnored: false,
+        sourceId: SOURCE_A,
+      } as any);
+
+      const node = dbService.getNode(9001, SOURCE_A);
+      expect((node as any).isIgnored).toBeTruthy();
+    });
+
+    it('re-applies the ignore flag when a blocklisted node reappears as a brand-new row', async () => {
+      // No node row yet — only the blocklist entry persists (node was pruned).
+      await dbService.ignoredNodes.addIgnoredNodeAsync(9002, SOURCE_A, '!0000232a', 'troll', 'TRL');
+
+      dbService.upsertNode({
+        nodeNum: 9002,
+        nodeId: '!0000232a',
+        longName: 'troll',
+        sourceId: SOURCE_A,
+      } as any);
+
+      const node = dbService.getNode(9002, SOURCE_A);
+      expect(node).not.toBeNull();
+      expect((node as any).isIgnored).toBeTruthy();
+    });
+
+    it('does not ignore a node that is not on the blocklist', () => {
+      dbService.upsertNode({
+        nodeNum: 9003,
+        nodeId: '!0000232b',
+        longName: 'friendly',
+        isIgnored: false,
+        sourceId: SOURCE_A,
+      } as any);
+
+      const node = dbService.getNode(9003, SOURCE_A);
+      expect((node as any).isIgnored).toBeFalsy();
+    });
+
+    it('blocklist is per-source: a node ignored on A is not re-applied on B', async () => {
+      await dbService.ignoredNodes.addIgnoredNodeAsync(9004, SOURCE_A, '!0000232c', 'spam-on-a', 'SOA');
+
+      // Same nodeNum appears on source B, which has no blocklist entry for it.
+      dbService.upsertNode({
+        nodeNum: 9004,
+        nodeId: '!0000232c',
+        longName: 'on-b',
+        isIgnored: false,
+        sourceId: SOURCE_B,
+      } as any);
+
+      const onB = dbService.getNode(9004, SOURCE_B);
+      expect((onB as any).isIgnored).toBeFalsy();
+    });
+
+    it('stops re-applying once the node is removed from the blocklist', async () => {
+      insertNode(dbService.db, 9005, '!0000232d', 'reformed', SOURCE_A, { isIgnored: 1 });
+      await dbService.ignoredNodes.addIgnoredNodeAsync(9005, SOURCE_A, '!0000232d', 'reformed', 'RFM');
+
+      // User un-ignores: clears the live flag and removes from the blocklist.
+      await dbService.setNodeIgnoredAsync(9005, false, SOURCE_A);
+
+      // A later device update reports it un-ignored — it must stay un-ignored.
+      dbService.upsertNode({
+        nodeNum: 9005,
+        nodeId: '!0000232d',
+        longName: 'reformed',
+        isIgnored: false,
+        sourceId: SOURCE_A,
+      } as any);
+
+      const node = dbService.getNode(9005, SOURCE_A);
+      expect((node as any).isIgnored).toBeFalsy();
+    });
+  });
+
   describe('Migration 029 round-trip', () => {
     it('fresh DB has composite PK (nodeNum, sourceId) on nodes table', () => {
       // Migration 029 runs during DatabaseService construction. Verify the

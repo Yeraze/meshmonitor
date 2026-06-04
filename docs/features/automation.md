@@ -1845,7 +1845,7 @@ Nodes must also:
 
 ## Ignored Nodes {#ignored-nodes}
 
-Manages the persistent ignore list for nodes you want to exclude from your mesh monitoring. Ignored nodes are hidden from the node list and remain ignored even after being pruned by inactive node cleanup — when they reappear on the mesh, their ignored status is automatically restored.
+Manages the persistent ignore list for nodes you want to exclude from your mesh monitoring. Ignored nodes are hidden from the node list and stay ignored permanently — whenever a listed node reappears without the ignore flag, MeshMonitor re-applies it automatically. This covers both inactive-node cleanup and the case where the device's own node database fills up and silently clears the ignore (see [#2601](https://github.com/Yeraze/meshmonitor/issues/2601)).
 
 ### How It Works
 
@@ -1854,6 +1854,7 @@ When you ignore a node (via the Node Details panel), MeshMonitor records it in a
 Unlike simply hiding a node from the UI, the persistent ignore list ensures that:
 
 - **Survival across cleanup**: If an inactive node is pruned from the database and later reappears, it will automatically be re-ignored
+- **Survival across device churn**: Meshtastic devices hold a limited on-board ignore list; when their node database fills up they drop ignores and report the node as un-ignored. MeshMonitor treats its own list as authoritative and re-applies the ignore flag the next time the node is seen — both in its own database and on the locally-connected radio. The re-push to the radio is a local admin command (no destination), so it never generates mesh traffic; a short per-node cooldown prevents command storms if a device cannot durably hold the ignore
 - **Consistent filtering**: Ignored nodes are hidden from the main Node List, advanced filters, and Admin Commands by default
 - **Network transparency**: Ignoring a node is purely a UI action — it does not affect message delivery or mesh network functionality
 
