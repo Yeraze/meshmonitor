@@ -4125,7 +4125,7 @@
   "news.category.maintenance": "Maintenance",
 
   "automation.ignored_nodes.title": "Ignored Nodes",
-  "automation.ignored_nodes.description": "Nodes on this list will remain ignored even after being pruned by inactive node cleanup. When they reappear, their ignored status will be automatically restored.",
+  "automation.ignored_nodes.description": "Nodes on this list stay ignored permanently. MeshMonitor re-applies the ignored flag automatically whenever a listed node reappears without it — for example after inactive-node cleanup, or when the device's node database fills up and clears the ignore on its own.",
   "automation.ignored_nodes.total_ignored": "Ignored Nodes",
   "automation.ignored_nodes.empty": "No nodes are currently ignored.",
   "automation.ignored_nodes.col_node_id": "Node ID",

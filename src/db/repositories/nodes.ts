@@ -1748,6 +1748,12 @@ export class NodesRepository extends BaseRepository {
       if (nodeData.positionChannel !== undefined) updateSet.positionChannel = nodeData.positionChannel;
       if (nodeData.positionPrecisionBits !== undefined) updateSet.positionPrecisionBits = nodeData.positionPrecisionBits;
       if (nodeData.positionTimestamp !== undefined) updateSet.positionTimestamp = nodeData.positionTimestamp;
+      // Per-source blocklist is authoritative (issue #2601): re-apply the ignore
+      // flag on update when the caller signals the node is still blocklisted,
+      // overriding any un-ignored status the device just reported. Note the
+      // update path otherwise never touches isIgnored, so we only ever force it
+      // on here — clearing is handled explicitly via setNodeIgnored.
+      if (wasIgnored) updateSet.isIgnored = true;
 
       const where = upsertSourceId
         ? and(eq(nodes.nodeNum, nodeData.nodeNum), eq(nodes.sourceId, upsertSourceId))

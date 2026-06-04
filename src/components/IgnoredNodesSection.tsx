@@ -128,7 +128,7 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
 
       <div className="settings-section">
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
-          {t('automation.ignored_nodes.description', 'Nodes on this list will remain ignored even after being pruned by inactive node cleanup. When they reappear, their ignored status will be automatically restored.')}
+          {t('automation.ignored_nodes.description', "Nodes on this list stay ignored permanently. MeshMonitor re-applies the ignored flag automatically whenever a listed node reappears without it — for example after inactive-node cleanup, or when the device's node database fills up and clears the ignore on its own.")}
         </p>
 
         {/* Stats */}

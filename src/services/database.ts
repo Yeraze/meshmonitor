@@ -689,6 +689,10 @@ class DatabaseService {
     this.ensureBroadcastNode();
     // Ensure admin user exists for authentication
     this.ensureAdminUser();
+    // Prime the in-memory ignore-list mirror now that migrations have created
+    // the ignored_nodes table. Lets upsertNode re-apply the ignore flag
+    // synchronously when a previously-ignored node reappears (issue #2601).
+    this.ignoredNodesRepo?.primeCacheSqlite();
 
     // SQLite is ready immediately after sync initialization
     this.isReady = true;
@@ -849,6 +853,9 @@ class DatabaseService {
       // Load caches for PostgreSQL/MySQL to enable sync method compatibility
       if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
         await this.loadCachesFromDatabase();
+        // Prime the in-memory ignore-list mirror so upsertNode can re-apply the
+        // ignore flag synchronously when an ignored node reappears (issue #2601).
+        await this.ignoredNodesRepo?.primeCacheAsync();
       }
     } catch (error) {
       // Log but don't fail - repositories are optional during migration period
@@ -2198,6 +2205,19 @@ class DatabaseService {
           createdAt: existingNode?.createdAt ?? now,
           updatedAt: now,
         };
+
+        // The per-source ignore list is authoritative (issue #2601): a node's
+        // on-device ignore flag is wiped whenever the device's nodeDB churns,
+        // and it then reports the node as un-ignored. If the node is still on
+        // our blocklist, force the flag back on — for newly discovered AND
+        // existing nodes — so it's persisted in this single upsert write.
+        if (nodeData.nodeNum !== 4294967295 &&
+            updatedNode.isIgnored !== true &&
+            this.ignoredNodesRepo?.isIgnoredCached(nodeData.nodeNum, upsertSourceId)) {
+          logger.debug(`Re-applying ignore flag for node ${nodeData.nodeNum} on source ${upsertSourceId} (per-source blocklist)`);
+          updatedNode.isIgnored = true;
+        }
+
         this.nodesCache.set(this.cacheKey(nodeData.nodeNum, upsertSourceId), updatedNode);
 
         // Fire and forget async version - pass the full merged node to avoid race conditions
@@ -2207,25 +2227,6 @@ class DatabaseService {
         this.nodesRepo.upsertNode(updatedNode, upsertSourceId).catch(err => {
           logger.error('Failed to upsert node:', err);
         });
-
-        // For newly discovered nodes, check per-source ignore list and restore status
-        if (!existingNode && nodeData.nodeNum !== 4294967295) {
-          // Check if this node was previously ignored on this source
-          if (this.ignoredNodesRepo) {
-            this.ignoredNodes.isNodeIgnoredAsync(nodeData.nodeNum, upsertSourceId).then(wasIgnored => {
-              if (wasIgnored) {
-                logger.debug(`Restoring ignored status for returning node ${nodeData.nodeNum} on source ${upsertSourceId}`);
-                updatedNode.isIgnored = true;
-                this.nodesCache.set(this.cacheKey(nodeData.nodeNum!, upsertSourceId), updatedNode);
-                if (this.nodesRepo) {
-                  this.nodesRepo.setNodeIgnored(nodeData.nodeNum!, true, upsertSourceId).catch(err => {
-                    logger.error('Failed to restore ignored status:', err);
-                  });
-                }
-              }
-            }).catch(err => logger.error('Failed to check per-source ignore list:', err));
-          }
-        }
 
         // Send new node notification when a node becomes complete (has longName, shortName, hwModel)
         // This defers the notification until we have meaningful info instead of just a raw node ID
@@ -2263,20 +2264,22 @@ class DatabaseService {
       ? this.getNode(nodeData.nodeNum, upsertSourceIdSqlite)
       : this.getNode(nodeData.nodeNum);
 
+    // The per-source ignore list is authoritative (issue #2601): a node's
+    // on-device ignore flag is wiped whenever the device's nodeDB churns, and it
+    // then reports the node as un-ignored. If the node is still on our blocklist,
+    // force the flag back on — for newly discovered AND existing nodes. The
+    // synchronous in-memory mirror keeps this off the per-packet DB query path.
     let wasIgnored = false;
-    if (!existingNode) {
-      // Check if this node was previously ignored on this source (per-source blocklist).
-      // Delegates to IgnoredNodesRepository so the raw SQL stays inside Drizzle-managed code.
-      if (this.ignoredNodesRepo && upsertSourceIdSqlite) {
-        wasIgnored = this.ignoredNodesRepo.isNodeIgnoredSqlite(nodeData.nodeNum, upsertSourceIdSqlite);
-      }
+    if (this.ignoredNodesRepo && upsertSourceIdSqlite) {
+      wasIgnored = this.ignoredNodesRepo.isIgnoredCached(nodeData.nodeNum, upsertSourceIdSqlite);
     }
 
-    // Delegate to the repository's sync upsert — eliminates raw SQL.
+    // Delegate to the repository's sync upsert — eliminates raw SQL. When
+    // wasIgnored is true the repo forces isIgnored on the inserted/updated row.
     this.nodesRepo!.upsertNodeSqlite(nodeData, wasIgnored);
 
-    if (!existingNode && wasIgnored) {
-      logger.debug(`Restored ignored status for returning node ${nodeData.nodeNum}`);
+    if (wasIgnored && !existingNode?.isIgnored) {
+      logger.debug(`Re-applied ignore flag for node ${nodeData.nodeNum} (per-source blocklist)`);
     }
 
     // Send new node notification when a node becomes complete (has longName, shortName, hwModel)
