@@ -994,7 +994,9 @@ describe('TelemetryGraphs Component', () => {
         expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=24`);
       });
 
-      fireEvent.click(screen.getByRole('button', { name: '1h' }));
+      // findByRole retries until the buttons have rendered (the data query may
+      // still be resolving right after the initial fetch fires).
+      fireEvent.click(await screen.findByRole('button', { name: '1h' }));
 
       await waitFor(() => {
         expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=1`);
@@ -1032,7 +1034,10 @@ describe('TelemetryGraphs Component', () => {
         expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=48`);
       });
 
-      expect(screen.getByRole('button', { name: '48h' })).toHaveAttribute('aria-pressed', 'true');
+      // findByRole retries until the data query renders the selector buttons,
+      // which can lag the initial fetch on slower CI runners.
+      const active = await screen.findByRole('button', { name: '48h' });
+      expect(active).toHaveAttribute('aria-pressed', 'true');
     });
   });
 });
