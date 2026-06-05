@@ -126,6 +126,7 @@ export interface SettingsCallbacks {
   restartTimerScheduler?: (sourceId?: string | null) => void;
   restartGeofenceEngine?: (sourceId?: string | null) => void;
   setAutomationAirtimeCutoffThreshold?: (threshold: number, sourceId?: string | null) => void;
+  setAutomationAirtimeCutoffSource?: (source: string, sourceId?: string | null) => void;
   handleAutoWelcomeEnabled?: () => number;
   invalidateHtmlCache?: () => void;
   restartAutoDeleteByDistanceService?: (intervalHours: number, sourceId?: string | null) => void;
@@ -283,6 +284,16 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
         return res
           .status(400)
           .json({ error: 'automationAirtimeCutoffThreshold must be between 0 and 100 (0 = disabled)' });
+      }
+    }
+
+    // Validate airtime cutoff source ('local' or 'neighbors')
+    if ('automationAirtimeCutoffSource' in filteredSettings) {
+      const source = filteredSettings.automationAirtimeCutoffSource;
+      if (source !== 'local' && source !== 'neighbors') {
+        return res
+          .status(400)
+          .json({ error: "automationAirtimeCutoffSource must be 'local' or 'neighbors'" });
       }
     }
 
@@ -617,6 +628,9 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
           callbacks.setAutomationAirtimeCutoffThreshold?.(threshold, sourceId);
         }
       }
+      if ('automationAirtimeCutoffSource' in filteredSettings) {
+        callbacks.setAutomationAirtimeCutoffSource?.(filteredSettings.automationAirtimeCutoffSource, sourceId);
+      }
 
       return res.json({ success: true });
     }
@@ -672,6 +686,10 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
       if (!isNaN(threshold) && threshold >= 0 && threshold <= 100) {
         callbacks.setAutomationAirtimeCutoffThreshold?.(threshold, sourceId);
       }
+    }
+
+    if ('automationAirtimeCutoffSource' in filteredSettings) {
+      callbacks.setAutomationAirtimeCutoffSource?.(filteredSettings.automationAirtimeCutoffSource, sourceId);
     }
 
     const keyRepairSettings = [

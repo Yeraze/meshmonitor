@@ -133,6 +133,7 @@ function validTestValue(key: string, suffix = ''): string {
     lowBatteryCheckIntervalMinutes: '60',
     lowBatteryCooldownHours: '24',
     automationAirtimeCutoffThreshold: '30',
+    automationAirtimeCutoffSource: 'neighbors',
     autoResponderTriggers: JSON.stringify([
       { id: '1', trigger: 'test', responseType: 'text', response: 'hi' },
     ]),

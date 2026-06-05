@@ -23,7 +23,7 @@ import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceServ
 import { MessageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
-import { shouldGateAutomations, DEFAULT_AIRTIME_CUTOFF_THRESHOLD } from './utils/airtimeCutoff.js';
+import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource } from './utils/airtimeCutoff.js';
 import { resolveLastHopName } from './utils/lastHop.js';
 import { canonicalMessageTime } from './utils/messageTime.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
@@ -498,6 +498,13 @@ class MeshtasticManager implements ISourceManager {
   // Most recent Channel Utilization (%) self-reported by the local node, or null
   // if no device telemetry has been seen yet.
   private localChannelUtilization: number | null = null;
+  // Where the cutoff reads ChUtil from: the local node, or the averaged
+  // strongest-RSSI 0-hop infrastructure neighbours.
+  private automationAirtimeCutoffSource: AirtimeCutoffSource = DEFAULT_AIRTIME_CUTOFF_SOURCE;
+  // Short-lived cache for the neighbour-averaged ChUtil so the per-fire gate
+  // doesn't hit the database on every automation in `neighbors` mode.
+  private neighborUtilCache: { value: number | null; sampleCount: number; at: number } | null = null;
+  private static readonly NEIGHBOR_UTIL_TTL_MS = 30000;
   // Throttle the "automations gated" log so a busy mesh doesn't spam.
   private lastAirtimeGateLogTime: number = 0;
   private localStatsInterval: NodeJS.Timeout | null = null;
@@ -1496,9 +1503,9 @@ class MeshtasticManager implements ISourceManager {
         setTimeout(() => this.startTimerScheduler().catch(e =>
           logger.error('❌ Error starting timer scheduler:', e)), S * 7);
 
-        // Load the airtime cutoff threshold (local value, no outbound traffic)
-        this.loadAirtimeCutoffThreshold().catch(e =>
-          logger.error('❌ Error loading airtime cutoff threshold:', e));
+        // Load the airtime cutoff settings (local values, no outbound traffic)
+        this.loadAirtimeCutoffSettings().catch(e =>
+          logger.error('❌ Error loading airtime cutoff settings:', e));
 
         // Start geofence engine (no outbound traffic, safe immediately)
         this.initGeofenceEngine().catch(e =>
@@ -1833,7 +1840,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // Airtime cutoff: skip auto-traceroute while the mesh is congested
-      if (this.isAutomationAirtimeGated()) {
+      if (await this.isAutomationAirtimeGated()) {
         return;
       }
 
@@ -1951,8 +1958,8 @@ class MeshtasticManager implements ISourceManager {
 
   /**
    * Set the airtime cutoff threshold (percent Channel Utilization).
-   * When the local node's ChUtil exceeds this value, all transmitting
-   * automations are paused. 0 disables the feature.
+   * When the effective ChUtil exceeds this value, all transmitting automations
+   * are paused. 0 disables the feature.
    * @param threshold Cutoff percent (0-100; 0 = disabled)
    */
   setAutomationAirtimeCutoffThreshold(threshold: number): void {
@@ -1968,39 +1975,95 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
-   * Load the persisted airtime cutoff threshold for this source from settings.
-   * Falls back to the default when unset or invalid.
+   * Set the airtime cutoff measurement source ('local' or 'neighbors').
    */
-  private async loadAirtimeCutoffThreshold(): Promise<void> {
+  setAutomationAirtimeCutoffSource(source: string): void {
+    const normalized: AirtimeCutoffSource = source === 'neighbors' ? 'neighbors' : 'local';
+    this.automationAirtimeCutoffSource = normalized;
+    this.neighborUtilCache = null; // force a fresh computation on the next check
+    logger.debug(`📡 Airtime cutoff source set to '${normalized}' for ${this.sourceId}`);
+  }
+
+  /**
+   * Load the persisted airtime cutoff settings (threshold + source) for this
+   * source. Falls back to defaults when unset or invalid.
+   */
+  private async loadAirtimeCutoffSettings(): Promise<void> {
     try {
       const saved = await databaseService.settings.getSettingForSource(this.sourceId, 'automationAirtimeCutoffThreshold');
       const parsed = saved != null ? parseInt(saved, 10) : NaN;
       this.automationAirtimeCutoffThreshold =
         Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? parsed : DEFAULT_AIRTIME_CUTOFF_THRESHOLD;
+
+      const savedSource = await databaseService.settings.getSettingForSource(this.sourceId, 'automationAirtimeCutoffSource');
+      this.automationAirtimeCutoffSource = savedSource === 'neighbors' ? 'neighbors' : DEFAULT_AIRTIME_CUTOFF_SOURCE;
+      this.neighborUtilCache = null;
+
       logger.debug(
-        `📡 Airtime cutoff threshold for ${this.sourceId}: ${this.automationAirtimeCutoffThreshold}%` +
+        `📡 Airtime cutoff for ${this.sourceId}: ${this.automationAirtimeCutoffThreshold}% ` +
+          `(source: ${this.automationAirtimeCutoffSource})` +
           (this.automationAirtimeCutoffThreshold === 0 ? ' (disabled)' : '')
       );
     } catch (error) {
-      logger.error(`Failed to load airtime cutoff threshold for ${this.sourceId}:`, error);
+      logger.error(`Failed to load airtime cutoff settings for ${this.sourceId}:`, error);
       this.automationAirtimeCutoffThreshold = DEFAULT_AIRTIME_CUTOFF_THRESHOLD;
+      this.automationAirtimeCutoffSource = DEFAULT_AIRTIME_CUTOFF_SOURCE;
     }
   }
 
   /**
-   * Whether automations are currently gated (paused) because the local node's
-   * self-reported Channel Utilization exceeds the configured cutoff threshold.
-   * Logs (throttled) the first time gating engages. Fail-open: never gates when
-   * the feature is disabled or no telemetry has been seen yet.
+   * Compute the Channel Utilization the cutoff should compare against, honoring
+   * the configured source. In 'neighbors' mode the value is the average ChUtil
+   * of the strongest-RSSI 0-hop infrastructure neighbours, cached briefly so the
+   * per-fire gate doesn't query the database on every automation.
    */
-  isAutomationAirtimeGated(): boolean {
-    const gated = shouldGateAutomations(this.localChannelUtilization, this.automationAirtimeCutoffThreshold);
+  private async getEffectiveChannelUtilization(): Promise<{ value: number | null; sampleCount: number }> {
+    if (this.automationAirtimeCutoffSource !== 'neighbors') {
+      return { value: this.localChannelUtilization, sampleCount: this.localChannelUtilization == null ? 0 : 1 };
+    }
+
+    const now = Date.now();
+    if (this.neighborUtilCache && now - this.neighborUtilCache.at < MeshtasticManager.NEIGHBOR_UTIL_TTL_MS) {
+      return { value: this.neighborUtilCache.value, sampleCount: this.neighborUtilCache.sampleCount };
+    }
+
+    let result: { value: number | null; sampleCount: number } = { value: null, sampleCount: 0 };
+    try {
+      const localNodeNum = this.localNodeInfo?.nodeNum;
+      const nodes = await databaseService.nodes.getActiveNodes(1, this.sourceId);
+      const candidates = nodes
+        .filter((n: any) => Number(n.nodeNum) !== localNodeNum)
+        .map((n: any) => ({
+          role: n.role,
+          hopsAway: n.hopsAway,
+          rssi: n.rssi,
+          channelUtilization: n.channelUtilization,
+        }));
+      result = averageStrongestNeighborUtilization(candidates, NEIGHBOR_UTIL_SAMPLE_COUNT);
+    } catch (error) {
+      logger.error(`Failed to compute neighbour airtime utilization for ${this.sourceId}:`, error);
+    }
+
+    this.neighborUtilCache = { value: result.value, sampleCount: result.sampleCount, at: now };
+    return result;
+  }
+
+  /**
+   * Whether automations are currently gated (paused) because the effective
+   * Channel Utilization exceeds the configured cutoff threshold. Logs (throttled)
+   * the first time gating engages. Fail-open: never gates when the feature is
+   * disabled or no utilization reading is available.
+   */
+  async isAutomationAirtimeGated(): Promise<boolean> {
+    const { value } = await this.getEffectiveChannelUtilization();
+    const gated = shouldGateAutomations(value, this.automationAirtimeCutoffThreshold);
     if (gated) {
       const now = Date.now();
       if (now - this.lastAirtimeGateLogTime > 60000) {
         this.lastAirtimeGateLogTime = now;
+        const sourceLabel = this.automationAirtimeCutoffSource === 'neighbors' ? 'neighbour-averaged' : 'local';
         logger.info(
-          `⏸️  Automations paused on ${this.sourceId}: Channel Utilization ${this.localChannelUtilization}% exceeds cutoff ${this.automationAirtimeCutoffThreshold}%`
+          `⏸️  Automations paused on ${this.sourceId}: ${sourceLabel} Channel Utilization ${value}% exceeds cutoff ${this.automationAirtimeCutoffThreshold}%`
         );
       }
     }
@@ -2008,15 +2071,25 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
-   * Current airtime-cutoff status for this source: the configured threshold,
-   * the local node's most recent Channel Utilization (or null if unknown), and
-   * whether automations are currently gated. Used by the Automation page banner.
+   * Current airtime-cutoff status for this source: the configured threshold and
+   * measurement source, the effective Channel Utilization (or null if unknown),
+   * the number of neighbours sampled (neighbours mode), and whether automations
+   * are currently gated. Used by the Automation page banner.
    */
-  getAirtimeCutoffStatus(): { threshold: number; channelUtilization: number | null; gated: boolean } {
+  async getAirtimeCutoffStatus(): Promise<{
+    threshold: number;
+    source: AirtimeCutoffSource;
+    channelUtilization: number | null;
+    sampleCount: number;
+    gated: boolean;
+  }> {
+    const { value, sampleCount } = await this.getEffectiveChannelUtilization();
     return {
       threshold: this.automationAirtimeCutoffThreshold,
-      channelUtilization: this.localChannelUtilization,
-      gated: shouldGateAutomations(this.localChannelUtilization, this.automationAirtimeCutoffThreshold),
+      source: this.automationAirtimeCutoffSource,
+      channelUtilization: value,
+      sampleCount,
+      gated: shouldGateAutomations(value, this.automationAirtimeCutoffThreshold),
     };
   }
 
@@ -2081,7 +2154,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // Airtime cutoff: skip remote admin scanning while the mesh is congested
-      if (this.isAutomationAirtimeGated()) {
+      if (await this.isAutomationAirtimeGated()) {
         return;
       }
 
@@ -2175,7 +2248,7 @@ class MeshtasticManager implements ISourceManager {
     }
 
     // Airtime cutoff: skip time sync while the mesh is congested
-    if (this.isAutomationAirtimeGated()) {
+    if (await this.isAutomationAirtimeGated()) {
       return;
     }
 
@@ -2307,7 +2380,7 @@ class MeshtasticManager implements ISourceManager {
     }
 
     // Airtime cutoff: skip key repair (NodeInfo exchanges) while the mesh is congested
-    if (this.isAutomationAirtimeGated()) {
+    if (await this.isAutomationAirtimeGated()) {
       return;
     }
 
@@ -2812,7 +2885,7 @@ class MeshtasticManager implements ISourceManager {
       const job = scheduleCron(trigger.cronExpression, async () => {
         logger.info(`⏱️ Timer "${trigger.name}" triggered (cron: ${trigger.cronExpression})`);
         // Airtime cutoff: skip timer automations while the mesh is congested
-        if (this.isAutomationAirtimeGated()) {
+        if (await this.isAutomationAirtimeGated()) {
           return;
         }
         const responseType = trigger.responseType || 'script'; // Default to script for backward compatibility
@@ -3042,7 +3115,7 @@ class MeshtasticManager implements ISourceManager {
   ): Promise<void> {
     try {
       // Airtime cutoff: skip geofence automations while the mesh is congested
-      if (this.isAutomationAirtimeGated()) {
+      if (await this.isAutomationAirtimeGated()) {
         return;
       }
 
@@ -8727,7 +8800,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // Airtime cutoff: skip while the mesh is congested
-      if (this.isAutomationAirtimeGated()) {
+      if (await this.isAutomationAirtimeGated()) {
         return;
       }
 
@@ -9036,7 +9109,7 @@ class MeshtasticManager implements ISourceManager {
     }
 
     // Airtime cutoff: skip auto-ping while the mesh is congested
-    if (this.isAutomationAirtimeGated()) {
+    if (await this.isAutomationAirtimeGated()) {
       return false;
     }
 
@@ -9399,7 +9472,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // Airtime cutoff: skip while the mesh is congested
-      if (this.isAutomationAirtimeGated()) {
+      if (await this.isAutomationAirtimeGated()) {
         return;
       }
 
@@ -10338,7 +10411,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // Airtime cutoff: skip while the mesh is congested
-      if (this.isAutomationAirtimeGated()) {
+      if (await this.isAutomationAirtimeGated()) {
         return;
       }
 
@@ -10882,7 +10955,7 @@ class MeshtasticManager implements ISourceManager {
     // Airtime cutoff: skip scheduled announcements while the mesh is congested.
     // Manual "Send Announcement" requests (triggeredByAutomation = false) are
     // always allowed through.
-    if (triggeredByAutomation && this.isAutomationAirtimeGated()) {
+    if (triggeredByAutomation && await this.isAutomationAirtimeGated()) {
       return;
     }
 
