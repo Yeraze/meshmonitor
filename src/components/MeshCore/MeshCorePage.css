@@ -471,6 +471,30 @@
   gap: 0.5rem;
 }
 
+.mc-date-separator {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  text-align: center;
+  margin: 0.5rem 0;
+}
+
+.mc-date-separator::before,
+.mc-date-separator::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--ctp-surface2);
+}
+
+.mc-date-separator-text {
+  padding: 0 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ctp-subtext0);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .mc-message-row {
   background: var(--ctp-surface0);
   border-radius: var(--radius-lg);
