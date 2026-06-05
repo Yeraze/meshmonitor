@@ -80,6 +80,7 @@ import {
 } from './constants/meshtastic.js';
 import { calculateDistance } from '../utils/distance.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
+import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
 import { logger } from '../utils/logger.js';
 import {
   nodeNumToId,
@@ -363,12 +364,17 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         if (!metrics || typeof metrics !== 'object') continue;
         for (const [key, val] of Object.entries(metrics)) {
           if (typeof val !== 'number') continue;
+          // Normalize to the canonical key serial ingestion uses (issue #3314),
+          // so MQTT-sourced environment/device metrics match the UI's expected
+          // keys instead of dotted forms like `environment.barometricPressure`.
+          const telemetryType = canonicalTelemetryType(groupName, key);
           const tel: DbTelemetry = {
             nodeId: fromNodeId,
             nodeNum: fromNum,
-            telemetryType: `${groupName}.${key}`,
+            telemetryType,
             timestamp: ts,
             value: val,
+            unit: canonicalTelemetryUnit(telemetryType),
             createdAt: ts,
             packetId,
             packetTimestamp: typeof t.time === 'number' ? t.time * 1000 : undefined,
