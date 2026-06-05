@@ -9,13 +9,18 @@ interface AirtimeCutoffSectionProps {
   baseUrl: string;
 }
 
+type AirtimeSource = 'local' | 'neighbors';
+
 interface AirtimeStatus {
   threshold: number;
+  source: AirtimeSource;
   channelUtilization: number | null;
+  sampleCount: number;
   gated: boolean;
 }
 
 const DEFAULT_THRESHOLD = 30;
+const DEFAULT_SOURCE: AirtimeSource = 'local';
 const STATUS_POLL_MS = 15000;
 
 /**
@@ -32,6 +37,8 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
 
   const [localThreshold, setLocalThreshold] = useState(DEFAULT_THRESHOLD);
   const [initialThreshold, setInitialThreshold] = useState<number | null>(null);
+  const [localSource, setLocalSource] = useState<AirtimeSource>(DEFAULT_SOURCE);
+  const [initialSource, setInitialSource] = useState<AirtimeSource | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [status, setStatus] = useState<AirtimeStatus | null>(null);
@@ -43,8 +50,11 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
         const settings = await res.json();
         const raw = parseInt(settings.automationAirtimeCutoffThreshold ?? String(DEFAULT_THRESHOLD), 10);
         const threshold = Number.isFinite(raw) && raw >= 0 && raw <= 100 ? raw : DEFAULT_THRESHOLD;
+        const source: AirtimeSource = settings.automationAirtimeCutoffSource === 'neighbors' ? 'neighbors' : DEFAULT_SOURCE;
         setLocalThreshold(threshold);
         setInitialThreshold(threshold);
+        setLocalSource(source);
+        setInitialSource(source);
       }
     } catch (error) {
       console.error('Failed to fetch airtime cutoff settings:', error);
@@ -74,9 +84,9 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
   }, [fetchStatus]);
 
   useEffect(() => {
-    if (initialThreshold === null) return;
-    setHasChanges(localThreshold !== initialThreshold);
-  }, [localThreshold, initialThreshold]);
+    if (initialThreshold === null || initialSource === null) return;
+    setHasChanges(localThreshold !== initialThreshold || localSource !== initialSource);
+  }, [localThreshold, initialThreshold, localSource, initialSource]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -84,10 +94,14 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
       const response = await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ automationAirtimeCutoffThreshold: String(localThreshold) }),
+        body: JSON.stringify({
+          automationAirtimeCutoffThreshold: String(localThreshold),
+          automationAirtimeCutoffSource: localSource,
+        }),
       });
       if (response.ok) {
         setInitialThreshold(localThreshold);
+        setInitialSource(localSource);
         setHasChanges(false);
         showToast(t('automation.airtime_cutoff.saved', 'Airtime cutoff settings saved'), 'success');
         fetchStatus();
@@ -99,11 +113,12 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
     } finally {
       setIsSaving(false);
     }
-  }, [baseUrl, csrfFetch, sourceQuery, localThreshold, showToast, t, fetchStatus]);
+  }, [baseUrl, csrfFetch, sourceQuery, localThreshold, localSource, showToast, t, fetchStatus]);
 
   const resetChanges = useCallback(() => {
     if (initialThreshold !== null) setLocalThreshold(initialThreshold);
-  }, [initialThreshold]);
+    if (initialSource !== null) setLocalSource(initialSource);
+  }, [initialThreshold, initialSource]);
 
   useSaveBar({
     id: 'airtime-cutoff',
@@ -117,6 +132,11 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
   const disabled = localThreshold === 0;
   const util = status?.channelUtilization;
   const gated = status?.gated ?? false;
+  const statusSource: AirtimeSource = status?.source ?? localSource;
+  const sampleCount = status?.sampleCount ?? 0;
+  const sourceLabel = statusSource === 'neighbors'
+    ? t('automation.airtime_cutoff.source_neighbors_label', 'neighbour-averaged')
+    : t('automation.airtime_cutoff.source_local_label', 'local');
 
   // Banner colour: red when paused, green when active, neutral when disabled/unknown.
   const bannerColor = disabled
@@ -162,10 +182,37 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
           {disabled
             ? t('automation.airtime_cutoff.status_disabled', 'Airtime cutoff is disabled (threshold 0).')
             : util == null
-              ? t('automation.airtime_cutoff.status_unknown', 'Waiting for the connected node to report Channel Utilization…')
+              ? (statusSource === 'neighbors'
+                  ? t('automation.airtime_cutoff.status_unknown_neighbors', 'Waiting for 0-hop infrastructure (router) neighbours to report Channel Utilization…')
+                  : t('automation.airtime_cutoff.status_unknown', 'Waiting for the connected node to report Channel Utilization…'))
               : gated
-                ? t('automation.airtime_cutoff.status_paused', '⏸ Automations paused — Channel Utilization {{util}}% exceeds {{threshold}}%.', { util, threshold: status?.threshold ?? localThreshold })
-                : t('automation.airtime_cutoff.status_active', '✓ Automations active — Channel Utilization {{util}}% is under {{threshold}}%.', { util, threshold: status?.threshold ?? localThreshold })}
+                ? t('automation.airtime_cutoff.status_paused', '⏸ Automations paused — {{source}} Channel Utilization {{util}}% exceeds {{threshold}}%.', { source: sourceLabel, util, threshold: status?.threshold ?? localThreshold })
+                : t('automation.airtime_cutoff.status_active', '✓ Automations active — {{source}} Channel Utilization {{util}}% is under {{threshold}}%.', { source: sourceLabel, util, threshold: status?.threshold ?? localThreshold })}
+          {!disabled && util != null && statusSource === 'neighbors' && (
+            <span style={{ fontWeight: 400, opacity: 0.85 }}>
+              {' '}{t('automation.airtime_cutoff.status_neighbors_suffix', '(averaged from {{count}} infrastructure node(s))', { count: sampleCount })}
+            </span>
+          )}
+        </div>
+
+        {/* Measurement source */}
+        <div className="setting-item">
+          <label htmlFor="airtimeCutoffSource">
+            {t('automation.airtime_cutoff.source_label', 'Measure Channel Utilization from')}
+            <span className="setting-description">
+              {t('automation.airtime_cutoff.source_hint',
+                'Local node uses the connected node\'s own Channel Utilization. Nearby infrastructure averages the Channel Utilization of the 3 strongest-RSSI directly-heard router/repeater nodes — useful when your node is well-placed and under-reports the wider mesh.')}
+            </span>
+          </label>
+          <select
+            id="airtimeCutoffSource"
+            value={localSource}
+            onChange={(e) => setLocalSource(e.target.value === 'neighbors' ? 'neighbors' : 'local')}
+            className="setting-input"
+          >
+            <option value="local">{t('automation.airtime_cutoff.source_local_option', 'Local node (own Channel Utilization)')}</option>
+            <option value="neighbors">{t('automation.airtime_cutoff.source_neighbors_option', 'Nearby infrastructure (avg of 3 strongest routers)')}</option>
+          </select>
         </div>
 
         {/* Threshold input */}
