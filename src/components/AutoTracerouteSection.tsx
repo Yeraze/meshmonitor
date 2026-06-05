@@ -19,6 +19,7 @@ interface Node {
   longName?: string;
   shortName?: string;
   lastHeard?: number;
+  hopsAway?: number;
   role?: number;
   hwModel?: number;
   channel?: number;
@@ -406,6 +407,40 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   const matchingNodes = useMemo(() => {
     if (!filterEnabled) return availableNodes;
 
+    // Apply AND pre-filters (last heard, hop range) to narrow the candidate pool first
+    let candidatePool = availableNodes;
+
+    if (filterLastHeardEnabled) {
+      const lastHeardCutoff = Math.floor(Date.now() / 1000) - (filterLastHeardHours * 3600);
+      candidatePool = candidatePool.filter(n =>
+        n.lastHeard != null && n.lastHeard >= lastHeardCutoff
+      );
+    }
+
+    if (filterHopsEnabled) {
+      candidatePool = candidatePool.filter(n => {
+        const hops = n.hopsAway ?? 1;
+        return hops >= filterHopsMin && hops <= filterHopsMax;
+      });
+    }
+
+    // Check if any OR filter is actually configured (mirrors backend hasAnyFilter logic)
+    let regexMatcherForCheck: RegExp | null = null;
+    if (filterRegexEnabled && filterNameRegex && filterNameRegex !== '.*') {
+      try { regexMatcherForCheck = new RegExp(filterNameRegex, 'i'); } catch { /* invalid */ }
+    }
+    const hasAnyOrFilter =
+      (filterNodesEnabled && selectedNodeNums.length > 0) ||
+      (filterChannelsEnabled && filterChannels.length > 0) ||
+      (filterRolesEnabled && filterRoles.length > 0) ||
+      (filterHwModelsEnabled && filterHwModels.length > 0) ||
+      (filterRegexEnabled && (regexMatcherForCheck !== null || filterNameRegex === '.*'));
+
+    if (!hasAnyOrFilter) {
+      // Only AND filters active — return the entire candidate pool
+      return candidatePool;
+    }
+
     const matchingNodeNums = new Set<number>();
 
     // Add specific nodes (only if this filter is enabled)
@@ -415,13 +450,13 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
 
     // Add nodes matching channel filter (only if this filter is enabled)
     if (filterChannelsEnabled && filterChannels.length > 0) {
-      availableNodes.filter(n => filterChannels.includes(n.channel ?? -1))
+      candidatePool.filter(n => filterChannels.includes(n.channel ?? -1))
         .forEach(n => matchingNodeNums.add(n.nodeNum));
     }
 
     // Add nodes matching role filter (only if this filter is enabled)
     if (filterRolesEnabled && filterRoles.length > 0) {
-      availableNodes.filter(n => {
+      candidatePool.filter(n => {
         const role = getNodeRole(n);
         return role !== undefined && filterRoles.includes(role);
       }).forEach(n => matchingNodeNums.add(n.nodeNum));
@@ -429,7 +464,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
 
     // Add nodes matching hardware model filter (only if this filter is enabled)
     if (filterHwModelsEnabled && filterHwModels.length > 0) {
-      availableNodes.filter(n => {
+      candidatePool.filter(n => {
         const hwModel = getNodeHwModel(n);
         return hwModel !== undefined && filterHwModels.includes(hwModel);
       }).forEach(n => matchingNodeNums.add(n.nodeNum));
@@ -439,7 +474,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     if (filterRegexEnabled && filterNameRegex && filterNameRegex !== '.*') {
       try {
         const regex = new RegExp(filterNameRegex, 'i');
-        availableNodes.filter(n => {
+        candidatePool.filter(n => {
           const name = n.longName || n.user?.longName || n.shortName || n.user?.shortName || n.nodeId || '';
           return regex.test(name);
         }).forEach(n => matchingNodeNums.add(n.nodeNum));
@@ -447,14 +482,15 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         // Invalid regex, ignore
       }
     } else if (filterRegexEnabled && filterNameRegex === '.*') {
-      // Match all - add all nodes
-      availableNodes.forEach(n => matchingNodeNums.add(n.nodeNum));
+      // Match all - add all nodes from candidate pool
+      candidatePool.forEach(n => matchingNodeNums.add(n.nodeNum));
     }
 
-    // Return full node objects for matching node nums
-    return availableNodes.filter(n => matchingNodeNums.has(n.nodeNum));
+    // Return nodes that are both in the candidate pool and match an OR filter
+    return candidatePool.filter(n => matchingNodeNums.has(n.nodeNum));
   }, [filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, availableNodes,
-      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled]);
+      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled,
+      filterLastHeardEnabled, filterLastHeardHours, filterHopsEnabled, filterHopsMin, filterHopsMax]);
 
   // Debounced matching nodes for preview (1 second delay)
   const [debouncedMatchingNodes, setDebouncedMatchingNodes] = useState<Node[]>([]);
