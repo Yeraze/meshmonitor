@@ -39,6 +39,7 @@ When enabled, MeshMonitor monitors all incoming messages for patterns matching t
 - **`{NODE_ID}`**: Sender's node ID (e.g., "!a1b2c3d4")
 - **`{SNR}`**: Signal-to-Noise Ratio in dB (e.g., "7.5")
 - **`{RSSI}`**: Received Signal Strength Indicator in dBm (e.g., "-95")
+- **`{LAST_HOP}`**: Short name of the last relay node (e.g., "RLY1"); falls back to the hex byte (e.g., "0x4F") when the relay isn't in the node database, or "unknown" when there's no relay info
 - **`{VERSION}`**: MeshMonitor version
 - **`{DURATION}`**: System uptime
 - **`{FEATURES}`**: Enabled automation features
@@ -754,6 +755,7 @@ When using Script responses, you can pass command-line arguments to scripts via 
 | `{HOPS}` | Message hop count | `2` |
 | `{SNR}` | Signal-to-noise ratio | `7.5` |
 | `{RSSI}` | Signal strength | `-95` |
+| `{LAST_HOP}` | Last relay node (short name → hex byte → `unknown`) | `RLY1` |
 
 **Example Configuration:**
 ```
