@@ -14,6 +14,70 @@
 export const DEFAULT_AIRTIME_CUTOFF_THRESHOLD = 30;
 
 /**
+ * Where the airtime cutoff reads Channel Utilization from:
+ *  - `local`     — the locally-connected node's own self-reported ChUtil (default)
+ *  - `neighbors` — the average ChUtil of the strongest-RSSI 0-hop infrastructure
+ *                  (router-role) neighbours, for nodes whose local ChUtil
+ *                  under-represents the mesh (e.g. a well-placed/quiet node).
+ */
+export type AirtimeCutoffSource = 'local' | 'neighbors';
+
+/** Default measurement source. */
+export const DEFAULT_AIRTIME_CUTOFF_SOURCE: AirtimeCutoffSource = 'local';
+
+/** How many of the strongest-RSSI infrastructure neighbours to average. */
+export const NEIGHBOR_UTIL_SAMPLE_COUNT = 3;
+
+/**
+ * Device roles considered routing "infrastructure" (Meshtastic
+ * Config.DeviceConfig.Role): Router (2), Router Client (3, deprecated),
+ * Repeater (4, deprecated), Router Late (11).
+ */
+export const INFRASTRUCTURE_ROLES: ReadonlySet<number> = new Set([2, 3, 4, 11]);
+
+/** A node considered as a possible infrastructure neighbour. */
+export interface NeighborUtilCandidate {
+  role?: number | null;
+  hopsAway?: number | null;
+  rssi?: number | null;
+  channelUtilization?: number | null;
+}
+
+/**
+ * Average the Channel Utilization of the strongest-RSSI 0-hop infrastructure
+ * neighbours. Candidates must be an infrastructure role, directly heard
+ * (`hopsAway === 0`), and have both an RSSI and a Channel Utilization reading.
+ * The strongest `count` (highest/least-negative RSSI) are averaged.
+ *
+ * @returns the averaged ChUtil (or null if no candidate qualifies) and how many
+ *   neighbours contributed to the average.
+ */
+export function averageStrongestNeighborUtilization(
+  nodes: NeighborUtilCandidate[],
+  count: number = NEIGHBOR_UTIL_SAMPLE_COUNT
+): { value: number | null; sampleCount: number } {
+  const candidates = nodes.filter(
+    (n) =>
+      n.role != null &&
+      INFRASTRUCTURE_ROLES.has(n.role) &&
+      n.hopsAway === 0 &&
+      typeof n.rssi === 'number' &&
+      Number.isFinite(n.rssi) &&
+      typeof n.channelUtilization === 'number' &&
+      Number.isFinite(n.channelUtilization)
+  );
+
+  // Strongest RSSI first (higher dBm = stronger, e.g. -50 beats -90).
+  candidates.sort((a, b) => (b.rssi as number) - (a.rssi as number));
+
+  const top = candidates.slice(0, Math.max(0, count));
+  if (top.length === 0) return { value: null, sampleCount: 0 };
+
+  const sum = top.reduce((acc, n) => acc + (n.channelUtilization as number), 0);
+  return { value: sum / top.length, sampleCount: top.length };
+}
+
+/**
  * Decide whether automations should be gated (paused) right now.
  *
  * Fail-open by design:

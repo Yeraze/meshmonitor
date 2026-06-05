@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Features
+
+- **Airtime cutoff — neighbour-averaged source**: The airtime-utilization cutoff (Automation page) can now measure Channel Utilization from *nearby infrastructure* instead of the local node. In "Nearby infrastructure" mode it averages the Channel Utilization of the 3 strongest-RSSI directly-heard (0-hop) router/repeater nodes — useful when a well-placed node under-reports the wider mesh. Default remains the local node's own Channel Utilization; the live banner shows which source is in use and how many neighbours were sampled.
+
 ## [4.9.0] - 2026-06-05
 
 # MeshMonitor v4.9.0
