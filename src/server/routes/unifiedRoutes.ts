@@ -13,6 +13,7 @@ import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { PortNum, CHANNEL_DB_OFFSET, modemPresetChannelName } from '../constants/meshtastic.js';
 import { filterPacketsByPermissions, getAllowedChannels } from './packetPermissions.js';
+import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
 import type { DbChannelDatabase, DbPacketLog } from '../../db/types.js';
 import type { DbMeshCorePacket } from '../../db/repositories/meshcore.js';
 
@@ -1116,13 +1117,43 @@ router.get('/status', async (req: Request, res: Response) => {
         : false);
       if (canRead) allowedIds.push(source.id);
     }
-    // Distinct counts across permitted sources. `activeNodeCount` mirrors the
-    // per-source endpoint (issue #2883) using the same 2h window so the
+
+    // MeshCore nodes live in per-source in-memory managers (meshcoreManagerRegistry),
+    // not the shared `nodes` table — count them separately using the same 2h
+    // active window as the per-source /status endpoint (issue #3321).
+    const meshcoreAllowedIds = allowedIds.filter(
+      (id) => sources.find((s) => s.id === id)?.type === 'meshcore',
+    );
+    const meshtasticAllowedIds = allowedIds.filter(
+      (id) => sources.find((s) => s.id === id)?.type !== 'meshcore',
+    );
+
+    const activeCutoffMs = Date.now() - 7_200_000;
+    let mcNodeCount = 0;
+    let mcActiveNodeCount = 0;
+    for (const id of meshcoreAllowedIds) {
+      const mcManager = meshcoreManagerRegistry.get(id);
+      if (mcManager) {
+        const all = mcManager.getAllNodes();
+        mcNodeCount += all.length;
+        const localHasLastHeard = mcManager.getLocalNode()?.lastHeard != null;
+        mcActiveNodeCount += all.filter((n: any, i: number) => {
+          if (i === 0 && mcManager.getLocalNode() && !localHasLastHeard) return true;
+          return typeof n.lastHeard === 'number' && n.lastHeard >= activeCutoffMs;
+        }).length;
+      }
+    }
+
+    // Distinct counts across permitted non-MeshCore sources. `activeNodeCount` mirrors
+    // the per-source endpoint (issue #2883) using the same 2h window so the
     // Unified card and individual source cards line up.
-    const [nodeCount, activeNodeCount] = await Promise.all([
-      databaseService.nodes.getDistinctNodeCount(allowedIds),
-      databaseService.nodes.getDistinctActiveNodeCount(allowedIds),
+    const [meshtasticNodeCount, meshtasticActiveNodeCount] = await Promise.all([
+      databaseService.nodes.getDistinctNodeCount(meshtasticAllowedIds),
+      databaseService.nodes.getDistinctActiveNodeCount(meshtasticAllowedIds),
     ]);
+
+    const nodeCount = meshtasticNodeCount + mcNodeCount;
+    const activeNodeCount = meshtasticActiveNodeCount + mcActiveNodeCount;
 
     res.json({ nodeCount, activeNodeCount, connected: anyConnected });
   } catch (error) {
