@@ -274,4 +274,40 @@ describe.skipIf(!postgresAvailable)('TelemetryRepository - PostgreSQL Backend', 
     expect(result!.nodeId).toBe(NODE1);
     console.log('✓ PostgreSQL: getLatestTelemetryForType isolates by node');
   });
+
+  // Regression for #3312: the averaged query ORDER BY referenced the bare
+  // `timestamp` alias, which PostgreSQL bound to the ungrouped raw column and
+  // rejected with "column telemetry.timestamp must appear in the GROUP BY
+  // clause" — surfacing as a 500 from GET /api/telemetry/:nodeId on PG.
+  it('averages continuous telemetry into time buckets without a GROUP BY error (PostgreSQL)', async () => {
+    if (!pgAvailable) {
+      console.log('⚠ Skipped: PostgreSQL not available');
+      return;
+    }
+
+    const BUCKET = 60 * 60 * 1000; // 1-hour buckets
+    const base = Math.floor(NOW / BUCKET) * BUCKET;
+
+    // Two readings in the -3h bucket (avg 15), one each in the -2h and -1h buckets.
+    await insertTelemetry(NODE1, NODE1_NUM, 'temperature', base - 3 * BUCKET + 1000, 10);
+    await insertTelemetry(NODE1, NODE1_NUM, 'temperature', base - 3 * BUCKET + 2000, 20);
+    await insertTelemetry(NODE1, NODE1_NUM, 'temperature', base - 2 * BUCKET + 1000, 30);
+    await insertTelemetry(NODE1, NODE1_NUM, 'temperature', base - 1 * BUCKET + 1000, 40);
+
+    // Must not throw on PostgreSQL.
+    const rows = await repo.getTelemetryByNodeAveragedSql(
+      NODE1,
+      base - 6 * BUCKET, // since
+      60,                // intervalMinutes
+      undefined,         // maxHours
+      undefined          // sourceId
+    );
+
+    // One row per bucket, newest-first, with the -3h bucket averaged.
+    expect(rows).toHaveLength(3);
+    expect(rows.map((r) => r.value)).toEqual([40, 30, 15]);
+    expect(rows[0].timestamp).toBeGreaterThan(rows[1].timestamp);
+    expect(rows[1].timestamp).toBeGreaterThan(rows[2].timestamp);
+    console.log('✓ PostgreSQL: getTelemetryByNodeAveragedSql buckets + orders without GROUP BY error');
+  });
 });

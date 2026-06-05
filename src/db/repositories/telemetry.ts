@@ -1005,7 +1005,17 @@ export class TelemetryRepository extends BaseRepository {
     }
 
     // Bucket start in ms. FLOOR(timestamp / intervalMs) * intervalMs.
-    const bucketExpr = sql<number>`(FLOOR(${telemetry.timestamp} / ${intervalMs}) * ${intervalMs})`;
+    //
+    // intervalMs is inlined as a literal rather than a bound parameter on
+    // purpose: PostgreSQL's GROUP BY functional-dependency check compares the
+    // SELECT expression against the GROUP BY expression structurally, and two
+    // distinct parameter placeholders ($1 in SELECT vs $N in GROUP BY) are
+    // treated as different expressions even when they carry the same value — so
+    // a parameterised bucket is rejected with "column telemetry.timestamp must
+    // appear in the GROUP BY clause" (#3312). intervalMs is a server-computed
+    // integer (intervalMinutes * 60_000), so inlining it is safe.
+    const intervalLiteral = sql.raw(String(intervalMs));
+    const bucketExpr = sql<number>`(FLOOR(${telemetry.timestamp} / ${intervalLiteral}) * ${intervalLiteral})`;
 
     const averagedRows = await this.db
       .select({
@@ -1026,7 +1036,9 @@ export class TelemetryRepository extends BaseRepository {
         bucketExpr,
         telemetry.unit
       )
-      .orderBy(sql`timestamp DESC`);
+      // Order by the (grouped) bucket expression, not the bare `timestamp`
+      // alias — on PostgreSQL the latter binds to the ungrouped raw column.
+      .orderBy(sql`${bucketExpr} DESC`);
 
     const rawRows = await this.db
       .select({
