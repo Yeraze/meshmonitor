@@ -260,6 +260,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     sample = sample.replace(/{SNR}/g, '7.5');
     sample = sample.replace(/{RSSI}/g, '-95');
     sample = sample.replace(/{TRANSPORT}/g, 'LoRa'); // Sample transport type
+    sample = sample.replace(/{LAST_HOP}/g, isDirect ? 'unknown' : 'RLY1'); // Relay short name (no relay on direct)
 
     return sample;
   };
@@ -718,7 +719,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
                 <label htmlFor="autoAckMessage" style={{ display: 'block', marginBottom: '0.5rem' }}>
                   {t('automation.auto_ack.message_multihop')}
                   <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
-                    {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{NUMBER_HOPS}'}, {'{HOPS}'}, {'{RABBIT_HOPS}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{TOTALNODES}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'}, {'{RSSI}'}, {'{TRANSPORT}'}
+                    {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{NUMBER_HOPS}'}, {'{HOPS}'}, {'{RABBIT_HOPS}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{TOTALNODES}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'}, {'{RSSI}'}, {'{TRANSPORT}'}, {'{LAST_HOP}'}
                   </span>
                 </label>
                 <textarea
