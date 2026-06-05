@@ -24,6 +24,7 @@ import { MessageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { shouldGateAutomations, DEFAULT_AIRTIME_CUTOFF_THRESHOLD } from './utils/airtimeCutoff.js';
+import { resolveLastHopName } from './utils/lastHop.js';
 import { canonicalMessageTime } from './utils/messageTime.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
@@ -8931,7 +8932,7 @@ class MeshtasticManager implements ISourceManager {
         const receivedTime = formatTime(timestamp, timeFormat as '12' | '24');
 
         // Replace tokens in the message template
-        const ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi, message.viaMqtt);
+        const ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi, message.viaMqtt, false, message.relayNode);
 
         // Don't make it a reply if we're changing channels (DM when triggered by channel message)
         const replyId = (alwaysUseDM && !isDirectMessage) ? undefined : packetId;
@@ -9654,7 +9655,7 @@ class MeshtasticManager implements ISourceManager {
             url = await this.replaceAcknowledgementTokens(
               url, nodeId, message.fromNodeNum, hopsTraveled,
               receivedDate, receivedTime, message.channel, isDirectMessage,
-              message.rxSnr, message.rxRssi, message.viaMqtt, true
+              message.rxSnr, message.rxRssi, message.viaMqtt, true, message.relayNode
             );
 
             logger.debug(`🌐 Fetching HTTP response from: ${url}`);
@@ -9685,7 +9686,7 @@ class MeshtasticManager implements ISourceManager {
               logger.debug(`📥 HTTP response received: ${responseText.substring(0, 50)}...`);
 
               // Replace Auto Acknowledge tokens in HTTP response (Issue #1159)
-              responseText = await this.replaceAcknowledgementTokens(responseText, nodeId, message.fromNodeNum, hopsTraveled, receivedDate, receivedTime, message.channel, isDirectMessage, message.rxSnr, message.rxRssi, message.viaMqtt);
+              responseText = await this.replaceAcknowledgementTokens(responseText, nodeId, message.fromNodeNum, hopsTraveled, receivedDate, receivedTime, message.channel, isDirectMessage, message.rxSnr, message.rxRssi, message.viaMqtt, false, message.relayNode);
             } catch (error: any) {
               if (error.name === 'AbortError') {
                 logger.debug('⏭️  HTTP request timed out after 5 seconds');
@@ -9763,7 +9764,7 @@ class MeshtasticManager implements ISourceManager {
                 const expandedArgs = await this.replaceAcknowledgementTokens(
                   trigger.scriptArgs, nodeId, message.fromNodeNum, hopsTraveled,
                   receivedDate, receivedTime, message.channel, isDirectMessage,
-                  message.rxSnr, message.rxRssi, message.viaMqtt
+                  message.rxSnr, message.rxRssi, message.viaMqtt, false, message.relayNode
                 );
                 scriptArgsList = this.parseScriptArgs(expandedArgs);
                 logger.debug(`🤖 Script args expanded: ${trigger.scriptArgs} -> ${JSON.stringify(scriptArgsList)}`);
@@ -9993,7 +9994,7 @@ class MeshtasticManager implements ISourceManager {
             });
 
             // Replace Auto Acknowledge tokens in text response (Issue #1159)
-            responseText = await this.replaceAcknowledgementTokens(responseText, nodeId, message.fromNodeNum, hopsTraveled, receivedDate, receivedTime, message.channel, isDirectMessage, message.rxSnr, message.rxRssi, message.viaMqtt);
+            responseText = await this.replaceAcknowledgementTokens(responseText, nodeId, message.fromNodeNum, hopsTraveled, receivedDate, receivedTime, message.channel, isDirectMessage, message.rxSnr, message.rxRssi, message.viaMqtt, false, message.relayNode);
           }
 
           const multilineEnabled = trigger.multiline || false;
@@ -11166,7 +11167,29 @@ class MeshtasticManager implements ISourceManager {
     return this.replaceAnnouncementTokens(message);
   }
 
-  private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, date: string, time: string, channelIndex: number, isDirectMessage: boolean, rxSnr?: number, rxRssi?: number, viaMqtt?: boolean, urlEncode: boolean = false): Promise<string> {
+  /**
+   * Resolve the {LAST_HOP} relay node value to a display name (short name →
+   * hex byte → 'unknown'), matching the Packet Monitor. Issue #3318.
+   */
+  private async getLastHopName(relayNode?: number | null): Promise<string> {
+    if (relayNode == null || relayNode === 0) return 'unknown';
+    try {
+      const nodes = await databaseService.nodes.getActiveNodes(7, this.sourceId);
+      return resolveLastHopName(relayNode, nodes.map((n: any) => ({
+        nodeNum: Number(n.nodeNum),
+        shortName: n.shortName,
+        role: n.role,
+        hopsAway: n.hopsAway,
+        lastHeard: n.lastHeard,
+      })));
+    } catch (error) {
+      logger.error('Failed to resolve {LAST_HOP} relay name:', error);
+      // Fall back to the hex byte rather than leaking the raw token.
+      return resolveLastHopName(relayNode, []);
+    }
+  }
+
+  private async replaceAcknowledgementTokens(message: string, nodeId: string, fromNum: number, numberHops: number, date: string, time: string, channelIndex: number, isDirectMessage: boolean, rxSnr?: number, rxRssi?: number, viaMqtt?: boolean, urlEncode: boolean = false, relayNode?: number | null): Promise<string> {
     // Start with base announcement tokens (includes {IP}, {PORT}, {VERSION}, {DURATION}, {FEATURES}, {NODECOUNT}, {DIRECTCOUNT})
     let result = await this.replaceAnnouncementTokens(message, urlEncode);
     const encode = (v: string) => urlEncode ? encodeURIComponent(v) : v;
@@ -11252,6 +11275,12 @@ class MeshtasticManager implements ISourceManager {
     if (result.includes('{TRANSPORT}')) {
       const transport = viaMqtt === true ? 'MQTT' : 'LoRa';
       result = result.replace(/{TRANSPORT}/g, encode(transport));
+    }
+
+    // {LAST_HOP} - Short name of the last relay node (hex byte / 'unknown' fallback)
+    if (result.includes('{LAST_HOP}')) {
+      const lastHop = await this.getLastHopName(relayNode);
+      result = result.replace(/{LAST_HOP}/g, encode(lastHop));
     }
 
     return result;
