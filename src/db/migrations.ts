@@ -91,6 +91,7 @@ import { migration as meshcoreNeighborInfoMigration, runMigration073Postgres, ru
 import { migration as addShowWaypointsToMapPrefsMigration, runMigration074Postgres, runMigration074Mysql } from '../server/migrations/074_add_show_waypoints_to_map_prefs.js';
 import { migration as meshcorePacketLogMigration, runMigration075Postgres, runMigration075Mysql } from '../server/migrations/075_meshcore_packet_log.js';
 import { migration as lowBatteryColumnsMigration, runMigration076Postgres, runMigration076Mysql } from '../server/migrations/076_add_low_battery_columns.js';
+import { migration as meshcorePacketLogBigintMigration, runMigration077Postgres, runMigration077Mysql } from '../server/migrations/077_meshcore_packet_log_bigint_timestamp.js';
 
 // ============================================================================
 // Registry
@@ -1212,4 +1213,19 @@ registry.register({
   sqlite: (db) => lowBatteryColumnsMigration.up(db),
   postgres: (client) => runMigration076Postgres(client),
   mysql: (pool) => runMigration076Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 077: Widen meshcore_packet_log.timestamp/createdAt to BIGINT on
+// PostgreSQL/MySQL. They held ms-epoch values that overflow 32-bit INTEGER,
+// breaking the retention cleanup DELETE with SQLSTATE 22003. SQLite no-op.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 77,
+  name: 'meshcore_packet_log_bigint_timestamp',
+  settingsKey: 'migration_077_meshcore_packet_log_bigint_timestamp',
+  sqlite: (db) => meshcorePacketLogBigintMigration.up(db),
+  postgres: (client) => runMigration077Postgres(client),
+  mysql: (pool) => runMigration077Mysql(pool),
 });
