@@ -242,7 +242,8 @@ MeshMonitor supports multiple deployment methods:
 - **Modern UI** - Catppuccin theme with message reactions and threading
 - **Interactive Maps** - Unified node positions and network topology visualization across all sources
 - **Multi-Database Support** - SQLite (default), PostgreSQL, and MySQL via Drizzle ORM
-- **Notifications** - Web Push and Apprise integration for 100+ services
+- **Notifications** - Web Push and Apprise integration for 100+ services, with inactive-node and low-battery alerts
+- **Automation** - Autoresponders, scheduled announcements, timers, and geofence triggers with rich message templates, plus an airtime-utilization cutoff that automatically pauses bot traffic when the mesh is busy
 - **Authentication** - Local, OIDC/SSO, and reverse proxy authentication with RBAC
 - **Security Monitoring** - Encryption key analysis and vulnerability detection
 - **Device Configuration** - Full node configuration UI

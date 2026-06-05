@@ -6,15 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.9.0] - 2026-06-05
+
+# MeshMonitor v4.9.0
+
+Feature release adding **low-battery alerts** for monitored nodes, an **airtime-utilization cutoff** that automatically pauses bot automations when the mesh is busy with real traffic, a **time-range selector** for the Device Info telemetry graphs, and a **`{LAST_HOP}`** automation template variable — plus authoritative **ignored-node re-application** and fixes to MQTT telemetry ingestion, MeshCore, and the API rate limiter.
+
 ### Features
 
-- feat(telemetry): add a time-range selector (15m–7d) to the Device Info telemetry graphs for the locally connected node. The selected window is remembered per browser.
+- **Low-battery alerts (#3305)**: New per-user notification that fires when a monitored Meshtastic node's battery drops below a configurable threshold, delivered through the existing notification fan-out (Apprise / Web Push / Desktop). Reuses the inactive-node monitored-nodes list; threshold, check interval, and cooldown are configurable, with per-user/source rate limiting and `nodes:read` permission gating.
+- **Airtime utilization cutoff (#3311)**: A new "Cutoff Airtime Utilization Threshold" (default 30%) on the Automation page. When the connected node's self-reported Channel Utilization exceeds the threshold, all transmitting automations (auto-traceroute, auto-announce, auto-ack, auto-ping, auto-responder, auto-welcome, timers, geofence, time-sync, remote-admin-scan, key-repair) pause so bots stop adding traffic while real activity is heavy, then resume automatically once utilization drops. A live banner shows current utilization and whether automations are paused. Manual sends are never blocked.
+- **Telemetry time-range selector (#3312)**: A time-range selector (15m–7d) on the Device Info telemetry graphs for the locally connected node; the selected window is remembered per browser.
+- **`{LAST_HOP}` automation variable (#3318)**: New template variable for autoresponder and auto-ack messages that resolves the last relay node — short name when known, hex byte when the relay isn't in the node database, or `unknown` when there's no relay info — matching the Packet Monitor display logic.
+- **Ignored nodes auto-reapply (#2601)**: The per-source ignore list is now authoritative. When a device's on-board node database fills up it silently drops ignores and reports the node as un-ignored; MeshMonitor now re-applies the ignore flag for any listed node that reappears without it — for both newly discovered and existing nodes, across SQLite/PostgreSQL/MySQL. The ignore is also re-pushed to the locally-connected node (a local admin command, no mesh traffic) so the radio resumes blackholing the node's packets at the firmware level, with a per-node cooldown to avoid command storms.
+- **MeshCore message date separators (#3316)**: MeshCore chat now shows date separators between messages from different days.
 
 ### Fixes
 
-- fix(telemetry): repair the averaged telemetry graph query on PostgreSQL. The bucket interval was passed as a bound parameter, so PostgreSQL's `GROUP BY` functional-dependency check treated the SELECT bucket and the GROUP BY bucket as different expressions and rejected the query (`column telemetry.timestamp must appear in the GROUP BY clause`) — returning HTTP 500 from `GET /api/telemetry/:nodeId` on Postgres-backed deployments. The interval is now inlined as a literal and the query orders by the grouped bucket expression. Adds a PostgreSQL regression test exercising the averaged query.
-- fix(telemetry): scale graph averaging to a manageable point count for any window on all database backends. Previously PostgreSQL/MySQL returned only the newest ~5000 rows with no averaging, so long windows (e.g. "Last 168 hours") were silently truncated to roughly the most recent 12 hours on chatty nodes. Short windows now keep near-full resolution while long windows return the full history downsampled.
-- **Ignored nodes auto-reapply (#2601)**: The per-source ignore list is now authoritative. When a device's on-board node database fills up it silently drops ignores and reports the node as un-ignored; MeshMonitor now re-applies the ignore flag for any listed node that reappears without it — for both newly discovered and existing nodes, across SQLite/PostgreSQL/MySQL. Previously the flag was only restored for nodes that had been fully pruned and rediscovered. In addition, the ignore is re-pushed to the locally-connected node (a local admin command, no mesh traffic) so the radio resumes blackholing the node's packets at the firmware level, with a per-node cooldown to avoid command storms.
+- **MQTT telemetry key normalization (#3314)**: Environment/device/air-quality/power metrics ingested via MQTT were stored under group-prefixed protobuf keys (e.g. `environment.barometricPressure`) instead of the canonical short keys used by serial ingestion (`pressure`), leaving MQTT-sourced environment data invisible in the UI graphs. MQTT now writes the canonical keys and units, and a migration rewrites existing dotted rows so historical data becomes visible.
+- **Averaged telemetry graph query on PostgreSQL (#3312)**: The averaged query passed the time-bucket interval as a bound parameter, so PostgreSQL's `GROUP BY` functional-dependency check treated the SELECT and GROUP BY buckets as different expressions and rejected it (`column telemetry.timestamp must appear in the GROUP BY clause`) — returning HTTP 500 from `GET /api/telemetry/:nodeId` on Postgres-backed deployments. The interval is now inlined as a literal and the query orders by the grouped bucket expression. A PostgreSQL regression test (run against the CI `postgres:16` service) now covers the averaged query.
+- **Telemetry graph averaging (#3312)**: Graph averaging now scales to a manageable point count for any window on all database backends. Previously PostgreSQL/MySQL returned only the newest ~5000 rows with no averaging, so long windows (e.g. "Last 168 hours") were silently truncated to roughly the most recent 12 hours on chatty nodes. Short windows keep near-full resolution while long windows return the full history downsampled.
+- **MeshCore packet log timestamps (#3317)**: Widened `meshcore_packet_log` timestamp/createdAt columns to BIGINT to avoid overflow.
+- **MeshCore sidebar icons (#3306)**: Use lucide sidebar icons matching the MQTT/Meshtastic styling.
+- **PWA chat input (#3307)**: Removed dead space below the chat input in the installed PWA.
+- **API rate limiter (#3309)**: Exempt RFC 1918 / loopback IPs from the API rate limiter so local/reverse-proxy traffic isn't throttled.
+- **Apprise configuration (#3321)**: Fixed a UNIQUE constraint error when configuring Apprise for a source.
+- **Unified node count (#3321)**: Include MeshCore nodes in the unified source node count.
 
 ## [4.8.3] - 2026-06-02
 
