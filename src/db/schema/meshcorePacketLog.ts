@@ -1,6 +1,6 @@
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, real as pgReal } from 'drizzle-orm/pg-core';
-import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, serial as mySerial, text as myText } from 'drizzle-orm/mysql-core';
+import { pgTable, text as pgText, integer as pgInteger, real as pgReal, bigint as pgBigint } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, serial as mySerial, text as myText, bigint as myBigint } from 'drizzle-orm/mysql-core';
 
 // ============ SQLite Schema ============
 //
@@ -46,7 +46,8 @@ export const meshcorePacketLogSqlite = sqliteTable('meshcore_packet_log', {
 export const meshcorePacketLogPostgres = pgTable('meshcore_packet_log', {
   id: pgInteger('id').primaryKey().generatedAlwaysAsIdentity(),
   sourceId: pgText('sourceId').notNull(),
-  timestamp: pgInteger('timestamp').notNull(),
+  // ms-epoch timestamps overflow 32-bit INTEGER (~2.1e9); JS Date.now() is ~1.8e12.
+  timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
   payloadType: pgInteger('payloadType').notNull(),
   payloadTypeName: pgText('payloadTypeName'),
   routeType: pgInteger('routeType'),
@@ -58,7 +59,7 @@ export const meshcorePacketLogPostgres = pgTable('meshcore_packet_log', {
   rssi: pgInteger('rssi'),
   payloadSize: pgInteger('payloadSize'),
   rawHex: pgText('rawHex'),
-  createdAt: pgInteger('createdAt').notNull(),
+  createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
 });
 
 // ============ MySQL Schema ============
@@ -66,7 +67,8 @@ export const meshcorePacketLogPostgres = pgTable('meshcore_packet_log', {
 export const meshcorePacketLogMysql = mysqlTable('meshcore_packet_log', {
   id: mySerial('id').primaryKey(),
   sourceId: myVarchar('sourceId', { length: 255 }).notNull(),
-  timestamp: myInt('timestamp').notNull(),
+  // ms-epoch timestamps overflow 32-bit INT (~2.1e9); JS Date.now() is ~1.8e12.
+  timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
   payloadType: myInt('payloadType').notNull(),
   payloadTypeName: myVarchar('payloadTypeName', { length: 32 }),
   routeType: myInt('routeType'),
@@ -78,5 +80,5 @@ export const meshcorePacketLogMysql = mysqlTable('meshcore_packet_log', {
   rssi: myInt('rssi'),
   payloadSize: myInt('payloadSize'),
   rawHex: myText('rawHex'),
-  createdAt: myInt('createdAt').notNull(),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
 });
