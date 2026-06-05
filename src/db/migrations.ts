@@ -91,7 +91,8 @@ import { migration as meshcoreNeighborInfoMigration, runMigration073Postgres, ru
 import { migration as addShowWaypointsToMapPrefsMigration, runMigration074Postgres, runMigration074Mysql } from '../server/migrations/074_add_show_waypoints_to_map_prefs.js';
 import { migration as meshcorePacketLogMigration, runMigration075Postgres, runMigration075Mysql } from '../server/migrations/075_meshcore_packet_log.js';
 import { migration as lowBatteryColumnsMigration, runMigration076Postgres, runMigration076Mysql } from '../server/migrations/076_add_low_battery_columns.js';
-import { migration as meshcorePacketLogBigintMigration, runMigration077Postgres, runMigration077Mysql } from '../server/migrations/077_meshcore_packet_log_bigint_timestamp.js';
+import { migration as normalizeMqttTelemetryKeysMigration, runMigration077Postgres, runMigration077Mysql } from '../server/migrations/077_normalize_mqtt_telemetry_keys.js';
+import { migration as meshcorePacketLogBigintMigration, runMigration078PacketLogBigintPostgres, runMigration078PacketLogBigintMysql } from '../server/migrations/078_meshcore_packet_log_bigint_timestamp.js';
 
 // ============================================================================
 // Registry
@@ -1214,18 +1215,33 @@ registry.register({
   postgres: (client) => runMigration076Postgres(client),
   mysql: (pool) => runMigration076Mysql(pool),
 });
+// ---------------------------------------------------------------------------
+// Migration 077: Rewrite historical MQTT-ingested telemetry rows from dotted
+// group-prefixed keys (e.g. environment.barometricPressure) to the canonical
+// short keys serial ingestion uses (pressure), backfilling units. Implements
+// #3314 so MQTT-sourced environment data becomes visible in the UI.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 77,
+  name: 'normalize_mqtt_telemetry_keys',
+  settingsKey: 'migration_077_normalize_mqtt_telemetry_keys',
+  sqlite: (db) => normalizeMqttTelemetryKeysMigration.up(db),
+  postgres: (client) => runMigration077Postgres(client),
+  mysql: (pool) => runMigration077Mysql(pool),
+});
 
 // ---------------------------------------------------------------------------
-// Migration 077: Widen meshcore_packet_log.timestamp/createdAt to BIGINT on
+// Migration 078: Widen meshcore_packet_log.timestamp/createdAt to BIGINT on
 // PostgreSQL/MySQL. They held ms-epoch values that overflow 32-bit INTEGER,
 // breaking the retention cleanup DELETE with SQLSTATE 22003. SQLite no-op.
 // ---------------------------------------------------------------------------
 
 registry.register({
-  number: 77,
+  number: 78,
   name: 'meshcore_packet_log_bigint_timestamp',
-  settingsKey: 'migration_077_meshcore_packet_log_bigint_timestamp',
+  settingsKey: 'migration_078_meshcore_packet_log_bigint_timestamp',
   sqlite: (db) => meshcorePacketLogBigintMigration.up(db),
-  postgres: (client) => runMigration077Postgres(client),
-  mysql: (pool) => runMigration077Mysql(pool),
+  postgres: (client) => runMigration078PacketLogBigintPostgres(client),
+  mysql: (pool) => runMigration078PacketLogBigintMysql(pool),
 });

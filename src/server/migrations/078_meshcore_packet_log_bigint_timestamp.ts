@@ -1,5 +1,5 @@
 /**
- * Migration 077: Widen meshcore_packet_log timestamp/createdAt to BIGINT.
+ * Migration 078: Widen meshcore_packet_log timestamp/createdAt to BIGINT.
  *
  * Migration 075 created these columns as 32-bit INTEGER on PostgreSQL/MySQL,
  * but they hold JS ms-epoch timestamps (Date.now() ~= 1.8e12), which overflow
@@ -16,7 +16,7 @@
 import type { Database } from 'better-sqlite3';
 import { logger } from '../../utils/logger.js';
 
-const LABEL = 'Migration 077';
+const LABEL = 'Migration 078';
 const TABLE = 'meshcore_packet_log';
 
 // ============ SQLite ============
@@ -35,7 +35,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration077Postgres(client: any): Promise<void> {
+export async function runMigration078PacketLogBigintPostgres(client: any): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): widening ${TABLE}.timestamp/createdAt to BIGINT...`);
 
   await client.query(
@@ -49,7 +49,7 @@ export async function runMigration077Postgres(client: any): Promise<void> {
 
 // ============ MySQL ============
 
-export async function runMigration077Mysql(pool: any): Promise<void> {
+export async function runMigration078PacketLogBigintMysql(pool: any): Promise<void> {
   logger.info(`${LABEL} (MySQL): widening ${TABLE}.timestamp/createdAt to BIGINT...`);
 
   const conn = await pool.getConnection();

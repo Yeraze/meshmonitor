@@ -78,6 +78,7 @@ vi.mock('./meshtasticProtobufService.js', () => ({
 import { ingestServiceEnvelope, _resetMqttIngestCachesForTest } from './mqttIngestion.js';
 import { MqttPacketFilter, type ServiceEnvelopeShape } from './mqttPacketFilter.js';
 import databaseService from '../services/database.js';
+import meshtasticProtobufService from './meshtasticProtobufService.js';
 import { CHANNEL_DB_OFFSET } from './constants/meshtastic.js';
 
 const NODE_IN = 0x7ff80a48;
@@ -672,5 +673,72 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
     expect(result.ingested).toBe(true);
     const [insertedNode] = (databaseService.upsertNode as any).mock.calls[0];
     expect(insertedNode.channel).toBe(0); // raw slot from the envelope
+  });
+});
+
+describe('ingestServiceEnvelope — TELEMETRY_APP key normalization (#3314)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const telemetryRows = () =>
+    (databaseService.insertTelemetry as any).mock.calls.map((c: any[]) => c[0]);
+  const rowByType = (type: string) => telemetryRows().find((r: any) => r.telemetryType === type);
+
+  it('stores device metrics under canonical short keys', async () => {
+    // Default mock returns { deviceMetrics: { batteryLevel: 90 } }
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 67 /* TELEMETRY_APP */),
+    });
+    expect(result.ingested).toBe(true);
+    expect(rowByType('batteryLevel')).toBeDefined();
+    expect(rowByType('batteryLevel').value).toBe(90);
+    expect(rowByType('batteryLevel').unit).toBe('%');
+    // No dotted form should be written.
+    expect(rowByType('device.batteryLevel')).toBeUndefined();
+  });
+
+  it('stores environment metrics under canonical keys with serial-matching renames and units', async () => {
+    (meshtasticProtobufService.processPayload as any).mockReturnValueOnce({
+      environmentMetrics: {
+        temperature: 21.5,
+        relativeHumidity: 55,
+        barometricPressure: 1013.2,
+        voltage: 4.1,
+        current: 0.25,
+      },
+    });
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 67 /* TELEMETRY_APP */),
+    });
+    expect(result.ingested).toBe(true);
+
+    expect(rowByType('temperature')).toMatchObject({ value: 21.5, unit: '°C' });
+    expect(rowByType('humidity')).toMatchObject({ value: 55, unit: '%' });
+    expect(rowByType('pressure')).toMatchObject({ value: 1013.2, unit: 'hPa' });
+    expect(rowByType('envVoltage')).toMatchObject({ value: 4.1, unit: 'V' });
+    expect(rowByType('envCurrent')).toMatchObject({ value: 0.25, unit: 'A' });
+
+    // None of the old dotted forms should appear.
+    const types = telemetryRows().map((r: any) => r.telemetryType);
+    expect(types.some((t: string) => t.includes('.'))).toBe(false);
+  });
+
+  it('leaves unmapped groups (health) dotted to avoid colliding with environment keys', async () => {
+    (meshtasticProtobufService.processPayload as any).mockReturnValueOnce({
+      healthMetrics: { temperature: 36.8 },
+    });
+
+    await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 67 /* TELEMETRY_APP */),
+    });
+
+    // Body temperature must NOT collapse onto ambient `temperature`.
+    expect(rowByType('temperature')).toBeUndefined();
+    expect(rowByType('health.temperature')).toMatchObject({ value: 36.8 });
   });
 });
