@@ -502,6 +502,29 @@ export class MeshCoreRepository extends BaseRepository {
     return this.normalizeBigInts(result) as unknown as DbMeshCoreNode[];
   }
 
+  /**
+   * Return every node in a source whose last-reported battery voltage is below
+   * `thresholdMv`. MeshCore devices report battery as a voltage (millivolts)
+   * rather than a 0-100 percentage, so this is the MeshCore analogue of the
+   * Meshtastic `getLowBatteryMonitoredNodes` percentage query. Nodes with a
+   * null or non-positive batteryMv (no telemetry yet / externally powered) are
+   * excluded so they never trigger a spurious alert.
+   *
+   * See https://github.com/Yeraze/meshmonitor/issues/3331
+   */
+  async getLowVoltageNodes(sourceId: string, thresholdMv: number): Promise<DbMeshCoreNode[]> {
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreNodes)
+      .where(and(
+        eq(meshcoreNodes.sourceId, sourceId),
+        gte(meshcoreNodes.batteryMv, 1),
+        lt(meshcoreNodes.batteryMv, thresholdMv),
+      ));
+    return this.normalizeBigInts(result) as unknown as DbMeshCoreNode[];
+  }
+
   async getRoomSyncEnabledNodes(sourceId: string): Promise<DbMeshCoreNode[]> {
     const { meshcoreNodes } = this.tables;
     const result = await this.db

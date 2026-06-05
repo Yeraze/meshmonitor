@@ -1179,11 +1179,17 @@ apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
     const meshcoreManagers = nodesSourceId
       ? (meshcoreManagerRegistry.get(nodesSourceId) ? [meshcoreManagerRegistry.get(nodesSourceId)!] : [])
       : meshcoreManagerRegistry.list();
+    // By default MeshCore nodes are only appended when they have a position
+    // (the aggregate dashboard map use-case). Consumers that need the full node
+    // list regardless of position — e.g. the notification monitored-node picker,
+    // so battery-powered companions without a GPS fix can still be selected —
+    // pass includeAllMeshcore=true to drop the position gate.
+    const includeAllMeshcore = req.query.includeAllMeshcore === 'true';
     const meshcoreNodes: any[] = [];
     for (const mgr of meshcoreManagers) {
       for (const n of mgr.getAllNodes()) {
-        if (n.latitude == null || n.longitude == null) continue;
-        if (n.latitude === 0 && n.longitude === 0) continue;
+        const hasPosition = n.latitude != null && n.longitude != null && !(n.latitude === 0 && n.longitude === 0);
+        if (!hasPosition && !includeAllMeshcore) continue;
         const lastHeard = typeof n.lastHeard === 'number'
           ? Math.floor(n.lastHeard / 1000)
           : Math.floor(Date.now() / 1000);
@@ -1199,9 +1205,13 @@ apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
           user: { id: nodeId, longName: n.name, shortName: (n.name || '').substring(0, 4) },
           longName: n.name,
           shortName: (n.name || '').substring(0, 4),
-          latitude: n.latitude,
-          longitude: n.longitude,
-          position: { latitude: n.latitude, longitude: n.longitude },
+          ...(hasPosition
+            ? {
+                latitude: n.latitude,
+                longitude: n.longitude,
+                position: { latitude: n.latitude, longitude: n.longitude },
+              }
+            : {}),
           lastHeard,
           hopsAway: 0,
           role: 0,
@@ -9100,6 +9110,7 @@ apiRouter.get(
         notifyOnInactiveNode: false,
         notifyOnLowBattery: false,
         lowBatteryThreshold: 20,
+        lowBatteryVoltageThreshold: 3300,
         notifyOnServerEvents: false,
         prefixWithNodeName: false,
         monitoredNodes: [],
@@ -9145,6 +9156,7 @@ apiRouter.post(
       notifyOnInactiveNode,
       notifyOnLowBattery,
       lowBatteryThreshold,
+      lowBatteryVoltageThreshold,
       notifyOnServerEvents,
       prefixWithNodeName,
       monitoredNodes,
@@ -9197,6 +9209,17 @@ apiRouter.post(
     ) {
       return res.status(400).json({ error: 'lowBatteryThreshold must be a number between 0 and 100' });
     }
+    // lowBatteryVoltageThreshold (mV) is optional (older clients omit it). MeshCore
+    // nodes report battery voltage; 0-20000 mV covers single-cell through multi-cell packs.
+    if (
+      lowBatteryVoltageThreshold !== undefined &&
+      (typeof lowBatteryVoltageThreshold !== 'number' ||
+        !Number.isFinite(lowBatteryVoltageThreshold) ||
+        lowBatteryVoltageThreshold < 0 ||
+        lowBatteryVoltageThreshold > 20000)
+    ) {
+      return res.status(400).json({ error: 'lowBatteryVoltageThreshold must be a number between 0 and 20000' });
+    }
 
     // Validate appriseUrls is an array of strings if provided
     if (appriseUrls !== undefined && !Array.isArray(appriseUrls)) {
@@ -9242,6 +9265,7 @@ apiRouter.post(
       notifyOnInactiveNode: notifyOnInactiveNode ?? false,
       notifyOnLowBattery: notifyOnLowBattery ?? false,
       lowBatteryThreshold: lowBatteryThreshold ?? 20,
+      lowBatteryVoltageThreshold: lowBatteryVoltageThreshold ?? 3300,
       notifyOnServerEvents: notifyOnServerEvents ?? false,
       prefixWithNodeName: prefixWithNodeName ?? false,
       monitoredNodes: monitoredNodes ?? [],

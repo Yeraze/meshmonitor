@@ -1926,6 +1926,8 @@
   "notifications.notify_on_inactive_node": "Notify on Inactive Nodes",
   "notifications.notify_on_low_battery": "Notify on Low Battery",
   "notifications.low_battery_threshold_label": "Alert when battery drops below",
+  "notifications.low_battery_voltage_threshold_label": "MeshCore: alert when voltage drops below",
+  "notifications.low_battery_threshold_hint": "The percentage applies to Meshtastic nodes; the voltage (mV) applies to MeshCore nodes, which report battery as a voltage.",
   "notifications.monitored_nodes_description": "Select which nodes to monitor. You will only receive inactive-node and low-battery alerts for nodes in this list.",
   "notifications.search_nodes": "Search nodes...",
   "notifications.no_nodes_match": "No nodes match your search",

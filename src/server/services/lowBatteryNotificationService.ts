@@ -8,20 +8,25 @@ interface LowBatteryNodeCheck {
   nodeNum: number;
   longName: string;
   shortName: string;
-  batteryLevel: number;
-  threshold: number;
+  /** Human-readable current battery level, e.g. "15%" (Meshtastic) or "3100mV" (MeshCore). */
+  valueLabel: string;
+  /** Human-readable configured threshold, e.g. "20%" or "3300mV". */
+  thresholdLabel: string;
   sourceId: string;
   sourceName: string;
 }
 
 /**
- * Polls monitored Meshtastic nodes and notifies users when a node's battery
- * drops below their per-user threshold. The monitored-node list is shared with
- * the inactive-node feature (user_notification_preferences.monitored_nodes);
- * the threshold is per-user (lowBatteryThreshold). Check interval and cooldown
- * are global admin settings, mirroring the inactive-node service.
+ * Polls monitored nodes and notifies users when a node's battery drops below
+ * their per-user threshold. Meshtastic nodes report a 0-100 percentage
+ * (lowBatteryThreshold); MeshCore nodes report a voltage in millivolts
+ * (lowBatteryVoltageThreshold), so the two protocols compare against different
+ * per-user thresholds. The monitored-node list is shared with the inactive-node
+ * feature (user_notification_preferences.monitored_nodes). Check interval and
+ * cooldown are global admin settings, mirroring the inactive-node service.
  *
  * Implements: https://github.com/Yeraze/meshmonitor/issues/3305
+ * MeshCore voltage support: https://github.com/Yeraze/meshmonitor/issues/3331
  */
 class LowBatteryNotificationService {
   private checkInterval: NodeJS.Timeout | null = null;
@@ -30,6 +35,7 @@ class LowBatteryNotificationService {
   private currentCooldownHours: number = 24;
   private readonly DEFAULT_CHECK_INTERVAL_MINUTES = 60; // Check every hour
   private readonly DEFAULT_THRESHOLD_PERCENT = 20; // Used when a user has no explicit threshold
+  private readonly DEFAULT_VOLTAGE_THRESHOLD_MV = 3300; // MeshCore: alert below ~3.3V when no explicit threshold
   private readonly DEFAULT_NOTIFICATION_COOLDOWN_HOURS = 24; // Don't notify about same node more than once per 24 hours
 
   /**
@@ -133,11 +139,6 @@ class LowBatteryNotificationService {
             continue;
           }
 
-          const threshold =
-            user.lowBatteryThreshold != null && user.lowBatteryThreshold >= 0 && user.lowBatteryThreshold <= 100
-              ? user.lowBatteryThreshold
-              : this.DEFAULT_THRESHOLD_PERCENT;
-
           // Permission check — skip user if they lack nodes:read on this source
           try {
             const allowed = await databaseService.checkPermissionAsync(user.userId, 'nodes', 'read', sourceId);
@@ -147,41 +148,31 @@ class LowBatteryNotificationService {
             continue;
           }
 
-          const lowBatteryNodes = await databaseService.nodes.getLowBatteryMonitoredNodes(
-            monitoredNodeIds,
-            threshold,
-            sourceId
-          );
+          // MeshCore nodes report voltage (mV); Meshtastic nodes report a 0-100
+          // percentage. Build a protocol-appropriate list of alerts with the
+          // current value/threshold already formatted for display.
+          const alerts = manager.sourceType === 'meshcore'
+            ? await this.collectMeshCoreLowBatteryAlerts(user, monitoredNodeIds, sourceId)
+            : await this.collectMeshtasticLowBatteryAlerts(user, monitoredNodeIds, sourceId);
 
-          if (lowBatteryNodes.length === 0) continue;
+          if (alerts.length === 0) continue;
 
-          logger.debug(`🔍 Found ${lowBatteryNodes.length} low-battery monitored node(s) for user ${user.userId} on source ${sourceId}`);
+          logger.debug(`🔍 Found ${alerts.length} low-battery monitored node(s) for user ${user.userId} on source ${sourceId}`);
 
-          for (const node of lowBatteryNodes) {
-            if (node.batteryLevel == null) continue;
-
+          for (const alert of alerts) {
             // Source-scoped cooldown key prevents collisions across sources
-            const notificationKey = `${user.userId}:${sourceId}:${node.nodeId}`;
+            const notificationKey = `${user.userId}:${sourceId}:${alert.nodeId}`;
             const lastNotification = this.lastNotifiedNodes.get(notificationKey);
             const cooldownMs = cooldownHours * 60 * 60 * 1000;
 
             if (lastNotification && now - lastNotification < cooldownMs) {
               logger.debug(
-                `⏭️  Skipping low battery notification for user ${user.userId}, node ${node.nodeId} on ${sourceId} (already notified recently)`
+                `⏭️  Skipping low battery notification for user ${user.userId}, node ${alert.nodeId} on ${sourceId} (already notified recently)`
               );
               continue;
             }
 
-            await this.sendLowBatteryNotification(user.userId, {
-              nodeId: node.nodeId,
-              nodeNum: node.nodeNum,
-              longName: node.longName || node.shortName || `Node ${node.nodeNum}`,
-              shortName: node.shortName || '????',
-              batteryLevel: node.batteryLevel,
-              threshold,
-              sourceId,
-              sourceName,
-            });
+            await this.sendLowBatteryNotification(user.userId, { ...alert, sourceId, sourceName });
 
             this.lastNotifiedNodes.set(notificationKey, now);
           }
@@ -201,13 +192,86 @@ class LowBatteryNotificationService {
   }
 
   /**
+   * Collect low-battery alerts for a Meshtastic source, comparing each monitored
+   * node's battery percentage against the user's percent threshold.
+   */
+  private async collectMeshtasticLowBatteryAlerts(
+    user: { lowBatteryThreshold: number | null },
+    monitoredNodeIds: string[],
+    sourceId: string
+  ): Promise<Array<Omit<LowBatteryNodeCheck, 'sourceId' | 'sourceName'>>> {
+    const threshold =
+      user.lowBatteryThreshold != null && user.lowBatteryThreshold >= 0 && user.lowBatteryThreshold <= 100
+        ? user.lowBatteryThreshold
+        : this.DEFAULT_THRESHOLD_PERCENT;
+
+    const lowBatteryNodes = await databaseService.nodes.getLowBatteryMonitoredNodes(
+      monitoredNodeIds,
+      threshold,
+      sourceId
+    );
+
+    const alerts: Array<Omit<LowBatteryNodeCheck, 'sourceId' | 'sourceName'>> = [];
+    for (const node of lowBatteryNodes) {
+      if (node.batteryLevel == null) continue;
+      alerts.push({
+        nodeId: node.nodeId,
+        nodeNum: node.nodeNum,
+        longName: node.longName || node.shortName || `Node ${node.nodeNum}`,
+        shortName: node.shortName || '????',
+        valueLabel: `${node.batteryLevel}%`,
+        thresholdLabel: `${threshold}%`,
+      });
+    }
+    return alerts;
+  }
+
+  /**
+   * Collect low-battery alerts for a MeshCore source. MeshCore nodes report
+   * battery voltage (mV) instead of a percentage, so each monitored node's
+   * batteryMv is compared against the user's voltage threshold. Monitored-node
+   * ids for MeshCore use the `mc:<sourceId>:<pubkey12>` form emitted by
+   * GET /api/nodes, so we reconstruct that id from each node's public key.
+   */
+  private async collectMeshCoreLowBatteryAlerts(
+    user: { lowBatteryVoltageThreshold: number | null },
+    monitoredNodeIds: string[],
+    sourceId: string
+  ): Promise<Array<Omit<LowBatteryNodeCheck, 'sourceId' | 'sourceName'>>> {
+    const voltageThreshold =
+      user.lowBatteryVoltageThreshold != null && user.lowBatteryVoltageThreshold > 0
+        ? user.lowBatteryVoltageThreshold
+        : this.DEFAULT_VOLTAGE_THRESHOLD_MV;
+
+    const monitoredSet = new Set(monitoredNodeIds);
+    const lowNodes = await databaseService.meshcore.getLowVoltageNodes(sourceId, voltageThreshold);
+
+    const alerts: Array<Omit<LowBatteryNodeCheck, 'sourceId' | 'sourceName'>> = [];
+    for (const node of lowNodes) {
+      if (node.batteryMv == null) continue;
+      const pubKey = node.publicKey || '';
+      const nodeId = `mc:${sourceId}:${pubKey.substring(0, 12)}`;
+      if (!monitoredSet.has(nodeId)) continue;
+      alerts.push({
+        nodeId,
+        nodeNum: 0,
+        longName: node.name || nodeId,
+        shortName: (node.name || '????').substring(0, 4),
+        valueLabel: `${node.batteryMv}mV`,
+        thresholdLabel: `${voltageThreshold}mV`,
+      });
+    }
+    return alerts;
+  }
+
+  /**
    * Send a low-battery notification for a node to a specific user
    */
   private async sendLowBatteryNotification(userId: number, node: LowBatteryNodeCheck): Promise<void> {
     try {
       const payload = {
         title: `[${node.sourceName}] 🔋 Low Battery: ${node.longName}`,
-        body: `[${node.sourceName}] ${node.shortName} (${node.nodeId}) battery at ${node.batteryLevel}% (threshold: ${node.threshold}%)`,
+        body: `[${node.sourceName}] ${node.shortName} (${node.nodeId}) battery at ${node.valueLabel} (threshold: ${node.thresholdLabel})`,
         type: 'warning' as const,
         sourceId: node.sourceId,
         sourceName: node.sourceName,
@@ -216,7 +280,7 @@ class LowBatteryNotificationService {
       await notificationService.broadcastToPreferenceUsers('notifyOnLowBattery', payload, userId);
 
       logger.info(
-        `📤 Sent low battery notification to user ${userId} for ${node.nodeId} (${node.batteryLevel}% battery)`
+        `📤 Sent low battery notification to user ${userId} for ${node.nodeId} (${node.valueLabel} battery)`
       );
     } catch (error) {
       logger.error(`❌ Error sending low battery notification to user ${userId} for ${node.nodeId}:`, error);

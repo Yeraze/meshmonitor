@@ -100,6 +100,7 @@ const SQLITE_CREATE = `
     notify_on_inactive_node INTEGER DEFAULT 0,
     notify_on_low_battery INTEGER DEFAULT 0,
     low_battery_threshold INTEGER DEFAULT 20,
+    low_battery_voltage_threshold INTEGER DEFAULT 3300,
     notify_on_server_events INTEGER DEFAULT 0,
     prefix_with_node_name INTEGER DEFAULT 0,
     enable_apprise INTEGER DEFAULT 1,
