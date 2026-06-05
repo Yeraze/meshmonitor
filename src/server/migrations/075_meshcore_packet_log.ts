@@ -62,7 +62,7 @@ export async function runMigration075Postgres(client: any): Promise<void> {
     CREATE TABLE IF NOT EXISTS ${TABLE} (
       id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       "sourceId" TEXT NOT NULL,
-      "timestamp" INTEGER NOT NULL,
+      "timestamp" BIGINT NOT NULL,
       "payloadType" INTEGER NOT NULL,
       "payloadTypeName" TEXT,
       "routeType" INTEGER,
@@ -74,7 +74,7 @@ export async function runMigration075Postgres(client: any): Promise<void> {
       rssi INTEGER,
       "payloadSize" INTEGER,
       "rawHex" TEXT,
-      "createdAt" INTEGER NOT NULL
+      "createdAt" BIGINT NOT NULL
     )
   `);
 
@@ -101,7 +101,7 @@ export async function runMigration075Mysql(pool: any): Promise<void> {
         CREATE TABLE ${TABLE} (
           id SERIAL PRIMARY KEY,
           sourceId VARCHAR(255) NOT NULL,
-          timestamp INT NOT NULL,
+          timestamp BIGINT NOT NULL,
           payloadType INT NOT NULL,
           payloadTypeName VARCHAR(32),
           routeType INT,
@@ -113,7 +113,7 @@ export async function runMigration075Mysql(pool: any): Promise<void> {
           rssi INT,
           payloadSize INT,
           rawHex TEXT,
-          createdAt INT NOT NULL,
+          createdAt BIGINT NOT NULL,
           INDEX idx_mcpl_source_ts (sourceId, timestamp),
           INDEX idx_mcpl_payload_type (payloadType)
         )
