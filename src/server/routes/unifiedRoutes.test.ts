@@ -53,6 +53,15 @@ vi.mock('../sourceManagerRegistry.js', () => ({
   }
 }));
 
+vi.mock('../meshcoreRegistry.js', () => ({
+  meshcoreManagerRegistry: {
+    get: vi.fn().mockReturnValue(null),
+  },
+}));
+
+import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
+const mockMeshcoreRegistry = meshcoreManagerRegistry as any;
+
 const mockDb = databaseService as any;
 
 const adminUser = { id: 1, username: 'admin', isActive: true, isAdmin: true };
@@ -1063,6 +1072,43 @@ describe('Unified Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ nodeCount: 0, activeNodeCount: 0, connected: false });
       expect(mockDb.nodes.getDistinctNodeCount).toHaveBeenCalledWith([]);
+    });
+
+    it('includes MeshCore nodes from in-memory managers in the unified count (issue #3321)', async () => {
+      const SOURCE_MC = { id: 'src-mc', name: 'MeshCore', type: 'meshcore', enabled: true };
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_MC]);
+      // Meshtastic source has 10 distinct nodes in DB
+      mockDb.nodes.getDistinctNodeCount.mockResolvedValue(10);
+      mockDb.nodes.getDistinctActiveNodeCount.mockResolvedValue(5);
+
+      const now = Date.now();
+      const recentMs = now - 60_000; // 1 min ago — active
+      const staleMs = now - 8_000_000; // ~2.2h ago — inactive
+      const mcNodes = [
+        // Local node with no lastHeard (should count as active while connected)
+        { name: 'Local', publicKey: 'pk0', latitude: 1, longitude: 1, lastHeard: undefined },
+        { name: 'Node1', publicKey: 'pk1', latitude: 1, longitude: 1, lastHeard: recentMs },
+        { name: 'Node2', publicKey: 'pk2', latitude: 1, longitude: 1, lastHeard: staleMs },
+      ];
+      const mcManagerMock = {
+        getAllNodes: vi.fn().mockReturnValue(mcNodes),
+        getLocalNode: vi.fn().mockReturnValue(mcNodes[0]),
+        sourceId: 'src-mc',
+      };
+      mockMeshcoreRegistry.get.mockImplementation((id: string) =>
+        id === 'src-mc' ? mcManagerMock : null,
+      );
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/status');
+
+      expect(res.status).toBe(200);
+      // 10 meshtastic + 3 meshcore = 13 total
+      expect(res.body.nodeCount).toBe(13);
+      // 5 meshtastic active + 2 meshcore active (local node + Node1) = 7
+      expect(res.body.activeNodeCount).toBe(7);
+      // Only non-MeshCore IDs go to getDistinctNodeCount
+      expect(mockDb.nodes.getDistinctNodeCount).toHaveBeenCalledWith(['src-a']);
     });
   });
 
