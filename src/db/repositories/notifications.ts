@@ -263,19 +263,38 @@ export class NotificationsRepository extends BaseRepository {
 
     try {
       if (this.isSQLite()) {
-        // SQLite doesn't have notifyOnChannelMessage column
-        await (this.db as any)
-          .insert(userNotificationPreferences)
-          .values({
-            userId,
-            sourceId: effectiveSourceId,
-            ...setData,
-            createdAt: now,
-          })
-          .onConflictDoUpdate({
-            target: [userNotificationPreferences.userId, userNotificationPreferences.sourceId],
-            set: setData,
-          });
+        // SQLite doesn't have notifyOnChannelMessage column.
+        // Use SELECT + UPDATE/INSERT instead of onConflictDoUpdate to avoid
+        // failures if a residual single-column unique on user_id is present
+        // (migration 079 cleans it up, but this path is safe regardless).
+        const db = this.getSqliteDb();
+        const existing = await db
+          .select({ id: userNotificationPreferences.id })
+          .from(userNotificationPreferences)
+          .where(and(
+            eq(userNotificationPreferences.userId, userId),
+            eq(userNotificationPreferences.sourceId, effectiveSourceId)
+          ))
+          .limit(1);
+
+        if (existing.length > 0) {
+          await db
+            .update(userNotificationPreferences)
+            .set(setData)
+            .where(and(
+              eq(userNotificationPreferences.userId, userId),
+              eq(userNotificationPreferences.sourceId, effectiveSourceId)
+            ));
+        } else {
+          await db
+            .insert(userNotificationPreferences)
+            .values({
+              userId,
+              sourceId: effectiveSourceId,
+              ...setData,
+              createdAt: now,
+            });
+        }
       } else if (this.isMySQL()) {
         const db = this.getMysqlDb();
         await db
