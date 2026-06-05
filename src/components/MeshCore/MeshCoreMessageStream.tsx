@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, KeyboardEvent
 import { useTranslation } from 'react-i18next';
 import { MeshCoreMessage } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
+import { getMessageDateSeparator, shouldShowDateSeparator } from '../../utils/datetime';
 
 interface MeshCoreMessageStreamProps {
   messages: MeshCoreMessage[];
@@ -207,7 +208,10 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           <div className="meshcore-empty-state">
             {emptyText ?? t('meshcore.no_messages', 'No messages')}
           </div>
-        ) : messages.map(m => {
+        ) : messages.map((m, idx) => {
+          const currentDate = new Date(m.timestamp);
+          const prevDate = idx > 0 ? new Date(messages[idx - 1].timestamp) : null;
+          const showSeparator = shouldShowDateSeparator(prevDate, currentDate);
           const outgoing = !!selfPublicKey && m.fromPublicKey === selfPublicKey;
           const friendlyName = outgoing ? null : nameForKey(m.fromPublicKey);
           const fromLabel = outgoing
@@ -219,7 +223,15 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
             : fullKeyFor(m.fromPublicKey);
           const canClick = !outgoing && onNodeNameClick && clickTarget;
           return (
-            <div key={m.id} className={`mc-message-row ${outgoing ? 'outgoing' : ''}`}>
+            <React.Fragment key={m.id}>
+              {showSeparator && (
+                <div className="mc-date-separator">
+                  <span className="mc-date-separator-text">
+                    {getMessageDateSeparator(currentDate)}
+                  </span>
+                </div>
+              )}
+              <div className={`mc-message-row ${outgoing ? 'outgoing' : ''}`}>
               <div className="mc-message-header">
                 {canClick ? (
                   <button
@@ -258,7 +270,8 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                 </span>
               </div>
               <div className="mc-message-text">{renderMessageText(m.text)}</div>
-            </div>
+              </div>
+            </React.Fragment>
           );
         })}
       </div>
