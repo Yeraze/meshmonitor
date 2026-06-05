@@ -79,3 +79,7 @@ test-results.txt
 
 # Scratch/local-only test harnesses
 scratch/
+
+# Generated news feed — rebuilt from docs/blog/ by scripts/blog-to-news.mjs
+# via the VitePress newsJsonPlugin (buildStart) on every docs:build/docs:dev.
+docs/public/news.json
