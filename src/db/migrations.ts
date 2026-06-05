@@ -93,6 +93,7 @@ import { migration as meshcorePacketLogMigration, runMigration075Postgres, runMi
 import { migration as lowBatteryColumnsMigration, runMigration076Postgres, runMigration076Mysql } from '../server/migrations/076_add_low_battery_columns.js';
 import { migration as normalizeMqttTelemetryKeysMigration, runMigration077Postgres, runMigration077Mysql } from '../server/migrations/077_normalize_mqtt_telemetry_keys.js';
 import { migration as meshcorePacketLogBigintMigration, runMigration078PacketLogBigintPostgres, runMigration078PacketLogBigintMysql } from '../server/migrations/078_meshcore_packet_log_bigint_timestamp.js';
+import { migration as dropResidualNotifPrefsUserIdUniqueMigration, runMigration079Postgres as runMigration079DropResidualPostgres, runMigration079Mysql as runMigration079DropResidualMysql } from '../server/migrations/079_drop_residual_notif_prefs_user_id_unique.js';
 
 // ============================================================================
 // Registry
@@ -1244,4 +1245,22 @@ registry.register({
   sqlite: (db) => meshcorePacketLogBigintMigration.up(db),
   postgres: (client) => runMigration078PacketLogBigintPostgres(client),
   mysql: (pool) => runMigration078PacketLogBigintMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 079: Drop residual single-column unique indexes on
+// user_notification_preferences.user_id. Migrations 028 and 051 dropped the
+// index by known names; this migration uses PRAGMA introspection on SQLite to
+// catch any naming variant that survived earlier cleanup, fixing:
+//   UNIQUE constraint failed: user_notification_preferences.user_id
+// when saving notification preferences for a second source.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 79,
+  name: 'drop_residual_notif_prefs_user_id_unique',
+  settingsKey: 'migration_079_drop_residual_notif_prefs_user_id_unique',
+  sqlite: (db) => dropResidualNotifPrefsUserIdUniqueMigration.up(db),
+  postgres: (client) => runMigration079DropResidualPostgres(client),
+  mysql: (pool) => runMigration079DropResidualMysql(pool),
 });
