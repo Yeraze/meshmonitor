@@ -1412,7 +1412,10 @@ body {
        below the message input. The % height chain + flex parent below give
        the true viewport height; .app-main's padding already reserves the
        header and bottom safe-area space. */
-    flex: 1 1 auto;
+    /* flex-basis 0 (not auto): iOS WebKit only reliably grows a flex item to
+       fill free space when its basis is 0. With basis:auto it stays at content
+       size, which left a dead-space gap below the message input. */
+    flex: 1 1 0;
     min-height: 0;
     overflow: hidden;
     /* Prevent scroll chaining to body */
@@ -1506,7 +1509,10 @@ body {
 
   /* Messages container fills available space and scrolls */
   .messages-container {
-    flex: 1 1 auto;
+    /* flex-basis 0 (not auto) so iOS WebKit grows it to fill the conversation
+       even when the message list is short — basis:auto kept it at content
+       height, floating the send bar up and leaving a gap below it. */
+    flex: 1 1 0;
     overflow-y: auto;
     min-height: 0;
     max-height: none; /* Remove max-height on mobile */
