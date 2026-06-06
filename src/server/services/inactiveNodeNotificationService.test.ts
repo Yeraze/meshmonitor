@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Mock dependencies before any imports
 const mockGetUsersWithInactiveNodeNotifications = vi.fn();
 const mockGetInactiveMonitoredNodesAsync = vi.fn();
+const mockGetInactiveMeshcoreNodes = vi.fn();
 const mockFindUserByIdAsync = vi.fn();
 const mockFindUserByUsernameAsync = vi.fn();
 const mockCheckPermissionAsync = vi.fn();
@@ -27,6 +28,9 @@ vi.mock('../../services/database.js', () => ({
     getInactiveMonitoredNodesAsync: mockGetInactiveMonitoredNodesAsync,
     nodes: {
       getInactiveMonitoredNodes: mockGetInactiveMonitoredNodesAsync,
+    },
+    meshcore: {
+      getInactiveMeshcoreNodes: mockGetInactiveMeshcoreNodes,
     },
     sources: {
       getSource: mockGetSource,
@@ -221,6 +225,75 @@ describe('InactiveNodeNotificationService', () => {
         expectedCutoff,
         'src1'
       );
+    });
+  });
+
+  describe('checkInactiveNodes (MeshCore source)', () => {
+    // pubkey.substring(0,12) → 'aabbccddeeff'; monitored id is mc:<sourceId>:<pubkey12>
+    const PUBKEY = 'aabbccddeeff00112233445566778899';
+    const MC_NODE_ID = 'mc:mc1:aabbccddeeff';
+
+    beforeEach(() => {
+      // A single MeshCore source. The presence of sourceType==='meshcore'
+      // routes the service down the MeshCore collection branch.
+      mockGetAllManagers.mockReturnValue([{ sourceId: 'mc1', sourceType: 'meshcore' }]);
+      mockGetSource.mockResolvedValue({ id: 'mc1', name: 'MeshCore One' });
+    });
+
+    it('queries getInactiveMeshcoreNodes with a millisecond cutoff (lastHeard is ms)', async () => {
+      service.currentThresholdHours = 12;
+      const now = Date.now();
+      const expectedCutoffMs = now - 12 * 60 * 60 * 1000;
+
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([
+        { userId: 1, monitoredNodes: JSON.stringify([MC_NODE_ID]) },
+      ]);
+      mockGetInactiveMeshcoreNodes.mockResolvedValue([]);
+
+      await service.checkInactiveNodes();
+
+      // Meshtastic query must NOT be used for a MeshCore source
+      expect(mockGetInactiveMonitoredNodesAsync).not.toHaveBeenCalled();
+      expect(mockGetInactiveMeshcoreNodes).toHaveBeenCalledWith('mc1', expectedCutoffMs);
+    });
+
+    it('sends a notification for an inactive MeshCore node it monitors', async () => {
+      const now = Date.now();
+      const lastHeardMs = now - 48 * 60 * 60 * 1000; // 48 hours ago, in milliseconds
+
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([
+        { userId: 1, monitoredNodes: JSON.stringify([MC_NODE_ID]) },
+      ]);
+      mockGetInactiveMeshcoreNodes.mockResolvedValue([
+        { publicKey: PUBKEY, name: 'MC Node', batteryMv: 3500, lastHeard: lastHeardMs },
+      ]);
+      mockBroadcastToPreferenceUsers.mockResolvedValue(undefined);
+
+      await service.checkInactiveNodes();
+
+      expect(mockBroadcastToPreferenceUsers).toHaveBeenCalledWith(
+        'notifyOnInactiveNode',
+        expect.objectContaining({
+          title: expect.stringContaining('MC Node'),
+          body: expect.stringContaining('48'),
+          sourceId: 'mc1',
+        }),
+        1
+      );
+    });
+
+    it('ignores MeshCore nodes that are not in the user\'s monitored list', async () => {
+      const now = Date.now();
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([
+        { userId: 1, monitoredNodes: JSON.stringify(['mc:mc1:ffffffffffff']) },
+      ]);
+      mockGetInactiveMeshcoreNodes.mockResolvedValue([
+        { publicKey: PUBKEY, name: 'MC Node', batteryMv: 3500, lastHeard: now - 48 * 60 * 60 * 1000 },
+      ]);
+
+      await service.checkInactiveNodes();
+
+      expect(mockBroadcastToPreferenceUsers).not.toHaveBeenCalled();
     });
   });
 

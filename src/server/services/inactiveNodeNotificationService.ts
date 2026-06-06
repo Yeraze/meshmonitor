@@ -147,44 +147,31 @@ class InactiveNodeNotificationService {
             continue;
           }
 
-          // Get inactive nodes for this source that are in the user's monitored list
-          const inactiveNodes = await databaseService.nodes.getInactiveMonitoredNodes(
-            monitoredNodeIds,
-            cutoffSeconds,
-            sourceId
-          );
+          // MeshCore nodes live in a separate table and report lastHeard in
+          // milliseconds; Meshtastic nodes report seconds. Collect a
+          // protocol-appropriate, already-formatted list of inactive alerts.
+          const alerts = manager.sourceType === 'meshcore'
+            ? await this.collectMeshCoreInactiveAlerts(monitoredNodeIds, sourceId, thresholdHours, now)
+            : await this.collectMeshtasticInactiveAlerts(monitoredNodeIds, sourceId, cutoffSeconds, now);
 
-          if (inactiveNodes.length === 0) continue;
+          if (alerts.length === 0) continue;
 
-          logger.debug(`🔍 Found ${inactiveNodes.length} inactive monitored node(s) for user ${user.userId} on source ${sourceId}`);
+          logger.debug(`🔍 Found ${alerts.length} inactive monitored node(s) for user ${user.userId} on source ${sourceId}`);
 
-          for (const node of inactiveNodes) {
-            if (node.lastHeard == null) continue;
-            const lastHeardMs = node.lastHeard * 1000;
-            const inactiveHours = Math.floor((now - lastHeardMs) / (60 * 60 * 1000));
-
+          for (const alert of alerts) {
             // Source-scoped cooldown key prevents collisions across sources
-            const notificationKey = `${user.userId}:${sourceId}:${node.nodeId}`;
+            const notificationKey = `${user.userId}:${sourceId}:${alert.nodeId}`;
             const lastNotification = this.lastNotifiedNodes.get(notificationKey);
             const cooldownMs = cooldownHours * 60 * 60 * 1000;
 
             if (lastNotification && now - lastNotification < cooldownMs) {
               logger.debug(
-                `⏭️  Skipping notification for user ${user.userId}, node ${node.nodeId} on ${sourceId} (already notified recently)`
+                `⏭️  Skipping notification for user ${user.userId}, node ${alert.nodeId} on ${sourceId} (already notified recently)`
               );
               continue;
             }
 
-            await this.sendInactiveNodeNotification(user.userId, {
-              nodeId: node.nodeId,
-              nodeNum: node.nodeNum,
-              longName: node.longName || node.shortName || `Node ${node.nodeNum}`,
-              shortName: node.shortName || '????',
-              lastHeard: node.lastHeard,
-              inactiveHours,
-              sourceId,
-              sourceName,
-            });
+            await this.sendInactiveNodeNotification(user.userId, { ...alert, sourceId, sourceName });
 
             this.lastNotifiedNodes.set(notificationKey, now);
           }
@@ -201,6 +188,77 @@ class InactiveNodeNotificationService {
     } catch (error) {
       logger.error('❌ Error checking inactive nodes:', error);
     }
+  }
+
+  /**
+   * Collect inactive-node alerts for a Meshtastic source. The Meshtastic
+   * `nodes.lastHeard` column is in seconds, so the cutoff is a unix-seconds
+   * value and inactiveHours is derived from `lastHeard * 1000`.
+   */
+  private async collectMeshtasticInactiveAlerts(
+    monitoredNodeIds: string[],
+    sourceId: string,
+    cutoffSeconds: number,
+    now: number
+  ): Promise<Array<Omit<InactiveNodeCheck, 'sourceId' | 'sourceName'>>> {
+    const inactiveNodes = await databaseService.nodes.getInactiveMonitoredNodes(
+      monitoredNodeIds,
+      cutoffSeconds,
+      sourceId
+    );
+
+    const alerts: Array<Omit<InactiveNodeCheck, 'sourceId' | 'sourceName'>> = [];
+    for (const node of inactiveNodes) {
+      if (node.lastHeard == null) continue;
+      const lastHeardMs = node.lastHeard * 1000;
+      alerts.push({
+        nodeId: node.nodeId,
+        nodeNum: node.nodeNum,
+        longName: node.longName || node.shortName || `Node ${node.nodeNum}`,
+        shortName: node.shortName || '????',
+        lastHeard: node.lastHeard,
+        inactiveHours: Math.floor((now - lastHeardMs) / (60 * 60 * 1000)),
+      });
+    }
+    return alerts;
+  }
+
+  /**
+   * Collect inactive-node alerts for a MeshCore source. MeshCore stores nodes
+   * in a separate table keyed by public key and records `lastHeard` in
+   * milliseconds, so the cutoff is a millisecond value and inactiveHours is
+   * derived directly from `lastHeard`. Monitored-node ids for MeshCore use the
+   * `mc:<sourceId>:<pubkey12>` form emitted by GET /api/nodes, so we
+   * reconstruct that id from each node's public key and only alert on nodes the
+   * user actually monitors.
+   */
+  private async collectMeshCoreInactiveAlerts(
+    monitoredNodeIds: string[],
+    sourceId: string,
+    thresholdHours: number,
+    now: number
+  ): Promise<Array<Omit<InactiveNodeCheck, 'sourceId' | 'sourceName'>>> {
+    const cutoffMs = now - thresholdHours * 60 * 60 * 1000;
+    const monitoredSet = new Set(monitoredNodeIds);
+    const inactiveNodes = await databaseService.meshcore.getInactiveMeshcoreNodes(sourceId, cutoffMs);
+
+    const alerts: Array<Omit<InactiveNodeCheck, 'sourceId' | 'sourceName'>> = [];
+    for (const node of inactiveNodes) {
+      if (node.lastHeard == null) continue;
+      const pubKey = node.publicKey || '';
+      const nodeId = `mc:${sourceId}:${pubKey.substring(0, 12)}`;
+      if (!monitoredSet.has(nodeId)) continue;
+      alerts.push({
+        nodeId,
+        nodeNum: 0,
+        longName: node.name || nodeId,
+        shortName: (node.name || '????').substring(0, 4),
+        lastHeard: node.lastHeard,
+        // MeshCore lastHeard is already in milliseconds.
+        inactiveHours: Math.floor((now - node.lastHeard) / (60 * 60 * 1000)),
+      });
+    }
+    return alerts;
   }
 
   /**

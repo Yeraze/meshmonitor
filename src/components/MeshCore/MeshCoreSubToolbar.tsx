@@ -2,12 +2,12 @@ import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Map, MessageSquare, Home, Mail, BarChart3, Activity, Info, Satellite, Bot,
-  Settings, ChevronLeft, ChevronRight,
+  Bell, Settings, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSettings } from '../../contexts/SettingsContext';
 
-export type MeshCoreView = 'nodes' | 'channels' | 'rooms' | 'dms' | 'telemetry' | 'packets' | 'info' | 'configuration' | 'automations' | 'settings';
+export type MeshCoreView = 'nodes' | 'channels' | 'rooms' | 'dms' | 'telemetry' | 'packets' | 'info' | 'configuration' | 'automations' | 'notifications' | 'settings';
 
 interface MeshCoreSubToolbarProps {
   view: MeshCoreView;
@@ -34,6 +34,7 @@ const ITEMS: Item[] = [
   { id: 'info', labelKey: 'meshcore.nav.info', fallback: 'Node Info' },
   { id: 'configuration', labelKey: 'meshcore.nav.configuration', fallback: 'Configuration' },
   { id: 'automations', labelKey: 'meshcore.nav.automations', fallback: 'Automations' },
+  { id: 'notifications', labelKey: 'meshcore.nav.notifications', fallback: 'Notifications' },
   { id: 'settings', labelKey: 'meshcore.nav.settings', fallback: 'Settings' },
 ];
 
@@ -51,6 +52,7 @@ const LUCIDE_ICONS: Record<MeshCoreView, React.ReactNode> = {
   info: <Info size={20} />,
   configuration: <Satellite size={20} />,
   automations: <Bot size={20} />,
+  notifications: <Bell size={20} />,
   settings: <Settings size={20} />,
 };
 
@@ -66,6 +68,7 @@ const EMOJI_ICONS: Record<MeshCoreView, string> = {
   info: 'ℹ️',
   configuration: '📡',
   automations: '🤖',
+  notifications: '🔔',
   settings: '⚙️',
 };
 
@@ -77,8 +80,9 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
   showInfo = true,
 }) => {
   const { t } = useTranslation();
-  const { hasPermission } = useAuth();
+  const { authStatus, hasPermission } = useAuth();
   const { iconStyle } = useSettings();
+  const isAuthenticated = authStatus?.authenticated ?? false;
   const canReadConfig = hasPermission('configuration', 'read');
   const canReadAutomation = hasPermission('automation', 'read');
   const canReadPackets = hasPermission('packetmonitor', 'read');
@@ -98,6 +102,8 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
         if (item.id === 'configuration' && !canReadConfig) return null;
         if (item.id === 'automations' && !canReadAutomation) return null;
         if (item.id === 'packets' && !canReadPackets) return null;
+        // Notifications preferences are per-user — only meaningful when signed in.
+        if (item.id === 'notifications' && !isAuthenticated) return null;
         // Info is per-source only — it reads /api/sources/:id/meshcore/info.
         if (item.id === 'info' && !showInfo) return null;
         const label = t(item.labelKey, item.fallback);

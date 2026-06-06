@@ -606,6 +606,21 @@ When "Emoji Reactions" is disabled, notifications will be suppressed for message
 New Node and Traceroute notifications bypass normal message filtering (whitelist/blacklist/channel settings) and are only sent if you have that specific preference enabled. These notifications help you stay informed about mesh network topology changes and connectivity testing without cluttering your message notifications.
 :::
 
+### MeshCore Sources
+
+MeshCore sources have their own **Notifications** tab, and the settings are tailored to what MeshCore actually supports. Because MeshCore and Meshtastic expose different capabilities, the notification options shown for a MeshCore source are a subset:
+
+| Notification | MeshCore | Notes |
+|---|---|---|
+| **Low Battery** | ✅ | MeshCore reports battery as a **voltage (mV)**, so the threshold is in millivolts (default 3300 mV) rather than a 0–100 percentage. |
+| **Inactive Node** | ✅ | Alerts when a monitored MeshCore node hasn't been heard within the configured window. |
+| **Newly Found Nodes** | ✅ | Sent the first time a contact advertises (display name + device type: Companion / Repeater / Room Server). |
+| **Server Events** | ✅ | Source connect/disconnect/reconnect. |
+| **Web Push / Apprise / Monitored-node picker** | ✅ | Delivery and node selection work the same as Meshtastic. |
+| Direct Messages, Emoji Reactions, MQTT, Traceroutes, Channel selection, Keyword filtering, percentage battery threshold | ❌ | Hidden for MeshCore — these depend on Meshtastic-only protocol features or data. |
+
+All preferences are scoped per-source, so a MeshCore source and a Meshtastic source can have independent thresholds and monitored-node lists.
+
 ### Client-Side Settings (Web Push Only)
 
 For Web Push notifications specifically:
