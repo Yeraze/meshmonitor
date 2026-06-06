@@ -372,6 +372,18 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     expect(bResult.map((n) => n.publicKey)).toEqual(['pk-3']);
   });
 
+  it('getLowVoltageNodes returns only same-source rows below the threshold with a positive batteryMv', async () => {
+    await repo.upsertNode({ publicKey: 'pk-low', batteryMv: 3100 }, 'src-a');   // below 3300 → included
+    await repo.upsertNode({ publicKey: 'pk-high', batteryMv: 3900 }, 'src-a');  // above 3300 → excluded
+    await repo.upsertNode({ publicKey: 'pk-null', batteryMv: null }, 'src-a');  // no telemetry → excluded
+    await repo.upsertNode({ publicKey: 'pk-zero', batteryMv: 0 }, 'src-a');     // non-positive → excluded
+    await repo.upsertNode({ publicKey: 'pk-other', batteryMv: 3000 }, 'src-b'); // other source → excluded
+
+    const result = await repo.getLowVoltageNodes('src-a', 3300);
+    expect(result.map((n) => n.publicKey)).toEqual(['pk-low']);
+    expect(result[0].batteryMv).toBe(3100);
+  });
+
   it('markTelemetryRequested stamps lastTelemetryRequestAt', async () => {
     await repo.upsertNode({ publicKey: 'pk-1' }, 'src-a');
     await repo.setNodeTelemetryConfig('src-a', 'pk-1', { enabled: true });

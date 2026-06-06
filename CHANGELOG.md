@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Features
 
+- **MeshCore low-battery alerts (voltage-based)**: Low-battery notifications now work for MeshCore sources. MeshCore devices report battery as a voltage (mV) rather than a 0-100 percentage, so a new per-user voltage threshold (default 3300 mV) is compared against each monitored node's `batteryMv`. The Notifications settings expose both thresholds — percentage for Meshtastic, mV for MeshCore — and the monitored-node picker now lists all MeshCore nodes (not just those with a GPS fix) so battery-powered companions can be selected. Resolves #3331.
 - **Airtime cutoff — neighbour-averaged source**: The airtime-utilization cutoff (Automation page) can now measure Channel Utilization from *nearby infrastructure* instead of the local node. In "Nearby infrastructure" mode it averages the Channel Utilization of the 3 strongest-RSSI directly-heard (0-hop) router/repeater nodes — useful when a well-placed node under-reports the wider mesh. Default remains the local node's own Channel Utilization; the live banner shows which source is in use and how many neighbours were sampled.
 
 ### Fixes
