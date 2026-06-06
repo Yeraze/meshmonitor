@@ -336,6 +336,59 @@ export default function ChannelsTab({
     }
   }, [channelMessagesContainerRef, handleScroll]);
 
+  // Mobile (iOS PWA) deterministic height for the message list.
+  // iOS WebKit does not reliably propagate a definite height down the nested
+  // conversation flex chain, so flex-grow / grid-1fr / auto-margin all leave
+  // the list short and the send bar floating above the bottom (a dead-space
+  // gap below it). `.channel-conversation` IS reliably sized, so we measure it
+  // and set `.messages-container`'s height explicitly — an explicit px height
+  // is unconditionally definite, so the in-flow send bar lands at the bottom.
+  // Desktop (>768px) keeps the pure-CSS flex layout (height cleared).
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const apply = () => {
+      const mc = channelMessagesContainerRef.current;
+      const cc = mc?.parentElement as HTMLElement | null | undefined; // .channel-conversation
+      const sf = cc?.querySelector('.send-message-form') as HTMLElement | null;
+      if (!mc || !cc || !sf) return;
+      if (!mq.matches) {
+        mc.style.height = '';
+        mc.style.flex = '';
+        return;
+      }
+      const ccs = getComputedStyle(cc);
+      // Use the RENDERED height (getBoundingClientRect), not clientHeight: on
+      // iOS WebKit a flex-stretched element's clientHeight under-reports the
+      // stretched portion (~the safe-area height), which left the message list
+      // short and the send bar floating. boundingRect.height reflects the true
+      // rendered height, so subtract borders + padding to get the content box.
+      const borderY = (parseFloat(ccs.borderTopWidth) || 0) + (parseFloat(ccs.borderBottomWidth) || 0);
+      const padY = (parseFloat(ccs.paddingTop) || 0) + (parseFloat(ccs.paddingBottom) || 0);
+      const contentH = cc.getBoundingClientRect().height - borderY - padY;
+      const avail = contentH - sf.offsetHeight - (parseFloat(getComputedStyle(sf).marginTop) || 0);
+      mc.style.flex = 'none'; // exact height, no grow/shrink fighting the value
+      mc.style.height = `${Math.max(0, Math.round(avail))}px`;
+    };
+    apply();
+    const mc = channelMessagesContainerRef.current;
+    const cc = mc?.parentElement as HTMLElement | null | undefined;
+    const sf = cc?.querySelector('.send-message-form') as HTMLElement | null;
+    // Observe the container (parent-sized) and the send bar (wraps to 2 rows /
+    // grows with multiline input). Neither is the element we resize, so no loop.
+    const ro = new ResizeObserver(apply);
+    if (cc) ro.observe(cc);
+    if (sf) ro.observe(sf);
+    mq.addEventListener?.('change', apply);
+    window.visualViewport?.addEventListener('resize', apply);
+    return () => {
+      ro.disconnect();
+      mq.removeEventListener?.('change', apply);
+      window.visualViewport?.removeEventListener('resize', apply);
+      const el = channelMessagesContainerRef.current;
+      if (el) { el.style.height = ''; el.style.flex = ''; }
+    };
+  }, [channelMessagesContainerRef, selectedChannel, shouldShowData]);
+
   // Scroll to and highlight a focused message from search
   useEffect(() => {
     if (!focusMessageId) return;

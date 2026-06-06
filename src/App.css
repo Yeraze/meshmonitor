@@ -1412,7 +1412,10 @@ body {
        below the message input. The % height chain + flex parent below give
        the true viewport height; .app-main's padding already reserves the
        header and bottom safe-area space. */
-    flex: 1 1 auto;
+    /* flex-basis 0 (not auto): iOS WebKit only reliably grows a flex item to
+       fill free space when its basis is 0. With basis:auto it stays at content
+       size, which left a dead-space gap below the message input. */
+    flex: 1 1 0;
     min-height: 0;
     overflow: hidden;
     /* Prevent scroll chaining to body */
@@ -1436,6 +1439,22 @@ body {
   .app-main:has(.channels-tab-content) {
     display: flex;
     flex-direction: column;
+    /* A flex item's default min-height:auto refuses to shrink below its content
+       size. iOS WebKit enforces this strictly, so without min-height:0 the
+       channels message list expands .app-main to its full content height
+       (thousands of px) instead of being clamped to .app's viewport height —
+       the page then scroll-grows without bound and the send bar is pushed off
+       screen (the #3307 regression). overflow:hidden is a hard backstop. */
+    min-height: 0;
+    overflow: hidden;
+    /* The base .app-main reserves env(safe-area-inset-bottom) via its
+       padding-bottom, but .send-message-form (the bottom-most element) ALSO
+       pads itself by that inset — applying the home-indicator gap twice and
+       leaving dead space below the input. Drop it here so the send bar owns
+       the safe area (its background reaches the screen edge, its controls stay
+       above the indicator). env() is 0 on non-notch devices/desktop, so this
+       is a no-op there. */
+    padding-bottom: 0;
   }
 
   /* The page-level bottom spacer (.app-main::after) would add dead space
@@ -1488,17 +1507,38 @@ body {
   }
 
   /* Make channel conversation flex container */
-  .channel-conversation {
+  /* Descendant selector (0,2,0) beats the base `.channel-conversation` rule
+     defined after this media block. iOS WebKit does not propagate a definite
+     height down this nested flex chain, so flex-grow / grid-1fr / auto-margin
+     all leave the message list short and the send bar floating above the
+     bottom. Instead, .messages-container's height is set explicitly in JS
+     (ChannelsTab) from this element's reliably-rendered height, which keeps
+     the send bar in normal flow (preserving the iOS keyboard handling) while
+     pinning it to the bottom deterministically. */
+  .channels-tab-content .channel-conversation {
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden; /* Must be hidden so .messages-container is the scroll target for infinite scroll */
     min-height: 0;
+    /* No bottom padding below the send bar — the bar carries its own
+       safe-area padding for the home indicator, so extra card padding here
+       just reads as a dead-space gap on mobile. (High specificity beats the
+       base .channel-conversation padding:1rem.) */
+    padding-bottom: 0;
+  }
+
+  /* No section padding below the conversation card on mobile either. */
+  .channels-tab-content .channel-conversation-section {
+    padding-bottom: 0;
   }
 
   /* Messages container fills available space and scrolls */
   .messages-container {
-    flex: 1 1 auto;
+    /* flex-basis 0 (not auto) so iOS WebKit grows it to fill the conversation
+       even when the message list is short — basis:auto kept it at content
+       height, floating the send bar up and leaving a gap below it. */
+    flex: 1 1 0;
     overflow-y: auto;
     min-height: 0;
     max-height: none; /* Remove max-height on mobile */
@@ -1509,15 +1549,18 @@ body {
   /* Send form sticks to bottom of conversation container */
   .send-message-form {
     flex-shrink: 0;
-    position: sticky;
-    bottom: 0;
+    /* No position:sticky here. On iOS WebKit, `position: sticky; bottom: 0`
+       resolves bottom:0 against the safe-area-inset viewport bottom, pinning
+       the bar ~34px (the home-indicator inset) above the card's real bottom —
+       which was the residual dead-space gap. The message list now gets a
+       deterministic height (ChannelsTab), so the bar's normal-flow position is
+       already the card bottom and sticky is unnecessary. */
     margin-top: 0.5rem;
     padding-top: 0.5rem;
     padding-bottom: env(safe-area-inset-bottom, 0);
     width: 100%;
     box-sizing: border-box;
     background: var(--ctp-mantle);
-    z-index: 5;
   }
 
   /* Reduce padding on mobile for more space */
