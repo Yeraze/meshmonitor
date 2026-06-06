@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Features
+
+- **Notifications space for MeshCore sources**: MeshCore sources now have a dedicated **Notifications** tab (previously the notifications UI only existed for Meshtastic sources, so the voltage low-battery threshold added in 4.9.1 was unreachable from a MeshCore source). The shared notifications settings are now source-type aware: for MeshCore they show only the controls that actually work — voltage (mV) low-battery threshold, inactive-node, new-node, server events, monitored-node picker, and Web Push / Apprise delivery — and hide Meshtastic-only options (percentage threshold, direct messages, emoji reactions, MQTT, traceroute, channel selection, and keyword filtering). The Meshtastic notifications page no longer shows the irrelevant mV field. Resolves #3331.
+- **MeshCore inactive-node notifications**: Inactive-node alerts now fire for MeshCore sources. The service previously iterated every source but only queried the Meshtastic node table, so MeshCore monitored nodes never alerted. It now has a MeshCore branch that reads `meshcore_nodes.lastHeard` (stored in milliseconds, unlike Meshtastic's seconds) and reconstructs the `mc:<sourceId>:<pubkey>` monitored-node ids.
+- **MeshCore new-node notifications**: "New node discovered" notifications now fire for MeshCore. They trigger on the first real-time contact advert (not bulk contact-list sync, so reconnecting to a device with many saved contacts won't storm notifications), carry the advertised display name and device-type label (Companion / Repeater / Room Server), and de-duplicate per public key for the session.
+
 ### Bug Fixes
 
 - **Channel reorder could replace a Meshtastic channel with a MeshCore one**: The `POST /api/channels/reorder` handler read the current channels with an unscoped `getAllChannels()` and keyed them into a slot-indexed map. Because MeshCore and Meshtastic channels share the `channels` table and both use slot ids 0-7, a MeshCore channel occupying the same slot could win the lookup and be written back to the Meshtastic device. The reorder read and database writes are now scoped to the source being edited (`reorderManager.sourceId`), keeping each source's channels isolated.

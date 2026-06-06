@@ -205,6 +205,46 @@ class NotificationService {
   }
 
   /**
+   * Send a "new node discovered" notification for a MeshCore source
+   * (bypasses normal filtering). Only sends if the user has notifyOnNewNode
+   * enabled for this source. MeshCore advertises a display name and a device
+   * type (Companion / Repeater / Room Server) but has no Meshtastic-style
+   * shortName, hardware model, or hops-away count, so the payload is built from
+   * the fields MeshCore actually provides. The caller is responsible for
+   * firing this only the first time a node is discovered (see meshcoreManager
+   * contact-advert handling), so there is no incomplete→complete gating here.
+   */
+  public async notifyNewMeshCoreNode(
+    publicKey: string,
+    displayName: string,
+    deviceTypeLabel: string | undefined,
+    sourceId: string,
+    sourceName: string
+  ): Promise<void> {
+    try {
+      const typeText = deviceTypeLabel ? ` - ${deviceTypeLabel}` : '';
+      const payload: NotificationPayload = {
+        title: `[${sourceName}] 🆕 New Node Discovered`,
+        body: `[${sourceName}] ${displayName}${typeText}`,
+        type: 'info',
+        sourceId,
+        sourceName
+      };
+
+      // Send to users with notifyOnNewNode enabled, scoped to this source
+      await Promise.allSettled([
+        pushNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload, undefined, sourceId),
+        appriseNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload, undefined, sourceId),
+        desktopNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', payload, sourceId)
+      ]);
+
+      logger.info(`📤 Sent new MeshCore node notification for ${displayName} [${publicKey.substring(0, 16)}…] on ${sourceId}`);
+    } catch (error) {
+      logger.error('❌ Error sending new MeshCore node notification:', error);
+    }
+  }
+
+  /**
    * Send notification for successful traceroute (bypasses normal filtering)
    * Only sends if user has notifyOnTraceroute enabled
    */

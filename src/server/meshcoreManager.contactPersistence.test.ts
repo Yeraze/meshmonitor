@@ -12,12 +12,23 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const upsertNode = vi.fn().mockResolvedValue(undefined);
+const getSource = vi.fn().mockResolvedValue({ name: 'Source A' });
 
 vi.mock('../services/database.js', () => ({
   default: {
     meshcore: {
       upsertNode: (...args: unknown[]) => upsertNode(...args),
     },
+    sources: {
+      getSource: (...args: unknown[]) => getSource(...args),
+    },
+  },
+}));
+
+const notifyNewMeshCoreNode = vi.fn().mockResolvedValue(undefined);
+vi.mock('./services/notificationService.js', () => ({
+  notificationService: {
+    notifyNewMeshCoreNode: (...args: unknown[]) => notifyNewMeshCoreNode(...args),
   },
 }));
 
@@ -28,6 +39,10 @@ vi.mock('./services/dataEventEmitter.js', () => ({
     emitMeshCoreSelfInfoUpdated: vi.fn(),
   },
 }));
+
+// notifyNewNodeDiscovered runs via `void` with an awaited getSource lookup;
+// flush microtasks + a macrotask so the fire-and-forget notification settles.
+const flush = () => new Promise((r) => setTimeout(r, 0));
 
 import { MeshCoreManager, MeshCoreDeviceType } from './meshcoreManager.js';
 
@@ -49,6 +64,8 @@ describe('MeshCoreManager contact persistence (issue #3092)', () => {
 
   beforeEach(() => {
     upsertNode.mockClear();
+    getSource.mockClear();
+    notifyNewMeshCoreNode.mockClear();
   });
 
   it('persists advType to meshcore_nodes on contact_advertised', async () => {
@@ -157,6 +174,66 @@ describe('MeshCoreManager contact persistence (issue #3092)', () => {
     await Promise.resolve();
     // In-memory contact still updated even though the persist failed.
     expect(manager.getContact(REPEATER_PUBKEY)?.advType).toBe(MeshCoreDeviceType.REPEATER);
+  });
+
+  it('fires a "new node discovered" notification the first time a contact advertises', async () => {
+    const manager = new MeshCoreManager('src-a');
+    dispatchBridgeEvent(manager, {
+      event_type: 'contact_advertised',
+      data: {
+        public_key: REPEATER_PUBKEY,
+        adv_name: 'MyRepeater',
+        adv_type: MeshCoreDeviceType.REPEATER,
+      },
+    });
+
+    await flush();
+
+    expect(notifyNewMeshCoreNode).toHaveBeenCalledTimes(1);
+    expect(notifyNewMeshCoreNode).toHaveBeenCalledWith(
+      REPEATER_PUBKEY,
+      'MyRepeater',
+      'Repeater',     // MeshCoreDeviceType.REPEATER → friendly label
+      'src-a',
+      'Source A',     // resolved via databaseService.sources.getSource
+    );
+  });
+
+  it('does not re-notify when an already-known contact re-advertises', async () => {
+    const manager = new MeshCoreManager('src-a');
+    const advert = {
+      event_type: 'contact_advertised',
+      data: {
+        public_key: REPEATER_PUBKEY,
+        adv_name: 'MyRepeater',
+        adv_type: MeshCoreDeviceType.REPEATER,
+      },
+    };
+
+    dispatchBridgeEvent(manager, advert);
+    await flush();
+    expect(notifyNewMeshCoreNode).toHaveBeenCalledTimes(1);
+
+    // Second advert for the same (now-known) contact must not notify again.
+    dispatchBridgeEvent(manager, advert);
+    await flush();
+    expect(notifyNewMeshCoreNode).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not notify for a brand-new contact that has no display name yet', async () => {
+    const manager = new MeshCoreManager('src-a');
+    dispatchBridgeEvent(manager, {
+      event_type: 'contact_advertised',
+      data: {
+        public_key: REPEATER_PUBKEY,
+        adv_type: MeshCoreDeviceType.REPEATER,
+        // no adv_name
+      },
+    });
+
+    await flush();
+
+    expect(notifyNewMeshCoreNode).not.toHaveBeenCalled();
   });
 
   it('exposes the in-memory contact via getContact for route-side backfill', () => {
