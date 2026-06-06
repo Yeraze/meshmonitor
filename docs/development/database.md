@@ -270,11 +270,20 @@ Or with Docker:
 docker run --rm -it \
   -v $(pwd)/meshmonitor.db:/data/meshmonitor.db:ro \
   --network host \
-  ghcr.io/yeraze/meshmonitor:latest \
+  ghcr.io/yeraze/meshmonitor:4.9.1 \
   npm run migrate-db -- \
     --from sqlite:/data/meshmonitor.db \
     --to postgres://meshmonitor:password@localhost:5432/meshmonitor
 ```
+
+::: warning Match the image tag to your current version
+Run the migration tool from the Docker image tag that matches the MeshMonitor
+version that produced your SQLite database (e.g. `ghcr.io/yeraze/meshmonitor:3.12.0`
+if you're migrating a v3.12.0 database) — **not** `latest`. A newer tool may
+reference tables or columns that don't exist in your older schema and fail
+mid-migration. Migrate first, then upgrade MeshMonitor — the regular startup
+migrations will bring the new database up to the current schema.
+:::
 
 #### Migration Options
 
