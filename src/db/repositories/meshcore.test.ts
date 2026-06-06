@@ -384,6 +384,18 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     expect(result[0].batteryMv).toBe(3100);
   });
 
+  it('getInactiveMeshcoreNodes returns only same-source rows whose lastHeard is older than the cutoff', async () => {
+    // MeshCore lastHeard is in milliseconds; the cutoff is a millisecond value.
+    const cutoffMs = 1_000_000;
+    await repo.upsertNode({ publicKey: 'pk-old', lastHeard: 500_000 }, 'src-a');    // older → included
+    await repo.upsertNode({ publicKey: 'pk-new', lastHeard: 2_000_000 }, 'src-a');  // newer → excluded
+    await repo.upsertNode({ publicKey: 'pk-null', lastHeard: null }, 'src-a');      // never heard → excluded
+    await repo.upsertNode({ publicKey: 'pk-other', lastHeard: 500_000 }, 'src-b');  // other source → excluded
+
+    const result = await repo.getInactiveMeshcoreNodes('src-a', cutoffMs);
+    expect(result.map((n) => n.publicKey)).toEqual(['pk-old']);
+  });
+
   it('markTelemetryRequested stamps lastTelemetryRequestAt', async () => {
     await repo.upsertNode({ publicKey: 'pk-1' }, 'src-a');
     await repo.setNodeTelemetryConfig('src-a', 'pk-1', { enabled: true });

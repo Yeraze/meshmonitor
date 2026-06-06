@@ -42,7 +42,13 @@ interface NotificationsTabProps {
 const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
-  const { sourceId: currentSourceId } = useSource();
+  const { sourceId: currentSourceId, sourceType } = useSource();
+  // MeshCore sources expose a different capability set than Meshtastic: they
+  // report battery as a voltage (mV) rather than a percentage, and they do not
+  // surface channel/DM/emoji/MQTT/traceroute/new-node notifications (those
+  // events never reach the notification service for MeshCore). Gate the
+  // Meshtastic-only controls so a MeshCore source only shows what actually works.
+  const isMeshCore = sourceType === 'meshcore';
   const [vapidStatus, setVapidStatus] = useState<VapidStatus | null>(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
@@ -105,9 +111,14 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     loadVapidStatus();
   }, []);
 
-  // Reload source-scoped data whenever the active source changes
+  // Reload source-scoped data whenever the active source changes. Preferences
+  // are loaded *after* channels resolve (even when a source has zero channels,
+  // e.g. MeshCore) so the saved enabledChannels overrides the "all channels"
+  // default applied by loadChannels. Gating preference loading on
+  // channels.length > 0 previously meant MeshCore sources — which return no
+  // Meshtastic channels — never loaded their saved preferences.
   useEffect(() => {
-    loadChannels();
+    loadChannels().finally(() => loadPreferences());
     loadNodes();
   }, [currentSourceId]);
 
@@ -126,13 +137,6 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       logger.error('Failed to fetch nodes:', error);
     }
   };
-
-  // Load preferences after channels are loaded
-  useEffect(() => {
-    if (channels.length > 0) {
-      loadPreferences();
-    }
-  }, [channels.length]);
 
   // Filter nodes based on search term
   const filteredNodes = useMemo(() => {
@@ -585,7 +589,9 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                 <span>📢</span> {t('notifications.sources_title')}
               </h4>
 
-              {/* Direct Messages Toggle */}
+              {/* Direct Messages Toggle — Meshtastic only (MeshCore message
+                  events don't reach the notification service) */}
+              {!isMeshCore && (
               <div style={{
                 padding: '12px',
                 backgroundColor: '#252535',
@@ -608,8 +614,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   <span style={{ fontWeight: '500' }}>💬 {t('notifications.direct_messages')}</span>
                 </label>
               </div>
+              )}
 
-              {/* Emoji Reactions Toggle */}
+              {/* Emoji Reactions Toggle — Meshtastic only */}
+              {!isMeshCore && (
               <div style={{
                 padding: '12px',
                 backgroundColor: '#252535',
@@ -632,8 +640,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   <span style={{ fontWeight: '500' }}>😀 {t('notifications.emoji_reactions')}</span>
                 </label>
               </div>
+              )}
 
-              {/* MQTT Messages Toggle */}
+              {/* MQTT Messages Toggle — Meshtastic only */}
+              {!isMeshCore && (
               <div style={{
                 padding: '12px',
                 backgroundColor: '#252535',
@@ -656,8 +666,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   <span style={{ fontWeight: '500' }}>📡 {t('notifications.mqtt_messages')}</span>
                 </label>
               </div>
+              )}
 
-              {/* New Node Toggle */}
+              {/* New Node Toggle — supported on both Meshtastic (node DB) and
+                  MeshCore (contact-advert discovery). */}
               <div style={{
                 padding: '12px',
                 backgroundColor: '#252535',
@@ -681,7 +693,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                 </label>
               </div>
 
-              {/* Traceroute Success Toggle */}
+              {/* Traceroute Success Toggle — Meshtastic only (no MeshCore equivalent) */}
+              {!isMeshCore && (
               <div style={{
                 padding: '12px',
                 backgroundColor: '#252535',
@@ -704,6 +717,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   <span style={{ fontWeight: '500' }}>🗺️ {t('notifications.traceroutes')}</span>
                 </label>
               </div>
+              )}
 
               {/* Inactive Node Notifications */}
               <div style={{
@@ -743,7 +757,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   <span style={{ fontWeight: '500' }}>🔋 {t('notifications.notify_on_low_battery')}</span>
                 </label>
 
-                {preferences.notifyOnLowBattery && (
+                {preferences.notifyOnLowBattery && !isMeshCore && (
                   <div style={{ marginLeft: '28px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <label htmlFor="lowBatteryThreshold" style={{ margin: 0, fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
                       {t('notifications.low_battery_threshold_label')}
@@ -775,7 +789,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   </div>
                 )}
 
-                {preferences.notifyOnLowBattery && (
+                {preferences.notifyOnLowBattery && isMeshCore && (
                   <div style={{ marginLeft: '28px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <label htmlFor="lowBatteryVoltageThreshold" style={{ margin: 0, fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
                       {t('notifications.low_battery_voltage_threshold_label')}
@@ -810,7 +824,9 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
                 {preferences.notifyOnLowBattery && (
                   <p style={{ marginLeft: '28px', marginTop: '6px', marginBottom: 0, fontSize: '0.8em', color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>
-                    {t('notifications.low_battery_threshold_hint')}
+                    {isMeshCore
+                      ? t('notifications.low_battery_threshold_hint_voltage', 'MeshCore nodes report battery as a voltage (mV) rather than a percentage.')
+                      : t('notifications.low_battery_threshold_hint_percent', 'Meshtastic nodes report battery as a percentage of full charge.')}
                   </p>
                 )}
 
@@ -1035,7 +1051,9 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                 )}
               </div>
 
-              {/* Channel Selection */}
+              {/* Channel Selection — Meshtastic only (channel message
+                  notifications don't fire for MeshCore) */}
+              {!isMeshCore && (
               <div style={{
                 backgroundColor: '#252535',
                 borderRadius: '6px',
@@ -1070,10 +1088,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   </div>
                 )}
               </div>
+              )}
             </div>
           </div>
 
-          {/* Keyword Filtering */}
+          {/* Keyword Filtering — Meshtastic only (filters message notifications,
+              which don't fire for MeshCore) */}
+          {!isMeshCore && (
           <div>
             <div style={{
               backgroundColor: '#1e1e2e',
@@ -1150,9 +1171,11 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               </div>
             </div>
           </div>
+          )}
         </div>
 
-        {/* Filter Priority Info */}
+        {/* Filter Priority Info — Meshtastic only (explains message-filter ordering) */}
+        {!isMeshCore && (
         <div style={{
           backgroundColor: '#1e3a5f',
           border: '1px solid #2a5a8a',
@@ -1164,6 +1187,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         }}>
           <strong>ℹ️ {t('notifications.filter_priority')}:</strong> {t('notifications.filter_priority_order')}
         </div>
+        )}
 
         {/* Save Button */}
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
