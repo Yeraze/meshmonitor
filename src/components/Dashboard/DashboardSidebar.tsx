@@ -5,6 +5,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { version } from '../../../package.json';
 import type { DashboardSource, SourceStatus, UnifiedStatus } from '../../hooks/useDashboardData';
 import { UNIFIED_SOURCE_ID } from '../../hooks/useDashboardData';
@@ -38,6 +55,13 @@ interface DashboardSidebarProps {
   onResyncSource?: (id: string) => void;
   /** Source IDs currently awaiting a /connect POST — used to show "Connecting..." feedback. */
   connectingIds?: Set<string>;
+  /**
+   * Called when an admin drag-reorders the source list (issue #3338).
+   * Receives the new ordering of real (non-unified) source IDs. When omitted
+   * — or when the viewer lacks `sources:write` — cards render without drag
+   * handles and the list stays read-only.
+   */
+  onReorderSources?: (orderedIds: string[]) => void;
   /** Mobile drawer state — on desktop the sidebar is always visible. */
   mobileOpen?: boolean;
   /** Called to close the drawer on mobile (after selecting a source or tapping backdrop). */
@@ -234,6 +258,65 @@ const KebabMenu: React.FC<KebabMenuProps> = ({
   );
 };
 
+/**
+ * Wraps a source card with a drag handle so the list can be reordered
+ * (issue #3338). Mirrors SortableChannelCard in ChannelsConfigSection — the
+ * handle (and only the handle) carries the drag listeners, so clicking the
+ * card body still selects the source. The handle stops click propagation so a
+ * mis-click on the grip doesn't navigate.
+ */
+const SortableSourceCard: React.FC<{
+  id: string;
+  children: React.ReactNode;
+}> = ({ id, children }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.8 : 1,
+    zIndex: isDragging ? 10 : 'auto',
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'stretch',
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      <div
+        ref={setActivatorNodeRef}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+        title="Drag to reorder"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '1.4rem',
+          marginLeft: '8px',
+          cursor: isDragging ? 'grabbing' : 'grab',
+          color: isDragging ? 'var(--ctp-blue)' : 'var(--ctp-overlay1)',
+          fontSize: '1.2rem',
+          userSelect: 'none',
+          flexShrink: 0,
+          touchAction: 'none',
+        }}
+      >
+        ⠿
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
+    </div>
+  );
+};
+
 const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   sources,
   statusMap,
@@ -255,6 +338,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   mobileOpen = false,
   onMobileClose,
   onNewsClick,
+  onReorderSources,
 }) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -268,6 +352,34 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   const handleSelectSource = (id: string) => {
     onSelectSource(id);
     onMobileClose?.();
+  };
+
+  // Drag-to-reorder is admin-only and global (issue #3338). The order column
+  // lives server-side; hasPermission('sources','write') without a sourceId is
+  // the global-admin check that matches the Add/Edit/Delete gating above.
+  const canReorder =
+    typeof onReorderSources === 'function' && hasPermission('sources', 'write');
+
+  const sensors = useSensors(
+    // 5px activation distance so a plain click on the grip still falls through
+    // to the card's selection handler (matches the channel-reorder sensor).
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  // The Unified virtual source is pinned at the top of the list and is not
+  // reorderable — only real backing sources participate in the drag context.
+  const reorderableIds = sources
+    .filter((s) => s.id !== UNIFIED_SOURCE_ID)
+    .map((s) => s.id);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = reorderableIds.indexOf(active.id as string);
+    const newIndex = reorderableIds.indexOf(over.id as string);
+    if (oldIndex < 0 || newIndex < 0) return;
+    onReorderSources?.(arrayMove(reorderableIds, oldIndex, newIndex));
   };
 
   return (
@@ -292,7 +404,8 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         )}
       </div>
 
-      {sources.map((source) => {
+      {(() => {
+        const cards = sources.map((source) => {
         const isUnified = source.id === UNIFIED_SOURCE_ID;
         const status = statusMap.get(source.id);
         const isConnecting = !isUnified && connectingIds?.has(source.id) === true;
@@ -341,7 +454,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           (isMqttBroker ? ' has-mqtt-broker-watermark' : '') +
           (isMqttBridge ? ' has-mqtt-bridge-watermark' : '');
 
-        return (
+        const card = (
           <div
             key={source.id}
             className={cardClassName}
@@ -525,7 +638,33 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             </div>
           </div>
         );
-      })}
+
+        // Only real (non-unified) sources are draggable, and only when the
+        // viewer can reorder. Unified stays pinned at the top.
+        return canReorder && !isUnified ? (
+          <SortableSourceCard key={source.id} id={source.id}>
+            {card}
+          </SortableSourceCard>
+        ) : card;
+        });
+
+        // Wrap the whole list in a drag context only when reordering is
+        // enabled. The Unified card sits inside the context but is absent from
+        // `items`, so it never participates in the sort.
+        return canReorder ? (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={reorderableIds} strategy={verticalListSortingStrategy}>
+              {cards}
+            </SortableContext>
+          </DndContext>
+        ) : (
+          cards
+        );
+      })()}
 
       <div className="dashboard-sidebar-links">
         <button
