@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Bug Fixes
+
+- **Channel reorder could replace a Meshtastic channel with a MeshCore one**: The `POST /api/channels/reorder` handler read the current channels with an unscoped `getAllChannels()` and keyed them into a slot-indexed map. Because MeshCore and Meshtastic channels share the `channels` table and both use slot ids 0-7, a MeshCore channel occupying the same slot could win the lookup and be written back to the Meshtastic device. The reorder read and database writes are now scoped to the source being edited (`reorderManager.sourceId`), keeping each source's channels isolated.
+
 ## [4.9.1] - 2026-06-05
 
 ### Features
