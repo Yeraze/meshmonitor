@@ -1436,6 +1436,14 @@ body {
   .app-main:has(.channels-tab-content) {
     display: flex;
     flex-direction: column;
+    /* A flex item's default min-height:auto refuses to shrink below its content
+       size. iOS WebKit enforces this strictly, so without min-height:0 the
+       channels message list expands .app-main to its full content height
+       (thousands of px) instead of being clamped to .app's viewport height —
+       the page then scroll-grows without bound and the send bar is pushed off
+       screen (the #3307 regression). overflow:hidden is a hard backstop. */
+    min-height: 0;
+    overflow: hidden;
   }
 
   /* The page-level bottom spacer (.app-main::after) would add dead space
