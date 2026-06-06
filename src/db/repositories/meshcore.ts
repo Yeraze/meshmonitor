@@ -4,7 +4,7 @@
  * Handles MeshCore node and message database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, sql, isNull, and, or, lt, gte, inArray, type SQL } from 'drizzle-orm';
+import { eq, desc, sql, isNull, isNotNull, and, or, lt, gte, inArray, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -521,6 +521,31 @@ export class MeshCoreRepository extends BaseRepository {
         eq(meshcoreNodes.sourceId, sourceId),
         gte(meshcoreNodes.batteryMv, 1),
         lt(meshcoreNodes.batteryMv, thresholdMv),
+      ));
+    return this.normalizeBigInts(result) as unknown as DbMeshCoreNode[];
+  }
+
+  /**
+   * Return every node in a source whose `lastHeard` is older than `cutoffMs`.
+   * This is the MeshCore analogue of the Meshtastic
+   * `nodes.getInactiveMonitoredNodes` query used by the inactive-node
+   * notification service. NOTE: MeshCore `lastHeard` is stored in
+   * **milliseconds** (it is set from `Date.now()` via contact.lastSeen),
+   * unlike the Meshtastic `nodes.lastHeard` which is in seconds — so callers
+   * must pass a millisecond cutoff. Nodes that have never been heard
+   * (lastHeard null) are excluded so they can't trigger a spurious alert.
+   *
+   * See https://github.com/Yeraze/meshmonitor/issues/3331
+   */
+  async getInactiveMeshcoreNodes(sourceId: string, cutoffMs: number): Promise<DbMeshCoreNode[]> {
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreNodes)
+      .where(and(
+        eq(meshcoreNodes.sourceId, sourceId),
+        isNotNull(meshcoreNodes.lastHeard),
+        lt(meshcoreNodes.lastHeard, cutoffMs),
       ));
     return this.normalizeBigInts(result) as unknown as DbMeshCoreNode[];
   }

@@ -18,6 +18,7 @@ import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js
 import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
 import { MeshCoreNativeBackend, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
+import { notificationService } from './services/notificationService.js';
 import type { DbMeshCorePacket } from '../db/repositories/meshcore.js';
 
 // Dynamic imports for optional serialport dependency
@@ -117,6 +118,15 @@ export enum MeshCoreDeviceType {
   REPEATER = 2,
   ROOM_SERVER = 3,
 }
+
+// Human-readable labels for the device types worth surfacing in a
+// "new node discovered" notification (UNKNOWN is intentionally omitted so the
+// notification simply shows no type rather than "Unknown").
+const MESHCORE_DEVICE_TYPE_LABELS: Record<number, string> = {
+  [MeshCoreDeviceType.COMPANION]: 'Companion',
+  [MeshCoreDeviceType.REPEATER]: 'Repeater',
+  [MeshCoreDeviceType.ROOM_SERVER]: 'Room Server',
+};
 
 /**
  * Node-type filter bitmasks for active discovery (CTL_TYPE_NODE_DISCOVER_REQ).
@@ -460,6 +470,10 @@ class MeshCoreManager extends EventEmitter {
   private config: MeshCoreConfig | null = null;
   private connected: boolean = false;
   private deviceType: MeshCoreDeviceType = MeshCoreDeviceType.UNKNOWN;
+  // Public keys we've already fired a "new node discovered" notification for
+  // this session. Guards against re-notifying when a brand-new contact
+  // re-advertises before the in-memory contact store reflects it.
+  private notifiedNewNodes: Set<string> = new Set();
 
   // Repeater: direct serial
   private serialPort: InstanceType<typeof import('serialport').SerialPort> | null = null;
@@ -913,6 +927,11 @@ class MeshCoreManager extends EventEmitter {
     } else if (event_type === 'contact_advertised' || event_type === 'contact_added') {
       const publicKey: string = data.public_key;
       if (publicKey) {
+        // Captured before the set below: a contact we didn't already know about
+        // is a genuine new-node discovery. Bulk contact-list sync populates
+        // this.contacts directly (not via this event), so a first connect
+        // against a device with many saved contacts won't storm notifications.
+        const wasKnown = this.contacts.has(publicKey);
         const existing = this.contacts.get(publicKey) ?? { publicKey };
         const updated: MeshCoreContact = {
           ...existing,
@@ -933,6 +952,9 @@ class MeshCoreManager extends EventEmitter {
         void this.persistContact(updated);
         this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
         dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+        if (!wasKnown) {
+          void this.notifyNewNodeDiscovered(updated);
+        }
         logger.info(`[MeshCore] ${event_type} for ${publicKey} (${data.adv_name ?? ''})`);
       }
     } else if (event_type === 'cli_reply') {
@@ -1139,6 +1161,50 @@ class MeshCoreManager extends EventEmitter {
     } catch (err) {
       logger.warn(
         `[MeshCore:${this.sourceId}] persistContact(${contact.publicKey.substring(0, 16)}…) failed: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Fire a "new node discovered" notification for a newly seen MeshCore
+   * contact (callers gate on the contact being genuinely new). No-ops when we
+   * have no usable display name yet — the name normally arrives with the
+   * advert, so this is rare — or when we've already notified for this public
+   * key this session. MeshCore has no Meshtastic-style short name / hardware
+   * model / hop count, so the payload carries the display name plus a
+   * device-type label (Companion / Repeater / Room Server).
+   *
+   * Failures are logged but never thrown so the contact-event pipeline keeps
+   * running even if notification delivery hiccups.
+   */
+  private async notifyNewNodeDiscovered(contact: MeshCoreContact): Promise<void> {
+    try {
+      const publicKey = contact.publicKey;
+      if (!publicKey || this.notifiedNewNodes.has(publicKey)) return;
+      const displayName = contact.advName ?? contact.name ?? null;
+      if (!displayName) return; // defer until we have a meaningful name
+      this.notifiedNewNodes.add(publicKey);
+
+      const deviceTypeLabel = contact.advType != null
+        ? MESHCORE_DEVICE_TYPE_LABELS[contact.advType] ?? undefined
+        : undefined;
+
+      let sourceName: string = this.sourceId;
+      try {
+        const src = await databaseService.sources.getSource(this.sourceId);
+        if (src?.name) sourceName = src.name;
+      } catch { /* fall back to id */ }
+
+      await notificationService.notifyNewMeshCoreNode(
+        publicKey,
+        displayName,
+        deviceTypeLabel,
+        this.sourceId,
+        sourceName,
+      );
+    } catch (err) {
+      logger.warn(
+        `[MeshCore:${this.sourceId}] notifyNewNodeDiscovered(${contact.publicKey.substring(0, 16)}…) failed: ${(err as Error).message}`,
       );
     }
   }

@@ -27,6 +27,8 @@ import { MeshCoreConfigurationView } from './MeshCoreConfigurationView';
 import { MeshCoreSettingsView } from './MeshCoreSettingsView';
 import { MeshCoreRoomsView } from './MeshCoreRoomsView';
 import { MeshCoreAutomationsView } from './MeshCoreAutomationsView';
+import NotificationsTab from '../NotificationsTab';
+import { useAuth } from '../../contexts/AuthContext';
 import { SaveBarProvider } from '../../contexts/SaveBarContext';
 import { SaveBar } from '../SaveBar';
 import './MeshCoreTab.css';
@@ -51,6 +53,8 @@ interface MeshCorePageProps {
 
 export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, enabled, onStatusChange }) => {
   const { t } = useTranslation();
+  const { authStatus } = useAuth();
+  const isAdmin = authStatus?.user?.isAdmin ?? false;
   const meshCore = useMeshCore({ baseUrl, sourceId, enabled });
   const { status, nodes, contacts, messages, loading, error, actions } = meshCore;
 
@@ -165,6 +169,9 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               />
               <SaveBar />
             </SaveBarProvider>
+          )}
+          {view === 'notifications' && (
+            <NotificationsTab isAdmin={isAdmin} />
           )}
           {view === 'settings' && (
             <MeshCoreSettingsView
