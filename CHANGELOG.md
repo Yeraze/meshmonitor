@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.9.1] - 2026-06-05
+
 ### Features
 
 - **MeshCore low-battery alerts (voltage-based)**: Low-battery notifications now work for MeshCore sources. MeshCore devices report battery as a voltage (mV) rather than a 0-100 percentage, so a new per-user voltage threshold (default 3300 mV) is compared against each monitored node's `batteryMv`. The Notifications settings expose both thresholds — percentage for Meshtastic, mV for MeshCore — and the monitored-node picker now lists all MeshCore nodes (not just those with a GPS fix) so battery-powered companions can be selected. Resolves #3331.
