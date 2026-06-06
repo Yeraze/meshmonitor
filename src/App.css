@@ -1507,12 +1507,30 @@ body {
   }
 
   /* Make channel conversation flex container */
-  .channel-conversation {
+  /* Descendant selector (0,2,0) beats the base `.channel-conversation` rule
+     defined after this media block. iOS WebKit does not propagate a definite
+     height down this nested flex chain, so flex-grow / grid-1fr / auto-margin
+     all leave the message list short and the send bar floating above the
+     bottom. Instead, .messages-container's height is set explicitly in JS
+     (ChannelsTab) from this element's reliably-rendered height, which keeps
+     the send bar in normal flow (preserving the iOS keyboard handling) while
+     pinning it to the bottom deterministically. */
+  .channels-tab-content .channel-conversation {
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden; /* Must be hidden so .messages-container is the scroll target for infinite scroll */
     min-height: 0;
+    /* No bottom padding below the send bar — the bar carries its own
+       safe-area padding for the home indicator, so extra card padding here
+       just reads as a dead-space gap on mobile. (High specificity beats the
+       base .channel-conversation padding:1rem.) */
+    padding-bottom: 0;
+  }
+
+  /* No section padding below the conversation card on mobile either. */
+  .channels-tab-content .channel-conversation-section {
+    padding-bottom: 0;
   }
 
   /* Messages container fills available space and scrolls */
@@ -1531,15 +1549,18 @@ body {
   /* Send form sticks to bottom of conversation container */
   .send-message-form {
     flex-shrink: 0;
-    position: sticky;
-    bottom: 0;
+    /* No position:sticky here. On iOS WebKit, `position: sticky; bottom: 0`
+       resolves bottom:0 against the safe-area-inset viewport bottom, pinning
+       the bar ~34px (the home-indicator inset) above the card's real bottom —
+       which was the residual dead-space gap. The message list now gets a
+       deterministic height (ChannelsTab), so the bar's normal-flow position is
+       already the card bottom and sticky is unnecessary. */
     margin-top: 0.5rem;
     padding-top: 0.5rem;
     padding-bottom: env(safe-area-inset-bottom, 0);
     width: 100%;
     box-sizing: border-box;
     background: var(--ctp-mantle);
-    z-index: 5;
   }
 
   /* Reduce padding on mobile for more space */
