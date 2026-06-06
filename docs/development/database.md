@@ -270,7 +270,7 @@ Or with Docker:
 docker run --rm -it \
   -v $(pwd)/meshmonitor.db:/data/meshmonitor.db:ro \
   --network host \
-  ghcr.io/yeraze/meshmonitor:4.9.1 \
+  ghcr.io/yeraze/meshmonitor:4.9.2 \
   npm run migrate-db -- \
     --from sqlite:/data/meshmonitor.db \
     --to postgres://meshmonitor:password@localhost:5432/meshmonitor
