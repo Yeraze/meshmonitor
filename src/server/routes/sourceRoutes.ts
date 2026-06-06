@@ -257,6 +257,37 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
   }
 });
 
+// Reorder the source list (issue #3338).
+//
+// Admin-gated (`sources:write`): the order is global, shared by every viewer,
+// so it sits alongside Add/Edit/Delete in the same permission tier. Body is
+// `{ order: string[] }` — a complete permutation of all current source IDs.
+// Declared before `/:id` so the literal path is not captured as an id param.
+router.post('/reorder', requirePermission('sources', 'write'), async (req: Request, res: Response) => {
+  try {
+    const { order } = req.body;
+    if (!Array.isArray(order) || !order.every((id) => typeof id === 'string')) {
+      return res.status(400).json({ error: 'order must be an array of source IDs' });
+    }
+    const sources = await databaseService.sources.reorderSources(order);
+    const isAdmin = req.user?.isAdmin === true;
+    const projected = sources.map(s => stripSourceSecrets({
+      id: s.id,
+      name: s.name,
+      type: s.type,
+      enabled: s.enabled,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+      config: s.config,
+    }, isAdmin));
+    res.json(projected);
+  } catch (error: any) {
+    // reorderSources throws on a non-permutation payload — surface as 400.
+    logger.error('Error reordering sources:', error);
+    res.status(400).json({ error: error?.message ?? 'Failed to reorder sources' });
+  }
+});
+
 // Get single source
 //
 // MM-SEC-8: pass the row through the same `stripSourceSecrets` helper as the

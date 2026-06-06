@@ -13,6 +13,10 @@ export const sourcesSqlite = sqliteTable('sources', {
   type: text('type').notNull(),
   config: text('config').notNull(),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  // User-controlled ordering of the source list (issue #3338). Lower values
+  // sort first; ties broken by createdAt. Default 0 so pre-existing rows fall
+  // back to creation order until a reorder writes explicit 1..N ranks.
+  displayOrder: integer('displayOrder').notNull().default(0),
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
   createdBy: integer('createdBy'),
@@ -25,6 +29,7 @@ export const sourcesPostgres = pgTable('sources', {
   type: pgText('type').notNull(),
   config: pgText('config').notNull(),
   enabled: pgBoolean('enabled').notNull().default(true),
+  displayOrder: pgInteger('displayOrder').notNull().default(0),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
   createdBy: pgInteger('createdBy'),
@@ -37,6 +42,7 @@ export const sourcesMysql = mysqlTable('sources', {
   type: myVarchar('type', { length: 32 }).notNull(),
   config: myVarchar('config', { length: 4096 }).notNull(),
   enabled: myBoolean('enabled').notNull().default(true),
+  displayOrder: myInt('displayOrder').notNull().default(0),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
   createdBy: myInt('createdBy'),
