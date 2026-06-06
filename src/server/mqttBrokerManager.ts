@@ -17,6 +17,8 @@ import { ingestServiceEnvelope, bootstrapMqttChannelDatabase } from './mqttInges
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import type { Source } from '../db/repositories/sources.js';
+import { loadAllNodesAsDeviceInfo } from './utils/dbNodeMapper.js';
+import type { DeviceInfo } from './meshtasticManager.js';
 import { logger } from '../utils/logger.js';
 
 export interface MqttBrokerSourceConfig {
@@ -142,6 +144,64 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
       longName: this.config.gateway.longName,
       shortName: this.config.gateway.shortName,
     };
+  }
+
+  /**
+   * Meshtastic-shaped connection status, used by /api/poll and /api/connection
+   * when scoped to this source. The embedded broker is the "device" here, so
+   * `connected` tracks the listener and `nodeResponsive` follows it (the
+   * dashboard shouldn't fall into the "node-offline" UX while the broker is up).
+   * Mirrors MqttBridgeManager.getConnectionStatus.
+   */
+  async getConnectionStatus(): Promise<{
+    connected: boolean;
+    nodeResponsive: boolean;
+    configuring: boolean;
+    nodeIp: string;
+    userDisconnected?: boolean;
+  }> {
+    const connected = this.broker?.getStatus()?.listening ?? false;
+    return {
+      connected,
+      nodeResponsive: connected,
+      configuring: false,
+      nodeIp: '',
+      userDisconnected: false,
+    };
+  }
+
+  /**
+   * DB-backed node list, scoped to this broker's source. Mirrors
+   * MeshtasticManager/MqttBridgeManager.getAllNodesAsync so the consolidated
+   * /api/poll endpoint doesn't have to special-case the manager type.
+   * (Without this, /api/poll threw `getAllNodesAsync is not a function` and
+   * 500'd for broker sources, so the dashboard/map showed no nodes — #issue.)
+   */
+  async getAllNodesAsync(sourceId?: string): Promise<DeviceInfo[]> {
+    return loadAllNodesAsDeviceInfo(sourceId);
+  }
+
+  /**
+   * The embedded broker has no local LoRa device, so there is no device config
+   * to query. Used by /api/device/tx-status — return null like the bridge so
+   * the UI doesn't gate features on a config that will never arrive.
+   */
+  async getDeviceConfig(): Promise<any> {
+    return null;
+  }
+
+  /**
+   * No device-resident NodeDB for a broker source.
+   */
+  getDeviceNodeNums(): number[] {
+    return [];
+  }
+
+  /**
+   * Broker sources have no PKI keypair of their own.
+   */
+  getSecurityKeys(): { publicKey: string | null; privateKey: string | null } {
+    return { publicKey: null, privateKey: null };
   }
 
   /** Publish a raw payload to a topic on this broker. */

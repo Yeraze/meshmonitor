@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 - **Airtime cutoff — neighbour-averaged source**: The airtime-utilization cutoff (Automation page) can now measure Channel Utilization from *nearby infrastructure* instead of the local node. In "Nearby infrastructure" mode it averages the Channel Utilization of the 3 strongest-RSSI directly-heard (0-hop) router/repeater nodes — useful when a well-placed node under-reports the wider mesh. Default remains the local node's own Channel Utilization; the live banner shows which source is in use and how many neighbours were sampled.
 
+### Fixes
+
+- **MQTT broker source dashboard/map showed no nodes**: `MqttBrokerManager` was missing the `getAllNodesAsync` / `getConnectionStatus` / `getDeviceConfig` methods that the consolidated `/api/poll` (and `/api/device/tx-status`, `/api/messages/unread-counts`) endpoints call, so those endpoints threw `TypeError: ... is not a function` and returned HTTP 500 for `mqtt_broker` sources. The dashboard and map therefore received no node data and showed no positions/pins, even though node positions were being ingested and stored correctly. The broker manager now implements the same DB-backed read methods as `MqttBridgeManager`.
+
 ## [4.9.0] - 2026-06-05
 
 # MeshMonitor v4.9.0
