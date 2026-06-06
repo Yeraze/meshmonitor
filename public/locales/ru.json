@@ -3858,7 +3858,7 @@
     "automation.auto_heap.threshold_hint": "Запустить очистку, если узел сообщает о наличии менее указанного объема свободной памяти.",
     "automation.auto_traceroute.min_hops": "Мин.:",
     "map": {
-        "showPositionHistory": "Показать историю перемещения",
+        "showPositionHistory": "Показать историю местоположения",
         "showMeshCore": "Показать MeshCore",
         "showMqtt": "Показать MQTT",
         "showRouteSegments": "Показать сегменты маршрута",
@@ -3870,7 +3870,8 @@
         "showEstimatedPositions": "Показать предполагаеме местоположение",
         "showAccuracyRegions": "Показать радиус точности",
         "showUdp": "Показать UDP",
-        "showRf": "Показать RF"
+        "showRf": "Показать RF",
+        "showWaypoints": "Показать путевые точки"
     },
     "settings.analytics_measurement_id_description": "Ваш GA4 Measurement ID (e.g. G-XXXXXXXXXX)",
     "meshcore.admin_password_placeholder": "",
@@ -4226,5 +4227,13 @@
     "channel_database.toast_url_no_selection": "Выберите хотя бы один канал для импорта",
     "channel_database.toast_url_import_success": "Импортировано {{count}} канал(ов) по URL",
     "channel_database.toast_url_import_partial": "Импортировано: {{imported}}, не удалось импортировать: {{failed}}",
-    "channel_database.toast_url_import_all_skipped": "Нечего импортировать — все выбранные строки не содержат криптоданных"
+    "channel_database.toast_url_import_all_skipped": "Нечего импортировать — все выбранные строки не содержат криптоданных",
+    "nav.mqtt_bridge_config": "Конфигурация",
+    "nodes.copy_nodeinfo_description": "Скопируйте отсутствующие поля NodeInfo из другого источника, содержащего данные для этого узла.",
+    "nodes.copy_nodeinfo_no_candidates": "В других источниках информация о данном узле в базе данных NodeInfo отсутствует.",
+    "nodes.copy_nodeinfo_source": "Копировать из источника",
+    "nodes.copy_nodeinfo_current": "Текущий",
+    "nodes.copy_nodeinfo_incoming": "Входящий",
+    "nodes.copy_nodeinfo_field": "Поле",
+    "nodes.copy_nodeinfo_no_changes": "Нет необходимости копировать новые поля — в целевой системе уже есть все доступные данные."
 }
