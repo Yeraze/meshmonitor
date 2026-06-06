@@ -240,6 +240,40 @@ function runChannelsTests(getBackend: () => TestBackend) {
     expect(channels[2].id).toBe(3);
   });
 
+  // Regression: the POST /api/channels/reorder handler builds a slot-keyed Map
+  // from getAllChannels() and writes each slot back to the source it is
+  // reordering. MeshCore and Meshtastic channels share the `channels` table
+  // and both use slot ids 0-7, so an UNSCOPED getAllChannels() would let a
+  // MeshCore channel at slot N collide with the Meshtastic channel at slot N in
+  // that Map — silently replacing a Meshtastic channel with a MeshCore one on
+  // reorder. Scoping the read by sourceId is what keeps reorder isolated.
+  it('getAllChannels - scopes by sourceId so reorder cannot bleed channels across sources', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // Meshtastic source: slot 0 (Primary) and slot 1.
+    await repo.upsertChannel({ id: 0, name: 'MT-Primary', psk: 'p0', role: 1 }, 'mt-1');
+    await repo.upsertChannel({ id: 1, name: 'MT-Secondary', psk: 'p1', role: 2 }, 'mt-1');
+    // MeshCore source: also occupies slots 0 and 1 in the same table.
+    await repo.upsertChannel({ id: 0, name: 'MC-Public', psk: 'mc0', role: 1 }, 'mc-1');
+    await repo.upsertChannel({ id: 1, name: 'MC-Room', psk: 'mc1', role: 2 }, 'mc-1');
+
+    // Mirror the reorder handler: scoped read -> slot-keyed Map.
+    const mtChannels = await repo.getAllChannels('mt-1');
+    const mtBySlot = new Map(mtChannels.map(ch => [ch.id, ch]));
+    expect(mtBySlot.get(0)!.name).toBe('MT-Primary');
+    expect(mtBySlot.get(1)!.name).toBe('MT-Secondary');
+    // No MeshCore channel leaked into the Meshtastic source's view.
+    expect(mtChannels.every(ch => ch.name.startsWith('MT-'))).toBe(true);
+
+    // And the reverse: the MeshCore source sees only its own channels.
+    const mcChannels = await repo.getAllChannels('mc-1');
+    expect(mcChannels.every(ch => ch.name.startsWith('MC-'))).toBe(true);
+  });
+
   it('getChannelCount - returns correct count', async () => {
     const backend = getBackend();
     if (!backend.available) {

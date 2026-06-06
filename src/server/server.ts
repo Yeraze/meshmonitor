@@ -3429,14 +3429,24 @@ apiRouter.post('/channels/reorder', requireAuth(), async (req, res) => {
       }
     }
 
-    const allChannels = await databaseService.channels.getAllChannels();
+    // Resolve the target source manager first so the channel lookup below can
+    // be scoped to THIS source. MeshCore and Meshtastic channels share the
+    // `channels` table and both use slot ids 0-7, so an unscoped
+    // getAllChannels() returns rows from every source; the slot-keyed Map then
+    // collapses same-id rows and a MeshCore channel can win the slot being
+    // reordered — silently overwriting a Meshtastic channel with a MeshCore
+    // one (and vice-versa). Scoping to reorderManager.sourceId keeps the
+    // reorder confined to the source the user is actually editing.
+    const reorderManager = (resolveSourceManager(reorderSourceId));
+    const reorderSourceScope = reorderManager.sourceId;
+
+    const allChannels = await databaseService.channels.getAllChannels(reorderSourceScope);
 
     // Build the new channel configs based on the reorder mapping
     // newOrder[newSlot] = oldSlot — means "new slot i gets the channel from old slot newOrder[i]"
     const channelsBySlot = new Map(allChannels.map(ch => [ch.id, ch]));
 
     // Begin edit settings transaction
-    const reorderManager = (resolveSourceManager(reorderSourceId));
     logger.info(`🔄 Beginning channel reorder: ${newOrder.join(',')}`);
     await reorderManager.beginEditSettings();
     // Pacing: device firmware silently drops admin packets that arrive too soon
@@ -3461,7 +3471,8 @@ apiRouter.post('/channels/reorder', requireAuth(), async (req, res) => {
           positionPrecision: sourceChannel.positionPrecision ?? undefined,
         });
 
-        // Update database
+        // Update database (scoped to this source; reorder is an authoritative
+        // user write, so allow blank names to overwrite)
         await databaseService.channels.upsertChannel({
           id: newSlot,
           name: sourceChannel.name || '',
@@ -3470,7 +3481,7 @@ apiRouter.post('/channels/reorder', requireAuth(), async (req, res) => {
           uplinkEnabled: sourceChannel.uplinkEnabled,
           downlinkEnabled: sourceChannel.downlinkEnabled,
           positionPrecision: sourceChannel.positionPrecision,
-        });
+        }, reorderSourceScope, { allowBlankName: true });
       } else {
         // Empty/disabled slot
         await reorderManager.setChannelConfig(newSlot, {
@@ -3483,7 +3494,7 @@ apiRouter.post('/channels/reorder', requireAuth(), async (req, res) => {
           name: '',
           psk: null,
           role: 0,
-        });
+        }, reorderSourceScope, { allowBlankName: true });
       }
 
       await new Promise((resolve) => setTimeout(resolve, 1000));
