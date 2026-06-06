@@ -780,6 +780,36 @@ function DashboardInner() {
     setDeleteConfirm(id);
   };
 
+  // Persist a drag-reorder of the source list (issue #3338). Optimistically
+  // reorders the cached `['dashboard','sources']` array so the sidebar updates
+  // instantly, POSTs the new order, then invalidates to reconcile with the
+  // server (which also reverts the optimistic move if the request failed).
+  const onReorderSources = async (orderedIds: string[]) => {
+    queryClient.setQueryData<DashboardSource[]>(['dashboard', 'sources'], (prev) => {
+      if (!prev) return prev;
+      const byId = new Map(prev.map((s) => [s.id, s]));
+      const reordered = orderedIds.map((id) => byId.get(id)).filter((s): s is DashboardSource => s != null);
+      // Keep any sources the payload didn't mention (defensive) at the end.
+      const trailing = prev.filter((s) => !orderedIds.includes(s.id));
+      return [...reordered, ...trailing];
+    });
+
+    const csrfToken = getToken();
+    const res = await fetch(`${appBasename}/api/sources/reorder`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-csrf-token': csrfToken || '',
+      },
+      body: JSON.stringify({ order: orderedIds }),
+    });
+    refreshSources();
+    if (!res.ok) {
+      logger.warn('Failed to reorder sources:', res.status);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!deleteConfirm) return;
     const csrfToken = getToken();
@@ -909,6 +939,7 @@ function DashboardInner() {
           onAddSource={onAddSource}
           onEditSource={onEditSource}
           onToggleSource={onToggleSource}
+          onReorderSources={onReorderSources}
           onDeleteSource={onDeleteSource}
           onConnectSource={onConnectSource}
           onDisconnectSource={onDisconnectSource}

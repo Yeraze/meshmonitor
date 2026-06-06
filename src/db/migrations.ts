@@ -95,6 +95,7 @@ import { migration as normalizeMqttTelemetryKeysMigration, runMigration077Postgr
 import { migration as meshcorePacketLogBigintMigration, runMigration078PacketLogBigintPostgres, runMigration078PacketLogBigintMysql } from '../server/migrations/078_meshcore_packet_log_bigint_timestamp.js';
 import { migration as dropResidualNotifPrefsUserIdUniqueMigration, runMigration079Postgres as runMigration079DropResidualPostgres, runMigration079Mysql as runMigration079DropResidualMysql } from '../server/migrations/079_drop_residual_notif_prefs_user_id_unique.js';
 import { migration as lowBatteryVoltageThresholdMigration, runMigration080Postgres as runMigration080VoltagePostgres, runMigration080Mysql as runMigration080VoltageMysql } from '../server/migrations/080_add_low_battery_voltage_threshold.js';
+import { migration as sourcesDisplayOrderMigration, runMigration081Postgres as runMigration081DisplayOrderPostgres, runMigration081Mysql as runMigration081DisplayOrderMysql } from '../server/migrations/081_add_sources_display_order.js';
 
 // ============================================================================
 // Registry
@@ -1280,4 +1281,19 @@ registry.register({
   sqlite: (db) => lowBatteryVoltageThresholdMigration.up(db),
   postgres: (client) => runMigration080VoltagePostgres(client),
   mysql: (pool) => runMigration080VoltageMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 081: Add displayOrder to sources, enabling user-controlled
+// drag-and-drop reordering of the source list on the Unified View sidebar.
+// See https://github.com/Yeraze/meshmonitor/issues/3338
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 81,
+  name: 'add_sources_display_order',
+  settingsKey: 'migration_081_add_sources_display_order',
+  sqlite: (db) => sourcesDisplayOrderMigration.up(db),
+  postgres: (client) => runMigration081DisplayOrderPostgres(client),
+  mysql: (pool) => runMigration081DisplayOrderMysql(pool),
 });

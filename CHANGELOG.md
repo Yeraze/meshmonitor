@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Features
+
+- **Reorderable Sources list on the Unified View**: Admins can now drag-and-drop the source cards in the Dashboard / Unified View sidebar to control their order, mirroring the existing channel-reorder UX. The order is stored server-side (new `sources.displayOrder` column, migration 081) so it is shared across all viewers, and a grab handle only appears for users with `sources:write`. The Unified aggregate card stays pinned at the top and is not draggable; new sources append to the end of the list. Resolves #3338.
+
 ### Bug Fixes
 
 - **Channels tab layout broken on installed iOS PWAs (infinite scroll + dead space below the input)**: On the Channels tab in an installed iOS PWA the message list grew without bound — the page scrolled forever and the send bar was pushed off-screen — and even once bounded, a large dead-space gap remained below the input. The causes were iOS-WebKit-specific (all invisible on Chrome/desktop, which masked them): (1) `.app-main`'s default flex `min-height: auto` refused to shrink below its content, so the message list expanded it past the viewport — fixed with `min-height: 0` and an `overflow: hidden` backstop; (2) iOS does not reliably propagate a definite height down the nested conversation flex chain, so `flex-grow`/grid-`1fr`/auto-margin all left the message list short and the send bar floating — the message list is now given a deterministic, measured pixel height (`ResizeObserver` in `ChannelsTab`) so the in-flow send bar lands at the bottom; (3) `position: sticky; bottom: 0` on the send bar resolved `bottom: 0` against the safe-area-inset viewport on iOS, pinning the bar ~34px (the home-indicator inset) above the real bottom — removed, since the deterministic height already places the bar correctly; and the doubled bottom padding (`.app-main`, conversation, section) was trimmed on mobile. Regression from the #3307 PWA dead-space fix.
