@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Mock dependencies before any imports
 const mockGetUsersWithLowBatteryNotifications = vi.fn();
 const mockGetLowBatteryMonitoredNodes = vi.fn();
+const mockGetLowVoltageNodes = vi.fn();
 const mockCheckPermissionAsync = vi.fn();
 const mockGetSource = vi.fn();
 
@@ -24,6 +25,9 @@ vi.mock('../../services/database.js', () => ({
     },
     nodes: {
       getLowBatteryMonitoredNodes: mockGetLowBatteryMonitoredNodes,
+    },
+    meshcore: {
+      getLowVoltageNodes: mockGetLowVoltageNodes,
     },
     sources: {
       getSource: mockGetSource,
@@ -63,7 +67,7 @@ describe('LowBatteryNotificationService', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-15T12:00:00Z'));
 
-    mockGetAllManagers.mockReturnValue([{ sourceId: 'src1' }]);
+    mockGetAllManagers.mockReturnValue([{ sourceId: 'src1', sourceType: 'meshtastic_tcp' }]);
     mockGetSource.mockResolvedValue({ id: 'src1', name: 'Source One' });
     mockCheckPermissionAsync.mockResolvedValue(true);
 
@@ -197,6 +201,75 @@ describe('LowBatteryNotificationService', () => {
         { userId: 1, monitoredNodes: '["!aabbccdd"]', lowBatteryThreshold: 20 },
       ]);
       mockGetLowBatteryMonitoredNodes.mockResolvedValue([]);
+
+      await service.checkLowBatteryNodes();
+
+      expect(mockBroadcastToPreferenceUsers).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('MeshCore voltage alerts', () => {
+    const PUBKEY = 'aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899';
+    const NODE_ID = `mc:mc1:${PUBKEY.substring(0, 12)}`; // mc:mc1:aabbccddeeff
+
+    beforeEach(() => {
+      // Only a MeshCore source is registered for these tests
+      mockGetAllManagers.mockReturnValue([{ sourceId: 'mc1', sourceType: 'meshcore' }]);
+      mockGetSource.mockResolvedValue({ id: 'mc1', name: 'MeshCore One' });
+    });
+
+    it('queries meshcore low-voltage nodes with the user voltage threshold', async () => {
+      mockGetUsersWithLowBatteryNotifications.mockResolvedValue([
+        { userId: 1, monitoredNodes: JSON.stringify([NODE_ID]), lowBatteryThreshold: 20, lowBatteryVoltageThreshold: 3200 },
+      ]);
+      mockGetLowVoltageNodes.mockResolvedValue([]);
+
+      await service.checkLowBatteryNodes();
+
+      // Voltage path is used, not the Meshtastic percentage path
+      expect(mockGetLowVoltageNodes).toHaveBeenCalledWith('mc1', 3200);
+      expect(mockGetLowBatteryMonitoredNodes).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the default voltage threshold (3300mV) when unset', async () => {
+      mockGetUsersWithLowBatteryNotifications.mockResolvedValue([
+        { userId: 1, monitoredNodes: JSON.stringify([NODE_ID]), lowBatteryThreshold: 20, lowBatteryVoltageThreshold: null },
+      ]);
+      mockGetLowVoltageNodes.mockResolvedValue([]);
+
+      await service.checkLowBatteryNodes();
+
+      expect(mockGetLowVoltageNodes).toHaveBeenCalledWith('mc1', 3300);
+    });
+
+    it('sends a voltage-worded notification for a monitored low node', async () => {
+      mockGetUsersWithLowBatteryNotifications.mockResolvedValue([
+        { userId: 1, monitoredNodes: JSON.stringify([NODE_ID]), lowBatteryThreshold: 20, lowBatteryVoltageThreshold: 3300 },
+      ]);
+      mockGetLowVoltageNodes.mockResolvedValue([
+        { publicKey: PUBKEY, name: 'Repeater A', batteryMv: 3100 },
+      ]);
+      mockBroadcastToPreferenceUsers.mockResolvedValue(undefined);
+
+      await service.checkLowBatteryNodes();
+
+      expect(mockBroadcastToPreferenceUsers).toHaveBeenCalledWith(
+        'notifyOnLowBattery',
+        expect.objectContaining({
+          title: expect.stringContaining('Repeater A'),
+          body: expect.stringContaining('3100mV'),
+        }),
+        1
+      );
+    });
+
+    it('ignores low-voltage nodes that are not in the monitored list', async () => {
+      mockGetUsersWithLowBatteryNotifications.mockResolvedValue([
+        { userId: 1, monitoredNodes: JSON.stringify(['mc:mc1:ffffffffffff']), lowBatteryThreshold: 20, lowBatteryVoltageThreshold: 3300 },
+      ]);
+      mockGetLowVoltageNodes.mockResolvedValue([
+        { publicKey: PUBKEY, name: 'Repeater A', batteryMv: 3100 },
+      ]);
 
       await service.checkLowBatteryNodes();
 

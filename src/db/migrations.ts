@@ -94,6 +94,7 @@ import { migration as lowBatteryColumnsMigration, runMigration076Postgres, runMi
 import { migration as normalizeMqttTelemetryKeysMigration, runMigration077Postgres, runMigration077Mysql } from '../server/migrations/077_normalize_mqtt_telemetry_keys.js';
 import { migration as meshcorePacketLogBigintMigration, runMigration078PacketLogBigintPostgres, runMigration078PacketLogBigintMysql } from '../server/migrations/078_meshcore_packet_log_bigint_timestamp.js';
 import { migration as dropResidualNotifPrefsUserIdUniqueMigration, runMigration079Postgres as runMigration079DropResidualPostgres, runMigration079Mysql as runMigration079DropResidualMysql } from '../server/migrations/079_drop_residual_notif_prefs_user_id_unique.js';
+import { migration as lowBatteryVoltageThresholdMigration, runMigration080Postgres as runMigration080VoltagePostgres, runMigration080Mysql as runMigration080VoltageMysql } from '../server/migrations/080_add_low_battery_voltage_threshold.js';
 
 // ============================================================================
 // Registry
@@ -1263,4 +1264,20 @@ registry.register({
   sqlite: (db) => dropResidualNotifPrefsUserIdUniqueMigration.up(db),
   postgres: (client) => runMigration079DropResidualPostgres(client),
   mysql: (pool) => runMigration079DropResidualMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 080: Add lowBatteryVoltageThreshold to user_notification_preferences.
+// MeshCore nodes report battery as a voltage (mV) rather than a percentage, so
+// low-battery alerts for them compare batteryMv against this threshold.
+// See https://github.com/Yeraze/meshmonitor/issues/3331
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 80,
+  name: 'add_low_battery_voltage_threshold',
+  settingsKey: 'migration_080_add_low_battery_voltage_threshold',
+  sqlite: (db) => lowBatteryVoltageThresholdMigration.up(db),
+  postgres: (client) => runMigration080VoltagePostgres(client),
+  mysql: (pool) => runMigration080VoltageMysql(pool),
 });

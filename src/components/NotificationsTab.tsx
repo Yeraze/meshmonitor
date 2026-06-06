@@ -26,6 +26,7 @@ interface NotificationPreferences {
   notifyOnInactiveNode: boolean;
   notifyOnLowBattery: boolean;
   lowBatteryThreshold: number;
+  lowBatteryVoltageThreshold: number;
   notifyOnServerEvents: boolean;
   prefixWithNodeName: boolean;
   monitoredNodes: string[];
@@ -65,6 +66,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     notifyOnInactiveNode: false,
     notifyOnLowBattery: false,
     lowBatteryThreshold: 20,
+    lowBatteryVoltageThreshold: 3300,
     notifyOnServerEvents: false,
     prefixWithNodeName: false,
     monitoredNodes: [],
@@ -112,7 +114,11 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   // Fetch available nodes
   const loadNodes = async () => {
     try {
-      const nodesQs = currentSourceId ? `?sourceId=${encodeURIComponent(currentSourceId)}` : '';
+      // includeAllMeshcore=true so MeshCore nodes without a GPS fix are still
+      // selectable as monitored nodes (needed for voltage-based battery alerts).
+      const nodesQs = currentSourceId
+        ? `?sourceId=${encodeURIComponent(currentSourceId)}&includeAllMeshcore=true`
+        : '?includeAllMeshcore=true';
       const response = await api.get(`/api/nodes${nodesQs}`);
       const nodeList = Array.isArray(response) ? response : [];
       setAvailableNodes(nodeList);
@@ -767,6 +773,45 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     />
                     <span style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>%</span>
                   </div>
+                )}
+
+                {preferences.notifyOnLowBattery && (
+                  <div style={{ marginLeft: '28px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <label htmlFor="lowBatteryVoltageThreshold" style={{ margin: 0, fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
+                      {t('notifications.low_battery_voltage_threshold_label')}
+                    </label>
+                    <input
+                      id="lowBatteryVoltageThreshold"
+                      type="number"
+                      min={0}
+                      max={20000}
+                      step={50}
+                      value={preferences.lowBatteryVoltageThreshold}
+                      onChange={(e) => {
+                        const raw = parseInt(e.target.value, 10);
+                        const clamped = isNaN(raw) ? 0 : Math.max(0, Math.min(20000, raw));
+                        setPreferences(prev => ({
+                          ...prev,
+                          lowBatteryVoltageThreshold: clamped
+                        }));
+                      }}
+                      style={{
+                        width: '90px',
+                        padding: '0.35rem 0.5rem',
+                        background: 'var(--ctp-base)',
+                        border: '1px solid var(--ctp-surface2)',
+                        borderRadius: '4px',
+                        color: 'var(--ctp-text)'
+                      }}
+                    />
+                    <span style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>mV</span>
+                  </div>
+                )}
+
+                {preferences.notifyOnLowBattery && (
+                  <p style={{ marginLeft: '28px', marginTop: '6px', marginBottom: 0, fontSize: '0.8em', color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>
+                    {t('notifications.low_battery_threshold_hint')}
+                  </p>
                 )}
 
                 {(preferences.notifyOnInactiveNode || preferences.notifyOnLowBattery) && (

@@ -36,6 +36,7 @@ export interface NotificationPreferences {
   notifyOnInactiveNode: boolean;
   notifyOnLowBattery: boolean;
   lowBatteryThreshold: number;
+  lowBatteryVoltageThreshold: number;
   notifyOnServerEvents: boolean;
   prefixWithNodeName: boolean;
   monitoredNodes: string[];
@@ -123,6 +124,7 @@ export async function getUserNotificationPreferencesAsync(userId: number, source
         notifyOnInactiveNode: boolOr(oldPrefs.notifyOnInactiveNode, false),
         notifyOnLowBattery: boolOr(oldPrefs.notifyOnLowBattery, false),
         lowBatteryThreshold: typeof oldPrefs.lowBatteryThreshold === 'number' ? oldPrefs.lowBatteryThreshold : 20,
+        lowBatteryVoltageThreshold: typeof oldPrefs.lowBatteryVoltageThreshold === 'number' ? oldPrefs.lowBatteryVoltageThreshold : 3300,
         notifyOnServerEvents: boolOr(oldPrefs.notifyOnServerEvents, false),
         prefixWithNodeName: boolOr(oldPrefs.prefixWithNodeName, false),
         monitoredNodes: oldPrefs.monitoredNodes || [],

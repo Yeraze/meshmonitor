@@ -48,6 +48,8 @@ export interface NotificationPreferences {
   notifyOnInactiveNode: boolean;
   notifyOnLowBattery: boolean;
   lowBatteryThreshold: number;
+  /** Battery-voltage threshold (mV) for MeshCore nodes, which report voltage instead of a percentage. */
+  lowBatteryVoltageThreshold: number;
   notifyOnServerEvents: boolean;
   prefixWithNodeName: boolean;
   monitoredNodes: string[];
@@ -247,6 +249,7 @@ export class NotificationsRepository extends BaseRepository {
       notifyOnInactiveNode: prefs.notifyOnInactiveNode,
       notifyOnLowBattery: prefs.notifyOnLowBattery,
       lowBatteryThreshold: prefs.lowBatteryThreshold,
+      lowBatteryVoltageThreshold: prefs.lowBatteryVoltageThreshold,
       notifyOnServerEvents: prefs.notifyOnServerEvents,
       prefixWithNodeName: prefs.prefixWithNodeName,
       appriseEnabled: prefs.enableApprise,
@@ -384,14 +387,15 @@ export class NotificationsRepository extends BaseRepository {
 
   /**
    * Get users who have low-battery notifications enabled and at least one notification channel active.
-   * Returns each user's monitored node list (shared with the inactive-node feature) and their
-   * per-user battery threshold (percent).
+   * Returns each user's monitored node list (shared with the inactive-node feature) plus both
+   * per-user thresholds: the Meshtastic percentage (lowBatteryThreshold) and the MeshCore voltage
+   * in mV (lowBatteryVoltageThreshold).
    */
-  async getUsersWithLowBatteryNotifications(): Promise<Array<{ userId: number; monitoredNodes: string | null; lowBatteryThreshold: number | null }>> {
+  async getUsersWithLowBatteryNotifications(): Promise<Array<{ userId: number; monitoredNodes: string | null; lowBatteryThreshold: number | null; lowBatteryVoltageThreshold: number | null }>> {
     try {
       const { userNotificationPreferences: t } = this.tables;
       const rows = await this.db
-        .select({ userId: t.userId, monitoredNodes: t.monitoredNodes, lowBatteryThreshold: t.lowBatteryThreshold })
+        .select({ userId: t.userId, monitoredNodes: t.monitoredNodes, lowBatteryThreshold: t.lowBatteryThreshold, lowBatteryVoltageThreshold: t.lowBatteryVoltageThreshold })
         .from(t)
         .where(and(
           eq(t.notifyOnLowBattery, true),
@@ -401,6 +405,7 @@ export class NotificationsRepository extends BaseRepository {
         userId: r.userId,
         monitoredNodes: r.monitoredNodes,
         lowBatteryThreshold: r.lowBatteryThreshold != null ? Number(r.lowBatteryThreshold) : null,
+        lowBatteryVoltageThreshold: r.lowBatteryVoltageThreshold != null ? Number(r.lowBatteryVoltageThreshold) : null,
       }));
     } catch (error) {
       logger.debug('Failed to query users with low battery notifications:', error);
@@ -980,6 +985,7 @@ export class NotificationsRepository extends BaseRepository {
       notifyOnInactiveNode: row.notifyOnInactiveNode !== undefined ? Boolean(row.notifyOnInactiveNode) : false,
       notifyOnLowBattery: row.notifyOnLowBattery !== undefined ? Boolean(row.notifyOnLowBattery) : false,
       lowBatteryThreshold: row.lowBatteryThreshold != null ? Number(row.lowBatteryThreshold) : 20,
+      lowBatteryVoltageThreshold: row.lowBatteryVoltageThreshold != null ? Number(row.lowBatteryVoltageThreshold) : 3300,
       notifyOnServerEvents: row.notifyOnServerEvents !== undefined ? Boolean(row.notifyOnServerEvents) : false,
       prefixWithNodeName: row.prefixWithNodeName !== undefined ? Boolean(row.prefixWithNodeName) : false,
       monitoredNodes: parseJsonArray(row.monitoredNodes) as string[],
