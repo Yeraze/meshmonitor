@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.9.2] - 2026-06-06
+
 ### Features
 
 - **Reorderable Sources list on the Unified View**: Admins can now drag-and-drop the source cards in the Dashboard / Unified View sidebar to control their order, mirroring the existing channel-reorder UX. The order is stored server-side (new `sources.displayOrder` column, migration 081) so it is shared across all viewers, and a grab handle only appears for users with `sources:write`. The Unified aggregate card stays pinned at the top and is not draggable; new sources append to the end of the list. Resolves #3338.
