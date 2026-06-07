@@ -24,6 +24,7 @@ vi.mock('../../services/database.js', () => ({
     nodes: {
       getNodeCount: vi.fn().mockResolvedValue(0),
       getActiveNodeCount: vi.fn().mockResolvedValue(0),
+      getNode: vi.fn().mockResolvedValue(null),
     },
     checkPermissionAsync: vi.fn().mockResolvedValue(true),
     findUserByIdAsync: vi.fn(),
@@ -89,6 +90,7 @@ beforeEach(() => {
   mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
   mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: true });
   mockDb.checkPermissionAsync.mockResolvedValue(true);
+  mockDb.nodes.getNode.mockResolvedValue(null);
   mockSourceRegistry.getManager.mockReturnValue(null);
   mockMeshcoreRegistry.get.mockReturnValue(undefined);
 });
@@ -214,5 +216,118 @@ describe('GET /:id/status — meshcore registry fallback', () => {
     expect(res.status).toBe(200);
     expect(res.body.connected).toBe(true);
     expect(mockMeshcoreRegistry.get).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /:id/status — injected local node count (issue #3354)', () => {
+  // The /:id/nodes endpoint injects the manager's local node into the list
+  // when it isn't persisted for the source (e.g. the MQTT broker's synthetic
+  // gateway). The /status nodeCount must mirror that so the sidebar badge
+  // matches the node list and doesn't flicker on selection state.
+  it('counts the synthetic gateway node not present in the nodes table', async () => {
+    const app = createApp();
+    mockDb.sources.getSource.mockResolvedValue({
+      id: 'broker-1',
+      name: 'MQTT_BROKER',
+      type: 'mqtt_broker',
+      enabled: true,
+      config: { gateway: { nodeNum: 0xdeadbeef } },
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: 1,
+    });
+    mockDb.nodes.getNodeCount.mockResolvedValue(11);
+    mockDb.nodes.getActiveNodeCount.mockResolvedValue(5);
+    // The gateway nodeNum is not stored for this source.
+    mockDb.nodes.getNode.mockResolvedValue(null);
+    mockSourceRegistry.getManager.mockReturnValue({
+      getStatus: () => ({
+        sourceId: 'broker-1',
+        sourceName: 'MQTT_BROKER',
+        sourceType: 'mqtt_broker',
+        connected: true,
+      }),
+      getLocalNodeInfo: () => ({
+        nodeNum: 0xdeadbeef,
+        nodeId: '!deadbeef',
+        longName: 'Broker GW',
+        shortName: 'BGW',
+      }),
+    });
+
+    const res = await request(app).get('/broker-1/status');
+
+    expect(res.status).toBe(200);
+    // 11 stored + 1 injected gateway = 12, matching the /nodes list.
+    expect(res.body.nodeCount).toBe(12);
+    // Connected, so the injected node counts as active too: 5 + 1.
+    expect(res.body.activeNodeCount).toBe(6);
+    expect(mockDb.nodes.getNode).toHaveBeenCalledWith(0xdeadbeef, 'broker-1');
+  });
+
+  it('does not double-count when the local node is already in the table', async () => {
+    const app = createApp();
+    mockDb.sources.getSource.mockResolvedValue({
+      id: 'mt-2',
+      name: 'Meshtastic',
+      type: 'meshtastic_tcp',
+      enabled: true,
+      config: { host: '1.2.3.4', port: 4403 },
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: 1,
+    });
+    mockDb.nodes.getNodeCount.mockResolvedValue(893);
+    mockDb.nodes.getActiveNodeCount.mockResolvedValue(40);
+    // Local node IS persisted for this source — getNodeCount already includes it.
+    mockDb.nodes.getNode.mockResolvedValue({ nodeNum: 123, sourceId: 'mt-2' });
+    mockSourceRegistry.getManager.mockReturnValue({
+      getStatus: () => ({
+        sourceId: 'mt-2',
+        sourceName: 'Meshtastic',
+        sourceType: 'meshtastic_tcp',
+        connected: true,
+      }),
+      getLocalNodeInfo: () => ({ nodeNum: 123, nodeId: '!7b', longName: 'Local', shortName: 'LCL' }),
+    });
+
+    const res = await request(app).get('/mt-2/status');
+
+    expect(res.status).toBe(200);
+    expect(res.body.nodeCount).toBe(893);
+    expect(res.body.activeNodeCount).toBe(40);
+  });
+
+  it('does not count the injected node as active when the source is disconnected', async () => {
+    const app = createApp();
+    mockDb.sources.getSource.mockResolvedValue({
+      id: 'broker-2',
+      name: 'MQTT_BROKER',
+      type: 'mqtt_broker',
+      enabled: true,
+      config: { gateway: { nodeNum: 0xfeed } },
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: 1,
+    });
+    mockDb.nodes.getNodeCount.mockResolvedValue(11);
+    mockDb.nodes.getActiveNodeCount.mockResolvedValue(0);
+    mockDb.nodes.getNode.mockResolvedValue(null);
+    mockSourceRegistry.getManager.mockReturnValue({
+      getStatus: () => ({
+        sourceId: 'broker-2',
+        sourceName: 'MQTT_BROKER',
+        sourceType: 'mqtt_broker',
+        connected: false,
+      }),
+      getLocalNodeInfo: () => ({ nodeNum: 0xfeed, nodeId: '!feed', longName: 'GW', shortName: 'GW' }),
+    });
+
+    const res = await request(app).get('/broker-2/status');
+
+    expect(res.status).toBe(200);
+    expect(res.body.nodeCount).toBe(12);
+    // Disconnected → injected node is not counted as active.
+    expect(res.body.activeNodeCount).toBe(0);
   });
 });
