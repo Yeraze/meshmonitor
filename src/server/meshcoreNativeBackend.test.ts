@@ -630,6 +630,31 @@ describe('MeshCoreNativeBackend', () => {
     expect(conn.setTelemetryModeEnvCalls).toEqual([0]);
   });
 
+  // Regression: issue #3352 — MeshCore's wire protocol expects fixed-point
+  // microdegrees (deg × 1e6). Passing raw decimal degrees to setAdvertLatLong
+  // (which writes via DataView.setInt32) truncated to the integer degree, saving
+  // coordinates ~6 decimal places off.
+  it('set_coords converts decimal degrees to fixed-point microdegrees before sending to device', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    const resp = await backend.sendCommand('set_coords', { lat: 40.712776, lon: -74.005974 });
+    expect(resp.success).toBe(true);
+
+    // Device must receive microdegrees, NOT the truncated integer degree (40, -74).
+    expect(conn.setAdvertLatLongCalls).toHaveLength(1);
+    expect(conn.setAdvertLatLongCalls[0]).toEqual([40712776, -74005974]);
+
+    // Cache mirrors the same fixed-point values so the UI and device agree.
+    const selfResp = await backend.sendCommand('get_self_info', {});
+    expect(selfResp.data?.latitude).toBeCloseTo(40.712776, 5);
+    expect(selfResp.data?.longitude).toBeCloseTo(-74.005974, 5);
+  });
+
   it('decodes request_telemetry response via CayenneLpp.parse', async () => {
     const backend = new MeshCoreNativeBackend('src-1', {
       connectionType: 'serial',

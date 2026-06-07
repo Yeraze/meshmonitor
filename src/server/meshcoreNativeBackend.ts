@@ -1038,13 +1038,16 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { ok: true };
       }
 
-      case 'set_coords':
-        await c.setAdvertLatLong(Number(params.lat), Number(params.lon));
+      case 'set_coords': {
+        const latFixed = Math.round(Number(params.lat) * 1e6);
+        const lonFixed = Math.round(Number(params.lon) * 1e6);
+        await c.setAdvertLatLong(latFixed, lonFixed);
         if (this.cachedSelfInfo) {
-          this.cachedSelfInfo.advLat = Math.round(Number(params.lat) * 1e6);
-          this.cachedSelfInfo.advLon = Math.round(Number(params.lon) * 1e6);
+          this.cachedSelfInfo.advLat = latFixed;
+          this.cachedSelfInfo.advLon = lonFixed;
         }
         return { ok: true };
+      }
 
       case 'set_advert_loc_policy': {
         const policy = Number(params.policy);
