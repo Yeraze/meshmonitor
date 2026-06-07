@@ -30,6 +30,7 @@ export type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 export type MapPinStyle = 'meshmonitor' | 'official';
 export type IconStyle = 'lucide' | 'emoji';
 export type NodeHopsCalculation = 'nodeinfo' | 'traceroute' | 'messages';
+export type AppearanceMode = 'system' | 'dark' | 'light';
 
 // Built-in theme types
 export type BuiltInTheme =
@@ -42,6 +43,13 @@ export type BuiltInTheme =
 
 // Theme can be a built-in theme or a custom theme slug
 export type Theme = BuiltInTheme | string;
+
+interface ThemePreferences {
+  appearanceMode: AppearanceMode;
+  darkTheme: Theme;
+  lightTheme: Theme;
+  effectiveTheme: Theme;
+}
 
 // Custom theme definition from the API
 export interface CustomTheme {
@@ -82,6 +90,9 @@ interface SettingsContextType {
   defaultMapCenterZoom: number | null;
   defaultLandingPage: string;
   theme: Theme;
+  appearanceMode: AppearanceMode;
+  darkTheme: Theme;
+  lightTheme: Theme;
   language: string;
   customThemes: CustomTheme[];
   customTilesets: CustomTileset[];
@@ -124,6 +135,9 @@ interface SettingsContextType {
   setDefaultMapCenterZoom: (zoom: number | null) => void;
   setDefaultLandingPage: (value: string) => void;
   setTheme: (theme: Theme) => void;
+  setAppearanceMode: (mode: AppearanceMode) => void;
+  setDarkTheme: (theme: Theme) => void;
+  setLightTheme: (theme: Theme) => void;
   setLanguage: (language: string) => void;
   loadCustomThemes: () => Promise<void>;
   addCustomTileset: (tileset: Omit<CustomTileset, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
@@ -176,10 +190,62 @@ const detectBaseUrlFromLocation = (): string => {
   return baseSegments.length > 0 ? '/' + baseSegments.join('/') : '';
 };
 
+const DEFAULT_DARK_THEME: Theme = 'mocha';
+const DEFAULT_LIGHT_THEME: Theme = 'latte';
+const BUILT_IN_THEMES: BuiltInTheme[] = [
+  'mocha', 'macchiato', 'frappe', 'latte',
+  'nord', 'dracula',
+  'solarized-dark', 'solarized-light',
+  'gruvbox-dark', 'gruvbox-light',
+  'high-contrast-dark', 'high-contrast-light',
+  'protanopia', 'deuteranopia', 'tritanopia'
+];
+
+const isAppearanceMode = (value: string | null): value is AppearanceMode => (
+  value === 'system' || value === 'dark' || value === 'light'
+);
+
+const prefersDarkMode = (): boolean => {
+  if (typeof window === 'undefined' || !window.matchMedia) return true;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+};
+
+const getEffectiveTheme = (mode: AppearanceMode, darkTheme: Theme, lightTheme: Theme, systemIsDark: boolean): Theme => {
+  if (mode === 'dark') return darkTheme;
+  if (mode === 'light') return lightTheme;
+  return systemIsDark ? darkTheme : lightTheme;
+};
+
+const getInitialThemePreferences = (): ThemePreferences => {
+  const storedMode = localStorage.getItem('appearanceMode');
+  const storedDarkTheme = localStorage.getItem('darkTheme');
+  const storedLightTheme = localStorage.getItem('lightTheme');
+  const legacyTheme = localStorage.getItem('theme');
+
+  const hasNewPreferences = isAppearanceMode(storedMode) || storedDarkTheme || storedLightTheme;
+  const darkTheme = storedDarkTheme || (hasNewPreferences ? DEFAULT_DARK_THEME : legacyTheme || DEFAULT_DARK_THEME);
+  const lightTheme = storedLightTheme || (hasNewPreferences ? DEFAULT_LIGHT_THEME : legacyTheme && legacyTheme !== DEFAULT_DARK_THEME ? legacyTheme : DEFAULT_LIGHT_THEME);
+  const appearanceMode = isAppearanceMode(storedMode)
+    ? storedMode
+    : legacyTheme && legacyTheme !== DEFAULT_DARK_THEME
+      ? 'dark'
+      : 'system';
+  const effectiveTheme = getEffectiveTheme(appearanceMode, darkTheme, lightTheme, prefersDarkMode());
+
+  localStorage.setItem('appearanceMode', appearanceMode);
+  localStorage.setItem('darkTheme', darkTheme);
+  localStorage.setItem('lightTheme', lightTheme);
+  localStorage.setItem('theme', effectiveTheme);
+
+  return { appearanceMode, darkTheme, lightTheme, effectiveTheme };
+};
+
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, baseUrl: baseUrlProp }) => {
   const baseUrl = baseUrlProp ?? detectBaseUrlFromLocation();
   const { getToken: getCsrfToken } = useCsrf();
   const [isLoading, setIsLoading] = useState(true);
+  const [initialThemePreferences] = useState<ThemePreferences>(() => getInitialThemePreferences());
+  const [systemIsDark, setSystemIsDark] = useState<boolean>(() => prefersDarkMode());
 
   const [maxNodeAgeHours, setMaxNodeAgeHoursState] = useState<number>(() => {
     const saved = localStorage.getItem('maxNodeAgeHours');
@@ -304,16 +370,19 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   });
 
   const [theme, setThemeState] = useState<Theme>(() => {
-    const saved = localStorage.getItem('theme');
-    const validThemes: Theme[] = [
-      'mocha', 'macchiato', 'frappe', 'latte',
-      'nord', 'dracula',
-      'solarized-dark', 'solarized-light',
-      'gruvbox-dark', 'gruvbox-light',
-      'high-contrast-dark', 'high-contrast-light',
-      'protanopia', 'deuteranopia', 'tritanopia'
-    ];
-    return (saved && validThemes.includes(saved as Theme) ? saved : 'mocha') as Theme;
+    return initialThemePreferences.effectiveTheme;
+  });
+
+  const [appearanceMode, setAppearanceModeState] = useState<AppearanceMode>(() => {
+    return initialThemePreferences.appearanceMode;
+  });
+
+  const [darkTheme, setDarkThemeState] = useState<Theme>(() => {
+    return initialThemePreferences.darkTheme;
+  });
+
+  const [lightTheme, setLightThemeState] = useState<Theme>(() => {
+    return initialThemePreferences.lightTheme;
   });
 
   const [language, setLanguageState] = useState<string>(() => {
@@ -629,25 +698,13 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     }
   }, [customThemes]);
 
-  /**
-   * Built-in theme names for validation
-   */
-  const builtInThemes: BuiltInTheme[] = [
-    'mocha', 'macchiato', 'frappe', 'latte',
-    'nord', 'dracula',
-    'solarized-dark', 'solarized-light',
-    'gruvbox-dark', 'gruvbox-light',
-    'high-contrast-dark', 'high-contrast-light',
-    'protanopia', 'deuteranopia', 'tritanopia'
-  ];
-
-  const setTheme = (newTheme: Theme) => {
-    logger.debug(`🔄 setTheme called with: ${newTheme}`);
+  const applyTheme = React.useCallback((newTheme: Theme) => {
+    logger.debug(`🔄 applyTheme called with: ${newTheme}`);
     setThemeState(newTheme);
     localStorage.setItem('theme', newTheme);
 
     // Check if this is a built-in or custom theme
-    const isBuiltIn = builtInThemes.includes(newTheme as BuiltInTheme);
+    const isBuiltIn = BUILT_IN_THEMES.includes(newTheme as BuiltInTheme);
     logger.debug(`📝 Is built-in theme: ${isBuiltIn}`);
 
     if (isBuiltIn) {
@@ -667,7 +724,41 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
       // Apply the custom theme CSS
       applyCustomThemeCSS(newTheme);
     }
-  };
+  }, [applyCustomThemeCSS]);
+
+  const applyAppearancePreferences = React.useCallback((
+    mode: AppearanceMode,
+    nextDarkTheme: Theme,
+    nextLightTheme: Theme,
+    nextSystemIsDark = systemIsDark
+  ) => {
+    applyTheme(getEffectiveTheme(mode, nextDarkTheme, nextLightTheme, nextSystemIsDark));
+  }, [applyTheme, systemIsDark]);
+
+  const setAppearanceMode = React.useCallback((mode: AppearanceMode) => {
+    setAppearanceModeState(mode);
+    localStorage.setItem('appearanceMode', mode);
+  }, []);
+
+  const setDarkTheme = React.useCallback((newTheme: Theme) => {
+    setDarkThemeState(newTheme);
+    localStorage.setItem('darkTheme', newTheme);
+  }, []);
+
+  const setLightTheme = React.useCallback((newTheme: Theme) => {
+    setLightThemeState(newTheme);
+    localStorage.setItem('lightTheme', newTheme);
+  }, []);
+
+  const setTheme = React.useCallback((newTheme: Theme) => {
+    setAppearanceModeState('dark');
+    setDarkThemeState(newTheme);
+    setLightThemeState(newTheme);
+    localStorage.setItem('appearanceMode', 'dark');
+    localStorage.setItem('darkTheme', newTheme);
+    localStorage.setItem('lightTheme', newTheme);
+    applyTheme(newTheme);
+  }, [applyTheme]);
 
   const setLanguage = async (lang: string) => {
     setLanguageState(lang);
@@ -1140,21 +1231,40 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('defaultLandingPage', settings.defaultLandingPage);
           }
 
-          if (settings.theme) {
-            // Accept any theme (built-in or custom)
-            setThemeState(settings.theme as Theme);
-            localStorage.setItem('theme', settings.theme);
+          if (
+            typeof settings.theme === 'string' ||
+            typeof settings.appearanceMode === 'string' ||
+            typeof settings.darkTheme === 'string' ||
+            typeof settings.lightTheme === 'string'
+          ) {
+            const hasNewThemePreferences = (
+              isAppearanceMode(settings.appearanceMode) ||
+              typeof settings.darkTheme === 'string' ||
+              typeof settings.lightTheme === 'string'
+            );
+            const legacyTheme = typeof settings.theme === 'string' ? settings.theme as Theme : null;
+            const nextAppearanceMode: AppearanceMode = isAppearanceMode(settings.appearanceMode)
+              ? settings.appearanceMode
+              : legacyTheme && legacyTheme !== DEFAULT_DARK_THEME && !hasNewThemePreferences
+                ? 'dark'
+                : 'system';
+            const nextDarkTheme: Theme = typeof settings.darkTheme === 'string'
+              ? settings.darkTheme
+              : legacyTheme && legacyTheme !== DEFAULT_DARK_THEME && !hasNewThemePreferences
+                ? legacyTheme
+                : DEFAULT_DARK_THEME;
+            const nextLightTheme: Theme = typeof settings.lightTheme === 'string'
+              ? settings.lightTheme
+              : legacyTheme && legacyTheme !== DEFAULT_DARK_THEME && !hasNewThemePreferences
+                ? legacyTheme
+                : DEFAULT_LIGHT_THEME;
 
-            // Check if it's a built-in or custom theme
-            const isBuiltIn = builtInThemes.includes(settings.theme as BuiltInTheme);
-
-            if (isBuiltIn) {
-              document.documentElement.setAttribute('data-theme', settings.theme);
-            } else {
-              // Custom theme will be applied after custom themes are loaded
-              document.documentElement.setAttribute('data-theme', 'custom');
-              logger.debug(`🎨 Custom theme '${settings.theme}' will be applied after themes load`);
-            }
+            setAppearanceModeState(nextAppearanceMode);
+            setDarkThemeState(nextDarkTheme);
+            setLightThemeState(nextLightTheme);
+            localStorage.setItem('appearanceMode', nextAppearanceMode);
+            localStorage.setItem('darkTheme', nextDarkTheme);
+            localStorage.setItem('lightTheme', nextLightTheme);
           }
 
           if (settings.language) {
@@ -1295,6 +1405,24 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     loadCustomThemes();
   }, [loadCustomThemes]);
 
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (event: MediaQueryListEvent) => {
+      setSystemIsDark(event.matches);
+    };
+
+    setSystemIsDark(mediaQuery.matches);
+    mediaQuery.addEventListener('change', handleChange);
+    return () => {
+      mediaQuery.removeEventListener('change', handleChange);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    applyAppearancePreferences(appearanceMode, darkTheme, lightTheme, systemIsDark);
+  }, [appearanceMode, applyAppearancePreferences, darkTheme, lightTheme, systemIsDark]);
+
   // Load mute preferences on mount (server-side, requires auth)
   React.useEffect(() => {
     loadMutePreferences();
@@ -1304,7 +1432,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   React.useEffect(() => {
     logger.debug(`🔄 useEffect triggered - customThemes: ${customThemes.length}, theme: ${theme}`);
     if (customThemes.length > 0 && theme) {
-      const isBuiltIn = builtInThemes.includes(theme as BuiltInTheme);
+      const isBuiltIn = BUILT_IN_THEMES.includes(theme as BuiltInTheme);
       logger.debug(`📝 useEffect - Is built-in: ${isBuiltIn}`);
 
       if (!isBuiltIn) {
@@ -1342,6 +1470,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     defaultMapCenterZoom,
     defaultLandingPage,
     theme,
+    appearanceMode,
+    darkTheme,
+    lightTheme,
     language,
     customThemes,
     customTilesets,
@@ -1384,6 +1515,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setDefaultMapCenterZoom,
     setDefaultLandingPage,
     setTheme,
+    setAppearanceMode,
+    setDarkTheme,
+    setLightTheme,
     setLanguage,
     loadCustomThemes,
     addCustomTileset,
@@ -1436,6 +1570,9 @@ export const useDisplaySettings = () => {
     dateFormat: s.dateFormat, setDateFormat: s.setDateFormat,
     language: s.language, setLanguage: s.setLanguage,
     theme: s.theme, setTheme: s.setTheme,
+    appearanceMode: s.appearanceMode, setAppearanceMode: s.setAppearanceMode,
+    darkTheme: s.darkTheme, setDarkTheme: s.setDarkTheme,
+    lightTheme: s.lightTheme, setLightTheme: s.setLightTheme,
     customThemes: s.customThemes, isLoadingThemes: s.isLoadingThemes, loadCustomThemes: s.loadCustomThemes,
   };
 };

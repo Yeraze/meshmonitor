@@ -120,14 +120,32 @@
   width: fit-content;
 }
 
+.theme-assignment-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.assignment-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  background: var(--ctp-blue);
+  color: var(--ctp-crust);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  width: fit-content;
+}
+
 .theme-card-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
 }
 
 .btn-apply {
-  flex: 1;
+  flex: 1 1 120px;
   padding: 0.5rem 1rem;
   background: var(--ctp-blue);
   color: var(--ctp-crust);
