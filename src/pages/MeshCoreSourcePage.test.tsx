@@ -85,6 +85,7 @@ vi.mock('../contexts/MapContext', () => ({
 
 vi.mock('../components/ToastContainer', () => ({
   ToastProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useToast: () => ({ showToast: vi.fn() }),
 }));
 
 vi.mock('../components/LoginModal', () => ({

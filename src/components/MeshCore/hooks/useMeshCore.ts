@@ -122,7 +122,7 @@ export interface MeshCoreActions {
    *  was accepted. */
   discoverContactPath: (publicKey: string) => Promise<boolean>;
   /** Active node discovery; resolves with responder counts, or null on error. */
-  discoverNodes: (mode: 'nearby' | 'repeaters') => Promise<{ returned: number; newCount: number } | null>;
+  discoverNodes: (mode: 'nearby' | 'repeaters' | 'sensors') => Promise<{ returned: number; newCount: number } | null>;
   /** Whether this node answers inbound discovery requests (is discoverable). */
   getDiscoverable: () => Promise<boolean>;
   /** Enable/disable answering inbound discovery requests. */
@@ -660,7 +660,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   }, [mcPrefix, csrfFetch]);
 
   const discoverNodes = useCallback(async (
-    mode: 'nearby' | 'repeaters',
+    mode: 'nearby' | 'repeaters' | 'sensors',
   ): Promise<{ returned: number; newCount: number } | null> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/discover`, {

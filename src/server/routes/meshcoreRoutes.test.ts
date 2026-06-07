@@ -80,6 +80,7 @@ vi.mock('../meshcoreManager.js', () => ({
   MeshCoreDiscoverFilter: {
     NEARBY: 0x1e,
     REPEATERS: 0x0c,
+    SENSORS: 0x10,
   },
   MeshCoreManager: class {},
 }));
@@ -1291,6 +1292,14 @@ describe('MeshCore Routes', () => {
         .send({ mode: 'nearby' });
       expect(response.status).toBe(200);
       expect(meshcoreManager.discoverNodes).toHaveBeenCalledWith(0x1e);
+    });
+
+    it('maps "sensors" to the sensor-only filter (0x10)', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/discover')
+        .send({ mode: 'sensors' });
+      expect(response.status).toBe(200);
+      expect(meshcoreManager.discoverNodes).toHaveBeenCalledWith(0x10);
     });
 
     it('returns 404 when the source has no registered manager', async () => {

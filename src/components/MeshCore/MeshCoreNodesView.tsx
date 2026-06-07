@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { MeshCoreNode } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMap } from './MeshCoreMap';
+import { useToast } from '../ToastContainer';
+
+type DiscoverMode = 'nearby' | 'repeaters' | 'sensors';
 
 const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = (): boolean =>
@@ -20,6 +23,11 @@ interface MeshCoreNodesViewProps {
   contacts: MeshCoreContact[];
   onImportContact?: (advertBytes: number[]) => Promise<boolean>;
   onNavigateToDm?: (publicKey: string) => void;
+  /** Active node discovery (companion-only). When provided together with
+   *  `canDiscover`, the list header shows a "Discover" menu. */
+  onDiscoverNodes?: (mode: DiscoverMode) => Promise<{ returned: number; newCount: number } | null>;
+  /** Gate for the Discover menu — connected companion device. */
+  canDiscover?: boolean;
 }
 
 interface MergedRow {
@@ -97,9 +105,14 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   contacts,
   onImportContact,
   onNavigateToDm,
+  onDiscoverNodes,
+  canDiscover,
 }) => {
   const { t } = useTranslation();
+  const { showToast } = useToast();
   const [selected, setSelected] = useState<string | null>(null);
+  const [discoverMenuOpen, setDiscoverMenuOpen] = useState(false);
+  const [discovering, setDiscovering] = useState<DiscoverMode | null>(null);
   const [sortField, setSortField] = useState<SortField>('lastHeard');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [mobileShowContent, setMobileShowContent] = useState(false);
@@ -148,6 +161,30 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     if (isMobileViewport()) setMobileShowContent(true);
   }, []);
 
+  // Same toast contract as the Settings-view discovery buttons — results
+  // surface here too because responders land directly in this list.
+  const handleDiscover = useCallback(async (mode: DiscoverMode) => {
+    if (!onDiscoverNodes || discovering) return;
+    setDiscoverMenuOpen(false);
+    setDiscovering(mode);
+    try {
+      const result = await onDiscoverNodes(mode);
+      if (result) {
+        showToast(
+          t('meshcore.discover.result', '{{returned}} contacts returned ({{new}} new)', {
+            returned: result.returned,
+            new: result.newCount,
+          }),
+          'success',
+        );
+      } else {
+        showToast(t('meshcore.discover.failed', 'Discovery failed'), 'error');
+      }
+    } finally {
+      setDiscovering(null);
+    }
+  }, [onDiscoverNodes, discovering, showToast, t]);
+
   const merged = useMemo(() => mergeNodesAndContacts(nodes, contacts), [nodes, contacts]);
   const sorted = useMemo(
     () => sortRows(merged, sortField, sortDirection),
@@ -178,6 +215,42 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             >
               {t('meshcore.import_contact.button', 'Import')}
             </button>
+          )}
+          {onDiscoverNodes && canDiscover && (
+            <div className="mc-discover-menu-anchor">
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ fontSize: '0.8em', padding: '0.15rem 0.5rem', marginLeft: '0.5rem' }}
+                onClick={() => setDiscoverMenuOpen((open) => !open)}
+                disabled={discovering !== null}
+                aria-haspopup="menu"
+                aria-expanded={discoverMenuOpen}
+              >
+                {discovering
+                  ? t('meshcore.discover.running', 'Discovering…')
+                  : t('meshcore.discover.button', 'Discover')}
+              </button>
+              {discoverMenuOpen && (
+                <>
+                  <div
+                    className="mc-discover-menu-backdrop"
+                    onClick={() => setDiscoverMenuOpen(false)}
+                  />
+                  <div className="mc-discover-menu" role="menu">
+                    <button type="button" role="menuitem" onClick={() => void handleDiscover('nearby')}>
+                      {t('meshcore.discover.nearby', 'Discover Nearby Nodes')}
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => void handleDiscover('repeaters')}>
+                      {t('meshcore.discover.repeaters', 'Discover Repeaters')}
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => void handleDiscover('sensors')}>
+                      {t('meshcore.discover.sensors', 'Discover Sensors')}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
           <div className="sort-controls meshcore-sort-controls">
             <select
@@ -232,31 +305,50 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                 : t('meshcore.no_nodes', 'No nodes seen yet')}
             </div>
           ) : rows.map(row => (
-            <button
+            // Wrapper div (not a button) so the details quick-access can be a
+            // real sibling <button> — nested buttons are invalid HTML.
+            <div
               key={row.publicKey}
-              className={`mc-node-row ${selected === row.publicKey ? 'selected' : ''}`}
-              onClick={() => handleSelectNode(row.publicKey)}
+              className={`mc-node-row mc-node-row--split ${selected === row.publicKey ? 'selected' : ''}`}
             >
-              <div className="mc-node-row-name">
-                <span>{row.name}</span>
-                {typeof row.advType === 'number' && (
-                  <span className="mc-node-row-type">
-                    {t(DEVICE_TYPE_KEYS[row.advType] || 'meshcore.device_type.unknown', '')}
-                  </span>
-                )}
-              </div>
-              <div className="mc-node-row-meta">
-                {typeof row.rssi === 'number' && <span>RSSI {row.rssi}</span>}
-                {typeof row.snr === 'number' && <span>SNR {row.snr}</span>}
-                {row.lastHeard && (
-                  <span>{new Date(row.lastHeard).toLocaleTimeString()}</span>
-                )}
-                {row.hasPosition && <span>📍</span>}
-              </div>
-              <div className="mc-node-row-key">
-                {row.publicKey.substring(0, 16)}…
-              </div>
-            </button>
+              <button
+                type="button"
+                className="mc-node-row-main"
+                onClick={() => handleSelectNode(row.publicKey)}
+                onDoubleClick={onNavigateToDm ? () => onNavigateToDm(row.publicKey) : undefined}
+              >
+                <div className="mc-node-row-name">
+                  <span>{row.name}</span>
+                  {typeof row.advType === 'number' && (
+                    <span className="mc-node-row-type">
+                      {t(DEVICE_TYPE_KEYS[row.advType] || 'meshcore.device_type.unknown', '')}
+                    </span>
+                  )}
+                </div>
+                <div className="mc-node-row-meta">
+                  {typeof row.rssi === 'number' && <span>RSSI {row.rssi}</span>}
+                  {typeof row.snr === 'number' && <span>SNR {row.snr}</span>}
+                  {row.lastHeard && (
+                    <span>{new Date(row.lastHeard).toLocaleTimeString()}</span>
+                  )}
+                  {row.hasPosition && <span>📍</span>}
+                </div>
+                <div className="mc-node-row-key">
+                  {row.publicKey.substring(0, 16)}…
+                </div>
+              </button>
+              {onNavigateToDm && (
+                <button
+                  type="button"
+                  className="mc-node-row-details-btn"
+                  title={t('meshcore.node_row.details', 'More details')}
+                  aria-label={t('meshcore.node_row.details', 'More details')}
+                  onClick={() => onNavigateToDm(row.publicKey)}
+                >
+                  ›
+                </button>
+              )}
+            </div>
           ))}
         </div>
       </div>
