@@ -380,4 +380,122 @@ describe('DashboardSidebar', () => {
       expect(document.querySelector('.dashboard-publisher-badge')).toBeNull();
     });
   });
+
+  // Issue #3355 — drag handles are hidden until the admin enters Edit mode.
+  describe('Edit mode (drag-reorder gating)', () => {
+    const queryDragHandles = () =>
+      document.querySelectorAll('[title="Drag to reorder"]');
+
+    it('does NOT render the Edit button when reordering is not wired up', () => {
+      // No onReorderSources prop → canReorder is false regardless of perms.
+      renderSidebar();
+      expect(
+        screen.queryByRole('button', { name: 'source.edit_mode' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does NOT render the Edit button without sources:write permission', () => {
+      hasPermissionMock.mockImplementation(() => false);
+      renderSidebar({ onReorderSources: vi.fn() });
+      expect(
+        screen.queryByRole('button', { name: 'source.edit_mode' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('renders the Edit button for a permitted viewer with reorder wired up', () => {
+      renderSidebar({ onReorderSources: vi.fn() });
+      expect(
+        screen.getByRole('button', { name: 'source.edit_mode' }),
+      ).toBeInTheDocument();
+    });
+
+    it('hides drag handles until Edit mode is toggled on', () => {
+      renderSidebar({ onReorderSources: vi.fn() });
+      // Default: no handles.
+      expect(queryDragHandles().length).toBe(0);
+
+      fireEvent.click(screen.getByRole('button', { name: 'source.edit_mode' }));
+
+      // Edit mode on: one handle per real (non-unified) source.
+      expect(queryDragHandles().length).toBe(3);
+      // Button label flips to "Done".
+      expect(
+        screen.getByRole('button', { name: 'source.edit_mode_done' }),
+      ).toBeInTheDocument();
+    });
+
+    it('hides drag handles again when Edit mode is toggled off', () => {
+      renderSidebar({ onReorderSources: vi.fn() });
+      const toggle = screen.getByRole('button', { name: 'source.edit_mode' });
+      fireEvent.click(toggle);
+      expect(queryDragHandles().length).toBe(3);
+      fireEvent.click(screen.getByRole('button', { name: 'source.edit_mode_done' }));
+      expect(queryDragHandles().length).toBe(0);
+    });
+  });
+
+  // Issue #3356 — resizable sidebar with persisted width.
+  describe('Resizable sidebar', () => {
+    const WIDTH_KEY = 'dashboard-sidebar-width';
+
+    beforeEach(() => {
+      window.localStorage.clear();
+    });
+
+    const getAside = () => document.querySelector('aside.dashboard-sidebar') as HTMLElement;
+
+    it('renders a resize handle', () => {
+      renderSidebar();
+      expect(
+        screen.getByRole('separator', { name: 'source.resize_sidebar' }),
+      ).toBeInTheDocument();
+    });
+
+    it('applies the default width as a CSS variable when none is persisted', () => {
+      renderSidebar();
+      expect(getAside().style.getPropertyValue('--dashboard-sidebar-width')).toBe('240px');
+    });
+
+    it('loads a persisted width from localStorage', () => {
+      window.localStorage.setItem(WIDTH_KEY, '320');
+      renderSidebar();
+      expect(getAside().style.getPropertyValue('--dashboard-sidebar-width')).toBe('320px');
+    });
+
+    it('clamps an out-of-range persisted width to the max bound', () => {
+      window.localStorage.setItem(WIDTH_KEY, '9999');
+      renderSidebar();
+      expect(getAside().style.getPropertyValue('--dashboard-sidebar-width')).toBe('480px');
+    });
+
+    it('resizes via arrow keys and persists the new width', () => {
+      renderSidebar();
+      const handle = screen.getByRole('separator', { name: 'source.resize_sidebar' });
+      fireEvent.keyDown(handle, { key: 'ArrowRight' });
+      expect(getAside().style.getPropertyValue('--dashboard-sidebar-width')).toBe('256px');
+      expect(window.localStorage.getItem(WIDTH_KEY)).toBe('256');
+      fireEvent.keyDown(handle, { key: 'ArrowLeft' });
+      expect(getAside().style.getPropertyValue('--dashboard-sidebar-width')).toBe('240px');
+      expect(window.localStorage.getItem(WIDTH_KEY)).toBe('240');
+    });
+
+    it('does not shrink below the minimum width via keyboard', () => {
+      window.localStorage.setItem(WIDTH_KEY, '208'); // 8px above the 200 min
+      renderSidebar();
+      const handle = screen.getByRole('separator', { name: 'source.resize_sidebar' });
+      fireEvent.keyDown(handle, { key: 'ArrowLeft' });
+      // 208 - 16 would be 192, clamped to the 200 minimum.
+      expect(getAside().style.getPropertyValue('--dashboard-sidebar-width')).toBe('200px');
+    });
+
+    it('resizes via pointer drag and persists on pointer up', () => {
+      renderSidebar();
+      const handle = screen.getByRole('separator', { name: 'source.resize_sidebar' });
+      fireEvent.pointerDown(handle, { clientX: 240 });
+      fireEvent.pointerMove(window, { clientX: 300 });
+      expect(getAside().style.getPropertyValue('--dashboard-sidebar-width')).toBe('300px');
+      fireEvent.pointerUp(window, { clientX: 300 });
+      expect(window.localStorage.getItem(WIDTH_KEY)).toBe('300');
+    });
+  });
 });

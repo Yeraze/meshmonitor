@@ -4402,6 +4402,10 @@
 
   "source.header": "Sources",
   "source.add_short": "+ Add",
+  "source.edit_mode": "Edit",
+  "source.edit_mode_done": "Done",
+  "source.edit_mode_help": "Reorder sources by dragging. Click Done when finished.",
+  "source.resize_sidebar": "Drag to resize the sidebar",
   "source.add": "Add Source",
   "source.edit": "Edit Source",
   "source.delete": "Delete Source",

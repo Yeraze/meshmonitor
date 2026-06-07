@@ -100,13 +100,33 @@
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 
 .dashboard-sidebar {
-  width: 240px;
+  /* Width is user-resizable (issue #3356); the inline CSS var carries the
+     persisted value, falling back to the default when unset. */
+  width: var(--dashboard-sidebar-width, 240px);
   flex-shrink: 0;
   background: var(--ctp-mantle);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
   border-right: 1px solid var(--ctp-surface0);
+}
+
+/* Drag-to-resize handle — sits in the flex row between the sidebar and the
+   map body. Thin hit area that highlights on hover/focus. */
+.dashboard-sidebar-resize-handle {
+  flex: 0 0 5px;
+  align-self: stretch;
+  cursor: col-resize;
+  background: transparent;
+  border: none;
+  padding: 0;
+  transition: background 0.15s;
+}
+
+.dashboard-sidebar-resize-handle:hover,
+.dashboard-sidebar-resize-handle:focus-visible {
+  background: var(--ctp-blue);
+  outline: none;
 }
 
 .dashboard-sidebar-header {
@@ -784,11 +804,17 @@
     top: var(--header-height, 64px);
     left: 0;
     bottom: 0;
+    /* Overlay drawer has a fixed width; ignore the desktop resize var. */
     width: 260px;
     z-index: 999;
     transform: translateX(-100%);
     transition: transform 0.25s ease;
     box-shadow: 2px 0 12px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Resizing is desktop-only — the drawer is a fixed overlay on mobile. */
+  .dashboard-sidebar-resize-handle {
+    display: none;
   }
 
   .dashboard-sidebar.mobile-open {

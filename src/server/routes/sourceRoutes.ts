@@ -834,6 +834,28 @@ router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) =>
         databaseService.nodes.getNodeCount(source.id).catch(() => 0),
         databaseService.nodes.getActiveNodeCount(source.id).catch(() => 0),
       ]);
+      // The /:id/nodes endpoint injects the manager's local node into the
+      // returned list whenever it isn't persisted for this source — most
+      // visibly the MQTT broker's synthetic gateway node, which never lands
+      // in the `nodes` table. getNodeCount() (a plain COUNT(*)) doesn't see
+      // that injected node, so the sidebar badge would read one lower than
+      // the node list the user sees when the source is selected. Worse, the
+      // dashboard uses the live list length for the *selected* source but
+      // this polled count for the rest, so the badge flickered (e.g. 11↔12)
+      // purely on selection state (issue #3354). Mirror the injection here so
+      // the count matches the list and stays stable regardless of selection.
+      const localNodeInfo = manager?.getLocalNodeInfo?.();
+      if (localNodeInfo?.nodeNum) {
+        const inSource = await databaseService.nodes
+          .getNode(localNodeInfo.nodeNum, source.id)
+          .catch(() => null);
+        if (!inSource) {
+          nodeCount += 1;
+          // /nodes synthesizes the injected local node with lastHeard=now, so
+          // it counts as "active" whenever the source link is up.
+          if (status?.connected) activeNodeCount += 1;
+        }
+      }
     }
     res.json({ ...status, nodeCount, activeNodeCount });
   } catch (error) {
