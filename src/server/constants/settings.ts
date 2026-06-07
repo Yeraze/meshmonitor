@@ -100,6 +100,9 @@ export const VALID_SETTINGS_KEYS = [
   'position_estimation_enabled',
   'position_estimation_frequency_hours',
   'position_estimation_lookback_hours',
+  // Max acceptable uncertainty (km). Estimates whose computed radius exceeds
+  // this are discarded rather than stored (issue #3271 follow-up). 0 = no limit.
+  'position_estimation_max_uncertainty_km',
   'autoKeyManagementEnabled',
   'autoKeyManagementIntervalMinutes',
   'autoKeyManagementMaxExchanges',

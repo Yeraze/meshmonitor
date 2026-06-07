@@ -46,6 +46,9 @@ export interface RecomputeResult {
   estimatedNodeCount: number;
   observationCount: number;
   anchorCount: number;
+  /** Solved positions discarded because their uncertainty exceeded the
+   *  configured maximum (issue #3271 follow-up). */
+  rejectedNodeCount: number;
   durationMs: number;
 }
 
@@ -279,10 +282,13 @@ class PositionEstimationService {
    * window. Pools every Meshtastic source (MeshCore excluded). Bulk-upserts
    * results and clears estimates for nodes that now have real positions.
    */
-  async recomputeAll(opts: { lookbackMs: number }): Promise<RecomputeResult> {
+  async recomputeAll(opts: { lookbackMs: number; maxUncertaintyKm?: number | null }): Promise<RecomputeResult> {
     const start = Date.now();
     const now = start;
     const cutoff = now - opts.lookbackMs;
+    // 0 / null / negative ⇒ no limit (store every solvable estimate).
+    const maxUncertaintyKm =
+      opts.maxUncertaintyKm != null && opts.maxUncertaintyKm > 0 ? opts.maxUncertaintyKm : null;
 
     // Meshtastic-only sources (exclude MeshCore).
     const allSources = await databaseService.sources.getAllSources();
@@ -338,10 +344,18 @@ class PositionEstimationService {
 
     let observationCount = 0;
     const inputs: EstimatedPositionInput[] = [];
+    // Nodes solved but rejected for exceeding maxUncertaintyKm. Their existing
+    // estimates (if any) are deleted below so a now-too-uncertain node doesn't
+    // keep a stale, oversized circle on the map.
+    const rejectedNodeNums: number[] = [];
     for (const [nodeNum, observations] of obsByNode) {
       observationCount += observations.length;
       const solved = solveNodePosition(observations, now);
       if (!solved) continue;
+      if (maxUncertaintyKm != null && solved.uncertaintyKm > maxUncertaintyKm) {
+        rejectedNodeNums.push(nodeNum);
+        continue;
+      }
       inputs.push({
         nodeNum,
         nodeId: nodeNumToId(nodeNum),
@@ -355,20 +369,25 @@ class PositionEstimationService {
 
     await databaseService.upsertEstimatedPositionsAsync(inputs);
 
-    // A node that gained a real position should not also carry an estimate.
+    // Clear estimates that are no longer valid: a node that gained a real
+    // position (now an anchor), or one whose fresh estimate is too uncertain
+    // to keep under the configured maximum.
     const anchorNodeNums = [...anchors.keys()];
-    await databaseService.deleteEstimatedPositionsByNodeNumsAsync(anchorNodeNums);
+    await databaseService.deleteEstimatedPositionsByNodeNumsAsync([...anchorNodeNums, ...rejectedNodeNums]);
 
     const durationMs = Date.now() - start;
     logger.info(
       `📍 Position estimation: ${inputs.length} node(s) estimated from ${observationCount} observation(s) ` +
-      `across ${meshtasticSourceIds.length} source(s), ${anchors.size} anchor(s), in ${durationMs}ms`
+      `across ${meshtasticSourceIds.length} source(s), ${anchors.size} anchor(s)` +
+      (rejectedNodeNums.length ? `, ${rejectedNodeNums.length} rejected (>${maxUncertaintyKm}km)` : '') +
+      `, in ${durationMs}ms`
     );
 
     return {
       estimatedNodeCount: inputs.length,
       observationCount,
       anchorCount: anchors.size,
+      rejectedNodeCount: rejectedNodeNums.length,
       durationMs,
     };
   }
