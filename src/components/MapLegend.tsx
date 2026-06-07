@@ -22,6 +22,8 @@ export interface PositionHistoryData {
 
 interface MapLegendProps {
   positionHistory?: PositionHistoryData;
+  /** Count of known nodes with neither a real nor an estimated position (issue #3271). */
+  unmappedCount?: number;
 }
 
 // Default position: top-right, below the Features checkbox panel, right-aligned with it
@@ -32,7 +34,7 @@ const getDefaultPosition = () => ({
   y: 60 + 10 + 250 + 20 // header + features top + features height + gap = 340
 });
 
-const MapLegend: React.FC<MapLegendProps> = ({ positionHistory }) => {
+const MapLegend: React.FC<MapLegendProps> = ({ positionHistory, unmappedCount }) => {
   const { t } = useTranslation();
   const { overlayColors } = useSettings();
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -143,6 +145,14 @@ const MapLegend: React.FC<MapLegendProps> = ({ positionHistory }) => {
                   <span className="legend-time-label">{formatTime(positionHistory.oldestTime)}</span>
                   <span className="legend-time-label">{formatTime(positionHistory.newestTime)}</span>
                 </div>
+              </>
+            )}
+            {unmappedCount != null && unmappedCount > 0 && (
+              <>
+                <div className="legend-divider" />
+                <span className="legend-sublabel" style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                  {t('map.legend.unmappedNodes', '{{count}} node(s) without location', { count: unmappedCount })}
+                </span>
               </>
             )}
           </>

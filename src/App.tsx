@@ -28,6 +28,7 @@ import AutoWelcomeSection from './components/AutoWelcomeSection';
 import AutoResponderSection from './components/AutoResponderSection';
 import AutoKeyManagementSection from './components/AutoKeyManagementSection';
 import AutoDeleteByDistanceSection from './components/AutoDeleteByDistanceSection';
+import PositionEstimationSection from './components/PositionEstimationSection';
 import TimerTriggersSection from './components/TimerTriggersSection';
 import GeofenceTriggersSection from './components/GeofenceTriggersSection';
 import RemoteAdminScannerSection from './components/RemoteAdminScannerSection';
@@ -5185,6 +5186,11 @@ function App() {
                   onHomeLonChange={setAutoDeleteByDistanceLon}
                   action={autoDeleteByDistanceAction}
                   onActionChange={setAutoDeleteByDistanceAction}
+                />
+              </div>
+              <div id="position-estimation">
+                <PositionEstimationSection
+                  baseUrl={baseUrl}
                 />
               </div>
               <div id="ignored-nodes">

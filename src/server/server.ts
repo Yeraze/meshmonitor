@@ -33,6 +33,7 @@ import { deviceBackupService } from './services/deviceBackupService.js';
 import { backupFileService } from './services/backupFileService.js';
 import { backupSchedulerService } from './services/backupSchedulerService.js';
 import { databaseMaintenanceService } from './services/databaseMaintenanceService.js';
+import { positionEstimationScheduler } from './services/positionEstimationScheduler.js';
 import { systemBackupService } from './services/systemBackupService.js';
 import { systemRestoreService } from './services/systemRestoreService.js';
 import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerService.js';
@@ -593,6 +594,10 @@ setTimeout(async () => {
     // Initialize database maintenance service
     databaseMaintenanceService.initialize();
     logger.debug('Database maintenance service initialized');
+
+    // Initialize position estimation scheduler (global, batch — issue #3271)
+    positionEstimationScheduler.initialize();
+    logger.debug('Position estimation scheduler initialized');
 
     // Start inactive node notification service with validation
     const inactiveThresholdHoursRaw = parseInt(await databaseService.settings.getSetting('inactiveNodeThresholdHours') || '24', 10);
@@ -4781,12 +4786,17 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), a
     const nodesWithTelemetry: string[] = [];
     const nodesWithWeather: string[] = [];
     const nodesWithEstimatedPosition: string[] = [];
+    // Known nodes with neither a real nor an estimated position (issue #3271 map counter).
+    const nodesUnmapped: string[] = [];
 
     const weatherTypes = new Set(['temperature', 'humidity', 'pressure']);
-    const estimatedPositionTypes = new Set(['estimated_latitude', 'estimated_longitude']);
 
     // Efficient bulk query: get all telemetry types for all nodes at once
     const nodeTelemetryTypes = await databaseService.getAllNodesTelemetryTypesAsync(telAvailSourceId);
+    // Global estimated positions (one per physical node, pooled across sources).
+    const estimatedRows = await databaseService.getAllEstimatedPositionsAsync();
+    const estimatedPositionMap = new Map(estimatedRows.map(r => [r.nodeId, r]));
+    const estimatedUncertainty: Record<string, number> = {};
 
     nodes.forEach(node => {
       const telemetryTypes = nodeTelemetryTypes.get(node.nodeId);
@@ -4798,16 +4808,23 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), a
         if (hasWeather) {
           nodesWithWeather.push(node.nodeId);
         }
+      }
 
-        // Check if node has estimated position telemetry AND doesn't have a known position.
-        // A user-set override counts as a known position — we don't want to draw an
-        // uncertainty circle on a node the user has explicitly placed (issue #2847).
-        const hasEstimatedPosition = telemetryTypes.some(t => estimatedPositionTypes.has(t));
-        const eff = getEffectiveDbNodePosition(node);
-        const hasRealPosition = eff.latitude != null && eff.longitude != null;
-        if (hasEstimatedPosition && !hasRealPosition) {
-          nodesWithEstimatedPosition.push(node.nodeId);
+      // Estimated-position / unmapped status is independent of telemetry presence.
+      // A user-set override counts as a known position — we don't want to draw an
+      // uncertainty circle on a node the user has explicitly placed (issue #2847).
+      const eff = getEffectiveDbNodePosition(node);
+      const hasRealPosition = eff.latitude != null && eff.longitude != null;
+      const estimate = estimatedPositionMap.get(node.nodeId);
+      const hasEstimatedPosition = estimate !== undefined;
+      if (hasEstimatedPosition && !hasRealPosition) {
+        nodesWithEstimatedPosition.push(node.nodeId);
+        if (estimate.uncertaintyKm != null) {
+          estimatedUncertainty[node.nodeId] = estimate.uncertaintyKm;
         }
+      }
+      if (!hasRealPosition && !hasEstimatedPosition) {
+        nodesUnmapped.push(node.nodeId);
       }
     });
 
@@ -4839,6 +4856,9 @@ apiRouter.get('/telemetry/available/nodes', requirePermission('info', 'read'), a
       nodes: nodesWithTelemetry,
       weather: nodesWithWeather,
       estimatedPosition: nodesWithEstimatedPosition,
+      estimatedUncertainty,
+      unmapped: nodesUnmapped,
+      unmappedCount: nodesUnmapped.length,
       pkc: nodesWithPKC,
     });
   } catch (error) {
@@ -5220,14 +5240,18 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         const nodesWithTelemetry: string[] = [];
         const nodesWithWeather: string[] = [];
         const nodesWithEstimatedPosition: string[] = [];
+        const nodesUnmapped: string[] = [];
 
         const weatherTypes = new Set(['temperature', 'humidity', 'pressure']);
-        const estimatedPositionTypes = new Set(['estimated_latitude', 'estimated_longitude']);
 
         // Use scoped repo call when sourceId provided (bypasses shared cache)
         const nodeTelemetryTypes = pollSourceId
           ? await databaseService.telemetry.getAllNodesTelemetryTypes(pollSourceId)
           : await databaseService.getAllNodesTelemetryTypesAsync();
+        // Global estimated positions (pooled across all Meshtastic sources, #3271).
+        const estimatedRows = await databaseService.getAllEstimatedPositionsAsync();
+        const estimatedPositionMap = new Map(estimatedRows.map(r => [r.nodeId, r]));
+        const estimatedUncertainty: Record<string, number> = {};
 
         dbNodes.forEach(node => {
           const telemetryTypes = nodeTelemetryTypes.get(node.nodeId);
@@ -5238,15 +5262,22 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
             if (hasWeather) {
               nodesWithWeather.push(node.nodeId);
             }
+          }
 
-            // Only show uncertainty circle for nodes currently using estimated position.
-            // A user-set override counts as a known position (issue #2847).
-            const hasEstimatedPosition = telemetryTypes.some(t => estimatedPositionTypes.has(t));
-            const eff = getEffectiveDbNodePosition(node);
-            const hasRealPosition = eff.latitude != null && eff.longitude != null;
-            if (hasEstimatedPosition && !hasRealPosition) {
-              nodesWithEstimatedPosition.push(node.nodeId);
+          // Estimated-position / unmapped status is independent of telemetry.
+          // A user-set override counts as a known position (issue #2847).
+          const eff = getEffectiveDbNodePosition(node);
+          const hasRealPosition = eff.latitude != null && eff.longitude != null;
+          const estimate = estimatedPositionMap.get(node.nodeId);
+          const hasEstimatedPosition = estimate !== undefined;
+          if (hasEstimatedPosition && !hasRealPosition) {
+            nodesWithEstimatedPosition.push(node.nodeId);
+            if (estimate.uncertaintyKm != null) {
+              estimatedUncertainty[node.nodeId] = estimate.uncertaintyKm;
             }
+          }
+          if (!hasRealPosition && !hasEstimatedPosition) {
+            nodesUnmapped.push(node.nodeId);
           }
         });
 
@@ -5261,6 +5292,9 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
           nodes: nodesWithTelemetry,
           weather: nodesWithWeather,
           estimatedPosition: nodesWithEstimatedPosition,
+          estimatedUncertainty,
+          unmapped: nodesUnmapped,
+          unmappedCount: nodesUnmapped.length,
           pkc: nodesWithPKC,
         };
       }
@@ -6517,6 +6551,39 @@ apiRouter.post('/settings/distance-delete/run-now', requirePermission('settings'
   } catch (error) {
     logger.error('Error running distance-delete:', error);
     res.status(500).json({ error: 'Failed to run distance delete' });
+  }
+});
+
+// Position estimation (global, batch — issue #3271)
+apiRouter.get('/settings/position-estimation/status', requirePermission('settings', 'read'), async (_req, res) => {
+  try {
+    const status = await positionEstimationScheduler.getStatus();
+    res.json(status);
+  } catch (error) {
+    logger.error('Error fetching position estimation status:', error);
+    res.status(500).json({ error: 'Failed to fetch position estimation status' });
+  }
+});
+
+apiRouter.post('/settings/position-estimation/run-now', requirePermission('settings', 'write'), async (req, res) => {
+  try {
+    const result = await positionEstimationScheduler.runNow();
+    databaseService.auditLogAsync(
+      req.user!.id,
+      'position_estimation_run',
+      'settings',
+      `Ran position estimation: ${result.estimatedNodeCount} node(s) estimated`,
+      req.ip || null,
+      null,
+      JSON.stringify(result)
+    );
+    res.json(result);
+  } catch (error) {
+    logger.error('Error running position estimation:', error);
+    const message = error instanceof Error && /in progress/.test(error.message)
+      ? 'Position estimation already in progress'
+      : 'Failed to run position estimation';
+    res.status(message.includes('in progress') ? 409 : 500).json({ error: message });
   }
 });
 

@@ -114,6 +114,11 @@ import {
   sourcesSqlite, sourcesPostgres, sourcesMysql,
 } from './schema/sources.js';
 
+// Estimated positions table (global — no sourceId)
+import {
+  estimatedPositionsSqlite, estimatedPositionsPostgres, estimatedPositionsMysql,
+} from './schema/estimatedPositions.js';
+
 /**
  * Runtime table map interface.
  *
@@ -186,6 +191,9 @@ export interface ActiveSchema {
   // Sources
   sources: any;
 
+  // Estimated positions (global — no sourceId)
+  estimatedPositions: any;
+
   // Allow dynamic access for flexibility
   [key: string]: any;
 }
@@ -237,6 +245,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     embedProfiles: embedProfilesSqlite,
     waypoints: waypointsSqlite,
     sources: sourcesSqlite,
+    estimatedPositions: estimatedPositionsSqlite,
   },
   postgres: {
     nodes: nodesPostgres,
@@ -281,6 +290,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     embedProfiles: embedProfilesPostgres,
     waypoints: waypointsPostgres,
     sources: sourcesPostgres,
+    estimatedPositions: estimatedPositionsPostgres,
   },
   mysql: {
     nodes: nodesMysql,
@@ -325,6 +335,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     embedProfiles: embedProfilesMysql,
     waypoints: waypointsMysql,
     sources: sourcesMysql,
+    estimatedPositions: estimatedPositionsMysql,
   },
 };
 

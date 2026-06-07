@@ -96,6 +96,7 @@ import { migration as meshcorePacketLogBigintMigration, runMigration078PacketLog
 import { migration as dropResidualNotifPrefsUserIdUniqueMigration, runMigration079Postgres as runMigration079DropResidualPostgres, runMigration079Mysql as runMigration079DropResidualMysql } from '../server/migrations/079_drop_residual_notif_prefs_user_id_unique.js';
 import { migration as lowBatteryVoltageThresholdMigration, runMigration080Postgres as runMigration080VoltagePostgres, runMigration080Mysql as runMigration080VoltageMysql } from '../server/migrations/080_add_low_battery_voltage_threshold.js';
 import { migration as sourcesDisplayOrderMigration, runMigration081Postgres as runMigration081DisplayOrderPostgres, runMigration081Mysql as runMigration081DisplayOrderMysql } from '../server/migrations/081_add_sources_display_order.js';
+import { migration as estimatedPositionsMigration, runMigration082EstimatedPositionsPostgres, runMigration082EstimatedPositionsMysql } from '../server/migrations/082_add_estimated_positions_table.js';
 
 // ============================================================================
 // Registry
@@ -1296,4 +1297,20 @@ registry.register({
   sqlite: (db) => sourcesDisplayOrderMigration.up(db),
   postgres: (client) => runMigration081DisplayOrderPostgres(client),
   mysql: (pool) => runMigration081DisplayOrderMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 082: Add the global estimated_positions table and purge obsolete
+// per-source estimate telemetry rows. Position estimation becomes a single
+// global, scheduled, multilateration-based computation pooling all Meshtastic
+// sources (incl. MQTT). See https://github.com/Yeraze/meshmonitor/issues/3271
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 82,
+  name: 'add_estimated_positions_table',
+  settingsKey: 'migration_082_add_estimated_positions_table',
+  sqlite: (db) => estimatedPositionsMigration.up(db),
+  postgres: (client) => runMigration082EstimatedPositionsPostgres(client),
+  mysql: (pool) => runMigration082EstimatedPositionsMysql(pool),
 });

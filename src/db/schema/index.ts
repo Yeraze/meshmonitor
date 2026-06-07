@@ -41,3 +41,6 @@ export * from './embedProfiles.js';
 
 // Waypoints table
 export * from './waypoints.js';
+
+// Estimated positions table (global — no sourceId)
+export * from './estimatedPositions.js';

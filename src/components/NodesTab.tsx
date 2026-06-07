@@ -361,6 +361,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     nodesWithWeather: nodesWithWeatherTelemetry,
     nodesWithEstimatedPosition,
     nodesWithPKC,
+    unmappedCount,
+    estimatedUncertainty,
   } = useTelemetryNodes();
 
   const {
@@ -2050,6 +2052,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               {showLegend && (
               <MapLegend
                 positionHistory={positionHistoryLegendData}
+                unmappedCount={unmappedCount}
               />
               )}
               {nodesWithPosition
@@ -2173,12 +2176,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               {showEstimatedPositions && nodesWithPosition
                 .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id) && nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }) && (showIncompleteNodes || isNodeComplete(node)) && (!tracerouteNodeNums || tracerouteNodeNums.has(node.nodeNum)))
                 .map(node => {
-                  // Calculate radius based on precision bits (higher precision = smaller circle)
-                  // Meshtastic uses precision_bits to reduce coordinate precision
-                  // Each precision bit reduces precision by ~1 bit, roughly doubling the uncertainty
-                  // We'll use a base radius and scale it
-                  const baseRadiusMeters = 500; // Base uncertainty radius
-                  const radiusMeters = baseRadiusMeters; // Can be adjusted based on precision_bits if available
+                  // Use the real multilateration uncertainty radius (issue #3271) when
+                  // available; fall back to a 500m base for legacy/missing data.
+                  const uncertaintyKm = node.user?.id ? estimatedUncertainty[node.user.id] : undefined;
+                  const radiusMeters = uncertaintyKm != null && uncertaintyKm > 0
+                    ? uncertaintyKm * 1000
+                    : 500;
 
                   // Get hop color for the circle (same as marker)
                   const isLocalNode = node.user?.id === currentNodeId;
