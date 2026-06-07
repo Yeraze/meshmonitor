@@ -14,17 +14,34 @@ const SectionNav: React.FC<SectionNavProps> = ({ items }) => {
     const element = document.getElementById(id);
     if (!element) return;
 
-    // Find the nearest scrollable ancestor so this works both when the window
-    // is the scroll container (standalone settings pages) and when an inner
-    // flex pane is the scroll container (MeshCore notifications view).
+    // Find the nearest ACTUALLY-scrollable ancestor so this works both when the
+    // window is the scroll container (standalone settings pages) and when an
+    // inner flex pane is the scroll container (MeshCore notifications view).
+    //
+    // We require both overflow:auto/scroll AND scrollHeight > clientHeight, and
+    // we exclude <body>/<html>: on the standalone settings page `body` computes
+    // to overflow-y:auto but isn't itself the scroller (it's as tall as its
+    // content — the window scrolls). Picking it made scrollBy a no-op, so none
+    // of the nav buttons scrolled. Falling through to the window branch fixes it.
     let scrollContainer: Element | null = element.parentElement;
-    while (scrollContainer && scrollContainer !== document.documentElement) {
+    while (
+      scrollContainer &&
+      scrollContainer !== document.body &&
+      scrollContainer !== document.documentElement
+    ) {
       const { overflowY } = window.getComputedStyle(scrollContainer);
-      if (overflowY === 'auto' || overflowY === 'scroll') break;
+      const scrollable =
+        (overflowY === 'auto' || overflowY === 'scroll') &&
+        scrollContainer.scrollHeight > scrollContainer.clientHeight;
+      if (scrollable) break;
       scrollContainer = scrollContainer.parentElement;
     }
 
-    if (scrollContainer && scrollContainer !== document.documentElement) {
+    if (
+      scrollContainer &&
+      scrollContainer !== document.body &&
+      scrollContainer !== document.documentElement
+    ) {
       // Inner pane scrolling — offset only for the sticky nav (~50px).
       const offset = 50;
       const containerRect = scrollContainer.getBoundingClientRect();
