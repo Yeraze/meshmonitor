@@ -274,10 +274,23 @@ recreate_container() {
   fi
 }
 
+# Probe a single health URL. Returns 0 on HTTP success.
+probe_health_url() {
+  wget -q -O /dev/null --timeout=5 "$1" 2>/dev/null || \
+    curl -sf "$1" >/dev/null 2>&1
+}
+
 # Wait for container health check
 wait_for_health() {
   local max_wait=${HEALTH_CHECK_TIMEOUT}
   local elapsed=0
+  # How long Docker health must stay continuously "unhealthy" before we fail
+  # fast. Slow boots (DB migrations, many sources) can transiently trip a
+  # compose healthcheck with a short start_period and then recover, so a
+  # single "unhealthy" observation is NOT terminal (issue: false circuit-
+  # breaker trips after successful upgrades).
+  local unhealthy_grace=${UNHEALTHY_GRACE:-180}
+  local unhealthy_since=""
 
   log "Waiting for container health check (timeout: ${max_wait}s)..."
 
@@ -299,45 +312,69 @@ wait_for_health() {
       continue
     fi
 
-    # Check Docker's own health status to distinguish states:
-    #   "unhealthy" → container started but health check is actively failing → fail fast
-    #   "starting"  → Docker health check hasn't passed yet → keep waiting
-    #   "healthy"   → Docker considers it healthy, proceed to HTTP check
-    #   ""          → no HEALTHCHECK in image, rely solely on HTTP check
+    # Docker's own health status:
+    #   "healthy"   → Docker's healthcheck passed → success
+    #   "unhealthy" → actively failing; only terminal if it PERSISTS past the
+    #                 grace window (transient unhealthy during slow boots is
+    #                 normal and recovers)
+    #   "starting"  → healthcheck hasn't concluded yet → keep waiting
+    #   ""          → no HEALTHCHECK defined, rely solely on HTTP probe
     local docker_health=""
     docker_health=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$CONTAINER_NAME" 2>/dev/null || true)
-    if [ "$docker_health" = "unhealthy" ]; then
-      log_error "Docker health check reports container is unhealthy — failing fast"
-      return 1
+    if [ "$docker_health" = "healthy" ]; then
+      log_success "Health check passed (Docker health: healthy)"
+      return 0
     fi
 
-    # Get container IP directly from Docker inspect - more reliable than DNS after recreation
-    # Try multiple networks as the container might be on different networks
-    local container_ip=""
-    container_ip=$(docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | head -n1)
+    # Get container IPs directly from Docker inspect - more reliable than DNS
+    # after recreation. println emits one IP per line; a container attached to
+    # multiple networks has multiple IPs and the sidecar may only be able to
+    # reach one of them, so probe each in turn.
+    local container_ips=""
+    container_ips=$(docker inspect --format='{{range .NetworkSettings.Networks}}{{println .IPAddress}}{{end}}' "$CONTAINER_NAME" 2>/dev/null | grep -v '^$')
 
     # If no IP yet, container network is still initialising — keep waiting
-    if [ -z "$container_ip" ]; then
+    if [ -z "$container_ips" ]; then
       log_warn "Container has no IP assigned yet... (Docker health: ${docker_health:-none}, ${elapsed}s/${max_wait}s)"
       sleep 5
       elapsed=$((elapsed + 5))
       continue
     fi
 
-    local health_url="http://${container_ip}:3001${health_path}"
+    # Probe the health endpoint on every network IP — HTTP success on any of
+    # them means the app is up, regardless of what Docker health says.
+    local ip
+    for ip in $container_ips; do
+      local health_url="http://${ip}:3001${health_path}"
 
-    # Only log URL on first attempt or if it changed
-    if [ "$elapsed" -eq 0 ] || [ -z "$last_health_url" ] || [ "$health_url" != "$last_health_url" ]; then
-      log "Health endpoint: $health_url"
-      last_health_url="$health_url"
-    fi
+      # Only log each distinct URL once
+      case " $logged_health_urls " in
+        *" $health_url "*) ;;
+        *)
+          log "Health endpoint: $health_url"
+          logged_health_urls="$logged_health_urls $health_url"
+          ;;
+      esac
 
-    # Try to check health endpoint using container IP directly
-    # This is more reliable than container name DNS after recreation
-    if wget -q -O /dev/null --timeout=5 "$health_url" 2>/dev/null || \
-       curl -sf "$health_url" >/dev/null 2>&1; then
-      log_success "Health check passed"
-      return 0
+      if probe_health_url "$health_url"; then
+        log_success "Health check passed"
+        return 0
+      fi
+    done
+
+    # HTTP probe failed on all IPs. If Docker health has been continuously
+    # unhealthy past the grace window, fail fast; a fresh or intermittent
+    # "unhealthy" just keeps waiting.
+    if [ "$docker_health" = "unhealthy" ]; then
+      if [ -z "$unhealthy_since" ]; then
+        unhealthy_since=$elapsed
+        log_warn "Docker health reports unhealthy — waiting up to ${unhealthy_grace}s for recovery"
+      elif [ $((elapsed - unhealthy_since)) -ge "$unhealthy_grace" ]; then
+        log_error "Docker health check unhealthy for $((elapsed - unhealthy_since))s — failing"
+        return 1
+      fi
+    else
+      unhealthy_since=""
     fi
 
     log "Waiting for health check... (Docker health: ${docker_health:-none}, ${elapsed}s/${max_wait}s)"
