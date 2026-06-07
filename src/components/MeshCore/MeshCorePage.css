@@ -626,15 +626,21 @@
 /* Form view (Configuration / Settings) */
 .meshcore-form-view {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 1.5rem;
 }
 
 /* Notifications view: NotificationsTab supplies its own .tab-content with no
    scroll container, so wrap it here to scroll within the overflow:hidden
-   .meshcore-content the same way the form views do. */
+   .meshcore-content the same way the form views do.
+   min-height: 0 is required: without it a column-flex child's implicit
+   min-height equals its content height, so the browser never sees an overflow
+   and the scrollbar never appears (content is clipped by the parent's
+   overflow:hidden but not scrollable). */
 .meshcore-notifications-view {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 1.5rem;
 }
