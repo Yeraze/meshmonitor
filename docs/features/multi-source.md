@@ -44,6 +44,15 @@ Open the **Sources sidebar** on the dashboard (admin only) to:
 
 Changes that alter the upstream target (host, port, heartbeat) automatically restart the connection — no separate restart action is needed. The Sources sidebar is where *all* post-bootstrap connection changes happen.
 
+### Arranging the sidebar
+
+::: tip New in 4.9.3
+:::
+
+- **Reorder (Edit mode)** — click **Edit** next to **+ Add** (requires `sources:write`) to reveal drag handles, then drag source cards into the order you want. Click **Done** to hide the handles again. The order is saved server-side and shared across users.
+- **Resize** — drag the sidebar's right edge to widen or narrow it; the chosen width is remembered per browser (200–480px). Useful for long MQTT source names.
+- The per-source **node count** badge reflects each source's own nodes consistently, regardless of which source is currently selected.
+
 ## Source picker
 
 Nearly every top-level view has a **source picker** in the header. It controls which source's data you're looking at:

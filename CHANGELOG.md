@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.9.3] - 2026-06-07
+
+### Features
+
+- **Position Estimation moved to Global Settings**: Position estimation is a single global, cross-source batch job (one set of `position_estimation_*` keys, one scheduler pooling traceroute + NeighborInfo observations across all Meshtastic sources). It previously rendered in the per-source Automation tab, which implied per-source configuration, was hidden for `mqtt_bridge` sources, and mismatched the backend (its status/run-now/save endpoints are gated by `settings:read`/`settings:write`, not `automation`). It now lives in **Global Settings → Position Estimation**, gated on `settings:write`. Resolves #3360.
+- **Maximum acceptable accuracy cutoff for position estimates**: New global setting `position_estimation_max_uncertainty_km` (0 = no limit). When set, any solved estimate whose uncertainty radius exceeds the ceiling is discarded instead of stored, and that node's now-too-uncertain estimate is cleared — so low-confidence guesses (dominated by the ~5 km single-anchor default) stop drawing huge circles on the map. The last-run summary reports how many estimates were discarded.
+- **"Show Accuracy" governs estimated-position circles**: The estimated-position uncertainty circles on the map are now controlled by the existing **Show Accuracy** map toggle (previously tied to "Show Estimated Positions"), so one control governs every accuracy overlay. The estimated markers stay under "Show Estimated Positions"; a circle is drawn only when both are on.
+- **Sources sidebar — Edit mode for reordering**: Drag-to-reorder handles are now hidden by default and revealed via an **Edit** toggle next to **+ Add** (gated on `sources:write`), keeping the sidebar uncluttered when reordering isn't needed. Resolves #3355.
+- **Sources sidebar — resizable width**: The dashboard Sources sidebar can be resized by dragging its right edge; the chosen width persists per browser (200–480px) and is keyboard-accessible. Resolves #3356.
+
+### Bug Fixes
+
+- **MQTT broker source node count flickered on selection (#3354)**: The MQTT broker card's node count alternated (e.g. 11 ↔ 12) depending on which source was selected. The `/:id/nodes` endpoint injects the broker's synthetic gateway node when it isn't persisted, but `/:id/status`'s `getNodeCount` (a plain `COUNT(*)`) did not, so the badge disagreed with the node list and with the selected-source live count. `/status` now mirrors the injection, so the count matches the list and stays stable regardless of selection.
+- **Settings section-nav buttons did not scroll**: On the standalone Global Settings page, none of the section-nav ("jump to section") buttons scrolled. `<body>` computes to `overflow-y: auto` but isn't the actual scroller (the window is), and `SectionNav` picked it and called `body.scrollBy()` — a no-op. The nearest-scrollable-ancestor search now requires the element to be genuinely scrollable (`scrollHeight > clientHeight`) and skips `<body>`/`<html>`, falling through to window scrolling.
+
 ## [4.9.2] - 2026-06-06
 
 ### Features
