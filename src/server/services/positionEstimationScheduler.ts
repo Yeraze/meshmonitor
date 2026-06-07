@@ -22,6 +22,9 @@ const LAST_RUN_KEY = 'position_estimation_last_run';
 
 export const DEFAULT_FREQUENCY_HOURS = 6;
 export const DEFAULT_LOOKBACK_HOURS = 168; // 7 days
+// 0 = no limit (store every solvable estimate). Opt-in: the operator sets a
+// km ceiling to drop low-confidence estimates that draw huge map circles.
+export const DEFAULT_MAX_UNCERTAINTY_KM = 0;
 const MIN_FREQUENCY_HOURS = 0.5;
 const MIN_LOOKBACK_HOURS = 1;
 const CHECK_INTERVAL_MS = 60_000;
@@ -41,6 +44,7 @@ export interface EstimationStatus {
   enabled: boolean;
   frequencyHours: number;
   lookbackHours: number;
+  maxUncertaintyKm: number;
   lastRunTime: number | null;
   lastRunResult: RecomputeResult | null;
 }
@@ -103,6 +107,15 @@ class PositionEstimationScheduler {
     return raw;
   }
 
+  private async getMaxUncertaintyKm(): Promise<number> {
+    const raw = parseFloat(
+      (await databaseService.settings.getSetting('position_estimation_max_uncertainty_km')) || String(DEFAULT_MAX_UNCERTAINTY_KM)
+    );
+    // Treat invalid/negative as "no limit" (0).
+    if (!Number.isFinite(raw) || raw < 0) return DEFAULT_MAX_UNCERTAINTY_KM;
+    return raw;
+  }
+
   private async getLastRun(): Promise<number | null> {
     if (this.lastRunTime !== null) return this.lastRunTime;
     const stored = await databaseService.settings.getSetting(LAST_RUN_KEY);
@@ -143,9 +156,13 @@ class PositionEstimationScheduler {
   private async execute(): Promise<RecomputeResult> {
     this.inProgress = true;
     try {
-      const lookbackHours = await this.getLookbackHours();
+      const [lookbackHours, maxUncertaintyKm] = await Promise.all([
+        this.getLookbackHours(),
+        this.getMaxUncertaintyKm(),
+      ]);
       const result = await positionEstimationService.recomputeAll({
         lookbackMs: lookbackHours * 60 * 60 * 1000,
+        maxUncertaintyKm,
       });
       this.lastRunResult = result;
       return result;
@@ -161,10 +178,11 @@ class PositionEstimationScheduler {
   }
 
   async getStatus(): Promise<EstimationStatus> {
-    const [enabled, frequencyHours, lookbackHours, lastRun] = await Promise.all([
+    const [enabled, frequencyHours, lookbackHours, maxUncertaintyKm, lastRun] = await Promise.all([
       this.getEnabled(),
       this.getFrequencyHours(),
       this.getLookbackHours(),
+      this.getMaxUncertaintyKm(),
       this.getLastRun(),
     ]);
     return {
@@ -173,6 +191,7 @@ class PositionEstimationScheduler {
       enabled,
       frequencyHours,
       lookbackHours,
+      maxUncertaintyKm,
       lastRunTime: lastRun,
       lastRunResult: this.lastRunResult,
     };

@@ -2172,8 +2172,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 );
               })}
 
-              {/* Draw uncertainty circles for estimated positions */}
-              {showEstimatedPositions && nodesWithPosition
+              {/* Draw uncertainty circles for estimated positions. The "Show
+                  Accuracy" map toggle now governs the radius (issue #3271
+                  follow-up) — turning it off declutters the circles while the
+                  estimated-node markers stay under "Show Estimated Positions".
+                  Both are required so a circle never renders without its marker. */}
+              {showEstimatedPositions && showAccuracyRegions && nodesWithPosition
                 .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id) && nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }) && (showIncompleteNodes || isNodeComplete(node)) && (!tracerouteNodeNums || tracerouteNodeNums.has(node.nodeNum)))
                 .map(node => {
                   // Use the real multilateration uncertainty radius (issue #3271) when

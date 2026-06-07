@@ -17,6 +17,7 @@ import {
   isRunDue,
   positionEstimationScheduler,
   DEFAULT_FREQUENCY_HOURS,
+  DEFAULT_LOOKBACK_HOURS,
 } from './positionEstimationScheduler.js';
 
 const HOUR = 60 * 60 * 1000;
@@ -50,14 +51,24 @@ describe('positionEstimationScheduler.runNow', () => {
     mockDb.settings.setSetting.mockResolvedValue(undefined);
   });
 
-  it('invokes recomputeAll with the configured lookback window', async () => {
+  it('invokes recomputeAll with the configured lookback window and max uncertainty', async () => {
     mockDb.settings.getSetting.mockImplementation(async (key: string) => {
       if (key === 'position_estimation_lookback_hours') return '48';
+      if (key === 'position_estimation_max_uncertainty_km') return '3';
       return null;
     });
     await positionEstimationScheduler.runNow();
     expect(mockService.positionEstimationService.recomputeAll).toHaveBeenCalledWith({
       lookbackMs: 48 * HOUR,
+      maxUncertaintyKm: 3,
+    });
+  });
+
+  it('passes maxUncertaintyKm: 0 (no limit) when the setting is unset', async () => {
+    await positionEstimationScheduler.runNow();
+    expect(mockService.positionEstimationService.recomputeAll).toHaveBeenCalledWith({
+      lookbackMs: DEFAULT_LOOKBACK_HOURS * HOUR,
+      maxUncertaintyKm: 0,
     });
   });
 
