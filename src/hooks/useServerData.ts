@@ -88,6 +88,10 @@ export function useTelemetryNodes() {
     nodesWithWeather: new Set(effectiveTelemetry?.weather ?? []),
     nodesWithEstimatedPosition: new Set(effectiveTelemetry?.estimatedPosition ?? []),
     nodesWithPKC: new Set(effectiveTelemetry?.pkc ?? []),
+    // Known nodes with neither a real nor an estimated position (issue #3271).
+    unmappedCount: (effectiveTelemetry as any)?.unmappedCount ?? 0,
+    // nodeId → estimate uncertainty radius in km (issue #3271).
+    estimatedUncertainty: ((effectiveTelemetry as any)?.estimatedUncertainty ?? {}) as Record<string, number>,
     isLoading,
   };
 }
