@@ -23,7 +23,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   const isCompanion = status?.deviceType === DEVICE_TYPE_COMPANION;
   // Which discovery (if any) is currently running, so we can disable both
   // buttons and label the active one "Discovering…".
-  const [discovering, setDiscovering] = useState<'nearby' | 'repeaters' | null>(null);
+  const [discovering, setDiscovering] = useState<'nearby' | 'repeaters' | 'sensors' | null>(null);
   // "Be discoverable" toggle — whether we answer inbound discovery requests.
   const [discoverable, setDiscoverableState] = useState(false);
   const { getDiscoverable, setDiscoverable } = actions;
@@ -44,7 +44,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
     }
   };
 
-  const handleDiscover = async (mode: 'nearby' | 'repeaters') => {
+  const handleDiscover = async (mode: 'nearby' | 'repeaters' | 'sensors') => {
     setDiscovering(mode);
     try {
       const result = await actions.discoverNodes(mode);
@@ -147,6 +147,14 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
               {discovering === 'repeaters'
                 ? t('meshcore.discover.running', 'Discovering…')
                 : t('meshcore.discover.repeaters', 'Discover Repeaters')}
+            </button>
+            <button
+              onClick={() => void handleDiscover('sensors')}
+              disabled={!connected || loading || discovering !== null}
+            >
+              {discovering === 'sensors'
+                ? t('meshcore.discover.running', 'Discovering…')
+                : t('meshcore.discover.sensors', 'Discover Sensors')}
             </button>
           </div>
 

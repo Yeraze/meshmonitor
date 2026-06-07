@@ -364,6 +364,98 @@
   color: var(--ctp-accent-text);
 }
 
+/* Nodes-view variant: wrapper div with the row content as one button and a
+ * details quick-access (#3350) as a sibling button. The base .mc-node-row
+ * styling (hover/selected/borders) still applies to the wrapper; the DM view
+ * keeps using the plain single-button form. */
+.mc-node-row--split {
+  flex-direction: row;
+  align-items: stretch;
+  padding: 0;
+  gap: 0;
+}
+
+.mc-node-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.mc-node-row-details-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0 0.7rem;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--ctp-surface1);
+  color: var(--ctp-subtext0);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.mc-node-row-details-btn:hover {
+  color: var(--ctp-blue);
+  background: var(--ctp-surface2);
+}
+
+.mc-node-row.selected .mc-node-row-details-btn {
+  color: var(--ctp-accent-text);
+  border-left-color: color-mix(in srgb, var(--ctp-accent-text) 30%, transparent);
+}
+
+/* Discover dropdown in the nodes list header (#3351) */
+.mc-discover-menu-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.mc-discover-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+.mc-discover-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.mc-discover-menu button {
+  background: transparent;
+  border: none;
+  padding: 0.5rem 0.85rem;
+  text-align: left;
+  font-size: 0.85rem;
+  color: var(--ctp-text);
+  cursor: pointer;
+}
+
+.mc-discover-menu button:hover {
+  background: var(--ctp-surface1);
+  color: var(--ctp-blue);
+}
+
 /* Channel list items — card button style matching Meshtastic .channel-button */
 .mc-channel-row {
   display: flex;

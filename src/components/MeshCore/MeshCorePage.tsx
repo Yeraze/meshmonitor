@@ -40,6 +40,10 @@ import './MeshCorePage.css';
 import '../../styles/settings.css';
 import './MeshCoreAutomation.css';
 
+// MeshCoreDeviceType.COMPANION — active node discovery is companion-only
+// (same gate as MeshCoreSettingsView).
+const DEVICE_TYPE_COMPANION = 1;
+
 interface MeshCorePageProps {
   baseUrl: string;
   /** Source UUID — routes the hook through /api/sources/:id/meshcore/*. */
@@ -109,6 +113,8 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               contacts={contacts}
               onImportContact={actions.importContact}
               onNavigateToDm={navigateToDm}
+              onDiscoverNodes={actions.discoverNodes}
+              canDiscover={(status?.connected ?? false) && status?.deviceType === DEVICE_TYPE_COMPANION}
             />
           )}
           {view === 'channels' && (

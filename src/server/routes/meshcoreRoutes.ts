@@ -498,10 +498,11 @@ router.post(
  *
  * Active node discovery — broadcasts a zero-hop NODE_DISCOVER_REQ so nodes in
  * direct radio range announce themselves, and auto-adds each responder as a
- * contact. Body: { mode: 'nearby' | 'repeaters' }.
+ * contact. Body: { mode: 'nearby' | 'repeaters' | 'sensors' }.
  *   - 'nearby'    → all node types (repeaters/rooms/sensors answer; companion
  *                   devices don't reply to discovery in current firmware)
  *   - 'repeaters' → repeaters + room servers only
+ *   - 'sensors'   → sensors only
  * Responses are collected over a few-second window; returns the count of
  * unique responders and how many were newly discovered.
  */
@@ -513,14 +514,16 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const mode = req.body?.mode as MeshCoreDiscoverMode | undefined;
-      if (mode !== 'nearby' && mode !== 'repeaters') {
+      if (mode !== 'nearby' && mode !== 'repeaters' && mode !== 'sensors') {
         return res.status(400).json({
           success: false,
-          error: "Invalid mode — must be 'nearby' or 'repeaters'",
+          error: "Invalid mode — must be 'nearby', 'repeaters', or 'sensors'",
         });
       }
       const filter =
-        mode === 'repeaters' ? MeshCoreDiscoverFilter.REPEATERS : MeshCoreDiscoverFilter.NEARBY;
+        mode === 'repeaters' ? MeshCoreDiscoverFilter.REPEATERS
+        : mode === 'sensors' ? MeshCoreDiscoverFilter.SENSORS
+        : MeshCoreDiscoverFilter.NEARBY;
       const { returned, newCount } = await managerFor(req).discoverNodes(filter);
       res.json({ success: true, returned, new: newCount });
     } catch (error) {

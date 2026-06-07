@@ -146,9 +146,11 @@ export const MeshCoreDiscoverFilter = {
   NEARBY: (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4), // 0x1E
   /** Infrastructure only: repeaters + room servers (ADV_TYPE_REPEATER | ADV_TYPE_ROOM). */
   REPEATERS: (1 << 2) | (1 << 3), // 0x0C
+  /** Sensors only (ADV_TYPE_SENSOR) — matches the mobile app's "Discover Sensors". */
+  SENSORS: 1 << 4, // 0x10
 } as const;
 
-export type MeshCoreDiscoverMode = 'nearby' | 'repeaters';
+export type MeshCoreDiscoverMode = 'nearby' | 'repeaters' | 'sensors';
 
 // Connection types
 export enum ConnectionType {

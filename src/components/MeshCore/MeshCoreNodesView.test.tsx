@@ -1,12 +1,11 @@
 /**
  * @vitest-environment jsdom
  *
- * Sort behavior for the MeshCore Nodes list. Verifies the user can switch
- * between "last heard" (default, recency-first) and alphabetical name
- * sorting, and flip direction.
+ * Sort behavior for the MeshCore Nodes list, the per-row "More details"
+ * quick-access (#3350), and the header Discover menu (#3351).
  */
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -19,6 +18,11 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('./MeshCoreMap', () => ({
   MeshCoreMap: () => <div data-testid="mc-map" />,
+}));
+
+const showToast = vi.fn();
+vi.mock('../ToastContainer', () => ({
+  useToast: () => ({ showToast }),
 }));
 
 import { MeshCoreNodesView } from './MeshCoreNodesView';
@@ -66,5 +70,185 @@ describe('MeshCoreNodesView — sort controls', () => {
     fireEvent.change(dropdown, { target: { value: 'name' } });
     // After selecting name, direction is still 'desc' from default — Z..A.
     expect(listedNames()).toEqual(['Charlie', 'Bravo', 'alpha']);
+  });
+});
+
+describe('MeshCoreNodesView — node-details quick access (#3350)', () => {
+  it('renders a details button per row that navigates to the node detail screen', () => {
+    const onNavigateToDm = vi.fn();
+    render(
+      <MeshCoreNodesView nodes={nodes} contacts={contacts} onNavigateToDm={onNavigateToDm} />,
+    );
+    const detailButtons = screen.getAllByLabelText('More details');
+    expect(detailButtons).toHaveLength(3);
+    fireEvent.click(detailButtons[0]);
+    // Default sort is lastHeard desc, so the first row is alpha (PK_B).
+    expect(onNavigateToDm).toHaveBeenCalledWith(PK_B);
+  });
+
+  it('double-clicking a row navigates to the node detail screen', () => {
+    const onNavigateToDm = vi.fn();
+    render(
+      <MeshCoreNodesView nodes={nodes} contacts={contacts} onNavigateToDm={onNavigateToDm} />,
+    );
+    const main = document.querySelectorAll('.mc-node-row-main')[1] as HTMLElement;
+    fireEvent.doubleClick(main);
+    expect(onNavigateToDm).toHaveBeenCalledWith(PK_C); // Bravo, second by lastHeard desc
+  });
+
+  it('single click still selects the row (does not navigate)', () => {
+    const onNavigateToDm = vi.fn();
+    render(
+      <MeshCoreNodesView nodes={nodes} contacts={contacts} onNavigateToDm={onNavigateToDm} />,
+    );
+    const main = document.querySelectorAll('.mc-node-row-main')[0] as HTMLElement;
+    fireEvent.click(main);
+    expect(onNavigateToDm).not.toHaveBeenCalled();
+    expect(document.querySelector('.mc-node-row.selected')).not.toBeNull();
+  });
+
+  it('omits the details button when no navigation handler is provided', () => {
+    render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
+    expect(screen.queryByLabelText('More details')).toBeNull();
+  });
+});
+
+describe('MeshCoreNodesView — Discover menu (#3351)', () => {
+  beforeEach(() => {
+    showToast.mockReset();
+  });
+
+  it('hides the Discover button when canDiscover is false', () => {
+    render(
+      <MeshCoreNodesView
+        nodes={nodes}
+        contacts={contacts}
+        onDiscoverNodes={vi.fn()}
+        canDiscover={false}
+      />,
+    );
+    expect(screen.queryByText('Discover')).toBeNull();
+  });
+
+  it('opens the menu and fires the chosen discovery mode, then toasts the result', async () => {
+    const onDiscoverNodes = vi.fn().mockResolvedValue({ returned: 2, newCount: 1 });
+    render(
+      <MeshCoreNodesView
+        nodes={nodes}
+        contacts={contacts}
+        onDiscoverNodes={onDiscoverNodes}
+        canDiscover
+      />,
+    );
+    fireEvent.click(screen.getByText('Discover'));
+    fireEvent.click(screen.getByText('Discover Sensors'));
+    expect(onDiscoverNodes).toHaveBeenCalledWith('sensors');
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith(expect.any(String), 'success'));
+  });
+
+  it('toasts an error when discovery fails', async () => {
+    const onDiscoverNodes = vi.fn().mockResolvedValue(null);
+    render(
+      <MeshCoreNodesView
+        nodes={nodes}
+        contacts={contacts}
+        onDiscoverNodes={onDiscoverNodes}
+        canDiscover
+      />,
+    );
+    fireEvent.click(screen.getByText('Discover'));
+    fireEvent.click(screen.getByText('Discover Repeaters'));
+    expect(onDiscoverNodes).toHaveBeenCalledWith('repeaters');
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Discovery failed', 'error'));
+  });
+});
+
+describe('MeshCoreNodesView — node-details quick access (#3350)', () => {
+  it('renders a details button per row that navigates to the node detail screen', () => {
+    const onNavigateToDm = vi.fn();
+    render(
+      <MeshCoreNodesView nodes={nodes} contacts={contacts} onNavigateToDm={onNavigateToDm} />,
+    );
+    const detailButtons = screen.getAllByLabelText('More details');
+    expect(detailButtons).toHaveLength(3);
+    fireEvent.click(detailButtons[0]);
+    // Default sort is lastHeard desc, so the first row is alpha (PK_B).
+    expect(onNavigateToDm).toHaveBeenCalledWith(PK_B);
+  });
+
+  it('double-clicking a row navigates to the node detail screen', () => {
+    const onNavigateToDm = vi.fn();
+    render(
+      <MeshCoreNodesView nodes={nodes} contacts={contacts} onNavigateToDm={onNavigateToDm} />,
+    );
+    const main = document.querySelectorAll('.mc-node-row-main')[1] as HTMLElement;
+    fireEvent.doubleClick(main);
+    expect(onNavigateToDm).toHaveBeenCalledWith(PK_C); // Bravo, second by lastHeard desc
+  });
+
+  it('single click still selects the row (does not navigate)', () => {
+    const onNavigateToDm = vi.fn();
+    render(
+      <MeshCoreNodesView nodes={nodes} contacts={contacts} onNavigateToDm={onNavigateToDm} />,
+    );
+    const main = document.querySelectorAll('.mc-node-row-main')[0] as HTMLElement;
+    fireEvent.click(main);
+    expect(onNavigateToDm).not.toHaveBeenCalled();
+    expect(document.querySelector('.mc-node-row.selected')).not.toBeNull();
+  });
+
+  it('omits the details button when no navigation handler is provided', () => {
+    render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
+    expect(screen.queryByLabelText('More details')).toBeNull();
+  });
+});
+
+describe('MeshCoreNodesView — Discover menu (#3351)', () => {
+  beforeEach(() => {
+    showToast.mockReset();
+  });
+
+  it('hides the Discover button when canDiscover is false', () => {
+    render(
+      <MeshCoreNodesView
+        nodes={nodes}
+        contacts={contacts}
+        onDiscoverNodes={vi.fn()}
+        canDiscover={false}
+      />,
+    );
+    expect(screen.queryByText('Discover')).toBeNull();
+  });
+
+  it('opens the menu and fires the chosen discovery mode, then toasts the result', async () => {
+    const onDiscoverNodes = vi.fn().mockResolvedValue({ returned: 2, newCount: 1 });
+    render(
+      <MeshCoreNodesView
+        nodes={nodes}
+        contacts={contacts}
+        onDiscoverNodes={onDiscoverNodes}
+        canDiscover
+      />,
+    );
+    fireEvent.click(screen.getByText('Discover'));
+    fireEvent.click(screen.getByText('Discover Sensors'));
+    expect(onDiscoverNodes).toHaveBeenCalledWith('sensors');
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith(expect.any(String), 'success'));
+  });
+
+  it('toasts an error when discovery fails', async () => {
+    const onDiscoverNodes = vi.fn().mockResolvedValue(null);
+    render(
+      <MeshCoreNodesView
+        nodes={nodes}
+        contacts={contacts}
+        onDiscoverNodes={onDiscoverNodes}
+        canDiscover
+      />,
+    );
+    fireEvent.click(screen.getByText('Discover'));
+    fireEvent.click(screen.getByText('Discover Repeaters'));
+    expect(onDiscoverNodes).toHaveBeenCalledWith('repeaters');
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Discovery failed', 'error'));
   });
 });
