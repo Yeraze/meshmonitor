@@ -36,7 +36,9 @@ import {
   AnalysisRepository,
   WaypointsRepository,
   MeshCoreRepository,
+  EstimatedPositionsRepository,
 } from '../db/repositories/index.js';
+import type { EstimatedPosition, EstimatedPositionInput } from '../db/repositories/index.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 
 // Configuration constants for traceroute history
@@ -482,6 +484,7 @@ class DatabaseService {
   public analysisRepo: AnalysisRepository | null = null;
   public waypointsRepo: WaypointsRepository | null = null;
   public meshcoreRepo: MeshCoreRepository | null = null;
+  public estimatedPositionsRepo: EstimatedPositionsRepository | null = null;
 
   /**
    * Typed repository accessors — throw if database not initialized.
@@ -570,6 +573,11 @@ class DatabaseService {
   get meshcore(): MeshCoreRepository {
     if (!this.meshcoreRepo) throw new Error('Database not initialized');
     return this.meshcoreRepo;
+  }
+
+  get estimatedPositions(): EstimatedPositionsRepository {
+    if (!this.estimatedPositionsRepo) throw new Error('Database not initialized');
+    return this.estimatedPositionsRepo;
   }
 
   constructor() {
@@ -848,6 +856,7 @@ class DatabaseService {
       this.analysisRepo = new AnalysisRepository(drizzleDb as any, this.drizzleDbType);
       this.waypointsRepo = new WaypointsRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreRepo = new MeshCoreRepository(drizzleDb, this.drizzleDbType);
+      this.estimatedPositionsRepo = new EstimatedPositionsRepository(drizzleDb, this.drizzleDbType);
 
       logger.info('[DatabaseService] Drizzle repositories initialized successfully');
 
@@ -3982,66 +3991,44 @@ class DatabaseService {
     return positionMap;
   }
 
+  /**
+   * Get the latest estimated position for every node as a Map keyed by nodeId.
+   * Reads the GLOBAL `estimated_positions` table (one estimate per physical node,
+   * pooled across all Meshtastic sources by positionEstimationService) — not the
+   * old per-source telemetry rows. Used by the node-enhancement / display path.
+   */
   async getAllNodesEstimatedPositionsAsync(): Promise<Map<string, { latitude: number; longitude: number }>> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const result = await client.query(`
-          WITH "LatestEstimates" AS (
-            SELECT "nodeId", "telemetryType", MAX(timestamp) as "maxTimestamp"
-            FROM telemetry
-            WHERE "telemetryType" IN ('estimated_latitude', 'estimated_longitude')
-            GROUP BY "nodeId", "telemetryType"
-          )
-          SELECT t."nodeId", t."telemetryType", t.value
-          FROM telemetry t
-          INNER JOIN "LatestEstimates" le
-            ON t."nodeId" = le."nodeId"
-            AND t."telemetryType" = le."telemetryType"
-            AND t.timestamp = le."maxTimestamp"
-        `);
-        return this.buildEstimatedPositionMap(result.rows);
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [rows] = await pool.query(`
-        WITH LatestEstimates AS (
-          SELECT nodeId, telemetryType, MAX(timestamp) as maxTimestamp
-          FROM telemetry
-          WHERE telemetryType IN ('estimated_latitude', 'estimated_longitude')
-          GROUP BY nodeId, telemetryType
-        )
-        SELECT t.nodeId, t.telemetryType, t.value
-        FROM telemetry t
-        INNER JOIN LatestEstimates le
-          ON t.nodeId = le.nodeId
-          AND t.telemetryType = le.telemetryType
-          AND t.timestamp = le.maxTimestamp
-      `);
-      return this.buildEstimatedPositionMap(rows as any[]);
+    const rows = await this.estimatedPositions.getAll();
+    const map = new Map<string, { latitude: number; longitude: number }>();
+    for (const row of rows) {
+      map.set(row.nodeId, { latitude: row.latitude, longitude: row.longitude });
     }
-    return this.getAllNodesEstimatedPositions();
+    return map;
   }
 
-  private buildEstimatedPositionMap(rows: Array<{ nodeId: string; telemetryType: string; value: number }>): Map<string, { latitude: number; longitude: number }> {
-    const positionMap = new Map<string, { latitude: number; longitude: number }>();
-    for (const row of rows) {
-      const existing = positionMap.get(row.nodeId) || { latitude: 0, longitude: 0 };
-      if (row.telemetryType === 'estimated_latitude') {
-        existing.latitude = Number(row.value);
-      } else if (row.telemetryType === 'estimated_longitude') {
-        existing.longitude = Number(row.value);
-      }
-      positionMap.set(row.nodeId, existing);
-    }
-    for (const [nodeId, pos] of positionMap) {
-      if (pos.latitude === 0 || pos.longitude === 0) {
-        positionMap.delete(nodeId);
-      }
-    }
-    return positionMap;
+  /** Get all global estimated positions (full rows incl. uncertaintyKm). */
+  async getAllEstimatedPositionsAsync(): Promise<EstimatedPosition[]> {
+    return this.estimatedPositions.getAll();
+  }
+
+  /** Get the global estimate for a single node, or null. */
+  async getEstimatedPositionAsync(nodeNum: number): Promise<EstimatedPosition | null> {
+    return this.estimatedPositions.getByNodeNum(nodeNum);
+  }
+
+  /** Bulk-upsert global estimated positions. */
+  async upsertEstimatedPositionsAsync(inputs: EstimatedPositionInput[]): Promise<void> {
+    return this.estimatedPositions.upsertManyEstimates(inputs);
+  }
+
+  /** Delete global estimates for the given node numbers. */
+  async deleteEstimatedPositionsByNodeNumsAsync(nodeNums: number[]): Promise<number> {
+    return this.estimatedPositions.deleteByNodeNums(nodeNums);
+  }
+
+  /** Delete all global estimated positions. */
+  async deleteAllEstimatedPositionsAsync(): Promise<number> {
+    return this.estimatedPositions.deleteAll();
   }
 
   /**

@@ -66,6 +66,8 @@ export const TABLE_ORDER = [
   'auto_key_repair_log',
   'solar_estimates',
   'system_backup_history',
+  // 3271: global estimated positions (no sourceId, no FK — one row per nodeNum)
+  'estimated_positions',
 ];
 
 // Tables in the 4.0 schema that carry a `sourceId` column. When the source

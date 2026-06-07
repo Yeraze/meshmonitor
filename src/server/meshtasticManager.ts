@@ -915,64 +915,8 @@ class MeshtasticManager implements ISourceManager {
       }
     });
 
-    // Check if we need to recalculate estimated positions from historical traceroutes
-    this.checkAndRecalculatePositions();
-  }
-
-  /**
-   * Check if estimated position recalculation is needed and perform it.
-   * This is triggered by migration 038 which deletes old estimates and sets a flag.
-   */
-  private async checkAndRecalculatePositions(): Promise<void> {
-    try {
-      await databaseService.waitForReady();
-      const recalculateFlag = await databaseService.settings.getSetting('recalculate_estimated_positions');
-      if (recalculateFlag !== 'pending') {
-        return;
-      }
-
-      logger.info('📍 Recalculating estimated positions from historical traceroutes...');
-
-      // Get all traceroutes with route data
-      const traceroutes = await databaseService.getAllTraceroutesForRecalculationAsync();
-      logger.info(`Found ${traceroutes.length} traceroutes to process for position estimation`);
-
-      let processedCount = 0;
-      for (const traceroute of traceroutes) {
-        try {
-          // Parse route array from JSON
-          const route = traceroute.route ? JSON.parse(traceroute.route) : [];
-          if (!Array.isArray(route) || route.length === 0) {
-            continue;
-          }
-
-          // Build the full route path: fromNode (requester/origin) -> route intermediates -> toNode (destination)
-          const fullRoute = [traceroute.fromNodeNum, ...route, traceroute.toNodeNum];
-
-          // Parse SNR array if available
-          let snrArray: number[] | undefined;
-          if (traceroute.snrTowards) {
-            const snrData = JSON.parse(traceroute.snrTowards);
-            if (Array.isArray(snrData) && snrData.length > 0) {
-              snrArray = snrData;
-            }
-          }
-
-          // Process the traceroute for position estimation
-          await this.estimateIntermediatePositions(fullRoute, traceroute.timestamp, snrArray);
-          processedCount++;
-        } catch (err) {
-          logger.debug(`Skipping traceroute ${traceroute.id} due to error: ${err}`);
-        }
-      }
-
-      logger.info(`✅ Processed ${processedCount} traceroutes for position estimation`);
-
-      // Clear the flag
-      await databaseService.settings.setSetting('recalculate_estimated_positions', 'completed');
-    } catch (error) {
-      logger.error('❌ Error recalculating estimated positions:', error);
-    }
+    // Position estimation runs as a global, scheduled batch job
+    // (positionEstimationScheduler), not per-source at connect time. See #3271.
   }
 
   /**
@@ -6888,15 +6832,11 @@ class MeshtasticManager implements ISourceManager {
           }
         }
 
-        // Estimate positions for intermediate nodes without GPS
-        // Process forward route (responder -> requester) with SNR weighting
-        await this.estimateIntermediatePositions(fullRoute, timestamp, snrTowards);
-
-        // Process return route if it exists (requester -> responder) with SNR weighting
-        if (routeBack.length > 0) {
-          const fullReturnRoute = [toNum, ...routeBack, fromNum];
-          await this.estimateIntermediatePositions(fullReturnRoute, timestamp, snrBack);
-        }
+        // Position estimation no longer happens here. It runs as a global,
+        // scheduled batch job (positionEstimationScheduler) that pools traceroute
+        // + neighbor observations across ALL Meshtastic sources (incl. MQTT).
+        // See issue #3271. This handler just persists the traceroute the batch
+        // job reads (done above via insertTraceroute/updateTracerouteResponse).
       } catch (error) {
         logger.error('❌ Error calculating route segment distances:', error);
       }
@@ -7121,184 +7061,6 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
-   * Estimate positions for nodes in a traceroute path that don't have GPS data
-   * by calculating a weighted average between neighbors in the direction of the destination.
-   *
-   * Route structure: [destination, hop1, hop2, ..., hopN, requester]
-   * - Index 0 = destination (traceroute target)
-   * - Index N-1 = requester (source of traceroute)
-   *
-   * For intermediate nodes, we estimate position based on:
-   * - Primary anchor: The neighbor toward the destination (lower index)
-   * - Secondary anchor: The destination itself OR another known node toward destination
-   *
-   * This avoids using the requester as an anchor, since the requester may be
-   * geographically far from the actual path to the destination.
-   *
-   * @param routePath - Array of node numbers in the route (full path including endpoints)
-   * @param timestamp - Timestamp for the telemetry record
-   * @param snrArray - Optional array of SNR values (raw, divide by 4 to get dB) for each hop
-   */
-  private async estimateIntermediatePositions(routePath: number[], timestamp: number, snrArray?: number[]): Promise<void> {
-    // Time decay constant: half-life of 24 hours (in milliseconds)
-    // After 24 hours, an old estimate has half the weight of a new one
-    const HALF_LIFE_MS = 24 * 60 * 60 * 1000;
-    const DECAY_CONSTANT = Math.LN2 / HALF_LIFE_MS;
-
-    try {
-      // For each intermediate node (excluding endpoints)
-      for (let i = 1; i < routePath.length - 1; i++) {
-        const nodeNum = routePath[i];
-        const prevNodeNum = routePath[i - 1];
-        const nextNodeNum = routePath[i + 1];
-
-        let node = await databaseService.nodes.getNode(nodeNum);
-        const prevNode = await databaseService.nodes.getNode(prevNodeNum);
-        const nextNode = await databaseService.nodes.getNode(nextNodeNum);
-
-        // Ensure the node exists in the database first (foreign key constraint).
-        // Issue #2602: do NOT stamp lastHeard for intermediate hops we've never
-        // actually heard from directly. Stamping it here used to make these stub
-        // rows pass the activity-time filter used by the Virtual Node Server,
-        // leaking "zombie" nodes onto connected Meshtastic clients.
-        if (!node) {
-          const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-          await databaseService.nodes.upsertNode({
-            nodeNum,
-            nodeId,
-            longName: `Node ${nodeId}`,
-            shortName: nodeId.slice(-4)
-          }, this.sourceId);
-          node = await databaseService.nodes.getNode(nodeNum);
-        }
-
-        // Skip if node doesn't exist or already has a known effective position.
-        // A user-set override counts as a known position — we shouldn't estimate
-        // for nodes the user has explicitly placed (issue #2847).
-        const nodeEff = getEffectiveDbNodePosition(node);
-        if (!node || (nodeEff.latitude != null && nodeEff.longitude != null)) {
-          continue;
-        }
-
-        // Use immediate neighbors in the traceroute as anchor points
-        // prevNode is the neighbor at index i-1 (toward start of route)
-        // nextNode is the neighbor at index i+1 (toward end of route)
-        const prevEff = getEffectiveDbNodePosition(prevNode);
-        const nextEff = getEffectiveDbNodePosition(nextNode);
-        const prevHasPosition = prevEff.latitude != null && prevEff.longitude != null;
-        const nextHasPosition = nextEff.latitude != null && nextEff.longitude != null;
-
-        // Need both neighbors to have positions for estimation
-        if (!prevHasPosition || !nextHasPosition) {
-          continue;
-        }
-
-        const snrA = snrArray?.[i - 1]; // SNR from prevNode to this node
-        const snrB = snrArray?.[i]; // SNR from this node to nextNode
-
-        let newEstimateLat: number;
-        let newEstimateLon: number;
-        let weightingMethod = 'midpoint';
-
-        // Apply SNR weighting if we have the data
-        if (snrA !== undefined && snrB !== undefined) {
-          // Convert raw SNR to dB (divide by 4)
-          const snrADb = snrA / 4;
-          const snrBDb = snrB / 4;
-
-          // Use exponential weighting: 10^(SNR/10) gives relative signal strength
-          // Higher SNR = stronger signal = likely closer to that node
-          const weightA = Math.pow(10, snrADb / 10);
-          const weightB = Math.pow(10, snrBDb / 10);
-          const totalWeight = weightA + weightB;
-
-          if (totalWeight > 0) {
-            newEstimateLat = (prevEff.latitude! * weightA + nextEff.latitude! * weightB) / totalWeight;
-            newEstimateLon = (prevEff.longitude! * weightA + nextEff.longitude! * weightB) / totalWeight;
-            weightingMethod = `SNR-weighted (prev: ${snrADb.toFixed(1)}dB, next: ${snrBDb.toFixed(1)}dB)`;
-          } else {
-            // Fall back to midpoint if weights are invalid
-            newEstimateLat = (prevEff.latitude! + nextEff.latitude!) / 2;
-            newEstimateLon = (prevEff.longitude! + nextEff.longitude!) / 2;
-          }
-        } else {
-          // Fall back to simple midpoint if no SNR data available
-          newEstimateLat = (prevEff.latitude! + nextEff.latitude!) / 2;
-          newEstimateLon = (prevEff.longitude! + nextEff.longitude!) / 2;
-        }
-
-        // Get previous estimates for time-weighted averaging
-        const previousEstimates = await databaseService.getRecentEstimatedPositionsAsync(nodeNum, 10);
-        const now = Date.now();
-
-        let finalLat: number;
-        let finalLon: number;
-
-        if (previousEstimates.length > 0) {
-          // Apply exponential time decay weighting
-          // Weight = e^(-decay_constant * age_in_ms)
-          // Newer estimates have higher weights
-          let totalWeight = 0;
-          let weightedLatSum = 0;
-          let weightedLonSum = 0;
-
-          // Add previous estimates with time decay
-          for (const estimate of previousEstimates) {
-            // estimate.timestamp is already in milliseconds (from telemetry table)
-            const ageMs = now - estimate.timestamp;
-            const weight = Math.exp(-DECAY_CONSTANT * ageMs);
-            totalWeight += weight;
-            weightedLatSum += estimate.latitude * weight;
-            weightedLonSum += estimate.longitude * weight;
-          }
-
-          // Add new estimate with weight 1.0 (it's the most recent)
-          const newEstimateWeight = 1.0;
-          totalWeight += newEstimateWeight;
-          weightedLatSum += newEstimateLat * newEstimateWeight;
-          weightedLonSum += newEstimateLon * newEstimateWeight;
-
-          // Calculate weighted average
-          finalLat = weightedLatSum / totalWeight;
-          finalLon = weightedLonSum / totalWeight;
-          weightingMethod += `, aggregated from ${previousEstimates.length + 1} traceroutes`;
-        } else {
-          // No previous estimates, use the new estimate directly
-          finalLat = newEstimateLat;
-          finalLon = newEstimateLon;
-        }
-
-        const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-
-        // Store estimated position as telemetry with a special type prefix
-        await databaseService.telemetry.insertTelemetry({
-          nodeId,
-          nodeNum,
-          telemetryType: 'estimated_latitude',
-          timestamp,
-          value: finalLat,
-          unit: '° (est)',
-          createdAt: now
-        }, this.sourceId);
-
-        await databaseService.telemetry.insertTelemetry({
-          nodeId,
-          nodeNum,
-          telemetryType: 'estimated_longitude',
-          timestamp,
-          value: finalLon,
-          unit: '° (est)',
-          createdAt: now
-        }, this.sourceId);
-
-        logger.debug(`📍 Estimated position for ${nodeId} (${node.longName || nodeId}): ${finalLat.toFixed(6)}, ${finalLon.toFixed(6)} (${weightingMethod})`);
-      }
-    } catch (error) {
-      logger.error('❌ Error estimating intermediate positions:', error);
-    }
-  }
-
-  /**
    * Process an inbound Waypoint protobuf message. Delegates the storage,
    * tombstone (expire=0), and event emission rules to `waypointService` so
    * the same path is used for all transports (TCP/MQTT/etc.).
@@ -7394,11 +7156,9 @@ class MeshtasticManager implements ISourceManager {
 
       logger.info(`🏠 Neighbor info received from ${fromNodeId}:`, neighborInfo);
 
-      // Skip MQTT-sourced neighbor info - it represents remote mesh topology, not local connections
-      if (meshPacket.viaMqtt || isViaMqtt(meshPacket.transportMechanism)) {
-        logger.debug(`📡 Skipping MQTT-sourced neighbor info from ${fromNodeId}`);
-        return;
-      }
+      // MQTT-sourced neighbor info IS persisted (issue #3271): the global, batch
+      // position estimator pools the MQTT neighbor graph for extra resolution.
+      // Rows carry their sourceId, so source-scoped views remain correct.
 
       // Get the sender node to determine their hopsAway
       let senderNode = await databaseService.nodes.getNode(fromNum);
