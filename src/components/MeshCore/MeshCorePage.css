@@ -630,6 +630,15 @@
   padding: 1.5rem;
 }
 
+/* Notifications view: NotificationsTab supplies its own .tab-content with no
+   scroll container, so wrap it here to scroll within the overflow:hidden
+   .meshcore-content the same way the form views do. */
+.meshcore-notifications-view {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
 .meshcore-form-view .form-section {
   max-width: 640px;
   background: var(--ctp-surface0);

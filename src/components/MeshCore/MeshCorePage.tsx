@@ -171,7 +171,9 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             </SaveBarProvider>
           )}
           {view === 'notifications' && (
-            <NotificationsTab isAdmin={isAdmin} />
+            <div className="meshcore-notifications-view">
+              <NotificationsTab isAdmin={isAdmin} />
+            </div>
           )}
           {view === 'settings' && (
             <MeshCoreSettingsView
