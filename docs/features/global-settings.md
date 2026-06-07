@@ -51,6 +51,14 @@ Individual Apprise URLs (per user, per source) are not here — users configure 
 - Auto heap management (periodic memory reclamation on Postgres/MySQL)
 - Maintenance windows (message purge, telemetry retention, auto-delete-by-distance)
 
+### Position Estimation
+
+::: tip New in 4.9.3
+Position Estimation moved here from the per-source Automation tab — it's a single global, cross-source batch job, so it belongs in Global Settings.
+:::
+
+Estimate locations for GPS-less nodes by pooling traceroute and NeighborInfo geometry across **all** Meshtastic sources. Controls: enable, calculation frequency, lookback window, a **Maximum acceptable accuracy** cutoff (discards low-confidence estimates), and **Recalculate now**. Gated by `settings:write`. See [Position Estimation](/features/position-estimation).
+
 ## Per-source settings (for comparison)
 
 Anything that depends on *which* node you're connected to lives on the source, not here. Open **Dashboard → Edit Source** for:
