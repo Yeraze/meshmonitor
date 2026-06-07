@@ -23,6 +23,7 @@ import { type SortOption as DashboardSortOption } from './Dashboard/types';
 import { useUI } from '../contexts/UIContext';
 import { LanguageSelector } from './LanguageSelector';
 import SectionNav from './SectionNav';
+import PositionEstimationSection from './PositionEstimationSection';
 import TapbackEmojiSettings from './TapbackEmojiSettings';
 import EmbedSettings from './settings/EmbedSettings';
 import { DefaultMapCenterPicker } from './configuration/DefaultMapCenterPicker';
@@ -95,6 +96,9 @@ const GLOBAL_SECTIONS = new Set([
   'settings-language', 'settings-units', 'settings-appearance', 'settings-map',
   'settings-apprise-server', 'settings-backup', 'settings-channel-database',
   'settings-maintenance', 'settings-auto-upgrade', 'settings-analytics',
+  // Position estimation is a single global, cross-source batch job (issue
+  // #3271) — it belongs in global Settings, not the per-source Automation tab.
+  'settings-position-estimation',
 ]);
 
 const SOURCE_SECTIONS = new Set([
@@ -161,8 +165,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
-  const { authStatus } = useAuth();
+  const { authStatus, hasPermission } = useAuth();
   const isAdmin = authStatus?.user?.isAdmin ?? false;
+  // Position Estimation maps to the global `settings` resource on the backend
+  // (status → settings:read, save/run-now → settings:write), so gate its UI on
+  // the same permission rather than the per-source `automation` resource it
+  // used to live under. isAdmin short-circuits inside hasPermission.
+  const canWriteSettings = hasPermission('settings', 'write');
   const {
     customThemes,
     customTilesets,
@@ -1008,6 +1017,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         ...(isAdmin && firmwareOtaEnabled ? [{ id: 'settings-firmware', label: t('firmware.title', 'Firmware Updates') }] : []),
         { id: 'settings-reset-ui', label: t('settings.reset_ui_positions') },
         ...(isAdmin ? [{ id: 'settings-analytics', label: t('settings.analytics') }] : []),
+        ...(canWriteSettings ? [{ id: 'settings-position-estimation', label: t('automation.position_estimation.title', 'Position Estimation') }] : []),
         { id: 'settings-management', label: t('settings.settings_management') },
         { id: 'settings-danger', label: t('settings.danger_zone') },
       ].filter(item => show(item.id))} />
@@ -1822,6 +1832,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             {t('settings.reset_ui_positions_button')}
           </button>
         </div>}
+
+        {show('settings-position-estimation') && canWriteSettings && (
+        <div id="settings-position-estimation" className="settings-section">
+          <PositionEstimationSection baseUrl={baseUrl} />
+        </div>
+        )}
 
         {show('settings-analytics') && isAdmin && (
         <div id="settings-analytics" className="settings-section">

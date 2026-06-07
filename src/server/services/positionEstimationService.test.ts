@@ -254,4 +254,51 @@ describe('positionEstimationService.recomputeAll', () => {
     expect(deletedNodeNums).toContain(100);
     expect(deletedNodeNums).toContain(200);
   });
+
+  describe('maxUncertaintyKm threshold (issue #3271 follow-up)', () => {
+    // A single-anchor neighbor observation yields the DEFAULT_SINGLE_ANCHOR_KM
+    // (5 km) uncertainty — the dominant "huge circle" case.
+    const singleAnchorSetup = () => {
+      mockDb.sources.getAllSources.mockResolvedValue([{ id: 's', type: 'meshtastic_tcp' }]);
+      mockDb.nodes.getAllNodes.mockResolvedValue([{ nodeNum: 100, latitude: 10, longitude: 20 }]);
+      mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([
+        { nodeNum: 100, neighborNodeNum: 5, snr: 10, timestamp: NOW },
+      ]);
+    };
+
+    it('discards an estimate whose uncertainty exceeds the maximum and clears any stale row', async () => {
+      singleAnchorSetup();
+      const result = await positionEstimationService.recomputeAll({
+        lookbackMs: 7 * 24 * 60 * 60 * 1000,
+        maxUncertaintyKm: 3, // 5km estimate > 3km ceiling → rejected
+      });
+      expect(result.estimatedNodeCount).toBe(0);
+      expect(result.rejectedNodeCount).toBe(1);
+      // Nothing stored for the over-threshold node...
+      expect(mockDb.upsertEstimatedPositionsAsync.mock.calls[0][0]).toHaveLength(0);
+      // ...and its existing estimate (if any) is cleared.
+      expect(mockDb.deleteEstimatedPositionsByNodeNumsAsync.mock.calls[0][0]).toContain(5);
+    });
+
+    it('keeps an estimate within the maximum', async () => {
+      singleAnchorSetup();
+      const result = await positionEstimationService.recomputeAll({
+        lookbackMs: 7 * 24 * 60 * 60 * 1000,
+        maxUncertaintyKm: 10, // 5km estimate ≤ 10km ceiling → kept
+      });
+      expect(result.estimatedNodeCount).toBe(1);
+      expect(result.rejectedNodeCount).toBe(0);
+      expect(mockDb.upsertEstimatedPositionsAsync.mock.calls[0][0]).toHaveLength(1);
+    });
+
+    it('treats maxUncertaintyKm 0 as no limit', async () => {
+      singleAnchorSetup();
+      const result = await positionEstimationService.recomputeAll({
+        lookbackMs: 7 * 24 * 60 * 60 * 1000,
+        maxUncertaintyKm: 0,
+      });
+      expect(result.estimatedNodeCount).toBe(1);
+      expect(result.rejectedNodeCount).toBe(0);
+    });
+  });
 });

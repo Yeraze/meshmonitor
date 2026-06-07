@@ -14,11 +14,13 @@ interface EstimationStatus {
   enabled: boolean;
   frequencyHours: number;
   lookbackHours: number;
+  maxUncertaintyKm: number;
   lastRunTime: number | null;
   lastRunResult: {
     estimatedNodeCount: number;
     observationCount: number;
     anchorCount: number;
+    rejectedNodeCount?: number;
     durationMs: number;
   } | null;
 }
@@ -40,10 +42,12 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
   const [enabled, setEnabled] = useState(true);
   const [frequencyHours, setFrequencyHours] = useState(6);
   const [lookbackHours, setLookbackHours] = useState(168);
+  const [maxUncertaintyKm, setMaxUncertaintyKm] = useState(0);
 
   const [localEnabled, setLocalEnabled] = useState(true);
   const [localFrequencyHours, setLocalFrequencyHours] = useState(6);
   const [localLookbackHours, setLocalLookbackHours] = useState(168);
+  const [localMaxUncertaintyKm, setLocalMaxUncertaintyKm] = useState(0);
 
   const [status, setStatus] = useState<EstimationStatus | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -58,9 +62,11 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
         setEnabled(data.enabled);
         setFrequencyHours(data.frequencyHours);
         setLookbackHours(data.lookbackHours);
+        setMaxUncertaintyKm(data.maxUncertaintyKm ?? 0);
         setLocalEnabled(data.enabled);
         setLocalFrequencyHours(data.frequencyHours);
         setLocalLookbackHours(data.lookbackHours);
+        setLocalMaxUncertaintyKm(data.maxUncertaintyKm ?? 0);
       }
     } catch {
       // Status is non-critical; ignore fetch failures.
@@ -74,7 +80,8 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
   const hasChanges =
     localEnabled !== enabled ||
     localFrequencyHours !== frequencyHours ||
-    localLookbackHours !== lookbackHours;
+    localLookbackHours !== lookbackHours ||
+    localMaxUncertaintyKm !== maxUncertaintyKm;
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -86,12 +93,14 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
           position_estimation_enabled: String(localEnabled),
           position_estimation_frequency_hours: String(localFrequencyHours),
           position_estimation_lookback_hours: String(localLookbackHours),
+          position_estimation_max_uncertainty_km: String(localMaxUncertaintyKm),
         }),
       });
       if (response.ok) {
         setEnabled(localEnabled);
         setFrequencyHours(localFrequencyHours);
         setLookbackHours(localLookbackHours);
+        setMaxUncertaintyKm(localMaxUncertaintyKm);
         showToast(t('automation.settings_saved', 'Settings saved'), 'success');
       } else {
         showToast(t('automation.settings_save_failed', 'Failed to save'), 'error');
@@ -101,13 +110,14 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
     } finally {
       setIsSaving(false);
     }
-  }, [localEnabled, localFrequencyHours, localLookbackHours, csrfFetch, baseUrl, showToast, t]);
+  }, [localEnabled, localFrequencyHours, localLookbackHours, localMaxUncertaintyKm, csrfFetch, baseUrl, showToast, t]);
 
   const resetChanges = useCallback(() => {
     setLocalEnabled(enabled);
     setLocalFrequencyHours(frequencyHours);
     setLocalLookbackHours(lookbackHours);
-  }, [enabled, frequencyHours, lookbackHours]);
+    setLocalMaxUncertaintyKm(maxUncertaintyKm);
+  }, [enabled, frequencyHours, lookbackHours, maxUncertaintyKm]);
 
   useSaveBar({
     id: 'position-estimation',
@@ -226,6 +236,26 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
           </select>
         </div>
 
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label>{t('automation.position_estimation.max_uncertainty', 'Maximum acceptable accuracy (km)')}</label>
+          <input
+            type="number"
+            min={0}
+            step={0.5}
+            value={localMaxUncertaintyKm}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              setLocalMaxUncertaintyKm(Number.isFinite(v) && v > 0 ? v : 0);
+            }}
+            disabled={!localEnabled}
+            className="setting-input"
+          />
+          <p style={{ fontSize: '12px', color: 'var(--ctp-subtext0)', margin: '0.35rem 0 0 0' }}>
+            {t('automation.position_estimation.max_uncertainty_help',
+              'Estimates with an uncertainty radius larger than this are discarded rather than stored, so low-confidence guesses don’t draw huge circles on the map. Set 0 for no limit.')}
+          </p>
+        </div>
+
         {status && (
           <div style={{ marginTop: '1.5rem', marginLeft: '1.75rem', fontSize: '13px', color: 'var(--ctp-subtext1)' }}>
             <div>
@@ -240,6 +270,15 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
                   anchors: status.lastRunResult.anchorCount,
                   defaultValue: `${status.lastRunResult.estimatedNodeCount} node(s) estimated from ${status.lastRunResult.observationCount} observation(s), ${status.lastRunResult.anchorCount} anchor(s)`,
                 })}
+                {status.lastRunResult.rejectedNodeCount ? (
+                  <>
+                    {' '}
+                    {t('automation.position_estimation.last_rejected', {
+                      count: status.lastRunResult.rejectedNodeCount,
+                      defaultValue: `(${status.lastRunResult.rejectedNodeCount} discarded over max accuracy)`,
+                    })}
+                  </>
+                ) : null}
               </div>
             )}
           </div>
