@@ -5004,6 +5004,7 @@ function App() {
                 { id: 'timer-triggers', label: t('automation.timer_triggers.title', 'Timer Triggers') },
                 { id: 'geofence-triggers', label: t('automation.geofence_triggers.title', 'Geofence Triggers') },
                 { id: 'auto-delete-by-distance', label: t('automation.distance_delete.title', 'Auto Delete by Distance') },
+                { id: 'position-estimation', label: t('automation.position_estimation.title', 'Position Estimation') },
                 { id: 'ignored-nodes', label: t('automation.ignored_nodes.title', 'Ignored Nodes') },
               ]}
             />
