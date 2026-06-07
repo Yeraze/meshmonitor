@@ -2,7 +2,7 @@
  * DashboardSidebar — lists source cards with status, node counts, and admin kebab menu.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -26,6 +26,29 @@ import { version } from '../../../package.json';
 import type { DashboardSource, SourceStatus, UnifiedStatus } from '../../hooks/useDashboardData';
 import { UNIFIED_SOURCE_ID } from '../../hooks/useDashboardData';
 import { useAuth } from '../../contexts/AuthContext';
+
+// Persisted, user-resizable sidebar width (issue #3356). The width is stored
+// in localStorage so it survives reloads; min/max bounds keep the layout from
+// breaking (too narrow to read names, or wide enough to crowd out the map).
+const SIDEBAR_WIDTH_KEY = 'dashboard-sidebar-width';
+const SIDEBAR_MIN_WIDTH = 200;
+const SIDEBAR_MAX_WIDTH = 480;
+const SIDEBAR_DEFAULT_WIDTH = 240;
+
+const clampSidebarWidth = (w: number): number =>
+  Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, w));
+
+function loadSidebarWidth(): number {
+  if (typeof window === 'undefined') return SIDEBAR_DEFAULT_WIDTH;
+  try {
+    const raw = window.localStorage.getItem(SIDEBAR_WIDTH_KEY);
+    const parsed = raw != null ? Number(raw) : NaN;
+    return Number.isFinite(parsed) ? clampSidebarWidth(parsed) : SIDEBAR_DEFAULT_WIDTH;
+  } catch {
+    // localStorage can throw in private-mode / sandboxed contexts.
+    return SIDEBAR_DEFAULT_WIDTH;
+  }
+}
 
 interface DashboardSidebarProps {
   sources: DashboardSource[];
@@ -360,6 +383,85 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   const canReorder =
     typeof onReorderSources === 'function' && hasPermission('sources', 'write');
 
+  // Edit mode (issue #3355): drag handles are hidden by default and only
+  // appear once the admin explicitly enters edit mode, so the sidebar stays
+  // uncluttered for the common case of never reordering. Dragging is live only
+  // while BOTH the viewer can reorder AND edit mode is on.
+  const [editMode, setEditMode] = useState(false);
+  const isReordering = canReorder && editMode;
+
+  // Resizable sidebar (issue #3356). Width lives in component state, is applied
+  // to the <aside> via a CSS custom property, and is persisted to localStorage.
+  const [sidebarWidth, setSidebarWidth] = useState<number>(loadSidebarWidth);
+  // Latest width during a drag, read by the pointerup persist step without
+  // re-binding the window listeners on every move.
+  const widthRef = useRef(sidebarWidth);
+  widthRef.current = sidebarWidth;
+  const resizeStartRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  const persistSidebarWidth = useCallback((w: number) => {
+    try {
+      window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(w));
+    } catch {
+      // Ignore localStorage write failures (private mode / quota).
+    }
+  }, []);
+
+  const handleResizeMove = useCallback((e: PointerEvent) => {
+    const start = resizeStartRef.current;
+    if (!start) return;
+    setSidebarWidth(clampSidebarWidth(start.startWidth + (e.clientX - start.startX)));
+  }, []);
+
+  const handleResizeEnd = useCallback(() => {
+    resizeStartRef.current = null;
+    window.removeEventListener('pointermove', handleResizeMove);
+    window.removeEventListener('pointerup', handleResizeEnd);
+    document.body.style.removeProperty('cursor');
+    document.body.style.removeProperty('user-select');
+    persistSidebarWidth(widthRef.current);
+  }, [handleResizeMove, persistSidebarWidth]);
+
+  const handleResizeStart = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      resizeStartRef.current = { startX: e.clientX, startWidth: widthRef.current };
+      window.addEventListener('pointermove', handleResizeMove);
+      window.addEventListener('pointerup', handleResizeEnd);
+      // Lock the cursor + disable text selection globally for the whole drag,
+      // not just over the 5px handle the pointer may slip off.
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    },
+    [handleResizeMove, handleResizeEnd],
+  );
+
+  // Keyboard resize for accessibility — the handle is focusable and responds
+  // to arrow keys in 16px steps.
+  const handleResizeKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      setSidebarWidth((w) => {
+        const next = clampSidebarWidth(w - 16);
+        persistSidebarWidth(next);
+        return next;
+      });
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      setSidebarWidth((w) => {
+        const next = clampSidebarWidth(w + 16);
+        persistSidebarWidth(next);
+        return next;
+      });
+    }
+  }, [persistSidebarWidth]);
+
+  // Tidy up the window listeners if the sidebar unmounts mid-drag.
+  useEffect(() => () => {
+    window.removeEventListener('pointermove', handleResizeMove);
+    window.removeEventListener('pointerup', handleResizeEnd);
+  }, [handleResizeMove, handleResizeEnd]);
+
   const sensors = useSensors(
     // 5px activation distance so a plain click on the grip still falls through
     // to the card's selection handler (matches the channel-reorder sensor).
@@ -390,7 +492,10 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         onClick={onMobileClose}
         aria-hidden="true"
       />
-      <aside className={`dashboard-sidebar${mobileOpen ? ' mobile-open' : ''}`}>
+      <aside
+        className={`dashboard-sidebar${mobileOpen ? ' mobile-open' : ''}`}
+        style={{ '--dashboard-sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
+      >
       <div className="dashboard-sidebar-header">
         {t('source.header')}
         {isAdmin && (
@@ -400,6 +505,17 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             onClick={onAddSource}
           >
             {t('source.add_short')}
+          </button>
+        )}
+        {canReorder && (
+          <button
+            className="dashboard-add-source-btn"
+            style={{ marginLeft: 6, padding: '2px 8px', fontSize: 11 }}
+            onClick={() => setEditMode((v) => !v)}
+            aria-pressed={editMode}
+            title={t('source.edit_mode_help')}
+          >
+            {editMode ? t('source.edit_mode_done') : t('source.edit_mode')}
           </button>
         )}
       </div>
@@ -639,9 +755,10 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
           </div>
         );
 
-        // Only real (non-unified) sources are draggable, and only when the
-        // viewer can reorder. Unified stays pinned at the top.
-        return canReorder && !isUnified ? (
+        // Only real (non-unified) sources are draggable, and only while edit
+        // mode is active for a viewer who can reorder. Unified stays pinned at
+        // the top.
+        return isReordering && !isUnified ? (
           <SortableSourceCard key={source.id} id={source.id}>
             {card}
           </SortableSourceCard>
@@ -651,7 +768,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         // Wrap the whole list in a drag context only when reordering is
         // enabled. The Unified card sits inside the context but is absent from
         // `items`, so it never participates in the sort.
-        return canReorder ? (
+        return isReordering ? (
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -749,6 +866,19 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         </div>
       </div>
     </aside>
+    {/* Resize handle — a flex sibling between the sidebar and the map so it's
+        unaffected by the sidebar's own vertical scroll. Hidden on mobile (the
+        sidebar is a fixed-width overlay drawer there). Issue #3356. */}
+    <div
+      className="dashboard-sidebar-resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={t('source.resize_sidebar')}
+      title={t('source.resize_sidebar')}
+      tabIndex={0}
+      onPointerDown={handleResizeStart}
+      onKeyDown={handleResizeKeyDown}
+    />
     </>
   );
 };
