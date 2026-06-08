@@ -584,6 +584,8 @@ When enabled, MeshMonitor sends a scheduled message to the configured channel at
   - 📢 = Auto Announce enabled
 - **`{NODECOUNT}`**: Number of active nodes (e.g., "42 nodes")
 - **`{DIRECTCOUNT}`**: Number of direct nodes at 0 hops
+- **`{DATE}`**: Current date when the announcement is sent, formatted per your Date Format preference (e.g., "1/15/2025")
+- **`{TIME}`**: Current time when the announcement is sent, formatted per your Time Format preference (e.g., "2:30 PM")
 
 **Default Message**:
 ```
