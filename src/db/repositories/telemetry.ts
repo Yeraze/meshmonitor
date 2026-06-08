@@ -7,6 +7,45 @@
 import { eq, lt, gte, and, desc, inArray, or, not, SQL, count, sql } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbTelemetry } from '../types.js';
+import { logger } from '../../utils/logger.js';
+
+// A node that reboots without GPS/NTP can broadcast telemetry with a hardware
+// clock that is months or years off. A clock set into the FUTURE is the case
+// that wrecks telemetry charts (issue #3362): future-dated points pass the
+// chart's "last N hours" cutoff and stretch the auto-scaled X-axis domain so
+// every graph compresses into a sliver. Telemetry is live data, so a legitimate
+// embedded time is always within seconds of server-receipt — anything beyond a
+// small skew is a broken clock, and we store the receipt time instead.
+//
+// Absurdly-OLD embedded times are deliberately left as-is: at ingest they're
+// indistinguishable from legitimately buffered / store-and-forward telemetry,
+// and the windowed chart query already excludes anything older than its cutoff,
+// so they never distort the axis.
+const TELEMETRY_FUTURE_SKEW_MS = 60 * 60 * 1000; // 1 hour ahead of receipt
+
+/**
+ * Replace a future-dated (or non-finite) telemetry `timestamp` with the
+ * server-receipt time (`createdAt`), preserving the node's original claimed
+ * time in `packetTimestamp` for forensics. Mutates and returns the row. No-op
+ * when the timestamp is already sane.
+ */
+function sanitizeTelemetryTimestamp<T extends DbTelemetry>(row: T): T {
+  const receipt = Number.isFinite(row.createdAt) ? row.createdAt : Date.now();
+  const ts = row.timestamp;
+  if (!Number.isFinite(ts) || ts > receipt + TELEMETRY_FUTURE_SKEW_MS) {
+    // Keep what the node claimed (if we don't already have it) so the bad
+    // value is still inspectable, then fall back to receipt time.
+    if (row.packetTimestamp == null && Number.isFinite(ts)) {
+      row.packetTimestamp = ts;
+    }
+    logger.warn(
+      `Telemetry timestamp in the future for ${row.nodeId} (${row.telemetryType}): ` +
+      `claimed=${ts}, using receipt=${receipt}`
+    );
+    row.timestamp = receipt;
+  }
+  return row;
+}
 
 /**
  * Favorite telemetry entry: (nodeId, telemetryType) pair that should be
@@ -54,6 +93,7 @@ export class TelemetryRepository extends BaseRepository {
    */
   async insertTelemetry(telemetryData: DbTelemetry, sourceId?: string): Promise<boolean> {
     const { telemetry } = this.tables;
+    sanitizeTelemetryTimestamp(telemetryData);
     const values: any = {
       nodeId: telemetryData.nodeId,
       nodeNum: telemetryData.nodeNum,
@@ -91,6 +131,7 @@ export class TelemetryRepository extends BaseRepository {
 
     const { telemetry } = this.tables;
     const valuesArray = rows.map((r) => {
+      sanitizeTelemetryTimestamp(r);
       const v: any = {
         nodeId: r.nodeId,
         nodeNum: r.nodeNum,
@@ -888,6 +929,10 @@ export class TelemetryRepository extends BaseRepository {
     if (sinceTimestamp !== undefined) {
       baseConditions.push(gte(telemetry.timestamp, sinceTimestamp));
     }
+    // Exclude future-dated rows so a node with a bad hardware clock can't
+    // stretch the chart X-axis (issue #3362). Belt-and-suspenders with the
+    // ingest-time sanitizer — this also hides rows stored before that fix.
+    baseConditions.push(lt(telemetry.timestamp, Date.now() + TELEMETRY_FUTURE_SKEW_MS));
 
     // Averaged query: exclude raw types, group by time bucket
     const bucketExpr = sql<number>`CAST((${telemetry.timestamp} / ${intervalMs}) * ${intervalMs} AS INTEGER)`;
@@ -1003,6 +1048,10 @@ export class TelemetryRepository extends BaseRepository {
     if (sinceTimestamp !== undefined) {
       baseConditions.push(gte(telemetry.timestamp, sinceTimestamp));
     }
+    // Exclude future-dated rows so a node with a bad hardware clock can't
+    // stretch the chart X-axis (issue #3362). Belt-and-suspenders with the
+    // ingest-time sanitizer — this also hides rows stored before that fix.
+    baseConditions.push(lt(telemetry.timestamp, Date.now() + TELEMETRY_FUTURE_SKEW_MS));
 
     // Bucket start in ms. FLOOR(timestamp / intervalMs) * intervalMs.
     //
