@@ -142,6 +142,7 @@ export interface GetCoverageGridArgs {
   sourceIds: string[];
   sinceMs: number;
   zoom: number;
+  postFilter?: (pos: PositionRow) => boolean;
 }
 
 export interface HopEntry {
@@ -560,6 +561,7 @@ export class AnalysisRepository {
         cursor,
       });
       for (const p of page.items) {
+        if (args.postFilter && !args.postFilter(p)) continue;
         const latBin = Math.floor(p.latitude / binSize);
         const lonBin = Math.floor(p.longitude / binSize);
         const dedupeKey = `${p.sourceId}:${p.nodeNum}:${latBin}:${lonBin}`;
