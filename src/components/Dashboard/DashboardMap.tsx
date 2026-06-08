@@ -21,6 +21,7 @@ import type { CustomTileset } from '../../config/tilesets';
 import DashboardWaypoints from './DashboardWaypoints';
 import DashboardNodePopup from './DashboardNodePopup';
 import { useMapContext } from '../../contexts/MapContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { nodePassesTransportFilter } from '../../utils/nodeTransport';
 
 export interface DashboardMapProps {
@@ -140,6 +141,7 @@ export default function DashboardMap({
   maxNodeAgeHours,
 }: DashboardMapProps) {
   const tileset = getTilesetById(tilesetId, customTilesets);
+  const { mapPinStyle } = useSettings();
 
   const {
     showPaths,
@@ -301,6 +303,7 @@ export default function DashboardMap({
             isRouter,
             shortName,
             showLabel: true,
+            pinStyle: mapPinStyle,
           });
 
           return (
