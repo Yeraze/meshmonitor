@@ -78,6 +78,37 @@ vi.mock('../utils/temperature', () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+let mockSystemIsDark = true;
+let mediaQueryListeners: Array<(event: MediaQueryListEvent) => void> = [];
+
+const installMatchMediaMock = () => {
+  mediaQueryListeners = [];
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: query === '(prefers-color-scheme: dark)' ? mockSystemIsDark : false,
+      media: query,
+      onchange: null,
+      addEventListener: (_event: string, listener: (event: MediaQueryListEvent) => void) => {
+        mediaQueryListeners.push(listener);
+      },
+      removeEventListener: (_event: string, listener: (event: MediaQueryListEvent) => void) => {
+        mediaQueryListeners = mediaQueryListeners.filter(item => item !== listener);
+      },
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+};
+
+const setMockSystemAppearance = async (isDark: boolean) => {
+  mockSystemIsDark = isDark;
+  await act(async () => {
+    mediaQueryListeners.forEach(listener => listener({ matches: isDark } as MediaQueryListEvent));
+  });
+};
+
 // Default successful settings response
 const defaultSettingsResponse = {
   maxNodeAgeHours: '48',
@@ -265,6 +296,8 @@ describe('SettingsContext Types', () => {
 describe('SettingsProvider', () => {
   beforeEach(() => {
     localStorage.clear();
+    mockSystemIsDark = true;
+    installMatchMediaMock();
     mockFetch.mockReset();
     createFetchMock();
   });
@@ -315,6 +348,210 @@ describe('SettingsProvider', () => {
     expect(contextValue.setMaxNodeAgeHours).toBeDefined();
     expect(contextValue.setDistanceUnit).toBeDefined();
     expect(contextValue.setTimeFormat).toBeDefined();
+  });
+
+  it('should default new users to system appearance with mocha dark and latte light themes', async () => {
+    mockSystemIsDark = false;
+    installMatchMediaMock();
+    mockFetch.mockReset();
+    createFetchMock({});
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+
+    let contextValue: any;
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    await act(async () => {
+      render(
+        <SettingsProvider>
+          <Consumer />
+        </SettingsProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(contextValue.isLoading).toBe(false);
+    });
+
+    expect(contextValue.appearanceMode).toBe('system');
+    expect(contextValue.darkTheme).toBe('mocha');
+    expect(contextValue.lightTheme).toBe('latte');
+    expect(contextValue.theme).toBe('latte');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('latte');
+  });
+
+  it('should migrate legacy mocha users to system appearance with mocha and latte', async () => {
+    localStorage.setItem('theme', 'mocha');
+    mockFetch.mockReset();
+    createFetchMock({});
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+
+    let contextValue: any;
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    await act(async () => {
+      render(
+        <SettingsProvider>
+          <Consumer />
+        </SettingsProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(contextValue.isLoading).toBe(false);
+    });
+
+    expect(contextValue.appearanceMode).toBe('system');
+    expect(contextValue.darkTheme).toBe('mocha');
+    expect(contextValue.lightTheme).toBe('latte');
+    expect(contextValue.theme).toBe('mocha');
+  });
+
+  it('should migrate legacy non-mocha users to dark mode with both theme slots set to the legacy theme', async () => {
+    localStorage.setItem('theme', 'dracula');
+    mockFetch.mockReset();
+    createFetchMock({});
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+
+    let contextValue: any;
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    await act(async () => {
+      render(
+        <SettingsProvider>
+          <Consumer />
+        </SettingsProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(contextValue.isLoading).toBe(false);
+    });
+
+    expect(contextValue.appearanceMode).toBe('dark');
+    expect(contextValue.darkTheme).toBe('dracula');
+    expect(contextValue.lightTheme).toBe('dracula');
+    expect(contextValue.theme).toBe('dracula');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dracula');
+  });
+
+  it('should switch effective theme when system appearance changes in system mode', async () => {
+    mockSystemIsDark = false;
+    installMatchMediaMock();
+    mockFetch.mockReset();
+    createFetchMock({});
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+
+    let contextValue: any;
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    await act(async () => {
+      render(
+        <SettingsProvider>
+          <Consumer />
+        </SettingsProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(contextValue.theme).toBe('latte');
+    });
+
+    await setMockSystemAppearance(true);
+
+    await waitFor(() => {
+      expect(contextValue.theme).toBe('mocha');
+      expect(document.documentElement.getAttribute('data-theme')).toBe('mocha');
+    });
+  });
+
+  it('should ignore system appearance changes in manual dark and light modes', async () => {
+    mockFetch.mockReset();
+    createFetchMock({});
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+
+    let contextValue: any;
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    await act(async () => {
+      render(
+        <SettingsProvider>
+          <Consumer />
+        </SettingsProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(contextValue.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      contextValue.setAppearanceMode('dark');
+    });
+    await setMockSystemAppearance(false);
+
+    await waitFor(() => {
+      expect(contextValue.theme).toBe('mocha');
+    });
+
+    await act(async () => {
+      contextValue.setAppearanceMode('light');
+    });
+    await setMockSystemAppearance(true);
+
+    await waitFor(() => {
+      expect(contextValue.theme).toBe('latte');
+    });
+  });
+
+  it('should allow custom themes in dark and light theme slots', async () => {
+    mockFetch.mockReset();
+    createFetchMock({});
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+
+    let contextValue: any;
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    await act(async () => {
+      render(
+        <SettingsProvider>
+          <Consumer />
+        </SettingsProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(contextValue.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      contextValue.setDarkTheme('custom-night');
+      contextValue.setLightTheme('custom-day');
+    });
+
+    await waitFor(() => {
+      expect(contextValue.darkTheme).toBe('custom-night');
+      expect(contextValue.lightTheme).toBe('custom-day');
+    });
+    expect(localStorage.getItem('darkTheme')).toBe('custom-night');
+    expect(localStorage.getItem('lightTheme')).toBe('custom-day');
   });
 
   it('should initialize timeFormat from localStorage', async () => {
