@@ -9,7 +9,7 @@ import './CustomThemeManagement.css';
 
 export const CustomThemeManagement: React.FC = () => {
   const { t } = useTranslation();
-  const { customThemes, loadCustomThemes, theme, setTheme } = useSettings();
+  const { customThemes, loadCustomThemes, theme, darkTheme, lightTheme, setDarkTheme, setLightTheme } = useSettings();
   const { authStatus } = useAuth();
   const { getToken: getCsrfToken } = useCsrf();
 
@@ -101,17 +101,15 @@ export const CustomThemeManagement: React.FC = () => {
       return;
     }
 
-    // If we deleted the active theme, switch to mocha
-    if (theme === themeSlug) {
-      setTheme('mocha');
+    if (darkTheme === themeSlug) {
+      setDarkTheme('mocha');
+    }
+    if (lightTheme === themeSlug) {
+      setLightTheme('latte');
     }
 
     // Reload themes
     await loadCustomThemes();
-  };
-
-  const handleApply = (themeSlug: string) => {
-    setTheme(themeSlug);
   };
 
   if (isEditorOpen) {
@@ -155,9 +153,11 @@ export const CustomThemeManagement: React.FC = () => {
             <ThemeCard
               key={customTheme.id}
               theme={customTheme}
-              isActive={theme === customTheme.slug}
+              isDarkTheme={darkTheme === customTheme.slug}
+              isLightTheme={lightTheme === customTheme.slug}
               canWrite={canWrite}
-              onApply={() => handleApply(customTheme.slug)}
+              onApplyDark={() => setDarkTheme(customTheme.slug)}
+              onApplyLight={() => setLightTheme(customTheme.slug)}
               onEdit={() => handleEdit(customTheme)}
               onClone={() => handleClone(customTheme)}
               onDelete={() => handleDelete(customTheme.slug)}
@@ -171,9 +171,11 @@ export const CustomThemeManagement: React.FC = () => {
 
 interface ThemeCardProps {
   theme: CustomTheme;
-  isActive: boolean;
+  isDarkTheme: boolean;
+  isLightTheme: boolean;
   canWrite: boolean;
-  onApply: () => void;
+  onApplyDark: () => void;
+  onApplyLight: () => void;
   onEdit: () => void;
   onClone: () => void;
   onDelete: () => void;
@@ -181,9 +183,11 @@ interface ThemeCardProps {
 
 const ThemeCard: React.FC<ThemeCardProps> = ({
   theme,
-  isActive,
+  isDarkTheme,
+  isLightTheme,
   canWrite,
-  onApply,
+  onApplyDark,
+  onApplyLight,
   onEdit,
   onClone,
   onDelete
@@ -205,9 +209,10 @@ const ThemeCard: React.FC<ThemeCardProps> = ({
     definition.yellow,
     definition.red
   ].filter(Boolean);
+  const isAssigned = isDarkTheme || isLightTheme;
 
   return (
-    <div className={`theme-card ${isActive ? 'active' : ''}`}>
+    <div className={`theme-card ${isAssigned ? 'active' : ''}`}>
       <div className="theme-card-preview">
         <div className="color-preview-grid">
           {previewColors.map((color, i) => (
@@ -227,15 +232,29 @@ const ThemeCard: React.FC<ThemeCardProps> = ({
           {theme.is_builtin === 1 && (
             <span className="builtin-badge">{t('theme_management.built_in')}</span>
           )}
+          {isAssigned && (
+            <div className="theme-assignment-badges">
+              {isDarkTheme && <span className="assignment-badge">{t('theme_management.assigned_dark')}</span>}
+              {isLightTheme && <span className="assignment-badge">{t('theme_management.assigned_light')}</span>}
+            </div>
+          )}
         </div>
 
         <div className="theme-card-actions">
           <button
-            onClick={onApply}
-            className={`btn-apply ${isActive ? 'active' : ''}`}
-            disabled={isActive}
+            onClick={onApplyDark}
+            className={`btn-apply ${isDarkTheme ? 'active' : ''}`}
+            disabled={isDarkTheme}
           >
-            {isActive ? t('theme_management.active') : t('theme_management.apply')}
+            {isDarkTheme ? t('theme_management.dark_active') : t('theme_management.apply_dark')}
+          </button>
+
+          <button
+            onClick={onApplyLight}
+            className={`btn-apply ${isLightTheme ? 'active' : ''}`}
+            disabled={isLightTheme}
+          >
+            {isLightTheme ? t('theme_management.light_active') : t('theme_management.apply_light')}
           </button>
 
           {canWrite && !theme.is_builtin && (

@@ -181,12 +181,35 @@
   transform: scale(1.02);
 }
 
-.theme-card.active .preview-btn {
-  background: var(--ctp-green);
+.theme-card-actions {
+  display: flex;
+  gap: 10px;
 }
 
-.theme-card.active .preview-btn:hover {
-  background: var(--ctp-teal);
+.theme-card-actions .preview-btn {
+  flex: 1;
+  padding: 10px;
+  font-size: 0.9rem;
+}
+
+/* Only the button for the slot this theme is assigned to turns green. */
+.preview-btn.active {
+  background: var(--ctp-green);
+  cursor: default;
+}
+
+.preview-btn.active:hover {
+  background: var(--ctp-green);
+  transform: none;
+}
+
+/* Keep the unassigned slot's button blue even when the card is highlighted. */
+.theme-card.active .theme-card-actions .preview-btn:not(.active) {
+  background: var(--ctp-blue);
+}
+
+.theme-card.active .theme-card-actions .preview-btn:not(.active):hover {
+  background: var(--ctp-sapphire);
 }
 
 .theme-doc-footer {

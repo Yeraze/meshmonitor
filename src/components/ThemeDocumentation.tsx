@@ -126,7 +126,7 @@ const colorSwatchProps = [
 
 export const ThemeDocumentation: React.FC = () => {
   const { t } = useTranslation();
-  const { theme: currentTheme, setTheme } = useSettings();
+  const { darkTheme, lightTheme, setDarkTheme, setLightTheme } = useSettings();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   const filteredThemes = selectedCategory === 'all'
@@ -167,8 +167,10 @@ export const ThemeDocumentation: React.FC = () => {
           <ThemeCard
             key={themeInfo.id}
             themeInfo={themeInfo}
-            isActive={currentTheme === themeInfo.id}
-            onSelect={() => setTheme(themeInfo.id)}
+            isDarkTheme={darkTheme === themeInfo.id}
+            isLightTheme={lightTheme === themeInfo.id}
+            onApplyDark={() => setDarkTheme(themeInfo.id)}
+            onApplyLight={() => setLightTheme(themeInfo.id)}
           />
         ))}
       </div>
@@ -207,13 +209,16 @@ export const ThemeDocumentation: React.FC = () => {
 
 interface ThemeCardProps {
   themeInfo: ThemeInfo;
-  isActive: boolean;
-  onSelect: () => void;
+  isDarkTheme: boolean;
+  isLightTheme: boolean;
+  onApplyDark: () => void;
+  onApplyLight: () => void;
 }
 
-const ThemeCard: React.FC<ThemeCardProps> = ({ themeInfo, isActive, onSelect }) => {
+const ThemeCard: React.FC<ThemeCardProps> = ({ themeInfo, isDarkTheme, isLightTheme, onApplyDark, onApplyLight }) => {
   const { t } = useTranslation();
   const [colors, setColors] = useState<Record<string, string>>({});
+  const isAssigned = isDarkTheme || isLightTheme;
 
   React.useEffect(() => {
     // Temporarily apply the theme to get its colors
@@ -237,12 +242,19 @@ const ThemeCard: React.FC<ThemeCardProps> = ({ themeInfo, isActive, onSelect }) 
 
   return (
     <div
-      className={`theme-card ${isActive ? 'active' : ''}`}
-      onClick={onSelect}
+      className={`theme-card ${isAssigned ? 'active' : ''}`}
     >
       <div className="theme-card-header">
         <h3>{themeInfo.name}</h3>
-        {isActive && <span className="current-badge">{t('theme_gallery.current')}</span>}
+        {isAssigned && (
+          <span className="current-badge">
+            {isDarkTheme && isLightTheme
+              ? `${t('theme_management.assigned_dark')} + ${t('theme_management.assigned_light')}`
+              : isDarkTheme
+                ? t('theme_management.assigned_dark')
+                : t('theme_management.assigned_light')}
+          </span>
+        )}
       </div>
 
       <p className="theme-description">{themeInfo.description}</p>
@@ -267,9 +279,22 @@ const ThemeCard: React.FC<ThemeCardProps> = ({ themeInfo, isActive, onSelect }) 
         ))}
       </div>
 
-      <button className="preview-btn" onClick={onSelect}>
-        {isActive ? t('theme_gallery.active') : t('theme_gallery.preview')}
-      </button>
+      <div className="theme-card-actions">
+        <button
+          className={`preview-btn ${isDarkTheme ? 'active' : ''}`}
+          onClick={onApplyDark}
+          disabled={isDarkTheme}
+        >
+          {isDarkTheme ? t('theme_management.dark_active') : t('theme_management.apply_dark')}
+        </button>
+        <button
+          className={`preview-btn ${isLightTheme ? 'active' : ''}`}
+          onClick={onApplyLight}
+          disabled={isLightTheme}
+        >
+          {isLightTheme ? t('theme_management.light_active') : t('theme_management.apply_light')}
+        </button>
+      </div>
     </div>
   );
 };

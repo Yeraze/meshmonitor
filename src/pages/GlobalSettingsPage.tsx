@@ -60,7 +60,6 @@ function GlobalSettingsInner() {
     setMapTileset,
     setMapPinStyle,
     setIconStyle,
-    setTheme,
     setLanguage,
     setSolarMonitoringEnabled,
     setSolarMonitoringLatitude,
@@ -129,7 +128,6 @@ function GlobalSettingsInner() {
         onMapTilesetChange={setMapTileset}
         onMapPinStyleChange={setMapPinStyle}
         onIconStyleChange={setIconStyle}
-        onThemeChange={setTheme}
         onLanguageChange={setLanguage}
         onSolarMonitoringEnabledChange={setSolarMonitoringEnabled}
         onSolarMonitoringLatitudeChange={setSolarMonitoringLatitude}
