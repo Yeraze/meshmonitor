@@ -49,6 +49,7 @@ vi.mock('../../contexts/MapContext', () => ({
 // SettingsProvider.
 vi.mock('../../contexts/SettingsContext', () => ({
   useDisplaySettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
+  useSettings: () => ({ mapPinStyle: 'official' }),
 }));
 
 vi.mock('leaflet', () => ({
@@ -60,8 +61,9 @@ vi.mock('leaflet', () => ({
   latLngBounds: (...args: any[]) => ({ isValid: () => args.length > 0 }),
 }));
 
+const createNodeIconMock = vi.fn(() => ({}));
 vi.mock('../../utils/mapIcons', () => ({
-  createNodeIcon: () => ({}),
+  createNodeIcon: (...args: any[]) => createNodeIconMock(...args),
   getHopColor: () => '#000',
 }));
 
@@ -190,6 +192,18 @@ describe('DashboardMap', () => {
     );
     const markers = screen.getAllByTestId('map-marker');
     expect(markers.length).toBe(1);
+  });
+
+  it('forwards the configured map pin style to createNodeIcon (issue #3364)', () => {
+    render(
+      <DashboardMap
+        {...defaultProps}
+        nodes={[nodeWithPosition]}
+      />,
+    );
+    expect(createNodeIconMock).toHaveBeenCalledWith(
+      expect.objectContaining({ pinStyle: 'official' }),
+    );
   });
 
   it('does not render markers for nodes without positions', () => {
