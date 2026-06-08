@@ -81,7 +81,6 @@ interface SettingsTabProps {
   onMapTilesetChange: (tilesetId: TilesetId) => void;
   onMapPinStyleChange: (style: MapPinStyle) => void;
   onIconStyleChange: (style: IconStyle) => void;
-  onThemeChange: (theme: Theme) => void;
   onLanguageChange: (language: string) => void;
   onSolarMonitoringEnabledChange: (enabled: boolean) => void;
   onSolarMonitoringLatitudeChange: (latitude: number) => void;

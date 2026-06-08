@@ -330,7 +330,6 @@ function App() {
     setMapTileset,
     setMapPinStyle,
     setIconStyle,
-    setTheme,
     setLanguage,
     setSolarMonitoringEnabled,
     setSolarMonitoringLatitude,
@@ -4973,7 +4972,6 @@ function App() {
             onMapTilesetChange={setMapTileset}
             onMapPinStyleChange={setMapPinStyle}
             onIconStyleChange={setIconStyle}
-            onThemeChange={setTheme}
             onLanguageChange={setLanguage}
             onSolarMonitoringEnabledChange={setSolarMonitoringEnabled}
             onSolarMonitoringLatitudeChange={setSolarMonitoringLatitude}
