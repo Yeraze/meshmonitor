@@ -15,6 +15,8 @@ import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
 import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
+import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
+import type { PositionRow } from '../../db/repositories/analysis.js';
 import {
   identifySolarNodes,
   summarizeSolarProduction,
@@ -64,8 +66,72 @@ function parseSinceMs(raw: unknown): number {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
+/**
+ * Build a synchronous position-row filter that enforces per-channel viewOnMap
+ * and positionOverrideIsPrivate gating. Returns null for admins (allow all).
+ *
+ * Pre-fetches all permissions and node metadata once so the returned predicate
+ * is pure and cheap to call per item — avoids N async DB round-trips inside
+ * the hot path of coverage-grid page iteration.
+ */
+async function buildPositionFilter(
+  user: any,
+  sourceIds: string[],
+): Promise<((pos: PositionRow) => boolean) | null> {
+  if (user?.isAdmin) return null;
+
+  const userId: number | null = user?.id ?? null;
+
+  // Fetch channel permission sets once per source
+  const permsBySource = new Map<string, Record<string, { viewOnMap?: boolean } | undefined>>();
+  for (const srcId of sourceIds) {
+    const perms = userId !== null
+      ? await databaseService.getUserPermissionSetAsync(userId, srcId)
+      : {};
+    permsBySource.set(srcId, perms);
+  }
+
+  // Fetch virtual-channel (channel DB) permissions and nodes_private:read once
+  const channelDbPerms: Record<number, { viewOnMap: boolean } | undefined> = userId !== null
+    ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(userId)
+    : {};
+  const canViewPrivate = userId !== null
+    ? await databaseService.checkPermissionAsync(userId, 'nodes_private', 'read')
+    : false;
+
+  // Batch-load node metadata (channel, positionOverrideIsPrivate) for all nodes
+  // across permitted sources so the filter predicate runs synchronously.
+  const nodeInfoByKey = new Map<string, { channel: number; positionOverrideIsPrivate: boolean }>();
+  for (const srcId of sourceIds) {
+    const nodes = await databaseService.nodes.getAllNodes(srcId);
+    for (const n of nodes) {
+      nodeInfoByKey.set(`${srcId}:${n.nodeNum}`, {
+        channel: n.channel ?? 0,
+        positionOverrideIsPrivate: !!n.positionOverrideIsPrivate,
+      });
+    }
+  }
+
+  return (pos: PositionRow): boolean => {
+    const info = nodeInfoByKey.get(`${pos.sourceId}:${pos.nodeNum}`)
+      ?? { channel: 0, positionOverrideIsPrivate: false };
+
+    // Block private-position nodes unless the user has nodes_private:read
+    if (info.positionOverrideIsPrivate && !canViewPrivate) return false;
+
+    // Block nodes on channels the user lacks viewOnMap permission for
+    const perms = permsBySource.get(pos.sourceId) ?? {};
+    const ch = info.channel;
+    if (ch < CHANNEL_DB_OFFSET) {
+      return perms[`channel_${ch}`]?.viewOnMap === true;
+    }
+    return channelDbPerms[ch - CHANNEL_DB_OFFSET]?.viewOnMap === true;
+  };
+}
+
 router.get('/positions', async (req: Request, res: Response) => {
   try {
+    const user = (req as any).user;
     const permitted = await resolvePermittedSourceIds(req);
     const requested = parseSourcesParam(req.query.sources);
     const sourceIds = requested
@@ -78,6 +144,14 @@ router.get('/positions', async (req: Request, res: Response) => {
       pageSize: clampPageSize(req.query.pageSize),
       cursor: typeof req.query.cursor === 'string' ? req.query.cursor : null,
     });
+
+    // Enforce per-channel viewOnMap and positionOverrideIsPrivate gates,
+    // matching the checks the main map and v1/position-history already apply.
+    const posFilter = await buildPositionFilter(user, sourceIds);
+    if (posFilter) {
+      result.items = result.items.filter(posFilter);
+    }
+
     res.json(result);
   } catch (error) {
     logger.error('Error in GET /api/analysis/positions:', error);
@@ -131,6 +205,8 @@ const COVERAGE_TTL_MS = 5 * 60_000;
 
 router.get('/coverage-grid', async (req: Request, res: Response) => {
   try {
+    const user = (req as any).user;
+    const isAdmin = user?.isAdmin ?? false;
     const permitted = await resolvePermittedSourceIds(req);
     const requested = parseSourcesParam(req.query.sources);
     const sourceIds = requested
@@ -139,18 +215,30 @@ router.get('/coverage-grid', async (req: Request, res: Response) => {
     const sinceMs = parseSinceMs(req.query.since);
     const zoom = parseInt(String(req.query.zoom ?? '12'), 10) || 12;
 
+    // Cache only for admin requests — non-admin results vary by user permissions.
     const key = `${sourceIds.slice().sort().join(',')}|${sinceMs}|${zoom}`;
-    const cached = coverageCache.get(key);
-    if (cached && Date.now() - cached.at < COVERAGE_TTL_MS) {
-      res.json(cached.data);
-      return;
+    if (isAdmin) {
+      const cached = coverageCache.get(key);
+      if (cached && Date.now() - cached.at < COVERAGE_TTL_MS) {
+        res.json(cached.data);
+        return;
+      }
     }
+
+    // Enforce the same per-channel viewOnMap / positionOverrideIsPrivate gates
+    // that /positions applies — pre-built as a synchronous predicate so it can
+    // be applied inside getCoverageGrid's internal pagination loop.
+    const posFilter = await buildPositionFilter(user, sourceIds);
     const result = await databaseService.analysis.getCoverageGrid({
       sourceIds,
       sinceMs,
       zoom,
+      postFilter: posFilter ?? undefined,
     });
-    coverageCache.set(key, { at: Date.now(), data: result });
+
+    if (isAdmin) {
+      coverageCache.set(key, { at: Date.now(), data: result });
+    }
     res.json(result);
   } catch (error) {
     logger.error('Error in GET /api/analysis/coverage-grid:', error);

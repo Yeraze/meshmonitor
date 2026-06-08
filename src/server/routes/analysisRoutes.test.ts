@@ -13,11 +13,13 @@ import request from 'supertest';
 vi.mock('../../services/database.js', () => ({
   default: {
     sources: { getAllSources: vi.fn() },
-    analysis: { getPositions: vi.fn() },
+    analysis: { getPositions: vi.fn(), getCoverageGrid: vi.fn() },
+    nodes: { getAllNodes: vi.fn() },
     checkPermissionAsync: vi.fn(),
     findUserByIdAsync: vi.fn(),
     findUserByUsernameAsync: vi.fn(),
     getUserPermissionSetAsync: vi.fn(),
+    getChannelDatabasePermissionsForUserAsSetAsync: vi.fn(),
   },
 }));
 
@@ -54,6 +56,10 @@ describe('GET /positions', () => {
     mockDb.analysis.getPositions.mockResolvedValue({
       items: [], pageSize: 500, hasMore: false, nextCursor: null,
     });
+    mockDb.nodes.getAllNodes.mockResolvedValue([]);
+    mockDb.getUserPermissionSetAsync.mockResolvedValue({ channel_0: { viewOnMap: true, read: true, write: false } });
+    mockDb.getChannelDatabasePermissionsForUserAsSetAsync.mockResolvedValue({});
+    mockDb.checkPermissionAsync.mockResolvedValue(true);
   });
 
   it('admin: queries all enabled sources', async () => {
@@ -108,6 +114,75 @@ describe('GET /positions', () => {
     expect(mockDb.analysis.getPositions).toHaveBeenCalledWith(
       expect.objectContaining({ cursor: 'abc' }),
     );
+  });
+
+  it('filters out positions on channels the user lacks viewOnMap on', async () => {
+    const posOnCh0 = { nodeNum: 1, sourceId: 'src-a', latitude: 1, longitude: 1, altitude: null, timestamp: 1000 };
+    const posOnCh1 = { nodeNum: 2, sourceId: 'src-a', latitude: 2, longitude: 2, altitude: null, timestamp: 1000 };
+    mockDb.analysis.getPositions.mockResolvedValue({
+      items: [posOnCh0, posOnCh1], pageSize: 500, hasMore: false, nextCursor: null,
+    });
+    // node 1 is on channel 0 (viewOnMap granted), node 2 is on channel 1 (not granted)
+    mockDb.nodes.getAllNodes.mockResolvedValue([
+      { nodeNum: 1, channel: 0 },
+      { nodeNum: 2, channel: 1 },
+    ]);
+    mockDb.getUserPermissionSetAsync.mockResolvedValue({
+      channel_0: { viewOnMap: true, read: true, write: false },
+      // channel_1 not granted
+    });
+    // nodes:read = true (allows source access), nodes_private:read = false (irrelevant here)
+    mockDb.checkPermissionAsync.mockImplementation((_uid: number, resource: string) =>
+      Promise.resolve(resource !== 'nodes_private'),
+    );
+
+    const app = createApp(regularUser);
+    const res = await request(app).get('/positions?since=0');
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].nodeNum).toBe(1);
+  });
+
+  it('filters out positions for nodes with private position override when user lacks nodes_private:read', async () => {
+    const privatePos = { nodeNum: 99, sourceId: 'src-a', latitude: 5, longitude: 5, altitude: null, timestamp: 2000 };
+    mockDb.analysis.getPositions.mockResolvedValue({
+      items: [privatePos], pageSize: 500, hasMore: false, nextCursor: null,
+    });
+    mockDb.nodes.getAllNodes.mockResolvedValue([
+      { nodeNum: 99, channel: 0, positionOverrideIsPrivate: true },
+    ]);
+    mockDb.getUserPermissionSetAsync.mockResolvedValue({
+      channel_0: { viewOnMap: true, read: true, write: false },
+    });
+    // nodes_private:read denied
+    mockDb.checkPermissionAsync.mockImplementation((_uid: number, resource: string) =>
+      Promise.resolve(resource !== 'nodes_private'),
+    );
+
+    const app = createApp(regularUser);
+    const res = await request(app).get('/positions?since=0');
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(0);
+  });
+
+  it('admin sees all positions regardless of channel or private override', async () => {
+    const pos = { nodeNum: 99, sourceId: 'src-a', latitude: 5, longitude: 5, altitude: null, timestamp: 2000 };
+    mockDb.analysis.getPositions.mockResolvedValue({
+      items: [pos], pageSize: 500, hasMore: false, nextCursor: null,
+    });
+    mockDb.nodes.getAllNodes.mockResolvedValue([
+      { nodeNum: 99, channel: 1, positionOverrideIsPrivate: true },
+    ]);
+    // Admin bypasses all node-level filters; these mocks should not be consulted
+    mockDb.getUserPermissionSetAsync.mockResolvedValue({});
+    mockDb.checkPermissionAsync.mockResolvedValue(false);
+
+    const app = createApp(adminUser);
+    const res = await request(app).get('/positions?since=0');
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    // Admin path: getAllNodes should not be called (filter is skipped)
+    expect(mockDb.nodes.getAllNodes).not.toHaveBeenCalled();
   });
 });
 
@@ -181,9 +256,13 @@ describe('GET /coverage-grid', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
-    mockDb.analysis.getCoverageGrid = vi.fn().mockResolvedValue({
+    mockDb.analysis.getCoverageGrid.mockResolvedValue({
       cells: [], binSizeDeg: 0.04,
     });
+    mockDb.nodes.getAllNodes.mockResolvedValue([]);
+    mockDb.getUserPermissionSetAsync.mockResolvedValue({ channel_0: { viewOnMap: true, read: true, write: false } });
+    mockDb.getChannelDatabasePermissionsForUserAsSetAsync.mockResolvedValue({});
+    mockDb.checkPermissionAsync.mockResolvedValue(true);
   });
 
   it('admin: queries all enabled sources and forwards zoom', async () => {
@@ -195,14 +274,27 @@ describe('GET /coverage-grid', () => {
     );
   });
 
-  it('serves second request from cache (within TTL)', async () => {
+  it('admin: serves second request from cache (within TTL)', async () => {
     const app = createApp(adminUser);
     // Use a unique cache key (different sinceMs) to avoid cache pollution
     // from any prior test.
-    const url = '/coverage-grid?since=42&zoom=8';
+    const url = '/coverage-grid?since=9999&zoom=8';
     await request(app).get(url);
     await request(app).get(url);
     expect(mockDb.analysis.getCoverageGrid).toHaveBeenCalledTimes(1);
+  });
+
+  it('non-admin: skips cache and passes postFilter to getCoverageGrid', async () => {
+    mockDb.checkPermissionAsync.mockResolvedValue(false);
+    const app = createApp(regularUser);
+    const url = '/coverage-grid?since=8888&zoom=8';
+    await request(app).get(url);
+    await request(app).get(url);
+    // Result is not cached for non-admin, so getCoverageGrid called twice
+    expect(mockDb.analysis.getCoverageGrid).toHaveBeenCalledTimes(2);
+    // postFilter should be provided (non-null function)
+    const firstCall = mockDb.analysis.getCoverageGrid.mock.calls[0][0];
+    expect(typeof firstCall.postFilter).toBe('function');
   });
 });
 
