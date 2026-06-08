@@ -243,6 +243,22 @@ describe.skip('AutoAnnounceSection Component', () => {
       expect(screen.getByText('+ {FEATURES}')).toBeInTheDocument();
       expect(screen.getByText('+ {NODECOUNT}')).toBeInTheDocument();
       expect(screen.getByText('+ {DIRECTCOUNT}')).toBeInTheDocument();
+      expect(screen.getByText('+ {DATE}')).toBeInTheDocument();
+      expect(screen.getByText('+ {TIME}')).toBeInTheDocument();
+    });
+
+    it('should insert DATE and TIME tokens when buttons clicked (issue #3382)', async () => {
+      const user = userEvent.setup({ delay: null });
+      render(<AutoAnnounceSection {...defaultProps} message="" />);
+
+      await user.click(screen.getByText('+ {DATE}'));
+      await user.click(screen.getByText('+ {TIME}'));
+
+      await waitFor(() => {
+        const messageInput = screen.getByLabelText(/Announcement Message/) as HTMLTextAreaElement;
+        expect(messageInput.value).toContain('{DATE}');
+        expect(messageInput.value).toContain('{TIME}');
+      });
     });
 
     it('should insert VERSION token when button clicked', async () => {

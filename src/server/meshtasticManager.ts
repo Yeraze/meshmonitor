@@ -10990,6 +10990,20 @@ class MeshtasticManager implements ISourceManager {
       result = result.replace(/{PORT}/g, encode(String(config.tcpPort)));
     }
 
+    // {DATE} / {TIME} - Current date/time when the announcement is sent, formatted
+    // per the global dateFormat/timeFormat presentation preferences (issue #3382).
+    if (result.includes('{DATE}') || result.includes('{TIME}')) {
+      const now = new Date();
+      const dateFormat = await databaseService.settings.getSetting('dateFormat') || 'MM/DD/YYYY';
+      const timeFormat = await databaseService.settings.getSetting('timeFormat') || '24';
+      if (result.includes('{DATE}')) {
+        result = result.replace(/{DATE}/g, encode(formatDate(now, dateFormat as 'MM/DD/YYYY' | 'DD/MM/YYYY')));
+      }
+      if (result.includes('{TIME}')) {
+        result = result.replace(/{TIME}/g, encode(formatTime(now, timeFormat as '12' | '24')));
+      }
+    }
+
     return result;
   }
 

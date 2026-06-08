@@ -660,6 +660,38 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             >
               + {'{TOTALNODES}'}
             </button>
+            <button
+              type="button"
+              onClick={createInsertTokenHandler('{DATE}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{DATE}'}
+            </button>
+            <button
+              type="button"
+              onClick={createInsertTokenHandler('{TIME}')}
+              disabled={!localEnabled}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '12px',
+                background: 'var(--ctp-surface2)',
+                border: '1px solid var(--ctp-overlay0)',
+                borderRadius: '4px',
+                cursor: localEnabled ? 'pointer' : 'not-allowed',
+                opacity: localEnabled ? 1 : 0.5
+              }}
+            >
+              + {'{TIME}'}
+            </button>
           </div>
         </div>
 
