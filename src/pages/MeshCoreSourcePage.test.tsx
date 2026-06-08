@@ -156,4 +156,60 @@ describe('MeshCoreSourcePage', () => {
     expect(fetchUrls.some((u) => u.includes('/meshcore/snapshot'))).toBe(false);
     expect(fetchUrls.some((u) => u.includes('/meshcore/status'))).toBe(false);
   });
+
+  it('shows Disconnected after snapshot returns connected=false', async () => {
+    authValue.hasPermission = () => true;
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText('Disconnected')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Connected after snapshot returns connected=true', async () => {
+    authValue.hasPermission = () => true;
+    // Override snapshot to return connected=true for this test.
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      fetchUrls.push(url);
+      if (url.includes('/api/settings')) {
+        return new Response(JSON.stringify({}), { status: 200 });
+      }
+      if (url.includes('/api/auth/csrf-token')) {
+        return new Response(JSON.stringify({ token: 't' }), { status: 200 });
+      }
+      if (url.includes('/meshcore/snapshot')) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              status: {
+                connected: true,
+                deviceType: 1,
+                deviceTypeName: 'Companion',
+                config: null,
+                localNode: { publicKey: 'abc', name: 'MyNode', advType: 1 },
+              },
+              contacts: [],
+              nodes: [],
+              messages: [],
+              seqCursor: 0,
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes('/meshcore/status')) {
+        return new Response(
+          JSON.stringify({ success: true, data: { connected: true, deviceType: 1, deviceTypeName: 'Companion', config: null, localNode: null } }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ success: true, data: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText('Connected')).toBeInTheDocument();
+    });
+  });
 });

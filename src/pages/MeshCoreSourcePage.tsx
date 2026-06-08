@@ -60,6 +60,9 @@ function MeshCoreSourceInner() {
     );
   }
 
+  // mcStatus is null until the snapshot loads — show "Connecting…" instead of
+  // "Disconnected" so the header doesn't mislead the user during the initial fetch.
+  const statusLoading = mcStatus === null;
   const connected = mcStatus?.connected ?? false;
   const localNode = mcStatus?.localNode ?? null;
   const localNodeLabel = localNode?.name || null;
@@ -97,12 +100,14 @@ function MeshCoreSourceInner() {
           <div className="connection-status-container">
             <div className="connection-status">
               <span
-                className={`status-indicator ${connected ? 'connected' : 'disconnected'}`}
+                className={`status-indicator ${statusLoading ? 'connecting' : connected ? 'connected' : 'disconnected'}`}
               />
               <span>
-                {connected
-                  ? t('header.status.connected', 'Connected')
-                  : t('header.status.disconnected', 'Disconnected')}
+                {statusLoading
+                  ? t('source.status_connecting', 'Connecting')
+                  : connected
+                    ? t('header.status.connected', 'Connected')
+                    : t('header.status.disconnected', 'Disconnected')}
               </span>
             </div>
           </div>
