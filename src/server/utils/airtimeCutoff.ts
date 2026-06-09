@@ -37,10 +37,24 @@ export const INFRASTRUCTURE_ROLES: ReadonlySet<number> = new Set([2, 3, 4, 11]);
 
 /** A node considered as a possible infrastructure neighbour. */
 export interface NeighborUtilCandidate {
+  nodeNum?: number | null;
+  nodeId?: string | null;
+  longName?: string | null;
+  shortName?: string | null;
   role?: number | null;
   hopsAway?: number | null;
   rssi?: number | null;
   channelUtilization?: number | null;
+}
+
+/** An infrastructure neighbour that contributed to the averaged ChUtil. */
+export interface NeighborUtilContributor {
+  nodeNum: number | null;
+  nodeId: string | null;
+  longName: string | null;
+  shortName: string | null;
+  rssi: number;
+  channelUtilization: number;
 }
 
 /**
@@ -49,13 +63,14 @@ export interface NeighborUtilCandidate {
  * (`hopsAway === 0`), and have both an RSSI and a Channel Utilization reading.
  * The strongest `count` (highest/least-negative RSSI) are averaged.
  *
- * @returns the averaged ChUtil (or null if no candidate qualifies) and how many
- *   neighbours contributed to the average.
+ * @returns the averaged ChUtil (or null if no candidate qualifies), how many
+ *   neighbours contributed to the average, and the contributing nodes
+ *   themselves (strongest RSSI first).
  */
 export function averageStrongestNeighborUtilization(
   nodes: NeighborUtilCandidate[],
   count: number = NEIGHBOR_UTIL_SAMPLE_COUNT
-): { value: number | null; sampleCount: number } {
+): { value: number | null; sampleCount: number; contributors: NeighborUtilContributor[] } {
   const candidates = nodes.filter(
     (n) =>
       n.role != null &&
@@ -71,10 +86,19 @@ export function averageStrongestNeighborUtilization(
   candidates.sort((a, b) => (b.rssi as number) - (a.rssi as number));
 
   const top = candidates.slice(0, Math.max(0, count));
-  if (top.length === 0) return { value: null, sampleCount: 0 };
+  if (top.length === 0) return { value: null, sampleCount: 0, contributors: [] };
+
+  const contributors: NeighborUtilContributor[] = top.map((n) => ({
+    nodeNum: n.nodeNum ?? null,
+    nodeId: n.nodeId ?? null,
+    longName: n.longName ?? null,
+    shortName: n.shortName ?? null,
+    rssi: n.rssi as number,
+    channelUtilization: n.channelUtilization as number,
+  }));
 
   const sum = top.reduce((acc, n) => acc + (n.channelUtilization as number), 0);
-  return { value: sum / top.length, sampleCount: top.length };
+  return { value: sum / top.length, sampleCount: top.length, contributors };
 }
 
 /**

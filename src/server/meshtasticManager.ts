@@ -23,7 +23,7 @@ import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceServ
 import { MessageQueueService } from './messageQueueService.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
-import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource } from './utils/airtimeCutoff.js';
+import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
 import { resolveLastHopName } from './utils/lastHop.js';
 import { canonicalMessageTime } from './utils/messageTime.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
@@ -510,7 +510,7 @@ class MeshtasticManager implements ISourceManager {
   private automationAirtimeCutoffSource: AirtimeCutoffSource = DEFAULT_AIRTIME_CUTOFF_SOURCE;
   // Short-lived cache for the neighbour-averaged ChUtil so the per-fire gate
   // doesn't hit the database on every automation in `neighbors` mode.
-  private neighborUtilCache: { value: number | null; sampleCount: number; at: number } | null = null;
+  private neighborUtilCache: { value: number | null; sampleCount: number; contributors: NeighborUtilContributor[]; at: number } | null = null;
   private static readonly NEIGHBOR_UTIL_TTL_MS = 30000;
   // Throttle the "automations gated" log so a busy mesh doesn't spam.
   private lastAirtimeGateLogTime: number = 0;
@@ -1968,23 +1968,35 @@ class MeshtasticManager implements ISourceManager {
    * of the strongest-RSSI 0-hop infrastructure neighbours, cached briefly so the
    * per-fire gate doesn't query the database on every automation.
    */
-  private async getEffectiveChannelUtilization(): Promise<{ value: number | null; sampleCount: number }> {
+  private async getEffectiveChannelUtilization(): Promise<{ value: number | null; sampleCount: number; contributors: NeighborUtilContributor[] }> {
     if (this.automationAirtimeCutoffSource !== 'neighbors') {
-      return { value: this.localChannelUtilization, sampleCount: this.localChannelUtilization == null ? 0 : 1 };
+      return {
+        value: this.localChannelUtilization,
+        sampleCount: this.localChannelUtilization == null ? 0 : 1,
+        contributors: [],
+      };
     }
 
     const now = Date.now();
     if (this.neighborUtilCache && now - this.neighborUtilCache.at < MeshtasticManager.NEIGHBOR_UTIL_TTL_MS) {
-      return { value: this.neighborUtilCache.value, sampleCount: this.neighborUtilCache.sampleCount };
+      return {
+        value: this.neighborUtilCache.value,
+        sampleCount: this.neighborUtilCache.sampleCount,
+        contributors: this.neighborUtilCache.contributors,
+      };
     }
 
-    let result: { value: number | null; sampleCount: number } = { value: null, sampleCount: 0 };
+    let result: { value: number | null; sampleCount: number; contributors: NeighborUtilContributor[] } = { value: null, sampleCount: 0, contributors: [] };
     try {
       const localNodeNum = this.localNodeInfo?.nodeNum;
       const nodes = await databaseService.nodes.getActiveNodes(1, this.sourceId);
       const candidates = nodes
         .filter((n: any) => Number(n.nodeNum) !== localNodeNum)
         .map((n: any) => ({
+          nodeNum: n.nodeNum,
+          nodeId: n.nodeId,
+          longName: n.longName,
+          shortName: n.shortName,
           role: n.role,
           hopsAway: n.hopsAway,
           rssi: n.rssi,
@@ -1995,7 +2007,7 @@ class MeshtasticManager implements ISourceManager {
       logger.error(`Failed to compute neighbour airtime utilization for ${this.sourceId}:`, error);
     }
 
-    this.neighborUtilCache = { value: result.value, sampleCount: result.sampleCount, at: now };
+    this.neighborUtilCache = { value: result.value, sampleCount: result.sampleCount, contributors: result.contributors, at: now };
     return result;
   }
 
@@ -2032,14 +2044,16 @@ class MeshtasticManager implements ISourceManager {
     source: AirtimeCutoffSource;
     channelUtilization: number | null;
     sampleCount: number;
+    contributors: NeighborUtilContributor[];
     gated: boolean;
   }> {
-    const { value, sampleCount } = await this.getEffectiveChannelUtilization();
+    const { value, sampleCount, contributors } = await this.getEffectiveChannelUtilization();
     return {
       threshold: this.automationAirtimeCutoffThreshold,
       source: this.automationAirtimeCutoffSource,
       channelUtilization: value,
       sampleCount,
+      contributors,
       gated: shouldGateAutomations(value, this.automationAirtimeCutoffThreshold),
     };
   }

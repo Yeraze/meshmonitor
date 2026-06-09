@@ -11,13 +11,26 @@ interface AirtimeCutoffSectionProps {
 
 type AirtimeSource = 'local' | 'neighbors';
 
+interface AirtimeContributor {
+  nodeNum: number | null;
+  nodeId: string | null;
+  longName: string | null;
+  shortName: string | null;
+  rssi: number;
+  channelUtilization: number;
+}
+
 interface AirtimeStatus {
   threshold: number;
   source: AirtimeSource;
   channelUtilization: number | null;
   sampleCount: number;
+  contributors?: AirtimeContributor[];
   gated: boolean;
 }
+
+/** Trim a percentage to at most 2 decimal places (drops trailing zeros). */
+const formatPercent = (value: number): number => parseFloat(value.toFixed(2));
 
 const DEFAULT_THRESHOLD = 30;
 const DEFAULT_SOURCE: AirtimeSource = 'local';
@@ -131,9 +144,11 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
 
   const disabled = localThreshold === 0;
   const util = status?.channelUtilization;
+  const utilDisplay = util == null ? util : formatPercent(util);
   const gated = status?.gated ?? false;
   const statusSource: AirtimeSource = status?.source ?? localSource;
   const sampleCount = status?.sampleCount ?? 0;
+  const contributors = status?.contributors ?? [];
   const sourceLabel = statusSource === 'neighbors'
     ? t('automation.airtime_cutoff.source_neighbors_label', 'neighbour-averaged')
     : t('automation.airtime_cutoff.source_local_label', 'local');
@@ -186,14 +201,51 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
                   ? t('automation.airtime_cutoff.status_unknown_neighbors', 'Waiting for 0-hop infrastructure (router) neighbours to report Channel Utilization…')
                   : t('automation.airtime_cutoff.status_unknown', 'Waiting for the connected node to report Channel Utilization…'))
               : gated
-                ? t('automation.airtime_cutoff.status_paused', '⏸ Automations paused — {{source}} Channel Utilization {{util}}% exceeds {{threshold}}%.', { source: sourceLabel, util, threshold: status?.threshold ?? localThreshold })
-                : t('automation.airtime_cutoff.status_active', '✓ Automations active — {{source}} Channel Utilization {{util}}% is under {{threshold}}%.', { source: sourceLabel, util, threshold: status?.threshold ?? localThreshold })}
+                ? t('automation.airtime_cutoff.status_paused', '⏸ Automations paused — {{source}} Channel Utilization {{util}}% exceeds {{threshold}}%.', { source: sourceLabel, util: utilDisplay, threshold: status?.threshold ?? localThreshold })
+                : t('automation.airtime_cutoff.status_active', '✓ Automations active — {{source}} Channel Utilization {{util}}% is under {{threshold}}%.', { source: sourceLabel, util: utilDisplay, threshold: status?.threshold ?? localThreshold })}
           {!disabled && util != null && statusSource === 'neighbors' && (
             <span style={{ fontWeight: 400, opacity: 0.85 }}>
               {' '}{t('automation.airtime_cutoff.status_neighbors_suffix', '(averaged from {{count}} infrastructure node(s))', { count: sampleCount })}
             </span>
           )}
         </div>
+
+        {/* Infrastructure nodes contributing to the neighbour-averaged reading */}
+        {!disabled && statusSource === 'neighbors' && contributors.length > 0 && (
+          <div style={{ marginBottom: '1.25rem' }}>
+            <div style={{ marginBottom: '0.4rem', color: 'var(--ctp-subtext1)', fontSize: '12px', fontWeight: 600 }}>
+              {t('automation.airtime_cutoff.contributors_label', 'Infrastructure nodes in calculation')}
+            </div>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              {contributors.map((node, i) => {
+                const name = node.longName || node.shortName || node.nodeId || (node.nodeNum != null ? `!${node.nodeNum.toString(16)}` : t('automation.airtime_cutoff.contributor_unknown', 'Unknown node'));
+                return (
+                  <li
+                    key={node.nodeId ?? node.nodeNum ?? i}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '1rem',
+                      padding: '0.45rem 0.75rem',
+                      background: 'var(--ctp-surface0)',
+                      border: '1px solid var(--ctp-surface2)',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                    }}
+                  >
+                    <span style={{ color: 'var(--ctp-text)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {name}
+                    </span>
+                    <span style={{ color: 'var(--ctp-subtext0)', whiteSpace: 'nowrap' }}>
+                      {t('automation.airtime_cutoff.contributor_detail', '{{util}}% · {{rssi}} dBm', { util: formatPercent(node.channelUtilization), rssi: node.rssi })}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
 
         {/* Measurement source */}
         <div className="setting-item">
