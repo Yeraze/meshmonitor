@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Features
+
+- **Channels tab: full-height chat layout (#3385)**: The Channels tab now uses the full available viewport height and a single compact controls bar. The "Channels (N)" heading, the channel selector, the per-channel actions (info, mute, Mark-all-read), and the "Show MQTT/Bridge Messages" toggle all sit inline on one row — the redundant per-channel title bar (which duplicated the channel name the selector already shows) was removed. The message pane stretches from beneath that bar down to the message input, filling the remaining height dynamically on any screen size instead of being capped at a fixed height that left a large empty area below on tall monitors. Desktop changes are scoped to the Channels tab via `:has()`, so other tabs are unaffected. On mobile the bar collapses to just the channel selector plus a "⋯" overflow menu (info, mark-all-read, Show MQTT/Bridge, and the mute options) so the header stays on a single line; the iOS-PWA height handling is preserved.
+
 ### Bug Fixes
 
 - **Auto-Acknowledge `{LONG_NAME}`/`{SHORT_NAME}` resolved as `Unknown`/`????` (#3384)**: The auto-ack template resolver looked up the sender node without a `sourceId`. Under the multi-source composite `(nodeNum, sourceId)` primary key, an unscoped lookup returns the first matching row across *any* source — frequently a different source's row (or none), so the name tokens intermittently fell back to `Unknown`/`????` even when the originating source had the node's name on record (the channel-window title, which reads per-source, always showed it correctly). The lookup is now scoped to the manager's own `sourceId`, matching the already-correct auto-welcome path.

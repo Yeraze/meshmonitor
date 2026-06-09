@@ -1463,33 +1463,56 @@ body {
     display: none;
   }
 
-  /* Fixed header section */
+  /* Fixed header section. On narrow screens everything collapses to a single
+     row: heading + selector + a "⋯" overflow menu (#3385). The inline
+     per-channel actions and MQTT toggle are hidden here and surfaced through
+     the kebab instead, so the header never spills past one line. */
   .channels-header {
     flex-shrink: 0;
     padding: 0.25rem 0;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
   }
 
   .channels-header h2 {
-    font-size: 1.1rem;
-    margin: 0.25rem 0;
-  }
-
-  .channels-controls {
-    margin-top: 0.25rem;
-  }
-
-  .mqtt-toggle {
-    font-size: 0.85rem;
-  }
-
-  /* Mobile adjustments for channel dropdown */
-  .channel-dropdown {
-    margin-bottom: 0.5rem;
+    font-size: 1rem;
+    margin: 0;
     flex-shrink: 0;
   }
 
+  .channels-controls {
+    margin-top: 0;
+    flex: 1;
+    min-width: 0;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+  }
+
+  /* Selector grows to fill the row; the kebab sits at the far right. */
+  .channel-dropdown {
+    margin-bottom: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
   .channel-dropdown-select {
+    width: 100%;
     max-width: 100%;
+  }
+
+  /* Inline desktop controls are replaced by the overflow menu on mobile.
+     Use .channels-controls-scoped selectors (0,2,0) so these beat the base
+     .channel-actions / .channel-overflow rules, which are defined AFTER this
+     media block and would otherwise win at equal specificity. */
+  .channels-controls .channel-actions,
+  .channels-controls .mqtt-toggle {
+    display: none;
+  }
+
+  .channels-controls .channel-overflow {
+    display: block;
   }
 
   /* Make channel conversation section fill remaining space */
@@ -1760,8 +1783,8 @@ body {
 
 .channels-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
   margin-bottom: 1rem;
 }
 
@@ -1769,6 +1792,77 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  /* Fill the row beside the "Channels (N)" heading so the MQTT toggle can be
+     pushed to the far right via margin-left:auto (#3385). */
+  flex: 1;
+  min-width: 0;
+}
+
+/* Per-channel action group (info / mute / mark-all-read) sitting inline in the
+   single controls row. */
+.channel-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Push the MQTT toggle to the far right edge of the controls row. */
+.channels-controls .mqtt-toggle {
+  margin-left: auto;
+}
+
+/* Mobile overflow ("⋯") menu (#3385). Hidden on desktop — the inline controls
+   above are the desktop affordance; the kebab only appears on narrow screens. */
+.channel-overflow {
+  display: none;
+  position: relative;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.channel-overflow-btn {
+  padding: 0.35rem 0.6rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.channel-overflow-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: 6px;
+  z-index: 1000;
+  min-width: 230px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.channel-overflow-item {
+  display: block;
+  width: 100%;
+  padding: 0.65rem 1rem;
+  background: none;
+  border: none;
+  color: var(--ctp-text);
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.channel-overflow-item:hover {
+  background: var(--ctp-surface1);
+}
+
+.channel-overflow-divider {
+  height: 1px;
+  background: var(--ctp-surface2);
+  margin: 0.25rem 0;
 }
 
 .mqtt-toggle {
@@ -1906,8 +2000,10 @@ body {
 /* Channel Buttons Grid */
 /* Channel dropdown selector - shown on both mobile and desktop */
 .channel-dropdown {
+  /* Inline in the .channels-controls row (#3385) — no bottom margin, size to
+     the selector's content. */
   display: block;
-  margin-bottom: 1rem;
+  margin-bottom: 0;
 }
 
 .channel-dropdown-select {
@@ -2155,10 +2251,53 @@ body {
   overflow: hidden;
 }
 
-/* Desktop only: constrain channel conversation height */
+/* Desktop: the channels tab is a full-height chat layout — the message pane
+   stretches from beneath the controls bar down to the message input, filling
+   the viewport instead of being capped at a fixed height that left a large
+   empty area below on tall monitors (#3385). Scoped to the channels tab via
+   :has() so naturally-scrolling tabs (nodes, map, etc.) are untouched, and
+   gated to >=769px so the mobile/iOS-PWA height handling above is unaffected. */
 @media (min-width: 769px) {
+  .app:has(.channels-tab-content) {
+    height: 100vh;
+  }
+
+  .app-main:has(.channels-tab-content) {
+    display: flex;
+    flex-direction: column;
+    /* min-height:0 lets this flex item shrink below its content height so the
+       message list (not the page) becomes the scroll target; overflow:hidden
+       is the backstop that keeps the send bar pinned on screen. */
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .channels-tab-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    /* Overrides .tab-content { min-height: 60vh } so the column can size to the
+       available viewport height rather than a 60vh floor. */
+    min-height: 0;
+  }
+
+  /* Fixed-height rows at the top; the conversation section (flex:1) takes the
+     rest via its existing base rule. */
+  .channels-tab-content .channels-header,
+  .channels-tab-content .channels-grid {
+    flex-shrink: 0;
+  }
+
+  /* Remove the old fixed cap — the flex chain now distributes height. */
   .channel-conversation {
-    max-height: calc(100vh - var(--header-height) - 20rem);
+    max-height: none;
+  }
+
+  /* Inline selector sizes to its content (the longest channel name) rather
+     than stretching, so the MQTT toggle sits comfortably beside it. */
+  .channels-controls .channel-dropdown-select {
+    width: auto;
+    min-width: 220px;
   }
 }
 
