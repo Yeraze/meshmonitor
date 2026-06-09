@@ -16,6 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 - **Airtime cutoff: show contributing infrastructure nodes (#3392)**: The "Cutoff Airtime Utilization Threshold" section (Meshtastic Automation config) now trims the displayed Channel Utilization to at most 2 decimal places and, in neighbours mode, lists the 3 infrastructure nodes whose ChUtil was averaged into the reading (strongest RSSI first) — so it's clear which nodes are driving the cutoff decision.
 
+- **`{DATE}` and `{TIME}` tokens for Auto Announce (#3382)**: Auto Announce messages can now include `{DATE}` and `{TIME}` tokens, rendered with the user's configured date/time format. Resolves #3382.
+
+- **Export MeshCore packet monitor log as JSONL (#3391)**: The MeshCore Packet Monitor can now export its captured log as newline-delimited JSON for offline analysis. Resolves #3391.
+
+- **System appearance theme selection (#3344)**: A new theme option that follows the operating system's light/dark appearance. (Thanks @wilhel1812.)
+
 ### Bug Fixes
 
 - **`{NODECOUNT}`/`{DIRECTCOUNT}` tokens disagreed with the Sources "active" badge (#3389)**: The count tokens used the configurable `maxNodeAgeHours` window (default 24h) while the Sources panel "active" badge counts nodes heard in the last 2h, so an Auto-Acknowledge message could report e.g. "99/91" while the UI showed "62 active" for the same gateway. The tokens now use the same 2h active-node window the badge uses (across auto-ack / announce / geofence / timer / welcome and the auto-responder script env). Telemetry graphs keep the `maxNodeAgeHours` window to avoid a discontinuity.
@@ -23,6 +29,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Auto-Acknowledge `{LONG_NAME}`/`{SHORT_NAME}` resolved as `Unknown`/`????` (#3384)**: The auto-ack template resolver looked up the sender node without a `sourceId`. Under the multi-source composite `(nodeNum, sourceId)` primary key, an unscoped lookup returns the first matching row across *any* source — frequently a different source's row (or none), so the name tokens intermittently fell back to `Unknown`/`????` even when the originating source had the node's name on record (the channel-window title, which reads per-source, always showed it correctly). The lookup is now scoped to the manager's own `sourceId`, matching the already-correct auto-welcome path.
 
 - **Telemetry charts distorted by nodes with bad hardware clocks (#3362)**: A node that reboots without GPS/NTP can broadcast telemetry stamped months or years into the future; those points passed the "last N hours" cutoff and stretched the auto-scaled chart X-axis so every telemetry graph collapsed into a sliver. Telemetry ingest now sanitizes future-dated timestamps at the repository chokepoint — a timestamp more than 1h ahead of server-receipt time (or non-finite) is replaced with the receipt time, and the node's claimed value is preserved in `packetTimestamp` for forensics. The averaged chart query also excludes future-dated rows, so estimates stored before this fix no longer distort the axis. Absurdly-old embedded times are left untouched (indistinguishable from buffered/store-forward telemetry at ingest, and already excluded by the chart's time-window cutoff).
+
+- **Dashboard map ignored the Map Pin Style setting (#3364)**: The unified dashboard map always drew pins regardless of the configured Map Pin Style; it now respects the setting. Resolves #3364.
+
+- **MeshCore showed "Disconnected" while status was still loading (#3380)**: A MeshCore source now displays "Connecting…" during the initial status load instead of momentarily reading as Disconnected. Relates to #3379.
+
+### Security
+
+- **Map Analysis positions endpoint now enforces `viewOnMap` and private-position gates (#3366)**: The analysis positions endpoint (used by Map Analysis "Trails") did not apply the same channel `viewOnMap` and private-position permission checks as the rest of the map, which could expose GPS history to users lacking the required permissions. The gates are now enforced on that endpoint. Resolves #3365.
+
+### Dependencies
+
+- Bumped: `react-router-dom` 7.16.0 → 7.17.0 (#3378), `@tanstack/react-query` 5.100.14 → 5.101.0 (#3377), `protobufjs` 8.4.2 → 8.6.1 (#3376), `@tanstack/react-query-devtools` (#3375), `morgan` 1.10.1 → 1.11.0 (#3374), `i18next` 26.2.0 → 26.3.1 (#3373), `lucide-react` 1.16.0 → 1.17.0 (#3372), `@tanstack/react-virtual` 3.13.26 → 3.14.2 (#3371), the production-dependencies group (9 updates, #3370), `@types/node` (#3368), and `codecov/codecov-action` 6 → 7 (#3367).
 
 ## [4.9.3] - 2026-06-07
 
