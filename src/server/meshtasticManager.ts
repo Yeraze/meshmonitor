@@ -11048,14 +11048,19 @@ class MeshtasticManager implements ISourceManager {
 
     // {LONG_NAME} - Sender node long name
     if (result.includes('{LONG_NAME}')) {
-      const node = await databaseService.nodes.getNode(fromNum);
+      // Scope by sourceId: under the composite (nodeNum, sourceId) PK an
+      // unscoped lookup returns the first row across ANY source, which can be a
+      // different source's node (or nothing), making the token resolve to
+      // 'Unknown' even when this source has the name on record (#3384).
+      const node = await databaseService.nodes.getNode(fromNum, this.sourceId);
       const longName = node?.longName || 'Unknown';
       result = result.replace(/{LONG_NAME}/g, encode(longName));
     }
 
     // {SHORT_NAME} - Sender node short name
     if (result.includes('{SHORT_NAME}')) {
-      const node = await databaseService.nodes.getNode(fromNum);
+      // Scope by sourceId — see {LONG_NAME} above (#3384).
+      const node = await databaseService.nodes.getNode(fromNum, this.sourceId);
       const shortName = node?.shortName || '????';
       result = result.replace(/{SHORT_NAME}/g, encode(shortName));
     }
