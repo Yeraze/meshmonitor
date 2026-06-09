@@ -73,7 +73,7 @@ describe('MeshtasticManager - airtime cutoff gate', () => {
       expect(manager.localChannelUtilization).toBeNull();
       expect(await manager.isAutomationAirtimeGated()).toBe(false);
       expect(await manager.getAirtimeCutoffStatus()).toEqual({
-        threshold: 30, source: 'local', channelUtilization: null, sampleCount: 0, gated: false,
+        threshold: 30, source: 'local', channelUtilization: null, sampleCount: 0, contributors: [], gated: false,
       });
     });
 
@@ -82,7 +82,7 @@ describe('MeshtasticManager - airtime cutoff gate', () => {
       manager.localChannelUtilization = 42;
       expect(await manager.isAutomationAirtimeGated()).toBe(true);
       expect(await manager.getAirtimeCutoffStatus()).toEqual({
-        threshold: 30, source: 'local', channelUtilization: 42, sampleCount: 1, gated: true,
+        threshold: 30, source: 'local', channelUtilization: 42, sampleCount: 1, contributors: [], gated: true,
       });
     });
 
@@ -131,6 +131,10 @@ describe('MeshtasticManager - airtime cutoff gate', () => {
       expect(status.channelUtilization).toBeCloseTo((50 + 40 + 30) / 3); // 40
       expect(status.gated).toBe(true); // 40 > 30
       expect(mockGetActiveNodes).toHaveBeenCalled();
+      // The 3 contributing infrastructure nodes are surfaced, strongest RSSI first.
+      expect(status.contributors).toHaveLength(3);
+      expect(status.contributors.map((c) => c.rssi)).toEqual([-50, -60, -70]);
+      expect(status.contributors[0]).toMatchObject({ nodeNum: 0x22220001, channelUtilization: 50 });
     });
 
     it('falls back to no-gate when no infrastructure neighbours qualify', async () => {
