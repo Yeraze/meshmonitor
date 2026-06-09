@@ -15,7 +15,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Filter, Trash2, Pause, Play, RefreshCw } from 'lucide-react';
+import { Filter, Trash2, Pause, Play, RefreshCw, Download } from 'lucide-react';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useWebSocketContext } from '../../contexts/WebSocketContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -171,6 +171,36 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
     }
   }, [csrfFetch, mcPrefix, t]);
 
+  // Download the captured packet log as JSONL (honors the active filters),
+  // mirroring the Meshtastic packet-monitor export.
+  const handleExport = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (payloadFilter !== '') params.set('payload_type', String(payloadFilter));
+      if (routeFilter !== '') params.set('route_type', String(routeFilter));
+      const res = await csrfFetch(`${mcPrefix}/packets/export?${params.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      // Prefer the server-provided filename (timestamped, filter-aware).
+      const contentDisposition = res.headers.get('Content-Disposition');
+      let filename = 'meshcore-packet-monitor.jsonl';
+      const matches = contentDisposition && /filename="(.+)"/.exec(contentDisposition);
+      if (matches && matches[1]) filename = matches[1];
+
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export packets');
+    }
+  }, [csrfFetch, mcPrefix, payloadFilter, routeFilter]);
+
   return (
     <div className="meshcore-packet-monitor">
       <div className="mcpm-header">
@@ -193,6 +223,9 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
           </button>
           <button className="mcpm-btn" onClick={() => void load()} title={t('common.refresh', 'Refresh')}>
             <RefreshCw size={14} />
+          </button>
+          <button className="mcpm-btn" onClick={() => void handleExport()} title={t('common.export', 'Export')}>
+            <Download size={14} />
           </button>
           {canClear && (
             <button className="mcpm-btn mcpm-btn-danger" onClick={() => void handleClear()} title={t('common.clear', 'Clear')}>
