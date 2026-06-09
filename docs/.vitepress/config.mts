@@ -123,6 +123,7 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: 'Security', link: '/features/security' },
+            { text: 'Impersonation Detection', link: '/features/impersonation-detection' },
             { text: 'Per-Source Permissions', link: '/features/per-source-permissions' },
             { text: 'Admin Commands', link: '/features/admin-commands' },
             { text: 'System Backup & Restore', link: '/features/system-backup' },
