@@ -2998,6 +2998,60 @@ router.get(
 );
 
 /**
+ * GET /api/sources/:id/meshcore/packets/export
+ *
+ * Export this source's OTA packet log as JSONL (newest first), honoring the
+ * same payload_type / route_type / since filters as the list endpoint. Streams
+ * one JSON object per line as an attachment download — the MeshCore analogue of
+ * the Meshtastic packet-monitor export (issue #3391).
+ */
+router.get(
+  '/packets/export',
+  optionalAuth(),
+  requirePermission('packetmonitor', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const payloadType = req.query.payload_type !== undefined ? parseInt(req.query.payload_type as string, 10) : undefined;
+      const routeType = req.query.route_type !== undefined ? parseInt(req.query.route_type as string, 10) : undefined;
+      let since = req.query.since !== undefined ? parseInt(req.query.since as string, 10) : undefined;
+      // Accept seconds or milliseconds (mirror the list endpoint).
+      if (since !== undefined && since < 1e12) since = since * 1000;
+
+      // Export every retained packet matching the filters (up to the cap).
+      const maxCount = await meshcorePacketLogService.getMaxCount();
+      const packets = await meshcorePacketLogService.getPackets({
+        sourceId,
+        offset: 0,
+        limit: maxCount,
+        payloadType: Number.isFinite(payloadType as number) ? payloadType : undefined,
+        routeType: Number.isFinite(routeType as number) ? routeType : undefined,
+        since: Number.isFinite(since as number) ? since : undefined,
+      });
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+      const hasActiveFilters = req.query.payload_type !== undefined ||
+                               req.query.route_type !== undefined ||
+                               req.query.since !== undefined;
+      const filterInfo = hasActiveFilters ? '-filtered' : '';
+      const filename = `meshcore-packet-monitor${filterInfo}-${timestamp}.jsonl`;
+
+      res.setHeader('Content-Type', 'application/x-ndjson');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+      for (const packet of packets) {
+        res.write(JSON.stringify(packet) + '\n');
+      }
+      res.end();
+      logger.debug(`[API] Exported ${packets.length} MeshCore packets to ${filename}`);
+    } catch (error) {
+      logger.error('[API] Error exporting MeshCore packets:', error);
+      res.status(500).json({ success: false, error: 'Failed to export packets' });
+    }
+  },
+);
+
+/**
  * DELETE /api/sources/:id/meshcore/packets
  *
  * Clear this source's OTA packet log. Requires packetmonitor:write.

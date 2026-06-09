@@ -147,6 +147,18 @@ vi.mock('../services/meshcoreTelemetryPoller.js', () => ({
   },
 }));
 
+// Mock the MeshCore packet-log service so the packet-monitor routes don't hit
+// the (fully-mocked) database. Hoisted so the vi.mock factory can reference it.
+const mockPacketService = vi.hoisted(() => ({
+  getPackets: vi.fn(),
+  getPacketCount: vi.fn(),
+  getMaxCount: vi.fn(),
+  getMaxAgeHours: vi.fn(),
+  isEnabled: vi.fn(),
+  clearPackets: vi.fn(),
+}));
+vi.mock('../services/meshcorePacketLogService.js', () => ({ default: mockPacketService }));
+
 import DatabaseService from '../../services/database.js';
 
 // Mutable holder so individual tests can flip the toggle for the
@@ -234,7 +246,7 @@ describe('MeshCore Routes', () => {
       password: 'anonymous123',
       authProvider: 'local',
     });
-    for (const resource of ['connection', 'nodes', 'messages', 'configuration', 'remote_admin'] as const) {
+    for (const resource of ['connection', 'nodes', 'messages', 'configuration', 'remote_admin', 'packetmonitor'] as const) {
       await permissionModel.grant({
         userId: anonymousUser.id,
         resource,
@@ -262,7 +274,7 @@ describe('MeshCore Routes', () => {
       authProvider: 'local'
     });
 
-    for (const resource of ['connection', 'nodes', 'messages', 'configuration', 'remote_admin'] as const) {
+    for (const resource of ['connection', 'nodes', 'messages', 'configuration', 'remote_admin', 'packetmonitor'] as const) {
       await permissionModel.grant({
         userId: user.id,
         resource,
@@ -1753,6 +1765,53 @@ describe('MeshCore Routes', () => {
         expect(response.status).toBe(409);
         expect(response.body.success).toBe(false);
       });
+    });
+  });
+
+  describe('GET /api/sources/test-source/meshcore/packets/export', () => {
+    const samplePackets = [
+      { id: 2, sourceId: 'test-source', timestamp: 1700000002000, payloadType: 1, routeType: 0, rawHex: 'beef' },
+      { id: 1, sourceId: 'test-source', timestamp: 1700000001000, payloadType: 2, routeType: 1, rawHex: 'cafe' },
+    ];
+
+    beforeEach(() => {
+      mockPacketService.getMaxCount.mockResolvedValue(1000);
+      mockPacketService.getPackets.mockResolvedValue(samplePackets);
+    });
+
+    it('exports packets as JSONL with attachment headers', async () => {
+      const response = await authenticatedAgent.get('/api/sources/test-source/meshcore/packets/export');
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('application/x-ndjson');
+      expect(response.headers['content-disposition']).toMatch(/attachment; filename="meshcore-packet-monitor-.*\.jsonl"/);
+
+      const lines = response.text.trim().split('\n');
+      expect(lines).toHaveLength(2);
+      expect(JSON.parse(lines[0])).toMatchObject({ id: 2, payloadType: 1 });
+      expect(JSON.parse(lines[1])).toMatchObject({ id: 1, payloadType: 2 });
+
+      // Exports up to the retention cap, scoped to this source, offset 0.
+      expect(mockPacketService.getPackets).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceId: 'test-source', offset: 0, limit: 1000 }),
+      );
+    });
+
+    it('passes filters through and marks the filename as filtered', async () => {
+      const response = await authenticatedAgent.get(
+        '/api/sources/test-source/meshcore/packets/export?payload_type=1&route_type=0',
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-disposition']).toMatch(/meshcore-packet-monitor-filtered-/);
+      expect(mockPacketService.getPackets).toHaveBeenCalledWith(
+        expect.objectContaining({ payloadType: 1, routeType: 0 }),
+      );
+    });
+
+    it('returns 404 for an unregistered source', async () => {
+      const response = await authenticatedAgent.get('/api/sources/does-not-exist/meshcore/packets/export');
+      expect(response.status).toBe(404);
     });
   });
 });
