@@ -106,8 +106,19 @@ describe('averageStrongestNeighborUtilization', () => {
   });
 
   it('returns null/0 when nothing qualifies', () => {
-    expect(averageStrongestNeighborUtilization([])).toEqual({ value: null, sampleCount: 0 });
-    expect(averageStrongestNeighborUtilization([n({ role: 0 })])).toEqual({ value: null, sampleCount: 0 });
+    expect(averageStrongestNeighborUtilization([])).toEqual({ value: null, sampleCount: 0, contributors: [] });
+    expect(averageStrongestNeighborUtilization([n({ role: 0 })])).toEqual({ value: null, sampleCount: 0, contributors: [] });
+  });
+
+  it('returns the contributing infrastructure nodes (strongest RSSI first)', () => {
+    const r = averageStrongestNeighborUtilization([
+      n({ nodeNum: 3, nodeId: '!3', longName: 'Gamma', rssi: -70, channelUtilization: 30 }),
+      n({ nodeNum: 1, nodeId: '!1', longName: 'Alpha', rssi: -50, channelUtilization: 50 }),
+      n({ nodeNum: 2, nodeId: '!2', longName: 'Beta', rssi: -60, channelUtilization: 40 }),
+      n({ nodeNum: 4, nodeId: '!4', longName: 'Delta', rssi: -90, channelUtilization: 0 }), // excluded by top-3
+    ]);
+    expect(r.contributors.map((c) => c.longName)).toEqual(['Alpha', 'Beta', 'Gamma']);
+    expect(r.contributors[0]).toMatchObject({ nodeNum: 1, nodeId: '!1', rssi: -50, channelUtilization: 50 });
   });
 
   it('picks strongest RSSI (higher dBm) when there are byte/role ties', () => {
