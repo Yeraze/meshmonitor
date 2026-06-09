@@ -57,6 +57,13 @@ const SCRIPT_AUTO_RESPONDER_TIMEOUT_MS = 30_000;
 // Minimum gap between local "re-ignore" admin pushes for the same node (#2601),
 // so a device that can't durably hold the ignore doesn't trigger a command storm.
 const IGNORE_REAPPLY_COOLDOWN_MS = 60_000;
+// Window for the {NODECOUNT}/{DIRECTCOUNT} template tokens, matching the
+// Sources panel's per-source "active" badge (issue #3388). The badge counts
+// nodes heard in the last 2h (getActiveNodeCount default, issue #2883); the
+// tokens previously used the much wider `maxNodeAgeHours` setting, so the
+// sent message disagreed with what the UI showed for the same gateway.
+const ACTIVE_NODE_TOKEN_WINDOW_SECONDS = 7200;
+const ACTIVE_NODE_TOKEN_WINDOW_DAYS = ACTIVE_NODE_TOKEN_WINDOW_SECONDS / 86_400;
 
 /** Parsed auto-responder payload: list of messages to send, plus the
  * raw decoded JSON object (or `{}` if the payload was plain text) so
@@ -9978,12 +9985,11 @@ class MeshtasticManager implements ISourceManager {
       }
     }
 
-    // Add NODECOUNT - active nodes based on maxNodeAgeHours setting (scoped to this source
-    // so auto-responder scripts see the count for their own source, not a cross-source union)
-    const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
-    const maxNodeAgeDays = maxNodeAgeHours / 24;
-    const activeNodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays, this.sourceId);
-    scriptEnv.NODECOUNT = String(activeNodes.length);
+    // Add NODECOUNT - nodes heard in the last 2h (scoped to this source so
+    // auto-responder scripts see the count for their own source, not a
+    // cross-source union). Matches the Sources panel "active" badge (#3388).
+    const activeNodeCount = await databaseService.nodes.getActiveNodeCount(this.sourceId, ACTIVE_NODE_TOKEN_WINDOW_SECONDS);
+    scriptEnv.NODECOUNT = String(activeNodeCount);
 
     // Add location environment variables for the MeshMonitor node (MM_LAT, MM_LON)
     const localNodeInfo = this.getLocalNodeInfo();
@@ -10664,19 +10670,16 @@ class MeshtasticManager implements ISourceManager {
       result = result.replace(/{FEATURES}/g, features.join(' '));
     }
 
-    // {NODECOUNT} - Active nodes based on maxNodeAgeHours setting (scoped to this source)
+    // {NODECOUNT} - Nodes heard in the last 2h, matching the Sources panel
+    // "active" badge (scoped to this source) (#3388)
     if (result.includes('{NODECOUNT}')) {
-      const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
-      const maxNodeAgeDays = maxNodeAgeHours / 24;
-      const nodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays, this.sourceId);
-      result = result.replace(/{NODECOUNT}/g, nodes.length.toString());
+      const activeNodeCount = await databaseService.nodes.getActiveNodeCount(this.sourceId, ACTIVE_NODE_TOKEN_WINDOW_SECONDS);
+      result = result.replace(/{NODECOUNT}/g, activeNodeCount.toString());
     }
 
-    // {DIRECTCOUNT} - Direct nodes (0 hops) from active nodes (scoped to this source)
+    // {DIRECTCOUNT} - Direct nodes (0 hops) among nodes heard in the last 2h (scoped to this source) (#3388)
     if (result.includes('{DIRECTCOUNT}')) {
-      const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
-      const maxNodeAgeDays = maxNodeAgeHours / 24;
-      const nodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays, this.sourceId);
+      const nodes = await databaseService.nodes.getActiveNodes(ACTIVE_NODE_TOKEN_WINDOW_DAYS, this.sourceId);
       const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
       result = result.replace(/{DIRECTCOUNT}/g, directCount.toString());
     }
@@ -10935,22 +10938,18 @@ class MeshtasticManager implements ISourceManager {
       result = result.replace(/{FEATURES}/g, encode(features.join(' ')));
     }
 
-    // {NODECOUNT} - Active nodes based on maxNodeAgeHours setting
+    // {NODECOUNT} - Nodes heard in the last 2h, matching the Sources panel "active" badge (#3388)
     if (result.includes('{NODECOUNT}')) {
-      const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
-      const maxNodeAgeDays = maxNodeAgeHours / 24;
-      const nodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays, this.sourceId);
-      logger.info(`📢 Token replacement - NODECOUNT: ${nodes.length} active nodes (maxNodeAgeHours: ${maxNodeAgeHours})`);
-      result = result.replace(/{NODECOUNT}/g, encode(nodes.length.toString()));
+      const activeNodeCount = await databaseService.nodes.getActiveNodeCount(this.sourceId, ACTIVE_NODE_TOKEN_WINDOW_SECONDS);
+      logger.info(`📢 Token replacement - NODECOUNT: ${activeNodeCount} active nodes (last 2h)`);
+      result = result.replace(/{NODECOUNT}/g, encode(activeNodeCount.toString()));
     }
 
-    // {DIRECTCOUNT} - Direct nodes (0 hops) from active nodes (scoped to this source)
+    // {DIRECTCOUNT} - Direct nodes (0 hops) among nodes heard in the last 2h (scoped to this source) (#3388)
     if (result.includes('{DIRECTCOUNT}')) {
-      const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
-      const maxNodeAgeDays = maxNodeAgeHours / 24;
-      const nodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays, this.sourceId);
+      const nodes = await databaseService.nodes.getActiveNodes(ACTIVE_NODE_TOKEN_WINDOW_DAYS, this.sourceId);
       const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
-      logger.info(`📢 Token replacement - DIRECTCOUNT: ${directCount} direct nodes out of ${nodes.length} active nodes`);
+      logger.info(`📢 Token replacement - DIRECTCOUNT: ${directCount} direct nodes out of ${nodes.length} active nodes (last 2h)`);
       result = result.replace(/{DIRECTCOUNT}/g, encode(directCount.toString()));
     }
 

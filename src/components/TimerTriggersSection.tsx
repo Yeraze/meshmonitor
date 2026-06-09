@@ -39,8 +39,8 @@ const AVAILABLE_TOKENS = [
   { token: '{VERSION}', description: 'MeshMonitor version' },
   { token: '{DURATION}', description: 'Server uptime' },
   { token: '{FEATURES}', description: 'Enabled features as emojis' },
-  { token: '{NODECOUNT}', description: 'Active nodes (filtered by maxNodeAgeHours)' },
-  { token: '{DIRECTCOUNT}', description: 'Direct nodes (0 hops)' },
+  { token: '{NODECOUNT}', description: 'Active nodes (heard in last 2h, matches Sources panel)' },
+  { token: '{DIRECTCOUNT}', description: 'Direct nodes (0 hops) heard in last 2h' },
   { token: '{TOTALNODES}', description: 'Total nodes ever seen' },
 ];
 
