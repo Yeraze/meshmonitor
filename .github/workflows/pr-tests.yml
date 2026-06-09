@@ -22,7 +22,10 @@ jobs:
   quick-test:
     name: Quick Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The full unit suite (npm run test:run) now runs right at ~10 min on CI,
+    # so a 10-min cap intermittently cancels the job at the boundary even though
+    # every step passes. Give it headroom so the check stops flaking (#3385).
+    timeout-minutes: 15
 
     services:
       postgres:
