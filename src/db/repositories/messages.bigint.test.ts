@@ -125,6 +125,7 @@ describe('Messages BIGINT round-trip (SQLite)', () => {
         sourceId TEXT,
         source_ip TEXT,
         source_path TEXT,
+        spoofSuspected INTEGER,
         FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum) ON DELETE CASCADE,
         FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum) ON DELETE CASCADE
       )

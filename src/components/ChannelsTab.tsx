@@ -514,6 +514,9 @@ export default function ChannelsTab({
 
   // Helper: check if message is mine
   const isMyMessage = (msg: MeshMessage): boolean => {
+    // A spoof-suspected message claims our node id but arrived over RF — never
+    // treat it as one of our own outgoing messages (#2584).
+    if (msg.spoofSuspected) return false;
     return msg.from === currentNodeId || msg.isLocalMessage === true;
   };
 
@@ -1089,7 +1092,15 @@ export default function ChannelsTab({
                                       </button>
                                     </div>
                                   )}
-                                  <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}`}>
+                                  <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}${msg.spoofSuspected ? ' spoofed' : ''}`}>
+                                    {msg.spoofSuspected && (
+                                      <div
+                                        className="message-spoof-warning"
+                                        title={t('channels.spoof_warning_title', 'This message claims to be from your node but arrived over RF — someone may be impersonating your node.')}
+                                      >
+                                        ⚠️ {t('channels.spoof_warning', 'Possible impersonation of your node')}
+                                      </div>
+                                    )}
                                     <div className="message-text-row">
                                       <div className="message-text" style={{ whiteSpace: 'pre-line' }}>
                                         {renderMessageWithLinks(msg.text)}

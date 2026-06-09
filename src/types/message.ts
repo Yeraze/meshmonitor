@@ -51,4 +51,10 @@ export interface MeshMessage {
   sourceIp?: string | null;
   /** Categorical message ingress path. */
   sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null;
+  /**
+   * Impersonation flag (#2584): the message claims to originate from our own
+   * locally-connected node but arrived over RF and wasn't recently sent by us —
+   * a likely spoof. Such messages must NOT be rendered as our own outgoing.
+   */
+  spoofSuspected?: boolean;
 }

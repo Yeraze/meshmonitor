@@ -655,7 +655,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                         <tr
                           key={packet.id}
                           onClick={() => setSelectedPacket(packet)}
-                          className={selectedPacket?.id === packet.id ? 'selected' : ''}
+                          className={`${selectedPacket?.id === packet.id ? 'selected' : ''}${packet.spoof_suspected ? ' spoofed-row' : ''}`}
                           style={{
                             position: 'absolute',
                             top: 0,
@@ -671,11 +671,13 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                             {virtualRow.index + 1}
                           </td>
                           <td
-                            className={`direction ${packet.direction === 'tx' ? 'direction-tx' : 'direction-rx'}`}
+                            className={`direction ${packet.direction === 'tx' ? 'direction-tx' : 'direction-rx'}${packet.spoof_suspected ? ' spoofed' : ''}`}
                             style={{ width: '35px' }}
-                            title={packet.direction === 'tx' ? t('packet_monitor.direction_tx') : t('packet_monitor.direction_rx')}
+                            title={packet.spoof_suspected
+                              ? t('packet_monitor.spoof_suspected', 'Possible impersonation: claims your node id but arrived over RF')
+                              : (packet.direction === 'tx' ? t('packet_monitor.direction_tx') : t('packet_monitor.direction_rx'))}
                           >
-                            {packet.direction === 'tx' ? 'TX' : 'RX'}
+                            {packet.spoof_suspected ? '⚠️' : (packet.direction === 'tx' ? 'TX' : 'RX')}
                           </td>
                           <td
                             className={`transport-mechanism transport-${packet.transport_mechanism ?? 'unknown'}`}
