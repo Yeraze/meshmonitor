@@ -69,7 +69,8 @@ describe('MessagesRepository.updateMessageTimestamps', () => {
         createdAt INTEGER NOT NULL,
         decrypted_by TEXT,
         source_ip TEXT,
-        source_path TEXT
+        source_path TEXT,
+        spoofSuspected INTEGER
       )
     `);
 

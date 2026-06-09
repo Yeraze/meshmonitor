@@ -54,6 +54,11 @@ export class MessagesRepository extends BaseRepository {
       sourceIp: messageData.sourceIp ?? null,
       sourcePath: messageData.sourcePath ?? null,
     };
+    // Only write the spoof flag when set, so the column is referenced only for
+    // suspect messages (avoids touching the many hardcoded test fixtures). (#2584)
+    if (messageData.spoofSuspected) {
+      values.spoofSuspected = true;
+    }
     if (sourceId) {
       values.sourceId = sourceId;
     }
@@ -323,6 +328,9 @@ export class MessagesRepository extends BaseRepository {
       sourceIp: (messageData as any).sourceIp ?? null,
       sourcePath: (messageData as any).sourcePath ?? null,
     };
+    if ((messageData as any).spoofSuspected) {
+      values.spoofSuspected = true;
+    }
     if (sourceId) {
       values.sourceId = sourceId;
     }

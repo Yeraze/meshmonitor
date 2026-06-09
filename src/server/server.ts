@@ -2482,6 +2482,7 @@ function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
     decryptedBy: msg.decryptedBy ?? (msg as any).decrypted_by ?? null,
     sourceIp: (msg as any).sourceIp ?? (msg as any).source_ip ?? null,
     sourcePath: (msg as any).sourcePath ?? (msg as any).source_path ?? null,
+    spoofSuspected: Boolean((msg as any).spoofSuspected),
   };
 }
 

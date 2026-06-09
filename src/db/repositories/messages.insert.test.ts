@@ -70,7 +70,8 @@ describe('MessagesRepository.insertMessage duplicate detection', () => {
         decrypted_by TEXT,
         sourceId TEXT,
         source_ip TEXT,
-        source_path TEXT
+        source_path TEXT,
+        spoofSuspected INTEGER
       )
     `);
 

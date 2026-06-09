@@ -97,6 +97,7 @@ import { migration as dropResidualNotifPrefsUserIdUniqueMigration, runMigration0
 import { migration as lowBatteryVoltageThresholdMigration, runMigration080Postgres as runMigration080VoltagePostgres, runMigration080Mysql as runMigration080VoltageMysql } from '../server/migrations/080_add_low_battery_voltage_threshold.js';
 import { migration as sourcesDisplayOrderMigration, runMigration081Postgres as runMigration081DisplayOrderPostgres, runMigration081Mysql as runMigration081DisplayOrderMysql } from '../server/migrations/081_add_sources_display_order.js';
 import { migration as estimatedPositionsMigration, runMigration082EstimatedPositionsPostgres, runMigration082EstimatedPositionsMysql } from '../server/migrations/082_add_estimated_positions_table.js';
+import { migration as spoofSuspectedMigration, runMigration083Postgres as runSpoofSuspectedPostgres, runMigration083Mysql as runSpoofSuspectedMysql } from '../server/migrations/083_add_spoof_suspected.js';
 
 // ============================================================================
 // Registry
@@ -1313,4 +1314,19 @@ registry.register({
   sqlite: (db) => estimatedPositionsMigration.up(db),
   postgres: (client) => runMigration082EstimatedPositionsPostgres(client),
   mysql: (pool) => runMigration082EstimatedPositionsMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 083: Add spoof/impersonation flags (messages.spoofSuspected and
+// packet_log.spoof_suspected) for local-node impersonation detection.
+// See https://github.com/Yeraze/meshmonitor/issues/2584
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 83,
+  name: 'add_spoof_suspected',
+  settingsKey: 'migration_083_add_spoof_suspected',
+  sqlite: (db) => spoofSuspectedMigration.up(db),
+  postgres: (client) => runSpoofSuspectedPostgres(client),
+  mysql: (pool) => runSpoofSuspectedMysql(pool),
 });

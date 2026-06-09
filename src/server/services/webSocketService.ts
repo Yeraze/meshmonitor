@@ -57,6 +57,7 @@ function transformMessageForClient(msg: DbMessage): unknown {
         ? true
         : undefined,
     decryptedBy: msg.decryptedBy ?? (msg as any).decrypted_by ?? null,
+    spoofSuspected: Boolean((msg as any).spoofSuspected),
   };
 }
 

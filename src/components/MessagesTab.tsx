@@ -481,6 +481,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
   const isMyMessage = useCallback(
     (msg: MeshMessage): boolean => {
+      // Spoof-suspected messages claim our node id but arrived over RF — never
+      // treat them as our own outgoing (#2584).
+      if (msg.spoofSuspected) return false;
       return msg.from === currentNodeId || msg.isLocalMessage === true;
     },
     [currentNodeId]

@@ -31,6 +31,8 @@ export interface PacketLog {
   decrypted_by?: 'node' | 'server' | null;
   decrypted_channel_id?: number | null;
   transport_mechanism?: number;
+  /** Impersonation flag (#2584): claims from == our local node but arrived over RF. */
+  spoof_suspected?: boolean;
   /** Present on cross-source (unified) packet rows — the source that received it. */
   sourceId?: string;
   sourceName?: string;

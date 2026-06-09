@@ -329,6 +329,16 @@
   color: var(--ctp-peach, #fab387);
 }
 
+/* Impersonation/spoof-suspected packet (#2584): claims our local node id but
+   arrived over RF. */
+.packet-table .direction.spoofed {
+  color: var(--ctp-red, #f38ba8);
+}
+
+.packet-table tr.spoofed-row td {
+  background: color-mix(in srgb, var(--ctp-red, #f38ba8) 12%, transparent);
+}
+
 /* Transport mechanism column colors */
 .packet-table .transport-mechanism {
   font-size: 0.85em;
