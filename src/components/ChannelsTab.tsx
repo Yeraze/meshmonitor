@@ -212,15 +212,20 @@ export default function ChannelsTab({
   const { isChannelMuted, muteChannel, unmuteChannel } = useNotificationMuteSettings();
 
   const [showMuteMenu, setShowMuteMenu] = useState<number | null>(null);
+  // Mobile overflow ("⋯") menu — collapses info / notifications / mark-all-read
+  // / Show-MQTT into a single kebab next to the selector on narrow screens (#3385).
+  const [showChannelMenu, setShowChannelMenu] = useState(false);
 
   const handleMuteChannel = async (channelId: number, muteUntil: number | null) => {
     await muteChannel(channelId, muteUntil);
     setShowMuteMenu(null);
+    setShowChannelMenu(false);
   };
 
   const handleUnmuteChannel = async (channelId: number) => {
     await unmuteChannel(channelId);
     setShowMuteMenu(null);
+    setShowChannelMenu(false);
   };
 
   // Refs
@@ -696,6 +701,81 @@ export default function ChannelsTab({
               <input type="checkbox" checked={showMqttMessages} onChange={e => setShowMqttMessages(e.target.checked)} />
               {t('channels.show_mqtt_messages')}
             </label>
+          )}
+          {/* Mobile overflow ("⋯") menu — collapses info / notifications /
+              mark-all-read / Show-MQTT into one kebab beside the selector.
+              Hidden on desktop via CSS; the inline controls above are hidden on
+              mobile so only one of the two is ever visible (#3385). */}
+          {shouldShowData() && availableChannels.length > 0 && selectedChannel !== -1 && (
+            <div className="channel-overflow">
+              <button
+                className="btn btn-secondary channel-overflow-btn"
+                onClick={() => setShowChannelMenu(v => !v)}
+                title={t('channels.channel_options', 'Channel options')}
+                aria-label={t('channels.channel_options', 'Channel options')}
+                aria-haspopup="true"
+                aria-expanded={showChannelMenu}
+              >
+                ⋯
+              </button>
+              {showChannelMenu && (
+                <>
+                  <div
+                    style={{ position: 'fixed', inset: 0, zIndex: 999 }}
+                    onClick={() => setShowChannelMenu(false)}
+                  />
+                  <div className="channel-overflow-menu">
+                    <button
+                      className="channel-overflow-item"
+                      onClick={() => { setShowChannelMenu(false); handleInfoLinkClick(selectedChannel); }}
+                    >
+                      ℹ️ {t('channels.info_link')}
+                    </button>
+                    <button
+                      className="channel-overflow-item"
+                      onClick={() => { setShowChannelMenu(false); markMessagesAsRead(undefined, selectedChannel); }}
+                    >
+                      ✅ {t('channels.mark_all_read_button')}
+                    </button>
+                    {!mqttReadOnly && (
+                      <button
+                        className="channel-overflow-item"
+                        onClick={() => setShowMqttMessages(!showMqttMessages)}
+                      >
+                        {showMqttMessages ? '☑️' : '⬜'} {t('channels.show_mqtt_messages')}
+                      </button>
+                    )}
+                    <div className="channel-overflow-divider" />
+                    {isChannelMuted(selectedChannel) && (
+                      <button
+                        className="channel-overflow-item"
+                        onClick={() => handleUnmuteChannel(selectedChannel)}
+                      >
+                        🔔 {t('notifications.unmute', 'Unmute')}
+                      </button>
+                    )}
+                    <button
+                      className="channel-overflow-item"
+                      onClick={() => handleMuteChannel(selectedChannel, null)}
+                    >
+                      🔇 {t('notifications.mute_indefinite', 'Mute indefinitely')}
+                    </button>
+                    <button
+                      className="channel-overflow-item"
+                      onClick={() => handleMuteChannel(selectedChannel, Date.now() + 60 * 60 * 1000)}
+                    >
+                      🕐 {t('notifications.mute_1h', 'Mute for 1 hour')}
+                    </button>
+                    <button
+                      className="channel-overflow-item"
+                      onClick={() => handleMuteChannel(selectedChannel, Date.now() + 7 * 24 * 60 * 60 * 1000)}
+                    >
+                      📅 {t('notifications.mute_1w', 'Mute for 1 week')}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>

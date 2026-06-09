@@ -1463,37 +1463,38 @@ body {
     display: none;
   }
 
-  /* Fixed header section. The selector + per-channel actions live in
-     .channels-controls (#3385); on narrow screens stack the heading above the
-     controls (DOM order) instead of fighting to share one row. */
+  /* Fixed header section. On narrow screens everything collapses to a single
+     row: heading + selector + a "⋯" overflow menu (#3385). The inline
+     per-channel actions and MQTT toggle are hidden here and surfaced through
+     the kebab instead, so the header never spills past one line. */
   .channels-header {
     flex-shrink: 0;
     padding: 0.25rem 0;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.4rem;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
   }
 
   .channels-header h2 {
-    font-size: 1.1rem;
-    margin: 0.25rem 0;
+    font-size: 1rem;
+    margin: 0;
+    flex-shrink: 0;
   }
 
   .channels-controls {
     margin-top: 0;
-    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
+    flex-wrap: nowrap;
     gap: 0.5rem;
   }
 
-  .mqtt-toggle {
-    font-size: 0.85rem;
-  }
-
-  /* Mobile: selector takes its own full-width row; the per-channel actions and
-     MQTT toggle wrap onto the next line beneath it (#3385). */
+  /* Selector grows to fill the row; the kebab sits at the far right. */
   .channel-dropdown {
     margin-bottom: 0;
-    flex: 1 1 100%;
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .channel-dropdown-select {
@@ -1501,11 +1502,17 @@ body {
     max-width: 100%;
   }
 
-  /* Keep info / mute / Mark-all-read together on one row; the MQTT toggle
-     wraps to the line below. */
-  .channel-actions {
-    flex-wrap: nowrap;
-    flex-shrink: 0;
+  /* Inline desktop controls are replaced by the overflow menu on mobile.
+     Use .channels-controls-scoped selectors (0,2,0) so these beat the base
+     .channel-actions / .channel-overflow rules, which are defined AFTER this
+     media block and would otherwise win at equal specificity. */
+  .channels-controls .channel-actions,
+  .channels-controls .mqtt-toggle {
+    display: none;
+  }
+
+  .channels-controls .channel-overflow {
+    display: block;
   }
 
   /* Make channel conversation section fill remaining space */
@@ -1802,6 +1809,60 @@ body {
 /* Push the MQTT toggle to the far right edge of the controls row. */
 .channels-controls .mqtt-toggle {
   margin-left: auto;
+}
+
+/* Mobile overflow ("⋯") menu (#3385). Hidden on desktop — the inline controls
+   above are the desktop affordance; the kebab only appears on narrow screens. */
+.channel-overflow {
+  display: none;
+  position: relative;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.channel-overflow-btn {
+  padding: 0.35rem 0.6rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.channel-overflow-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: 6px;
+  z-index: 1000;
+  min-width: 230px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.channel-overflow-item {
+  display: block;
+  width: 100%;
+  padding: 0.65rem 1rem;
+  background: none;
+  border: none;
+  color: var(--ctp-text);
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.channel-overflow-item:hover {
+  background: var(--ctp-surface1);
+}
+
+.channel-overflow-divider {
+  height: 1px;
+  background: var(--ctp-surface2);
+  margin: 0.25rem 0;
 }
 
 .mqtt-toggle {
