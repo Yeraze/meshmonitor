@@ -133,6 +133,8 @@ export interface DbMessage {
   sourceIp?: string | null;
   /** Categorical message ingress path. NULL for pre-migration rows. */
   sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null;
+  /** Impersonation flag (#2584): message claims from == our local node but arrived over RF and wasn't sent by us. */
+  spoofSuspected?: boolean | null;
 }
 
 /**
@@ -265,6 +267,8 @@ export interface DbPacketLog {
   decrypted_channel_id?: number | null;
   transport_mechanism?: number | null;
   sourceId?: string | null;
+  /** Impersonation flag (#2584): packet claims from == our local node but arrived over RF and wasn't sent by us. */
+  spoof_suspected?: boolean | null;
 }
 
 /**

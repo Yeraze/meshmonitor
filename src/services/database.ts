@@ -133,6 +133,8 @@ export interface DbMessage {
   routingErrorReceived?: boolean;
   ackFromNode?: number;
   decryptedBy?: 'node' | 'server' | null;
+  /** Impersonation flag (#2584): claims from == our local node but arrived over RF. */
+  spoofSuspected?: boolean | null;
 }
 
 export interface DbChannel {
@@ -2977,6 +2979,7 @@ class DatabaseService {
       wantAck: msg.wantAck ?? undefined,
       routingErrorReceived: msg.routingErrorReceived ?? undefined,
       ackFromNode: msg.ackFromNode ?? undefined,
+      spoofSuspected: msg.spoofSuspected ?? undefined,
     };
   }
 

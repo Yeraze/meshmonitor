@@ -73,7 +73,8 @@ describe('MessagesRepository sync purge helpers', () => {
         decrypted_by TEXT,
         sourceId TEXT,
         source_ip TEXT,
-        source_path TEXT
+        source_path TEXT,
+        spoofSuspected INTEGER
       )
     `);
 

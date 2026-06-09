@@ -31,6 +31,7 @@ import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { detectChannelMoves } from './utils/channelMoveDetection.js';
 import { mergeNodesAcrossSources } from './utils/mergeNodesAcrossSources.js';
+import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } from './utils/spoofDetection.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
 import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName } from './constants/meshtastic.js';
 import { normalizeChannelRole } from './constants/channelRole.js';
@@ -343,6 +344,7 @@ type TextMessage = {
   viaStoreForward?: boolean; // Message received via Store & Forward replay
   sourceIp?: string | null; // Per-message ingress attribution (client IP for HTTP injects)
   sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null;
+  spoofSuspected?: boolean; // #2584 — claims from == our local node but arrived over RF
 };
 
 /**
@@ -602,6 +604,11 @@ class MeshtasticManager implements ISourceManager {
   private autoAckProcessedPackets: Set<number> = new Set(); // packetIds already auto-acked (dedup guard)
   private autoResponderCooldowns: Map<string, number> = new Map(); // "triggerIndex:nodeNum" -> lastResponseTimestamp
   private autoResponderProcessedPackets: Set<number> = new Set(); // packetIds already auto-responded (dedup guard)
+
+  // Ring buffer of packet ids we recently originated, used to recognise our own
+  // packets when overheard/echoed/replayed so they aren't flagged as local-node
+  // spoofs (#2584). See assessLocalSpoof().
+  private sentPacketIds = new SentPacketIdCache();
 
   // Auto-ping session tracking
   private autoPingSessions: Map<number, AutoPingSession> = new Map(); // keyed by requester nodeNum
@@ -4301,6 +4308,30 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * Assess whether an incoming packet is impersonating this source's local node
+   * (#2584). A packet whose `from` equals our local node number but which
+   * arrived over RF (rx metadata / travelled hops) and was not recently sent by
+   * us is a spoof candidate. Used to (a) keep the packet-log direction honest
+   * and (b) flag suspect messages. Cheap and side-effect-free.
+   */
+  private assessLocalSpoof(meshPacket: any): SpoofDetectionResult {
+    const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
+    const packetId = meshPacket.id ?? null;
+    return detectLocalNodeSpoof({
+      fromNum,
+      localNodeNum: this.localNodeInfo?.nodeNum ?? null,
+      transportMechanism: meshPacket.transportMechanism,
+      hopStart: meshPacket.hopStart ?? (meshPacket as any).hop_start ?? null,
+      hopLimit: meshPacket.hopLimit ?? (meshPacket as any).hop_limit ?? null,
+      rxSnr: meshPacket.rxSnr ?? (meshPacket as any).rx_snr ?? null,
+      rxRssi: meshPacket.rxRssi ?? (meshPacket as any).rx_rssi ?? null,
+      viaMqtt: meshPacket.viaMqtt === true || isViaMqtt(meshPacket.transportMechanism),
+      packetId,
+      wasRecentlySentByUs: this.sentPacketIds.has(packetId),
+    });
+  }
+
+  /**
    * Get cached remote node config
    * @param nodeNum The remote node number
    * @returns The cached config for the remote node, or null if not available
@@ -4914,6 +4945,11 @@ class MeshtasticManager implements ISourceManager {
           metadata.decoded_payload = decodedPayload;
         }
 
+        // Impersonation check (#2584): a packet claiming from == our local node
+        // that reaches here (phantom-internal packets were already filtered out
+        // above) arrived over the air, so it is a reception, not our own 'tx'.
+        const spoof = this.assessLocalSpoof(meshPacket);
+
         packetLogService.logPacket({
           packet_id: meshPacket.id ?? undefined,
           timestamp: Date.now(), // Use server time in ms for consistent ordering (rxTime preserved in metadata.rx_time)
@@ -4935,7 +4971,10 @@ class MeshtasticManager implements ISourceManager {
           priority: meshPacket.priority ?? undefined,
           payload_preview: payloadPreview ?? undefined,
           metadata: JSON.stringify(metadata),
-          direction: fromNum === this.localNodeInfo?.nodeNum ? 'tx' : 'rx',
+          // 'tx' ONLY for genuine local transmissions (internal, fresh, no RX
+          // metadata). A spoofed packet claiming our node number is a reception.
+          direction: spoof.isGenuineLocalTx ? 'tx' : 'rx',
+          spoof_suspected: spoof.spoofSuspected || undefined,
           decrypted_by: decryptedBy ?? undefined,
           decrypted_channel_id: decryptedChannelId ?? undefined,
           // Note: ?? (nullish coalescing) correctly preserves 0 (INTERNAL), only defaults on null/undefined
@@ -5350,6 +5389,9 @@ class MeshtasticManager implements ISourceManager {
           // mqttIngestion.ts and uses 'mqtt_bridge').
           sourceIp: null,
           sourcePath: 'tcp_radio',
+          // #2584 — flag messages that claim to be from our own node but
+          // arrived over RF (and weren't recently sent by us).
+          spoofSuspected: this.assessLocalSpoof(meshPacket).spoofSuspected || undefined,
         };
         const wasInserted = await databaseService.messages.insertMessage(message, this.sourceId);
 
@@ -7905,6 +7947,11 @@ class MeshtasticManager implements ISourceManager {
       }
 
       const { data: textMessageData, messageId } = meshtasticProtobufService.createTextMessage(text, destination, channel, replyId, emoji, pkiEncrypted);
+
+      // Remember our own packet id so that if this message is overheard
+      // rebroadcast, echoed by MQTT, or replayed by store-and-forward, it isn't
+      // mistaken for a local-node spoof (#2584).
+      this.sentPacketIds.record(messageId);
 
       await this.transport.send(textMessageData);
 

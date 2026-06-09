@@ -43,6 +43,9 @@ export const messagesSqlite = sqliteTable('messages', {
   // Per-message ingress attribution (nullable — NULL for pre-migration rows)
   sourceIp: text('source_ip'),
   sourcePath: text('source_path'),
+  // Impersonation flag (#2584): set when a message claims from == this source's
+  // local node but arrived over RF and wasn't recently sent by us.
+  spoofSuspected: integer('spoofSuspected', { mode: 'boolean' }),
 });
 
 // PostgreSQL schema
@@ -81,6 +84,7 @@ export const messagesPostgres = pgTable('messages', {
   // Per-message ingress attribution (nullable — NULL for pre-migration rows)
   sourceIp: pgText('source_ip'),
   sourcePath: pgText('source_path'),
+  spoofSuspected: pgBoolean('spoofSuspected'),
 });
 
 // MySQL schema
@@ -119,6 +123,7 @@ export const messagesMysql = mysqlTable('messages', {
   // Per-message ingress attribution (nullable — NULL for pre-migration rows)
   sourceIp: myVarchar('source_ip', { length: 64 }),
   sourcePath: myVarchar('source_path', { length: 16 }),
+  spoofSuspected: myBoolean('spoofSuspected'),
 });
 
 // Type inference

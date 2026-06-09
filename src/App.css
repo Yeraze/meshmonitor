@@ -1210,6 +1210,26 @@ body {
   font-size: 0.95rem; /* Slightly smaller than base font */
 }
 
+/* Impersonation warning on a spoof-suspected message (#2584). */
+.message-bubble.spoofed {
+  border: 1px solid var(--ctp-red);
+  box-shadow: 0 0 0 1px var(--ctp-red) inset;
+}
+
+.message-spoof-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ctp-red) 18%, transparent);
+  color: var(--ctp-red);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: help;
+}
+
 .message-details {
   display: flex;
   gap: 1rem;

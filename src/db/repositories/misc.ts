@@ -1001,6 +1001,10 @@ export class MiscRepository extends BaseRepository {
         decrypted_by: packet.decrypted_by ?? null,
         decrypted_channel_id: packet.decrypted_channel_id ?? null,
       };
+      // Only write the spoof flag when set (see messages insert rationale). (#2584)
+      if (packet.spoof_suspected) {
+        values.spoof_suspected = true;
+      }
       if (sourceId) {
         values.sourceId = sourceId;
       }

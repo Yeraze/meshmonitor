@@ -37,6 +37,9 @@ export const packetLogSqlite = sqliteTable('packet_log', {
   transport_mechanism: integer('transport_mechanism'), // TransportMechanism enum value (0=INTERNAL, 1=LORA, 5=MQTT, etc.)
   // Source association (nullable — NULL = legacy default source)
   sourceId: text('sourceId'),
+  // Impersonation flag (#2584): set when a packet claims from == this source's
+  // local node but arrived over RF and wasn't recently sent by us.
+  spoof_suspected: integer('spoof_suspected', { mode: 'boolean' }),
 });
 
 // PostgreSQL schema
@@ -72,6 +75,7 @@ export const packetLogPostgres = pgTable('packet_log', {
   transport_mechanism: pgInteger('transport_mechanism'), // TransportMechanism enum value (0=INTERNAL, 1=LORA, 5=MQTT, etc.)
   // Source association (nullable — NULL = legacy default source)
   sourceId: pgText('sourceId'),
+  spoof_suspected: pgBoolean('spoof_suspected'),
 });
 
 // MySQL schema
@@ -107,6 +111,7 @@ export const packetLogMysql = mysqlTable('packet_log', {
   transport_mechanism: myInt('transport_mechanism'), // TransportMechanism enum value (0=INTERNAL, 1=LORA, 5=MQTT, etc.)
   // Source association (nullable — NULL = legacy default source)
   sourceId: myVarchar('sourceId', { length: 36 }),
+  spoof_suspected: myBoolean('spoof_suspected'),
 });
 
 // Type inference
