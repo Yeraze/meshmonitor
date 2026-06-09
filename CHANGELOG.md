@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Bug Fixes
 
+- **Auto-Acknowledge `{LONG_NAME}`/`{SHORT_NAME}` resolved as `Unknown`/`????` (#3384)**: The auto-ack template resolver looked up the sender node without a `sourceId`. Under the multi-source composite `(nodeNum, sourceId)` primary key, an unscoped lookup returns the first matching row across *any* source — frequently a different source's row (or none), so the name tokens intermittently fell back to `Unknown`/`????` even when the originating source had the node's name on record (the channel-window title, which reads per-source, always showed it correctly). The lookup is now scoped to the manager's own `sourceId`, matching the already-correct auto-welcome path.
+
 - **Telemetry charts distorted by nodes with bad hardware clocks (#3362)**: A node that reboots without GPS/NTP can broadcast telemetry stamped months or years into the future; those points passed the "last N hours" cutoff and stretched the auto-scaled chart X-axis so every telemetry graph collapsed into a sliver. Telemetry ingest now sanitizes future-dated timestamps at the repository chokepoint — a timestamp more than 1h ahead of server-receipt time (or non-finite) is replaced with the receipt time, and the node's claimed value is preserved in `packetTimestamp` for forensics. The averaged chart query also excludes future-dated rows, so estimates stored before this fix no longer distort the axis. Absurdly-old embedded times are left untouched (indistinguishable from buffered/store-forward telemetry at ingest, and already excluded by the chart's time-window cutoff).
 
 ## [4.9.3] - 2026-06-07
