@@ -594,6 +594,103 @@ export default function ChannelsTab({
               </select>
             </div>
           )}
+          {/* Per-channel actions (info, mute, mark-all-read) folded into the
+              single controls row so there is no separate channel-title bar
+              below — the selector already names the channel (#3385). */}
+          {shouldShowData() && availableChannels.length > 0 && selectedChannel !== -1 && (
+            <div className="channel-actions">
+              <a
+                href="#"
+                className="channel-info-link"
+                onClick={e => {
+                  e.preventDefault();
+                  handleInfoLinkClick(selectedChannel);
+                }}
+                title={t('channels.show_channel_info')}
+                style={{ fontSize: '0.8rem' }}
+              >
+                {t('channels.info_link')}
+              </a>
+              {/* Mute button */}
+              <div style={{ position: 'relative' }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowMuteMenu(showMuteMenu === selectedChannel ? null : selectedChannel)}
+                  title={isChannelMuted(selectedChannel) ? t('notifications.mute_channel_active', 'Muted — click to change') : t('notifications.mute_channel', 'Mute notifications')}
+                  style={{ padding: '0.4rem 0.55rem', fontSize: '0.9rem' }}
+                  aria-label={isChannelMuted(selectedChannel) ? 'Muted' : 'Mute channel'}
+                >
+                  {isChannelMuted(selectedChannel) ? '🔇' : '🔔'}
+                </button>
+                {showMuteMenu === selectedChannel && (
+                  <>
+                    <div
+                      style={{ position: 'fixed', inset: 0, zIndex: 999 }}
+                      onClick={() => setShowMuteMenu(null)}
+                    />
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: '4px',
+                      background: 'var(--ctp-surface0)',
+                      border: '1px solid var(--ctp-surface2)',
+                      borderRadius: '4px',
+                      zIndex: 1000,
+                      minWidth: '180px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                      overflow: 'hidden',
+                    }}>
+                      {isChannelMuted(selectedChannel) && (
+                        <button
+                          style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                          onClick={() => handleUnmuteChannel(selectedChannel)}
+                        >
+                          🔔 {t('notifications.unmute', 'Unmute')}
+                        </button>
+                      )}
+                      <button
+                        style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                        onClick={() => handleMuteChannel(selectedChannel, null)}
+                      >
+                        🔇 {t('notifications.mute_indefinite', 'Mute indefinitely')}
+                      </button>
+                      <button
+                        style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                        onClick={() => handleMuteChannel(selectedChannel, Date.now() + 60 * 60 * 1000)}
+                      >
+                        🕐 {t('notifications.mute_1h', 'Mute for 1 hour')}
+                      </button>
+                      <button
+                        style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                        onClick={() => handleMuteChannel(selectedChannel, Date.now() + 7 * 24 * 60 * 60 * 1000)}
+                      >
+                        📅 {t('notifications.mute_1w', 'Mute for 1 week')}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  markMessagesAsRead(undefined, selectedChannel);
+                }}
+                title={t('channels.mark_all_read_title')}
+                style={{ padding: '0.4rem 0.75rem', fontSize: '0.9rem', whiteSpace: 'nowrap' }}
+              >
+                {t('channels.mark_all_read_button')}
+              </button>
+            </div>
+          )}
           {!mqttReadOnly && (
             <label className="mqtt-toggle">
               <input type="checkbox" checked={showMqttMessages} onChange={e => setShowMqttMessages(e.target.checked)} />
@@ -716,116 +813,9 @@ export default function ChannelsTab({
             {/* Selected Channel Messaging */}
             {selectedChannel !== -1 && (
               <div className="channel-conversation-section">
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '1rem',
-                  }}
-                >
-                  <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    {getChannelName(selectedChannel)}
-                    <span className="channel-id-label">#{selectedChannel}</span>
-                    <a
-                      href="#"
-                      className="channel-info-link"
-                      onClick={e => {
-                        e.preventDefault();
-                        handleInfoLinkClick(selectedChannel);
-                      }}
-                      title={t('channels.show_channel_info')}
-                      style={{ fontSize: '0.8rem' }}
-                    >
-                      {t('channels.info_link')}
-                    </a>
-                  </h3>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    {/* Mute button */}
-                    <div style={{ position: 'relative' }}>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => setShowMuteMenu(showMuteMenu === selectedChannel ? null : selectedChannel)}
-                        title={isChannelMuted(selectedChannel) ? t('notifications.mute_channel_active', 'Muted — click to change') : t('notifications.mute_channel', 'Mute notifications')}
-                        style={{ padding: '0.5rem 0.6rem', fontSize: '0.9rem' }}
-                        aria-label={isChannelMuted(selectedChannel) ? 'Muted' : 'Mute channel'}
-                      >
-                        {isChannelMuted(selectedChannel) ? '🔇' : '🔔'}
-                      </button>
-                      {showMuteMenu === selectedChannel && (
-                        <>
-                          <div
-                            style={{ position: 'fixed', inset: 0, zIndex: 999 }}
-                            onClick={() => setShowMuteMenu(null)}
-                          />
-                          <div style={{
-                            position: 'absolute',
-                            top: '100%',
-                            right: 0,
-                            marginTop: '4px',
-                            background: 'var(--ctp-surface0)',
-                            border: '1px solid var(--ctp-surface2)',
-                            borderRadius: '4px',
-                            zIndex: 1000,
-                            minWidth: '180px',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                            overflow: 'hidden',
-                          }}>
-                            {isChannelMuted(selectedChannel) && (
-                              <button
-                                style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
-                                onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
-                                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-                                onClick={() => handleUnmuteChannel(selectedChannel)}
-                              >
-                                🔔 {t('notifications.unmute', 'Unmute')}
-                              </button>
-                            )}
-                            <button
-                              style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
-                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
-                              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-                              onClick={() => handleMuteChannel(selectedChannel, null)}
-                            >
-                              🔇 {t('notifications.mute_indefinite', 'Mute indefinitely')}
-                            </button>
-                            <button
-                              style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
-                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
-                              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-                              onClick={() => handleMuteChannel(selectedChannel, Date.now() + 60 * 60 * 1000)}
-                            >
-                              🕐 {t('notifications.mute_1h', 'Mute for 1 hour')}
-                            </button>
-                            <button
-                              style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
-                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
-                              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-                              onClick={() => handleMuteChannel(selectedChannel, Date.now() + 7 * 24 * 60 * 60 * 1000)}
-                            >
-                              📅 {t('notifications.mute_1w', 'Mute for 1 week')}
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => {
-                        markMessagesAsRead(undefined, selectedChannel);
-                      }}
-                      title={t('channels.mark_all_read_title')}
-                      style={{
-                        padding: '0.5rem 1rem',
-                        fontSize: '0.9rem',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {t('channels.mark_all_read_button')}
-                    </button>
-                  </div>
-                </div>
-
+                {/* The channel title + per-channel actions (info/mute/mark-read)
+                    now live in the single top controls row (#3385); no separate
+                    title bar here, so the conversation fills the height. */}
                 {/* Read-only banner for Channel Database channels */}
                 {selectedChannel >= CHANNEL_DB_OFFSET && (
                   <div

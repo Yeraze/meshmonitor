@@ -1463,13 +1463,15 @@ body {
     display: none;
   }
 
-  /* Fixed header section. The selector now lives inline in .channels-controls
-     (#3385); on narrow screens let the header wrap so the controls drop to a
-     full-width row beneath the title rather than crowding it. */
+  /* Fixed header section. The selector + per-channel actions live in
+     .channels-controls (#3385); on narrow screens stack the heading above the
+     controls (DOM order) instead of fighting to share one row. */
   .channels-header {
     flex-shrink: 0;
     padding: 0.25rem 0;
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.4rem;
   }
 
   .channels-header h2 {
@@ -1478,8 +1480,7 @@ body {
   }
 
   .channels-controls {
-    margin-top: 0.25rem;
-    flex: 1 1 100%;
+    margin-top: 0;
     flex-wrap: wrap;
     gap: 0.5rem;
   }
@@ -1488,15 +1489,23 @@ body {
     font-size: 0.85rem;
   }
 
-  /* Mobile adjustments for channel dropdown — grow to fill the controls row. */
+  /* Mobile: selector takes its own full-width row; the per-channel actions and
+     MQTT toggle wrap onto the next line beneath it (#3385). */
   .channel-dropdown {
     margin-bottom: 0;
-    flex: 1 1 auto;
+    flex: 1 1 100%;
   }
 
   .channel-dropdown-select {
     width: 100%;
     max-width: 100%;
+  }
+
+  /* Keep info / mute / Mark-all-read together on one row; the MQTT toggle
+     wraps to the line below. */
+  .channel-actions {
+    flex-wrap: nowrap;
+    flex-shrink: 0;
   }
 
   /* Make channel conversation section fill remaining space */
@@ -1767,8 +1776,8 @@ body {
 
 .channels-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
   margin-bottom: 1rem;
 }
 
@@ -1776,6 +1785,23 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  /* Fill the row beside the "Channels (N)" heading so the MQTT toggle can be
+     pushed to the far right via margin-left:auto (#3385). */
+  flex: 1;
+  min-width: 0;
+}
+
+/* Per-channel action group (info / mute / mark-all-read) sitting inline in the
+   single controls row. */
+.channel-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Push the MQTT toggle to the far right edge of the controls row. */
+.channels-controls .mqtt-toggle {
+  margin-left: auto;
 }
 
 .mqtt-toggle {

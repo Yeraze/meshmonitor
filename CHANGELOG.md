@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Features
 
-- **Channels tab: full-height chat layout (#3385)**: The Channels tab now uses the full available viewport height and a single compact controls row. The "Channels (N)" heading, the channel selector, and the "Show MQTT/Bridge Messages" toggle sit inline on one bar instead of three stacked rows, and the message pane stretches from beneath the controls down to the message input — filling the remaining height dynamically on any screen size instead of being capped at a fixed height that left a large empty area below on tall monitors. Desktop changes are scoped to the Channels tab via `:has()`, so other tabs are unaffected; the mobile/iOS-PWA layout is preserved.
+- **Channels tab: full-height chat layout (#3385)**: The Channels tab now uses the full available viewport height and a single compact controls bar. The "Channels (N)" heading, the channel selector, the per-channel actions (info, mute, Mark-all-read), and the "Show MQTT/Bridge Messages" toggle all sit inline on one row — the redundant per-channel title bar (which duplicated the channel name the selector already shows) was removed. The message pane stretches from beneath that bar down to the message input, filling the remaining height dynamically on any screen size instead of being capped at a fixed height that left a large empty area below on tall monitors. Desktop changes are scoped to the Channels tab via `:has()`, so other tabs are unaffected; on mobile the controls stack cleanly and the iOS-PWA height handling is preserved.
 
 ### Bug Fixes
 
