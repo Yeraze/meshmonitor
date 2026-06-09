@@ -550,19 +550,10 @@ export default function ChannelsTab({
       <div className="channels-header">
         <h2>{t('channels.title_with_count', { count: availableChannels.length })}</h2>
         <div className="channels-controls">
-          {!mqttReadOnly && (
-            <label className="mqtt-toggle">
-              <input type="checkbox" checked={showMqttMessages} onChange={e => setShowMqttMessages(e.target.checked)} />
-              {t('channels.show_mqtt_messages')}
-            </label>
-          )}
-        </div>
-      </div>
-
-      {shouldShowData() ? (
-        availableChannels.length > 0 ? (
-          <>
-            {/* Channel Dropdown Selector */}
+          {/* Channel Dropdown Selector — inline in the controls row so the
+              header, selector, and MQTT toggle share a single compact bar
+              instead of three stacked rows (#3385). */}
+          {shouldShowData() && availableChannels.length > 0 && (
             <div className="channel-dropdown">
               <select
                 className="channel-dropdown-select"
@@ -602,7 +593,19 @@ export default function ChannelsTab({
                 })}
               </select>
             </div>
+          )}
+          {!mqttReadOnly && (
+            <label className="mqtt-toggle">
+              <input type="checkbox" checked={showMqttMessages} onChange={e => setShowMqttMessages(e.target.checked)} />
+              {t('channels.show_mqtt_messages')}
+            </label>
+          )}
+        </div>
+      </div>
 
+      {shouldShowData() ? (
+        availableChannels.length > 0 ? (
+          <>
             {/* Channel Buttons */}
             <div className="channels-grid">
               {availableChannels.map(channelId => {

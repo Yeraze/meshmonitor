@@ -1463,10 +1463,13 @@ body {
     display: none;
   }
 
-  /* Fixed header section */
+  /* Fixed header section. The selector now lives inline in .channels-controls
+     (#3385); on narrow screens let the header wrap so the controls drop to a
+     full-width row beneath the title rather than crowding it. */
   .channels-header {
     flex-shrink: 0;
     padding: 0.25rem 0;
+    flex-wrap: wrap;
   }
 
   .channels-header h2 {
@@ -1476,19 +1479,23 @@ body {
 
   .channels-controls {
     margin-top: 0.25rem;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
 
   .mqtt-toggle {
     font-size: 0.85rem;
   }
 
-  /* Mobile adjustments for channel dropdown */
+  /* Mobile adjustments for channel dropdown — grow to fill the controls row. */
   .channel-dropdown {
-    margin-bottom: 0.5rem;
-    flex-shrink: 0;
+    margin-bottom: 0;
+    flex: 1 1 auto;
   }
 
   .channel-dropdown-select {
+    width: 100%;
     max-width: 100%;
   }
 
@@ -1906,8 +1913,10 @@ body {
 /* Channel Buttons Grid */
 /* Channel dropdown selector - shown on both mobile and desktop */
 .channel-dropdown {
+  /* Inline in the .channels-controls row (#3385) — no bottom margin, size to
+     the selector's content. */
   display: block;
-  margin-bottom: 1rem;
+  margin-bottom: 0;
 }
 
 .channel-dropdown-select {
@@ -2155,10 +2164,53 @@ body {
   overflow: hidden;
 }
 
-/* Desktop only: constrain channel conversation height */
+/* Desktop: the channels tab is a full-height chat layout — the message pane
+   stretches from beneath the controls bar down to the message input, filling
+   the viewport instead of being capped at a fixed height that left a large
+   empty area below on tall monitors (#3385). Scoped to the channels tab via
+   :has() so naturally-scrolling tabs (nodes, map, etc.) are untouched, and
+   gated to >=769px so the mobile/iOS-PWA height handling above is unaffected. */
 @media (min-width: 769px) {
+  .app:has(.channels-tab-content) {
+    height: 100vh;
+  }
+
+  .app-main:has(.channels-tab-content) {
+    display: flex;
+    flex-direction: column;
+    /* min-height:0 lets this flex item shrink below its content height so the
+       message list (not the page) becomes the scroll target; overflow:hidden
+       is the backstop that keeps the send bar pinned on screen. */
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .channels-tab-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    /* Overrides .tab-content { min-height: 60vh } so the column can size to the
+       available viewport height rather than a 60vh floor. */
+    min-height: 0;
+  }
+
+  /* Fixed-height rows at the top; the conversation section (flex:1) takes the
+     rest via its existing base rule. */
+  .channels-tab-content .channels-header,
+  .channels-tab-content .channels-grid {
+    flex-shrink: 0;
+  }
+
+  /* Remove the old fixed cap — the flex chain now distributes height. */
   .channel-conversation {
-    max-height: calc(100vh - var(--header-height) - 20rem);
+    max-height: none;
+  }
+
+  /* Inline selector sizes to its content (the longest channel name) rather
+     than stretching, so the MQTT toggle sits comfortably beside it. */
+  .channels-controls .channel-dropdown-select {
+    width: auto;
+    min-width: 220px;
   }
 }
 
