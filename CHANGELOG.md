@@ -6,13 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.9.4] - 2026-06-09
+
 ### Features
 
 - **Local-node impersonation detection (#2584)**: Meshtastic channel messages carry no cryptographic sender authentication, so anyone on a channel can transmit a packet with a forged `from` field. Previously, a packet that spoofed our own locally-connected node's number was shown as one of our *outgoing* messages. MeshMonitor now detects this: a packet claiming `from == our local node` that arrived over RF (carries rx SNR/RSSI, travelled hops, or a radio transport) and was *not* one we recently sent is flagged `spoofSuspected`. Such messages are no longer rendered as our own — they show a red "⚠️ Possible impersonation of your node" badge in the channel view, and matching packets are highlighted in the Packet Monitor. False positives from our own packets being overheard/rebroadcast, echoed by MQTT, or replayed by store-and-forward are suppressed by matching the packet `id` against a short-TTL ring buffer of ids we originated. Detection is per-source. (Phase 1: self-node spoofing; PKI-DM verification and the Security-page/notification surface are tracked as follow-ups.)
 
 - **Channels tab: full-height chat layout (#3385)**: The Channels tab now uses the full available viewport height and a single compact controls bar. The "Channels (N)" heading, the channel selector, the per-channel actions (info, mute, Mark-all-read), and the "Show MQTT/Bridge Messages" toggle all sit inline on one row — the redundant per-channel title bar (which duplicated the channel name the selector already shows) was removed. The message pane stretches from beneath that bar down to the message input, filling the remaining height dynamically on any screen size instead of being capped at a fixed height that left a large empty area below on tall monitors. Desktop changes are scoped to the Channels tab via `:has()`, so other tabs are unaffected. On mobile the bar collapses to just the channel selector plus a "⋯" overflow menu (info, mark-all-read, Show MQTT/Bridge, and the mute options) so the header stays on a single line; the iOS-PWA height handling is preserved.
 
+- **Airtime cutoff: show contributing infrastructure nodes (#3392)**: The "Cutoff Airtime Utilization Threshold" section (Meshtastic Automation config) now trims the displayed Channel Utilization to at most 2 decimal places and, in neighbours mode, lists the 3 infrastructure nodes whose ChUtil was averaged into the reading (strongest RSSI first) — so it's clear which nodes are driving the cutoff decision.
+
 ### Bug Fixes
+
+- **`{NODECOUNT}`/`{DIRECTCOUNT}` tokens disagreed with the Sources "active" badge (#3389)**: The count tokens used the configurable `maxNodeAgeHours` window (default 24h) while the Sources panel "active" badge counts nodes heard in the last 2h, so an Auto-Acknowledge message could report e.g. "99/91" while the UI showed "62 active" for the same gateway. The tokens now use the same 2h active-node window the badge uses (across auto-ack / announce / geofence / timer / welcome and the auto-responder script env). Telemetry graphs keep the `maxNodeAgeHours` window to avoid a discontinuity.
 
 - **Auto-Acknowledge `{LONG_NAME}`/`{SHORT_NAME}` resolved as `Unknown`/`????` (#3384)**: The auto-ack template resolver looked up the sender node without a `sourceId`. Under the multi-source composite `(nodeNum, sourceId)` primary key, an unscoped lookup returns the first matching row across *any* source — frequently a different source's row (or none), so the name tokens intermittently fell back to `Unknown`/`????` even when the originating source had the node's name on record (the channel-window title, which reads per-source, always showed it correctly). The lookup is now scoped to the manager's own `sourceId`, matching the already-correct auto-welcome path.
 
