@@ -23,6 +23,7 @@ vi.mock('../services/database.js', () => ({
       getNode: vi.fn(),
       getAllNodes: vi.fn().mockResolvedValue([]),
       getActiveNodes: vi.fn().mockResolvedValue([]),
+      getActiveNodeCount: vi.fn().mockResolvedValue(0),
       upsertNode: vi.fn().mockResolvedValue(undefined),
       markNodeAsWelcomedIfNotAlready: vi.fn().mockResolvedValue(false),
       getNodeCount: vi.fn().mockResolvedValue(0),
@@ -472,6 +473,9 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         if (key === 'maxNodeAgeHours') return '24';
         return null;
       });
+      // {NODECOUNT} uses getActiveNodeCount (2h window, matches Sources panel #3388);
+      // {DIRECTCOUNT} still pulls the node list to count 0-hop nodes.
+      vi.mocked(databaseService.nodes.getActiveNodeCount).mockResolvedValue(3);
       vi.mocked(databaseService.nodes.getActiveNodes).mockResolvedValue([
         mockNode,
         { ...mockNode, nodeNum: 888888, hopsAway: 0 },
@@ -488,6 +492,43 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
       expect(result).toContain('2.3.1');
       expect(result).toContain('3'); // NODECOUNT
       expect(result).toContain('1'); // DIRECTCOUNT (only one node with hopsAway: 0)
+    });
+
+    // Issue #3388: {NODECOUNT} must report the same "active" figure the Sources
+    // panel badge shows (nodes heard in the last 2h via getActiveNodeCount),
+    // NOT the wider maxNodeAgeHours window that previously made the sent message
+    // read e.g. "99" while the UI showed "62 active".
+    it('replaces {NODECOUNT} with the 2h active count (matches Sources panel #3388)', async () => {
+      const mockNode = {
+        nodeNum: 999999,
+        nodeId: '!000f423f',
+        longName: 'Test Node',
+        shortName: 'TEST',
+        hwModel: 0,
+        firmwareVersion: '2.3.1',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      vi.mocked(databaseService.nodes.getNode).mockResolvedValue(mockNode);
+      vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
+        if (key === 'maxNodeAgeHours') return '24';
+        return null;
+      });
+      // Badge-style active count (2h window) = 62; total ever seen = 99.
+      vi.mocked(databaseService.nodes.getActiveNodeCount).mockResolvedValue(62);
+      vi.mocked(databaseService.nodes.getAllNodes).mockResolvedValue(
+        Array.from({ length: 99 }, (_, i) => ({ ...mockNode, nodeNum: 100000 + i }))
+      );
+
+      const result = await (manager as any).replaceWelcomeTokens(
+        '{NODECOUNT} / {TOTALNODES}',
+        999999,
+        '!000f423f'
+      );
+
+      expect(result).toBe('62 / 99'); // NODECOUNT is the 2h active count, not the 99 total
+      // Queried with the 2h window (7200s), matching the Sources panel badge.
+      expect(databaseService.nodes.getActiveNodeCount).toHaveBeenCalledWith('default', 7200);
     });
 
     it('should handle missing node gracefully with fallbacks', async () => {

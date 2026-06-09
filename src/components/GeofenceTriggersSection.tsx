@@ -29,7 +29,7 @@ const AVAILABLE_TOKENS = [
   { token: '{DISTANCE_TO_CENTER}', description: 'Distance to geofence center (km)' },
   { token: '{IP}', description: 'Connected Meshtastic node IP address' },
   { token: '{VERSION}', description: 'MeshMonitor version' },
-  { token: '{NODECOUNT}', description: 'Active nodes (filtered by maxNodeAgeHours)' },
+  { token: '{NODECOUNT}', description: 'Active nodes (heard in last 2h, matches Sources panel)' },
   { token: '{TOTALNODES}', description: 'Total nodes ever seen' },
 ];
 
