@@ -35,6 +35,14 @@ export async function applyManagerSettings(
     if (!isNaN(n) && n >= 0 && n <= 60) manager.setLocalStatsInterval(n);
   }
 
+  // Remote LocalStats automation interval (issue #3398). Higher ceiling (1440)
+  // than the gateway LocalStats poll since remote polling is intentionally slower.
+  const rlsInterval = await db.settings.getSettingForSource(sourceId, 'remoteLocalStatsIntervalMinutes');
+  if (rlsInterval !== null) {
+    const n = parseInt(rlsInterval, 10);
+    if (!isNaN(n) && n >= 0 && n <= 1440) manager.setRemoteLocalStatsInterval(n);
+  }
+
   const [
     keyRepairEnabled,
     keyRepairInterval,
