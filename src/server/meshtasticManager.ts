@@ -535,6 +535,15 @@ class MeshtasticManager implements ISourceManager {
     timeoutHandle: NodeJS.Timeout;
   }> = new Map(); // Track user-initiated traceroutes from the autoresponder
   private pendingTracerouteTimestamps: Map<number, number> = new Map(); // Track when traceroutes were initiated for timeout detection
+
+  // Remote LocalStats automation (issue #3398) — periodically request local_stats
+  // from remote nodes selected by list/role/favorite/regex. Round-robins one
+  // target per tick (least-recently-polled) to stay gentle on shared airtime.
+  private remoteLocalStatsInterval: NodeJS.Timeout | null = null;
+  private remoteLocalStatsJitterTimeout: NodeJS.Timeout | null = null;
+  private remoteLocalStatsIntervalMinutes: number = 0;
+  private lastRemoteLocalStatsSentTime: number = 0;
+  private remoteLocalStatsLastSentAt: Map<number, number> = new Map();
   private nodeLinkQuality: Map<number, { quality: number; lastHops: number }> = new Map(); // Track link quality per node
   private ignoreReapplyCooldown: Map<number, number> = new Map(); // nodeNum -> last local re-ignore push timestamp (#2601), coalesces bursts
   private remoteAdminScannerInterval: NodeJS.Timeout | null = null;
@@ -1476,6 +1485,14 @@ class MeshtasticManager implements ISourceManager {
         setTimeout(() => this.startDistanceDeleteScheduler().catch(e =>
           logger.error('❌ Error starting distance delete scheduler:', e)), S * 9);
 
+        // Start remote LocalStats request scheduler (per-source, issue #3398).
+        // Outbound to the mesh, so skip in passive mode like other device-bound queries.
+        if (passive) {
+          logger.info('🟢 [passive] Skipping remote LocalStats scheduler — outbound queries to mesh');
+        } else {
+          setTimeout(() => this.startRemoteLocalStatsScheduler(), S * 10);
+        }
+
         // Request LoRa config (config type 5) for Configuration tab — deferred
         // until after configComplete so we don't flood the device mid-exchange.
         // This is safe for serial-bridge connections that reject mid-exchange admin msgs.
@@ -1719,6 +1736,16 @@ class MeshtasticManager implements ISourceManager {
       this.tracerouteInterval = null;
     }
 
+    if (this.remoteLocalStatsJitterTimeout) {
+      clearTimeout(this.remoteLocalStatsJitterTimeout);
+      this.remoteLocalStatsJitterTimeout = null;
+    }
+
+    if (this.remoteLocalStatsInterval) {
+      clearInterval(this.remoteLocalStatsInterval);
+      this.remoteLocalStatsInterval = null;
+    }
+
     if (this.remoteAdminScannerInterval) {
       clearInterval(this.remoteAdminScannerInterval);
       this.remoteAdminScannerInterval = null;
@@ -1912,6 +1939,122 @@ class MeshtasticManager implements ISourceManager {
     if (this.isConnected) {
       this.startTracerouteScheduler();
     }
+  }
+
+  /**
+   * Update the remote LocalStats request interval (minutes; 0 = disabled) and
+   * restart the scheduler if connected. Issue #3398.
+   */
+  setRemoteLocalStatsInterval(minutes: number): void {
+    if (minutes < 0 || minutes > 1440) {
+      throw new Error('Remote LocalStats interval must be between 0 and 1440 minutes (0 = disabled)');
+    }
+    this.remoteLocalStatsIntervalMinutes = minutes;
+    logger.debug(
+      minutes === 0
+        ? '📊 Remote LocalStats interval set to 0 (disabled)'
+        : `📊 Remote LocalStats interval updated to ${minutes} minutes`
+    );
+    if (this.isConnected) {
+      this.startRemoteLocalStatsScheduler();
+    }
+  }
+
+  /**
+   * Start (or restart) the per-source remote LocalStats request scheduler.
+   * Mirrors startTracerouteScheduler: per-source interval, startup jitter,
+   * schedule-window + airtime gating, and a minimum-interval rate limit. Each
+   * tick polls ONE target (the least-recently-polled match) to keep airtime use
+   * low while still cycling through the whole matched set over time. Issue #3398.
+   */
+  private startRemoteLocalStatsScheduler(): void {
+    if (this.remoteLocalStatsJitterTimeout) {
+      clearTimeout(this.remoteLocalStatsJitterTimeout);
+      this.remoteLocalStatsJitterTimeout = null;
+    }
+    if (this.remoteLocalStatsInterval) {
+      clearInterval(this.remoteLocalStatsInterval);
+      this.remoteLocalStatsInterval = null;
+    }
+
+    if (this.remoteLocalStatsIntervalMinutes === 0) {
+      logger.debug('📊 Remote LocalStats automation is disabled');
+      return;
+    }
+
+    const intervalMs = this.remoteLocalStatsIntervalMinutes * 60 * 1000;
+    // Firmware doesn't rate-limit telemetry replies, so we self-limit: never send
+    // two requests less than this apart (also guards against rapid restarts).
+    const MIN_REMOTE_LOCALSTATS_INTERVAL_MS = 30 * 1000;
+
+    const maxJitterMs = Math.min(intervalMs, 5 * 60 * 1000);
+    const initialJitterMs = Math.random() * maxJitterMs;
+    logger.debug(`📊 Starting remote LocalStats scheduler with ${this.remoteLocalStatsIntervalMinutes} minute interval (initial jitter: ${Math.round(initialJitterMs / 1000)}s)`);
+
+    const executeRemoteLocalStats = async () => {
+      // Per-source schedule window (written by AutoLocalStatsSection via
+      // /api/settings?sourceId=, so read with getSettingForSource).
+      const scheduleEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'remoteLocalStatsScheduleEnabled');
+      if (scheduleEnabled === 'true') {
+        const start = await databaseService.settings.getSettingForSource(this.sourceId, 'remoteLocalStatsScheduleStart') || '00:00';
+        const end = await databaseService.settings.getSettingForSource(this.sourceId, 'remoteLocalStatsScheduleEnd') || '00:00';
+        if (!isWithinTimeWindow(start, end)) {
+          logger.debug(`📊 Remote LocalStats: Skipping - outside schedule window (${start}-${end})`);
+          return;
+        }
+      }
+
+      // Skip while the mesh is congested.
+      if (await this.isAutomationAirtimeGated()) {
+        return;
+      }
+
+      if (!this.isConnected || !this.localNodeInfo) {
+        logger.debug('📊 Remote LocalStats: Skipping - not connected or no local node info');
+        return;
+      }
+
+      try {
+        const timeSinceLastSend = Date.now() - this.lastRemoteLocalStatsSentTime;
+        if (this.lastRemoteLocalStatsSentTime > 0 && timeSinceLastSend < MIN_REMOTE_LOCALSTATS_INTERVAL_MS) {
+          logger.debug(`📊 Remote LocalStats: Skipping - only ${Math.round(timeSinceLastSend / 1000)}s since last send`);
+          return;
+        }
+
+        const candidates = await databaseService.getNodesNeedingRemoteLocalStatsAsync(this.localNodeInfo.nodeNum, this.sourceId);
+        if (candidates.length === 0) {
+          logger.debug('📊 Remote LocalStats: No matching target nodes');
+          return;
+        }
+
+        // Round-robin: pick the least-recently-polled candidate (never-polled = 0).
+        let target = candidates[0];
+        let oldest = this.remoteLocalStatsLastSentAt.get(Number(target.nodeNum)) ?? 0;
+        for (const node of candidates) {
+          const last = this.remoteLocalStatsLastSentAt.get(Number(node.nodeNum)) ?? 0;
+          if (last < oldest) { oldest = last; target = node; }
+        }
+
+        const channel = target.channel ?? 0;
+        // Size the hop limit to the node's observed distance (+2 margin); the
+        // firmware default of 3 silently drops requests to farther nodes.
+        const hopLimit = Math.min(7, (target.hopsAway ?? 1) + 2);
+        const targetName = target.longName || target.nodeId;
+        logger.info(`📊 Remote LocalStats: Requesting local_stats from ${targetName} (${target.nodeId}) on channel ${channel}, hopLimit ${hopLimit}`);
+
+        this.remoteLocalStatsLastSentAt.set(Number(target.nodeNum), Date.now());
+        this.lastRemoteLocalStatsSentTime = Date.now();
+        await this.requestRemoteLocalStats(target.nodeNum, channel, hopLimit);
+      } catch (error) {
+        logger.error('❌ Error in remote LocalStats automation:', error);
+      }
+    };
+
+    this.remoteLocalStatsJitterTimeout = setTimeout(() => {
+      this.remoteLocalStatsJitterTimeout = null;
+      executeRemoteLocalStats();
+      this.remoteLocalStatsInterval = setInterval(executeRemoteLocalStats, intervalMs);
+    }, initialJitterMs);
   }
 
   /**
@@ -8466,6 +8609,50 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * Request local_stats telemetry from a REMOTE node (issue #3398).
+   *
+   * Unlike requestLocalStats() (gateway-only), this targets an arbitrary node and
+   * explicitly requests the `local_stats` variant — the firmware reply echoes the
+   * requested variant, so a generic request would return DeviceMetrics instead.
+   * Sent as a unicast on the node's channel (shared PSK), NOT a PKI DM: unicast
+   * bypasses the firmware's multi-hop-broadcast role gate (so REPEATER/CLIENT nodes
+   * answer too) and channel routing avoids stale-key fragility. The reply is
+   * persisted by the existing telemetry handler.
+   */
+  async requestRemoteLocalStats(destination: number, channel: number = 0, hopLimit: number = 3): Promise<{ packetId: number; requestId: number }> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+
+    const { data: telemetryRequestData, packetId, requestId } =
+      meshtasticProtobufService.createTelemetryRequestMessage(
+        destination,
+        channel,
+        'localStats',
+        hopLimit
+      );
+
+    if (telemetryRequestData.length === 0) {
+      throw new Error('Failed to build remote LocalStats request');
+    }
+
+    await this.transport.send(telemetryRequestData);
+
+    // Broadcast to virtual node clients (including packet monitor) for visibility.
+    const virtualNodeServer = this.virtualNodeServer;
+    if (virtualNodeServer) {
+      try {
+        await virtualNodeServer.broadcastToClients(telemetryRequestData);
+      } catch (error) {
+        logger.error('Virtual node: Failed to broadcast outgoing remote LocalStats request:', error);
+      }
+    }
+
+    logger.info(`📤 Remote LocalStats request sent to ${destination.toString(16)} (packetId=${packetId}, requestId=${requestId})`);
+    return { packetId, requestId };
+  }
+
+  /**
    * Send raw ToRadio message to the physical node
    * Used by virtual node server to forward messages from mobile clients
    */
@@ -13440,6 +13627,16 @@ class MeshtasticManager implements ISourceManager {
     if (this.tracerouteInterval) {
       clearInterval(this.tracerouteInterval);
       this.tracerouteInterval = null;
+    }
+
+    if (this.remoteLocalStatsJitterTimeout) {
+      clearTimeout(this.remoteLocalStatsJitterTimeout);
+      this.remoteLocalStatsJitterTimeout = null;
+    }
+
+    if (this.remoteLocalStatsInterval) {
+      clearInterval(this.remoteLocalStatsInterval);
+      this.remoteLocalStatsInterval = null;
     }
 
     if (this.distanceDeleteInterval) {

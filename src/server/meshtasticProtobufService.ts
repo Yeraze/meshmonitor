@@ -280,7 +280,8 @@ export class MeshtasticProtobufService {
   createTelemetryRequestMessage(
     destination: number,
     channel?: number,
-    telemetryType?: 'device' | 'environment' | 'airQuality' | 'power'
+    telemetryType?: 'device' | 'environment' | 'airQuality' | 'power' | 'localStats',
+    hopLimit: number = 3
   ): { data: Uint8Array; packetId: number; requestId: number } {
     const root = getProtobufRoot();
     if (!root) {
@@ -295,7 +296,7 @@ export class MeshtasticProtobufService {
 
       // Create Telemetry message with appropriate variant based on telemetryType
       const Telemetry = root.lookupType('meshtastic.Telemetry');
-      let telemetryPayload: { deviceMetrics?: object; environmentMetrics?: object; airQualityMetrics?: object; powerMetrics?: object } = {};
+      let telemetryPayload: { deviceMetrics?: object; environmentMetrics?: object; airQualityMetrics?: object; powerMetrics?: object; localStats?: object } = {};
 
       // Set the appropriate empty variant to request that telemetry type
       switch (telemetryType) {
@@ -317,6 +318,14 @@ export class MeshtasticProtobufService {
         case 'power': {
           const PowerMetrics = root.lookupType('meshtastic.PowerMetrics');
           telemetryPayload = { powerMetrics: PowerMetrics.create({}) };
+          break;
+        }
+        case 'localStats': {
+          // The firmware reply echoes the request variant, so to receive LocalStats
+          // from a remote node we must request the local_stats variant explicitly
+          // (an empty body — only the variant tag matters). See issue #3398.
+          const LocalStats = root.lookupType('meshtastic.LocalStats');
+          telemetryPayload = { localStats: LocalStats.create({}) };
           break;
         }
         default: {
@@ -349,7 +358,7 @@ export class MeshtasticProtobufService {
         channel: channel || 0,
         decoded: dataMessage,
         wantAck: true, // Want delivery confirmation
-        hopLimit: 3 // Allow multi-hop delivery (like other remote requests)
+        hopLimit // Caller sizes this to the target's distance (default 3)
       });
 
       // Create ToRadio message

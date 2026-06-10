@@ -4806,6 +4806,168 @@ class DatabaseService {
   }
 
   /**
+   * Read the per-source Remote LocalStats automation filter config (issue #3398).
+   * Mirrors getTracerouteFilterSettingsAsync but with the smaller filter set the
+   * feature exposes: discrete node list / role / favorite / name-regex. All keys
+   * default-on-read, so no migration/seed is required for unset sources.
+   */
+  async getRemoteLocalStatsFilterSettingsAsync(sourceId?: string): Promise<{
+    enabled: boolean;
+    nodeNums: number[];
+    filterRoles: number[];
+    filterNameRegex: string;
+    filterNodesEnabled: boolean;
+    filterRolesEnabled: boolean;
+    filterFavoriteEnabled: boolean;
+    filterRegexEnabled: boolean;
+    filterLastHeardEnabled: boolean;
+    filterLastHeardHours: number;
+  }> {
+    const read = (key: string) => this.settings.getSettingForSource(sourceId ?? null, key);
+    const [
+      enabledStr, nodesStr, rolesStr, regexStr,
+      nodesEnStr, rolesEnStr, favoriteEnStr, regexEnStr,
+      lastHeardEnStr, lastHeardHoursStr,
+    ] = await Promise.all([
+      read('remoteLocalStatsFilterEnabled'),
+      read('remoteLocalStatsFilterNodes'),
+      read('remoteLocalStatsFilterRoles'),
+      read('remoteLocalStatsFilterNameRegex'),
+      read('remoteLocalStatsFilterNodesEnabled'),
+      read('remoteLocalStatsFilterRolesEnabled'),
+      read('remoteLocalStatsFilterFavoriteEnabled'),
+      read('remoteLocalStatsFilterRegexEnabled'),
+      read('remoteLocalStatsFilterLastHeardEnabled'),
+      read('remoteLocalStatsFilterLastHeardHours'),
+    ]);
+
+    const parseJsonArray = (s: string | null): number[] => {
+      if (!s) return [];
+      try { const p = JSON.parse(s); return Array.isArray(p) ? p.map((v) => Number(v)).filter((v) => !isNaN(v)) : []; } catch { return []; }
+    };
+    const parseIntBounded = (s: string | null, def: number, min = -Infinity, max = Infinity): number => {
+      if (s === null || s === undefined || s === '') return def;
+      const n = parseInt(s, 10);
+      if (isNaN(n) || n < min || n > max) return def;
+      return n;
+    };
+
+    return {
+      enabled: enabledStr === 'true',
+      nodeNums: parseJsonArray(nodesStr),
+      filterRoles: parseJsonArray(rolesStr),
+      filterNameRegex: regexStr ?? '.*',
+      // Default-on: when the filter group is enabled but a sub-filter flag is
+      // unset, treat it as active (matches the traceroute `!== 'false'` idiom).
+      filterNodesEnabled: nodesEnStr !== 'false',
+      filterRolesEnabled: rolesEnStr !== 'false',
+      filterFavoriteEnabled: favoriteEnStr === 'true',
+      filterRegexEnabled: regexEnStr !== 'false',
+      filterLastHeardEnabled: lastHeardEnStr === 'true',
+      filterLastHeardHours: parseIntBounded(lastHeardHoursStr, 168),
+    };
+  }
+
+  /**
+   * Persist the per-source Remote LocalStats filter config (issue #3398).
+   * Always per-source (the feature is 4.x-only; there is no legacy global path).
+   */
+  async setRemoteLocalStatsFilterSettingsAsync(settings: {
+    enabled: boolean;
+    nodeNums: number[];
+    filterRoles: number[];
+    filterNameRegex: string;
+    filterNodesEnabled?: boolean;
+    filterRolesEnabled?: boolean;
+    filterFavoriteEnabled?: boolean;
+    filterRegexEnabled?: boolean;
+    filterLastHeardEnabled?: boolean;
+    filterLastHeardHours?: number;
+  }, sourceId: string): Promise<void> {
+    const kv: Record<string, string> = {
+      remoteLocalStatsFilterEnabled: settings.enabled ? 'true' : 'false',
+      remoteLocalStatsFilterNodes: JSON.stringify(settings.nodeNums),
+      remoteLocalStatsFilterRoles: JSON.stringify(settings.filterRoles),
+      remoteLocalStatsFilterNameRegex: settings.filterNameRegex,
+    };
+    if (settings.filterNodesEnabled !== undefined) kv.remoteLocalStatsFilterNodesEnabled = settings.filterNodesEnabled ? 'true' : 'false';
+    if (settings.filterRolesEnabled !== undefined) kv.remoteLocalStatsFilterRolesEnabled = settings.filterRolesEnabled ? 'true' : 'false';
+    if (settings.filterFavoriteEnabled !== undefined) kv.remoteLocalStatsFilterFavoriteEnabled = settings.filterFavoriteEnabled ? 'true' : 'false';
+    if (settings.filterRegexEnabled !== undefined) kv.remoteLocalStatsFilterRegexEnabled = settings.filterRegexEnabled ? 'true' : 'false';
+    if (settings.filterLastHeardEnabled !== undefined) kv.remoteLocalStatsFilterLastHeardEnabled = settings.filterLastHeardEnabled ? 'true' : 'false';
+    if (settings.filterLastHeardHours !== undefined) kv.remoteLocalStatsFilterLastHeardHours = String(settings.filterLastHeardHours);
+    await this.settings.setSourceSettings(sourceId, kv);
+    logger.debug(`✅ Updated per-source remote LocalStats filter settings (source=${sourceId})`);
+  }
+
+  /**
+   * Return the set of remote nodes that should be polled for local_stats on this
+   * source (issue #3398). Unlike the traceroute picker this returns the FULL
+   * matched set — the scheduler round-robins one target per tick. Union-of-enabled
+   * filter semantics (list / role / favorite / name-regex), always excluding the
+   * local node and (optionally) stale nodes.
+   */
+  async getNodesNeedingRemoteLocalStatsAsync(localNodeNum: number, sourceId?: string): Promise<DbNode[]> {
+    try {
+      const cfg = await this.getRemoteLocalStatsFilterSettingsAsync(sourceId);
+
+      // Candidate base: active nodes for this source. maxNodeAgeHours bounds how
+      // far back "active" reaches so we never poll long-dead nodes.
+      const maxNodeAgeHours = parseInt(this.getSetting('maxNodeAgeHours') || '24');
+      const sinceDays = Math.max(1, Math.ceil(maxNodeAgeHours / 24));
+      let nodes = (await this.nodesRepo!.getActiveNodes(sinceDays, sourceId)) as unknown as DbNode[];
+
+      // Never poll ourselves.
+      nodes = nodes.filter(n => Number(n.nodeNum) !== Number(localNodeNum));
+
+      // Optional last-heard tightening (AND, applied before the OR union).
+      if (cfg.filterLastHeardEnabled) {
+        const lastHeardCutoff = Math.floor(Date.now() / 1000) - (cfg.filterLastHeardHours * 3600);
+        nodes = nodes.filter(n => n.lastHeard != null && n.lastHeard >= lastHeardCutoff);
+      }
+
+      if (cfg.enabled) {
+        let regexMatcher: RegExp | null = null;
+        if (cfg.filterRegexEnabled && cfg.filterNameRegex && cfg.filterNameRegex !== '.*') {
+          try { regexMatcher = new RegExp(cfg.filterNameRegex, 'i'); }
+          catch (e) { logger.warn(`Invalid remote LocalStats filter regex: ${cfg.filterNameRegex}`, e); }
+        }
+
+        const hasAnyFilter =
+          (cfg.filterNodesEnabled && cfg.nodeNums.length > 0) ||
+          (cfg.filterRolesEnabled && cfg.filterRoles.length > 0) ||
+          cfg.filterFavoriteEnabled ||
+          (cfg.filterRegexEnabled && regexMatcher !== null);
+
+        if (hasAnyFilter) {
+          nodes = nodes.filter(node => {
+            // UNION: node passes if it matches ANY enabled filter.
+            if (cfg.filterNodesEnabled && cfg.nodeNums.length > 0 && cfg.nodeNums.includes(Number(node.nodeNum))) return true;
+            if (cfg.filterRolesEnabled && cfg.filterRoles.length > 0 && node.role != null && cfg.filterRoles.includes(node.role)) return true;
+            if (cfg.filterFavoriteEnabled && node.isFavorite === true) return true;
+            if (cfg.filterRegexEnabled && regexMatcher !== null) {
+              const name = node.longName || node.shortName || node.nodeId || '';
+              if (regexMatcher.test(name)) return true;
+            }
+            return false;
+          });
+        }
+        // hasAnyFilter false → no narrowing (all active remote nodes are targets).
+      } else {
+        // Filter group disabled → automation has no explicit targets. Returning
+        // an empty set keeps the feature strictly opt-in (won't blanket-poll the
+        // whole mesh just because an interval was set).
+        return [];
+      }
+
+      return nodes.map(n => this.normalizeBigInts(n));
+    } catch (error) {
+      logger.error('Error in getNodesNeedingRemoteLocalStatsAsync:', error);
+      return [];
+    }
+  }
+
+  /**
    * Get a node that needs remote admin checking.
    * Returns null if no nodes need checking.
    */

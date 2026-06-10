@@ -69,6 +69,7 @@ interface SettingsContextType {
   inactiveNodeCheckIntervalMinutes: number;
   inactiveNodeCooldownHours: number;
   tracerouteIntervalMinutes: number;
+  remoteLocalStatsIntervalMinutes: number;
   temperatureUnit: TemperatureUnit;
   distanceUnit: DistanceUnit;
   positionHistoryLineStyle: PositionHistoryLineStyle;
@@ -116,6 +117,7 @@ interface SettingsContextType {
   setInactiveNodeCheckIntervalMinutes: (minutes: number) => void;
   setInactiveNodeCooldownHours: (hours: number) => void;
   setTracerouteIntervalMinutes: (minutes: number) => void;
+  setRemoteLocalStatsIntervalMinutes: (minutes: number) => void;
   setTemperatureUnit: (unit: TemperatureUnit) => void;
   setDistanceUnit: (unit: DistanceUnit) => void;
   setPositionHistoryLineStyle: (style: PositionHistoryLineStyle) => void;
@@ -269,6 +271,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const [tracerouteIntervalMinutes, setTracerouteIntervalMinutesState] = useState<number>(() => {
     const saved = localStorage.getItem('tracerouteIntervalMinutes');
+    return saved ? parseInt(saved) : 0;
+  });
+
+  const [remoteLocalStatsIntervalMinutes, setRemoteLocalStatsIntervalMinutesState] = useState<number>(() => {
+    const saved = localStorage.getItem('remoteLocalStatsIntervalMinutes');
     return saved ? parseInt(saved) : 0;
   });
 
@@ -490,6 +497,26 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
       });
     } catch (error) {
       logger.error('Error updating traceroute interval:', error);
+    }
+  };
+
+  const setRemoteLocalStatsIntervalMinutes = async (value: number) => {
+    setRemoteLocalStatsIntervalMinutesState(value);
+    localStorage.setItem('remoteLocalStatsIntervalMinutes', value.toString());
+
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const csrfToken = getCsrfToken();
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+      await fetch(`${baseUrl}/api/settings/remote-localstats-interval`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ intervalMinutes: value })
+      });
+    } catch (error) {
+      logger.error('Error updating remote LocalStats interval:', error);
     }
   };
 
@@ -1143,6 +1170,14 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
+          if (settings.remoteLocalStatsIntervalMinutes !== undefined) {
+            const value = parseInt(settings.remoteLocalStatsIntervalMinutes);
+            if (!isNaN(value)) {
+              setRemoteLocalStatsIntervalMinutesState(value);
+              localStorage.setItem('remoteLocalStatsIntervalMinutes', value.toString());
+            }
+          }
+
           if (settings.preferredSortField) {
             setPreferredSortFieldState(settings.preferredSortField as SortField);
             localStorage.setItem('preferredSortField', settings.preferredSortField);
@@ -1449,6 +1484,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     inactiveNodeCheckIntervalMinutes,
     inactiveNodeCooldownHours,
     tracerouteIntervalMinutes,
+    remoteLocalStatsIntervalMinutes,
     temperatureUnit,
     distanceUnit,
     positionHistoryLineStyle,
@@ -1496,6 +1532,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setInactiveNodeCheckIntervalMinutes,
     setInactiveNodeCooldownHours,
     setTracerouteIntervalMinutes,
+    setRemoteLocalStatsIntervalMinutes,
     setTemperatureUnit,
     setDistanceUnit,
     setPositionHistoryLineStyle,
