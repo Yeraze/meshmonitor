@@ -1844,6 +1844,7 @@
   "info.secrets_unavailable": "Security keys not available",
 
   "info.packet_distribution": "Packet Distribution",
+  "info.total_packets": "Total: {{count}} packets",
   "info.packets_by_device": "Packets by Device",
   "info.packets_by_type": "Packets by Type",
   "info.last_hour": "Last Hour",
