@@ -6236,7 +6236,9 @@ class MeshtasticManager implements ISourceManager {
           { type: 'numTxRelayCanceled', value: localStats.numTxRelayCanceled, unit: 'packets' },
           { type: 'heapTotalBytes', value: localStats.heapTotalBytes, unit: 'bytes' },
           { type: 'heapFreeBytes', value: localStats.heapFreeBytes, unit: 'bytes' },
-          { type: 'numTxDropped', value: localStats.numTxDropped, unit: 'packets' }
+          { type: 'numTxDropped', value: localStats.numTxDropped, unit: 'packets' },
+          // Noise floor (dBm) — added to LocalStats in Meshtastic firmware 2.7.25 (#3396)
+          { type: 'noiseFloor', value: localStats.noiseFloor, unit: 'dBm' }
         ], nodeId, fromNum, timestamp, packetTimestamp, packetId);
         await this.checkAutoHeapManagement(localStats.heapFreeBytes, fromNum);
       } else if (telemetry.hostMetrics) {
