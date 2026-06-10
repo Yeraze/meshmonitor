@@ -97,6 +97,7 @@ const TELEMETRY_LABELS: Record<string, string> = {
   numTxDropped: 'Dropped TX (Device)',
   heapTotalBytes: 'Heap Total (Device)',
   heapFreeBytes: 'Heap Free (Device)',
+  noiseFloor: 'Noise Floor (Device)',
   // MeshMonitor system metrics (calculated by MeshMonitor)
   systemNodeCount: 'Active Nodes (MeshMonitor)',
   systemDirectNodeCount: 'Direct Nodes (MeshMonitor)',

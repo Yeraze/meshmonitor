@@ -28,6 +28,7 @@ const INTEGER_TELEMETRY_TYPES = new Set([
   'numOnlineNodes', 'numTotalNodes',
   'numPacketsTx', 'numPacketsRx', 'numPacketsRxBad',
   'numRxDupe', 'numTxRelay', 'numTxRelayCanceled', 'numTxDropped',
+  'noiseFloor',
   'systemNodeCount', 'systemDirectNodeCount',
   'paxcounterWifi', 'paxcounterBle',
   'particles03um', 'particles05um', 'particles10um',

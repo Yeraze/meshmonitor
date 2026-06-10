@@ -13,6 +13,10 @@ describe('getTelemetryLabel', () => {
     expect(getTelemetryLabel('temperature')).toBe('Temperature');
   });
 
+  it('labels the LocalStats noiseFloor type (#3396)', () => {
+    expect(getTelemetryLabel('noiseFloor')).toBe('Noise Floor (Device)');
+  });
+
   it('returns the explicit label for known MeshCore status types', () => {
     expect(getTelemetryLabel('mc_status_uptime_secs')).toBe('Uptime');
     expect(getTelemetryLabel('mc_status_noise_floor')).toBe('Noise Floor');

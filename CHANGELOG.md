@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Features
+
+- **Noise Floor in LocalStats telemetry (#3396)**: The `noiseFloor` (dBm) field that Meshtastic firmware 2.7.25 added to `LocalStats` is now captured and graphed alongside the other device LocalStats metrics (uptime, channel utilization, packet counts, heap, etc.) — it appears on the Device Info page and anywhere local-stats telemetry is charted, with integer (dBm) formatting. The protobufs submodule was bumped from v2.7.23 to v2.7.25; that bump is otherwise additive (new sensor enums and LoRa regions), with no field removals affecting MeshMonitor.
+
 ## [4.9.4] - 2026-06-09
 
 ### Features
