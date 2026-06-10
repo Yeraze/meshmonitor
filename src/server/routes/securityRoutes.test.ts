@@ -188,4 +188,15 @@ describe('securityRoutes — per-source scanner', () => {
       expect(res.body.nodes.map((n: any) => n.nodeNum)).toEqual([111]);
     });
   });
+
+  describe('GET /key-mismatches', () => {
+    it('scopes the key-repair log to the requested source', async () => {
+      const app = createApp();
+      const res = await request(app).get('/api/security/key-mismatches?sourceId=src-1');
+      expect(res.status).toBe(200);
+      // Regression: the repair log MUST be scoped by sourceId, otherwise key
+      // mismatch events from every source leak into one source's view.
+      expect(mockDb.getKeyRepairLogAsync).toHaveBeenCalledWith(100, 'src-1');
+    });
+  });
 });

@@ -327,9 +327,12 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), asy
  * GET /api/security/key-mismatches
  * Returns recent key mismatch events from the repair log
  */
-router.get('/key-mismatches', async (_req: Request, res: Response) => {
+router.get('/key-mismatches', async (req: Request, res: Response) => {
   try {
-    const log = await databaseService.getKeyRepairLogAsync(100);
+    // Scope to the requested source so the repair log doesn't leak events from
+    // every source into one source's view (same class as the dead-nodes bug).
+    const sourceId = req.query.sourceId as string | undefined;
+    const log = await databaseService.getKeyRepairLogAsync(100, sourceId);
 
     // Filter to mismatch-related actions
     const mismatchActions = new Set(['mismatch', 'purge', 'fixed', 'exhausted']);
