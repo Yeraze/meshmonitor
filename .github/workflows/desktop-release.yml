@@ -105,6 +105,15 @@ jobs:
         working-directory: desktop
         run: npm install
 
+      - name: Setup Python for Apprise sidecar
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build Apprise sidecar
+        shell: pwsh
+        run: pwsh desktop/apprise-sidecar/build.ps1
+
       - name: Build Tauri app (release)
         working-directory: desktop
         run: npm run tauri:build
@@ -381,6 +390,14 @@ jobs:
         working-directory: desktop
         run: npm install
 
+      - name: Setup Python for Apprise sidecar
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build Apprise sidecar
+        run: bash desktop/apprise-sidecar/build.sh
+
       # Build the Tauri app (app bundle only, we'll create DMG after re-signing)
       - name: Build Tauri app (release)
         working-directory: desktop
@@ -419,6 +436,22 @@ jobs:
 
           echo "Verifying node entitlements..."
           codesign -d --entitlements - "$NODE_PATH"
+
+          # Sign the frozen Apprise sidecar (PyInstaller one-file binary) with the
+          # hardened runtime. Without this, notarization rejects the embedded
+          # executable and Gatekeeper blocks it. Uses library-validation-disabled
+          # entitlements because the one-file bootloader dlopen()s ad-hoc-signed libs.
+          # Not present on the x86_64 build (sidecar not cross-compiled) — guarded.
+          APPRISE_PATH="$APP_PATH/Contents/Resources/binaries/apprise-api"
+          if [ -f "$APPRISE_PATH" ]; then
+            echo "Re-signing Apprise sidecar binary..."
+            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+              --entitlements desktop/src-tauri/apprise.entitlements \
+              --timestamp "$APPRISE_PATH"
+            codesign -d --entitlements - "$APPRISE_PATH"
+          else
+            echo "No Apprise sidecar binary found at $APPRISE_PATH, skipping"
+          fi
 
           echo "Re-signing app bundle to update signature..."
           codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
@@ -616,6 +649,12 @@ jobs:
           mkdir -p dist/server/routes/v1
           cp src/server/routes/v1/openapi.yaml dist/server/routes/v1/
 
+      # NOTE: No Apprise sidecar is bundled for the x86_64 macOS release. This job
+      # cross-compiles to x86_64 on an Apple Silicon (arm64) runner and PyInstaller
+      # cannot cross-compile (it would emit an arm64 binary). Intel Mac users fall
+      # back to a remote Apprise API via the `appriseApiServerUrl` global setting;
+      # the Rust launcher treats a missing apprise-api binary as non-fatal.
+      # See desktop/apprise-sidecar/README.md.
       - name: Download Node.js for bundling (x64)
         run: |
           NODE_VERSION="v24.12.0"
@@ -780,6 +819,22 @@ jobs:
 
           echo "Verifying node entitlements..."
           codesign -d --entitlements - "$NODE_PATH"
+
+          # Sign the frozen Apprise sidecar (PyInstaller one-file binary) with the
+          # hardened runtime. Without this, notarization rejects the embedded
+          # executable and Gatekeeper blocks it. Uses library-validation-disabled
+          # entitlements because the one-file bootloader dlopen()s ad-hoc-signed libs.
+          # Not present on the x86_64 build (sidecar not cross-compiled) — guarded.
+          APPRISE_PATH="$APP_PATH/Contents/Resources/binaries/apprise-api"
+          if [ -f "$APPRISE_PATH" ]; then
+            echo "Re-signing Apprise sidecar binary..."
+            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+              --entitlements desktop/src-tauri/apprise.entitlements \
+              --timestamp "$APPRISE_PATH"
+            codesign -d --entitlements - "$APPRISE_PATH"
+          else
+            echo "No Apprise sidecar binary found at $APPRISE_PATH, skipping"
+          fi
 
           echo "Re-signing app bundle to update signature..."
           codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \

@@ -108,6 +108,15 @@ jobs:
           }
         shell: pwsh
 
+      - name: Setup Python for Apprise sidecar
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build Apprise sidecar
+        shell: pwsh
+        run: pwsh desktop/apprise-sidecar/build.ps1
+
       - name: Run Rust linting
         working-directory: desktop/src-tauri
         run: cargo clippy --all-targets --all-features -- -D warnings
@@ -216,6 +225,14 @@ jobs:
           tar -xzf node.tar.gz
           cp "node-${NODE_VERSION}-darwin-arm64/bin/node" desktop/resources/binaries/node
 
+      - name: Setup Python for Apprise sidecar
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build Apprise sidecar
+        run: bash desktop/apprise-sidecar/build.sh
+
       - name: Run Rust linting
         working-directory: desktop/src-tauri
         run: cargo clippy --all-targets --all-features -- -D warnings
@@ -323,6 +340,13 @@ jobs:
           echo "${EXPECTED_SHA256}  node.tar.gz" | shasum -a 256 -c -
           tar -xzf node.tar.gz
           cp "node-${NODE_VERSION}-darwin-x64/bin/node" desktop/resources/binaries/node
+
+      # NOTE: No Apprise sidecar is bundled for the x86_64 macOS build. This job
+      # cross-compiles the Rust app to x86_64 on an Apple Silicon (arm64) runner,
+      # but PyInstaller cannot cross-compile — it would produce an arm64 binary.
+      # Intel Mac users fall back to a remote Apprise API via the
+      # `appriseApiServerUrl` global setting. The Rust sidecar launcher treats a
+      # missing apprise-api binary as non-fatal. See desktop/apprise-sidecar/README.md.
 
       - name: Run Rust linting
         working-directory: desktop/src-tauri

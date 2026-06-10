@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Entitlements for the frozen Apprise sidecar (PyInstaller one-file binary).
+      A one-file build extracts its bundled Python runtime and shared libraries to
+      a temp dir at launch and dlopen()s them. Under the hardened runtime those
+      libraries are signed ad-hoc (not by our Team ID), so library validation must
+      be disabled or the process is killed at startup. PyInstaller's bootloader
+      also reads DYLD_* environment variables.
+    -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+</dict>
+</plist>

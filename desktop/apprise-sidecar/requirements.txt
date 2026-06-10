@@ -1,0 +1,8 @@
+# Build-time dependencies for the frozen Apprise sidecar.
+#
+# `apprise` is intentionally left unpinned to track the same version the Docker
+# image installs (see Dockerfile) so the desktop and container notification
+# behaviour stay in sync. PyInstaller is pinned to a major to keep the freeze
+# reproducible across the CI runners that build per-platform binaries.
+apprise
+pyinstaller>=6.3,<7
