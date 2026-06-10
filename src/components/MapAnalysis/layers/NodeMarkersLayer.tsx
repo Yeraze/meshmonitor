@@ -1,5 +1,6 @@
 import { Marker, Popup } from 'react-leaflet';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
+import type { Marker as LeafletMarker } from 'leaflet';
 import {
   useDashboardSources,
   useDashboardUnifiedData,
@@ -7,12 +8,15 @@ import {
 import { useHopCounts } from '../../../hooks/useMapAnalysisData';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
+import { useMarkerSpiderfier } from '../../../hooks/useMarkerSpiderfier';
 import { resolveNodeLatLng, type MaybePositionedNode } from '../nodePositionUtil';
+import { nodeMatchesSearch } from '../nodeSearch';
 import { createNodeIcon } from '../../../utils/mapIcons';
 
 interface NodeRecord extends MaybePositionedNode {
   nodeNum: number;
   sourceId?: string;
+  nodeId?: string | null;
   longName?: string | null;
   shortName?: string | null;
   user?: { role?: string | number | null } | null;
@@ -36,8 +40,34 @@ interface HopEntry {
  * inspector panel can react.
  */
 export default function NodeMarkersLayer() {
-  const { config, selected, setSelected } = useMapAnalysisCtx();
+  const { config, selected, setSelected, nodeFilter } = useMapAnalysisCtx();
   const { mapPinStyle } = useSettings();
+
+  // Spiderfier fans out markers that share (rounded) coordinates so each node in
+  // a cluster is individually selectable (issue #3399). Same bridge pattern as
+  // NodesTab: stable per-key ref handlers feed the imperative Leaflet markers in.
+  const { addMarker, removeMarker } = useMarkerSpiderfier({ keepSpiderfied: true });
+  const markerByKey = useRef<Map<string, LeafletMarker>>(new Map());
+  const refHandlers = useRef<Map<string, (m: LeafletMarker | null) => void>>(new Map());
+  const getMarkerRef = (key: string) => {
+    let h = refHandlers.current.get(key);
+    if (!h) {
+      h = (m: LeafletMarker | null) => {
+        const prev = markerByKey.current.get(key);
+        if (m) {
+          markerByKey.current.set(key, m);
+          addMarker(m, key);
+        } else {
+          if (prev) removeMarker(prev);
+          markerByKey.current.delete(key);
+          refHandlers.current.delete(key);
+        }
+      };
+      refHandlers.current.set(key, h);
+    }
+    return h;
+  };
+
   const { data: sources = [] } = useDashboardSources();
   const sourceList = sources as Array<{ id: string; name: string }>;
   const sourceIds = sourceList.map((s) => s.id);
@@ -65,6 +95,8 @@ export default function NodeMarkersLayer() {
     .map((n) => ({ node: n, latLng: resolveNodeLatLng(n) }))
     .filter(({ node, latLng }) => {
       if (!latLng) return false;
+      // Node search (issue #3399): hide non-matches.
+      if (!nodeMatchesSearch(node, nodeFilter)) return false;
       if (config.sources.length === 0) return true;
       if (!node.sourceId) return false;
       return config.sources.includes(node.sourceId);
@@ -97,9 +129,11 @@ export default function NodeMarkersLayer() {
           showLabel: true,
           pinStyle: mapPinStyle,
         });
+        const markerKey = `${sourceId}:${n.nodeNum}`;
         return (
           <Marker
-            key={`${sourceId}:${n.nodeNum}`}
+            key={markerKey}
+            ref={getMarkerRef(markerKey)}
             position={[lat, lon]}
             icon={icon}
             eventHandlers={{

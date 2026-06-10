@@ -29,6 +29,8 @@ vi.mock('react-leaflet', () => ({
     <div data-testid="popup">{children}</div>
   ),
   Pane: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+  // Spiderfier (NodeMarkersLayer) calls useMap(); null makes the hook a no-op.
+  useMap: () => null,
 }));
 
 vi.mock('../../hooks/useMapAnalysisData', () => ({
