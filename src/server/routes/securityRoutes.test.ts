@@ -157,4 +157,35 @@ describe('securityRoutes — per-source scanner', () => {
       expect(getStatusMock).toHaveBeenCalledWith('src-1');
     });
   });
+
+  describe('GET /dead-nodes', () => {
+    beforeEach(() => {
+      getManagerMock.mockImplementation((id: string) =>
+        ['src-1', 'src-2'].includes(id)
+          ? { sourceId: id, isNodeInDeviceDb: () => false }
+          : undefined,
+      );
+      mockDb.settings.getSetting.mockResolvedValue('0');
+    });
+
+    it('scopes the dead-nodes query to the requested source', async () => {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const daysAgo = (d: number) => nowSec - d * 24 * 60 * 60;
+      mockDb.nodes.getAllNodes.mockResolvedValue([
+        { nodeNum: 111, nodeId: '!6f', longName: 'Stale', shortName: 'OLD', hwModel: 1, lastHeard: daysAgo(30), isIgnored: false },
+        { nodeNum: 222, nodeId: '!de', longName: 'Fresh', shortName: 'NEW', hwModel: 1, lastHeard: daysAgo(0), isIgnored: false },
+      ]);
+
+      const app = createApp();
+      const res = await request(app).get('/api/security/dead-nodes?sourceId=src-1');
+
+      expect(res.status).toBe(200);
+      // Regression (2000+ dead nodes bug): the query MUST be scoped by sourceId,
+      // otherwise dead nodes from every source leak into one source's list.
+      expect(mockDb.nodes.getAllNodes).toHaveBeenCalledWith('src-1');
+      // Only the stale node (30d) is dead; the freshly-heard one is excluded.
+      expect(res.body.count).toBe(1);
+      expect(res.body.nodes.map((n: any) => n.nodeNum)).toEqual([111]);
+    });
+  });
 });
