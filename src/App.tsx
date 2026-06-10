@@ -4993,6 +4993,7 @@ function App() {
                 { id: 'auto-welcome', label: t('automation.welcome.title', 'Auto Welcome') },
                 { id: 'auto-favorite', label: t('automation.auto_favorite.title', 'Auto Favorite') },
                 { id: 'auto-traceroute', label: t('automation.traceroute.title', 'Auto Traceroute') },
+                { id: 'auto-localstats', label: t('automation.auto_localstats.title', 'Auto Remote LocalStats') },
                 { id: 'auto-ping', label: t('automation.auto_ping.title', 'Auto Ping') },
                 { id: 'auto-heap-management', label: t('automation.auto_heap.title', 'Auto Heap Management') },
                 { id: 'remote-admin-scanner', label: t('automation.remote_admin_scanner.title', 'Remote Admin Scanner') },

@@ -111,7 +111,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       const [issuesData, statusData, mismatchData, deadNodesData] = await Promise.all([
         api.get<SecurityIssuesResponse>(`/api/security/issues${srcParam}`),
         api.get<ScannerStatus>(`/api/security/scanner/status${srcParam}`),
-        api.get<{ events: any[] }>('/api/security/key-mismatches'),
+        api.get<{ events: any[] }>(`/api/security/key-mismatches${srcParam}`),
         sourceId
           ? api.get<DeadNodesResponse>(`/api/security/dead-nodes${srcParam}`)
           : Promise.resolve({ nodes: [], count: 0, thresholdDays: 7 } as unknown as DeadNodesResponse),

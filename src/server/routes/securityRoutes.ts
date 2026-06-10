@@ -327,9 +327,12 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), asy
  * GET /api/security/key-mismatches
  * Returns recent key mismatch events from the repair log
  */
-router.get('/key-mismatches', async (_req: Request, res: Response) => {
+router.get('/key-mismatches', async (req: Request, res: Response) => {
   try {
-    const log = await databaseService.getKeyRepairLogAsync(100);
+    // Scope to the requested source so the repair log doesn't leak events from
+    // every source into one source's view (same class as the dead-nodes bug).
+    const sourceId = req.query.sourceId as string | undefined;
+    const log = await databaseService.getKeyRepairLogAsync(100, sourceId);
 
     // Filter to mismatch-related actions
     const mismatchActions = new Set(['mismatch', 'purge', 'fixed', 'exhausted']);
@@ -376,7 +379,9 @@ router.get('/dead-nodes', async (req: Request, res: Response) => {
     const DEAD_NODE_DAYS = 7;
     const cutoffSeconds = Math.floor(Date.now() / 1000) - (DEAD_NODE_DAYS * 24 * 60 * 60);
 
-    const allNodes = await databaseService.nodes.getAllNodes();
+    // Scope to the requested source — otherwise the list leaks dead nodes from
+    // every source into one source's view (issue: 2000+ dead nodes).
+    const allNodes = await databaseService.nodes.getAllNodes(deadNodesSourceId);
     const localNodeNum = parseInt(await databaseService.settings.getSetting('localNodeNum') || '0');
 
     const deadNodes = allNodes
