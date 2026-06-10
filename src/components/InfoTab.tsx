@@ -145,7 +145,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
         'numPacketsTx', 'numPacketsRx', 'numPacketsRxBad',
         'numOnlineNodes', 'numTotalNodes', 'numRxDupe',
         'numTxRelay', 'numTxRelayCanceled', 'heapTotalBytes',
-        'heapFreeBytes', 'numTxDropped',
+        'heapFreeBytes', 'numTxDropped', 'noiseFloor',
         // HostMetrics metrics (for Linux devices)
         'hostUptimeSeconds', 'hostFreememBytes', 'hostDiskfree1Bytes',
         'hostDiskfree2Bytes', 'hostDiskfree3Bytes', 'hostLoad1',
