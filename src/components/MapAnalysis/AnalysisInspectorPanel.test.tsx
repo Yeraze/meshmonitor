@@ -36,6 +36,13 @@ vi.mock('../../hooks/useMapAnalysisData', () => ({
   useHopCounts: () => ({
     data: { entries: [{ sourceId: 'a', nodeNum: 1, hops: 2 }] },
   }),
+  useTraceroutes: () => ({
+    items: [],
+    isLoading: false,
+    isError: false,
+    error: null,
+    progress: { loaded: 0, estimatedTotal: 0, percent: 100 },
+  }),
 }));
 vi.mock('../../hooks/useLinkQuality', () => ({
   useLinkQuality: () => ({

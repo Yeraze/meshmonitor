@@ -449,6 +449,113 @@
   border: 1px solid #444;
 }
 
+/* ===== Node search (issue #3399) ===== */
+.map-analysis-node-search {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.map-analysis-node-search-input {
+  background: #1e1e1e;
+  color: #eee;
+  border: 1px solid #3a3a3a;
+  border-radius: 999px;
+  padding: 6px 28px 6px 14px;
+  font-size: 13px;
+  width: 160px;
+  transition: border-color 0.12s, width 0.12s;
+}
+.map-analysis-node-search-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  width: 200px;
+}
+.map-analysis-node-search-input::placeholder { color: #777; }
+.map-analysis-node-search-clear {
+  position: absolute;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.map-analysis-node-search-clear:hover { color: #fff; }
+
+/* ===== Traceroute controls (issue #3399) ===== */
+.map-analysis-tr-controls {
+  position: relative;
+  display: inline-block;
+}
+.map-analysis-tr-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: #1e1e1e;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 200px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.map-analysis-tr-seg {
+  display: inline-flex;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.map-analysis-tr-seg button {
+  background: transparent;
+  color: #ddd;
+  border: none;
+  border-right: 1px solid #3a3a3a;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.12s, color 0.12s;
+}
+.map-analysis-tr-seg button:last-child { border-right: none; }
+.map-analysis-tr-seg button:hover { background: #262626; }
+.map-analysis-tr-seg button.selected {
+  background: #2563eb;
+  color: #fff;
+}
+.map-analysis-tr-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #ddd;
+  cursor: pointer;
+  user-select: none;
+}
+.map-analysis-tr-num {
+  background: #161616;
+  color: #eee;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  width: 90px;
+}
+.map-analysis-tr-num:focus { outline: none; border-color: #2563eb; }
+
+/* ===== Inspector: traceroute summary (issue #3399) ===== */
+.map-analysis-tr-summary-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+  margin-bottom: 8px;
+}
+
 /* ===== Back to Sources ===== */
 .map-analysis-back {
   background: transparent;

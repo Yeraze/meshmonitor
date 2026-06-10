@@ -16,6 +16,25 @@ export interface LayerConfig {
   options?: Record<string, unknown>;
 }
 
+/** Persisted options for the traceroutes layer (issue #3399). */
+export interface TracerouteLayerOptions {
+  /** When a node is selected, which directions to render. */
+  directionMode: 'both' | 'inbound' | 'outbound';
+  /** When a node is selected, restrict traceroutes to ones involving it. */
+  scopeToSelectedNode: boolean;
+  /** Hide links observed fewer than this many times (weak-link filter). */
+  minOccurrences: number;
+  /** Hide links whose mean SNR (dB) is below this; null = off. */
+  minSnr: number | null;
+}
+
+export const DEFAULT_TRACEROUTE_OPTIONS: TracerouteLayerOptions = {
+  directionMode: 'both',
+  scopeToSelectedNode: true,
+  minOccurrences: 1,
+  minSnr: null,
+};
+
 export interface MapAnalysisConfig {
   version: 1;
   layers: Record<LayerKey, LayerConfig>;
@@ -32,7 +51,7 @@ export const DEFAULT_CONFIG: MapAnalysisConfig = {
   version: 1,
   layers: {
     markers:    { enabled: true,  lookbackHours: null },
-    traceroutes:{ enabled: false, lookbackHours: 24 },
+    traceroutes:{ enabled: false, lookbackHours: 24, options: { ...DEFAULT_TRACEROUTE_OPTIONS } },
     neighbors:  { enabled: false, lookbackHours: 24 },
     heatmap:    { enabled: false, lookbackHours: 24 },
     trails:     { enabled: false, lookbackHours: 24 },
@@ -44,6 +63,14 @@ export const DEFAULT_CONFIG: MapAnalysisConfig = {
   timeSlider: { enabled: false },
   inspectorOpen: true,
 };
+
+/** Read the traceroute options off a config, layering stored values over defaults. */
+export function getTracerouteOptions(config: MapAnalysisConfig): TracerouteLayerOptions {
+  return {
+    ...DEFAULT_TRACEROUTE_OPTIONS,
+    ...(config.layers.traceroutes.options as Partial<TracerouteLayerOptions> | undefined),
+  };
+}
 
 const STORAGE_KEY = 'mapAnalysis.config.v1';
 
