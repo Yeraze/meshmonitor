@@ -31,6 +31,24 @@ pub use config::Config;
 /// Global state for the backend process
 pub struct BackendState {
     pub process: Mutex<Option<Child>>,
+    /// The frozen Apprise sidecar process. Started once at launch and kept
+    /// alive across Node backend restarts. `None` when no apprise-api binary
+    /// is bundled (e.g. dev builds) or the sidecar failed to start.
+    pub apprise: Mutex<Option<Child>>,
+    /// URL the Apprise sidecar is listening on (e.g. `http://127.0.0.1:8123`).
+    /// Injected into the Node backend as APPRISE_URL so the notification
+    /// service targets the bundled sidecar. `None` when no sidecar is running.
+    pub apprise_url: Mutex<Option<String>>,
+}
+
+impl Default for BackendState {
+    fn default() -> Self {
+        Self {
+            process: Mutex::new(None),
+            apprise: Mutex::new(None),
+            apprise_url: Mutex::new(None),
+        }
+    }
 }
 
 /// Write a log message to the MeshMonitor log file
@@ -44,6 +62,114 @@ fn log_to_file(logs_path: &std::path::Path, message: &str) {
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
         let _ = writeln!(file, "[{}] {}", timestamp, message);
     }
+}
+
+/// Ask the OS for a free TCP port on loopback by binding to port 0 and reading
+/// back the assigned port. There is an inherent (small) race between releasing
+/// the listener here and the sidecar binding it, but on a single-user desktop
+/// that is acceptable and far safer than a hardcoded port that may collide.
+fn find_free_loopback_port() -> Result<u16, String> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")
+        .map_err(|e| format!("Failed to find a free port for Apprise sidecar: {}", e))?;
+    let port = listener
+        .local_addr()
+        .map_err(|e| format!("Failed to read Apprise sidecar port: {}", e))?
+        .port();
+    Ok(port)
+}
+
+/// Start the frozen Apprise sidecar, if the binary is bundled.
+///
+/// Returns `Ok(Some(url))` with the loopback URL the sidecar is listening on,
+/// or `Ok(None)` when no apprise-api binary is present (dev builds / platforms
+/// where the sidecar wasn't built). A missing sidecar is NOT an error — the
+/// desktop app simply runs without bundled Apprise (users can still point at a
+/// remote Apprise API via the `appriseApiServerUrl` global setting).
+pub fn start_apprise<R: Runtime>(app: &AppHandle<R>) -> Result<Option<(Child, String)>, String> {
+    let data_path = config::get_data_path()?;
+    let logs_path = config::get_logs_path()?;
+    std::fs::create_dir_all(&logs_path)
+        .map_err(|e| format!("Failed to create logs directory: {}", e))?;
+
+    let resource_path = strip_extended_length_prefix(
+        app.path()
+            .resource_dir()
+            .map_err(|e| format!("Failed to get resource dir: {}", e))?,
+    );
+
+    let apprise_path = resource_path.join("binaries").join(if cfg!(windows) {
+        "apprise-api.exe"
+    } else {
+        "apprise-api"
+    });
+
+    if !apprise_path.exists() {
+        log_to_file(
+            &logs_path,
+            &format!(
+                "Apprise sidecar not bundled at {:?} — notifications via bundled Apprise disabled",
+                apprise_path
+            ),
+        );
+        return Ok(None);
+    }
+
+    let port = find_free_loopback_port()?;
+    let url = format!("http://127.0.0.1:{}", port);
+    let config_dir = data_path.join("apprise-config");
+    std::fs::create_dir_all(&config_dir)
+        .map_err(|e| format!("Failed to create apprise-config directory: {}", e))?;
+
+    // Stdout/stderr to a dedicated log so sidecar issues are diagnosable.
+    let apprise_log_path = logs_path.join("apprise.log");
+    let apprise_log = File::create(&apprise_log_path)
+        .map_err(|e| format!("Failed to create apprise log: {}", e))?;
+    let apprise_log_err = apprise_log
+        .try_clone()
+        .map_err(|e| format!("Failed to clone apprise log handle: {}", e))?;
+
+    log_to_file(&logs_path, &format!("Starting Apprise sidecar: {:?}", apprise_path));
+    log_to_file(&logs_path, &format!("Apprise URL: {}", url));
+
+    let mut cmd = std::process::Command::new(&apprise_path);
+    cmd.stdout(Stdio::from(apprise_log))
+        .stderr(Stdio::from(apprise_log_err))
+        // Loopback only — never expose the notification sender to the LAN.
+        .env("APPRISE_HOST", "127.0.0.1")
+        .env("APPRISE_PORT", port.to_string())
+        .env("APPRISE_CONFIG_DIR", config_dir.to_string_lossy().to_string());
+
+    // On Windows, hide the console window for the sidecar too.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let child = cmd.spawn().map_err(|e| {
+        let msg = format!("Failed to start Apprise sidecar: {}", e);
+        log_to_file(&logs_path, &msg);
+        msg
+    })?;
+
+    log_to_file(
+        &logs_path,
+        &format!("Apprise sidecar started with PID: {}", child.id()),
+    );
+
+    Ok(Some((child, url)))
+}
+
+/// Stop the Apprise sidecar process if running.
+pub fn stop_apprise(state: &BackendState) {
+    let mut process = state.apprise.lock().unwrap();
+    if let Some(mut child) = process.take() {
+        println!("Stopping Apprise sidecar...");
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    *state.apprise_url.lock().unwrap() = None;
 }
 
 /// Start the MeshMonitor backend server
@@ -191,6 +317,21 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
         )
         .env("IS_DESKTOP", "true")
         .env("FIRMWARE_CHECK_ENABLED", "false");
+
+    // Point the backend's notification service at the bundled Apprise sidecar
+    // if one is running. Resolved from BackendState so it survives Node backend
+    // restarts (the sidecar is started once and kept alive). When absent, the
+    // backend falls back to the `appriseApiServerUrl` global setting / no Apprise.
+    if let Some(apprise_url) = app
+        .state::<BackendState>()
+        .apprise_url
+        .lock()
+        .unwrap()
+        .clone()
+    {
+        cmd.env("APPRISE_URL", &apprise_url);
+        log_to_file(&logs_path, &format!("APPRISE_URL: {}", apprise_url));
+    }
 
     // Only pass MESHTASTIC_NODE_IP / TCP_PORT if the user has actually
     // configured a Meshtastic node. Setting either env var triggers the

@@ -11,6 +11,11 @@ from urllib.parse import urlparse, parse_qs
 
 CONFIG_DIR = os.getenv('APPRISE_CONFIG_DIR', '/apprise-config')
 PORT = int(os.getenv('APPRISE_PORT', '8000'))
+# Bind address. Defaults to all interfaces to preserve the Docker behaviour
+# (the Node process reaches it over localhost inside the same container).
+# The desktop bundle sets APPRISE_HOST=127.0.0.1 so the frozen sidecar is
+# only reachable from the local machine and never the LAN.
+HOST = os.getenv('APPRISE_HOST', '')
 
 # Global Apprise object
 apobj = apprise.Apprise()
@@ -226,9 +231,9 @@ class AppriseHandler(BaseHTTPRequestHandler):
 def run_server():
     """Start the HTTP server"""
     load_config()
-    server_address = ('', PORT)
+    server_address = (HOST, PORT)
     httpd = HTTPServer(server_address, AppriseHandler)
-    print(f"🚀 Apprise API server starting on http://0.0.0.0:{PORT}")
+    print(f"🚀 Apprise API server starting on http://{HOST or '0.0.0.0'}:{PORT}")
     print(f"📁 Config directory: {CONFIG_DIR}")
     print(f"📊 Loaded {len(apobj)} notification URLs")
     httpd.serve_forever()

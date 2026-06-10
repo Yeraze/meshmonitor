@@ -1,0 +1,8 @@
+# PyInstaller / venv build artifacts — only the source (spec, scripts,
+# requirements) is tracked. The frozen binary lands in desktop/resources/
+# (itself gitignored) and is produced fresh per-platform in CI.
+.venv/
+build/
+dist/
+__pycache__/
+*.pyc

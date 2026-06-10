@@ -1,8 +1,9 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use meshmonitor_desktop_lib::{start_backend, stop_backend, tray, BackendState, Config};
-use std::sync::Mutex;
+use meshmonitor_desktop_lib::{
+    start_apprise, start_backend, stop_apprise, stop_backend, tray, BackendState, Config,
+};
 use tauri::{AppHandle, Manager};
 
 // Tauri commands must be defined in the binary crate to avoid E0255 duplicate symbol errors
@@ -43,11 +44,24 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
-        .manage(BackendState {
-            process: Mutex::new(None),
-        })
+        .manage(BackendState::default())
         .setup(|app| {
             let handle = app.handle().clone();
+
+            // Start the bundled Apprise notification sidecar (if present) before
+            // the backend, so its loopback URL is available to inject as
+            // APPRISE_URL when the Node backend spawns. A missing sidecar is
+            // non-fatal — the app runs without bundled Apprise.
+            match start_apprise(&handle) {
+                Ok(Some((child, url))) => {
+                    let state: tauri::State<BackendState> = handle.state();
+                    *state.apprise.lock().unwrap() = Some(child);
+                    *state.apprise_url.lock().unwrap() = Some(url);
+                    println!("Apprise sidecar started");
+                }
+                Ok(None) => println!("No Apprise sidecar bundled; skipping"),
+                Err(e) => eprintln!("Failed to start Apprise sidecar: {}", e),
+            }
 
             // Load or create configuration
             let config = Config::load().unwrap_or_default();
@@ -105,9 +119,10 @@ fn main() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
-                // Stop the backend when the app exits
+                // Stop the backend and Apprise sidecar when the app exits
                 let state: tauri::State<BackendState> = app.state();
                 stop_backend(&state);
+                stop_apprise(&state);
             }
         });
 }
