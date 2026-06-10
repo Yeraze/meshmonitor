@@ -160,6 +160,22 @@ export const VALID_SETTINGS_KEYS = [
   'tracerouteFilterHopsEnabled',
   'tracerouteFilterHopsMin',
   'tracerouteFilterHopsMax',
+  // Remote LocalStats automation (issue #3398): periodically request local_stats
+  // telemetry from remote nodes selected by list/role/favorite/name-regex.
+  'remoteLocalStatsIntervalMinutes',
+  'remoteLocalStatsScheduleEnabled',
+  'remoteLocalStatsScheduleStart',
+  'remoteLocalStatsScheduleEnd',
+  'remoteLocalStatsFilterEnabled',
+  'remoteLocalStatsFilterNodes',
+  'remoteLocalStatsFilterNodesEnabled',
+  'remoteLocalStatsFilterRoles',
+  'remoteLocalStatsFilterRolesEnabled',
+  'remoteLocalStatsFilterFavoriteEnabled',
+  'remoteLocalStatsFilterNameRegex',
+  'remoteLocalStatsFilterRegexEnabled',
+  'remoteLocalStatsFilterLastHeardEnabled',
+  'remoteLocalStatsFilterLastHeardHours',
   'defaultLandingPage',
   'appriseApiServerUrl',
   // Advanced/unsafe MeshCore actions. When true the per-contact detail
@@ -361,6 +377,21 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'tracerouteFilterHopsEnabled',
   'tracerouteFilterHopsMin',
   'tracerouteFilterHopsMax',
+  // Remote LocalStats automation (issue #3398)
+  'remoteLocalStatsIntervalMinutes',
+  'remoteLocalStatsScheduleEnabled',
+  'remoteLocalStatsScheduleStart',
+  'remoteLocalStatsScheduleEnd',
+  'remoteLocalStatsFilterEnabled',
+  'remoteLocalStatsFilterNodes',
+  'remoteLocalStatsFilterNodesEnabled',
+  'remoteLocalStatsFilterRoles',
+  'remoteLocalStatsFilterRolesEnabled',
+  'remoteLocalStatsFilterFavoriteEnabled',
+  'remoteLocalStatsFilterNameRegex',
+  'remoteLocalStatsFilterRegexEnabled',
+  'remoteLocalStatsFilterLastHeardEnabled',
+  'remoteLocalStatsFilterLastHeardHours',
 ] as const;
 
 export type PerSourceSettingKey = typeof PER_SOURCE_SETTINGS_KEYS[number];

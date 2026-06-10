@@ -6101,6 +6101,24 @@ apiRouter.post('/settings/traceroute-interval', requirePermission('settings', 'w
   }
 });
 
+// Apply the remote LocalStats automation interval to the live manager (issue #3398).
+// Persistence happens via the generic /api/settings POST; this applies it without
+// requiring a reconnect.
+apiRouter.post('/settings/remote-localstats-interval', requirePermission('settings', 'write'), (req, res) => {
+  try {
+    const { intervalMinutes, sourceId: rlsIntervalSourceId } = req.body;
+    if (typeof intervalMinutes !== 'number' || intervalMinutes < 0 || intervalMinutes > 1440) {
+      return res.status(400).json({ error: 'Invalid interval. Must be between 0 and 1440 minutes (0 = disabled).' });
+    }
+    const rlsIntervalManager = (resolveSourceManager(rlsIntervalSourceId));
+    rlsIntervalManager.setRemoteLocalStatsInterval(intervalMinutes);
+    res.json({ success: true, intervalMinutes });
+  } catch (error) {
+    logger.error('Error setting remote LocalStats interval:', error);
+    res.status(500).json({ error: 'Failed to set remote LocalStats interval' });
+  }
+});
+
 // Get auto-traceroute node filter settings
 apiRouter.get('/settings/traceroute-nodes', requirePermission('settings', 'read'), async (req, res) => {
   try {
@@ -6299,6 +6317,136 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
   } catch (error) {
     logger.error('Error updating auto-traceroute node filter:', error);
     res.status(500).json({ error: 'Failed to update auto-traceroute node filter' });
+  }
+});
+
+// Get remote LocalStats automation node filter settings (issue #3398)
+apiRouter.get('/settings/remote-localstats-nodes', requirePermission('settings', 'read'), async (req, res) => {
+  try {
+    const sourceId = req.query.sourceId as string | undefined;
+    const settings = await databaseService.getRemoteLocalStatsFilterSettingsAsync(sourceId);
+    res.json(settings);
+  } catch (error) {
+    logger.error('Error fetching remote LocalStats node filter:', error);
+    res.status(500).json({ error: 'Failed to fetch remote LocalStats node filter' });
+  }
+});
+
+// Update remote LocalStats automation node filter settings (issue #3398)
+apiRouter.post('/settings/remote-localstats-nodes', requirePermission('settings', 'write'), async (req, res) => {
+  try {
+    const {
+      enabled, nodeNums, filterRoles, filterNameRegex,
+      filterNodesEnabled, filterRolesEnabled, filterFavoriteEnabled, filterRegexEnabled,
+      filterLastHeardEnabled, filterLastHeardHours,
+    } = req.body;
+
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid enabled value. Must be a boolean.' });
+    }
+    if (!Array.isArray(nodeNums)) {
+      return res.status(400).json({ error: 'Invalid nodeNums value. Must be an array.' });
+    }
+    for (const nodeNum of nodeNums) {
+      if (!Number.isInteger(nodeNum) || nodeNum < 0) {
+        return res.status(400).json({ error: 'All node numbers must be positive integers.' });
+      }
+    }
+
+    const validateIntArray = (arr: unknown, name: string): number[] => {
+      if (arr === undefined || arr === null) return [];
+      if (!Array.isArray(arr)) {
+        throw new Error(`Invalid ${name} value. Must be an array.`);
+      }
+      for (const item of arr) {
+        if (!Number.isInteger(item) || item < 0) {
+          throw new Error(`All ${name} values must be non-negative integers.`);
+        }
+      }
+      return arr as number[];
+    };
+
+    let validatedRoles: number[];
+    try {
+      validatedRoles = validateIntArray(filterRoles, 'filterRoles');
+    } catch (error) {
+      return res.status(400).json({ error: (error as Error).message });
+    }
+
+    // Validate regex (ReDoS-guarded, mirrors the traceroute route)
+    let validatedRegex = '.*';
+    if (filterNameRegex !== undefined && filterNameRegex !== null) {
+      if (typeof filterNameRegex !== 'string') {
+        return res.status(400).json({ error: 'Invalid filterNameRegex value. Must be a string.' });
+      }
+      if (filterNameRegex.length > 200) {
+        return res.status(400).json({ error: 'filterNameRegex too long (max 200 characters).' });
+      }
+      if (/(\.\*){2,}|(\+.*\+)|(\*.*\*)|(\{[0-9]{3,}\})|(\{[0-9]+,\})/.test(filterNameRegex)) {
+        return res.status(400).json({ error: 'filterNameRegex too complex or may cause performance issues.' });
+      }
+      try {
+        new RegExp(filterNameRegex);
+        validatedRegex = filterNameRegex;
+      } catch {
+        return res.status(400).json({ error: 'Invalid filterNameRegex value. Must be a valid regular expression.' });
+      }
+    }
+
+    const validateOptionalBoolean = (value: unknown, name: string): boolean | undefined => {
+      if (value === undefined) return undefined;
+      if (typeof value !== 'boolean') {
+        throw new Error(`Invalid ${name} value. Must be a boolean.`);
+      }
+      return value;
+    };
+
+    let validatedFilterNodesEnabled: boolean | undefined;
+    let validatedFilterRolesEnabled: boolean | undefined;
+    let validatedFilterFavoriteEnabled: boolean | undefined;
+    let validatedFilterRegexEnabled: boolean | undefined;
+    let validatedFilterLastHeardEnabled: boolean | undefined;
+    try {
+      validatedFilterNodesEnabled = validateOptionalBoolean(filterNodesEnabled, 'filterNodesEnabled');
+      validatedFilterRolesEnabled = validateOptionalBoolean(filterRolesEnabled, 'filterRolesEnabled');
+      validatedFilterFavoriteEnabled = validateOptionalBoolean(filterFavoriteEnabled, 'filterFavoriteEnabled');
+      validatedFilterRegexEnabled = validateOptionalBoolean(filterRegexEnabled, 'filterRegexEnabled');
+      validatedFilterLastHeardEnabled = validateOptionalBoolean(filterLastHeardEnabled, 'filterLastHeardEnabled');
+    } catch (error) {
+      return res.status(400).json({ error: (error as Error).message });
+    }
+
+    let validatedFilterLastHeardHours: number | undefined;
+    if (filterLastHeardHours !== undefined) {
+      if (!Number.isInteger(filterLastHeardHours) || filterLastHeardHours < 1) {
+        return res.status(400).json({ error: 'Invalid filterLastHeardHours value. Must be an integer >= 1.' });
+      }
+      validatedFilterLastHeardHours = filterLastHeardHours;
+    }
+
+    const sourceId = (req.query.sourceId as string | undefined) || (req.body?.sourceId as string | undefined);
+    if (!sourceId) {
+      return res.status(400).json({ error: 'sourceId is required for remote LocalStats filter settings.' });
+    }
+
+    await databaseService.setRemoteLocalStatsFilterSettingsAsync({
+      enabled,
+      nodeNums,
+      filterRoles: validatedRoles,
+      filterNameRegex: validatedRegex,
+      filterNodesEnabled: validatedFilterNodesEnabled,
+      filterRolesEnabled: validatedFilterRolesEnabled,
+      filterFavoriteEnabled: validatedFilterFavoriteEnabled,
+      filterRegexEnabled: validatedFilterRegexEnabled,
+      filterLastHeardEnabled: validatedFilterLastHeardEnabled,
+      filterLastHeardHours: validatedFilterLastHeardHours,
+    }, sourceId);
+
+    const updatedSettings = await databaseService.getRemoteLocalStatsFilterSettingsAsync(sourceId);
+    res.json({ success: true, ...updatedSettings });
+  } catch (error) {
+    logger.error('Error updating remote LocalStats node filter:', error);
+    res.status(500).json({ error: 'Failed to update remote LocalStats node filter' });
   }
 });
 

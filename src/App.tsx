@@ -23,6 +23,7 @@ import ChannelsTab from './components/ChannelsTab';
 import PacketMonitorPanel from './components/PacketMonitorPanel';
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection';
 import AutoTracerouteSection from './components/AutoTracerouteSection';
+import AutoLocalStatsSection from './components/AutoLocalStatsSection';
 import AutoAnnounceSection from './components/AutoAnnounceSection';
 import AutoWelcomeSection from './components/AutoWelcomeSection';
 import AutoResponderSection from './components/AutoResponderSection';
@@ -292,6 +293,7 @@ function App() {
     inactiveNodeCheckIntervalMinutes,
     inactiveNodeCooldownHours,
     tracerouteIntervalMinutes,
+    remoteLocalStatsIntervalMinutes,
     temperatureUnit,
     distanceUnit,
     telemetryVisualizationHours,
@@ -317,6 +319,7 @@ function App() {
     setInactiveNodeCheckIntervalMinutes,
     setInactiveNodeCooldownHours,
     setTracerouteIntervalMinutes,
+    setRemoteLocalStatsIntervalMinutes,
     setTemperatureUnit,
     setDistanceUnit,
     positionHistoryLineStyle,
@@ -5032,6 +5035,13 @@ function App() {
                   intervalMinutes={tracerouteIntervalMinutes}
                   baseUrl={baseUrl}
                   onIntervalChange={setTracerouteIntervalMinutes}
+                />
+              </div>
+              <div id="auto-localstats">
+                <AutoLocalStatsSection
+                  intervalMinutes={remoteLocalStatsIntervalMinutes}
+                  baseUrl={baseUrl}
+                  onIntervalChange={setRemoteLocalStatsIntervalMinutes}
                 />
               </div>
               <div id="auto-ping">
