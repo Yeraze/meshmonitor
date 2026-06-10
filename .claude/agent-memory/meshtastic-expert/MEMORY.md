@@ -5,3 +5,4 @@
 - [Store and Forward Module Reference](reference_store_forward_module.md) — S&F protocol: PortNum 65, message types, PSRAM storage, replay format, server eligibility, config
 - [Two Ignore Mechanisms](reference_ignored_nodes_two_mechanisms.md) — config.lora.ignore_incoming (persists across node delete) vs NodeInfoLite.is_ignored (destroyed by remove_by_nodenum)
 - [Channel Hash Generation](reference_channel_hash_generation.md) — generateHash = xor(name) XOR xor(PSK); blank name substitutes to modem preset display name (e.g. "LongFast")
+- [LocalStats noise_floor field](reference_localstats_noise_floor.md) — field 15, int32, dBm; added to telemetry.proto master Jan 2026 (firmware PR #9347)
