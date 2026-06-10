@@ -44,6 +44,15 @@ vi.mock('../../contexts/MapContext', () => ({
   }),
 }));
 
+// CSRF + api are provided by the app shell in production; mock them so the bare
+// component renders and the GeoJSON layer fetch is inert in tests.
+vi.mock('../../hooks/useCsrfFetch', () => ({
+  useCsrfFetch: () => vi.fn().mockResolvedValue({ ok: true }),
+}));
+vi.mock('../../services/api', () => ({
+  default: { getBaseUrl: vi.fn().mockResolvedValue('') },
+}));
+
 // The marker popup (DashboardNodePopup) reads time/date format from
 // SettingsContext; mock the display-settings hook so tests don't need a
 // SettingsProvider.
