@@ -727,7 +727,12 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
               {!loadingDistribution && packetDistribution.total > 0 && (
                 <div className="info-section-wide">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                    <h3 style={{ margin: 0 }}>{t('info.packet_distribution', 'Packet Distribution')}</h3>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem' }}>
+                      <h3 style={{ margin: 0 }}>{t('info.packet_distribution', 'Packet Distribution')}</h3>
+                      <span style={{ fontSize: '0.9em', color: 'var(--ctp-subtext0)', fontWeight: 600 }}>
+                        {t('info.total_packets', { count: packetDistribution.total, defaultValue: 'Total: {{count}} packets' })}
+                      </span>
+                    </div>
                     {timeRangeButtons}
                   </div>
                   <div className="packet-distribution-grid">

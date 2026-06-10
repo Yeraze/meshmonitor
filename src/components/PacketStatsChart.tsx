@@ -78,11 +78,21 @@ const PacketStatsChart: React.FC<PacketStatsChartProps> = React.memo(({ title, d
   );
 
   const legend = (
-    <div style={{ fontSize: '0.85em', minWidth: 0, overflow: 'hidden' }}>
+    <div style={{ fontSize: '0.85em', minWidth: 0, overflow: stacked ? 'hidden' : 'visible' }}>
       {filteredData.map((entry, index) => {
         const pct = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0';
+        // Stacked distribution charts can have long node names, so truncate the
+        // whole line with an ellipsis. Horizontal RX/TX charts use short names and
+        // must never clip the count (issue #3401) — let the name wrap instead.
         return (
-          <p key={`${chartId}-legend-${index}`} style={{ margin: '0.25rem 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <p
+            key={`${chartId}-legend-${index}`}
+            style={
+              stacked
+                ? { margin: '0.25rem 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+                : { margin: '0.25rem 0' }
+            }
+          >
             <span style={{
               display: 'inline-block',
               width: '10px',
