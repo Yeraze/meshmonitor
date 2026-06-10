@@ -29,6 +29,7 @@ fn strip_extended_length_prefix(path: PathBuf) -> PathBuf {
 pub use config::Config;
 
 /// Global state for the backend process
+#[derive(Default)]
 pub struct BackendState {
     pub process: Mutex<Option<Child>>,
     /// The frozen Apprise sidecar process. Started once at launch and kept
@@ -39,16 +40,6 @@ pub struct BackendState {
     /// Injected into the Node backend as APPRISE_URL so the notification
     /// service targets the bundled sidecar. `None` when no sidecar is running.
     pub apprise_url: Mutex<Option<String>>,
-}
-
-impl Default for BackendState {
-    fn default() -> Self {
-        Self {
-            process: Mutex::new(None),
-            apprise: Mutex::new(None),
-            apprise_url: Mutex::new(None),
-        }
-    }
 }
 
 /// Write a log message to the MeshMonitor log file
@@ -128,7 +119,10 @@ pub fn start_apprise<R: Runtime>(app: &AppHandle<R>) -> Result<Option<(Child, St
         .try_clone()
         .map_err(|e| format!("Failed to clone apprise log handle: {}", e))?;
 
-    log_to_file(&logs_path, &format!("Starting Apprise sidecar: {:?}", apprise_path));
+    log_to_file(
+        &logs_path,
+        &format!("Starting Apprise sidecar: {:?}", apprise_path),
+    );
     log_to_file(&logs_path, &format!("Apprise URL: {}", url));
 
     let mut cmd = std::process::Command::new(&apprise_path);
@@ -137,7 +131,10 @@ pub fn start_apprise<R: Runtime>(app: &AppHandle<R>) -> Result<Option<(Child, St
         // Loopback only — never expose the notification sender to the LAN.
         .env("APPRISE_HOST", "127.0.0.1")
         .env("APPRISE_PORT", port.to_string())
-        .env("APPRISE_CONFIG_DIR", config_dir.to_string_lossy().to_string());
+        .env(
+            "APPRISE_CONFIG_DIR",
+            config_dir.to_string_lossy().to_string(),
+        );
 
     // On Windows, hide the console window for the sidecar too.
     #[cfg(windows)]
