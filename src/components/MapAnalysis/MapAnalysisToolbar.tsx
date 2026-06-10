@@ -2,6 +2,8 @@ import { useNavigate } from 'react-router-dom';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import LayerToggleButton from './LayerToggleButton';
 import SourceMultiSelect from './SourceMultiSelect';
+import NodeSearchControl from './NodeSearchControl';
+import TracerouteControls from './TracerouteControls';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { LayerKey } from '../../hooks/useMapAnalysisConfig';
 import {
@@ -100,6 +102,7 @@ export default function MapAnalysisToolbar() {
         value={config.sources}
         onChange={setSources}
       />
+      <NodeSearchControl />
       <button
         type="button"
         className={`map-analysis-layer-btn ${config.timeSlider.enabled ? 'active' : ''}`}
@@ -127,6 +130,7 @@ export default function MapAnalysisToolbar() {
           loading={layerLoading[key] ?? false}
         />
       ))}
+      {config.layers.traceroutes.enabled && <TracerouteControls />}
       {aggregate !== null && (
         <div
           className="map-analysis-progress"

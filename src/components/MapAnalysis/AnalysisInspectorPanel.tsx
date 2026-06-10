@@ -1,10 +1,15 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import {
   useDashboardSources,
   useDashboardUnifiedData,
 } from '../../hooks/useDashboardData';
-import { useHopCounts } from '../../hooks/useMapAnalysisData';
+import { useHopCounts, useTraceroutes } from '../../hooks/useMapAnalysisData';
 import { useLinkQuality } from '../../hooks/useLinkQuality';
+import {
+  useTracerouteAnalysis,
+  type TracerouteAnalysisInput,
+} from '../../hooks/useTracerouteAnalysis';
+import { getTracerouteOptions } from '../../hooks/useMapAnalysisConfig';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { resolveNodeLatLng, type MaybePositionedNode } from './nodePositionUtil';
 
@@ -76,6 +81,37 @@ export default function AnalysisInspectorPanel() {
     nodeId: selectedNodeId,
     hours: 24,
     enabled: selected?.type === 'node' && !!selectedNodeId,
+  });
+
+  // Per-node traceroute summary (issue #3399). Shares the React Query cache with
+  // the traceroute layer when the same source/lookback args are in use.
+  const tracerouteOptions = useMemo(
+    () => getTracerouteOptions(config),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [config.layers.traceroutes.options],
+  );
+  const isNodeSelected = selected?.type === 'node' && selected.nodeNum !== undefined;
+  const { items: tracerouteItems } = useTraceroutes({
+    enabled: isNodeSelected && sourceIds.length > 0,
+    sources: sourceIds,
+    lookbackHours: config.layers.traceroutes.lookbackHours ?? 24,
+  });
+  const positionByKey = useMemo(() => {
+    const map = new Map<string, [number, number]>();
+    for (const n of (nodes ?? []) as NodeRecord[]) {
+      const ll = resolveNodeLatLng(n);
+      if (ll) map.set(`${n.sourceId ?? ''}:${Number(n.nodeNum)}`, ll);
+    }
+    return map;
+  }, [nodes]);
+  const { summary: tracerouteSummary } = useTracerouteAnalysis({
+    traceroutes: tracerouteItems as TracerouteAnalysisInput[],
+    positionByKey,
+    selectedNodeNum: isNodeSelected ? selected!.nodeNum! : null,
+    selectedSourceId: isNodeSelected ? selected!.sourceId ?? null : null,
+    options: tracerouteOptions,
+    visibleNodeNums: null,
+    timeWindow: null,
   });
 
   if (!config.inspectorOpen) {
@@ -210,6 +246,24 @@ export default function AnalysisInspectorPanel() {
           <dt>SNR</dt>
           <dd>{formatNumber(node.snr, ' dB', 2)}</dd>
         </dl>
+        {tracerouteSummary && tracerouteSummary.distinctLinks > 0 && (
+          <>
+            <hr />
+            <div className="map-analysis-tr-summary-title">Traceroute Links</div>
+            <dl>
+              <dt>Distinct Links</dt>
+              <dd>{tracerouteSummary.distinctLinks}</dd>
+              <dt>Outbound</dt>
+              <dd>{tracerouteSummary.outboundLinks}</dd>
+              <dt>Inbound</dt>
+              <dd>{tracerouteSummary.inboundLinks}</dd>
+              <dt>Observations</dt>
+              <dd>{tracerouteSummary.totalObservations}</dd>
+              <dt>Avg SNR</dt>
+              <dd>{formatNumber(tracerouteSummary.avgSnr, ' dB', 1)}</dd>
+            </dl>
+          </>
+        )}
       </>,
     );
   }
@@ -300,10 +354,28 @@ export default function AnalysisInspectorPanel() {
       </div>
       <hr />
       <dl>
-        <dt>From</dt>
+        <dt>From (TX)</dt>
         <dd>{fromName}</dd>
-        <dt>To</dt>
+        <dt>To (RX)</dt>
         <dd>{toName}</dd>
+        {selected.direction && selected.direction !== 'neutral' && (
+          <>
+            <dt>Direction</dt>
+            <dd>{selected.direction === 'outbound' ? 'Outbound (TX)' : 'Inbound (RX)'}</dd>
+          </>
+        )}
+        {selected.occurrences !== undefined && (
+          <>
+            <dt>Observations</dt>
+            <dd>{selected.occurrences}</dd>
+          </>
+        )}
+        {selected.avgSnr !== undefined && (
+          <>
+            <dt>Avg SNR</dt>
+            <dd>{selected.avgSnr === null ? '— (unknown)' : `${selected.avgSnr.toFixed(1)} dB`}</dd>
+          </>
+        )}
       </dl>
     </>,
   );

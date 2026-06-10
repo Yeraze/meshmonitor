@@ -16,8 +16,8 @@ vi.mock('../../../hooks/useMapAnalysisData', () => ({
     items: [
       {
         id: 1,
-        fromNodeNum: 1,
-        toNodeNum: 2,
+        fromNodeNum: 0x1111,
+        toNodeNum: 0x2222,
         sourceId: 'a',
         route: '[]',
         routeBack: '[]',
@@ -37,8 +37,8 @@ vi.mock('../../../hooks/useDashboardData', () => ({
   useDashboardSources: () => ({ data: [{ id: 'a', name: 'A' }] }),
   useDashboardUnifiedData: () => ({
     nodes: [
-      { nodeNum: 1, sourceId: 'a', position: { latitude: 30, longitude: -90 } },
-      { nodeNum: 2, sourceId: 'a', position: { latitude: 31, longitude: -91 } },
+      { nodeNum: 0x1111, sourceId: 'a', position: { latitude: 30, longitude: -90 } },
+      { nodeNum: 0x2222, sourceId: 'a', position: { latitude: 31, longitude: -91 } },
     ],
   }),
   UNIFIED_SOURCE_ID: '__unified__',
