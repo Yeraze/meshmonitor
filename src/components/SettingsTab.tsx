@@ -11,6 +11,7 @@ import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { getAllTilesets, type TilesetId } from '../config/tilesets';
 import PacketMonitorSettings from './PacketMonitorSettings';
+import ChannelSoundPicker from './ChannelSoundPicker';
 import SystemBackupSection from './configuration/SystemBackupSection';
 import DatabaseMaintenanceSection from './configuration/DatabaseMaintenanceSection';
 import AutoUpgradeTestSection from './configuration/AutoUpgradeTestSection';
@@ -1653,6 +1654,17 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <span className="setting-description">{t('settings.enable_audio_notifications_description')}</span>
             </label>
           </div>
+          {enableAudioNotifications && (
+            <div className="setting-item">
+              <label>
+                {t('settings.channel_sounds_label', 'Per-channel notification sound')}
+                <span className="setting-description">
+                  {t('settings.channel_sounds_description', 'Choose which sound plays for new messages on each channel, or silence a channel. Preview each sound before selecting.')}
+                </span>
+              </label>
+              <ChannelSoundPicker />
+            </div>
+          )}
           <div className="setting-item">
             <label>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>

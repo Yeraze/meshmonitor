@@ -65,6 +65,7 @@ import { logger } from './utils/logger';
 import { isNodeComplete, getEffectivePosition } from './utils/nodeHelpers';
 import { nodePassesTransportFilter } from './utils/nodeTransport';
 import { applyHomoglyphOptimization } from './utils/homoglyph';
+import { playSound, playChannelSound, DEFAULT_SOUND_ID } from './utils/notificationSounds';
 import Sidebar from './components/Sidebar';
 import { SearchModal } from './components/SearchModal/SearchModal.js';
 import { SettingsProvider, useSettings, useNotificationMuteSettings } from './contexts/SettingsContext';
@@ -701,53 +702,23 @@ function App() {
   // Telemetry request loading state
   const [telemetryRequestLoading, setTelemetryRequestLoading] = useState<string | null>(null);
 
-  // Play notification sound using Web Audio API
-  const playNotificationSound = useCallback(() => {
+  // Play the notification sound configured for a given channel using the
+  // synthesized Web Audio sound library. Channel `-1` is the DM pseudo-channel;
+  // when no channel is supplied (or it is undefined) the default sound plays,
+  // preserving the previous single-tone behavior. Honors the master audio
+  // toggle exactly as before.
+  const playNotificationSound = useCallback((channelId?: number) => {
     // Check if audio notifications are enabled
     if (!enableAudioNotifications) {
       logger.debug('🔇 Audio notifications disabled, skipping sound');
       return;
     }
 
-    try {
-      logger.debug('🔊 playNotificationSound called');
-
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      logger.debug('🔊 AudioContext created, state:', audioContext.state);
-
-      // Resume context if suspended (browser autoplay policy)
-      if (audioContext.state === 'suspended') {
-        audioContext.resume();
-      }
-
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      // Create a pleasant "ding" sound at 800Hz
-      oscillator.frequency.value = 800;
-      oscillator.type = 'sine';
-
-      // Envelope: quick attack, moderate decay
-      gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-      gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.01);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.3);
-
-      // Close AudioContext after sound finishes to prevent resource leak
-      oscillator.onended = () => {
-        audioContext.close().catch(() => {
-          // Ignore close errors
-        });
-      };
-
-      logger.debug('🔊 Sound started successfully');
-    } catch (error) {
-      logger.error('❌ Failed to play notification sound:', error);
+    logger.debug('🔊 playNotificationSound called for channel:', channelId);
+    if (channelId === undefined) {
+      playSound(DEFAULT_SOUND_ID);
+    } else {
+      playChannelSound(channelId);
     }
   }, [enableAudioNotifications]);
 
@@ -2484,7 +2455,9 @@ function App() {
                 ? isDMMuted(currentNewestMessage.fromNodeId)
                 : isChannelMuted(currentNewestMessage.channel);
               if (!muted) {
-                playNotificationSound();
+                // Play the sound configured for this channel (channel -1 is the
+                // DM pseudo-channel, which has its own selectable sound too).
+                playNotificationSound(currentNewestMessage.channel);
               } else {
                 logger.debug('🔇 Notification sound suppressed (muted):', isDM ? `DM from ${currentNewestMessage.fromNodeId}` : `channel ${currentNewestMessage.channel}`);
               }
