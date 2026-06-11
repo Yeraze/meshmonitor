@@ -165,15 +165,17 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
 
   const checkboxRow = (label: string, description: string, checked: boolean, onChange: (v: boolean) => void) => (
     <div className="setting-item">
-      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', cursor: 'pointer' }}>
+      {/* flexDirection:'row' overrides the global `.setting-item label`
+          column layout so the checkbox sits beside the label, not above it. */}
+      <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: '0.6rem', cursor: 'pointer', marginBottom: 0 }}>
         <input
           type="checkbox"
           checked={checked}
           onChange={(e) => onChange(e.target.checked)}
-          style={{ marginTop: '0.25rem' }}
+          style={{ marginTop: '0.2rem', flexShrink: 0 }}
         />
-        <span>
-          {label}
+        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+          <span>{label}</span>
           <span className="setting-description">{description}</span>
         </span>
       </label>
