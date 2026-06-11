@@ -26,6 +26,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { CsrfProvider } from './contexts/CsrfContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { SourceProvider } from './contexts/SourceContext';
+import { SettingsProvider } from './contexts/SettingsContext';
 import { installKeyboardInsetsObserver } from './utils/keyboardInsets';
 
 // Publish the iOS keyboard overlay height as `--keyboard-inset` on
@@ -121,7 +122,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             {/* Unified cross-source views */}
             <Route
               path="unified/messages"
-              element={sharedProviders(<UnifiedMessagesPage />)}
+              element={sharedProviders(
+                // SettingsProvider so the embedded <LinkPreview> can read the
+                // global "show link previews" toggle (issue #3416).
+                <SettingsProvider>
+                  <UnifiedMessagesPage />
+                </SettingsProvider>
+              )}
             />
             <Route
               path="unified/telemetry"
