@@ -130,6 +130,13 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
     (gatewayInfo.sourceType === null || gatewayInfo.sourceType === 'meshtastic_tcp') &&
     !!gatewayInfo.gatewayIp;
 
+  // Issue #3413: a node is considered recovered/reachable only when MeshMonitor
+  // currently has a live connection AND the node is answering. This gates the
+  // half-flash recovery action below — clearing the safety marker should only
+  // happen once the device is actually back online and accepting connections.
+  const connection = pollData?.connection;
+  const isGatewayOnline = !!(connection?.connected && connection?.nodeResponsive);
+
   // Local state
   const [channel, setChannel] = useState<FirmwareChannel>('stable');
   const [customUrl, setCustomUrl] = useState('');
@@ -137,6 +144,11 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
   const [isSavingChannel, setIsSavingChannel] = useState(false);
   const [showRejectedFiles, setShowRejectedFiles] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
+  // Issue #3413: when Safety Rail 5 (half-flash marker) blocks an OTA, hold the
+  // affected nodeId so the wizard can show an inline recovery panel instead of
+  // surfacing the raw "DELETE /api/firmware/recovery-marker/..." toast.
+  const [halfFlashedNodeId, setHalfFlashedNodeId] = useState<string | null>(null);
+  const [isClearingMarker, setIsClearingMarker] = useState(false);
 
   // Ref for auto-scrolling logs
   const logRef = useRef<HTMLPreElement>(null);
@@ -290,6 +302,13 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
           queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
           return;
         }
+        // Issue #3413: Safety Rail 5 blocked the flash because the node is
+        // flagged half-flashed. Surface an inline recovery panel instead of the
+        // raw API instructions so non-technical users can recover in one click.
+        if (res.status === 409 && data.error?.includes('half-flashed')) {
+          setHalfFlashedNodeId(gatewayInfo.nodeId);
+          return;
+        }
         throw new Error(data.error || 'Failed to confirm step');
       }
       queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
@@ -300,7 +319,46 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
     }
   };
 
+  // Issue #3413: clear the half-flash safety marker after a USB recovery, then
+  // re-trigger the blocked confirm step. Includes a basic "node is online and
+  // accepting connections" guard so the marker can't be cleared while the
+  // device is still unreachable — the marker exists to protect a node that may
+  // still be corrupted, so we require evidence it has actually recovered.
+  const handleClearMarkerAndRetry = async () => {
+    if (!halfFlashedNodeId || isClearingMarker) return;
+    if (!isGatewayOnline) {
+      showToast(
+        t(
+          'firmware.recovery_not_online',
+          'Node is not online and accepting connections yet. Recover it via USB and wait for it to reconnect before clearing the flag.'
+        ),
+        'error'
+      );
+      return;
+    }
+    setIsClearingMarker(true);
+    try {
+      const res = await csrfFetch(
+        `${baseUrl}/api/firmware/recovery-marker/${encodeURIComponent(halfFlashedNodeId)}`,
+        { method: 'DELETE' }
+      );
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to clear recovery flag');
+      }
+      showToast(t('firmware.recovery_cleared', 'Recovery flag cleared'), 'success');
+      setHalfFlashedNodeId(null);
+      // Re-run the preflight confirm now that the marker is gone.
+      await handleConfirm();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Error clearing recovery flag', 'error');
+    } finally {
+      setIsClearingMarker(false);
+    }
+  };
+
   const handleCancel = async () => {
+    setHalfFlashedNodeId(null);
     try {
       const res = await csrfFetch(`${baseUrl}/api/firmware/update/cancel`, {
         method: 'POST',
@@ -317,6 +375,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
   };
 
   const handleDone = async () => {
+    setHalfFlashedNodeId(null);
     const wasSuccess = effectiveStatus?.state === 'success';
     try {
       if (wasSuccess) {
@@ -759,8 +818,74 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
             </p>
           )}
 
+          {/* Half-flash recovery panel (issue #3413) — replaces the raw
+              "DELETE /api/firmware/recovery-marker/..." toast with a guided,
+              one-click recovery flow that checks the node is back online. */}
+          {halfFlashedNodeId && (
+            <div style={{
+              padding: '0.75rem',
+              borderRadius: '6px',
+              backgroundColor: 'rgba(250, 179, 40, 0.1)',
+              border: '1px solid var(--ctp-peach)',
+              color: 'var(--ctp-text)',
+              fontSize: '0.85rem',
+              marginBottom: '0.75rem',
+              lineHeight: '1.5',
+            }}>
+              <strong>
+                {t('firmware.recovery_title', 'Device flagged as half-flashed')}
+              </strong>
+              <p style={{ margin: '0.5rem 0' }}>
+                {t(
+                  'firmware.recovery_explanation',
+                  'A previous OTA attempt did not finish, so MeshMonitor flagged this node to prevent another flash on a possibly corrupted device. Recover it via a USB-tethered flash first. Once it is back online, clear the flag below to retry.'
+                )}
+              </p>
+              {/* Live "online and accepting connections" indicator */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginTop: '0.5rem' }}>
+                <span style={{
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  backgroundColor: isGatewayOnline ? '#10b981' : 'var(--ctp-red)',
+                  flexShrink: 0,
+                }} />
+                <span>
+                  {isGatewayOnline
+                    ? t('firmware.recovery_online', 'Node is online and accepting connections — it appears to have recovered.')
+                    : t('firmware.recovery_offline', 'Node is not online and accepting connections yet. Recover it via USB and wait for it to reconnect.')}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Action buttons */}
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            {halfFlashedNodeId ? (
+              <>
+                <button
+                  className="save-button"
+                  onClick={handleClearMarkerAndRetry}
+                  disabled={!isGatewayOnline || isClearingMarker}
+                  title={
+                    !isGatewayOnline
+                      ? t(
+                          'firmware.recovery_not_online',
+                          'Node is not online and accepting connections yet. Recover it via USB and wait for it to reconnect before clearing the flag.'
+                        )
+                      : undefined
+                  }
+                >
+                  {isClearingMarker
+                    ? '⏳ Working...'
+                    : t('firmware.recovery_clear_retry', "I've Recovered via USB — Clear Flag & Retry")}
+                </button>
+                <button className="danger-button" onClick={handleCancel}>
+                  {t('firmware.wizard_cancel', 'Cancel Update')}
+                </button>
+              </>
+            ) : (
+              <>
             {effectiveStatus.state === 'awaiting-confirm' && (
               <button className="save-button" onClick={handleConfirm} disabled={isConfirming}>
                 {isConfirming ? '⏳ Working...' : t('firmware.wizard_confirm', 'Confirm & Proceed')}
@@ -786,6 +911,8 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                 <button className="save-button" onClick={handleDone}>
                   Dismiss
                 </button>
+              </>
+            )}
               </>
             )}
           </div>
