@@ -4421,6 +4421,13 @@
   "firmware.ota_bootloader_learn_more": "Learn More",
   "firmware.retry_flash": "Retry Flash",
   "firmware.retry_flash_unavailable": "Cannot retry: firmware files are no longer available. Please start a new update.",
+  "firmware.recovery_title": "Device flagged as half-flashed",
+  "firmware.recovery_explanation": "A previous OTA attempt did not finish, so MeshMonitor flagged this node to prevent another flash on a possibly corrupted device. Recover it via a USB-tethered flash first. Once it is back online, clear the flag below to retry.",
+  "firmware.recovery_online": "Node is online and accepting connections — it appears to have recovered.",
+  "firmware.recovery_offline": "Node is not online and accepting connections yet. Recover it via USB and wait for it to reconnect.",
+  "firmware.recovery_not_online": "Node is not online and accepting connections yet. Recover it via USB and wait for it to reconnect before clearing the flag.",
+  "firmware.recovery_clear_retry": "I've Recovered via USB — Clear Flag & Retry",
+  "firmware.recovery_cleared": "Recovery flag cleared",
 
   "direct_links.neighbor_connection": "Neighbor Connection",
   "direct_links.bidirectional": "Bidirectional",
