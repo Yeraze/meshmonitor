@@ -68,6 +68,9 @@ export const TABLE_ORDER = [
   'system_backup_history',
   // 3271: global estimated positions (no sourceId, no FK — one row per nodeNum)
   'estimated_positions',
+  // 2608: per-source automated remote favorites management config + ledger
+  'auto_favorite_targets',
+  'auto_favorite_assignments',
 ];
 
 // Tables in the 4.0 schema that carry a `sourceId` column. When the source
@@ -87,6 +90,7 @@ export const SOURCE_SCOPED_TABLES = new Set([
   // every backend, so the `sourceId` backfill check never applies to it.
   'embed_profiles', 'meshcore_nodes', 'meshcore_messages',
   'meshcore_neighbor_info', 'meshcore_packet_log',
+  'auto_favorite_targets', 'auto_favorite_assignments',
 ]);
 
 // Tables to skip entirely during migration (incompatible schemas or non-essential)

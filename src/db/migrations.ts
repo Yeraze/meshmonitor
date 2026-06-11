@@ -98,6 +98,7 @@ import { migration as lowBatteryVoltageThresholdMigration, runMigration080Postgr
 import { migration as sourcesDisplayOrderMigration, runMigration081Postgres as runMigration081DisplayOrderPostgres, runMigration081Mysql as runMigration081DisplayOrderMysql } from '../server/migrations/081_add_sources_display_order.js';
 import { migration as estimatedPositionsMigration, runMigration082EstimatedPositionsPostgres, runMigration082EstimatedPositionsMysql } from '../server/migrations/082_add_estimated_positions_table.js';
 import { migration as spoofSuspectedMigration, runMigration083Postgres as runSpoofSuspectedPostgres, runMigration083Mysql as runSpoofSuspectedMysql } from '../server/migrations/083_add_spoof_suspected.js';
+import { migration as autoFavoriteTargetsMigration, runMigration084Postgres as runAutoFavoriteTargetsPostgres, runMigration084Mysql as runAutoFavoriteTargetsMysql } from '../server/migrations/084_add_auto_favorite_targets.js';
 
 // ============================================================================
 // Registry
@@ -1329,4 +1330,20 @@ registry.register({
   sqlite: (db) => spoofSuspectedMigration.up(db),
   postgres: (client) => runSpoofSuspectedPostgres(client),
   mysql: (pool) => runSpoofSuspectedMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 084: Automated Remote Favorites Management (issue #2608). Adds the
+// per-source/per-target auto_favorite_targets config table and the
+// auto_favorite_assignments tracking ledger that backs the scheduler which
+// keeps favorites up to date on remote infrastructure nodes via Remote Admin.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 84,
+  name: 'add_auto_favorite_targets',
+  settingsKey: 'migration_084_add_auto_favorite_targets',
+  sqlite: (db) => autoFavoriteTargetsMigration.up(db),
+  postgres: (client) => runAutoFavoriteTargetsPostgres(client),
+  mysql: (pool) => runAutoFavoriteTargetsMysql(pool),
 });

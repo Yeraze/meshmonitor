@@ -37,6 +37,7 @@ import {
   WaypointsRepository,
   MeshCoreRepository,
   EstimatedPositionsRepository,
+  AutoFavoriteTargetsRepository,
 } from '../db/repositories/index.js';
 import type { EstimatedPosition, EstimatedPositionInput } from '../db/repositories/index.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
@@ -487,6 +488,7 @@ class DatabaseService {
   public waypointsRepo: WaypointsRepository | null = null;
   public meshcoreRepo: MeshCoreRepository | null = null;
   public estimatedPositionsRepo: EstimatedPositionsRepository | null = null;
+  public autoFavoriteTargetsRepo: AutoFavoriteTargetsRepository | null = null;
 
   /**
    * Typed repository accessors — throw if database not initialized.
@@ -525,6 +527,11 @@ class DatabaseService {
   get neighbors(): NeighborsRepository {
     if (!this.neighborsRepo) throw new Error('Database not initialized');
     return this.neighborsRepo;
+  }
+
+  get autoFavoriteTargets(): AutoFavoriteTargetsRepository {
+    if (!this.autoFavoriteTargetsRepo) throw new Error('Database not initialized');
+    return this.autoFavoriteTargetsRepo;
   }
 
   get auth(): AuthRepository {
@@ -859,6 +866,7 @@ class DatabaseService {
       this.waypointsRepo = new WaypointsRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreRepo = new MeshCoreRepository(drizzleDb, this.drizzleDbType);
       this.estimatedPositionsRepo = new EstimatedPositionsRepository(drizzleDb, this.drizzleDbType);
+      this.autoFavoriteTargetsRepo = new AutoFavoriteTargetsRepository(drizzleDb, this.drizzleDbType);
 
       logger.info('[DatabaseService] Drizzle repositories initialized successfully');
 
