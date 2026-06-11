@@ -11,12 +11,14 @@ MeshMonitor ships a Helm chart for deploying to any Kubernetes 1.19+ cluster. Th
 
 ## Quick Start
 
-1. **Clone the repository** to get the chart sources:
+1. **Add the Helm repository:**
 
    ```bash
-   git clone --recurse-submodules https://github.com/Yeraze/meshmonitor.git
-   cd meshmonitor
+   helm repo add meshmonitor https://meshmonitor.org/charts
+   helm repo update
    ```
+
+   `helm search repo meshmonitor` lists the available chart versions. (Prefer to work from a checkout? `git clone --recurse-submodules https://github.com/Yeraze/meshmonitor.git` and use `./helm/meshmonitor` as the chart path in step 3.)
 
 2. **Create `custom-values.yaml`** with the required node settings:
 
@@ -29,7 +31,7 @@ MeshMonitor ships a Helm chart for deploying to any Kubernetes 1.19+ cluster. Th
 3. **Install the chart**:
 
    ```bash
-   helm install meshmonitor ./helm/meshmonitor -f custom-values.yaml
+   helm install meshmonitor meshmonitor/meshmonitor -f custom-values.yaml
    ```
 
 4. **Access the UI**. The default install creates a `ClusterIP` service; port-forward to reach it locally:
@@ -110,9 +112,11 @@ resources:
 ## Upgrading
 
 ```bash
-git pull
-helm upgrade meshmonitor ./helm/meshmonitor -f custom-values.yaml
+helm repo update
+helm upgrade meshmonitor meshmonitor/meshmonitor -f custom-values.yaml
 ```
+
+(From a checkout: `git pull && helm upgrade meshmonitor ./helm/meshmonitor -f custom-values.yaml`.)
 
 The chart `appVersion` is bumped on every MeshMonitor release; pin a specific image tag via `image.tag` if you need a stable target.
 
