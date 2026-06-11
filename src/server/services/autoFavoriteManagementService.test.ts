@@ -10,6 +10,7 @@ import {
   discoverTracerouteNeighbors,
   selectNewFavorites,
   selectRefavorites,
+  ackStatusLabel,
 } from './autoFavoriteManagementService.js';
 import type { DbTraceroute, DbAutoFavoriteAssignment } from '../../db/types.js';
 
@@ -188,13 +189,32 @@ describe('selectNewFavorites', () => {
 });
 
 describe('selectRefavorites', () => {
-  function assign(fav: number, lastAssignedAt: number): DbAutoFavoriteAssignment {
-    return { sourceId: 's', targetNodeNum: 1, favoriteNodeNum: fav, firstAssignedAt: 0, lastAssignedAt };
+  function assign(fav: number, lastAssignedAt: number, lastAckStatus?: string): DbAutoFavoriteAssignment {
+    return { sourceId: 's', targetNodeNum: 1, favoriteNodeNum: fav, firstAssignedAt: 0, lastAssignedAt, lastAckStatus };
   }
 
   it('returns the oldest assignments first, capped at max', () => {
     const picked = selectRefavorites([assign(10, 300), assign(20, 100), assign(30, 200)], 2);
     expect(picked).toEqual([20, 30]); // sorted by lastAssignedAt asc
+  });
+
+  it('prioritizes un-confirmed assignments over confirmed ones', () => {
+    // 10 confirmed (oldest), 20 timed out, 30 confirmed. Un-confirmed (20) first.
+    const picked = selectRefavorites([
+      assign(10, 100, 'confirmed'),
+      assign(20, 300, 'timeout'),
+      assign(30, 200, 'confirmed'),
+    ], 2);
+    expect(picked[0]).toBe(20); // un-confirmed first despite newest
+    expect(picked).toEqual([20, 10]); // then oldest confirmed
+  });
+
+  it('treats a routing-error status as un-confirmed', () => {
+    const picked = selectRefavorites([
+      assign(10, 100, 'confirmed'),
+      assign(20, 200, 'ADMIN_BAD_SESSION_KEY'),
+    ], 1);
+    expect(picked).toEqual([20]);
   });
 
   it('returns nothing for max <= 0', () => {
@@ -203,5 +223,18 @@ describe('selectRefavorites', () => {
 
   it('returns all when max exceeds count', () => {
     expect(selectRefavorites([assign(10, 100)], 5)).toEqual([10]);
+  });
+});
+
+describe('ackStatusLabel', () => {
+  it('maps a successful ACK to confirmed', () => {
+    expect(ackStatusLabel({ acked: true, errorReason: 0, timedOut: false })).toBe('confirmed');
+  });
+  it('maps a timeout', () => {
+    expect(ackStatusLabel({ acked: false, errorReason: null, timedOut: true })).toBe('timeout');
+  });
+  it('maps a routing error to its name', () => {
+    // 36 = ADMIN_BAD_SESSION_KEY
+    expect(ackStatusLabel({ acked: false, errorReason: 36, timedOut: false })).toBe('ADMIN_BAD_SESSION_KEY');
   });
 });

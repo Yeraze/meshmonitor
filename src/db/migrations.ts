@@ -99,6 +99,7 @@ import { migration as sourcesDisplayOrderMigration, runMigration081Postgres as r
 import { migration as estimatedPositionsMigration, runMigration082EstimatedPositionsPostgres, runMigration082EstimatedPositionsMysql } from '../server/migrations/082_add_estimated_positions_table.js';
 import { migration as spoofSuspectedMigration, runMigration083Postgres as runSpoofSuspectedPostgres, runMigration083Mysql as runSpoofSuspectedMysql } from '../server/migrations/083_add_spoof_suspected.js';
 import { migration as autoFavoriteTargetsMigration, runMigration084Postgres as runAutoFavoriteTargetsPostgres, runMigration084Mysql as runAutoFavoriteTargetsMysql } from '../server/migrations/084_add_auto_favorite_targets.js';
+import { migration as autoFavoriteAckMigration, runMigration085Postgres as runAutoFavoriteAckPostgres, runMigration085Mysql as runAutoFavoriteAckMysql } from '../server/migrations/085_add_auto_favorite_ack_status.js';
 
 // ============================================================================
 // Registry
@@ -1346,4 +1347,19 @@ registry.register({
   sqlite: (db) => autoFavoriteTargetsMigration.up(db),
   postgres: (client) => runAutoFavoriteTargetsPostgres(client),
   mysql: (pool) => runAutoFavoriteTargetsMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 085: Track the routing-ACK result of each remote favorite command
+// (issue #2608 follow-up). Adds lastAckStatus + lastAckAt to
+// auto_favorite_assignments.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 85,
+  name: 'add_auto_favorite_ack_status',
+  settingsKey: 'migration_085_add_auto_favorite_ack_status',
+  sqlite: (db) => autoFavoriteAckMigration.up(db),
+  postgres: (client) => runAutoFavoriteAckPostgres(client),
+  mysql: (pool) => runAutoFavoriteAckMysql(pool),
 });

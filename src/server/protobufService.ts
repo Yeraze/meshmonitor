@@ -1895,6 +1895,15 @@ class ProtobufService {
    * @param fromNodeNum Optional source node number (required for proper packet routing)
    */
   createAdminPacket(adminMessagePayload: Uint8Array, destination: number = 0, fromNodeNum?: number): Uint8Array {
+    return this.createAdminPacketWithId(adminMessagePayload, destination, fromNodeNum).data;
+  }
+
+  /**
+   * Like createAdminPacket, but also returns the generated MeshPacket id so the
+   * caller can correlate the inbound routing ACK (Routing.request_id === id).
+   * Used by the ACK-aware admin send path (issue #2608 follow-up).
+   */
+  createAdminPacketWithId(adminMessagePayload: Uint8Array, destination: number = 0, fromNodeNum?: number): { data: Uint8Array; packetId: number } {
     try {
       const root = getProtobufRoot();
       const ToRadio = root?.lookupType('meshtastic.ToRadio');
@@ -1946,7 +1955,7 @@ class ProtobufService {
       const encoded = ToRadio.encode(toRadio).finish();
       logger.debug(`📤 Created admin ToRadio packet (destination: ${destination})`);
       logger.debug('🔍 ToRadio bytes:', Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' '));
-      return encoded;
+      return { data: encoded, packetId };
     } catch (error) {
       logger.error('Failed to create admin ToRadio packet:', error);
       throw error;

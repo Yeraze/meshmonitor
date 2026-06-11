@@ -251,6 +251,9 @@ export interface DbAutoFavoriteAssignment {
   discoverySource?: string | null;
   firstAssignedAt: number;
   lastAssignedAt: number;
+  /** Routing-ACK result of the last favorite command: 'confirmed' | 'timeout' | routing error name. */
+  lastAckStatus?: string | null;
+  lastAckAt?: number | null;
 }
 
 /**
