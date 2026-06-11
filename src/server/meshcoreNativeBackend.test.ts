@@ -861,6 +861,40 @@ describe('MeshCoreNativeBackend', () => {
     expect(resp.data[2]).toEqual(expect.objectContaining({ out_path: '', path_len: 0 }));
   });
 
+  it('get_contacts decodes 2-byte hash paths correctly (issue #3421)', async () => {
+    // Firmware with PATH_HASH_SIZE=2 stores outPathLen as a packed byte:
+    // top 2 bits = hash_size-1 (0x01 for 2 bytes), bottom 6 bits = hop count.
+    // 4 hops with 2-byte hashes: (1 << 6) | 4 = 0x44 = 68.
+    // Before the fix, this was treated as 68 byte-count with 1-byte hashes,
+    // reading all 64 bytes and producing 8 non-zero hops instead of 4.
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    const pubKey = new Uint8Array(32);
+    pubKey[0] = 0xcc;
+    const outPath = new Uint8Array(64);
+    // 4 hops × 2 bytes: 8542 8960 8940 8920
+    outPath[0] = 0x85; outPath[1] = 0x42;
+    outPath[2] = 0x89; outPath[3] = 0x60;
+    outPath[4] = 0x89; outPath[5] = 0x40;
+    outPath[6] = 0x89; outPath[7] = 0x20;
+    conn.contactsResponse = [{
+      publicKey: pubKey, type: AdvType.Chat, advName: 'Carol',
+      outPath, outPathLen: 68, // packed: (1 << 6) | 4 = 68
+      advLat: 0, advLon: 0, lastAdvert: 1700000000,
+    }];
+
+    const resp = await backend.sendCommand('get_contacts', {});
+    expect(resp.success).toBe(true);
+    expect(resp.data[0]).toEqual(expect.objectContaining({
+      out_path: '8542,8960,8940,8920',
+      path_len: 4,
+    }));
+  });
+
   it('reset_path forwards the resolved pubkey to the connection', async () => {
     const backend = new MeshCoreNativeBackend('src-1', {
       connectionType: 'serial',
