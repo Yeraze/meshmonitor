@@ -232,4 +232,48 @@ describe('GeoJsonService', () => {
       expect(layers.length).toBeGreaterThanOrEqual(2);
     });
   });
+
+  // --- Public exposure (issue #3407) ---
+  describe('publiclyVisible', () => {
+    it('defaults new layers to publiclyVisible=false', () => {
+      const layer = service.addLayer('new.geojson', validFeatureCollection);
+      expect(layer.publiclyVisible).toBe(false);
+    });
+
+    it('backfills publiclyVisible=false for legacy manifest entries', () => {
+      // Legacy manifest written without the field (pre-#3407)
+      const legacy = { layers: [{ id: 'legacy', name: 'Legacy', filename: 'legacy.geojson', visible: true, style: { color: '#000', opacity: 0.7, weight: 2, fillOpacity: 0.3 }, createdAt: 1, updatedAt: 1 }] };
+      fs.writeFileSync(path.join(tmpDir, 'manifest.json'), JSON.stringify(legacy));
+      const manifest = service.loadManifest();
+      expect(manifest.layers[0].publiclyVisible).toBe(false);
+    });
+
+    it('updateLayer can toggle publiclyVisible', () => {
+      const layer = service.addLayer('toggle.geojson', validFeatureCollection);
+      const updated = service.updateLayer(layer.id, { publiclyVisible: true });
+      expect(updated.publiclyVisible).toBe(true);
+    });
+
+    it('getPublicLayers returns only public layers, marked visible', () => {
+      const pub = service.addLayer('pub.geojson', validFeatureCollection);
+      service.addLayer('priv.geojson', validFeatureCollection); // stays private
+      service.updateLayer(pub.id, { publiclyVisible: true, visible: false });
+
+      const publicLayers = service.getPublicLayers();
+      expect(publicLayers).toHaveLength(1);
+      expect(publicLayers[0].id).toBe(pub.id);
+      // Forced visible:true so public surfaces render it regardless of UI toggle.
+      expect(publicLayers[0].visible).toBe(true);
+    });
+
+    it('getPublicLayerData serves public layers and refuses private ones', () => {
+      const pub = service.addLayer('pubdata.geojson', validFeatureCollection);
+      const priv = service.addLayer('privdata.geojson', validFeatureCollection);
+      service.updateLayer(pub.id, { publiclyVisible: true });
+
+      expect(() => service.getPublicLayerData(pub.id)).not.toThrow();
+      expect(JSON.parse(service.getPublicLayerData(pub.id)).type).toBe('FeatureCollection');
+      expect(() => service.getPublicLayerData(priv.id)).toThrow(/not found/i);
+    });
+  });
 });

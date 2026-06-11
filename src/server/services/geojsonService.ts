@@ -29,6 +29,11 @@ export interface GeoJsonLayer {
   name: string;
   filename: string;
   visible: boolean;
+  /**
+   * When true, the layer is exposed to anonymous/embed (public) viewers.
+   * Default false — public exposure is per-layer opt-in (issue #3407).
+   */
+  publiclyVisible: boolean;
   style: LayerStyle;
   createdAt: number;
   updatedAt: number;
@@ -97,7 +102,13 @@ export class GeoJsonService {
         return { layers: [] };
       }
       const raw = fs.readFileSync(this.manifestPath, 'utf-8');
-      return JSON.parse(raw) as GeoJsonManifest;
+      const manifest = JSON.parse(raw) as GeoJsonManifest;
+      // Backfill publiclyVisible for layers created before #3407 — default to
+      // false so pre-existing layers stay private until explicitly opted in.
+      for (const layer of manifest.layers ?? []) {
+        if (layer.publiclyVisible === undefined) layer.publiclyVisible = false;
+      }
+      return manifest;
     } catch (err) {
       logger.warn('GeoJsonService: failed to load manifest, returning empty', err);
       return { layers: [] };
@@ -182,6 +193,7 @@ export class GeoJsonService {
       name,
       filename,
       visible: true,
+      publiclyVisible: false,
       style: {
         color,
         opacity: 0.7,
@@ -235,7 +247,7 @@ export class GeoJsonService {
 
   updateLayer(
     id: string,
-    updates: Partial<Pick<GeoJsonLayer, 'name' | 'visible' | 'style'>>
+    updates: Partial<Pick<GeoJsonLayer, 'name' | 'visible' | 'publiclyVisible' | 'style'>>
   ): GeoJsonLayer {
     const manifest = this.loadManifest();
     const index = manifest.layers.findIndex(l => l.id === id);
@@ -248,6 +260,7 @@ export class GeoJsonService {
 
     if (updates.name !== undefined) layer.name = updates.name;
     if (updates.visible !== undefined) layer.visible = updates.visible;
+    if (updates.publiclyVisible !== undefined) layer.publiclyVisible = updates.publiclyVisible;
     if (updates.style !== undefined) layer.style = { ...layer.style, ...updates.style };
     layer.updatedAt = Date.now();
 
@@ -265,7 +278,7 @@ export class GeoJsonService {
     const trackedFilenames = new Set(manifest.layers.map(l => l.filename));
     const discovered: GeoJsonLayer[] = [];
 
-    let entries: string[] = [];
+    let entries: string[];
     try {
       entries = fs.readdirSync(this.dataDir);
     } catch (err) {
@@ -308,6 +321,7 @@ export class GeoJsonService {
         name,
         filename: newFilename,
         visible: true,
+        publiclyVisible: false,
         style: {
           color: DEFAULT_COLOR_PALETTE[colorIndex],
           opacity: 0.7,
@@ -350,6 +364,32 @@ export class GeoJsonService {
   getLayers(): GeoJsonLayer[] {
     this.discoverLayers();
     return this.loadManifest().layers;
+  }
+
+  /**
+   * Layers exposed to anonymous / embed (public) viewers (issue #3407).
+   * Only layers explicitly flagged `publiclyVisible`. Returned with
+   * `visible: true` so public surfaces render them regardless of the
+   * operator's own per-layer UI toggle.
+   */
+  getPublicLayers(): GeoJsonLayer[] {
+    return this.getLayers()
+      .filter(l => l.publiclyVisible)
+      .map(l => ({ ...l, visible: true }));
+  }
+
+  /**
+   * Returns a layer's GeoJSON data only when the layer is public. Used by the
+   * anonymous/embed data routes so private layers are never served to public
+   * viewers. Throws (treated as 404 by callers) when the layer is missing or
+   * not public.
+   */
+  getPublicLayerData(id: string): string {
+    const layer = this.getLayers().find(l => l.id === id);
+    if (!layer || !layer.publiclyVisible) {
+      throw new Error(`GeoJSON layer not found: ${id}`);
+    }
+    return this.getLayerData(id);
   }
 }
 
