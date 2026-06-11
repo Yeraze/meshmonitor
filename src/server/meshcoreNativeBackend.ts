@@ -115,10 +115,11 @@ function bytesToHex(bytes: Uint8Array | number[]): string {
  * an inflated `outPathLen` (e.g. the full 64) with trailing 0x00 padding;
  * all-zero hop chunks are skipped and `pathLen` reflects only real hops.
  *
- * Note: MeshCore OTA packets pack hop hash width into the top 2 bits of the
- * single `path_len` byte (`@liamcottle/meshcore.js/src/packet.js`), but
- * contact records read `outPathLen` as a plain Int8 byte count, so we accept
- * the width as an explicit parameter rather than decoding it from outPathLen.
+ * Note: Both MeshCore OTA packets and companion contact records use the same
+ * packed `path_len` byte format: top 2 bits = hash_size−1, bottom 6 bits =
+ * hop_count. Callers that read this packed byte (e.g. `get_contacts`) must
+ * decode it into a byte count + hash size before calling this function; the
+ * function itself treats `outPathLen` as a plain byte count.
  */
 export function formatOutPath(
   outPath: Uint8Array | number[] | null | undefined,
@@ -758,7 +759,19 @@ export class MeshCoreNativeBackend extends EventEmitter {
       case 'get_contacts': {
         const contacts: any[] = await c.getContacts();
         return contacts.map((ct) => {
-          const { outPathHex, pathLen } = formatOutPath(ct.outPath, ct.outPathLen);
+          // ct.outPathLen is the packed wire byte (same format as OTA path_len):
+          // top 2 bits = hash_size−1, bottom 6 bits = hop_count. Decode it so
+          // formatOutPath receives a plain byte count + the correct hop width.
+          // Negative values and 0 fall through to formatOutPath unchanged
+          // (it handles 0 as "direct" and negatives as OUT_PATH_UNKNOWN).
+          const rawLen = ct.outPathLen as number;
+          let hopHashBytes: 1 | 2 | 3 = 1;
+          let outPathByteCount: number | null | undefined = rawLen;
+          if (rawLen != null && rawLen > 0) {
+            hopHashBytes = (((rawLen >> 6) & 0x03) + 1) as 1 | 2 | 3;
+            outPathByteCount = (rawLen & 0x3F) * hopHashBytes;
+          }
+          const { outPathHex, pathLen } = formatOutPath(ct.outPath, outPathByteCount, hopHashBytes);
           return {
             public_key: bytesToHex(ct.publicKey),
             adv_name: ct.advName,
