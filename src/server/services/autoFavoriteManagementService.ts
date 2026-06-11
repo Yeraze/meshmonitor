@@ -265,7 +265,6 @@ class AutoFavoriteManagementScheduler {
     }
 
     const now = Date.now();
-    const localNodeNum = manager.getLocalNodeInfo()?.nodeNum ?? 0;
     const targetNode = await databaseService.nodes.getNode(targetNodeNum, sourceId);
     const channel = targetNode?.channel ?? 0;
 
@@ -280,11 +279,13 @@ class AutoFavoriteManagementScheduler {
     }
 
     // 2. Discover candidate neighbors. NeighborInfo first (authoritative adjacency),
-    //    then traceroute-derived neighbors.
+    //    then traceroute-derived neighbors. The local (controlling) node is a valid
+    //    candidate — if it is a direct neighbor of the target it should be favorited
+    //    too, preserving the zero-hop link back to us.
     const candidates: number[] = [];
     const seenCandidate = new Set<number>();
     const pushCandidate = (n: number) => {
-      if (isValidNeighbor(n, targetNodeNum) && n !== localNodeNum && !seenCandidate.has(n)) {
+      if (isValidNeighbor(n, targetNodeNum) && !seenCandidate.has(n)) {
         seenCandidate.add(n);
         candidates.push(n);
       }
@@ -314,7 +315,9 @@ class AutoFavoriteManagementScheduler {
     const newFavorites = selectNewFavorites({
       candidates,
       assigned,
-      excluded: new Set([targetNodeNum, localNodeNum]),
+      // Only the target itself is excluded — a node cannot favorite itself. The
+      // local node is intentionally eligible when it is a discovered neighbor.
+      excluded: new Set([targetNodeNum]),
       eligibleRoles,
       roleByNode,
       max: target.maxNewPerCycle,

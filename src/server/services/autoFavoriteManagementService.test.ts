@@ -172,6 +172,19 @@ describe('selectNewFavorites', () => {
     });
     expect(picked).toEqual([]);
   });
+
+  it('favorites the local (controlling) node when it is a discovered neighbor', () => {
+    // Only the target is excluded; the local node (20, a router) is eligible.
+    const picked = selectNewFavorites({
+      candidates: [20],
+      assigned: new Set(),
+      excluded: new Set([999]), // target only — local NOT excluded
+      eligibleRoles,
+      roleByNode,
+      max: 1,
+    });
+    expect(picked).toEqual([20]);
+  });
 });
 
 describe('selectRefavorites', () => {
