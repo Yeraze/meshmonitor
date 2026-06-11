@@ -165,9 +165,18 @@ export const NOTIFICATION_SOUNDS: NotificationSound[] = [
 /** localStorage key prefix for per-channel selections. */
 const STORAGE_PREFIX = 'channelNotificationSound:';
 
-/** Build the localStorage key for a channel id. */
-function storageKey(channelId: number): string {
-  return `${STORAGE_PREFIX}${channelId}`;
+/**
+ * Build the localStorage key for a channel id, scoped to a source when one is
+ * given. Channel numbers (0–7, plus the `-1` DM pseudo-channel) collide across
+ * sources, so a per-source key keeps each source's selections independent. When
+ * no source is active (legacy / single-source mode) the original un-scoped key
+ * is used, which also lets {@link getChannelSoundId} fall back to pre-existing
+ * selections made before per-source scoping existed.
+ */
+function storageKey(channelId: number, sourceId?: string | null): string {
+  return sourceId
+    ? `${STORAGE_PREFIX}${sourceId}:${channelId}`
+    : `${STORAGE_PREFIX}${channelId}`;
 }
 
 /** Look up a sound by id. Returns `undefined` for unknown ids and silence. */
@@ -176,13 +185,21 @@ export function getSoundById(id: string): NotificationSound | undefined {
 }
 
 /**
- * The persisted sound id for a channel. Channel `-1` is used by the app for the
- * direct-message pseudo-channel, so it is a valid key here too. Falls back to
- * {@link DEFAULT_SOUND_ID} when nothing is stored or storage is unavailable.
+ * The persisted sound id for a channel, scoped to `sourceId` when given.
+ * Channel `-1` is used by the app for the direct-message pseudo-channel, so it
+ * is a valid key here too. When a source is active but has no stored value, the
+ * legacy un-scoped key is consulted so selections made before per-source
+ * scoping continue to work. Falls back to {@link DEFAULT_SOUND_ID} when nothing
+ * is stored or storage is unavailable.
  */
-export function getChannelSoundId(channelId: number): string {
+export function getChannelSoundId(channelId: number, sourceId?: string | null): string {
   try {
-    const stored = localStorage.getItem(storageKey(channelId));
+    let stored = localStorage.getItem(storageKey(channelId, sourceId));
+    // Inherit a pre-per-source (or single-source) selection when this source
+    // hasn't been customized yet.
+    if (stored === null && sourceId) {
+      stored = localStorage.getItem(storageKey(channelId));
+    }
     if (stored === null) return DEFAULT_SOUND_ID;
     // Accept the silent sentinel or any known sound id; ignore stale/unknown
     // ids (e.g. a sound removed in a later version) and fall back to default.
@@ -193,10 +210,10 @@ export function getChannelSoundId(channelId: number): string {
   }
 }
 
-/** Persist a channel's sound selection. */
-export function setChannelSoundId(channelId: number, soundId: string): void {
+/** Persist a channel's sound selection, scoped to `sourceId` when given. */
+export function setChannelSoundId(channelId: number, soundId: string, sourceId?: string | null): void {
   try {
-    localStorage.setItem(storageKey(channelId), soundId);
+    localStorage.setItem(storageKey(channelId, sourceId), soundId);
   } catch (error) {
     logger.debug('Could not persist channel notification sound:', error);
   }
@@ -285,9 +302,9 @@ export function playSound(soundId: string, ctx?: AudioContext): boolean {
 }
 
 /**
- * Convenience: play whatever sound the given channel is configured for.
- * Returns the result of {@link playSound}.
+ * Convenience: play whatever sound the given channel is configured for,
+ * scoped to `sourceId` when given. Returns the result of {@link playSound}.
  */
-export function playChannelSound(channelId: number, ctx?: AudioContext): boolean {
-  return playSound(getChannelSoundId(channelId), ctx);
+export function playChannelSound(channelId: number, sourceId?: string | null, ctx?: AudioContext): boolean {
+  return playSound(getChannelSoundId(channelId, sourceId), ctx);
 }

@@ -718,9 +718,11 @@ function App() {
     if (channelId === undefined) {
       playSound(DEFAULT_SOUND_ID);
     } else {
-      playChannelSound(channelId);
+      // Scope the lookup to the active source so per-source selections (and the
+      // DM pseudo-channel) don't leak across sources that share channel numbers.
+      playChannelSound(channelId, sourceId);
     }
-  }, [enableAudioNotifications]);
+  }, [enableAudioNotifications, sourceId]);
 
   // Update favicon with red dot when there are unread messages
   const updateFavicon = useCallback(
