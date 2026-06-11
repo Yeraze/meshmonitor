@@ -122,9 +122,12 @@ export async function buildConnectSrcDirective(isProduction: boolean, cookieSecu
 async function getAnalyticsCspFromSettings(): Promise<{ scriptSrc: string[]; connectSrc: string[] }> {
   try {
     const provider = (await databaseService.settings.getSetting('analyticsProvider') || 'none') as AnalyticsProvider;
-    if (provider === 'none' || provider === 'custom') {
+    if (provider === 'none') {
       return { scriptSrc: [], connectSrc: [] };
     }
+    // 'custom' is handled by getAnalyticsCspDomains (reads config.cspDomains);
+    // it must NOT be short-circuited here or the configured domains never reach
+    // the CSP header (issue #3409).
     const configJson = await databaseService.settings.getSetting('analyticsConfig') || '{}';
     const config = JSON.parse(configJson);
     return getAnalyticsCspDomains(provider, config);
