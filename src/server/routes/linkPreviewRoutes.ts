@@ -2,8 +2,27 @@ import express from 'express';
 import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { safeFetch, SsrfBlockedError } from '../utils/ssrfGuard.js';
+import databaseService from '../../services/database.js';
 
 const router = express.Router();
+
+/**
+ * Whether link previews are enabled for this instance (issue #3416).
+ *
+ * Defense in depth: an operator can hard-disable via the `LINK_PREVIEWS_ENABLED`
+ * env var (set to `false`/`0`), which wins regardless of the UI. Otherwise the
+ * global `linkPreviewsEnabled` database setting controls it. Default is enabled
+ * (absent setting => previews on) to preserve the previous behavior. Either
+ * source being off means no external URL is ever fetched.
+ */
+async function linkPreviewsEnabled(): Promise<boolean> {
+  const env = process.env.LINK_PREVIEWS_ENABLED?.trim().toLowerCase();
+  if (env === 'false' || env === '0') {
+    return false;
+  }
+  const setting = await databaseService.settings.getSetting('linkPreviewsEnabled');
+  return !(setting === '0' || setting === 'false');
+}
 
 interface LinkMetadata {
   url: string;
@@ -59,6 +78,13 @@ function setCachedPreview(url: string, metadata: LinkMetadata): void {
  */
 router.get('/link-preview', optionalAuth(), async (req, res) => {
   try {
+    // Privacy guard (issue #3416): never make an external request when link
+    // previews are disabled, regardless of the URL or cache state.
+    if (!(await linkPreviewsEnabled())) {
+      logger.debug('📎 Link previews are disabled; refusing to fetch');
+      return res.status(403).json({ error: 'Link previews are disabled' });
+    }
+
     const { url } = req.query;
 
     if (!url || typeof url !== 'string') {

@@ -18,6 +18,12 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+// The stream now renders <LinkPreview>, which reads the global setting via
+// useSettings(); stub it so the component tree doesn't require a provider.
+vi.mock('../../contexts/SettingsContext', () => ({
+  useSettings: () => ({ linkPreviewsEnabled: true }),
+}));
+
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import type { MeshCoreMessage } from './hooks/useMeshCore';
 
