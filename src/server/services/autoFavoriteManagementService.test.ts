@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   isCycleDue,
+  isNeighborDataFresh,
   parseEligibleRoles,
   discoverTracerouteNeighbors,
   selectNewFavorites,
@@ -44,6 +45,26 @@ describe('isCycleDue', () => {
     const now = 1_000_000;
     expect(isCycleDue(now - 24 * HOUR, 24, now)).toBe(true);
     expect(isCycleDue(now - 25 * HOUR, 24, now)).toBe(true);
+  });
+});
+
+describe('isNeighborDataFresh', () => {
+  const HOUR = 60 * 60 * 1000;
+  const now = 10_000_000;
+  it('is not fresh when no record on file', () => {
+    expect(isNeighborDataFresh(null, 24, now)).toBe(false);
+    expect(isNeighborDataFresh(undefined, 24, now)).toBe(false);
+  });
+  it('is fresh when the newest record is within maxAgeHours', () => {
+    expect(isNeighborDataFresh(now - 23 * HOUR, 24, now)).toBe(true);
+  });
+  it('is not fresh once the record exceeds maxAgeHours', () => {
+    expect(isNeighborDataFresh(now - 24 * HOUR, 24, now)).toBe(false);
+    expect(isNeighborDataFresh(now - 48 * HOUR, 24, now)).toBe(false);
+  });
+  it('maxAgeHours <= 0 disables reuse (never fresh)', () => {
+    expect(isNeighborDataFresh(now, 0, now)).toBe(false);
+    expect(isNeighborDataFresh(now - HOUR, -5, now)).toBe(false);
   });
 });
 

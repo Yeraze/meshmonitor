@@ -6754,6 +6754,7 @@ const AUTO_FAVORITE_DEFAULTS = {
   intervalHours: 24,
   maxNewPerCycle: 1,
   maxRefavoritePerCycle: 1,
+  maxNeighborAgeHours: 24,
   eligibleRoles: [2, 11, 12], // Router, Router Late, Client Base
 };
 
@@ -6795,6 +6796,7 @@ apiRouter.get('/admin/auto-favorite-targets/:nodeNum', requireAdmin(), async (re
       intervalHours: config.intervalHours,
       maxNewPerCycle: config.maxNewPerCycle,
       maxRefavoritePerCycle: config.maxRefavoritePerCycle,
+      maxNeighborAgeHours: config.maxNeighborAgeHours,
       eligibleRoles: (() => { try { return JSON.parse(config.eligibleRoles); } catch { return AUTO_FAVORITE_DEFAULTS.eligibleRoles; } })(),
       lastRunAt: config.lastRunAt ?? null,
       lastNeighborRequestAt: config.lastNeighborRequestAt ?? null,
@@ -6840,6 +6842,7 @@ apiRouter.put('/admin/auto-favorite-targets/:nodeNum', requireAdmin(), async (re
       useNeighborInfo: b.useNeighborInfo !== false,
       useTraceroutes: b.useTraceroutes !== false,
       intervalHours: clampInt(b.intervalHours, AUTO_FAVORITE_DEFAULTS.intervalHours, 1),
+      maxNeighborAgeHours: clampInt(b.maxNeighborAgeHours, AUTO_FAVORITE_DEFAULTS.maxNeighborAgeHours, 0),
       maxNewPerCycle: clampInt(b.maxNewPerCycle, AUTO_FAVORITE_DEFAULTS.maxNewPerCycle, 0),
       maxRefavoritePerCycle: clampInt(b.maxRefavoritePerCycle, AUTO_FAVORITE_DEFAULTS.maxRefavoritePerCycle, 0),
       eligibleRoles: JSON.stringify(roles),
