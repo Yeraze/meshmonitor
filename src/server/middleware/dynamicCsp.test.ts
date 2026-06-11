@@ -15,6 +15,11 @@ vi.mock('../../services/database.js', () => ({
 }));
 
 import { buildCspHeader } from './dynamicCsp.js';
+import databaseService from '../../services/database.js';
+
+const mockGetSetting = (databaseService as unknown as {
+  settings: { getSetting: ReturnType<typeof vi.fn> };
+}).settings.getSetting;
 
 function directivesFromHeader(header: string): Record<string, string> {
   const map: Record<string, string> = {};
@@ -82,5 +87,59 @@ describe('buildCspHeader - frame-ancestors', () => {
     const directives = directivesFromHeader(header);
 
     expect(directives['frame-src']).toBe("'none'");
+  });
+});
+
+describe('buildCspHeader - custom analytics CSP domains (#3409)', () => {
+  beforeEach(() => {
+    mockGetSetting.mockReset();
+    mockGetSetting.mockResolvedValue(null);
+  });
+
+  function withSettings(settings: Record<string, string>) {
+    mockGetSetting.mockImplementation(async (key: string) => settings[key] ?? null);
+  }
+
+  it('includes configured custom domains in script-src and connect-src', async () => {
+    withSettings({
+      analyticsProvider: 'custom',
+      analyticsConfig: JSON.stringify({
+        cspDomains: 'https://analytics.example.com https://cdn.example.com',
+      }),
+    });
+
+    const header = await buildCspHeader(true, true, []);
+    const directives = directivesFromHeader(header);
+
+    // Regression: before #3409 the 'custom' provider was short-circuited and
+    // these origins never reached the header.
+    expect(directives['script-src']).toContain('https://analytics.example.com');
+    expect(directives['script-src']).toContain('https://cdn.example.com');
+    expect(directives['connect-src']).toContain('https://analytics.example.com');
+    expect(directives['connect-src']).toContain('https://cdn.example.com');
+    // Inline analytics snippets need 'unsafe-inline' on script-src.
+    expect(directives['script-src']).toContain("'unsafe-inline'");
+  });
+
+  it('reduces bare hostnames / non-URL entries to nothing (requires a scheme)', async () => {
+    withSettings({
+      analyticsProvider: 'custom',
+      analyticsConfig: JSON.stringify({ cspDomains: 'analytics.example.com' }),
+    });
+
+    const header = await buildCspHeader(true, true, []);
+    const directives = directivesFromHeader(header);
+
+    // No scheme → not added (the parser requires http(s)://).
+    expect(directives['script-src']).not.toContain('analytics.example.com');
+  });
+
+  it('adds nothing for provider "none"', async () => {
+    withSettings({ analyticsProvider: 'none' });
+
+    const header = await buildCspHeader(true, true, []);
+    const directives = directivesFromHeader(header);
+
+    expect(directives['script-src']).toBe("'self'");
   });
 });
