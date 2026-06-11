@@ -232,6 +232,8 @@ export interface DbAutoFavoriteTarget {
   intervalHours: number;
   maxNewPerCycle: number;
   maxRefavoritePerCycle: number;
+  /** Reuse an on-file NeighborInfo record newer than this (hours) instead of re-requesting. */
+  maxNeighborAgeHours: number;
   /** JSON array of eligible Meshtastic role numbers, e.g. "[2,11,12]" */
   eligibleRoles: string;
   lastRunAt?: number | null;

@@ -20,6 +20,7 @@ export interface AutoFavoriteTargetInput {
   intervalHours: number;
   maxNewPerCycle: number;
   maxRefavoritePerCycle: number;
+  maxNeighborAgeHours: number;
   eligibleRoles: string;
 }
 
@@ -73,6 +74,7 @@ export class AutoFavoriteTargetsRepository extends BaseRepository {
       intervalHours: input.intervalHours,
       maxNewPerCycle: input.maxNewPerCycle,
       maxRefavoritePerCycle: input.maxRefavoritePerCycle,
+      maxNeighborAgeHours: input.maxNeighborAgeHours,
       eligibleRoles: input.eligibleRoles,
       createdAt: now,
       updatedAt: now,
@@ -84,6 +86,7 @@ export class AutoFavoriteTargetsRepository extends BaseRepository {
       intervalHours: input.intervalHours,
       maxNewPerCycle: input.maxNewPerCycle,
       maxRefavoritePerCycle: input.maxRefavoritePerCycle,
+      maxNeighborAgeHours: input.maxNeighborAgeHours,
       eligibleRoles: input.eligibleRoles,
       updatedAt: now,
     };

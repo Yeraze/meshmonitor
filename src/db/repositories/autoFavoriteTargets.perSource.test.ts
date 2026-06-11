@@ -21,6 +21,7 @@ function baseConfig(overrides: Partial<AutoFavoriteTargetInput> = {}): AutoFavor
     intervalHours: 24,
     maxNewPerCycle: 1,
     maxRefavoritePerCycle: 1,
+    maxNeighborAgeHours: 24,
     eligibleRoles: '[2,11,12]',
     ...overrides,
   };
@@ -44,6 +45,7 @@ describe('AutoFavoriteTargetsRepository', () => {
         intervalHours INTEGER NOT NULL DEFAULT 24,
         maxNewPerCycle INTEGER NOT NULL DEFAULT 1,
         maxRefavoritePerCycle INTEGER NOT NULL DEFAULT 1,
+        maxNeighborAgeHours INTEGER NOT NULL DEFAULT 24,
         eligibleRoles TEXT NOT NULL DEFAULT '[2,11,12]',
         lastRunAt INTEGER,
         lastNeighborRequestAt INTEGER,
@@ -86,11 +88,14 @@ describe('AutoFavoriteTargetsRepository', () => {
     expect(cfg!.enabled).toBe(true);
     expect(cfg!.intervalHours).toBe(24);
 
-    await repo.upsertTarget(baseConfig({ enabled: false, intervalHours: 48, maxNewPerCycle: 3 }));
+    expect(cfg!.maxNeighborAgeHours).toBe(24);
+
+    await repo.upsertTarget(baseConfig({ enabled: false, intervalHours: 48, maxNewPerCycle: 3, maxNeighborAgeHours: 6 }));
     cfg = await repo.getTarget('source-a', 111);
     expect(cfg!.enabled).toBe(false);
     expect(cfg!.intervalHours).toBe(48);
     expect(cfg!.maxNewPerCycle).toBe(3);
+    expect(cfg!.maxNeighborAgeHours).toBe(6);
 
     // Still a single row for this (source, target)
     const all = await repo.getTargetsForSource('source-a');
