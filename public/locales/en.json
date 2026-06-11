@@ -1,4 +1,6 @@
 {
+  "auto_favorite.max_neighbor_age": "Maximum neighbor age (hours)",
+  "auto_favorite.max_neighbor_age_desc": "If a NeighborInfo record for this node is already on file and newer than this, reuse it instead of requesting another — saving airtime. Set to 0 to always request fresh. Default 24 hours.",
   "admin_commands.node_favorite_confirmed": "Node {{nodeNum}} confirmed the favorite (ACK received)",
   "admin_commands.node_unfavorite_confirmed": "Node {{nodeNum}} confirmed the unfavorite (ACK received)",
   "admin_commands.node_favorite_no_ack": "Sent to node {{nodeNum}}, but no ACK was received — it may still have applied",

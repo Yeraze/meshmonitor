@@ -76,6 +76,17 @@ export function isCycleDue(lastRunMs: number | null | undefined, intervalHours: 
   return nowMs - lastRunMs >= intervalHours * 60 * 60 * 1000;
 }
 
+/**
+ * On-file NeighborInfo is "fresh enough" to reuse if its newest record is
+ * younger than `maxAgeHours`. With no record on file it is never fresh (we must
+ * request). maxAgeHours <= 0 disables reuse (always request).
+ */
+export function isNeighborDataFresh(newestTsMs: number | null | undefined, maxAgeHours: number, nowMs: number): boolean {
+  if (newestTsMs == null) return false;
+  if (maxAgeHours <= 0) return false;
+  return nowMs - newestTsMs < maxAgeHours * 60 * 60 * 1000;
+}
+
 /** Parse the stored eligibleRoles JSON ("[2,11,12]") into a Set, defaulting safely. */
 export function parseEligibleRoles(json: string | null | undefined): Set<number> {
   if (!json) return new Set(JSON.parse(DEFAULT_ELIGIBLE_ROLES_JSON));
@@ -300,13 +311,28 @@ class AutoFavoriteManagementScheduler {
     const targetNode = await databaseService.nodes.getNode(targetNodeNum, sourceId);
     const channel = targetNode?.channel ?? 0;
 
-    // 1. Ask the target to broadcast NeighborInfo for a future cycle (best effort).
+    // Fetch the target's on-file NeighborInfo once — used both to decide whether
+    // a fresh request is needed and as a discovery source below.
+    const targetNeighbors = target.useNeighborInfo
+      ? await databaseService.neighbors.getNeighborsForNode(targetNodeNum, sourceId)
+      : [];
+    const newestNeighborTs = targetNeighbors.length > 0
+      ? Math.max(...targetNeighbors.map((n) => Number(n.timestamp)))
+      : null;
+
+    // 1. Request fresh NeighborInfo only when the on-file data is older than
+    //    maxNeighborAgeHours (or absent). Within that window we reuse what we
+    //    already have instead of spending airtime on another request.
     if (target.useNeighborInfo) {
-      try {
-        await manager.sendNeighborInfoRequest(targetNodeNum, channel);
-        await databaseService.autoFavoriteTargets.touchLastNeighborRequest(sourceId, targetNodeNum, now);
-      } catch (error) {
-        logger.warn(`⚠️ Auto-favorite: NeighborInfo request to ${targetNodeNum} failed:`, error);
+      if (isNeighborDataFresh(newestNeighborTs, target.maxNeighborAgeHours, now)) {
+        logger.debug(`🟢 Auto-favorite: NeighborInfo for ${targetNodeNum} is within ${target.maxNeighborAgeHours}h — reusing, no request`);
+      } else {
+        try {
+          await manager.sendNeighborInfoRequest(targetNodeNum, channel);
+          await databaseService.autoFavoriteTargets.touchLastNeighborRequest(sourceId, targetNodeNum, now);
+        } catch (error) {
+          logger.warn(`⚠️ Auto-favorite: NeighborInfo request to ${targetNodeNum} failed:`, error);
+        }
       }
     }
 
@@ -324,8 +350,7 @@ class AutoFavoriteManagementScheduler {
     };
 
     if (target.useNeighborInfo) {
-      const neighbors = await databaseService.neighbors.getNeighborsForNode(targetNodeNum, sourceId);
-      for (const n of neighbors) pushCandidate(Number(n.neighborNodeNum));
+      for (const n of targetNeighbors) pushCandidate(Number(n.neighborNodeNum));
     }
     if (target.useTraceroutes) {
       const traceroutes = await databaseService.traceroutes.getAllTraceroutes(TRACEROUTE_SCAN_LIMIT, sourceId);
