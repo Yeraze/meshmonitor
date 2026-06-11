@@ -133,6 +133,9 @@ export const VALID_SETTINGS_KEYS = [
   'autoFavoriteEnabled',
   'autoFavoriteStaleHours',
   'homoglyphEnabled',
+  // Global privacy toggle (issue #3416): when '0'/'false', the /api/link-preview
+  // endpoint refuses to fetch external URLs and the UI renders no preview cards.
+  'linkPreviewsEnabled',
   'localStatsIntervalMinutes',
   'nodeHopsCalculation',
   'nodeDimmingEnabled',

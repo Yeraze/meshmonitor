@@ -104,6 +104,8 @@ interface SettingsContextType {
   solarMonitoringAzimuth: number;
   solarMonitoringDeclination: number;
   enableAudioNotifications: boolean;
+  /** Global toggle: fetch & render OpenGraph link preview cards for URLs in messages. */
+  linkPreviewsEnabled: boolean;
   nodeDimmingEnabled: boolean;
   nodeDimmingStartHours: number;
   nodeDimmingMinOpacity: number;
@@ -151,6 +153,7 @@ interface SettingsContextType {
   setSolarMonitoringAzimuth: (azimuth: number) => void;
   setSolarMonitoringDeclination: (declination: number) => void;
   setEnableAudioNotifications: (enabled: boolean) => void;
+  setLinkPreviewsEnabled: (enabled: boolean) => void;
   mutedChannels: MutedChannel[];
   mutedDMs: MutedDM[];
   muteChannel: (channelId: number, muteUntil: number | null) => Promise<void>;
@@ -410,6 +413,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     // Default to true for backward compatibility
     return saved === null ? true : saved === 'true';
   });
+
+  // Link preview setting - server-backed (global). Defaults to true to preserve
+  // the previous always-on behavior; loaded from the server in loadServerSettings.
+  const [linkPreviewsEnabled, setLinkPreviewsEnabledState] = useState<boolean>(true);
 
   // Node dimming settings - localStorage only
   const [nodeDimmingEnabled, setNodeDimmingEnabledState] = useState<boolean>(() => {
@@ -808,6 +815,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     } catch (error) {
       logger.debug('Failed to save language preference to server:', error);
     }
+  };
+
+  // Link preview setter updates state only - value is persisted server-side
+  const setLinkPreviewsEnabled = (enabled: boolean) => {
+    setLinkPreviewsEnabledState(enabled);
   };
 
   // Solar monitoring setters update state only - values are persisted server-side
@@ -1309,6 +1321,13 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             logger.debug(`🌐 Language loaded from server: ${settings.language}`);
           }
 
+          // Link previews - database-only. Absent key means default (enabled);
+          // only an explicit '0'/'false' turns it off.
+          if (settings.linkPreviewsEnabled !== undefined) {
+            const enabled = !(settings.linkPreviewsEnabled === '0' || settings.linkPreviewsEnabled === 'false');
+            setLinkPreviewsEnabledState(enabled);
+          }
+
           // Solar monitoring settings - database-only, no localStorage persistence
           if (settings.solarMonitoringEnabled !== undefined) {
             const enabled = settings.solarMonitoringEnabled === '1' || settings.solarMonitoringEnabled === 'true';
@@ -1513,6 +1532,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     customThemes,
     customTilesets,
     isLoadingThemes,
+    linkPreviewsEnabled,
     solarMonitoringEnabled,
     solarMonitoringLatitude,
     solarMonitoringLongitude,
@@ -1560,6 +1580,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     addCustomTileset,
     updateCustomTileset,
     deleteCustomTileset,
+    setLinkPreviewsEnabled,
     setSolarMonitoringEnabled,
     setSolarMonitoringLatitude,
     setSolarMonitoringLongitude,
@@ -1594,6 +1615,16 @@ export const useSettings = (): SettingsContextType => {
     throw new Error('useSettings must be used within a SettingsProvider');
   }
   return context;
+};
+
+/**
+ * Non-throwing variant: returns the settings context, or `undefined` when no
+ * SettingsProvider is in scope. Use this in widely-reused leaf components (e.g.
+ * LinkPreview) that may render in trees without a provider — they can fall back
+ * to a sensible default rather than crashing the whole view.
+ */
+export const useSettingsOptional = (): SettingsContextType | undefined => {
+  return useContext(SettingsContext);
 };
 
 // Domain-specific hooks for cleaner imports and focused APIs

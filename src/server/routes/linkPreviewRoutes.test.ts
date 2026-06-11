@@ -3,13 +3,26 @@ import express, { Express } from 'express';
 import session from 'express-session';
 import request from 'supertest';
 
+// Controllable global-settings state. Hoisted so the mock factory (which is
+// re-run on every vi.resetModules() in loadRoutes) always closes over the same
+// object. `linkPreviewsEnabled === undefined` means the setting is unset, which
+// the route treats as enabled (default behavior).
+const { settingsState } = vi.hoisted(() => ({
+  settingsState: { linkPreviewsEnabled: undefined as string | undefined },
+}));
+
 vi.mock('../../services/database.js', () => ({
   default: {
     drizzleDbType: 'sqlite',
     findUserByIdAsync: vi.fn(),
     findUserByUsernameAsync: vi.fn(),
     checkPermissionAsync: vi.fn(),
-    getUserPermissionSetAsync: vi.fn()
+    getUserPermissionSetAsync: vi.fn(),
+    settings: {
+      getSetting: vi.fn(async (key: string) =>
+        key === 'linkPreviewsEnabled' ? settingsState.linkPreviewsEnabled : undefined
+      ),
+    },
   }
 }));
 
@@ -57,6 +70,8 @@ describe('Link Preview Routes', () => {
     vi.clearAllMocks();
     fetchSpy = vi.fn();
     global.fetch = fetchSpy;
+    settingsState.linkPreviewsEnabled = undefined; // default: enabled
+    delete process.env.LINK_PREVIEWS_ENABLED;
   });
 
   describe('GET /api/link-preview', () => {
@@ -88,6 +103,30 @@ describe('Link Preview Routes', () => {
       const response = await request(app).get('/api/link-preview?url=ftp://example.com');
       expect(response.status).toBe(400);
       expect(response.body.error).toBe('Only HTTP and HTTPS URLs are supported');
+    });
+
+    it('returns 403 and never fetches when disabled via the global setting', async () => {
+      settingsState.linkPreviewsEnabled = '0';
+      const routes = await loadRoutes();
+      const app = createApp();
+      app.use('/api', routes);
+
+      const response = await request(app).get('/api/link-preview?url=https://example.com/page');
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBe('Link previews are disabled');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('returns 403 when disabled via the LINK_PREVIEWS_ENABLED env var (overrides setting)', async () => {
+      settingsState.linkPreviewsEnabled = '1'; // setting says on...
+      process.env.LINK_PREVIEWS_ENABLED = 'false'; // ...but env wins
+      const routes = await loadRoutes();
+      const app = createApp();
+      app.use('/api', routes);
+
+      const response = await request(app).get('/api/link-preview?url=https://example.com/page');
+      expect(response.status).toBe(403);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
 
     it('fetches and returns OpenGraph metadata', async () => {

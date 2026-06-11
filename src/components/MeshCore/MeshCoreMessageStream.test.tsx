@@ -16,6 +16,10 @@ vi.mock('react-i18next', () => ({
       return key;
     },
   }),
+  // Required by config/i18n (pulled in transitively via SettingsContext, which
+  // the embedded <LinkPreview> imports). Without these the mock is incomplete.
+  Trans: ({ children }: { children?: unknown }) => children,
+  initReactI18next: { type: '3rdParty', init: () => {} },
 }));
 
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';

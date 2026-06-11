@@ -27,6 +27,8 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { appBasename } from '../init';
+import { renderMessageWithLinks } from '../utils/linkRenderer';
+import LinkPreview from '../components/LinkPreview';
 import '../styles/unified.css';
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
@@ -541,8 +543,9 @@ export default function UnifiedMessagesPage() {
                 )}
 
                 <div className="unified-msg-card__text">
-                  {msg.text || <em style={{ opacity: 0.4 }}>{t('unified.no_text')}</em>}
+                  {msg.text ? renderMessageWithLinks(msg.text) : <em style={{ opacity: 0.4 }}>{t('unified.no_text')}</em>}
                 </div>
+                {msg.text && <LinkPreview text={msg.text} />}
 
                 {reactions.length > 0 && (
                   <div className="unified-reactions">

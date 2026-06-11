@@ -93,7 +93,7 @@ interface SettingsTabProps {
 }
 
 const GLOBAL_SECTIONS = new Set([
-  'settings-language', 'settings-units', 'settings-appearance', 'settings-map',
+  'settings-language', 'settings-units', 'settings-appearance', 'settings-link-previews', 'settings-map',
   'settings-apprise-server', 'settings-backup', 'settings-channel-database',
   'settings-maintenance', 'settings-auto-upgrade', 'settings-analytics',
   // Position estimation is a single global, cross-source batch job (issue
@@ -175,6 +175,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     customTilesets,
     enableAudioNotifications,
     setEnableAudioNotifications,
+    linkPreviewsEnabled,
+    setLinkPreviewsEnabled,
     nodeDimmingEnabled,
     setNodeDimmingEnabled,
     nodeDimmingStartHours,
@@ -235,6 +237,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localPacketLogEnabled, setLocalPacketLogEnabled] = useState(false);
   const [localPacketLogMaxCount, setLocalPacketLogMaxCount] = useState(1000);
   const [localPacketLogMaxAgeHours, setLocalPacketLogMaxAgeHours] = useState(24);
+  const [localLinkPreviewsEnabled, setLocalLinkPreviewsEnabled] = useState(linkPreviewsEnabled);
   const [localSolarMonitoringEnabled, setLocalSolarMonitoringEnabled] = useState(solarMonitoringEnabled);
   const [localSolarMonitoringLatitude, setLocalSolarMonitoringLatitude] = useState(solarMonitoringLatitude);
   const [localSolarMonitoringLongitude, setLocalSolarMonitoringLongitude] = useState(solarMonitoringLongitude);
@@ -329,6 +332,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           setLocalHomoglyphEnabled(homoglyphOn);
           setInitialHomoglyphEnabled(homoglyphOn);
 
+          // Load link preview setting (issue #3416). Absent key => enabled.
+          const linkPreviewsOn = !(settings.linkPreviewsEnabled === '0' || settings.linkPreviewsEnabled === 'false');
+          setLocalLinkPreviewsEnabled(linkPreviewsOn);
+
           // Load MeshCore advanced path-edit toggle (gates the manual
           // Edit Path… button on the per-contact detail panel and is
           // server-side-checked by the matching PUT route).
@@ -405,13 +412,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalLightTheme(lightTheme);
     setLocalNodeHopsCalculation(nodeHopsCalculation);
     setLocalDashboardSortOption(preferredDashboardSortOption);
+    setLocalLinkPreviewsEnabled(linkPreviewsEnabled);
     setLocalSolarMonitoringEnabled(solarMonitoringEnabled);
     setLocalSolarMonitoringLatitude(solarMonitoringLatitude);
     setLocalSolarMonitoringLongitude(solarMonitoringLongitude);
     setLocalSolarMonitoringAzimuth(solarMonitoringAzimuth);
     setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
     setLocalHideIncompleteNodes(!showIncompleteNodes);
-  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, nodeHopsCalculation, preferredDashboardSortOption, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme]);
+  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, nodeHopsCalculation, preferredDashboardSortOption, linkPreviewsEnabled, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme]);
 
   // Default solar monitoring lat/long to device position if still at 0
   useEffect(() => {
@@ -473,6 +481,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localSolarMonitoringLongitude !== solarMonitoringLongitude ||
       localSolarMonitoringAzimuth !== solarMonitoringAzimuth ||
       localSolarMonitoringDeclination !== solarMonitoringDeclination ||
+      localLinkPreviewsEnabled !== linkPreviewsEnabled ||
       localHideIncompleteNodes !== !showIncompleteNodes ||
       localHomoglyphEnabled !== initialHomoglyphEnabled ||
       localMeshcoreAdvancedPathEdit !== initialMeshcoreAdvancedPathEdit ||
@@ -489,6 +498,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours, initialPacketMonitorSettings,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude, localSolarMonitoringAzimuth, localSolarMonitoringDeclination,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
+      localLinkPreviewsEnabled, linkPreviewsEnabled,
       localHideIncompleteNodes, showIncompleteNodes, localHomoglyphEnabled, initialHomoglyphEnabled,
       localMeshcoreAdvancedPathEdit, initialMeshcoreAdvancedPathEdit,
       localLocalStatsIntervalMinutes, initialLocalStatsIntervalMinutes,
@@ -531,6 +541,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalSolarMonitoringLongitude(solarMonitoringLongitude);
     setLocalSolarMonitoringAzimuth(solarMonitoringAzimuth);
     setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
+    setLocalLinkPreviewsEnabled(linkPreviewsEnabled);
     setLocalHideIncompleteNodes(!showIncompleteNodes);
     setLocalHomoglyphEnabled(initialHomoglyphEnabled);
     setLocalMeshcoreAdvancedPathEdit(initialMeshcoreAdvancedPathEdit);
@@ -547,6 +558,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       dateFormat, mapTileset, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
       solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes,
+      linkPreviewsEnabled,
       initialHomoglyphEnabled, initialMeshcoreAdvancedPathEdit, initialLocalStatsIntervalMinutes, initialNodeDimmingSettings,
       setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity,
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl]);
@@ -598,6 +610,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         solarMonitoringLongitude: localSolarMonitoringLongitude.toString(),
         solarMonitoringAzimuth: localSolarMonitoringAzimuth.toString(),
         solarMonitoringDeclination: localSolarMonitoringDeclination.toString(),
+        linkPreviewsEnabled: localLinkPreviewsEnabled ? '1' : '0',
         hideIncompleteNodes: localHideIncompleteNodes ? '1' : '0',
         homoglyphEnabled: String(localHomoglyphEnabled),
         meshcoreAdvancedPathEdit: String(localMeshcoreAdvancedPathEdit),
@@ -650,6 +663,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onSolarMonitoringLongitudeChange(localSolarMonitoringLongitude);
       onSolarMonitoringAzimuthChange(localSolarMonitoringAzimuth);
       onSolarMonitoringDeclinationChange(localSolarMonitoringDeclination);
+      setLinkPreviewsEnabled(localLinkPreviewsEnabled);
       setShowIncompleteNodes(!localHideIncompleteNodes);
 
       // Update initial packet monitor settings after successful save
@@ -680,7 +694,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, getLocalEffectiveTheme,
       localNodeHopsCalculation, localDashboardSortOption, localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude,
-      localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localHideIncompleteNodes, localHomoglyphEnabled, localLocalStatsIntervalMinutes,
+      localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localLinkPreviewsEnabled, setLinkPreviewsEnabled, localHideIncompleteNodes, localHomoglyphEnabled, localLocalStatsIntervalMinutes,
       onMaxNodeAgeChange, onInactiveNodeThresholdHoursChange, onInactiveNodeCheckIntervalMinutesChange,
       onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange, onPositionHistoryLineStyleChange,
       onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
@@ -820,6 +834,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setLocalSolarMonitoringLongitude(0);
       setLocalSolarMonitoringAzimuth(0);
       setLocalSolarMonitoringDeclination(30);
+      setLocalLinkPreviewsEnabled(true);
 
       // Update parent component with defaults
       onMaxNodeAgeChange(24);
@@ -844,6 +859,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onSolarMonitoringLongitudeChange(0);
       onSolarMonitoringAzimuthChange(0);
       onSolarMonitoringDeclinationChange(30);
+      setLinkPreviewsEnabled(true);
 
       // Update initial packet monitor settings
       setInitialPacketMonitorSettings({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
@@ -1070,6 +1086,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         { id: 'settings-units', label: t('settings.units_and_formats') },
         { id: 'settings-sorting', label: t('settings.sorting') },
         { id: 'settings-appearance', label: t('settings.appearance') },
+        { id: 'settings-link-previews', label: t('settings.link_previews', 'Link Previews') },
         { id: 'settings-map', label: t('settings.map') },
         { id: 'settings-node-display', label: t('settings.node_display') },
         { id: 'settings-telemetry', label: t('settings.telemetry') },
@@ -1352,6 +1369,23 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               </select>
             </div>
           )}
+        </div>}
+
+        {show('settings-link-previews') && <div id="settings-link-previews" className="settings-section">
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={localLinkPreviewsEnabled}
+                onChange={(e) => setLocalLinkPreviewsEnabled(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.link_previews_enabled', 'Show link previews')}</span>
+            </label>
+          </h3>
+          <p className="setting-description">
+            {t('settings.link_previews_description', 'When enabled, MeshMonitor fetches and displays a preview card (title, description, image) for the first URL in a message. The fetch is performed server-side. Disable this to stop all outbound requests to link targets — URLs still render as clickable text.')}
+          </p>
         </div>}
 
         {show('settings-map') && <div id="settings-map" className="settings-section">
