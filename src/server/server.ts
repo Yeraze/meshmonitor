@@ -34,6 +34,7 @@ import { backupFileService } from './services/backupFileService.js';
 import { backupSchedulerService } from './services/backupSchedulerService.js';
 import { databaseMaintenanceService } from './services/databaseMaintenanceService.js';
 import { positionEstimationScheduler } from './services/positionEstimationScheduler.js';
+import { autoFavoriteManagementScheduler } from './services/autoFavoriteManagementService.js';
 import { systemBackupService } from './services/systemBackupService.js';
 import { systemRestoreService } from './services/systemRestoreService.js';
 import { duplicateKeySchedulerService } from './services/duplicateKeySchedulerService.js';
@@ -598,6 +599,10 @@ setTimeout(async () => {
     // Initialize position estimation scheduler (global, batch — issue #3271)
     positionEstimationScheduler.initialize();
     logger.debug('Position estimation scheduler initialized');
+
+    // Initialize automated remote favorites management scheduler (issue #2608)
+    autoFavoriteManagementScheduler.initialize();
+    logger.debug('Auto-favorite management scheduler initialized');
 
     // Start inactive node notification service with validation
     const inactiveThresholdHoursRaw = parseInt(await databaseService.settings.getSetting('inactiveNodeThresholdHours') || '24', 10);
@@ -6733,6 +6738,161 @@ apiRouter.post('/settings/position-estimation/run-now', requirePermission('setti
       ? 'Position estimation already in progress'
       : 'Failed to run position estimation';
     res.status(message.includes('in progress') ? 409 : 500).json({ error: message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Automated Remote Favorites Management (issue #2608)
+// Per-source, per-target config for keeping favorites up to date on remote
+// infrastructure nodes via Remote Admin. Admin-only.
+// ---------------------------------------------------------------------------
+
+const AUTO_FAVORITE_DEFAULTS = {
+  enabled: false,
+  useNeighborInfo: true,
+  useTraceroutes: true,
+  intervalHours: 24,
+  maxNewPerCycle: 1,
+  maxRefavoritePerCycle: 1,
+  eligibleRoles: [2, 11, 12], // Router, Router Late, Client Base
+};
+
+apiRouter.get('/admin/auto-favorite-targets/:nodeNum', requireAdmin(), async (req, res) => {
+  try {
+    const targetNodeNum = Number(req.params.nodeNum);
+    const sourceId = (req.query.sourceId as string) || undefined;
+    if (!Number.isFinite(targetNodeNum)) {
+      return res.status(400).json({ error: 'Invalid nodeNum' });
+    }
+    if (!sourceId) {
+      return res.status(400).json({ error: 'sourceId is required' });
+    }
+
+    const config = await databaseService.autoFavoriteTargets.getTarget(sourceId, targetNodeNum);
+    const assignments = config
+      ? await databaseService.autoFavoriteTargets.getAssignments(sourceId, targetNodeNum)
+      : [];
+
+    if (!config) {
+      return res.json({
+        configured: false,
+        sourceId,
+        targetNodeNum,
+        ...AUTO_FAVORITE_DEFAULTS,
+        lastRunAt: null,
+        lastNeighborRequestAt: null,
+        assignments: [],
+      });
+    }
+
+    res.json({
+      configured: true,
+      sourceId,
+      targetNodeNum,
+      enabled: config.enabled,
+      useNeighborInfo: config.useNeighborInfo,
+      useTraceroutes: config.useTraceroutes,
+      intervalHours: config.intervalHours,
+      maxNewPerCycle: config.maxNewPerCycle,
+      maxRefavoritePerCycle: config.maxRefavoritePerCycle,
+      eligibleRoles: (() => { try { return JSON.parse(config.eligibleRoles); } catch { return AUTO_FAVORITE_DEFAULTS.eligibleRoles; } })(),
+      lastRunAt: config.lastRunAt ?? null,
+      lastNeighborRequestAt: config.lastNeighborRequestAt ?? null,
+      assignments: assignments.map((a) => ({
+        favoriteNodeNum: a.favoriteNodeNum,
+        discoverySource: a.discoverySource ?? null,
+        firstAssignedAt: a.firstAssignedAt,
+        lastAssignedAt: a.lastAssignedAt,
+      })),
+    });
+  } catch (error) {
+    logger.error('Error fetching auto-favorite target config:', error);
+    res.status(500).json({ error: 'Failed to fetch auto-favorite config' });
+  }
+});
+
+apiRouter.put('/admin/auto-favorite-targets/:nodeNum', requireAdmin(), async (req, res) => {
+  try {
+    const targetNodeNum = Number(req.params.nodeNum);
+    const { sourceId } = req.body ?? {};
+    if (!Number.isFinite(targetNodeNum)) {
+      return res.status(400).json({ error: 'Invalid nodeNum' });
+    }
+    if (!sourceId || typeof sourceId !== 'string') {
+      return res.status(400).json({ error: 'sourceId is required' });
+    }
+
+    const b = req.body ?? {};
+    const clampInt = (v: any, def: number, min: number) => {
+      const n = Math.floor(Number(v));
+      return Number.isFinite(n) && n >= min ? n : def;
+    };
+    const roles = Array.isArray(b.eligibleRoles)
+      ? b.eligibleRoles.map((r: any) => Number(r)).filter((r: number) => Number.isFinite(r))
+      : AUTO_FAVORITE_DEFAULTS.eligibleRoles;
+
+    await databaseService.autoFavoriteTargets.upsertTarget({
+      sourceId,
+      targetNodeNum,
+      enabled: b.enabled === true,
+      useNeighborInfo: b.useNeighborInfo !== false,
+      useTraceroutes: b.useTraceroutes !== false,
+      intervalHours: clampInt(b.intervalHours, AUTO_FAVORITE_DEFAULTS.intervalHours, 1),
+      maxNewPerCycle: clampInt(b.maxNewPerCycle, AUTO_FAVORITE_DEFAULTS.maxNewPerCycle, 0),
+      maxRefavoritePerCycle: clampInt(b.maxRefavoritePerCycle, AUTO_FAVORITE_DEFAULTS.maxRefavoritePerCycle, 0),
+      eligibleRoles: JSON.stringify(roles),
+    });
+
+    databaseService.auditLogAsync(
+      req.user!.id,
+      'auto_favorite_config',
+      'admin',
+      `Updated auto-favorite config for target ${targetNodeNum} (source ${sourceId}): enabled=${b.enabled === true}`,
+      req.ip || null,
+      null,
+      null
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error saving auto-favorite target config:', error);
+    res.status(500).json({ error: 'Failed to save auto-favorite config' });
+  }
+});
+
+apiRouter.delete('/admin/auto-favorite-targets/:nodeNum', requireAdmin(), async (req, res) => {
+  try {
+    const targetNodeNum = Number(req.params.nodeNum);
+    const sourceId = (req.query.sourceId as string) || (req.body && req.body.sourceId) || undefined;
+    if (!Number.isFinite(targetNodeNum)) {
+      return res.status(400).json({ error: 'Invalid nodeNum' });
+    }
+    if (!sourceId) {
+      return res.status(400).json({ error: 'sourceId is required' });
+    }
+    await databaseService.autoFavoriteTargets.deleteTarget(sourceId, targetNodeNum);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error deleting auto-favorite target config:', error);
+    res.status(500).json({ error: 'Failed to delete auto-favorite config' });
+  }
+});
+
+apiRouter.post('/admin/auto-favorite-targets/:nodeNum/run', requireAdmin(), async (req, res) => {
+  try {
+    const targetNodeNum = Number(req.params.nodeNum);
+    const { sourceId } = req.body ?? {};
+    if (!Number.isFinite(targetNodeNum)) {
+      return res.status(400).json({ error: 'Invalid nodeNum' });
+    }
+    if (!sourceId || typeof sourceId !== 'string') {
+      return res.status(400).json({ error: 'sourceId is required' });
+    }
+    const result = await autoFavoriteManagementScheduler.runCycleNow(sourceId, targetNodeNum);
+    res.json(result);
+  } catch (error) {
+    logger.error('Error running auto-favorite cycle:', error);
+    res.status(500).json({ error: 'Failed to run auto-favorite cycle' });
   }
 });
 

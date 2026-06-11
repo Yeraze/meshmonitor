@@ -37,7 +37,10 @@ export const BACKUP_TABLES = [
   'packet_log',
   'solar_estimates',
   'upgrade_history',
-  'system_backup_history'
+  'system_backup_history',
+  // 2608: automated remote favorites management config + assignment ledger
+  'auto_favorite_targets',
+  'auto_favorite_assignments'
 ];
 
 interface SystemBackupMetadata {

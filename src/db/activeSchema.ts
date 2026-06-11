@@ -119,6 +119,12 @@ import {
   estimatedPositionsSqlite, estimatedPositionsPostgres, estimatedPositionsMysql,
 } from './schema/estimatedPositions.js';
 
+// Automated Remote Favorites Management (issue #2608)
+import {
+  autoFavoriteTargetsSqlite, autoFavoriteTargetsPostgres, autoFavoriteTargetsMysql,
+  autoFavoriteAssignmentsSqlite, autoFavoriteAssignmentsPostgres, autoFavoriteAssignmentsMysql,
+} from './schema/autoFavoriteTargets.js';
+
 /**
  * Runtime table map interface.
  *
@@ -194,6 +200,10 @@ export interface ActiveSchema {
   // Estimated positions (global — no sourceId)
   estimatedPositions: any;
 
+  // Automated Remote Favorites Management (issue #2608)
+  autoFavoriteTargets: any;
+  autoFavoriteAssignments: any;
+
   // Allow dynamic access for flexibility
   [key: string]: any;
 }
@@ -246,6 +256,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     waypoints: waypointsSqlite,
     sources: sourcesSqlite,
     estimatedPositions: estimatedPositionsSqlite,
+    autoFavoriteTargets: autoFavoriteTargetsSqlite,
+    autoFavoriteAssignments: autoFavoriteAssignmentsSqlite,
   },
   postgres: {
     nodes: nodesPostgres,
@@ -291,6 +303,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     waypoints: waypointsPostgres,
     sources: sourcesPostgres,
     estimatedPositions: estimatedPositionsPostgres,
+    autoFavoriteTargets: autoFavoriteTargetsPostgres,
+    autoFavoriteAssignments: autoFavoriteAssignmentsPostgres,
   },
   mysql: {
     nodes: nodesMysql,
@@ -336,6 +350,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     waypoints: waypointsMysql,
     sources: sourcesMysql,
     estimatedPositions: estimatedPositionsMysql,
+    autoFavoriteTargets: autoFavoriteTargetsMysql,
+    autoFavoriteAssignments: autoFavoriteAssignmentsMysql,
   },
 };
 
