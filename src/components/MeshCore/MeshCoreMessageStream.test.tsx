@@ -16,12 +16,10 @@ vi.mock('react-i18next', () => ({
       return key;
     },
   }),
-}));
-
-// The stream now renders <LinkPreview>, which reads the global setting via
-// useSettings(); stub it so the component tree doesn't require a provider.
-vi.mock('../../contexts/SettingsContext', () => ({
-  useSettings: () => ({ linkPreviewsEnabled: true }),
+  // Required by config/i18n (pulled in transitively via SettingsContext, which
+  // the embedded <LinkPreview> imports). Without these the mock is incomplete.
+  Trans: ({ children }: { children?: unknown }) => children,
+  initReactI18next: { type: '3rdParty', init: () => {} },
 }));
 
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';

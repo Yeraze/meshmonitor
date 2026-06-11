@@ -12,7 +12,7 @@ import LinkPreview from './LinkPreview';
 // Controllable setting value, hoisted so the mock factory can close over it.
 const { settingState } = vi.hoisted(() => ({ settingState: { linkPreviewsEnabled: true } }));
 vi.mock('../contexts/SettingsContext', () => ({
-  useSettings: () => ({ linkPreviewsEnabled: settingState.linkPreviewsEnabled }),
+  useSettingsOptional: () => ({ linkPreviewsEnabled: settingState.linkPreviewsEnabled }),
 }));
 
 // extractUrls always finds a URL; fetchLinkPreview is a spy we assert against.

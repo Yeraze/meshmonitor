@@ -1617,6 +1617,16 @@ export const useSettings = (): SettingsContextType => {
   return context;
 };
 
+/**
+ * Non-throwing variant: returns the settings context, or `undefined` when no
+ * SettingsProvider is in scope. Use this in widely-reused leaf components (e.g.
+ * LinkPreview) that may render in trees without a provider — they can fall back
+ * to a sensible default rather than crashing the whole view.
+ */
+export const useSettingsOptional = (): SettingsContextType | undefined => {
+  return useContext(SettingsContext);
+};
+
 // Domain-specific hooks for cleaner imports and focused APIs
 
 export const useDisplaySettings = () => {

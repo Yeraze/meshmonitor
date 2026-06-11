@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { extractUrls, fetchLinkPreview, LinkMetadata } from '../utils/linkRenderer';
-import { useSettings } from '../contexts/SettingsContext';
+import { useSettingsOptional } from '../contexts/SettingsContext';
 
 interface LinkPreviewProps {
   text: string;
@@ -14,7 +14,10 @@ interface LinkPreviewProps {
  */
 export const LinkPreview: React.FC<LinkPreviewProps> = ({ text }) => {
   const { t } = useTranslation();
-  const { linkPreviewsEnabled } = useSettings();
+  // Non-throwing: defaults to enabled when rendered outside a SettingsProvider.
+  // The authoritative privacy enforcement is the server-side /api/link-preview
+  // guard (403 when disabled); this client gate is an optimization.
+  const linkPreviewsEnabled = useSettingsOptional()?.linkPreviewsEnabled ?? true;
   const [previews, setPreviews] = useState<LinkMetadata[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
