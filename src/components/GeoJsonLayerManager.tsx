@@ -137,6 +137,19 @@ const GeoJsonLayerManager: React.FC = () => {
                 <span style={{ fontSize: '0.85em' }}>Visible</span>
               </label>
 
+              {/* Public exposure (issue #3407) — opt-in, default off */}
+              <label
+                style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                title="Show this layer to anonymous viewers on the public map and in embeds. Off by default — private/operational layers stay hidden."
+              >
+                <input
+                  type="checkbox"
+                  checked={layer.publiclyVisible ?? false}
+                  onChange={(e) => updateLayer(layer.id, { publiclyVisible: e.target.checked })}
+                />
+                <span style={{ fontSize: '0.85em' }}>Public</span>
+              </label>
+
               {/* Color */}
               <label style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <span style={{ fontSize: '0.85em' }}>Color</span>

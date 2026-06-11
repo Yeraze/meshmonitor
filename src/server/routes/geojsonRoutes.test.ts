@@ -60,6 +60,16 @@ function createApp(service: GeoJsonService) {
   return app;
 }
 
+// App with NO authenticated session — optionalAuth falls back to the anonymous
+// user, exercising the public-access path (issue #3407).
+function createAnonApp(service: GeoJsonService) {
+  const app = express();
+  app.use(session({ secret: 'test-secret', resave: false, saveUninitialized: false }));
+  const router = createGeoJsonRouter(service);
+  app.use('/', router);
+  return app;
+}
+
 describe('GeoJSON Routes', () => {
   let tmpDir: string;
   let service: GeoJsonService;
@@ -201,6 +211,63 @@ describe('GeoJSON Routes', () => {
     it('returns 404 for nonexistent layer', async () => {
       const res = await request(app).get('/layers/nonexistent-id/data');
       expect(res.status).toBe(404);
+    });
+  });
+
+  // ---- Public / anonymous access (issue #3407) ----------------------------
+
+  describe('public (anonymous) access', () => {
+    const anonUser = { id: 99, username: 'anonymous', isActive: true, isAdmin: false };
+
+    beforeEach(() => {
+      // optionalAuth falls back to the anonymous user when there's no session.
+      mockDatabase.findUserByUsernameAsync.mockResolvedValue(anonUser);
+    });
+
+    it('PUT can set publiclyVisible (authenticated)', async () => {
+      const layer = service.addLayer('flag.geojson', VALID_GEOJSON);
+      const res = await request(app)
+        .put(`/layers/${layer.id}`)
+        .set('Content-Type', 'application/json')
+        .send({ publiclyVisible: true });
+      expect(res.status).toBe(200);
+      expect(res.body.publiclyVisible).toBe(true);
+    });
+
+    it('anonymous GET /layers returns only public layers', async () => {
+      const pub = service.addLayer('pub.geojson', VALID_GEOJSON);
+      service.addLayer('priv.geojson', VALID_GEOJSON);
+      service.updateLayer(pub.id, { publiclyVisible: true });
+
+      const anonApp = createAnonApp(service);
+      const res = await request(anonApp).get('/layers');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].id).toBe(pub.id);
+    });
+
+    it('authenticated GET /layers returns all layers including private', async () => {
+      const pub = service.addLayer('pub.geojson', VALID_GEOJSON);
+      service.addLayer('priv.geojson', VALID_GEOJSON);
+      service.updateLayer(pub.id, { publiclyVisible: true });
+
+      const res = await request(app).get('/layers'); // admin session
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(2);
+    });
+
+    it('anonymous /layers/:id/data serves public, 404s private', async () => {
+      const pub = service.addLayer('pub.geojson', VALID_GEOJSON);
+      const priv = service.addLayer('priv.geojson', VALID_GEOJSON);
+      service.updateLayer(pub.id, { publiclyVisible: true });
+
+      const anonApp = createAnonApp(service);
+      const okRes = await request(anonApp).get(`/layers/${pub.id}/data`);
+      expect(okRes.status).toBe(200);
+      expect(JSON.parse(okRes.text).type).toBe('FeatureCollection');
+
+      const blockedRes = await request(anonApp).get(`/layers/${priv.id}/data`);
+      expect(blockedRes.status).toBe(404);
     });
   });
 });

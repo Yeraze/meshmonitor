@@ -11,7 +11,7 @@
  * NodesTab toggles. DashboardPage wraps this component in a MapProvider.
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Rectangle, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -20,9 +20,13 @@ import { getTilesetById } from '../../config/tilesets';
 import type { CustomTileset } from '../../config/tilesets';
 import DashboardWaypoints from './DashboardWaypoints';
 import DashboardNodePopup from './DashboardNodePopup';
+import GeoJsonOverlay from '../GeoJsonOverlay';
+import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
 import { useMapContext } from '../../contexts/MapContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { nodePassesTransportFilter } from '../../utils/nodeTransport';
+import api from '../../services/api';
+import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 
 export interface DashboardMapProps {
   nodes: any[];
@@ -162,6 +166,39 @@ export default function DashboardMap({
     setShowWaypoints,
   } = useMapContext();
 
+  // GeoJSON overlay layers (global, file-based). Fetched here so the dashboard
+  // map can render and toggle them, mirroring the per-source NodesTab map.
+  const csrfFetch = useCsrfFetch();
+  const [geoJsonLayers, setGeoJsonLayers] = useState<GeoJsonLayer[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const baseUrl = await api.getBaseUrl();
+        const response = await fetch(`${baseUrl}/api/geojson/layers`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled) setGeoJsonLayers(data);
+      } catch (err) {
+        console.error('Failed to fetch GeoJSON layers:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Toggle a layer's visibility and persist it (visible is global, shared with
+  // the node map's control).
+  const toggleGeoJsonLayer = (id: string, visible: boolean) => {
+    setGeoJsonLayers(prev => prev.map(l => (l.id === id ? { ...l, visible } : l)));
+    api.getBaseUrl().then(baseUrl => {
+      csrfFetch(`${baseUrl}/api/geojson/layers/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visible }),
+      }).catch(err => console.error('Failed to update layer visibility:', err));
+    }).catch(err => console.error('Failed to get base URL:', err));
+  };
+
   // Build array of nodes that have valid positions, with their resolved lat/lng.
   // Mirrors NodesTab's processedNodes pipeline (App.tsx): ignored hidden, age cutoff
   // bypassed by favorites, transport-class filter from the Map Features panel.
@@ -289,6 +326,8 @@ export default function DashboardMap({
         />
 
         <MapBoundsUpdater positions={nodePositions} sourceId={sourceId} />
+
+        {geoJsonLayers.length > 0 && <GeoJsonOverlay layers={geoJsonLayers} />}
 
         {showWaypoints && <DashboardWaypoints sourceId={sourceId} />}
 
@@ -494,6 +533,23 @@ export default function DashboardMap({
             />
             <span>Show Waypoints</span>
           </label>
+          {/* GeoJSON overlay layers — per-layer on/off, mirroring NodesTab. */}
+          {geoJsonLayers.map(layer => (
+            <label key={layer.id} className="map-control-item">
+              <input
+                type="checkbox"
+                checked={layer.visible}
+                onChange={(e) => toggleGeoJsonLayer(layer.id, e.target.checked)}
+              />
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{
+                  display: 'inline-block', width: '8px', height: '8px',
+                  borderRadius: '50%', backgroundColor: layer.style.color,
+                }} />
+                {layer.name}
+              </span>
+            </label>
+          ))}
         </div>
       </div>
 

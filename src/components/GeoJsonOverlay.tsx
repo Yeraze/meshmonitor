@@ -6,24 +6,39 @@ import api from '../services/api';
 
 interface GeoJsonOverlayProps {
   layers: GeoJsonLayer[];
+  /**
+   * API path prefix for fetching layer data. Defaults to the authenticated
+   * route; the public embed map passes its own (`/api/embed/:id/geojson/layers`)
+   * so anonymous viewers only receive public layer data (issue #3407).
+   */
+  dataPathPrefix?: string;
+  /**
+   * Base URL override. Defaults to `api.getBaseUrl()`; the embed map passes the
+   * base it derived from `window.location` so data fetches resolve correctly.
+   */
+  baseUrl?: string;
 }
 
 type GeoJsonData = GeoJSON.GeoJsonObject;
 
-const GeoJsonOverlay: React.FC<GeoJsonOverlayProps> = ({ layers }) => {
+const GeoJsonOverlay: React.FC<GeoJsonOverlayProps> = ({
+  layers,
+  dataPathPrefix = '/api/geojson/layers',
+  baseUrl,
+}) => {
   const [dataCache, setDataCache] = useState<Record<string, GeoJsonData>>({});
 
   const fetchLayerData = useCallback(async (layer: GeoJsonLayer) => {
     try {
-      const baseUrl = await api.getBaseUrl();
-      const response = await fetch(`${baseUrl}/api/geojson/layers/${layer.id}/data`);
+      const root = baseUrl ?? await api.getBaseUrl();
+      const response = await fetch(`${root}${dataPathPrefix}/${layer.id}/data`);
       if (!response.ok) return;
       const data = await response.json();
       setDataCache(prev => ({ ...prev, [layer.id]: data }));
     } catch (err) {
       console.error(`Failed to fetch GeoJSON data for layer ${layer.id}:`, err);
     }
-  }, []);
+  }, [dataPathPrefix, baseUrl]);
 
   useEffect(() => {
     layers.forEach(layer => {

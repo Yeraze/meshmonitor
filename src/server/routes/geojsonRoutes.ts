@@ -8,18 +8,28 @@ import { Router, Request, Response } from 'express';
 import express from 'express';
 import { GeoJsonService, LayerStyle } from '../services/geojsonService.js';
 import { logger } from '../../utils/logger.js';
-import { requirePermission } from '../auth/authMiddleware.js';
+import { requirePermission, optionalAuth } from '../auth/authMiddleware.js';
+
+/** True when the request is unauthenticated (the optionalAuth anonymous fallback). */
+function isAnonymousRequest(req: Request): boolean {
+  const user = req.user as { username?: string } | undefined;
+  return !user || user.username === 'anonymous';
+}
 
 export function createGeoJsonRouter(service: GeoJsonService): Router {
   const router = Router();
 
   /**
    * GET /api/geojson/layers
-   * Returns all GeoJSON layers
+   * Authenticated operators get all layers; anonymous callers get only layers
+   * flagged publiclyVisible (issue #3407). This also closes the prior gap where
+   * every layer was readable by anyone.
    */
-  router.get('/layers', async (_req: Request, res: Response) => {
+  router.get('/layers', optionalAuth(), async (req: Request, res: Response) => {
     try {
-      const layers = service.getLayers();
+      const layers = isAnonymousRequest(req)
+        ? service.getPublicLayers()
+        : service.getLayers();
       return res.json(layers);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -86,7 +96,7 @@ export function createGeoJsonRouter(service: GeoJsonService): Router {
   router.put('/layers/:id', requirePermission('settings', 'write'), express.json(), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const updates = req.body as { name?: string; visible?: boolean; style?: LayerStyle };
+      const updates = req.body as { name?: string; visible?: boolean; publiclyVisible?: boolean; style?: LayerStyle };
       const layer = service.updateLayer(id, updates);
       return res.json(layer);
     } catch (error) {
@@ -120,12 +130,15 @@ export function createGeoJsonRouter(service: GeoJsonService): Router {
 
   /**
    * GET /api/geojson/layers/:id/data
-   * Returns raw GeoJSON data for a layer
+   * Returns raw GeoJSON data for a layer. Anonymous callers may only read the
+   * data of layers flagged publiclyVisible; a private layer 404s for them.
    */
-  router.get('/layers/:id/data', async (req: Request, res: Response) => {
+  router.get('/layers/:id/data', optionalAuth(), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const data = service.getLayerData(id);
+      const data = isAnonymousRequest(req)
+        ? service.getPublicLayerData(id)
+        : service.getLayerData(id);
       res.setHeader('Content-Type', 'application/geo+json');
       return res.send(data);
     } catch (error) {

@@ -14,6 +14,7 @@ import { createEmbedCspMiddleware } from '../middleware/embedMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
+import geojsonService from '../services/geojsonService.js';
 
 const router = Router();
 
@@ -295,6 +296,43 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Re
   } catch (error) {
     logger.error('Error fetching embed traceroutes:', error);
     res.status(500).json({ error: 'Failed to fetch traceroutes' });
+  }
+});
+
+// GET /:profileId/geojson/layers — public GeoJSON overlay layers (issue #3407).
+// GeoJSON layers are global (not per-profile); only layers flagged
+// publiclyVisible are exposed to embed/anonymous viewers.
+router.get('/:profileId/geojson/layers', createEmbedCspMiddleware(), (req: Request, res: Response) => {
+  const profile = (req as any).embedProfile;
+  if (!profile) {
+    return res.status(404).json({ error: 'Embed profile not found' });
+  }
+  try {
+    return res.json(geojsonService.getPublicLayers());
+  } catch (error) {
+    logger.error('Error fetching embed geojson layers:', error);
+    return res.status(500).json({ error: 'Failed to fetch geojson layers' });
+  }
+});
+
+// GET /:profileId/geojson/layers/:id/data — raw data for a PUBLIC layer only.
+// A private (non-publiclyVisible) layer 404s.
+router.get('/:profileId/geojson/layers/:id/data', createEmbedCspMiddleware(), (req: Request, res: Response) => {
+  const profile = (req as any).embedProfile;
+  if (!profile) {
+    return res.status(404).json({ error: 'Embed profile not found' });
+  }
+  try {
+    const data = geojsonService.getPublicLayerData(req.params.id);
+    res.setHeader('Content-Type', 'application/geo+json');
+    return res.send(data);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.toLowerCase().includes('not found')) {
+      return res.status(404).json({ error: message });
+    }
+    logger.error('Error fetching embed geojson layer data:', error);
+    return res.status(500).json({ error: 'Failed to fetch geojson layer data' });
   }
 });
 

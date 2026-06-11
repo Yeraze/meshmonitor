@@ -6,6 +6,8 @@ import { TILESETS, isPredefinedTilesetId, DEFAULT_TILESET_ID } from '../config/t
 import type { TilesetConfig } from '../config/tilesets';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
+import GeoJsonOverlay from './GeoJsonOverlay';
+import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 
 interface EmbedConfig {
   id: string;
@@ -115,6 +117,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
   const [nodes, setNodes] = useState<EmbedNode[]>([]);
   const [neighborSegments, setNeighborSegments] = useState<EmbedNeighborSegment[]>([]);
   const [tracerouteSegments, setTracerouteSegments] = useState<EmbedTracerouteSegment[]>([]);
+  const [geoJsonLayers, setGeoJsonLayers] = useState<GeoJsonLayer[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -186,6 +189,24 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     } catch {
       // Silently ignore
     }
+  }, [config, baseUrl, profileId]);
+
+  // Fetch public GeoJSON overlay layers once config is available (issue #3407).
+  // Only layers flagged publiclyVisible are returned by the embed endpoint.
+  useEffect(() => {
+    if (!config) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${baseUrl}/api/embed/${profileId}/geojson/layers`);
+        if (!res.ok) return;
+        const data: GeoJsonLayer[] = await res.json();
+        if (!cancelled) setGeoJsonLayers(data);
+      } catch {
+        // Silently ignore — overlays are optional
+      }
+    })();
+    return () => { cancelled = true; };
   }, [config, baseUrl, profileId]);
 
   // Start polling when config is loaded
@@ -289,6 +310,15 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
           attribution={tileset.attribution}
           maxZoom={tileset.maxZoom}
         />
+
+        {/* Public GeoJSON overlay layers (issue #3407) */}
+        {geoJsonLayers.length > 0 && (
+          <GeoJsonOverlay
+            layers={geoJsonLayers}
+            baseUrl={baseUrl}
+            dataPathPrefix={`/api/embed/${profileId}/geojson/layers`}
+          />
+        )}
 
         {/* Traceroute path segments */}
         {config.showPaths && tracerouteSegments.map((seg, idx) => (
