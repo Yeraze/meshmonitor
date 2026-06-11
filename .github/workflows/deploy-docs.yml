@@ -10,6 +10,9 @@ on:
       - '.github/workflows/deploy-docs.yml'
       - 'package.json'
       - 'package-lock.json'
+      # Republish the Helm chart repository (served at /charts) when the chart changes.
+      - 'helm/**'
+      - 'scripts/build-helm-repo.sh'
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -47,6 +50,14 @@ jobs:
 
       - name: Install dependencies
         run: npm install --legacy-peer-deps
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Build Helm chart repository (served at /charts)
+        run: bash scripts/build-helm-repo.sh
 
       - name: Build with VitePress
         run: npm run docs:build

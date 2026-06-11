@@ -56,9 +56,12 @@ For detailed installation instructions, configuration options, and deployment sc
 
 ### Kubernetes / Helm
 
-Running on Kubernetes? MeshMonitor ships a Helm chart under [`helm/meshmonitor/`](helm/meshmonitor/):
+Running on Kubernetes? Add the MeshMonitor Helm repository and install — no checkout required:
 
 ```bash
+helm repo add meshmonitor https://meshmonitor.org/charts
+helm repo update
+
 # Minimal custom-values.yaml
 cat > custom-values.yaml << 'EOF'
 env:
@@ -66,8 +69,10 @@ env:
   meshtasticUseTls: "false"
 EOF
 
-helm install meshmonitor ./helm/meshmonitor -f custom-values.yaml
+helm install meshmonitor meshmonitor/meshmonitor -f custom-values.yaml
 ```
+
+> Prefer to install from a local checkout instead? `helm install meshmonitor ./helm/meshmonitor -f custom-values.yaml` still works against [`helm/meshmonitor/`](helm/meshmonitor/).
 
 See the [Helm Chart README](helm/README.md) for ingress, TLS, persistence, and the full values reference, or the [Helm Deployment Guide](https://meshmonitor.org/deployment/HELM_GUIDE.html) on the docs site.
 
