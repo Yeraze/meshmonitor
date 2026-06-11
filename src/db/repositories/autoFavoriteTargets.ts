@@ -145,6 +145,7 @@ export class AutoFavoriteTargetsRepository extends BaseRepository {
     favoriteNodeNum: number,
     discoverySource: string | null,
     ts: number,
+    ack?: { status: string | null; at: number },
   ): Promise<void> {
     const { autoFavoriteAssignments } = this.tables;
     const values = {
@@ -154,21 +155,39 @@ export class AutoFavoriteTargetsRepository extends BaseRepository {
       discoverySource: discoverySource ?? null,
       firstAssignedAt: ts,
       lastAssignedAt: ts,
+      lastAckStatus: ack?.status ?? null,
+      lastAckAt: ack?.at ?? null,
     };
+    const updateSet: Record<string, unknown> = { lastAssignedAt: ts };
+    if (ack) {
+      updateSet.lastAckStatus = ack.status ?? null;
+      updateSet.lastAckAt = ack.at;
+    }
     await this.upsert(
       autoFavoriteAssignments,
       values,
       [autoFavoriteAssignments.sourceId, autoFavoriteAssignments.targetNodeNum, autoFavoriteAssignments.favoriteNodeNum],
-      { lastAssignedAt: ts },
+      updateSet,
     );
   }
 
-  /** Bump lastAssignedAt for an existing assignment (re-favorite). */
-  async touchAssignment(sourceId: string, targetNodeNum: number, favoriteNodeNum: number, ts: number): Promise<void> {
+  /** Bump lastAssignedAt for an existing assignment (re-favorite), optionally recording its ACK result. */
+  async touchAssignment(
+    sourceId: string,
+    targetNodeNum: number,
+    favoriteNodeNum: number,
+    ts: number,
+    ack?: { status: string | null; at: number },
+  ): Promise<void> {
     const { autoFavoriteAssignments } = this.tables;
+    const set: Record<string, unknown> = { lastAssignedAt: ts };
+    if (ack) {
+      set.lastAckStatus = ack.status ?? null;
+      set.lastAckAt = ack.at;
+    }
     await this.db
       .update(autoFavoriteAssignments)
-      .set({ lastAssignedAt: ts })
+      .set(set)
       .where(and(
         eq(autoFavoriteAssignments.sourceId, sourceId),
         eq(autoFavoriteAssignments.targetNodeNum, targetNodeNum),

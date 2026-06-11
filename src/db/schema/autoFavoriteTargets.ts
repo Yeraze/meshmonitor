@@ -98,6 +98,10 @@ export const autoFavoriteAssignmentsSqlite = sqliteTable('auto_favorite_assignme
   discoverySource: text('discoverySource'),
   firstAssignedAt: integer('firstAssignedAt').notNull(),
   lastAssignedAt: integer('lastAssignedAt').notNull(),
+  // Result of the most recent favorite command's routing ACK:
+  // 'confirmed' (error_reason=NONE), 'timeout', or a routing error name.
+  lastAckStatus: text('lastAckStatus'),
+  lastAckAt: integer('lastAckAt'),
 }, (table) => ({
   assignUniq: sqliteUniqueIndex('afa_source_target_fav_uniq').on(table.sourceId, table.targetNodeNum, table.favoriteNodeNum),
 }));
@@ -111,6 +115,8 @@ export const autoFavoriteAssignmentsPostgres = pgTable('auto_favorite_assignment
   discoverySource: pgText('discoverySource'),
   firstAssignedAt: pgBigint('firstAssignedAt', { mode: 'number' }).notNull(),
   lastAssignedAt: pgBigint('lastAssignedAt', { mode: 'number' }).notNull(),
+  lastAckStatus: pgText('lastAckStatus'),
+  lastAckAt: pgBigint('lastAckAt', { mode: 'number' }),
 }, (table) => ({
   assignUniq: pgUniqueIndex('afa_source_target_fav_uniq').on(table.sourceId, table.targetNodeNum, table.favoriteNodeNum),
 }));
@@ -124,6 +130,8 @@ export const autoFavoriteAssignmentsMysql = mysqlTable('auto_favorite_assignment
   discoverySource: myVarchar('discoverySource', { length: 32 }),
   firstAssignedAt: myBigint('firstAssignedAt', { mode: 'number' }).notNull(),
   lastAssignedAt: myBigint('lastAssignedAt', { mode: 'number' }).notNull(),
+  lastAckStatus: myVarchar('lastAckStatus', { length: 32 }),
+  lastAckAt: myBigint('lastAckAt', { mode: 'number' }),
 }, (table) => ({
   assignUniq: myUniqueIndex('afa_source_target_fav_uniq').on(table.sourceId, table.targetNodeNum, table.favoriteNodeNum),
 }));

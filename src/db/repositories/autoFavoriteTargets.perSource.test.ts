@@ -60,7 +60,9 @@ describe('AutoFavoriteTargetsRepository', () => {
         favoriteNodeNum INTEGER NOT NULL,
         discoverySource TEXT,
         firstAssignedAt INTEGER NOT NULL,
-        lastAssignedAt INTEGER NOT NULL
+        lastAssignedAt INTEGER NOT NULL,
+        lastAckStatus TEXT,
+        lastAckAt INTEGER
       )
     `);
     db.exec(`CREATE UNIQUE INDEX afa_source_target_fav_uniq ON auto_favorite_assignments(sourceId, targetNodeNum, favoriteNodeNum)`);
@@ -135,6 +137,20 @@ describe('AutoFavoriteTargetsRepository', () => {
     await repo.touchAssignment('source-a', 111, 222, 9000);
     const a = (await repo.getAssignments('source-a', 111))[0];
     expect(a.lastAssignedAt).toBe(9000);
+    expect(a.firstAssignedAt).toBe(1000);
+  });
+
+  it('persists ACK status on record and touch', async () => {
+    await repo.recordAssignment('source-a', 111, 222, 'discovery', 1000, { status: 'confirmed', at: 1000 });
+    let a = (await repo.getAssignments('source-a', 111))[0];
+    expect(a.lastAckStatus).toBe('confirmed');
+    expect(a.lastAckAt).toBe(1000);
+
+    // Re-record (re-favorite) can change the ACK status, e.g. to a timeout.
+    await repo.touchAssignment('source-a', 111, 222, 2000, { status: 'timeout', at: 2000 });
+    a = (await repo.getAssignments('source-a', 111))[0];
+    expect(a.lastAckStatus).toBe('timeout');
+    expect(a.lastAckAt).toBe(2000);
     expect(a.firstAssignedAt).toBe(1000);
   });
 
