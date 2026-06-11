@@ -43,3 +43,5 @@ export { WaypointsRepository } from './waypoints.js';
 export type { Waypoint, WaypointUpsertInput, WaypointListOptions } from './waypoints.js';
 export { EstimatedPositionsRepository } from './estimatedPositions.js';
 export type { EstimatedPosition, EstimatedPositionInput } from './estimatedPositions.js';
+export { AutoFavoriteTargetsRepository } from './autoFavoriteTargets.js';
+export type { AutoFavoriteTargetInput } from './autoFavoriteTargets.js';

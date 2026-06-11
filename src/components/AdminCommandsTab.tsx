@@ -11,6 +11,7 @@ import SectionNav from './SectionNav';
 import { encodePositionFlags, decodePositionFlags, decodePositionFlagNames } from '../utils/positionFlags';
 import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
 import { DeviceConfigurationSection } from './admin-commands/DeviceConfigurationSection';
+import AutoFavoriteManagementSection from './admin-commands/AutoFavoriteManagementSection';
 import { ModuleConfigurationSection } from './admin-commands/ModuleConfigurationSection';
 import { useAdminCommandsState } from './admin-commands/useAdminCommandsState';
 import { buildNodeOptions, filterNodes, sortNodeOptionsForRemoteAdmin, type NodeOption } from './admin-commands/nodeOptionsUtils';
@@ -2320,6 +2321,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         { id: 'module-config', label: t('admin_commands.module_configuration', 'Module Configuration') },
         { id: 'admin-import-export', label: t('admin_commands.config_import_export', 'Import/Export') },
         { id: 'admin-node-management', label: t('admin_commands.node_favorites_ignored', 'Node Management') },
+        { id: 'admin-auto-favorites', label: t('auto_favorite.nav', 'Automatic Favorites') },
       ]} />
 
       {/* Node Selection Section */}
@@ -3484,6 +3486,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           {t('admin_commands.firmware_requirement_note')}
         </p>
       </CollapsibleSection>
+
+      {/* Automatic Favorites Management Section (issue #2608) */}
+      <AutoFavoriteManagementSection
+        selectedNodeNum={selectedNodeNum}
+        sourceId={sourceId}
+        nodes={nodes}
+      />
 
       {/* Channel Edit Modal */}
       {showChannelEditModal && editingChannelSlot !== null && (

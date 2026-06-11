@@ -220,6 +220,40 @@ export interface DbNeighborInfo {
 }
 
 /**
+ * Automated Remote Favorites Management — per-source, per-target config (#2608)
+ */
+export interface DbAutoFavoriteTarget {
+  id?: number;
+  sourceId: string;
+  targetNodeNum: number;
+  enabled: boolean;
+  useNeighborInfo: boolean;
+  useTraceroutes: boolean;
+  intervalHours: number;
+  maxNewPerCycle: number;
+  maxRefavoritePerCycle: number;
+  /** JSON array of eligible Meshtastic role numbers, e.g. "[2,11,12]" */
+  eligibleRoles: string;
+  lastRunAt?: number | null;
+  lastNeighborRequestAt?: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * Tracking ledger of favorites assigned to a remote target (#2608)
+ */
+export interface DbAutoFavoriteAssignment {
+  id?: number;
+  sourceId: string;
+  targetNodeNum: number;
+  favoriteNodeNum: number;
+  discoverySource?: string | null;
+  firstAssignedAt: number;
+  lastAssignedAt: number;
+}
+
+/**
  * Unified push subscription type matching DbPushSubscription interface
  */
 export interface DbPushSubscription {
