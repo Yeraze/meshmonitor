@@ -1898,6 +1898,68 @@ Nodes must also:
 
 ---
 
+## Automatic Favorites Management (Remote) {#remote-favorites}
+
+Keeps the favorites list up to date **on a remote infrastructure node you administer** — preserving Meshtastic's zero-hop cost between favorited routers as your mesh grows, without site visits or blind CLI spamming.
+
+This is distinct from [Auto Favorite](#auto-favorite) above: that feature manages favorites on *your own* locally-connected node. Automatic Favorites Management runs over [Remote Admin](#remote-admin-scanner) and manages the favorites list on *another* node — typically a router or base station two hops away that you can't easily reach.
+
+You configure it per target node in the **Automatic Favorites Management** section of the **Remote Admin** tab (select the target node, then scroll to the section).
+
+### How It Works
+
+Each enabled target runs a "cycle" no more often than its configured interval (default 24 hours). A cycle:
+
+1. **Discovers the target's direct neighbors** from one or both sources:
+   - **Use NeighborInfo** — the nodes the target reports in its NeighborInfo broadcasts.
+   - **Use Traceroutes** — the nodes immediately adjacent to the target in any traceroute that passes through it.
+2. **Filters** the candidates to the configured eligible roles (default Router / Router Late / Client Base — the roles that benefit from zero-hop favoriting). The controlling (local) node is eligible too if it shows up as a direct neighbor.
+3. **Favorites** up to *Maximum new neighbors per cycle* newly-discovered nodes by sending `set-favorite` admin commands to the target, and **re-asserts** up to *Maximum re-favorite per cycle* previously-assigned favorites.
+
+### Acknowledged, not blind
+
+Favorite commands sent over Remote Admin request a response, so the target node returns a **routing ACK**. MeshMonitor captures it and shows the result per favorite:
+
+- **✓ confirmed** — the target received, authorized, and processed the command.
+- **⏱ no ack** — no acknowledgement arrived within the timeout (it may still have applied).
+- **✕ &lt;error&gt;** — the target rejected the command (e.g. `ADMIN_BAD_SESSION_KEY`).
+
+The same confirmation is shown as a toast on the manual **Set Favorite** / **Remove Favorite** buttons in Node Management.
+
+> **Caveat:** an ACK confirms the *remote processed the request*. If the favorited node is not yet in the remote node's database, the firmware accepts and ACKs the command but the favorite is a no-op there until that node is known. This is why the **re-favorite** pass exists — it re-sends previously assigned favorites (un-confirmed ones first) to recover any whose command was dropped or didn't stick.
+
+### Configuration
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Enable | Run discovery + favorite cycles for this target on the schedule below | Off |
+| Use NeighborInfo | Discover neighbors from the target's NeighborInfo broadcasts (target must have the NeighborInfo module enabled) | On |
+| Use Traceroutes | Discover neighbors from traceroutes that pass through the target | On |
+| Cycle interval (hours) | How often to run a favorite cycle | 24 |
+| Maximum neighbor age (hours) | Reuse an on-file NeighborInfo record newer than this instead of requesting a fresh one (0 = always request) | 24 |
+| Maximum new neighbors per cycle | Cap on how many newly-discovered neighbors are favorited each cycle | 1 |
+| Maximum re-favorite per cycle | How many previously-assigned favorites are re-asserted each cycle | 1 |
+| Eligible neighbor roles | Which roles are favorited (multi-select) | Router, Router Late, Client Base |
+
+A **Run Cycle Now** button triggers one cycle immediately for the selected target (useful for testing).
+
+### Requirements
+
+- **Remote Admin access** to the target node (a session passkey is negotiated automatically; see [Remote Admin Scanner](#remote-admin-scanner)).
+- Local device firmware **≥ 2.7.0** (favorites support).
+- For NeighborInfo discovery, the **NeighborInfo module must be enabled** on the target node.
+
+### Side Effects
+
+- **Heavy operation**: each favorite is multiple packets per transaction (including a session-passkey handshake) plus a wait for the ACK. Keep the per-cycle limits low and the interval long, and use it sparingly.
+- **Airtime**: discovery requests and favorite commands use admin-channel airtime on the path to the target.
+
+### Permissions
+
+- Configuring Automatic Favorites Management requires **admin** access (the Remote Admin tab).
+
+---
+
 ## Ignored Nodes {#ignored-nodes}
 
 Manages the persistent ignore list for nodes you want to exclude from your mesh monitoring. Ignored nodes are hidden from the node list and stay ignored permanently — whenever a listed node reappears without the ignore flag, MeshMonitor re-applies it automatically. This covers both inactive-node cleanup and the case where the device's own node database fills up and silently clears the ignore (see [#2601](https://github.com/Yeraze/meshmonitor/issues/2601)).

@@ -6,10 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.10.1] - 2026-06-11
+
 ### Features
 
+- **Automated Remote Favorites Management (#2608)**: A new **Automatic Favorites Management** section on a node's Remote Admin page keeps the favorites list up to date on remote infrastructure nodes — preserving Meshtastic's zero-hop cost between favorited routers as the mesh changes, without site visits or blind CLI spamming. Per target, MeshMonitor discovers the node's direct neighbors from its **NeighborInfo** broadcasts and/or from **traceroutes that pass through it**, filters them to a configurable set of eligible roles (default Router / Router Late / Client Base), and sends `set-favorite` admin commands on a schedule (default every 24h), capped per cycle for newly-discovered (default 1) and re-asserted (default 1) favorites. Favorite commands are **confirmed**: MeshMonitor captures the firmware's routing ACK and surfaces the result per favorite (confirmed / no-ack / rejected) on both the automatic ledger and the manual **Set/Remove Favorite** buttons — and the re-favorite pass prioritizes un-confirmed assignments to recover any whose command was dropped. A **Maximum neighbor age** setting (default 24h) reuses an on-file NeighborInfo record instead of re-requesting one when it's recent enough, saving airtime. (Migrations 084–086.)
+- **Guided firmware half-flash recovery (#3413)**: A guided recovery flow for a device left in a half-flashed state, with an online connectivity check before recovery is attempted.
 - **Disable link previews (privacy)** (#3416): A global **Settings → Link Previews** toggle ("Show link previews") controls whether MeshMonitor fetches and renders OpenGraph preview cards for URLs in messages. When off, no outbound request is ever made to a link target — URLs still render as clickable text. The toggle is enforced at three layers: the `/api/link-preview` endpoint refuses to fetch (403), the `LinkPreview` component renders nothing and skips the request, and operators can hard-disable instance-wide via the `LINK_PREVIEWS_ENABLED=false` environment variable (which overrides the UI). Previews (and the toggle) now apply consistently across **all** message surfaces — Meshtastic and MQTT channels & DMs, the Unified messaging view, and MeshCore channels & DMs. Defaults to enabled, preserving existing behavior.
 - **Per-channel notification sounds**: The in-app "new message" audio notification is now selectable per channel. A new picker under **Settings → Notifications & Security** (shown when "Enable Audio Notifications" is on) lists each channel with a dropdown of bundled sounds — five standard tones (Classic Ding, Soft Chime, Classic Beep, Ping, Marimba Blip) and four fun ones (8-bit Coin, Ascending Arpeggio, Boop, Radio Squelch) — plus a **Silent** option and a **Preview** button. Every sound is synthesized at runtime from Web Audio oscillators (no audio files and no third-party samples, so the whole set is original/public-domain). Selections persist per channel in `localStorage`, the direct-message pseudo-channel has its own row (Meshtastic sources only), selections are scoped per source so the same channel number on two sources stays independent, and the default (Classic Ding) reproduces the previous hard-coded 800 Hz ding so existing behavior is unchanged for anyone who doesn't customize.
+
+### Bug Fixes
+
+- **Per-channel notification sounds: DM row + per-source scoping (#3414)**: Wired up the direct-message sound row and scoped channel-sound selections per source so the same channel number on two sources stays independent.
+- **MeshCore hop-count decode**: The packed `out_path_len` is now decoded correctly, fixing the hop count for 2-byte path hashes on MeshCore contacts.
+- **Auto-favorite checkbox layout (#3423)**: The Automatic Favorites Management checkboxes now sit beside their labels instead of above them.
 
 ## [4.10.0] - 2026-06-10
 
