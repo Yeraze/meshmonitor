@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { MeshCoreMessage } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { getMessageDateSeparator, shouldShowDateSeparator } from '../../utils/datetime';
+import LinkPreview from '../LinkPreview';
 
 interface MeshCoreMessageStreamProps {
   messages: MeshCoreMessage[];
@@ -270,6 +271,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                 </span>
               </div>
               <div className="mc-message-text">{renderMessageText(m.text)}</div>
+              {m.text && <LinkPreview text={m.text} />}
               </div>
             </React.Fragment>
           );

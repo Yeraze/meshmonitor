@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { extractUrls, fetchLinkPreview, LinkMetadata } from '../utils/linkRenderer';
+import { useSettingsOptional } from '../contexts/SettingsContext';
 
 interface LinkPreviewProps {
   text: string;
@@ -13,12 +14,21 @@ interface LinkPreviewProps {
  */
 export const LinkPreview: React.FC<LinkPreviewProps> = ({ text }) => {
   const { t } = useTranslation();
+  // Non-throwing: defaults to enabled when rendered outside a SettingsProvider.
+  // The authoritative privacy enforcement is the server-side /api/link-preview
+  // guard (403 when disabled); this client gate is an optimization.
+  const linkPreviewsEnabled = useSettingsOptional()?.linkPreviewsEnabled ?? true;
   const [previews, setPreviews] = useState<LinkMetadata[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Link previews disabled globally — never observe or fetch anything.
+    if (!linkPreviewsEnabled) {
+      return;
+    }
+
     const urls = extractUrls(text);
 
     // Don't set up observer if there are no URLs
@@ -57,7 +67,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({ text }) => {
         observer.unobserve(containerRef.current);
       }
     };
-  }, [text, hasLoaded]);
+  }, [text, hasLoaded, linkPreviewsEnabled]);
 
   const loadPreviews = async () => {
     const urls = extractUrls(text);
@@ -91,6 +101,11 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({ text }) => {
       setLoading(false);
     }
   };
+
+  // Link previews disabled globally — render nothing (no card, no request).
+  if (!linkPreviewsEnabled) {
+    return null;
+  }
 
   // Extract URLs to check if we should render anything
   const urls = extractUrls(text);
