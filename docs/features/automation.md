@@ -193,6 +193,57 @@ Traceroute uses Meshtastic's routing protocol. For more information:
 - [Meshtastic Routing Documentation](https://meshtastic.org/docs/overview/mesh-algo#routing)
 - [Traceroute Request Documentation](https://meshtastic.org/docs/configuration/module/traceroute)
 
+## Auto Remote LocalStats {#auto-remote-localstats}
+
+::: tip New in 4.10
+:::
+
+Periodically requests `local_stats` telemetry — **noise floor, channel/air utilization, uptime, and packet counts** — from *remote* nodes, so you can graph the health of infrastructure you don't physically own. Replies persist through the normal telemetry pipeline and appear on the same charts as your own device metrics.
+
+### How It Works
+
+A round-robin scheduler polls **one least-recently-polled target per tick**, so the load is spread out over time rather than fired in a burst. Each request is sent as a **unicast on the target's channel** (using the shared channel PSK), not as a PKI direct message. This is deliberate:
+
+- A unicast bypasses the firmware's multi-hop-broadcast role gate, so `REPEATER` and `CLIENT` nodes will answer (a broadcast request would be ignored by exactly the infrastructure nodes you most want to monitor).
+- Channel routing uses the shared PSK, which avoids the stale-key fragility of a PKI DM when keys don't line up.
+
+`hop_limit` is sized to each target's observed distance, the explicit `local_stats` telemetry variant is requested (the firmware echoes the requested variant), and the scheduler is **passive-mode aware** — it stops transmitting when MeshMonitor is in passive mode.
+
+### Configuration
+
+Navigate to **Automation → Auto Remote LocalStats**.
+
+**Enable/Disable**: Toggle the checkbox next to "Auto Remote LocalStats"
+
+**Interval**: How often the scheduler ticks (applied live, no restart needed).
+
+**Target filters** — targets are the **union** of every enabled filter, so a node matching any one is polled:
+
+- **Node list** — an explicit set of nodes.
+- **Role** — e.g. all `REPEATER`/`ROUTER` nodes.
+- **Favorites** — every node flagged as a favorite.
+- **Name regex** — match nodes by a regular expression over their name.
+
+Built-in guards keep it polite to the mesh: per-tick **jitter**, a **schedule window**, an **airtime gate**, and a **minimum-interval rate limit** per target.
+
+### Side Effects
+
+- **Airtime Usage**: each request and reply consumes LoRa airtime; the airtime gate and round-robin pacing keep this bounded.
+- **Network Congestion**: remote nodes relay the request and their reply across the mesh — prefer longer intervals on large networks.
+- **Battery Impact**: polled nodes transmit a reply, increasing their power use.
+
+### Use Cases
+
+- Watching channel utilization on a key repeater two hops away.
+- Graphing noise floor across your infrastructure to spot rising interference.
+- Tracking uptime/packet counts of nodes you don't have physical access to.
+
+### Best Practices
+
+- Start with **role** or **favorites** filters rather than polling every node.
+- Use longer intervals on dense meshes; the per-target rate limit prevents hammering any one node.
+- Pair with [Noise Floor telemetry](/features/telemetry-widgets) to chart remote interference over time.
+
 ## Auto Ping {#auto-ping}
 
 Allows mesh users to trigger automated ping sessions via direct message commands. This is useful for testing link quality, measuring round-trip times, and verifying connectivity to the MeshMonitor node over time.

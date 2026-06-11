@@ -33,6 +33,7 @@ The toolbar runs across the top of the canvas. From left to right:
 | Control | Purpose |
 | --- | --- |
 | **Source multi-select** | Pick which sources contribute to every layer. "All sources" is the default. |
+| **Search box** | Filter visible markers (and traceroute link endpoints) by name or node number. See [Node search](#node-search). |
 | **Time slider toggle** | Show/hide the floating time-window slider. |
 | **Layer buttons (×8)** | Toggle each visualization layer on/off. The right-edge chevron opens a popover for layer-specific options (lookback window, sub-options). |
 | **Progress bar** | Shows aggregate loading state while any layer is fetching. |
@@ -49,15 +50,43 @@ Markers, range rings, and hop shading represent **current** state and have no lo
 
 Layers paginate behind the scenes. The toolbar shows a thin global progress bar while any layer is fetching, and individual buttons show a spinner badge for in-flight requests. The map renders progressively as pages arrive — there's no wait-for-full-load gate.
 
+### Node search
+
+::: tip New in 4.10
+:::
+
+The toolbar **search box** hides every marker that doesn't match the term and constrains the traceroute link layer to matching endpoints. Matching is case-insensitive across:
+
+- the node's **long name** and **short name**,
+- its **node id** (e.g. `!a1b2c3d4`), and
+- its `nodeNum` in **hex or decimal**.
+
+Clear the box to restore the full map. The search term lives in the workspace state alongside the other toolbar controls, so it composes with the source filter and every layer toggle.
+
 ## Layers
 
 ### Node markers
 
 Renders every known node from the selected sources using the same icon set as the Dashboard map. Click a marker to populate the inspector panel; the standard Leaflet popup still opens too.
 
+::: tip Overlapping markers fan out (New in 4.10)
+When several nodes report the **same coordinates** — a shared site with multiple radios, or a cluster of nodes that inherited one position — they no longer stack into a single un-clickable marker. They **spiderfy** (fan out around the shared point) so each node is individually selectable.
+:::
+
 ### Traceroute paths
 
 Polylines for each traceroute hop, colored by SNR. Reuses the per-segment math from the existing Traceroute Routes view. Click a segment to view the last 10 traceroutes for that path in the inspector, or open the full route history modal.
+
+::: tip Direction & weak-link filtering (New in 4.10)
+Each hop's SNR is measured **at its receiver**, so a hop arriving at the selected node is **inbound (RX)** and a hop leaving it is **outbound (TX)**. When a node is selected, traceroutes are decomposed into these directed legs and drawn with direction colours, opposite curvature, and SNR-tooltip arrows — making it obvious whether a weak link is weak coming *in* or going *out*.
+
+Two persisted filters declutter the link overlay:
+
+- **Minimum occurrences** — hide links observed fewer than N times.
+- **Minimum SNR** — hide links below a chosen signal floor.
+
+The inspector also shows a per-node summary: distinct links, in/out counts, observation counts, and average SNR.
+:::
 
 ### Neighbor links
 
