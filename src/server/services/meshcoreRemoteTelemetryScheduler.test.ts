@@ -252,6 +252,7 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
         meshcore: {
           getTelemetryEnabledNodes: getNodes,
           markTelemetryRequested: markRequested,
+          upsertNode: vi.fn().mockResolvedValue(undefined),
         },
         telemetry: { insertTelemetryBatch: insertSpy },
       },
@@ -273,7 +274,7 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
     const scheduler = new MeshCoreRemoteTelemetryScheduler({
       registry: makeRegistry([manager]),
       database: {
-        meshcore: { getTelemetryEnabledNodes: getNodes, markTelemetryRequested: markRequested },
+        meshcore: { getTelemetryEnabledNodes: getNodes, markTelemetryRequested: markRequested, upsertNode: vi.fn().mockResolvedValue(undefined) },
         telemetry: { insertTelemetryBatch: insertSpy },
       },
       minIntervalMs: MIN_INTERVAL_BETWEEN_REQUESTS_MS,
@@ -295,7 +296,7 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
     const scheduler = new MeshCoreRemoteTelemetryScheduler({
       registry: makeRegistry([manager]),
       database: {
-        meshcore: { getTelemetryEnabledNodes: getNodes, markTelemetryRequested: markRequested },
+        meshcore: { getTelemetryEnabledNodes: getNodes, markTelemetryRequested: markRequested, upsertNode: vi.fn().mockResolvedValue(undefined) },
         telemetry: { insertTelemetryBatch: insertSpy },
       },
       now: () => now,
@@ -318,7 +319,7 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
     const scheduler = new MeshCoreRemoteTelemetryScheduler({
       registry: makeRegistry([manager]),
       database: {
-        meshcore: { getTelemetryEnabledNodes: getNodes, markTelemetryRequested: markRequested },
+        meshcore: { getTelemetryEnabledNodes: getNodes, markTelemetryRequested: markRequested, upsertNode: vi.fn().mockResolvedValue(undefined) },
         telemetry: { insertTelemetryBatch: insertSpy },
       },
       now: () => now,
@@ -349,6 +350,7 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
             makeNode({ publicKey: 'a', telemetryEnabled: true, lastTelemetryRequestAt: null }),
           ]),
           markTelemetryRequested: markRequested,
+          upsertNode: vi.fn().mockResolvedValue(undefined),
         },
         telemetry: { insertTelemetryBatch: vi.fn().mockResolvedValue(1) },
       },
@@ -370,6 +372,7 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
             makeNode({ publicKey: 'a', telemetryEnabled: true, lastTelemetryRequestAt: null }),
           ]),
           markTelemetryRequested: vi.fn(),
+          upsertNode: vi.fn().mockResolvedValue(undefined),
         },
         telemetry: { insertTelemetryBatch: insertSpy },
       },
@@ -390,6 +393,7 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
             makeNode({ publicKey: 'companion-a', telemetryEnabled: true, advType: 1, lastTelemetryRequestAt: null }),
           ]),
           markTelemetryRequested: vi.fn(),
+          upsertNode: vi.fn().mockResolvedValue(undefined),
         },
         telemetry: { insertTelemetryBatch: vi.fn().mockResolvedValue(1) },
       },
@@ -424,6 +428,7 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
             makeNode({ publicKey: 'rep-a', telemetryEnabled: true, advType: 2, lastTelemetryRequestAt: null }),
           ]),
           markTelemetryRequested: vi.fn(),
+          upsertNode: vi.fn().mockResolvedValue(undefined),
         },
         telemetry: { insertTelemetryBatch: insertSpy },
       },
@@ -456,6 +461,7 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
             makeNode({ publicKey: 'rep-a', telemetryEnabled: true, advType: 2, lastTelemetryRequestAt: null }),
           ]),
           markTelemetryRequested: vi.fn(),
+          upsertNode: vi.fn().mockResolvedValue(undefined),
         },
         telemetry: { insertTelemetryBatch: vi.fn().mockResolvedValue(2) },
       },
@@ -486,6 +492,7 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
             makeNode({ publicKey: 'rep-a', telemetryEnabled: true, advType: 2, lastTelemetryRequestAt: null }),
           ]),
           markTelemetryRequested: vi.fn(),
+          upsertNode: vi.fn().mockResolvedValue(undefined),
         },
         telemetry: { insertTelemetryBatch: insertSpy },
       },
@@ -507,6 +514,7 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
             makeNode({ publicKey: 'room-a', telemetryEnabled: true, advType: 3, lastTelemetryRequestAt: null }),
           ]),
           markTelemetryRequested: vi.fn(),
+          upsertNode: vi.fn().mockResolvedValue(undefined),
         },
         telemetry: { insertTelemetryBatch: vi.fn().mockResolvedValue(1) },
       },
@@ -515,6 +523,61 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
     await scheduler.tickOneManager(manager);
     expect(manager._state.callOrder).toContain('requestNodeStatus');
     expect(manager._state.guestLoginCalledFor).toEqual(['room-a']);
+  });
+
+  // Regression for #3417: batteryMv from requestNodeStatus must be persisted
+  // to meshcore_nodes so getLowVoltageNodes() can find low-battery devices.
+  it('persists batteryMv to meshcore_nodes when requestNodeStatus returns it', async () => {
+    const now = 10_000_000;
+    const manager = makeFakeManager({
+      statusToReturn: { batteryMv: 3700, uptimeSecs: 500 },
+      recordsToReturn: [],
+    });
+    const upsertNode = vi.fn().mockResolvedValue(undefined);
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database: {
+        meshcore: {
+          getTelemetryEnabledNodes: vi.fn().mockResolvedValue([
+            makeNode({ publicKey: 'rep-a', telemetryEnabled: true, advType: 2, lastTelemetryRequestAt: null }),
+          ]),
+          markTelemetryRequested: vi.fn(),
+          upsertNode,
+        },
+        telemetry: { insertTelemetryBatch: vi.fn().mockResolvedValue(2) },
+      },
+      now: () => now,
+    });
+    await scheduler.tickOneManager(manager);
+    expect(upsertNode).toHaveBeenCalledWith(
+      expect.objectContaining({ publicKey: 'rep-a', batteryMv: 3700 }),
+      'src-a',
+    );
+  });
+
+  it('does not call upsertNode when requestNodeStatus returns no battery voltage', async () => {
+    const now = 10_000_000;
+    const manager = makeFakeManager({
+      statusToReturn: { uptimeSecs: 500 }, // no batteryMv
+      recordsToReturn: [{ channel: 1, type: 103, value: 21.5 }],
+    });
+    const upsertNode = vi.fn().mockResolvedValue(undefined);
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database: {
+        meshcore: {
+          getTelemetryEnabledNodes: vi.fn().mockResolvedValue([
+            makeNode({ publicKey: 'rep-a', telemetryEnabled: true, advType: 2, lastTelemetryRequestAt: null }),
+          ]),
+          markTelemetryRequested: vi.fn(),
+          upsertNode,
+        },
+        telemetry: { insertTelemetryBatch: vi.fn().mockResolvedValue(1) },
+      },
+      now: () => now,
+    });
+    await scheduler.tickOneManager(manager);
+    expect(upsertNode).not.toHaveBeenCalled();
   });
 
   it('does not insert when both status and LPP are empty on a Repeater', async () => {
@@ -529,6 +592,7 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
             makeNode({ publicKey: 'rep-a', telemetryEnabled: true, advType: 2, lastTelemetryRequestAt: null }),
           ]),
           markTelemetryRequested: vi.fn(),
+          upsertNode: vi.fn().mockResolvedValue(undefined),
         },
         telemetry: { insertTelemetryBatch: insertSpy },
       },

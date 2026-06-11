@@ -47,6 +47,7 @@ export interface RemoteTelemetrySchedulerDatabase {
   meshcore: {
     getTelemetryEnabledNodes: (sourceId: string) => Promise<DbMeshCoreNode[]>;
     markTelemetryRequested: (sourceId: string, publicKey: string, when?: number) => Promise<void>;
+    upsertNode: (node: Partial<DbMeshCoreNode> & { publicKey: string }, sourceId: string) => Promise<void>;
   };
   telemetry: {
     insertTelemetryBatch: (rows: DbTelemetry[], sourceId?: string) => Promise<number>;
@@ -389,6 +390,23 @@ export class MeshCoreRemoteTelemetryScheduler {
           if (statusRows.length > 0) {
             rows.push(...statusRows);
             sources.push(`status:${statusRows.length}`);
+          }
+          // Persist batteryMv to meshcore_nodes so getLowVoltageNodes() can
+          // find it. Without this, batteryMv stays NULL in the table and the
+          // low-battery notification service never fires for MeshCore nodes.
+          // See https://github.com/Yeraze/meshmonitor/issues/3417
+          if (typeof status.batteryMv === 'number' && status.batteryMv > 0) {
+            try {
+              await this.database.meshcore.upsertNode(
+                { publicKey: target.publicKey, batteryMv: status.batteryMv },
+                manager.sourceId,
+              );
+            } catch (err) {
+              logger.warn(
+                `[MeshCoreRemoteTelem:${manager.sourceId}] Failed to persist batteryMv for ${keyShort}…:`,
+                err,
+              );
+            }
           }
         }
       } catch (err) {
