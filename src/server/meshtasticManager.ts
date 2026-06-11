@@ -606,6 +606,11 @@ class MeshtasticManager implements ISourceManager {
   private remoteNodeOwners: Map<number, any> = new Map();
   // Per-node device metadata storage for remote nodes
   private remoteNodeDeviceMetadata: Map<number, any> = new Map();
+  // Pending admin-command ACK waiters, keyed by the sent packet id. Resolved by
+  // processRoutingErrorMessage when the destination node returns its
+  // want_response Routing ACK (error_reason) — or on a routing error / timeout.
+  // (issue #2608 follow-up: confirm remote favorite assignment.)
+  private pendingAdminAcks: Map<number, { dest: number; resolve: (errorReason: number | null) => void; timer: ReturnType<typeof setTimeout> }> = new Map();
   private favoritesSupportCache: boolean | null = null;  // Cache firmware support check result
   private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null;  // Cached compiled regex
 
@@ -7066,6 +7071,17 @@ class MeshtasticManager implements ISourceManager {
 
       const errorName = getRoutingErrorName(errorReason);
 
+      // Resolve any pending admin-command ACK waiter (issue #2608 follow-up).
+      // Admin packets set want_response, so the destination node returns a
+      // Routing ACK with request_id === our sent packet id. Consume it here so
+      // it doesn't fall through to message-delivery handling (admin commands
+      // aren't stored in the messages table).
+      if (requestId && this.pendingAdminAcks.has(requestId)) {
+        if (this.tryResolveAdminAck(requestId, fromNum, errorReason)) {
+          return;
+        }
+      }
+
       // Check if this routing update is for an auto-ping session
       if (requestId) {
         if (errorReason === 0) {
@@ -12699,6 +12715,140 @@ class MeshtasticManager implements ISourceManager {
       logger.error(`❌ Error sending admin command to node ${destinationNodeNum}:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Resolve a pending admin-ACK waiter from an inbound Routing packet.
+   * Returns true if the packet was consumed (so normal routing handling is
+   * skipped), false to let it continue.
+   *
+   * Semantics mirror message delivery: a routing error (errorReason !== 0)
+   * settles as failure; an error_reason=NONE ACK from the destination node
+   * settles as success; an error_reason=NONE ACK from our own radio means
+   * "transmitted to mesh" — consumed, but we keep waiting for the remote's ACK.
+   */
+  private tryResolveAdminAck(requestId: number, fromNum: number, errorReason: number): boolean {
+    const waiter = this.pendingAdminAcks.get(requestId);
+    if (!waiter) return false;
+
+    if (errorReason !== 0) {
+      this.settleAdminAck(requestId, errorReason);
+      return true;
+    }
+    if (fromNum === waiter.dest) {
+      // The destination node processed the admin command and ACKed it.
+      this.settleAdminAck(requestId, 0);
+      return true;
+    }
+    // error_reason=NONE from our own radio / an intermediate hop: the
+    // "delivered to mesh" ack, not proof the remote processed it. Consume it
+    // (admin packets aren't messages) but keep the waiter alive.
+    return true;
+  }
+
+  /** Settle and clean up a pending admin-ACK waiter. */
+  private settleAdminAck(requestId: number, errorReason: number | null): void {
+    const waiter = this.pendingAdminAcks.get(requestId);
+    if (!waiter) return;
+    clearTimeout(waiter.timer);
+    this.pendingAdminAcks.delete(requestId);
+    waiter.resolve(errorReason);
+  }
+
+  /**
+   * Send an admin command and wait for the destination node's routing ACK.
+   * `acked` is true only on error_reason=NONE from the destination; `errorReason`
+   * carries the routing error on rejection (e.g. ADMIN_BAD_SESSION_KEY);
+   * `timedOut` is true if no ACK arrived within timeoutMs.
+   */
+  async sendAdminCommandAwaitAck(
+    adminMessagePayload: Uint8Array,
+    destinationNodeNum: number,
+    timeoutMs: number = 30000
+  ): Promise<{ packetId: number; acked: boolean; errorReason: number | null; timedOut: boolean }> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+    if (!this.localNodeInfo?.nodeNum) {
+      throw new Error('Local node information not available');
+    }
+    const localNodeNum = this.localNodeInfo.nodeNum;
+
+    const { data: adminPacket, packetId } = protobufService.createAdminPacketWithId(
+      adminMessagePayload,
+      destinationNodeNum,
+      localNodeNum
+    );
+
+    // Register the waiter BEFORE sending so a fast ACK can't be missed.
+    const ackPromise = new Promise<number | null>((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingAdminAcks.delete(packetId);
+        resolve(null);
+      }, timeoutMs);
+      this.pendingAdminAcks.set(packetId, { dest: destinationNodeNum, resolve, timer });
+    });
+
+    try {
+      await this.transport.send(adminPacket);
+      logger.debug(`✅ Sent admin command (await ack) to node ${destinationNodeNum}, packetId ${packetId}`);
+      if (destinationNodeNum !== localNodeNum) {
+        await this.logOutgoingPacket(
+          6, // ADMIN_APP
+          destinationNodeNum,
+          0,
+          `Remote Admin to !${destinationNodeNum.toString(16).padStart(8, '0')}`,
+          { destinationNodeNum, isRemoteAdmin: true, packetId }
+        );
+      }
+    } catch (error) {
+      this.settleAdminAck(packetId, null);
+      logger.error(`❌ Error sending admin command to node ${destinationNodeNum}:`, error);
+      throw error;
+    }
+
+    const errorReason = await ackPromise;
+    if (errorReason === null) {
+      return { packetId, acked: false, errorReason: null, timedOut: true };
+    }
+    return { packetId, acked: errorReason === 0, errorReason, timedOut: false };
+  }
+
+  /**
+   * Send a set_favorite_node admin command and wait for its ACK. Handles the
+   * remote session-passkey handshake exactly like sendFavoriteNode.
+   */
+  async sendFavoriteNodeAwaitAck(
+    nodeNum: number,
+    destinationNodeNum?: number,
+    timeoutMs: number = 30000
+  ): Promise<{ acked: boolean; errorReason: number | null; timedOut: boolean }> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+    if (!this.supportsFavorites()) {
+      throw new Error('FIRMWARE_NOT_SUPPORTED');
+    }
+    const localNodeNum = this.localNodeInfo?.nodeNum || 0;
+    const destNode = destinationNodeNum || localNodeNum;
+    const isRemote = destNode !== localNodeNum && destNode !== 0;
+
+    let sessionPasskey: Uint8Array = new Uint8Array();
+    if (isRemote) {
+      const cached = this.getSessionPasskey(destNode);
+      if (cached) {
+        sessionPasskey = cached;
+      } else {
+        const requested = await this.requestRemoteSessionPasskey(destNode);
+        if (!requested) throw new Error(`Failed to obtain session passkey for remote node ${destNode}`);
+        sessionPasskey = requested;
+      }
+    }
+
+    const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, sessionPasskey);
+    const result = await this.sendAdminCommandAwaitAck(setFavoriteMsg, destNode, timeoutMs);
+    logger.debug(`⭐ set_favorite_node ${nodeNum} → node ${destNode}: acked=${result.acked} timedOut=${result.timedOut} err=${result.errorReason}`);
+    return { acked: result.acked, errorReason: result.errorReason, timedOut: result.timedOut };
   }
 
   /**

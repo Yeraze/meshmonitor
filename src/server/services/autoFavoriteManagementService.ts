@@ -31,6 +31,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 import { DEFAULT_ELIGIBLE_ROLES_JSON } from '../../db/schema/autoFavoriteTargets.js';
+import { getRoutingErrorName } from '../constants/meshtastic.js';
 import type { DbAutoFavoriteTarget, DbAutoFavoriteAssignment, DbTraceroute } from '../../db/types.js';
 
 const CHECK_INTERVAL_MS = 60_000;
@@ -38,11 +39,24 @@ const BROADCAST_ADDR = 0xffffffff;
 /** How many recent traceroutes to scan per target when discovering neighbors. */
 const TRACEROUTE_SCAN_LIMIT = 200;
 
+/** Result of a single set_favorite_node command + its routing ACK. */
+export interface FavoriteAckResult {
+  acked: boolean;
+  errorReason: number | null;
+  timedOut: boolean;
+}
+
 /** Structural view of the Meshtastic manager methods this service relies on. */
 interface MeshtasticAdminManager extends ISourceManager {
   supportsFavorites(): boolean;
-  sendFavoriteNode(nodeNum: number, destinationNodeNum?: number): Promise<void>;
+  sendFavoriteNodeAwaitAck(nodeNum: number, destinationNodeNum?: number, timeoutMs?: number): Promise<FavoriteAckResult>;
   sendNeighborInfoRequest(destination: number, channel?: number): Promise<{ packetId: number; requestId: number }>;
+}
+
+export interface CycleFavoriteOutcome {
+  nodeNum: number;
+  /** 'confirmed' | 'timeout' | routing error name (e.g. 'ADMIN_BAD_SESSION_KEY'). */
+  ackStatus: string;
 }
 
 export interface CycleResult {
@@ -50,8 +64,8 @@ export interface CycleResult {
   ran: boolean;
   reason?: string;
   discoveredNeighbors: number;
-  newlyFavorited: number[];
-  reFavorited: number[];
+  newlyFavorited: CycleFavoriteOutcome[];
+  reFavorited: CycleFavoriteOutcome[];
 }
 
 // ============================== Pure helpers ==============================
@@ -157,12 +171,30 @@ export function selectNewFavorites(params: {
   return picked;
 }
 
-/** Pick up to `max` previously-assigned favorites to re-send, oldest first. */
+/**
+ * Pick up to `max` previously-assigned favorites to re-send. Un-confirmed
+ * assignments (last command not ACKed: timed out, rejected, or never tracked)
+ * are prioritized over confirmed ones, then oldest-re-sent-first within each
+ * group — so a favorite whose ACK never came back gets re-asserted before one
+ * the remote already confirmed.
+ */
 export function selectRefavorites(assignments: DbAutoFavoriteAssignment[], max: number): number[] {
   if (max <= 0) return [];
-  // Repo returns ascending by lastAssignedAt; defend against unsorted input.
-  const ordered = [...assignments].sort((a, b) => a.lastAssignedAt - b.lastAssignedAt);
+  const isConfirmed = (a: DbAutoFavoriteAssignment) => a.lastAckStatus === 'confirmed';
+  const ordered = [...assignments].sort((a, b) => {
+    const ca = isConfirmed(a) ? 1 : 0;
+    const cb = isConfirmed(b) ? 1 : 0;
+    if (ca !== cb) return ca - cb; // un-confirmed (0) first
+    return a.lastAssignedAt - b.lastAssignedAt; // then oldest first
+  });
   return ordered.slice(0, max).map((a) => a.favoriteNodeNum);
+}
+
+/** Map a favorite ACK result to a short status label stored in the ledger. */
+export function ackStatusLabel(ack: FavoriteAckResult): string {
+  if (ack.timedOut) return 'timeout';
+  if (ack.acked) return 'confirmed';
+  return getRoutingErrorName(ack.errorReason ?? -1);
 }
 
 // ============================== Scheduler ==============================
@@ -206,7 +238,7 @@ class AutoFavoriteManagementScheduler {
     if (!manager) return null;
     if (manager.sourceType !== 'meshtastic_tcp') return null;
     const candidate = manager as unknown as MeshtasticAdminManager;
-    if (typeof candidate.supportsFavorites !== 'function' || typeof candidate.sendFavoriteNode !== 'function') {
+    if (typeof candidate.supportsFavorites !== 'function' || typeof candidate.sendFavoriteNodeAwaitAck !== 'function') {
       return null;
     }
     return candidate;
@@ -323,26 +355,31 @@ class AutoFavoriteManagementScheduler {
       max: target.maxNewPerCycle,
     });
 
-    // 3b. Favorite newly-discovered eligible neighbors (blind — no ACK expected).
+    // 3b. Favorite newly-discovered eligible neighbors. The command is sent
+    //     with want_response, so the remote returns a routing ACK we record.
     for (const fav of newFavorites) {
       try {
-        await manager.sendFavoriteNode(fav, targetNodeNum);
-        await databaseService.autoFavoriteTargets.recordAssignment(sourceId, targetNodeNum, fav, 'discovery', now);
-        result.newlyFavorited.push(fav);
-        logger.info(`⭐ Auto-favorite: assigned ${fav} on remote target ${targetNodeNum} (source ${sourceId})`);
+        const ack = await manager.sendFavoriteNodeAwaitAck(fav, targetNodeNum);
+        const status = ackStatusLabel(ack);
+        await databaseService.autoFavoriteTargets.recordAssignment(sourceId, targetNodeNum, fav, 'discovery', now, { status, at: now });
+        result.newlyFavorited.push({ nodeNum: fav, ackStatus: status });
+        logger.info(`⭐ Auto-favorite: assigned ${fav} on remote target ${targetNodeNum} (source ${sourceId}) — ack=${status}`);
       } catch (error) {
         logger.warn(`⚠️ Auto-favorite: failed to assign ${fav} on target ${targetNodeNum}:`, error);
       }
     }
 
-    // 3c. Re-assert the oldest existing assignments (guards against dropped commands).
+    // 3c. Re-assert previously assigned favorites (un-confirmed first), recording
+    //     each fresh ACK — re-favoriting is how we recover assignments whose
+    //     command was dropped or whose ACK never arrived.
     const reFavorites = selectRefavorites(assignments, target.maxRefavoritePerCycle);
     for (const fav of reFavorites) {
       try {
-        await manager.sendFavoriteNode(fav, targetNodeNum);
-        await databaseService.autoFavoriteTargets.touchAssignment(sourceId, targetNodeNum, fav, now);
-        result.reFavorited.push(fav);
-        logger.info(`🔁 Auto-favorite: re-asserted ${fav} on remote target ${targetNodeNum} (source ${sourceId})`);
+        const ack = await manager.sendFavoriteNodeAwaitAck(fav, targetNodeNum);
+        const status = ackStatusLabel(ack);
+        await databaseService.autoFavoriteTargets.touchAssignment(sourceId, targetNodeNum, fav, now, { status, at: now });
+        result.reFavorited.push({ nodeNum: fav, ackStatus: status });
+        logger.info(`🔁 Auto-favorite: re-asserted ${fav} on remote target ${targetNodeNum} (source ${sourceId}) — ack=${status}`);
       } catch (error) {
         logger.warn(`⚠️ Auto-favorite: failed to re-assert ${fav} on target ${targetNodeNum}:`, error);
       }

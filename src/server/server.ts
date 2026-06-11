@@ -56,7 +56,7 @@ import { migrateAutomationChannels } from './utils/automationChannelMigration.js
 import { safeFetch, SsrfBlockedError } from './utils/ssrfGuard.js';
 import { resolveRequestSourceId } from './utils/sourceResolver.js';
 import { parseDestinationNum } from './utils/parseDestination.js';
-import { PortNum, modemPresetChannelName } from './constants/meshtastic.js';
+import { PortNum, modemPresetChannelName, getRoutingErrorName } from './constants/meshtastic.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 import { applyManagerSettings } from './applyManagerSettings.js';
 
@@ -6803,6 +6803,8 @@ apiRouter.get('/admin/auto-favorite-targets/:nodeNum', requireAdmin(), async (re
         discoverySource: a.discoverySource ?? null,
         firstAssignedAt: a.firstAssignedAt,
         lastAssignedAt: a.lastAssignedAt,
+        lastAckStatus: a.lastAckStatus ?? null,
+        lastAckAt: a.lastAckAt ?? null,
       })),
     });
   } catch (error) {
@@ -8926,8 +8928,17 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
         return res.status(400).json({ error: `Unknown command: ${command}` });
     }
 
-    // Send the admin command
-    await acManager.sendAdminCommand(adminMessage, destinationNodeNum);
+    // Send the admin command. For favorite changes to a REMOTE node we wait for
+    // the destination's routing ACK (admin packets set want_response) so the UI
+    // can confirm the remote node actually processed it. Everything else (and
+    // local-node favorites) fires as before.
+    const isFavoriteCommand = command === 'setFavoriteNode' || command === 'removeFavoriteNode';
+    let favoriteAck: { acked: boolean; errorReason: number | null; timedOut: boolean } | null = null;
+    if (isFavoriteCommand && !isLocalNode) {
+      favoriteAck = await acManager.sendAdminCommandAwaitAck(adminMessage, destinationNodeNum);
+    } else {
+      await acManager.sendAdminCommand(adminMessage, destinationNodeNum);
+    }
 
     // For setSecurityConfig on the local node, update the cached config immediately
     // so the frontend reads back the correct values before the next config sync
@@ -8973,7 +8984,17 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
 
     res.json({
       success: true,
-      message: `Admin command '${command}' sent to node ${destinationNodeNum}`
+      message: `Admin command '${command}' sent to node ${destinationNodeNum}`,
+      ...(favoriteAck ? {
+        ack: {
+          acked: favoriteAck.acked,
+          timedOut: favoriteAck.timedOut,
+          errorReason: favoriteAck.errorReason,
+          status: favoriteAck.timedOut
+            ? 'timeout'
+            : (favoriteAck.acked ? 'confirmed' : getRoutingErrorName(favoriteAck.errorReason ?? -1)),
+        }
+      } : {})
     });
   } catch (error: any) {
     logger.error('Error executing admin command:', error);

@@ -29,6 +29,8 @@ interface AutoFavoriteConfig {
     discoverySource: string | null;
     firstAssignedAt: number;
     lastAssignedAt: number;
+    lastAckStatus: string | null;
+    lastAckAt: number | null;
   }>;
 }
 
@@ -163,6 +165,23 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
     return new Date(ts).toLocaleString();
   };
 
+  // Render a small badge for the most recent favorite-command ACK result.
+  const ackBadge = (status: string | null) => {
+    if (!status) return null;
+    let color: string;
+    let label: string;
+    let icon: string;
+    if (status === 'confirmed') { color = 'var(--ctp-green)'; icon = '✓'; label = t('auto_favorite.ack_confirmed', 'confirmed'); }
+    else if (status === 'timeout') { color = 'var(--ctp-yellow)'; icon = '⏱'; label = t('auto_favorite.ack_timeout', 'no ack'); }
+    else { color = 'var(--ctp-red)'; icon = '✕'; label = status; }
+    return (
+      <span title={t('auto_favorite.ack_tooltip', 'Result of the last favorite command’s routing ACK')}
+        style={{ color, fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+        {icon} {label}
+      </span>
+    );
+  };
+
   const checkboxRow = (label: string, description: string, checked: boolean, onChange: (v: boolean) => void) => (
     <div className="setting-item">
       {/* flexDirection:'row' overrides the global `.setting-item label`
@@ -224,12 +243,12 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
         <strong>⚠️ {t('auto_favorite.caveats_title', 'Before you enable this')}</strong>
         <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem' }}>
           <li>
-            {t('auto_favorite.caveat_no_ack',
-              'There is no confirmation that a favorite was actually set — favorite commands are sent blindly over LoRa with no acknowledgement. The "re-favorite per cycle" option re-sends previously assigned favorites to re-assert them in case the original command was dropped by the mesh.')}
+            {t('auto_favorite.caveat_ack',
+              'Each favorite command is acknowledged: the remote node returns a routing ACK confirming it received and processed the command (shown per favorite below), or an error if it was rejected. One caveat — the ACK confirms the remote processed the request; if the favorited node is not yet in the remote node’s database the change is a no-op there. The "re-favorite per cycle" option re-sends previously assigned favorites (un-confirmed ones first) to recover any whose command was dropped or never acknowledged.')}
           </li>
           <li>
             {t('auto_favorite.caveat_heavy',
-              'This is a heavy operation. Each favorite requires multiple packets per transaction (including a session-passkey handshake), so use it sparingly — keep the per-cycle limits low and the interval long.')}
+              'This is a heavy operation. Each favorite requires multiple packets per transaction (including a session-passkey handshake) plus a wait for the ACK, so use it sparingly — keep the per-cycle limits low and the interval long.')}
           </li>
         </ul>
       </div>
@@ -331,8 +350,11 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
                   fontSize: '0.85rem',
                 }}>
                   <span>{nodeLabel(a.favoriteNodeNum)}</span>
-                  <span style={{ color: 'var(--ctp-subtext0)' }}>
-                    {t('auto_favorite.last_sent', 'last sent')}: {formatTime(a.lastAssignedAt)}
+                  <span style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+                    {ackBadge(a.lastAckStatus)}
+                    <span style={{ color: 'var(--ctp-subtext0)' }}>
+                      {t('auto_favorite.last_sent', 'last sent')}: {formatTime(a.lastAssignedAt)}
+                    </span>
                   </span>
                 </div>
               ))}
