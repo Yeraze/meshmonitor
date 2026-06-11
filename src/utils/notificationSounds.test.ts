@@ -156,6 +156,27 @@ describe('per-channel persistence', () => {
     localStorage.setItem('channelNotificationSound:0', 'removed-sound');
     expect(getChannelSoundId(0)).toBe(DEFAULT_SOUND_ID);
   });
+
+  it('keeps selections independent per source', () => {
+    setChannelSoundId(0, 'coin', 'srcA');
+    setChannelSoundId(0, 'boop', 'srcB');
+    expect(getChannelSoundId(0, 'srcA')).toBe('coin');
+    expect(getChannelSoundId(0, 'srcB')).toBe('boop');
+    // A third, untouched source still defaults.
+    expect(getChannelSoundId(0, 'srcC')).toBe(DEFAULT_SOUND_ID);
+  });
+
+  it('inherits a legacy un-scoped selection until the source is customized', () => {
+    // Selection made before per-source scoping existed (no sourceId segment).
+    setChannelSoundId(1, 'ping');
+    // Any source inherits it until it sets its own value.
+    expect(getChannelSoundId(1, 'srcA')).toBe('ping');
+    setChannelSoundId(1, 'arpeggio', 'srcA');
+    expect(getChannelSoundId(1, 'srcA')).toBe('arpeggio');
+    // The legacy/global value is untouched and other sources still inherit it.
+    expect(getChannelSoundId(1)).toBe('ping');
+    expect(getChannelSoundId(1, 'srcB')).toBe('ping');
+  });
 });
 
 describe('playSound wiring', () => {
@@ -209,24 +230,37 @@ describe('playChannelSound', () => {
     setChannelSoundId(1, 'boop');
 
     const a = makeFakeContext();
-    playChannelSound(0, a.ctx);
+    playChannelSound(0, null, a.ctx);
     expect(a.oscillators[0].frequency.value).toBe(getSoundById('coin')!.steps[0].freq);
 
     const b = makeFakeContext();
-    playChannelSound(1, b.ctx);
+    playChannelSound(1, null, b.ctx);
     expect(b.oscillators[0].frequency.value).toBe(getSoundById('boop')!.steps[0].freq);
   });
 
   it('a channel set to silent plays nothing', () => {
     setChannelSoundId(2, SILENT_SOUND_ID);
     const { ctx, oscillators } = makeFakeContext();
-    expect(playChannelSound(2, ctx)).toBe(false);
+    expect(playChannelSound(2, null, ctx)).toBe(false);
     expect(oscillators).toHaveLength(0);
   });
 
   it('an unconfigured channel plays the default sound', () => {
     const { ctx, oscillators } = makeFakeContext();
-    expect(playChannelSound(7, ctx)).toBe(true);
+    expect(playChannelSound(7, null, ctx)).toBe(true);
     expect(oscillators[0].frequency.value).toBe(getSoundById(DEFAULT_SOUND_ID)!.steps[0].freq);
+  });
+
+  it('plays the source-scoped sound when a sourceId is given', () => {
+    setChannelSoundId(0, 'coin', 'srcA');
+    setChannelSoundId(0, 'boop', 'srcB');
+
+    const a = makeFakeContext();
+    playChannelSound(0, 'srcA', a.ctx);
+    expect(a.oscillators[0].frequency.value).toBe(getSoundById('coin')!.steps[0].freq);
+
+    const b = makeFakeContext();
+    playChannelSound(0, 'srcB', b.ctx);
+    expect(b.oscillators[0].frequency.value).toBe(getSoundById('boop')!.steps[0].freq);
   });
 });

@@ -1452,6 +1452,7 @@
   "settings.channel_sounds_label": "Per-channel notification sound",
   "settings.channel_sounds_description": "Choose which sound plays for new messages on each channel, or silence a channel. Preview each sound before selecting.",
   "settings.channel_sounds_no_channels": "No channels available yet.",
+  "settings.channel_sound_dm": "Direct Messages",
   "settings.channel_sound_silent": "Silent",
   "settings.channel_sound_group_standard": "Standard",
   "settings.channel_sound_group_fun": "Fun",
