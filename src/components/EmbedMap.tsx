@@ -637,11 +637,11 @@ const embedPopupCss = `
     border: 1px solid #313244 !important;
     border-radius: 8px !important;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
-    padding: 0 !important;
+    padding: 1px !important;
   }
 
   .leaflet-popup-content {
-    margin: 0 !important;
+    margin: 13px 19px !important;
     color: #cdd6f4 !important;
   }
 
