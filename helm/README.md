@@ -11,6 +11,23 @@ This Helm chart deploys MeshMonitor, a web application for monitoring Meshtastic
 
 ## Installation
 
+### From the Helm repository (recommended)
+
+MeshMonitor publishes a Helm repository at `https://meshmonitor.org/charts`, so you can install without cloning this repo:
+
+```bash
+helm repo add meshmonitor https://meshmonitor.org/charts
+helm repo update
+
+# See available chart versions
+helm search repo meshmonitor
+
+# Install (create custom-values.yaml first — see Quick Start below)
+helm install meshmonitor meshmonitor/meshmonitor -f custom-values.yaml
+```
+
+Pin a specific version with `--version <x.y.z>`. The repository tracks the latest released chart; for older versions, install from a checkout (below) at the matching tag.
+
 ### Quick Start
 
 1. **Update the required configuration values**
@@ -24,6 +41,14 @@ This Helm chart deploys MeshMonitor, a web application for monitoring Meshtastic
    ```
 
 2. **Install the chart**
+
+   From the Helm repository:
+
+   ```bash
+   helm install meshmonitor meshmonitor/meshmonitor -f custom-values.yaml
+   ```
+
+   Or from a local checkout of this repository:
 
    ```bash
    helm install meshmonitor ./helm/meshmonitor -f custom-values.yaml

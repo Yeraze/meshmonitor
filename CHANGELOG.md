@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Features
+
+- **Helm chart repository (#3431)**: MeshMonitor now publishes a proper Helm repository at `https://meshmonitor.org/charts`, so you can install without cloning the repo — `helm repo add meshmonitor https://meshmonitor.org/charts && helm install meshmonitor meshmonitor/meshmonitor`. The chart is packaged and indexed by `scripts/build-helm-repo.sh` during the docs deploy and served from the existing docs site (no separate `gh-pages` branch). The repository tracks the latest released chart; older versions remain installable from a checkout at the matching tag.
+
 ## [4.10.1] - 2026-06-11
 
 ### Features
