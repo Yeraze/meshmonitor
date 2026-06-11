@@ -19,6 +19,7 @@ interface AutoFavoriteConfig {
   useNeighborInfo: boolean;
   useTraceroutes: boolean;
   intervalHours: number;
+  maxNeighborAgeHours: number;
   maxNewPerCycle: number;
   maxRefavoritePerCycle: number;
   eligibleRoles: number[];
@@ -116,6 +117,7 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
         useNeighborInfo: config.useNeighborInfo,
         useTraceroutes: config.useTraceroutes,
         intervalHours: config.intervalHours,
+        maxNeighborAgeHours: config.maxNeighborAgeHours,
         maxNewPerCycle: config.maxNewPerCycle,
         maxRefavoritePerCycle: config.maxRefavoritePerCycle,
         eligibleRoles: config.eligibleRoles,
@@ -276,6 +278,12 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
             t('auto_favorite.use_neighborinfo_desc', 'Periodically request NeighborInfo from the target and favorite newly discovered neighbors. The target must have the NeighborInfo module enabled.'),
             config.useNeighborInfo,
             (v) => update({ useNeighborInfo: v })
+          )}
+          {config.useNeighborInfo && numberRow(
+            t('auto_favorite.max_neighbor_age', 'Maximum neighbor age (hours)'),
+            t('auto_favorite.max_neighbor_age_desc', 'If a NeighborInfo record for this node is already on file and newer than this, reuse it instead of requesting another — saving airtime. Set to 0 to always request fresh. Default 24 hours.'),
+            config.maxNeighborAgeHours, 0,
+            (v) => update({ maxNeighborAgeHours: v })
           )}
           {checkboxRow(
             t('auto_favorite.use_traceroutes', 'Use Traceroutes'),

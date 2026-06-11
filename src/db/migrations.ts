@@ -100,6 +100,7 @@ import { migration as estimatedPositionsMigration, runMigration082EstimatedPosit
 import { migration as spoofSuspectedMigration, runMigration083Postgres as runSpoofSuspectedPostgres, runMigration083Mysql as runSpoofSuspectedMysql } from '../server/migrations/083_add_spoof_suspected.js';
 import { migration as autoFavoriteTargetsMigration, runMigration084Postgres as runAutoFavoriteTargetsPostgres, runMigration084Mysql as runAutoFavoriteTargetsMysql } from '../server/migrations/084_add_auto_favorite_targets.js';
 import { migration as autoFavoriteAckMigration, runMigration085Postgres as runAutoFavoriteAckPostgres, runMigration085Mysql as runAutoFavoriteAckMysql } from '../server/migrations/085_add_auto_favorite_ack_status.js';
+import { migration as autoFavoriteMaxNeighborAgeMigration, runMigration086Postgres as runAutoFavoriteMaxNeighborAgePostgres, runMigration086Mysql as runAutoFavoriteMaxNeighborAgeMysql } from '../server/migrations/086_add_auto_favorite_max_neighbor_age.js';
 
 // ============================================================================
 // Registry
@@ -1362,4 +1363,19 @@ registry.register({
   sqlite: (db) => autoFavoriteAckMigration.up(db),
   postgres: (client) => runAutoFavoriteAckPostgres(client),
   mysql: (pool) => runAutoFavoriteAckMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 086: Add maxNeighborAgeHours to auto_favorite_targets — reuse an
+// on-file NeighborInfo record newer than this many hours instead of requesting
+// a fresh one (issue #2608 follow-up).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 86,
+  name: 'add_auto_favorite_max_neighbor_age',
+  settingsKey: 'migration_086_add_auto_favorite_max_neighbor_age',
+  sqlite: (db) => autoFavoriteMaxNeighborAgeMigration.up(db),
+  postgres: (client) => runAutoFavoriteMaxNeighborAgePostgres(client),
+  mysql: (pool) => runAutoFavoriteMaxNeighborAgeMysql(pool),
 });
