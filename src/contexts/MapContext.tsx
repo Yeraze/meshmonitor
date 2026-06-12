@@ -82,6 +82,11 @@ interface MapContextType {
   setSelectedNodeId: (id: string | null) => void;
   positionHistoryHours: number | null;
   setPositionHistoryHours: (hours: number | null) => void;
+  // Map Features "maximum age" slider (#3322). null = follow the global
+  // maxNodeAgeHours setting (slider sits at max). A concrete value hides node
+  // markers, traceroutes, and route segments older than this many hours.
+  mapMaxAgeHours: number | null;
+  setMapMaxAgeHours: (hours: number | null) => void;
   meshCoreNodes: MeshCoreMapNode[];
   setMeshCoreNodes: (nodes: MeshCoreMapNode[]) => void;
 }
@@ -145,6 +150,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [positionHistory, setPositionHistory] = useState<PositionHistoryItem[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [positionHistoryHours, setPositionHistoryHoursState] = useState<number | null>(null);
+  const [mapMaxAgeHours, setMapMaxAgeHoursState] = useState<number | null>(null);
   // Create wrapper setters that persist to server (no localStorage)
   const setShowPaths = React.useCallback((value: boolean) => {
     setShowPathsState(value);
@@ -264,6 +270,18 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     }, 500);
   }, [savePreferenceToServer]);
 
+  // Create wrapper setter for mapMaxAgeHours that persists to server with debouncing
+  const mapMaxAgeDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const setMapMaxAgeHours = React.useCallback((value: number | null) => {
+    setMapMaxAgeHoursState(value);
+    if (mapMaxAgeDebounceRef.current) {
+      clearTimeout(mapMaxAgeDebounceRef.current);
+    }
+    mapMaxAgeDebounceRef.current = setTimeout(() => {
+      savePreferenceToServer({ mapMaxAgeHours: value });
+    }, 500);
+  }, [savePreferenceToServer]);
+
   // Load preferences from server on mount
   useEffect(() => {
     const loadServerPreferences = async () => {
@@ -322,6 +340,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
             }
             if (preferences.positionHistoryHours !== undefined) {
               setPositionHistoryHoursState(preferences.positionHistoryHours);
+            }
+            if (preferences.mapMaxAgeHours !== undefined) {
+              setMapMaxAgeHoursState(preferences.mapMaxAgeHours);
             }
           }
           // If preferences is null (anonymous user), initial defaults are already set
@@ -412,6 +433,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
         setSelectedNodeId,
         positionHistoryHours,
         setPositionHistoryHours,
+        mapMaxAgeHours,
+        setMapMaxAgeHours,
       }}
     >
       {children}

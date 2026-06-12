@@ -1848,6 +1848,7 @@ export class MiscRepository extends BaseRepository {
         showAccuracyRegions: row.showAccuracyRegions ?? false,
         showEstimatedPositions: row.showEstimatedPositions ?? false,
         positionHistoryHours: row.positionHistoryHours ?? null,
+        mapMaxAgeHours: row.mapMaxAgeHours ?? null,
       };
     } catch (error) {
       logger.error('[MiscRepository] Failed to get map preferences:', error);
@@ -1873,6 +1874,7 @@ export class MiscRepository extends BaseRepository {
     showAccuracyRegions?: boolean;
     showEstimatedPositions?: boolean;
     positionHistoryHours?: number | null;
+    mapMaxAgeHours?: number | null;
   }): Promise<void> {
     try {
       const table = this.tables.userMapPreferences;
@@ -1898,6 +1900,7 @@ export class MiscRepository extends BaseRepository {
         if (preferences.showAccuracyRegions !== undefined) set.showAccuracyRegions = preferences.showAccuracyRegions;
         if (preferences.showEstimatedPositions !== undefined) set.showEstimatedPositions = preferences.showEstimatedPositions;
         if (preferences.positionHistoryHours !== undefined) set.positionHistoryHours = preferences.positionHistoryHours;
+        if (preferences.mapMaxAgeHours !== undefined) set.mapMaxAgeHours = preferences.mapMaxAgeHours;
 
         if (Object.keys(set).length > 0) {
           await this.db.update(table).set(set).where(eq(table.userId, userId));
@@ -1920,6 +1923,7 @@ export class MiscRepository extends BaseRepository {
           showAccuracyRegions: preferences.showAccuracyRegions ?? false,
           showEstimatedPositions: preferences.showEstimatedPositions ?? true,
           positionHistoryHours: preferences.positionHistoryHours ?? null,
+          mapMaxAgeHours: preferences.mapMaxAgeHours ?? null,
           createdAt: now,
           updatedAt: now,
         });

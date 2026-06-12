@@ -101,6 +101,7 @@ import { migration as spoofSuspectedMigration, runMigration083Postgres as runSpo
 import { migration as autoFavoriteTargetsMigration, runMigration084Postgres as runAutoFavoriteTargetsPostgres, runMigration084Mysql as runAutoFavoriteTargetsMysql } from '../server/migrations/084_add_auto_favorite_targets.js';
 import { migration as autoFavoriteAckMigration, runMigration085Postgres as runAutoFavoriteAckPostgres, runMigration085Mysql as runAutoFavoriteAckMysql } from '../server/migrations/085_add_auto_favorite_ack_status.js';
 import { migration as autoFavoriteMaxNeighborAgeMigration, runMigration086Postgres as runAutoFavoriteMaxNeighborAgePostgres, runMigration086Mysql as runAutoFavoriteMaxNeighborAgeMysql } from '../server/migrations/086_add_auto_favorite_max_neighbor_age.js';
+import { migration as mapMaxAgeMigration, runMigration087Postgres as runMapMaxAgePostgres, runMigration087Mysql as runMapMaxAgeMysql } from '../server/migrations/087_add_map_max_age_to_map_prefs.js';
 
 // ============================================================================
 // Registry
@@ -1378,4 +1379,18 @@ registry.register({
   sqlite: (db) => autoFavoriteMaxNeighborAgeMigration.up(db),
   postgres: (client) => runAutoFavoriteMaxNeighborAgePostgres(client),
   mysql: (pool) => runAutoFavoriteMaxNeighborAgeMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 087: Add map_max_age_hours to user_map_preferences — persists the
+// Map Features "maximum age" slider (#3322). NULL = follow maxNodeAgeHours.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 87,
+  name: 'add_map_max_age_to_map_prefs',
+  settingsKey: 'migration_087_add_map_max_age_to_map_prefs',
+  sqlite: (db) => mapMaxAgeMigration.up(db),
+  postgres: (client) => runMapMaxAgePostgres(client),
+  mysql: (pool) => runMapMaxAgeMysql(pool),
 });
