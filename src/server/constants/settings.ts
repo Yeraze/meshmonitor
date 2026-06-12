@@ -55,6 +55,7 @@ export const VALID_SETTINGS_KEYS = [
   'autoWelcomeTarget',
   'autoWelcomeWaitForName',
   'autoWelcomeMaxHops',
+  'autoWelcomeDelay',
   'autoResponderEnabled',
   'autoResponderTriggers',
   'autoResponderSkipIncompleteNodes',
@@ -308,6 +309,7 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'autoWelcomeMessage',
   'autoWelcomeTarget',
   'autoWelcomeWaitForName',
+  'autoWelcomeDelay',
   // MeshCore auto-pathfinding
   'meshcoreAutoPathfindingEnabled',
   'meshcoreAutoPathfindingPathDiscoveryEnabled',

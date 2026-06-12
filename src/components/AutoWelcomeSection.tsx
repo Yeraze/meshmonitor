@@ -13,6 +13,7 @@ interface AutoWelcomeSectionProps {
   target: string;
   waitForName: boolean;
   maxHops: number;
+  delay: number;
   channels: Channel[];
   baseUrl: string;
   onEnabledChange: (enabled: boolean) => void;
@@ -20,6 +21,7 @@ interface AutoWelcomeSectionProps {
   onTargetChange: (target: string) => void;
   onWaitForNameChange: (waitForName: boolean) => void;
   onMaxHopsChange: (maxHops: number) => void;
+  onDelayChange: (delay: number) => void;
 }
 
 const DEFAULT_MESSAGE = 'Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!';
@@ -30,6 +32,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
   target,
   waitForName,
   maxHops,
+  delay,
   channels,
   baseUrl,
   onEnabledChange,
@@ -37,6 +40,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
   onTargetChange,
   onWaitForNameChange,
   onMaxHopsChange,
+  onDelayChange,
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -47,6 +51,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
   const [localTarget, setLocalTarget] = useState(target || '0');
   const [localWaitForName, setLocalWaitForName] = useState(waitForName);
   const [localMaxHops, setLocalMaxHops] = useState(maxHops || 5);
+  const [localDelay, setLocalDelay] = useState(delay ?? 30);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isMarkingWelcomed, setIsMarkingWelcomed] = useState(false);
@@ -59,7 +64,8 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
     setLocalTarget(target || '0');
     setLocalWaitForName(waitForName);
     setLocalMaxHops(maxHops || 5);
-  }, [enabled, message, target, waitForName, maxHops]);
+    setLocalDelay(delay ?? 30);
+  }, [enabled, message, target, waitForName, maxHops, delay]);
 
   // Check if any settings have changed
   useEffect(() => {
@@ -68,9 +74,10 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
       localMessage !== message ||
       localTarget !== target ||
       localWaitForName !== waitForName ||
-      localMaxHops !== maxHops;
+      localMaxHops !== maxHops ||
+      localDelay !== (delay ?? 30);
     setHasChanges(changed);
-  }, [localEnabled, localMessage, localTarget, localWaitForName, localMaxHops, enabled, message, target, waitForName, maxHops]);
+  }, [localEnabled, localMessage, localTarget, localWaitForName, localMaxHops, localDelay, enabled, message, target, waitForName, maxHops, delay]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -79,7 +86,8 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
     setLocalTarget(target || '0');
     setLocalWaitForName(waitForName);
     setLocalMaxHops(maxHops || 5);
-  }, [enabled, message, target, waitForName, maxHops]);
+    setLocalDelay(delay ?? 30);
+  }, [enabled, message, target, waitForName, maxHops, delay]);
 
   const handleMarkAllWelcomed = async () => {
     setIsMarkingWelcomed(true);
@@ -119,7 +127,8 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
           autoWelcomeMessage: localMessage,
           autoWelcomeTarget: localTarget,
           autoWelcomeWaitForName: String(localWaitForName),
-          autoWelcomeMaxHops: String(localMaxHops)
+          autoWelcomeMaxHops: String(localMaxHops),
+          autoWelcomeDelay: String(localDelay)
         })
       });
 
@@ -137,6 +146,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
       onTargetChange(localTarget);
       onWaitForNameChange(localWaitForName);
       onMaxHopsChange(localMaxHops);
+      onDelayChange(localDelay);
 
       setHasChanges(false);
       showToast(t('automation.settings_saved'), 'success');
@@ -289,6 +299,31 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
               const value = parseInt(e.target.value);
               if (value >= 1 && value <= 10) {
                 setLocalMaxHops(value);
+              }
+            }}
+            disabled={!localEnabled}
+            className="setting-input"
+            style={{ width: '100px' }}
+          />
+        </div>
+
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label htmlFor="welcomeDelay">
+            {t('automation.auto_welcome.delay', 'Pre-send delay (seconds)')}
+            <span className="setting-description">
+              {t('automation.auto_welcome.delay_description', 'Wait this long after first hearing a node before sending its welcome. Gives the node time to finish its startup transmit burst and become ready to receive — important after a nodeDB reset when many nodes come online at once. 0–120 seconds; default 30.')}
+            </span>
+          </label>
+          <input
+            id="welcomeDelay"
+            type="number"
+            min="0"
+            max="120"
+            value={localDelay}
+            onChange={(e) => {
+              const value = parseInt(e.target.value);
+              if (Number.isFinite(value) && value >= 0 && value <= 120) {
+                setLocalDelay(value);
               }
             }}
             disabled={!localEnabled}

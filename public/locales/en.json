@@ -2317,6 +2317,8 @@
   "automation.auto_welcome.wait_for_name_description": "Wait until the node has a Long Name or Short Name before sending the welcome message. If disabled, welcome messages will be sent immediately when a new node is discovered.",
   "automation.auto_welcome.max_hops": "Maximum Hops",
   "automation.auto_welcome.max_hops_description": "Only welcome nodes within this many hops (1-10). Nodes further away will not receive a welcome message.",
+  "automation.auto_welcome.delay": "Pre-send delay (seconds)",
+  "automation.auto_welcome.delay_description": "Wait this long after first hearing a node before sending its welcome. Gives the node time to finish its startup transmit burst and become ready to receive — important after a nodeDB reset when many nodes come online at once. 0–120 seconds; default 30.",
   "automation.auto_welcome.broadcast_target": "Broadcast Target",
   "automation.auto_welcome.broadcast_target_description": "Select where to send the welcome message",
   "automation.auto_welcome.dm_to_new_node": "Direct Message to New Node",
