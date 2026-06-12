@@ -2201,7 +2201,7 @@
     "automation.timer_triggers.type_script": "Script",
     "automation.timer_triggers.view_docs": "Voir la documentation",
     "auto_responder.parameter": "Paramètre",
-    "configuration.unmessagable_help": "Empêcher les autres d'envoyer des DM à ce nœud",
+    "configuration.unmessagable_help": "Empêcher les autres d'envoyer des messages directs à ce noeud",
     "telemetry.no_data": "Aucune donnée de télémétrie disponible pour ce nœud",
     "admin_commands.gps_tx_gpio": "GPIO TX GPS",
     "users.deactivate_confirm": "Désactiver l’utilisateur ?",
