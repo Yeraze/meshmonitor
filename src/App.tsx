@@ -597,6 +597,7 @@ function App() {
     autoWelcomeTarget, setAutoWelcomeTarget,
     autoWelcomeWaitForName, setAutoWelcomeWaitForName,
     autoWelcomeMaxHops, setAutoWelcomeMaxHops,
+    autoWelcomeDelay, setAutoWelcomeDelay,
     autoResponderEnabled, setAutoResponderEnabled,
     autoResponderTriggers, setAutoResponderTriggers,
     autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes,
@@ -1126,6 +1127,10 @@ function App() {
 
           if (settings.autoWelcomeMaxHops) {
             setAutoWelcomeMaxHops(parseInt(settings.autoWelcomeMaxHops));
+          }
+
+          if (settings.autoWelcomeDelay !== undefined && settings.autoWelcomeDelay !== null) {
+            setAutoWelcomeDelay(parseInt(settings.autoWelcomeDelay));
           }
 
           if (settings.autoResponderEnabled !== undefined) {
@@ -5001,6 +5006,7 @@ function App() {
                   target={autoWelcomeTarget}
                   waitForName={autoWelcomeWaitForName}
                   maxHops={autoWelcomeMaxHops}
+                  delay={autoWelcomeDelay}
                   channels={channels}
                   baseUrl={baseUrl}
                   onEnabledChange={setAutoWelcomeEnabled}
@@ -5008,6 +5014,7 @@ function App() {
                   onTargetChange={setAutoWelcomeTarget}
                   onWaitForNameChange={setAutoWelcomeWaitForName}
                   onMaxHopsChange={setAutoWelcomeMaxHops}
+                  onDelayChange={setAutoWelcomeDelay}
                 />
               </div>
               <div id="auto-favorite">

@@ -21,6 +21,7 @@ import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { waypointService } from './services/waypointService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
 import { MessageQueueService } from './messageQueueService.js';
+import { resolveAutoWelcomeDelaySeconds } from './autoWelcomeDelay.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
@@ -10428,6 +10429,11 @@ class MeshtasticManager implements ISourceManager {
     }
     this.welcomingNodes.add(nodeNum);
 
+    // When true, a scheduled (deferred) send owns the welcomingNodes lock, so
+    // the finally below must NOT release it — the deferred send releases it
+    // when it fires (#3439).
+    let deferred = false;
+
     try {
       // All auto-welcome settings are per-source (written by AutoWelcomeSection
       // via /api/settings?sourceId=).
@@ -10495,75 +10501,122 @@ class MeshtasticManager implements ISourceManager {
         return;
       }
 
-      // Lock was already acquired at method entry; proceed to send welcome
-      try {
-
-        // Get welcome message template (per-source)
-        const autoWelcomeMessage = await settings.getSettingForSource(sourceId, 'autoWelcomeMessage') || 'Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!';
-
-        // Replace tokens in the message template
-        const welcomeText = await this.replaceWelcomeTokens(autoWelcomeMessage, nodeNum, nodeId);
-
-        // Get target (DM or channel, per-source)
-        const autoWelcomeTarget = await settings.getSettingForSource(sourceId, 'autoWelcomeTarget') || '0';
-
-        let destination: number | undefined;
-        let channel: number;
-
-        if (autoWelcomeTarget === 'dm') {
-          // Send as direct message
-          destination = nodeNum;
-          channel = 0;
-        } else {
-          // Send to channel
-          destination = undefined;
-          channel = parseInt(autoWelcomeTarget);
-        }
-
-        logger.info(`👋 Sending auto-welcome to ${nodeId} (${node.longName}): "${welcomeText}" ${autoWelcomeTarget === 'dm' ? '(via DM)' : `(channel ${channel})`}`);
-
-        // Route through message queue for rate limiting
-        // For DMs, send only once (maxAttempts=1) — the local radio ACK confirms
-        // transmission to the mesh; remote ACKs from the destination node are unreliable
-        // and waiting for them causes the queue to retry, sending the message multiple times.
-        this.messageQueue.enqueue(
-          welcomeText,
-          destination ?? 0, // destination: node number for DM, 0 for channel
-          undefined, // replyId
-          () => {
-            this.welcomingNodes.delete(nodeNum);
-            logger.debug(`🔓 Unlocked auto-welcome tracking for ${nodeId}`);
-          },
-          (reason: string) => {
-            logger.warn(`❌ Auto-welcome send failed for ${nodeId}: ${reason}`);
-            this.welcomingNodes.delete(nodeNum);
-            logger.debug(`🔓 Unlocked auto-welcome tracking for ${nodeId} (failure case)`);
-          },
-          destination ? undefined : channel, // channel: undefined for DM, channel number for channel
-          1 // maxAttemptsOverride: send once, don't retry on missing remote ACK
-        );
-
-        // Mark node as welcomed immediately after enqueue — the local radio ACK is
-        // sufficient confirmation that the message was transmitted to the mesh.
-        // Previously this was inside the onSuccess callback which only fires on remote
-        // ACK, causing welcomedAt to never be set and the node to be re-welcomed repeatedly.
-        const wasMarked = await databaseService.nodes.markNodeAsWelcomedIfNotAlready(nodeNum, nodeId, this.sourceId);
-        if (wasMarked) {
-          logger.info(`✅ Node ${nodeId} welcomed and marked in database`);
-        } else {
-          logger.warn(`⚠️  Node ${nodeId} was already marked as welcomed by another process`);
-        }
-      } catch (error) {
-        // Release lock on error as well
-        this.welcomingNodes.delete(nodeNum);
-        logger.debug(`🔓 Unlocked auto-welcome tracking for ${nodeId} (error case)`);
-        throw error;
+      // Pre-send delay (#3439): after a nodeDB reset, many nodes broadcast
+      // NodeInfo at once and a DM sent immediately can land while the target's
+      // radio is still finishing its own startup TX burst (not receive-ready),
+      // failing at zero hops with no retry (maxAttempts=1). Defer the send so
+      // the node can settle into receive mode. The welcomingNodes lock acquired
+      // at method entry is held across the wait (deferred=true keeps the finally
+      // from releasing it), so duplicate NodeInfo packets during the window are
+      // skipped at method entry. setTimeout returns immediately, so this never
+      // blocks the packet-processing pipeline.
+      const delaySeconds = resolveAutoWelcomeDelaySeconds(
+        await settings.getSettingForSource(sourceId, 'autoWelcomeDelay'),
+      );
+      if (delaySeconds > 0) {
+        deferred = true;
+        logger.info(`👋 Deferring auto-welcome for ${nodeId} by ${delaySeconds}s to let the node settle into receive mode`);
+        setTimeout(() => { void this.deferredAutoWelcome(nodeNum, nodeId); }, delaySeconds * 1000);
+        return;
       }
+
+      // No delay configured: send immediately.
+      await this.sendAutoWelcome(nodeNum, nodeId);
     } catch (error) {
       logger.error('❌ Error in auto-welcome:', error);
     } finally {
-      // Ensure lock is always released, even on early returns or unexpected errors
+      // Release the lock unless a deferred send now owns it (it will release on fire).
+      if (!deferred) {
+        this.welcomingNodes.delete(nodeNum);
+      }
+    }
+  }
+
+  /**
+   * Fire a deferred auto-welcome after the pre-send delay (#3439). Re-checks
+   * that the node still exists and hasn't been welcomed during the wait, then
+   * sends. Always releases the welcomingNodes lock the deferral was holding.
+   */
+  private async deferredAutoWelcome(nodeNum: number, nodeId: string): Promise<void> {
+    try {
+      const node = await databaseService.nodes.getNode(nodeNum, this.sourceId);
+      if (!node) {
+        logger.debug(`⏭️  Auto-welcome for ${nodeId} skipped — node no longer in database after delay`);
+        return;
+      }
+      if (node.welcomedAt !== null && node.welcomedAt !== undefined) {
+        logger.debug(`⏭️  Auto-welcome for ${nodeId} skipped — welcomed during the pre-send delay`);
+        return;
+      }
+      await this.sendAutoWelcome(nodeNum, nodeId);
+    } catch (error) {
+      logger.error('❌ Error in deferred auto-welcome:', error);
+    } finally {
       this.welcomingNodes.delete(nodeNum);
+    }
+  }
+
+  /**
+   * Build and enqueue the auto-welcome message for a node and mark it welcomed.
+   * The caller (checkAutoWelcome / deferredAutoWelcome) owns the welcomingNodes
+   * lock and releases it; this method does not manage the lock.
+   */
+  private async sendAutoWelcome(nodeNum: number, nodeId: string): Promise<void> {
+    const settings = databaseService.settings;
+    const sourceId = this.sourceId;
+    const node = await databaseService.nodes.getNode(nodeNum, sourceId);
+
+    // Get welcome message template (per-source)
+    const autoWelcomeMessage = await settings.getSettingForSource(sourceId, 'autoWelcomeMessage') || 'Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!';
+
+    // Replace tokens in the message template
+    const welcomeText = await this.replaceWelcomeTokens(autoWelcomeMessage, nodeNum, nodeId);
+
+    // Get target (DM or channel, per-source)
+    const autoWelcomeTarget = await settings.getSettingForSource(sourceId, 'autoWelcomeTarget') || '0';
+
+    let destination: number | undefined;
+    let channel: number;
+
+    if (autoWelcomeTarget === 'dm') {
+      // Send as direct message
+      destination = nodeNum;
+      channel = 0;
+    } else {
+      // Send to channel
+      destination = undefined;
+      channel = parseInt(autoWelcomeTarget);
+    }
+
+    logger.info(`👋 Sending auto-welcome to ${nodeId} (${node?.longName}): "${welcomeText}" ${autoWelcomeTarget === 'dm' ? '(via DM)' : `(channel ${channel})`}`);
+
+    // Route through message queue for rate limiting
+    // For DMs, send only once (maxAttempts=1) — the local radio ACK confirms
+    // transmission to the mesh; remote ACKs from the destination node are unreliable
+    // and waiting for them causes the queue to retry, sending the message multiple times.
+    this.messageQueue.enqueue(
+      welcomeText,
+      destination ?? 0, // destination: node number for DM, 0 for channel
+      undefined, // replyId
+      () => {
+        logger.debug(`✅ Auto-welcome transmitted for ${nodeId}`);
+      },
+      (reason: string) => {
+        logger.warn(`❌ Auto-welcome send failed for ${nodeId}: ${reason}`);
+      },
+      destination ? undefined : channel, // channel: undefined for DM, channel number for channel
+      1 // maxAttemptsOverride: send once, don't retry on missing remote ACK
+    );
+
+    // Mark node as welcomed immediately after enqueue — the local radio ACK is
+    // sufficient confirmation that the message was transmitted to the mesh.
+    // Previously this was inside the onSuccess callback which only fires on remote
+    // ACK, causing welcomedAt to never be set and the node to be re-welcomed repeatedly.
+    const wasMarked = await databaseService.nodes.markNodeAsWelcomedIfNotAlready(nodeNum, nodeId, this.sourceId);
+    if (wasMarked) {
+      logger.info(`✅ Node ${nodeId} welcomed and marked in database`);
+    } else {
+      logger.warn(`⚠️  Node ${nodeId} was already marked as welcomed by another process`);
     }
   }
 
