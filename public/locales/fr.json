@@ -1035,7 +1035,7 @@
     "tileset_manager.description": "Ajoutez des serveurs de tuiles personnalisés pour les cartes hors‑ligne ou les styles personnalisés.",
     "dashboard.subtitle_with_data": "Affichage des {{days}} derniers jours de télémétrie favorite",
     "settings.solar_longitude": "Longitude",
-    "automation.auto_ack.always_respond_dm": "Toujours répondre en DM",
+    "automation.auto_ack.always_respond_dm": "Répondez toujours via Message Direct",
     "info.has_bluetooth": "Bluetooth présent",
     "channels_config.downlink_enabled": "Downlink activé",
     "automation.auto_traceroute.no_channels": "Aucun canal disponible",
