@@ -161,6 +161,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     it('should skip welcoming local node', async () => {
       vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
+        if (key === 'autoWelcomeDelay') return '0'; // immediate send in tests (delay covered separately)
         if (key === 'localNodeNum') return '123456';
         return null;
       });
@@ -173,6 +174,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     it('should skip node if not found in database', async () => {
       vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
+        if (key === 'autoWelcomeDelay') return '0'; // immediate send in tests (delay covered separately)
         if (key === 'localNodeNum') return '123456';
         return null;
       });
@@ -188,6 +190,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
 
       vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
+        if (key === 'autoWelcomeDelay') return '0'; // immediate send in tests (delay covered separately)
         if (key === 'localNodeNum') return '123456';
         return null;
       });
@@ -212,6 +215,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     it('should skip node with default name when waitForName is enabled', async () => {
       vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
+        if (key === 'autoWelcomeDelay') return '0'; // immediate send in tests (delay covered separately)
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeWaitForName') return 'true';
         return null;
@@ -235,6 +239,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     it('should skip node with default short name when waitForName is enabled', async () => {
       vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
+        if (key === 'autoWelcomeDelay') return '0'; // immediate send in tests (delay covered separately)
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeWaitForName') return 'true';
         return null;
@@ -258,6 +263,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     it('should send welcome message to new node with proper name', async () => {
       vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
+        if (key === 'autoWelcomeDelay') return '0'; // immediate send in tests (delay covered separately)
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeMessage') return 'Welcome {LONG_NAME} ({SHORT_NAME})!';
         if (key === 'autoWelcomeTarget') return 'dm';
@@ -288,6 +294,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     it('should send welcome as DM when target is dm', async () => {
       vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
+        if (key === 'autoWelcomeDelay') return '0'; // immediate send in tests (delay covered separately)
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeMessage') return 'Welcome!';
         if (key === 'autoWelcomeTarget') return 'dm';
@@ -321,6 +328,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     it('should send welcome to channel when target is channel number', async () => {
       vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
+        if (key === 'autoWelcomeDelay') return '0'; // immediate send in tests (delay covered separately)
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeMessage') return 'Welcome!';
         if (key === 'autoWelcomeTarget') return '2';
@@ -351,9 +359,75 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
       );
     });
 
+    it('defers the send by the configured delay, then enqueues after it elapses (#3439)', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
+          if (key === 'autoWelcomeEnabled') return 'true';
+          if (key === 'localNodeNum') return '123456';
+          if (key === 'autoWelcomeTarget') return 'dm';
+          if (key === 'autoWelcomeDelay') return '30';
+          return null;
+        });
+        vi.mocked(databaseService.nodes.getNode).mockResolvedValue({
+          nodeNum: 999999,
+          nodeId: '!000f423f',
+          longName: 'Test Node',
+          shortName: 'TEST',
+          hwModel: 0,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        } as any);
+
+        await (manager as any).checkAutoWelcome(999999, '!000f423f');
+        // Deferred — nothing enqueued yet.
+        expect(messageQueueService.enqueue).not.toHaveBeenCalled();
+
+        // After the 30s delay the deferred send fires.
+        await vi.advanceTimersByTimeAsync(30000);
+        expect(messageQueueService.enqueue).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('skips the deferred send if the node was welcomed during the delay (#3439)', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
+          if (key === 'autoWelcomeEnabled') return 'true';
+          if (key === 'localNodeNum') return '123456';
+          if (key === 'autoWelcomeTarget') return 'dm';
+          if (key === 'autoWelcomeDelay') return '30';
+          return null;
+        });
+        const base = {
+          nodeNum: 999999,
+          nodeId: '!000f423f',
+          longName: 'Test Node',
+          shortName: 'TEST',
+          hwModel: 0,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        // Validation sees an un-welcomed node; the post-delay re-check sees it
+        // welcomed (e.g. a manual DM or another path marked it during the wait).
+        vi.mocked(databaseService.nodes.getNode)
+          .mockResolvedValueOnce(base as any)
+          .mockResolvedValue({ ...base, welcomedAt: Date.now() } as any);
+
+        await (manager as any).checkAutoWelcome(999999, '!000f423f');
+        await vi.advanceTimersByTimeAsync(30000);
+        expect(messageQueueService.enqueue).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('should use default welcome message when not configured', async () => {
       vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
+        if (key === 'autoWelcomeDelay') return '0'; // immediate send in tests (delay covered separately)
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeTarget') return 'dm';
         return null;
@@ -386,6 +460,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     it('should handle errors gracefully without crashing', async () => {
       vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
+        if (key === 'autoWelcomeDelay') return '0'; // immediate send in tests (delay covered separately)
         if (key === 'localNodeNum') return '123456';
         throw new Error('Database error');
       });
@@ -397,6 +472,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     it('should prevent duplicate welcomes when called in parallel (race condition protection)', async () => {
       vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
+        if (key === 'autoWelcomeDelay') return '0'; // immediate send in tests (delay covered separately)
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeMessage') return 'Welcome!';
         if (key === 'autoWelcomeTarget') return 'dm';
@@ -428,6 +504,7 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
     it('should handle atomic database operation correctly when node already marked by another process', async () => {
       vi.mocked(databaseService.settings.getSetting).mockImplementation((key: string) => {
         if (key === 'autoWelcomeEnabled') return 'true';
+        if (key === 'autoWelcomeDelay') return '0'; // immediate send in tests (delay covered separately)
         if (key === 'localNodeNum') return '123456';
         if (key === 'autoWelcomeMessage') return 'Welcome!';
         if (key === 'autoWelcomeTarget') return 'dm';

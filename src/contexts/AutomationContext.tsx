@@ -72,6 +72,8 @@ interface AutomationContextType {
   setAutoWelcomeWaitForName: React.Dispatch<React.SetStateAction<boolean>>;
   autoWelcomeMaxHops: number;
   setAutoWelcomeMaxHops: React.Dispatch<React.SetStateAction<number>>;
+  autoWelcomeDelay: number;
+  setAutoWelcomeDelay: React.Dispatch<React.SetStateAction<number>>;
   autoResponderEnabled: boolean;
   setAutoResponderEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   autoResponderTriggers: AutoResponderTrigger[];
@@ -151,6 +153,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoWelcomeTarget, setAutoWelcomeTarget] = useState<string>('0');
   const [autoWelcomeWaitForName, setAutoWelcomeWaitForName] = useState<boolean>(true);
   const [autoWelcomeMaxHops, setAutoWelcomeMaxHops] = useState<number>(5);
+  const [autoWelcomeDelay, setAutoWelcomeDelay] = useState<number>(30);
   const [autoResponderEnabled, setAutoResponderEnabled] = useState<boolean>(false);
   const [autoResponderTriggers, setAutoResponderTriggers] = useState<AutoResponderTrigger[]>([]);
   const [autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes] = useState<boolean>(false);
@@ -244,6 +247,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         if (s.autoWelcomeTarget !== undefined) setAutoWelcomeTarget(s.autoWelcomeTarget);
         if (s.autoWelcomeWaitForName !== undefined) setAutoWelcomeWaitForName(bool('autoWelcomeWaitForName'));
         if (s.autoWelcomeMaxHops !== undefined) setAutoWelcomeMaxHops(num('autoWelcomeMaxHops', 5));
+        if (s.autoWelcomeDelay !== undefined) setAutoWelcomeDelay(num('autoWelcomeDelay', 30));
 
         if (s.autoResponderEnabled !== undefined) setAutoResponderEnabled(bool('autoResponderEnabled'));
         if (s.autoResponderTriggers !== undefined) setAutoResponderTriggers(jsonArr<AutoResponderTrigger>('autoResponderTriggers', []));
@@ -309,6 +313,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         autoWelcomeTarget, setAutoWelcomeTarget,
         autoWelcomeWaitForName, setAutoWelcomeWaitForName,
         autoWelcomeMaxHops, setAutoWelcomeMaxHops,
+        autoWelcomeDelay, setAutoWelcomeDelay,
         autoResponderEnabled, setAutoResponderEnabled,
         autoResponderTriggers, setAutoResponderTriggers,
         autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes,

@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Bug Fixes
 
+- **Auto Welcome DMs failed on first contact after a nodeDB reset (#3439)**: When many nodes came online at once (e.g. after a nodeDB reset), Auto Welcome DMs failed with a red ✗ — the welcome was transmitted while the target's radio was still finishing its own startup TX burst and not yet receive-ready, and with no retry (`maxAttempts=1`) that was a permanent failure. Auto Welcome now waits a configurable **pre-send delay** (new per-source setting `autoWelcomeDelay`, default 30s, range 0–120, in the Auto Welcome settings) after first hearing a node before sending its welcome, letting the node settle into receive mode. The send is scheduled non-blocking (it no longer stalls packet processing), the de-dup lock is held across the wait, and the welcome is skipped if the node is welcomed during the delay.
 - **Telemetry graphs reshuffled on every update (#3436)**: The Local Node Telemetry graphs on a node's Info screen rendered in the telemetry-grouping order, which changed on almost every update — so a graph you were watching kept jumping around. They now use a stable, deterministic order: favorited metrics first, then alphabetical by label. New metrics (once data becomes available) slot into their alphabetical position instead of appearing at random.
 
 ## [4.10.1] - 2026-06-11
