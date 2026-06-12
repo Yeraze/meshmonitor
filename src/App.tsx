@@ -63,6 +63,7 @@ import { getPacketStats } from './services/packetApi';
 import { logger } from './utils/logger';
 // generateArrowMarkers moved to useTraceroutePaths hook
 import { isNodeComplete, getEffectivePosition } from './utils/nodeHelpers';
+import { effectiveMapMaxAgeHours } from './utils/mapAge';
 import { nodePassesTransportFilter } from './utils/nodeTransport';
 import { applyHomoglyphOptimization } from './utils/homoglyph';
 import { playSound, playChannelSound, DEFAULT_SOUND_ID } from './utils/notificationSounds';
@@ -361,7 +362,13 @@ function App() {
     selectedNodeId,
     setSelectedNodeId,
     mapZoom,
+    mapMaxAgeHours,
   } = useMapContext();
+
+  // Effective map age cap for traceroute/route-segment visibility (#3322):
+  // the Map Features age slider, clamped to [1, maxNodeAgeHours]. null = follow
+  // the global setting, so default behavior is unchanged.
+  const effectiveMapMaxAge = effectiveMapMaxAgeHours(mapMaxAgeHours, maxNodeAgeHours);
 
   // Data context
   const {
@@ -4472,7 +4479,7 @@ function App() {
     nodesPositionDigest,
     traceroutesDigest,
     distanceUnit,
-    maxNodeAgeHours,
+    maxNodeAgeHours: effectiveMapMaxAge,
     themeColors: mergedThemeColors,
     callbacks: tracerouteCallbacks,
     visibleNodeNums,

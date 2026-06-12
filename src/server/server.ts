@@ -6954,7 +6954,7 @@ apiRouter.post('/user/map-preferences', requireAuth(), async (req, res) => {
       return res.status(403).json({ error: 'Cannot save preferences for anonymous user' });
     }
 
-    const { mapTileset, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, positionHistoryHours } = req.body;
+    const { mapTileset, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, positionHistoryHours, mapMaxAgeHours } = req.body;
 
     // Validate boolean values
     const booleanFields = { showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions };
@@ -6974,6 +6974,11 @@ apiRouter.post('/user/map-preferences', requireAuth(), async (req, res) => {
       return res.status(400).json({ error: 'positionHistoryHours must be a number or null' });
     }
 
+    // Validate mapMaxAgeHours (optional number or null)
+    if (mapMaxAgeHours !== undefined && mapMaxAgeHours !== null && typeof mapMaxAgeHours !== 'number') {
+      return res.status(400).json({ error: 'mapMaxAgeHours must be a number or null' });
+    }
+
     // Save preferences
     await databaseService.saveMapPreferencesAsync(req.user!.id, {
       mapTileset,
@@ -6990,6 +6995,7 @@ apiRouter.post('/user/map-preferences', requireAuth(), async (req, res) => {
       showAccuracyRegions,
       showEstimatedPositions,
       positionHistoryHours,
+      mapMaxAgeHours,
     });
 
     res.json({ success: true, message: 'Map preferences saved successfully' });

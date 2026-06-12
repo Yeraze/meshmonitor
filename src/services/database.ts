@@ -9024,6 +9024,7 @@ class DatabaseService {
     showAccuracyRegions?: boolean;
     showEstimatedPositions?: boolean;
     positionHistoryHours?: number | null;
+    mapMaxAgeHours?: number | null;
   }): Promise<void> {
     return this.miscRepo!.saveMapPreferences(userId, preferences);
   }

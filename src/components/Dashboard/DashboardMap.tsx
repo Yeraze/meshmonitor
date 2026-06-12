@@ -25,6 +25,7 @@ import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
 import { useMapContext } from '../../contexts/MapContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { nodePassesTransportFilter } from '../../utils/nodeTransport';
+import { effectiveMapMaxAgeHours } from '../../utils/mapAge';
 import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 
@@ -164,7 +165,13 @@ export default function DashboardMap({
     setShowNeighborInfo,
     showWaypoints,
     setShowWaypoints,
+    mapMaxAgeHours,
+    setMapMaxAgeHours,
   } = useMapContext();
+
+  // Effective map age cap from the Map Features age slider (#3322), clamped to
+  // [1, maxNodeAgeHours]. null = follow the setting, so default is unchanged.
+  const effectiveMaxAge = effectiveMapMaxAgeHours(mapMaxAgeHours, maxNodeAgeHours);
 
   // GeoJSON overlay layers (global, file-based). Fetched here so the dashboard
   // map can render and toggle them, mirroring the per-source NodesTab map.
@@ -202,7 +209,7 @@ export default function DashboardMap({
   // Build array of nodes that have valid positions, with their resolved lat/lng.
   // Mirrors NodesTab's processedNodes pipeline (App.tsx): ignored hidden, age cutoff
   // bypassed by favorites, transport-class filter from the Map Features panel.
-  const cutoffTime = Date.now() / 1000 - maxNodeAgeHours * 60 * 60;
+  const cutoffTime = Date.now() / 1000 - effectiveMaxAge * 60 * 60;
   const nodesWithPosition = nodes
     .filter((n) => !n.isIgnored)
     .filter((n) => n.isFavorite || (n.lastHeard != null && n.lastHeard >= cutoffTime))
@@ -273,12 +280,17 @@ export default function DashboardMap({
   //   2. live `positionByNodeNum` — current node positions.
   const tracerouteSegments = useMemo(() => {
     if (!showPaths && !showRoute) return [];
+    // Map Features age slider (#3322): hide traceroutes/route segments older
+    // than the chosen age. Default (slider at max) keeps the prior behavior.
+    const trCutoffMs = Date.now() - effectiveMaxAge * 60 * 60 * 1000;
     const segs: Array<{
       key: string;
       positions: [number, number][];
       color: string;
     }> = [];
     for (const tr of (traceroutes ?? [])) {
+      const trTimestamp = Number(tr?.timestamp ?? tr?.createdAt ?? 0);
+      if (trTimestamp && trTimestamp < trCutoffMs) continue;
       const route = parseJsonArray(tr?.route);
       const snrTowards = parseJsonArray(tr?.snrTowards);
       const fromNum = Number(tr?.fromNodeNum);
@@ -306,7 +318,7 @@ export default function DashboardMap({
       }
     }
     return segs;
-  }, [traceroutes, positionByNodeNum, showPaths, showRoute]);
+  }, [traceroutes, positionByNodeNum, showPaths, showRoute, effectiveMaxAge]);
 
   const hasNodes = nodesWithPosition.length > 0;
 
@@ -469,6 +481,43 @@ export default function DashboardMap({
       <div className="map-controls dashboard-map-controls">
         <div className="map-controls-body">
           <div className="map-controls-title">Features</div>
+          {/* Map Features age slider (#3322): hides node markers, traceroutes,
+              and route segments older than the chosen age. Ranges 1h–maxNodeAge. */}
+          {(() => {
+            const maxHours = Math.max(1, Math.round(maxNodeAgeHours));
+            const currentHours = Math.min(Math.max(1, Math.round(effectiveMaxAge)), maxHours);
+            const formatDuration = (hours: number): string => {
+              if (hours >= maxHours) return 'All';
+              if (hours < 24) return `${hours}h`;
+              const days = Math.floor(hours / 24);
+              const remainingHours = hours % 24;
+              return remainingHours === 0 ? `${days}d` : `${days}d ${remainingHours}h`;
+            };
+            return (
+              <div className="map-control-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '0.25rem' }}>
+                <span>Maximum age</span>
+                <div className="position-history-slider">
+                  <input
+                    type="range"
+                    min={1}
+                    max={maxHours}
+                    value={currentHours}
+                    aria-label="Maximum age"
+                    aria-valuemin={1}
+                    aria-valuemax={maxHours}
+                    aria-valuenow={currentHours}
+                    aria-valuetext={formatDuration(currentHours)}
+                    disabled={maxHours <= 1}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value, 10);
+                      setMapMaxAgeHours(value >= maxHours ? null : value);
+                    }}
+                  />
+                  <span className="slider-value">{formatDuration(currentHours)}</span>
+                </div>
+              </div>
+            );
+          })()}
           <label className="map-control-item">
             <input
               type="checkbox"

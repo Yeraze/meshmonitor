@@ -7,6 +7,7 @@ import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
 import { nodePassesTransportFilter } from '../utils/nodeTransport';
+import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, createArrowIcon } from '../utils/mapHelpers.tsx';
 import { convertSpeed } from '../utils/speedConversion';
@@ -335,6 +336,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     traceroutes,
     positionHistoryHours,
     setPositionHistoryHours,
+    mapMaxAgeHours,
+    setMapMaxAgeHours,
   } = useMapContext();
 
   const { currentNodeId } = useDeviceConfig();
@@ -404,6 +407,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     defaultMapCenterLon,
     defaultMapCenterZoom,
   } = useSettings();
+
+  // Effective map age cap from the Map Features age slider (#3322), clamped to
+  // [1, maxNodeAgeHours]. null = follow the setting, so default behavior is
+  // unchanged. Used to hide stale node markers on the map (favorites bypass).
+  const effectiveMapMaxAge = effectiveMapMaxAgeHours(mapMaxAgeHours, maxNodeAgeHours);
+  const mapAgeCutoffSeconds = Date.now() / 1000 - effectiveMapMaxAge * 60 * 60;
 
   const { hasPermission } = useAuth();
   const csrfFetch = useCsrfFetch();
@@ -1748,6 +1757,45 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </div>
               {!isMapControlsCollapsed && (
                 <>
+                  {/* Map Features age slider (#3322): hides node markers,
+                      traceroutes, and route segments older than the chosen age.
+                      Ranges 1h–maxNodeAgeHours (settings); default = max ("All"). */}
+                  {(() => {
+                    const maxHours = Math.max(1, Math.round(maxNodeAgeHours));
+                    const currentHours = Math.min(Math.max(1, Math.round(effectiveMapMaxAge)), maxHours);
+                    const formatDuration = (hours: number): string => {
+                      if (hours >= maxHours) return t('map.maxAgeAll', 'All');
+                      if (hours < 24) return `${hours}h`;
+                      const days = Math.floor(hours / 24);
+                      const remainingHours = hours % 24;
+                      return remainingHours === 0 ? `${days}d` : `${days}d ${remainingHours}h`;
+                    };
+                    return (
+                      <div className="map-control-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '0.25rem' }}>
+                        <span>{t('map.maximumAge', 'Maximum age')}</span>
+                        <div className="position-history-slider">
+                          <input
+                            type="range"
+                            min={1}
+                            max={maxHours}
+                            value={currentHours}
+                            aria-label={t('map.maximumAge', 'Maximum age')}
+                            aria-valuemin={1}
+                            aria-valuemax={maxHours}
+                            aria-valuenow={currentHours}
+                            aria-valuetext={formatDuration(currentHours)}
+                            disabled={maxHours <= 1}
+                            onChange={(e) => {
+                              const value = parseInt(e.target.value, 10);
+                              // At max, store null so the map follows the setting.
+                              setMapMaxAgeHours(value >= maxHours ? null : value);
+                            }}
+                          />
+                          <span className="slider-value">{formatDuration(currentHours)}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <label className="map-control-item">
                     <input
                       type="checkbox"
@@ -2063,6 +2111,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   if (!showEstimatedPositions && node.user?.id && nodesWithEstimatedPosition.has(node.user.id)) return false;
                   // When traceroute is active, only show nodes involved in the traceroute
                   if (tracerouteNodeNums && !tracerouteNodeNums.has(node.nodeNum)) return false;
+                  // Map Features age slider (#3322): hide markers older than the
+                  // chosen age. Favorites are always shown, matching the standard
+                  // node age filter. Default (slider at max) is a no-op.
+                  if (!node.isFavorite && node.lastHeard && node.lastHeard < mapAgeCutoffSeconds) return false;
                   return true;
                 })
                 .map(node => {
