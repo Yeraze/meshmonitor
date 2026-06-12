@@ -4497,6 +4497,8 @@
   "direct_links.distance": "Distance",
   "direct_links.last_seen": "Last seen",
   "map": {
+    "maximumAge": "Maximum age",
+    "maxAgeAll": "All",
     "showRouteSegments": "Show Route Segments",
     "showNeighborInfo": "Show Neighbor Info",
     "showTraceroute": "Show Traceroute",
