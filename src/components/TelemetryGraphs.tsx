@@ -19,6 +19,7 @@ import { getLatestValue } from '../utils/telemetry';
 import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
 import { getTelemetryLabel } from './TelemetryChart';
+import { compareTelemetryGraphs } from '../utils/telemetryGraphOrder';
 
 /** Telemetry types that represent discrete integer values where fractional display is meaningless */
 const INTEGER_TELEMETRY_TYPES = new Set([
@@ -904,7 +905,14 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
       }
 
       return true;
-    });
+    })
+      // Stable, deterministic order (#3436): favorited metrics first, then
+      // alphabetical by display label. Previously the order came from the
+      // grouping Map's insertion order, which reshuffled on almost every
+      // telemetry update — making it hard to track a specific graph. New
+      // metrics now slot into their alphabetical position instead of jumping
+      // around.
+      .sort(([typeA], [typeB]) => compareTelemetryGraphs(typeA, typeB, favorites, getTelemetryLabel));
 
     // Sub-hour windows (e.g. the 15-minute preset) read awkwardly as
     // fractional hours, so render those with a minutes-based title instead.
