@@ -32,6 +32,38 @@ ingress:
     #   hosts:
     #     - meshmonitor.local
 
+# Gateway API HTTPRoute — a modern alternative to ingress for north-south
+# routing (https://gateway-api.sigs.k8s.io/). Disabled by default. Requires the
+# Gateway API CRDs installed and a Gateway already provisioned in your cluster.
+# Use this OR ingress above, not both.
+httpRoute:
+  enabled: false
+  # apiVersion of the HTTPRoute resource. Override to
+  # gateway.networking.k8s.io/v1beta1 on clusters running older Gateway API CRDs.
+  apiVersion: gateway.networking.k8s.io/v1
+  annotations: {}
+  labels: {}
+  # The Gateway(s) this route attaches to (spec.parentRefs). Required when enabled.
+  parentRefs: []
+    # - name: my-gateway
+    #   namespace: gateway-system
+    #   sectionName: https
+  # Hostnames this route matches (spec.hostnames). Empty matches the Gateway's.
+  hostnames: []
+    # - meshmonitor.example.com
+  # Path/header/method matches for the default rule. The matched traffic is
+  # routed to the MeshMonitor service automatically.
+  matches:
+    - path:
+        type: PathPrefix
+        value: /
+  # Optional HTTPRouteFilters applied to the default rule (e.g. URLRewrite,
+  # RequestHeaderModifier, RequestRedirect).
+  filters: []
+  # Extra fully-specified rules appended after the default rule. Each entry must
+  # include its own matches/backendRefs.
+  additionalRules: []
+
 # Environment variables
 # Seed values for the first Meshtastic source on first boot.
 # MeshMonitor 4.0 manages additional sources via the Dashboard → Sources UI;

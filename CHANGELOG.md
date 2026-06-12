@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Features
 
+- **Helm chart: Gateway API HTTPRoute (#3432)**: The Helm chart can now provision a Gateway API `HTTPRoute` as a modern alternative to ingress, gated behind `httpRoute.enabled` (default `false`). Set `parentRefs` (and optionally `hostnames`); the chart routes the matched traffic to the MeshMonitor service automatically, with `matches`, `filters`, and `additionalRules` available for advanced setups and `apiVersion` overridable for older Gateway API CRDs.
 - **Helm chart repository (#3431)**: MeshMonitor now publishes a proper Helm repository at `https://meshmonitor.org/charts`, so you can install without cloning the repo — `helm repo add meshmonitor https://meshmonitor.org/charts && helm install meshmonitor meshmonitor/meshmonitor`. The chart is packaged and indexed by `scripts/build-helm-repo.sh` during the docs deploy and served from the existing docs site (no separate `gh-pages` branch). The repository tracks the latest released chart; older versions remain installable from a checkout at the matching tag.
 
 ## [4.10.1] - 2026-06-11

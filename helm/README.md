@@ -95,6 +95,28 @@ Then install:
 helm install meshmonitor ./helm/meshmonitor -f custom-values.yaml
 ```
 
+### Installing with a Gateway API HTTPRoute
+
+If your cluster uses the [Gateway API](https://gateway-api.sigs.k8s.io/) instead of Ingress, enable an `HTTPRoute` (disabled by default). This requires the Gateway API CRDs installed and a `Gateway` already provisioned. Use this **or** Ingress, not both.
+
+```yaml
+# custom-values.yaml
+env:
+  meshtasticNodeIp: "192.168.1.100"
+  meshtasticUseTls: "false"
+
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: my-gateway          # the Gateway to attach to
+      namespace: gateway-system
+      sectionName: https        # optional: a specific listener
+  hostnames:
+    - meshmonitor.example.com
+```
+
+The chart routes the matched traffic to the MeshMonitor service automatically. Customize `matches`, add `filters` (e.g. `URLRewrite` for subfolder hosting), or append fully-specified `additionalRules` as needed — see the values reference below. On clusters with older Gateway API CRDs, set `httpRoute.apiVersion: gateway.networking.k8s.io/v1beta1`.
+
 ### Installing in a Subfolder
 
 To deploy MeshMonitor at a subfolder path (e.g., `https://example.com/meshmonitor/`):
@@ -177,6 +199,25 @@ ingress:
     # - secretName: meshmonitor-tls
     #   hosts:
     #     - meshmonitor.local
+
+# Gateway API HTTPRoute (alternative to ingress; disabled by default)
+httpRoute:
+  enabled: false
+  apiVersion: gateway.networking.k8s.io/v1   # v1beta1 on older Gateway API CRDs
+  annotations: {}
+  labels: {}
+  parentRefs: []                              # required when enabled
+    # - name: my-gateway
+    #   namespace: gateway-system
+    #   sectionName: https
+  hostnames: []
+    # - meshmonitor.example.com
+  matches:                                    # default rule path match(es)
+    - path:
+        type: PathPrefix
+        value: /
+  filters: []                                 # optional HTTPRouteFilters for the default rule
+  additionalRules: []                         # extra fully-specified rules (own matches/backendRefs)
 
 # Persistent storage for SQLite database
 persistence:
