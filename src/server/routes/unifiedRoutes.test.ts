@@ -864,7 +864,7 @@ describe('Unified Routes', () => {
     });
   });
 
-  // ── MeshCore messages in the unified feed (#3441) ────────────────────────
+  // ── MeshCore messages in the unified feed (#3442) ────────────────────────
 
   describe('GET /messages (MeshCore sources)', () => {
     const MC_SRC = { id: 'mc-1', name: 'MeshCore Box', type: 'meshcore', enabled: true };
