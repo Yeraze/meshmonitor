@@ -147,6 +147,37 @@ function hkdfBytes(ikm: Buffer, info: string, length: number): Buffer {
   return Buffer.from(crypto.hkdfSync('sha256', ikm, salt, info, length));
 }
 
+// ---------------------------------------------------------------------------
+// Global master switch (#3441). `pkiDmDecryptionGloballyEnabled` is a global
+// setting (default off) that gates the whole feature: when off, no source
+// decrypts, the per-source enable route is refused, and keys aren't extracted.
+// Cached with a short TTL so the per-packet decrypt hot path stays a cheap
+// in-memory check when the feature is globally off (the common case).
+// ---------------------------------------------------------------------------
+
+const GLOBAL_FLAG_TTL_MS = 10_000;
+let globalFlagCache: { value: boolean; at: number } | null = null;
+
+export async function isPkiDmDecryptionGloballyEnabled(): Promise<boolean> {
+  const now = Date.now();
+  if (globalFlagCache && now - globalFlagCache.at < GLOBAL_FLAG_TTL_MS) {
+    return globalFlagCache.value;
+  }
+  let value = false;
+  try {
+    value = (await databaseService.settings.getSetting('pkiDmDecryptionGloballyEnabled')) === 'true';
+  } catch {
+    value = false;
+  }
+  globalFlagCache = { value, at: now };
+  return value;
+}
+
+/** Invalidate the cached global flag (call after the setting changes). */
+export function invalidatePkiDmGlobalCache(): void {
+  globalFlagCache = null;
+}
+
 let singleton: SourcePkiKeyStore | null = null;
 
 export function getSourcePkiKeyStore(): SourcePkiKeyStore {

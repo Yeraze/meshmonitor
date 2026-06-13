@@ -57,6 +57,8 @@ export const VALID_SETTINGS_KEYS = [
   'autoWelcomeMaxHops',
   'autoWelcomeDelay',
   'pkiDmDecryptionEnabled',
+  // Global master switch for PKI DM decryption (#3441) — gates every source.
+  'pkiDmDecryptionGloballyEnabled',
   'autoResponderEnabled',
   'autoResponderTriggers',
   'autoResponderSkipIncompleteNodes',

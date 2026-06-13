@@ -18,7 +18,7 @@ import { serverEventNotificationService } from './services/serverEventNotificati
 import packetLogService from './services/packetLogService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
 import { pkiDecryptionService } from './services/pkiDecryptionService.js';
-import { getSourcePkiKeyStore } from './services/sourcePkiKeyStore.js';
+import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from './services/sourcePkiKeyStore.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { waypointService } from './services/waypointService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
@@ -4541,6 +4541,8 @@ class MeshtasticManager implements ISourceManager {
    * auto-generated (the store refuses to persist an unrecoverable key).
    */
   async maybeExtractAndStorePkiKey(): Promise<void> {
+    // Global master switch gates everything (#3441).
+    if (!(await isPkiDmDecryptionGloballyEnabled())) return;
     const enabled = await databaseService.settings.getSettingForSource(this.sourceId, 'pkiDmDecryptionEnabled');
     if (enabled !== 'true') return;
     const { publicKey, privateKey } = this.getSecurityKeys();
@@ -4578,6 +4580,9 @@ class MeshtasticManager implements ISourceManager {
     fromNum: number,
     toNum: number,
   ): Promise<{ portnum: number; payload: Uint8Array } | null> {
+    // Global master switch (cached, cheap) — when off, do nothing. This keeps
+    // the hot path free of DB reads on instances not using the feature.
+    if (!(await isPkiDmDecryptionGloballyEnabled())) return null;
     // Destination node's private key — the row's presence is also the operator's
     // per-source opt-in (it's only stored when pkiDmDecryptionEnabled).
     const loaded = await getSourcePkiKeyStore().loadByNodeNum(toNum);

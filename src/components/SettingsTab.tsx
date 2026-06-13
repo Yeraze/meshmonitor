@@ -12,6 +12,7 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { getAllTilesets, type TilesetId } from '../config/tilesets';
 import PacketMonitorSettings from './PacketMonitorSettings';
 import ChannelSoundPicker from './ChannelSoundPicker';
+import PkiDmGlobalToggle from './settings/PkiDmGlobalToggle';
 import SystemBackupSection from './configuration/SystemBackupSection';
 import DatabaseMaintenanceSection from './configuration/DatabaseMaintenanceSection';
 import AutoUpgradeTestSection from './configuration/AutoUpgradeTestSection';
@@ -1731,6 +1732,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 )}
               </span>
             </label>
+          </div>
+          <div className="setting-item">
+            <PkiDmGlobalToggle />
           </div>
         </div>}
 

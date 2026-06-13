@@ -38,8 +38,10 @@ const fakeStore = {
   hasStored: vi.fn(async () => false),
   clear: vi.fn(async () => undefined),
 };
+let globalEnabled = true;
 vi.mock('../services/sourcePkiKeyStore.js', () => ({
   getSourcePkiKeyStore: () => fakeStore,
+  isPkiDmDecryptionGloballyEnabled: vi.fn(async () => globalEnabled),
 }));
 
 const mockDb = databaseService as any;
@@ -63,6 +65,7 @@ beforeEach(() => {
   mockDb.checkPermissionAsync.mockResolvedValue(true);
   fakeStore.capability = { canStore: true, reason: undefined };
   fakeStore.hasStored.mockResolvedValue(false);
+  globalEnabled = true;
 });
 
 describe('GET /api/sources/:id/pki-dm/status', () => {
@@ -98,6 +101,23 @@ describe('POST /api/sources/:id/pki-dm', () => {
     expect(res.status).toBe(200);
     expect(mockDb.settings.setSourceSetting).toHaveBeenCalledWith('src-tcp', 'pkiDmDecryptionEnabled', 'false');
     expect(fakeStore.clear).toHaveBeenCalledWith('src-tcp');
+  });
+
+  it('refuses to enable when the global master switch is off', async () => {
+    mockDb.sources.getSource.mockResolvedValue(TCP_SOURCE);
+    globalEnabled = false;
+    const res = await request(createApp(adminUser)).post('/src-tcp/pki-dm').send({ enabled: true });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/globally/i);
+    expect(mockDb.settings.setSourceSetting).not.toHaveBeenCalled();
+  });
+
+  it('reports globallyEnabled in status', async () => {
+    mockDb.sources.getSource.mockResolvedValue(TCP_SOURCE);
+    globalEnabled = false;
+    const res = await request(createApp(adminUser)).get('/src-tcp/pki-dm/status');
+    expect(res.status).toBe(200);
+    expect(res.body.globallyEnabled).toBe(false);
   });
 
   it('rejects enabling when SESSION_SECRET is unavailable', async () => {

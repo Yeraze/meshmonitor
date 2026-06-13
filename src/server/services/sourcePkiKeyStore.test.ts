@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { randomBytes } from 'crypto';
-import { SourcePkiKeyStore } from './sourcePkiKeyStore.js';
+import { SourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled, invalidatePkiDmGlobalCache } from './sourcePkiKeyStore.js';
 
 interface Row {
   sourceId: string;
@@ -39,9 +39,15 @@ vi.mock('../../services/database.js', () => ({
       }),
       hasKey: vi.fn(async (sourceId: string) => rows.has(sourceId)),
       deleteBySourceId: vi.fn(async (sourceId: string) => { rows.delete(sourceId); }),
+      deleteAll: vi.fn(async () => { const n = rows.size; rows.clear(); return n; }),
+    },
+    settings: {
+      getSetting: vi.fn(async (_key: string) => globalSettingValue),
     },
   },
 }));
+
+let globalSettingValue: string | null = null;
 
 vi.mock('../config/environment.js', () => ({
   getEnvironmentConfig: vi.fn(() => ({ sessionSecret: 'unused', sessionSecretProvided: false })),
@@ -102,5 +108,24 @@ describe('SourcePkiKeyStore', () => {
     await store.clear('src-a');
     expect(await store.hasStored('src-a')).toBe(false);
     expect((await store.load('src-a')).kind).toBe('none');
+  });
+
+  describe('global master switch', () => {
+    it('reads pkiDmDecryptionGloballyEnabled (cached)', async () => {
+      globalSettingValue = 'true';
+      invalidatePkiDmGlobalCache();
+      expect(await isPkiDmDecryptionGloballyEnabled()).toBe(true);
+      // Cached: a change isn't seen until invalidated.
+      globalSettingValue = 'false';
+      expect(await isPkiDmDecryptionGloballyEnabled()).toBe(true);
+      invalidatePkiDmGlobalCache();
+      expect(await isPkiDmDecryptionGloballyEnabled()).toBe(false);
+    });
+
+    it('defaults to false when unset', async () => {
+      globalSettingValue = null;
+      invalidatePkiDmGlobalCache();
+      expect(await isPkiDmDecryptionGloballyEnabled()).toBe(false);
+    });
   });
 });

@@ -16,6 +16,7 @@ import apiService from '../../services/api';
 
 interface PkiDmStatus {
   enabled: boolean;
+  globallyEnabled: boolean;
   keyStored: boolean;
   canStore: boolean;
   reason?: string | null;
@@ -82,7 +83,13 @@ const PkiDmDecryptionSection: React.FC = () => {
         )}
       </p>
 
-      {!status.canStore && (
+      {!status.globallyEnabled && (
+        <div className="config-warning" role="alert">
+          {t('config.pki_dm.globally_disabled', 'PKI direct message decryption is turned off globally. Enable it under Settings → Security before turning it on per source.')}
+        </div>
+      )}
+
+      {status.globallyEnabled && !status.canStore && (
         <div className="config-warning" role="alert">
           {status.reason || t('config.pki_dm.no_secret', 'SESSION_SECRET is not configured, so keys cannot be stored persistently.')}
         </div>
@@ -92,7 +99,7 @@ const PkiDmDecryptionSection: React.FC = () => {
         <input
           type="checkbox"
           checked={status.enabled}
-          disabled={loading || (!status.enabled && !status.canStore)}
+          disabled={loading || !status.globallyEnabled || (!status.enabled && !status.canStore)}
           onChange={(e) => void toggle(e.target.checked)}
         />
         <span>{t('config.pki_dm.enable', 'Decrypt PKI direct messages for this source')}</span>

@@ -12,7 +12,7 @@ import waypointRoutes from './waypoints.js';
 import { filterNodesByChannelPermission, maskNodeLocationByChannel, maskTraceroutesByChannel, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { PortNum, modemPresetChannelName } from '../constants/meshtastic.js';
 import { transformChannel } from '../utils/channelView.js';
-import { getSourcePkiKeyStore } from '../services/sourcePkiKeyStore.js';
+import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from '../services/sourcePkiKeyStore.js';
 import type { ResourceType } from '../../types/permission.js';
 
 const router = Router();
@@ -880,9 +880,10 @@ router.get('/:id/pki-dm/status', requirePermission('configuration', 'read', { so
     const source = await databaseService.sources.getSource(req.params.id);
     if (!source) return res.status(404).json({ error: 'Source not found' });
     const enabled = (await databaseService.settings.getSettingForSource(source.id, 'pkiDmDecryptionEnabled')) === 'true';
+    const globallyEnabled = await isPkiDmDecryptionGloballyEnabled();
     const store = getSourcePkiKeyStore();
     const keyStored = await store.hasStored(source.id);
-    res.json({ enabled, keyStored, canStore: store.capability.canStore, reason: store.capability.reason ?? null });
+    res.json({ enabled, globallyEnabled, keyStored, canStore: store.capability.canStore, reason: store.capability.reason ?? null });
   } catch (error) {
     logger.error('[API] PKI DM status error:', error);
     res.status(500).json({ error: 'Failed to get PKI DM decryption status' });
@@ -899,6 +900,9 @@ router.post('/:id/pki-dm', requirePermission('configuration', 'write', { sourceI
     }
     const enabled = req.body?.enabled === true;
     const store = getSourcePkiKeyStore();
+    if (enabled && !(await isPkiDmDecryptionGloballyEnabled())) {
+      return res.status(400).json({ error: 'PKI DM decryption is disabled globally — enable it in Settings first' });
+    }
     if (enabled && !store.capability.canStore) {
       return res.status(400).json({ error: store.capability.reason || 'Cannot store PKI keys: SESSION_SECRET is not configured' });
     }

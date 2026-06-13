@@ -93,4 +93,13 @@ export class SourcePkiKeysRepository extends BaseRepository {
     const { sourcePkiKeys } = this.tables;
     await this.db.delete(sourcePkiKeys).where(eq(sourcePkiKeys.sourceId, sourceId));
   }
+
+  /** Delete every stored key (used when the global master switch is turned off). Returns the count removed. */
+  async deleteAll(): Promise<number> {
+    const { sourcePkiKeys } = this.tables;
+    const rows = await this.db.select({ sourceId: sourcePkiKeys.sourceId }).from(sourcePkiKeys);
+    if (rows.length === 0) return 0;
+    await this.db.delete(sourcePkiKeys);
+    return rows.length;
+  }
 }
