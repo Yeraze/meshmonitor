@@ -14,6 +14,7 @@ import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { securityDigestService } from '../services/securityDigestService.js';
+import { invalidatePkiDmGlobalCache } from '../services/sourcePkiKeyStore.js';
 import { VALID_SETTINGS_KEYS, stripSecretSettings } from '../constants/settings.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
@@ -638,6 +639,21 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
     await databaseService.settings.setSettings(filteredSettings);
 
     // ─── Side effects ───────────────────────────────────────────────────
+    // PKI DM decryption master switch (#3441): invalidate the cached flag, and
+    // when it's turned OFF, forget every stored private key so the master switch
+    // is a true off — keys are re-extracted per source only after it's re-enabled.
+    if ('pkiDmDecryptionGloballyEnabled' in filteredSettings) {
+      invalidatePkiDmGlobalCache();
+      if (filteredSettings.pkiDmDecryptionGloballyEnabled !== 'true') {
+        try {
+          const cleared = await databaseService.sourcePkiKeys.deleteAll();
+          logger.info(`🔒 PKI DM decryption disabled globally — cleared ${cleared} stored key(s)`);
+        } catch (err) {
+          logger.warn('Failed to clear stored PKI keys after global disable:', err);
+        }
+      }
+    }
+
     if ('customTilesets' in filteredSettings) {
       callbacks.refreshTileHostnameCache?.();
       logger.debug('🗺️ Refreshed CSP tile hostname cache after customTilesets update');

@@ -56,6 +56,9 @@ export const VALID_SETTINGS_KEYS = [
   'autoWelcomeWaitForName',
   'autoWelcomeMaxHops',
   'autoWelcomeDelay',
+  'pkiDmDecryptionEnabled',
+  // Global master switch for PKI DM decryption (#3441) — gates every source.
+  'pkiDmDecryptionGloballyEnabled',
   'autoResponderEnabled',
   'autoResponderTriggers',
   'autoResponderSkipIncompleteNodes',
@@ -310,6 +313,8 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'autoWelcomeTarget',
   'autoWelcomeWaitForName',
   'autoWelcomeDelay',
+  // PKI direct-message decryption (issue #3441) — per source
+  'pkiDmDecryptionEnabled',
   // MeshCore auto-pathfinding
   'meshcoreAutoPathfindingEnabled',
   'meshcoreAutoPathfindingPathDiscoveryEnabled',

@@ -71,6 +71,8 @@ export const TABLE_ORDER = [
   // 2608: per-source automated remote favorites management config + ledger
   'auto_favorite_targets',
   'auto_favorite_assignments',
+  // 3441: per-source encrypted X25519 private key for PKI DM decryption
+  'source_pki_keys',
 ];
 
 // Tables in the 4.0 schema that carry a `sourceId` column. When the source

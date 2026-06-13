@@ -102,6 +102,7 @@ import { migration as autoFavoriteTargetsMigration, runMigration084Postgres as r
 import { migration as autoFavoriteAckMigration, runMigration085Postgres as runAutoFavoriteAckPostgres, runMigration085Mysql as runAutoFavoriteAckMysql } from '../server/migrations/085_add_auto_favorite_ack_status.js';
 import { migration as autoFavoriteMaxNeighborAgeMigration, runMigration086Postgres as runAutoFavoriteMaxNeighborAgePostgres, runMigration086Mysql as runAutoFavoriteMaxNeighborAgeMysql } from '../server/migrations/086_add_auto_favorite_max_neighbor_age.js';
 import { migration as mapMaxAgeMigration, runMigration087Postgres as runMapMaxAgePostgres, runMigration087Mysql as runMapMaxAgeMysql } from '../server/migrations/087_add_map_max_age_to_map_prefs.js';
+import { migration as sourcePkiKeysMigration, runMigration088Postgres as runSourcePkiKeysPostgres, runMigration088Mysql as runSourcePkiKeysMysql } from '../server/migrations/088_add_source_pki_keys.js';
 
 // ============================================================================
 // Registry
@@ -1393,4 +1394,18 @@ registry.register({
   sqlite: (db) => mapMaxAgeMigration.up(db),
   postgres: (client) => runMapMaxAgePostgres(client),
   mysql: (pool) => runMapMaxAgeMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 088: source_pki_keys — per-source encrypted X25519 private key for
+// server-side PKI direct-message decryption (issue #3441).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 88,
+  name: 'add_source_pki_keys',
+  settingsKey: 'migration_088_add_source_pki_keys',
+  sqlite: (db) => sourcePkiKeysMigration.up(db),
+  postgres: (client) => runSourcePkiKeysPostgres(client),
+  mysql: (pool) => runSourcePkiKeysMysql(pool),
 });

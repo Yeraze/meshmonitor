@@ -28,6 +28,7 @@ import TrafficManagementConfigSection from './configuration/TrafficManagementCon
 import SerialConfigSection from './configuration/SerialConfigSection';
 import AmbientLightingConfigSection from './configuration/AmbientLightingConfigSection';
 import SecurityConfigSection from './configuration/SecurityConfigSection';
+import PkiDmDecryptionSection from './configuration/PkiDmDecryptionSection';
 import ChannelsConfigSection from './configuration/ChannelsConfigSection';
 import GpioPinSummary from './configuration/GpioPinSummary';
 import BackupManagementSection from './configuration/BackupManagementSection';
@@ -2585,6 +2586,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             isSaving={isSaving}
             onSave={handleSaveSecurityConfig}
           />
+          <PkiDmDecryptionSection />
         </div>
 
         <div id="config-channels">
