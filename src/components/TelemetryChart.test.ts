@@ -17,6 +17,16 @@ describe('getTelemetryLabel', () => {
     expect(getTelemetryLabel('noiseFloor')).toBe('Noise Floor (Device)');
   });
 
+  it('labels the Traffic Management stats types (grouped by the "Traffic Mgmt:" prefix)', () => {
+    expect(getTelemetryLabel('tmPacketsInspected')).toBe('Traffic Mgmt: Packets Inspected');
+    expect(getTelemetryLabel('tmPositionDedupDrops')).toBe('Traffic Mgmt: Position Dedup Drops');
+    expect(getTelemetryLabel('tmNodeinfoCacheHits')).toBe('Traffic Mgmt: NodeInfo Cache Hits');
+    expect(getTelemetryLabel('tmRateLimitDrops')).toBe('Traffic Mgmt: Rate Limit Drops');
+    expect(getTelemetryLabel('tmUnknownPacketDrops')).toBe('Traffic Mgmt: Unknown Packet Drops');
+    expect(getTelemetryLabel('tmHopExhaustedPackets')).toBe('Traffic Mgmt: Hop-Exhausted Packets');
+    expect(getTelemetryLabel('tmRouterHopsPreserved')).toBe('Traffic Mgmt: Router Hops Preserved');
+  });
+
   it('returns the explicit label for known MeshCore status types', () => {
     expect(getTelemetryLabel('mc_status_uptime_secs')).toBe('Uptime');
     expect(getTelemetryLabel('mc_status_noise_floor')).toBe('Noise Floor');

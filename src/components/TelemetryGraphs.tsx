@@ -35,6 +35,10 @@ const INTEGER_TELEMETRY_TYPES = new Set([
   'particles03um', 'particles05um', 'particles10um',
   'particles25um', 'particles50um', 'particles100um',
   'co2', 'iaq',
+  // Traffic Management stats — integer packet/hit/hop counters
+  'tmPacketsInspected', 'tmPositionDedupDrops', 'tmNodeinfoCacheHits',
+  'tmRateLimitDrops', 'tmUnknownPacketDrops', 'tmHopExhaustedPackets',
+  'tmRouterHopsPreserved',
 ]);
 
 interface TelemetryGraphsProps {

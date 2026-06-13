@@ -179,7 +179,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
           fontStyle: 'italic',
           marginBottom: '1rem'
         }}>
-          {t('trafficmanagement_config.unsupported', 'Unsupported by device firmware — Requires v2.7.20 alpha or newer (not yet in any stable release)')}
+          {t('trafficmanagement_config.unsupported', 'Unsupported by this device — requires Meshtastic firmware v2.7.22 or newer with the Traffic Management module.')}
         </div>
       )}
 

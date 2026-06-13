@@ -68,6 +68,14 @@ const TELEMETRY_LABEL_KEYS: Record<string, string> = {
   paxcounterWifi: 'telemetry.paxcounter_wifi',
   paxcounterBle: 'telemetry.paxcounter_ble',
   paxcounterUptime: 'telemetry.paxcounter_uptime',
+  // Traffic Management stats (firmware TrafficManagementStats telemetry)
+  tmPacketsInspected: 'telemetry.tm_packets_inspected',
+  tmPositionDedupDrops: 'telemetry.tm_position_dedup_drops',
+  tmNodeinfoCacheHits: 'telemetry.tm_nodeinfo_cache_hits',
+  tmRateLimitDrops: 'telemetry.tm_rate_limit_drops',
+  tmUnknownPacketDrops: 'telemetry.tm_unknown_packet_drops',
+  tmHopExhaustedPackets: 'telemetry.tm_hop_exhausted_packets',
+  tmRouterHopsPreserved: 'telemetry.tm_router_hops_preserved',
 };
 
 // Fallback labels (used when translation is not available or for sorting/filtering)
@@ -98,6 +106,15 @@ const TELEMETRY_LABELS: Record<string, string> = {
   heapTotalBytes: 'Heap Total (Device)',
   heapFreeBytes: 'Heap Free (Device)',
   noiseFloor: 'Noise Floor (Device)',
+  // Traffic Management stats (firmware TrafficManagementStats telemetry). The
+  // "Traffic Mgmt:" prefix keeps them grouped in the alphabetical graph order.
+  tmPacketsInspected: 'Traffic Mgmt: Packets Inspected',
+  tmPositionDedupDrops: 'Traffic Mgmt: Position Dedup Drops',
+  tmNodeinfoCacheHits: 'Traffic Mgmt: NodeInfo Cache Hits',
+  tmRateLimitDrops: 'Traffic Mgmt: Rate Limit Drops',
+  tmUnknownPacketDrops: 'Traffic Mgmt: Unknown Packet Drops',
+  tmHopExhaustedPackets: 'Traffic Mgmt: Hop-Exhausted Packets',
+  tmRouterHopsPreserved: 'Traffic Mgmt: Router Hops Preserved',
   // MeshMonitor system metrics (calculated by MeshMonitor)
   systemNodeCount: 'Active Nodes (MeshMonitor)',
   systemDirectNodeCount: 'Direct Nodes (MeshMonitor)',
