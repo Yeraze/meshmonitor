@@ -89,13 +89,16 @@ beforeEach(() => {
 
 describe('MeshCoreChannelsView — channel list rendering', () => {
   it('renders a tab for each channel returned by /api/channels/all', async () => {
-    csrfFetchMock.mockResolvedValueOnce(
-      jsonResponse([
+    csrfFetchMock.mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/messages/channel/')) {
+        return Promise.resolve(jsonResponse({ success: true, data: [] }));
+      }
+      return Promise.resolve(jsonResponse([
         { id: 0, name: 'Public' },
         { id: 1, name: 'Town' },
         { id: 2, name: 'Operators' },
-      ]),
-    );
+      ]));
+    });
 
     render(
       <MeshCoreChannelsView
@@ -116,12 +119,19 @@ describe('MeshCoreChannelsView — channel list rendering', () => {
 
     // Called the source-scoped /all endpoint.
     expect(csrfFetchMock).toHaveBeenCalled();
-    const calledUrl = csrfFetchMock.mock.calls[0][0] as string;
-    expect(calledUrl).toContain('/api/channels/all?sourceId=src-a');
+    const calledChannelsUrl = csrfFetchMock.mock.calls
+      .map((c) => c[0] as string)
+      .find((u) => u.includes('/api/channels/all'));
+    expect(calledChannelsUrl).toContain('/api/channels/all?sourceId=src-a');
   });
 
   it('falls back to a synthetic Public channel when the API returns nothing', async () => {
-    csrfFetchMock.mockResolvedValueOnce(jsonResponse([]));
+    csrfFetchMock.mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/messages/channel/')) {
+        return Promise.resolve(jsonResponse({ success: true, data: [] }));
+      }
+      return Promise.resolve(jsonResponse([]));
+    });
 
     render(
       <MeshCoreChannelsView
@@ -140,10 +150,15 @@ describe('MeshCoreChannelsView — channel list rendering', () => {
   });
 
   it('substitutes "Channel N" when the device reports a blank channel name', async () => {
-    csrfFetchMock.mockResolvedValueOnce(jsonResponse([
-      { id: 0, name: 'Public' },
-      { id: 5, name: '' }, // blank
-    ]));
+    csrfFetchMock.mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/messages/channel/')) {
+        return Promise.resolve(jsonResponse({ success: true, data: [] }));
+      }
+      return Promise.resolve(jsonResponse([
+        { id: 0, name: 'Public' },
+        { id: 5, name: '' }, // blank
+      ]));
+    });
 
     render(
       <MeshCoreChannelsView
@@ -179,13 +194,18 @@ describe('MeshCoreChannelsView — per-channel message filter', () => {
   ];
 
   beforeEach(() => {
-    csrfFetchMock.mockResolvedValue(
-      jsonResponse([
+    // Fresh Response per call (a Response body can only be read once) and a
+    // valid payload for the per-channel backlog fetch this view now issues.
+    csrfFetchMock.mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/messages/channel/')) {
+        return Promise.resolve(jsonResponse({ success: true, data: [] }));
+      }
+      return Promise.resolve(jsonResponse([
         { id: 0, name: 'Public' },
         { id: 1, name: 'Town' },
         { id: 2, name: 'Operators' },
-      ]),
-    );
+      ]));
+    });
   });
 
   it('shows only channel-0 messages (received + legacy local) on the Public tab', async () => {
@@ -202,9 +222,12 @@ describe('MeshCoreChannelsView — per-channel message filter', () => {
 
     await waitFor(() => screen.getByText('# Public'));
 
-    // Default selected channel is 0.
-    expect(screen.getByText('hi from chan 0')).toBeTruthy();
-    expect(screen.getByText('legacy local on 0')).toBeTruthy();
+    // Default selected channel is 0. waitFor lets the per-channel backlog fetch
+    // settle (it returns empty here; the live `messages` prop supplies content).
+    await waitFor(() => {
+      expect(screen.getByText('hi from chan 0')).toBeTruthy();
+      expect(screen.getByText('legacy local on 0')).toBeTruthy();
+    });
     expect(screen.queryByText('hi from chan 1')).toBeNull();
     expect(screen.queryByText('hi from chan 2')).toBeNull();
     expect(screen.queryByText('my reply on 1')).toBeNull();
@@ -226,8 +249,10 @@ describe('MeshCoreChannelsView — per-channel message filter', () => {
     await waitFor(() => screen.getByText('# Town'));
     fireEvent.click(screen.getByText('# Town'));
 
-    expect(screen.getByText('hi from chan 1')).toBeTruthy();
-    expect(screen.getByText('my reply on 1')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText('hi from chan 1')).toBeTruthy();
+      expect(screen.getByText('my reply on 1')).toBeTruthy();
+    });
     expect(screen.queryByText('hi from chan 0')).toBeNull();
     expect(screen.queryByText('hi from chan 2')).toBeNull();
     expect(screen.queryByText('legacy local on 0')).toBeNull();
@@ -235,14 +260,146 @@ describe('MeshCoreChannelsView — per-channel message filter', () => {
   });
 });
 
+describe('MeshCoreChannelsView — per-channel backlog fetch (#3441)', () => {
+  // Route csrfFetch by URL so the channel-list and per-channel-messages
+  // endpoints can return different payloads.
+  function routedFetch(messagesByChannel: Record<number, MeshCoreMessage[]>, countsByChannel?: Record<number, number>) {
+    return vi.fn((url: string) => {
+      if (url.includes('/api/channels/all')) {
+        return Promise.resolve(jsonResponse([
+          { id: 0, name: 'Public' },
+          { id: 1, name: 'Town' },
+        ]));
+      }
+      if (url.includes('/messages/channel-counts')) {
+        return Promise.resolve(jsonResponse({ success: true, counts: countsByChannel ?? {} }));
+      }
+      const m = url.match(/\/messages\/channel\/(\d+)/);
+      if (m) {
+        const idx = Number(m[1]);
+        return Promise.resolve(jsonResponse({ success: true, data: messagesByChannel[idx] ?? [], count: (messagesByChannel[idx] ?? []).length }));
+      }
+      return Promise.resolve(jsonResponse({ success: true, data: [] }));
+    });
+  }
+
+  it('renders the fetched backlog even when the live messages pool is empty', async () => {
+    csrfFetchMock.mockImplementation(routedFetch({
+      0: [{ id: 'h0', fromPublicKey: 'channel-0', text: 'backlog on public', timestamp: 500 }],
+    }));
+
+    render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('backlog on public')).toBeTruthy());
+
+    // The per-channel endpoint was hit for channel 0.
+    const hitChannel0 = csrfFetchMock.mock.calls.some(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('/meshcore/messages/channel/0'),
+    );
+    expect(hitChannel0).toBe(true);
+  });
+
+  it('merges live messages with the fetched backlog and dedupes by id', async () => {
+    csrfFetchMock.mockImplementation(routedFetch({
+      0: [
+        { id: 'h0', fromPublicKey: 'channel-0', text: 'old backlog', timestamp: 100 },
+        { id: 'dup', fromPublicKey: 'channel-0', text: 'shared', timestamp: 200 },
+      ],
+    }));
+
+    // `dup` is in both the backlog and the live pool; `live-new` only in live.
+    const liveMessages: MeshCoreMessage[] = [
+      { id: 'dup', fromPublicKey: 'channel-0', text: 'shared', timestamp: 200 },
+      { id: 'live-new', fromPublicKey: 'channel-0', text: 'fresh live', timestamp: 300 },
+    ];
+
+    render(
+      <MeshCoreChannelsView
+        messages={liveMessages}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('old backlog')).toBeTruthy());
+    expect(screen.getByText('fresh live')).toBeTruthy();
+    // Deduped — only one node for the shared id.
+    expect(screen.getAllByText('shared')).toHaveLength(1);
+  });
+
+  it('shows accurate per-channel counts from the counts endpoint, even for an inactive busy channel', async () => {
+    // Public (active, idx 0) is quiet; Town (inactive, idx 1) has many messages
+    // that are NOT in the shared live pool. The badge must still show Town's
+    // real count from the counts endpoint, not 0.
+    csrfFetchMock.mockImplementation(routedFetch(
+      { 0: [{ id: 'h0', fromPublicKey: 'channel-0', text: 'just one', timestamp: 1 }] },
+      { 0: 1, 1: 137 },
+    ));
+
+    render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('# Town')).toBeTruthy());
+    // Town's badge reflects the 137 persisted messages despite an empty live pool.
+    await waitFor(() => expect(screen.getByText('137 messages')).toBeTruthy());
+  });
+
+  it('switches the fetched backlog when a different channel is selected', async () => {
+    csrfFetchMock.mockImplementation(routedFetch({
+      0: [{ id: 'h0', fromPublicKey: 'channel-0', text: 'public backlog', timestamp: 100 }],
+      1: [{ id: 'h1', fromPublicKey: 'channel-1', text: 'town backlog', timestamp: 110 }],
+    }));
+
+    render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('public backlog')).toBeTruthy());
+
+    fireEvent.click(screen.getByText('# Town'));
+    await waitFor(() => expect(screen.getByText('town backlog')).toBeTruthy());
+    expect(screen.queryByText('public backlog')).toBeNull();
+  });
+});
+
 describe('MeshCoreChannelsView — sending', () => {
   it('passes the active channel idx to actions.sendMessage', async () => {
-    csrfFetchMock.mockResolvedValueOnce(
-      jsonResponse([
+    csrfFetchMock.mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/messages/channel/')) {
+        return Promise.resolve(jsonResponse({ success: true, data: [] }));
+      }
+      return Promise.resolve(jsonResponse([
         { id: 0, name: 'Public' },
         { id: 2, name: 'Ops' },
-      ]),
-    );
+      ]));
+    });
 
     const actions = makeActions();
     render(

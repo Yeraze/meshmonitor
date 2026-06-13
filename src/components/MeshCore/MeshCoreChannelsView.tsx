@@ -85,6 +85,15 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
   const [loadingChannels, setLoadingChannels] = useState(false);
   const [mobileShowContent, setMobileShowContent] = useState(false);
+  // Per-channel backlog for the *active* channel, fetched independently of the
+  // shared `messages` pool so each channel shows its own history (not a slice
+  // of the global recent-tail). Live updates still arrive via `messages` and
+  // are merged in below.
+  const [history, setHistory] = useState<MeshCoreMessage[]>([]);
+  // Accurate persisted message count per channel index (for the list badges),
+  // so a quiet channel doesn't read as empty next to a busy one just because
+  // the shared pool's recent-tail happened to exclude it.
+  const [counts, setCounts] = useState<Record<number, number>>({});
 
   useEffect(() => {
     const onResize = () => {
@@ -151,12 +160,67 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     }
   }, [displayChannels, selectedIdx]);
 
+  // Fetch accurate per-channel message counts for the list badges whenever the
+  // channel set changes or the source (re)connects.
+  const channelIdsKey = displayChannels.map(c => c.id).join(',');
+  useEffect(() => {
+    if (!sourceId || !channelIdsKey) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const url = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/messages/channel-counts?channels=${encodeURIComponent(channelIdsKey)}`;
+        const response = await csrfFetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (!cancelled && data?.success && data.counts) setCounts(data.counts as Record<number, number>);
+      } catch (err) {
+        if (!cancelled) console.error('Failed to fetch MeshCore channel counts:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [baseUrl, sourceId, channelIdsKey, csrfFetch, status?.connected]);
+
   const active = displayChannels.find(c => c.id === selectedIdx) ?? displayChannels[0];
   const activeFilter = useMemo(() => buildChannelFilter(active.id), [active.id]);
-  const filtered = useMemo(
-    () => messages.filter(activeFilter),
-    [messages, activeFilter],
-  );
+
+  // Fetch the active channel's backlog from the per-channel endpoint. Re-runs on
+  // channel switch and on (re)connect. The shared `messages` pool only carries a
+  // global recent-tail, so this is what makes each channel's full history show.
+  useEffect(() => {
+    if (!sourceId) return;
+    let cancelled = false;
+    const idx = active.id;
+    (async () => {
+      try {
+        const url = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/messages/channel/${idx}?limit=200`;
+        const response = await csrfFetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (!cancelled) {
+          setHistory(data?.success && Array.isArray(data.data) ? (data.data as MeshCoreMessage[]) : []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Failed to fetch MeshCore channel messages:', err);
+          setHistory([]);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [baseUrl, sourceId, active.id, csrfFetch, status?.connected]);
+
+  // Merge the fetched backlog with any live messages for this channel (socket
+  // pushes land in `messages`). Dedupe by id, letting the live copy win so
+  // delivery-status updates (sent → delivered/failed) are reflected, then sort
+  // oldest-first for the stream.
+  const filtered = useMemo(() => {
+    const byId = new Map<string, MeshCoreMessage>();
+    for (const m of history) byId.set(m.id, m);
+    for (const m of messages) {
+      if (activeFilter(m)) byId.set(m.id, m);
+    }
+    return Array.from(byId.values()).sort((a, b) => a.timestamp - b.timestamp);
+  }, [history, messages, activeFilter]);
 
   const selfKey = status?.localNode?.publicKey;
   const connected = status?.connected ?? false;
@@ -179,8 +243,11 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
             </div>
           )}
           {displayChannels.map(c => {
-            const filter = buildChannelFilter(c.id);
-            const count = messages.filter(filter).length;
+            // Accurate persisted count from the counts endpoint. For the active
+            // channel, prefer the merged stream length when it's larger so a
+            // just-arrived live message bumps the badge before the next refetch.
+            const persisted = counts[c.id] ?? messages.filter(buildChannelFilter(c.id)).length;
+            const count = c.id === active.id ? Math.max(persisted, filtered.length) : persisted;
             return (
               <button
                 key={c.id}

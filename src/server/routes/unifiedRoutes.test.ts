@@ -24,6 +24,10 @@ vi.mock('../../services/database.js', () => ({
     channels: {
       getAllChannels: vi.fn(),
     },
+    meshcore: {
+      getRecentMessages: vi.fn().mockResolvedValue([]),
+      getChannelMessages: vi.fn().mockResolvedValue([]),
+    },
     nodes: {
       getAllNodes: vi.fn(),
       getDistinctNodeCount: vi.fn(),
@@ -857,6 +861,95 @@ describe('Unified Routes', () => {
         expect.any(Number),
         SOURCE_A.id
       );
+    });
+  });
+
+  // ── MeshCore messages in the unified feed (#3441) ────────────────────────
+
+  describe('GET /messages (MeshCore sources)', () => {
+    const MC_SRC = { id: 'mc-1', name: 'MeshCore Box', type: 'meshcore', enabled: true };
+    const MC_CHANNELS = [
+      { id: 0, name: 'Public', role: 1 },
+      { id: 3, name: 'Ops', role: 1 },
+    ];
+
+    /** A meshcore_messages row as the repo returns it. */
+    function mkMcMsg(overrides: Record<string, any> = {}) {
+      return {
+        id: 'mc-row-1',
+        fromPublicKey: 'channel-0',
+        fromName: 'Alice',
+        toPublicKey: null,
+        text: 'hi from meshcore',
+        timestamp: 1_700_000_000_000,
+        rssi: -90,
+        snr: 6,
+        createdAt: 1_700_000_000_000,
+        sourceId: 'mc-1',
+        ...overrides,
+      };
+    }
+
+    it('includes MeshCore channel + DM messages in the no-filter feed, tagged sourceType=meshcore', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([MC_SRC]);
+      mockDb.channels.getAllChannels.mockResolvedValue(MC_CHANNELS);
+      mockDb.meshcore.getRecentMessages.mockResolvedValue([
+        mkMcMsg({ id: 'c0', fromPublicKey: 'channel-0', fromName: 'Alice', text: 'channel hello', timestamp: 2000, createdAt: 2000 }),
+        mkMcMsg({ id: 'dm', fromPublicKey: 'a'.repeat(64), toPublicKey: 'b'.repeat(64), fromName: null, text: 'private', timestamp: 1000, createdAt: 1000 }),
+      ]);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/messages?limit=50');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(2);
+      // No channel filter → repo.getRecentMessages used (not per-channel).
+      expect(mockDb.meshcore.getRecentMessages).toHaveBeenCalledWith(100, 'mc-1');
+
+      const channelMsg = res.body.find((m: any) => m.text === 'channel hello');
+      expect(channelMsg).toBeTruthy();
+      expect(channelMsg.channel).toBe(0);
+      expect(channelMsg.channelName).toBe('Public');
+      expect(channelMsg.fromNodeLongName).toBe('Alice');
+      expect(channelMsg.fromNodeNum).toBe(0);
+      expect(channelMsg.receptions[0].sourceType).toBe('meshcore');
+      expect(channelMsg.receptions[0].rxSnr).toBe(6);
+
+      const dm = res.body.find((m: any) => m.text === 'private');
+      expect(dm.channel).toBe(-1); // DM: no channel-N on either side
+    });
+
+    it('resolves a channel-name filter to the MeshCore channel index and uses getChannelMessages', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([MC_SRC]);
+      mockDb.channels.getAllChannels.mockResolvedValue(MC_CHANNELS);
+      mockDb.meshcore.getChannelMessages.mockResolvedValue([
+        mkMcMsg({ id: 'ops1', fromPublicKey: 'channel-3', fromName: 'Bob', text: 'ops traffic', timestamp: 3000, createdAt: 3000 }),
+      ]);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/messages?channel=Ops&limit=50');
+
+      expect(res.status).toBe(200);
+      // Channel 'Ops' resolves to index 3 on this source.
+      expect(mockDb.meshcore.getChannelMessages).toHaveBeenCalledWith(3, 100, 'mc-1');
+      expect(mockDb.meshcore.getRecentMessages).not.toHaveBeenCalled();
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].text).toBe('ops traffic');
+      expect(res.body[0].channel).toBe(3);
+    });
+
+    it('skips MeshCore sources in the no-filter feed when the user lacks messages:read', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([MC_SRC]);
+      mockDb.channels.getAllChannels.mockResolvedValue(MC_CHANNELS);
+      mockDb.checkPermissionAsync.mockResolvedValue(false);
+      mockDb.meshcore.getRecentMessages.mockResolvedValue([mkMcMsg()]);
+
+      const app = createApp(regularUser);
+      const res = await request(app).get('/messages?limit=50');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(0);
+      expect(mockDb.meshcore.getRecentMessages).not.toHaveBeenCalled();
     });
   });
 

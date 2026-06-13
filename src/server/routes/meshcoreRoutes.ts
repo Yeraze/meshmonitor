@@ -1109,6 +1109,60 @@ router.get('/messages', optionalAuth(), requirePermission('messages', 'read', { 
 });
 
 /**
+ * GET /api/meshcore/messages/channel/:idx
+ * Per-channel message backlog. Unlike /messages (a global recent-tail shared by
+ * every channel and DM), this returns just channel :idx's history — so a busy
+ * channel can't push another channel's messages out of the visible window.
+ */
+router.get('/messages/channel/:idx', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const idx = parseInt(req.params.idx, 10);
+    if (isNaN(idx) || idx < 0) {
+      return res.status(400).json({ success: false, error: 'idx must be a non-negative integer' });
+    }
+    let limit = parseInt(req.query.limit as string || '100', 10);
+    if (isNaN(limit) || limit < 1) {
+      limit = 100;
+    } else if (limit > VALIDATION.MAX_MESSAGE_LIMIT) {
+      limit = VALIDATION.MAX_MESSAGE_LIMIT;
+    }
+    const messages = await managerFor(req).getChannelMessages(idx, limit);
+    res.json({
+      success: true,
+      data: messages,
+      count: messages.length,
+    });
+  } catch (error) {
+    logger.error('[API] Error getting channel messages:', error);
+    res.status(500).json({ success: false, error: 'Failed to get channel messages' });
+  }
+});
+
+/**
+ * GET /api/meshcore/messages/channel-counts?channels=0,1,2
+ * Total persisted message count per channel index, for the channel-list badges.
+ * Accurate per channel (not the capped in-memory pool).
+ */
+router.get('/messages/channel-counts', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const raw = (req.query.channels as string | undefined) ?? '';
+    const indices = raw
+      .split(',')
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => Number.isInteger(n) && n >= 0);
+    // De-dupe and cap to a sane number of channels per request.
+    const unique = Array.from(new Set(indices)).slice(0, 64);
+    const counts = unique.length > 0
+      ? await managerFor(req).getChannelMessageCounts(unique)
+      : {};
+    res.json({ success: true, counts });
+  } catch (error) {
+    logger.error('[API] Error getting channel message counts:', error);
+    res.status(500).json({ success: false, error: 'Failed to get channel message counts' });
+  }
+});
+
+/**
  * GET /api/sources/:id/meshcore/snapshot
  * Single-call initial load: status, localNode, contacts, nodes, messages, and a seqCursor
  * (the timestamp of the newest message) for reconnect catch-up.

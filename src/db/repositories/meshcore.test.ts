@@ -546,4 +546,89 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual({ sourceId: 'src-b', name: 'B' });
   });
+
+  // ============ Per-channel message retrieval (#3441) ============
+  //
+  // getChannelMessages returns each channel's own backlog, scoped to a source,
+  // independent of the global recent-tail that getRecentMessages serves.
+  describe('getChannelMessages', () => {
+    const insert = (
+      id: string,
+      fields: { fromPublicKey: string; toPublicKey?: string | null; timestamp: number; text?: string },
+      sourceId: string,
+    ) =>
+      repo.insertMessage(
+        {
+          id,
+          fromPublicKey: fields.fromPublicKey,
+          toPublicKey: fields.toPublicKey ?? null,
+          text: fields.text ?? id,
+          timestamp: fields.timestamp,
+          createdAt: fields.timestamp,
+        },
+        sourceId,
+      );
+
+    it('returns only the requested channel, source-scoped', async () => {
+      await insert('c1-recv', { fromPublicKey: 'channel-1', timestamp: 100 }, 'src-a');
+      await insert('c1-sent', { fromPublicKey: 'a'.repeat(64), toPublicKey: 'channel-1', timestamp: 110 }, 'src-a');
+      await insert('c2-recv', { fromPublicKey: 'channel-2', timestamp: 120 }, 'src-a');
+      await insert('dm', { fromPublicKey: 'cafe'.repeat(16), toPublicKey: 'beef'.repeat(16), timestamp: 130 }, 'src-a');
+      // Same channel index but a different source must not leak in.
+      await insert('c1-other-src', { fromPublicKey: 'channel-1', timestamp: 140 }, 'src-b');
+
+      const rows = await repo.getChannelMessages(1, 100, 'src-a');
+      const ids = rows.map(r => r.id).sort();
+      expect(ids).toEqual(['c1-recv', 'c1-sent']);
+    });
+
+    it('includes legacy channel-0 broadcasts (null recipient, non-channel sender)', async () => {
+      await insert('c0-recv', { fromPublicKey: 'channel-0', timestamp: 200 }, 'src-a');
+      // Pre-phase-2 outbound channel-0: null recipient, real-pubkey sender.
+      await insert('c0-legacy', { fromPublicKey: 'a'.repeat(64), toPublicKey: null, timestamp: 210 }, 'src-a');
+      // A different channel's received msg must NOT match the channel-0 legacy rule.
+      await insert('c1-recv', { fromPublicKey: 'channel-1', timestamp: 220 }, 'src-a');
+
+      const rows = await repo.getChannelMessages(0, 100, 'src-a');
+      const ids = rows.map(r => r.id).sort();
+      expect(ids).toEqual(['c0-legacy', 'c0-recv']);
+    });
+
+    it('does not apply the legacy null-recipient rule to non-zero channels', async () => {
+      await insert('c1-recv', { fromPublicKey: 'channel-1', timestamp: 300 }, 'src-a');
+      await insert('legacy-bcast', { fromPublicKey: 'a'.repeat(64), toPublicKey: null, timestamp: 310 }, 'src-a');
+
+      const rows = await repo.getChannelMessages(1, 100, 'src-a');
+      expect(rows.map(r => r.id)).toEqual(['c1-recv']);
+    });
+
+    it('honors the limit and returns newest-first', async () => {
+      for (let i = 0; i < 5; i++) {
+        await insert(`c1-${i}`, { fromPublicKey: 'channel-1', timestamp: 400 + i }, 'src-a');
+      }
+      const rows = await repo.getChannelMessages(1, 2, 'src-a');
+      expect(rows.map(r => r.id)).toEqual(['c1-4', 'c1-3']);
+    });
+  });
+
+  describe('getChannelMessageCounts', () => {
+    it('returns an accurate per-channel total, source-scoped, ignoring the pool cap', async () => {
+      const insert = (id: string, from: string, to: string | null, ts: number, src: string) =>
+        repo.insertMessage(
+          { id, fromPublicKey: from, toPublicKey: to, text: id, timestamp: ts, createdAt: ts },
+          src,
+        );
+      // channel 0: 3 (2 received + 1 legacy broadcast). channel 1: 1. DM: excluded.
+      await insert('a', 'channel-0', null, 1, 'src-a');
+      await insert('b', 'channel-0', null, 2, 'src-a');
+      await insert('c', 'x'.repeat(64), null, 3, 'src-a'); // channel-0 legacy
+      await insert('d', 'channel-1', null, 4, 'src-a');
+      await insert('e', 'cafe'.repeat(16), 'beef'.repeat(16), 5, 'src-a'); // DM
+      // Other source must not leak into the counts.
+      await insert('f', 'channel-1', null, 6, 'src-b');
+
+      const counts = await repo.getChannelMessageCounts([0, 1, 2], 'src-a');
+      expect(counts).toEqual({ 0: 3, 1: 1, 2: 0 });
+    });
+  });
 });

@@ -3388,6 +3388,41 @@ class MeshCoreManager extends EventEmitter {
     return this.messages.slice(-limit);
   }
 
+  /**
+   * Per-channel message backlog, queried straight from the DB so each channel
+   * gets its own history independent of the shared in-memory pool and the
+   * global recent-tail that {@link getRecentMessages} serves. Returns
+   * oldest-first to match the ordering the message stream expects.
+   */
+  async getChannelMessages(channelIdx: number, limit: number = 100): Promise<MeshCoreMessage[]> {
+    const stored = await databaseService.meshcore.getChannelMessages(
+      channelIdx,
+      limit,
+      this.sourceId,
+    );
+    // DB returns newest-first; reverse to oldest-first for the UI.
+    return stored.reverse().map(dbMsg => ({
+      id: dbMsg.id,
+      fromPublicKey: dbMsg.fromPublicKey,
+      fromName: dbMsg.fromName ?? undefined,
+      toPublicKey: dbMsg.toPublicKey ?? undefined,
+      text: dbMsg.text,
+      timestamp: dbMsg.timestamp,
+      rssi: dbMsg.rssi ?? undefined,
+      snr: dbMsg.snr ?? undefined,
+      sourceId: dbMsg.sourceId ?? undefined,
+    }));
+  }
+
+  /**
+   * Total persisted message count per channel index, for the channel-list
+   * badges. Accurate per channel (not the capped in-memory pool), so quiet
+   * channels don't read as empty next to a busy one.
+   */
+  async getChannelMessageCounts(channelIndices: number[]): Promise<Record<number, number>> {
+    return databaseService.meshcore.getChannelMessageCounts(channelIndices, this.sourceId);
+  }
+
   isConnected(): boolean {
     return this.connected;
   }
