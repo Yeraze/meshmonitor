@@ -22,7 +22,7 @@ There are two layers of control — a global master switch and a per-source togg
 
 ### 1. Global master switch
 
-**Settings → Notifications & Security → "Enable PKI direct message decryption."**
+**Settings → Security → "Enable PKI direct message decryption."**
 
 This is the instance-wide kill switch. While it's **off** (the default):
 

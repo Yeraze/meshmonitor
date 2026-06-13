@@ -1,6 +1,6 @@
 /**
  * PkiDmGlobalToggle — the global master switch for PKI direct-message
- * decryption (issue #3441), shown in Settings → Notifications & Security.
+ * decryption (issue #3441), shown in the global Settings → Security section.
  *
  * This is the instance-wide kill switch: while OFF (the default), no source
  * decrypts PKI DMs, the per-source toggles are inert, and turning it off forgets
