@@ -743,17 +743,27 @@ router.delete(
   async (req: Request, res: Response) => {
     try {
       const publicKey = req.params.publicKey;
-      if (!isValidPublicKey(publicKey)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid public key — must be 64-char hex',
-        });
+      // No `isValidPublicKey` format guard here (unlike the path/DM/share routes
+      // that transmit the key to the device): removal is a cleanup operation and
+      // must work for malformed or "ghost" rows too (issue #3443). The key is
+      // only used to look up the DB row, so an odd/truncated key is fine.
+      if (!publicKey) {
+        return res.status(400).json({ success: false, error: 'Missing public key' });
       }
-      const ok = await managerFor(req).removeContact(publicKey);
+      const manager = managerFor(req);
+      // Try the device-side removal first (deletes from the device + DB on a
+      // connected Companion). If that can't apply — the key isn't a real device
+      // contact (malformed/ghost), the source is disconnected, or it's not a
+      // Companion — fall back to forgetting the row locally so the stale entry
+      // can still be cleaned up from MeshMonitor.
+      let ok = await manager.removeContact(publicKey);
+      if (!ok) {
+        ok = await manager.forgetLocalContact(publicKey);
+      }
       if (!ok) {
         return res.status(409).json({
           success: false,
-          error: 'Remove contact failed — contact may be unknown, source disconnected, or not a Companion device',
+          error: 'Remove contact failed — could not delete the contact row',
         });
       }
       res.json({ success: true });
