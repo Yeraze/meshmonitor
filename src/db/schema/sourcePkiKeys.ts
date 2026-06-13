@@ -13,9 +13,11 @@ import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 import { pgTable, text as pgText, bigint as pgBigint } from 'drizzle-orm/pg-core';
 import { mysqlTable, varchar as myVarchar, text as myText, bigint as myBigint } from 'drizzle-orm/mysql-core';
 
-// SQLite
+// SQLite — `nodeNum` is the local node identity the key belongs to, so a DM to
+// node X can be decrypted by X's key regardless of which source received it.
 export const sourcePkiKeysSqlite = sqliteTable('source_pki_keys', {
   sourceId: text('sourceId').primaryKey(),
+  nodeNum: integer('nodeNum'),
   encryptedPrivateKey: text('encryptedPrivateKey').notNull(),
   publicKey: text('publicKey'),
   createdAt: integer('createdAt').notNull(),
@@ -25,6 +27,7 @@ export const sourcePkiKeysSqlite = sqliteTable('source_pki_keys', {
 // PostgreSQL
 export const sourcePkiKeysPostgres = pgTable('source_pki_keys', {
   sourceId: pgText('sourceId').primaryKey(),
+  nodeNum: pgBigint('nodeNum', { mode: 'number' }),
   encryptedPrivateKey: pgText('encryptedPrivateKey').notNull(),
   publicKey: pgText('publicKey'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
@@ -34,6 +37,7 @@ export const sourcePkiKeysPostgres = pgTable('source_pki_keys', {
 // MySQL
 export const sourcePkiKeysMysql = mysqlTable('source_pki_keys', {
   sourceId: myVarchar('sourceId', { length: 36 }).primaryKey(),
+  nodeNum: myBigint('nodeNum', { mode: 'number' }),
   encryptedPrivateKey: myText('encryptedPrivateKey').notNull(),
   publicKey: myVarchar('publicKey', { length: 128 }),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),

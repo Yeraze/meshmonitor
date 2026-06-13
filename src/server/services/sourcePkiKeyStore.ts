@@ -73,7 +73,7 @@ export class SourcePkiKeyStore {
    * clear `publicKey` (base64, for display). Throws when SESSION_SECRET is
    * auto-generated — callers should check `capability` first.
    */
-  async store(sourceId: string, privateKey: Buffer, publicKeyB64: string | null): Promise<void> {
+  async store(sourceId: string, nodeNum: number | null, privateKey: Buffer, publicKeyB64: string | null): Promise<void> {
     if (!this._capability.canStore) {
       throw new Error('Cannot persist source PKI key: SESSION_SECRET is auto-generated');
     }
@@ -88,19 +88,33 @@ export class SourcePkiKeyStore {
       ct: ct.toString('hex'),
       tag: tag.toString('hex'),
     };
-    await databaseService.sourcePkiKeys.upsert(sourceId, JSON.stringify(envelope), publicKeyB64);
+    await databaseService.sourcePkiKeys.upsert(sourceId, nodeNum, JSON.stringify(envelope), publicKeyB64);
   }
 
   /** Load + decrypt the stored private key for a source. */
   async load(sourceId: string): Promise<PkiKeyLoadResult> {
     const row = await databaseService.sourcePkiKeys.getBySourceId(sourceId);
+    return this.decodeRow(row);
+  }
+
+  /**
+   * Load + decrypt the stored private key for whichever source owns the given
+   * local node identity — used by the decrypt hook to find the DESTINATION
+   * node's key regardless of which source received the DM.
+   */
+  async loadByNodeNum(nodeNum: number): Promise<PkiKeyLoadResult> {
+    const row = await databaseService.sourcePkiKeys.getByNodeNum(nodeNum);
+    return this.decodeRow(row);
+  }
+
+  private decodeRow(row: { encryptedPrivateKey: string } | null): PkiKeyLoadResult {
     if (!row) return { kind: 'none' };
 
     let env: StoredEnvelope;
     try {
       env = JSON.parse(row.encryptedPrivateKey) as StoredEnvelope;
     } catch {
-      logger.warn(`[SourcePkiKeyStore] Malformed envelope for ${sourceId}; treating as rotated`);
+      logger.warn('[SourcePkiKeyStore] Malformed key envelope; treating as rotated');
       return { kind: 'key_rotated', storedKid: '?' };
     }
     if (env.v !== KDF_VERSION || env.kid !== this.currentKid) {
@@ -112,7 +126,7 @@ export class SourcePkiKeyStore {
       const pt = Buffer.concat([decipher.update(Buffer.from(env.ct, 'hex')), decipher.final()]);
       return { kind: 'ok', privateKey: pt };
     } catch (err) {
-      logger.warn(`[SourcePkiKeyStore] Decrypt failed for ${sourceId} despite matching kid: ${(err as Error).message}`);
+      logger.warn(`[SourcePkiKeyStore] Key decrypt failed despite matching kid: ${(err as Error).message}`);
       return { kind: 'key_rotated', storedKid: env.kid };
     }
   }

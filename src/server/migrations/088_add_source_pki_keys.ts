@@ -23,6 +23,7 @@ export const migration = {
     db.exec(`
       CREATE TABLE IF NOT EXISTS ${TABLE} (
         sourceId TEXT PRIMARY KEY,
+        nodeNum INTEGER,
         encryptedPrivateKey TEXT NOT NULL,
         publicKey TEXT,
         createdAt INTEGER NOT NULL,
@@ -44,6 +45,7 @@ export async function runMigration088Postgres(client: any): Promise<void> {
   await client.query(`
     CREATE TABLE IF NOT EXISTS ${TABLE} (
       "sourceId" TEXT PRIMARY KEY,
+      "nodeNum" BIGINT,
       "encryptedPrivateKey" TEXT NOT NULL,
       "publicKey" TEXT,
       "createdAt" BIGINT NOT NULL,
@@ -59,6 +61,7 @@ export async function runMigration088Mysql(pool: any): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${TABLE} (
       sourceId VARCHAR(36) PRIMARY KEY,
+      nodeNum BIGINT,
       encryptedPrivateKey TEXT NOT NULL,
       publicKey VARCHAR(128),
       createdAt BIGINT NOT NULL,

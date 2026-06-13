@@ -5,12 +5,13 @@
  * Stores only the encrypted envelope (see sourcePkiKeyStore); callers never put
  * a raw private key through here. One row per source.
  */
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
 export interface DbSourcePkiKey {
   sourceId: string;
+  nodeNum: number | null;
   encryptedPrivateKey: string;
   publicKey: string | null;
   createdAt: number;
@@ -33,6 +34,23 @@ export class SourcePkiKeysRepository extends BaseRepository {
     return (rows[0] as DbSourcePkiKey) ?? null;
   }
 
+  /**
+   * Get a stored key by the local node identity it belongs to. A PKI DM to node
+   * X can be decrypted by X's key regardless of which source received the
+   * packet, so the decrypt hook looks up by destination nodeNum. If more than
+   * one source holds the same node's key, the most-recently-updated row wins.
+   */
+  async getByNodeNum(nodeNum: number): Promise<DbSourcePkiKey | null> {
+    const { sourcePkiKeys } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(sourcePkiKeys)
+      .where(eq(sourcePkiKeys.nodeNum, nodeNum))
+      .orderBy(desc(sourcePkiKeys.updatedAt))
+      .limit(1);
+    return (rows[0] as DbSourcePkiKey) ?? null;
+  }
+
   /** True when a source has a stored key (cheap existence check). */
   async hasKey(sourceId: string): Promise<boolean> {
     return (await this.getBySourceId(sourceId)) !== null;
@@ -40,9 +58,15 @@ export class SourcePkiKeysRepository extends BaseRepository {
 
   /**
    * Insert or replace the encrypted key for a source. `encryptedPrivateKey` is
-   * the AES-256-GCM envelope JSON, never a raw key.
+   * the AES-256-GCM envelope JSON, never a raw key. `nodeNum` is the source's
+   * local node identity (for destination-keyed decrypt lookups).
    */
-  async upsert(sourceId: string, encryptedPrivateKey: string, publicKey: string | null): Promise<void> {
+  async upsert(
+    sourceId: string,
+    nodeNum: number | null,
+    encryptedPrivateKey: string,
+    publicKey: string | null,
+  ): Promise<void> {
     if (!sourceId) throw new Error('SourcePkiKeysRepository.upsert requires a sourceId');
     const { sourcePkiKeys } = this.tables;
     const now = Date.now();
@@ -50,11 +74,12 @@ export class SourcePkiKeysRepository extends BaseRepository {
     if (existing) {
       await this.db
         .update(sourcePkiKeys)
-        .set({ encryptedPrivateKey, publicKey, updatedAt: now })
+        .set({ nodeNum, encryptedPrivateKey, publicKey, updatedAt: now })
         .where(eq(sourcePkiKeys.sourceId, sourceId));
     } else {
       await this.db.insert(sourcePkiKeys).values({
         sourceId,
+        nodeNum,
         encryptedPrivateKey,
         publicKey,
         createdAt: now,
