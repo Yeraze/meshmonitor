@@ -124,6 +124,9 @@ import {
   autoFavoriteTargetsSqlite, autoFavoriteTargetsPostgres, autoFavoriteTargetsMysql,
   autoFavoriteAssignmentsSqlite, autoFavoriteAssignmentsPostgres, autoFavoriteAssignmentsMysql,
 } from './schema/autoFavoriteTargets.js';
+import {
+  sourcePkiKeysSqlite, sourcePkiKeysPostgres, sourcePkiKeysMysql,
+} from './schema/sourcePkiKeys.js';
 
 /**
  * Runtime table map interface.
@@ -204,6 +207,9 @@ export interface ActiveSchema {
   autoFavoriteTargets: any;
   autoFavoriteAssignments: any;
 
+  // Per-source PKI private keys for DM decryption (issue #3441)
+  sourcePkiKeys: any;
+
   // Allow dynamic access for flexibility
   [key: string]: any;
 }
@@ -258,6 +264,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     estimatedPositions: estimatedPositionsSqlite,
     autoFavoriteTargets: autoFavoriteTargetsSqlite,
     autoFavoriteAssignments: autoFavoriteAssignmentsSqlite,
+    sourcePkiKeys: sourcePkiKeysSqlite,
   },
   postgres: {
     nodes: nodesPostgres,
@@ -305,6 +312,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     estimatedPositions: estimatedPositionsPostgres,
     autoFavoriteTargets: autoFavoriteTargetsPostgres,
     autoFavoriteAssignments: autoFavoriteAssignmentsPostgres,
+    sourcePkiKeys: sourcePkiKeysPostgres,
   },
   mysql: {
     nodes: nodesMysql,
@@ -352,6 +360,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     estimatedPositions: estimatedPositionsMysql,
     autoFavoriteTargets: autoFavoriteTargetsMysql,
     autoFavoriteAssignments: autoFavoriteAssignmentsMysql,
+    sourcePkiKeys: sourcePkiKeysMysql,
   },
 };
 

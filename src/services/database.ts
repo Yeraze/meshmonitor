@@ -38,6 +38,7 @@ import {
   MeshCoreRepository,
   EstimatedPositionsRepository,
   AutoFavoriteTargetsRepository,
+  SourcePkiKeysRepository,
 } from '../db/repositories/index.js';
 import type { EstimatedPosition, EstimatedPositionInput } from '../db/repositories/index.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
@@ -489,6 +490,7 @@ class DatabaseService {
   public meshcoreRepo: MeshCoreRepository | null = null;
   public estimatedPositionsRepo: EstimatedPositionsRepository | null = null;
   public autoFavoriteTargetsRepo: AutoFavoriteTargetsRepository | null = null;
+  public sourcePkiKeysRepo: SourcePkiKeysRepository | null = null;
 
   /**
    * Typed repository accessors — throw if database not initialized.
@@ -532,6 +534,11 @@ class DatabaseService {
   get autoFavoriteTargets(): AutoFavoriteTargetsRepository {
     if (!this.autoFavoriteTargetsRepo) throw new Error('Database not initialized');
     return this.autoFavoriteTargetsRepo;
+  }
+
+  get sourcePkiKeys(): SourcePkiKeysRepository {
+    if (!this.sourcePkiKeysRepo) throw new Error('Database not initialized');
+    return this.sourcePkiKeysRepo;
   }
 
   get auth(): AuthRepository {
@@ -867,6 +874,7 @@ class DatabaseService {
       this.meshcoreRepo = new MeshCoreRepository(drizzleDb, this.drizzleDbType);
       this.estimatedPositionsRepo = new EstimatedPositionsRepository(drizzleDb, this.drizzleDbType);
       this.autoFavoriteTargetsRepo = new AutoFavoriteTargetsRepository(drizzleDb, this.drizzleDbType);
+      this.sourcePkiKeysRepo = new SourcePkiKeysRepository(drizzleDb, this.drizzleDbType);
 
       logger.info('[DatabaseService] Drizzle repositories initialized successfully');
 
