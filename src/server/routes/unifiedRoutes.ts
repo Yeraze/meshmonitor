@@ -406,6 +406,7 @@ router.get('/messages', async (req: Request, res: Response) => {
     type Reception = {
       sourceId: string;
       sourceName: string;
+      sourceType: string;
       hopStart: number | null;
       hopLimit: number | null;
       rxSnr: number | null;
@@ -439,8 +440,114 @@ router.get('/messages', async (req: Request, res: Response) => {
     // multiple sources all heard the same packet.
     const fetchLimit = limit * 2;
 
+    // MeshCore channel identity is index-keyed via the synthesised
+    // `channel-${idx}` pseudo-pubkey (see meshcoreManager / MeshCoreChannelsView).
+    // Returns the channel index a message belongs to, or null for a DM.
+    const meshcoreChannelIndex = (m: { fromPublicKey: string; toPublicKey?: string | null }): number | null => {
+      const probe = (s: string | null | undefined): number | null => {
+        if (s && s.startsWith('channel-')) {
+          const n = parseInt(s.slice('channel-'.length), 10);
+          return Number.isFinite(n) && n >= 0 ? n : null;
+        }
+        return null;
+      };
+      return probe(m.fromPublicKey) ?? probe(m.toPublicKey);
+    };
+
+    // MeshCore messages live in `meshcore_messages` (not the Meshtastic
+    // `messages` table), so they need their own fetch + mapping onto the unified
+    // shape. MeshCore has no nodeNum (identity is a public key) and no mesh
+    // packet id, so we synthesise a per-source dedupKey and leave the numeric
+    // node fields at 0. Channel names resolve through the SAME channels table
+    // the Meshtastic path uses (MeshCore syncs its channels there), so the
+    // `/channels` picker already lists them.
+    const ingestMeshCore = async (source: { id: string; name: string; type: string }): Promise<void> => {
+      const canReadMessages = isAdmin || (user
+        ? await databaseService.checkPermissionAsync(user.id, 'messages', 'read', source.id)
+        : false);
+
+      // Build an index → display-name map for labelling, and (when filtering)
+      // resolve the requested channel name to its index(es) on this source.
+      let chans: Awaited<ReturnType<typeof databaseService.channels.getAllChannels>> = [];
+      try {
+        chans = (await databaseService.channels.getAllChannels(source.id)) ?? [];
+      } catch (err) {
+        logger.warn(`Failed to load MeshCore channels for source ${source.id}:`, err);
+      }
+      const presetName = sourcePresets.get(source.id) ?? null;
+      const nameByIdx = new Map<number, string>();
+      for (const c of chans) {
+        const nm = unifiedChannelDisplayName(c as any, presetName);
+        if (nm) nameByIdx.set((c as any).id as number, nm);
+      }
+
+      let rows: Awaited<ReturnType<typeof databaseService.meshcore.getChannelMessages>>;
+      if (channelName) {
+        const channelNameLower = channelName.toLowerCase();
+        const matchedIdx: number[] = [];
+        for (const [idx, nm] of nameByIdx) {
+          if (nm.toLowerCase() !== channelNameLower) continue;
+          const canRead = canReadMessages || (user
+            ? await databaseService.checkPermissionAsync(user.id, `channel_${idx}`, 'read', source.id)
+            : false);
+          if (canRead) matchedIdx.push(idx);
+        }
+        if (matchedIdx.length === 0) return; // no matching readable channel here
+        const perChannel = await Promise.all(
+          matchedIdx.map((idx) => databaseService.meshcore.getChannelMessages(idx, fetchLimit, source.id)),
+        );
+        rows = perChannel.flat();
+      } else {
+        // No channel filter: include this source's channel + DM traffic. DMs
+        // (and the whole MeshCore feed) ride on the broad messages:read grant.
+        if (!canReadMessages) return;
+        rows = await databaseService.meshcore.getRecentMessages(fetchLimit, source.id);
+      }
+
+      for (const m of rows) {
+        if (before !== undefined && !(m.createdAt < before)) continue;
+        const idx = meshcoreChannelIndex(m);
+        const reception: Reception = {
+          sourceId: source.id,
+          sourceName: source.name,
+          sourceType: source.type,
+          hopStart: null,
+          hopLimit: null,
+          rxSnr: m.snr ?? null,
+          rxRssi: m.rssi ?? null,
+          rxTime: null,
+          timestamp: m.timestamp,
+        };
+        // MeshCore ids are unique within a source; we don't cross-source-dedup
+        // MeshCore (each radio is a distinct receiver), so key by source + id.
+        merged.set(`mc:${source.id}:${m.id}`, {
+          dedupKey: `mc:${source.id}:${m.id}`,
+          packetId: null,
+          requestId: null,
+          fromNodeNum: 0,
+          fromNodeId: m.fromPublicKey,
+          fromNodeLongName: m.fromName ?? undefined,
+          fromNodeShortName: undefined,
+          toNodeNum: 0,
+          toNodeId: m.toPublicKey ?? '',
+          channel: idx ?? -1,
+          channelName: idx != null ? (nameByIdx.get(idx) ?? channelName) : '',
+          text: m.text ?? '',
+          emoji: null,
+          replyId: null,
+          timestamp: m.timestamp,
+          createdAt: m.createdAt,
+          receptions: [reception],
+        });
+      }
+    };
+
     await Promise.all(
       sources.map(async (source) => {
+        if (source.type === 'meshcore') {
+          await ingestMeshCore(source);
+          return;
+        }
         const canReadMessages = isAdmin || (user
           ? await databaseService.checkPermissionAsync(user.id, 'messages', 'read', source.id)
           : false);
@@ -627,6 +734,7 @@ router.get('/messages', async (req: Request, res: Response) => {
           const reception: Reception = {
             sourceId: source.id,
             sourceName: source.name,
+            sourceType: source.type,
             hopStart: m.hopStart ?? null,
             hopLimit: m.hopLimit ?? null,
             rxSnr: m.rxSnr ?? null,

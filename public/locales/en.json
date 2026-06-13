@@ -4611,6 +4611,7 @@
   "unified.messages.channel_option": "#{{name}} ({{count}})",
   "unified.messages.source_filter_aria": "Source filter",
   "unified.messages.all_sources": "All sources",
+  "unified.messages.meshcore_badge": "MeshCore",
   "unified.messages.refresh": "Refresh",
   "unified.messages.sign_in_required": "Sign in to view messages.",
   "unified.messages.failed_channels": "Failed to load channels.",

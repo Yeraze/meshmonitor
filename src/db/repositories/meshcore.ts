@@ -633,6 +633,88 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * Get messages for a specific MeshCore channel index, scoped to a source.
+   *
+   * Channel traffic is index-keyed on the wire, so the manager synthesises
+   * `fromPublicKey = 'channel-${idx}'` on receive and `toPublicKey =
+   * 'channel-${idx}'` on local send. For channel 0 only, pre-phase-2 outbound
+   * rows were stored with a null recipient and a real-pubkey sender, so we also
+   * include any broadcast row (no recipient) whose sender isn't a synthesised
+   * `channel-N` key — mirroring the client-side filter in MeshCoreChannelsView.
+   *
+   * Unlike {@link getRecentMessages} (a single global tail slice shared by every
+   * channel and DM), this returns each channel's own backlog independently, so a
+   * busy channel can't evict another channel's history from the visible window.
+   */
+  async getChannelMessages(
+    channelIdx: number,
+    limit: number = 100,
+    sourceId?: string,
+  ): Promise<DbMeshCoreMessage[]> {
+    const { meshcoreMessages } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(this.channelWhereClause(channelIdx, sourceId))
+      .orderBy(desc(meshcoreMessages.timestamp))
+      .limit(limit);
+    return this.normalizeBigInts(result) as unknown as DbMeshCoreMessage[];
+  }
+
+  /**
+   * Total message count per channel index for a source, e.g. for the channel
+   * list's "N messages" badge. Returns a map keyed by channel index; indices
+   * with no messages are omitted. Uses the same channel-scoping rules as
+   * {@link getChannelMessages}.
+   */
+  async getChannelMessageCounts(
+    channelIndices: number[],
+    sourceId?: string,
+  ): Promise<Record<number, number>> {
+    const { meshcoreMessages } = this.tables;
+    const entries = await Promise.all(
+      channelIndices.map(async (idx) => {
+        const result = await this.db
+          .select({ count: sql<number>`COUNT(*)` })
+          .from(meshcoreMessages)
+          .where(this.channelWhereClause(idx, sourceId));
+        return [idx, Number(result[0]?.count ?? 0)] as const;
+      }),
+    );
+    const counts: Record<number, number> = {};
+    for (const [idx, count] of entries) counts[idx] = count;
+    return counts;
+  }
+
+  /**
+   * Build the WHERE clause that matches a single MeshCore channel index,
+   * optionally scoped to a source. Shared by the per-channel message and count
+   * queries so they stay in lockstep (incl. the channel-0 legacy null-recipient
+   * rule that mirrors the client-side filter in MeshCoreChannelsView).
+   */
+  private channelWhereClause(channelIdx: number, sourceId?: string): SQL | undefined {
+    const { meshcoreMessages } = this.tables;
+    const key = `channel-${channelIdx}`;
+    const channelMatch =
+      channelIdx === 0
+        ? or(
+            eq(meshcoreMessages.fromPublicKey, key),
+            eq(meshcoreMessages.toPublicKey, key),
+            and(
+              isNull(meshcoreMessages.toPublicKey),
+              sql`${meshcoreMessages.fromPublicKey} NOT LIKE 'channel-%'`,
+            ),
+          )
+        : or(
+            eq(meshcoreMessages.fromPublicKey, key),
+            eq(meshcoreMessages.toPublicKey, key),
+          );
+    return sourceId
+      ? and(eq(meshcoreMessages.sourceId, sourceId), channelMatch)
+      : channelMatch;
+  }
+
+  /**
    * Get broadcast messages (no toPublicKey)
    */
   async getBroadcastMessages(limit: number = 50): Promise<DbMeshCoreMessage[]> {

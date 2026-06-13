@@ -257,6 +257,19 @@ button.unified-source-pill.is-active {
   font-weight: 600;
 }
 
+/* Protocol badge appended inside a source tag to mark MeshCore traffic, which
+   otherwise looks identical to Meshtastic in the unified feed. */
+.unified-msg-card__proto-badge {
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: color-mix(in srgb, currentColor 18%, transparent);
+}
+
 .unified-msg-card__channel {
   color: var(--ctp-subtext0);
   font-size: 12px;
