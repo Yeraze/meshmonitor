@@ -48,6 +48,8 @@ const meshcoreManager = {
   sendMessage: vi.fn().mockResolvedValue(true),
   sendAdvert: vi.fn().mockResolvedValue(true),
   refreshContacts: vi.fn().mockResolvedValue(new Map()),
+  removeContact: vi.fn().mockResolvedValue(true),
+  forgetLocalContact: vi.fn().mockResolvedValue(true),
   resetContactPath: vi.fn().mockResolvedValue(true),
   discoverContactPath: vi.fn().mockResolvedValue(true),
   discoverNodes: vi.fn().mockResolvedValue({ returned: 0, newCount: 0 }),
@@ -1175,6 +1177,69 @@ describe('MeshCore Routes', () => {
       expect(response.status).toBe(200);
       expect(upsertNode).not.toHaveBeenCalled();
       expect(setNodeTelemetryConfig).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('DELETE /api/sources/test-source/meshcore/contacts/:publicKey', () => {
+    const VALID_PUBKEY = 'a'.repeat(64);
+    const MALFORMED_PUBKEY = 'abcd1234'; // short / not 64-char hex (issue #3443)
+
+    beforeEach(() => {
+      meshcoreManager.removeContact.mockReset();
+      meshcoreManager.removeContact.mockResolvedValue(true);
+      meshcoreManager.forgetLocalContact.mockReset();
+      meshcoreManager.forgetLocalContact.mockResolvedValue(true);
+    });
+
+    it('requires authentication', async () => {
+      const response = await request(app)
+        .delete(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}`);
+      expect(response.status).toBe(401);
+    });
+
+    it('removes a valid contact via the device path (no local fallback)', async () => {
+      const response = await authenticatedAgent
+        .delete(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}`);
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(meshcoreManager.removeContact).toHaveBeenCalledWith(VALID_PUBKEY);
+      expect(meshcoreManager.forgetLocalContact).not.toHaveBeenCalled();
+    });
+
+    it('removes a malformed/short public key (no format guard — issue #3443)', async () => {
+      // Device-side removal can't match a ghost/truncated key, so it returns
+      // false; the route must fall back to forgetting the local DB row.
+      meshcoreManager.removeContact.mockResolvedValueOnce(false);
+      const response = await authenticatedAgent
+        .delete(`/api/sources/test-source/meshcore/contacts/${MALFORMED_PUBKEY}`);
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(meshcoreManager.removeContact).toHaveBeenCalledWith(MALFORMED_PUBKEY);
+      expect(meshcoreManager.forgetLocalContact).toHaveBeenCalledWith(MALFORMED_PUBKEY);
+    });
+
+    it('falls back to local cleanup when the device removal fails for any key', async () => {
+      meshcoreManager.removeContact.mockResolvedValueOnce(false);
+      const response = await authenticatedAgent
+        .delete(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}`);
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(meshcoreManager.forgetLocalContact).toHaveBeenCalledWith(VALID_PUBKEY);
+    });
+
+    it('returns 409 only when both device removal and local cleanup fail', async () => {
+      meshcoreManager.removeContact.mockResolvedValueOnce(false);
+      meshcoreManager.forgetLocalContact.mockResolvedValueOnce(false);
+      const response = await authenticatedAgent
+        .delete(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}`);
+      expect(response.status).toBe(409);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('returns 404 when the source has no registered manager', async () => {
+      const response = await authenticatedAgent
+        .delete(`/api/sources/no-such-source/meshcore/contacts/${VALID_PUBKEY}`);
+      expect(response.status).toBe(404);
     });
   });
 
