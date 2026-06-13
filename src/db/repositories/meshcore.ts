@@ -633,6 +633,53 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * Get messages for a specific MeshCore channel index, scoped to a source.
+   *
+   * Channel traffic is index-keyed on the wire, so the manager synthesises
+   * `fromPublicKey = 'channel-${idx}'` on receive and `toPublicKey =
+   * 'channel-${idx}'` on local send. For channel 0 only, pre-phase-2 outbound
+   * rows were stored with a null recipient and a real-pubkey sender, so we also
+   * include any broadcast row (no recipient) whose sender isn't a synthesised
+   * `channel-N` key — mirroring the client-side filter in MeshCoreChannelsView.
+   *
+   * Unlike {@link getRecentMessages} (a single global tail slice shared by every
+   * channel and DM), this returns each channel's own backlog independently, so a
+   * busy channel can't evict another channel's history from the visible window.
+   */
+  async getChannelMessages(
+    channelIdx: number,
+    limit: number = 100,
+    sourceId?: string,
+  ): Promise<DbMeshCoreMessage[]> {
+    const { meshcoreMessages } = this.tables;
+    const key = `channel-${channelIdx}`;
+    const channelMatch =
+      channelIdx === 0
+        ? or(
+            eq(meshcoreMessages.fromPublicKey, key),
+            eq(meshcoreMessages.toPublicKey, key),
+            and(
+              isNull(meshcoreMessages.toPublicKey),
+              sql`${meshcoreMessages.fromPublicKey} NOT LIKE 'channel-%'`,
+            ),
+          )
+        : or(
+            eq(meshcoreMessages.fromPublicKey, key),
+            eq(meshcoreMessages.toPublicKey, key),
+          );
+    const whereClause: SQL | undefined = sourceId
+      ? and(eq(meshcoreMessages.sourceId, sourceId), channelMatch)
+      : channelMatch;
+    const result = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(whereClause)
+      .orderBy(desc(meshcoreMessages.timestamp))
+      .limit(limit);
+    return this.normalizeBigInts(result) as unknown as DbMeshCoreMessage[];
+  }
+
+  /**
    * Get broadcast messages (no toPublicKey)
    */
   async getBroadcastMessages(limit: number = 50): Promise<DbMeshCoreMessage[]> {

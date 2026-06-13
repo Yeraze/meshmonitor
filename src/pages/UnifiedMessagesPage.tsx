@@ -38,6 +38,8 @@ type TFn = (key: string, options?: Record<string, unknown>) => string;
 interface Reception {
   sourceId: string;
   sourceName: string;
+  /** Source protocol/type, e.g. 'meshtastic_tcp' | 'mqtt_bridge' | 'meshcore'. */
+  sourceType?: string;
   hopStart: number | null;
   hopLimit: number | null;
   rxSnr: number | null;
@@ -523,6 +525,11 @@ export default function UnifiedMessagesPage() {
                       title={t('unified.messages.heard_by_source', { name: r.sourceName })}
                     >
                       {r.sourceName}
+                      {r.sourceType === 'meshcore' && (
+                        <span className="unified-msg-card__proto-badge">
+                          {t('unified.messages.meshcore_badge', 'MeshCore')}
+                        </span>
+                      )}
                     </span>
                   ))}
                   {receptionCount > 1 && (
