@@ -260,7 +260,7 @@ describe('MeshCoreChannelsView — per-channel message filter', () => {
   });
 });
 
-describe('MeshCoreChannelsView — per-channel backlog fetch (#3441)', () => {
+describe('MeshCoreChannelsView — per-channel backlog fetch (#3442)', () => {
   // Route csrfFetch by URL so the channel-list and per-channel-messages
   // endpoints can return different payloads.
   function routedFetch(messagesByChannel: Record<number, MeshCoreMessage[]>, countsByChannel?: Record<number, number>) {

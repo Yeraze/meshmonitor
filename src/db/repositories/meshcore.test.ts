@@ -547,7 +547,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     expect(rows[0]).toEqual({ sourceId: 'src-b', name: 'B' });
   });
 
-  // ============ Per-channel message retrieval (#3441) ============
+  // ============ Per-channel message retrieval (#3442) ============
   //
   // getChannelMessages returns each channel's own backlog, scoped to a source,
   // independent of the global recent-tail that getRecentMessages serves.
