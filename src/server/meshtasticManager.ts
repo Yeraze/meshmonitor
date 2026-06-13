@@ -17,6 +17,8 @@ import { notificationService } from './services/notificationService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import packetLogService from './services/packetLogService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
+import { pkiDecryptionService } from './services/pkiDecryptionService.js';
+import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from './services/sourcePkiKeyStore.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { waypointService } from './services/waypointService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
@@ -1445,6 +1447,12 @@ class MeshtasticManager implements ISourceManager {
           this.initializeLocalNodeInfoFromDatabase().catch(e =>
             logger.error('❌ Error initializing local node info:', e));
         }
+
+        // Auto-extract the local node's PKI private key (if the operator enabled
+        // PKI DM decryption for this source) so DMs to this node can be decrypted
+        // server-side and surfaced in the unified view (#3441).
+        this.maybeExtractAndStorePkiKey().catch(e =>
+          logger.warn(`[MeshtasticManager:${this.sourceId}] PKI key extraction failed: ${(e as Error).message}`));
 
         // Stagger scheduler starts to avoid overwhelming the device (#2474)
         // Each scheduler gets its own delay so outbound requests are spread out
@@ -4525,6 +4533,79 @@ class MeshtasticManager implements ISourceManager {
    * Private key is only available for the local node from the security config
    * Returns base64-encoded keys
    */
+  /**
+   * When PKI DM decryption is enabled for this source, extract the local node's
+   * private key from the device's security config and persist it encrypted so
+   * incoming PKI DMs can be decrypted server-side (#3441). No-op when the
+   * setting is off, the device didn't expose a private key, or SESSION_SECRET is
+   * auto-generated (the store refuses to persist an unrecoverable key).
+   */
+  async maybeExtractAndStorePkiKey(): Promise<void> {
+    // Global master switch gates everything (#3441).
+    if (!(await isPkiDmDecryptionGloballyEnabled())) return;
+    const enabled = await databaseService.settings.getSettingForSource(this.sourceId, 'pkiDmDecryptionEnabled');
+    if (enabled !== 'true') return;
+    const { publicKey, privateKey } = this.getSecurityKeys();
+    if (!privateKey) {
+      logger.info(`[MeshtasticManager:${this.sourceId}] PKI DM decryption enabled but device exposed no private key`);
+      return;
+    }
+    const priv = Buffer.from(privateKey, 'base64');
+    if (priv.length !== 32) {
+      logger.warn(`[MeshtasticManager:${this.sourceId}] Device private key is ${priv.length} bytes (expected 32); skipping`);
+      return;
+    }
+    const store = getSourcePkiKeyStore();
+    if (!store.capability.canStore) {
+      logger.warn(`[MeshtasticManager:${this.sourceId}] Cannot persist PKI key: ${store.capability.reason}`);
+      return;
+    }
+    // Record the local node identity so a DM addressed to this node can be
+    // decrypted by this key regardless of which source received the packet.
+    const nodeNum = this.localNodeInfo?.nodeNum ?? null;
+    await store.store(this.sourceId, nodeNum, priv, publicKey);
+    logger.info(`🔑 [MeshtasticManager:${this.sourceId}] Stored local PKI private key (node ${nodeNum}) for DM decryption`);
+  }
+
+  /**
+   * Try to PKI-decrypt a unicast direct message addressed to node `toNum`, using
+   * that node's stored private key (held by whichever source owns it) and the
+   * sender's public key from this source's node table. Returns the decoded
+   * {portnum, payload} on success, or null when there's no key for the
+   * destination, no sender public key, or the MAC doesn't verify.
+   */
+  private async tryPkiDecryptDirectMessage(
+    encrypted: Uint8Array,
+    packetId: number,
+    fromNum: number,
+    toNum: number,
+  ): Promise<{ portnum: number; payload: Uint8Array } | null> {
+    // Global master switch (cached, cheap) — when off, do nothing. This keeps
+    // the hot path free of DB reads on instances not using the feature.
+    if (!(await isPkiDmDecryptionGloballyEnabled())) return null;
+    // Destination node's private key — the row's presence is also the operator's
+    // per-source opt-in (it's only stored when pkiDmDecryptionEnabled).
+    const loaded = await getSourcePkiKeyStore().loadByNodeNum(toNum);
+    if (loaded.kind !== 'ok') return null;
+
+    // Sender's public key, learned from its NodeInfo broadcast (base64).
+    const senderNode = await databaseService.nodes.getNode(fromNum, this.sourceId);
+    const senderPubB64 = (senderNode as any)?.publicKey;
+    if (!senderPubB64) return null;
+    const senderPub = Buffer.from(senderPubB64, 'base64');
+    if (senderPub.length !== 32) return null;
+
+    const result = pkiDecryptionService.tryDecryptDirectMessage(
+      loaded.privateKey,
+      senderPub,
+      packetId,
+      fromNum,
+      encrypted,
+    );
+    if (!result.success || result.portnum === undefined) return null;
+    return { portnum: result.portnum, payload: result.payload ?? new Uint8Array() };
+  }
+
   getSecurityKeys(): { publicKey: string | null; privateKey: string | null } {
     const security = this.actualDeviceConfig?.security;
     let publicKey: string | null = null;
@@ -4940,6 +5021,29 @@ class MeshtasticManager implements ISourceManager {
     } else if (meshPacket.decoded) {
       // Packet was decrypted by the node
       decryptedBy = 'node';
+    }
+
+    // PKI direct-message decryption (#3441): if the packet is STILL encrypted and
+    // is a unicast addressed to a node whose private key MeshMonitor holds, decrypt
+    // it server-side. This surfaces DMs that the receiving radio didn't decode —
+    // primarily PKI DMs relayed (still encrypted) through MQTT bridge/broker
+    // sources, addressed to one of our nodes connected on another source.
+    if (!meshPacket.decoded && meshPacket.encrypted) {
+      const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
+      const toNum = meshPacket.to ? Number(meshPacket.to) : 0;
+      const isUnicast = toNum > 0 && toNum !== 0xffffffff;
+      if (isUnicast && fromNum > 0) {
+        try {
+          const pki = await this.tryPkiDecryptDirectMessage(meshPacket.encrypted, meshPacket.id ?? 0, fromNum, toNum);
+          if (pki) {
+            meshPacket.decoded = { portnum: pki.portnum, payload: pki.payload };
+            decryptedBy = 'server';
+            logger.info(`🔓🔑 Server PKI-decrypted DM ${meshPacket.id} from ${fromNum} to ${toNum} (portnum=${pki.portnum})`);
+          }
+        } catch (err) {
+          logger.debug(`PKI decryption attempt failed for packet ${meshPacket.id}:`, err);
+        }
+      }
     }
 
     // Log packet to packet log (if enabled)

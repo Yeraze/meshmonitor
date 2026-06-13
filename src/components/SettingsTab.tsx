@@ -12,6 +12,7 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { getAllTilesets, type TilesetId } from '../config/tilesets';
 import PacketMonitorSettings from './PacketMonitorSettings';
 import ChannelSoundPicker from './ChannelSoundPicker';
+import PkiDmGlobalToggle from './settings/PkiDmGlobalToggle';
 import SystemBackupSection from './configuration/SystemBackupSection';
 import DatabaseMaintenanceSection from './configuration/DatabaseMaintenanceSection';
 import AutoUpgradeTestSection from './configuration/AutoUpgradeTestSection';
@@ -94,6 +95,7 @@ interface SettingsTabProps {
 
 const GLOBAL_SECTIONS = new Set([
   'settings-language', 'settings-units', 'settings-appearance', 'settings-link-previews', 'settings-map',
+  'settings-security',
   'settings-apprise-server', 'settings-backup', 'settings-channel-database',
   'settings-maintenance', 'settings-auto-upgrade', 'settings-analytics',
   // Position estimation is a single global, cross-source batch job (issue
@@ -1091,6 +1093,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         { id: 'settings-node-display', label: t('settings.node_display') },
         { id: 'settings-telemetry', label: t('settings.telemetry') },
         { id: 'settings-notifications', label: t('settings.notifications_and_security') },
+        { id: 'settings-security', label: t('settings.security', 'Security') },
         { id: 'settings-packet-monitor', label: t('settings.packet_monitor') },
         { id: 'settings-solar', label: t('settings.solar_monitoring') },
         ...(isAdmin ? [{ id: 'settings-apprise-server', label: t('settings.apprise_server_section', 'Apprise API Server') }] : []),
@@ -1669,6 +1672,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               onChange={(e) => setLocalFavoriteTelemetryStorageDays(Math.min(90, Math.max(7, parseInt(e.target.value) || 7)))}
               className="setting-input"
             />
+          </div>
+        </div>}
+
+        {show('settings-security') && <div id="settings-security" className="settings-section">
+          <h3>{t('settings.security', 'Security')}</h3>
+          <div className="setting-item">
+            <PkiDmGlobalToggle />
           </div>
         </div>}
 

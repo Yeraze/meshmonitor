@@ -12,6 +12,7 @@ import waypointRoutes from './waypoints.js';
 import { filterNodesByChannelPermission, maskNodeLocationByChannel, maskTraceroutesByChannel, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { PortNum, modemPresetChannelName } from '../constants/meshtastic.js';
 import { transformChannel } from '../utils/channelView.js';
+import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from '../services/sourcePkiKeyStore.js';
 import type { ResourceType } from '../../types/permission.js';
 
 const router = Router();
@@ -866,6 +867,64 @@ router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) =>
 
 // ============ PER-SOURCE DATA ENDPOINTS ============
 // These scope all queries to the given source, forming the backend for Phase 4 frontend.
+
+// ---- PKI direct-message decryption (issue #3441) ----
+// Per-source opt-in: when enabled, MeshMonitor stores the source's local-node
+// X25519 private key (encrypted) and decrypts PKI DMs addressed to that node —
+// including ones relayed still-encrypted via MQTT — so they surface in the
+// unified view. Gated by per-source `configuration` permission.
+
+// GET /api/sources/:id/pki-dm/status
+router.get('/:id/pki-dm/status', requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const source = await databaseService.sources.getSource(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Source not found' });
+    const enabled = (await databaseService.settings.getSettingForSource(source.id, 'pkiDmDecryptionEnabled')) === 'true';
+    const globallyEnabled = await isPkiDmDecryptionGloballyEnabled();
+    const store = getSourcePkiKeyStore();
+    const keyStored = await store.hasStored(source.id);
+    res.json({ enabled, globallyEnabled, keyStored, canStore: store.capability.canStore, reason: store.capability.reason ?? null });
+  } catch (error) {
+    logger.error('[API] PKI DM status error:', error);
+    res.status(500).json({ error: 'Failed to get PKI DM decryption status' });
+  }
+});
+
+// POST /api/sources/:id/pki-dm  body: { enabled: boolean }
+router.post('/:id/pki-dm', requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const source = await databaseService.sources.getSource(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Source not found' });
+    if (source.type === 'meshcore') {
+      return res.status(400).json({ error: 'PKI DM decryption applies to Meshtastic sources only' });
+    }
+    const enabled = req.body?.enabled === true;
+    const store = getSourcePkiKeyStore();
+    if (enabled && !(await isPkiDmDecryptionGloballyEnabled())) {
+      return res.status(400).json({ error: 'PKI DM decryption is disabled globally — enable it in Settings first' });
+    }
+    if (enabled && !store.capability.canStore) {
+      return res.status(400).json({ error: store.capability.reason || 'Cannot store PKI keys: SESSION_SECRET is not configured' });
+    }
+    await databaseService.settings.setSourceSetting(source.id, 'pkiDmDecryptionEnabled', enabled ? 'true' : 'false');
+    if (enabled) {
+      // Extract the key now if the source is connected; otherwise it happens on
+      // the next configComplete.
+      const mgr = sourceManagerRegistry.getManager(source.id);
+      if (mgr instanceof MeshtasticManager) {
+        await mgr.maybeExtractAndStorePkiKey();
+      }
+    } else {
+      // Forget the stored key so decryption stops immediately.
+      await store.clear(source.id);
+    }
+    const keyStored = await store.hasStored(source.id);
+    res.json({ success: true, enabled, keyStored });
+  } catch (error) {
+    logger.error('[API] PKI DM toggle error:', error);
+    res.status(500).json({ error: 'Failed to update PKI DM decryption' });
+  }
+});
 
 // GET /api/sources/:id/nodes — all nodes for a source
 // Uses nodes:read permission (not sources:read) so anonymous users with channel viewOnMap

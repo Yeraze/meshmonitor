@@ -45,3 +45,5 @@ export { EstimatedPositionsRepository } from './estimatedPositions.js';
 export type { EstimatedPosition, EstimatedPositionInput } from './estimatedPositions.js';
 export { AutoFavoriteTargetsRepository } from './autoFavoriteTargets.js';
 export type { AutoFavoriteTargetInput } from './autoFavoriteTargets.js';
+export { SourcePkiKeysRepository } from './sourcePkiKeys.js';
+export type { DbSourcePkiKey } from './sourcePkiKeys.js';

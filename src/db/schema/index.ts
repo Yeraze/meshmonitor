@@ -47,3 +47,6 @@ export * from './estimatedPositions.js';
 
 // Automated Remote Favorites Management (issue #2608)
 export * from './autoFavoriteTargets.js';
+
+// Per-source PKI private keys for server-side DM decryption (issue #3441)
+export * from './sourcePkiKeys.js';
