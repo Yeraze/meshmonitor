@@ -17,6 +17,7 @@ import { notificationService } from './services/notificationService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import packetLogService from './services/packetLogService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
+import { getSourcePkiKeyStore } from './services/sourcePkiKeyStore.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { waypointService } from './services/waypointService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
@@ -1445,6 +1446,12 @@ class MeshtasticManager implements ISourceManager {
           this.initializeLocalNodeInfoFromDatabase().catch(e =>
             logger.error('❌ Error initializing local node info:', e));
         }
+
+        // Auto-extract the local node's PKI private key (if the operator enabled
+        // PKI DM decryption for this source) so DMs to this node can be decrypted
+        // server-side and surfaced in the unified view (#3441).
+        this.maybeExtractAndStorePkiKey().catch(e =>
+          logger.warn(`[MeshtasticManager:${this.sourceId}] PKI key extraction failed: ${(e as Error).message}`));
 
         // Stagger scheduler starts to avoid overwhelming the device (#2474)
         // Each scheduler gets its own delay so outbound requests are spread out
@@ -4525,6 +4532,35 @@ class MeshtasticManager implements ISourceManager {
    * Private key is only available for the local node from the security config
    * Returns base64-encoded keys
    */
+  /**
+   * When PKI DM decryption is enabled for this source, extract the local node's
+   * private key from the device's security config and persist it encrypted so
+   * incoming PKI DMs can be decrypted server-side (#3441). No-op when the
+   * setting is off, the device didn't expose a private key, or SESSION_SECRET is
+   * auto-generated (the store refuses to persist an unrecoverable key).
+   */
+  private async maybeExtractAndStorePkiKey(): Promise<void> {
+    const enabled = await databaseService.settings.getSettingForSource(this.sourceId, 'pkiDmDecryptionEnabled');
+    if (enabled !== 'true') return;
+    const { publicKey, privateKey } = this.getSecurityKeys();
+    if (!privateKey) {
+      logger.info(`[MeshtasticManager:${this.sourceId}] PKI DM decryption enabled but device exposed no private key`);
+      return;
+    }
+    const priv = Buffer.from(privateKey, 'base64');
+    if (priv.length !== 32) {
+      logger.warn(`[MeshtasticManager:${this.sourceId}] Device private key is ${priv.length} bytes (expected 32); skipping`);
+      return;
+    }
+    const store = getSourcePkiKeyStore();
+    if (!store.capability.canStore) {
+      logger.warn(`[MeshtasticManager:${this.sourceId}] Cannot persist PKI key: ${store.capability.reason}`);
+      return;
+    }
+    await store.store(this.sourceId, priv, publicKey);
+    logger.info(`🔑 [MeshtasticManager:${this.sourceId}] Stored local PKI private key for DM decryption`);
+  }
+
   getSecurityKeys(): { publicKey: string | null; privateKey: string | null } {
     const security = this.actualDeviceConfig?.security;
     let publicKey: string | null = null;

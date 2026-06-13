@@ -56,6 +56,7 @@ export const VALID_SETTINGS_KEYS = [
   'autoWelcomeWaitForName',
   'autoWelcomeMaxHops',
   'autoWelcomeDelay',
+  'pkiDmDecryptionEnabled',
   'autoResponderEnabled',
   'autoResponderTriggers',
   'autoResponderSkipIncompleteNodes',
@@ -310,6 +311,8 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'autoWelcomeTarget',
   'autoWelcomeWaitForName',
   'autoWelcomeDelay',
+  // PKI direct-message decryption (issue #3441) — per source
+  'pkiDmDecryptionEnabled',
   // MeshCore auto-pathfinding
   'meshcoreAutoPathfindingEnabled',
   'meshcoreAutoPathfindingPathDiscoveryEnabled',
