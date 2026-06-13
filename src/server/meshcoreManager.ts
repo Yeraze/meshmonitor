@@ -2152,6 +2152,29 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
+   * Forget a contact locally: delete its meshcore_nodes row and in-memory entry
+   * and fire a contact-updated push — WITHOUT the device round-trip that
+   * {@link removeContact} requires. This is the cleanup fallback for malformed
+   * or "ghost" rows (e.g. a room server that landed in the DB twice, once with a
+   * truncated public key) that the device's `remove_contact` can't match, so the
+   * stale entry can still be removed from MeshMonitor. Works while disconnected
+   * and regardless of device type.
+   */
+  async forgetLocalContact(publicKey: string): Promise<boolean> {
+    this.contacts.delete(publicKey);
+    try {
+      await databaseService.meshcore.deleteNode(publicKey, this.sourceId);
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] forgetLocalContact deleteNode failed: ${(err as Error).message}`);
+      return false;
+    }
+    this.emit('contact_removed', { sourceId: this.sourceId, publicKey });
+    dataEventEmitter.emitMeshCoreContactUpdated({ publicKey, removed: true } as any, this.sourceId);
+    logger.info(`[MeshCore:${this.sourceId}] Forgot local contact ${publicKey.substring(0, 16)}…`);
+    return true;
+  }
+
+  /**
    * Export a contact as a signed advert blob (for QR/URL/NFC sharing).
    * Pass null publicKey to export the local node's own identity.
    * Returns the raw advert bytes as a number array, or null on failure.
