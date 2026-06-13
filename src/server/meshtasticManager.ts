@@ -4540,7 +4540,7 @@ class MeshtasticManager implements ISourceManager {
    * setting is off, the device didn't expose a private key, or SESSION_SECRET is
    * auto-generated (the store refuses to persist an unrecoverable key).
    */
-  private async maybeExtractAndStorePkiKey(): Promise<void> {
+  async maybeExtractAndStorePkiKey(): Promise<void> {
     const enabled = await databaseService.settings.getSettingForSource(this.sourceId, 'pkiDmDecryptionEnabled');
     if (enabled !== 'true') return;
     const { publicKey, privateKey } = this.getSecurityKeys();
