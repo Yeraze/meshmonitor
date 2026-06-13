@@ -610,4 +610,25 @@ describe('MeshCoreRepository — sourceId stamping', () => {
       expect(rows.map(r => r.id)).toEqual(['c1-4', 'c1-3']);
     });
   });
+
+  describe('getChannelMessageCounts', () => {
+    it('returns an accurate per-channel total, source-scoped, ignoring the pool cap', async () => {
+      const insert = (id: string, from: string, to: string | null, ts: number, src: string) =>
+        repo.insertMessage(
+          { id, fromPublicKey: from, toPublicKey: to, text: id, timestamp: ts, createdAt: ts },
+          src,
+        );
+      // channel 0: 3 (2 received + 1 legacy broadcast). channel 1: 1. DM: excluded.
+      await insert('a', 'channel-0', null, 1, 'src-a');
+      await insert('b', 'channel-0', null, 2, 'src-a');
+      await insert('c', 'x'.repeat(64), null, 3, 'src-a'); // channel-0 legacy
+      await insert('d', 'channel-1', null, 4, 'src-a');
+      await insert('e', 'cafe'.repeat(16), 'beef'.repeat(16), 5, 'src-a'); // DM
+      // Other source must not leak into the counts.
+      await insert('f', 'channel-1', null, 6, 'src-b');
+
+      const counts = await repo.getChannelMessageCounts([0, 1, 2], 'src-a');
+      expect(counts).toEqual({ 0: 3, 1: 1, 2: 0 });
+    });
+  });
 });

@@ -3414,6 +3414,15 @@ class MeshCoreManager extends EventEmitter {
     }));
   }
 
+  /**
+   * Total persisted message count per channel index, for the channel-list
+   * badges. Accurate per channel (not the capped in-memory pool), so quiet
+   * channels don't read as empty next to a busy one.
+   */
+  async getChannelMessageCounts(channelIndices: number[]): Promise<Record<number, number>> {
+    return databaseService.meshcore.getChannelMessageCounts(channelIndices, this.sourceId);
+  }
+
   isConnected(): boolean {
     return this.connected;
   }

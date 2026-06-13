@@ -263,13 +263,16 @@ describe('MeshCoreChannelsView — per-channel message filter', () => {
 describe('MeshCoreChannelsView — per-channel backlog fetch (#3441)', () => {
   // Route csrfFetch by URL so the channel-list and per-channel-messages
   // endpoints can return different payloads.
-  function routedFetch(messagesByChannel: Record<number, MeshCoreMessage[]>) {
+  function routedFetch(messagesByChannel: Record<number, MeshCoreMessage[]>, countsByChannel?: Record<number, number>) {
     return vi.fn((url: string) => {
       if (url.includes('/api/channels/all')) {
         return Promise.resolve(jsonResponse([
           { id: 0, name: 'Public' },
           { id: 1, name: 'Town' },
         ]));
+      }
+      if (url.includes('/messages/channel-counts')) {
+        return Promise.resolve(jsonResponse({ success: true, counts: countsByChannel ?? {} }));
       }
       const m = url.match(/\/messages\/channel\/(\d+)/);
       if (m) {
@@ -334,6 +337,31 @@ describe('MeshCoreChannelsView — per-channel backlog fetch (#3441)', () => {
     expect(screen.getByText('fresh live')).toBeTruthy();
     // Deduped — only one node for the shared id.
     expect(screen.getAllByText('shared')).toHaveLength(1);
+  });
+
+  it('shows accurate per-channel counts from the counts endpoint, even for an inactive busy channel', async () => {
+    // Public (active, idx 0) is quiet; Town (inactive, idx 1) has many messages
+    // that are NOT in the shared live pool. The badge must still show Town's
+    // real count from the counts endpoint, not 0.
+    csrfFetchMock.mockImplementation(routedFetch(
+      { 0: [{ id: 'h0', fromPublicKey: 'channel-0', text: 'just one', timestamp: 1 }] },
+      { 0: 1, 1: 137 },
+    ));
+
+    render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('# Town')).toBeTruthy());
+    // Town's badge reflects the 137 persisted messages despite an empty live pool.
+    await waitFor(() => expect(screen.getByText('137 messages')).toBeTruthy());
   });
 
   it('switches the fetched backlog when a different channel is selected', async () => {
