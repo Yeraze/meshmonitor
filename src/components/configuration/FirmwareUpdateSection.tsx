@@ -121,14 +121,21 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
       // sources that can't be reached via the OTA CLI's `--host` (BLE, serial,
       // virtual, mqtt, meshcore). `null` means single-source legacy mode.
       sourceType: (config?.meshtasticSourceType ?? null) as string | null,
+      // A bridged node (serial/BLE-only radio fronted by a TCP proxy) reports no
+      // native WiFi/Ethernet and cannot be flashed over the air, even though the
+      // source is technically TCP. Detected server-side from DeviceMetadata.
+      isBridged: (config?.deviceMetadata?.isBridged ?? false) as boolean,
     };
   }, [pollData]);
 
-  // OTA firmware updates require a reachable TCP host. A null sourceType is
-  // legacy single-source mode and trusts MESHTASTIC_NODE_IP.
+  // OTA firmware updates require a reachable TCP host AND a node that actually
+  // has a native IP transport. A null sourceType is legacy single-source mode and
+  // trusts MESHTASTIC_NODE_IP. A bridged node is reached over TCP but the radio
+  // itself can't serve an OTA endpoint, so it is excluded.
   const isOtaSupported =
     (gatewayInfo.sourceType === null || gatewayInfo.sourceType === 'meshtastic_tcp') &&
-    !!gatewayInfo.gatewayIp;
+    !!gatewayInfo.gatewayIp &&
+    !gatewayInfo.isBridged;
 
   // Issue #3413: a node is considered recovered/reachable only when MeshMonitor
   // currently has a live connection AND the node is answering. This gates the
@@ -475,7 +482,12 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
           }}
         >
           <span className="setting-description">
-            {gatewayInfo.sourceType && gatewayInfo.sourceType !== 'meshtastic_tcp'
+            {gatewayInfo.isBridged
+              ? t(
+                  'firmware.ota_unavailable_bridged',
+                  'This node is reached through a serial/BLE-to-TCP bridge (it reports no native WiFi or Ethernet), so it cannot be flashed over the air. Update it directly via USB instead.'
+                )
+              : gatewayInfo.sourceType && gatewayInfo.sourceType !== 'meshtastic_tcp'
               ? t(
                   'firmware.ota_unavailable_non_tcp',
                   'OTA firmware update is only available for TCP sources. The active source ({{type}}) cannot be flashed from MeshMonitor.',
@@ -985,10 +997,15 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                         disabled={!isOtaSupported}
                         title={
                           !isOtaSupported
-                            ? t(
-                                'firmware.ota_unavailable_tooltip',
-                                'OTA firmware update requires a TCP source with a configured host.'
-                              )
+                            ? gatewayInfo.isBridged
+                              ? t(
+                                  'firmware.ota_unavailable_bridged_tooltip',
+                                  'This bridged node cannot be flashed over the air. Update it directly via USB.'
+                                )
+                              : t(
+                                  'firmware.ota_unavailable_tooltip',
+                                  'OTA firmware update requires a TCP source with a configured host.'
+                                )
                             : undefined
                         }
                         style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem' }}

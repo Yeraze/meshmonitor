@@ -28,6 +28,7 @@ const {
   mockIsStepRunning,
   mockHasFlashIncompleteMarker,
   mockClearFlashIncompleteMarker,
+  mockIsLocalNodeBridged,
 } = vi.hoisted(() => ({
   mockGetStatus: vi.fn(),
   mockGetChannel: vi.fn(),
@@ -53,6 +54,7 @@ const {
   mockIsStepRunning: vi.fn().mockReturnValue(false),
   mockHasFlashIncompleteMarker: vi.fn().mockReturnValue(false),
   mockClearFlashIncompleteMarker: vi.fn().mockReturnValue(0),
+  mockIsLocalNodeBridged: vi.fn().mockReturnValue(false),
 }));
 
 // Mock auth middleware to inject admin user
@@ -118,6 +120,7 @@ vi.mock('../services/firmwareUpdateService.js', () => ({
 vi.mock('../meshtasticManager.js', () => ({
   default: {
     getLocalNodeInfo: vi.fn().mockReturnValue(null),
+    isLocalNodeBridged: mockIsLocalNodeBridged,
   },
 }));
 
@@ -156,6 +159,9 @@ describe('firmwareUpdateRoutes', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks resets call history but not implementations, so restore the
+    // default (not bridged) — the bridged-node test overrides it to true.
+    mockIsLocalNodeBridged.mockReturnValue(false);
     app = createApp();
   });
 
@@ -324,6 +330,35 @@ describe('firmwareUpdateRoutes', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
+    });
+
+    it('should return 400 (without starting preflight) when the node is bridged', async () => {
+      mockIsLocalNodeBridged.mockReturnValue(true);
+      const releases = [
+        {
+          tagName: 'v2.5.0',
+          version: '2.5.0',
+          prerelease: false,
+          publishedAt: '2024-01-01',
+          htmlUrl: '',
+          assets: [],
+        },
+      ];
+      mockGetCachedReleases.mockReturnValue(releases);
+
+      const res = await request(app)
+        .post('/api/firmware/update')
+        .send({
+          targetVersion: '2.5.0',
+          gatewayIp: '192.168.1.100',
+          hwModel: 44,
+          currentVersion: '2.4.0',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/bridged/i);
+      expect(mockStartPreflight).not.toHaveBeenCalled();
     });
 
     it('should return 400 when target release not found', async () => {

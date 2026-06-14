@@ -584,6 +584,12 @@ class MeshtasticManager implements ISourceManager {
     firmwareVersion?: string;
     rebootCount?: number;
     isLocked?: boolean;  // Flag to prevent overwrites after initial setup
+    // Capability flags from the connected node's DeviceMetadata. Used to detect
+    // a "bridged" node — a serial/BLE-only device fronted by a TCP proxy — which
+    // cannot serve an OTA endpoint. Undefined until DeviceMetadata is received.
+    hasWifi?: boolean;
+    hasEthernet?: boolean;
+    hasBluetooth?: boolean;
   } | null = null;
   private actualDeviceConfig: any = null;  // Store actual device config (local node)
   private actualModuleConfig: any = null;  // Store actual module config (local node)
@@ -4454,8 +4460,25 @@ class MeshtasticManager implements ISourceManager {
     // Note: Local node's public key is extracted from security config when received
   }
 
-  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number; firmwareVersion?: string; rebootCount?: number; isLocked?: boolean } | null {
+  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number; firmwareVersion?: string; rebootCount?: number; isLocked?: boolean; hasWifi?: boolean; hasEthernet?: boolean; hasBluetooth?: boolean } | null {
     return this.localNodeInfo;
+  }
+
+  /**
+   * Whether the connected local node is reached through a bridge/proxy rather
+   * than being a native IP node. A serial/BLE-only device (e.g. an nRF52-class
+   * board) fronted by a TCP proxy (meshtasticd, mesh-bridge, …) reports no
+   * native WiFi and no Ethernet in its DeviceMetadata, yet we reach it over a
+   * TCP socket — so it physically cannot serve an OTA HTTP endpoint. Features
+   * that require direct device IP access (OTA firmware update) must be disabled
+   * for such nodes. Returns false until DeviceMetadata has been received
+   * (capability flags undefined => unknown => treated as not bridged).
+   */
+  isLocalNodeBridged(): boolean {
+    const info = this.localNodeInfo;
+    if (!info) return false;
+    if (info.hasWifi === undefined || info.hasEthernet === undefined) return false;
+    return info.hasWifi === false && info.hasEthernet === false;
   }
 
   /** Returns source-scoped settings keys for local node identity persistence.
@@ -4858,6 +4881,20 @@ class MeshtasticManager implements ISourceManager {
   private async processDeviceMetadata(metadata: any): Promise<void> {
     logger.debug('📱 Processing DeviceMetadata:', JSON.stringify(metadata, null, 2));
     logger.debug('📱 Firmware version:', metadata.firmwareVersion);
+
+    // Capture the node's transport-capability flags (proto3 bools decode to a
+    // concrete true/false). These drive isLocalNodeBridged() — a serial/BLE-only
+    // node fronted by a TCP proxy reports both false and cannot do OTA updates.
+    // Captured independently of firmwareVersion so detection works even if the
+    // firmware string is momentarily empty.
+    if (this.localNodeInfo) {
+      this.localNodeInfo.hasWifi = metadata.hasWifi === true;
+      this.localNodeInfo.hasEthernet = metadata.hasEthernet === true;
+      this.localNodeInfo.hasBluetooth = metadata.hasBluetooth === true;
+      if (this.isLocalNodeBridged()) {
+        logger.info('🌉 Connected node reports no native WiFi/Ethernet — treating as a bridged node (OTA firmware update disabled)');
+      }
+    }
 
     // Update local node info with firmware version (always allowed, even if locked)
     if (this.localNodeInfo && metadata.firmwareVersion) {
