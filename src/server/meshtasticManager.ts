@@ -4846,8 +4846,12 @@ class MeshtasticManager implements ISourceManager {
       moduleConfig,
       localNodeInfo: this.localNodeInfo,
       supportedModules: {
-        statusmessage: !!moduleConfig.statusmessage,
-        trafficManagement: !!moduleConfig.trafficManagement
+        // Gate on firmware version, NOT on presence of the decoded config
+        // sub-message. Proto3 omits an all-default sub-message, so a fully
+        // supported module whose config is untouched (the common case) would
+        // otherwise report as unsupported. See firmwareVersionAtLeast().
+        statusmessage: this.supportsStatusMessage(),
+        trafficManagement: this.supportsTrafficManagement()
       }
     };
   }
@@ -11946,6 +11950,43 @@ class MeshtasticManager implements ISourceManager {
       minor: parseInt(match[2], 10),
       patch: parseInt(match[3], 10)
     };
+  }
+
+  /**
+   * Check whether the local device firmware version is at least the given
+   * major.minor.patch. Returns false if the firmware version is unknown or
+   * unparseable.
+   *
+   * Used to gate module-config feature support (e.g. Traffic Management,
+   * StatusMessage). Module support MUST NOT be inferred from the presence of a
+   * decoded config sub-message: Proto3 omits a sub-message whose every field is
+   * default, so an all-default (but fully supported) module reports as missing.
+   */
+  private firmwareVersionAtLeast(major: number, minor: number, patch: number): boolean {
+    if (!this.localNodeInfo?.firmwareVersion) {
+      return false;
+    }
+    const version = this.parseFirmwareVersion(this.localNodeInfo.firmwareVersion);
+    if (!version) {
+      return false;
+    }
+    if (version.major !== major) return version.major > major;
+    if (version.minor !== minor) return version.minor > minor;
+    return version.patch >= patch;
+  }
+
+  /**
+   * Check if the local device firmware supports the StatusMessage module (>= 2.7.19)
+   */
+  supportsStatusMessage(): boolean {
+    return this.firmwareVersionAtLeast(2, 7, 19);
+  }
+
+  /**
+   * Check if the local device firmware supports the Traffic Management module (>= 2.7.22)
+   */
+  supportsTrafficManagement(): boolean {
+    return this.firmwareVersionAtLeast(2, 7, 22);
   }
 
   /**
