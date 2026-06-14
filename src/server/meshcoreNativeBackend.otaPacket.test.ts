@@ -159,6 +159,41 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
     const msg = events.find((e) => e.event_type === 'contact_message');
     expect(msg).toBeDefined();
     expect(msg.data.path_hops).toEqual(['a3', '7f']);
+    // SNR from the LogRxData metadata is carried onto the message event so
+    // {SNR} resolves in auto-ack/auto-responder templates (#3450-followup).
+    expect(msg.data.snr).toBe(5);
+  });
+
+  it('carries the buffered LogRxData SNR onto a channel_message event', async () => {
+    const { conn, events } = await connectedBackend();
+    const raw = Uint8Array.from([0x02, 0x01, 0x02, 0xa3, 0x7f]);
+    conn.emit(PushCodes.LogRxData, { lastSnr: -3.5, lastRssi: -88, raw });
+    conn.emit(ResponseCodes.ChannelMsgRecv, {
+      channelIdx: 0,
+      text: 'Alice: ping',
+      senderTimestamp: 1800,
+      pathLen: 0x02,
+    });
+
+    const msg = events.find((e) => e.event_type === 'channel_message');
+    expect(msg).toBeDefined();
+    expect(msg.data.snr).toBe(-3.5);
+    expect(msg.data.path_hops).toEqual(['a3', '7f']);
+  });
+
+  it('leaves snr undefined on a message with no preceding LogRxData', async () => {
+    const { conn, events } = await connectedBackend();
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([0xde, 0xad, 0xbe, 0xef, 0x00, 0x01]),
+      text: 'hello',
+      senderTimestamp: 1700,
+      pathLen: 0x02,
+      txtType: TxtTypes.Plain,
+    });
+    const msg = events.find((e) => e.event_type === 'contact_message');
+    expect(msg).toBeDefined();
+    expect(msg.data.snr).toBeUndefined();
+    expect(msg.data.path_hops).toBeUndefined();
   });
 
   it('does not throw on malformed LogRxData (empty raw)', async () => {
