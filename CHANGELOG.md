@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Features
+
+- **Bridged-node detection disables OTA firmware update**: MeshMonitor now detects when a Meshtastic source is a *bridged* node — a serial/BLE-only radio (e.g. an nRF52-class board with no native IP transport) fronted by a TCP proxy such as `meshtasticd` or `mesh-bridge`. The connected node's `DeviceMetadata` capability flags (`hasWifi` / `hasEthernet`) are now captured for the local node and exposed via the poll API as `deviceMetadata.isBridged`. When both are absent, the node physically cannot serve an OTA HTTP endpoint, so the **Firmware Update** UI is disabled with an explanatory notice ("update it directly via USB instead") and the `POST /api/firmware/update` route rejects the attempt server-side as a defence-in-depth guard. Detection is inert until DeviceMetadata arrives (unknown capabilities are never treated as bridged), so native WiFi/Ethernet nodes are unaffected.
+
 ### Bug Fixes
 
 - **MeshCore auto-ack `{SNR}` always blank**: The `{SNR}` macro in MeshCore auto-acknowledge / auto-responder reply templates always rendered as `—`. The RX SNR only arrives on the firmware's `LogRxData` event (not on the contact/channel message-recv event), and while the relay-hash path was buffered across the two events for `{ROUTE}`, the SNR was dropped — the message events hard-coded `snr: undefined`. The SNR is now buffered alongside the path and carried onto `contact_message` / `channel_message` events, so `{SNR}` resolves whenever `{ROUTE}` does.
