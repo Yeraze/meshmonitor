@@ -57,6 +57,45 @@ export interface RunScriptResult {
 const ALLOWED_EXTENSIONS = new Set(['js', 'mjs', 'py', 'sh']);
 
 /**
+ * Per-install directories where user-script dependencies are installed
+ * (on the persisted `$DATA_DIR/scripts` volume, next to the scripts):
+ *   - Python: `python_packages/` (pip `--target` install) → exposed via PYTHONPATH
+ *   - Node:   `node_modules/`    (npm install)            → exposed via NODE_PATH
+ * See scriptDependencyService for the install side.
+ */
+export const PYTHON_DEPS_SUBDIR = 'python_packages';
+export const NODE_DEPS_SUBDIR = 'node_modules';
+
+/** Absolute path to the user-scripts directory ($DATA_DIR/scripts, default /data/scripts). */
+export function getScriptsDir(): string {
+  return path.join(process.env.DATA_DIR || '/data', 'scripts');
+}
+
+/**
+ * Extra environment a script needs to import its installed dependencies.
+ * Python gets PYTHONPATH pointed at the pip `--target` dir; Node gets
+ * NODE_PATH pointed at node_modules. Existing PYTHONPATH/NODE_PATH (from the
+ * process or caller env) is preserved by prepending the dep dir. Returns {} for
+ * extensions with no dep mechanism (sh) or when the dep dir doesn't exist.
+ */
+export function scriptDependencyEnv(ext: string, baseEnv: NodeJS.ProcessEnv): Record<string, string> {
+  const scriptsDir = getScriptsDir();
+  if (ext === 'py') {
+    const dir = path.join(scriptsDir, PYTHON_DEPS_SUBDIR);
+    if (!fs.existsSync(dir)) return {};
+    const existing = baseEnv.PYTHONPATH;
+    return { PYTHONPATH: existing ? `${dir}${path.delimiter}${existing}` : dir };
+  }
+  if (ext === 'js' || ext === 'mjs') {
+    const dir = path.join(scriptsDir, NODE_DEPS_SUBDIR);
+    if (!fs.existsSync(dir)) return {};
+    const existing = baseEnv.NODE_PATH;
+    return { NODE_PATH: existing ? `${dir}${path.delimiter}${existing}` : dir };
+  }
+  return {};
+}
+
+/**
  * Resolve a user-supplied script identifier to an absolute path inside
  * the scripts directory. Rejects traversal (`..`) and anything outside
  * the directory. Returns null if the file doesn't exist or isn't
@@ -65,7 +104,7 @@ const ALLOWED_EXTENSIONS = new Set(['js', 'mjs', 'py', 'sh']);
 export function resolveScriptPath(scriptPath: string): { ok: true; path: string; ext: string } | { ok: false; error: string } {
   // Mirror getScriptsDirectory() in server.ts: prefer DATA_DIR env var,
   // fall back to /data. Tests can override DATA_DIR.
-  const scriptsDir = path.join(process.env.DATA_DIR || '/data', 'scripts');
+  const scriptsDir = getScriptsDir();
 
   // Allow caller to pass either a bare filename or a full path; either
   // way the resolved path must live inside the scripts dir.
@@ -175,10 +214,15 @@ export async function runScript(opts: RunScriptOptions): Promise<RunScriptResult
   const interpreter = pickInterpreter(ext);
   const args = [resolvedPath, ...(opts.scriptArgs || [])];
 
+  // Expose installed user dependencies (PYTHONPATH / NODE_PATH) so scripts can
+  // import third-party packages installed via the dependency manifests.
+  const baseEnv = { ...process.env, ...opts.env };
+  const depEnv = scriptDependencyEnv(ext, baseEnv);
+
   try {
     const { stdout, stderr } = await execFileAsync(interpreter, args, {
       timeout: timeoutMs,
-      env: { ...process.env, ...opts.env },
+      env: { ...baseEnv, ...depEnv },
       maxBuffer: 1024 * 1024,
     });
     const parsed = parseScriptOutput(stdout);

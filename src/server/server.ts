@@ -12,6 +12,8 @@ import { MeshtasticManager } from './meshtasticManager.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { resolveSourceManager } from './utils/resolveSourceManager.js';
 import { canonicalMessageTime, messageReceivedAt } from './utils/messageTime.js';
+import { scriptDependencyEnv } from './utils/scriptRunner.js';
+import { getDependencyStatus, installDependencies } from './services/scriptDependencyService.js';
 import protobufService from './protobufService.js';
 
 // Make meshtasticManager available globally for routes that need it
@@ -10577,7 +10579,7 @@ apiRouter.post('/scripts/test', requirePermission('settings', 'read'), async (re
     try {
       const { stdout, stderr } = await execFileAsync(interpreter, scriptArgList, {
         timeout: 30000,
-        env: scriptEnv,
+        env: { ...scriptEnv, ...scriptDependencyEnv(ext, scriptEnv) },
         maxBuffer: 1024 * 1024, // 1MB max output
       });
 
@@ -10868,6 +10870,29 @@ apiRouter.post('/scripts/export', requirePermission('settings', 'read'), async (
     if (!res.headersSent) {
       res.status(500).json({ error: error.message || 'Failed to export scripts' });
     }
+  }
+});
+
+// Script dependency management (Option A): declare deps via manifests in the
+// scripts directory (requirements.txt / package.json) and install them next to
+// the scripts. Status is settings:read; installing runs third-party code so it
+// requires settings:write.
+apiRouter.get('/scripts/dependencies', requirePermission('settings', 'read'), async (_req, res) => {
+  try {
+    res.json(await getDependencyStatus());
+  } catch (error) {
+    logger.error('[API] Error getting script dependency status:', error);
+    res.status(500).json({ error: 'Failed to get script dependency status' });
+  }
+});
+
+apiRouter.post('/scripts/dependencies/install', requirePermission('settings', 'write'), async (_req, res) => {
+  try {
+    const result = await installDependencies();
+    res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    logger.error('[API] Error installing script dependencies:', error);
+    res.status(500).json({ success: false, log: '', error: 'Failed to install script dependencies' });
   }
 });
 

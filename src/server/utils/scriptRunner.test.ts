@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { runScript, parseScriptOutput, resolveScriptPath } from './scriptRunner.js';
+import { runScript, parseScriptOutput, resolveScriptPath, scriptDependencyEnv, PYTHON_DEPS_SUBDIR, NODE_DEPS_SUBDIR } from './scriptRunner.js';
 
 /**
  * Hosts a temporary scripts directory and points DATA_DIR at it so
@@ -32,6 +32,42 @@ function writeScript(name: string, body: string): string {
   fs.writeFileSync(p, body, { mode: 0o755 });
   return name;
 }
+
+describe('scriptDependencyEnv', () => {
+  const pyDir = () => path.join(scriptsDir, PYTHON_DEPS_SUBDIR);
+  const nodeDir = () => path.join(scriptsDir, NODE_DEPS_SUBDIR);
+
+  afterAll(() => {
+    fs.rmSync(pyDir(), { recursive: true, force: true });
+    fs.rmSync(nodeDir(), { recursive: true, force: true });
+  });
+
+  it('returns {} when no dependency dirs exist', () => {
+    fs.rmSync(pyDir(), { recursive: true, force: true });
+    fs.rmSync(nodeDir(), { recursive: true, force: true });
+    expect(scriptDependencyEnv('py', {})).toEqual({});
+    expect(scriptDependencyEnv('mjs', {})).toEqual({});
+    expect(scriptDependencyEnv('sh', {})).toEqual({});
+  });
+
+  it('exposes PYTHONPATH for python when python_packages exists', () => {
+    fs.mkdirSync(pyDir(), { recursive: true });
+    expect(scriptDependencyEnv('py', {})).toEqual({ PYTHONPATH: pyDir() });
+  });
+
+  it('exposes NODE_PATH for js/mjs when node_modules exists', () => {
+    fs.mkdirSync(nodeDir(), { recursive: true });
+    expect(scriptDependencyEnv('js', {})).toEqual({ NODE_PATH: nodeDir() });
+    expect(scriptDependencyEnv('mjs', {})).toEqual({ NODE_PATH: nodeDir() });
+  });
+
+  it('prepends to an existing PYTHONPATH/NODE_PATH', () => {
+    fs.mkdirSync(pyDir(), { recursive: true });
+    fs.mkdirSync(nodeDir(), { recursive: true });
+    expect(scriptDependencyEnv('py', { PYTHONPATH: '/existing' }).PYTHONPATH).toBe(`${pyDir()}${path.delimiter}/existing`);
+    expect(scriptDependencyEnv('js', { NODE_PATH: '/existing' }).NODE_PATH).toBe(`${nodeDir()}${path.delimiter}/existing`);
+  });
+});
 
 describe('parseScriptOutput', () => {
   it('returns empty messages for empty stdout', () => {

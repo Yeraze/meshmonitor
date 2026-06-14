@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ScriptMetadata } from './types';
+import ScriptDependenciesPanel from './ScriptDependenciesPanel';
 
 /**
  * Get language emoji for display
@@ -229,6 +230,7 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
               })}
             </div>
           )}
+          <ScriptDependenciesPanel />
         </div>
       )}
     </div>
