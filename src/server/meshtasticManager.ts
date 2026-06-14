@@ -70,6 +70,18 @@ const IGNORE_REAPPLY_COOLDOWN_MS = 60_000;
 const ACTIVE_NODE_TOKEN_WINDOW_SECONDS = 7200;
 const ACTIVE_NODE_TOKEN_WINDOW_DAYS = ACTIVE_NODE_TOKEN_WINDOW_SECONDS / 86_400;
 
+// Maps AdminMessage.ModuleConfigType enum values to the ModuleConfig oneof key
+// used in decoded responses. Covers the module types MeshMonitor surfaces a
+// config UI for; used to map empty (all-default, Proto3-omitted) responses back
+// to the correct key via pendingModuleConfigRequests.
+const LOCAL_MODULE_CONFIG_TYPE_KEYS: { [key: number]: string } = {
+  0: 'mqtt',
+  5: 'telemetry',
+  9: 'neighborInfo',
+  13: 'statusmessage',
+  14: 'trafficManagement'
+};
+
 /** Parsed auto-responder payload: list of messages to send, plus the
  * raw decoded JSON object (or `{}` if the payload was plain text) so
  * callers can read optional fields like `private`. */
@@ -11740,6 +11752,39 @@ class MeshtasticManager implements ISourceManager {
           }
           nodeConfig.lastUpdated = Date.now();
           logger.info(`📊 Stored module config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.moduleConfig));
+        } else {
+          // Local node: merge the explicit module-config response into
+          // actualModuleConfig. Without this, an explicit refresh
+          // (requestModuleConfig / refreshModuleConfigs) is dropped — only the
+          // initial wantConfig stream ever populated the local config.
+          if (!this.actualModuleConfig) {
+            this.actualModuleConfig = {};
+          }
+          const moduleConfigResponse = adminMsg.getModuleConfigResponse;
+          if (moduleConfigResponse) {
+            const responseKeys = Object.keys(moduleConfigResponse).filter(k => k !== 'payloadVariant' && moduleConfigResponse[k] !== undefined);
+            responseKeys.forEach((key) => {
+              this.actualModuleConfig[key] = moduleConfigResponse[key];
+            });
+
+            // Proto3 omits all-default fields, so an empty response means the
+            // module exists but every value is default. Record it under the
+            // pending request's key so support detection and the config UI see it.
+            if (responseKeys.length === 0) {
+              const localNodeKey = this.localNodeInfo?.nodeNum ?? fromNum;
+              const pendingKey = this.pendingModuleConfigRequests.get(localNodeKey)
+                ?? this.pendingModuleConfigRequests.get(fromNum);
+              if (pendingKey) {
+                logger.info(`📊 Empty local module config response, storing defaults for '${pendingKey}'`);
+                if (this.actualModuleConfig[pendingKey] === undefined) {
+                  this.actualModuleConfig[pendingKey] = {};
+                }
+                this.pendingModuleConfigRequests.delete(localNodeKey);
+                this.pendingModuleConfigRequests.delete(fromNum);
+              }
+            }
+          }
+          logger.info(`📊 Merged local module config response, actualModuleConfig keys:`, Object.keys(this.actualModuleConfig));
         }
       }
 
@@ -12307,6 +12352,14 @@ class MeshtasticManager implements ISourceManager {
       logger.debug(`⚙️ Requesting module config type ${configType} from device`);
       const getModuleConfigMsg = protobufService.createGetModuleConfigRequest(configType);
       const adminPacket = protobufService.createAdminPacket(getModuleConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
+
+      // Track the pending request so an empty (all-default) Proto3 response can be
+      // mapped back to the right key in processAdminMessage. Keyed by the local
+      // node number, matching how the response's `from` field is interpreted.
+      const pendingKey = LOCAL_MODULE_CONFIG_TYPE_KEYS[configType];
+      if (pendingKey && this.localNodeInfo?.nodeNum) {
+        this.pendingModuleConfigRequests.set(this.localNodeInfo.nodeNum, pendingKey);
+      }
 
       await this.transport.send(adminPacket);
       logger.debug(`⚙️ Sent get_module_config_request for config type ${configType}`);
