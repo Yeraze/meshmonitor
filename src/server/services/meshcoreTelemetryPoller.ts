@@ -19,6 +19,7 @@
 
 import { logger } from '../../utils/logger.js';
 import type { DbTelemetry } from '../../services/database.js';
+import type { DbMeshCoreNode } from '../../db/repositories/meshcore.js';
 import type { MeshCoreManager, MeshCoreDeviceInfo } from '../meshcoreManager.js';
 import type { MeshCoreManagerRegistry } from '../meshcoreRegistry.js';
 
@@ -29,6 +30,9 @@ import type { MeshCoreManagerRegistry } from '../meshcoreRegistry.js';
 export interface PollerDatabase {
   telemetry: {
     insertTelemetryBatch: (rows: DbTelemetry[], sourceId?: string) => Promise<number>;
+  };
+  meshcore: {
+    upsertNode: (node: Partial<DbMeshCoreNode> & { publicKey: string }, sourceId: string) => Promise<void>;
   };
 }
 
@@ -237,6 +241,18 @@ export class MeshCoreTelemetryPoller {
         // formatters that key off `voltage` units pick it up nicely.
         push(`${MC_TELEMETRY_PREFIX}battery_volts`, core.batteryMv / 1000, 'V');
         snapshot.batteryMv = core.batteryMv;
+        // Persist to meshcore_nodes so getLowVoltageNodes() can find it for
+        // low-battery notifications. Without this, batteryMv stays NULL in the
+        // table and the notification service never fires for companion nodes.
+        // Mirrors what meshcoreRemoteTelemetryScheduler does for repeaters.
+        if (core.batteryMv > 0) {
+          this.database.meshcore.upsertNode(
+            { publicKey: nodeId, batteryMv: core.batteryMv },
+            manager.sourceId,
+          ).catch((err) => {
+            logger.warn(`[MeshCorePoller:${manager.sourceId}] Failed to persist batteryMv:`, err);
+          });
+        }
       }
       if (core.uptimeSecs !== undefined) {
         push(`${MC_TELEMETRY_PREFIX}uptime_secs`, core.uptimeSecs, 's');

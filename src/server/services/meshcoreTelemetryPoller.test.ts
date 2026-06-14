@@ -73,8 +73,13 @@ function makeRegistry(...managers: MeshCoreManager[]): MeshCoreManagerRegistry {
   return { list: () => managers } as unknown as MeshCoreManagerRegistry;
 }
 
-function makeDatabase(): { db: PollerDatabase; batches: { rows: any[]; sourceId?: string }[] } {
+function makeDatabase(): {
+  db: PollerDatabase;
+  batches: { rows: any[]; sourceId?: string }[];
+  upsertedNodes: { node: any; sourceId: string }[];
+} {
   const batches: { rows: any[]; sourceId?: string }[] = [];
+  const upsertedNodes: { node: any; sourceId: string }[] = [];
   const db: PollerDatabase = {
     telemetry: {
       insertTelemetryBatch: async (rows, sourceId) => {
@@ -82,8 +87,13 @@ function makeDatabase(): { db: PollerDatabase; batches: { rows: any[]; sourceId?
         return rows.length;
       },
     },
+    meshcore: {
+      upsertNode: async (node, sourceId) => {
+        upsertedNodes.push({ node: { ...node }, sourceId });
+      },
+    },
   };
-  return { db, batches };
+  return { db, batches, upsertedNodes };
 }
 
 const FULL_PUBKEY = 'a'.repeat(64);
@@ -336,5 +346,53 @@ describe('MeshCoreTelemetryPoller.pollOnce', () => {
     await poller.pollOnce();
 
     expect(batches).toHaveLength(0);
+  });
+
+  it('persists batteryMv to meshcore_nodes so low-battery notifications can fire (regression #3462)', async () => {
+    const manager = makeManager({
+      sourceId: 'src-batt',
+      publicKey: FULL_PUBKEY,
+      core: { batteryMv: 3800, uptimeSecs: 100, errors: 0, queueLen: 0 },
+      radio: null,
+      packets: null,
+      deviceTime: null,
+      deviceInfo: null,
+    });
+    const { db, upsertedNodes } = makeDatabase();
+    const poller = new MeshCoreTelemetryPoller({ registry: makeRegistry(manager), database: db });
+
+    await poller.pollOnce();
+
+    // Wait for the fire-and-forget upsert to resolve
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(upsertedNodes).toHaveLength(1);
+    expect(upsertedNodes[0].sourceId).toBe('src-batt');
+    expect(upsertedNodes[0].node.publicKey).toBe(FULL_PUBKEY);
+    expect(upsertedNodes[0].node.batteryMv).toBe(3800);
+  });
+
+  it('does not upsert batteryMv when battery is zero or absent', async () => {
+    const zeroBatt = makeManager({
+      sourceId: 'src-zero',
+      publicKey: FULL_PUBKEY,
+      core: { batteryMv: 0, uptimeSecs: 100, errors: 0, queueLen: 0 },
+      radio: null, packets: null, deviceTime: null, deviceInfo: null,
+    });
+    const noBatt = makeManager({
+      sourceId: 'src-none',
+      publicKey: FULL_PUBKEY,
+      core: { uptimeSecs: 100, errors: 0, queueLen: 0 },
+      radio: null, packets: null, deviceTime: null, deviceInfo: null,
+    });
+    const { db: db1, upsertedNodes: u1 } = makeDatabase();
+    const { db: db2, upsertedNodes: u2 } = makeDatabase();
+
+    await new MeshCoreTelemetryPoller({ registry: makeRegistry(zeroBatt), database: db1 }).pollOnce();
+    await new MeshCoreTelemetryPoller({ registry: makeRegistry(noBatt), database: db2 }).pollOnce();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(u1).toHaveLength(0);
+    expect(u2).toHaveLength(0);
   });
 });
