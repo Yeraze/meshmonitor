@@ -213,9 +213,11 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * recv event (ContactMsgRecv / ChannelMsgRecv) for the same packet, so
    * we buffer the parsed path here and consume it on the next message
    * recv to give the bridge event the real relay-hash chain rather than
-   * just the packed pathLen byte.
+   * just the packed pathLen byte. The RX SNR is carried alongside the path
+   * (it only appears on LogRxData, not on the txt-msg recv event) so the
+   * message event — and {SNR} in auto-ack/auto-responder templates — has it.
    */
-  private pendingTxtMsgPath: { hops: string[]; rawPathLen: number } | null = null;
+  private pendingTxtMsgPath: { hops: string[]; rawPathLen: number; snr?: number } | null = null;
   /** Constructor reference for the meshcore.js Packet parser, populated when the module loads. */
   private PacketCtor: MeshCoreJsModule['Packet'] | null = null;
   /**
@@ -359,15 +361,17 @@ export class MeshCoreNativeBackend extends EventEmitter {
           const pkt = PacketCtor.fromBytes(raw);
           const hops = this.decodePathHops(pkt.path, pkt.pathLen);
 
-          // Buffer the relay-hash chain for the next TXT_MSG recv event.
-          if (pkt.payload_type === TXT_MSG) {
-            this.pendingTxtMsgPath = { hops, rawPathLen: pkt.pathLen };
-          }
-
-          // Surface the full packet for the Packet Monitor. `lastSnr`/
-          // `lastRssi` come from the LogRxData metadata (connection.js).
+          // `lastSnr`/`lastRssi` come from the LogRxData metadata (connection.js).
+          // The SNR only appears here, NOT on the subsequent txt-msg recv event,
+          // so it must be buffered with the path for the message event to carry
+          // it (auto-ack/auto-responder {SNR}).
           const snr = typeof rx?.lastSnr === 'number' ? rx.lastSnr : undefined;
           const rssi = typeof rx?.lastRssi === 'number' ? rx.lastRssi : undefined;
+
+          // Buffer the relay-hash chain + SNR for the next TXT_MSG recv event.
+          if (pkt.payload_type === TXT_MSG) {
+            this.pendingTxtMsgPath = { hops, rawPathLen: pkt.pathLen, snr };
+          }
           this.emitBridgeEvent('ota_packet', {
             payload_type: pkt.payload_type,
             payload_type_string: pkt.payload_type_string,
@@ -439,7 +443,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // LogRxData event (raw OTA bytes). undefined when LogRxData is
         // not available (e.g. backend started without raw logging).
         path_hops: consumedPath?.hops,
-        snr: undefined,
+        snr: consumedPath?.snr,
       };
       this.emitBridgeEvent(isCliReply ? 'cli_reply' : 'contact_message', payload);
     });
@@ -455,7 +459,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // Same packed-byte semantics as contact_message above.
         path_len: typeof msg.pathLen === 'number' ? msg.pathLen : undefined,
         path_hops: consumedPath?.hops,
-        snr: undefined,
+        snr: consumedPath?.snr,
       });
     });
 
