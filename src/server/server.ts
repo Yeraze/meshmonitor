@@ -5318,6 +5318,12 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       const deviceMetadata = managerNodeInfo ? {
         firmwareVersion: managerNodeInfo.firmwareVersion,
         rebootCount: managerNodeInfo.rebootCount,
+        hasWifi: managerNodeInfo.hasWifi,
+        hasEthernet: managerNodeInfo.hasEthernet,
+        hasBluetooth: managerNodeInfo.hasBluetooth,
+        // True when the node is reached via a bridge/proxy (no native IP) and
+        // therefore cannot do OTA firmware updates. See isLocalNodeBridged().
+        isBridged: activeManager.isLocalNodeBridged(),
       } : undefined;
 
       const pollLocalNodeInfo = managerNodeInfo ? {
@@ -8297,9 +8303,12 @@ apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) =>
             firmwareVersion: localNodeInfo.firmwareVersion || 'Unknown',
             hwModel: nodeData?.hwModel || 0,
             role: nodeData?.role || 0,
-            hasWifi: false,  // Not tracked for local node
-            hasBluetooth: false,
-            hasEthernet: false,
+            // Capability flags captured from the local node's DeviceMetadata
+            // (undefined until metadata arrives — coerce to false for the wire).
+            hasWifi: localNodeInfo.hasWifi ?? false,
+            hasBluetooth: localNodeInfo.hasBluetooth ?? false,
+            hasEthernet: localNodeInfo.hasEthernet ?? false,
+            isBridged: gdmManager.isLocalNodeBridged(),
             canShutdown: false,
             hasRemoteHardware: false,
             deviceStateVersion: 0,

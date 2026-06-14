@@ -121,6 +121,7 @@ const meshtasticManagerMock = {
   }),
   getConnectionStatus: vi.fn(() => ({ connected: true, userDisconnected: false })),
   getLocalNodeInfo: vi.fn(() => ({ nodeId: '!node1', longName: 'Test Node 1' })),
+  isLocalNodeBridged: vi.fn(() => false),
   getDeviceConfig: vi.fn(async () => ({
     basic: { nodeId: '!node1' },
     lora: { region: 'US', hopLimit: 3 },

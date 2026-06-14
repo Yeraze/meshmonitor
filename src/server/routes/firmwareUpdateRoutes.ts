@@ -8,6 +8,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAdmin } from '../auth/authMiddleware.js';
 import { firmwareUpdateService } from '../services/firmwareUpdateService.js';
+import meshtasticManager from '../meshtasticManager.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
 import path from 'path';
@@ -121,6 +122,22 @@ router.post('/update', async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields: targetVersion, gatewayIp, hwModel, currentVersion',
+      });
+    }
+
+    // Refuse OTA on a bridged node. A serial/BLE-only device fronted by a TCP
+    // proxy (meshtasticd, mesh-bridge, …) reports no native WiFi/Ethernet and
+    // cannot serve an OTA HTTP endpoint, so the flash would target the proxy,
+    // not the radio. The frontend hides the button, but enforce server-side too.
+    // firmwareUpdateService operates on the default-source manager singleton.
+    if (meshtasticManager.isLocalNodeBridged()) {
+      return res.status(400).json({
+        success: false,
+        error:
+          'OTA firmware update is not available for a bridged node. The connected ' +
+          'node reports no native WiFi or Ethernet, meaning it is reached through a ' +
+          'serial/BLE-to-TCP bridge and cannot be flashed over the air. Update it ' +
+          'directly via USB instead.',
       });
     }
 

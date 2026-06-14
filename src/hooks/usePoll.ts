@@ -78,6 +78,12 @@ export interface PollConfig {
   deviceMetadata?: {
     firmwareVersion?: string;
     rebootCount?: number;
+    hasWifi?: boolean;
+    hasEthernet?: boolean;
+    hasBluetooth?: boolean;
+    // True when the node is reached via a serial/BLE-to-TCP bridge and cannot
+    // be flashed over the air. Gates the OTA firmware update UI.
+    isBridged?: boolean;
   };
   localNodeInfo?: LocalNodeInfo;
 }
