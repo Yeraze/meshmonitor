@@ -120,3 +120,23 @@ describe('MQTTConfigSection — permission gate (PR-C)', () => {
     expect(hasPermissionMock).toHaveBeenCalledWith('sources', 'write', { sourceId: 'src-a' });
   });
 });
+
+describe('MQTTConfigSection — bridged-node MQTT Client Proxy recommendation', () => {
+  beforeEach(() => hasPermissionMock.mockReturnValue(true));
+
+  it('renders the bridged-node recommendation note when isBridged is true', () => {
+    render(<MQTTConfigSection {...baseProps} isBridged={true} />);
+    const note = screen.getByTestId('mqtt-bridged-note');
+    expect(note).toBeInTheDocument();
+  });
+
+  it('does not render the note when isBridged is false', () => {
+    render(<MQTTConfigSection {...baseProps} isBridged={false} />);
+    expect(screen.queryByTestId('mqtt-bridged-note')).toBeNull();
+  });
+
+  it('does not render the note when isBridged is omitted (defaults to false)', () => {
+    render(<MQTTConfigSection {...baseProps} />);
+    expect(screen.queryByTestId('mqtt-bridged-note')).toBeNull();
+  });
+});
