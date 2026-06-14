@@ -28,6 +28,7 @@ import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/aut
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
 import { resolveLastHopName } from './utils/lastHop.js';
+import { scriptDependencyEnv } from './utils/scriptRunner.js';
 import { canonicalMessageTime } from './utils/messageTime.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
@@ -3373,7 +3374,7 @@ class MeshtasticManager implements ISourceManager {
 
       const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath, ...scriptArgsList], {
         timeout: 30000,
-        env: scriptEnv,
+        env: { ...scriptEnv, ...scriptDependencyEnv(ext, scriptEnv) },
         maxBuffer: 1024 * 1024,
       });
 
@@ -3625,7 +3626,7 @@ class MeshtasticManager implements ISourceManager {
       // Execute script with 30-second timeout (longer than auto-responder for scheduled tasks)
       const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath, ...scriptArgsList], {
         timeout: 30000,
-        env: scriptEnv,
+        env: { ...scriptEnv, ...scriptDependencyEnv(ext, scriptEnv) },
         maxBuffer: 1024 * 1024, // 1MB max output
       });
 
@@ -9985,7 +9986,7 @@ class MeshtasticManager implements ISourceManager {
               // Use resolvedPath (actual file path) instead of scriptPath (API format)
               const { stdout, stderr } = await execFileAsync(interpreter, [resolvedPath, ...scriptArgsList], {
                 timeout: SCRIPT_AUTO_RESPONDER_TIMEOUT_MS,
-                env: scriptEnv,
+                env: { ...scriptEnv, ...scriptDependencyEnv(ext, scriptEnv) },
                 maxBuffer: 1024 * 1024, // 1MB max output
               });
 
