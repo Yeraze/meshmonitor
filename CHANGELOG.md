@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.10.2] - 2026-06-14
+
 ### Features
 
 - **User-script dependencies (Python/Node packages)**: Auto Responder / trigger scripts can now use third-party packages. Drop a `requirements.txt` (Python) and/or `package.json` (Node) into the scripts directory (`$DATA_DIR/scripts`) and click **Install / Update dependencies** in the script-management panel (admin / `settings:write`). Packages install into `python_packages/` (pip `--target`) and `node_modules/` next to the scripts on the persisted volume — so they survive restarts — and are exposed to running scripts via `PYTHONPATH` / `NODE_PATH` across every script path (Auto Responder, geofence/timer triggers, the script test endpoint, and MeshCore). Python installs are wheel-only by default so the slim Alpine/musl image needs no compiler; set `SCRIPT_DEPS_ALLOW_SOURCE_BUILD=true` to permit source builds. The installer reuses the same interpreters that run the scripts (ABI-matched) and is isolated from the bundled Apprise venv. Installing third-party packages runs external code and needs network access, so it's admin-gated.
