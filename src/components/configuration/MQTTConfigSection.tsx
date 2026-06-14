@@ -21,6 +21,9 @@ interface MQTTConfigSectionProps {
   mapReportingEnabled: boolean;
   mapPublishIntervalSecs: number;
   mapPositionPrecision: number;
+  // True when this source's node is bridged (serial/BLE radio behind a TCP
+  // proxy, no native IP). Such a node can only use MQTT via Client Proxy.
+  isBridged?: boolean;
   setMqttEnabled: (value: boolean) => void;
   setMqttAddress: (value: string) => void;
   setMqttUsername: (value: string) => void;
@@ -50,6 +53,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   mapReportingEnabled,
   mapPublishIntervalSecs,
   mapPositionPrecision,
+  isBridged = false,
   setMqttEnabled,
   setMqttAddress,
   setMqttUsername,
@@ -302,6 +306,32 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           ❓
         </a>
       </h3>
+      {isBridged && (
+        <div
+          role="note"
+          data-testid="mqtt-bridged-note"
+          style={{
+            margin: '8px 0',
+            padding: '10px 12px',
+            borderRadius: 6,
+            background: 'rgba(137, 180, 250, 0.10)', // ctp-blue @ low alpha
+            border: '1px solid var(--ctp-blue, #89b4fa)',
+            color: 'var(--ctp-text)',
+            fontSize: 13,
+            lineHeight: 1.4,
+          }}
+        >
+          <strong style={{ color: 'var(--ctp-blue, #89b4fa)' }}>
+            🌉 {t('mqtt_config.bridged_recommend_title', 'This is a bridged node')}
+          </strong>
+          <div style={{ marginTop: 4 }}>
+            {t(
+              'mqtt_config.bridged_recommend_body',
+              'This node has no native WiFi or Ethernet — it is reached through a serial/BLE-to-TCP bridge, so it cannot open its own MQTT connection. We strongly recommend enabling "MQTT Client Proxy" below and linking this source to an MQTT broker, so MeshMonitor relays MQTT on the node’s behalf. Without Client Proxy, MQTT will not work on this node.'
+            )}
+          </div>
+        </div>
+      )}
       {!canEditMqtt && (
         <div
           role="alert"

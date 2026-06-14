@@ -30,6 +30,9 @@ interface NetworkConfigSectionProps {
   setIpv4Subnet: (value: string) => void;
   ipv4Dns: string;
   setIpv4Dns: (value: string) => void;
+  // True when this source's node is bridged (no native WiFi/Ethernet hardware,
+  // reached via a TCP proxy). Every setting here is inert on such a node.
+  isBridged?: boolean;
   // UI state
   isSaving: boolean;
   onSave: () => Promise<void>;
@@ -56,6 +59,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
   setIpv4Subnet,
   ipv4Dns,
   setIpv4Dns,
+  isBridged = false,
   isSaving,
   onSave
 }) => {
@@ -140,6 +144,33 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
           ❓
         </a>
       </h3>
+
+      {isBridged && (
+        <div
+          role="note"
+          data-testid="network-bridged-note"
+          style={{
+            margin: '8px 0',
+            padding: '10px 12px',
+            borderRadius: 6,
+            background: 'rgba(137, 180, 250, 0.10)', // ctp-blue @ low alpha
+            border: '1px solid var(--ctp-blue, #89b4fa)',
+            color: 'var(--ctp-text)',
+            fontSize: 13,
+            lineHeight: 1.4,
+          }}
+        >
+          <strong style={{ color: 'var(--ctp-blue, #89b4fa)' }}>
+            🌉 {t('network_config.bridged_inert_title', 'This is a bridged node')}
+          </strong>
+          <div style={{ marginTop: 4 }}>
+            {t(
+              'network_config.bridged_inert_body',
+              'This node has no native WiFi or Ethernet hardware — it is reached through a serial/BLE-to-TCP bridge. These network settings (WiFi, Ethernet, NTP, syslog, static IP) have no effect on it; they only apply to nodes with built-in WiFi/Ethernet. Time sync still works over the mesh/connection. To use MQTT on this node, see the MQTT section’s Client Proxy option.'
+            )}
+          </div>
+        </div>
+      )}
 
       {/* WiFi Enable */}
       <div className="setting-item">

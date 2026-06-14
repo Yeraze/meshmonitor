@@ -113,6 +113,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [mqttRoot, setMqttRoot] = useState('');
   const [mqttTlsEnabled, setMqttTlsEnabled] = useState(false);
   const [mqttProxyToClientEnabled, setMqttProxyToClientEnabled] = useState(false);
+  // Whether this source's node is bridged (no native WiFi/Ethernet — reached via
+  // a TCP proxy). Drives the MQTT Client Proxy recommendation in the MQTT section.
+  const [isBridged, setIsBridged] = useState(false);
   const [mqttMapReportingEnabled, setMqttMapReportingEnabled] = useState(false);
   const [mqttMapPublishIntervalSecs, setMqttMapPublishIntervalSecs] = useState(0);
   const [mqttMapPositionPrecision, setMqttMapPositionPrecision] = useState(14);
@@ -314,6 +317,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         console.log('[ConfigurationTab] Fetching config from API...');
         const config = await apiService.getCurrentConfig(sourceId);
         console.log('[ConfigurationTab] Received config:', config);
+
+        setIsBridged(config.isBridged || false);
 
         // Populate node info from localNodeInfo
         if (config.localNodeInfo) {
@@ -2270,6 +2275,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setMapPublishIntervalSecs={setMqttMapPublishIntervalSecs}
             mapPositionPrecision={mqttMapPositionPrecision}
             setMapPositionPrecision={setMqttMapPositionPrecision}
+            isBridged={isBridged}
             isSaving={isSaving}
             onSave={handleSaveMQTTConfig}
           />
@@ -2310,6 +2316,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setIpv4Subnet={setIpv4Subnet}
             ipv4Dns={ipv4Dns}
             setIpv4Dns={setIpv4Dns}
+            isBridged={isBridged}
             isSaving={isSaving}
             onSave={handleSaveNetworkConfig}
           />
