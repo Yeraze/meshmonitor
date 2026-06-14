@@ -102,6 +102,24 @@ Scripts must output JSON to stdout:
    - Enter the script path: `/data/scripts/YourScript.py`
 6. **Test your trigger** by sending a message matching the pattern
 
+## Installing Dependencies
+
+Scripts can use third-party **Python** and **Node.js** packages.
+
+1. Add a manifest to the scripts directory (`$DATA_DIR/scripts`, default `/data/scripts`):
+   - **Python** → `requirements.txt` (e.g. `requests==2.31.0`)
+   - **Node** → `package.json` (with a `dependencies` block)
+2. In MeshMonitor, open the **script-management** panel (Auto Responder settings) and click **Install / Update dependencies** (requires the `settings` write permission).
+
+Packages are installed *next to your scripts* — Python into `python_packages/` (via `pip install --target`), Node into `node_modules/` — on the persisted data volume, so they **survive restarts and upgrades**. Running scripts pick them up automatically via `PYTHONPATH` / `NODE_PATH`; just `import`/`require` as usual.
+
+::: warning Security & limitations
+- Installing downloads and **runs third-party code**, and requires outbound internet access — so it's admin-only.
+- The default Docker image is **Alpine/musl** and ships no compiler, so Python installs are **wheel-only**. Pure-Python packages and anything with a prebuilt musl wheel work; packages that must compile a C extension fail with a clear message unless you set `SCRIPT_DEPS_ALLOW_SOURCE_BUILD=true` (and provide build tools).
+- The script dependency layer is isolated from MeshMonitor's bundled Apprise environment.
+- On the desktop app this uses the system Python/Node and is best-effort.
+:::
+
 ## Environment Variables
 
 All scripts receive these environment variables:
