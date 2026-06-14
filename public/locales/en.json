@@ -3176,7 +3176,7 @@
   "lora_config.hop_limit": "Hop Limit",
   "lora_config.hop_limit_description": "Maximum number of hops for mesh packets. Range: 1-7 (default: 3)",
   "lora_config.tx_power": "Transmit Power (dBm)",
-  "lora_config.tx_power_description": "LoRa transmit power in dBm. Value of 0 uses the default maximum safe power for your hardware. Units are in dBm.",
+  "lora_config.tx_power_description": "LoRa transmit power in dBm. A value of 0 uses the default maximum safe power for your hardware. Negative values are permitted (the field is signed) but only meaningful on radios that support reduced/negative output power, e.g. SX126x; firmware does not clamp the lower bound, so behavior for negatives is radio-dependent.",
   "lora_config.channel_num": "Channel Number",
   "lora_config.channel_num_description": "LoRa channel number for frequency hopping. Range: 0-255 (default: 0)",
   "lora_config.rx_boosted_gain": "RX Boosted Gain (SX126x)",
