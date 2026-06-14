@@ -1537,14 +1537,46 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
-   * Sanitize name input
+   * Sanitize a device-name input.
+   *
+   * Strips only control characters (C0 + DEL) — this removes CR/LF/tab that
+   * would break the line-based repeater serial CLI (`set name <name>`) — while
+   * preserving printable Unicode such as parentheses and emoji (#3450). The
+   * previous `[^a-zA-Z0-9\s\-_]` allow-list silently deleted those characters on
+   * save. The result is capped to the device name field by UTF-8 byte length,
+   * truncating on a code-point boundary so a multi-byte character is never split.
    */
   private sanitizeName(name: string): string {
-    const sanitized = name.replace(/[^a-zA-Z0-9\s\-_]/g, '').substring(0, 32);
+    // Drop only control characters (C0 controls + DEL) by code point — this
+    // removes CR/LF/tab that would break the line-based repeater serial CLI —
+    // while preserving printable Unicode such as parentheses and emoji (#3450).
+    const cleaned = Array.from(name).filter((ch) => { const c = ch.codePointAt(0); return c !== undefined && c > 0x1f && c !== 0x7f; }).join('').trim();
+    const sanitized = MeshCoreManager.truncateUtf8Bytes(cleaned, MeshCoreManager.NAME_MAX_BYTES);
     if (sanitized.length === 0) {
-      throw new Error('Invalid name: must contain alphanumeric characters');
+      throw new Error('Invalid name: must not be empty');
     }
     return sanitized;
+  }
+
+  /** Max device name length, in UTF-8 bytes (MeshCore advert name field). */
+  private static readonly NAME_MAX_BYTES = 32;
+
+  /**
+   * Truncate `s` so its UTF-8 encoding is at most `maxBytes`, never splitting a
+   * multi-byte character. Iterates by code point (so emoji surrogate pairs and
+   * astral characters stay intact).
+   */
+  private static truncateUtf8Bytes(s: string, maxBytes: number): string {
+    if (Buffer.byteLength(s, 'utf8') <= maxBytes) return s;
+    let bytes = 0;
+    let result = '';
+    for (const ch of s) {
+      const chBytes = Buffer.byteLength(ch, 'utf8');
+      if (bytes + chBytes > maxBytes) break;
+      bytes += chBytes;
+      result += ch;
+    }
+    return result;
   }
 
   /**

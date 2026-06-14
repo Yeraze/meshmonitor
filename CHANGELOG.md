@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Bug Fixes
+
+- **MeshCore device name stripped parentheses and emoji on save (#3450)**: Editing a MeshCore companion's **Device Name** (Source → Configuration) silently deleted parentheses, emoji, and other Unicode the moment you pressed Save, because the name sanitizer used an `[a-zA-Z0-9\s\-_]` allow-list. It now drops only control characters (which would break the line-based repeater serial CLI) and preserves printable Unicode, capping the result to the device's 32-byte name field on a character boundary (so a multi-byte emoji is never split).
+
 ## [4.10.2] - 2026-06-14
 
 ### Features
