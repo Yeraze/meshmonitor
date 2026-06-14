@@ -742,3 +742,94 @@ describe('ingestServiceEnvelope — TELEMETRY_APP key normalization (#3314)', ()
     expect(rowByType('health.temperature')).toMatchObject({ value: 36.8 });
   });
 });
+
+/**
+ * Regression: lastHeard-refresh upserts must NOT clobber NodeInfo.
+ *
+ * The POSITION / TEXT / TELEMETRY / PAXCOUNTER / S&F-heartbeat handlers each
+ * upsert the sender node to bump `lastHeard`. They previously hardcoded
+ * `longName: ''`, `shortName: ''`, `hwModel: 0`. Because the upsert merge
+ * treats an empty string / 0 as a *provided* value (not "absent"), the very
+ * next position/telemetry packet after a NODEINFO_APP packet wiped the saved
+ * name — making MQTT nodes appear nameless almost all the time. These refresh
+ * upserts must omit the name/hwModel fields so the merge preserves whatever
+ * NodeInfo already exists.
+ */
+describe('ingestServiceEnvelope — lastHeard refresh must not clobber NodeInfo', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const senderUpsert = () =>
+    (databaseService.upsertNode as any).mock.calls
+      .map((c: any[]) => c[0])
+      .find((n: any) => n.nodeNum === NODE_IN);
+
+  const expectNoNameClobber = (node: any) => {
+    expect(node).toBeDefined();
+    // Must be omitted entirely (undefined) — NOT '' / 0 — so the upsert merge
+    // preserves any existing NodeInfo instead of overwriting it.
+    expect(node.longName).toBeUndefined();
+    expect(node.shortName).toBeUndefined();
+    expect(node.hwModel).toBeUndefined();
+    // lastHeard is the whole point of these upserts and must still be set.
+    expect(node.lastHeard).toBeGreaterThan(0);
+  };
+
+  it('POSITION refresh omits longName/shortName/hwModel', async () => {
+    await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 3 /* POSITION_APP */),
+    });
+    expectNoNameClobber(senderUpsert());
+  });
+
+  it('TEXT refresh omits longName/shortName/hwModel', async () => {
+    await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 1 /* TEXT_MESSAGE_APP */),
+    });
+    expectNoNameClobber(senderUpsert());
+  });
+
+  it('TELEMETRY refresh omits longName/shortName/hwModel', async () => {
+    await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 67 /* TELEMETRY_APP */),
+    });
+    expectNoNameClobber(senderUpsert());
+  });
+
+  it('PAXCOUNTER refresh omits longName/shortName/hwModel', async () => {
+    await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 34 /* PAXCOUNTER_APP */),
+    });
+    expectNoNameClobber(senderUpsert());
+  });
+
+  it('S&F ROUTER_HEARTBEAT refresh omits longName/shortName/hwModel but keeps the server flag', async () => {
+    const { default: protobuf } = await import('./meshtasticProtobufService.js');
+    (protobuf.processPayload as any).mockImplementationOnce(() => ({ rr: 2 /* ROUTER_HEARTBEAT */ }));
+    await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 65 /* STORE_FORWARD_APP */),
+    });
+    const node = senderUpsert();
+    expectNoNameClobber(node);
+    expect(node.isStoreForwardServer).toBe(true);
+  });
+
+  it('NODEINFO still SAVES the real name (positive control)', async () => {
+    // The fix must not touch the NODEINFO_APP path — it is the one upsert that
+    // is supposed to carry real name/hwModel values.
+    await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 4 /* NODEINFO_APP */),
+    });
+    const node = senderUpsert();
+    expect(node.longName).toBe('Test');
+    expect(node.shortName).toBe('TST');
+    expect(node.hwModel).toBe(1);
+  });
+});

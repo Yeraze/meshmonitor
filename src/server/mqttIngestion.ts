@@ -252,9 +252,11 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
       const node: Partial<DbNode> = {
         nodeNum: fromNum,
         nodeId: fromNodeId,
-        longName: '',
-        shortName: '',
-        hwModel: 0,
+        // Intentionally omit longName/shortName/hwModel: this upsert only
+        // refreshes lastHeard. Passing '' / 0 would clobber names previously
+        // saved from a NODEINFO_APP packet, because the upsert merge treats
+        // an empty string / 0 as a provided value and overwrites. This was the
+        // root cause of MQTT nodes appearing nameless after their NodeInfo.
         // See NODEINFO_APP above — `node.channel` must carry the
         // CHANNEL_DB_OFFSET-encoded virtual-channel id for the map
         // filter to honor Virtual Channel Permissions.
@@ -335,9 +337,11 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
       databaseService.upsertNode({
         nodeNum: fromNum,
         nodeId: fromNodeId,
-        longName: '',
-        shortName: '',
-        hwModel: 0,
+        // Intentionally omit longName/shortName/hwModel: this upsert only
+        // refreshes lastHeard. Passing '' / 0 would clobber names previously
+        // saved from a NODEINFO_APP packet, because the upsert merge treats
+        // an empty string / 0 as a provided value and overwrites. This was the
+        // root cause of MQTT nodes appearing nameless after their NodeInfo.
         lastHeard: Math.floor(nowMs / 1000),
         viaMqtt: true,
         transportMechanism: TransportMechanism.MQTT,
@@ -386,9 +390,11 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
       databaseService.upsertNode({
         nodeNum: fromNum,
         nodeId: fromNodeId,
-        longName: '',
-        shortName: '',
-        hwModel: 0,
+        // Intentionally omit longName/shortName/hwModel: this upsert only
+        // refreshes lastHeard. Passing '' / 0 would clobber names previously
+        // saved from a NODEINFO_APP packet, because the upsert merge treats
+        // an empty string / 0 as a provided value and overwrites. This was the
+        // root cause of MQTT nodes appearing nameless after their NodeInfo.
         lastHeard: Math.floor(nowMs / 1000),
         viaMqtt: true,
         transportMechanism: TransportMechanism.MQTT,
@@ -755,9 +761,9 @@ function ingestPaxcounter(
   databaseService.upsertNode({
     nodeNum: fromNum,
     nodeId: fromNodeId,
-    longName: '',
-    shortName: '',
-    hwModel: 0,
+    // Omit longName/shortName/hwModel — lastHeard refresh only. Passing '' / 0
+    // would clobber names saved from a NODEINFO_APP packet (the merge treats an
+    // empty string / 0 as a provided value and overwrites).
     lastHeard: Math.floor(nowMs / 1000),
     viaMqtt: true,
     transportMechanism: TransportMechanism.MQTT,
@@ -846,9 +852,9 @@ async function ingestStoreForward(
     databaseService.upsertNode({
       nodeNum: fromNum,
       nodeId: fromNodeId,
-      longName: '',
-      shortName: '',
-      hwModel: 0,
+      // Omit longName/shortName/hwModel — lastHeard refresh only. Passing '' / 0
+      // would clobber names saved from a NODEINFO_APP packet (the merge treats an
+      // empty string / 0 as a provided value and overwrites).
       lastHeard: Math.floor(nowMs / 1000),
       viaMqtt: true,
       transportMechanism: TransportMechanism.MQTT,
