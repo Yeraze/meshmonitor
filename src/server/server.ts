@@ -7361,7 +7361,9 @@ apiRouter.get('/config/current', requirePermission('configuration', 'read'), (re
     const ccSourceId = req.query.sourceId as string | undefined;
     const ccManager = resolveSourceManager(ccSourceId);
     const config = ccManager.getCurrentConfig();
-    res.json(config);
+    // Surface bridged-node status alongside the config so the configuration UI
+    // can advise that a bridged node (no native IP) needs MQTT Client Proxy.
+    res.json({ ...config, isBridged: ccManager.isLocalNodeBridged() });
   } catch (error) {
     logger.error('Error getting current config:', error);
     res.status(500).json({ error: 'Failed to get current configuration' });
