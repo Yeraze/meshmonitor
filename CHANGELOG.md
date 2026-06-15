@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Features
+
+- **Native OIDC group → role mapping (#3485)**: When using OIDC directly (no reverse proxy), MeshMonitor can now map identity-provider groups to roles via three new env vars: `OIDC_GROUPS_CLAIM` (default `groups`, supports dot notation like `realm_access.roles` for Keycloak), `OIDC_ADMIN_GROUPS` (comma-separated groups granted admin), and `OIDC_ALLOWED_GROUPS` (groups allowed to log in; empty = all). When `OIDC_ADMIN_GROUPS` is set, admin status tracks group membership on every login (promote and demote) and the IdP becomes authoritative; when unset, the existing first-login bootstrap + manual-promotion behaviour is preserved. `OIDC_ALLOWED_GROUPS` gates login (admins always pass). Group changes apply on next login. The dot-notation claim traversal and group normalization are shared with proxy auth (`src/server/auth/claims.ts`). No schema changes.
+
+### Documentation
+
+- **SSO docs corrected and expanded (#3485)**: Documented `DISABLE_LOCAL_AUTH` in the SSO guide (it was missing) and corrected the inaccurate claim that local auth "remains available via API" when disabled — the login endpoint returns `403` unconditionally with no bypass. Added a Group → Role Mapping section with Keycloak/Authentik examples and noted the proxy-auth group vars.
+
 ## [4.10.4] - 2026-06-15
 
 ### Bug Fixes

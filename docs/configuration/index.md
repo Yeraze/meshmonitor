@@ -168,6 +168,9 @@ If you're running multiple MeshMonitor instances on the same host (different por
 | `OIDC_REDIRECT_URI` | Callback URL for OIDC | None (required for SSO) |
 | `OIDC_SCOPES` | Space-separated OIDC scopes to request | `openid profile email` |
 | `OIDC_AUTO_CREATE_USERS` | Automatically create users on first SSO login | `true` |
+| `OIDC_GROUPS_CLAIM` | ID-token claim with the user's groups (dot notation for nested, e.g. `realm_access.roles`) | `groups` |
+| `OIDC_ADMIN_GROUPS` | Comma-separated groups that grant admin rights | None |
+| `OIDC_ALLOWED_GROUPS` | Comma-separated groups allowed to log in (empty = all) | None |
 | `OIDC_ALLOW_HTTP` | Allow HTTP for OIDC (development only, not secure) | `false` |
 
 See the [SSO Setup guide](/configuration/sso) for detailed OIDC configuration.
