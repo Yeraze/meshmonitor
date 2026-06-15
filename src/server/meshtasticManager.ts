@@ -633,7 +633,12 @@ class MeshtasticManager implements ISourceManager {
   // want_response Routing ACK (error_reason) — or on a routing error / timeout.
   // (issue #2608 follow-up: confirm remote favorite assignment.)
   private pendingAdminAcks: Map<number, { dest: number; resolve: (errorReason: number | null) => void; timer: ReturnType<typeof setTimeout> }> = new Map();
-  private favoritesSupportCache: boolean | null = null;  // Cache firmware support check result
+  // Cache the favorites-support check, keyed by the firmware version it was
+  // computed from. Keying by version means the cache self-invalidates when the
+  // firmware version changes or is populated late (e.g. via a NodeInfo rebuild
+  // that doesn't go through processDeviceMetadata), so a `false` computed while
+  // the version was unknown can never get stuck. See supportsFavorites().
+  private favoritesSupportCache: { version: string; result: boolean } | null = null;
   private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null;  // Cached compiled regex
 
   private autoAckCooldowns: Map<number, number> = new Map(); // nodeNum -> lastResponseTimestamp
@@ -12083,21 +12088,25 @@ class MeshtasticManager implements ISourceManager {
    * Result is cached to avoid redundant parsing and version comparisons
    */
   supportsFavorites(): boolean {
-    // Return cached result if available
-    if (this.favoritesSupportCache !== null) {
-      return this.favoritesSupportCache;
-    }
+    const firmwareVersion = this.localNodeInfo?.firmwareVersion;
 
-    if (!this.localNodeInfo?.firmwareVersion) {
+    // Firmware version not known yet (e.g. DeviceMetadata not received). Return
+    // false but DO NOT cache it — otherwise the `false` sticks even after the
+    // version is populated through a path that doesn't clear the cache.
+    if (!firmwareVersion) {
       logger.debug('⚠️ Firmware version unknown, cannot determine favorites support');
-      this.favoritesSupportCache = false;
       return false;
     }
 
-    const version = this.parseFirmwareVersion(this.localNodeInfo.firmwareVersion);
+    // Cache hit only when it was computed from the current firmware version.
+    if (this.favoritesSupportCache?.version === firmwareVersion) {
+      return this.favoritesSupportCache.result;
+    }
+
+    const version = this.parseFirmwareVersion(firmwareVersion);
     if (!version) {
-      logger.debug(`⚠️ Could not parse firmware version: ${this.localNodeInfo.firmwareVersion}`);
-      this.favoritesSupportCache = false;
+      logger.debug(`⚠️ Could not parse firmware version: ${firmwareVersion}`);
+      this.favoritesSupportCache = { version: firmwareVersion, result: false };
       return false;
     }
 
@@ -12105,13 +12114,12 @@ class MeshtasticManager implements ISourceManager {
     const supportsFavorites = version.major > 2 || (version.major === 2 && version.minor >= 7);
 
     if (!supportsFavorites) {
-      logger.debug(`ℹ️ Firmware ${this.localNodeInfo.firmwareVersion} does not support favorites (requires >= 2.7.0)`);
+      logger.debug(`ℹ️ Firmware ${firmwareVersion} does not support favorites (requires >= 2.7.0)`);
     } else {
-      logger.debug(`✅ Firmware ${this.localNodeInfo.firmwareVersion} supports favorites (cached)`);
+      logger.debug(`✅ Firmware ${firmwareVersion} supports favorites`);
     }
 
-    // Cache the result
-    this.favoritesSupportCache = supportsFavorites;
+    this.favoritesSupportCache = { version: firmwareVersion, result: supportsFavorites };
     return supportsFavorites;
   }
 
