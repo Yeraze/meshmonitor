@@ -6,9 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.10.4] - 2026-06-15
+
 ### Bug Fixes
 
 - **Air-quality particle counts never collected or graphed**: Telemetry from an air-quality sensor reported particle counts (`particles_03um` … `particles_100um`) but they never appeared in the telemetry graphs. protobuf.js only camelCases an underscore followed by a *letter*, so these underscore-before-digit fields stayed snake_case on the decoded message; the serial/direct ingestion path read them as `particles03um` (camelCase) → `undefined` → the values were silently dropped before they reached the database. The PM (`pm10Standard`) and CO₂ (`co2Temperature`) fields were unaffected because their underscores precede letters. Ingestion now reads the snake_case form the decoder actually produces (with the camelCase as a fallback), so all six particle bins are stored under their canonical types and graphed. The same quirk affected `EnvironmentMetrics` `rainfall_1h` / `rainfall_24h`, which are fixed alongside.
+- **Timed Events fired across all sources (#3479)**: A Timer Trigger configured for one source was being scheduled and fired on every source. The per-fire result write saved that source's trigger list to the un-namespaced global settings key, which then bled into other sources via the settings GET-merge. Timer-trigger result writes are now source-scoped, so a timed event only runs on the source it was configured for.
+- **Saving Traffic Management / Status Message config failed (#3464)**: After these modules became editable in 4.10.3, saving either returned HTTP 400 `Invalid module type: trafficmanagement` / `statusmessage`. The generic module-config save route validated against a hardcoded allow-list that was never updated to include the two new module types (the protobuf encoder already supported them). Both are now accepted.
+- **Auto Favorites wrongly reported firmware as unsupported (#3482)**: Auto Favorites could warn "Firmware 2.7.24 does not support favorites (requires >= 2.7.0)" on firmware that clearly qualifies. A support check that ran before the firmware version was known cached `false` and stuck across reconnects. The cache is now keyed by the firmware version it was computed from and never caches the unknown-firmware case.
+- **MeshCore Share Contact failed silently (#3481)**: Share Contact on a MeshCore TCP Companion source could do nothing with no actionable error (or hang ~30s). The real failure reason now reaches the user (e.g. firmware that doesn't support the share command) via a structured result, with a faster 10s timeout instead of a silent 30s hang.
+- **Delivered icon missing on own replies in Firefox on Android (#3477)**: On narrow screens the sent/delivered status icon next to your own messages could disappear in Firefox for Android, because the message content claimed the full row width and collapsed the status column. A CSS flex-sizing fix keeps the icon visible; desktop was unaffected.
 
 ## [4.10.3] - 2026-06-14
 
