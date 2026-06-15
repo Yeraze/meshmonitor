@@ -1482,7 +1482,12 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  width: 100%;
+  /* Issue #3477: in the row-reverse container used for own messages, width:100%
+     consumed the whole row and squeezed .message-status (the delivered icon) to
+     zero width — Firefox Android dropped the icon entirely. flex:1 1 auto with
+     min-width:0 lets this column shrink so the status icon always has room. */
+  flex: 1 1 auto;
+  min-width: 0;
   position: relative;
 }
 
