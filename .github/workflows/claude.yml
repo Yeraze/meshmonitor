@@ -40,8 +40,9 @@ jobs:
           additional_permissions: |
             actions: read
           
-          # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4.1)
-          # model: "claude-opus-4-1-20250805"
+          # Pin the model explicitly. The action's old default (claude-sonnet-4-20250514)
+          # has been removed and now 404s ("not_found_error"). Bump to a current Opus if desired.
+          model: "claude-sonnet-4-6"
           
           # Optional: Customize the trigger phrase (default: @claude)
           # trigger_phrase: "/claude"

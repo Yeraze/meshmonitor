@@ -113,7 +113,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.CLAUDE_GITHUB_TOKEN }}
-          model: "claude-sonnet-4-20250514"
+          model: "claude-sonnet-4-6"
 
           direct_prompt: |
             🤖 **Automated Issue Triage**
@@ -268,7 +268,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.CLAUDE_GITHUB_TOKEN }}
-          model: "claude-sonnet-4-20250514"
+          model: "claude-sonnet-4-6"
 
           direct_prompt: |
             🤖 **Automated Issue Triage** (Manual Trigger)
@@ -484,7 +484,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.CLAUDE_GITHUB_TOKEN }}
-          model: "claude-sonnet-4-20250514"
+          model: "claude-sonnet-4-6"
 
           direct_prompt: |
             🤖 **Automated Follow-up Analysis**
