@@ -43,8 +43,10 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}  # Required to avoid OIDC token errors
 
-          # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4.1)
-          # model: "claude-opus-4-1-20250805"
+          # Pin the model explicitly. The action's old default (claude-sonnet-4-20250514)
+          # has been removed and now 404s ("not_found_error"), which failed this check on
+          # every PR. Bump to a current Opus if you want deeper reviews.
+          model: "claude-sonnet-4-6"
 
           # Direct prompt for automated review (no @claude mention needed)
           direct_prompt: |
