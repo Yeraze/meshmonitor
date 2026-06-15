@@ -713,12 +713,15 @@ router.post(
           error: 'Invalid public key — must be 64-char hex',
         });
       }
-      const ok = await managerFor(req).shareContact(publicKey);
-      if (!ok) {
-        return res.status(409).json({
-          success: false,
-          error: 'Share contact failed — contact may be unknown, source disconnected, or not a Companion device',
-        });
+      const result = await managerFor(req).shareContact(publicKey);
+      if (!result.ok) {
+        const error =
+          result.error ??
+          'Share contact failed — contact may be unknown, source disconnected, or not a Companion device';
+        // A non-responding device is a gateway-timeout condition; everything
+        // else (rejected, disconnected, not a Companion) is a 409 conflict.
+        const status = /did not respond|timeout/i.test(error) ? 504 : 409;
+        return res.status(status).json({ success: false, error });
       }
       res.json({ success: true, broadcast: true });
     } catch (error) {

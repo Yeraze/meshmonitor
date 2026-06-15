@@ -4,7 +4,7 @@
  * Smoke tests for the MeshCore DM contact-detail panel.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
 import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
 
@@ -88,5 +88,53 @@ describe('MeshCoreContactDetailPanel', () => {
       />,
     );
     expect(screen.queryByRole('button', { name: 'Discover Path' })).toBeNull();
+  });
+
+  it('surfaces the real server error from onShareContact (issue #3480)', async () => {
+    const contact: MeshCoreContact = { publicKey: PK, advType: 1 };
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const serverError = 'Device rejected share-contact — the firmware may not support this command.';
+    const onShareContact = vi.fn().mockResolvedValue({ ok: false, error: serverError });
+
+    render(
+      <MeshCoreContactDetailPanel
+        contact={contact}
+        publicKey={PK}
+        onShareContact={onShareContact}
+        canWriteNodes
+        isCompanion
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Share Contact' }));
+
+    // The real reason is shown, NOT the hardcoded generic fallback.
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe(serverError);
+    expect(onShareContact).toHaveBeenCalledWith(PK);
+
+    confirmSpy.mockRestore();
+  });
+
+  it('falls back to a generic message when onShareContact returns no error text', async () => {
+    const contact: MeshCoreContact = { publicKey: PK, advType: 1 };
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const onShareContact = vi.fn().mockResolvedValue({ ok: false });
+
+    render(
+      <MeshCoreContactDetailPanel
+        contact={contact}
+        publicKey={PK}
+        onShareContact={onShareContact}
+        canWriteNodes
+        isCompanion
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Share Contact' }));
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('Share contact failed.'));
+
+    confirmSpy.mockRestore();
   });
 });

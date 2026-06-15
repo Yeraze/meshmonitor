@@ -25,7 +25,7 @@ interface MeshCoreContactDetailPanelProps {
   onResetPath?: (publicKey: string) => Promise<boolean>;
   /** Trigger CMD_SHARE_CONTACT for this contact, broadcasting their saved
    *  advert to nearby nodes. Unset hides the Share button. */
-  onShareContact?: (publicKey: string) => Promise<boolean>;
+  onShareContact?: (publicKey: string) => Promise<{ ok: boolean; error?: string }>;
   /** Manually push a forwarding route into the device's contact record
    *  via CMD_ADD_UPDATE_CONTACT. `outPath` is a comma-separated hex chain
    *  ("a3,7f,02"). Unset OR `advancedPathEditEnabled=false` hides the
@@ -336,13 +336,14 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     setShareError(null);
     setShareSuccess(false);
     try {
-      const ok = await onShareContact(publicKey);
-      if (ok) {
+      const result = await onShareContact(publicKey);
+      if (result.ok) {
         setShareSuccess(true);
         window.setTimeout(() => setShareSuccess(false), 2200);
       } else {
         setShareError(
-          t('meshcore.contact_details.share_contact_error', 'Share contact failed.'),
+          result.error ||
+            t('meshcore.contact_details.share_contact_error', 'Share contact failed.'),
         );
       }
     } finally {
