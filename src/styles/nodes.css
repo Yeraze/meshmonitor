@@ -1482,7 +1482,8 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   position: relative;
 }
 

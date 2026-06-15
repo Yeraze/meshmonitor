@@ -7499,7 +7499,8 @@ apiRouter.post('/config/module/:moduleType', requirePermission('configuration', 
 
     // Validate moduleType
     const validModuleTypes = ['extnotif', 'storeforward', 'rangetest', 'cannedmsg', 'audio',
-      'remotehardware', 'detectionsensor', 'paxcounter', 'serial', 'ambientlighting'];
+      'remotehardware', 'detectionsensor', 'paxcounter', 'serial', 'ambientlighting',
+      'statusmessage', 'trafficmanagement'];
     if (!validModuleTypes.includes(moduleType)) {
       res.status(400).json({ error: `Invalid module type: ${moduleType}` });
       return;

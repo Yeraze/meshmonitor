@@ -410,6 +410,7 @@
   align-items: center;
   margin-bottom: 2px;
   padding-left: 0.25rem;
+  flex-shrink: 0;
 }
 
 .status-pending {
