@@ -313,6 +313,37 @@ describe('MeshCoreNativeBackend', () => {
     expect(resp.error).toMatch(/Unknown native command/);
   });
 
+  it('share_contact resolves the key and calls the library', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const pubkey = 'aa'.repeat(32); // full 64-char hex → no contact lookup needed
+    const resp = await backend.sendCommand('share_contact', { public_key: pubkey });
+    expect(resp.success).toBe(true);
+    expect(lastInstanceRef.current!.shareContactCalls).toHaveLength(1);
+    expect(Array.from(lastInstanceRef.current!.shareContactCalls[0])).toEqual(
+      Array.from(Uint8Array.from(Buffer.from(pubkey, 'hex'))),
+    );
+  });
+
+  it('share_contact converts the library bare reject() into an actionable error', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    // meshcore.js rejects with NO argument on a firmware Err response.
+    lastInstanceRef.current!.shareContact = () => Promise.reject(undefined);
+
+    const resp = await backend.sendCommand('share_contact', { public_key: 'aa'.repeat(32) });
+    expect(resp.success).toBe(false);
+    // Not the useless "undefined" — a real, actionable message.
+    expect(resp.error).toMatch(/firmware may not support CMD_SHARE_CONTACT/i);
+    expect(resp.error).not.toBe('undefined');
+  });
+
   it('maps get_contacts to bridge-shaped contact rows', async () => {
     const backend = new MeshCoreNativeBackend('src-1', {
       connectionType: 'serial',

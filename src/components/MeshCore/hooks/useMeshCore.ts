@@ -104,8 +104,9 @@ export interface MeshCoreActions {
   resetContactPath: (publicKey: string) => Promise<boolean>;
   /** Broadcast the device's saved advert for a contact as a zero-hop frame so
    *  nearby nodes can add this contact themselves. Wraps CMD_SHARE_CONTACT.
-   *  Resolves `true` when the device ACKed; `false` for any error. */
-  shareContact: (publicKey: string) => Promise<boolean>;
+   *  Resolves `{ ok: true }` on ACK; on failure `ok` is false and `error`
+   *  carries the server's actionable reason. */
+  shareContact: (publicKey: string) => Promise<{ ok: boolean; error?: string }>;
   /** Manually push a forwarding route into the device's contact record.
    *  `outPath` is a comma-separated hex chain ("a3,7f,02"); empty string
    *  sets a zero-hop direct path. Server gates this on the
@@ -844,7 +845,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
-  const shareContact = useCallback(async (publicKey: string): Promise<boolean> => {
+  const shareContact = useCallback(async (publicKey: string): Promise<{ ok: boolean; error?: string }> => {
     try {
       const response = await csrfFetch(
         `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/share`,
@@ -852,13 +853,15 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       );
       const data = await response.json();
       if (!data.success) {
-        setError(data.error || 'Failed to share contact');
-        return false;
+        const error = data.error || 'Failed to share contact';
+        setError(error);
+        return { ok: false, error };
       }
-      return true;
+      return { ok: true };
     } catch (_err) {
-      setError('Failed to share contact');
-      return false;
+      const error = 'Failed to share contact';
+      setError(error);
+      return { ok: false, error };
     }
   }, [mcPrefix, csrfFetch]);
 
