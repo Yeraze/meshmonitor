@@ -59,6 +59,7 @@ import { safeFetch, SsrfBlockedError } from './utils/ssrfGuard.js';
 import { resolveRequestSourceId } from './utils/sourceResolver.js';
 import { parseDestinationNum } from './utils/parseDestination.js';
 import { PortNum, modemPresetChannelName, getRoutingErrorName } from './constants/meshtastic.js';
+import { isValidModuleConfigType } from './constants/moduleConfig.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 import { applyManagerSettings } from './applyManagerSettings.js';
 
@@ -7490,17 +7491,16 @@ apiRouter.post('/config/module/telemetry', requirePermission('configuration', 'w
 });
 
 // Generic module config endpoint - handles extnotif, storeforward, rangetest, cannedmsg, audio,
-// remotehardware, detectionsensor, paxcounter, serial, ambientlighting
+// remotehardware, detectionsensor, paxcounter, serial, ambientlighting, statusmessage, trafficmanagement
 apiRouter.post('/config/module/:moduleType', requirePermission('configuration', 'write'), async (req, res) => {
   try {
     const { moduleType } = req.params;
     const { sourceId: cfgModSourceId, ...config } = req.body;
     const cfgModManager = resolveSourceManager(cfgModSourceId);
 
-    // Validate moduleType
-    const validModuleTypes = ['extnotif', 'storeforward', 'rangetest', 'cannedmsg', 'audio',
-      'remotehardware', 'detectionsensor', 'paxcounter', 'serial', 'ambientlighting'];
-    if (!validModuleTypes.includes(moduleType)) {
+    // Validate moduleType against the shared allow-list (kept in sync with
+    // protobufService.createSetModuleConfigMessageGeneric's configFieldMap). See #3464.
+    if (!isValidModuleConfigType(moduleType)) {
       res.status(400).json({ error: `Invalid module type: ${moduleType}` });
       return;
     }
