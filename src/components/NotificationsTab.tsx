@@ -865,7 +865,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                       <button
                         onClick={() => {
                           const filtered = filteredNodes.map(n => n.user?.id || n.nodeId);
-                          setSelectedMonitoredNodes([...new Set([...selectedMonitoredNodes, ...filtered])]);
+                          if (!nodeSearchTerm.trim()) {
+                            // No filter active: replace entire selection with all visible nodes
+                            setSelectedMonitoredNodes(filtered);
+                          } else {
+                            // Filter active: add visible nodes to existing selection
+                            setSelectedMonitoredNodes([...new Set([...selectedMonitoredNodes, ...filtered])]);
+                          }
                         }}
                         className="btn-secondary"
                         style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}
@@ -874,8 +880,15 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                       </button>
                       <button
                         onClick={() => {
-                          const filtered = filteredNodes.map(n => n.user?.id || n.nodeId);
-                          setSelectedMonitoredNodes(selectedMonitoredNodes.filter(id => !filtered.includes(id)));
+                          if (!nodeSearchTerm.trim()) {
+                            // No filter active: clear the entire selection (including stale IDs
+                            // from deleted or renamed nodes that no longer appear in the list)
+                            setSelectedMonitoredNodes([]);
+                          } else {
+                            // Filter active: only remove currently visible nodes
+                            const filtered = filteredNodes.map(n => n.user?.id || n.nodeId);
+                            setSelectedMonitoredNodes(selectedMonitoredNodes.filter(id => !filtered.includes(id)));
+                          }
                         }}
                         className="btn-secondary"
                         style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}
