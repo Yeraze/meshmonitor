@@ -55,7 +55,7 @@ const meshcoreManager = {
   discoverNodes: vi.fn().mockResolvedValue({ returned: 0, newCount: 0 }),
   getRespondToDiscovery: vi.fn().mockResolvedValue(false),
   setRespondToDiscovery: vi.fn().mockResolvedValue(undefined),
-  shareContact: vi.fn().mockResolvedValue(true),
+  shareContact: vi.fn().mockResolvedValue({ ok: true }),
   setContactOutPath: vi.fn().mockResolvedValue(true),
   loginToNode: vi.fn().mockResolvedValue(true),
   requestNodeStatus: vi.fn().mockResolvedValue({ batteryMv: 4200, uptimeSecs: 3600 }),
@@ -1439,7 +1439,7 @@ describe('MeshCore Routes', () => {
 
     beforeEach(() => {
       meshcoreManager.shareContact.mockReset();
-      meshcoreManager.shareContact.mockResolvedValue(true);
+      meshcoreManager.shareContact.mockResolvedValue({ ok: true });
     });
 
     it('requires authentication', async () => {
@@ -1465,12 +1465,29 @@ describe('MeshCore Routes', () => {
       expect(meshcoreManager.shareContact).toHaveBeenCalledWith(VALID_PUBKEY);
     });
 
-    it('returns 409 when the manager rejects (unknown contact / non-companion)', async () => {
-      meshcoreManager.shareContact.mockResolvedValueOnce(false);
+    it('returns 409 and forwards the manager error when the device rejects', async () => {
+      meshcoreManager.shareContact.mockResolvedValueOnce({
+        ok: false,
+        error: 'Device rejected share-contact — the firmware may not support this command.',
+      });
       const response = await authenticatedAgent
         .post(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/share`);
       expect(response.status).toBe(409);
       expect(response.body.success).toBe(false);
+      // Real reason is surfaced, not a hardcoded generic string.
+      expect(response.body.error).toMatch(/firmware may not support/i);
+    });
+
+    it('returns 504 when the device did not respond (timeout)', async () => {
+      meshcoreManager.shareContact.mockResolvedValueOnce({
+        ok: false,
+        error: 'Device did not respond to share-contact within 10s — the firmware may not support this command.',
+      });
+      const response = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/share`);
+      expect(response.status).toBe(504);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toMatch(/did not respond/i);
     });
 
     it('returns 404 when the source has no registered manager', async () => {

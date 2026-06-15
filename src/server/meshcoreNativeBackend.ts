@@ -891,7 +891,21 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // not mutate the contact, it just retransmits the advert.
         const publicKey = await this.resolvePublicKey(params.public_key as string);
         if (!publicKey) throw new Error('Share-contact target not found');
-        await c.shareContact(publicKey);
+        try {
+          await c.shareContact(publicKey);
+        } catch (err) {
+          // meshcore.js rejects this promise with NO argument when the firmware
+          // returns an Err response (connection.js shareContact onErr → reject()),
+          // so `err` is typically undefined. Surface an actionable message
+          // instead of letting `String(undefined)` propagate up the chain.
+          const detail = err instanceof Error ? err.message : err == null ? '' : String(err);
+          throw new Error(
+            detail
+              ? `Device rejected share-contact: ${detail}`
+              : 'Device rejected share-contact — the firmware may not support CMD_SHARE_CONTACT (opcode 16)',
+            { cause: err },
+          );
+        }
         return { ok: true };
       }
 

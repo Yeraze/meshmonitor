@@ -152,6 +152,12 @@ export const MeshCoreDiscoverFilter = {
 
 export type MeshCoreDiscoverMode = 'nearby' | 'repeaters' | 'sensors';
 
+/** Result of a share-contact request, carrying an actionable reason on failure. */
+export interface ShareContactResult {
+  ok: boolean;
+  error?: string;
+}
+
 // Connection types
 export enum ConnectionType {
   SERIAL = 'serial',
@@ -2061,28 +2067,41 @@ class MeshCoreManager extends EventEmitter {
    * CMD_SHARE_CONTACT; the device only retransmits — no local state is
    * mutated, so this method does not touch contacts or meshcore_nodes.
    *
-   * Returns `true` on success, `false` if the device rejected the request
-   * (unknown contact, transient backend error) or this isn't a Companion.
+   * Returns `{ ok: true }` on success. On failure `ok` is false and `error`
+   * carries an actionable reason (not a Companion, disconnected, device
+   * rejected, or no response) so the route and UI can surface it instead of a
+   * generic string. The underlying meshcore.js call rejects with no argument
+   * on a firmware Err, so the descriptive text is manufactured here / in the
+   * native backend rather than read from the device.
    */
-  async shareContact(publicKey: string): Promise<boolean> {
+  async shareContact(publicKey: string): Promise<ShareContactResult> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Share-contact requires Companion firmware');
-      return false;
+      return { ok: false, error: 'Share contact requires MeshCore Companion firmware.' };
     }
     if (!this.connected) {
-      return false;
+      return { ok: false, error: 'Source is disconnected.' };
     }
     try {
-      const response = await this.sendBridgeCommand('share_contact', { public_key: publicKey });
+      // Use a short dedicated timeout (not the 30s default) so a firmware that
+      // never acks CMD_SHARE_CONTACT fails fast instead of hanging the request.
+      const response = await this.sendBridgeCommand('share_contact', { public_key: publicKey }, 10_000);
       if (!response.success) {
-        logger.warn(`[MeshCore] share_contact failed for ${publicKey}: ${response.error}`);
-        return false;
+        const raw = response.error ?? '';
+        const friendly = /timeout/i.test(raw)
+          ? 'Device did not respond to share-contact within 10s — the firmware may not support this command.'
+          : raw && raw !== 'undefined'
+            ? raw
+            : 'Device rejected share-contact — the firmware may not support this command.';
+        logger.warn(`[MeshCore] share_contact failed for ${publicKey}: ${friendly}`);
+        return { ok: false, error: friendly };
       }
       logger.info(`[MeshCore] Shared contact ${publicKey.substring(0, 16)}…`);
-      return true;
+      return { ok: true };
     } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       logger.error('[MeshCore] shareContact threw:', error);
-      return false;
+      return { ok: false, error: `Share contact failed: ${msg}` };
     }
   }
 
