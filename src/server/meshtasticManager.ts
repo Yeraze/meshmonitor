@@ -6459,9 +6459,11 @@ class MeshtasticManager implements ISourceManager {
           { type: 'windSpeed', value: envMetrics.windSpeed, unit: 'm/s' },
           { type: 'windGust', value: envMetrics.windGust, unit: 'm/s' },
           { type: 'windLull', value: envMetrics.windLull, unit: 'm/s' },
-          // Precipitation
-          { type: 'rainfall1h', value: envMetrics.rainfall1h, unit: 'mm' },
-          { type: 'rainfall24h', value: envMetrics.rainfall24h, unit: 'mm' },
+          // Precipitation. Same protobuf.js underscore-before-digit quirk as the
+          // particle counts: `rainfall_1h` / `rainfall_24h` stay snake_case on the
+          // decoded message, so read those with the camelCase as a fallback.
+          { type: 'rainfall1h', value: envMetrics.rainfall1h ?? envMetrics.rainfall_1h, unit: 'mm' },
+          { type: 'rainfall24h', value: envMetrics.rainfall24h ?? envMetrics.rainfall_24h, unit: 'mm' },
           // Soil sensors
           { type: 'soilMoisture', value: envMetrics.soilMoisture, unit: '%' },
           { type: 'soilTemperature', value: envMetrics.soilTemperature, unit: '°C' },
@@ -6524,13 +6526,19 @@ class MeshtasticManager implements ISourceManager {
           { type: 'pm10Environmental', value: aqMetrics.pm10Environmental, unit: 'µg/m³' },
           { type: 'pm25Environmental', value: aqMetrics.pm25Environmental, unit: 'µg/m³' },
           { type: 'pm100Environmental', value: aqMetrics.pm100Environmental, unit: 'µg/m³' },
-          // Particle counts (#/0.1L)
-          { type: 'particles03um', value: aqMetrics.particles03um, unit: '#/0.1L' },
-          { type: 'particles05um', value: aqMetrics.particles05um, unit: '#/0.1L' },
-          { type: 'particles10um', value: aqMetrics.particles10um, unit: '#/0.1L' },
-          { type: 'particles25um', value: aqMetrics.particles25um, unit: '#/0.1L' },
-          { type: 'particles50um', value: aqMetrics.particles50um, unit: '#/0.1L' },
-          { type: 'particles100um', value: aqMetrics.particles100um, unit: '#/0.1L' },
+          // Particle counts (#/0.1L).
+          // protobuf.js only camelCases an underscore followed by a *letter*, so
+          // these underscore-before-digit fields (particles_03um …) stay
+          // snake_case on the decoded message — `aqMetrics.particles03um` is
+          // undefined and the data was silently dropped. Read the snake_case form
+          // the decoder actually produces, with the camelCase as a fallback in
+          // case a future protobuf.js / keepCase config changes the shape.
+          { type: 'particles03um', value: aqMetrics.particles03um ?? aqMetrics.particles_03um, unit: '#/0.1L' },
+          { type: 'particles05um', value: aqMetrics.particles05um ?? aqMetrics.particles_05um, unit: '#/0.1L' },
+          { type: 'particles10um', value: aqMetrics.particles10um ?? aqMetrics.particles_10um, unit: '#/0.1L' },
+          { type: 'particles25um', value: aqMetrics.particles25um ?? aqMetrics.particles_25um, unit: '#/0.1L' },
+          { type: 'particles50um', value: aqMetrics.particles50um ?? aqMetrics.particles_50um, unit: '#/0.1L' },
+          { type: 'particles100um', value: aqMetrics.particles100um ?? aqMetrics.particles_100um, unit: '#/0.1L' },
           // CO2 and related
           { type: 'co2', value: aqMetrics.co2, unit: 'ppm' },
           { type: 'co2Temperature', value: aqMetrics.co2Temperature, unit: '°C' },
