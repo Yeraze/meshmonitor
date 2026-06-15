@@ -410,6 +410,9 @@
   align-items: center;
   margin-bottom: 2px;
   padding-left: 0.25rem;
+  /* Issue #3477: never let the delivered/sent status icon be squeezed out of
+     the flex row on narrow screens (Firefox Android was stricter about this). */
+  flex-shrink: 0;
 }
 
 .status-pending {
