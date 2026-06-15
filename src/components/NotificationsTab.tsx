@@ -6,6 +6,11 @@ import { Channel } from '../types/device';
 import { useToast } from './ToastContainer';
 import SectionNav from './SectionNav';
 import { useSource } from '../contexts/SourceContext';
+import {
+  reconcileMonitoredNodes,
+  selectAllMonitoredNodes,
+  deselectAllMonitoredNodes,
+} from './monitoredNodes';
 
 interface VapidStatus {
   configured: boolean;
@@ -153,6 +158,32 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
              nodeId.includes(lowerSearch);
     });
   }, [availableNodes, nodeSearchTerm]);
+
+  // The set of node IDs actually present under the active source (already
+  // source- and permission-scoped by /api/nodes).
+  const availableNodeIds = useMemo(
+    () => new Set(
+      availableNodes
+        .map(n => n.user?.id || n.nodeId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+    [availableNodes],
+  );
+
+  // Reconcile the loaded per-source selection against the nodes that actually
+  // resolve under the active source: drop stale IDs (saved under another source
+  // or for nodes that no longer exist), which the visible-only "Deselect all"
+  // could never clear (issue #3486). Guard on a populated list so a failed or
+  // not-yet-returned fetch can't wipe a valid selection. Runs on either
+  // ordering of the nodes/prefs loads; the length guard prevents a re-render
+  // loop and is a no-op once reconciled.
+  useEffect(() => {
+    if (availableNodeIds.size === 0) return;
+    const pruned = reconcileMonitoredNodes(selectedMonitoredNodes, availableNodeIds);
+    if (pruned.length !== selectedMonitoredNodes.length) {
+      setSelectedMonitoredNodes(pruned);
+    }
+  }, [availableNodeIds, selectedMonitoredNodes]);
 
   const checkNotificationStatus = async () => {
     if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -864,8 +895,16 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
                       <button
                         onClick={() => {
-                          const filtered = filteredNodes.map(n => n.user?.id || n.nodeId);
-                          setSelectedMonitoredNodes([...new Set([...selectedMonitoredNodes, ...filtered])]);
+                          const searchActive = nodeSearchTerm.trim().length > 0;
+                          const availableIds = availableNodes
+                            .map(n => n.user?.id || n.nodeId)
+                            .filter((id): id is string => Boolean(id));
+                          const filteredIds = filteredNodes
+                            .map(n => n.user?.id || n.nodeId)
+                            .filter((id): id is string => Boolean(id));
+                          setSelectedMonitoredNodes(
+                            selectAllMonitoredNodes(selectedMonitoredNodes, availableIds, filteredIds, searchActive),
+                          );
                         }}
                         className="btn-secondary"
                         style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}
@@ -874,8 +913,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                       </button>
                       <button
                         onClick={() => {
-                          const filtered = filteredNodes.map(n => n.user?.id || n.nodeId);
-                          setSelectedMonitoredNodes(selectedMonitoredNodes.filter(id => !filtered.includes(id)));
+                          const searchActive = nodeSearchTerm.trim().length > 0;
+                          const filteredIds = filteredNodes
+                            .map(n => n.user?.id || n.nodeId)
+                            .filter((id): id is string => Boolean(id));
+                          setSelectedMonitoredNodes(
+                            deselectAllMonitoredNodes(selectedMonitoredNodes, filteredIds, searchActive),
+                          );
                         }}
                         className="btn-secondary"
                         style={{ padding: '0.4rem 0.8rem', fontSize: '12px' }}
