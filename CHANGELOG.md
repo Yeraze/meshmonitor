@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Bug Fixes
+
+- **Air-quality particle counts never collected or graphed**: Telemetry from an air-quality sensor reported particle counts (`particles_03um` … `particles_100um`) but they never appeared in the telemetry graphs. protobuf.js only camelCases an underscore followed by a *letter*, so these underscore-before-digit fields stayed snake_case on the decoded message; the serial/direct ingestion path read them as `particles03um` (camelCase) → `undefined` → the values were silently dropped before they reached the database. The PM (`pm10Standard`) and CO₂ (`co2Temperature`) fields were unaffected because their underscores precede letters. Ingestion now reads the snake_case form the decoder actually produces (with the camelCase as a fallback), so all six particle bins are stored under their canonical types and graphed. The same quirk affected `EnvironmentMetrics` `rainfall_1h` / `rainfall_24h`, which are fixed alongside.
+
 ## [4.10.3] - 2026-06-14
 
 ### Features
