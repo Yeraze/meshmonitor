@@ -3784,7 +3784,14 @@ class MeshtasticManager implements ISourceManager {
           delete trigger.lastError;
         }
 
-        await databaseService.settings.setSetting('timerTriggers', JSON.stringify(timerTriggers));
+        // Write back to the SAME per-source key we read from above. Using the
+        // un-namespaced global setter here (the original bug) copied this
+        // source's trigger list into the global `timerTriggers` key on every
+        // fire; that global value then bled into other sources via the settings
+        // GET-merge, so a timer configured for one source ran on all of them.
+        // getSettingForSource / setSourceSetting deliberately do NOT fall back
+        // to global (see #2839), so read and write must both be source-scoped.
+        await databaseService.settings.setSourceSetting(this.sourceId, 'timerTriggers', JSON.stringify(timerTriggers));
         logger.debug(`⏱️ Updated timer trigger ${triggerId} result: ${result}`);
       }
     } catch (e) {
