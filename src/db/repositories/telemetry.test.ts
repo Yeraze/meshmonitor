@@ -5,10 +5,11 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { telemetrySqlite } from '../schema/telemetry.js';
 import { TelemetryRepository } from './telemetry.js';
 import * as schema from '../schema/index.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 describe('TelemetryRepository', () => {
   let db: Database.Database;
@@ -16,33 +17,10 @@ describe('TelemetryRepository', () => {
   let repo: TelemetryRepository;
 
   beforeEach(() => {
-    // Create in-memory SQLite database
-    db = new Database(':memory:');
-
-    // Create telemetry table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS telemetry (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nodeId TEXT NOT NULL,
-        nodeNum INTEGER NOT NULL,
-        telemetryType TEXT NOT NULL,
-        timestamp INTEGER NOT NULL,
-        value REAL NOT NULL,
-        unit TEXT,
-        createdAt INTEGER NOT NULL,
-        packetTimestamp INTEGER,
-        packetId INTEGER,
-        channel INTEGER,
-        precisionBits INTEGER,
-        gpsAccuracy INTEGER,
-        rxSnr REAL,
-        hopStart INTEGER,
-        hopLimit INTEGER,
-        sourceId TEXT
-      )
-    `);
-
-    drizzleDb = drizzle(db, { schema });
+    // Full production schema from the migration registry — see testDb.ts.
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
     repo = new TelemetryRepository(drizzleDb, 'sqlite');
   });
 
