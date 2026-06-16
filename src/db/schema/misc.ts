@@ -116,6 +116,8 @@ export const userMapPreferencesSqlite = sqliteTable('user_map_preferences', {
   // Map age slider: hide nodes/traceroutes older than this on the map (hours).
   // NULL = follow the global maxNodeAgeHours setting. See #3322.
   mapMaxAgeHours: integer('map_max_age_hours'),
+  // Position history "points only" toggle (#3492): omit the connecting line.
+  positionHistoryPointsOnly: integer('position_history_points_only', { mode: 'boolean' }).default(false),
   createdAt: integer('createdAt'),
   updatedAt: integer('updatedAt'),
 });
@@ -142,6 +144,7 @@ export const userMapPreferencesPostgres = pgTable('user_map_preferences', {
   showEstimatedPositions: pgBoolean('show_estimated_positions').default(false),
   positionHistoryHours: pgInteger('position_history_hours'),
   mapMaxAgeHours: pgInteger('map_max_age_hours'),
+  positionHistoryPointsOnly: pgBoolean('position_history_points_only').default(false),
   createdAt: pgBigint('createdAt', { mode: 'number' }),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }),
 });
@@ -401,6 +404,7 @@ export const userMapPreferencesMysql = mysqlTable('user_map_preferences', {
   showEstimatedPositions: myBoolean('show_estimated_positions').default(false),
   positionHistoryHours: myInt('position_history_hours'),
   mapMaxAgeHours: myInt('map_max_age_hours'),
+  positionHistoryPointsOnly: myBoolean('position_history_points_only').default(false),
   createdAt: myBigint('createdAt', { mode: 'number' }),
   updatedAt: myBigint('updatedAt', { mode: 'number' }),
 });

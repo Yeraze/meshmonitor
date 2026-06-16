@@ -103,6 +103,8 @@ import { migration as autoFavoriteAckMigration, runMigration085Postgres as runAu
 import { migration as autoFavoriteMaxNeighborAgeMigration, runMigration086Postgres as runAutoFavoriteMaxNeighborAgePostgres, runMigration086Mysql as runAutoFavoriteMaxNeighborAgeMysql } from '../server/migrations/086_add_auto_favorite_max_neighbor_age.js';
 import { migration as mapMaxAgeMigration, runMigration087Postgres as runMapMaxAgePostgres, runMigration087Mysql as runMapMaxAgeMysql } from '../server/migrations/087_add_map_max_age_to_map_prefs.js';
 import { migration as sourcePkiKeysMigration, runMigration088Postgres as runSourcePkiKeysPostgres, runMigration088Mysql as runSourcePkiKeysMysql } from '../server/migrations/088_add_source_pki_keys.js';
+import { migration as positionSnrHopsMigration, runMigration089Postgres as runPositionSnrHopsPostgres, runMigration089Mysql as runPositionSnrHopsMysql } from '../server/migrations/089_add_position_snr_hops.js';
+import { migration as positionPointsOnlyMigration, runMigration090Postgres as runPositionPointsOnlyPostgres, runMigration090Mysql as runPositionPointsOnlyMysql } from '../server/migrations/090_add_position_points_only_to_map_prefs.js';
 
 // ============================================================================
 // Registry
@@ -1408,4 +1410,32 @@ registry.register({
   sqlite: (db) => sourcePkiKeysMigration.up(db),
   postgres: (client) => runSourcePkiKeysPostgres(client),
   mysql: (pool) => runSourcePkiKeysMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 089: telemetry rxSnr/hopStart/hopLimit — capture per-position-fix
+// receive SNR and hop metadata for the position-history hover tooltip (#3492).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 89,
+  name: 'add_position_snr_hops',
+  settingsKey: 'migration_089_add_position_snr_hops',
+  sqlite: (db) => positionSnrHopsMigration.up(db),
+  postgres: (client) => runPositionSnrHopsPostgres(client),
+  mysql: (pool) => runPositionSnrHopsMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 090: user_map_preferences.position_history_points_only — persist
+// the Map Features "points only" position-history toggle (#3492).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 90,
+  name: 'add_position_points_only_to_map_prefs',
+  settingsKey: 'migration_090_add_position_points_only_to_map_prefs',
+  sqlite: (db) => positionPointsOnlyMigration.up(db),
+  postgres: (client) => runPositionPointsOnlyPostgres(client),
+  mysql: (pool) => runPositionPointsOnlyMysql(pool),
 });

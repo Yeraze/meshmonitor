@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Features
 
+- **Position history: a marker at every fix, points-only mode, and a hover tooltip (#3492, #3494)**: The position-history map layer now renders a circle at **every** heard position — previously a fix only showed a marker when its packet carried heading data (otherwise the line connected invisible vertices). The heading triangle is still drawn on top when heading is present. A new **Points only (no line)** toggle in Map Features hides the connecting line (persisted per user). Each fix now has a **hover tooltip** showing the timestamp, hop count, and — only when the fix was heard directly (0 hops) — the SNR. SNR and hop metadata are captured per position fix going forward (telemetry migration 089); fixes received before upgrading show the timestamp only.
+
 - **Native OIDC group → role mapping (#3485)**: When using OIDC directly (no reverse proxy), MeshMonitor can now map identity-provider groups to roles via three new env vars: `OIDC_GROUPS_CLAIM` (default `groups`, supports dot notation like `realm_access.roles` for Keycloak), `OIDC_ADMIN_GROUPS` (comma-separated groups granted admin), and `OIDC_ALLOWED_GROUPS` (groups allowed to log in; empty = all). When `OIDC_ADMIN_GROUPS` is set, admin status tracks group membership on every login (promote and demote) and the IdP becomes authoritative; when unset, the existing first-login bootstrap + manual-promotion behaviour is preserved. `OIDC_ALLOWED_GROUPS` gates login (admins always pass). Group changes apply on next login. The dot-notation claim traversal and group normalization are shared with proxy auth (`src/server/auth/claims.ts`). No schema changes.
 
 ### Documentation

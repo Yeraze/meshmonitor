@@ -64,7 +64,7 @@ export interface TelemetryFavorite {
 function normalizeSyncTelemetryRow(row: any): any {
   if (row == null) return row;
   // Convert known nullable columns from null to undefined to match DbTelemetry
-  const nullable = ['unit', 'packetTimestamp', 'packetId', 'channel', 'precisionBits', 'gpsAccuracy', 'sourceId'] as const;
+  const nullable = ['unit', 'packetTimestamp', 'packetId', 'channel', 'precisionBits', 'gpsAccuracy', 'rxSnr', 'hopStart', 'hopLimit', 'sourceId'] as const;
   for (const k of nullable) {
     if (row[k] === null) row[k] = undefined;
   }
@@ -108,6 +108,12 @@ export class TelemetryRepository extends BaseRepository {
       precisionBits: telemetryData.precisionBits ?? null,
       gpsAccuracy: telemetryData.gpsAccuracy ?? null,
     };
+    // Per-position-fix receive metadata (#3492). Included only when present so
+    // callers/tables that predate migration 089 (and don't set them) never
+    // reference the new columns.
+    if (telemetryData.rxSnr != null) values.rxSnr = telemetryData.rxSnr;
+    if (telemetryData.hopStart != null) values.hopStart = telemetryData.hopStart;
+    if (telemetryData.hopLimit != null) values.hopLimit = telemetryData.hopLimit;
     if (sourceId) {
       values.sourceId = sourceId;
     }
@@ -146,6 +152,9 @@ export class TelemetryRepository extends BaseRepository {
         precisionBits: r.precisionBits ?? null,
         gpsAccuracy: r.gpsAccuracy ?? null,
       };
+      if (r.rxSnr != null) v.rxSnr = r.rxSnr;
+      if (r.hopStart != null) v.hopStart = r.hopStart;
+      if (r.hopLimit != null) v.hopLimit = r.hopLimit;
       if (sourceId) v.sourceId = sourceId;
       return v;
     });
@@ -1326,6 +1335,9 @@ export class TelemetryRepository extends BaseRepository {
       precisionBits: telemetryData.precisionBits ?? null,
       gpsAccuracy: telemetryData.gpsAccuracy ?? null,
     };
+    if (telemetryData.rxSnr != null) values.rxSnr = telemetryData.rxSnr;
+    if (telemetryData.hopStart != null) values.hopStart = telemetryData.hopStart;
+    if (telemetryData.hopLimit != null) values.hopLimit = telemetryData.hopLimit;
     if (sourceId) {
       values.sourceId = sourceId;
     }

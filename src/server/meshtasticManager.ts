@@ -5964,17 +5964,27 @@ class MeshtasticManager implements ISourceManager {
         // authoritative for both lat/lon and precisionBits.
         const existingNode = await databaseService.nodes.getNode(fromNum);
 
+        // Receive SNR + hop metadata of the packet this fix arrived in (#3492).
+        // Stored on the always-present lat/lon rows; the position-history API
+        // surfaces them per fix for the hover tooltip. "Directly heard" (so SNR
+        // is meaningful) is hopStart === hopLimit, i.e. zero hops decremented.
+        const posRxSnr = meshPacket.rxSnr ?? (meshPacket as any).rx_snr ?? undefined;
+        const posHopStart = meshPacket.hopStart ?? (meshPacket as any).hop_start ?? undefined;
+        const posHopLimit = meshPacket.hopLimit ?? (meshPacket as any).hop_limit ?? undefined;
+
         // Always save position to telemetry table for historical tracking
         // This ensures position history is complete regardless of precision changes
         await databaseService.telemetry.insertTelemetry({
           nodeId, nodeNum: fromNum, telemetryType: 'latitude',
           timestamp, value: coords.latitude, unit: '°', createdAt: now, packetTimestamp, packetId,
-          channel: channelIndex, precisionBits, gpsAccuracy
+          channel: channelIndex, precisionBits, gpsAccuracy,
+          rxSnr: posRxSnr, hopStart: posHopStart, hopLimit: posHopLimit
         }, this.sourceId);
         await databaseService.telemetry.insertTelemetry({
           nodeId, nodeNum: fromNum, telemetryType: 'longitude',
           timestamp, value: coords.longitude, unit: '°', createdAt: now, packetTimestamp, packetId,
-          channel: channelIndex, precisionBits, gpsAccuracy
+          channel: channelIndex, precisionBits, gpsAccuracy,
+          rxSnr: posRxSnr, hopStart: posHopStart, hopLimit: posHopLimit
         }, this.sourceId);
         if (position.altitude !== undefined && position.altitude !== null) {
           await databaseService.telemetry.insertTelemetry({

@@ -23,6 +23,12 @@ export const telemetrySqlite = sqliteTable('telemetry', {
   channel: integer('channel'),
   precisionBits: integer('precisionBits'),
   gpsAccuracy: real('gpsAccuracy'),
+  // Per-position-fix receive metadata (issue #3492): SNR + hop info of the
+  // packet this fix arrived in. Nullable; populated only for position rows
+  // received after migration 089.
+  rxSnr: real('rxSnr'),
+  hopStart: integer('hopStart'),
+  hopLimit: integer('hopLimit'),
   // Source association (nullable — NULL = legacy default source)
   sourceId: text('sourceId'),
 });
@@ -44,6 +50,10 @@ export const telemetryPostgres = pgTable('telemetry', {
   channel: pgInteger('channel'),
   precisionBits: pgInteger('precisionBits'),
   gpsAccuracy: pgDoublePrecision('gpsAccuracy'),
+  // Per-position-fix receive metadata (issue #3492)
+  rxSnr: pgDoublePrecision('rxSnr'),
+  hopStart: pgInteger('hopStart'),
+  hopLimit: pgInteger('hopLimit'),
   // Source association (nullable — NULL = legacy default source)
   sourceId: pgText('sourceId'),
 });
@@ -64,6 +74,10 @@ export const telemetryMysql = mysqlTable('telemetry', {
   channel: myInt('channel'),
   precisionBits: myInt('precisionBits'),
   gpsAccuracy: myDouble('gpsAccuracy'),
+  // Per-position-fix receive metadata (issue #3492)
+  rxSnr: myDouble('rxSnr'),
+  hopStart: myInt('hopStart'),
+  hopLimit: myInt('hopLimit'),
   // Source association (nullable — NULL = legacy default source)
   sourceId: myVarchar('sourceId', { length: 36 }),
 });

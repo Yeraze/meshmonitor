@@ -306,6 +306,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowRoute,
     showMotion,
     setShowMotion,
+    positionHistoryPointsOnly,
+    setPositionHistoryPointsOnly,
     showMqttNodes,
     setShowMqttNodes,
     showUdpNodes,
@@ -544,6 +546,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       const color = getPositionHistoryColor(i, segmentCount, overlayColors.positionHistoryOld, overlayColors.positionHistoryNew);
       segmentColors.push(color);
 
+      // Points-only mode (#3492): skip the connecting line; keep the per-fix dots.
+      if (positionHistoryPointsOnly) continue;
+
       const segmentPath = positionHistoryLineStyle === 'spline' && startPos.groundTrack !== undefined
         ? generateHeadingAwarePath(
             [startPos.latitude, startPos.longitude],
@@ -605,7 +610,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     elements.push(...historyArrows);
 
     return elements;
-  }, [filteredPositionHistory, overlayColors.positionHistoryOld, overlayColors.positionHistoryNew, positionHistoryLineStyle, timeFormat, dateFormat, distanceUnit]);
+  }, [filteredPositionHistory, overlayColors.positionHistoryOld, overlayColors.positionHistoryNew, positionHistoryLineStyle, positionHistoryPointsOnly, timeFormat, dateFormat, distanceUnit]);
 
   // Detect touch device to disable hover tooltips on mobile
   const [isTouchDevice, setIsTouchDevice] = useState(false);
@@ -1869,6 +1874,16 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     />
                     <span>{t('map.showPositionHistory')}</span>
                   </label>
+                  {showMotion && (
+                    <label className="map-control-item" style={{ paddingLeft: '1.5rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={positionHistoryPointsOnly}
+                        onChange={(e) => setPositionHistoryPointsOnly(e.target.checked)}
+                      />
+                      <span>{t('map.positionHistoryPointsOnly', 'Points only (no line)')}</span>
+                    </label>
+                  )}
                   {showMotion && positionHistory.length > 1 && (() => {
                     // Calculate max hours from oldest position in history
                     const oldestTimestamp = positionHistory[0].timestamp;

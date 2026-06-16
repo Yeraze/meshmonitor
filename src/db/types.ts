@@ -169,6 +169,11 @@ export interface DbTelemetry {
   channel?: number | null;
   precisionBits?: number | null;
   gpsAccuracy?: number | null;
+  // Per-position-fix receive metadata (issue #3492): SNR + hop info of the
+  // packet a position fix arrived in. Only populated for position rows.
+  rxSnr?: number | null;
+  hopStart?: number | null;
+  hopLimit?: number | null;
 }
 
 /**

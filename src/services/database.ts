@@ -166,6 +166,11 @@ export interface DbTelemetry {
   channel?: number; // Which channel this telemetry came from
   precisionBits?: number; // Position precision bits (for latitude/longitude telemetry)
   gpsAccuracy?: number; // GPS accuracy in meters (for position telemetry)
+  // Per-position-fix receive metadata (issue #3492): SNR + hop info of the
+  // packet a position fix arrived in. Only populated for position rows.
+  rxSnr?: number;
+  hopStart?: number;
+  hopLimit?: number;
 }
 
 export interface DbTraceroute {
@@ -9033,6 +9038,7 @@ class DatabaseService {
     showEstimatedPositions?: boolean;
     positionHistoryHours?: number | null;
     mapMaxAgeHours?: number | null;
+    positionHistoryPointsOnly?: boolean;
   }): Promise<void> {
     return this.miscRepo!.saveMapPreferences(userId, preferences);
   }

@@ -16,6 +16,7 @@ import {
   getTemporalOpacityMultiplier,
   generateCurvedPath,
   generateHeadingAwarePath,
+  generatePositionHistoryArrows,
 } from './mapHelpers';
 
 describe('mapHelpers', () => {
@@ -359,6 +360,47 @@ describe('mapHelpers', () => {
       const imperial = convertSpeed(10, 'mi');
       // mph = km/h * 0.621371
       expect(imperial.speed).toBeCloseTo(metric.speed * 0.621371, 0);
+    });
+  });
+
+  describe('generatePositionHistoryArrows (#3492)', () => {
+    const keyOf = (el: any): string => String(el.key ?? '');
+    const dots = (els: any[]) => els.filter((e) => keyOf(e).startsWith('position-history-point-'));
+    const triangles = (els: any[]) => els.filter((e) => keyOf(e).startsWith('position-history-arrow-'));
+
+    it('renders a dot at EVERY fix, including fixes with no heading (the missing-marker bug)', () => {
+      const items = [
+        { latitude: 1, longitude: 1, timestamp: 1000 },              // no heading
+        { latitude: 2, longitude: 2, timestamp: 2000 },              // no heading
+        { latitude: 3, longitude: 3, timestamp: 3000, groundTrack: 90 }, // heading
+      ] as any[];
+
+      const els = generatePositionHistoryArrows(items, [], 30, 'km');
+
+      // A dot for every fix — previously no-heading fixes rendered nothing.
+      expect(dots(els)).toHaveLength(3);
+      // Heading triangle only on the fix that actually carried groundTrack.
+      expect(triangles(els)).toHaveLength(1);
+    });
+
+    it('renders dots even when no fix has heading data', () => {
+      const items = [
+        { latitude: 1, longitude: 1, timestamp: 1000 },
+        { latitude: 2, longitude: 2, timestamp: 2000 },
+      ] as any[];
+      const els = generatePositionHistoryArrows(items, [], 30, 'km');
+      expect(dots(els)).toHaveLength(2);
+      expect(triangles(els)).toHaveLength(0);
+    });
+
+    it('caps the number of rendered points at maxArrows', () => {
+      const items = Array.from({ length: 100 }, (_, i) => ({ latitude: i, longitude: i, timestamp: i })) as any[];
+      const els = generatePositionHistoryArrows(items, [], 10, 'km');
+      expect(dots(els).length).toBeLessThanOrEqual(10);
+    });
+
+    it('returns nothing for an empty history', () => {
+      expect(generatePositionHistoryArrows([], [], 30, 'km')).toHaveLength(0);
     });
   });
 });

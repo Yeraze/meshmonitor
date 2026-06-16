@@ -35,6 +35,9 @@ describe('TelemetryRepository', () => {
         channel INTEGER,
         precisionBits INTEGER,
         gpsAccuracy INTEGER,
+        rxSnr REAL,
+        hopStart INTEGER,
+        hopLimit INTEGER,
         sourceId TEXT
       )
     `);

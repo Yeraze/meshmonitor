@@ -1,6 +1,6 @@
 import React from 'react';
 import L from 'leaflet';
-import { Marker, Tooltip, Popup } from 'react-leaflet';
+import { Marker, Tooltip, Popup, CircleMarker } from 'react-leaflet';
 import { PositionHistoryItem } from '../contexts/MapContext';
 import { convertSpeed } from './speedConversion';
 export { convertSpeed };
@@ -416,44 +416,28 @@ export const generatePositionHistoryArrows = (
   // Calculate how many items to skip to stay under maxArrows
   const step = Math.max(1, Math.ceil(itemCount / maxArrows));
 
-  for (let i = 0; i < itemCount && arrows.length < maxArrows; i += step) {
+  // Cap the number of rendered POINTS (not React elements — a fix may emit a
+  // dot plus an optional heading overlay).
+  let rendered = 0;
+  for (let i = 0; i < itemCount && rendered < maxArrows; i += step) {
+    rendered++;
     const item = historyItems[i];
     // Safely get color - default to blue if colors array is empty
     const color = colors.length > 0 ? colors[Math.min(i, colors.length - 1)] : '#3b82f6';
 
-    // Use groundTrack if available, otherwise calculate from next position
-    let angle: number;
+    // Heading angle ONLY when the fix actually carried groundTrack. Fixes
+    // without heading get a plain dot (no synthesized direction) — this is the
+    // #3492 bug fix: previously such fixes rendered no marker at all.
+    let angle: number | null = null;
     if (item.groundTrack !== undefined) {
-      // groundTrack should be in degrees (0=North, 90=East)
-      // But data is stored in millidegrees (1/1000 degree) - detect and convert
+      // groundTrack should be in degrees (0=North, 90=East); stored in
+      // millidegrees (1/1000 degree) in some paths - detect and convert.
       let heading = item.groundTrack;
       if (heading > 360) {
-        // Value is in millidegrees, convert to degrees
         heading = heading / 1000;
       }
       angle = heading;
-    } else if (i < itemCount - 1) {
-      // Calculate angle from this position to next
-      const next = historyItems[i + 1];
-      const latDiff = next.latitude - item.latitude;
-      const lngDiff = next.longitude - item.longitude;
-      // atan2 returns radians with 0 = East, we need 0 = North
-      // Scale longitude by cos(lat) to correct for latitude distortion
-      const latAvg = (item.latitude + next.latitude) / 2;
-      angle = (Math.atan2(lngDiff * Math.cos(latAvg * Math.PI / 180), latDiff) * 180 / Math.PI);
-    } else {
-      // Last point with no heading data - skip arrow
-      continue;
     }
-
-    const arrowIcon = L.divIcon({
-      html: `<div style="transform: rotate(${angle}deg); font-size: 16px; font-weight: bold; cursor: pointer;">
-        <span style="color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">▲</span>
-      </div>`,
-      className: 'position-history-arrow-icon',
-      iconSize: [20, 20],
-      iconAnchor: [10, 10]
-    });
 
     // Format date and time
     const date = new Date(item.timestamp);
@@ -470,23 +454,39 @@ export const generatePositionHistoryArrows = (
       speedUnit = result.unit;
     }
 
-    // Format heading
-    // Data is stored in millidegrees (1/1000 degree) - detect and convert
-    let headingStr: string | null = null;
-    if (item.groundTrack !== undefined) {
-      let heading = item.groundTrack;
-      if (heading > 360) {
-        heading = heading / 1000;
-      }
-      headingStr = `${heading.toFixed(0)}° ${getCardinalDirection(heading)}`;
-    }
+    // Format heading text
+    const headingStr: string | null = angle !== null
+      ? `${angle.toFixed(0)}° ${getCardinalDirection(angle)}`
+      : null;
 
+    // Hop count + direct-heard SNR (#3492). Only fixes received after the
+    // capture migration carry hopStart/hopLimit/snr; older fixes omit them.
+    // "Directly heard" (so SNR is meaningful) means 0 hops decremented.
+    let hops: number | null = null;
+    if (item.hopStart != null && item.hopLimit != null) {
+      hops = Math.max(0, item.hopStart - item.hopLimit);
+    }
+    const heardDirectly = hops === 0;
+    const showSnr = heardDirectly && item.snr != null;
+
+    // A dot at EVERY fix so every heard position is visible and hoverable,
+    // regardless of heading. The hover tooltip and click popup live here.
     arrows.push(
-      <Marker
-        key={`position-history-arrow-${i}`}
-        position={[item.latitude, item.longitude]}
-        icon={arrowIcon}
+      <CircleMarker
+        key={`position-history-point-${i}`}
+        center={[item.latitude, item.longitude]}
+        radius={5}
+        pathOptions={{ color: '#000', weight: 1, fillColor: color, fillOpacity: 0.9 }}
       >
+        <Tooltip direction="top" offset={[0, -6]} opacity={0.9}>
+          <div className="position-history-tooltip">
+            <div>{dateStr} {timeStr}</div>
+            {hops !== null && (
+              <div>{heardDirectly ? 'Heard directly (0 hops)' : `${hops} hop${hops === 1 ? '' : 's'} away`}</div>
+            )}
+            {showSnr && <div>SNR: {item.snr!.toFixed(1)} dB</div>}
+          </div>
+        </Tooltip>
         <Popup>
           <div className="position-history-popup">
             <div><strong>Date:</strong> {dateStr}</div>
@@ -500,10 +500,37 @@ export const generatePositionHistoryArrows = (
             {item.altitude !== undefined && (
               <div><strong>Altitude:</strong> {item.altitude} m</div>
             )}
+            {hops !== null && (
+              <div><strong>Hops:</strong> {hops}{heardDirectly ? ' (direct)' : ''}</div>
+            )}
+            {showSnr && (
+              <div><strong>SNR:</strong> {item.snr!.toFixed(1)} dB</div>
+            )}
           </div>
         </Popup>
-      </Marker>
+      </CircleMarker>
     );
+
+    // Overlay a decorative heading triangle on top when heading is known.
+    // Non-interactive so the dot underneath keeps the hover/click target.
+    if (angle !== null) {
+      const arrowIcon = L.divIcon({
+        html: `<div style="transform: rotate(${angle}deg); font-size: 16px; font-weight: bold;">
+          <span style="color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">▲</span>
+        </div>`,
+        className: 'position-history-arrow-icon',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+      });
+      arrows.push(
+        <Marker
+          key={`position-history-arrow-${i}`}
+          position={[item.latitude, item.longitude]}
+          icon={arrowIcon}
+          interactive={false}
+        />
+      );
+    }
   }
 
   return arrows;
