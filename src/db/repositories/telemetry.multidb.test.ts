@@ -152,6 +152,9 @@ describe.skipIf(!postgresAvailable)('TelemetryRepository - PostgreSQL Backend', 
           channel INTEGER,
           "precisionBits" INTEGER,
           "gpsAccuracy" INTEGER,
+          "rxSnr" DOUBLE PRECISION,
+          "hopStart" INTEGER,
+          "hopLimit" INTEGER,
           "sourceId" TEXT
         )
       `);
