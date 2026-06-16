@@ -80,7 +80,7 @@ const StatusMessageConfigSection: React.FC<StatusMessageConfigSectionProps> = ({
           fontStyle: 'italic',
           marginBottom: '1rem'
         }}>
-          {t('statusmessage_config.unsupported', 'Unsupported by device firmware — Requires firmware 2.7.19 or greater')}
+          {t('statusmessage_config.unsupported', 'Unsupported by device firmware — Requires firmware 2.7.20 or greater')}
         </div>
       )}
 
