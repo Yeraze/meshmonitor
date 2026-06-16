@@ -14,6 +14,11 @@
 import { Request } from 'express';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
+import { getNestedValue, normalizeGroups, groupsContainAny } from './claims.js';
+
+// Re-export so existing importers (and tests) that pull `normalizeGroups` from
+// this module keep working now that the implementation lives in ./claims.
+export { normalizeGroups };
 
 /**
  * Proxy user information extracted from headers
@@ -35,30 +40,6 @@ function getHeader(headers: Record<string, string | string[] | undefined>, name:
     }
   }
   return undefined;
-}
-
-/**
- * Get nested value from object by dot-path
- * Supports both dot notation and URL-style paths (Auth0 custom namespaces)
- * Cloudflare Access application JWTs often nest IdP custom claims under `custom`,
- * e.g. custom["https://tenant/roles"] while the flat top-level key is absent.
- * Examples:
- *   - getNestedValue(obj, 'groups') → obj.groups
- *   - getNestedValue(obj, 'realm_access.roles') → obj.realm_access.roles
- *   - getNestedValue(obj, 'https://mydomain.com/roles') → obj[path] or obj.custom[path]
- */
-function getNestedValue(obj: any, path: string): any {
-  // Handle URL-style paths (Auth0 custom namespaces)
-  if (path.includes('://')) {
-    const top = obj[path];
-    if (top !== undefined && top !== null) {
-      return top;
-    }
-    return obj.custom?.[path];
-  }
-
-  // Handle dot notation
-  return path.split('.').reduce((current, key) => current?.[key], obj);
 }
 
 /**
@@ -89,31 +70,6 @@ function decodeJwtPayload(jwtToken: string): any {
     logger.error('Failed to decode JWT payload:', err);
     return null;
   }
-}
-
-/**
- * Normalize JWT groups claim to a flat string array.
- * Handles: string, string[], { name: string }[], and mixed arrays.
- */
-export function normalizeGroups(raw: unknown): string[] {
-  if (raw == null) return [];
-  if (typeof raw === 'string') {
-    const trimmed = raw.trim();
-    return trimmed ? [trimmed] : [];
-  }
-  if (!Array.isArray(raw)) return [];
-
-  const result: string[] = [];
-  for (const entry of raw) {
-    if (typeof entry === 'string') {
-      const trimmed = entry.trim();
-      if (trimmed) result.push(trimmed);
-    } else if (entry && typeof entry === 'object' && 'name' in entry) {
-      const name = String((entry as { name: unknown }).name).trim();
-      if (name) result.push(name);
-    }
-  }
-  return result;
 }
 
 /**
@@ -234,14 +190,6 @@ export function extractProxyUser(req: Request): ProxyUser | null {
   }
 
   return null;
-}
-
-/**
- * Case-insensitive check: does `groups` contain any value from `allowList`?
- */
-function groupsContainAny(groups: string[], allowList: string[]): boolean {
-  const lowerAllow = allowList.map(g => g.toLowerCase());
-  return groups.some(g => lowerAllow.includes(g.toLowerCase()));
 }
 
 /**

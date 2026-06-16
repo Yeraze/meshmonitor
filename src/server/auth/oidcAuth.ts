@@ -9,6 +9,7 @@ import { User } from '../../types/auth.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
+import { getNestedValue, normalizeGroups, resolveGroupRole } from './claims.js';
 
 let oidcConfig: client.Configuration | null = null;
 let isInitialized = false;
@@ -188,24 +189,48 @@ export async function handleOIDCCallback(
     // Create username from claims
     const username = preferredUsername || email?.split('@')[0] || sub.substring(0, 20);
 
+    // Native OIDC group → role mapping (no proxy required). Resolve the groups
+    // claim (dot-notation supported, e.g. realm_access.roles for Keycloak) and
+    // derive admin/allowed using the same helpers proxy auth uses.
+    const env = getEnvironmentConfig();
+    const groups = normalizeGroups(getNestedValue(idTokenClaims, env.oidcGroupsClaim));
+    const groupRole = resolveGroupRole(groups, {
+      adminGroups: env.oidcAdminGroups,
+      allowedGroups: env.oidcAllowedGroups,
+    });
+
+    // Allowed-groups gate: applies to every user (incl. existing ones) so
+    // revoking a group blocks the next login. Admins always pass (mirrors
+    // proxy auth's isNormalProxyUserAllowed).
+    if (!groupRole.allowed) {
+      logger.warn(`❌ OIDC login denied for '${username}': not in any allowed group (OIDC_ALLOWED_GROUPS)`);
+      throw new Error('OIDC login denied: user is not a member of an allowed group');
+    }
+
     // Check if user exists by OIDC subject
     let user: User | null = null;
     user = await databaseService.auth.getUserByOidcSubject(sub) as User | null;
 
     if (user) {
       // Update existing user
-      await databaseService.auth.updateUser(user.id, {
+      const updateFields: Parameters<typeof databaseService.auth.updateUser>[1] = {
         email: email || user.email || undefined,
         displayName: name || user.displayName || undefined,
         lastLoginAt: Date.now()
-      });
+      };
+      // When admin groups are configured, admin status tracks group membership
+      // on every login (promote AND demote). When not configured, leave isAdmin
+      // untouched so manual promotion / the first-login bootstrap is preserved.
+      if (groupRole.adminGroupsConfigured && groupRole.isAdmin !== user.isAdmin) {
+        updateFields.isAdmin = groupRole.isAdmin;
+        logger.info(`🔐 OIDC group sync: '${user.username}' admin ${user.isAdmin} → ${groupRole.isAdmin}`);
+      }
+      await databaseService.auth.updateUser(user.id, updateFields);
       user = await databaseService.findUserByIdAsync(user.id) as User;
 
       logger.debug(`✅ OIDC user logged in: ${user.username}`);
     } else {
       // Auto-create new user if enabled
-      const env = getEnvironmentConfig();
-
       if (!env.oidcAutoCreateUsers) {
         throw new Error('OIDC user not found and auto-creation is disabled');
       }
@@ -224,13 +249,20 @@ export async function handleOIDCCallback(
         // Migrate existing native-login user to OIDC
         logger.info(`🔄 Migrating existing native-login user '${existingUser.username}' to OIDC`);
 
-        await databaseService.auth.updateUser(existingUser.id, {
+        const migrateFields: Parameters<typeof databaseService.auth.updateUser>[1] = {
           authMethod: 'oidc',
           oidcSubject: sub,
           email: email || existingUser.email,
           displayName: name || existingUser.displayName,
           passwordHash: null // Clear password for OIDC users
-        });
+        };
+        // When admin groups are configured, the migrated user's admin status is
+        // group-driven from the first OIDC login. Otherwise keep their existing
+        // isAdmin (don't silently demote a local admin being migrated).
+        if (groupRole.adminGroupsConfigured) {
+          migrateFields.isAdmin = groupRole.isAdmin;
+        }
+        await databaseService.auth.updateUser(existingUser.id, migrateFields);
         user = await databaseService.findUserByIdAsync(existingUser.id) as User;
 
         // Audit log
@@ -249,6 +281,11 @@ export async function handleOIDCCallback(
         // local auth is disabled (issue #2749).
         const allUsersForBootstrap = await databaseService.auth.getAllUsers();
         const isFirstOidcUser = !allUsersForBootstrap.some(u => u.authMethod === 'oidc');
+        // When admin groups are configured, admin is purely group-driven (the
+        // IdP is authoritative). Otherwise fall back to the first-OIDC-login
+        // bootstrap so the deployment isn't locked out when local auth is
+        // disabled (issue #2749).
+        const grantAdmin = groupRole.adminGroupsConfigured ? groupRole.isAdmin : isFirstOidcUser;
 
         const userId = await databaseService.auth.createUser({
           username,
@@ -256,7 +293,7 @@ export async function handleOIDCCallback(
           displayName: name || null,
           authMethod: 'oidc',
           oidcSubject: sub,
-          isAdmin: isFirstOidcUser,
+          isAdmin: grantAdmin,
           isActive: true,
           passwordHash: null,
           passwordLocked: false,
@@ -265,7 +302,7 @@ export async function handleOIDCCallback(
         });
         user = await databaseService.findUserByIdAsync(userId) as User;
 
-        if (isFirstOidcUser) {
+        if (grantAdmin) {
           // Grant full permissions to the bootstrap admin (mirrors the
           // resource list used by createAdminIfNeeded).
           const allResources = [
@@ -286,7 +323,8 @@ export async function handleOIDCCallback(
               grantedAt: Date.now()
             });
           }
-          logger.warn(`🔐 First OIDC login bootstrap: '${user!.username}' granted admin rights`);
+          const reason = groupRole.adminGroupsConfigured ? 'admin group membership' : 'first-OIDC-login bootstrap';
+          logger.warn(`🔐 OIDC admin granted to '${user!.username}' (${reason})`);
         } else {
           // Grant default permissions
           const defaultResources = ['dashboard', 'nodes', 'messages', 'settings', 'info', 'traceroute'];
@@ -302,14 +340,14 @@ export async function handleOIDCCallback(
           }
         }
 
-        logger.debug(`✅ OIDC user auto-created: ${user!.username}${isFirstOidcUser ? ' (admin)' : ''}`);
+        logger.debug(`✅ OIDC user auto-created: ${user!.username}${grantAdmin ? ' (admin)' : ''}`);
 
         // Audit log
         databaseService.auditLogAsync(
           user!.id,
-          isFirstOidcUser ? 'oidc_user_created_admin' : 'oidc_user_created',
+          grantAdmin ? 'oidc_user_created_admin' : 'oidc_user_created',
           'users',
-          JSON.stringify({ userId: user!.id, username, oidcSubject: sub, isAdmin: isFirstOidcUser }),
+          JSON.stringify({ userId: user!.id, username, oidcSubject: sub, isAdmin: grantAdmin }),
           null
         );
       }

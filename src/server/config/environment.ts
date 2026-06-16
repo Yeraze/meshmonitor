@@ -253,6 +253,11 @@ export interface EnvironmentConfig {
   oidcAllowHttp: boolean;
   oidcAllowHttpProvided: boolean;
   oidcEnabled: boolean;
+  // Native OIDC group → role mapping (no proxy required)
+  oidcGroupsClaim: string;
+  oidcGroupsClaimProvided: boolean;
+  oidcAdminGroups: string[];
+  oidcAllowedGroups: string[];
 
   // Authentication
   disableLocalAuth: boolean;
@@ -562,6 +567,21 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   const oidcAutoCreateUsers = parseBoolean('OIDC_AUTO_CREATE_USERS', process.env.OIDC_AUTO_CREATE_USERS, true);
   const oidcAllowHttp = parseBoolean('OIDC_ALLOW_HTTP', process.env.OIDC_ALLOW_HTTP, false);
 
+  // Native OIDC group → role mapping. Same comma-separated / dot-notation
+  // conventions as the PROXY_AUTH_* group vars so the two paths behave alike.
+  const oidcGroupsClaim = {
+    value: process.env.OIDC_GROUPS_CLAIM || 'groups',
+    wasProvided: process.env.OIDC_GROUPS_CLAIM !== undefined
+  };
+  const oidcAdminGroups = (process.env.OIDC_ADMIN_GROUPS || '')
+    .split(',')
+    .map(g => g.trim())
+    .filter(Boolean);
+  const oidcAllowedGroups = (process.env.OIDC_ALLOWED_GROUPS || '')
+    .split(',')
+    .map(g => g.trim())
+    .filter(Boolean);
+
   const oidcEnabled = !!(oidcIssuer.value && oidcClientId.value && oidcClientSecret.value);
 
   if (oidcIssuer.wasProvided || oidcClientId.wasProvided || oidcClientSecret.wasProvided) {
@@ -713,6 +733,9 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     logger.info(`   OIDC_ISSUER: ${oidcIssuer.value ? '***provided***' : 'not set'}`);
     logger.info(`   OIDC_CLIENT_ID: ${oidcClientId.value ? '***provided***' : 'not set'}`);
     logger.info(`   OIDC_AUTO_CREATE_USERS: ${oidcAutoCreateUsers.value} (${src(oidcAutoCreateUsers.wasProvided)})`);
+    logger.info(`   OIDC_GROUPS_CLAIM: ${oidcGroupsClaim.value} (${src(oidcGroupsClaim.wasProvided)})`);
+    logger.info(`   OIDC_ADMIN_GROUPS: ${oidcAdminGroups.length > 0 ? oidcAdminGroups.join(', ') : 'not set (group→admin mapping disabled; first-login bootstrap applies)'}`);
+    logger.info(`   OIDC_ALLOWED_GROUPS: ${oidcAllowedGroups.length > 0 ? oidcAllowedGroups.join(', ') : 'not set (all OIDC users allowed)'}`);
   }
   logger.info('   --- Authentication ---');
   logger.info(`   DISABLE_ANONYMOUS: ${disableAnonymous.value} (${src(disableAnonymous.wasProvided)})`);
@@ -825,6 +848,10 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     oidcAllowHttp: oidcAllowHttp.value,
     oidcAllowHttpProvided: oidcAllowHttp.wasProvided,
     oidcEnabled,
+    oidcGroupsClaim: oidcGroupsClaim.value,
+    oidcGroupsClaimProvided: oidcGroupsClaim.wasProvided,
+    oidcAdminGroups,
+    oidcAllowedGroups,
 
     // Authentication
     disableLocalAuth: disableLocalAuth.value,

@@ -37,6 +37,17 @@ Configure OIDC using these environment variables:
 | `OIDC_CLIENT_SECRET` | OAuth client secret from your IdP | Yes |
 | `OIDC_REDIRECT_URI` | Callback URL for OIDC authentication | Yes |
 
+Optional variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OIDC_SCOPES` | `openid profile email` | Scopes requested from the IdP. Add `groups` (or your provider's equivalent) if you use group→role mapping. |
+| `OIDC_AUTO_CREATE_USERS` | `true` | Create a MeshMonitor user automatically on first OIDC login. |
+| `OIDC_GROUPS_CLAIM` | `groups` | ID-token claim containing the user's groups. Supports dot notation for nested claims (e.g. `realm_access.roles` for Keycloak). |
+| `OIDC_ADMIN_GROUPS` | _(empty)_ | Comma-separated group names that grant MeshMonitor **admin** rights. See [Group → Role Mapping](#group-role-mapping). |
+| `OIDC_ALLOWED_GROUPS` | _(empty)_ | Comma-separated group names allowed to log in at all. Empty = all OIDC users allowed. |
+| `DISABLE_LOCAL_AUTH` | `false` | Disable username/password login entirely (see [Disabling Local Authentication](#disabling-local-authentication)). |
+
 ### Example Configuration
 
 #### Docker Compose
@@ -64,6 +75,70 @@ OIDC_CLIENT_ID=your_client_id_here
 OIDC_CLIENT_SECRET=your_client_secret_here
 OIDC_REDIRECT_URI=https://meshmonitor.example.com/api/auth/oidc/callback
 ```
+
+## Group → Role Mapping
+
+By default, every OIDC user is created as a regular user, and the **first** OIDC
+login is bootstrapped to admin so the deployment isn't locked out; subsequent
+users must be promoted manually in the admin UI.
+
+To map identity-provider groups to MeshMonitor roles automatically, set
+`OIDC_ADMIN_GROUPS` (and optionally `OIDC_ALLOWED_GROUPS`):
+
+```env
+OIDC_SCOPES=openid profile email groups
+OIDC_GROUPS_CLAIM=groups
+OIDC_ADMIN_GROUPS=meshmonitor-admins
+OIDC_ALLOWED_GROUPS=meshmonitor-users,meshmonitor-admins
+```
+
+Behaviour:
+
+- **Admin status follows the group on every login.** When `OIDC_ADMIN_GROUPS` is
+  set, a user in one of those groups is made admin, and a user **not** in one is
+  demoted (the IdP becomes authoritative — the first-login bootstrap no longer
+  applies). When `OIDC_ADMIN_GROUPS` is empty, admin status is never changed by
+  group membership and the bootstrap / manual-promotion behaviour is preserved.
+- **`OIDC_ALLOWED_GROUPS`** gates who may log in at all. If set, a user in none of
+  the listed groups is denied (admins always pass). Empty = all OIDC users allowed.
+- Group changes take effect on the user's **next login** (OIDC rides a session;
+  unlike proxy auth, it is not re-evaluated on every request).
+
+::: warning
+If you set `OIDC_ADMIN_GROUPS`, make sure your own account is in that group, or
+keep a local admin as a break-glass login — otherwise you can demote yourself
+out of admin. The groups claim must be present in the **ID token** (configure a
+mapper in your IdP), not only at the userinfo endpoint.
+:::
+
+### Keycloak
+
+Add a **Group Membership** or **Realm roles** mapper to the client's dedicated
+scope and include it in the ID token. Realm roles arrive under a nested claim:
+
+```env
+OIDC_GROUPS_CLAIM=realm_access.roles
+OIDC_ADMIN_GROUPS=meshmonitor-admin
+```
+
+### Authentik
+
+Groups are emitted in the `groups` claim by default (ensure the `groups` scope is
+requested). The defaults work as-is:
+
+```env
+OIDC_SCOPES=openid profile email groups
+OIDC_GROUPS_CLAIM=groups
+OIDC_ADMIN_GROUPS=meshmonitor admins
+```
+
+::: tip
+If you front Keycloak/Authentik with a reverse proxy such as **oauth2-proxy**,
+you can instead use proxy auth (`PROXY_AUTH_ENABLED=true` with
+`PROXY_AUTH_ADMIN_GROUPS` / `PROXY_AUTH_NORMAL_USER_GROUPS` /
+`PROXY_AUTH_JWT_GROUPS_CLAIM`), which re-evaluates group membership on **every
+request**. See the reverse-proxy documentation.
+:::
 
 ## Provider-Specific Setup
 
@@ -225,7 +300,23 @@ Keep at least one local admin account available as a break-glass login in case y
 
 ### Disabling Local Authentication
 
-If you want to use OIDC exclusively, you can disable local authentication and registration in the UI. However, local authentication will still be available via API for administrative purposes.
+To use OIDC (or proxy auth) exclusively, set:
+
+```env
+DISABLE_LOCAL_AUTH=true
+```
+
+When enabled, username/password login is blocked entirely — the `/api/auth/login`
+endpoint returns `403` and the login UI hides the username/password form. There is
+**no** local API bypass.
+
+::: danger
+Because there is no local login bypass, make sure a working OIDC (or proxy) login
+exists **before** enabling this, or you can lock yourself out. The only safety net
+is the first-OIDC-login admin bootstrap (which does not apply if you have also set
+`OIDC_ADMIN_GROUPS` — in that case ensure your account is in an admin group). If
+you rely on a break-glass local admin, do **not** set `DISABLE_LOCAL_AUTH=true`.
+:::
 
 ## Troubleshooting
 
