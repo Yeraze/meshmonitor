@@ -131,6 +131,28 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     expect(row.name).toBe('updated');
   });
 
+  it('upsertNode does NOT clobber stored name/position with incoming nulls (#3504)', async () => {
+    // Seed a node with a learned name + position.
+    await repo.upsertNode(
+      { publicKey: 'pk-1', name: 'Repeater North', latitude: 43.65, longitude: -79.38 },
+      'src-a',
+    );
+    // A later observation lacks position/name (e.g. a path-only advert), so the
+    // callers pass `field ?? null`. These nulls must NOT wipe the stored values.
+    await repo.upsertNode(
+      { publicKey: 'pk-1', name: null, latitude: null, longitude: null, advType: 1 },
+      'src-a',
+    );
+
+    const row = db.prepare(
+      `SELECT name, latitude, longitude, advType FROM meshcore_nodes WHERE publicKey = 'pk-1'`,
+    ).get() as { name: string; latitude: number; longitude: number; advType: number };
+    expect(row.name).toBe('Repeater North');
+    expect(row.latitude).toBeCloseTo(43.65);
+    expect(row.longitude).toBeCloseTo(-79.38);
+    expect(row.advType).toBe(1); // a provided value still updates
+  });
+
   it('upsertNode does not let one source clobber another source\'s row', async () => {
     // Drop the SQLite PRIMARY KEY so the underlying schema can hold one
     // row per (publicKey, sourceId) — the eventual shape per the slice-1
