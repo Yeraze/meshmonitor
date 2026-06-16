@@ -416,15 +416,10 @@ describe('TelemetryRepository', () => {
     const NOW = Date.now();
     const SOURCE = 'mqtt-bridge-test';
 
-    beforeEach(() => {
-      // Apply the migration 032 partial unique index so insertIgnore /
-      // onConflictDoNothing actually has something to conflict against.
-      db.exec(`
-        CREATE UNIQUE INDEX IF NOT EXISTS telemetry_source_packet_type_uniq
-          ON telemetry(sourceId, nodeNum, packetId, telemetryType)
-          WHERE packetId IS NOT NULL
-      `);
-    });
+    // The migration 032 partial unique index (telemetry_source_packet_type_uniq)
+    // is already present — createTestDb() runs the full migration registry — so
+    // insertIgnore/onConflictDoNothing has a constraint to conflict against
+    // without any extra DDL here.
 
     it('async insertTelemetry: same packet ingested twice yields one row, no throw', async () => {
       const row = {

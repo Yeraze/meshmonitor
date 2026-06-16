@@ -56,6 +56,9 @@ export function createTestDb(): TestDb {
     if (!migration.sqlite) continue;
     // Both self-idempotent (001-046) and settings-key-guarded migrations take
     // the same (db, getSetting, setSetting) signature in production.
+    // `as any`: migrations type their first arg as better-sqlite3's `Database`,
+    // which is structurally what we pass; the cast just bridges the nominal type
+    // (same pattern as the production migration loop in database.ts).
     migration.sqlite(sqlite as any, getSetting, setSetting);
     if (migration.settingsKey) setSetting(migration.settingsKey, 'completed');
   }
