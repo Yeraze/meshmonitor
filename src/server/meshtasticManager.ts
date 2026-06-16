@@ -12078,17 +12078,36 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
-   * Check if the local device firmware supports the StatusMessage module (>= 2.7.19)
+   * Check if the local device firmware supports the StatusMessage module.
+   *
+   * The AdminModule set-config handler for `statusmessage` first shipped in
+   * firmware 2.7.20 (verified against the meshtastic/firmware tags — it is
+   * absent in 2.7.19 and earlier). Gating at 2.7.19 was off by one: a 2.7.19
+   * node would accept the admin message but silently not persist it.
    */
   supportsStatusMessage(): boolean {
-    return this.firmwareVersionAtLeast(2, 7, 19);
+    return this.firmwareVersionAtLeast(2, 7, 20);
   }
 
   /**
-   * Check if the local device firmware supports the Traffic Management module (>= 2.7.22)
+   * Check if the local device firmware supports the Traffic Management module.
+   *
+   * The module and its AdminModule set-config handler landed only on the
+   * meshtastic/firmware `develop` branch via PR #9358 (merged 2026-03-11) and
+   * are NOT in any release through the latest pre-release, 2.7.25 — verified:
+   * `TrafficManagementModule.cpp` doesn't exist at the v2.7.25 tag and
+   * `AdminModule.cpp` has no `traffic_management` case there. On such firmware
+   * the admin message decodes but is silently dropped (it never persists),
+   * which is what made saves appear to "succeed" but not stick (issue #3491).
+   *
+   * Gating at 2.7.22 (the previous value) wrongly advertised it as editable on
+   * 2.7.22–2.7.25. Since no release ships it yet, gate above the latest release:
+   * develop/preview builds (which already contain PR #9358) report a version
+   * newer than 2.7.25, and the first stable release to include it will be
+   * >= 2.7.26. Re-pin to the exact release once it is tagged.
    */
   supportsTrafficManagement(): boolean {
-    return this.firmwareVersionAtLeast(2, 7, 22);
+    return this.firmwareVersionAtLeast(2, 7, 26);
   }
 
   /**
