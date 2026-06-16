@@ -153,6 +153,19 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     expect(row.advType).toBe(1); // a provided value still updates
   });
 
+  it('upsertNode writes a falsy-but-valid value like batteryMv: 0 (not skipped as "absent")', async () => {
+    // Guards the merge guard's `!== null && !== undefined` test against a
+    // future change to a truthiness check (`!v`), which would wrongly drop 0.
+    await repo.upsertNode({ publicKey: 'pk-1', name: 'n', batteryMv: 4100 }, 'src-a');
+    await repo.upsertNode({ publicKey: 'pk-1', batteryMv: 0 }, 'src-a');
+
+    const row = db.prepare(
+      `SELECT batteryMv, name FROM meshcore_nodes WHERE publicKey = 'pk-1'`,
+    ).get() as { batteryMv: number; name: string };
+    expect(row.batteryMv).toBe(0); // 0 is written, not skipped
+    expect(row.name).toBe('n');    // unrelated field preserved
+  });
+
   it('upsertNode does not let one source clobber another source\'s row', async () => {
     // Drop the SQLite PRIMARY KEY so the underlying schema can hold one
     // row per (publicKey, sourceId) — the eventual shape per the slice-1

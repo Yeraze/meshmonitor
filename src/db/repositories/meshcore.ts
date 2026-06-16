@@ -9,6 +9,14 @@ import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
 /**
+ * meshcore_nodes columns where an incoming `null` in upsertNode means "clear
+ * this column" (e.g. CMD_RESET_PATH) rather than "not observed this update".
+ * Every other column preserves its stored value on a null/undefined incoming —
+ * see upsertNode's merge guard (#3504).
+ */
+const CLEARABLE_VIA_NULL = new Set<string>(['outPath', 'pathLen']);
+
+/**
  * MeshCore node data for database operations
  */
 export interface DbMeshCoreNode {
@@ -224,8 +232,8 @@ export class MeshCoreRepository extends BaseRepository {
       // are kept — only null/undefined means "not observed".)
       //
       // Exception: outPath/pathLen are explicitly clearable via null — a null
-      // there means the route was reset (CMD_RESET_PATH), not "unobserved".
-      const CLEARABLE_VIA_NULL = new Set(['outPath', 'pathLen']);
+      // there means the route was reset (CMD_RESET_PATH), not "unobserved"
+      // (see CLEARABLE_VIA_NULL at module scope).
       const updateSet: Record<string, unknown> = { sourceId, updatedAt: now };
       for (const [k, v] of Object.entries(node)) {
         if (v !== null && v !== undefined) {
