@@ -12,9 +12,10 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { TelemetryRepository } from './telemetry.js';
 import * as schema from '../schema/index.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 // ---------------------------------------------------------------------------
 // Shared constants & helpers
@@ -35,39 +36,11 @@ describe('TelemetryRepository (expanded)', () => {
   let repo: TelemetryRepository;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS telemetry (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nodeId TEXT NOT NULL,
-        nodeNum INTEGER NOT NULL,
-        telemetryType TEXT NOT NULL,
-        timestamp INTEGER NOT NULL,
-        value REAL NOT NULL,
-        unit TEXT,
-        createdAt INTEGER NOT NULL,
-        packetTimestamp INTEGER,
-        packetId INTEGER,
-        channel INTEGER,
-        precisionBits INTEGER,
-        gpsAccuracy INTEGER,
-        rxSnr REAL,
-        hopStart INTEGER,
-        hopLimit INTEGER,
-        sourceId TEXT
-      )
-    `);
-
-    // Mirror the migration 032 partial unique index so repo-level dedupe
-    // behavior matches production. NULL packetId rows bypass the constraint.
-    db.exec(`
-      CREATE UNIQUE INDEX IF NOT EXISTS telemetry_source_packet_type_uniq
-        ON telemetry(sourceId, nodeNum, packetId, telemetryType)
-        WHERE packetId IS NOT NULL
-    `);
-
-    drizzleDb = drizzle(db, { schema });
+    // Full production schema from the migration registry (includes the
+    // migration 032 dedupe index and the telemetry columns) — see testDb.ts.
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
     repo = new TelemetryRepository(drizzleDb, 'sqlite');
   });
 
