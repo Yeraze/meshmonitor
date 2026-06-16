@@ -3679,92 +3679,9 @@ class DatabaseService {
   }
 
   // Channel operations
-  upsertChannel(channelData: { id?: number; name: string; psk?: string; role?: number; uplinkEnabled?: boolean; downlinkEnabled?: boolean; positionPrecision?: number }): void {
-    const now = Date.now();
-
-    // Defensive checks for channel roles:
-    // 1. Channel 0 must NEVER be DISABLED (role=0) - it must be PRIMARY (role=1)
-    // 2. Channels 1-7 must NEVER be PRIMARY (role=1) - they can only be SECONDARY (role=2) or DISABLED (role=0)
-    // A mesh network requires exactly ONE PRIMARY channel, and Channel 0 is conventionally PRIMARY
-    if (channelData.id === 0 && channelData.role === 0) {
-      logger.warn(`⚠️  Blocking attempt to set Channel 0 role to DISABLED (0), forcing to PRIMARY (1)`);
-      channelData = { ...channelData, role: 1 };  // Clone and override
-    }
-
-    if (channelData.id !== undefined && channelData.id > 0 && channelData.role === 1) {
-      logger.warn(`⚠️  Blocking attempt to set Channel ${channelData.id} role to PRIMARY (1), forcing to SECONDARY (2)`);
-      logger.warn(`⚠️  Only Channel 0 can be PRIMARY - all other channels must be SECONDARY or DISABLED`);
-      channelData = { ...channelData, role: 2 };  // Clone and override to SECONDARY
-    }
-
-    logger.info(`📝 upsertChannel called with ID: ${channelData.id}, name: "${channelData.name}" (length: ${channelData.name.length})`);
-
-    // Channel ID is required - we no longer support name-based lookups
-    // All channels must have a numeric ID for proper indexing
-    if (channelData.id === undefined) {
-      logger.error(`❌ Cannot upsert channel without ID. Name: "${channelData.name}"`);
-      throw new Error('Channel ID is required for upsert operation');
-    }
-
-    // For PostgreSQL/MySQL, update cache and fire-and-forget
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const existingChannel = this.channelsCache.get(channelData.id);
-      logger.info(`📝 getChannelById(${channelData.id}) returned: ${existingChannel ? `"${existingChannel.name}"` : 'null'}`);
-
-      // Build the updated/new channel object
-      const updatedChannel: DbChannel = {
-        id: channelData.id,
-        name: channelData.name,
-        psk: channelData.psk ?? existingChannel?.psk,
-        role: channelData.role ?? existingChannel?.role,
-        uplinkEnabled: channelData.uplinkEnabled ?? existingChannel?.uplinkEnabled ?? true,
-        downlinkEnabled: channelData.downlinkEnabled ?? existingChannel?.downlinkEnabled ?? true,
-        positionPrecision: channelData.positionPrecision ?? existingChannel?.positionPrecision,
-        createdAt: existingChannel?.createdAt ?? now,
-        updatedAt: now,
-      };
-
-      // Update cache immediately
-      this.channelsCache.set(channelData.id, updatedChannel);
-
-      if (existingChannel) {
-        logger.info(`📝 Updating channel ${existingChannel.id} from "${existingChannel.name}" to "${channelData.name}"`);
-      } else {
-        logger.debug(`📝 Creating new channel with ID: ${channelData.id}`);
-      }
-
-      // Fire and forget async update
-      if (this.channelsRepo) {
-        this.channelsRepo.upsertChannel({
-          id: channelData.id,
-          name: channelData.name,
-          psk: channelData.psk,
-          role: channelData.role,
-          uplinkEnabled: channelData.uplinkEnabled,
-          downlinkEnabled: channelData.downlinkEnabled,
-          positionPrecision: channelData.positionPrecision,
-        }).catch((error) => {
-          logger.error(`[DatabaseService] Failed to upsert channel ${channelData.id}: ${error}`);
-        });
-      }
-      return;
-    }
-
-    // SQLite path — route through ChannelsRepository
-    if (channelData.id === undefined) {
-      logger.error(`❌ Cannot upsert channel without ID. Name: "${channelData.name}"`);
-      throw new Error('Channel ID is required for upsert operation');
-    }
-    this.channelsRepo!.upsertChannelSync({
-      id: channelData.id,
-      name: channelData.name,
-      psk: channelData.psk,
-      role: channelData.role,
-      uplinkEnabled: channelData.uplinkEnabled,
-      downlinkEnabled: channelData.downlinkEnabled,
-      positionPrecision: channelData.positionPrecision,
-    });
-  }
+  // (legacy synchronous DatabaseService.upsertChannel + ChannelsRepository.upsertChannelSync
+  //  removed — dead code with no callers; all channel upserts go through the
+  //  async, #1567-guarded databaseService.channels.upsertChannel)
 
   getChannelById(id: number): DbChannel | null {
     // For PostgreSQL/MySQL, use cache

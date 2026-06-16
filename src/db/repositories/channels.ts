@@ -321,58 +321,6 @@ export class ChannelsRepository extends BaseRepository {
   }
 
   /**
-   * Synchronously upsert a channel (SQLite only).
-   * Matches the legacy DatabaseService.upsertChannel semantics:
-   * - Does NOT preserve non-empty names across updates (overwrites with incoming)
-   * - Uses COALESCE-like behavior for nullable fields
-   * - Role rules already validated at call site
-   */
-  upsertChannelSync(channelData: ChannelInput): void {
-    const db = this.getSqliteDb();
-    const { channels } = this.tables;
-    const now = this.now();
-
-    // Look up existing row by id
-    const existingRows = db
-      .select()
-      .from(channels)
-      .where(eq(channels.id, channelData.id))
-      .limit(1)
-      .all();
-    const existing = existingRows.length > 0 ? (existingRows[0] as any) : null;
-
-    if (existing) {
-      // Update existing — COALESCE(new, old) semantics for nullable fields
-      const updateSet: any = {
-        name: channelData.name,
-        psk: channelData.psk ?? existing.psk,
-        role: channelData.role ?? existing.role,
-        uplinkEnabled: channelData.uplinkEnabled ?? existing.uplinkEnabled,
-        downlinkEnabled: channelData.downlinkEnabled ?? existing.downlinkEnabled,
-        positionPrecision: channelData.positionPrecision ?? existing.positionPrecision,
-        updatedAt: now,
-      };
-      db.update(channels).set(updateSet).where(eq(channels.id, existing.id)).run();
-      logger.info(`Updated channel ${existing.id} (sync)`);
-    } else {
-      // Insert new row
-      const newRow: any = {
-        id: channelData.id,
-        name: channelData.name,
-        psk: channelData.psk ?? null,
-        role: channelData.role ?? null,
-        uplinkEnabled: channelData.uplinkEnabled ?? true,
-        downlinkEnabled: channelData.downlinkEnabled ?? true,
-        positionPrecision: channelData.positionPrecision ?? null,
-        createdAt: now,
-        updatedAt: now,
-      };
-      db.insert(channels).values(newRow).run();
-      logger.debug(`Created channel: ${channelData.name} (ID: ${channelData.id}) (sync)`);
-    }
-  }
-
-  /**
    * Synchronously delete invalid channels (id < 0 or id > 7). (SQLite only).
    * Returns the number of rows deleted.
    */
