@@ -8,9 +8,10 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { MessagesRepository } from './messages.js';
 import * as schema from '../schema/index.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 describe('MessagesRepository sync purge helpers', () => {
   let db: Database.Database;
@@ -25,60 +26,20 @@ describe('MessagesRepository sync purge helpers', () => {
   const NODE3_ID = '!55667788';
 
   beforeEach(() => {
-    db = new Database(':memory:');
+    // Full production schema from the migration registry — see testDb.ts.
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
 
-    db.exec(`
-      CREATE TABLE nodes (
-        nodeNum INTEGER PRIMARY KEY,
-        nodeId TEXT NOT NULL UNIQUE,
-        longName TEXT,
-        shortName TEXT
-      )
-    `);
+    // Seed referenced nodes (full schema NOT NULL/PK columns: sourceId, timestamps).
+    const now = Date.now();
+    const insertNode = db.prepare(
+      "INSERT INTO nodes (nodeNum, nodeId, sourceId, createdAt, updatedAt) VALUES (?, ?, 'default', ?, ?)",
+    );
+    insertNode.run(NODE1_NUM, NODE1_ID, now, now);
+    insertNode.run(NODE2_NUM, NODE2_ID, now, now);
+    insertNode.run(NODE3_NUM, NODE3_ID, now, now);
 
-    db.exec(`
-      INSERT INTO nodes (nodeNum, nodeId) VALUES (${NODE1_NUM}, '${NODE1_ID}');
-      INSERT INTO nodes (nodeNum, nodeId) VALUES (${NODE2_NUM}, '${NODE2_ID}');
-      INSERT INTO nodes (nodeNum, nodeId) VALUES (${NODE3_NUM}, '${NODE3_ID}');
-    `);
-
-    db.exec(`
-      CREATE TABLE messages (
-        id TEXT PRIMARY KEY,
-        fromNodeNum INTEGER NOT NULL REFERENCES nodes(nodeNum) ON DELETE CASCADE,
-        toNodeNum INTEGER NOT NULL REFERENCES nodes(nodeNum) ON DELETE CASCADE,
-        fromNodeId TEXT NOT NULL,
-        toNodeId TEXT NOT NULL,
-        text TEXT NOT NULL,
-        channel INTEGER NOT NULL DEFAULT 0,
-        portnum INTEGER,
-        requestId INTEGER,
-        timestamp INTEGER NOT NULL,
-        rxTime INTEGER,
-        hopStart INTEGER,
-        hopLimit INTEGER,
-        relayNode INTEGER,
-        replyId INTEGER,
-        emoji INTEGER,
-        viaMqtt INTEGER,
-        viaStoreForward INTEGER DEFAULT 0,
-        rxSnr REAL,
-        rxRssi REAL,
-        ackFailed INTEGER,
-        routingErrorReceived INTEGER,
-        deliveryState TEXT,
-        wantAck INTEGER,
-        ackFromNode INTEGER,
-        createdAt INTEGER NOT NULL,
-        decrypted_by TEXT,
-        sourceId TEXT,
-        source_ip TEXT,
-        source_path TEXT,
-        spoofSuspected INTEGER
-      )
-    `);
-
-    drizzleDb = drizzle(db, { schema });
     repo = new MessagesRepository(drizzleDb, 'sqlite');
   });
 
@@ -166,8 +127,13 @@ describe('MessagesRepository sync purge helpers', () => {
     });
 
     it('excludes broadcast messages (!ffffffff)', async () => {
-      // Add the broadcast target node so the foreign key holds
-      db.exec(`INSERT OR IGNORE INTO nodes (nodeNum, nodeId) VALUES (${0xffffffff}, '!ffffffff')`);
+      // Add the broadcast target node so the foreign key holds. Must supply the
+      // full schema's NOT NULL/PK columns — OR IGNORE would otherwise silently
+      // swallow the constraint violation and never insert the row.
+      const now = Date.now();
+      db.prepare(
+        "INSERT OR IGNORE INTO nodes (nodeNum, nodeId, sourceId, createdAt, updatedAt) VALUES (?, ?, 'default', ?, ?)",
+      ).run(0xffffffff, '!ffffffff', now, now);
 
       // Broadcast looks like a DM by fromNode, but toNodeId is !ffffffff
       await insertMsg('bcast', NODE1_NUM, NODE1_ID, 0xffffffff, '!ffffffff', 0, 'src-a');
