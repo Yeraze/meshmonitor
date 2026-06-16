@@ -7,8 +7,14 @@
  */
 
 import { EventEmitter } from 'events';
-import { connect, type IClientSubscribeOptions, type MqttClient } from 'mqtt';
+import { connect, type IClientOptions, type IClientSubscribeOptions, type MqttClient } from 'mqtt';
 import { logger } from '../../utils/logger.js';
+import { createCachingLookup } from './cachingDnsLookup.js';
+
+// One DNS cache shared across every upstream MQTT connection. The publisher
+// pool opens one socket per gateway and reconnects re-resolve, so without this
+// a busy bridge re-queries the broker hostname dozens of times per minute.
+const sharedDnsLookup = createCachingLookup();
 
 export interface MqttBrokerClientOptions {
   url: string;
@@ -121,9 +127,14 @@ export class MqttBrokerClient extends EventEmitter {
   private authFailed = false;
   private reconnectBackoffMs = 1000;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private stableTimer: ReturnType<typeof setTimeout> | null = null;
   private coordinator: MqttReconnectCoordinator | null = null;
   private static readonly BACKOFF_MIN_MS = 1000;
   private static readonly BACKOFF_MAX_MS = 60_000;
+  // A connection must stay up this long before its success counts as "stable"
+  // and resets the reconnect backoff. Shorter than this and a flapping
+  // connection would keep the backoff pinned at the minimum.
+  private static readonly STABLE_RESET_MS = 30_000;
 
   constructor(options: MqttBrokerClientOptions) {
     super();
@@ -148,7 +159,10 @@ export class MqttBrokerClient extends EventEmitter {
     // Disable mqtt.js auto-reconnect — we manage reconnection ourselves
     // with exponential backoff (1s → 60s) to avoid hammering brokers that
     // reject auth or are temporarily down.
-    this.client = connect(url, {
+    // `lookup` is a valid net/tls socket option that mqtt.js forwards to the
+    // underlying socket, but it isn't in mqtt.js's IClientOptions typings — so
+    // declare it via an intersection rather than casting away the whole type.
+    const connectOptions: IClientOptions & { lookup: typeof sharedDnsLookup } = {
       clientId,
       username: this.options.username,
       password: this.options.password,
@@ -158,14 +172,23 @@ export class MqttBrokerClient extends EventEmitter {
       reconnectPeriod: 0, // we handle reconnect ourselves
       connectTimeout: 30_000,
       rejectUnauthorized: this.options.rejectUnauthorized ?? true,
-    });
+      // Cache DNS across connections/reconnects. The hostname stays on the
+      // socket, so TLS SNI / cert validation is unaffected. See cachingDnsLookup.ts.
+      lookup: sharedDnsLookup,
+    };
+    this.client = connect(url, connectOptions);
 
     this.client.on('connect', () => {
       this.connected = true;
       this.lastError = null;
       this.authFailed = false;
-      this.reconnectBackoffMs = MqttBrokerClient.BACKOFF_MIN_MS;
-      if (this.coordinator) this.coordinator.resetBackoff();
+      // Only reset the reconnect backoff once the connection proves STABLE.
+      // Resetting on every 'connect' let a flapping connection (e.g. a clientId
+      // collision kicking it every second) keep the shared backoff pinned at
+      // the 1s minimum, producing a relentless reconnect/DNS storm. A connect
+      // that drops before the grace window now never resets backoff, so it
+      // climbs 1s→…→60s and the storm throttles itself.
+      this.armStableReset();
       logger.info(`📡 MQTT client connected to ${url}`);
       // Re-subscribe on every connect (covers reconnects with clean=true).
       // Clear previously-tracked denials too — a fresh session may have
@@ -183,10 +206,12 @@ export class MqttBrokerClient extends EventEmitter {
     this.client.on('reconnect', () => this.emit('reconnect'));
     this.client.on('offline', () => {
       this.connected = false;
+      this.clearStableReset();
       this.emit('offline');
     });
     this.client.on('close', () => {
       this.connected = false;
+      this.clearStableReset();
       this.scheduleReconnect();
       this.emit('close');
     });
@@ -263,6 +288,28 @@ export class MqttBrokerClient extends EventEmitter {
     if (this.client) this.client.reconnect();
   }
 
+  /**
+   * Arm the stability timer: only after the connection has held for
+   * STABLE_RESET_MS do we consider it stable and reset the reconnect backoff
+   * (both this client's and the shared coordinator's). A flap that closes
+   * before then leaves the backoff growing.
+   */
+  private armStableReset(): void {
+    this.clearStableReset();
+    this.stableTimer = setTimeout(() => {
+      this.stableTimer = null;
+      this.reconnectBackoffMs = MqttBrokerClient.BACKOFF_MIN_MS;
+      if (this.coordinator) this.coordinator.resetBackoff();
+    }, MqttBrokerClient.STABLE_RESET_MS);
+  }
+
+  private clearStableReset(): void {
+    if (this.stableTimer) {
+      clearTimeout(this.stableTimer);
+      this.stableTimer = null;
+    }
+  }
+
   private scheduleReconnect(): void {
     if (!this.client) return;
     if (this.coordinator) {
@@ -293,6 +340,7 @@ export class MqttBrokerClient extends EventEmitter {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.clearStableReset();
     if (!this.client) return;
     await new Promise<void>((resolve) => {
       this.client!.end(true, {}, () => resolve());
