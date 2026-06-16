@@ -4523,6 +4523,7 @@
     "showMeshCore": "Show MeshCore",
     "showWaypoints": "Show Waypoints",
     "showPositionHistory": "Show Position History",
+    "positionHistoryPointsOnly": "Points only (no line)",
     "showAnimations": "Show Animations",
     "showEstimatedPositions": "Show Estimated Positions",
     "showAccuracyRegions": "Show Accuracy Regions",

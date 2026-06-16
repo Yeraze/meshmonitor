@@ -52,6 +52,9 @@ describe('TelemetryRepository (expanded)', () => {
         channel INTEGER,
         precisionBits INTEGER,
         gpsAccuracy INTEGER,
+        rxSnr REAL,
+        hopStart INTEGER,
+        hopLimit INTEGER,
         sourceId TEXT
       )
     `);
@@ -150,6 +153,28 @@ describe('TelemetryRepository (expanded)', () => {
       expect(r.channel).toBeNull();
       expect(r.precisionBits).toBeNull();
       expect(r.gpsAccuracy).toBeNull();
+    });
+
+    it('captures rxSnr / hopStart / hopLimit on a position fix and surfaces them via getPositionTelemetryByNode (#3492)', async () => {
+      await repo.insertTelemetry({
+        nodeId: NODE1,
+        nodeNum: NODE1_NUM,
+        telemetryType: 'latitude',
+        timestamp: NOW,
+        value: 37.7749,
+        createdAt: NOW,
+        packetId: 4242,
+        rxSnr: 6.25,
+        hopStart: 3,
+        hopLimit: 3, // hopStart === hopLimit ⇒ heard directly (0 hops)
+      });
+
+      const positions = await repo.getPositionTelemetryByNode(NODE1, 10);
+      const lat = positions.find((p) => p.telemetryType === 'latitude');
+      expect(lat).toBeDefined();
+      expect(lat!.rxSnr).toBe(6.25);
+      expect(lat!.hopStart).toBe(3);
+      expect(lat!.hopLimit).toBe(3);
     });
   });
 

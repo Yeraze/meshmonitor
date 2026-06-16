@@ -121,6 +121,9 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
       groundSpeed?: number;
       groundTrack?: number;
       packetId?: number;
+      snr?: number;
+      hopStart?: number;
+      hopLimit?: number;
     }>();
 
     positionTelemetry.forEach(t => {
@@ -147,6 +150,13 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
       if (t.packetId != null && pos.packetId === undefined) {
         pos.packetId = t.packetId ?? undefined;
       }
+
+      // Receive SNR + hop metadata are stored on the lat/lon rows (#3492).
+      // Capture from whichever row carries them (only fixes received after
+      // migration 089 have these).
+      if (t.rxSnr != null && pos.snr === undefined) pos.snr = t.rxSnr ?? undefined;
+      if (t.hopStart != null && pos.hopStart === undefined) pos.hopStart = t.hopStart ?? undefined;
+      if (t.hopLimit != null && pos.hopLimit === undefined) pos.hopLimit = t.hopLimit ?? undefined;
     });
 
     // Convert to array, filter incomplete, sort ascending
@@ -159,6 +169,9 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
         ...(pos.alt !== undefined && { altitude: pos.alt }),
         ...(pos.groundSpeed !== undefined && { groundSpeed: pos.groundSpeed }),
         ...(pos.groundTrack !== undefined && { groundTrack: pos.groundTrack }),
+        ...(pos.snr !== undefined && { snr: pos.snr }),
+        ...(pos.hopStart !== undefined && { hopStart: pos.hopStart }),
+        ...(pos.hopLimit !== undefined && { hopLimit: pos.hopLimit }),
         packetId: pos.packetId ?? null,
       }))
       .sort((a, b) => a.timestamp - b.timestamp);

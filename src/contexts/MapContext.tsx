@@ -10,6 +10,12 @@ export interface PositionHistoryItem {
   altitude?: number;
   groundSpeed?: number;   // m/s
   groundTrack?: number;   // degrees (0-360, 0=North)
+  // Receive metadata of the packet this fix arrived in (#3492). Only present
+  // for fixes received after migration 089. SNR is only meaningful when the
+  // fix was heard directly (hopStart === hopLimit, i.e. 0 hops).
+  snr?: number;
+  hopStart?: number;
+  hopLimit?: number;
 }
 
 export interface EnrichedNeighborInfo extends DbNeighborInfo {
@@ -56,6 +62,9 @@ interface MapContextType {
   setShowMeshCoreNodes: (show: boolean) => void;
   showWaypoints: boolean;
   setShowWaypoints: (show: boolean) => void;
+  // Position history: render points only (no connecting line) — issue #3492
+  positionHistoryPointsOnly: boolean;
+  setPositionHistoryPointsOnly: (value: boolean) => void;
   showAnimations: boolean;
   setShowAnimations: (show: boolean) => void;
   showEstimatedPositions: boolean;
@@ -114,6 +123,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [showMeshCoreNodes, setShowMeshCoreNodesState] = useState<boolean>(true);
   // Waypoint markers default on (#3253) — opt-out toggle in the Map Features panel.
   const [showWaypoints, setShowWaypointsState] = useState<boolean>(true);
+  const [positionHistoryPointsOnly, setPositionHistoryPointsOnlyState] = useState<boolean>(false);
   const [showAnimations, setShowAnimationsState] = useState<boolean>(false);
   const [meshCoreNodes, setMeshCoreNodes] = useState<MeshCoreMapNode[]>([]);
   const [showEstimatedPositions, setShowEstimatedPositionsState] = useState<boolean>(() => {
@@ -196,6 +206,11 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const setShowWaypoints = React.useCallback((value: boolean) => {
     setShowWaypointsState(value);
     savePreferenceToServer({ showWaypoints: value });
+  }, []);
+
+  const setPositionHistoryPointsOnly = React.useCallback((value: boolean) => {
+    setPositionHistoryPointsOnlyState(value);
+    savePreferenceToServer({ positionHistoryPointsOnly: value });
   }, []);
 
   const setShowAnimations = React.useCallback((value: boolean) => {
@@ -323,6 +338,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
             if (preferences.showWaypoints !== undefined) {
               setShowWaypointsState(preferences.showWaypoints);
             }
+            if (preferences.positionHistoryPointsOnly !== undefined) {
+              setPositionHistoryPointsOnlyState(preferences.positionHistoryPointsOnly);
+            }
             if (preferences.showAnimations !== undefined) {
               setShowAnimationsState(preferences.showAnimations);
             }
@@ -404,6 +422,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
         showMeshCoreNodes,
         setShowMeshCoreNodes,
         showWaypoints,
+        positionHistoryPointsOnly,
+        setPositionHistoryPointsOnly,
         setShowWaypoints,
         meshCoreNodes,
         setMeshCoreNodes,

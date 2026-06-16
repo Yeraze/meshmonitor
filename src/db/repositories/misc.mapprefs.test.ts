@@ -39,3 +39,20 @@ describe('userMapPreferences — showWaypoints toggle (#3253)', () => {
     expect(mysql.name).toBe('show_waypoints');
   });
 });
+
+describe('userMapPreferences — positionHistoryPointsOnly toggle (#3492)', () => {
+  it('maps JS `positionHistoryPointsOnly` → SQL column `position_history_points_only` on all three backends', () => {
+    const sqlite = (schema.userMapPreferencesSqlite as unknown as {
+      positionHistoryPointsOnly: { name: string };
+    }).positionHistoryPointsOnly;
+    const pg = (schema.userMapPreferencesPostgres as unknown as {
+      positionHistoryPointsOnly: { name: string };
+    }).positionHistoryPointsOnly;
+    const mysql = (schema.userMapPreferencesMysql as unknown as {
+      positionHistoryPointsOnly: { name: string };
+    }).positionHistoryPointsOnly;
+    expect(sqlite.name).toBe('position_history_points_only');
+    expect(pg.name).toBe('position_history_points_only');
+    expect(mysql.name).toBe('position_history_points_only');
+  });
+});

@@ -36,7 +36,8 @@ describe('Telemetry bad-timestamp handling (#3362)', () => {
         nodeId TEXT NOT NULL, nodeNum INTEGER NOT NULL, telemetryType TEXT NOT NULL,
         timestamp INTEGER NOT NULL, value REAL NOT NULL, unit TEXT,
         createdAt INTEGER NOT NULL, packetTimestamp INTEGER, packetId INTEGER,
-        channel INTEGER, precisionBits INTEGER, gpsAccuracy INTEGER, sourceId TEXT
+        channel INTEGER, precisionBits INTEGER, gpsAccuracy INTEGER,
+        rxSnr REAL, hopStart INTEGER, hopLimit INTEGER, sourceId TEXT
       )`);
     drizzleDb = drizzle(db, { schema });
     repo = new TelemetryRepository(drizzleDb, 'sqlite');
