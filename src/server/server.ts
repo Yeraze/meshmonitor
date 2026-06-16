@@ -60,6 +60,7 @@ import { resolveRequestSourceId } from './utils/sourceResolver.js';
 import { parseDestinationNum } from './utils/parseDestination.js';
 import { PortNum, modemPresetChannelName, getRoutingErrorName } from './constants/meshtastic.js';
 import { isValidModuleConfigType } from './constants/moduleConfig.js';
+import { CONFIG_TYPE_MAP, MODULE_FIELD_BY_ID, DEVICE_FIELD_BY_ID } from './constants/configTypes.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 import { applyManagerSettings } from './applyManagerSettings.js';
 
@@ -7597,22 +7598,11 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
         // Local node - use existing config or request it
         let currentConfig = adminLoadManager.getCurrentConfig();
         
-        // Map config types to their numeric values (same as remote node mapping)
-        const configTypeMap: { [key: string]: { type: number; isModule: boolean } } = {
-          'device': { type: 0, isModule: false },  // DEVICE_CONFIG
-          'position': { type: 1, isModule: false }, // POSITION_CONFIG
-          'network': { type: 3, isModule: false },  // NETWORK_CONFIG
-          'lora': { type: 5, isModule: false },      // LORA_CONFIG
-          'bluetooth': { type: 6, isModule: false }, // BLUETOOTH_CONFIG
-          'security': { type: 7, isModule: false },  // SECURITY_CONFIG
-          'mqtt': { type: 0, isModule: true },        // MQTT_CONFIG (module)
-          'telemetry': { type: 5, isModule: true },  // TELEMETRY_CONFIG (module)
-          'neighborinfo': { type: 9, isModule: true }, // NEIGHBORINFO_CONFIG (module)
-          'statusmessage': { type: 13, isModule: true }, // STATUSMESSAGE_CONFIG (module)
-          'trafficmanagement': { type: 14, isModule: true } // TRAFFICMANAGEMENT_CONFIG (module)
-        };
-
-        const configInfo = configTypeMap[configType];
+        // Canonical config/module type registry (see configTypes.ts). Previously
+        // this local-node branch used an incomplete inline copy that omitted
+        // power/display/serial/etc., so a local GET of those configs 400'd with
+        // "Unknown config type"; using the full registry resolves that.
+        const configInfo = CONFIG_TYPE_MAP[configType];
         if (!configInfo && configType !== 'channel') {
           return res.status(400).json({ error: `Unknown config type: ${configType}` });
         }
@@ -7621,41 +7611,10 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
         let needsRequest = false;
         if (configInfo) {
           if (configInfo.isModule) {
-            // Module configs
-            const moduleConfigMap: { [key: string]: string } = {
-              'mqtt': 'mqtt',
-              'serial': 'serial',
-              'extnotif': 'externalNotification',
-              'storeforward': 'storeForward',
-              'rangetest': 'rangeTest',
-              'telemetry': 'telemetry',
-              'cannedmsg': 'cannedMessage',
-              'audio': 'audio',
-              'remotehardware': 'remoteHardware',
-              'neighborinfo': 'neighborInfo',
-              'ambientlighting': 'ambientLighting',
-              'detectionsensor': 'detectionSensor',
-              'paxcounter': 'paxcounter',
-              'statusmessage': 'statusmessage',
-              'trafficmanagement': 'trafficManagement'
-            };
-            const moduleKey = moduleConfigMap[configType];
+            const moduleKey = MODULE_FIELD_BY_ID[configType];
             if (moduleKey && !currentConfig?.moduleConfig?.[moduleKey]) needsRequest = true;
           } else {
-            // Device configs
-            const deviceConfigMap: { [key: string]: string } = {
-              'device': 'device',
-              'position': 'position',
-              'power': 'power',
-              'network': 'network',
-              'display': 'display',
-              'lora': 'lora',
-              'bluetooth': 'bluetooth',
-              'security': 'security',
-              'sessionkey': 'sessionkey',
-              'deviceui': 'deviceui'
-            };
-            const deviceKey = deviceConfigMap[configType];
+            const deviceKey = DEVICE_FIELD_BY_ID[configType];
             if (deviceKey && !currentConfig?.deviceConfig?.[deviceKey]) needsRequest = true;
           }
         }
@@ -7837,23 +7796,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
           case 'paxcounter':
           case 'statusmessage':
           case 'trafficmanagement':
-            const moduleConfigMap: { [key: string]: string } = {
-              'serial': 'serial',
-              'extnotif': 'externalNotification',
-              'storeforward': 'storeForward',
-              'rangetest': 'rangeTest',
-              'telemetry': 'telemetry',
-              'cannedmsg': 'cannedMessage',
-              'audio': 'audio',
-              'remotehardware': 'remoteHardware',
-              'neighborinfo': 'neighborInfo',
-              'ambientlighting': 'ambientLighting',
-              'detectionsensor': 'detectionSensor',
-              'paxcounter': 'paxcounter',
-              'statusmessage': 'statusmessage',
-              'trafficmanagement': 'trafficManagement'
-            };
-            const moduleKey = moduleConfigMap[configType];
+            const moduleKey = MODULE_FIELD_BY_ID[configType];
             if (moduleKey && finalConfig.moduleConfig?.[moduleKey]) {
               config = finalConfig.moduleConfig[moduleKey];
             } else {
@@ -7866,36 +7809,8 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
         // Remote node - request config with session passkey
         logger.info(`Requesting ${configType} config from remote node ${destinationNodeNum}`);
         
-        // Map config types to their numeric values (same as local node mapping)
-        const configTypeMap: { [key: string]: { type: number; isModule: boolean } } = {
-          'device': { type: 0, isModule: false },  // DEVICE_CONFIG
-          'position': { type: 1, isModule: false }, // POSITION_CONFIG
-          'power': { type: 2, isModule: false },    // POWER_CONFIG
-          'network': { type: 3, isModule: false },  // NETWORK_CONFIG
-          'display': { type: 4, isModule: false },  // DISPLAY_CONFIG
-          'lora': { type: 5, isModule: false },     // LORA_CONFIG
-          'bluetooth': { type: 6, isModule: false }, // BLUETOOTH_CONFIG
-          'security': { type: 7, isModule: false }, // SECURITY_CONFIG
-          'sessionkey': { type: 8, isModule: false }, // SESSIONKEY_CONFIG
-          'deviceui': { type: 9, isModule: false }, // DEVICEUI_CONFIG
-          'mqtt': { type: 0, isModule: true },      // MQTT_CONFIG (module)
-          'serial': { type: 1, isModule: true },    // SERIAL_CONFIG (module)
-          'extnotif': { type: 2, isModule: true },  // EXTNOTIF_CONFIG (module)
-          'storeforward': { type: 3, isModule: true }, // STOREFORWARD_CONFIG (module)
-          'rangetest': { type: 4, isModule: true },  // RANGETEST_CONFIG (module)
-          'telemetry': { type: 5, isModule: true }, // TELEMETRY_CONFIG (module)
-          'cannedmsg': { type: 6, isModule: true }, // CANNEDMSG_CONFIG (module)
-          'audio': { type: 7, isModule: true },     // AUDIO_CONFIG (module)
-          'remotehardware': { type: 8, isModule: true }, // REMOTEHARDWARE_CONFIG (module)
-          'neighborinfo': { type: 9, isModule: true }, // NEIGHBORINFO_CONFIG (module)
-          'ambientlighting': { type: 10, isModule: true }, // AMBIENTLIGHTING_CONFIG (module)
-          'detectionsensor': { type: 11, isModule: true }, // DETECTIONSENSOR_CONFIG (module)
-          'paxcounter': { type: 12, isModule: true }, // PAXCOUNTER_CONFIG (module)
-          'statusmessage': { type: 13, isModule: true }, // STATUSMESSAGE_CONFIG (module)
-          'trafficmanagement': { type: 14, isModule: true } // TRAFFICMANAGEMENT_CONFIG (module)
-        };
-
-        const configInfo = configTypeMap[configType];
+        // Canonical config/module type registry (see configTypes.ts).
+        const configInfo = CONFIG_TYPE_MAP[configType];
         if (!configInfo) {
           return res.status(400).json({ error: `Unknown config type: ${configType}` });
         }
