@@ -5,7 +5,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
+import { createTestDb } from '../test-helpers/testDb.js';
 
 // Mock cron scheduler using vi.hoisted() to avoid hoisting issues
 const { mockStart, mockStop, mockSchedule, mockValidate } = vi.hoisted(() => {
@@ -59,24 +60,8 @@ describe('SolarMonitoringService', () => {
   let solarEstimates: Array<{ timestamp: number; watt_hours: number; fetched_at: number }>;
 
   beforeEach(() => {
-    // Create in-memory database for testing
-    testDb = new Database(':memory:');
-    testDb.pragma('foreign_keys = ON');
-
-    // Set up minimal schema for testing
-    testDb.exec(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS solar_estimates (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp INTEGER NOT NULL UNIQUE,
-        watt_hours INTEGER NOT NULL,
-        fetched_at INTEGER NOT NULL
-      );
-    `);
+    const t = createTestDb();
+    testDb = t.sqlite;
 
     // Reset in-memory storage
     solarEstimates = [];
@@ -88,7 +73,7 @@ describe('SolarMonitoringService', () => {
     });
 
     mockSetSetting.mockImplementation((key: string, value: string) => {
-      testDb.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
+      testDb.prepare('INSERT OR REPLACE INTO settings (key, value, createdAt, updatedAt) VALUES (?, ?, 0, 0)').run(key, value);
     });
 
     mockUpsertSolarEstimateAsync.mockImplementation(async (timestamp: number, wattHours: number, fetchedAt: number) => {

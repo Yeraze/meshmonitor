@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
+import { createTestDb } from '../test-helpers/testDb.js';
 import databaseService from '../../services/database.js';
 
 // Mock the database service
@@ -30,45 +31,8 @@ describe('AppriseNotificationService', () => {
   let db: Database.Database;
 
   beforeEach(() => {
-    // Create in-memory database for testing
-    db = new Database(':memory:');
-    db.pragma('foreign_keys = ON');
-
-    // Set up minimal schema for testing
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS user_notification_preferences (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL UNIQUE,
-        enable_web_push BOOLEAN DEFAULT 0,
-        enable_apprise BOOLEAN DEFAULT 0,
-        enabled_channels TEXT,
-        enable_direct_messages BOOLEAN DEFAULT 1,
-        notify_on_emoji BOOLEAN DEFAULT 1,
-        notify_on_new_node BOOLEAN DEFAULT 1,
-        notify_on_traceroute BOOLEAN DEFAULT 1,
-        notify_on_inactive_node BOOLEAN DEFAULT 0,
-        notify_on_server_events BOOLEAN DEFAULT 0,
-        prefix_with_node_name BOOLEAN DEFAULT 0,
-        monitored_nodes TEXT,
-        whitelist TEXT,
-        blacklist TEXT,
-        apprise_urls TEXT,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      );
-    `);
+    const t = createTestDb();
+    db = t.sqlite;
 
     // Mock database service db property
     (databaseService.db as any) = db;
@@ -104,7 +68,8 @@ describe('AppriseNotificationService', () => {
 
     it('should store Apprise URL in settings', () => {
       const customUrl = 'http://apprise-api:8000';
-      db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('apprise_url', customUrl);
+      const now = Date.now();
+      db.prepare('INSERT INTO settings (key, value, createdAt, updatedAt) VALUES (?, ?, ?, ?)').run('apprise_url', customUrl, now, now);
 
       const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('apprise_url') as { value: string } | undefined;
 
@@ -115,7 +80,7 @@ describe('AppriseNotificationService', () => {
   describe('Per-User Notification Preferences', () => {
     beforeEach(() => {
       // Create test user
-      db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run('testuser', 'hash123');
+      db.prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)').run('testuser', 'hash123', Date.now());
     });
 
     it('should store user preferences with Apprise enabled', () => {
@@ -124,10 +89,11 @@ describe('AppriseNotificationService', () => {
 
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_web_push, enable_apprise, enabled_channels, enable_direct_messages, whitelist, blacklist, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (user_id, source_id, enable_web_push, enable_apprise, enabled_channels, enable_direct_messages, whitelist, blacklist, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         user.id,
+        'default',
         0, // Web Push disabled
         1, // Apprise enabled
         JSON.stringify([0, 1, 2]),
@@ -151,9 +117,9 @@ describe('AppriseNotificationService', () => {
 
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_web_push, enable_apprise, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(user.id, 1, 1, now, now);
+        (user_id, source_id, enable_web_push, enable_apprise, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(user.id, 'default', 1, 1, now, now);
 
       const prefs = db.prepare('SELECT * FROM user_notification_preferences WHERE user_id = ?').get(user.id) as any;
 
@@ -168,17 +134,17 @@ describe('AppriseNotificationService', () => {
       // Insert first preference
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, created_at, updated_at)
-        VALUES (?, ?, ?, ?)
-      `).run(user.id, 1, now, now);
+        (user_id, source_id, enable_apprise, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(user.id, 'default', 1, now, now);
 
       // Try to insert duplicate
       expect(() => {
         db.prepare(`
           INSERT INTO user_notification_preferences
-          (user_id, enable_apprise, created_at, updated_at)
-          VALUES (?, ?, ?, ?)
-        `).run(user.id, 1, now, now);
+          (user_id, source_id, enable_apprise, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(user.id, 'default', 1, now, now);
       }).toThrow();
     });
 
@@ -188,9 +154,9 @@ describe('AppriseNotificationService', () => {
 
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, created_at, updated_at)
-        VALUES (?, ?, ?, ?)
-      `).run(user.id, 1, now, now);
+        (user_id, source_id, enable_apprise, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(user.id, 'default', 1, now, now);
 
       // Delete user
       db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
@@ -201,22 +167,23 @@ describe('AppriseNotificationService', () => {
       expect(prefs).toBeUndefined();
     });
 
-    it('should default both notification methods to disabled', () => {
+    it('should default notification methods per real schema defaults', () => {
       const user = db.prepare('SELECT id FROM users WHERE username = ?').get('testuser') as { id: number };
       const now = Date.now();
 
       // Insert with default values
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, created_at, updated_at)
-        VALUES (?, ?, ?)
-      `).run(user.id, now, now);
+        (user_id, source_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?)
+      `).run(user.id, 'default', now, now);
 
       const prefs = db.prepare('SELECT * FROM user_notification_preferences WHERE user_id = ?').get(user.id) as any;
 
-      expect(prefs.enable_apprise).toBe(0); // Default disabled
-      expect(prefs.enable_web_push).toBe(0); // Default disabled
-      expect(prefs.enable_direct_messages).toBe(1); // Default enabled
+      // Real schema (001_v37_baseline) defaults: enable_apprise=1, enable_web_push=1, enable_direct_messages=1
+      expect(prefs.enable_apprise).toBe(1);
+      expect(prefs.enable_web_push).toBe(1);
+      expect(prefs.enable_direct_messages).toBe(1);
     });
   });
 
@@ -358,9 +325,10 @@ describe('AppriseNotificationService', () => {
   describe('User Query for Apprise-Enabled Users', () => {
     beforeEach(() => {
       // Create multiple test users
-      db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run('user1', 'hash1');
-      db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run('user2', 'hash2');
-      db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run('user3', 'hash3');
+      const now = Date.now();
+      db.prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)').run('user1', 'hash1', now);
+      db.prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)').run('user2', 'hash2', now);
+      db.prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)').run('user3', 'hash3', now);
     });
 
     it('should query users with Apprise enabled', () => {
@@ -374,9 +342,9 @@ describe('AppriseNotificationService', () => {
       users.forEach(user => {
         db.prepare(`
           INSERT INTO user_notification_preferences
-          (user_id, enable_apprise, created_at, updated_at)
-          VALUES (?, ?, ?, ?)
-        `).run(user.id, user.enabled, now, now);
+          (user_id, source_id, enable_apprise, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(user.id, 'default', user.enabled, now, now);
       });
 
       // Query users with Apprise enabled
@@ -398,9 +366,9 @@ describe('AppriseNotificationService', () => {
       for (let i = 1; i <= 3; i++) {
         db.prepare(`
           INSERT INTO user_notification_preferences
-          (user_id, enable_apprise, created_at, updated_at)
-          VALUES (?, ?, ?, ?)
-        `).run(i, 0, now, now);
+          (user_id, source_id, enable_apprise, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(i, 'default', 0, now, now);
       }
 
       const stmt = db.prepare(`
@@ -556,9 +524,10 @@ describe('AppriseNotificationService', () => {
   describe('Multi-User Per-URL Notifications', () => {
     beforeEach(() => {
       // Create multiple test users with different Apprise URLs
-      db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run('user1', 'hash1');
-      db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run('user2', 'hash2');
-      db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run('user3', 'hash3');
+      const now = Date.now();
+      db.prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)').run('user1', 'hash1', now);
+      db.prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)').run('user2', 'hash2', now);
+      db.prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)').run('user3', 'hash3', now);
 
       // Reset mock fetch
       mockFetch.mockReset();
@@ -570,23 +539,23 @@ describe('AppriseNotificationService', () => {
       // User 1 has Discord URL
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(1, 1, JSON.stringify([0]), 1, JSON.stringify(['discord://webhook1/token1']), now, now);
+        (user_id, source_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(1, 'default', 1, JSON.stringify([0]), 1, JSON.stringify(['discord://webhook1/token1']), now, now);
 
       // User 2 has Slack URL
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(2, 1, JSON.stringify([0]), 1, JSON.stringify(['slack://token_a/token_b/token_c']), now, now);
+        (user_id, source_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(2, 'default', 1, JSON.stringify([0]), 1, JSON.stringify(['slack://token_a/token_b/token_c']), now, now);
 
       // User 3 has multiple URLs
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(3, 1, JSON.stringify([0]), 1, JSON.stringify(['tgram://bot/chat', 'mailto://user@example.com']), now, now);
+        (user_id, source_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(3, 'default', 1, JSON.stringify([0]), 1, JSON.stringify(['tgram://bot/chat', 'mailto://user@example.com']), now, now);
 
       // Verify each user has their own URLs
       const prefs1 = db.prepare('SELECT apprise_urls FROM user_notification_preferences WHERE user_id = ?').get(1) as any;
@@ -604,23 +573,23 @@ describe('AppriseNotificationService', () => {
       // User 1: Apprise enabled with URLs
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, enabled_channels, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(1, 1, JSON.stringify([0]), JSON.stringify(['discord://test']), now, now);
+        (user_id, source_id, enable_apprise, enabled_channels, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(1, 'default', 1, JSON.stringify([0]), JSON.stringify(['discord://test']), now, now);
 
       // User 2: Apprise enabled but NO URLs (should be filtered)
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, enabled_channels, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(2, 1, JSON.stringify([0]), JSON.stringify([]), now, now);
+        (user_id, source_id, enable_apprise, enabled_channels, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(2, 'default', 1, JSON.stringify([0]), JSON.stringify([]), now, now);
 
       // User 3: Apprise disabled (should be filtered)
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, enabled_channels, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(3, 0, JSON.stringify([0]), JSON.stringify(['slack://test']), now, now);
+        (user_id, source_id, enable_apprise, enabled_channels, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(3, 'default', 0, JSON.stringify([0]), JSON.stringify(['slack://test']), now, now);
 
       // Query users who can receive notifications
       const stmt = db.prepare(`
@@ -646,15 +615,15 @@ describe('AppriseNotificationService', () => {
       // Set up users with different URLs and channel preferences
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(1, 1, JSON.stringify([0, 1]), 1, JSON.stringify(['discord://user1/token']), now, now);
+        (user_id, source_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(1, 'default', 1, JSON.stringify([0, 1]), 1, JSON.stringify(['discord://user1/token']), now, now);
 
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(2, 1, JSON.stringify([0]), 1, JSON.stringify(['slack://user2/token']), now, now);
+        (user_id, source_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(2, 'default', 1, JSON.stringify([0]), 1, JSON.stringify(['slack://user2/token']), now, now);
 
       // Simulate broadcast logic
       const usersWithApprise = db.prepare(`
@@ -695,9 +664,9 @@ describe('AppriseNotificationService', () => {
 
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, enabled_channels, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(1, 1, JSON.stringify([0]), JSON.stringify(multipleUrls), now, now);
+        (user_id, source_id, enable_apprise, enabled_channels, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(1, 'default', 1, JSON.stringify([0]), JSON.stringify(multipleUrls), now, now);
 
       const prefs = db.prepare('SELECT apprise_urls FROM user_notification_preferences WHERE user_id = ?').get(1) as any;
       const urls = JSON.parse(prefs.apprise_urls);
@@ -712,16 +681,16 @@ describe('AppriseNotificationService', () => {
       // User 1: Only wants channel 0
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(1, 1, JSON.stringify([0]), 0, JSON.stringify(['discord://user1']), now, now);
+        (user_id, source_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(1, 'default', 1, JSON.stringify([0]), 0, JSON.stringify(['discord://user1']), now, now);
 
       // User 2: Only wants channel 1
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(2, 1, JSON.stringify([1]), 0, JSON.stringify(['slack://user2']), now, now);
+        (user_id, source_id, enable_apprise, enabled_channels, enable_direct_messages, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(2, 'default', 1, JSON.stringify([1]), 0, JSON.stringify(['slack://user2']), now, now);
 
       // Simulate a message on channel 0
       const messageContext = {
@@ -763,16 +732,16 @@ describe('AppriseNotificationService', () => {
       // User 1: Blacklists "test"
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, enabled_channels, blacklist, whitelist, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(1, 1, JSON.stringify([0]), JSON.stringify(['test']), JSON.stringify([]), JSON.stringify(['discord://user1']), now, now);
+        (user_id, source_id, enable_apprise, enabled_channels, blacklist, whitelist, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(1, 'default', 1, JSON.stringify([0]), JSON.stringify(['test']), JSON.stringify([]), JSON.stringify(['discord://user1']), now, now);
 
       // User 2: Whitelists "test" (should still receive)
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, enabled_channels, blacklist, whitelist, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(2, 1, JSON.stringify([0]), JSON.stringify([]), JSON.stringify(['test']), JSON.stringify(['slack://user2']), now, now);
+        (user_id, source_id, enable_apprise, enabled_channels, blacklist, whitelist, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(2, 'default', 1, JSON.stringify([0]), JSON.stringify([]), JSON.stringify(['test']), JSON.stringify(['slack://user2']), now, now);
 
       const messageText = 'this is a test message';
 
@@ -811,15 +780,15 @@ describe('AppriseNotificationService', () => {
       // Initial setup
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(1, 1, JSON.stringify(['discord://original1']), now, now);
+        (user_id, source_id, enable_apprise, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(1, 'default', 1, JSON.stringify(['discord://original1']), now, now);
 
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(2, 1, JSON.stringify(['slack://original2']), now, now);
+        (user_id, source_id, enable_apprise, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(2, 'default', 1, JSON.stringify(['slack://original2']), now, now);
 
       // Update user 1's URLs
       db.prepare(`
@@ -842,9 +811,9 @@ describe('AppriseNotificationService', () => {
 
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(1, 1, JSON.stringify([]), now, now);
+        (user_id, source_id, enable_apprise, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(1, 'default', 1, JSON.stringify([]), now, now);
 
       const prefs = db.prepare('SELECT apprise_urls FROM user_notification_preferences WHERE user_id = ?').get(1) as any;
       const urls = JSON.parse(prefs.apprise_urls || '[]');
@@ -858,9 +827,9 @@ describe('AppriseNotificationService', () => {
 
       db.prepare(`
         INSERT INTO user_notification_preferences
-        (user_id, enable_apprise, apprise_urls, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(1, 1, null, now, now);
+        (user_id, source_id, enable_apprise, apprise_urls, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(1, 'default', 1, null, now, now);
 
       const prefs = db.prepare('SELECT apprise_urls FROM user_notification_preferences WHERE user_id = ?').get(1) as any;
       const urls = prefs.apprise_urls ? JSON.parse(prefs.apprise_urls) : [];

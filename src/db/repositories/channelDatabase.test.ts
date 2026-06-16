@@ -9,60 +9,16 @@
  * MySQL: requires test container on port 3307 (skipped if unavailable)
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
-import * as schema from '../schema/index.js';
 import { ChannelDatabaseRepository } from './channelDatabase.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 import {
   TestBackend,
-  createSqliteBackend,
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
   postgresAvailable,
   mysqlAvailable,
 } from './test-utils.js';
-
-// ============ TABLE CREATION SQL ============
-
-const SQLITE_CREATE = `
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    is_admin INTEGER NOT NULL DEFAULT 0,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    auth_provider TEXT NOT NULL DEFAULT 'local',
-    mfa_enabled INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS channel_database (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    psk TEXT NOT NULL,
-    psk_length INTEGER NOT NULL DEFAULT 32,
-    description TEXT,
-    is_enabled INTEGER NOT NULL DEFAULT 1,
-    enforce_name_validation INTEGER NOT NULL DEFAULT 0,
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    decrypted_packet_count INTEGER NOT NULL DEFAULT 0,
-    last_decrypted_at INTEGER,
-    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS channel_database_permissions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    channel_database_id INTEGER NOT NULL REFERENCES channel_database(id) ON DELETE CASCADE,
-    can_view_on_map INTEGER NOT NULL DEFAULT 0,
-    can_read INTEGER NOT NULL DEFAULT 0,
-    granted_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    granted_at INTEGER NOT NULL,
-    UNIQUE(user_id, channel_database_id)
-  );
-`;
 
 const POSTGRES_CREATE = `
   DROP TABLE IF EXISTS channel_database_permissions CASCADE;
@@ -485,7 +441,14 @@ describe('ChannelDatabaseRepository - SQLite Backend', () => {
   let backend: TestBackend;
 
   beforeEach(() => {
-    backend = createSqliteBackend(SQLITE_CREATE);
+    const t = createTestDb();
+    backend = {
+      dbType: 'sqlite',
+      drizzleDb: t.db,
+      exec: async (sql: string) => { t.sqlite.exec(sql); },
+      close: async () => { t.close(); },
+      available: true,
+    };
   });
 
   afterEach(async () => {

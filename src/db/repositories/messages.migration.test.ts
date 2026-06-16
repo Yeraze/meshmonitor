@@ -8,10 +8,11 @@
  * - Transaction rollback on error
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
-import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import type Database from 'better-sqlite3';
+import { type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { MessagesRepository } from './messages.js';
 import * as schema from '../schema/index.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 describe('MessagesRepository.migrateMessagesForChannelMoves', () => {
   let db: Database.Database;
@@ -24,59 +25,18 @@ describe('MessagesRepository.migrateMessagesForChannelMoves', () => {
   const NODE2_ID = '!11223344';
 
   beforeEach(() => {
-    db = new Database(':memory:');
-
-    db.exec(`
-      CREATE TABLE nodes (
-        nodeNum INTEGER PRIMARY KEY,
-        nodeId TEXT NOT NULL UNIQUE,
-        longName TEXT,
-        shortName TEXT
-      )
-    `);
-
-    db.exec(`
-      INSERT INTO nodes (nodeNum, nodeId) VALUES (${NODE1_NUM}, '${NODE1_ID}');
-      INSERT INTO nodes (nodeNum, nodeId) VALUES (${NODE2_NUM}, '${NODE2_ID}');
-    `);
-
-    db.exec(`
-      CREATE TABLE messages (
-        id TEXT PRIMARY KEY,
-        fromNodeNum INTEGER NOT NULL REFERENCES nodes(nodeNum) ON DELETE CASCADE,
-        toNodeNum INTEGER NOT NULL REFERENCES nodes(nodeNum) ON DELETE CASCADE,
-        fromNodeId TEXT NOT NULL,
-        toNodeId TEXT NOT NULL,
-        text TEXT NOT NULL,
-        channel INTEGER NOT NULL DEFAULT 0,
-        portnum INTEGER,
-        requestId INTEGER,
-        timestamp INTEGER NOT NULL,
-        rxTime INTEGER,
-        hopStart INTEGER,
-        hopLimit INTEGER,
-        relayNode INTEGER,
-        replyId INTEGER,
-        emoji INTEGER,
-        viaMqtt INTEGER,
-        viaStoreForward INTEGER DEFAULT 0,
-        rxSnr REAL,
-        rxRssi REAL,
-        ackFailed INTEGER,
-        routingErrorReceived INTEGER,
-        deliveryState TEXT,
-        wantAck INTEGER,
-        ackFromNode INTEGER,
-        createdAt INTEGER NOT NULL,
-        decrypted_by TEXT,
-        source_ip TEXT,
-        source_path TEXT,
-        spoofSuspected INTEGER
-      )
-    `);
-
-    drizzleDb = drizzle(db, { schema });
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
     repo = new MessagesRepository(drizzleDb, 'sqlite');
+
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO nodes (nodeNum, nodeId, sourceId, createdAt, updatedAt) VALUES (?, ?, 'default', ?, ?)`,
+    ).run(NODE1_NUM, NODE1_ID, now, now);
+    db.prepare(
+      `INSERT INTO nodes (nodeNum, nodeId, sourceId, createdAt, updatedAt) VALUES (?, ?, 'default', ?, ?)`,
+    ).run(NODE2_NUM, NODE2_ID, now, now);
   });
 
   afterEach(() => {

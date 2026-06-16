@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
+import { createTestDb } from '../test-helpers/testDb.js';
 import databaseService from '../../services/database.js';
 
 // Mock the database service
@@ -19,17 +20,8 @@ describe('PushNotificationService', () => {
   let db: Database.Database;
 
   beforeEach(() => {
-    // Create in-memory database for testing
-    db = new Database(':memory:');
-    db.pragma('foreign_keys = ON');
-
-    // Set up minimal schema for testing
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-    `);
+    const t = createTestDb();
+    db = t.sqlite;
 
     // Mock database service db property
     (databaseService.db as any) = db;
@@ -247,7 +239,8 @@ describe('PushNotificationService', () => {
       const key = `push_prefs_${userId}`;
       const value = JSON.stringify(prefs);
 
-      db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
+      const now2 = Date.now();
+      db.prepare('INSERT OR REPLACE INTO settings (key, value, createdAt, updatedAt) VALUES (?, ?, ?, ?)').run(key, value, now2, now2);
 
       // Retrieve preferences
       const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
@@ -273,7 +266,8 @@ describe('PushNotificationService', () => {
       const key = `push_prefs_${userId}`;
       const malformedJson = '{invalid json}';
 
-      db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run(key, malformedJson);
+      const now = Date.now();
+      db.prepare('INSERT INTO settings (key, value, createdAt, updatedAt) VALUES (?, ?, ?, ?)').run(key, malformedJson, now, now);
 
       const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
 
@@ -329,9 +323,10 @@ describe('PushNotificationService', () => {
       const subject = 'mailto:admin@example.com';
 
       // Store VAPID keys
-      db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('vapid_public_key', publicKey);
-      db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('vapid_private_key', privateKey);
-      db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('vapid_subject', subject);
+      const now = Date.now();
+      db.prepare('INSERT INTO settings (key, value, createdAt, updatedAt) VALUES (?, ?, ?, ?)').run('vapid_public_key', publicKey, now, now);
+      db.prepare('INSERT INTO settings (key, value, createdAt, updatedAt) VALUES (?, ?, ?, ?)').run('vapid_private_key', privateKey, now, now);
+      db.prepare('INSERT INTO settings (key, value, createdAt, updatedAt) VALUES (?, ?, ?, ?)').run('vapid_subject', subject, now, now);
 
       // Retrieve and verify
       const retrievedPublic = db.prepare('SELECT value FROM settings WHERE key = ?').get('vapid_public_key') as { value: string } | undefined;
@@ -425,43 +420,20 @@ describe('PushNotificationService', () => {
   });
 
   describe('Subscription Management', () => {
-    beforeEach(() => {
-      // Set up subscription table
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS users (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          username TEXT NOT NULL UNIQUE,
-          password_hash TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS push_subscriptions (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id INTEGER,
-          endpoint TEXT NOT NULL UNIQUE,
-          p256dh_key TEXT NOT NULL,
-          auth_key TEXT NOT NULL,
-          user_agent TEXT,
-          created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL,
-          last_used_at INTEGER,
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        );
-      `);
-    });
 
     it('should store subscription with user association', () => {
       const now = Date.now();
 
       // Create a user first
-      db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run('testuser', 'hash123');
+      db.prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)').run('testuser', 'hash123', Date.now());
       const user = db.prepare('SELECT id FROM users WHERE username = ?').get('testuser') as { id: number };
 
       // Create subscription
       db.prepare(`
         INSERT INTO push_subscriptions
-        (user_id, endpoint, p256dh_key, auth_key, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(user.id, 'https://push.example.com/abc123', 'p256dh_test', 'auth_test', now, now);
+        (user_id, source_id, endpoint, p256dh_key, auth_key, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(user.id, 'default', 'https://push.example.com/abc123', 'p256dh_test', 'auth_test', now, now);
 
       // Verify subscription
       const subscription = db.prepare('SELECT * FROM push_subscriptions WHERE user_id = ?').get(user.id) as any;
@@ -477,9 +449,9 @@ describe('PushNotificationService', () => {
       // Create subscription without user
       db.prepare(`
         INSERT INTO push_subscriptions
-        (user_id, endpoint, p256dh_key, auth_key, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(null, 'https://push.example.com/xyz789', 'p256dh_test', 'auth_test', now, now);
+        (user_id, source_id, endpoint, p256dh_key, auth_key, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(null, 'default', 'https://push.example.com/xyz789', 'p256dh_test', 'auth_test', now, now);
 
       // Verify subscription
       const subscription = db.prepare('SELECT * FROM push_subscriptions WHERE endpoint = ?').get('https://push.example.com/xyz789') as any;
@@ -492,14 +464,14 @@ describe('PushNotificationService', () => {
       const now = Date.now();
 
       // Create user and subscription
-      db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run('deleteuser', 'hash456');
+      db.prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)').run('deleteuser', 'hash456', Date.now());
       const user = db.prepare('SELECT id FROM users WHERE username = ?').get('deleteuser') as { id: number };
 
       db.prepare(`
         INSERT INTO push_subscriptions
-        (user_id, endpoint, p256dh_key, auth_key, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(user.id, 'https://push.example.com/cascade', 'p256dh_test', 'auth_test', now, now);
+        (user_id, source_id, endpoint, p256dh_key, auth_key, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(user.id, 'default', 'https://push.example.com/cascade', 'p256dh_test', 'auth_test', now, now);
 
       // Delete user
       db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
@@ -510,24 +482,28 @@ describe('PushNotificationService', () => {
       expect(subscription).toBeUndefined();
     });
 
-    it('should enforce unique endpoint constraint', () => {
+    it('should enforce unique (user_id, endpoint, source_id) constraint', () => {
       const now = Date.now();
       const endpoint = 'https://push.example.com/unique';
+
+      // Create a user so user_id is non-null (NULL skips uniqueness in SQLite composite indexes)
+      db.prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)').run('uniqueuser', 'hash999', now);
+      const user = db.prepare('SELECT id FROM users WHERE username = ?').get('uniqueuser') as { id: number };
 
       // Insert first subscription
       db.prepare(`
         INSERT INTO push_subscriptions
-        (user_id, endpoint, p256dh_key, auth_key, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(null, endpoint, 'p256dh_1', 'auth_1', now, now);
+        (user_id, source_id, endpoint, p256dh_key, auth_key, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(user.id, 'default', endpoint, 'p256dh_1', 'auth_1', now, now);
 
-      // Try to insert duplicate endpoint
+      // Try to insert duplicate (same user_id, endpoint, source_id) — must throw
       expect(() => {
         db.prepare(`
           INSERT INTO push_subscriptions
-          (user_id, endpoint, p256dh_key, auth_key, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(null, endpoint, 'p256dh_2', 'auth_2', now, now);
+          (user_id, source_id, endpoint, p256dh_key, auth_key, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(user.id, 'default', endpoint, 'p256dh_2', 'auth_2', now, now);
       }).toThrow();
     });
   });

@@ -1,60 +1,22 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
+import { createTestDb } from '../server/test-helpers/testDb.js';
+import type { TestDb } from '../server/test-helpers/testDb.js';
 
 // Create a test database service with unread message methods
-const createTestDatabase = () => {
+const createTestDatabase = (sqlite: Database.Database) => {
   class TestDatabaseService {
     public db: Database.Database;
 
-    constructor() {
-      this.db = new Database(':memory:');
-      this.db.pragma('journal_mode = WAL');
-      this.db.pragma('foreign_keys = ON');
-      this.createTables();
-    }
-
-    private createTables(): void {
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS nodes (
-          nodeNum INTEGER PRIMARY KEY,
-          nodeId TEXT UNIQUE NOT NULL,
-          longName TEXT,
-          shortName TEXT,
-          createdAt INTEGER NOT NULL,
-          updatedAt INTEGER NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS messages (
-          id TEXT PRIMARY KEY,
-          fromNodeNum INTEGER NOT NULL,
-          toNodeNum INTEGER NOT NULL,
-          fromNodeId TEXT NOT NULL,
-          toNodeId TEXT NOT NULL,
-          text TEXT NOT NULL,
-          channel INTEGER NOT NULL DEFAULT 0,
-          portnum INTEGER,
-          timestamp INTEGER NOT NULL,
-          createdAt INTEGER NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS read_messages (
-          message_id TEXT NOT NULL,
-          user_id INTEGER,
-          read_at INTEGER NOT NULL,
-          PRIMARY KEY (message_id, user_id)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_messages_fromNodeId ON messages(fromNodeId);
-        CREATE INDEX IF NOT EXISTS idx_messages_toNodeId ON messages(toNodeId);
-        CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel);
-      `);
+    constructor(db: Database.Database) {
+      this.db = db;
     }
 
     insertNode(nodeNum: number, nodeId: string, longName: string): void {
       const now = Date.now();
       this.db.prepare(`
-        INSERT INTO nodes (nodeNum, nodeId, longName, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO nodes (nodeNum, nodeId, longName, sourceId, createdAt, updatedAt)
+        VALUES (?, ?, ?, 'default', ?, ?)
       `).run(nodeNum, nodeId, longName, now, now);
     }
 
@@ -130,16 +92,13 @@ const createTestDatabase = () => {
       const result = stmt.get(...params) as { count: number };
       return Number(result.count);
     }
-
-    close(): void {
-      this.db.close();
-    }
   }
 
-  return new TestDatabaseService();
+  return new TestDatabaseService(sqlite);
 };
 
 describe('Unread Message Counts - Incoming Only Filter', () => {
+  let t: TestDb;
   let db: ReturnType<typeof createTestDatabase>;
 
   const LOCAL_NODE_ID = '!aabbccdd';
@@ -147,11 +106,16 @@ describe('Unread Message Counts - Incoming Only Filter', () => {
   const REMOTE_NODE_2 = '!55667788';
 
   beforeEach(() => {
-    db = createTestDatabase();
+    t = createTestDb();
+    db = createTestDatabase(t.sqlite);
     // Setup nodes
     db.insertNode(0xaabbccdd, LOCAL_NODE_ID, 'Local Node');
     db.insertNode(0x11223344, REMOTE_NODE_1, 'Remote Node 1');
     db.insertNode(0x55667788, REMOTE_NODE_2, 'Remote Node 2');
+  });
+
+  afterEach(() => {
+    t.close();
   });
 
   describe('getUnreadCountsByChannel', () => {
@@ -224,21 +188,9 @@ describe('Unread Message Counts - Incoming Only Filter', () => {
       expect(counts[0]).toBe(2);
     });
 
-    it('should handle user-specific read status', () => {
-      db.insertMessage('msg1', REMOTE_NODE_1, LOCAL_NODE_ID, 'incoming 1', 0);
-      db.insertMessage('msg2', REMOTE_NODE_1, LOCAL_NODE_ID, 'incoming 2', 0);
-
-      // User 1 reads msg1
-      db.markAsRead('msg1', 1);
-
-      // User 1 should see 1 unread
-      const countsUser1 = db.getUnreadCountsByChannel(1, LOCAL_NODE_ID);
-      expect(countsUser1[0]).toBe(1);
-
-      // User 2 should see 2 unread
-      const countsUser2 = db.getUnreadCountsByChannel(2, LOCAL_NODE_ID);
-      expect(countsUser2[0]).toBe(2);
-    });
+    // NOTE: The real read_messages schema has message_id as a single-column PK,
+    // so per-user read tracking (composite PK on message_id + user_id) is not
+    // supported. User-specific read status tests are omitted for this reason.
 
     it('should return empty object when no unread messages', () => {
       db.insertMessage('msg1', LOCAL_NODE_ID, REMOTE_NODE_1, 'outgoing only', 0);
@@ -302,19 +254,8 @@ describe('Unread Message Counts - Incoming Only Filter', () => {
       expect(count).toBe(2);
     });
 
-    it('should handle user-specific read status for DMs', () => {
-      db.insertMessage('dm1', REMOTE_NODE_1, LOCAL_NODE_ID, 'msg 1', -1);
-      db.insertMessage('dm2', REMOTE_NODE_1, LOCAL_NODE_ID, 'msg 2', -1);
-
-      // User 1 reads dm1
-      db.markAsRead('dm1', 1);
-
-      const countUser1 = db.getUnreadDMCount(LOCAL_NODE_ID, REMOTE_NODE_1, 1);
-      const countUser2 = db.getUnreadDMCount(LOCAL_NODE_ID, REMOTE_NODE_1, 2);
-
-      expect(countUser1).toBe(1);
-      expect(countUser2).toBe(2);
-    });
+    // NOTE: Per-user DM read status omitted — real read_messages schema uses
+    // message_id as a single-column PK, not a composite (message_id, user_id).
 
     it('should not count channel messages as DMs', () => {
       // Channel message (not DM)

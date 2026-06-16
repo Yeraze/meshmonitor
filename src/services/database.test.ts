@@ -1,142 +1,34 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import Database from 'better-sqlite3';
 import type { DbNode, DbMessage, DbChannel, DbTelemetry, DbTraceroute } from './database';
+import { createTestDb } from '../server/test-helpers/testDb.js';
 
 // Create a test database service
 const createTestDatabase = () => {
-  const Database = require('better-sqlite3');
+  const t = createTestDb();
 
   class TestDatabaseService {
-    public db: Database.Database;
-    private isInitialized = false;
+    public db: ReturnType<typeof createTestDb>['sqlite'];
 
     constructor() {
-      // Use in-memory database for tests
-      this.db = new Database(':memory:');
-      this.db.pragma('journal_mode = WAL');
-      this.db.pragma('foreign_keys = ON');
-      this.initialize();
+      this.db = t.sqlite;
       this.ensurePrimaryChannel();
-    }
-
-    private initialize(): void {
-      if (this.isInitialized) return;
-      this.createTables();
-      this.createIndexes();
-      this.isInitialized = true;
-    }
-
-    private createTables(): void {
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS nodes (
-          nodeNum INTEGER PRIMARY KEY,
-          nodeId TEXT UNIQUE NOT NULL,
-          longName TEXT,
-          shortName TEXT,
-          hwModel INTEGER,
-          role INTEGER,
-          hopsAway INTEGER,
-          macaddr TEXT,
-          latitude REAL,
-          longitude REAL,
-          altitude REAL,
-          batteryLevel INTEGER,
-          voltage REAL,
-          channelUtilization REAL,
-          airUtilTx REAL,
-          lastHeard INTEGER,
-          snr REAL,
-          rssi INTEGER,
-          lastTracerouteRequest INTEGER,
-          isFavorite BOOLEAN DEFAULT 0,
-          createdAt INTEGER NOT NULL,
-          updatedAt INTEGER NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS messages (
-          id TEXT PRIMARY KEY,
-          fromNodeNum INTEGER NOT NULL,
-          toNodeNum INTEGER NOT NULL,
-          fromNodeId TEXT NOT NULL,
-          toNodeId TEXT NOT NULL,
-          text TEXT NOT NULL,
-          channel INTEGER NOT NULL DEFAULT 0,
-          portnum INTEGER,
-          timestamp INTEGER NOT NULL,
-          rxTime INTEGER,
-          hopStart INTEGER,
-          hopLimit INTEGER,
-          replyId INTEGER,
-          emoji INTEGER,
-          createdAt INTEGER NOT NULL,
-          FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
-          FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
-        );
-
-        CREATE TABLE IF NOT EXISTS channels (
-          id INTEGER PRIMARY KEY,
-          name TEXT,
-          psk TEXT,
-          uplinkEnabled BOOLEAN DEFAULT 1,
-          downlinkEnabled BOOLEAN DEFAULT 1,
-          createdAt INTEGER NOT NULL,
-          updatedAt INTEGER NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS telemetry (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          nodeId TEXT NOT NULL,
-          nodeNum INTEGER NOT NULL,
-          telemetryType TEXT NOT NULL,
-          timestamp INTEGER NOT NULL,
-          value REAL NOT NULL,
-          unit TEXT,
-          createdAt INTEGER NOT NULL,
-          FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum)
-        );
-
-        CREATE TABLE IF NOT EXISTS traceroutes (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fromNodeNum INTEGER NOT NULL,
-          toNodeNum INTEGER NOT NULL,
-          fromNodeId TEXT NOT NULL,
-          toNodeId TEXT NOT NULL,
-          route TEXT,
-          routeBack TEXT,
-          snrTowards TEXT,
-          snrBack TEXT,
-          timestamp INTEGER NOT NULL,
-          createdAt INTEGER NOT NULL,
-          FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
-          FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
-        );
-      `);
-    }
-
-    private createIndexes(): void {
-      this.db.exec(`
-        CREATE INDEX IF NOT EXISTS idx_nodes_nodeId ON nodes(nodeId);
-        CREATE INDEX IF NOT EXISTS idx_nodes_lastHeard ON nodes(lastHeard);
-        CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_messages_fromNodeId ON messages(fromNodeId);
-        CREATE INDEX IF NOT EXISTS idx_telemetry_nodeId ON telemetry(nodeId);
-      `);
     }
 
     private ensurePrimaryChannel(): void {
       const now = Date.now();
       this.db.prepare(`
-        INSERT OR IGNORE INTO channels (id, name, uplinkEnabled, downlinkEnabled, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(0, 'Primary', 1, 1, now, now);
+        INSERT OR IGNORE INTO channels (id, name, uplinkEnabled, downlinkEnabled, createdAt, updatedAt, sourceId)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(0, 'Primary', 1, 1, now, now, 'default');
     }
 
     // Implement the actual methods from the database service
-    upsertNode(nodeData: Partial<DbNode>): void {
+    upsertNode(nodeData: Partial<DbNode> & { sourceId?: string }): void {
       if (!nodeData.nodeNum || !nodeData.nodeId) return;
 
+      const sourceId = nodeData.sourceId ?? 'default';
       const now = Date.now();
-      const existingNode = this.getNode(nodeData.nodeNum);
+      const existingNode = this.getNode(nodeData.nodeNum, sourceId);
 
       if (existingNode) {
         const stmt = this.db.prepare(`
@@ -146,7 +38,7 @@ const createTestDatabase = () => {
             shortName = COALESCE(?, shortName),
             isFavorite = COALESCE(?, isFavorite),
             updatedAt = ?
-          WHERE nodeNum = ?
+          WHERE nodeNum = ? AND sourceId = ?
         `);
         stmt.run(
           nodeData.nodeId,
@@ -154,12 +46,13 @@ const createTestDatabase = () => {
           nodeData.shortName,
           nodeData.isFavorite !== undefined ? (nodeData.isFavorite ? 1 : 0) : null,
           now,
-          nodeData.nodeNum
+          nodeData.nodeNum,
+          sourceId
         );
       } else {
         const stmt = this.db.prepare(`
-          INSERT INTO nodes (nodeNum, nodeId, longName, shortName, isFavorite, createdAt, updatedAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO nodes (nodeNum, nodeId, longName, shortName, isFavorite, sourceId, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
         stmt.run(
           nodeData.nodeNum,
@@ -167,20 +60,21 @@ const createTestDatabase = () => {
           nodeData.longName,
           nodeData.shortName,
           nodeData.isFavorite ? 1 : 0,
+          sourceId,
           now,
           now
         );
       }
     }
 
-    getNode(nodeNum: number): DbNode | null {
-      const stmt = this.db.prepare('SELECT * FROM nodes WHERE nodeNum = ?');
-      return stmt.get(nodeNum) as DbNode | null;
+    getNode(nodeNum: number, sourceId = 'default'): DbNode | null {
+      const stmt = this.db.prepare('SELECT * FROM nodes WHERE nodeNum = ? AND sourceId = ?');
+      return stmt.get(nodeNum, sourceId) as DbNode | null;
     }
 
-    getAllNodes(): DbNode[] {
-      const stmt = this.db.prepare('SELECT * FROM nodes ORDER BY updatedAt DESC');
-      return stmt.all() as DbNode[];
+    getAllNodes(sourceId = 'default'): DbNode[] {
+      const stmt = this.db.prepare('SELECT * FROM nodes WHERE sourceId = ? ORDER BY updatedAt DESC');
+      return stmt.all(sourceId) as DbNode[];
     }
 
     insertMessage(messageData: DbMessage): boolean {
@@ -217,39 +111,40 @@ const createTestDatabase = () => {
       return stmt.all(limit, offset) as DbMessage[];
     }
 
-    upsertChannel(channelData: { id: number; name: string; psk?: string }): void {
+    upsertChannel(channelData: { id: number; name: string; psk?: string; sourceId?: string }): void {
       const now = Date.now();
+      const sourceId = channelData.sourceId ?? 'default';
 
       // Channel ID is required - matching production implementation
       if (channelData.id === undefined) {
         throw new Error('Channel ID is required for upsert operation');
       }
 
-      const existingChannel = this.getChannelById(channelData.id);
+      const existingChannel = this.getChannelById(channelData.id, sourceId);
 
       if (existingChannel) {
         const stmt = this.db.prepare(`
           UPDATE channels SET name = ?, psk = COALESCE(?, psk), updatedAt = ?
-          WHERE id = ?
+          WHERE id = ? AND sourceId = ?
         `);
-        stmt.run(channelData.name, channelData.psk, now, existingChannel.id);
+        stmt.run(channelData.name, channelData.psk, now, channelData.id, sourceId);
       } else {
         const stmt = this.db.prepare(`
-          INSERT INTO channels (id, name, psk, uplinkEnabled, downlinkEnabled, createdAt, updatedAt)
-          VALUES (?, ?, ?, 1, 1, ?, ?)
+          INSERT INTO channels (id, name, psk, uplinkEnabled, downlinkEnabled, sourceId, createdAt, updatedAt)
+          VALUES (?, ?, ?, 1, 1, ?, ?, ?)
         `);
-        stmt.run(channelData.id, channelData.name, channelData.psk ?? null, now, now);
+        stmt.run(channelData.id, channelData.name, channelData.psk ?? null, sourceId, now, now);
       }
     }
 
-    getChannelById(id: number): DbChannel | null {
-      const stmt = this.db.prepare('SELECT * FROM channels WHERE id = ?');
-      return stmt.get(id) as DbChannel | null;
+    getChannelById(id: number, sourceId = 'default'): DbChannel | null {
+      const stmt = this.db.prepare('SELECT * FROM channels WHERE id = ? AND sourceId = ?');
+      return stmt.get(id, sourceId) as DbChannel | null;
     }
 
-    getAllChannels(): DbChannel[] {
-      const stmt = this.db.prepare('SELECT * FROM channels ORDER BY id ASC');
-      return stmt.all() as DbChannel[];
+    getAllChannels(sourceId = 'default'): DbChannel[] {
+      const stmt = this.db.prepare('SELECT * FROM channels WHERE sourceId = ? ORDER BY id ASC');
+      return stmt.all(sourceId) as DbChannel[];
     }
 
     insertTelemetry(telemetryData: DbTelemetry): void {
@@ -393,9 +288,9 @@ const createTestDatabase = () => {
     }
 
     // Test-specific cleanup methods
-    purgeAllNodes(): void {
+    purgeAllNodes(sourceId = 'default'): void {
       this.db.exec('DELETE FROM traceroutes');
-      this.db.exec('DELETE FROM nodes');
+      this.db.prepare('DELETE FROM nodes WHERE sourceId = ?').run(sourceId);
     }
 
     purgeAllMessages(): void {
@@ -407,15 +302,15 @@ const createTestDatabase = () => {
     }
 
     // Favorite operations
-    setNodeFavorite(nodeNum: number, isFavorite: boolean): void {
+    setNodeFavorite(nodeNum: number, isFavorite: boolean, sourceId = 'default'): void {
       const now = Date.now();
       const stmt = this.db.prepare(`
         UPDATE nodes SET
           isFavorite = ?,
           updatedAt = ?
-        WHERE nodeNum = ?
+        WHERE nodeNum = ? AND sourceId = ?
       `);
-      stmt.run(isFavorite ? 1 : 0, now, nodeNum);
+      stmt.run(isFavorite ? 1 : 0, now, nodeNum, sourceId);
     }
 
     reset(): void {
@@ -423,8 +318,9 @@ const createTestDatabase = () => {
       this.db.exec('DELETE FROM traceroutes');
       this.db.exec('DELETE FROM telemetry');
       this.db.exec('DELETE FROM messages');
-      this.db.exec('DELETE FROM nodes WHERE nodeNum != 0');
-      this.db.exec('DELETE FROM channels WHERE id != 0');
+      this.db.exec('DELETE FROM nodes');
+      this.db.exec('DELETE FROM channels');
+      this.ensurePrimaryChannel();
     }
   }
 

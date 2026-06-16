@@ -1,150 +1,17 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
+import { createTestDb } from '../server/test-helpers/testDb.js';
+import type { TestDb } from '../server/test-helpers/testDb.js';
 import type { DbNode, DbMessage, DbTelemetry, DbRouteSegment } from './database';
 
 // Create a test database service
-const createTestDatabase = () => {
-  const Database = require('better-sqlite3');
-
+const createTestDatabase = (sqlite: Database.Database) => {
   class TestDatabaseService {
     public db: Database.Database;
-    private isInitialized = false;
 
-    constructor() {
-      // Use in-memory database for tests
-      this.db = new Database(':memory:');
-      this.db.pragma('journal_mode = WAL');
-      this.db.pragma('foreign_keys = ON');
-      this.initialize();
+    constructor(db: Database.Database) {
+      this.db = db;
       this.ensurePrimaryChannel();
-    }
-
-    private initialize(): void {
-      if (this.isInitialized) return;
-      this.createTables();
-      this.createIndexes();
-      this.isInitialized = true;
-    }
-
-    private createTables(): void {
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS nodes (
-          nodeNum INTEGER PRIMARY KEY,
-          nodeId TEXT UNIQUE NOT NULL,
-          longName TEXT,
-          shortName TEXT,
-          hwModel INTEGER,
-          role INTEGER,
-          hopsAway INTEGER,
-          viaMqtt BOOLEAN DEFAULT 0,
-          transportMechanism INTEGER,
-          macaddr TEXT,
-          latitude REAL,
-          longitude REAL,
-          altitude REAL,
-          batteryLevel INTEGER,
-          voltage REAL,
-          channelUtilization REAL,
-          airUtilTx REAL,
-          lastHeard INTEGER,
-          snr REAL,
-          rssi INTEGER,
-          lastTracerouteRequest INTEGER,
-          createdAt INTEGER NOT NULL,
-          updatedAt INTEGER NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS messages (
-          id TEXT PRIMARY KEY,
-          fromNodeNum INTEGER NOT NULL,
-          toNodeNum INTEGER NOT NULL,
-          fromNodeId TEXT NOT NULL,
-          toNodeId TEXT NOT NULL,
-          text TEXT NOT NULL,
-          channel INTEGER NOT NULL DEFAULT 0,
-          portnum INTEGER,
-          timestamp INTEGER NOT NULL,
-          rxTime INTEGER,
-          hopStart INTEGER,
-          hopLimit INTEGER,
-          replyId INTEGER,
-          emoji INTEGER,
-          createdAt INTEGER NOT NULL,
-          FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
-          FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
-        );
-
-        CREATE TABLE IF NOT EXISTS channels (
-          id INTEGER PRIMARY KEY,
-          name TEXT,
-          psk TEXT,
-          uplinkEnabled BOOLEAN DEFAULT 1,
-          downlinkEnabled BOOLEAN DEFAULT 1,
-          createdAt INTEGER NOT NULL,
-          updatedAt INTEGER NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS telemetry (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          nodeId TEXT NOT NULL,
-          nodeNum INTEGER NOT NULL,
-          telemetryType TEXT NOT NULL,
-          timestamp INTEGER NOT NULL,
-          value REAL NOT NULL,
-          unit TEXT,
-          createdAt INTEGER NOT NULL,
-          FOREIGN KEY (nodeNum) REFERENCES nodes(nodeNum)
-        );
-
-        CREATE TABLE IF NOT EXISTS traceroutes (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fromNodeNum INTEGER NOT NULL,
-          toNodeNum INTEGER NOT NULL,
-          fromNodeId TEXT NOT NULL,
-          toNodeId TEXT NOT NULL,
-          route TEXT,
-          routeBack TEXT,
-          snrTowards TEXT,
-          snrBack TEXT,
-          timestamp INTEGER NOT NULL,
-          createdAt INTEGER NOT NULL,
-          FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
-          FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
-        );
-
-        CREATE TABLE IF NOT EXISTS route_segments (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fromNodeNum INTEGER NOT NULL,
-          toNodeNum INTEGER NOT NULL,
-          fromNodeId TEXT NOT NULL,
-          toNodeId TEXT NOT NULL,
-          distanceKm REAL NOT NULL,
-          isRecordHolder BOOLEAN DEFAULT 0,
-          timestamp INTEGER NOT NULL,
-          createdAt INTEGER NOT NULL,
-          FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum),
-          FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum)
-        );
-
-        CREATE TABLE IF NOT EXISTS settings (
-          key TEXT PRIMARY KEY,
-          value TEXT NOT NULL,
-          createdAt INTEGER NOT NULL,
-          updatedAt INTEGER NOT NULL
-        );
-      `);
-    }
-
-    private createIndexes(): void {
-      this.db.exec(`
-        CREATE INDEX IF NOT EXISTS idx_nodes_nodeId ON nodes(nodeId);
-        CREATE INDEX IF NOT EXISTS idx_nodes_lastHeard ON nodes(lastHeard);
-        CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel);
-        CREATE INDEX IF NOT EXISTS idx_telemetry_nodeId ON telemetry(nodeId);
-        CREATE INDEX IF NOT EXISTS idx_telemetry_type ON telemetry(telemetryType);
-        CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry(timestamp);
-      `);
     }
 
     private ensurePrimaryChannel(): void {
@@ -176,7 +43,7 @@ const createTestDatabase = () => {
             lastHeard = COALESCE(?, lastHeard),
             lastTracerouteRequest = COALESCE(?, lastTracerouteRequest),
             updatedAt = ?
-          WHERE nodeNum = ?
+          WHERE nodeNum = ? AND sourceId = 'default'
         `);
         stmt.run(
           nodeData.nodeId, nodeData.longName, nodeData.shortName,
@@ -190,9 +57,9 @@ const createTestDatabase = () => {
         const stmt = this.db.prepare(`
           INSERT INTO nodes (
             nodeNum, nodeId, longName, shortName, hopsAway, viaMqtt, latitude, longitude, altitude,
-            lastHeard, lastTracerouteRequest, createdAt, updatedAt
+            lastHeard, lastTracerouteRequest, sourceId, createdAt, updatedAt
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'default', ?, ?)
         `);
         stmt.run(
           nodeData.nodeNum, nodeData.nodeId, nodeData.longName, nodeData.shortName,
@@ -206,18 +73,18 @@ const createTestDatabase = () => {
     }
 
     getNode(nodeNum: number): DbNode | null {
-      const stmt = this.db.prepare('SELECT * FROM nodes WHERE nodeNum = ?');
+      const stmt = this.db.prepare("SELECT * FROM nodes WHERE nodeNum = ? AND sourceId = 'default'");
       return stmt.get(nodeNum) as DbNode | null;
     }
 
     getAllNodes(): DbNode[] {
-      const stmt = this.db.prepare('SELECT * FROM nodes ORDER BY updatedAt DESC');
+      const stmt = this.db.prepare("SELECT * FROM nodes WHERE sourceId = 'default' ORDER BY updatedAt DESC");
       return stmt.all() as DbNode[];
     }
 
     getActiveNodes(sinceDays: number = 7): DbNode[] {
       const cutoff = Date.now() - (sinceDays * 24 * 60 * 60 * 1000);
-      const stmt = this.db.prepare('SELECT * FROM nodes WHERE lastHeard > ? ORDER BY lastHeard DESC');
+      const stmt = this.db.prepare("SELECT * FROM nodes WHERE sourceId = 'default' AND lastHeard > ? ORDER BY lastHeard DESC");
       return stmt.all(cutoff) as DbNode[];
     }
 
@@ -568,6 +435,7 @@ const createTestDatabase = () => {
            WHERE t.fromNodeNum = ? AND t.toNodeNum = n.nodeNum) as hasTraceroute
         FROM nodes n
         WHERE n.nodeNum != ?
+          AND n.sourceId = 'default'
           AND n.lastHeard > ?
           AND (
             -- Category 1: No traceroute exists, and (never requested OR requested > 3 hours ago)
@@ -609,7 +477,7 @@ const createTestDatabase = () => {
     recordTracerouteRequest(nodeNum: number): void {
       const now = Date.now();
       const stmt = this.db.prepare(`
-        UPDATE nodes SET lastTracerouteRequest = ? WHERE nodeNum = ?
+        UPDATE nodes SET lastTracerouteRequest = ? WHERE nodeNum = ? AND sourceId = 'default'
       `);
       stmt.run(now, nodeNum);
     }
@@ -643,46 +511,35 @@ const createTestDatabase = () => {
       );
     }
 
-    close(): void {
-      if (this.db) {
-        this.db.close();
-      }
-    }
-
     reset(): void {
       this.db.exec('DELETE FROM route_segments');
       this.db.exec('DELETE FROM traceroutes');
       this.db.exec('DELETE FROM telemetry');
       this.db.exec('DELETE FROM messages');
-      this.db.exec('DELETE FROM nodes WHERE nodeNum != 0');
+      this.db.exec("DELETE FROM nodes WHERE nodeNum != 0 AND sourceId = 'default'");
       this.db.exec('DELETE FROM channels WHERE id != 0');
       this.db.exec('DELETE FROM settings');
     }
   }
 
-  return new TestDatabaseService();
+  return new TestDatabaseService(sqlite);
 };
 
-// Mock the database module
-vi.mock('./database', () => ({
-  default: createTestDatabase()
-}));
 
 describe('DatabaseService - Extended Coverage', () => {
+  let t: TestDb;
   let db: any;
 
   beforeEach(async () => {
-    const dbModule = await import('./database');
-    db = dbModule.default;
+    t = createTestDb();
+    db = createTestDatabase(t.sqlite);
     if (db.reset) {
       db.reset();
     }
   });
 
   afterEach(() => {
-    if (db && db.reset) {
-      db.reset();
-    }
+    t.close();
   });
 
   describe('Position Telemetry Tracking', () => {
@@ -1685,12 +1542,12 @@ describe('DatabaseService - Extended Coverage', () => {
 
       // Get eligible node for traceroute
       const selected = db.getNodeNeedingTraceroute(999);
-      
+
       // Should select an active node (within 12 hour window)
       expect(selected).toBeTruthy();
       if (selected) {
         // Should be one of the active nodes
-        expect(selected.nodeId === '!node1' || selected.nodeId === '!node3', 
+        expect(selected.nodeId === '!node1' || selected.nodeId === '!node3',
           `Expected active node (!node1 or !node3), got ${selected.nodeId}`).toBe(true);
       }
     });
@@ -1728,11 +1585,11 @@ describe('DatabaseService - Extended Coverage', () => {
 
       // Should select node 1 (active)
       const selected = db.getNodeNeedingTraceroute(999);
-      
+
       expect(selected).toBeTruthy();
       if (selected) {
         // Should be node1 (active), NOT node2 (inactive)
-        expect(selected.nodeId === '!node1', 
+        expect(selected.nodeId === '!node1',
           `Expected !node1 (24h ago, within 48h window), got ${selected.nodeId}`).toBe(true);
       }
     });
@@ -1770,7 +1627,7 @@ describe('DatabaseService - Extended Coverage', () => {
 
       // Should select node 1 (active with default 24h window)
       const selected = db.getNodeNeedingTraceroute(999);
-      
+
       expect(selected).toBeTruthy();
       if (selected) {
         // Should be node1 (active), NOT node2 (inactive)

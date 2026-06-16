@@ -6,10 +6,11 @@
  * clears never leak across sources.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
-import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import type Database from 'better-sqlite3';
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { MeshCoreRepository, type DbMeshCorePacket } from './meshcore.js';
 import * as schema from '../schema/index.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 function makePacket(sourceId: string, overrides: Partial<DbMeshCorePacket> = {}): DbMeshCorePacket {
   const now = 1_700_000_000_000;
@@ -38,28 +39,9 @@ describe('MeshCoreRepository — packet-log per-source isolation', () => {
   let repo: MeshCoreRepository;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    // Mirror migration 075 (SQLite).
-    db.exec(`
-      CREATE TABLE meshcore_packet_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sourceId TEXT NOT NULL,
-        timestamp INTEGER NOT NULL,
-        payloadType INTEGER NOT NULL,
-        payloadTypeName TEXT,
-        routeType INTEGER,
-        routeTypeName TEXT,
-        pathLenRaw INTEGER,
-        hopCount INTEGER,
-        pathHops TEXT,
-        snr REAL,
-        rssi INTEGER,
-        payloadSize INTEGER,
-        rawHex TEXT,
-        createdAt INTEGER NOT NULL
-      );
-    `);
-    drizzleDb = drizzle(db, { schema });
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
     repo = new MeshCoreRepository(drizzleDb, 'sqlite');
   });
 
