@@ -127,8 +127,13 @@ describe('MessagesRepository sync purge helpers', () => {
     });
 
     it('excludes broadcast messages (!ffffffff)', async () => {
-      // Add the broadcast target node so the foreign key holds
-      db.exec(`INSERT OR IGNORE INTO nodes (nodeNum, nodeId) VALUES (${0xffffffff}, '!ffffffff')`);
+      // Add the broadcast target node so the foreign key holds. Must supply the
+      // full schema's NOT NULL/PK columns — OR IGNORE would otherwise silently
+      // swallow the constraint violation and never insert the row.
+      const now = Date.now();
+      db.prepare(
+        "INSERT OR IGNORE INTO nodes (nodeNum, nodeId, sourceId, createdAt, updatedAt) VALUES (?, ?, 'default', ?, ?)",
+      ).run(0xffffffff, '!ffffffff', now, now);
 
       // Broadcast looks like a DM by fromNode, but toNodeId is !ffffffff
       await insertMsg('bcast', NODE1_NUM, NODE1_ID, 0xffffffff, '!ffffffff', 0, 'src-a');
