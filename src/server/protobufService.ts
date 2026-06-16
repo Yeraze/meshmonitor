@@ -3,6 +3,7 @@ import path from 'path';
 import { getProtobufRoot } from './protobufLoader.js';
 import { logger } from '../utils/logger.js';
 import { PortNum } from './constants/meshtastic.js';
+import { MODULE_FIELD_BY_ID } from './constants/configTypes.js';
 
 export interface MeshtasticPosition {
   latitude_i: number;
@@ -1617,25 +1618,8 @@ class ProtobufService {
         throw new Error('Required proto types not found');
       }
 
-      // Map config type names to protobuf field names
-      const configFieldMap: { [key: string]: string } = {
-        'serial': 'serial',
-        'extnotif': 'externalNotification',
-        'storeforward': 'storeForward',
-        'rangetest': 'rangeTest',
-        'telemetry': 'telemetry',
-        'cannedmsg': 'cannedMessage',
-        'audio': 'audio',
-        'remotehardware': 'remoteHardware',
-        'neighborinfo': 'neighborInfo',
-        'ambientlighting': 'ambientLighting',
-        'detectionsensor': 'detectionSensor',
-        'paxcounter': 'paxcounter',
-        'statusmessage': 'statusmessage',
-        'trafficmanagement': 'trafficManagement'
-      };
-
-      const fieldName = configFieldMap[configType];
+      // Module id → protobuf field name (canonical registry — see configTypes.ts).
+      const fieldName = MODULE_FIELD_BY_ID[configType];
       if (!fieldName) {
         throw new Error(`Unknown module config type: ${configType}`);
       }
