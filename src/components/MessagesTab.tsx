@@ -2039,6 +2039,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 temperatureUnit={temperatureUnit}
                 telemetryHours={telemetryVisualizationHours}
                 baseUrl={baseUrl}
+                showTimeRangeSelector
               />
               <SmartHopsGraphs
                 nodeId={selectedDMNode}
