@@ -9,142 +9,16 @@
  * MySQL: requires test container on port 3307 (skipped if unavailable)
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
-import * as schema from '../schema/index.js';
 import { NotificationsRepository, NotificationPreferences } from './notifications.js';
 import {
   TestBackend,
-  createSqliteBackend,
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
   postgresAvailable,
   mysqlAvailable,
 } from './test-utils.js';
-
-// --- SQL for creating tables per backend ---
-
-const SQLITE_CREATE = `
-  CREATE TABLE IF NOT EXISTS nodes (
-    nodeNum INTEGER PRIMARY KEY,
-    longName TEXT,
-    shortName TEXT,
-    macAddr TEXT,
-    hwModel TEXT,
-    role TEXT,
-    firmwareVersion TEXT,
-    hasDefaultChannel INTEGER DEFAULT 0,
-    numOnlineLocalNodes INTEGER,
-    latitude REAL,
-    longitude REAL,
-    altitude REAL,
-    snr REAL,
-    lastHeard INTEGER,
-    isOnline INTEGER DEFAULT 0,
-    uptimeSeconds INTEGER,
-    airUtilTx REAL,
-    channelUtilization REAL,
-    hopsAway INTEGER,
-    isFavorite INTEGER DEFAULT 0,
-    isIgnored INTEGER DEFAULT 0,
-    outboundMessage TEXT,
-    nodeId TEXT,
-    viaMqtt INTEGER DEFAULT 0,
-    createdAt INTEGER NOT NULL DEFAULT 0,
-    updatedAt INTEGER NOT NULL DEFAULT 0,
-    publicKey TEXT,
-    inferredKey INTEGER DEFAULT 0,
-    isManaged INTEGER DEFAULT 0,
-    keyMismatch INTEGER DEFAULT 0
-  );
-
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT,
-    email TEXT,
-    display_name TEXT,
-    auth_provider TEXT NOT NULL DEFAULT 'local',
-    oidc_subject TEXT,
-    is_admin INTEGER NOT NULL DEFAULT 0,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    password_locked INTEGER DEFAULT 0,
-    mfa_enabled INTEGER NOT NULL DEFAULT 0,
-    mfa_secret TEXT,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS push_subscriptions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    source_id TEXT NOT NULL DEFAULT '',
-    endpoint TEXT NOT NULL,
-    p256dh_key TEXT NOT NULL,
-    auth_key TEXT NOT NULL,
-    user_agent TEXT,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    last_used_at INTEGER,
-    UNIQUE(user_id, endpoint, source_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS user_notification_preferences (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    source_id TEXT NOT NULL DEFAULT '',
-    enable_web_push INTEGER DEFAULT 1,
-    enable_direct_messages INTEGER DEFAULT 1,
-    notify_on_emoji INTEGER DEFAULT 0,
-    notify_on_new_node INTEGER DEFAULT 1,
-    notify_on_traceroute INTEGER DEFAULT 1,
-    notify_on_inactive_node INTEGER DEFAULT 0,
-    notify_on_low_battery INTEGER DEFAULT 0,
-    low_battery_threshold INTEGER DEFAULT 20,
-    low_battery_voltage_threshold INTEGER DEFAULT 3300,
-    notify_on_server_events INTEGER DEFAULT 0,
-    prefix_with_node_name INTEGER DEFAULT 0,
-    enable_apprise INTEGER DEFAULT 1,
-    apprise_urls TEXT,
-    enabled_channels TEXT,
-    monitored_nodes TEXT,
-    whitelist TEXT,
-    blacklist TEXT,
-    notify_on_mqtt INTEGER DEFAULT 1,
-    muted_channels TEXT,
-    muted_dms TEXT,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    UNIQUE(user_id, source_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS messages (
-    id TEXT PRIMARY KEY,
-    fromNodeNum INTEGER NOT NULL,
-    toNodeNum INTEGER NOT NULL,
-    fromNodeId TEXT NOT NULL,
-    toNodeId TEXT NOT NULL,
-    text TEXT NOT NULL,
-    channel INTEGER NOT NULL DEFAULT 0,
-    portnum INTEGER,
-    requestId INTEGER,
-    timestamp INTEGER NOT NULL,
-    rxTime INTEGER,
-    hopStart INTEGER,
-    hopLimit INTEGER,
-    relayNode INTEGER,
-    replyId INTEGER,
-    emoji INTEGER,
-    viaMqtt INTEGER,
-    rxSnr REAL,
-    rxRssi REAL
-  );
-
-  CREATE TABLE IF NOT EXISTS read_messages (
-    message_id TEXT NOT NULL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    read_at INTEGER NOT NULL
-  );
-`;
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 const POSTGRES_CREATE = `
   DROP TABLE IF EXISTS read_messages CASCADE;
@@ -456,7 +330,7 @@ function insertUserSql(backend: TestBackend, id: number, username: string): stri
 // SQL to insert a test message per backend
 function insertMessageSql(backend: TestBackend, id: string, channel: number, portnum: number, timestamp: number, fromNodeId: string = '!node1', toNodeId: string = '!node2'): string {
   if (backend.dbType === 'sqlite') {
-    return `INSERT INTO messages (id, fromNodeNum, toNodeNum, fromNodeId, toNodeId, text, channel, portnum, timestamp) VALUES ('${id}', 1, 2, '${fromNodeId}', '${toNodeId}', 'test', ${channel}, ${portnum}, ${timestamp})`;
+    return `INSERT INTO messages (id, fromNodeNum, toNodeNum, fromNodeId, toNodeId, text, channel, portnum, timestamp, createdAt) VALUES ('${id}', 1, 2, '${fromNodeId}', '${toNodeId}', 'test', ${channel}, ${portnum}, ${timestamp}, ${timestamp})`;
   } else if (backend.dbType === 'postgres') {
     return `INSERT INTO messages (id, "fromNodeNum", "toNodeNum", "fromNodeId", "toNodeId", text, channel, portnum, timestamp) VALUES ('${id}', 1, 2, '${fromNodeId}', '${toNodeId}', 'test', ${channel}, ${portnum}, ${timestamp})`;
   } else {
@@ -468,7 +342,8 @@ function insertMessageSql(backend: TestBackend, id: string, channel: number, por
 function insertNodeSql(backend: TestBackend, nodeNum: number): string {
   const now = Date.now();
   if (backend.dbType === 'sqlite') {
-    return `INSERT OR IGNORE INTO nodes (nodeNum, createdAt, updatedAt) VALUES (${nodeNum}, ${now}, ${now})`;
+    const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+    return `INSERT OR IGNORE INTO nodes (nodeNum, nodeId, sourceId, createdAt, updatedAt) VALUES (${nodeNum}, '${nodeId}', 'default', ${now}, ${now})`;
   } else if (backend.dbType === 'postgres') {
     return `INSERT INTO nodes ("nodeNum", "createdAt", "updatedAt") VALUES (${nodeNum}, ${now}, ${now}) ON CONFLICT DO NOTHING`;
   } else {
@@ -885,7 +760,14 @@ describe('NotificationsRepository - SQLite Backend', () => {
   let backend: TestBackend;
 
   beforeEach(() => {
-    backend = createSqliteBackend(SQLITE_CREATE);
+    const t = createTestDb();
+    backend = {
+      dbType: 'sqlite',
+      drizzleDb: t.db,
+      exec: async (sql: string) => { t.sqlite.exec(sql); },
+      close: async () => { t.close(); },
+      available: true,
+    };
   });
 
   afterEach(async () => {

@@ -9,11 +9,9 @@
  * MySQL: requires test container on port 3307 (skipped if unavailable)
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
-import * as schema from '../schema/index.js';
 import { TraceroutesRepository } from './traceroutes.js';
 import {
   TestBackend,
-  createSqliteBackend,
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
@@ -21,43 +19,7 @@ import {
   mysqlAvailable,
 } from './test-utils.js';
 import { DbTraceroute, DbRouteSegment } from '../types.js';
-
-// SQL for creating tables per backend
-const SQLITE_CREATE = `
-  CREATE TABLE IF NOT EXISTS traceroutes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fromNodeNum INTEGER NOT NULL,
-    toNodeNum INTEGER NOT NULL,
-    fromNodeId TEXT NOT NULL,
-    toNodeId TEXT NOT NULL,
-    route TEXT,
-    routeBack TEXT,
-    snrTowards TEXT,
-    snrBack TEXT,
-    routePositions TEXT,
-    channel INTEGER,
-    timestamp INTEGER NOT NULL,
-    createdAt INTEGER NOT NULL,
-    sourceId TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS route_segments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fromNodeNum INTEGER NOT NULL,
-    toNodeNum INTEGER NOT NULL,
-    fromNodeId TEXT NOT NULL,
-    toNodeId TEXT NOT NULL,
-    distanceKm REAL NOT NULL,
-    isRecordHolder INTEGER DEFAULT 0,
-    fromLatitude REAL,
-    fromLongitude REAL,
-    toLatitude REAL,
-    toLongitude REAL,
-    timestamp INTEGER NOT NULL,
-    createdAt INTEGER NOT NULL,
-    sourceId TEXT
-  );
-`;
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 const POSTGRES_CREATE = `
   DROP TABLE IF EXISTS route_segments CASCADE;
@@ -519,8 +481,15 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
 describe('TraceroutesRepository - SQLite Backend', () => {
   let backend: TestBackend;
 
-  beforeEach(async () => {
-    backend = createSqliteBackend(SQLITE_CREATE);
+  beforeEach(() => {
+    const t = createTestDb();
+    backend = {
+      dbType: 'sqlite',
+      drizzleDb: t.db,
+      exec: async (sql: string) => { t.sqlite.exec(sql); },
+      close: async () => { t.close(); },
+      available: true,
+    };
   });
 
   afterEach(async () => {

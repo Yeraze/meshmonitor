@@ -9,32 +9,17 @@
  * MySQL: requires test container on port 3307 (skipped if unavailable)
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
-import * as schema from '../schema/index.js';
 import { NeighborsRepository } from './neighbors.js';
 import { DbNeighborInfo } from '../types.js';
 import {
   TestBackend,
-  createSqliteBackend,
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
   postgresAvailable,
   mysqlAvailable,
 } from './test-utils.js';
-
-// SQL for creating the neighbor_info table per backend
-const SQLITE_CREATE = `
-  CREATE TABLE IF NOT EXISTS neighbor_info (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nodeNum INTEGER NOT NULL,
-    neighborNodeNum INTEGER NOT NULL,
-    snr REAL,
-    lastRxTime INTEGER,
-    timestamp INTEGER NOT NULL,
-    createdAt INTEGER NOT NULL,
-    sourceId TEXT
-  )
-`;
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 const POSTGRES_CREATE = `
   DROP TABLE IF EXISTS neighbor_info CASCADE;
@@ -443,7 +428,14 @@ describe('NeighborsRepository - SQLite Backend', () => {
   let backend: TestBackend;
 
   beforeEach(() => {
-    backend = createSqliteBackend(SQLITE_CREATE);
+    const t = createTestDb();
+    backend = {
+      dbType: 'sqlite',
+      drizzleDb: t.db,
+      exec: async (sql: string) => { t.sqlite.exec(sql); },
+      close: async () => { t.close(); },
+      available: true,
+    };
   });
 
   afterEach(async () => {
