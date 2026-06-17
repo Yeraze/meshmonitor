@@ -105,6 +105,21 @@ describe('MeshtasticManager - canonical telemetry normalization (#3506)', () => 
     expect(storedValue('ch3Voltage')).toBe(5.0);
   });
 
+  it('excludes NaN / Infinity values (Number.isFinite guard)', async () => {
+    await manager.processTelemetryMessageProtobuf(meshPacket, {
+      environmentMetrics: {
+        temperature: NaN,
+        barometricPressure: Infinity,
+        humidity: -Infinity, // relativeHumidity canonical is 'humidity'; this is an unknown leaf anyway
+        gasResistance: 12.3, // a finite value still gets through
+      },
+    });
+
+    expect(storedTypes()).not.toContain('temperature');
+    expect(storedTypes()).not.toContain('pressure');
+    expect(storedValue('gasResistance')).toBeCloseTo(12.3, 2);
+  });
+
   it('skips repeated/array fields and unknown leaves', async () => {
     await manager.processTelemetryMessageProtobuf(meshPacket, {
       environmentMetrics: {

@@ -6434,6 +6434,10 @@ class MeshtasticManager implements ISourceManager {
         const deviceMetrics = telemetry.deviceMetrics;
         logger.debug(`📊 Device telemetry: battery=${deviceMetrics.batteryLevel}%, voltage=${deviceMetrics.voltage}V`);
 
+        // These four are copied onto nodeData (the node-row "latest value" snapshot
+        // persisted via upsertNode below), which is a separate concern from the
+        // per-reading telemetry history rows that buildCanonicalMetrics extracts —
+        // hence the apparent duplication.
         nodeData.batteryLevel = deviceMetrics.batteryLevel;
         nodeData.voltage = deviceMetrics.voltage;
         nodeData.channelUtilization = deviceMetrics.channelUtilization;
