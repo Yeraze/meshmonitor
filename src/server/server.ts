@@ -28,8 +28,6 @@ import { setupAccessLogger } from './middleware/accessLogger.js';
 import { getEnvironmentConfig, resetEnvironmentConfig } from './config/environment.js';
 import { pushNotificationService } from './services/pushNotificationService.js';
 import { appriseNotificationService } from './services/appriseNotificationService.js';
-import { deviceBackupService } from './services/deviceBackupService.js';
-import { backupFileService } from './services/backupFileService.js';
 import { backupSchedulerService } from './services/backupSchedulerService.js';
 import { databaseMaintenanceService } from './services/databaseMaintenanceService.js';
 import { positionEstimationScheduler } from './services/positionEstimationScheduler.js';
@@ -51,6 +49,7 @@ import { generateAnalyticsScript, AnalyticsProvider } from './utils/analyticsScr
 import { rewriteHtml } from './utils/htmlRewriter.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { resolveRequestSourceId } from './utils/sourceResolver.js';
+import { compareVersions, checkDockerImageExists } from './utils/systemInfo.js';
 import { parseDestinationNum } from './utils/parseDestination.js';
 import { PortNum, modemPresetChannelName, getRoutingErrorName } from './constants/meshtastic.js';
 import { isValidModuleConfigType } from './constants/moduleConfig.js';
@@ -81,7 +80,6 @@ const env = getEnvironmentConfig();
 const app = express();
 const PORT = env.port;
 const BASE_URL = env.baseUrl;
-const serverStartTime = Date.now();
 
 // Custom JSON replacer to handle BigInt values
 const jsonReplacer = (_key: string, value: any) => {
@@ -937,6 +935,8 @@ import statusRoutes from './routes/statusRoutes.js';
 import dataExchangeRoutes from './routes/dataExchangeRoutes.js';
 import serverInfoRoutes from './routes/serverInfoRoutes.js';
 import scriptRoutes, { scriptsEndpoint, getScriptsDirectory } from './routes/scriptRoutes.js';
+import deviceRoutes from './routes/deviceRoutes.js';
+import systemRoutes, { setSystemCallbacks } from './routes/systemRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -1066,6 +1066,10 @@ apiRouter.use('/', deviceStatusRoutes);
 apiRouter.use('/', statusRoutes);
 apiRouter.use('/', serverInfoRoutes);
 apiRouter.use('/', dataExchangeRoutes);
+// Mounted at '/' because these routers contain mixed top-level paths
+// (/device-config, /device/*, /system/*, /status, /version/check).
+apiRouter.use('/', deviceRoutes);
+apiRouter.use('/', systemRoutes);
 // Mounted at '/' because the script routes use mixed top-level paths
 // (/scripts/*, /http/test). The public /api/scripts listing endpoint is
 // mounted separately on the app below (bypasses CSRF).
@@ -1142,6 +1146,12 @@ setSettingsCallbacks({
   restartAutoDeleteByDistanceService: (intervalHours: number) =>
     autoDeleteByDistanceService.start(intervalHours),
   stopAutoDeleteByDistanceService: () => autoDeleteByDistanceService.stop(),
+});
+
+// Wire up side-effect callbacks for systemRoutes (server-lifecycle shutdown).
+// gracefulShutdown is a hoisted function declaration defined later in this file.
+setSystemCallbacks({
+  gracefulShutdown,
 });
 
 // API Routes
@@ -4308,72 +4318,6 @@ apiRouter.get('/config', optionalAuth(), async (req, res) => {
 });
 
 // Device configuration endpoint
-apiRouter.get('/device-config', requirePermission('configuration', 'read'), async (req, res) => {
-  try {
-    const dcSourceId = req.query.sourceId as string | undefined;
-    const dcManager = resolveSourceManager(dcSourceId);
-    const config = await dcManager.getDeviceConfig();
-    if (config) {
-      res.json(config);
-    } else {
-      res.status(503).json({ error: 'Unable to retrieve device configuration' });
-    }
-  } catch (error) {
-    logger.error('Error fetching device config:', error);
-    res.status(500).json({ error: 'Failed to fetch device configuration' });
-  }
-});
-
-// Export complete device configuration as YAML backup
-// Compatible with Meshtastic CLI --export-config format
-// Query param ?save=true will save to disk instead of just downloading
-apiRouter.get('/device/backup', requirePermission('configuration', 'read'), async (req, res) => {
-  try {
-    const saveToFile = req.query.save === 'true';
-    const backupSourceId = req.query.sourceId as string | undefined;
-    const backupManager = resolveSourceManager(backupSourceId);
-    logger.info(`📦 Device backup requested (save=${saveToFile})...`);
-
-    // Generate YAML backup using the device backup service
-    const yamlBackup = await deviceBackupService.generateBackup(backupManager);
-
-    // Get node ID for filename
-    const localNodeInfo = backupManager.getLocalNodeInfo();
-    const nodeId = localNodeInfo?.nodeId || '!unknown';
-
-    if (saveToFile) {
-      // Save to disk with new filename format
-      const filename = await backupFileService.saveBackup(yamlBackup, 'manual', nodeId);
-
-      // Also send the file for download
-      res.setHeader('Content-Type', 'application/x-yaml');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.send(yamlBackup);
-
-      logger.info(`✅ Device backup saved and downloaded: ${filename}`);
-    } else {
-      // Just download, don't save - generate filename for display
-      const nodeIdNumber = nodeId.startsWith('!') ? nodeId.substring(1) : nodeId;
-      const now = new Date();
-      const date = now.toISOString().split('T')[0];
-      const time = now.toTimeString().split(' ')[0].replace(/:/g, '-');
-      const filename = `${nodeIdNumber}-${date}-${time}.yaml`;
-
-      res.setHeader('Content-Type', 'application/x-yaml');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.send(yamlBackup);
-
-      logger.info(`✅ Device backup generated: ${filename}`);
-    }
-  } catch (error) {
-    logger.error('❌ Error generating device backup:', error);
-    res.status(500).json({
-      error: 'Failed to generate device backup',
-      details: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-});
-
 // ==========================================
 // Refresh nodes from device endpoint
 apiRouter.post('/nodes/refresh', requirePermission('nodes', 'write'), async (req, res) => {
@@ -5553,19 +5497,6 @@ apiRouter.post('/config/module/request', requirePermission('configuration', 'wri
   } catch (error) {
     logger.error('Error requesting module config:', error);
     res.status(500).json({ error: 'Failed to request module configuration' });
-  }
-});
-
-apiRouter.post('/device/reboot', requirePermission('configuration', 'write'), async (req, res) => {
-  try {
-    const { seconds: rebootSeconds, sourceId: rebootSourceId } = req.body || {};
-    const seconds = rebootSeconds || 10;
-    const rebootManager = resolveSourceManager(rebootSourceId);
-    await rebootManager.rebootDevice(seconds);
-    res.json({ success: true, message: `Device will reboot in ${seconds} seconds` });
-  } catch (error) {
-    logger.error('Error rebooting device:', error);
-    res.status(500).json({ error: 'Failed to reboot device' });
   }
 });
 
@@ -6932,349 +6863,6 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
     res.status(500).json({ error: error.message || 'Failed to execute admin command' });
   }
 });
-
-apiRouter.post('/device/purge-nodedb', requirePermission('configuration', 'write'), async (req, res) => {
-  try {
-    const { seconds: purgeSeconds, sourceId: purgeSourceId } = req.body || {};
-    const seconds = purgeSeconds || 0;
-    const purgeManager = resolveSourceManager(purgeSourceId);
-
-    // Purge the device's node database
-    await purgeManager.purgeNodeDb(seconds);
-
-    // Also purge the local database (scoped to the source we just told the
-    // device to wipe — purging globally on a per-source admin command would
-    // wipe siblings)
-    logger.info('🗑️ Purging local node database');
-    await databaseService.purgeAllNodesAsync(purgeSourceId);
-    logger.info('✅ Local node database purged successfully');
-
-    res.json({
-      success: true,
-      message: `Node database purged (both device and local)${seconds > 0 ? ` in ${seconds} seconds` : ''}`,
-    });
-  } catch (error) {
-    logger.error('Error purging node database:', error);
-    res.status(500).json({ error: 'Failed to purge node database' });
-  }
-});
-
-// Helper to detect if running in Docker
-function isRunningInDocker(): boolean {
-  try {
-    return fs.existsSync('/.dockerenv');
-  } catch {
-    return false;
-  }
-}
-
-// System status endpoint
-apiRouter.get('/system/status', requirePermission('dashboard', 'read'), async (_req, res) => {
-  const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
-  const days = Math.floor(uptimeSeconds / 86400);
-  const hours = Math.floor((uptimeSeconds % 86400) / 3600);
-  const minutes = Math.floor((uptimeSeconds % 3600) / 60);
-  const seconds = uptimeSeconds % 60;
-
-  let uptimeString = '';
-  if (days > 0) uptimeString += `${days}d `;
-  if (hours > 0 || days > 0) uptimeString += `${hours}h `;
-  if (minutes > 0 || hours > 0 || days > 0) uptimeString += `${minutes}m `;
-  uptimeString += `${seconds}s`;
-
-  // Get database info
-  const databaseType = databaseService.getDatabaseType();
-  const databaseVersion = await databaseService.getDatabaseVersion();
-
-  res.json({
-    version: packageJson.version,
-    nodeVersion: process.version,
-    platform: process.platform,
-    architecture: process.arch,
-    uptime: uptimeString,
-    uptimeSeconds,
-    environment: env.nodeEnv,
-    isDocker: isRunningInDocker(),
-    memoryUsage: {
-      heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
-      heapTotal: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB',
-      rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + ' MB',
-    },
-    database: {
-      type: databaseType.charAt(0).toUpperCase() + databaseType.slice(1), // Capitalize
-      version: databaseVersion,
-    },
-  });
-});
-
-// Detailed status endpoint - provides system statistics and connection status
-apiRouter.get('/status', optionalAuth(), async (_req, res) => {
-  const connectionStatus = await meshtasticManager.getConnectionStatus();
-  const localNode = meshtasticManager.getLocalNodeInfo();
-
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    version: packageJson.version,
-    nodeEnv: env.nodeEnv,
-    connection: {
-      connected: connectionStatus.connected,
-      localNode: localNode
-        ? {
-            nodeNum: localNode.nodeNum,
-            nodeId: localNode.nodeId,
-            longName: localNode.longName,
-            shortName: localNode.shortName,
-          }
-        : null,
-    },
-    statistics: {
-      nodes: await databaseService.nodes.getNodeCount(),
-      messages: await databaseService.messages.getMessageCount(),
-      channels: await databaseService.channels.getChannelCount(),
-    },
-    uptime: process.uptime(),
-  });
-});
-
-// Helper function to check if Docker image exists in GHCR
-async function checkDockerImageExists(version: string, publishedAt?: string): Promise<boolean> {
-  try {
-    const owner = 'yeraze';
-    const repo = 'meshmonitor';
-
-    // STRATEGY 1: Query manifest directly (most reliable, avoids pagination issues)
-    // Try both with and without 'v' prefix as GHCR may use either
-    const tagsToTry = [version, `v${version}`];
-
-    for (const tag of tagsToTry) {
-      try {
-        // Step 1: Get anonymous token from GHCR
-        const tokenUrl = `https://ghcr.io/token?scope=repository:${owner}/${repo}:pull`;
-        const tokenResponse = await fetch(tokenUrl);
-
-        if (tokenResponse.ok) {
-          const tokenData = await tokenResponse.json();
-          const token = tokenData.token;
-
-          // Step 2: Try to fetch the manifest for this specific tag
-          const manifestUrl = `https://ghcr.io/v2/${owner}/${repo}/manifests/${tag}`;
-          const manifestResponse = await fetch(manifestUrl, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: 'application/vnd.docker.distribution.manifest.v2+json',
-            },
-          });
-
-          if (manifestResponse.ok) {
-            logger.info(`✓ Image for ${version} (tag: ${tag}) found in GitHub Container Registry`);
-            return true;
-          }
-        }
-      } catch (manifestError) {
-        logger.debug(`Manifest check failed for tag ${tag}:`, manifestError);
-        // Try next tag variant
-      }
-    }
-
-    // If we reach here, manifest check failed for all tag variants
-    logger.info(`⏳ Image for ${version} not found via manifest check, falling back to time-based heuristic`);
-
-    // STRATEGY 2: Time-based heuristic fallback (only if manifest check failed)
-    // GitHub Actions typically takes 10-30 minutes to build and push container images
-    // If release was published more than 30 minutes ago, assume the build completed
-    if (publishedAt) {
-      const publishTime = new Date(publishedAt).getTime();
-      const now = Date.now();
-      const minutesSincePublish = (now - publishTime) / (60 * 1000);
-
-      if (minutesSincePublish >= 30) {
-        logger.info(
-          `✓ Image for ${version} assumed ready (${Math.round(
-            minutesSincePublish
-          )} minutes since release, API check failed)`
-        );
-        return true;
-      } else {
-        logger.info(
-          `⏳ Image for ${version} still building (${Math.round(minutesSincePublish)}/30 minutes since release)`
-        );
-        return false;
-      }
-    }
-
-    // If no publish time provided and API failed, be conservative and return false
-    logger.warn(`Cannot verify image availability for ${version} (no publish time and API failed)`);
-    return false;
-  } catch (error) {
-    logger.warn(`Error checking Docker image existence for ${version}:`, error);
-    // On error with known publish time, use time-based fallback
-    if (publishedAt) {
-      const minutesSincePublish = (Date.now() - new Date(publishedAt).getTime()) / (60 * 1000);
-      const assumeReady = minutesSincePublish >= 30;
-      if (assumeReady) {
-        logger.info(
-          `✓ Image for ${version} assumed ready (${Math.round(
-            minutesSincePublish
-          )} minutes since release, error during check)`
-        );
-      }
-      return assumeReady;
-    }
-    // Otherwise fail closed to avoid false positives
-    return false;
-  }
-}
-
-// Version check endpoint - compares current version with latest GitHub release
-let versionCheckCache: { data: any; timestamp: number } | null = null;
-const VERSION_CHECK_CACHE_MS = 5 * 60 * 1000; // 5 minute cache (reduced to detect image availability sooner)
-
-apiRouter.get('/version/check', optionalAuth(), async (_req, res) => {
-  if (env.versionCheckDisabled) {
-    return res.status(404).send();
-  }
-  try {
-    // Check cache first
-    if (versionCheckCache && Date.now() - versionCheckCache.timestamp < VERSION_CHECK_CACHE_MS) {
-      return res.json(versionCheckCache.data);
-    }
-
-    // Fetch latest release from GitHub
-    const response = await fetch('https://api.github.com/repos/Yeraze/meshmonitor/releases/latest');
-
-    if (!response.ok) {
-      logger.warn(`GitHub API returned ${response.status} for version check`);
-      return res.json({ updateAvailable: false, error: 'Unable to check for updates' });
-    }
-
-    const release = await response.json();
-    const currentVersion = packageJson.version;
-    const latestVersionRaw = release.tag_name;
-
-    // Strip 'v' prefix from version strings for comparison
-    const latestVersion = latestVersionRaw.replace(/^v/, '');
-    const current = currentVersion.replace(/^v/, '');
-
-    // Simple semantic version comparison
-    const isNewerVersion = compareVersions(latestVersion, current) > 0;
-
-    // Check if Docker image exists for this version (pass publish time for time-based heuristic)
-    const imageReady = await checkDockerImageExists(latestVersion, release.published_at);
-
-    // Only mark update as available if it's a newer version AND container image exists
-    const updateAvailable = isNewerVersion && imageReady;
-
-    // Check if auto-upgrade immediate is enabled and trigger upgrade automatically
-    let autoUpgradeTriggered = false;
-    if (updateAvailable && upgradeService.isEnabled()) {
-      const autoUpgradeImmediate = await databaseService.settings.getSetting('autoUpgradeImmediate') === 'true';
-      if (autoUpgradeImmediate) {
-        // Check if an upgrade is already in progress before triggering
-        try {
-          const inProgress = await upgradeService.isUpgradeInProgress();
-          if (inProgress) {
-            logger.debug(`ℹ️ Auto-upgrade skipped: upgrade already in progress`);
-          } else {
-            logger.info(`🚀 Auto-upgrade immediate enabled, triggering upgrade to ${latestVersion}`);
-            const upgradeResult = await upgradeService.triggerUpgrade(
-              { targetVersion: latestVersion, backup: true },
-              currentVersion,
-              'system-auto-upgrade'
-            );
-            if (upgradeResult.success) {
-              autoUpgradeTriggered = true;
-              logger.info(`✅ Auto-upgrade triggered successfully: ${upgradeResult.upgradeId}`);
-              databaseService.auditLogAsync(
-                null,
-                'auto_upgrade_triggered',
-                'system',
-                `Auto-upgrade initiated: ${currentVersion} → ${latestVersion}`,
-                null
-              );
-            } else {
-              // Check if failure was due to upgrade already in progress (race condition)
-              if (upgradeResult.message === 'An upgrade is already in progress') {
-                logger.debug(`ℹ️ Auto-upgrade skipped: upgrade started by another process`);
-              } else {
-                logger.warn(`⚠️ Auto-upgrade failed to trigger: ${upgradeResult.message}`);
-              }
-            }
-          }
-        } catch (upgradeError) {
-          logger.error('❌ Error triggering auto-upgrade:', upgradeError);
-        }
-      }
-    }
-
-    const result = {
-      updateAvailable,
-      currentVersion,
-      latestVersion,
-      releaseUrl: release.html_url,
-      releaseName: release.name,
-      publishedAt: release.published_at,
-      imageReady,
-      autoUpgradeTriggered,
-    };
-
-    // Cache the result
-    versionCheckCache = { data: result, timestamp: Date.now() };
-
-    return res.json(result);
-  } catch (error) {
-    logger.error('Error checking for version updates:', error);
-    return res.json({ updateAvailable: false, error: 'Unable to check for updates' });
-  }
-});
-
-// Helper function to compare semantic versions
-function compareVersions(a: string, b: string): number {
-  const aParts = a.split(/[-.]/).map(p => parseInt(p) || 0);
-  const bParts = b.split(/[-.]/).map(p => parseInt(p) || 0);
-
-  for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
-    const aPart = aParts[i] || 0;
-    const bPart = bParts[i] || 0;
-
-    if (aPart > bPart) return 1;
-    if (aPart < bPart) return -1;
-  }
-
-  return 0;
-}
-
-// Restart/shutdown container endpoint
-apiRouter.post('/system/restart', requirePermission('settings', 'write'), (_req, res) => {
-  const isDocker = isRunningInDocker();
-
-  if (isDocker) {
-    logger.info('🔄 Container restart requested by admin');
-    res.json({
-      success: true,
-      message: 'Container will restart now',
-      action: 'restart',
-    });
-
-    // Gracefully shutdown - Docker will restart the container automatically
-    setTimeout(() => {
-      gracefulShutdown('Admin-requested container restart');
-    }, 500);
-  } else {
-    logger.info('🛑 Shutdown requested by admin');
-    res.json({
-      success: true,
-      message: 'MeshMonitor will shut down now',
-      action: 'shutdown',
-    });
-
-    // Gracefully shutdown - will need to be manually restarted
-    setTimeout(() => {
-      gracefulShutdown('Admin-requested shutdown');
-    }, 500);
-  }
-});
-
 
 // Serve static files from the React app build
 const buildPath = path.join(__dirname, '../../dist');
