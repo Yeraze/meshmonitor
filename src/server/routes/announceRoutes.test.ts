@@ -3,10 +3,10 @@ import request from 'supertest';
 import express from 'express';
 import announceRoutes from './announceRoutes.js';
 
-const mockManager = {
+const mockManager = vi.hoisted(() => ({
   sendAutoAnnouncement: vi.fn(),
   previewAnnouncementMessage: vi.fn(),
-};
+}));
 
 vi.mock('../utils/resolveSourceManager.js', () => ({
   resolveSourceManager: vi.fn().mockReturnValue(mockManager),
