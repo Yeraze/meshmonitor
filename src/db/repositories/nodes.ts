@@ -477,7 +477,7 @@ export class NodesRepository extends BaseRepository {
         hopsAway: nodeData.hopsAway ?? null,
         viaMqtt: nodeData.viaMqtt ?? null,
         isStoreForwardServer: nodeData.isStoreForwardServer ?? null,
-        macaddr: nodeData.macaddr ?? null,
+        macaddr: blankToNull(nodeData.macaddr),
         latitude: nodeData.latitude ?? null,
         longitude: nodeData.longitude ?? null,
         altitude: nodeData.altitude ?? null,
