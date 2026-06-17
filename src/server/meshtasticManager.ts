@@ -410,7 +410,9 @@ interface AutoPingSession {
   successfulPings: number;
   failedPings: number;
   intervalMs: number;
+  timeoutMs: number;        // per-ping ack timeout, resolved once at session start
   timer: ReturnType<typeof setInterval> | null;
+  sending: boolean;         // true while a send is in-flight (closes the check-then-act race)
   pendingRequestId: number | null;
   pendingTimeout: ReturnType<typeof setTimeout> | null;
   startTime: number;
@@ -7211,13 +7213,14 @@ class MeshtasticManager implements ISourceManager {
         }
       }
 
-      // Check if this routing update is for an auto-ping session
+      // Check if this routing update is for an auto-ping session. Pass the
+      // emitting node + error_reason through so the handler can distinguish a
+      // real end-to-end ACK (from the destination) from the local transmit ACK
+      // and from a delivery-failure NAK — see handleAutoPingResponse.
       if (requestId) {
-        if (errorReason === 0) {
-          this.handleAutoPingResponse(requestId, 'ack');
-        } else {
-          this.handleAutoPingResponse(requestId, 'nak');
-        }
+        // errorReason is 0 (NONE) on success; non-zero — or absent — is a failure.
+        const reason = typeof errorReason === 'number' ? errorReason : 1;
+        this.handleAutoPingResponse(requestId, fromNum, reason);
       }
 
       // Handle successful ACKs (error_reason = 0 means success)
@@ -9295,6 +9298,10 @@ class MeshtasticManager implements ISourceManager {
       const count = parseInt(pingStartMatch[1], 10);
       const maxPings = parseInt((await databaseService.settings.getSettingForSource(this.sourceId, 'autoPingMaxPings')) || '20', 10);
       const intervalSeconds = parseInt((await databaseService.settings.getSettingForSource(this.sourceId, 'autoPingIntervalSeconds')) || '30', 10);
+      // Resolve the ack timeout once here rather than per-ping: it lets us arm
+      // pendingRequestId + pendingTimeout synchronously after each send (no await
+      // between), closing the window where a fast response could be missed.
+      const timeoutSeconds = parseInt((await databaseService.settings.getSettingForSource(this.sourceId, 'autoPingTimeoutSeconds')) || '60', 10);
 
       // Validate count
       if (count <= 0) {
@@ -9321,7 +9328,9 @@ class MeshtasticManager implements ISourceManager {
         successfulPings: 0,
         failedPings: 0,
         intervalMs: intervalSeconds * 1000,
+        timeoutMs: timeoutSeconds * 1000,
         timer: null,
+        sending: false,
         pendingRequestId: null,
         pendingTimeout: null,
         startTime: Date.now(),
@@ -9371,10 +9380,15 @@ class MeshtasticManager implements ISourceManager {
       return;
     }
 
-    // Don't send another ping if one is still pending
-    if (session.pendingRequestId !== null) {
+    // Don't send another ping if one is still pending OR a send is in-flight.
+    // `sending` is set synchronously below before the first await, so a second
+    // interval tick that fires during sendTextMessage() can't slip past this
+    // guard and launch a duplicate ping (the check-then-act race that produced
+    // orphaned pings whose acks never matched).
+    if (session.pendingRequestId !== null || session.sending) {
       return;
     }
+    session.sending = true;
 
     try {
       const pingNum = session.completedPings + 1;
@@ -9382,16 +9396,16 @@ class MeshtasticManager implements ISourceManager {
 
       const requestId = await this.sendTextMessage(pingMessage, 0, session.requestedBy);
       this.messageQueue.recordExternalSend();
+      // Arm pendingRequestId and the ack timeout synchronously (timeoutMs was
+      // resolved at session start) so a fast response can't arrive between the
+      // two and leave an orphaned timeout that double-counts the ping.
       session.pendingRequestId = requestId;
       session.lastPingSentAt = Date.now();
-
-      logger.debug(`📡 Auto-ping ${pingNum}/${session.totalPings} sent to !${session.requestedBy.toString(16).padStart(8, '0')} (requestId: ${requestId})`);
-
-      // Set timeout for this ping
-      const timeoutSeconds = parseInt((await databaseService.settings.getSettingForSource(this.sourceId, 'autoPingTimeoutSeconds')) || '60', 10);
       session.pendingTimeout = setTimeout(() => {
         this.handleAutoPingTimeout(session);
-      }, timeoutSeconds * 1000);
+      }, session.timeoutMs);
+
+      logger.debug(`📡 Auto-ping ${pingNum}/${session.totalPings} sent to !${session.requestedBy.toString(16).padStart(8, '0')} (requestId: ${requestId})`);
     } catch (error) {
       logger.error(`❌ Auto-ping failed to send to !${session.requestedBy.toString(16).padStart(8, '0')}:`, error);
       // Record as failed
@@ -9405,45 +9419,78 @@ class MeshtasticManager implements ISourceManager {
       await this.emitAutoPingUpdate(session, 'ping_result');
 
       // Session completion is handled by the next interval tick
+    } finally {
+      session.sending = false;
     }
   }
 
   /**
-   * Handle an ACK or NAK response for a pending auto-ping
+   * Handle a Routing (ACK/NAK) packet for a pending auto-ping.
+   *
+   * A want_ack DM produces TWO Routing packets with the SAME request_id, both
+   * with error_reason=NONE, differing only by `from` (confirmed against firmware):
+   *   1. an implicit transmit ACK from OUR OWN local node (it overheard the
+   *      rebroadcast) — arrives first, only proves the packet entered the mesh;
+   *   2. the real end-to-end ACK from the DESTINATION — arrives second, or never.
+   * A genuine delivery failure is a NAK (non-zero error_reason, e.g.
+   * MAX_RETRANSMIT) emitted by the originating (local) node.
+   *
+   * Matching on request_id alone latched the transmit ACK first and reported a
+   * false success with a bogus (transmit-only) duration, dropping the real ACK
+   * and any later failure NAK. So we now resolve a ping ONLY on:
+   *   - error_reason != 0  → NAK (delivery failed), or
+   *   - error_reason == 0 AND from == the destination (the requester) → real ACK.
+   * Any other request_id match (error_reason 0 from our local node or a relay)
+   * is a transmit/relay confirmation and is ignored so the session keeps waiting.
+   *
+   * @param requestId   the original sent packet id the Routing packet references
+   * @param fromNum     the node that emitted this Routing packet
+   * @param errorReason Routing.Error value (0 = NONE/success)
    */
-  handleAutoPingResponse(requestId: number, status: 'ack' | 'nak'): void {
+  handleAutoPingResponse(requestId: number, fromNum: number, errorReason: number): void {
     // Find session with matching pendingRequestId
     for (const [nodeNum, session] of this.autoPingSessions) {
-      if (session.pendingRequestId === requestId) {
-        // Clear the timeout
-        if (session.pendingTimeout) {
-          clearTimeout(session.pendingTimeout);
-          session.pendingTimeout = null;
-        }
+      if (session.pendingRequestId !== requestId) continue;
 
-        const durationMs = Date.now() - session.lastPingSentAt;
-        session.results.push({
-          pingNum: session.completedPings + 1,
-          status,
-          durationMs,
-          sentAt: session.lastPingSentAt,
-        });
+      const isFailure = errorReason !== 0;
+      const isDestinationAck = errorReason === 0 && fromNum === session.requestedBy;
 
-        session.completedPings++;
-        if (status === 'ack') {
-          session.successfulPings++;
-        } else {
-          session.failedPings++;
-        }
-        session.pendingRequestId = null;
-
-        logger.info(`📡 Auto-ping ${session.completedPings}/${session.totalPings} ${status.toUpperCase()} from !${nodeNum.toString(16).padStart(8, '0')} (${durationMs}ms)`);
-
-        this.emitAutoPingUpdate(session, 'ping_result').catch(err => logger.error('Error emitting auto-ping update:', err));
-
-        // Session completion is handled by the next interval tick in sendNextAutoPing
+      // Not a terminal signal for this ping (transmit-only self-ack or a relay's
+      // NONE) — leave the ping pending so the real ack / failure / timeout wins.
+      if (!isFailure && !isDestinationAck) {
         return;
       }
+
+      const status: 'ack' | 'nak' = isDestinationAck ? 'ack' : 'nak';
+
+      // Clear the timeout
+      if (session.pendingTimeout) {
+        clearTimeout(session.pendingTimeout);
+        session.pendingTimeout = null;
+      }
+
+      const durationMs = Date.now() - session.lastPingSentAt;
+      session.results.push({
+        pingNum: session.completedPings + 1,
+        status,
+        durationMs,
+        sentAt: session.lastPingSentAt,
+      });
+
+      session.completedPings++;
+      if (status === 'ack') {
+        session.successfulPings++;
+      } else {
+        session.failedPings++;
+      }
+      session.pendingRequestId = null;
+
+      logger.info(`📡 Auto-ping ${session.completedPings}/${session.totalPings} ${status.toUpperCase()} from !${nodeNum.toString(16).padStart(8, '0')} (${durationMs}ms)`);
+
+      this.emitAutoPingUpdate(session, 'ping_result').catch(err => logger.error('Error emitting auto-ping update:', err));
+
+      // Session completion is handled by the next interval tick in sendNextAutoPing
+      return;
     }
   }
 
