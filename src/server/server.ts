@@ -978,6 +978,11 @@ import cleanupRoutes from './routes/cleanupRoutes.js';
 import maintenanceRoutes from './routes/maintenanceRoutes.js';
 import themeRoutes from './routes/themeRoutes.js';
 import purgeRoutes from './routes/purgeRoutes.js';
+import tracerouteRoutes from './routes/tracerouteRoutes.js';
+import routeSegmentRoutes from './routes/routeSegmentRoutes.js';
+import neighborInfoRoutes from './routes/neighborInfoRoutes.js';
+import ignoredNodeRoutes from './routes/ignoredNodeRoutes.js';
+import announceRoutes from './routes/announceRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -1097,6 +1102,11 @@ apiRouter.use('/cleanup', cleanupRoutes);
 apiRouter.use('/maintenance', maintenanceRoutes);
 apiRouter.use('/themes', themeRoutes);
 apiRouter.use('/purge', purgeRoutes);
+apiRouter.use('/traceroutes', tracerouteRoutes);
+apiRouter.use('/route-segments', routeSegmentRoutes);
+apiRouter.use('/neighbor-info', neighborInfoRoutes);
+apiRouter.use('/ignored-nodes', ignoredNodeRoutes);
+apiRouter.use('/announce', announceRoutes);
 
 // Wire up side-effect callbacks for settingsRoutes
 setSettingsCallbacks({
@@ -1822,87 +1832,6 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write', { s
     logger.error('Error setting node ignored:', error);
     const errorResponse: ApiErrorResponse = {
       error: 'Failed to set node ignored',
-      code: 'INTERNAL_ERROR',
-      details: error instanceof Error ? error.message : 'Unknown error occurred',
-    };
-    res.status(500).json(errorResponse);
-  }
-});
-
-// Get per-source ignored nodes list. If `?sourceId=X` is omitted, returns the
-// first enabled source the caller has nodes:read on.
-apiRouter.get('/ignored-nodes', requirePermission('nodes', 'read'), async (req, res) => {
-  try {
-    const listSourceId = await resolveRequestSourceId(req, 'nodes', 'read');
-    if (!listSourceId) {
-      const errorResponse: ApiErrorResponse = {
-        error: 'No permitted source',
-        code: 'MISSING_SOURCE_ID',
-        details: 'Provide ?sourceId=, or ensure your account has nodes:read on at least one enabled source',
-      };
-      res.status(400).json(errorResponse);
-      return;
-    }
-    const ignoredNodes = await databaseService.ignoredNodes.getIgnoredNodesAsync(listSourceId);
-    res.json(ignoredNodes);
-  } catch (error) {
-    logger.error('Error fetching ignored nodes:', error);
-    const errorResponse: ApiErrorResponse = {
-      error: 'Failed to fetch ignored nodes',
-      code: 'INTERNAL_ERROR',
-      details: error instanceof Error ? error.message : 'Unknown error occurred',
-    };
-    res.status(500).json(errorResponse);
-  }
-});
-
-// Remove a node from the per-source ignore list. If `?sourceId=X` is omitted,
-// operates on the first enabled source the caller has nodes:write on.
-apiRouter.delete('/ignored-nodes/:nodeId', requirePermission('nodes', 'write'), async (req, res) => {
-  try {
-    const { nodeId } = req.params;
-
-    // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
-    const nodeNumStr = nodeId.replace('!', '');
-
-    // Validate hex string format (must be exactly 8 hex characters)
-    if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
-      const errorResponse: ApiErrorResponse = {
-        error: 'Invalid nodeId format',
-        code: 'INVALID_NODE_ID',
-        details: 'nodeId must be in format !XXXXXXXX (8 hex characters)',
-      };
-      res.status(400).json(errorResponse);
-      return;
-    }
-
-    const deleteSourceId = await resolveRequestSourceId(req, 'nodes', 'write');
-    if (!deleteSourceId) {
-      const errorResponse: ApiErrorResponse = {
-        error: 'No permitted source',
-        code: 'MISSING_SOURCE_ID',
-        details: 'Provide ?sourceId=, or ensure your account has nodes:write on at least one enabled source',
-      };
-      res.status(400).json(errorResponse);
-      return;
-    }
-
-    const nodeNum = parseInt(nodeNumStr, 16);
-
-    // Remove from the per-source blocklist + clear the live mirror flag on
-    // the matching nodes row. Other sources' blocklists are untouched by design.
-    await databaseService.ignoredNodes.removeIgnoredNodeAsync(nodeNum, deleteSourceId);
-    try {
-      await databaseService.setNodeIgnoredAsync(nodeNum, false, deleteSourceId);
-    } catch {
-      // Node may not exist in nodes table for this source — OK, table-level removal already succeeded.
-    }
-
-    res.json({ success: true, nodeNum, sourceId: deleteSourceId });
-  } catch (error) {
-    logger.error('Error removing ignored node:', error);
-    const errorResponse: ApiErrorResponse = {
-      error: 'Failed to remove ignored node',
       code: 'INTERNAL_ERROR',
       details: error instanceof Error ? error.message : 'Unknown error occurred',
     };
@@ -4234,275 +4163,6 @@ apiRouter.post('/telemetry/request', requirePermission('messages', 'write'), asy
   } catch (error) {
     logger.error('Error sending telemetry request:', error);
     res.status(500).json({ error: 'Failed to send telemetry request' });
-  }
-});
-
-// Get recent traceroutes (last 24 hours)
-apiRouter.get('/traceroutes/recent', async (req, res) => {
-  try {
-    const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
-    const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
-
-    // Calculate dynamic default limit based on settings:
-    // Auto-traceroutes per hour * Max Node Age (hours) * 1.1 (padding for manual traceroutes)
-    let limit: number;
-    if (req.query.limit) {
-      // Use explicit limit if provided
-      limit = parseInt(req.query.limit as string);
-    } else {
-      // Calculate dynamic default based on traceroute settings
-      const tracerouteIntervalMinutes = parseInt(await databaseService.settings.getSetting('tracerouteIntervalMinutes') || '5');
-      const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
-      const traceroutesPerHour = tracerouteIntervalMinutes > 0 ? 60 / tracerouteIntervalMinutes : 12;
-      limit = Math.ceil(traceroutesPerHour * maxNodeAgeHours * 1.1);
-      // Ensure a reasonable minimum
-      limit = Math.max(limit, 100);
-    }
-
-    const recentSourceId = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
-    const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, recentSourceId);
-
-    const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
-
-    const traceroutesWithHops = recentTraceroutes.map(tr => {
-      let hopCount = 999;
-      try {
-        if (tr.route) {
-          const routeArray = JSON.parse(tr.route);
-          // Verify routeArray is actually an array before accessing .length
-          if (Array.isArray(routeArray)) {
-            hopCount = routeArray.length;
-          }
-          // If routeArray is not an array, hopCount remains 999
-        }
-      } catch (e) {
-        hopCount = 999;
-      }
-      return { ...tr, hopCount };
-    });
-
-    res.json(traceroutesWithHops);
-  } catch (error) {
-    logger.error('Error fetching recent traceroutes:', error);
-    res.status(500).json({ error: 'Failed to fetch recent traceroutes' });
-  }
-});
-
-// Get traceroute history for a specific source-destination pair
-apiRouter.get('/traceroutes/history/:fromNodeNum/:toNodeNum', requirePermission('traceroute', 'read', { sourceIdFrom: 'query' }), async (req, res) => {
-  try {
-    const fromNodeNum = parseInt(req.params.fromNodeNum);
-    const toNodeNum = parseInt(req.params.toNodeNum);
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
-    // Scope to a specific source when provided so multi-source deployments
-    // don't conflate traceroute history for the same node pair across
-    // unrelated transports (e.g. local TCP vs MQTT).
-    const historySourceId = req.query.sourceId as string | undefined;
-
-    // Validate node numbers
-    if (isNaN(fromNodeNum) || isNaN(toNodeNum)) {
-      res.status(400).json({ error: 'Invalid node numbers provided' });
-      return;
-    }
-
-    // Validate node numbers are positive integers (Meshtastic node numbers are 32-bit unsigned)
-    if (fromNodeNum < 0 || fromNodeNum > 0xffffffff || toNodeNum < 0 || toNodeNum > 0xffffffff) {
-      res.status(400).json({ error: 'Node numbers must be between 0 and 4294967295' });
-      return;
-    }
-
-    // Validate limit parameter
-    if (isNaN(limit) || limit < 1 || limit > 1000) {
-      res.status(400).json({ error: 'Limit must be between 1 and 1000' });
-      return;
-    }
-
-    const traceroutes = await databaseService.traceroutes.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit, historySourceId);
-
-    const traceroutesWithHops = traceroutes.map(tr => {
-      let hopCount = 999;
-      try {
-        if (tr.route) {
-          const routeArray = JSON.parse(tr.route);
-          // Verify routeArray is actually an array before accessing .length
-          if (Array.isArray(routeArray)) {
-            hopCount = routeArray.length;
-          }
-          // If routeArray is not an array, hopCount remains 999
-        }
-      } catch (e) {
-        hopCount = 999;
-      }
-      return { ...tr, hopCount };
-    });
-
-    res.json(traceroutesWithHops);
-  } catch (error) {
-    logger.error('Error fetching traceroute history:', error);
-    res.status(500).json({ error: 'Failed to fetch traceroute history' });
-  }
-});
-
-// Get longest active route segment (within last 7 days), scoped per source.
-apiRouter.get('/route-segments/longest-active', requirePermission('info', 'read'), async (req, res) => {
-  try {
-    const segSourceId = req.query.sourceId as string | undefined;
-    const segment = await databaseService.traceroutes.getLongestActiveRouteSegment(segSourceId);
-    if (!segment) {
-      res.json(null);
-      return;
-    }
-
-    // Enrich with node names, scoped to the same source as the segment so
-    // display data doesn't bleed between sources.
-    const fromNode = await databaseService.nodes.getNode(segment.fromNodeNum, segSourceId);
-    const toNode = await databaseService.nodes.getNode(segment.toNodeNum, segSourceId);
-
-    const enrichedSegment = {
-      ...segment,
-      fromNodeName: fromNode?.longName || segment.fromNodeId,
-      toNodeName: toNode?.longName || segment.toNodeId,
-    };
-
-    res.json(enrichedSegment);
-  } catch (error) {
-    logger.error('Error fetching longest active route segment:', error);
-    res.status(500).json({ error: 'Failed to fetch longest active route segment' });
-  }
-});
-
-// Get record holder route segment, scoped per source.
-apiRouter.get('/route-segments/record-holder', requirePermission('info', 'read'), async (req, res) => {
-  try {
-    const segSourceId = req.query.sourceId as string | undefined;
-    const segment = await databaseService.traceroutes.getRecordHolderRouteSegment(segSourceId);
-    if (!segment) {
-      res.json(null);
-      return;
-    }
-
-    // Enrich with node names, scoped to the same source as the segment.
-    const fromNode = await databaseService.nodes.getNode(segment.fromNodeNum, segSourceId);
-    const toNode = await databaseService.nodes.getNode(segment.toNodeNum, segSourceId);
-
-    const enrichedSegment = {
-      ...segment,
-      fromNodeName: fromNode?.longName || segment.fromNodeId,
-      toNodeName: toNode?.longName || segment.toNodeId,
-    };
-
-    res.json(enrichedSegment);
-  } catch (error) {
-    logger.error('Error fetching record holder route segment:', error);
-    res.status(500).json({ error: 'Failed to fetch record holder route segment' });
-  }
-});
-
-// Clear record holder route segment, scoped per source so clearing one source
-// doesn't wipe another source's record holder.
-apiRouter.delete('/route-segments/record-holder', requirePermission('info', 'write'), async (req, res) => {
-  try {
-    const segSourceId = req.query.sourceId as string | undefined;
-    await databaseService.clearRecordHolderSegmentAsync(segSourceId);
-    res.json({ success: true, message: 'Record holder cleared' });
-  } catch (error) {
-    logger.error('Error clearing record holder:', error);
-    res.status(500).json({ error: 'Failed to clear record holder' });
-  }
-});
-
-// Helper to get effective position (respecting overrides) — see
-// `getEffectiveDbNodePosition` in utils/nodeEnhancer for the canonical impl.
-const getEffectivePosition = (node: Awaited<ReturnType<typeof databaseService.nodes.getNode>>) =>
-  getEffectiveDbNodePosition(node);
-
-// Get all neighbor info (latest per node pair)
-apiRouter.get('/neighbor-info', requirePermission('info', 'read'), async (req, res) => {
-  try {
-    const neighborInfoSourceId = req.query.sourceId as string | undefined;
-    const neighborInfo = databaseService.getLatestNeighborInfoPerNodeScoped(neighborInfoSourceId);
-
-    // Get max node age setting (default 24 hours)
-    const maxNodeAgeStr = await databaseService.settings.getSetting('maxNodeAge');
-    const maxNodeAgeHours = maxNodeAgeStr ? parseInt(maxNodeAgeStr, 10) : 24;
-    const cutoffTime = Math.floor(Date.now() / 1000) - maxNodeAgeHours * 60 * 60;
-
-    // Build a set of all link keys for bidirectionality detection
-    const linkKeys = new Set(neighborInfo.map(ni => `${ni.nodeNum}-${ni.neighborNodeNum}`));
-
-    // Enrich with node names, bidirectionality, and filter by node age.
-    // Scope node lookups to the same source as the neighbor info query so
-    // name/position/lastHeard data match the mesh the caller is viewing.
-    const enrichedNeighborInfo = (await Promise.all(neighborInfo
-      .map(async ni => {
-        const node = await databaseService.nodes.getNode(ni.nodeNum, neighborInfoSourceId);
-        const neighbor = await databaseService.nodes.getNode(ni.neighborNodeNum, neighborInfoSourceId);
-        const nodePos = getEffectivePosition(node);
-        const neighborPos = getEffectivePosition(neighbor);
-
-        return {
-          ...ni,
-          nodeId: node?.nodeId || `!${ni.nodeNum.toString(16).padStart(8, '0')}`,
-          nodeName: node?.longName || `Node !${ni.nodeNum.toString(16).padStart(8, '0')}`,
-          neighborNodeId: neighbor?.nodeId || `!${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
-          neighborName: neighbor?.longName || `Node !${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
-          bidirectional: linkKeys.has(`${ni.neighborNodeNum}-${ni.nodeNum}`),
-          nodeLatitude: nodePos.latitude,
-          nodeLongitude: nodePos.longitude,
-          neighborLatitude: neighborPos.latitude,
-          neighborLongitude: neighborPos.longitude,
-          node,
-          neighbor,
-        };
-      })))
-      .filter(ni => {
-        // The reporter (`node`) is a node we've directly heard from — we require a fresh
-        // `lastHeard` on them. The neighbor side may be a node we've only learned about
-        // second-hand through this NeighborInfo report (see #2615 zombie-node guard,
-        // which intentionally NULLs `lastHeard` on placeholder rows). For those, fall
-        // back to the freshness of the NeighborInfo record itself so we don't drop
-        // every indirect-neighbor link (#3025).
-        if (!ni.node?.lastHeard || ni.node.lastHeard < cutoffTime) return false;
-        if (ni.neighbor?.lastHeard && ni.neighbor.lastHeard >= cutoffTime) return true;
-        const reportSec = Math.floor((ni.timestamp ?? 0) / 1000);
-        const rxSec = ni.lastRxTime ?? 0;
-        return Math.max(reportSec, rxSec) >= cutoffTime;
-      })
-      .map(({ node, neighbor, ...rest }) => rest); // Remove the temporary node/neighbor fields
-
-    res.json(enrichedNeighborInfo);
-  } catch (error) {
-    logger.error('Error fetching neighbor info:', error);
-    res.status(500).json({ error: 'Failed to fetch neighbor info' });
-  }
-});
-
-// Get neighbor info for a specific node
-apiRouter.get('/neighbor-info/:nodeNum', requirePermission('info', 'read'), async (req, res) => {
-  try {
-    const nodeNum = parseInt(req.params.nodeNum);
-    const neighborSourceId = req.query.sourceId as string | undefined;
-    const neighborInfo = await databaseService.getNeighborsForNodeAsync(nodeNum, neighborSourceId);
-
-    // Enrich with node names. Scope to the same source as the neighbor
-    // query so position/name data matches the mesh the caller is viewing.
-    const enrichedNeighborInfo = await Promise.all(neighborInfo.map(async ni => {
-      const neighbor = await databaseService.nodes.getNode(ni.neighborNodeNum, neighborSourceId);
-      const neighborPos = getEffectivePosition(neighbor);
-
-      return {
-        ...ni,
-        neighborNodeId: neighbor?.nodeId || `!${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
-        neighborName: neighbor?.longName || `Node !${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
-        neighborLatitude: neighborPos.latitude,
-        neighborLongitude: neighborPos.longitude,
-      };
-    }));
-
-    res.json(enrichedNeighborInfo);
-  } catch (error) {
-    logger.error('Error fetching neighbor info for node:', error);
-    res.status(500).json({ error: 'Failed to fetch neighbor info for node' });
   }
 });
 
@@ -6929,36 +6589,6 @@ apiRouter.post('/user/map-preferences', requireAuth(), async (req, res) => {
   }
 });
 
-// Auto-announce endpoints
-apiRouter.post('/announce/send', requirePermission('automation', 'write'), async (req, res) => {
-  try {
-    const { sourceId: announceSourceId } = req.body;
-    const announceManager = (resolveSourceManager(announceSourceId));
-    await announceManager.sendAutoAnnouncement();
-    // Update last announcement time (per-source when known)
-    if (announceSourceId) {
-      await databaseService.settings.setSourceSetting(announceSourceId, 'lastAnnouncementTime', Date.now().toString());
-    } else {
-      await databaseService.settings.setSetting('lastAnnouncementTime', Date.now().toString());
-    }
-    res.json({ success: true, message: 'Announcement sent successfully' });
-  } catch (error) {
-    logger.error('Error sending announcement:', error);
-    res.status(500).json({ error: 'Failed to send announcement' });
-  }
-});
-
-apiRouter.get('/announce/last', requirePermission('automation', 'read'), async (req, res) => {
-  try {
-    const announceLastSourceId = (req.query.sourceId as string) || null;
-    const lastAnnouncementTime = await databaseService.settings.getSettingForSource(announceLastSourceId, 'lastAnnouncementTime');
-    res.json({ lastAnnouncementTime: lastAnnouncementTime ? parseInt(lastAnnouncementTime) : null });
-  } catch (error) {
-    logger.error('Error fetching last announcement time:', error);
-    res.status(500).json({ error: 'Failed to fetch last announcement time' });
-  }
-});
-
 // Airtime cutoff status — drives the live banner on the Automation page.
 // Returns the configured threshold + measurement source, the effective Channel
 // Utilization (null if unknown), how many neighbours were sampled (neighbours
@@ -6971,23 +6601,6 @@ apiRouter.get('/automation/airtime-status', requirePermission('automation', 'rea
   } catch (error) {
     logger.error('Error fetching airtime cutoff status:', error);
     res.status(500).json({ error: 'Failed to fetch airtime cutoff status' });
-  }
-});
-
-// Announce preview endpoint - expands message template with real values
-apiRouter.get('/announce/preview', requirePermission('automation', 'read'), async (req, res) => {
-  try {
-    const message = req.query.message as string;
-    if (!message) {
-      return res.status(400).json({ error: 'Missing message parameter' });
-    }
-    const previewSourceId = req.query.sourceId as string | undefined;
-    const previewManager = resolveSourceManager(previewSourceId);
-    const preview = await previewManager.previewAnnouncementMessage(message);
-    res.json({ preview });
-  } catch (error) {
-    logger.error('Error generating announcement preview:', error);
-    res.status(500).json({ error: 'Failed to generate preview' });
   }
 });
 
