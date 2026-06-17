@@ -110,7 +110,9 @@ describe('MeshtasticManager - canonical telemetry normalization (#3506)', () => 
       environmentMetrics: {
         temperature: NaN,
         barometricPressure: Infinity,
-        humidity: -Infinity, // relativeHumidity canonical is 'humidity'; this is an unknown leaf anyway
+        // humidity IS a known canonical type (ENVIRONMENT_UNITS has it) — it's
+        // excluded here purely by the Number.isFinite guard, not for being unknown.
+        humidity: -Infinity,
         gasResistance: 12.3, // a finite value still gets through
       },
     });
@@ -134,5 +136,82 @@ describe('MeshtasticManager - canonical telemetry normalization (#3506)', () => 
     expect(storedValue('temperature')).toBe(19);
     expect(storedTypes()).not.toContain('oneWireTemperature');
     expect(storedTypes()).not.toContain('someFutureUntrackedField');
+  });
+
+  it('stores localStats under bare canonical names, incl. a genuine 0 (#3515)', async () => {
+    vi.spyOn(manager, 'checkAutoHeapManagement').mockResolvedValue(undefined);
+    await manager.processTelemetryMessageProtobuf(meshPacket, {
+      localStats: {
+        uptimeSeconds: 3600,
+        channelUtilization: 12.5,
+        airUtilTx: 3.2,
+        numPacketsTx: 100,
+        numPacketsRx: 250,
+        numPacketsRxBad: 4,
+        numOnlineNodes: 8,
+        numTotalNodes: 42,
+        numTxRelayCanceled: 0, // genuine 0 must persist
+        numTxDropped: 1,
+        heapFreeBytes: 51200,
+        noiseFloor: -98,
+      },
+    });
+
+    expect(storedValue('uptimeSeconds')).toBe(3600);
+    expect(storedValue('channelUtilization')).toBeCloseTo(12.5, 2);
+    expect(storedValue('numPacketsTx')).toBe(100);
+    expect(storedUnit('numPacketsTx')).toBe('packets');
+    expect(storedValue('numPacketsRxBad')).toBe(4);
+    expect(storedUnit('numPacketsRxBad')).toBe('packets');
+    expect(storedValue('numTxDropped')).toBe(1);
+    expect(storedValue('numOnlineNodes')).toBe(8);
+    expect(storedUnit('numOnlineNodes')).toBe('nodes');
+    expect(storedValue('numTxRelayCanceled')).toBe(0);
+    expect(storedValue('heapFreeBytes')).toBe(51200);
+    expect(storedUnit('heapFreeBytes')).toBe('bytes');
+    expect(storedValue('noiseFloor')).toBe(-98);
+    expect(storedUnit('noiseFloor')).toBe('dBm');
+  });
+
+  it('stores hostMetrics under host-prefixed names (#3515)', async () => {
+    await manager.processTelemetryMessageProtobuf(meshPacket, {
+      hostMetrics: {
+        uptimeSeconds: 7200,
+        freememBytes: 1048576,
+        diskfree1Bytes: 2097152,
+        load1: 0.42,
+        load15: 0.10,
+      },
+    });
+
+    expect(storedValue('hostUptimeSeconds')).toBe(7200);
+    expect(storedUnit('hostUptimeSeconds')).toBe('s');
+    expect(storedValue('hostFreememBytes')).toBe(1048576);
+    expect(storedUnit('hostFreememBytes')).toBe('bytes');
+    expect(storedValue('hostDiskfree1Bytes')).toBe(2097152);
+    expect(storedValue('hostLoad1')).toBeCloseTo(0.42, 2);
+    expect(storedUnit('hostLoad1')).toBe('load');
+    expect(storedValue('hostLoad15')).toBeCloseTo(0.10, 2);
+  });
+
+  it('stores trafficManagementStats under tm-prefixed names (#3515)', async () => {
+    await manager.processTelemetryMessageProtobuf(meshPacket, {
+      trafficManagementStats: {
+        packetsInspected: 5000,
+        positionDedupDrops: 12,
+        nodeinfoCacheHits: 88,
+        rateLimitDrops: 0,
+        routerHopsPreserved: 3,
+      },
+    });
+
+    expect(storedValue('tmPacketsInspected')).toBe(5000);
+    expect(storedUnit('tmPacketsInspected')).toBe('packets');
+    expect(storedValue('tmPositionDedupDrops')).toBe(12);
+    expect(storedValue('tmNodeinfoCacheHits')).toBe(88);
+    expect(storedUnit('tmNodeinfoCacheHits')).toBe('hits');
+    expect(storedValue('tmRateLimitDrops')).toBe(0);
+    expect(storedValue('tmRouterHopsPreserved')).toBe(3);
+    expect(storedUnit('tmRouterHopsPreserved')).toBe('hops');
   });
 });
