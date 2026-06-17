@@ -32,11 +32,12 @@ const INTEGER_TELEMETRY_TYPES = new Set([
   'noiseFloor',
   'systemNodeCount', 'systemDirectNodeCount',
   'paxcounterWifi', 'paxcounterBle',
+  // Particle counts are uint32 (particles40um added for #3507).
   'particles03um', 'particles05um', 'particles10um',
   'particles25um', 'particles40um', 'particles50um', 'particles100um',
   'co2', 'iaq',
-  // Newer AirQualityMetrics integer (uint32) fields (#3507). The form*/pm*Idx/
-  // particlesTps fields are floats and are intentionally NOT listed here.
+  // pm40Standard is uint32 (#3507). The form*/pm*Idx/particlesTps fields are
+  // floats and are intentionally NOT listed here.
   'pm40Standard',
   // Traffic Management stats — integer packet/hit/hop counters
   'tmPacketsInspected', 'tmPositionDedupDrops', 'tmNodeinfoCacheHits',
