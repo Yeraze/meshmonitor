@@ -7912,7 +7912,7 @@ class MeshtasticManager implements ISourceManager {
           // We must NOT fall back to the local channel's positionPrecision — that record
           // reflects this MeshMonitor instance's channel config, not the remote node's,
           // and was causing every node's accuracy box to track the local node (issue #3030).
-          const precisionBits = nodeInfo.position.precisionBits ?? nodeInfo.position.precision_bits ?? undefined;
+          const precisionBits = nodeInfo.position.precisionBits ?? nodeInfo.position.precision_bits;
           const channelIndex = nodeInfo.channel !== undefined ? nodeInfo.channel : 0;
 
           // Guard against precision downgrade (issue #3513): only update lat/lon from NodeInfo
