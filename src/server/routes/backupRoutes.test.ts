@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const mockBackupFileService = vi.hoisted(() => ({
   listBackups: vi.fn(),
@@ -169,6 +172,33 @@ describe('backupRoutes - system backups', () => {
   it('GET /system/backup/download rejects invalid dirname', async () => {
     const res = await request(app).get('/system/backup/download/not-a-date');
     expect(res.status).toBe(400);
+  });
+
+  it('GET /system/backup/download returns 404 when the backup is missing (async fs check, #3524)', async () => {
+    // Points at a path that doesn't exist → the new async fsp.access rejects → 404.
+    mockSystemBackupService.getBackupPath.mockReturnValue(
+      join(tmpdir(), 'mm-3524-absent', '2099-01-01_000000')
+    );
+    const res = await request(app).get('/system/backup/download/2099-01-01_000000');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('Backup not found');
+  });
+
+  it('GET /system/backup/download streams a tar.gz for an existing backup (#3524 happy path)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'mm-3524-backup-'));
+    await writeFile(join(dir, 'meshmonitor.db'), 'fake-sqlite-bytes');
+    mockSystemBackupService.getBackupPath.mockReturnValue(dir);
+    try {
+      const res = await request(app).get('/system/backup/download/2099-01-01_000000');
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('gzip');
+      expect(res.headers['content-disposition']).toContain('2099-01-01_000000.tar.gz');
+      expect(databaseService.auditLogAsync).toHaveBeenCalledWith(
+        1, 'system_backup_downloaded', 'system_backup', expect.any(String), expect.anything()
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('DELETE /system/backup/delete rejects invalid dirname', async () => {
