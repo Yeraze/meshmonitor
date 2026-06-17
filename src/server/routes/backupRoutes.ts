@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { promises as fsp } from 'fs';
 import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { backupFileService } from '../services/backupFileService.js';
@@ -198,10 +199,11 @@ systemBackupRouter.get('/download/:dirname', requirePermission('configuration', 
     const { TarArchive } = (await import('archiver')) as unknown as {
       TarArchive: new (opts: import('archiver').ArchiverOptions) => import('archiver').Archiver;
     };
-    const fs = await import('fs');
-
-    // Check if backup exists
-    if (!fs.existsSync(backupPath)) {
+    // Check the backup exists — async so we don't block the event loop with
+    // synchronous fs in the request path (#3524).
+    try {
+      await fsp.access(backupPath);
+    } catch {
       return res.status(404).json({ error: 'Backup not found' });
     }
 
@@ -216,7 +218,14 @@ systemBackupRouter.get('/download/:dirname', requirePermission('configuration', 
 
     archive.on('error', err => {
       logger.error('❌ Error creating archive:', err);
-      res.status(500).json({ error: 'Failed to create archive' });
+      // The archive can error mid-stream — after archive.pipe(res) has already
+      // sent headers — so guard against "Cannot set headers after they are
+      // sent" (#3524). If we're already streaming, just terminate the response.
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to create archive' });
+      } else {
+        res.end();
+      }
     });
 
     // Audit log before streaming
@@ -235,10 +244,15 @@ systemBackupRouter.get('/download/:dirname', requirePermission('configuration', 
     logger.info(`📥 System backup downloaded: ${dirname}`);
   } catch (error) {
     logger.error('❌ Error downloading system backup:', error);
-    res.status(500).json({
-      error: 'Failed to download system backup',
-      details: error instanceof Error ? error.message : 'Unknown error',
-    });
+    // finalize() can throw after streaming began (headers sent) — same guard.
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Failed to download system backup',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } else {
+      res.end();
+    }
   }
 });
 
