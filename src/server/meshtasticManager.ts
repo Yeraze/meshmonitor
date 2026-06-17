@@ -30,6 +30,7 @@ import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIR
 import { resolveLastHopName } from './utils/lastHop.js';
 import { scriptDependencyEnv } from './utils/scriptRunner.js';
 import { canonicalMessageTime } from './utils/messageTime.js';
+import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
@@ -1102,6 +1103,40 @@ class MeshtasticManager implements ISourceManager {
         }, this.sourceId);
       }
     }
+  }
+
+  /**
+   * Normalize a decoded protobuf metrics sub-message (device / environment /
+   * airQuality / power) into the canonical `{ type, value, unit }` rows that
+   * {@link saveTelemetryMetrics} persists.
+   *
+   * This iterates the *actual* fields the decoder produced rather than reading a
+   * hand-maintained list of camelCase property names. That matters because of
+   * the protobuf.js underscore-before-digit quirk (#3483): fields like
+   * `particles_03um` / `rainfall_1h` stay snake_case on the decoded message, so
+   * a fixed `metrics.particles03um` read returns undefined and silently drops
+   * the data. {@link canonicalTelemetryType} runs each decoded leaf through the
+   * same digit-aware `snakeToCamel` the MQTT path uses, so a new
+   * underscore-before-digit field is picked up automatically once its unit is
+   * added to `CANONICAL_TELEMETRY_UNITS` — no per-field fallback to maintain.
+   *
+   * Only numeric leaves with a known canonical unit are stored: this skips
+   * repeated/message fields (protobuf.js exposes e.g. `oneWireTemperature` as an
+   * own `[]`), Long/object values, and leaves we don't track (unit === undefined).
+   */
+  private buildCanonicalMetrics(
+    group: 'device' | 'environment' | 'airQuality' | 'power',
+    metrics: Record<string, unknown>
+  ): Array<{ type: string; value: number; unit: string }> {
+    const rows: Array<{ type: string; value: number; unit: string }> = [];
+    for (const [leaf, raw] of Object.entries(metrics)) {
+      if (typeof raw !== 'number' || !Number.isFinite(raw)) continue;
+      const type = canonicalTelemetryType(group, leaf);
+      const unit = canonicalTelemetryUnit(type);
+      if (unit === undefined) continue;
+      rows.push({ type, value: raw, unit });
+    }
+    return rows;
   }
 
   /**
@@ -6399,6 +6434,10 @@ class MeshtasticManager implements ISourceManager {
         const deviceMetrics = telemetry.deviceMetrics;
         logger.debug(`📊 Device telemetry: battery=${deviceMetrics.batteryLevel}%, voltage=${deviceMetrics.voltage}V`);
 
+        // These four are copied onto nodeData (the node-row "latest value" snapshot
+        // persisted via upsertNode below), which is a separate concern from the
+        // per-reading telemetry history rows that buildCanonicalMetrics extracts —
+        // hence the apparent duplication.
         nodeData.batteryLevel = deviceMetrics.batteryLevel;
         nodeData.voltage = deviceMetrics.voltage;
         nodeData.channelUtilization = deviceMetrics.channelUtilization;
@@ -6415,76 +6454,27 @@ class MeshtasticManager implements ISourceManager {
           this.localChannelUtilization = deviceMetrics.channelUtilization;
         }
 
-        // Save all telemetry values from actual TELEMETRY_APP packets (no deduplication)
-        if (deviceMetrics.batteryLevel !== undefined && deviceMetrics.batteryLevel !== null && !isNaN(deviceMetrics.batteryLevel)) {
-          await databaseService.telemetry.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'batteryLevel',
-            timestamp, value: deviceMetrics.batteryLevel, unit: '%', createdAt: now, packetTimestamp, packetId
-          }, this.sourceId);
-        }
-        if (deviceMetrics.voltage !== undefined && deviceMetrics.voltage !== null && !isNaN(deviceMetrics.voltage)) {
-          await databaseService.telemetry.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'voltage',
-            timestamp, value: deviceMetrics.voltage, unit: 'V', createdAt: now, packetTimestamp, packetId
-          }, this.sourceId);
-        }
-        if (deviceMetrics.channelUtilization !== undefined && deviceMetrics.channelUtilization !== null && !isNaN(deviceMetrics.channelUtilization)) {
-          await databaseService.telemetry.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'channelUtilization',
-            timestamp, value: deviceMetrics.channelUtilization, unit: '%', createdAt: now, packetTimestamp, packetId
-          }, this.sourceId);
-        }
-        if (deviceMetrics.airUtilTx !== undefined && deviceMetrics.airUtilTx !== null && !isNaN(deviceMetrics.airUtilTx)) {
-          await databaseService.telemetry.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'airUtilTx',
-            timestamp, value: deviceMetrics.airUtilTx, unit: '%', createdAt: now, packetTimestamp, packetId
-          }, this.sourceId);
-        }
-        if (deviceMetrics.uptimeSeconds !== undefined && deviceMetrics.uptimeSeconds !== null && !isNaN(deviceMetrics.uptimeSeconds)) {
-          await databaseService.telemetry.insertTelemetry({
-            nodeId, nodeNum: fromNum, telemetryType: 'uptimeSeconds',
-            timestamp, value: deviceMetrics.uptimeSeconds, unit: 's', createdAt: now, packetTimestamp, packetId
-          }, this.sourceId);
-        }
+        // Save all telemetry values from actual TELEMETRY_APP packets (no
+        // deduplication). Normalized through the shared canonical-key path so
+        // both serial and MQTT ingest write identical telemetryType/unit values.
+        await this.saveTelemetryMetrics(
+          this.buildCanonicalMetrics('device', deviceMetrics),
+          nodeId, fromNum, timestamp, packetTimestamp, packetId
+        );
       } else if (telemetry.environmentMetrics) {
         const envMetrics = telemetry.environmentMetrics;
         logger.debug(`🌡️ Environment telemetry: temp=${envMetrics.temperature}°C, humidity=${envMetrics.relativeHumidity}%`);
 
-        // Save all Environment metrics to telemetry table
-        await this.saveTelemetryMetrics([
-          // Core weather metrics
-          { type: 'temperature', value: envMetrics.temperature, unit: '°C' },
-          { type: 'humidity', value: envMetrics.relativeHumidity, unit: '%' },
-          { type: 'pressure', value: envMetrics.barometricPressure, unit: 'hPa' },
-          // Air quality related
-          { type: 'gasResistance', value: envMetrics.gasResistance, unit: 'MΩ' },
-          { type: 'iaq', value: envMetrics.iaq, unit: 'IAQ' },
-          // Light sensors
-          { type: 'lux', value: envMetrics.lux, unit: 'lux' },
-          { type: 'whiteLux', value: envMetrics.whiteLux, unit: 'lux' },
-          { type: 'irLux', value: envMetrics.irLux, unit: 'lux' },
-          { type: 'uvLux', value: envMetrics.uvLux, unit: 'lux' },
-          // Wind metrics
-          { type: 'windDirection', value: envMetrics.windDirection, unit: '°' },
-          { type: 'windSpeed', value: envMetrics.windSpeed, unit: 'm/s' },
-          { type: 'windGust', value: envMetrics.windGust, unit: 'm/s' },
-          { type: 'windLull', value: envMetrics.windLull, unit: 'm/s' },
-          // Precipitation. Same protobuf.js underscore-before-digit quirk as the
-          // particle counts: `rainfall_1h` / `rainfall_24h` stay snake_case on the
-          // decoded message, so read those with the camelCase as a fallback.
-          { type: 'rainfall1h', value: envMetrics.rainfall1h ?? envMetrics.rainfall_1h, unit: 'mm' },
-          { type: 'rainfall24h', value: envMetrics.rainfall24h ?? envMetrics.rainfall_24h, unit: 'mm' },
-          // Soil sensors
-          { type: 'soilMoisture', value: envMetrics.soilMoisture, unit: '%' },
-          { type: 'soilTemperature', value: envMetrics.soilTemperature, unit: '°C' },
-          // Other sensors
-          { type: 'radiation', value: envMetrics.radiation, unit: 'µR/h' },
-          { type: 'distance', value: envMetrics.distance, unit: 'mm' },
-          { type: 'weight', value: envMetrics.weight, unit: 'kg' },
-          // Deprecated but still supported (use PowerMetrics for new implementations)
-          { type: 'envVoltage', value: envMetrics.voltage, unit: 'V' },
-          { type: 'envCurrent', value: envMetrics.current, unit: 'A' }
-        ], nodeId, fromNum, timestamp, packetTimestamp, packetId);
+        // Save all Environment metrics to telemetry table. buildCanonicalMetrics
+        // iterates the decoded fields and normalizes each through the shared
+        // canonical-key map, so the underscore-before-digit quirk (rainfall_1h /
+        // rainfall_24h) and the leaf renames (relativeHumidity→humidity,
+        // barometricPressure→pressure, voltage→envVoltage, current→envCurrent)
+        // are handled centrally rather than with per-field fallbacks here.
+        await this.saveTelemetryMetrics(
+          this.buildCanonicalMetrics('environment', envMetrics),
+          nodeId, fromNum, timestamp, packetTimestamp, packetId
+        );
       } else if (telemetry.powerMetrics) {
         const powerMetrics = telemetry.powerMetrics;
 
@@ -6499,61 +6489,27 @@ class MeshtasticManager implements ISourceManager {
         }
         logger.debug(`⚡ Power telemetry: ${channelInfo.join(', ')}`);
 
-        // Process all 8 power channels
-        for (let ch = 1; ch <= 8; ch++) {
-          const voltageKey = `ch${ch}Voltage` as keyof typeof powerMetrics;
-          const currentKey = `ch${ch}Current` as keyof typeof powerMetrics;
-
-          // Save voltage for this channel
-          const voltage = powerMetrics[voltageKey];
-          if (voltage !== undefined && voltage !== null && !isNaN(Number(voltage))) {
-            await databaseService.telemetry.insertTelemetry({
-              nodeId, nodeNum: fromNum, telemetryType: String(voltageKey),
-              timestamp, value: Number(voltage), unit: 'V', createdAt: now, packetTimestamp, packetId
-            }, this.sourceId);
-          }
-
-          // Save current for this channel
-          const current = powerMetrics[currentKey];
-          if (current !== undefined && current !== null && !isNaN(Number(current))) {
-            await databaseService.telemetry.insertTelemetry({
-              nodeId, nodeNum: fromNum, telemetryType: String(currentKey),
-              timestamp, value: Number(current), unit: 'mA', createdAt: now, packetTimestamp, packetId
-            }, this.sourceId);
-          }
-        }
+        // Save all 8 channels' voltage/current through the shared canonical path
+        // (ch1Voltage … ch8Current, units V / mA from CANONICAL_TELEMETRY_UNITS).
+        await this.saveTelemetryMetrics(
+          this.buildCanonicalMetrics('power', powerMetrics),
+          nodeId, fromNum, timestamp, packetTimestamp, packetId
+        );
       } else if (telemetry.airQualityMetrics) {
         const aqMetrics = telemetry.airQualityMetrics;
         logger.debug(`🌬️ Air Quality telemetry: PM2.5=${aqMetrics.pm25Standard}µg/m³, CO2=${aqMetrics.co2}ppm`);
 
-        // Save all AirQuality metrics to telemetry table
-        await this.saveTelemetryMetrics([
-          // PM Standard measurements (µg/m³)
-          { type: 'pm10Standard', value: aqMetrics.pm10Standard, unit: 'µg/m³' },
-          { type: 'pm25Standard', value: aqMetrics.pm25Standard, unit: 'µg/m³' },
-          { type: 'pm100Standard', value: aqMetrics.pm100Standard, unit: 'µg/m³' },
-          // PM Environmental measurements (µg/m³)
-          { type: 'pm10Environmental', value: aqMetrics.pm10Environmental, unit: 'µg/m³' },
-          { type: 'pm25Environmental', value: aqMetrics.pm25Environmental, unit: 'µg/m³' },
-          { type: 'pm100Environmental', value: aqMetrics.pm100Environmental, unit: 'µg/m³' },
-          // Particle counts (#/0.1L).
-          // protobuf.js only camelCases an underscore followed by a *letter*, so
-          // these underscore-before-digit fields (particles_03um …) stay
-          // snake_case on the decoded message — `aqMetrics.particles03um` is
-          // undefined and the data was silently dropped. Read the snake_case form
-          // the decoder actually produces, with the camelCase as a fallback in
-          // case a future protobuf.js / keepCase config changes the shape.
-          { type: 'particles03um', value: aqMetrics.particles03um ?? aqMetrics.particles_03um, unit: '#/0.1L' },
-          { type: 'particles05um', value: aqMetrics.particles05um ?? aqMetrics.particles_05um, unit: '#/0.1L' },
-          { type: 'particles10um', value: aqMetrics.particles10um ?? aqMetrics.particles_10um, unit: '#/0.1L' },
-          { type: 'particles25um', value: aqMetrics.particles25um ?? aqMetrics.particles_25um, unit: '#/0.1L' },
-          { type: 'particles50um', value: aqMetrics.particles50um ?? aqMetrics.particles_50um, unit: '#/0.1L' },
-          { type: 'particles100um', value: aqMetrics.particles100um ?? aqMetrics.particles_100um, unit: '#/0.1L' },
-          // CO2 and related
-          { type: 'co2', value: aqMetrics.co2, unit: 'ppm' },
-          { type: 'co2Temperature', value: aqMetrics.co2Temperature, unit: '°C' },
-          { type: 'co2Humidity', value: aqMetrics.co2Humidity, unit: '%' }
-        ], nodeId, fromNum, timestamp, packetTimestamp, packetId);
+        // Save all AirQuality metrics to telemetry table. The particle counts
+        // (particles_03um … particles_100um) hit the protobuf.js
+        // underscore-before-digit quirk and stay snake_case on the decoded
+        // message; buildCanonicalMetrics normalizes each decoded leaf through the
+        // shared digit-aware map, so they're captured without per-field
+        // `?? particles_NNum` fallbacks (and new particle bins are picked up
+        // automatically once their unit is added to CANONICAL_TELEMETRY_UNITS).
+        await this.saveTelemetryMetrics(
+          this.buildCanonicalMetrics('airQuality', aqMetrics),
+          nodeId, fromNum, timestamp, packetTimestamp, packetId
+        );
       } else if (telemetry.localStats) {
         const localStats = telemetry.localStats;
         logger.debug(`📊 LocalStats telemetry: uptime=${localStats.uptimeSeconds}s, heap_free=${localStats.heapFreeBytes}B`);
