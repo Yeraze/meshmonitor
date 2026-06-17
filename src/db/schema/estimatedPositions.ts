@@ -15,7 +15,7 @@
  * Supports SQLite, PostgreSQL, and MySQL.
  */
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, real as pgReal, bigint as pgBigint } from 'drizzle-orm/pg-core';
+import { pgTable, text as pgText, doublePrecision as pgDoublePrecision, bigint as pgBigint } from 'drizzle-orm/pg-core';
 import { mysqlTable, varchar as myVarchar, double as myDouble, bigint as myBigint, int as myInt } from 'drizzle-orm/mysql-core';
 
 // SQLite schema
@@ -35,9 +35,10 @@ export const estimatedPositionsSqlite = sqliteTable('estimated_positions', {
 export const estimatedPositionsPostgres = pgTable('estimated_positions', {
   nodeNum: pgBigint('nodeNum', { mode: 'number' }).primaryKey(),
   nodeId: pgText('nodeId').notNull(),
-  latitude: pgReal('latitude').notNull(),
-  longitude: pgReal('longitude').notNull(),
-  uncertaintyKm: pgReal('uncertaintyKm'),
+  // Using doublePrecision (REAL only has ~7 significant digits, causes position rounding)
+  latitude: pgDoublePrecision('latitude').notNull(),
+  longitude: pgDoublePrecision('longitude').notNull(),
+  uncertaintyKm: pgDoublePrecision('uncertaintyKm'),
   observationCount: pgBigint('observationCount', { mode: 'number' }).notNull().default(0),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
 });

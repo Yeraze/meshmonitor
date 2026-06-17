@@ -7906,10 +7906,6 @@ class MeshtasticManager implements ISourceManager {
 
         // Validate coordinates before saving
         if (this.isValidPosition(coords.latitude, coords.longitude)) {
-          nodeData.latitude = coords.latitude;
-          nodeData.longitude = coords.longitude;
-          nodeData.altitude = nodeInfo.position.altitude;
-
           // Extract position precision if present in NodeInfo's embedded Position.
           // The protobuf decoder normalizes a missing precision_bits field to 0, so we
           // treat 0 as "absent" here and leave any existing positionPrecisionBits intact.
@@ -7919,13 +7915,39 @@ class MeshtasticManager implements ISourceManager {
           const precisionBits = nodeInfo.position.precisionBits ?? nodeInfo.position.precision_bits ?? undefined;
           const channelIndex = nodeInfo.channel !== undefined ? nodeInfo.channel : 0;
 
+          // Guard against precision downgrade (issue #3513): only update lat/lon from NodeInfo
+          // if the incoming position is not lower precision than what's already stored.
+          // NodeInfo positions may arrive reduced by the sending node's channel positionPrecision
+          // setting (firmware applies grid-snapping before broadcast). POSITION_APP packets are
+          // the authoritative source; NodeInfo should not silently downgrade them.
+          // We only skip when BOTH sides carry explicit non-zero precision info AND the incoming
+          // is clearly lower — if either side is unknown (0/null), we accept the update.
+          const storedPrecisionBits = existingNode?.positionPrecisionBits;
+          const shouldUpdateLatLon =
+            existingNode?.latitude == null || existingNode?.longitude == null || // no existing position
+            !precisionBits ||        // incoming precision unknown (0 = not set), accept
+            !storedPrecisionBits ||  // stored precision unknown, accept
+            precisionBits >= storedPrecisionBits; // incoming is same or better precision
+
+          if (shouldUpdateLatLon) {
+            nodeData.latitude = coords.latitude;
+            nodeData.longitude = coords.longitude;
+            nodeData.altitude = nodeInfo.position.altitude;
+          } else {
+            logger.debug(
+              `🗺️ Skipping NodeInfo position update for ${nodeId}: ` +
+              `incoming precision (${precisionBits} bits) < stored (${storedPrecisionBits} bits)`
+            );
+          }
+
           if (precisionBits !== undefined && precisionBits !== 0) {
             nodeData.positionPrecisionBits = precisionBits;
             nodeData.positionChannel = channelIndex;
             nodeData.positionTimestamp = Date.now();
           }
 
-          // Store position telemetry data to be inserted after node is created
+          // Always record position telemetry for history (regardless of whether the
+          // current-position columns were updated), using the actual incoming coordinates.
           const timestamp = nodeInfo.position.time ? Number(nodeInfo.position.time) * 1000 : Date.now();
           positionTelemetryData = {
             timestamp,
