@@ -1,186 +1,177 @@
 /**
  * System Routes Tests
  *
- * Tests system management functionality including Docker detection and restart
+ * Tests /system/status, /status, /version/check and /system/restart, plus the
+ * gracefulShutdown callback injection.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
-import fs from 'fs';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import request from 'supertest';
+import express from 'express';
 
-describe('System Management', () => {
-  // Mock fs.existsSync for Docker detection
-  const originalExistsSync = fs.existsSync;
-  let mockExistsSync: Mock;
+const mockManager = vi.hoisted(() => ({
+  getConnectionStatus: vi.fn(),
+  getLocalNodeInfo: vi.fn(),
+}));
+vi.mock('../meshtasticManager.js', () => ({
+  default: mockManager,
+}));
 
-  beforeEach(() => {
-    mockExistsSync = vi.fn();
-    (fs as any).existsSync = mockExistsSync;
+const mockDb = vi.hoisted(() => ({
+  getDatabaseType: vi.fn().mockReturnValue('sqlite'),
+  getDatabaseVersion: vi.fn().mockResolvedValue('3.45.0'),
+  nodes: { getNodeCount: vi.fn().mockResolvedValue(5) },
+  messages: { getMessageCount: vi.fn().mockResolvedValue(10) },
+  channels: { getChannelCount: vi.fn().mockResolvedValue(3) },
+  settings: { getSetting: vi.fn() },
+  auditLogAsync: vi.fn(),
+}));
+vi.mock('../../services/database.js', () => ({
+  default: mockDb,
+}));
+
+const mockUpgradeService = vi.hoisted(() => ({
+  isEnabled: vi.fn().mockReturnValue(false),
+  isUpgradeInProgress: vi.fn(),
+  triggerUpgrade: vi.fn(),
+}));
+vi.mock('../services/upgradeService.js', () => ({
+  upgradeService: mockUpgradeService,
+}));
+
+const mockEnv = vi.hoisted(() => ({ nodeEnv: 'test', versionCheckDisabled: false }));
+vi.mock('../config/environment.js', () => ({
+  getEnvironmentConfig: vi.fn(() => mockEnv),
+}));
+
+const mockSystemInfo = vi.hoisted(() => ({
+  serverStartTime: Date.now() - 5000,
+  isRunningInDocker: vi.fn().mockReturnValue(false),
+  compareVersions: vi.fn(),
+  checkDockerImageExists: vi.fn(),
+}));
+vi.mock('../utils/systemInfo.js', () => mockSystemInfo);
+
+vi.mock('../auth/authMiddleware.js', () => ({
+  optionalAuth: () => (req: any, _res: any, next: any) => { req.session = req.session || {}; next(); },
+  requirePermission: () => (req: any, _res: any, next: any) => { req.user = { id: 1, isAdmin: true }; next(); },
+}));
+
+import systemRoutes, { setSystemCallbacks } from './systemRoutes.js';
+
+const app = express();
+app.use(express.json());
+app.use('/', systemRoutes);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockEnv.versionCheckDisabled = false;
+  mockSystemInfo.isRunningInDocker.mockReturnValue(false);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe('GET /system/status', () => {
+  it('returns system info with capitalised db type and docker flag', async () => {
+    mockSystemInfo.isRunningInDocker.mockReturnValue(true);
+    const res = await request(app).get('/system/status');
+    expect(res.status).toBe(200);
+    expect(res.body.database).toEqual({ type: 'Sqlite', version: '3.45.0' });
+    expect(res.body.isDocker).toBe(true);
+    expect(res.body.uptimeSeconds).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('GET /status', () => {
+  it('reports connection and statistics', async () => {
+    mockManager.getConnectionStatus.mockResolvedValue({ connected: true });
+    mockManager.getLocalNodeInfo.mockReturnValue({ nodeNum: 1, nodeId: '!1', longName: 'A', shortName: 'A' });
+    const res = await request(app).get('/status');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+    expect(res.body.connection.connected).toBe(true);
+    expect(res.body.connection.localNode.nodeNum).toBe(1);
+    expect(res.body.statistics).toEqual({ nodes: 5, messages: 10, channels: 3 });
   });
 
-  afterEach(() => {
-    vi.clearAllMocks();
-    vi.useRealTimers(); // Reset timers after each test to prevent leakage
+  it('returns null localNode when none present', async () => {
+    mockManager.getConnectionStatus.mockResolvedValue({ connected: false });
+    mockManager.getLocalNodeInfo.mockReturnValue(null);
+    const res = await request(app).get('/status');
+    expect(res.status).toBe(200);
+    expect(res.body.connection.localNode).toBeNull();
+  });
+});
+
+describe('GET /version/check', () => {
+  it('returns 404 when version check is disabled', async () => {
+    mockEnv.versionCheckDisabled = true;
+    const res = await request(app).get('/version/check');
+    expect(res.status).toBe(404);
   });
 
-  afterEach(() => {
-    // Restore original fs.existsSync
-    (fs as any).existsSync = originalExistsSync;
+  // Note: GitHub API failures are NOT cached (the handler returns early), while a
+  // successful response IS cached for 5 minutes at module scope. This failure test
+  // therefore runs before the success test so it observes a fresh (uncached) miss.
+  it('handles GitHub API failure gracefully', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 403 });
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await request(app).get('/version/check');
+    expect(res.status).toBe(200);
+    expect(res.body.updateAvailable).toBe(false);
+    expect(res.body.error).toBe('Unable to check for updates');
+    vi.unstubAllGlobals();
   });
 
-  describe('isDocker Detection Logic', () => {
-    it('should detect Docker environment when /.dockerenv exists', () => {
-      mockExistsSync.mockImplementation((path: string) => {
-        return path === '/.dockerenv';
-      });
-
-      const isDocker = mockExistsSync('/.dockerenv');
-      expect(isDocker).toBe(true);
-      expect(mockExistsSync).toHaveBeenCalledWith('/.dockerenv');
+  it('reports an available update when newer and image ready', async () => {
+    mockSystemInfo.compareVersions.mockReturnValue(1);
+    mockSystemInfo.checkDockerImageExists.mockResolvedValue(true);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tag_name: 'v9.9.9',
+        html_url: 'https://example/release',
+        name: 'Release',
+        published_at: '2026-01-01T00:00:00Z',
+      }),
     });
+    vi.stubGlobal('fetch', fetchMock);
 
-    it('should not detect Docker when /.dockerenv does not exist', () => {
-      mockExistsSync.mockImplementation(() => {
-        return false;
-      });
+    const res = await request(app).get('/version/check');
+    expect(res.status).toBe(200);
+    expect(res.body.updateAvailable).toBe(true);
+    expect(res.body.latestVersion).toBe('9.9.9');
+    expect(res.body.imageReady).toBe(true);
+    vi.unstubAllGlobals();
+  });
+});
 
-      const isDocker = mockExistsSync('/.dockerenv');
-      expect(isDocker).toBe(false);
-      expect(mockExistsSync).toHaveBeenCalledWith('/.dockerenv');
-    });
+describe('POST /system/restart', () => {
+  it('returns restart action and invokes gracefulShutdown in Docker', async () => {
+    vi.useFakeTimers();
+    const gracefulShutdown = vi.fn();
+    setSystemCallbacks({ gracefulShutdown });
+    mockSystemInfo.isRunningInDocker.mockReturnValue(true);
 
-    it('should handle errors gracefully', () => {
-      mockExistsSync.mockImplementation(() => {
-        throw new Error('File system error');
-      });
-
-      // In the actual implementation, errors are caught and return false
-      expect(() => mockExistsSync('/.dockerenv')).toThrow('File system error');
-    });
+    const res = await request(app).post('/system/restart').send({});
+    expect(res.status).toBe(200);
+    expect(res.body.action).toBe('restart');
+    vi.advanceTimersByTime(500);
+    expect(gracefulShutdown).toHaveBeenCalledWith('Admin-requested container restart');
   });
 
-  describe('Graceful Shutdown Logic', () => {
-    it('should properly sequence shutdown steps', () => {
-      const shutdownSteps: string[] = [];
+  it('returns shutdown action when not in Docker', async () => {
+    vi.useFakeTimers();
+    const gracefulShutdown = vi.fn();
+    setSystemCallbacks({ gracefulShutdown });
+    mockSystemInfo.isRunningInDocker.mockReturnValue(false);
 
-      const mockServer = {
-        close: vi.fn((callback) => {
-          shutdownSteps.push('server-closed');
-          callback();
-        })
-      };
-
-      const mockMeshtastic = {
-        disconnect: vi.fn(() => {
-          shutdownSteps.push('meshtastic-disconnected');
-        })
-      };
-
-      const mockDatabase = {
-        close: vi.fn(() => {
-          shutdownSteps.push('database-closed');
-        })
-      };
-
-      // Simulate graceful shutdown sequence
-      mockServer.close(() => {
-        mockMeshtastic.disconnect();
-        mockDatabase.close();
-      });
-
-      expect(shutdownSteps).toEqual([
-        'server-closed',
-        'meshtastic-disconnected',
-        'database-closed'
-      ]);
-    });
-
-    it('should timeout if shutdown takes too long', () => {
-      vi.useRealTimers(); // Reset any existing fake timers first
-      vi.useFakeTimers();
-
-      const mockServer = {
-        close: vi.fn(() => {
-          // Never call the callback - simulate hung server
-        })
-      };
-
-      const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-
-      // Simulate shutdown with timeout
-      mockServer.close();
-
-      const timeout = setTimeout(() => {
-        process.exit(1);
-      }, 10000);
-
-      // Fast-forward time
-      vi.advanceTimersByTime(10000);
-
-      expect(mockExit).toHaveBeenCalledWith(1);
-
-      clearTimeout(timeout);
-      mockExit.mockRestore();
-      vi.useRealTimers();
-    });
-
-    it('should handle errors during shutdown gracefully', () => {
-      const mockMeshtastic = {
-        disconnect: vi.fn(() => {
-          throw new Error('Meshtastic error');
-        })
-      };
-
-      const mockDatabase = {
-        close: vi.fn(() => {
-          throw new Error('Database error');
-        })
-      };
-
-      // Shutdown should continue even if components error
-      expect(() => {
-        try {
-          mockMeshtastic.disconnect();
-        } catch (e) {
-          // Caught and logged
-        }
-        try {
-          mockDatabase.close();
-        } catch (e) {
-          // Caught and logged
-        }
-      }).not.toThrow();
-    });
-  });
-
-  describe('Restart API Response', () => {
-    it('should return correct response for Docker restart', () => {
-      const isDocker = true;
-      const response = {
-        success: true,
-        message: isDocker ? 'Container will restart now' : 'MeshMonitor will shut down now',
-        action: isDocker ? 'restart' : 'shutdown'
-      };
-
-      expect(response).toMatchObject({
-        success: true,
-        action: 'restart',
-        message: 'Container will restart now'
-      });
-    });
-
-    it('should return correct response for non-Docker shutdown', () => {
-      const isDocker = false;
-      const response = {
-        success: true,
-        message: isDocker ? 'Container will restart now' : 'MeshMonitor will shut down now',
-        action: isDocker ? 'restart' : 'shutdown'
-      };
-
-      expect(response).toMatchObject({
-        success: true,
-        action: 'shutdown',
-        message: 'MeshMonitor will shut down now'
-      });
-    });
+    const res = await request(app).post('/system/restart').send({});
+    expect(res.status).toBe(200);
+    expect(res.body.action).toBe('shutdown');
+    vi.advanceTimersByTime(500);
+    expect(gracefulShutdown).toHaveBeenCalledWith('Admin-requested shutdown');
   });
 });
