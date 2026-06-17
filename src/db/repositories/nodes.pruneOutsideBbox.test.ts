@@ -8,79 +8,10 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { NodesRepository } from './nodes.js';
+import { createTestDb, type TestDb } from '../../server/test-helpers/testDb.js';
 import {
   TestBackend,
-  createSqliteBackend,
 } from './test-utils.js';
-
-// Mirrors the canonical SQLite schema used by src/db/repositories/nodes.test.ts.
-// Keep in sync if columns are added there.
-const SQLITE_CREATE = `
-  CREATE TABLE IF NOT EXISTS nodes (
-    nodeNum INTEGER NOT NULL,
-    nodeId TEXT NOT NULL,
-    longName TEXT,
-    shortName TEXT,
-    hwModel INTEGER,
-    role INTEGER,
-    hopsAway INTEGER,
-    lastMessageHops INTEGER,
-    viaMqtt INTEGER DEFAULT 0,
-    transportMechanism INTEGER,
-    macaddr TEXT,
-    latitude REAL,
-    longitude REAL,
-    altitude REAL,
-    batteryLevel INTEGER,
-    voltage REAL,
-    channelUtilization REAL,
-    airUtilTx REAL,
-    lastHeard INTEGER,
-    snr REAL,
-    rssi INTEGER,
-    lastTracerouteRequest INTEGER,
-    firmwareVersion TEXT,
-    channel INTEGER,
-    isFavorite INTEGER DEFAULT 0,
-    favoriteLocked INTEGER DEFAULT 0,
-    isIgnored INTEGER DEFAULT 0,
-    mobile INTEGER DEFAULT 0,
-    rebootCount INTEGER,
-    publicKey TEXT,
-    lastMeshReceivedKey TEXT,
-    hasPKC INTEGER,
-    lastPKIPacket INTEGER,
-    keyIsLowEntropy INTEGER,
-    duplicateKeyDetected INTEGER,
-    keyMismatchDetected INTEGER,
-    keySecurityIssueDetails TEXT,
-    isExcessivePackets INTEGER DEFAULT 0,
-    packetRatePerHour INTEGER,
-    packetRateLastChecked INTEGER,
-    isTimeOffsetIssue INTEGER DEFAULT 0,
-    timeOffsetSeconds INTEGER,
-    welcomedAt INTEGER,
-    positionChannel INTEGER,
-    positionPrecisionBits INTEGER,
-    positionGpsAccuracy REAL,
-    positionHdop REAL,
-    positionTimestamp INTEGER,
-    positionOverrideEnabled INTEGER DEFAULT 0,
-    latitudeOverride REAL,
-    longitudeOverride REAL,
-    altitudeOverride REAL,
-    positionOverrideIsPrivate INTEGER DEFAULT 0,
-    hasRemoteAdmin INTEGER DEFAULT 0,
-    lastRemoteAdminCheck INTEGER,
-    remoteAdminMetadata TEXT,
-    lastTimeSync INTEGER,
-    isStoreForwardServer INTEGER DEFAULT 0,
-    createdAt INTEGER NOT NULL,
-    updatedAt INTEGER NOT NULL,
-    sourceId TEXT NOT NULL DEFAULT 'default',
-    PRIMARY KEY (nodeNum, sourceId)
-  )
-`;
 
 // Florida bbox roughly matching the Florida MQTT bridge config in production.
 const FL_BBOX = { minLat: 24.33, maxLat: 27.53, minLng: -81.30, maxLng: -77.67 };
@@ -105,11 +36,19 @@ function makePositionedNode(
 }
 
 describe('NodesRepository.pruneNodesOutsideBbox', () => {
+  let testDb: TestDb;
   let backend: TestBackend;
   let repo: NodesRepository;
 
   beforeEach(() => {
-    backend = createSqliteBackend(SQLITE_CREATE);
+    testDb = createTestDb();
+    backend = {
+      dbType: 'sqlite',
+      drizzleDb: testDb.db,
+      exec: async (sql: string) => { testDb.sqlite.exec(sql); },
+      close: async () => { testDb.close(); },
+      available: true,
+    };
     repo = new NodesRepository(backend.drizzleDb, backend.dbType);
   });
 

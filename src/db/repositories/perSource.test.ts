@@ -8,111 +8,30 @@
  * SQLite-only — runs in-memory, fast, no external services.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
+import type Database from 'better-sqlite3';
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import * as schema from '../schema/index.js';
 import { SettingsRepository } from './settings.js';
 import { MiscRepository } from './misc.js';
 import { NodesRepository } from './nodes.js';
-
-// ---------------------------------------------------------------------------
-// In-memory SQLite test harness with the actual columns the repos use,
-// including the post-migration sourceId columns and composite uniques.
-// ---------------------------------------------------------------------------
-const SCHEMA_SQL = `
-  CREATE TABLE settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    createdAt INTEGER NOT NULL,
-    updatedAt INTEGER NOT NULL
-  );
-
-  -- Phase 2b — composite unique allows same nodeNum across sources
-  CREATE TABLE auto_traceroute_nodes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nodeNum INTEGER NOT NULL,
-    enabled INTEGER DEFAULT 1,
-    createdAt INTEGER NOT NULL,
-    sourceId TEXT,
-    UNIQUE(nodeNum, sourceId)
-  );
-
-  CREATE TABLE auto_traceroute_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp INTEGER NOT NULL,
-    to_node_num INTEGER NOT NULL,
-    to_node_name TEXT,
-    success INTEGER,
-    created_at INTEGER,
-    sourceId TEXT
-  );
-
-  -- Phase 2c — auto time sync mirrors auto-traceroute
-  CREATE TABLE auto_time_sync_nodes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nodeNum INTEGER NOT NULL,
-    enabled INTEGER DEFAULT 1,
-    createdAt INTEGER NOT NULL,
-    sourceId TEXT,
-    UNIQUE(nodeNum, sourceId)
-  );
-
-  -- Phase 2d
-  CREATE TABLE auto_distance_delete_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp INTEGER NOT NULL,
-    nodes_deleted INTEGER NOT NULL,
-    threshold_km REAL NOT NULL,
-    details TEXT,
-    created_at INTEGER,
-    sourceId TEXT
-  );
-
-  -- Phase 2e
-  CREATE TABLE auto_key_repair_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp INTEGER NOT NULL,
-    nodeNum INTEGER NOT NULL,
-    nodeName TEXT,
-    action TEXT NOT NULL,
-    success INTEGER,
-    created_at INTEGER,
-    oldKeyFragment TEXT,
-    newKeyFragment TEXT,
-    sourceId TEXT
-  );
-
-  -- Phase 2f — minimal nodes table covering the columns markAllNodesAsWelcomed touches
-  CREATE TABLE nodes (
-    nodeNum INTEGER PRIMARY KEY,
-    nodeId TEXT NOT NULL UNIQUE,
-    longName TEXT,
-    shortName TEXT,
-    welcomedAt INTEGER,
-    createdAt INTEGER NOT NULL,
-    updatedAt INTEGER NOT NULL,
-    sourceId TEXT
-  );
-`;
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 interface Harness {
   raw: Database.Database;
-  drizzleDb: any;
+  drizzleDb: BetterSQLite3Database<typeof schema>;
   settings: SettingsRepository;
   misc: MiscRepository;
   nodes: NodesRepository;
 }
 
 function createHarness(): Harness {
-  const raw = new Database(':memory:');
-  raw.exec(SCHEMA_SQL);
-  const drizzleDb = drizzle(raw, { schema });
+  const t = createTestDb();
   return {
-    raw,
-    drizzleDb,
-    settings: new SettingsRepository(drizzleDb, 'sqlite'),
-    misc: new MiscRepository(drizzleDb, 'sqlite'),
-    nodes: new NodesRepository(drizzleDb, 'sqlite'),
+    raw: t.sqlite,
+    drizzleDb: t.db,
+    settings: new SettingsRepository(t.db, 'sqlite'),
+    misc: new MiscRepository(t.db, 'sqlite'),
+    nodes: new NodesRepository(t.db, 'sqlite'),
   };
 }
 
@@ -339,7 +258,7 @@ describe('per-source isolation (Phase 2a–2f)', () => {
   // Phase 2f — markAllNodesAsWelcomed scoping
   // -------------------------------------------------------------------------
   describe('Phase 2f — markAllNodesAsWelcomed per-source', () => {
-    function seedNode(nodeNum: number, nodeId: string, sourceId: string | null) {
+    function seedNode(nodeNum: number, nodeId: string, sourceId: string) {
       h.raw.prepare(`
         INSERT INTO nodes (nodeNum, nodeId, longName, welcomedAt, createdAt, updatedAt, sourceId)
         VALUES (?, ?, ?, NULL, ?, ?, ?)
@@ -364,7 +283,7 @@ describe('per-source isolation (Phase 2a–2f)', () => {
     it('without sourceId marks ALL nodes as welcomed', async () => {
       seedNode(1, '!00000001', 'A');
       seedNode(2, '!00000002', 'B');
-      seedNode(3, '!00000003', null);
+      seedNode(3, '!00000003', 'C');
 
       const updated = await h.nodes.markAllNodesAsWelcomed();
       expect(updated).toBe(3);

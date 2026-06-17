@@ -12,80 +12,16 @@
  * because bcrypt is too slow for unit tests.
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
-import * as schema from '../schema/index.js';
 import { AuthRepository } from './auth.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 import {
   TestBackend,
-  createSqliteBackend,
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
   postgresAvailable,
   mysqlAvailable,
 } from './test-utils.js';
-
-// SQL for creating all auth tables per backend (no FK constraints in tests)
-// SQLite uses snake_case column names; PostgreSQL/MySQL use camelCase
-const SQLITE_CREATE = `
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT,
-    email TEXT,
-    display_name TEXT,
-    auth_provider TEXT NOT NULL DEFAULT 'local',
-    oidc_subject TEXT,
-    is_admin INTEGER NOT NULL DEFAULT 0,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    password_locked INTEGER DEFAULT 0,
-    mfa_enabled INTEGER NOT NULL DEFAULT 0,
-    mfa_secret TEXT,
-    mfa_backup_codes TEXT,
-    created_at INTEGER NOT NULL,
-    last_login_at INTEGER
-  );
-  CREATE TABLE IF NOT EXISTS permissions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    resource TEXT NOT NULL,
-    can_view_on_map INTEGER NOT NULL DEFAULT 0,
-    can_read INTEGER NOT NULL DEFAULT 0,
-    can_write INTEGER NOT NULL DEFAULT 0,
-    granted_at INTEGER NOT NULL,
-    granted_by INTEGER,
-    sourceId TEXT
-  );
-  CREATE TABLE IF NOT EXISTS sessions (
-    sid TEXT PRIMARY KEY,
-    sess TEXT NOT NULL,
-    expire INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS audit_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    username TEXT,
-    action TEXT NOT NULL,
-    resource TEXT,
-    details TEXT,
-    ip_address TEXT,
-    user_agent TEXT,
-    timestamp INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS api_tokens (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    token_hash TEXT NOT NULL UNIQUE,
-    prefix TEXT NOT NULL,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    created_at INTEGER NOT NULL,
-    last_used_at INTEGER,
-    expires_at INTEGER,
-    created_by INTEGER,
-    revoked_at INTEGER,
-    revoked_by INTEGER
-  )
-`;
 
 const POSTGRES_CREATE = `
   DROP TABLE IF EXISTS api_tokens CASCADE;
@@ -851,7 +787,14 @@ describe('AuthRepository - SQLite Backend', () => {
   let backend: TestBackend;
 
   beforeEach(() => {
-    backend = createSqliteBackend(SQLITE_CREATE);
+    const t = createTestDb();
+    backend = {
+      dbType: 'sqlite',
+      drizzleDb: t.db,
+      exec: async (sql: string) => { t.sqlite.exec(sql); },
+      close: async () => { t.close(); },
+      available: true,
+    };
   });
 
   afterEach(async () => {

@@ -5,11 +5,12 @@
  * asserts source isolation (two sources sharing a targetNodeNum never leak).
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
-import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import type Database from 'better-sqlite3';
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { AutoFavoriteTargetsRepository } from './autoFavoriteTargets.js';
 import type { AutoFavoriteTargetInput } from './autoFavoriteTargets.js';
 import * as schema from '../schema/index.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 function baseConfig(overrides: Partial<AutoFavoriteTargetInput> = {}): AutoFavoriteTargetInput {
   return {
@@ -33,43 +34,9 @@ describe('AutoFavoriteTargetsRepository', () => {
   let repo: AutoFavoriteTargetsRepository;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    db.exec(`
-      CREATE TABLE auto_favorite_targets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sourceId TEXT NOT NULL,
-        targetNodeNum INTEGER NOT NULL,
-        enabled INTEGER NOT NULL DEFAULT 0,
-        useNeighborInfo INTEGER NOT NULL DEFAULT 1,
-        useTraceroutes INTEGER NOT NULL DEFAULT 1,
-        intervalHours INTEGER NOT NULL DEFAULT 24,
-        maxNewPerCycle INTEGER NOT NULL DEFAULT 1,
-        maxRefavoritePerCycle INTEGER NOT NULL DEFAULT 1,
-        maxNeighborAgeHours INTEGER NOT NULL DEFAULT 24,
-        eligibleRoles TEXT NOT NULL DEFAULT '[2,11,12]',
-        lastRunAt INTEGER,
-        lastNeighborRequestAt INTEGER,
-        createdAt INTEGER NOT NULL,
-        updatedAt INTEGER NOT NULL
-      )
-    `);
-    db.exec(`CREATE UNIQUE INDEX aft_source_target_uniq ON auto_favorite_targets(sourceId, targetNodeNum)`);
-    db.exec(`
-      CREATE TABLE auto_favorite_assignments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sourceId TEXT NOT NULL,
-        targetNodeNum INTEGER NOT NULL,
-        favoriteNodeNum INTEGER NOT NULL,
-        discoverySource TEXT,
-        firstAssignedAt INTEGER NOT NULL,
-        lastAssignedAt INTEGER NOT NULL,
-        lastAckStatus TEXT,
-        lastAckAt INTEGER
-      )
-    `);
-    db.exec(`CREATE UNIQUE INDEX afa_source_target_fav_uniq ON auto_favorite_assignments(sourceId, targetNodeNum, favoriteNodeNum)`);
-
-    drizzleDb = drizzle(db, { schema });
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
     repo = new AutoFavoriteTargetsRepository(drizzleDb, 'sqlite');
   });
 

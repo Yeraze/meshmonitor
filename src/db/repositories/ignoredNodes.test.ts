@@ -18,29 +18,18 @@ import * as schema from '../schema/index.js';
 import { IgnoredNodesRepository } from './ignoredNodes.js';
 import {
   TestBackend,
-  createSqliteBackend,
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
   postgresAvailable,
   mysqlAvailable,
 } from './test-utils.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 const SRC_A = 'source-a';
 const SRC_B = 'source-b';
 
-const SQLITE_CREATE = `
-  CREATE TABLE IF NOT EXISTS ignored_nodes (
-    nodeNum INTEGER NOT NULL,
-    sourceId TEXT NOT NULL,
-    nodeId TEXT NOT NULL,
-    longName TEXT,
-    shortName TEXT,
-    ignoredBy TEXT,
-    ignoredAt INTEGER NOT NULL,
-    PRIMARY KEY (nodeNum, sourceId)
-  )
-`;
+// Note: SQLite DDL is now provided by createTestDb() via the migration registry.
 
 const POSTGRES_CREATE = `
   DROP TABLE IF EXISTS ignored_nodes CASCADE;
@@ -308,7 +297,22 @@ describe('IgnoredNodesRepository - SQLite Backend', () => {
   let backend: TestBackend;
 
   beforeEach(() => {
-    backend = createSqliteBackend(SQLITE_CREATE);
+    const t = createTestDb();
+    // Seed the sources referenced by SRC_A and SRC_B so the FK from
+    // ignored_nodes.sourceId → sources.id (migration 048) is satisfied.
+    t.sqlite.prepare(
+      `INSERT OR IGNORE INTO sources (id, name, type, config, createdAt, updatedAt) VALUES (?, ?, 'meshtastic_tcp', '{}', 0, 0)`,
+    ).run(SRC_A, SRC_A);
+    t.sqlite.prepare(
+      `INSERT OR IGNORE INTO sources (id, name, type, config, createdAt, updatedAt) VALUES (?, ?, 'meshtastic_tcp', '{}', 0, 0)`,
+    ).run(SRC_B, SRC_B);
+    backend = {
+      dbType: 'sqlite',
+      drizzleDb: t.db,
+      exec: async (sql: string) => { t.sqlite.exec(sql); },
+      close: async () => { t.close(); },
+      available: true,
+    };
   });
 
   afterEach(async () => {

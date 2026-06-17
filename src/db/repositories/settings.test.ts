@@ -13,24 +13,17 @@ import * as schema from '../schema/index.js';
 import { SettingsRepository } from './settings.js';
 import {
   TestBackend,
-  createSqliteBackend,
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
   postgresAvailable,
   mysqlAvailable,
 } from './test-utils.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
-// SQL for creating the settings table per backend
-const SQLITE_CREATE = `
-  CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    createdAt INTEGER NOT NULL,
-    updatedAt INTEGER NOT NULL
-  )
-`;
+// Note: SQLite DDL is now provided by createTestDb() via the migration registry.
 
+// SQL for creating the settings table per backend (PostgreSQL and MySQL only)
 const POSTGRES_CREATE = `
   DROP TABLE IF EXISTS settings CASCADE;
   CREATE TABLE settings (
@@ -262,7 +255,14 @@ describe('SettingsRepository - SQLite Backend', () => {
   let backend: TestBackend;
 
   beforeEach(() => {
-    backend = createSqliteBackend(SQLITE_CREATE);
+    const t = createTestDb();
+    backend = {
+      dbType: 'sqlite',
+      drizzleDb: t.db,
+      exec: async (sql: string) => { t.sqlite.exec(sql); },
+      close: async () => { t.close(); },
+      available: true,
+    };
   });
 
   afterEach(async () => {

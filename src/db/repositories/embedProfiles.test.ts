@@ -4,47 +4,21 @@
  * Tests for the EmbedProfileRepository CRUD operations.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
-import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { EmbedProfileRepository } from './embedProfiles.js';
 import type { EmbedProfileInput } from './embedProfiles.js';
 import * as schema from '../schema/index.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 describe('EmbedProfileRepository', () => {
-  let db: Database.Database;
+  let db: ReturnType<typeof createTestDb>['sqlite'];
   let drizzleDb: BetterSQLite3Database<typeof schema>;
   let repo: EmbedProfileRepository;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-
-    // Create the embed_profiles table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS embed_profiles (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        enabled INTEGER NOT NULL DEFAULT 1,
-        channels TEXT NOT NULL DEFAULT '[]',
-        tileset TEXT NOT NULL DEFAULT 'osm',
-        defaultLat REAL NOT NULL DEFAULT 0,
-        defaultLng REAL NOT NULL DEFAULT 0,
-        defaultZoom INTEGER NOT NULL DEFAULT 10,
-        showTooltips INTEGER NOT NULL DEFAULT 1,
-        showPopups INTEGER NOT NULL DEFAULT 1,
-        showLegend INTEGER NOT NULL DEFAULT 1,
-        showPaths INTEGER NOT NULL DEFAULT 0,
-        showNeighborInfo INTEGER NOT NULL DEFAULT 0,
-        showTraceroutes INTEGER NOT NULL DEFAULT 0,
-        showMqttNodes INTEGER NOT NULL DEFAULT 1,
-        pollIntervalSeconds INTEGER NOT NULL DEFAULT 30,
-        allowedOrigins TEXT NOT NULL DEFAULT '[]',
-        sourceId TEXT,
-        createdAt INTEGER NOT NULL,
-        updatedAt INTEGER NOT NULL
-      )
-    `);
-
-    drizzleDb = drizzle(db, { schema });
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
     repo = new EmbedProfileRepository(drizzleDb, 'sqlite');
   });
 

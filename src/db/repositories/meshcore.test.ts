@@ -5,10 +5,11 @@
  * `meshcore_messages` must be stamped with its owning sourceId.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
-import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import type Database from 'better-sqlite3';
+import { type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { MeshCoreRepository } from './meshcore.js';
 import * as schema from '../schema/index.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 describe('MeshCoreRepository — sourceId stamping', () => {
   let db: Database.Database;
@@ -16,64 +17,9 @@ describe('MeshCoreRepository — sourceId stamping', () => {
   let repo: MeshCoreRepository;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-
-    // Match the post-migration-056 schema.
-    db.exec(`
-      CREATE TABLE meshcore_nodes (
-        publicKey TEXT PRIMARY KEY,
-        name TEXT,
-        advType INTEGER,
-        txPower INTEGER,
-        maxTxPower INTEGER,
-        radioFreq REAL,
-        radioBw REAL,
-        radioSf INTEGER,
-        radioCr INTEGER,
-        latitude REAL,
-        longitude REAL,
-        altitude REAL,
-        batteryMv INTEGER,
-        uptimeSecs INTEGER,
-        rssi INTEGER,
-        snr REAL,
-        lastHeard INTEGER,
-        hasAdminAccess INTEGER DEFAULT 0,
-        lastAdminCheck INTEGER,
-        isLocalNode INTEGER DEFAULT 0,
-        sourceId TEXT,
-        telemetryEnabled INTEGER DEFAULT 0,
-        telemetryIntervalMinutes INTEGER DEFAULT 60,
-        lastTelemetryRequestAt INTEGER,
-        out_path TEXT,
-        path_len INTEGER,
-        adminCredential TEXT,
-        roomSyncEnabled INTEGER DEFAULT 0,
-        roomSyncIntervalMinutes INTEGER DEFAULT 60,
-        lastRoomSyncAt INTEGER,
-        lastRoomPostAt INTEGER,
-        roomCredential TEXT,
-        createdAt INTEGER NOT NULL,
-        updatedAt INTEGER NOT NULL
-      );
-      CREATE TABLE meshcore_messages (
-        id TEXT PRIMARY KEY,
-        fromPublicKey TEXT NOT NULL,
-        fromName TEXT,
-        toPublicKey TEXT,
-        text TEXT NOT NULL,
-        timestamp INTEGER NOT NULL,
-        rssi INTEGER,
-        snr INTEGER,
-        messageType TEXT DEFAULT 'text',
-        delivered INTEGER DEFAULT 0,
-        deliveredAt INTEGER,
-        sourceId TEXT,
-        createdAt INTEGER NOT NULL
-      );
-    `);
-
-    drizzleDb = drizzle(db, { schema });
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
     repo = new MeshCoreRepository(drizzleDb, 'sqlite');
   });
 

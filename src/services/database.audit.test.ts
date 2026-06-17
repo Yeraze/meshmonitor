@@ -8,66 +8,18 @@
  * - Cleaning up old audit logs
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
+import { createTestDb } from '../server/test-helpers/testDb.js';
+import type { TestDb } from '../server/test-helpers/testDb.js';
 
 // Create a test database service with audit functionality
-const createTestDatabase = () => {
-  const Database = require('better-sqlite3');
-
+const createTestDatabase = (sqlite: Database.Database) => {
   class TestDatabaseService {
     public db: Database.Database;
 
-    constructor() {
-      this.db = new Database(':memory:');
-      this.db.pragma('foreign_keys = ON');
-      this.createTables();
-    }
-
-    private createTables(): void {
-      // Users table
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS users (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          username TEXT UNIQUE NOT NULL,
-          password_hash TEXT,
-          email TEXT,
-          display_name TEXT,
-          auth_provider TEXT NOT NULL DEFAULT 'local',
-          oidc_sub TEXT,
-          is_admin INTEGER NOT NULL DEFAULT 0,
-          is_active INTEGER NOT NULL DEFAULT 1,
-          created_at INTEGER NOT NULL,
-          last_login_at INTEGER,
-          CHECK (is_admin IN (0, 1)),
-          CHECK (is_active IN (0, 1)),
-          CHECK (auth_provider IN ('local', 'oidc'))
-        )
-      `);
-
-      // Audit log table with enhanced columns
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS audit_log (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id INTEGER,
-          action TEXT NOT NULL,
-          resource TEXT,
-          details TEXT,
-          ip_address TEXT,
-          value_before TEXT,
-          value_after TEXT,
-          timestamp INTEGER NOT NULL,
-          FOREIGN KEY (user_id) REFERENCES users(id)
-        )
-      `);
-
-      // Indexes for performance
-      this.db.exec(`
-        CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp DESC);
-        CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id);
-        CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
-        CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(resource);
-      `);
+    constructor(db: Database.Database) {
+      this.db = db;
     }
 
     auditLog(
@@ -225,22 +177,28 @@ const createTestDatabase = () => {
     }
   }
 
-  return new TestDatabaseService();
+  return new TestDatabaseService(sqlite);
 };
 
 describe('Audit Log Database Methods', () => {
+  let t: TestDb;
   let db: any;
   let testUserId: number;
 
   beforeEach(() => {
-    db = createTestDatabase();
+    t = createTestDb();
+    db = createTestDatabase(t.sqlite);
 
     // Create test user
-    const result = db.db.prepare(`
+    const result = t.sqlite.prepare(`
       INSERT INTO users (username, email, auth_provider, is_admin, created_at)
       VALUES (?, ?, ?, ?, ?)
     `).run('testuser', 'test@example.com', 'local', 0, Date.now());
     testUserId = result.lastInsertRowid as number;
+  });
+
+  afterEach(() => {
+    t.close();
   });
 
   describe('auditLog()', () => {
@@ -253,7 +211,7 @@ describe('Audit Log Database Methods', () => {
         '192.168.1.1'
       );
 
-      const logs = db.db.prepare('SELECT * FROM audit_log').all();
+      const logs = t.sqlite.prepare('SELECT * FROM audit_log').all();
       expect(logs).toHaveLength(1);
       expect(logs[0].user_id).toBe(testUserId);
       expect(logs[0].action).toBe('login_success');
@@ -276,7 +234,7 @@ describe('Audit Log Database Methods', () => {
         after
       );
 
-      const logs = db.db.prepare('SELECT * FROM audit_log').all();
+      const logs = t.sqlite.prepare('SELECT * FROM audit_log').all();
       expect(logs).toHaveLength(1);
       expect(logs[0].value_before).toBe(before);
       expect(logs[0].value_after).toBe(after);
@@ -291,7 +249,7 @@ describe('Audit Log Database Methods', () => {
         null
       );
 
-      const logs = db.db.prepare('SELECT * FROM audit_log').all();
+      const logs = t.sqlite.prepare('SELECT * FROM audit_log').all();
       expect(logs).toHaveLength(1);
       expect(logs[0].user_id).toBeNull();
     });
@@ -301,7 +259,7 @@ describe('Audit Log Database Methods', () => {
       db.auditLog(testUserId, 'test_action', null, null, null);
       const afterTime = Date.now();
 
-      const logs = db.db.prepare('SELECT * FROM audit_log').all();
+      const logs = t.sqlite.prepare('SELECT * FROM audit_log').all();
       expect(logs[0].timestamp).toBeGreaterThanOrEqual(beforeTime);
       expect(logs[0].timestamp).toBeLessThanOrEqual(afterTime);
     });
@@ -315,7 +273,7 @@ describe('Audit Log Database Methods', () => {
       db.auditLog(testUserId, 'logout', 'auth', 'User logged out', '192.168.1.1');
 
       // Create another user for filtering tests
-      const user2Result = db.db.prepare(`
+      const user2Result = t.sqlite.prepare(`
         INSERT INTO users (username, email, auth_provider, is_admin, created_at)
         VALUES (?, ?, ?, ?, ?)
       `).run('user2', 'user2@example.com', 'local', 0, Date.now());
@@ -446,7 +404,7 @@ describe('Audit Log Database Methods', () => {
 
       // Add an old entry
       const oldTimestamp = Date.now() - (60 * 24 * 60 * 60 * 1000); // 60 days ago
-      db.db.prepare(`
+      t.sqlite.prepare(`
         INSERT INTO audit_log (user_id, action, resource, details, ip_address, timestamp)
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(testUserId, 'old_action', 'test', 'Old entry', '192.168.1.1', oldTimestamp);
@@ -467,31 +425,31 @@ describe('Audit Log Database Methods', () => {
 
       // Create old entries
       const oldTimestamp = Date.now() - (100 * 24 * 60 * 60 * 1000); // 100 days ago
-      db.db.prepare(`
+      t.sqlite.prepare(`
         INSERT INTO audit_log (user_id, action, resource, details, ip_address, timestamp)
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(testUserId, 'old1', 'test', 'Old 1', '192.168.1.1', oldTimestamp);
-      db.db.prepare(`
+      t.sqlite.prepare(`
         INSERT INTO audit_log (user_id, action, resource, details, ip_address, timestamp)
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(testUserId, 'old2', 'test', 'Old 2', '192.168.1.1', oldTimestamp);
     });
 
     it('should delete logs older than specified days', () => {
-      const beforeCount = db.db.prepare('SELECT COUNT(*) as count FROM audit_log').get().count;
-      expect(beforeCount).toBe(4);
+      const beforeCount = t.sqlite.prepare('SELECT COUNT(*) as count FROM audit_log').get() as { count: number };
+      expect(beforeCount.count).toBe(4);
 
       const deleted = db.cleanupAuditLogs(90);
       expect(deleted).toBe(2);
 
-      const afterCount = db.db.prepare('SELECT COUNT(*) as count FROM audit_log').get().count;
-      expect(afterCount).toBe(2);
+      const afterCount = t.sqlite.prepare('SELECT COUNT(*) as count FROM audit_log').get() as { count: number };
+      expect(afterCount.count).toBe(2);
     });
 
     it('should keep recent logs', () => {
       db.cleanupAuditLogs(90);
 
-      const recentLogs = db.db.prepare('SELECT * FROM audit_log').all();
+      const recentLogs = t.sqlite.prepare('SELECT * FROM audit_log').all();
       expect(recentLogs).toHaveLength(2);
       recentLogs.forEach((log: any) => {
         expect(log.action).toMatch(/^recent/);

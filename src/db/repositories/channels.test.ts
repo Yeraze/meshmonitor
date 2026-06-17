@@ -13,43 +13,18 @@ import * as schema from '../schema/index.js';
 import { ChannelsRepository } from './channels.js';
 import {
   TestBackend,
-  createSqliteBackend,
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
   postgresAvailable,
   mysqlAvailable,
 } from './test-utils.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 // SQL for creating the channels + sources tables per backend.
 // `sources` is required because cleanupInvalidChannels reads source.type to
 // exempt MeshCore-owned channels from the 0-7 slot cap.
-const SQLITE_CREATE = `
-  CREATE TABLE IF NOT EXISTS channels (
-    pk INTEGER PRIMARY KEY AUTOINCREMENT,
-    id INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    psk TEXT,
-    role INTEGER DEFAULT 0,
-    uplinkEnabled INTEGER DEFAULT 0,
-    downlinkEnabled INTEGER DEFAULT 0,
-    positionPrecision INTEGER DEFAULT 0,
-    createdAt INTEGER NOT NULL DEFAULT 0,
-    updatedAt INTEGER NOT NULL DEFAULT 0,
-    sourceId TEXT,
-    UNIQUE(sourceId, id)
-  );
-  CREATE TABLE IF NOT EXISTS sources (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    type TEXT NOT NULL,
-    config TEXT NOT NULL DEFAULT '{}',
-    enabled INTEGER NOT NULL DEFAULT 1,
-    createdAt INTEGER NOT NULL DEFAULT 0,
-    updatedAt INTEGER NOT NULL DEFAULT 0,
-    createdBy INTEGER
-  );
-`;
+// Note: SQLite DDL is now provided by createTestDb() via the migration registry.
 
 const POSTGRES_CREATE = `
   DROP TABLE IF EXISTS channels CASCADE;
@@ -326,14 +301,16 @@ function runChannelsTests(getBackend: () => TestBackend) {
       return;
     }
 
+    const [cat, uat] = backend.dbType === 'postgres' ? ['"createdAt"', '"updatedAt"'] : ['createdAt', 'updatedAt'];
+
     await repo.upsertChannel({ id: 0, name: 'Primary', psk: 'p0', role: 1 });
     await repo.upsertChannel({ id: 5, name: 'Valid', psk: 'p5', role: 2 });
     await repo.upsertChannel({ id: 7, name: 'MaxValid', psk: 'p7', role: 2 });
 
     // Insert invalid channels via raw SQL (IDs outside 0-7)
     const backend2 = getBackend();
-    await backend2.exec(`INSERT INTO channels (id, name, psk, role) VALUES (8, 'Invalid8', 'psk', 2)`);
-    await backend2.exec(`INSERT INTO channels (id, name, psk, role) VALUES (100, 'Invalid100', 'psk', 2)`);
+    await backend2.exec(`INSERT INTO channels (id, name, psk, role, ${cat}, ${uat}) VALUES (8, 'Invalid8', 'psk', 2, 0, 0)`);
+    await backend2.exec(`INSERT INTO channels (id, name, psk, role, ${cat}, ${uat}) VALUES (100, 'Invalid100', 'psk', 2, 0, 0)`);
 
     expect(await repo.getChannelCount()).toBe(5);
 
@@ -373,18 +350,19 @@ function runChannelsTests(getBackend: () => TestBackend) {
     // MySQL's default sql_mode treats "..." as a string literal, not an
     // identifier. So `sourceId` needs dialect-specific quoting on the raw SQL
     // path. SQLite is happy either way.
+    const [cat, uat] = backend.dbType === 'postgres' ? ['"createdAt"', '"updatedAt"'] : ['createdAt', 'updatedAt'];
     const sourceIdCol = backend.dbType === 'postgres' ? '"sourceId"' : 'sourceId';
 
     // Set up two sources: one MeshCore, one Meshtastic.
-    await backend.exec(`INSERT INTO sources (id, name, type, config) VALUES ('mc-1', 'My MeshCore', 'meshcore', '{}')`);
-    await backend.exec(`INSERT INTO sources (id, name, type, config) VALUES ('mt-1', 'My Meshtastic', 'meshtastic_tcp', '{}')`);
+    await backend.exec(`INSERT INTO sources (id, name, type, config, ${cat}, ${uat}) VALUES ('mc-1', 'My MeshCore', 'meshcore', '{}', 0, 0)`);
+    await backend.exec(`INSERT INTO sources (id, name, type, config, ${cat}, ${uat}) VALUES ('mt-1', 'My Meshtastic', 'meshtastic_tcp', '{}', 0, 0)`);
 
     // MeshCore source has a channel at idx 8 (legal for its device).
-    await backend.exec(`INSERT INTO channels (id, name, psk, ${sourceIdCol}) VALUES (8, 'MC-Eight', 'aGVsbG8=', 'mc-1')`);
+    await backend.exec(`INSERT INTO channels (id, name, psk, ${sourceIdCol}, ${cat}, ${uat}) VALUES (8, 'MC-Eight', 'aGVsbG8=', 'mc-1', 0, 0)`);
     // Meshtastic source has an invalid channel at idx 8 (should be removed).
-    await backend.exec(`INSERT INTO channels (id, name, psk, ${sourceIdCol}) VALUES (8, 'MT-Eight', 'aGVsbG8=', 'mt-1')`);
+    await backend.exec(`INSERT INTO channels (id, name, psk, ${sourceIdCol}, ${cat}, ${uat}) VALUES (8, 'MT-Eight', 'aGVsbG8=', 'mt-1', 0, 0)`);
     // A legacy NULL-sourceId channel at idx 9 (implicitly Meshtastic; should be removed).
-    await backend.exec(`INSERT INTO channels (id, name, psk) VALUES (9, 'Legacy-Nine', 'aGVsbG8=')`);
+    await backend.exec(`INSERT INTO channels (id, name, psk, ${cat}, ${uat}) VALUES (9, 'Legacy-Nine', 'aGVsbG8=', 0, 0)`);
 
     expect(await repo.getChannelCount()).toBe(3);
 
@@ -415,11 +393,13 @@ function runChannelsTests(getBackend: () => TestBackend) {
     // Channel 2 with psk — should be kept
     await repo.upsertChannel({ id: 2, name: 'HasPsk', psk: 'somepsk', role: 2 });
 
+    const [cat, uat] = backend.dbType === 'postgres' ? ['"createdAt"', '"updatedAt"'] : ['createdAt', 'updatedAt'];
+
     // Channels 3 and 4 with no psk and no role — should be removed
     // Must explicitly set psk and role to NULL (not default 0)
     const backend2 = getBackend();
-    await backend2.exec(`INSERT INTO channels (id, name, psk, role) VALUES (3, 'Empty3', NULL, NULL)`);
-    await backend2.exec(`INSERT INTO channels (id, name, psk, role) VALUES (4, 'Empty4', NULL, NULL)`);
+    await backend2.exec(`INSERT INTO channels (id, name, psk, role, ${cat}, ${uat}) VALUES (3, 'Empty3', NULL, NULL, 0, 0)`);
+    await backend2.exec(`INSERT INTO channels (id, name, psk, role, ${cat}, ${uat}) VALUES (4, 'Empty4', NULL, NULL, 0, 0)`);
 
     expect(await repo.getChannelCount()).toBe(5);
 
@@ -441,10 +421,12 @@ function runChannelsTests(getBackend: () => TestBackend) {
       return;
     }
 
+    const [cat, uat] = backend.dbType === 'postgres' ? ['"createdAt"', '"updatedAt"'] : ['createdAt', 'updatedAt'];
+
     // Insert channels 0 and 1 with no psk/role via raw SQL
     const backend2 = getBackend();
-    await backend2.exec(`INSERT INTO channels (id, name, psk, role) VALUES (0, 'Primary', NULL, NULL)`);
-    await backend2.exec(`INSERT INTO channels (id, name, psk, role) VALUES (1, 'Chan1', NULL, NULL)`);
+    await backend2.exec(`INSERT INTO channels (id, name, psk, role, ${cat}, ${uat}) VALUES (0, 'Primary', NULL, NULL, 0, 0)`);
+    await backend2.exec(`INSERT INTO channels (id, name, psk, role, ${cat}, ${uat}) VALUES (1, 'Chan1', NULL, NULL, 0, 0)`);
 
     const deleted = await repo.cleanupEmptyChannels();
     expect(deleted).toBe(0);
@@ -471,7 +453,14 @@ describe('ChannelsRepository - SQLite Backend', () => {
   let backend: TestBackend;
 
   beforeEach(() => {
-    backend = createSqliteBackend(SQLITE_CREATE);
+    const t = createTestDb();
+    backend = {
+      dbType: 'sqlite',
+      drizzleDb: t.db,
+      exec: async (sql: string) => { t.sqlite.exec(sql); },
+      close: async () => { t.close(); },
+      available: true,
+    };
   });
 
   afterEach(async () => {

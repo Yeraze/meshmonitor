@@ -7,12 +7,13 @@
  * ensure the Drizzle schema and repository code don't truncate or wrap values.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
-import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import type Database from 'better-sqlite3';
+import { type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { eq } from 'drizzle-orm';
 import { messagesSqlite } from '../schema/messages.js';
 import { nodesSqlite } from '../schema/nodes.js';
 import * as schema from '../schema/index.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 const HIGH_NODE_NUM = 3_000_000_000; // > 2,147,483,647 (signed 32-bit max)
 const NORMAL_NODE_NUM = 100_000;
@@ -23,115 +24,9 @@ describe('Messages BIGINT round-trip (SQLite)', () => {
   let drizzleDb: BetterSQLite3Database<typeof schema>;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-
-    // Create nodes table matching the full Drizzle schema (messages has FK to nodes)
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS nodes (
-        nodeNum INTEGER PRIMARY KEY,
-        nodeId TEXT UNIQUE NOT NULL,
-        longName TEXT,
-        shortName TEXT,
-        hwModel INTEGER,
-        role INTEGER,
-        hopsAway INTEGER,
-        lastMessageHops INTEGER,
-        viaMqtt BOOLEAN DEFAULT 0,
-        transportMechanism INTEGER,
-        macaddr TEXT,
-        latitude REAL,
-        longitude REAL,
-        altitude REAL,
-        batteryLevel INTEGER,
-        voltage REAL,
-        channelUtilization REAL,
-        airUtilTx REAL,
-        lastHeard INTEGER,
-        snr REAL,
-        rssi INTEGER,
-        lastTracerouteRequest INTEGER,
-        firmwareVersion TEXT,
-        channel INTEGER,
-        isFavorite BOOLEAN DEFAULT 0,
-        favoriteLocked BOOLEAN DEFAULT 0,
-        isIgnored BOOLEAN DEFAULT 0,
-        mobile INTEGER DEFAULT 0,
-        rebootCount INTEGER,
-        publicKey TEXT,
-        lastMeshReceivedKey TEXT,
-        hasPKC BOOLEAN DEFAULT 0,
-        lastPKIPacket INTEGER,
-        keyIsLowEntropy BOOLEAN DEFAULT 0,
-        duplicateKeyDetected BOOLEAN DEFAULT 0,
-        keyMismatchDetected BOOLEAN DEFAULT 0,
-        keySecurityIssueDetails TEXT,
-        isExcessivePackets BOOLEAN DEFAULT 0,
-        packetRatePerHour INTEGER,
-        packetRateLastChecked INTEGER,
-        isTimeOffsetIssue BOOLEAN DEFAULT 0,
-        timeOffsetSeconds INTEGER,
-        welcomedAt INTEGER,
-        positionChannel INTEGER,
-        positionPrecisionBits INTEGER,
-        positionGpsAccuracy REAL,
-        positionHdop REAL,
-        positionTimestamp INTEGER,
-        positionOverrideEnabled BOOLEAN DEFAULT 0,
-        latitudeOverride REAL,
-        longitudeOverride REAL,
-        altitudeOverride REAL,
-        positionOverrideIsPrivate BOOLEAN DEFAULT 0,
-        hasRemoteAdmin BOOLEAN DEFAULT 0,
-        lastRemoteAdminCheck INTEGER,
-        remoteAdminMetadata TEXT,
-        lastTimeSync INTEGER,
-        isStoreForwardServer BOOLEAN DEFAULT 0,
-        createdAt INTEGER NOT NULL,
-        updatedAt INTEGER NOT NULL,
-        sourceId TEXT
-      )
-    `);
-
-    // Create messages table with all columns including relayNode and ackFromNode
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id TEXT PRIMARY KEY,
-        fromNodeNum INTEGER NOT NULL,
-        toNodeNum INTEGER NOT NULL,
-        fromNodeId TEXT NOT NULL,
-        toNodeId TEXT NOT NULL,
-        text TEXT NOT NULL,
-        channel INTEGER NOT NULL DEFAULT 0,
-        portnum INTEGER,
-        requestId INTEGER,
-        timestamp INTEGER NOT NULL,
-        rxTime INTEGER,
-        hopStart INTEGER,
-        hopLimit INTEGER,
-        relayNode INTEGER,
-        replyId INTEGER,
-        emoji INTEGER,
-        viaMqtt BOOLEAN DEFAULT 0,
-        viaStoreForward BOOLEAN DEFAULT 0,
-        rxSnr REAL,
-        rxRssi REAL,
-        ackFailed BOOLEAN DEFAULT 0,
-        routingErrorReceived BOOLEAN DEFAULT 0,
-        deliveryState TEXT,
-        wantAck BOOLEAN DEFAULT 0,
-        ackFromNode INTEGER,
-        createdAt INTEGER NOT NULL,
-        decrypted_by TEXT,
-        sourceId TEXT,
-        source_ip TEXT,
-        source_path TEXT,
-        spoofSuspected INTEGER,
-        FOREIGN KEY (fromNodeNum) REFERENCES nodes(nodeNum) ON DELETE CASCADE,
-        FOREIGN KEY (toNodeNum) REFERENCES nodes(nodeNum) ON DELETE CASCADE
-      )
-    `);
-
-    drizzleDb = drizzle(db, { schema });
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
   });
 
   afterEach(() => {
@@ -144,6 +39,7 @@ describe('Messages BIGINT round-trip (SQLite)', () => {
     drizzleDb.insert(nodesSqlite).values({
       nodeNum,
       nodeId,
+      sourceId: 'default',
       createdAt: now,
       updatedAt: now,
     }).run();

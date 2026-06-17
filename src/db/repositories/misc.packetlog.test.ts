@@ -5,10 +5,11 @@
  * Verifies that column references are correctly quoted across database backends.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
-import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import type Database from 'better-sqlite3';
+import { type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { MiscRepository } from './misc.js';
 import * as schema from '../schema/index.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 describe('MiscRepository - Packet Log Queries', () => {
   let db: Database.Database;
@@ -16,76 +17,22 @@ describe('MiscRepository - Packet Log Queries', () => {
   let repo: MiscRepository;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-
-    // Mirror production schema: nodes uses composite PK (nodeNum, sourceId)
-    // since migration 029; packet_log carries sourceId since migration 020.
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS nodes (
-        nodeNum INTEGER NOT NULL,
-        sourceId TEXT NOT NULL,
-        nodeId TEXT,
-        longName TEXT,
-        shortName TEXT,
-        lastHeard INTEGER,
-        hopsAway INTEGER,
-        PRIMARY KEY (nodeNum, sourceId)
-      )
-    `);
-
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS packet_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        packet_id INTEGER,
-        timestamp INTEGER NOT NULL,
-        from_node INTEGER NOT NULL,
-        from_node_id TEXT,
-        to_node INTEGER,
-        to_node_id TEXT,
-        channel INTEGER,
-        portnum INTEGER NOT NULL,
-        portnum_name TEXT,
-        encrypted INTEGER DEFAULT 0,
-        snr REAL,
-        rssi INTEGER,
-        hop_limit INTEGER,
-        hop_start INTEGER,
-        relay_node INTEGER,
-        payload_size INTEGER,
-        want_ack INTEGER DEFAULT 0,
-        priority INTEGER,
-        payload_preview TEXT,
-        metadata TEXT,
-        direction TEXT DEFAULT 'rx',
-        created_at INTEGER,
-        transport_mechanism TEXT,
-        decrypted_by TEXT,
-        decrypted_channel_id INTEGER,
-        sourceId TEXT
-      )
-    `);
-
-    // Create settings table (needed by MiscRepository)
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT
-      )
-    `);
-
-    drizzleDb = drizzle(db, { schema });
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
     repo = new MiscRepository(drizzleDb as any, 'sqlite');
 
     // Insert test nodes scoped to 'default' source
-    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName, hopsAway) VALUES (100, 'default', '!00000064', 'Node Alpha', 'ALPH', 0)`);
-    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName, hopsAway) VALUES (200, 'default', '!000000c8', 'Node Beta', 'BETA', 1)`);
-    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName, hopsAway) VALUES (300, 'default', '!0000012c', 'Node Gamma', 'GAMM', 0)`);
+    const seedNow = Date.now();
+    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName, hopsAway, createdAt, updatedAt) VALUES (100, 'default', '!00000064', 'Node Alpha', 'ALPH', 0, ${seedNow}, ${seedNow})`);
+    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName, hopsAway, createdAt, updatedAt) VALUES (200, 'default', '!000000c8', 'Node Beta', 'BETA', 1, ${seedNow}, ${seedNow})`);
+    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName, hopsAway, createdAt, updatedAt) VALUES (300, 'default', '!0000012c', 'Node Gamma', 'GAMM', 0, ${seedNow}, ${seedNow})`);
 
     // Insert test packets with matching sourceId so the JOIN resolves longName
     const now = Date.now();
-    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, to_node_id, portnum, portnum_name, direction, created_at, relay_node, sourceId) VALUES (1, ${now}, 100, '!00000064', 200, '!000000c8', 1, 'TEXT_MESSAGE_APP', 'rx', ${now}, 100, 'default')`);
-    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, to_node_id, portnum, portnum_name, direction, created_at, relay_node, sourceId) VALUES (2, ${now}, 200, '!000000c8', 100, '!00000064', 1, 'TEXT_MESSAGE_APP', 'rx', ${now + 1}, 200, 'default')`);
-    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, to_node_id, portnum, portnum_name, direction, created_at, sourceId) VALUES (3, ${now - 60000}, 100, '!00000064', 4294967295, '!ffffffff', 3, 'POSITION_APP', 'rx', ${now - 60000}, 'default')`);
+    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, to_node_id, portnum, portnum_name, direction, created_at, relay_node, sourceId, encrypted) VALUES (1, ${now}, 100, '!00000064', 200, '!000000c8', 1, 'TEXT_MESSAGE_APP', 'rx', ${now}, 100, 'default', 0)`);
+    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, to_node_id, portnum, portnum_name, direction, created_at, relay_node, sourceId, encrypted) VALUES (2, ${now}, 200, '!000000c8', 100, '!00000064', 1, 'TEXT_MESSAGE_APP', 'rx', ${now + 1}, 200, 'default', 0)`);
+    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, to_node_id, portnum, portnum_name, direction, created_at, sourceId, encrypted) VALUES (3, ${now - 60000}, 100, '!00000064', 4294967295, '!ffffffff', 3, 'POSITION_APP', 'rx', ${now - 60000}, 'default', 0)`);
   });
 
   afterEach(() => {
@@ -107,7 +54,7 @@ describe('MiscRepository - Packet Log Queries', () => {
     it('returns null longName for unknown nodes', async () => {
       // Insert packet from a node not present in the nodes table for this source
       const now = Date.now();
-      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, portnum, direction, created_at, sourceId) VALUES (99, ${now}, 999, '!000003e7', NULL, 1, 'rx', ${now}, 'default')`);
+      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, portnum, direction, created_at, sourceId, encrypted) VALUES (99, ${now}, 999, '!000003e7', NULL, 1, 'rx', ${now}, 'default', 0)`);
 
       const packets = await repo.getPacketLogs({});
       const unknownPkt = packets.find(p => p.packet_id === 99);
@@ -138,11 +85,11 @@ describe('MiscRepository - Packet Log Queries', () => {
       // Clear seed rows so the tie-timestamp set is the only data.
       db.exec(`DELETE FROM packet_log`);
       for (let i = 0; i < 10; i++) {
-        db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, portnum, direction, created_at, sourceId) VALUES (${i}, ${TIE_TS}, 100, 1, 'rx', ${TIE_TS}, 'default')`);
+        db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, portnum, direction, created_at, sourceId, encrypted) VALUES (${i}, ${TIE_TS}, 100, 1, 'rx', ${TIE_TS}, 'default', 0)`);
       }
       // Plus a few older rows at a distinct timestamp.
       for (let i = 0; i < 3; i++) {
-        db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, portnum, direction, created_at, sourceId) VALUES (${100 + i}, ${TIE_TS - 1000}, 100, 1, 'rx', ${TIE_TS - 1000}, 'default')`);
+        db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, portnum, direction, created_at, sourceId, encrypted) VALUES (${100 + i}, ${TIE_TS - 1000}, 100, 1, 'rx', ${TIE_TS - 1000}, 'default', 0)`);
       }
     });
 
@@ -344,77 +291,24 @@ describe('MiscRepository - getPacketCountsByNode multi-source regression (#2794)
   let repo: MiscRepository;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-
-    // Mirror production composite PK (nodeNum, sourceId) so the same nodeNum
-    // can exist once per source.
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS nodes (
-        nodeNum INTEGER NOT NULL,
-        sourceId TEXT NOT NULL,
-        nodeId TEXT,
-        longName TEXT,
-        shortName TEXT,
-        lastHeard INTEGER,
-        hopsAway INTEGER,
-        PRIMARY KEY (nodeNum, sourceId)
-      )
-    `);
-
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS packet_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        packet_id INTEGER,
-        timestamp INTEGER NOT NULL,
-        from_node INTEGER NOT NULL,
-        from_node_id TEXT,
-        to_node INTEGER,
-        to_node_id TEXT,
-        channel INTEGER,
-        portnum INTEGER NOT NULL,
-        portnum_name TEXT,
-        encrypted INTEGER DEFAULT 0,
-        snr REAL,
-        rssi INTEGER,
-        hop_limit INTEGER,
-        hop_start INTEGER,
-        relay_node INTEGER,
-        payload_size INTEGER,
-        want_ack INTEGER DEFAULT 0,
-        priority INTEGER,
-        payload_preview TEXT,
-        metadata TEXT,
-        direction TEXT DEFAULT 'rx',
-        created_at INTEGER,
-        transport_mechanism TEXT,
-        decrypted_by TEXT,
-        decrypted_channel_id INTEGER,
-        sourceId TEXT
-      )
-    `);
-
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT
-      )
-    `);
-
-    drizzleDb = drizzle(db, { schema });
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
     repo = new MiscRepository(drizzleDb as any, 'sqlite');
 
     // Same node heard on two sources — produces two rows with the same nodeNum.
-    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName) VALUES (100, 'srcA', '!00000064', 'Node Alpha (A)', 'ALPH')`);
-    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName) VALUES (100, 'srcB', '!00000064', 'Node Alpha (B)', 'ALPH')`);
-    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName) VALUES (200, 'srcA', '!000000c8', 'Node Beta', 'BETA')`);
+    const seedNow = Date.now();
+    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName, createdAt, updatedAt) VALUES (100, 'srcA', '!00000064', 'Node Alpha (A)', 'ALPH', ${seedNow}, ${seedNow})`);
+    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName, createdAt, updatedAt) VALUES (100, 'srcB', '!00000064', 'Node Alpha (B)', 'ALPH', ${seedNow}, ${seedNow})`);
+    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName, createdAt, updatedAt) VALUES (200, 'srcA', '!000000c8', 'Node Beta', 'BETA', ${seedNow}, ${seedNow})`);
 
     const now = Date.now();
     // Three packets from nodeNum 100 on srcA
     for (let i = 1; i <= 3; i++) {
-      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, portnum, direction, created_at, sourceId) VALUES (${i}, ${now - i * 1000}, 100, '!00000064', 1, 'rx', ${now}, 'srcA')`);
+      db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, portnum, direction, created_at, sourceId, encrypted) VALUES (${i}, ${now - i * 1000}, 100, '!00000064', 1, 'rx', ${now}, 'srcA', 0)`);
     }
     // One packet from nodeNum 200 on srcA
-    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, portnum, direction, created_at, sourceId) VALUES (10, ${now}, 200, '!000000c8', 1, 'rx', ${now}, 'srcA')`);
+    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, portnum, direction, created_at, sourceId, encrypted) VALUES (10, ${now}, 200, '!000000c8', 1, 'rx', ${now}, 'srcA', 0)`);
   });
 
   afterEach(() => {
@@ -464,68 +358,22 @@ describe('MiscRepository - getPacketLogs / getPacketLogById multi-source dedup (
   let repo: MiscRepository;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS nodes (
-        nodeNum INTEGER NOT NULL,
-        sourceId TEXT NOT NULL,
-        nodeId TEXT,
-        longName TEXT,
-        shortName TEXT,
-        lastHeard INTEGER,
-        hopsAway INTEGER,
-        PRIMARY KEY (nodeNum, sourceId)
-      )
-    `);
-
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS packet_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        packet_id INTEGER,
-        timestamp INTEGER NOT NULL,
-        from_node INTEGER NOT NULL,
-        from_node_id TEXT,
-        to_node INTEGER,
-        to_node_id TEXT,
-        channel INTEGER,
-        portnum INTEGER NOT NULL,
-        portnum_name TEXT,
-        encrypted INTEGER DEFAULT 0,
-        snr REAL,
-        rssi INTEGER,
-        hop_limit INTEGER,
-        hop_start INTEGER,
-        relay_node INTEGER,
-        payload_size INTEGER,
-        want_ack INTEGER DEFAULT 0,
-        priority INTEGER,
-        payload_preview TEXT,
-        metadata TEXT,
-        direction TEXT DEFAULT 'rx',
-        created_at INTEGER,
-        transport_mechanism TEXT,
-        decrypted_by TEXT,
-        decrypted_channel_id INTEGER,
-        sourceId TEXT
-      )
-    `);
-
-    db.exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`);
-
-    drizzleDb = drizzle(db, { schema });
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
     repo = new MiscRepository(drizzleDb as any, 'sqlite');
 
     // nodeNum 100 exists in both srcA and srcB (mirrors production multi-source)
-    db.exec(`INSERT INTO nodes (nodeNum, sourceId, longName, shortName) VALUES (100, 'srcA', 'Node Alpha (A)', 'ALPH')`);
-    db.exec(`INSERT INTO nodes (nodeNum, sourceId, longName, shortName) VALUES (100, 'srcB', 'Node Alpha (B)', 'ALPH')`);
-    db.exec(`INSERT INTO nodes (nodeNum, sourceId, longName, shortName) VALUES (200, 'srcA', 'Node Beta', 'BETA')`);
+    const seedNow = Date.now();
+    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName, createdAt, updatedAt) VALUES (100, 'srcA', '!00000064', 'Node Alpha (A)', 'ALPH', ${seedNow}, ${seedNow})`);
+    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName, createdAt, updatedAt) VALUES (100, 'srcB', '!00000064', 'Node Alpha (B)', 'ALPH', ${seedNow}, ${seedNow})`);
+    db.exec(`INSERT INTO nodes (nodeNum, sourceId, nodeId, longName, shortName, createdAt, updatedAt) VALUES (200, 'srcA', '!000000c8', 'Node Beta', 'BETA', ${seedNow}, ${seedNow})`);
 
     const now = Date.now();
     // Packet from srcA: from_node=100, to_node=200
-    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, portnum, portnum_name, direction, created_at, sourceId) VALUES (1, ${now}, 100, '!00000064', 200, 1, 'TEXT_MESSAGE_APP', 'rx', ${now}, 'srcA')`);
+    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, portnum, portnum_name, direction, created_at, sourceId, encrypted) VALUES (1, ${now}, 100, '!00000064', 200, 1, 'TEXT_MESSAGE_APP', 'rx', ${now}, 'srcA', 0)`);
     // Packet from srcB: from_node=100 (same nodeNum, different source)
-    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, portnum, portnum_name, direction, created_at, sourceId) VALUES (2, ${now - 1000}, 100, '!00000064', NULL, 1, 'TEXT_MESSAGE_APP', 'rx', ${now - 1000}, 'srcB')`);
+    db.exec(`INSERT INTO packet_log (packet_id, timestamp, from_node, from_node_id, to_node, portnum, portnum_name, direction, created_at, sourceId, encrypted) VALUES (2, ${now - 1000}, 100, '!00000064', NULL, 1, 'TEXT_MESSAGE_APP', 'rx', ${now - 1000}, 'srcB', 0)`);
   });
 
   afterEach(() => {

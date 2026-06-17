@@ -5,32 +5,23 @@
  * alongside the basic CRUD ordering guarantees.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
-import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { SourcesRepository } from './sources.js';
 import * as schema from '../schema/index.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
 describe('SourcesRepository', () => {
-  let db: Database.Database;
+  let db: ReturnType<typeof createTestDb>['sqlite'];
   let drizzleDb: BetterSQLite3Database<typeof schema>;
   let repo: SourcesRepository;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS sources (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        type TEXT NOT NULL,
-        config TEXT NOT NULL,
-        enabled INTEGER NOT NULL DEFAULT 1,
-        displayOrder INTEGER NOT NULL DEFAULT 0,
-        createdAt INTEGER NOT NULL,
-        updatedAt INTEGER NOT NULL,
-        createdBy INTEGER
-      )
-    `);
-    drizzleDb = drizzle(db, { schema });
+    const t = createTestDb();
+    db = t.sqlite;
+    drizzleDb = t.db;
+    // Migration 050 synthesizes a default source on a fresh DB; clear it so
+    // tests control exactly which sources exist.
+    db.exec(`DELETE FROM sources`);
     repo = new SourcesRepository(drizzleDb, 'sqlite');
   });
 
