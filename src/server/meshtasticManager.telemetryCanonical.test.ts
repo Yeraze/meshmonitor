@@ -110,7 +110,9 @@ describe('MeshtasticManager - canonical telemetry normalization (#3506)', () => 
       environmentMetrics: {
         temperature: NaN,
         barometricPressure: Infinity,
-        humidity: -Infinity, // relativeHumidity canonical is 'humidity'; this is an unknown leaf anyway
+        // humidity IS a known canonical type (ENVIRONMENT_UNITS has it) — it's
+        // excluded here purely by the Number.isFinite guard, not for being unknown.
+        humidity: -Infinity,
         gasResistance: 12.3, // a finite value still gets through
       },
     });
@@ -145,9 +147,11 @@ describe('MeshtasticManager - canonical telemetry normalization (#3506)', () => 
         airUtilTx: 3.2,
         numPacketsTx: 100,
         numPacketsRx: 250,
+        numPacketsRxBad: 4,
         numOnlineNodes: 8,
         numTotalNodes: 42,
         numTxRelayCanceled: 0, // genuine 0 must persist
+        numTxDropped: 1,
         heapFreeBytes: 51200,
         noiseFloor: -98,
       },
@@ -157,6 +161,9 @@ describe('MeshtasticManager - canonical telemetry normalization (#3506)', () => 
     expect(storedValue('channelUtilization')).toBeCloseTo(12.5, 2);
     expect(storedValue('numPacketsTx')).toBe(100);
     expect(storedUnit('numPacketsTx')).toBe('packets');
+    expect(storedValue('numPacketsRxBad')).toBe(4);
+    expect(storedUnit('numPacketsRxBad')).toBe('packets');
+    expect(storedValue('numTxDropped')).toBe(1);
     expect(storedValue('numOnlineNodes')).toBe(8);
     expect(storedUnit('numOnlineNodes')).toBe('nodes');
     expect(storedValue('numTxRelayCanceled')).toBe(0);

@@ -162,7 +162,7 @@ const STRIP_GROUPS = new Set(['device', 'environment', 'airQuality', 'power', 'l
  * ingests these groups, so this only affects the serial path.
  */
 const PREFIX_GROUPS: Record<string, string> = {
-  host: 'host',
+  host: 'host', // prefix happens to equal the group name here
   trafficManagement: 'tm',
 };
 
