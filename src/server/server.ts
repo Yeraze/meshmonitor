@@ -973,20 +973,17 @@ import { createGeoJsonRouter } from './routes/geojsonRoutes.js';
 import { GeoJsonService } from './services/geojsonService.js';
 import { MapStyleService } from './services/mapStyleService.js';
 import { createMapStyleRouter } from './routes/mapStyleRoutes.js';
+import healthRoutes from './routes/healthRoutes.js';
+import cleanupRoutes from './routes/cleanupRoutes.js';
+import maintenanceRoutes from './routes/maintenanceRoutes.js';
+import themeRoutes from './routes/themeRoutes.js';
+import purgeRoutes from './routes/purgeRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
 
-// Health check endpoint (for upgrade watchdog and monitoring)
-apiRouter.get('/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    version: packageJson.version,
-    uptime: Date.now() - serverStartTime,
-    databaseType: databaseService.drizzleDbType,
-    firmwareOtaEnabled: process.env.IS_DESKTOP !== 'true',
-  });
-});
+// Health check endpoints (for upgrade watchdog and monitoring)
+apiRouter.use('/health', healthRoutes);
 
 // Server info endpoint (returns timezone and other server configuration)
 apiRouter.get('/server-info', (_req, res) => {
@@ -1096,6 +1093,10 @@ const mapStyleDataDir = path.join(process.env.DATA_DIR || '/data', 'styles');
 const mapStyleService = new MapStyleService(mapStyleDataDir);
 const mapStyleRouter = createMapStyleRouter(mapStyleService);
 apiRouter.use('/map-styles', mapStyleRouter);
+apiRouter.use('/cleanup', cleanupRoutes);
+apiRouter.use('/maintenance', maintenanceRoutes);
+apiRouter.use('/themes', themeRoutes);
+apiRouter.use('/purge', purgeRoutes);
 
 // Wire up side-effect callbacks for settingsRoutes
 setSettingsCallbacks({
@@ -3852,41 +3853,6 @@ apiRouter.post('/import', requireAdmin(), async (req, res) => {
   }
 });
 
-apiRouter.post('/cleanup/messages', requireAdmin(), async (req, res) => {
-  try {
-    const days = parseInt(req.body.days) || 30;
-    const cleanupSourceId = req.body.sourceId as string | undefined;
-    const deletedCount = await databaseService.cleanupOldMessagesAsync(days, cleanupSourceId);
-    res.json({ deletedCount });
-  } catch (error) {
-    logger.error('Error cleaning up messages:', error);
-    res.status(500).json({ error: 'Failed to cleanup messages' });
-  }
-});
-
-apiRouter.post('/cleanup/nodes', requireAdmin(), async (req, res) => {
-  try {
-    const days = parseInt(req.body.days) || 30;
-    const cleanupSourceId = req.body.sourceId as string | undefined;
-    const deletedCount = await databaseService.cleanupInactiveNodesAsync(days, cleanupSourceId);
-    res.json({ deletedCount });
-  } catch (error) {
-    logger.error('Error cleaning up nodes:', error);
-    res.status(500).json({ error: 'Failed to cleanup nodes' });
-  }
-});
-
-apiRouter.post('/cleanup/channels', requireAdmin(), async (req, res) => {
-  try {
-    const cleanupSourceId = req.body?.sourceId as string | undefined;
-    const deletedCount = await databaseService.cleanupInvalidChannelsAsync(cleanupSourceId);
-    res.json({ deletedCount });
-  } catch (error) {
-    logger.error('Error cleaning up channels:', error);
-    res.status(500).json({ error: 'Failed to cleanup channels' });
-  }
-});
-
 // Send message endpoint
 apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
   try {
@@ -5988,59 +5954,6 @@ apiRouter.post('/system/backup/settings', requirePermission('configuration', 'wr
 });
 
 // ==========================================
-// Database Maintenance Endpoints
-// ==========================================
-
-// Get database maintenance status
-apiRouter.get('/maintenance/status', requirePermission('configuration', 'read'), async (_req, res) => {
-  try {
-    const status = await databaseMaintenanceService.getStatus();
-    res.json(status);
-  } catch (error) {
-    logger.error('❌ Error getting maintenance status:', error);
-    res.status(500).json({
-      error: 'Failed to get maintenance status',
-      details: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-});
-
-// Get current database size
-apiRouter.get('/maintenance/size', requirePermission('configuration', 'read'), async (_req, res) => {
-  try {
-    const size = await databaseMaintenanceService.getDatabaseSizeAsync();
-    res.json({
-      size,
-      formatted: databaseMaintenanceService.formatBytes(size),
-    });
-  } catch (error) {
-    logger.error('❌ Error getting database size:', error);
-    res.status(500).json({
-      error: 'Failed to get database size',
-      details: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-});
-
-// Manually trigger database maintenance
-apiRouter.post('/maintenance/run', requirePermission('configuration', 'write'), async (_req, res) => {
-  try {
-    logger.info('🔧 Manual database maintenance requested...');
-    const stats = await databaseMaintenanceService.runMaintenance();
-    res.json({
-      success: true,
-      stats,
-      message: `Maintenance complete: deleted ${stats.messagesDeleted + stats.traceroutesDeleted + stats.routeSegmentsDeleted + stats.neighborInfoDeleted} records, saved ${databaseMaintenanceService.formatBytes(stats.sizeBefore - stats.sizeAfter)}`,
-    });
-  } catch (error) {
-    logger.error('❌ Error running maintenance:', error);
-    res.status(500).json({
-      error: 'Failed to run maintenance',
-      details: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-});
-
 // Refresh nodes from device endpoint
 apiRouter.post('/nodes/refresh', requirePermission('nodes', 'write'), async (req, res) => {
   try {
@@ -7016,186 +6929,6 @@ apiRouter.post('/user/map-preferences', requireAuth(), async (req, res) => {
   }
 });
 
-// Custom Themes endpoints
-
-// Get all custom themes (available to all users for reading)
-apiRouter.get('/themes', optionalAuth(), async (_req, res) => {
-  try {
-    const themes = await databaseService.misc.getAllCustomThemes();
-    res.json({ themes });
-  } catch (error) {
-    logger.error('Error fetching custom themes:', error);
-    res.status(500).json({ error: 'Failed to fetch custom themes' });
-  }
-});
-
-// Get a specific theme by slug
-apiRouter.get('/themes/:slug', optionalAuth(), async (req, res) => {
-  try {
-    const { slug } = req.params;
-    const theme = await databaseService.misc.getCustomThemeBySlug(slug);
-
-    if (!theme) {
-      return res.status(404).json({ error: 'Theme not found' });
-    }
-
-    res.json({ theme });
-  } catch (error) {
-    logger.error(`Error fetching theme ${req.params.slug}:`, error);
-    res.status(500).json({ error: 'Failed to fetch theme' });
-  }
-});
-
-// Create a new custom theme
-apiRouter.post('/themes', requirePermission('themes', 'write'), async (req, res) => {
-  try {
-    const { name, slug, definition } = req.body;
-
-    // Validation
-    if (!name || typeof name !== 'string' || name.length < 1 || name.length > 50) {
-      return res.status(400).json({ error: 'Theme name must be 1-50 characters' });
-    }
-
-    if (!slug || typeof slug !== 'string' || !slug.match(/^custom-[a-z0-9-]+$/)) {
-      return res
-        .status(400)
-        .json({ error: 'Slug must start with "custom-" and contain only lowercase letters, numbers, and hyphens' });
-    }
-
-    // Check if theme already exists
-    const existingTheme = await databaseService.misc.getCustomThemeBySlug(slug);
-    if (existingTheme) {
-      return res.status(409).json({ error: 'Theme with this slug already exists' });
-    }
-
-    // Validate theme definition
-    if (!databaseService.validateThemeDefinition(definition)) {
-      return res
-        .status(400)
-        .json({ error: 'Invalid theme definition. All required color variables must be valid hex codes' });
-    }
-
-    // Create the theme
-    const theme = await databaseService.misc.createCustomTheme(name, slug, JSON.stringify(definition), req.user!.id);
-
-    // Audit log
-    databaseService.auditLogAsync(
-      req.user!.id,
-      'theme_created',
-      'themes',
-      `Created custom theme: ${name} (${slug})`,
-      req.ip || null,
-      null,
-      JSON.stringify({ id: theme.id, name, slug })
-    );
-
-    res.status(201).json({ success: true, theme });
-  } catch (error) {
-    logger.error('Error creating custom theme:', error);
-    res.status(500).json({ error: 'Failed to create custom theme' });
-  }
-});
-
-// Update an existing custom theme
-apiRouter.put('/themes/:slug', requirePermission('themes', 'write'), async (req, res) => {
-  try {
-    const { slug } = req.params;
-    const { name, definition } = req.body;
-
-    // Get existing theme for audit log
-    const existingTheme = await databaseService.misc.getCustomThemeBySlug(slug);
-    if (!existingTheme) {
-      return res.status(404).json({ error: 'Theme not found' });
-    }
-
-    if (existingTheme.is_builtin) {
-      return res.status(403).json({ error: 'Cannot modify built-in themes' });
-    }
-
-    const updates: any = {};
-
-    // Validate name if provided
-    if (name !== undefined) {
-      if (typeof name !== 'string' || name.length < 1 || name.length > 50) {
-        return res.status(400).json({ error: 'Theme name must be 1-50 characters' });
-      }
-      updates.name = name;
-    }
-
-    // Validate definition if provided
-    if (definition !== undefined) {
-      if (!databaseService.validateThemeDefinition(definition)) {
-        return res
-          .status(400)
-          .json({ error: 'Invalid theme definition. All required color variables must be valid hex codes' });
-      }
-      updates.definition = definition;
-    }
-
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).json({ error: 'No updates provided' });
-    }
-
-    // Update the theme
-    const repoUpdates: Record<string, string> = {};
-    if (updates.name) repoUpdates.name = updates.name;
-    if (updates.definition) repoUpdates.definition = JSON.stringify(updates.definition);
-    await databaseService.misc.updateCustomTheme(slug, repoUpdates);
-
-    // Audit log
-    databaseService.auditLogAsync(
-      req.user!.id,
-      'theme_updated',
-      'themes',
-      `Updated custom theme: ${existingTheme.name} (${slug})`,
-      req.ip || null,
-      JSON.stringify({ name: existingTheme.name }),
-      JSON.stringify(updates)
-    );
-
-    res.json({ success: true });
-  } catch (error) {
-    logger.error(`Error updating theme ${req.params.slug}:`, error);
-    res.status(500).json({ error: 'Failed to update theme' });
-  }
-});
-
-// Delete a custom theme
-apiRouter.delete('/themes/:slug', requirePermission('themes', 'write'), async (req, res) => {
-  try {
-    const { slug } = req.params;
-
-    // Get theme for audit log before deletion
-    const theme = await databaseService.misc.getCustomThemeBySlug(slug);
-    if (!theme) {
-      return res.status(404).json({ error: 'Theme not found' });
-    }
-
-    if (theme.is_builtin) {
-      return res.status(403).json({ error: 'Cannot delete built-in themes' });
-    }
-
-    // Delete the theme
-    await databaseService.misc.deleteCustomTheme(slug);
-
-    // Audit log
-    databaseService.auditLogAsync(
-      req.user!.id,
-      'theme_deleted',
-      'themes',
-      `Deleted custom theme: ${theme.name} (${slug})`,
-      req.ip || null,
-      JSON.stringify({ id: theme.id, name: theme.name, slug }),
-      null
-    );
-
-    res.json({ success: true, message: 'Theme deleted successfully' });
-  } catch (error) {
-    logger.error(`Error deleting theme ${req.params.slug}:`, error);
-    res.status(500).json({ error: 'Failed to delete theme' });
-  }
-});
-
 // Auto-announce endpoints
 apiRouter.post('/announce/send', requirePermission('automation', 'write'), async (req, res) => {
   try {
@@ -7255,105 +6988,6 @@ apiRouter.get('/announce/preview', requirePermission('automation', 'read'), asyn
   } catch (error) {
     logger.error('Error generating announcement preview:', error);
     res.status(500).json({ error: 'Failed to generate preview' });
-  }
-});
-
-// Danger zone endpoints
-apiRouter.post('/purge/nodes', requireAdmin(), async (req, res) => {
-  try {
-    const { sourceId: purgeNodesSourceId } = req.body || {};
-    const nodeCount = await databaseService.nodes.getNodeCount();
-    await databaseService.purgeAllNodesAsync(purgeNodesSourceId);
-    // Trigger a node refresh after purging (only on the affected source)
-    const purgeNodesManager = resolveSourceManager(purgeNodesSourceId);
-    await purgeNodesManager.refreshNodeDatabase();
-
-    // Audit log
-    databaseService.auditLogAsync(
-      req.user!.id,
-      'nodes_purged',
-      'nodes',
-      JSON.stringify({ count: nodeCount, sourceId: purgeNodesSourceId ?? null }),
-      req.ip || null
-    );
-
-    res.json({
-      success: true,
-      message: purgeNodesSourceId
-        ? `Nodes and traceroutes purged for source ${purgeNodesSourceId}, refresh triggered`
-        : 'All nodes and traceroutes purged, refresh triggered',
-    });
-  } catch (error) {
-    logger.error('Error purging nodes:', error);
-    res.status(500).json({ error: 'Failed to purge nodes' });
-  }
-});
-
-apiRouter.post('/purge/telemetry', requireAdmin(), async (req, res) => {
-  try {
-    const { sourceId: purgeTelemetrySourceId } = req.body || {};
-    await databaseService.purgeAllTelemetryAsync(purgeTelemetrySourceId);
-
-    // Audit log
-    databaseService.auditLogAsync(
-      req.user!.id,
-      'telemetry_purged',
-      'telemetry',
-      JSON.stringify({ sourceId: purgeTelemetrySourceId ?? null }),
-      req.ip || null
-    );
-
-    res.json({
-      success: true,
-      message: purgeTelemetrySourceId
-        ? `Telemetry purged for source ${purgeTelemetrySourceId}`
-        : 'All telemetry data purged',
-    });
-  } catch (error) {
-    logger.error('Error purging telemetry:', error);
-    res.status(500).json({ error: 'Failed to purge telemetry' });
-  }
-});
-
-apiRouter.post('/purge/messages', requireAdmin(), async (req, res) => {
-  try {
-    const messageCount = await databaseService.messages.getMessageCount();
-    await databaseService.messages.deleteAllMessages();
-
-    // Audit log
-    databaseService.auditLogAsync(
-      req.user!.id,
-      'messages_purged',
-      'messages',
-      JSON.stringify({ count: messageCount }),
-      req.ip || null
-    );
-
-    res.json({ success: true, message: 'All messages purged' });
-  } catch (error) {
-    logger.error('Error purging messages:', error);
-    res.status(500).json({ error: 'Failed to purge messages' });
-  }
-});
-
-apiRouter.post('/purge/traceroutes', requireAdmin(), async (req, res) => {
-  try {
-    await databaseService.traceroutes.deleteAllTraceroutes();
-    await databaseService.traceroutes.deleteAllRouteSegments();
-
-    // Audit log
-    databaseService.auditLogAsync(
-      req.user!.id,
-      'traceroutes_purged',
-      'traceroute',
-      'All traceroutes and route segments purged',
-      req.ip || null
-    );
-
-    res.json({ success: true, message: 'All traceroutes and route segments purged' });
-  } catch (error) {
-    logger.error('Error purging traceroutes:', error);
-    res.status(500).json({ error: 'Failed to purge traceroutes' });
   }
 });
 
@@ -9011,15 +8645,6 @@ apiRouter.get('/system/status', requirePermission('dashboard', 'read'), async (_
       type: databaseType.charAt(0).toUpperCase() + databaseType.slice(1), // Capitalize
       version: databaseVersion,
     },
-  });
-});
-
-// Health check endpoint
-apiRouter.get('/health', optionalAuth(), (_req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    nodeEnv: env.nodeEnv,
   });
 });
 

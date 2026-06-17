@@ -9,6 +9,14 @@ import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
 /**
+ * meshcore_nodes columns where an incoming `null` in upsertNode means "clear
+ * this column" (e.g. CMD_RESET_PATH) rather than "not observed this update".
+ * Every other column preserves its stored value on a null/undefined incoming —
+ * see upsertNode's merge guard (#3504).
+ */
+const CLEARABLE_VIA_NULL = new Set<string>(['outPath', 'pathLen']);
+
+/**
  * MeshCore node data for database operations
  */
 export interface DbMeshCoreNode {
@@ -215,9 +223,29 @@ export class MeshCoreRepository extends BaseRepository {
     const existing = await this.getNodeByPublicKeyAndSource(node.publicKey, sourceId);
 
     if (existing) {
+      // Merge, don't clobber (#3504). Callers (persistContact, the telemetry
+      // config route) pass `field: value ?? null` for fields they didn't
+      // observe this time. A bare `.set({ ...node })` would write those nulls
+      // over a previously-stored name/position/etc. Drop null/undefined incoming
+      // fields so drizzle only updates columns the caller actually provided a
+      // value for; the stored value is preserved otherwise. (`false`/`0`/`''`
+      // are kept — only null/undefined means "not observed".)
+      //
+      // Exception: outPath/pathLen are explicitly clearable via null — a null
+      // there means the route was reset (CMD_RESET_PATH), not "unobserved"
+      // (see CLEARABLE_VIA_NULL at module scope).
+      const updateSet: Record<string, unknown> = { sourceId, updatedAt: now };
+      for (const [k, v] of Object.entries(node)) {
+        if (v !== null && v !== undefined) {
+          updateSet[k] = v;
+        } else if (v === null && CLEARABLE_VIA_NULL.has(k)) {
+          updateSet[k] = null;
+        }
+        // else: preserve the existing stored value (don't write the field)
+      }
       await this.db
         .update(meshcoreNodes)
-        .set({ ...node, sourceId, updatedAt: now })
+        .set(updateSet)
         .where(and(eq(meshcoreNodes.publicKey, node.publicKey), eq(meshcoreNodes.sourceId, sourceId)));
     } else {
       await this.db

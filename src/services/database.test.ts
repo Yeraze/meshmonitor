@@ -111,35 +111,9 @@ const createTestDatabase = () => {
       return stmt.all(limit, offset) as DbMessage[];
     }
 
-    upsertChannel(channelData: { id: number; name: string; psk?: string; sourceId?: string }): void {
-      const now = Date.now();
-      const sourceId = channelData.sourceId ?? 'default';
-
-      // Channel ID is required - matching production implementation
-      if (channelData.id === undefined) {
-        throw new Error('Channel ID is required for upsert operation');
-      }
-
-      const existingChannel = this.getChannelById(channelData.id, sourceId);
-
-      if (existingChannel) {
-        const stmt = this.db.prepare(`
-          UPDATE channels SET name = ?, psk = COALESCE(?, psk), updatedAt = ?
-          WHERE id = ? AND sourceId = ?
-        `);
-        stmt.run(channelData.name, channelData.psk, now, channelData.id, sourceId);
-      } else {
-        const stmt = this.db.prepare(`
-          INSERT INTO channels (id, name, psk, uplinkEnabled, downlinkEnabled, sourceId, createdAt, updatedAt)
-          VALUES (?, ?, ?, 1, 1, ?, ?, ?)
-        `);
-        stmt.run(channelData.id, channelData.name, channelData.psk ?? null, sourceId, now, now);
-      }
-    }
-
-    getChannelById(id: number, sourceId = 'default'): DbChannel | null {
-      const stmt = this.db.prepare('SELECT * FROM channels WHERE id = ? AND sourceId = ?');
-      return stmt.get(id, sourceId) as DbChannel | null;
+    getChannelById(id: number): DbChannel | null {
+      const stmt = this.db.prepare('SELECT * FROM channels WHERE id = ?');
+      return stmt.get(id) as DbChannel | null;
     }
 
     getAllChannels(sourceId = 'default'): DbChannel[] {
@@ -508,30 +482,10 @@ describe('DatabaseService', () => {
       expect(primaryChannel.name).toBe('Primary');
     });
 
-    it('should create a new channel', () => {
-      db.upsertChannel({ id: 1, name: 'TestChannel', psk: 'secret123' });
-
-      const channel = db.getChannelById(1);
-      expect(channel).toBeTruthy();
-      expect(channel.name).toBe('TestChannel');
-      expect(channel.psk).toBe('secret123');
-    });
-
-    it('should update an existing channel', () => {
-      db.upsertChannel({ id: 1, name: 'TestChannel' });
-      db.upsertChannel({ id: 1, name: 'TestChannel', psk: 'newsecret' });
-
-      const channel = db.getChannelById(1);
-      expect(channel.psk).toBe('newsecret');
-    });
-
-    it('should retrieve all channels', () => {
-      db.upsertChannel({ id: 1, name: 'Channel1' });
-      db.upsertChannel({ id: 2, name: 'Channel2' });
-
-      const channels = db.getAllChannels();
-      expect(channels.length).toBeGreaterThanOrEqual(3); // Primary + 2 new
-    });
+    // The create/update/retrieve tests previously exercised a test-only
+    // `upsertChannel` fixture that mirrored the now-removed
+    // DatabaseService.upsertChannel (#3503). The live async path is covered by
+    // src/db/repositories/channels.test.ts (incl. the #1567 blank-name guard).
   });
 
   describe('Telemetry Operations', () => {
