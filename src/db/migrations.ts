@@ -105,6 +105,7 @@ import { migration as mapMaxAgeMigration, runMigration087Postgres as runMapMaxAg
 import { migration as sourcePkiKeysMigration, runMigration088Postgres as runSourcePkiKeysPostgres, runMigration088Mysql as runSourcePkiKeysMysql } from '../server/migrations/088_add_source_pki_keys.js';
 import { migration as positionSnrHopsMigration, runMigration089Postgres as runPositionSnrHopsPostgres, runMigration089Mysql as runPositionSnrHopsMysql } from '../server/migrations/089_add_position_snr_hops.js';
 import { migration as positionPointsOnlyMigration, runMigration090Postgres as runPositionPointsOnlyPostgres, runMigration090Mysql as runPositionPointsOnlyMysql } from '../server/migrations/090_add_position_points_only_to_map_prefs.js';
+import { migration as estimatedPositionsDoublePrecisionMigration, runMigration091Postgres as runEstimatedPositionsDoublePrecisionPostgres, runMigration091Mysql as runEstimatedPositionsDoublePrecisionMysql } from '../server/migrations/091_estimated_positions_double_precision.js';
 
 // ============================================================================
 // Registry
@@ -1438,4 +1439,19 @@ registry.register({
   sqlite: (db) => positionPointsOnlyMigration.up(db),
   postgres: (client) => runPositionPointsOnlyPostgres(client),
   mysql: (pool) => runPositionPointsOnlyMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 091: estimated_positions lat/lon/uncertaintyKm → DOUBLE PRECISION
+// (PostgreSQL only). The original REAL columns (~7 sig. digits) caused visible
+// coordinate rounding for estimated node positions (#3513).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 91,
+  name: 'estimated_positions_double_precision',
+  settingsKey: 'migration_091_estimated_positions_double_precision',
+  sqlite: (db) => estimatedPositionsDoublePrecisionMigration.up(db),
+  postgres: (client) => runEstimatedPositionsDoublePrecisionPostgres(client),
+  mysql: (pool) => runEstimatedPositionsDoublePrecisionMysql(pool),
 });

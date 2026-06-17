@@ -277,6 +277,110 @@ describe('MeshtasticManager - Position Precision Tracking', () => {
     });
   });
 
+  describe('NodeInfo precision guard (issue #3513)', () => {
+    // When a node has a statically-set GPS position, NODEINFO_APP packets carry
+    // a lat/lon that has been grid-snapped by the channel's positionPrecision setting.
+    // The guard prevents these lower-precision coordinates from overwriting a
+    // higher-precision value that was already stored (e.g. from a POSITION_APP packet).
+
+    // Guard logic (mirrors meshtasticManager.ts):
+    // shouldUpdateLatLon =
+    //   existingNode?.latitude == null || existingNode?.longitude == null ||
+    //   !precisionBits || !storedPrecisionBits || precisionBits >= storedPrecisionBits
+
+    function evalGuard(
+      existingLat: number | null | undefined,
+      existingLon: number | null | undefined,
+      storedPrecisionBits: number | undefined,
+      incomingPrecisionBits: number | undefined
+    ): boolean {
+      return (
+        existingLat == null ||
+        existingLon == null ||
+        !incomingPrecisionBits ||
+        !storedPrecisionBits ||
+        incomingPrecisionBits >= storedPrecisionBits
+      );
+    }
+
+    it('blocks lat/lon update when incoming precision is lower than stored', () => {
+      // Core case for issue #3513: node has high-precision GPS, NodeInfo arrives
+      // with positionPrecision-reduced coords.
+      expect(evalGuard(40.12345678, -74.98765432, 32, 14)).toBe(false);
+    });
+
+    it('allows lat/lon update when incoming precision equals stored', () => {
+      expect(evalGuard(40.0, -74.0, 14, 14)).toBe(true);
+    });
+
+    it('allows lat/lon update when incoming precision is higher than stored', () => {
+      expect(evalGuard(40.0, -74.0, 14, 32)).toBe(true);
+    });
+
+    it('allows lat/lon update when existing node has no coordinates (first write)', () => {
+      // Even low precision is accepted if the node has no position at all.
+      expect(evalGuard(null, null, 32, 12)).toBe(true);
+    });
+
+    it('allows lat/lon update when existing latitude is null', () => {
+      expect(evalGuard(null, -74.0, 32, 12)).toBe(true);
+    });
+
+    it('allows lat/lon update when stored precision is 0 (unknown)', () => {
+      // 0 means the existing record has no precision metadata — must accept any update.
+      expect(evalGuard(40.0, -74.0, 0, 14)).toBe(true);
+    });
+
+    it('allows lat/lon update when stored precision is undefined', () => {
+      expect(evalGuard(40.0, -74.0, undefined, 14)).toBe(true);
+    });
+
+    it('allows lat/lon update when incoming precision is 0 (absent/unknown)', () => {
+      // 0 from the wire means "no precision masking / not set"; treat as no info,
+      // so always accept (do not block on an unknown incoming value).
+      expect(evalGuard(40.0, -74.0, 32, 0)).toBe(true);
+    });
+
+    it('does not update positionPrecisionBits when lat/lon is blocked (prevents one-shot guard)', () => {
+      // Critical regression guard: if positionPrecisionBits were written even when
+      // the lat/lon update was blocked, the stored precision would decrease and the
+      // guard would pass on the very next packet (one-shot defect).
+      const existingPrecisionBits = 32;
+      const incomingPrecisionBits = 14;
+      const shouldUpdateLatLon = evalGuard(40.0, -74.0, existingPrecisionBits, incomingPrecisionBits);
+
+      expect(shouldUpdateLatLon).toBe(false);
+
+      // Simulate the conditional write: precision only updated inside shouldUpdateLatLon block
+      let storedAfter = existingPrecisionBits;
+      if (shouldUpdateLatLon && incomingPrecisionBits !== 0) {
+        storedAfter = incomingPrecisionBits;
+      }
+
+      expect(storedAfter).toBe(32); // stored precision unchanged
+    });
+
+    it('updates altitude independently even when lat/lon is blocked', () => {
+      // Altitude is NOT reduced by firmware positionPrecision — firmware only
+      // grid-snaps lat/lon. So altitude from a "low-precision" NodeInfo is valid
+      // and must be written even when the lat/lon update is blocked.
+      const shouldUpdateLatLon = evalGuard(40.0, -74.0, 32, 14);
+      expect(shouldUpdateLatLon).toBe(false);
+
+      const existingAltitude = 5;
+      const incomingAltitude = 25;
+
+      let altitude = existingAltitude;
+      if (shouldUpdateLatLon) {
+        altitude = incomingAltitude; // lat/lon path also writes altitude
+      } else if (incomingAltitude !== undefined && incomingAltitude !== null) {
+        altitude = incomingAltitude; // independent altitude update in else-branch
+      }
+
+      expect(altitude).toBe(25);
+    });
+  });
+
   describe('packetId propagation', () => {
     it('should include packetId in position telemetry from mesh packets', () => {
       const now = Date.now();

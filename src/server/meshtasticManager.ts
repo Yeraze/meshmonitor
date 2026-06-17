@@ -7849,26 +7849,56 @@ class MeshtasticManager implements ISourceManager {
 
         // Validate coordinates before saving
         if (this.isValidPosition(coords.latitude, coords.longitude)) {
-          nodeData.latitude = coords.latitude;
-          nodeData.longitude = coords.longitude;
-          nodeData.altitude = nodeInfo.position.altitude;
-
           // Extract position precision if present in NodeInfo's embedded Position.
           // The protobuf decoder normalizes a missing precision_bits field to 0, so we
           // treat 0 as "absent" here and leave any existing positionPrecisionBits intact.
           // We must NOT fall back to the local channel's positionPrecision — that record
           // reflects this MeshMonitor instance's channel config, not the remote node's,
           // and was causing every node's accuracy box to track the local node (issue #3030).
-          const precisionBits = nodeInfo.position.precisionBits ?? nodeInfo.position.precision_bits ?? undefined;
+          const precisionBits = nodeInfo.position.precisionBits ?? nodeInfo.position.precision_bits;
           const channelIndex = nodeInfo.channel !== undefined ? nodeInfo.channel : 0;
 
-          if (precisionBits !== undefined && precisionBits !== 0) {
-            nodeData.positionPrecisionBits = precisionBits;
-            nodeData.positionChannel = channelIndex;
-            nodeData.positionTimestamp = Date.now();
+          // Guard against precision downgrade (issue #3513): only update lat/lon from NodeInfo
+          // if the incoming position is not lower precision than what's already stored.
+          // NodeInfo positions may arrive reduced by the sending node's channel positionPrecision
+          // setting (firmware applies grid-snapping before broadcast). POSITION_APP packets are
+          // the authoritative source; NodeInfo should not silently downgrade them.
+          // We only skip when BOTH sides carry explicit non-zero precision info AND the incoming
+          // is clearly lower — if either side is unknown (0/null), we accept the update.
+          const storedPrecisionBits = existingNode?.positionPrecisionBits;
+          const shouldUpdateLatLon =
+            existingNode?.latitude == null || existingNode?.longitude == null || // no existing position
+            !precisionBits ||        // incoming precision unknown (0 = not set), accept
+            !storedPrecisionBits ||  // stored precision unknown, accept
+            precisionBits >= storedPrecisionBits; // incoming is same or better precision
+
+          if (shouldUpdateLatLon) {
+            nodeData.latitude = coords.latitude;
+            nodeData.longitude = coords.longitude;
+            nodeData.altitude = nodeInfo.position.altitude;
+            // Only update precision metadata when we actually accept the lat/lon. Updating
+            // positionPrecisionBits even on a rejected downgrade would lower the stored
+            // value and make the guard one-shot — the next packet at the same low precision
+            // would pass the ">= stored" check and overwrite the coordinates.
+            if (precisionBits !== undefined && precisionBits !== 0) {
+              nodeData.positionPrecisionBits = precisionBits;
+              nodeData.positionChannel = channelIndex;
+              nodeData.positionTimestamp = Date.now();
+            }
+          } else {
+            logger.debug(
+              `🗺️ Skipping NodeInfo lat/lon update for ${nodeId}: ` +
+              `incoming precision (${precisionBits} bits) < stored (${storedPrecisionBits} bits)`
+            );
+            // Altitude is not grid-snapped by the firmware's positionPrecision setting,
+            // so update it independently even when lat/lon is being skipped.
+            if (nodeInfo.position.altitude !== undefined && nodeInfo.position.altitude !== null) {
+              nodeData.altitude = nodeInfo.position.altitude;
+            }
           }
 
-          // Store position telemetry data to be inserted after node is created
+          // Always record position telemetry for history (regardless of whether the
+          // current-position columns were updated), using the actual incoming coordinates.
           const timestamp = nodeInfo.position.time ? Number(nodeInfo.position.time) * 1000 : Date.now();
           positionTelemetryData = {
             timestamp,
