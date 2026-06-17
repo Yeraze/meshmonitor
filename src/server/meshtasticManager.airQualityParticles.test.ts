@@ -89,6 +89,18 @@ describe('MeshtasticManager - air-quality particle telemetry (protobuf.js snake_
     expect(storedValue('particles05um')).toBe(50);
   });
 
+  it('stores the newer particles_40um / pm40_standard / pm_voc_idx fields now they have units (#3507)', async () => {
+    // After #3506 unified serial ingest onto the canonical normalizer, adding a
+    // unit in telemetryKeys.ts is all it takes for these to be ingested — even
+    // the underscore-before-digit particles_40um.
+    await manager.processTelemetryMessageProtobuf(meshPacket, {
+      airQualityMetrics: { particles_40um: 17, pm40_standard: 8, pm_voc_idx: 142 },
+    });
+    expect(storedValue('particles40um')).toBe(17);
+    expect(storedValue('pm40Standard')).toBe(8);
+    expect(storedValue('pmVocIdx')).toBe(142);
+  });
+
   it('stores rainfall_1h / rainfall_24h decoded under snake_case names', async () => {
     await manager.processTelemetryMessageProtobuf(meshPacket, {
       environmentMetrics: {

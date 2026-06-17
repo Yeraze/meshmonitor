@@ -157,6 +157,16 @@ const TELEMETRY_LABELS: Record<string, string> = {
   co2: 'CO₂',
   co2Temperature: 'CO₂ Sensor Temperature',
   co2Humidity: 'CO₂ Sensor Humidity',
+  pm40Standard: 'PM4.0 (Standard)',
+  particles40um: 'Particles 4.0µm',
+  particlesTps: 'Typical Particle Size',
+  formFormaldehyde: 'Formaldehyde',
+  formHumidity: 'Formaldehyde Sensor Humidity',
+  formTemperature: 'Formaldehyde Sensor Temperature',
+  pmTemperature: 'PM Sensor Temperature',
+  pmHumidity: 'PM Sensor Humidity',
+  pmVocIdx: 'PM VOC Index',
+  pmNoxIdx: 'PM NOx Index',
   // Clock sync (Meshtastic)
   timeOffset: 'Clock Offset (Server − Node)',
   // HostMetrics (Linux device hosts)
