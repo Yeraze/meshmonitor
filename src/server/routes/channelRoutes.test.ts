@@ -1,0 +1,364 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import request from 'supertest';
+import express from 'express';
+
+// --- Mocked manager (per-source) ---
+const mockManager = vi.hoisted(() => ({
+  sourceId: 'src-1',
+  setChannelConfig: vi.fn().mockResolvedValue(undefined),
+  getDeviceConfig: vi.fn().mockResolvedValue({ lora: { region: 1, usePreset: true } }),
+  beginEditSettings: vi.fn().mockResolvedValue(undefined),
+  commitEditSettings: vi.fn().mockResolvedValue(undefined),
+  setLoRaConfig: vi.fn().mockResolvedValue(undefined),
+  refreshNodeDatabase: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../utils/resolveSourceManager.js', () => ({
+  resolveSourceManager: vi.fn(() => mockManager),
+}));
+
+// --- channelView: passthrough projection so we can assert psk stripping logic indirectly ---
+vi.mock('../utils/channelView.js', () => ({
+  transformChannel: vi.fn((channel: any, opts: any = {}) => ({
+    id: channel.id,
+    name: channel.name,
+    role: channel.role,
+    ...(opts.includePsk ? { psk: channel.psk } : {}),
+  })),
+}));
+
+vi.mock('../utils/automationChannelMigration.js', () => ({
+  migrateAutomationChannels: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../constants/meshtastic.js', () => ({
+  modemPresetChannelName: vi.fn(() => 'LongFast'),
+}));
+
+const mockMeshcoreManager = vi.hoisted(() => ({
+  setChannel: vi.fn().mockResolvedValue(undefined),
+  deleteChannel: vi.fn().mockResolvedValue(undefined),
+}));
+const mockMeshcoreRegistry = vi.hoisted(() => ({
+  get: vi.fn(() => mockMeshcoreManager),
+}));
+vi.mock('../meshcoreRegistry.js', () => ({
+  meshcoreManagerRegistry: mockMeshcoreRegistry,
+}));
+
+// --- channelUrlService (dynamically imported) ---
+const mockChannelUrlService = vi.hoisted(() => ({
+  decodeUrl: vi.fn(),
+  encodeUrl: vi.fn(),
+}));
+vi.mock('../services/channelUrlService.js', () => ({
+  default: mockChannelUrlService,
+}));
+
+// --- DatabaseService facade ---
+const mockDb = vi.hoisted(() => ({
+  channels: {
+    getAllChannels: vi.fn().mockResolvedValue([]),
+    getChannelById: vi.fn(),
+    upsertChannel: vi.fn().mockResolvedValue(undefined),
+    deleteChannel: vi.fn().mockResolvedValue(undefined),
+    getChannelCount: vi.fn().mockResolvedValue(0),
+  },
+  messages: {
+    purgeChannelMessages: vi.fn().mockResolvedValue(0),
+    migrateMessagesForChannelMoves: vi.fn().mockResolvedValue(undefined),
+  },
+  settings: {
+    getSetting: vi.fn().mockResolvedValue(null),
+    setSetting: vi.fn().mockResolvedValue(undefined),
+  },
+  sources: {
+    getSource: vi.fn().mockResolvedValue({ type: 'meshtastic_tcp' }),
+  },
+  auth: {
+    migratePermissionsForChannelMoves: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+vi.mock('../../services/database.js', () => ({
+  default: mockDb,
+}));
+
+// --- Auth middleware: admin user, all permissions granted ---
+vi.mock('../auth/authMiddleware.js', () => ({
+  optionalAuth: () => (req: any, _res: any, next: any) => { req.user = { id: 1, isAdmin: true }; next(); },
+  requireAuth: () => (req: any, _res: any, next: any) => { req.user = { id: 1, isAdmin: true }; next(); },
+  requirePermission: () => (req: any, _res: any, next: any) => { req.user = { id: 1, isAdmin: true }; next(); },
+  hasPermission: vi.fn().mockResolvedValue(true),
+}));
+
+// Silence handler logging so the suite output stays clean.
+vi.mock('../../utils/logger.js', () => ({
+  logger: { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} },
+}));
+
+import channelRoutes from './channelRoutes.js';
+
+const app = express();
+app.use(express.json());
+app.use('/channels', channelRoutes);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockManager.sourceId = 'src-1';
+  // clearAllMocks resets call history but NOT implementations set via
+  // mockResolvedValue/mockRejectedValue, so re-assert the defaults each test.
+  mockDb.channels.getAllChannels.mockResolvedValue([]);
+  mockDb.channels.getChannelCount.mockResolvedValue(0);
+  mockDb.messages.purgeChannelMessages.mockResolvedValue(0);
+  mockDb.sources.getSource.mockResolvedValue({ type: 'meshtastic_tcp' });
+  mockMeshcoreRegistry.get.mockReturnValue(mockMeshcoreManager);
+});
+
+describe('GET /channels and /channels/all', () => {
+  it('returns projected channels (admin sees psk)', async () => {
+    mockDb.channels.getAllChannels.mockResolvedValue([
+      { id: 0, name: 'Primary', role: 1, psk: 'AQ==' },
+    ]);
+    const res = await request(app).get('/channels/all');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].psk).toBe('AQ==');
+  });
+
+  it('GET /channels filters out disabled (role 0) channels', async () => {
+    mockDb.channels.getAllChannels.mockResolvedValue([
+      { id: 0, name: 'Primary', role: 1, psk: 'AQ==' },
+      { id: 1, name: 'Disabled', role: 0, psk: 'AQ==' },
+    ]);
+    const res = await request(app).get('/channels');
+    expect(res.status).toBe(200);
+    expect(res.body.map((c: any) => c.id)).toEqual([0]);
+  });
+
+  it('returns 500 when the DB query throws', async () => {
+    mockDb.channels.getAllChannels.mockRejectedValue(new Error('boom'));
+    const res = await request(app).get('/channels');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Failed to fetch channels');
+  });
+});
+
+describe('GET /channels/:id/export', () => {
+  it('rejects a non-numeric channel id', async () => {
+    const res = await request(app).get('/channels/abc/export');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid channel ID');
+  });
+
+  it('404s when the channel does not exist', async () => {
+    mockDb.channels.getChannelById.mockResolvedValue(null);
+    const res = await request(app).get('/channels/3/export');
+    expect(res.status).toBe(404);
+  });
+
+  it('exports the channel JSON with a filename header', async () => {
+    mockDb.channels.getChannelById.mockResolvedValue({
+      id: 2, name: 'Test Chan', psk: 'AQ==', role: 2,
+      uplinkEnabled: 1, downlinkEnabled: 0, positionPrecision: 16,
+    });
+    const res = await request(app).get('/channels/2/export');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toContain('meshmonitor-channel-test_chan-');
+    const body = JSON.parse(res.text);
+    expect(body.channel.id).toBe(2);
+    expect(body.channel.uplinkEnabled).toBe(true);   // normalized 1 -> true
+    expect(body.channel.downlinkEnabled).toBe(false); // normalized 0 -> false
+  });
+});
+
+describe('PUT /channels/:id', () => {
+  it('rejects an out-of-range Meshtastic channel id', async () => {
+    const res = await request(app).put('/channels/9').send({ name: 'x' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('0-7');
+  });
+
+  it('rejects an over-long Meshtastic name (>11)', async () => {
+    mockDb.channels.getChannelById.mockResolvedValue({ id: 1, name: 'old', psk: null });
+    const res = await request(app).put('/channels/1').send({ name: 'this-name-is-way-too-long' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('11 characters');
+  });
+
+  it('404s when updating a missing Meshtastic channel', async () => {
+    mockDb.channels.getChannelById.mockResolvedValue(null);
+    const res = await request(app).put('/channels/1').send({ name: 'ok' });
+    expect(res.status).toBe(404);
+  });
+
+  it('updates an existing channel and pushes config to the device', async () => {
+    mockDb.channels.getChannelById.mockResolvedValue({ id: 1, name: 'old', psk: 'AQ==', role: 2 });
+    const res = await request(app).put('/channels/1').send({ name: 'newname' });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(mockDb.channels.upsertChannel).toHaveBeenCalled();
+    expect(mockManager.setChannelConfig).toHaveBeenCalled();
+  });
+
+  it('rejects a MeshCore secret that is not 16 bytes', async () => {
+    mockDb.sources.getSource.mockResolvedValue({ type: 'meshcore' });
+    const res = await request(app).put('/channels/2').send({ name: 'mc', psk: 'AQ==', sourceId: 'mc-1' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('16 bytes');
+  });
+
+  it('503s for MeshCore when no manager is registered', async () => {
+    mockDb.sources.getSource.mockResolvedValue({ type: 'meshcore' });
+    mockMeshcoreRegistry.get.mockReturnValue(undefined);
+    const sixteen = Buffer.alloc(16).toString('base64');
+    const res = await request(app).put('/channels/2').send({ name: 'mc', psk: sixteen, sourceId: 'mc-1' });
+    expect(res.status).toBe(503);
+  });
+});
+
+describe('DELETE /channels/:id', () => {
+  it('requires a sourceId', async () => {
+    const res = await request(app).delete('/channels/1');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('sourceId is required');
+  });
+
+  it('refuses to delete the primary channel', async () => {
+    const res = await request(app).delete('/channels/0').send({ sourceId: 'src-1' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('primary');
+  });
+
+  it('deletes a channel and purges its messages', async () => {
+    mockDb.messages.purgeChannelMessages.mockResolvedValue(5);
+    const res = await request(app).delete('/channels/3').send({ sourceId: 'src-1' });
+    expect(res.status).toBe(200);
+    expect(res.body.messagesDeleted).toBe(5);
+    expect(mockDb.channels.deleteChannel).toHaveBeenCalledWith(3, 'src-1');
+  });
+});
+
+describe('POST /channels/:slotId/import', () => {
+  it('rejects an invalid slot id', async () => {
+    const res = await request(app).post('/channels/9/import').send({ channel: { name: 'x' } });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('0-7');
+  });
+
+  it('requires a channel object', async () => {
+    const res = await request(app).post('/channels/1/import').send({});
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Expected channel object');
+  });
+
+  it('imports a channel into the slot', async () => {
+    mockDb.channels.getChannelById.mockResolvedValue({ id: 1, name: 'Imported' });
+    const res = await request(app).post('/channels/1/import').send({ channel: { name: 'Imported', psk: 'AQ==' } });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(mockDb.channels.upsertChannel).toHaveBeenCalled();
+  });
+});
+
+describe('POST /channels/reorder', () => {
+  it('rejects a newOrder that is not 8 entries', async () => {
+    const res = await request(app).post('/channels/reorder').send({ newOrder: [0, 1, 2] });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a newOrder that is not a permutation of 0-7', async () => {
+    const res = await request(app).post('/channels/reorder').send({ newOrder: [0, 0, 1, 2, 3, 4, 5, 6] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('exactly once');
+  });
+
+  it('returns requiresReboot:false for the identity order without touching the device', async () => {
+    const res = await request(app).post('/channels/reorder').send({ newOrder: [0, 1, 2, 3, 4, 5, 6, 7] });
+    expect(res.status).toBe(200);
+    expect(res.body.requiresReboot).toBe(false);
+    expect(mockManager.beginEditSettings).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /channels/decode-url', () => {
+  it('requires a url', async () => {
+    const res = await request(app).post('/channels/decode-url').send({});
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('URL is required');
+  });
+
+  it('400s on a malformed url', async () => {
+    mockChannelUrlService.decodeUrl.mockReturnValue(null);
+    const res = await request(app).post('/channels/decode-url').send({ url: 'https://meshtastic.org/e/#bad' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Invalid or malformed');
+  });
+
+  it('returns the decoded config', async () => {
+    mockChannelUrlService.decodeUrl.mockReturnValue({ channels: [{ name: 'A' }] });
+    const res = await request(app).post('/channels/decode-url').send({ url: 'https://meshtastic.org/e/#ok' });
+    expect(res.status).toBe(200);
+    expect(res.body.channels).toHaveLength(1);
+  });
+});
+
+describe('POST /channels/encode-url', () => {
+  it('rejects a non-array channelIds', async () => {
+    const res = await request(app).post('/channels/encode-url').send({ channelIds: 'nope' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('channelIds must be an array');
+  });
+
+  it('400s when no valid channels are selected', async () => {
+    mockDb.channels.getChannelById.mockResolvedValue(null);
+    const res = await request(app).post('/channels/encode-url').send({ channelIds: [3] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('No valid channels');
+  });
+
+  it('encodes the selected channels into a url', async () => {
+    mockDb.channels.getChannelById.mockResolvedValue({ id: 0, name: 'Primary', psk: 'AQ==' });
+    mockChannelUrlService.encodeUrl.mockReturnValue('https://meshtastic.org/e/#encoded');
+    const res = await request(app).post('/channels/encode-url').send({ channelIds: [0] });
+    expect(res.status).toBe(200);
+    expect(res.body.url).toContain('meshtastic.org');
+  });
+});
+
+describe('POST /channels/import-config', () => {
+  it('requires a url', async () => {
+    const res = await request(app).post('/channels/import-config').send({});
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('URL is required');
+  });
+
+  it('400s on an empty/invalid config url', async () => {
+    mockChannelUrlService.decodeUrl.mockReturnValue(null);
+    const res = await request(app).post('/channels/import-config').send({ url: 'https://meshtastic.org/e/#x' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Invalid or empty');
+  });
+
+  it('imports channels + lora config and commits the transaction', async () => {
+    mockChannelUrlService.decodeUrl.mockReturnValue({
+      channels: [{ name: 'A', psk: 'AQ==' }],
+      loraConfig: { region: 1 },
+    });
+    const res = await request(app).post('/channels/import-config').send({ url: 'https://meshtastic.org/e/#ok' });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.imported.channels).toBe(1);
+    expect(res.body.requiresReboot).toBe(true);
+    expect(mockManager.beginEditSettings).toHaveBeenCalled();
+    expect(mockManager.commitEditSettings).toHaveBeenCalled();
+  });
+});
+
+describe('POST /channels/refresh', () => {
+  it('refreshes the node database and returns the channel count', async () => {
+    mockDb.channels.getChannelCount.mockResolvedValue(4);
+    const res = await request(app).post('/channels/refresh').send({ sourceId: 'src-1' });
+    expect(res.status).toBe(200);
+    expect(res.body.channelCount).toBe(4);
+    expect(mockManager.refreshNodeDatabase).toHaveBeenCalled();
+  });
+});
