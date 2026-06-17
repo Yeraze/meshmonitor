@@ -350,19 +350,28 @@ export class NodesRepository extends BaseRepository {
     const existingNode = await this.getNode(nodeData.nodeNum, effectiveSourceId);
 
     if (existingNode) {
+      // Treat '' (and null/undefined) as "not provided" for string identity
+      // fields, so a blank incoming name/macaddr preserves the stored value
+      // instead of clobbering it (#3456/#3505).
+      const nameOrExisting = (incoming: any, existing: any) =>
+        (incoming === null || incoming === undefined || incoming === '') ? existing : incoming;
       // Update existing node - coerceBigintField is safe for all dialects (just Math.floor)
       await this.db
         .update(nodes)
         .set({
           nodeId: nodeData.nodeId ?? existingNode.nodeId,
-          longName: nodeData.longName ?? existingNode.longName,
-          shortName: nodeData.shortName ?? existingNode.shortName,
-          hwModel: nodeData.hwModel ?? existingNode.hwModel,
+          // String identity fields: '' means "blank / not reported", not "clear" —
+          // preserve a learned value rather than clobber it (#3456/#3505).
+          longName: nameOrExisting(nodeData.longName, existingNode.longName),
+          shortName: nameOrExisting(nodeData.shortName, existingNode.shortName),
+          // hwModel 0 = HardwareModel.UNSET (unknown) — keep a known model.
+          hwModel: (nodeData.hwModel === null || nodeData.hwModel === undefined || nodeData.hwModel === 0)
+            ? existingNode.hwModel : nodeData.hwModel,
           role: nodeData.role ?? existingNode.role,
           hopsAway: nodeData.hopsAway ?? existingNode.hopsAway,
           viaMqtt: nodeData.viaMqtt ?? existingNode.viaMqtt,
           isStoreForwardServer: nodeData.isStoreForwardServer ?? existingNode.isStoreForwardServer,
-          macaddr: nodeData.macaddr ?? existingNode.macaddr,
+          macaddr: nameOrExisting(nodeData.macaddr, existingNode.macaddr),
           latitude: nodeData.latitude ?? existingNode.latitude,
           longitude: nodeData.longitude ?? existingNode.longitude,
           altitude: nodeData.altitude ?? existingNode.altitude,
@@ -1712,14 +1721,27 @@ export class NodesRepository extends BaseRepository {
           updateSet[key as string] = value;
         }
       };
+      // For string identity fields an empty string means "blank / not reported",
+      // not "clear the value" — preserve a previously-learned name/macaddr rather
+      // than clobber it (the durable form of the #3456 fix; see #3505). Genuine
+      // numerics below still write 0 via setIfProvided (0 snr/battery/lat-lon are
+      // legitimate).
+      const setIfNonBlank = (key: keyof DbNode, value: any) => {
+        if (value !== null && value !== undefined && value !== '') {
+          updateSet[key as string] = value;
+        }
+      };
       setIfProvided('nodeId', nodeData.nodeId);
-      setIfProvided('longName', nodeData.longName);
-      setIfProvided('shortName', nodeData.shortName);
-      setIfProvided('hwModel', nodeData.hwModel);
+      setIfNonBlank('longName', nodeData.longName);
+      setIfNonBlank('shortName', nodeData.shortName);
+      // hwModel 0 = HardwareModel.UNSET (unknown) — keep a known model.
+      if (nodeData.hwModel !== null && nodeData.hwModel !== undefined && nodeData.hwModel !== 0) {
+        updateSet.hwModel = nodeData.hwModel;
+      }
       setIfProvided('role', nodeData.role);
       setIfProvided('hopsAway', nodeData.hopsAway);
       if (nodeData.viaMqtt !== undefined) updateSet.viaMqtt = nodeData.viaMqtt;
-      setIfProvided('macaddr', nodeData.macaddr);
+      setIfNonBlank('macaddr', nodeData.macaddr);
       setIfProvided('latitude', nodeData.latitude);
       setIfProvided('longitude', nodeData.longitude);
       setIfProvided('altitude', nodeData.altitude);
