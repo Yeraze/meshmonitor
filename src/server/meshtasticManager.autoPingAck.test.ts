@@ -118,6 +118,16 @@ describe('MeshtasticManager - auto-ping ACK matching (request_id + from)', () =>
     expect(s.pendingTimeout).toBeNull();
   });
 
+  it('clears the pending ack timeout on a NAK too', () => {
+    const fakeTimer = setTimeout(() => {}, 60000);
+    const s = makeSession({ pendingTimeout: fakeTimer });
+    const clearSpy = vi.spyOn(global, 'clearTimeout');
+    manager.handleAutoPingResponse(REQ_ID, LOCAL, 34 /* MAX_RETRANSMIT */);
+    expect(clearSpy).toHaveBeenCalledWith(fakeTimer);
+    expect(s.pendingTimeout).toBeNull();
+    expect(s.results[0].status).toBe('nak');
+  });
+
   it('does not match a different request_id', () => {
     const s = makeSession();
     manager.handleAutoPingResponse(9999, REQUESTER, 0);
