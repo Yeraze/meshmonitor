@@ -30,20 +30,23 @@ export const migration = {
 export async function runMigration091Postgres(client: any): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): upgrading ${TABLE} coordinate columns to DOUBLE PRECISION...`);
   for (const col of ['latitude', 'longitude', 'uncertaintyKm']) {
-    try {
-      // eslint-disable-next-line no-restricted-syntax -- migrations require raw DDL
-      await client.query(
-        `ALTER TABLE ${TABLE} ALTER COLUMN "${col}" TYPE DOUBLE PRECISION`
-      );
-      logger.info(`${LABEL} (PostgreSQL): ${col} → DOUBLE PRECISION`);
-    } catch (e: any) {
-      // Already DOUBLE PRECISION — safe to ignore
-      if (e.message?.includes('cannot be cast') || e.message?.includes('already')) {
-        logger.debug(`${LABEL} (PostgreSQL): ${col} already DOUBLE PRECISION, skipping`);
-      } else {
-        throw e;
-      }
+    // Check information_schema first so the ALTER is idempotent without relying on
+    // brittle error-message string matching (PG doesn't error on REAL→REAL no-ops anyway,
+    // but being explicit avoids any edge-case surprises).
+    // eslint-disable-next-line no-restricted-syntax -- migrations require raw DDL
+    const { rows } = await client.query(
+      `SELECT data_type FROM information_schema.columns
+       WHERE table_name = $1 AND column_name = $2`,
+      [TABLE, col]
+    );
+    const currentType: string | undefined = rows[0]?.data_type?.toLowerCase();
+    if (currentType === 'double precision') {
+      logger.debug(`${LABEL} (PostgreSQL): ${col} already DOUBLE PRECISION, skipping`);
+      continue;
     }
+    // eslint-disable-next-line no-restricted-syntax -- migrations require raw DDL
+    await client.query(`ALTER TABLE ${TABLE} ALTER COLUMN "${col}" TYPE DOUBLE PRECISION`);
+    logger.info(`${LABEL} (PostgreSQL): ${col} upgraded from ${currentType ?? '?'} → DOUBLE PRECISION`);
   }
 }
 

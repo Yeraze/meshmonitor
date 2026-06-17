@@ -7933,17 +7933,25 @@ class MeshtasticManager implements ISourceManager {
             nodeData.latitude = coords.latitude;
             nodeData.longitude = coords.longitude;
             nodeData.altitude = nodeInfo.position.altitude;
+            // Only update precision metadata when we actually accept the lat/lon. Updating
+            // positionPrecisionBits even on a rejected downgrade would lower the stored
+            // value and make the guard one-shot — the next packet at the same low precision
+            // would pass the ">= stored" check and overwrite the coordinates.
+            if (precisionBits !== undefined && precisionBits !== 0) {
+              nodeData.positionPrecisionBits = precisionBits;
+              nodeData.positionChannel = channelIndex;
+              nodeData.positionTimestamp = Date.now();
+            }
           } else {
             logger.debug(
-              `🗺️ Skipping NodeInfo position update for ${nodeId}: ` +
+              `🗺️ Skipping NodeInfo lat/lon update for ${nodeId}: ` +
               `incoming precision (${precisionBits} bits) < stored (${storedPrecisionBits} bits)`
             );
-          }
-
-          if (precisionBits !== undefined && precisionBits !== 0) {
-            nodeData.positionPrecisionBits = precisionBits;
-            nodeData.positionChannel = channelIndex;
-            nodeData.positionTimestamp = Date.now();
+            // Altitude is not grid-snapped by the firmware's positionPrecision setting,
+            // so update it independently even when lat/lon is being skipped.
+            if (nodeInfo.position.altitude !== undefined && nodeInfo.position.altitude !== null) {
+              nodeData.altitude = nodeInfo.position.altitude;
+            }
           }
 
           // Always record position telemetry for history (regardless of whether the
