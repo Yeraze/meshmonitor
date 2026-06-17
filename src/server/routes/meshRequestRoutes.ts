@@ -1,0 +1,298 @@
+import { Router, Request, Response } from 'express';
+import { requirePermission } from '../auth/authMiddleware.js';
+import databaseService from '../../services/database.js';
+import { logger } from '../../utils/logger.js';
+import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { parseDestinationNum } from '../utils/parseDestination.js';
+import { PortNum } from '../constants/meshtastic.js';
+
+const router = Router();
+
+router.post('/traceroute', requirePermission('traceroute', 'write'), async (req: Request, res: Response) => {
+  try {
+    const { destination, sourceId: traceSourceId } = req.body;
+    if (!destination) {
+      return res.status(400).json({ error: 'Destination node number is required' });
+    }
+
+    const destinationNum = await parseDestinationNum(destination, traceSourceId, databaseService);
+    if (destinationNum === null) {
+      return res.status(400).json({ error: `Invalid destination: ${destination}` });
+    }
+
+    // Look up the node to get its channel — scope to this source so the channel
+    // reflects the mesh this traceroute will actually traverse.
+    const node = await databaseService.nodes.getNode(destinationNum, traceSourceId);
+    const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
+
+    const traceManager = (resolveSourceManager(traceSourceId));
+    await traceManager.sendTraceroute(destinationNum, channel);
+    res.json({
+      success: true,
+      message: `Traceroute request sent to ${destinationNum.toString(16)} on channel ${channel}`,
+    });
+  } catch (error) {
+    logger.error('Error sending traceroute:', error);
+    res.status(500).json({ error: 'Failed to send traceroute' });
+  }
+});
+
+// Position request endpoint
+router.post('/position/request', requirePermission('messages', 'write'), async (req: Request, res: Response) => {
+  try {
+    const { destination, sourceId: posSourceId } = req.body;
+    if (!destination) {
+      return res.status(400).json({ error: 'Destination node number is required' });
+    }
+
+    const destinationNum = await parseDestinationNum(destination, posSourceId, databaseService);
+    if (destinationNum === null) {
+      return res.status(400).json({ error: `Invalid destination: ${destination}` });
+    }
+
+    // Look up the node to get its channel (scoped to this source)
+    const node = await databaseService.nodes.getNode(destinationNum, posSourceId);
+    // Use explicit channel from request if provided and valid (0-7), otherwise fall back to node's stored channel
+    const channel = (typeof req.body.channel === 'number' && req.body.channel >= 0 && req.body.channel <= 7)
+      ? req.body.channel
+      : (node?.channel ?? 0);
+
+    const posManager = (resolveSourceManager(posSourceId));
+    const { packetId, requestId } = await posManager.sendPositionRequest(destinationNum, channel);
+
+    // Get local node info to create system message
+    const localNodeInfo = posManager.getLocalNodeInfo();
+    logger.info(
+      `📍 localNodeInfo for system message: ${
+        localNodeInfo ? `nodeId=${localNodeInfo.nodeId}, nodeNum=${localNodeInfo.nodeNum}` : 'NULL'
+      }`
+    );
+
+    const isBroadcast = destinationNum === 0xFFFFFFFF;
+
+    if (localNodeInfo) {
+      // Create a system message to record the position request using the actual packet ID and requestId
+      const messageId = `${packetId}`;
+      const timestamp = Date.now();
+
+      // For DMs (channel 0), store as channel -1 to show in DM conversation
+      const messageChannel = channel === 0 ? -1 : channel;
+
+      logger.info(
+        `📍 Inserting position request system message to database: ${messageId} (channel: ${messageChannel}, packetId: ${packetId}, requestId: ${requestId}, broadcast: ${isBroadcast})`
+      );
+      await databaseService.messages.insertMessage({
+        id: messageId,
+        fromNodeNum: localNodeInfo.nodeNum,
+        toNodeNum: destinationNum,
+        fromNodeId: localNodeInfo.nodeId,
+        toNodeId: `!${destinationNum.toString(16).padStart(8, '0')}`,
+        text: isBroadcast ? 'Position broadcast sent' : 'Position exchange requested',
+        channel: messageChannel,
+        portnum: PortNum.TEXT_MESSAGE_APP, // Shows in DM view (DM filter requires TEXT_MESSAGE_APP)
+        // Broadcast packets don't get ACKed, so omit requestId to avoid permanent pending state
+        ...(isBroadcast ? {} : { requestId: requestId }),
+        timestamp: timestamp,
+        rxTime: timestamp,
+        createdAt: timestamp,
+        sourceIp: req.ip ?? null,
+        sourcePath: 'http_api',
+      });
+      logger.info(`📍 Position request system message inserted successfully`);
+    } else {
+      logger.warn(`⚠️ Could not create system message for position request - localNodeInfo is null`);
+    }
+
+    res.json({
+      success: true,
+      message: `Position request sent to ${destinationNum.toString(16)} on channel ${channel}`,
+    });
+  } catch (error) {
+    logger.error('Error sending position request:', error);
+    res.status(500).json({ error: 'Failed to send position request' });
+  }
+});
+
+// NodeInfo request endpoint (Exchange Node Info - triggers key exchange)
+router.post('/nodeinfo/request', requirePermission('messages', 'write'), async (req: Request, res: Response) => {
+  try {
+    const { destination, sourceId: niSourceId } = req.body;
+    if (!destination) {
+      return res.status(400).json({ error: 'Destination node number is required' });
+    }
+
+    const destinationNum = await parseDestinationNum(destination, niSourceId, databaseService);
+    if (destinationNum === null) {
+      return res.status(400).json({ error: `Invalid destination: ${destination}` });
+    }
+
+    // Look up the node to get its channel (scoped to this source)
+    const node = await databaseService.nodes.getNode(destinationNum, niSourceId);
+    const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
+
+    const niManager = (resolveSourceManager(niSourceId));
+    const { packetId, requestId } = await niManager.sendNodeInfoRequest(destinationNum, channel);
+
+    // Get local node info to create system message
+    const localNodeInfo = niManager.getLocalNodeInfo();
+    logger.info(
+      `📇 localNodeInfo for system message: ${
+        localNodeInfo ? `nodeId=${localNodeInfo.nodeId}, nodeNum=${localNodeInfo.nodeNum}` : 'NULL'
+      }`
+    );
+
+    if (localNodeInfo) {
+      // Create a system message to record the nodeinfo request using the actual packet ID and requestId
+      const messageId = `${packetId}`;
+      const timestamp = Date.now();
+
+      // For DMs (channel 0), store as channel -1 to show in DM conversation
+      const messageChannel = channel === 0 ? -1 : channel;
+
+      logger.info(
+        `📇 Inserting nodeinfo request system message to database: ${messageId} (channel: ${messageChannel}, packetId: ${packetId}, requestId: ${requestId})`
+      );
+      await databaseService.messages.insertMessage({
+        id: messageId,
+        fromNodeNum: localNodeInfo.nodeNum,
+        toNodeNum: destinationNum,
+        fromNodeId: localNodeInfo.nodeId,
+        toNodeId: `!${destinationNum.toString(16).padStart(8, '0')}`,
+        text: 'User info exchange requested',
+        channel: messageChannel,
+        portnum: PortNum.TEXT_MESSAGE_APP, // Shows in DM view (DM filter requires TEXT_MESSAGE_APP)
+        requestId: requestId, // Store requestId for ACK matching
+        timestamp: timestamp,
+        rxTime: timestamp,
+        createdAt: timestamp,
+        sourceIp: req.ip ?? null,
+        sourcePath: 'http_api',
+      });
+      logger.info(`📇 NodeInfo request system message inserted successfully`);
+    } else {
+      logger.warn(`⚠️ Could not create system message for nodeinfo request - localNodeInfo is null`);
+    }
+
+    res.json({
+      success: true,
+      message: `NodeInfo request sent to ${destinationNum.toString(16)} on channel ${channel}`,
+    });
+  } catch (error) {
+    logger.error('Error sending nodeinfo request:', error);
+    res.status(500).json({ error: 'Failed to send nodeinfo request' });
+  }
+});
+
+// NeighborInfo request endpoint (request neighbor info from remote node)
+// Rate limit: one request per destination every 180 seconds (firmware limit is ~3 minutes)
+const neighborInfoRequestTimestamps = new Map<number, number>();
+const NEIGHBOR_INFO_RATE_LIMIT_MS = 180_000;
+
+router.post('/neighborinfo/request', requirePermission('traceroute', 'write'), async (req: Request, res: Response) => {
+  try {
+    const { destination } = req.body;
+    if (!destination) {
+      return res.status(400).json({ error: 'Destination node number is required' });
+    }
+
+    const { sourceId: neighborSourceId } = req.body;
+    const destinationNum = await parseDestinationNum(destination, neighborSourceId, databaseService);
+    if (destinationNum === null) {
+      return res.status(400).json({ error: `Invalid destination: ${destination}` });
+    }
+
+    // Eligibility check: only allow requests to local node or 0-hop nodes
+    const neighborManager = (resolveSourceManager(neighborSourceId));
+    const localNodeNum = neighborManager.getLocalNodeInfo()?.nodeNum;
+    // Scope to the target source so hopsAway/channel reflect this mesh
+    const node = await databaseService.nodes.getNode(destinationNum, neighborSourceId);
+    const isLocalNode = localNodeNum != null && Number(destinationNum) === Number(localNodeNum);
+    const isDirectNode = node != null && node.hopsAway != null && Number(node.hopsAway) === 0;
+
+    if (!isLocalNode && !isDirectNode) {
+      return res.status(403).json({
+        error: 'Neighbor info requests are only allowed for the local node or directly-heard (0-hop) nodes',
+        eligible: false,
+      });
+    }
+
+    // Rate limiting per destination
+    const lastRequest = neighborInfoRequestTimestamps.get(Number(destinationNum));
+    const now = Date.now();
+    if (lastRequest) {
+      if ((now - lastRequest) < NEIGHBOR_INFO_RATE_LIMIT_MS) {
+        const retryAfter = Math.ceil((NEIGHBOR_INFO_RATE_LIMIT_MS - (now - lastRequest)) / 1000);
+        return res.status(429).json({
+          error: 'Rate limited: firmware limits neighbor info responses to once per 3 minutes',
+          retryAfter,
+        });
+      }
+      // Expired entry — clean up
+      neighborInfoRequestTimestamps.delete(Number(destinationNum));
+    }
+
+    const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
+
+    const { packetId, requestId } = await neighborManager.sendNeighborInfoRequest(destinationNum, channel);
+    neighborInfoRequestTimestamps.set(Number(destinationNum), now);
+
+    logger.info(`🏠 NeighborInfo request sent to ${destinationNum.toString(16)} on channel ${channel}, packetId=${packetId}, requestId=${requestId}`);
+
+    res.json({
+      success: true,
+      message: `NeighborInfo request sent to ${destinationNum.toString(16)} on channel ${channel}`,
+      packetId,
+      requestId
+    });
+  } catch (error) {
+    logger.error('Error sending neighborinfo request:', error);
+    res.status(500).json({ error: 'Failed to send neighborinfo request' });
+  }
+});
+
+// Telemetry request endpoint (request telemetry from remote node)
+router.post('/telemetry/request', requirePermission('messages', 'write'), async (req: Request, res: Response) => {
+  try {
+    const { destination, telemetryType, sourceId: telSourceId } = req.body;
+    if (!destination) {
+      return res.status(400).json({ error: 'Destination node number is required' });
+    }
+
+    // Validate telemetry type if provided
+    const validTypes = ['device', 'environment', 'airQuality', 'power'];
+    if (telemetryType && !validTypes.includes(telemetryType)) {
+      return res.status(400).json({ error: `Invalid telemetry type. Must be one of: ${validTypes.join(', ')}` });
+    }
+
+    const destinationNum = await parseDestinationNum(destination, telSourceId, databaseService);
+    if (destinationNum === null) {
+      return res.status(400).json({ error: `Invalid destination: ${destination}` });
+    }
+
+    // Look up the node to get its channel (scoped to this source)
+    const node = await databaseService.nodes.getNode(destinationNum, telSourceId);
+    const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
+
+    const telManager = (resolveSourceManager(telSourceId));
+    const { packetId, requestId } = await telManager.sendTelemetryRequest(
+      destinationNum,
+      channel,
+      telemetryType as 'device' | 'environment' | 'airQuality' | 'power' | undefined
+    );
+
+    const typeLabel = telemetryType || 'device';
+    logger.info(`📊 Telemetry request (${typeLabel}) sent to ${destinationNum.toString(16)} on channel ${channel}, packetId=${packetId}, requestId=${requestId}`);
+
+    res.json({
+      success: true,
+      message: `Telemetry request (${typeLabel}) sent to ${destinationNum.toString(16)} on channel ${channel}`,
+      packetId,
+      requestId
+    });
+  } catch (error) {
+    logger.error('Error sending telemetry request:', error);
+    res.status(500).json({ error: 'Failed to send telemetry request' });
+  }
+});
+
+export default router;
