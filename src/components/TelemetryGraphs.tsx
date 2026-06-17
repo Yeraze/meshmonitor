@@ -32,9 +32,13 @@ const INTEGER_TELEMETRY_TYPES = new Set([
   'noiseFloor',
   'systemNodeCount', 'systemDirectNodeCount',
   'paxcounterWifi', 'paxcounterBle',
+  // Particle counts are uint32 (particles40um added for #3507).
   'particles03um', 'particles05um', 'particles10um',
-  'particles25um', 'particles50um', 'particles100um',
+  'particles25um', 'particles40um', 'particles50um', 'particles100um',
   'co2', 'iaq',
+  // pm40Standard is uint32 (#3507). The form*/pm*Idx/particlesTps fields are
+  // floats and are intentionally NOT listed here.
+  'pm40Standard',
   // Traffic Management stats — integer packet/hit/hop counters
   'tmPacketsInspected', 'tmPositionDedupDrops', 'tmNodeinfoCacheHits',
   'tmRateLimitDrops', 'tmUnknownPacketDrops', 'tmHopExhaustedPackets',
@@ -810,6 +814,17 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         co2: '#ed8796', // Red for CO2 (important air quality indicator)
         co2Temperature: '#f5a97f', // Peach
         co2Humidity: '#91d7e3', // Sky blue
+        // Newer SEN5x-class AirQualityMetrics fields (#3507)
+        pm40Standard: '#94e2d5', // Teal-green (between PM2.5 and PM10 tones)
+        particles40um: '#f2a9c4', // Rose (between 2.5µm maroon and 5.0µm peach)
+        particlesTps: '#cad3f5', // Text-light — typical particle size
+        formFormaldehyde: '#e78284', // Red — formaldehyde concentration
+        formHumidity: '#85c1dc', // Sky — formaldehyde sensor RH
+        formTemperature: '#ef9f76', // Peach — formaldehyde sensor temp
+        pmTemperature: '#f0a07a', // Peach variant — PM sensor temp
+        pmHumidity: '#81c8be', // Teal — PM sensor RH
+        pmVocIdx: '#a6d189', // Green — VOC index
+        pmNoxIdx: '#e5c890', // Yellow — NOx index
         // Paxcounter metrics
         paxcounterWifi: '#ff9500', // Orange
         paxcounterBle: '#17c0fa', // Cyan

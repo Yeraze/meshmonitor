@@ -61,6 +61,22 @@ describe('canonicalTelemetryUnit', () => {
     expect(canonicalTelemetryUnit('health.temperature')).toBeUndefined();
     expect(canonicalTelemetryUnit('nope')).toBeUndefined();
   });
+
+  it('wires up the newer AirQualityMetrics fields (#3507)', () => {
+    // particles_40um hits the underscore-before-digit quirk: decoded snake_case,
+    // canonicalized to particles40um, with a known unit so serial/MQTT both store it.
+    expect(canonicalTelemetryType('airQuality', 'particles_40um')).toBe('particles40um');
+    expect(canonicalTelemetryUnit('particles40um')).toBe('#/0.1L');
+    expect(canonicalTelemetryUnit('pm40Standard')).toBe('µg/m³');
+    expect(canonicalTelemetryUnit('particlesTps')).toBe('µm');
+    expect(canonicalTelemetryUnit('formFormaldehyde')).toBe('ppb');
+    expect(canonicalTelemetryUnit('formHumidity')).toBe('%');
+    expect(canonicalTelemetryUnit('formTemperature')).toBe('°C');
+    expect(canonicalTelemetryUnit('pmTemperature')).toBe('°C');
+    expect(canonicalTelemetryUnit('pmHumidity')).toBe('%');
+    expect(canonicalTelemetryUnit('pmVocIdx')).toBe('VOC');
+    expect(canonicalTelemetryUnit('pmNoxIdx')).toBe('NOx');
+  });
 });
 
 describe('MQTT_KEY_MIGRATIONS', () => {

@@ -64,6 +64,23 @@ const AIR_QUALITY_UNITS: Record<string, string> = {
   co2: 'ppm',
   co2Temperature: '°C',
   co2Humidity: '%',
+  // PM4.0 + 4.0µm bin (newer SEN5x-class sensors). particles40um hits the
+  // underscore-before-digit quirk (decoded as particles_40um) — handled by the
+  // shared snakeToCamel in canonicalTelemetryType (#3483/#3506).
+  pm40Standard: 'µg/m³',
+  particles40um: '#/0.1L',
+  // Typical particle size (Sensirion SEN5x).
+  particlesTps: 'µm',
+  // Formaldehyde sensor (SFA30 etc.).
+  formFormaldehyde: 'ppb',
+  formHumidity: '%',
+  formTemperature: '°C',
+  // PM-sensor on-board temp/humidity + gas indices (dimensionless 1–500 indices,
+  // labelled like iaq's 'IAQ').
+  pmTemperature: '°C',
+  pmHumidity: '%',
+  pmVocIdx: 'VOC',
+  pmNoxIdx: 'NOx',
 };
 
 const POWER_UNITS: Record<string, string> = (() => {
