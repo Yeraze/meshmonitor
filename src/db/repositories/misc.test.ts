@@ -9,77 +9,17 @@
  * MySQL: requires test container on port 3307 (skipped if unavailable)
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
-import * as schema from '../schema/index.js';
 import { MiscRepository } from './misc.js';
 import {
   TestBackend,
-  createSqliteBackend,
   createPostgresBackend,
   createMysqlBackend,
   clearTable,
   postgresAvailable,
   mysqlAvailable,
 } from './test-utils.js';
+import { createTestDb } from '../../server/test-helpers/testDb.js';
 
-// SQL for creating all misc tables (no FK constraints in tests)
-// Note: solar_estimates uses snake_case column names across all backends
-const SQLITE_CREATE = `
-  CREATE TABLE IF NOT EXISTS solar_estimates (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp INTEGER NOT NULL UNIQUE,
-    watt_hours REAL NOT NULL,
-    fetched_at INTEGER NOT NULL,
-    created_at INTEGER
-  );
-  CREATE TABLE IF NOT EXISTS auto_traceroute_nodes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nodeNum INTEGER NOT NULL,
-    enabled INTEGER DEFAULT 1,
-    createdAt INTEGER NOT NULL,
-    sourceId TEXT,
-    UNIQUE(nodeNum, sourceId)
-  );
-  CREATE TABLE IF NOT EXISTS upgrade_history (
-    id TEXT PRIMARY KEY,
-    fromVersion TEXT NOT NULL,
-    toVersion TEXT NOT NULL,
-    deploymentMethod TEXT NOT NULL,
-    status TEXT NOT NULL,
-    progress INTEGER DEFAULT 0,
-    currentStep TEXT,
-    logs TEXT,
-    backupPath TEXT,
-    startedAt INTEGER,
-    completedAt INTEGER,
-    initiatedBy TEXT,
-    errorMessage TEXT,
-    rollbackAvailable INTEGER
-  );
-  CREATE TABLE IF NOT EXISTS news_cache (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    feedData TEXT NOT NULL,
-    fetchedAt INTEGER NOT NULL,
-    sourceUrl TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS user_news_status (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    userId INTEGER NOT NULL,
-    lastSeenNewsId TEXT,
-    dismissedNewsIds TEXT,
-    updatedAt INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS backup_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nodeId TEXT,
-    nodeNum INTEGER,
-    filename TEXT NOT NULL,
-    filePath TEXT NOT NULL,
-    fileSize INTEGER,
-    backupType TEXT NOT NULL,
-    timestamp INTEGER NOT NULL,
-    createdAt INTEGER NOT NULL
-  )
-`;
 
 const POSTGRES_CREATE = `
   DROP TABLE IF EXISTS solar_estimates CASCADE;
@@ -225,10 +165,16 @@ const ALL_TABLES = [
 function runMiscTests(getBackend: () => TestBackend) {
   let repo: MiscRepository;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     const backend = getBackend();
     if (!backend.available) return;
     repo = new MiscRepository(backend.drizzleDb, backend.dbType);
+    // Seed user 1 for user_news_status FK (real SQLite schema enforces it via migration 041).
+    // Try/catch: PG/MySQL test DDL doesn't create the users table, so the insert is a no-op there.
+    const now = Date.now();
+    try {
+      await backend.exec(`INSERT OR IGNORE INTO users (id, username, password_hash, auth_provider, is_admin, is_active, mfa_enabled, created_at, updated_at) VALUES (1, 'testuser', 'hash', 'local', 0, 1, 0, ${now}, ${now})`);
+    } catch { /* PG/MySQL — no users table in test DDL */ }
   });
 
   // ============ SOLAR ESTIMATES ============
@@ -636,7 +582,14 @@ describe('MiscRepository - SQLite Backend', () => {
   let backend: TestBackend;
 
   beforeEach(() => {
-    backend = createSqliteBackend(SQLITE_CREATE);
+    const t = createTestDb();
+    backend = {
+      dbType: 'sqlite',
+      drizzleDb: t.db,
+      exec: async (sql: string) => { t.sqlite.exec(sql); },
+      close: async () => { t.close(); },
+      available: true,
+    };
   });
 
   afterEach(async () => {
