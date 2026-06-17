@@ -462,12 +462,17 @@ export class NodesRepository extends BaseRepository {
       newNode.sourceId = effectiveSourceId;
 
       // All databases use atomic upsert to prevent race conditions where
-      // concurrent getNode() calls both return null and then both try to INSERT
+      // concurrent getNode() calls both return null and then both try to INSERT.
+      // For string identity fields a blank '' is normalized to null (matching the
+      // rest of the codebase) so a blank never persists as '' on the conflict
+      // DO-UPDATE; hwModel 0 (UNSET) likewise → null (#3505). This is the
+      // insert/first-seen path, so there's no prior value to preserve here.
+      const blankToNull = (v: any) => (v === '' || v === null || v === undefined) ? null : v;
       const upsertSet = {
         nodeId: nodeData.nodeId,
-        longName: nodeData.longName ?? null,
-        shortName: nodeData.shortName ?? null,
-        hwModel: nodeData.hwModel ?? null,
+        longName: blankToNull(nodeData.longName),
+        shortName: blankToNull(nodeData.shortName),
+        hwModel: (nodeData.hwModel === 0 || nodeData.hwModel === null || nodeData.hwModel === undefined) ? null : nodeData.hwModel,
         role: nodeData.role ?? null,
         hopsAway: nodeData.hopsAway ?? null,
         viaMqtt: nodeData.viaMqtt ?? null,

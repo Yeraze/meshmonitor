@@ -281,6 +281,47 @@ function runNodesTests(getBackend: () => TestBackend) {
     expect(node!.longName).toBe('Updated');
   });
 
+  it('upsertNode - does NOT clobber learned name/macaddr/hwModel with blanks (#3505)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // Seed a fully-learned node.
+    await repo.upsertNode(makeNode(210, {
+      longName: 'Repeater North', shortName: 'RPTN', macaddr: 'aabbccddeeff', hwModel: 9,
+    }));
+    // A bare refresh reporting empty strings + hwModel 0 (UNSET) must preserve the
+    // stored identity fields, not wipe them (the nameOrExisting guard on the async path).
+    await repo.upsertNode(makeNode(210, {
+      longName: '', shortName: '', macaddr: '', hwModel: 0,
+    }));
+
+    const node = await repo.getNode(210);
+    expect(node).not.toBeNull();
+    expect(node!.longName).toBe('Repeater North');
+    expect(node!.shortName).toBe('RPTN');
+    expect(node!.macaddr).toBe('aabbccddeeff');
+    expect(node!.hwModel).toBe(9);
+  });
+
+  it('upsertNode - still writes a genuine numeric 0 (snr / batteryLevel) (#3505)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertNode(makeNode(211, { snr: 5, batteryLevel: 80 }));
+    await repo.upsertNode(makeNode(211, { snr: 0, batteryLevel: 0 }));
+
+    const node = await repo.getNode(211);
+    expect(node).not.toBeNull();
+    expect(node!.snr).toBe(0);
+    expect(node!.batteryLevel).toBe(0);
+  });
+
   it('upsertNode - falls back to nodeData.sourceId when sourceId arg omitted (issue #2902)', async () => {
     const backend = getBackend();
     if (!backend.available) {
