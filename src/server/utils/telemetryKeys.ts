@@ -92,21 +92,79 @@ const POWER_UNITS: Record<string, string> = (() => {
   return u;
 })();
 
+// LocalStats is serial-only and stores bare leaf names (it joins STRIP_GROUPS).
+// uptimeSeconds / channelUtilization / airUtilTx are already covered by DEVICE_UNITS.
+const LOCAL_STATS_UNITS: Record<string, string> = {
+  numPacketsTx: 'packets',
+  numPacketsRx: 'packets',
+  numPacketsRxBad: 'packets',
+  numOnlineNodes: 'nodes',
+  numTotalNodes: 'nodes',
+  numRxDupe: 'packets',
+  numTxRelay: 'packets',
+  numTxRelayCanceled: 'packets',
+  heapTotalBytes: 'bytes',
+  heapFreeBytes: 'bytes',
+  numTxDropped: 'packets',
+  noiseFloor: 'dBm',
+};
+
+// HostMetrics is serial-only and stores a `host`-prefixed PascalCase leaf
+// (uptimeSeconds → hostUptimeSeconds) via PREFIX_GROUPS.
+const HOST_UNITS: Record<string, string> = {
+  hostUptimeSeconds: 's',
+  hostFreememBytes: 'bytes',
+  hostDiskfree1Bytes: 'bytes',
+  hostDiskfree2Bytes: 'bytes',
+  hostDiskfree3Bytes: 'bytes',
+  hostLoad1: 'load',
+  hostLoad5: 'load',
+  hostLoad15: 'load',
+};
+
+// TrafficManagementStats is serial-only and stores a `tm`-prefixed PascalCase
+// leaf (packetsInspected → tmPacketsInspected) via PREFIX_GROUPS.
+const TRAFFIC_MGMT_UNITS: Record<string, string> = {
+  tmPacketsInspected: 'packets',
+  tmPositionDedupDrops: 'packets',
+  tmNodeinfoCacheHits: 'hits',
+  tmRateLimitDrops: 'packets',
+  tmUnknownPacketDrops: 'packets',
+  tmHopExhaustedPackets: 'packets',
+  tmRouterHopsPreserved: 'hops',
+};
+
 /** All canonical telemetry types → their unit. */
 export const CANONICAL_TELEMETRY_UNITS: Record<string, string> = {
   ...DEVICE_UNITS,
   ...ENVIRONMENT_UNITS,
   ...AIR_QUALITY_UNITS,
   ...POWER_UNITS,
+  ...LOCAL_STATS_UNITS,
+  ...HOST_UNITS,
+  ...TRAFFIC_MGMT_UNITS,
 };
 
 /**
- * MQTT group names whose leaf keys map onto canonical serial keys by stripping
- * the prefix. Other groups (e.g. `health`) are left dotted because serial never
- * stores them and some leaves (e.g. HealthMetrics.temperature) would collide
- * with environment keys.
+ * Group names whose leaf keys map onto canonical keys by stripping the prefix
+ * (bare leaf name). `localStats` is serial-only and historically stores bare
+ * leaf names (uptimeSeconds, heapFreeBytes, …) — it joins this set so
+ * buildCanonicalMetrics reproduces those exactly. Other groups (e.g. `health`)
+ * are left dotted because serial never stores them and some leaves (e.g.
+ * HealthMetrics.temperature) would collide with environment keys.
  */
-const STRIP_GROUPS = new Set(['device', 'environment', 'airQuality', 'power']);
+const STRIP_GROUPS = new Set(['device', 'environment', 'airQuality', 'power', 'localStats']);
+
+/**
+ * Serial-only groups that store a fixed prefix + PascalCase leaf rather than a
+ * bare or dotted name: HostMetrics.uptimeSeconds → `hostUptimeSeconds`,
+ * TrafficManagementStats.packetsInspected → `tmPacketsInspected`. MQTT never
+ * ingests these groups, so this only affects the serial path.
+ */
+const PREFIX_GROUPS: Record<string, string> = {
+  host: 'host',
+  trafficManagement: 'tm',
+};
 
 /**
  * Environment protobuf leaf names that the serial path renames. Everything else
@@ -132,6 +190,10 @@ function snakeToCamel(s: string): string {
  */
 export function canonicalTelemetryType(group: string, leaf: string): string {
   const camel = snakeToCamel(leaf);
+  const prefix = PREFIX_GROUPS[group];
+  if (prefix) {
+    return `${prefix}${camel.charAt(0).toUpperCase()}${camel.slice(1)}`;
+  }
   if (!STRIP_GROUPS.has(group)) {
     return `${group}.${leaf}`;
   }

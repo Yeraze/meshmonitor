@@ -43,7 +43,20 @@ describe('canonicalTelemetryType', () => {
   it('leaves unmapped groups dotted to avoid key collisions (e.g. health.temperature)', () => {
     // HealthMetrics.temperature must NOT collapse onto environment temperature.
     expect(canonicalTelemetryType('health', 'temperature')).toBe('health.temperature');
-    expect(canonicalTelemetryType('host', 'uptimeSeconds')).toBe('host.uptimeSeconds');
+  });
+
+  it('strips the prefix for localStats (serial-only bare names) (#3515)', () => {
+    expect(canonicalTelemetryType('localStats', 'uptimeSeconds')).toBe('uptimeSeconds');
+    expect(canonicalTelemetryType('localStats', 'heapFreeBytes')).toBe('heapFreeBytes');
+    expect(canonicalTelemetryType('localStats', 'noiseFloor')).toBe('noiseFloor');
+  });
+
+  it('prefixes host and trafficManagement leaves (serial-only) (#3515)', () => {
+    expect(canonicalTelemetryType('host', 'uptimeSeconds')).toBe('hostUptimeSeconds');
+    expect(canonicalTelemetryType('host', 'load1')).toBe('hostLoad1');
+    expect(canonicalTelemetryType('host', 'diskfree1Bytes')).toBe('hostDiskfree1Bytes');
+    expect(canonicalTelemetryType('trafficManagement', 'packetsInspected')).toBe('tmPacketsInspected');
+    expect(canonicalTelemetryType('trafficManagement', 'routerHopsPreserved')).toBe('tmRouterHopsPreserved');
   });
 });
 
@@ -60,6 +73,17 @@ describe('canonicalTelemetryUnit', () => {
   it('returns undefined for unknown types', () => {
     expect(canonicalTelemetryUnit('health.temperature')).toBeUndefined();
     expect(canonicalTelemetryUnit('nope')).toBeUndefined();
+  });
+
+  it('has units for the localStats / host / trafficManagement canonical types (#3515)', () => {
+    expect(canonicalTelemetryUnit('numPacketsTx')).toBe('packets');
+    expect(canonicalTelemetryUnit('numOnlineNodes')).toBe('nodes');
+    expect(canonicalTelemetryUnit('heapFreeBytes')).toBe('bytes');
+    expect(canonicalTelemetryUnit('noiseFloor')).toBe('dBm');
+    expect(canonicalTelemetryUnit('hostUptimeSeconds')).toBe('s');
+    expect(canonicalTelemetryUnit('hostLoad1')).toBe('load');
+    expect(canonicalTelemetryUnit('tmPacketsInspected')).toBe('packets');
+    expect(canonicalTelemetryUnit('tmRouterHopsPreserved')).toBe('hops');
   });
 
   it('wires up the newer AirQualityMetrics fields (#3507)', () => {

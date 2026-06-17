@@ -1125,7 +1125,7 @@ class MeshtasticManager implements ISourceManager {
    * own `[]`), Long/object values, and leaves we don't track (unit === undefined).
    */
   private buildCanonicalMetrics(
-    group: 'device' | 'environment' | 'airQuality' | 'power',
+    group: 'device' | 'environment' | 'airQuality' | 'power' | 'localStats' | 'host' | 'trafficManagement',
     metrics: Record<string, unknown>
   ): Array<{ type: string; value: number; unit: string }> {
     const rows: Array<{ type: string; value: number; unit: string }> = [];
@@ -6514,54 +6514,38 @@ class MeshtasticManager implements ISourceManager {
         const localStats = telemetry.localStats;
         logger.debug(`📊 LocalStats telemetry: uptime=${localStats.uptimeSeconds}s, heap_free=${localStats.heapFreeBytes}B`);
 
-        // Save all LocalStats metrics to telemetry table
-        await this.saveTelemetryMetrics([
-          { type: 'uptimeSeconds', value: localStats.uptimeSeconds, unit: 's' },
-          { type: 'channelUtilization', value: localStats.channelUtilization, unit: '%' },
-          { type: 'airUtilTx', value: localStats.airUtilTx, unit: '%' },
-          { type: 'numPacketsTx', value: localStats.numPacketsTx, unit: 'packets' },
-          { type: 'numPacketsRx', value: localStats.numPacketsRx, unit: 'packets' },
-          { type: 'numPacketsRxBad', value: localStats.numPacketsRxBad, unit: 'packets' },
-          { type: 'numOnlineNodes', value: localStats.numOnlineNodes, unit: 'nodes' },
-          { type: 'numTotalNodes', value: localStats.numTotalNodes, unit: 'nodes' },
-          { type: 'numRxDupe', value: localStats.numRxDupe, unit: 'packets' },
-          { type: 'numTxRelay', value: localStats.numTxRelay, unit: 'packets' },
-          { type: 'numTxRelayCanceled', value: localStats.numTxRelayCanceled, unit: 'packets' },
-          { type: 'heapTotalBytes', value: localStats.heapTotalBytes, unit: 'bytes' },
-          { type: 'heapFreeBytes', value: localStats.heapFreeBytes, unit: 'bytes' },
-          { type: 'numTxDropped', value: localStats.numTxDropped, unit: 'packets' },
-          // Noise floor (dBm) — added to LocalStats in Meshtastic firmware 2.7.25 (#3396)
-          { type: 'noiseFloor', value: localStats.noiseFloor, unit: 'dBm' }
-        ], nodeId, fromNum, timestamp, packetTimestamp, packetId);
+        // Save all LocalStats metrics to telemetry table. localStats joins
+        // STRIP_GROUPS so each leaf is stored under its bare canonical name
+        // (uptimeSeconds, heapFreeBytes, noiseFloor …) — identical to the prior
+        // hand-maintained list (#3515). Noise floor (dBm) was added to LocalStats
+        // in Meshtastic firmware 2.7.25 (#3396).
+        await this.saveTelemetryMetrics(
+          this.buildCanonicalMetrics('localStats', localStats),
+          nodeId, fromNum, timestamp, packetTimestamp, packetId
+        );
         await this.checkAutoHeapManagement(localStats.heapFreeBytes, fromNum);
       } else if (telemetry.hostMetrics) {
         const hostMetrics = telemetry.hostMetrics;
         logger.debug(`🖥️ HostMetrics telemetry: uptime=${hostMetrics.uptimeSeconds}s, freemem=${hostMetrics.freememBytes}B`);
 
-        // Save all HostMetrics metrics to telemetry table
-        await this.saveTelemetryMetrics([
-          { type: 'hostUptimeSeconds', value: hostMetrics.uptimeSeconds, unit: 's' },
-          { type: 'hostFreememBytes', value: hostMetrics.freememBytes, unit: 'bytes' },
-          { type: 'hostDiskfree1Bytes', value: hostMetrics.diskfree1Bytes, unit: 'bytes' },
-          { type: 'hostDiskfree2Bytes', value: hostMetrics.diskfree2Bytes, unit: 'bytes' },
-          { type: 'hostDiskfree3Bytes', value: hostMetrics.diskfree3Bytes, unit: 'bytes' },
-          { type: 'hostLoad1', value: hostMetrics.load1, unit: 'load' },
-          { type: 'hostLoad5', value: hostMetrics.load5, unit: 'load' },
-          { type: 'hostLoad15', value: hostMetrics.load15, unit: 'load' }
-        ], nodeId, fromNum, timestamp, packetTimestamp, packetId);
+        // Save all HostMetrics to telemetry table. The 'host' group is prefixed
+        // (uptimeSeconds → hostUptimeSeconds, load1 → hostLoad1) via PREFIX_GROUPS
+        // — identical to the prior hand-maintained list (#3515).
+        await this.saveTelemetryMetrics(
+          this.buildCanonicalMetrics('host', hostMetrics),
+          nodeId, fromNum, timestamp, packetTimestamp, packetId
+        );
       } else if (telemetry.trafficManagementStats) {
         const tmStats = telemetry.trafficManagementStats;
         logger.debug(`🚦 TrafficManagementStats: inspected=${tmStats.packetsInspected}, dedup=${tmStats.positionDedupDrops}, rateLimit=${tmStats.rateLimitDrops}`);
 
-        await this.saveTelemetryMetrics([
-          { type: 'tmPacketsInspected', value: tmStats.packetsInspected, unit: 'packets' },
-          { type: 'tmPositionDedupDrops', value: tmStats.positionDedupDrops, unit: 'packets' },
-          { type: 'tmNodeinfoCacheHits', value: tmStats.nodeinfoCacheHits, unit: 'hits' },
-          { type: 'tmRateLimitDrops', value: tmStats.rateLimitDrops, unit: 'packets' },
-          { type: 'tmUnknownPacketDrops', value: tmStats.unknownPacketDrops, unit: 'packets' },
-          { type: 'tmHopExhaustedPackets', value: tmStats.hopExhaustedPackets, unit: 'packets' },
-          { type: 'tmRouterHopsPreserved', value: tmStats.routerHopsPreserved, unit: 'hops' }
-        ], nodeId, fromNum, timestamp, packetTimestamp, packetId);
+        // The 'trafficManagement' group is prefixed (packetsInspected →
+        // tmPacketsInspected) via PREFIX_GROUPS — identical to the prior
+        // hand-maintained list (#3515).
+        await this.saveTelemetryMetrics(
+          this.buildCanonicalMetrics('trafficManagement', tmStats),
+          nodeId, fromNum, timestamp, packetTimestamp, packetId
+        );
       }
 
       await databaseService.nodes.upsertNode(nodeData, this.sourceId);
