@@ -2,7 +2,14 @@
 
 **Issue:** [#3535](https://github.com/Yeraze/meshmonitor/issues/3535) — expose a real MeshCore node, that MeshMonitor already manages, as a virtual node the MeshCore **mobile app** can connect to over WiFi/TCP.
 
-**Status:** Phase 0 (handshake) implemented — see "Phasing" below. Phases 1-3 pending.
+**Status:** Phases 0–2 implemented and verified against the real MeshCore
+(`meshcore-flutter`) app over WiFi — see "Phasing" below. Phase 3 (config writes +
+DM delivery receipts) pending.
+
+> **Verified end-to-end:** the app connects over WiFi, shows the node identity,
+> loads contacts + channels, and sends/receives channel messages through the real
+> node (incl. an auto-responder round-trip). Two protocol subtleties were found
+> only by watching the live command stream and are captured below.
 
 > **Confirmed prerequisite:** the MeshCore mobile app supports a WiFi/TCP companion
 > connection. Without that this feature would be impossible (MeshMonitor is
@@ -164,14 +171,27 @@ is **always** refused regardless of the gate. All connects/admin-forwards are au
   **Exit criterion (pending hardware):** the real MeshCore app connects over WiFi and shows
   the node as connected with its correct name/identity. The automated round-trip tests give
   high confidence ahead of that manual check.
-- **Phase 1 — Read-only mirror.** Contacts, channels (`GetChannel`/`ChannelInfo`), message
-  history via `SyncNextMessage` (`ContactMsgRecv`/`ChannelMsgRecv`), battery/stats/telemetry
-  reads. App shows real contacts, history, telemetry — all from DB.
-- **Phase 2 — Send path.** `SendTxtMsg`/`SendChannelTxtMsg` forwarded through
-  `meshcoreManager`; `Sent`(6) ack; live `MsgWaiting`(0x83) push on incoming so the app
-  syncs new messages; `SendConfirmed`(0x82) when the node confirms delivery.
-- **Phase 3 — Admin/config + UX.** Admin-gated config commands, source-config UI toggle +
-  port, status/among-clients indicator, docs (`docs/features/meshcore.md`), audit logging.
+- **Phase 1 — Read-only mirror. ✅ IMPLEMENTED.** Contacts (`GetContacts`), channels
+  (`GetChannel`/`ChannelInfo`), battery (`GetBatteryVoltage`), and live incoming messages
+  via the `MsgWaiting`(0x83) push → `SyncNextMessage` → `ContactMsgRecv`/`ChannelMsgRecv`.
+  `SetFloodScope` is acked as a no-op so the app doesn't treat it as fatal. Per-client
+  message queue seeds empty (no history replay → no dupes on reconnect).
+- **Phase 2 — Send path. ✅ IMPLEMENTED.** `SendChannelTxtMsg`/`SendTxtMsg` forwarded
+  through `meshcoreManager.sendMessage`; DM prefixes resolved to full keys via the contact
+  list.
+- **Phase 3 — Admin/config + DM receipts. ⏳ PENDING.** Admin-gated config commands
+  (`SetRadioParams`, `SetAdvertName`, …), and DM delivery receipts: relay the node's real
+  `expectedAckCrc` (currently logged-but-discarded by `sendMessage`) so the
+  `SendConfirmed`(0x82) push can be correlated and the app shows the delivered tick.
+
+### Protocol subtleties found in testing (don't regress these)
+- **Channel send acks `Ok`, DM send acks `Sent`.** meshcore.js's `sendChannelTextMessage`
+  awaits `Ok`(0) (fire-and-forget broadcast); `sendTextMessage` (DM) awaits `Sent`(6) (carries
+  the ack CRC). Replying `Sent` to a channel send hangs the app's send promise forever.
+- **The `channel-N` marker moves fields by direction.** `meshcoreManager` tags channel
+  messages with the synthetic `channel-N` key in `toPublicKey` for messages we *sent* but in
+  `fromPublicKey` for messages we *received* (`toPublicKey` unset on RX). Detect it in both
+  fields, or incoming channel replies get mis-encoded as a `ContactMsgRecv` and dropped.
 
 ## 6. Key risks & how the plan retires them
 

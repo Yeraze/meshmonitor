@@ -283,10 +283,9 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
   // ───────────────────────── command dispatch ─────────────────────────
 
   private dispatchCommand(clientId: string, command: ParsedCommand): void {
-    // Phase-0 visibility: log every inbound command (name + raw bytes) so we
-    // can observe exactly what the MeshCore app requests and in what order.
-    // TODO(phase1): drop to debug once the command surface is implemented.
-    logger.info(
+    // Per-command trace — useful when debugging app behaviour, but too chatty
+    // for production, so keep it at debug.
+    logger.debug(
       `[MeshCore VN ${this.sourceId}] ◀ cmd ${command.code} (${COMMAND_NAMES[command.code] ?? 'unknown'}) ` +
         `from ${clientId} [${command.payload.length}B]`,
     );
@@ -386,7 +385,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       }));
     }
     this.send(clientId, encodeEndOfContacts(mostRecentLastMod));
-    logger.info(`[MeshCore VN ${this.sourceId}] ▶ ${contacts.length} contacts to ${clientId}`);
+    logger.debug(`[MeshCore VN ${this.sourceId}] ▶ ${contacts.length} contacts to ${clientId}`);
   }
 
   /** GetChannel(idx) → ChannelInfo from the synced channel list, or Err(NotFound). */
@@ -401,7 +400,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       }
       const secret = row.psk ? Buffer.from(row.psk, 'base64') : Buffer.alloc(16);
       this.send(clientId, encodeChannelInfo(channelIdx, row.name || '', secret));
-      logger.info(`[MeshCore VN ${this.sourceId}] ▶ channel ${channelIdx} ("${row.name}") to ${clientId}`);
+      logger.debug(`[MeshCore VN ${this.sourceId}] ▶ channel ${channelIdx} ("${row.name}") to ${clientId}`);
     } catch (err) {
       logger.error(`[MeshCore VN ${this.sourceId}] GetChannel ${channelIdx} failed: ${(err as Error).message}`);
       this.send(clientId, encodeErr(ErrorCodes.NotFound));
