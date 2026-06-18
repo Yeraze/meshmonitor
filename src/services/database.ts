@@ -2,6 +2,7 @@ import BetterSqlite3Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { calculateDistance } from '../utils/distance.js';
+import { compileUserRegex } from '../utils/safeRegex.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { logger } from '../utils/logger.js';
 import { getEnvironmentConfig } from '../server/config/environment.js';
@@ -4491,7 +4492,7 @@ class DatabaseService {
       let regexMatcher: RegExp | null = null;
       if (filterRegexEnabled && filterNameRegex && filterNameRegex !== '.*') {
         try {
-          regexMatcher = new RegExp(filterNameRegex, 'i');
+          regexMatcher = compileUserRegex(filterNameRegex, 'i');
         } catch (e) {
           logger.warn(`Invalid traceroute filter regex: ${filterNameRegex}`, e);
         }
@@ -4655,7 +4656,7 @@ class DatabaseService {
         let regexMatcher: RegExp | null = null;
         if (filterRegexEnabled && filterNameRegex && filterNameRegex !== '.*') {
           try {
-            regexMatcher = new RegExp(filterNameRegex, 'i');
+            regexMatcher = compileUserRegex(filterNameRegex, 'i');
           } catch (e) {
             logger.warn(`Invalid traceroute filter regex: ${filterNameRegex}`, e);
           }
@@ -4867,7 +4868,7 @@ class DatabaseService {
       if (cfg.enabled) {
         let regexMatcher: RegExp | null = null;
         if (cfg.filterRegexEnabled && cfg.filterNameRegex && cfg.filterNameRegex !== '.*') {
-          try { regexMatcher = new RegExp(cfg.filterNameRegex, 'i'); }
+          try { regexMatcher = compileUserRegex(cfg.filterNameRegex, 'i'); }
           catch (e) { logger.warn(`Invalid remote LocalStats filter regex: ${cfg.filterNameRegex}`, e); }
         }
 

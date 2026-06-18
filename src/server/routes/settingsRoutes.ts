@@ -13,6 +13,7 @@ import { Router, Request, Response } from 'express';
 import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { compileUserRegex } from '../../utils/safeRegex.js';
 import { securityDigestService } from '../services/securityDigestService.js';
 import { invalidatePkiDmGlobalCache } from '../services/sourcePkiKeyStore.js';
 import { VALID_SETTINGS_KEYS, stripSecretSettings } from '../constants/settings.js';
@@ -212,7 +213,7 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
       }
 
       try {
-        new RegExp(pattern, 'i');
+        compileUserRegex(pattern, 'i');
       } catch (error) {
         return res.status(400).json({ error: 'Invalid regex syntax' });
       }

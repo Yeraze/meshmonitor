@@ -15,6 +15,8 @@
  * invalid input.
  */
 
+import { compileUserRegex } from '../../utils/safeRegex.js';
+
 const MAX_PATTERN_LENGTH = 100;
 
 /**
@@ -66,7 +68,7 @@ export function compileAutoAckRegex(pattern: string): { regex: RegExp | null; er
     return { regex: null, error: 'pattern matches a catastrophic-backtracking shape' };
   }
   try {
-    return { regex: new RegExp(pattern, 'i') };
+    return { regex: compileUserRegex(pattern, 'i') };
   } catch (err) {
     return { regex: null, error: (err as Error).message };
   }
