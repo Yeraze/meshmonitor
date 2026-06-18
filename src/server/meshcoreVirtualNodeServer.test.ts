@@ -253,11 +253,12 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
     expect(payload[1]).toBe(Constants.ErrorCodes.UnsupportedCmd);
   });
 
-  it('forwards SendChannelTxtMsg to the node and replies Sent', async () => {
+  it('forwards SendChannelTxtMsg to the node and replies Ok (not Sent)', async () => {
+    // The app's sendChannelTextMessage awaits Ok(0), not Sent(6).
     // [code=3][txtType=0][channelIdx=1][senderTimestamp:u32=0][text]
     const frame = [CommandCodes.SendChannelTxtMsg, 0, 1, 0, 0, 0, 0, ...Buffer.from('hi chan', 'utf8')];
     const payload = await client.request(frame);
-    expect(payload[0]).toBe(ResponseCodes.Sent);
+    expect(payload[0]).toBe(ResponseCodes.Ok);
     expect(manager.sendMessageMock).toHaveBeenCalledWith('hi chan', undefined, 1);
   });
 

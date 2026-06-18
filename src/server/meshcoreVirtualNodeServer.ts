@@ -436,8 +436,11 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       const ok = await this.options.manager.sendMessage(text, undefined, channelIdx);
       if (ok) {
         logger.info(`[MeshCore VN ${this.sourceId}] ▶ forwarded channel ${channelIdx} msg from ${clientId} (${text.length} chars)`);
-        // Channel sends have no per-message ACK → no expectedAckCrc.
-        this.send(clientId, encodeSent(0, 0, this.SEND_EST_TIMEOUT_MS));
+        // A channel send is a fire-and-forget broadcast — the app's
+        // sendChannelTextMessage awaits Ok(0), NOT Sent(6) (which is the
+        // DM-with-ack response). Replying Sent here leaves the app's send
+        // promise pending forever (the message never shows as sent).
+        this.send(clientId, encodeOk());
       } else {
         logger.warn(`[MeshCore VN ${this.sourceId}] channel send from ${clientId} failed at the node`);
         this.send(clientId, encodeErr(ErrorCodes.BadState));
