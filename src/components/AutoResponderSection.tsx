@@ -694,9 +694,16 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               <option value="text">{t('auto_responder.type_text')}</option>
               <option value="http">{t('auto_responder.type_http')}</option>
               <option value="script">{t('auto_responder.type_script')}</option>
+              <option value="mailbox">Mailbox</option>
             </select>
             <div style={{ flex: '2' }}>
-              {newResponseType === 'text' ? (
+              {newResponseType === 'mailbox' ? (
+                <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                  Built-in async message store ("mesh voicemail"). No response text needed.
+                  Set DM-only and use a pattern like:{' '}
+                  <code>msg &#123;recipient&#125; &#123;body:.+&#125;,inbox,inbox play &#123;sender&#125;,inbox play,inbox delete &#123;id&#125;,inbox clear</code>
+                </span>
+              ) : newResponseType === 'text' ? (
                 <textarea
                   value={newResponse}
                   onChange={(e) => setNewResponse(e.target.value)}
