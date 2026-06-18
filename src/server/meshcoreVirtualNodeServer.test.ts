@@ -235,6 +235,39 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
     expect(recv.subarray(-'incoming dm'.length).toString('utf8')).toBe('incoming dm');
   });
 
+  it('delivers an incoming CHANNEL message as ChannelMsgRecv (marker in fromPublicKey)', async () => {
+    const push = new Promise<Buffer>((resolve) => (client as any).waiters.push(resolve));
+    // Incoming channel messages carry the channel marker in fromPublicKey, with
+    // toPublicKey unset, and the sender name in fromName.
+    manager.emitMessage({
+      id: 'c1',
+      fromPublicKey: 'channel-1',
+      fromName: 'Yeraze MC Sandbox',
+      text: '🤖 Copy that',
+      timestamp: 1_750_000_000_000,
+    });
+    expect((await push)[0]).toBe(PushCodes.MsgWaiting);
+
+    const recv = await client.request([CommandCodes.SyncNextMessage]);
+    expect(recv[0]).toBe(ResponseCodes.ChannelMsgRecv);
+    expect(recv.readInt8(1)).toBe(1); // channel index
+    // sender name is reconstructed into the channel body the firmware would deliver.
+    // ChannelMsgRecv header = code + channelIdx + pathLen + txtType + senderTs(4) = 8 bytes.
+    expect(recv.subarray(8).toString('utf8')).toBe('Yeraze MC Sandbox: 🤖 Copy that');
+  });
+
+  it('does not echo our own channel transmission heard back (matching local name)', async () => {
+    manager.emitMessage({
+      id: 'c2',
+      fromPublicKey: 'channel-1',
+      fromName: LOCAL_NODE.name, // our own node's name → our transmission
+      text: 'my own msg',
+      timestamp: 1_750_000_000_000,
+    });
+    const payload = await client.request([CommandCodes.SyncNextMessage]);
+    expect(payload[0]).toBe(ResponseCodes.NoMoreMessages);
+  });
+
   it('does not echo a message our own node originated', async () => {
     manager.emitMessage({
       id: 'm2',

@@ -490,8 +490,15 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
    * app doesn't see its/our own sends echoed back.
    */
   private handleIncomingMessage(msg: MeshCoreMessage): void {
-    const selfKey = this.options.manager.getLocalNode()?.publicKey?.toLowerCase();
+    const local = this.options.manager.getLocalNode();
+    const selfKey = local?.publicKey?.toLowerCase();
+    // Skip DMs our own node originated (echoed back through the manager).
     if (selfKey && msg.fromPublicKey?.toLowerCase() === selfKey) return;
+    // Skip our own channel transmissions heard back over the air: channel
+    // packets carry no sender key (fromPublicKey is the synthetic `channel-N`),
+    // so identify them by the name prefix. The app already shows these
+    // optimistically on send — re-delivering would duplicate them.
+    if (this.isChannelMessage(msg) && local?.name && msg.fromName === local.name) return;
 
     for (const [clientId, client] of this.clients.entries()) {
       client.pendingMessages.push(msg);
@@ -499,10 +506,18 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     }
   }
 
+  /** True when the message belongs to a channel (marker in either key field). */
+  private isChannelMessage(msg: MeshCoreMessage): boolean {
+    return /^channel-\d+$/.test(msg.fromPublicKey ?? '') || /^channel-\d+$/.test(msg.toPublicKey ?? '');
+  }
+
   /** Map a stored MeshCoreMessage to the right recv frame (channel vs direct). */
   private encodeIncomingMessage(msg: MeshCoreMessage): Buffer {
     const senderTimestamp = toEpochSeconds(msg.timestamp);
-    const channelMatch = /^channel-(\d+)$/.exec(msg.toPublicKey ?? '');
+    // The `channel-N` marker lands in toPublicKey for messages we sent and in
+    // fromPublicKey for messages we received — check both.
+    const channelMatch =
+      /^channel-(\d+)$/.exec(msg.toPublicKey ?? '') ?? /^channel-(\d+)$/.exec(msg.fromPublicKey ?? '');
     if (channelMatch) {
       // Channel packets carry the sender's name inline; reconstruct it so the
       // app renders the originator the way the firmware would deliver it.
