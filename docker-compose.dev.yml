@@ -57,6 +57,7 @@ services:
       - "4503:4503"  # Per-source VN
       - "4504:4504"  # Per-source VN
       - "4505:4505"  # Per-source VN
+      - "5000:5000"  # MeshCore Virtual Node (#3535)
       - "1883:1883"  # Embedded MQTT broker (issue #3003)
     restart: unless-stopped
     volumes:
@@ -104,6 +105,7 @@ services:
       - "4503:4503"  # Per-source VN
       - "4504:4504"  # Per-source VN
       - "4505:4505"  # Per-source VN
+      - "5000:5000"  # MeshCore Virtual Node (#3535)
       - "1883:1883"  # Embedded MQTT broker (issue #3003)
     restart: unless-stopped
     extra_hosts:
@@ -175,6 +177,7 @@ services:
       - "4503:4503"  # Per-source VN
       - "4504:4504"  # Per-source VN
       - "4505:4505"  # Per-source VN
+      - "5000:5000"  # MeshCore Virtual Node (#3535)
       - "1883:1883"  # Embedded MQTT broker (issue #3003)
     restart: unless-stopped
     volumes:

@@ -22,6 +22,30 @@ interface MeshCoreSourceConfig {
   tcpPort?: number;
   deviceType?: 'companion' | 'repeater';
   autoConnect?: boolean;
+  // Virtual Node server — expose this node to the MeshCore app over WiFi (#3535).
+  virtualNode?: {
+    enabled?: boolean;
+    port?: number;
+    allowAdminCommands?: boolean;
+  };
+}
+
+/** Default TCP port the Virtual Node server listens on when none is given. */
+const DEFAULT_VIRTUAL_NODE_PORT = 5000;
+
+/**
+ * Build the runtime virtual-node config from a source's saved config, or
+ * undefined when disabled/absent. A non-positive or missing port falls back to
+ * the default so an enabled server always binds to a usable port.
+ */
+function virtualNodeConfigFromSource(cfg: MeshCoreSourceConfig): MeshCoreConfig['virtualNode'] {
+  const vn = cfg.virtualNode;
+  if (!vn?.enabled) return undefined;
+  return {
+    enabled: true,
+    port: typeof vn.port === 'number' && vn.port > 0 ? vn.port : DEFAULT_VIRTUAL_NODE_PORT,
+    allowAdminCommands: vn.allowAdminCommands === true,
+  };
 }
 
 /**
@@ -32,6 +56,7 @@ interface MeshCoreSourceConfig {
 export function meshcoreConfigFromSource(source: Source): MeshCoreConfig | null {
   const cfg = (source.config ?? {}) as MeshCoreSourceConfig;
   const firmwareType = cfg.deviceType === 'repeater' ? 'repeater' : 'companion';
+  const virtualNode = virtualNodeConfigFromSource(cfg);
 
   // Companion-USB / direct serial — the v1 path.
   const port = cfg.serialPort || cfg.port;
@@ -41,6 +66,7 @@ export function meshcoreConfigFromSource(source: Source): MeshCoreConfig | null 
       serialPort: port,
       baudRate: cfg.baudRate ?? 115200,
       firmwareType,
+      virtualNode,
     };
   }
 
@@ -50,6 +76,7 @@ export function meshcoreConfigFromSource(source: Source): MeshCoreConfig | null 
       tcpHost: cfg.tcpHost,
       tcpPort: cfg.tcpPort ?? 4403,
       firmwareType,
+      virtualNode,
     };
   }
 
