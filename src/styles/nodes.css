@@ -1291,6 +1291,11 @@
     right: 8px;
     left: auto;
     max-width: calc(100vw - 64px);
+    /* Sit below the mobile sidebar drawer (999) and its backdrop (998) so the
+       Features panel yields when the Sources sidebar is open (#3532). When the
+       drawer is closed the backdrop is opacity:0/pointer-events:none, so this
+       has no effect on the normal map-controls interaction. */
+    z-index: 997;
   }
 
   .map-controls .map-controls-body {
