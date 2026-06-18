@@ -1186,7 +1186,7 @@ apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
     const includeAllMeshcore = req.query.includeAllMeshcore === 'true';
     const meshcoreNodes: any[] = [];
     for (const mgr of meshcoreManagers) {
-      for (const n of mgr.getAllNodes()) {
+      for (const n of await mgr.getAllNodes()) {
         const hasPosition = n.latitude != null && n.longitude != null && !(n.latitude === 0 && n.longitude === 0);
         if (!hasPosition && !includeAllMeshcore) continue;
         const lastHeard = typeof n.lastHeard === 'number'

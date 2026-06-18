@@ -159,6 +159,23 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * Get all MeshCore nodes for a single source. This is the per-source-scoped
+   * read the node list / dashboard map should use — the manager merges these
+   * durable rows with its live in-memory contacts so the UI reflects every
+   * known node even when the in-memory contact map is transiently empty
+   * (e.g. right after a reconnect).
+   */
+  async getNodesBySource(sourceId: string): Promise<DbMeshCoreNode[]> {
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreNodes)
+      .where(eq(meshcoreNodes.sourceId, sourceId))
+      .orderBy(desc(meshcoreNodes.lastHeard));
+    return this.normalizeBigInts(result) as unknown as DbMeshCoreNode[];
+  }
+
+  /**
    * Get a specific node by public key, ignoring source ownership.
    * Prefer `getNodeByPublicKeyAndSource` for write paths — this variant
    * exists for cross-source read paths that legitimately don't care which

@@ -1731,7 +1731,14 @@ class MeshCoreManager extends EventEmitter {
 
     try {
       const response = await this.sendBridgeCommand('get_contacts', {});
-      if (response.success && Array.isArray(response.data)) {
+      // Only clear-and-replace when the device actually returned contacts. A
+      // successful-but-empty `get_contacts` (seen as a transient read on a busy
+      // companion, e.g. right after a reconnect or mid path-refresh) must NOT
+      // wipe the known list — that would empty getAllNodes() down to just the
+      // local node until adverts slowly refill it. Issue: MeshCore node list
+      // intermittently collapses to 1 node. (DB rows survive either way; this
+      // keeps the in-memory map authoritative too.)
+      if (response.success && Array.isArray(response.data) && response.data.length > 0) {
         this.contacts.clear();
         for (const c of response.data) {
           this.contacts.set(c.public_key, {
@@ -3435,26 +3442,72 @@ class MeshCoreManager extends EventEmitter {
     return this.contacts.get(publicKey);
   }
 
-  getAllNodes(): MeshCoreNode[] {
-    const nodes: MeshCoreNode[] = [];
+  /**
+   * Full node list for this source: durable per-source `meshcore_nodes` rows
+   * merged with the live in-memory contact map and the live local node.
+   *
+   * The DB rows are the base so the list reflects every known node even when
+   * `this.contacts` is transiently empty (e.g. right after a reconnect, before
+   * `refreshContacts` has refilled it) — previously this returned only the
+   * in-memory map, so a momentarily-empty map collapsed the UI to a single
+   * node. In-memory contacts overlay the DB rows since they carry the freshest
+   * rssi/snr/position; DB-only fields (battery, uptime, radio) are preserved.
+   */
+  async getAllNodes(): Promise<MeshCoreNode[]> {
+    const byKey = new Map<string, MeshCoreNode>();
 
-    if (this.localNode) {
-      nodes.push(this.localNode);
+    try {
+      const dbNodes = await databaseService.meshcore.getNodesBySource(this.sourceId);
+      for (const n of dbNodes) {
+        if (n.isLocalNode) continue; // local node is appended live below
+        byKey.set(n.publicKey, {
+          publicKey: n.publicKey,
+          name: n.name || 'Unknown',
+          advType: (n.advType ?? MeshCoreDeviceType.UNKNOWN) as MeshCoreDeviceType,
+          lastHeard: n.lastHeard ?? undefined,
+          rssi: n.rssi ?? undefined,
+          snr: n.snr ?? undefined,
+          latitude: n.latitude ?? undefined,
+          longitude: n.longitude ?? undefined,
+          batteryMv: n.batteryMv ?? undefined,
+          uptimeSecs: n.uptimeSecs ?? undefined,
+          txPower: n.txPower ?? undefined,
+          maxTxPower: n.maxTxPower ?? undefined,
+          radioFreq: n.radioFreq ?? undefined,
+          radioBw: n.radioBw ?? undefined,
+          radioSf: n.radioSf ?? undefined,
+          radioCr: n.radioCr ?? undefined,
+        });
+      }
+    } catch (err) {
+      logger.warn(
+        `[MeshCore:${this.sourceId}] getAllNodes: DB read failed, falling back to in-memory contacts: ${(err as Error).message}`,
+      );
     }
 
+    // Overlay live in-memory contacts (freshest rssi/snr/position), merging
+    // over any persisted row so DB-only fields aren't lost.
     for (const contact of this.contacts.values()) {
-      nodes.push({
+      const base = byKey.get(contact.publicKey);
+      byKey.set(contact.publicKey, {
+        ...base,
         publicKey: contact.publicKey,
-        name: contact.advName || contact.name || 'Unknown',
-        advType: contact.advType || MeshCoreDeviceType.UNKNOWN,
-        lastHeard: contact.lastSeen,
-        rssi: contact.rssi,
-        snr: contact.snr,
-        latitude: contact.latitude,
-        longitude: contact.longitude,
+        name: contact.advName || contact.name || base?.name || 'Unknown',
+        advType: (contact.advType ?? base?.advType ?? MeshCoreDeviceType.UNKNOWN) as MeshCoreDeviceType,
+        lastHeard: contact.lastSeen ?? base?.lastHeard,
+        rssi: contact.rssi ?? base?.rssi,
+        snr: contact.snr ?? base?.snr,
+        latitude: contact.latitude ?? base?.latitude,
+        longitude: contact.longitude ?? base?.longitude,
       });
     }
 
+    const nodes: MeshCoreNode[] = [];
+    if (this.localNode) {
+      nodes.push(this.localNode);
+      byKey.delete(this.localNode.publicKey);
+    }
+    nodes.push(...byKey.values());
     return nodes;
   }
 

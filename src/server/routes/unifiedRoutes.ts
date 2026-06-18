@@ -1242,7 +1242,7 @@ router.get('/status', async (req: Request, res: Response) => {
     for (const id of meshcoreAllowedIds) {
       const mcManager = meshcoreManagerRegistry.get(id);
       if (mcManager) {
-        const all = mcManager.getAllNodes();
+        const all = await mcManager.getAllNodes();
         mcNodeCount += all.length;
         const localHasLastHeard = mcManager.getLocalNode()?.lastHeard != null;
         mcActiveNodeCount += all.filter((n: any, i: number) => {

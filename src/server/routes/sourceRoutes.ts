@@ -816,7 +816,7 @@ router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) =>
     if (source.type === 'meshcore') {
       const mcManager = meshcoreManagerRegistry.get(source.id);
       if (mcManager) {
-        const all = mcManager.getAllNodes();
+        const all = await mcManager.getAllNodes();
         nodeCount = all.length;
         const cutoffMs = Date.now() - 7_200_000;
         const localHasLastHeard = mcManager.getLocalNode()?.lastHeard != null;
@@ -941,7 +941,7 @@ router.get('/:id/nodes', requirePermission('nodes', 'read', { sourceIdFrom: 'par
       const mcManager = meshcoreManagerRegistry.get(source.id);
       const mcNodes: any[] = [];
       if (mcManager) {
-        for (const n of mcManager.getAllNodes()) {
+        for (const n of await mcManager.getAllNodes()) {
           if (n.latitude == null || n.longitude == null) continue;
           if (n.latitude === 0 && n.longitude === 0) continue;
           const lastHeard = typeof n.lastHeard === 'number'
