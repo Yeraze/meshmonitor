@@ -17,13 +17,24 @@ describe('compileUserRegex', () => {
   });
 
   it('is immune to catastrophic backtracking (ReDoS)', () => {
-    // This pattern + input pegs a native RegExp for seconds; RE2 is linear.
+    // This pattern + input would peg a native RegExp for many seconds; RE2 is
+    // linear. A larger input makes the native case definitively slow while RE2
+    // stays well under a generous threshold (kept high to avoid CI flakiness on
+    // loaded/slow runners — correctness is "fast", not a precise budget).
     const re = compileUserRegex('(a+)+$');
     const start = Date.now();
-    const result = re.test('a'.repeat(50) + 'X');
+    const result = re.test('a'.repeat(100) + 'X');
     const elapsed = Date.now() - start;
     expect(result).toBe(false);
-    expect(elapsed).toBeLessThan(100); // would be multi-second on native RegExp
+    expect(elapsed).toBeLessThan(1000);
+  });
+
+  it('exposes RegExp-compatible source and flags', () => {
+    // RE2 instances are not `instanceof RegExp`, but they expose the standard
+    // accessors, which is what call sites rely on.
+    const re = compileUserRegex('^ab.*', 'i');
+    expect(re.source).toBe('^ab.*');
+    expect(re.flags).toContain('i');
   });
 
   it('throws on an invalid pattern (callers catch and treat as invalid)', () => {

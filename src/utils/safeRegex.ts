@@ -14,6 +14,12 @@ import RE2 from 're2';
  * native `RegExp` vulnerable. Callers should keep their existing try/catch so an
  * unsupported or malformed pattern is rejected as "invalid regex".
  *
+ * Caveats: the returned object exposes the standard `RegExp` accessors
+ * (`source`, `flags`, `test`, `exec`, `match`, `replace`) but is NOT a real
+ * `RegExp` — `x instanceof RegExp` is `false`. Don't rely on `instanceof` or on
+ * `RegExp`-internal mutation of `lastIndex` for the result. Length/charset
+ * bounding (to limit compile-time CPU) remains the caller's responsibility.
+ *
  * Resolves CodeQL js/regex-injection on user-controlled regex sources.
  */
 export function compileUserRegex(pattern: string, flags?: string): RegExp {

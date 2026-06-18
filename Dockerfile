@@ -6,8 +6,10 @@ WORKDIR /app
 # Native-module build toolchain (builder stage only — never in the runtime image).
 # Most native deps (better-sqlite3, bcrypt) download prebuilt binaries, but re2
 # has no prebuilt for every target (notably Alpine/musl on arm), so node-gyp must
-# be able to compile it from source. Also serves as a fallback for any other
-# native dep missing a prebuilt for the target arch.
+# be able to compile it from source. `build-base` (C/C++ compiler) is what's new
+# here; `python3` is node-gyp's other requirement (also installed in the runtime
+# stage, but the stages are independent). Also a fallback for any other native
+# dep missing a prebuilt for the target arch.
 RUN apk add --no-cache build-base python3
 
 # Copy package files
