@@ -266,6 +266,27 @@ export interface DbAutoFavoriteAssignment {
 }
 
 /**
+ * A stored Dead Drop / Mailbox message ("mesh voicemail"). Per-source.
+ */
+export interface DbDeadDropMessage {
+  id?: number;
+  sourceId: string;
+  /** 4-char user-facing code, unique per source; used by `inbox delete <id>`. */
+  shortId: string;
+  /** Recipient name as typed by the sender, normalized to lowercase. */
+  recipientName: string;
+  senderNodeNum: number;
+  senderShortName: string;
+  senderLongName: string;
+  body: string;
+  createdAt: number;
+  /** Set when delivered via `inbox play`; null while pending. */
+  playedAt?: number | null;
+  /** Soft-delete timestamp; null while visible. */
+  deletedAt?: number | null;
+}
+
+/**
  * Unified push subscription type matching DbPushSubscription interface
  */
 export interface DbPushSubscription {

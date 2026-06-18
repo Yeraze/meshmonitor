@@ -297,6 +297,12 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   };
 
   const validateResponse = (response: string, type: ResponseType): { valid: boolean; error?: string } => {
+    // Mailbox is a built-in handler that parses the message itself — it needs
+    // no response text, so skip the non-empty check entirely.
+    if (type === 'mailbox') {
+      return { valid: true };
+    }
+
     if (!response.trim()) {
       return { valid: false, error: 'Response cannot be empty' };
     }

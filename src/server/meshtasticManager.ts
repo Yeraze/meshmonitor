@@ -14,6 +14,7 @@ import { logger } from '../utils/logger.js';
 import { calculateLoRaFrequency } from '../utils/loraFrequency.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
+import { deadDropService } from './services/deadDropService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import packetLogService from './services/packetLogService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
@@ -381,7 +382,7 @@ type TextMessage = {
 interface AutoResponderTrigger {
   trigger: string | string[];
   response: string;
-  responseType?: 'text' | 'http' | 'script' | 'traceroute';
+  responseType?: 'text' | 'http' | 'script' | 'traceroute' | 'mailbox';
   channel?: number | 'dm' | 'none';
   verifyResponse?: boolean;
   multiline?: boolean;
@@ -10369,6 +10370,60 @@ class MeshtasticManager implements ISourceManager {
                 1
               );
             }
+            return;
+
+          } else if (trigger.responseType === 'mailbox') {
+            // Dead Drop / Mailbox — async message store ("mesh voicemail").
+            // Parse + execute the command and DM the resulting lines back to
+            // the sender. DM-only by design (the service rejects non-DMs); the
+            // trigger should also be configured DM-only.
+            const mailboxStart = Date.now();
+            const fromNode = await databaseService.nodes.getNode(message.fromNodeNum, this.sourceId);
+            const mailboxResponses = await deadDropService.handleCommand({
+              sourceId: this.sourceId,
+              text: message.text,
+              isDirect: isDirectMessage,
+              senderNodeNum: message.fromNodeNum,
+              senderShortName: fromNode?.shortName || '',
+              senderLongName: fromNode?.longName || '',
+            });
+
+            if (mailboxResponses.length === 0) {
+              return;
+            }
+
+            // Mailbox replies always go back to the sender as a DM.
+            const mailboxMaxAttempts = trigger.verifyResponse ? 3 : 1;
+            const mailboxTarget = `!${message.fromNodeNum.toString(16).padStart(8, '0')}`;
+            logger.debug(`📬 Enqueueing ${mailboxResponses.length} mailbox response(s) to ${mailboxTarget}`);
+
+            mailboxResponses.forEach((resp, index) => {
+              const truncated = this.truncateMessageForMeshtastic(resp, 200);
+              const isFirstMessage = index === 0;
+              this.messageQueue.enqueue(
+                truncated,
+                message.fromNodeNum, // destination: always DM the sender
+                isFirstMessage ? packetId : undefined, // reply to original for first response
+                () => {
+                  logger.info(`✅ Mailbox response ${index + 1}/${mailboxResponses.length} delivered to ${mailboxTarget}`);
+                },
+                (reason: string) => {
+                  logger.warn(`❌ Mailbox response ${index + 1}/${mailboxResponses.length} failed to ${mailboxTarget}: ${reason}`);
+                },
+                undefined, // channel undefined => DM
+                mailboxMaxAttempts
+              );
+            });
+
+            const mailboxDuration = Date.now() - mailboxStart;
+            logger.info(`📬 Auto-responder mailbox completed in ${mailboxDuration}ms, ${mailboxResponses.length} response(s) queued to ${mailboxTarget}`);
+
+            // Record cooldown timestamp
+            const triggerCooldownMailbox = trigger.cooldownSeconds || 0;
+            if (triggerCooldownMailbox > 0) {
+              this.autoResponderCooldowns.set(`${triggerIdx}:${message.fromNodeNum}`, Date.now());
+            }
+
             return;
 
           } else {
