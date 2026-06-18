@@ -156,6 +156,21 @@ if [ -d "$SCRIPTS_SOURCE_DIR" ]; then
     fi
 fi
 
+# Image integrity check (issue #3542): a corrupt or incomplete image pull can
+# leave dist/server/server.js as a 0-byte file. Node then exits 0 immediately,
+# supervisord retries to FATAL, and the container crash-loops with no actionable
+# message beyond "exited: meshmonitor (exit status 0; not expected)". Verify the
+# server bundle is present and non-empty here so the real cause is visible in
+# `docker compose logs` instead.
+SERVER_ENTRY="/app/dist/server/server.js"
+if [ ! -s "$SERVER_ENTRY" ]; then
+    echo "❌ FATAL: $SERVER_ENTRY is missing or empty — the image may be corrupt or incompletely pulled." >&2
+    echo "   Fix: remove the cached image and re-pull, e.g.:" >&2
+    echo "        docker rmi <meshmonitor image> && docker compose pull && docker compose up -d" >&2
+    exit 1
+fi
+echo "✓ Server bundle present ($(wc -c < "$SERVER_ENTRY") bytes)"
+
 # When running as non-root, we need to modify supervisord.conf
 # because it has user=root and uses su-exec which won't work
 if [ "$RUNNING_AS_ROOT" = "false" ]; then
