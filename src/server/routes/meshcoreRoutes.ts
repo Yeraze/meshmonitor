@@ -348,7 +348,7 @@ router.post('/disconnect', meshcoreDeviceLimiter, requireAuth(), requirePermissi
  */
 router.get('/nodes', optionalAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const nodes = managerFor(req).getAllNodes();
+    const nodes = await managerFor(req).getAllNodes();
     res.json({
       success: true,
       data: nodes,
@@ -1186,7 +1186,7 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
     const status = manager.getConnectionStatus();
     const localNode = manager.getLocalNode();
     const contacts = manager.getContacts();
-    const nodes = manager.getAllNodes();
+    const nodes = await manager.getAllNodes();
     const messages = manager.getRecentMessages(50);
     const seqCursor = messages.length > 0 ? Math.max(...messages.map(m => m.timestamp)) : 0;
 
