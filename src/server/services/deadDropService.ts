@@ -102,7 +102,13 @@ export class DeadDropService {
       return ['Mailbox commands must be sent by DM.'];
     }
 
-    const text = ctx.text.trim();
+    // The auto-responder trigger pattern decides which messages reach here, so
+    // we parse leniently: tolerate an optional keyword prefix on the leading
+    // verb (e.g. "betamsg"/"betainbox") by normalizing it to the bare verb.
+    // This lets the mailbox run alongside another responder that already uses
+    // plain "msg"/"inbox" (configure the mailbox trigger with prefixed keywords
+    // and the bare ones keep going to the other responder). No-op for "msg"/"inbox".
+    const text = ctx.text.trim().replace(/^(\S*?)(msg|inbox)\b/i, '$2');
     const lower = text.toLowerCase();
 
     // msg <recipient> <body>

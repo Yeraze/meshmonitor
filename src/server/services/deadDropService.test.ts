@@ -180,4 +180,19 @@ describe('DeadDropService', () => {
     const out = await svc.handleCommand(wisp('flibber'), NOW);
     expect(out[0]).toMatch(/^Commands: msg/);
   });
+
+  it('tolerates a keyword prefix (betamsg/betainbox) for coexistence', async () => {
+    const stored = await svc.handleCommand(ctx({ text: 'betamsg WISP roof check' }), NOW);
+    expect(stored[0]).toMatch(/^Stored for WISP \(id [0-9A-F]{4}\)/);
+
+    const inbox = await svc.handleCommand(wisp('betainbox'), NOW);
+    expect(inbox[0]).toMatch(/1 msg from 1 node/);
+
+    const play = await svc.handleCommand(wisp('betainbox play'), NOW);
+    expect(play.some(l => l === 'roof check')).toBe(true);
+
+    // an unrelated prefix works too (e.g. testmsg)
+    const stored2 = await svc.handleCommand(ctx({ text: 'testmsg WISP second' }), NOW);
+    expect(stored2[0]).toMatch(/^Stored for WISP/);
+  });
 });
