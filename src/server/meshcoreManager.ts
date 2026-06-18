@@ -17,6 +17,10 @@ import { scheduleCron, validateCron, type CronJob } from './utils/cronScheduler.
 import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js';
 import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
 import { MeshCoreNativeBackend, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
+import {
+  MeshCoreVirtualNodeServer,
+  type MeshCoreVirtualNodeConfig,
+} from './meshcoreVirtualNodeServer.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { notificationService } from './services/notificationService.js';
 import type { DbMeshCorePacket } from '../db/repositories/meshcore.js';
@@ -254,6 +258,11 @@ export interface MeshCoreConfig {
   reconnectInitialDelayMs?: number;    // default 1000.
   reconnectMaxDelayMs?: number;        // default 60000.
   reconnectMaxAttempts?: number;       // default 0 (forever).
+
+  // Virtual Node server (opt-in). Exposes this MeshCore node over TCP so the
+  // MeshCore mobile app can connect through MeshMonitor over WiFi (issue #3535).
+  // See docs/internal/dev-notes/MESHCORE_VIRTUAL_NODE_DESIGN.md.
+  virtualNode?: MeshCoreVirtualNodeConfig;
 }
 
 export type MeshCoreConnectionState =
@@ -489,6 +498,7 @@ class MeshCoreManager extends EventEmitter {
 
   // Companion: native JS backend (meshcore.js). sendBridgeCommand delegates here.
   private nativeBackend: MeshCoreNativeBackend | null = null;
+  private virtualNodeServer: MeshCoreVirtualNodeServer | null = null;
 
   // Heartbeat / auto-reconnect state (native-backend only).
   private connectionState: MeshCoreConnectionState = 'disconnected';
@@ -672,6 +682,10 @@ class MeshCoreManager extends EventEmitter {
         this.startHeartbeat();
       }
 
+      // Start the Virtual Node server (opt-in) now that the local node identity
+      // is known — the server synthesizes SelfInfo from it. Non-fatal on error.
+      await this.startVirtualNodeServer();
+
       // Start auto-pathfinding scheduler if configured for this source.
       this.startAutoPathfinding().catch(err =>
         logger.warn(`[MeshCore:${this.sourceId}] Failed to start auto-pathfinding: ${(err as Error).message}`),
@@ -717,6 +731,47 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
+   * Start the Virtual Node TCP server if this source has it enabled. Exposes
+   * the connected MeshCore node to the MeshCore mobile app over WiFi (#3535).
+   * Idempotent and non-fatal: a bind failure is logged but does not abort the
+   * connection.
+   */
+  private async startVirtualNodeServer(): Promise<void> {
+    const vn = this.config?.virtualNode;
+    if (!vn?.enabled || this.virtualNodeServer) return;
+
+    try {
+      this.virtualNodeServer = new MeshCoreVirtualNodeServer({
+        port: vn.port,
+        manager: this,
+        allowAdminCommands: vn.allowAdminCommands,
+      });
+      await this.virtualNodeServer.start();
+    } catch (err) {
+      logger.error(
+        `[MeshCore:${this.sourceId}] Failed to start Virtual Node server on port ${vn.port}: ${(err as Error).message}`,
+      );
+      this.virtualNodeServer = null;
+    }
+  }
+
+  /** Stop the Virtual Node server if running. Safe to call when not started. */
+  private async stopVirtualNodeServer(): Promise<void> {
+    if (!this.virtualNodeServer) return;
+    try {
+      await this.virtualNodeServer.stop();
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] Virtual Node server stop threw: ${(err as Error).message}`);
+    }
+    this.virtualNodeServer = null;
+  }
+
+  /** Whether the Virtual Node server is currently listening. */
+  isVirtualNodeServerRunning(): boolean {
+    return this.virtualNodeServer?.isRunning() ?? false;
+  }
+
+  /**
    * Disconnect from the device
    */
   async disconnect(): Promise<void> {
@@ -744,6 +799,10 @@ class MeshCoreManager extends EventEmitter {
     // Stop auto-announce + timer-trigger schedulers.
     this.stopAutoAnnounce();
     this.stopTimerTriggers();
+
+    // Stop the Virtual Node server (if running) before tearing down the link
+    // and clearing localNode — it reads localNode to answer AppStart.
+    await this.stopVirtualNodeServer();
 
     // Tear down native backend, if active.
     if (this.nativeBackend) {
