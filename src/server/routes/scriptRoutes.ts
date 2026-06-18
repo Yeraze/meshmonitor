@@ -6,6 +6,7 @@ import { requirePermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { scriptDependencyEnv } from '../utils/scriptRunner.js';
+import { compileUserRegex } from '../../utils/safeRegex.js';
 import { normalizeTriggerPatterns } from '../../utils/autoResponderUtils.js';
 import { safeFetch, SsrfBlockedError } from '../utils/ssrfGuard.js';
 import { getDependencyStatus, installDependencies } from '../services/scriptDependencyService.js';
@@ -420,7 +421,7 @@ router.post('/scripts/test', requirePermission('settings', 'read'), async (req: 
         if (regexPattern.length > 2000) {
           continue;
         }
-        const triggerRegex = new RegExp(`^${regexPattern}$`, 'i');
+        const triggerRegex = compileUserRegex(`^${regexPattern}$`, 'i');
         const triggerMatch = testMessage.match(triggerRegex);
 
         if (triggerMatch) {

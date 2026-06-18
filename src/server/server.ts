@@ -11,6 +11,7 @@ import meshtasticManager from './meshtasticManager.js';
 import { MeshtasticManager } from './meshtasticManager.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { resolveSourceManager } from './utils/resolveSourceManager.js';
+import { compileUserRegex } from '../utils/safeRegex.js';
 import { canonicalMessageTime, messageReceivedAt } from './utils/messageTime.js';
 import protobufService from './protobufService.js';
 
@@ -3429,7 +3430,7 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
       }
       // Test that regex is valid
       try {
-        new RegExp(filterNameRegex);
+        compileUserRegex(filterNameRegex);
         validatedRegex = filterNameRegex;
       } catch {
         return res.status(400).json({ error: 'Invalid filterNameRegex value. Must be a valid regular expression.' });
@@ -3617,7 +3618,7 @@ apiRouter.post('/settings/remote-localstats-nodes', requirePermission('settings'
         return res.status(400).json({ error: 'filterNameRegex too complex or may cause performance issues.' });
       }
       try {
-        new RegExp(filterNameRegex);
+        compileUserRegex(filterNameRegex);
         validatedRegex = filterNameRegex;
       } catch {
         return res.status(400).json({ error: 'Invalid filterNameRegex value. Must be a valid regular expression.' });

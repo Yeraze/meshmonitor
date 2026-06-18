@@ -26,6 +26,7 @@ import { MessageQueueService } from './messageQueueService.js';
 import { resolveAutoWelcomeDelaySeconds } from './autoWelcomeDelay.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
+import { compileUserRegex } from '../utils/safeRegex.js';
 import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
 import { resolveLastHopName } from './utils/lastHop.js';
 import { scriptDependencyEnv } from './utils/scriptRunner.js';
@@ -9086,7 +9087,7 @@ class MeshtasticManager implements ISourceManager {
         regex = this.cachedAutoAckRegex.regex;
       } else {
         try {
-          regex = new RegExp(regexPattern, 'i');
+          regex = compileUserRegex(regexPattern, 'i');
           this.cachedAutoAckRegex = { pattern: regexPattern, regex };
         } catch (error) {
           logger.error('❌ Invalid auto-acknowledge regex pattern:', regexPattern, error);
@@ -9901,7 +9902,7 @@ class MeshtasticManager implements ISourceManager {
             }
           }
 
-          const triggerRegex = new RegExp(`^${pattern}$`, 'i');
+          const triggerRegex = compileUserRegex(`^${pattern}$`, 'i');
           const triggerMatch = normalizedText.match(triggerRegex);
 
           if (triggerMatch) {

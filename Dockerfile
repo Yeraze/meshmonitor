@@ -3,6 +3,13 @@ FROM node:24.15.0-alpine3.22 AS builder
 
 WORKDIR /app
 
+# Native-module build toolchain (builder stage only — never in the runtime image).
+# Most native deps (better-sqlite3, bcrypt) download prebuilt binaries, but re2
+# has no prebuilt for every target (notably Alpine/musl on arm), so node-gyp must
+# be able to compile it from source. Also serves as a fallback for any other
+# native dep missing a prebuilt for the target arch.
+RUN apk add --no-cache build-base python3
+
 # Copy package files
 COPY package*.json ./
 
