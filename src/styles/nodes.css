@@ -715,6 +715,53 @@
   transform: scale(0.95);
 }
 
+/* Export icon button + dropdown menu (Issue #3499) — lives inline in the
+   sort-controls row so it costs no extra vertical space. */
+.export-dropdown {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.export-trigger-btn {
+  font-size: 1rem;
+}
+
+.export-trigger-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.export-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 96px;
+  padding: 0.25rem;
+  background: var(--ctp-base);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.export-menu-item {
+  background: transparent;
+  border: none;
+  color: var(--ctp-text);
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.export-menu-item:hover {
+  background: var(--ctp-surface1);
+}
+
 .nodes-list {
   flex: 1;
   overflow-y: auto;
