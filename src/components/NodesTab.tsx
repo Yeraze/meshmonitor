@@ -17,6 +17,7 @@ import { formatTime, formatDateTime } from '../utils/datetime';
 import { getDistanceToNode, calculateDistance, formatDistance } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
 import { getEffectiveHops } from '../utils/nodeHops';
+import { buildNodeExportRows, nodesToCsv, nodesToHtml, downloadTextFile } from '../utils/nodeExport';
 import { useMapContext } from '../contexts/MapContext';
 import { useTelemetryNodes, useDeviceConfig, useNodes } from '../hooks/useServerData';
 import { useUI } from '../contexts/UIContext';
@@ -1267,6 +1268,77 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     });
   }, [sortField, sortDirection, nodeHopsCalculation, traceroutes, currentNodeNum]);
 
+  // The displayed node set: processedNodes (text filter already applied upstream)
+  // → security/channel/incomplete/remote-admin filters → favorites-first sort.
+  // Shared by the rendered list and the CSV/HTML export so they always match.
+  const displayedNodes = useMemo(() => {
+    const filtered = processedNodes.filter(node => {
+      if (securityFilter === 'flaggedOnly') {
+        if (!node.keyIsLowEntropy && !node.duplicateKeyDetected && !node.keySecurityIssueDetails) return false;
+      }
+      if (securityFilter === 'hideFlagged') {
+        if (node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) return false;
+      }
+      if (channelFilter !== 'all') {
+        const nodeChannel = node.channel ?? 0;
+        if (nodeChannel !== channelFilter) return false;
+      }
+      if (!showIncompleteNodes && !isNodeComplete(node)) return false;
+      if (filterRemoteAdminOnly && !node.hasRemoteAdmin) return false;
+      return true;
+    });
+    // Favorites first, each group sorted independently (matches list rendering).
+    return [
+      ...sortNodes(filtered.filter(node => node.isFavorite)),
+      ...sortNodes(filtered.filter(node => !node.isFavorite)),
+    ];
+  }, [processedNodes, securityFilter, channelFilter, showIncompleteNodes, filterRemoteAdminOnly, sortNodes]);
+
+  // Export format dropdown (Issue #3499) — a single icon button in the controls
+  // row reveals this menu, keeping the header compact for a rarely-used action.
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close the export menu on outside click or Escape.
+  useEffect(() => {
+    if (!showExportMenu) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowExportMenu(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [showExportMenu]);
+
+  // Export the currently-displayed nodes as CSV or HTML (Issue #3499).
+  const handleExportNodes = useCallback((format: 'csv' | 'html') => {
+    setShowExportMenu(false);
+    if (displayedNodes.length === 0) return;
+    const rows = buildNodeExportRows(displayedNodes, {
+      nodeHopsCalculation,
+      traceroutes,
+      currentNodeNum,
+      currentNodeId,
+      formatLastHeard: (s) => formatDateTime(new Date(s * 1000), timeFormat, dateFormat),
+    });
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    if (format === 'csv') {
+      // Prepend a UTF-8 BOM so Excel detects the encoding correctly.
+      downloadTextFile(`meshmonitor-nodes-${stamp}.csv`, '\uFEFF' + nodesToCsv(rows), 'text/csv;charset=utf-8');
+    } else {
+      const html = nodesToHtml(rows, { generatedAt: new Date().toLocaleString() });
+      downloadTextFile(`meshmonitor-nodes-${stamp}.html`, html, 'text/html;charset=utf-8');
+    }
+  }, [displayedNodes, nodeHopsCalculation, traceroutes, currentNodeNum, currentNodeId, timeFormat, dateFormat]);
+
   // Calculate nodes with position - uses effective position (respects position overrides, Issue #1526)
   const nodesWithPosition = processedNodes.filter(node => hasValidEffectivePosition(node));
 
@@ -1487,6 +1559,54 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               >
                 {sortDirection === 'asc' ? '↑' : '↓'}
               </button>
+              <div className="export-dropdown" ref={exportMenuRef}>
+                <button
+                  className="sort-direction-btn export-trigger-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.nativeEvent.stopImmediatePropagation();
+                    setShowExportMenu((v) => !v);
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    e.nativeEvent.stopImmediatePropagation();
+                  }}
+                  disabled={displayedNodes.length === 0}
+                  title={t('nodes.export', 'Export node list')}
+                  aria-haspopup="menu"
+                  aria-expanded={showExportMenu}
+                >
+                  ⬇
+                </button>
+                {showExportMenu && (
+                  <div className="export-menu" role="menu">
+                    <button
+                      className="export-menu-item"
+                      role="menuitem"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                        handleExportNodes('csv');
+                      }}
+                      title={t('nodes.export_csv', 'Export node list as CSV')}
+                    >
+                      CSV
+                    </button>
+                    <button
+                      className="export-menu-item"
+                      role="menuitem"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.nativeEvent.stopImmediatePropagation();
+                        handleExportNodes('html');
+                      }}
+                      title={t('nodes.export_html', 'Export node list as HTML')}
+                    >
+                      HTML
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           )}
@@ -1498,41 +1618,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             // Find the home node for distance calculations (use unfiltered nodes to ensure home node is found)
             const homeNode = nodes.find(n => n.user?.id === currentNodeId);
 
-            // Apply security, channel, and incomplete node filters
-            const filteredNodes = processedNodes.filter(node => {
-              // Security filter
-              if (securityFilter === 'flaggedOnly') {
-                if (!node.keyIsLowEntropy && !node.duplicateKeyDetected && !node.keySecurityIssueDetails) return false;
-              }
-              if (securityFilter === 'hideFlagged') {
-                if (node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) return false;
-              }
-
-              // Channel filter
-              if (channelFilter !== 'all') {
-                const nodeChannel = node.channel ?? 0;
-                if (nodeChannel !== channelFilter) return false;
-              }
-
-              // Incomplete nodes filter - hide nodes missing name/hwModel info
-              if (!showIncompleteNodes && !isNodeComplete(node)) {
-                return false;
-              }
-
-              // Remote admin filter
-              if (filterRemoteAdminOnly && !node.hasRemoteAdmin) {
-                return false;
-              }
-
-              return true;
-            });
-
-            // Sort nodes: favorites first, then non-favorites, each group sorted independently
-            const favorites = filteredNodes.filter(node => node.isFavorite);
-            const nonFavorites = filteredNodes.filter(node => !node.isFavorite);
-            const sortedFavorites = sortNodes(favorites);
-            const sortedNonFavorites = sortNodes(nonFavorites);
-            const sortedNodes = [...sortedFavorites, ...sortedNonFavorites];
+            // Filtered + favorites-first sorted set, shared with the export (Issue #3499)
+            const sortedNodes = displayedNodes;
 
             return sortedNodes.length > 0 ? (
               <>
