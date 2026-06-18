@@ -123,6 +123,8 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: 'Security', link: '/features/security' },
+            { text: 'Duplicate Encryption Keys', link: '/security-duplicate-keys' },
+            { text: 'Low-Entropy Encryption Keys', link: '/security-low-entropy-keys' },
             { text: 'Impersonation Detection', link: '/features/impersonation-detection' },
             { text: 'Per-Source Permissions', link: '/features/per-source-permissions' },
             { text: 'PKI Direct Message Decryption', link: '/features/pki-dm-decryption' },
