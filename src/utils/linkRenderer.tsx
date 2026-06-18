@@ -1,4 +1,5 @@
 import React from 'react';
+import api from '../services/api';
 
 // URL detection regex - matches http://, https://, and www. URLs
 const URL_REGEX = /(https?:\/\/[^\s]+)|(www\.[^\s]+)/gi;
@@ -102,10 +103,13 @@ export function extractUrls(text: string): string[] {
  */
 export async function fetchLinkPreview(url: string): Promise<LinkMetadata | null> {
   try {
-    // Import API service dynamically to avoid circular dependencies
-    const apiModule = await import('../services/api');
-    const api = apiModule.default;
-
+    // `api` is imported statically. A previous `await import('../services/api')`
+    // here pulled the api module into a lazy chunk whose Vite preload URL was
+    // computed without the runtime BASE_URL prefix (e.g. `/assets/…` instead of
+    // `/meshmonitor/assets/…`), 404ing and throwing "Unable to preload CSS" on
+    // any page where that chunk wasn't already loaded — which silently killed
+    // link previews on the MeshCore views. api.ts does not import this module,
+    // so there is no circular dependency to avoid.
     const metadata = await api.fetchLinkPreview(url);
     return metadata;
   } catch (error) {
