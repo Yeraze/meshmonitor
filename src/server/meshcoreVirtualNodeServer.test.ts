@@ -1,14 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { EventEmitter } from 'events';
 import { Socket } from 'net';
 import { Constants } from '@liamcottle/meshcore.js';
 import { MeshCoreVirtualNodeServer, type MeshCoreVirtualNodeManager } from './meshcoreVirtualNodeServer.js';
 import {
   CommandCodes,
   ResponseCodes,
+  PushCodes,
   FRAME_APP_TO_NODE,
   FRAME_NODE_TO_APP,
 } from './meshcoreCompanionCodec.js';
-import type { MeshCoreNode } from './meshcoreManager.js';
+import type { MeshCoreNode, MeshCoreContact, MeshCoreMessage } from './meshcoreManager.js';
 
 // Audit logging is fire-and-forget; stub it so the test doesn't touch the DB.
 vi.mock('../services/database.js', () => ({
@@ -29,13 +31,49 @@ const LOCAL_NODE: MeshCoreNode = {
   longitude: -95.3698,
 };
 
+const SAMPLE_CONTACTS: MeshCoreContact[] = [
+  {
+    publicKey: 'b1'.repeat(32),
+    advName: 'Repeater North',
+    advType: Constants.AdvType.Repeater,
+    latitude: 40.1,
+    longitude: -105.2,
+    lastAdvert: 1_750_000_000,
+    lastSeen: 1_750_000_500,
+    pathLen: 2,
+    outPath: 'a3,7f',
+  },
+];
+
+/** A fake manager backed by a real EventEmitter so the server can subscribe. */
+class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
+  readonly sourceId = 'src-test';
+  private localNode: MeshCoreNode | null;
+  private contacts: MeshCoreContact[];
+  constructor(localNode: MeshCoreNode | null = LOCAL_NODE, contacts = SAMPLE_CONTACTS) {
+    super();
+    this.localNode = localNode;
+    this.contacts = contacts;
+  }
+  isConnected() { return this.localNode !== null; }
+  getLocalNode() { return this.localNode; }
+  getContacts() { return this.contacts; }
+  emitMessage(msg: MeshCoreMessage) { this.emit('message', msg); }
+}
+
+const CHANNELS_DB = {
+  channels: {
+    getAllChannels: vi.fn().mockResolvedValue([
+      { id: 0, name: 'Public', psk: Buffer.from('0123456789abcdef0123456789abcdef', 'hex').toString('base64') },
+    ]),
+  },
+};
+
 function makeManager(overrides: Partial<MeshCoreVirtualNodeManager> = {}): MeshCoreVirtualNodeManager {
-  return {
-    sourceId: 'src-test',
-    isConnected: () => true,
-    getLocalNode: () => LOCAL_NODE,
-    ...overrides,
-  };
+  const base = new FakeManager(
+    'getLocalNode' in overrides ? (overrides.getLocalNode as () => MeshCoreNode | null)() : LOCAL_NODE,
+  );
+  return Object.assign(base, overrides) as MeshCoreVirtualNodeManager;
 }
 
 /** Frame an app→node command (the byte layout the MeshCore app would send). */
@@ -102,9 +140,11 @@ class TestClient {
 describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
   let server: MeshCoreVirtualNodeServer;
   let client: TestClient;
+  let manager: FakeManager;
 
   beforeEach(async () => {
-    server = new MeshCoreVirtualNodeServer({ port: 0, manager: makeManager() });
+    manager = new FakeManager();
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager, databaseService: CHANNELS_DB });
     await server.start();
     client = new TestClient();
     await client.connect(server.getListeningPort()!);
@@ -136,15 +176,69 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
     expect(payload[0]).toBe(ResponseCodes.DeviceInfo);
   });
 
-  it('replies to GetContacts with ContactsStart(0) then EndOfContacts', async () => {
+  it('replies to GetContacts with ContactsStart(N), Contact frames, then EndOfContacts', async () => {
     client.send([CommandCodes.GetContacts, 0, 0, 0, 0]); // since:u32
-    const [start, end] = await client.expectFrames(2);
+    const [start, contact, end] = await client.expectFrames(3);
     expect(start[0]).toBe(ResponseCodes.ContactsStart);
-    expect(start.readUInt32LE(1)).toBe(0);
+    expect(start.readUInt32LE(1)).toBe(1);
+    expect(contact[0]).toBe(ResponseCodes.Contact);
+    // public key is the 32 bytes right after the response code
+    expect(contact.subarray(1, 33).toString('hex')).toBe('b1'.repeat(32));
     expect(end[0]).toBe(ResponseCodes.EndOfContacts);
   });
 
-  it('replies to SyncNextMessage with NoMoreMessages', async () => {
+  it('replies to GetChannel(0) with ChannelInfo from the channels DB', async () => {
+    const payload = await client.request([CommandCodes.GetChannel, 0]);
+    expect(payload[0]).toBe(ResponseCodes.ChannelInfo);
+    expect(payload[1]).toBe(0); // channel index
+  });
+
+  it('replies to GetChannel for an unknown slot with Err(NotFound)', async () => {
+    const payload = await client.request([CommandCodes.GetChannel, 7]);
+    expect(payload[0]).toBe(ResponseCodes.Err);
+    expect(payload[1]).toBe(Constants.ErrorCodes.NotFound);
+  });
+
+  it('replies to GetBatteryVoltage with BatteryVoltage', async () => {
+    const payload = await client.request([CommandCodes.GetBatteryVoltage]);
+    expect(payload[0]).toBe(ResponseCodes.BatteryVoltage);
+  });
+
+  it('acknowledges SetFloodScope with Ok (read-only no-op)', async () => {
+    const payload = await client.request([0x36 /* SetFloodScope=54 */, 0]);
+    expect(payload[0]).toBe(ResponseCodes.Ok);
+  });
+
+  it('SyncNextMessage returns NoMoreMessages when the queue is empty', async () => {
+    const payload = await client.request([CommandCodes.SyncNextMessage]);
+    expect(payload[0]).toBe(ResponseCodes.NoMoreMessages);
+  });
+
+  it('pushes MsgWaiting on a live incoming message and delivers it via SyncNextMessage', async () => {
+    const push = new Promise<Buffer>((resolve) => (client as any).waiters.push(resolve));
+    manager.emitMessage({
+      id: 'm1',
+      fromPublicKey: 'b1'.repeat(32),
+      toPublicKey: undefined,
+      text: 'incoming dm',
+      timestamp: 1_750_000_000_000,
+    });
+    const pushFrame = await push;
+    expect(pushFrame[0]).toBe(PushCodes.MsgWaiting);
+
+    const recv = await client.request([CommandCodes.SyncNextMessage]);
+    expect(recv[0]).toBe(ResponseCodes.ContactMsgRecv);
+    expect(recv.subarray(-'incoming dm'.length).toString('utf8')).toBe('incoming dm');
+  });
+
+  it('does not echo a message our own node originated', async () => {
+    manager.emitMessage({
+      id: 'm2',
+      fromPublicKey: LOCAL_NODE.publicKey, // self
+      text: 'our own send',
+      timestamp: 1_750_000_000_000,
+    });
+    // No MsgWaiting push should arrive; the queue stays empty.
     const payload = await client.request([CommandCodes.SyncNextMessage]);
     expect(payload[0]).toBe(ResponseCodes.NoMoreMessages);
   });

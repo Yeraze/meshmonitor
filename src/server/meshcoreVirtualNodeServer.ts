@@ -2,7 +2,8 @@ import { Server, Socket } from 'net';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 import databaseService from '../services/database.js';
-import type { MeshCoreNode, TelemetryMode } from './meshcoreManager.js';
+import type { MeshCoreNode, TelemetryMode, MeshCoreContact, MeshCoreMessage } from './meshcoreManager.js';
+import databaseServiceDefault from '../services/database.js';
 import {
   CommandCodes,
   ErrorCodes,
@@ -13,13 +14,21 @@ import {
   encodeCurrTime,
   encodeDeviceInfo,
   encodeContactsStart,
+  encodeContact,
   encodeEndOfContacts,
+  encodeChannelInfo,
+  encodeBatteryVoltage,
+  encodeContactMsgRecv,
+  encodeChannelMsgRecv,
+  encodeMsgWaitingPush,
   encodeNoMoreMessages,
   encodeOk,
   encodeErr,
   packTelemetryMode,
   pubKeyHexToBytes,
+  hexToBytes,
   degreesToFixed,
+  toEpochSeconds,
   mhzToWireFreq,
   khzToWireBw,
   type ParsedCommand,
@@ -35,6 +44,25 @@ export interface MeshCoreVirtualNodeManager {
   readonly sourceId: string;
   isConnected(): boolean;
   getLocalNode(): MeshCoreNode | null;
+  getContacts(): MeshCoreContact[];
+  /** EventEmitter surface — the manager emits 'message' with a MeshCoreMessage. */
+  on(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
+  off(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
+}
+
+/** Reverse map of command codes → names, for human-readable command logging. */
+const COMMAND_NAMES: Record<number, string> = Object.fromEntries(
+  Object.entries(CommandCodes).map(([name, code]) => [code, name]),
+);
+
+/** Minimal channels-repo surface the server needs (subset of DbChannel). */
+interface ChannelRow {
+  id: number;
+  name: string;
+  psk?: string; // base64-encoded 16-byte secret
+}
+interface ChannelsDb {
+  channels: { getAllChannels(sourceId?: string): Promise<ChannelRow[]> };
 }
 
 export interface MeshCoreVirtualNodeServerOptions {
@@ -42,6 +70,8 @@ export interface MeshCoreVirtualNodeServerOptions {
   manager: MeshCoreVirtualNodeManager;
   /** Allow config-mutating commands through to the real node (default false). */
   allowAdminCommands?: boolean;
+  /** Injectable channels source; defaults to the real DatabaseService facade. */
+  databaseService?: ChannelsDb;
 }
 
 /**
@@ -60,6 +90,13 @@ interface ConnectedClient {
   buffer: Buffer;
   connectedAt: Date;
   lastActivity: Date;
+  /**
+   * Per-client inbound message queue. Seeded empty at connect (mirroring a
+   * freshly-synced device) and filled with LIVE messages as they arrive, so
+   * the app's local history isn't duplicated on every reconnect. Drained one
+   * at a time by SyncNextMessage.
+   */
+  pendingMessages: MeshCoreMessage[];
 }
 
 /**
@@ -80,10 +117,12 @@ interface ConnectedClient {
 export class MeshCoreVirtualNodeServer extends EventEmitter {
   private readonly options: MeshCoreVirtualNodeServerOptions;
   private readonly allowAdminCommands: boolean;
+  private readonly db: ChannelsDb;
   private server: Server | null = null;
   private clients: Map<string, ConnectedClient> = new Map();
   private nextClientId = 1;
   private cleanupTimer: NodeJS.Timeout | null = null;
+  private readonly onManagerMessage = (msg: MeshCoreMessage) => this.handleIncomingMessage(msg);
 
   private readonly MAX_FRAME_BYTES = 4096;
   private readonly CLIENT_TIMEOUT_MS = 300000; // 5 min inactivity
@@ -93,6 +132,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     super();
     this.options = options;
     this.allowAdminCommands = options.allowAdminCommands ?? false;
+    this.db = options.databaseService ?? (databaseServiceDefault as unknown as ChannelsDb);
   }
 
   get sourceId(): string {
@@ -117,6 +157,8 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       this.server.listen(this.options.port, () => {
         logger.info(`🌐 [MeshCore VN ${this.sourceId}] listening on port ${this.options.port}`);
         this.cleanupTimer = setInterval(() => this.cleanupInactiveClients(), this.CLEANUP_INTERVAL_MS);
+        // Relay live incoming mesh messages to connected app clients.
+        this.options.manager.on('message', this.onManagerMessage);
         this.emit('listening');
         resolve();
       });
@@ -130,6 +172,8 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
+
+    this.options.manager.off('message', this.onManagerMessage);
 
     for (const client of this.clients.values()) {
       client.socket.destroy();
@@ -168,7 +212,14 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
   private handleNewClient(socket: Socket): void {
     const clientId = `mcvn-${this.nextClientId++}`;
     const now = new Date();
-    this.clients.set(clientId, { socket, id: clientId, buffer: Buffer.alloc(0), connectedAt: now, lastActivity: now });
+    this.clients.set(clientId, {
+      socket,
+      id: clientId,
+      buffer: Buffer.alloc(0),
+      connectedAt: now,
+      lastActivity: now,
+      pendingMessages: [],
+    });
     logger.info(`📱 [MeshCore VN ${this.sourceId}] client connected: ${clientId} (${this.clients.size} total)`);
 
     databaseService.auditLogAsync(
@@ -229,6 +280,13 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
   // ───────────────────────── command dispatch ─────────────────────────
 
   private dispatchCommand(clientId: string, command: ParsedCommand): void {
+    // Phase-0 visibility: log every inbound command (name + raw bytes) so we
+    // can observe exactly what the MeshCore app requests and in what order.
+    // TODO(phase1): drop to debug once the command surface is implemented.
+    logger.info(
+      `[MeshCore VN ${this.sourceId}] ◀ cmd ${command.code} (${COMMAND_NAMES[command.code] ?? 'unknown'}) ` +
+        `from ${clientId} [${command.payload.length}B]`,
+    );
     try {
       switch (command.code) {
         case CommandCodes.AppStart:
@@ -245,16 +303,24 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
           this.handleDeviceQuery(clientId);
           break;
         case CommandCodes.GetContacts:
-          // Phase 0: advertise an empty contact list. Phase 1 fills this in.
-          this.send(clientId, encodeContactsStart(0));
-          this.send(clientId, encodeEndOfContacts(0));
+          this.handleGetContacts(clientId);
+          break;
+        case CommandCodes.GetChannel:
+          void this.handleGetChannel(clientId, command.channelIdx ?? 0);
+          break;
+        case CommandCodes.GetBatteryVoltage:
+          this.handleGetBatteryVoltage(clientId);
           break;
         case CommandCodes.SyncNextMessage:
-          // Phase 0: mailbox always empty. Phase 1 drains mirrored messages.
-          this.send(clientId, encodeNoMoreMessages());
+          this.handleSyncNextMessage(clientId);
+          break;
+        case CommandCodes.SetFloodScope:
+          // Read-only phase: acknowledge but don't apply (avoids the app
+          // treating an Err as a fatal handshake failure). Phase 3 forwards it.
+          this.send(clientId, encodeOk());
           break;
         default:
-          logger.debug(`[MeshCore VN ${this.sourceId}] unsupported command ${command.code} from ${clientId} (phase 0)`);
+          logger.debug(`[MeshCore VN ${this.sourceId}] unsupported command ${command.code} from ${clientId}`);
           this.send(clientId, encodeErr(ErrorCodes.UnsupportedCmd));
           break;
       }
@@ -285,6 +351,110 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       firmwareBuildDate: localNode?.firmwareBuild ?? '',
       manufacturerModel: localNode?.model || 'MeshMonitor Virtual Node',
     }));
+  }
+
+  /** GetContacts → ContactsStart(N) · N×Contact · EndOfContacts. */
+  private handleGetContacts(clientId: string): void {
+    const contacts = this.options.manager.getContacts();
+    this.send(clientId, encodeContactsStart(contacts.length));
+    let mostRecentLastMod = 0;
+    for (const c of contacts) {
+      const lastAdvert = toEpochSeconds(c.lastAdvert ?? c.lastSeen);
+      const lastMod = toEpochSeconds(c.lastSeen ?? c.lastAdvert);
+      mostRecentLastMod = Math.max(mostRecentLastMod, lastMod);
+      this.send(clientId, encodeContact({
+        publicKey: pubKeyHexToBytes(c.publicKey),
+        type: c.advType ?? 1,
+        flags: 0,
+        // OUT_PATH_UNKNOWN (-1) when no cached route, else the hop count.
+        outPathLen: c.pathLen == null ? -1 : c.pathLen,
+        outPath: c.outPath ? hexToBytes(c.outPath) : Buffer.alloc(0),
+        advName: c.advName || c.name || '',
+        lastAdvert,
+        advLat: degreesToFixed(c.latitude),
+        advLon: degreesToFixed(c.longitude),
+        lastMod,
+      }));
+    }
+    this.send(clientId, encodeEndOfContacts(mostRecentLastMod));
+    logger.info(`[MeshCore VN ${this.sourceId}] ▶ ${contacts.length} contacts to ${clientId}`);
+  }
+
+  /** GetChannel(idx) → ChannelInfo from the synced channel list, or Err(NotFound). */
+  private async handleGetChannel(clientId: string, channelIdx: number): Promise<void> {
+    try {
+      const channels = await this.db.channels.getAllChannels(this.sourceId);
+      const row = channels.find((ch) => ch.id === channelIdx);
+      if (!row) {
+        // Tells the app it has reached the end of the configured slots.
+        this.send(clientId, encodeErr(ErrorCodes.NotFound));
+        return;
+      }
+      const secret = row.psk ? Buffer.from(row.psk, 'base64') : Buffer.alloc(16);
+      this.send(clientId, encodeChannelInfo(channelIdx, row.name || '', secret));
+      logger.info(`[MeshCore VN ${this.sourceId}] ▶ channel ${channelIdx} ("${row.name}") to ${clientId}`);
+    } catch (err) {
+      logger.error(`[MeshCore VN ${this.sourceId}] GetChannel ${channelIdx} failed: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.NotFound));
+    }
+  }
+
+  /** GetBatteryVoltage → BatteryVoltage from the local node's last telemetry. */
+  private handleGetBatteryVoltage(clientId: string): void {
+    const mv = this.options.manager.getLocalNode()?.batteryMv ?? 0;
+    this.send(clientId, encodeBatteryVoltage(mv));
+  }
+
+  /** SyncNextMessage → next queued incoming message, or NoMoreMessages. */
+  private handleSyncNextMessage(clientId: string): void {
+    const client = this.clients.get(clientId);
+    const msg = client?.pendingMessages.shift();
+    if (!msg) {
+      this.send(clientId, encodeNoMoreMessages());
+      return;
+    }
+    this.send(clientId, this.encodeIncomingMessage(msg));
+  }
+
+  /**
+   * Fan a newly-arrived incoming mesh message out to every connected app
+   * client: enqueue it and nudge the app with a MsgWaiting push so it drains
+   * via SyncNextMessage. Messages our own node originated are skipped so the
+   * app doesn't see its/our own sends echoed back.
+   */
+  private handleIncomingMessage(msg: MeshCoreMessage): void {
+    const selfKey = this.options.manager.getLocalNode()?.publicKey?.toLowerCase();
+    if (selfKey && msg.fromPublicKey?.toLowerCase() === selfKey) return;
+
+    for (const [clientId, client] of this.clients.entries()) {
+      client.pendingMessages.push(msg);
+      this.send(clientId, encodeMsgWaitingPush());
+    }
+  }
+
+  /** Map a stored MeshCoreMessage to the right recv frame (channel vs direct). */
+  private encodeIncomingMessage(msg: MeshCoreMessage): Buffer {
+    const senderTimestamp = toEpochSeconds(msg.timestamp);
+    const channelMatch = /^channel-(\d+)$/.exec(msg.toPublicKey ?? '');
+    if (channelMatch) {
+      // Channel packets carry the sender's name inline; reconstruct it so the
+      // app renders the originator the way the firmware would deliver it.
+      const text = msg.fromName ? `${msg.fromName}: ${msg.text}` : msg.text;
+      return encodeChannelMsgRecv({
+        channelIdx: Number(channelMatch[1]),
+        pathLen: 0xff, // delivered direct (we don't track the relay path here)
+        txtType: 0,
+        senderTimestamp,
+        text,
+      });
+    }
+    return encodeContactMsgRecv({
+      pubKeyPrefix: hexToBytes(msg.fromPublicKey).subarray(0, 6),
+      pathLen: 0xff,
+      txtType: 0,
+      senderTimestamp,
+      text: msg.text,
+    });
   }
 
   /** Map MeshMonitor's local-node record to the SelfInfo wire structure. */

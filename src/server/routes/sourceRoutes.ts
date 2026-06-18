@@ -27,15 +27,16 @@ function stripTrailingSlashes(s: string): string {
 
 // Validate virtualNode config nested inside a source config blob.
 // Returns null on success, or { status, error } on failure.
-async function validateVirtualNodeConfig(
+// Exported for unit testing the source-type gate (#3535).
+export async function validateVirtualNodeConfig(
   type: string,
   config: any,
   excludeSourceId?: string
 ): Promise<{ status: number; error: string } | null> {
   const vn = config?.virtualNode;
   if (vn === undefined || vn === null) return null;
-  if (type !== 'meshtastic_tcp') {
-    return { status: 400, error: 'virtualNode config is only supported on meshtastic_tcp sources' };
+  if (type !== 'meshtastic_tcp' && type !== 'meshcore') {
+    return { status: 400, error: 'virtualNode config is only supported on meshtastic_tcp and meshcore sources' };
   }
   if (vn.enabled !== true) return null;
   const port = vn.port;

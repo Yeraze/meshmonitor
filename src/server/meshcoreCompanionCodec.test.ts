@@ -15,11 +15,18 @@ import {
   encodeCurrTime,
   encodeDeviceInfo,
   encodeContactsStart,
+  encodeContact,
   encodeEndOfContacts,
+  encodeChannelInfo,
+  encodeBatteryVoltage,
+  encodeContactMsgRecv,
+  encodeChannelMsgRecv,
   encodeNoMoreMessages,
   packTelemetryMode,
   pubKeyHexToBytes,
+  hexToBytes,
   degreesToFixed,
+  toEpochSeconds,
   type SelfInfoWire,
 } from './meshcoreCompanionCodec.js';
 
@@ -124,6 +131,88 @@ describe('meshcoreCompanionCodec — encoders round-trip through meshcore.js dec
     const payload = encodeNoMoreMessages();
     expect(payload).toHaveLength(1);
     expect(payload[0]).toBe(ResponseCodes.NoMoreMessages);
+  });
+
+  it('Contact decodes back to the same key, name, path and position', async () => {
+    const decoded = await decodeWithMeshcore(ResponseCodes.Contact, encodeContact({
+      publicKey: pubKeyHexToBytes(SAMPLE_PUBKEY),
+      type: Constants.AdvType.Chat,
+      flags: 0,
+      outPathLen: 3,
+      outPath: hexToBytes('a37f02'),
+      advName: 'Repeater North',
+      lastAdvert: 1_750_000_000,
+      advLat: degreesToFixed(40.1),
+      advLon: degreesToFixed(-105.2),
+      lastMod: 1_750_000_500,
+    }));
+
+    expect(Buffer.from(decoded.publicKey).toString('hex')).toBe(SAMPLE_PUBKEY);
+    expect(decoded.type).toBe(Constants.AdvType.Chat);
+    expect(decoded.outPathLen).toBe(3);
+    expect(Buffer.from(decoded.outPath).subarray(0, 3).toString('hex')).toBe('a37f02');
+    expect(decoded.advName).toBe('Repeater North');
+    expect(decoded.lastAdvert).toBe(1_750_000_000);
+    expect(decoded.advLat).toBe(degreesToFixed(40.1));
+    expect(decoded.advLon).toBe(degreesToFixed(-105.2));
+    expect(decoded.lastMod).toBe(1_750_000_500);
+  });
+
+  it('Contact encodes OUT_PATH_UNKNOWN (-1) for an unknown route', async () => {
+    const decoded = await decodeWithMeshcore(ResponseCodes.Contact, encodeContact({
+      publicKey: pubKeyHexToBytes(SAMPLE_PUBKEY),
+      type: 1, flags: 0, outPathLen: -1, outPath: Buffer.alloc(0),
+      advName: 'X', lastAdvert: 0, advLat: 0, advLon: 0, lastMod: 0,
+    }));
+    expect(decoded.outPathLen).toBe(-1);
+  });
+
+  it('ChannelInfo decodes index, name and 16-byte secret', async () => {
+    const secret = Buffer.from('0123456789abcdef0123456789abcdef', 'hex'); // 16 bytes
+    const decoded = await decodeWithMeshcore(ResponseCodes.ChannelInfo, encodeChannelInfo(0, 'Public', secret));
+    expect(decoded.channelIdx).toBe(0);
+    expect(decoded.name).toBe('Public');
+    expect(Buffer.from(decoded.secret).toString('hex')).toBe('0123456789abcdef0123456789abcdef');
+  });
+
+  it('BatteryVoltage decodes millivolts', async () => {
+    const decoded = await decodeWithMeshcore(ResponseCodes.BatteryVoltage, encodeBatteryVoltage(4100));
+    expect(decoded.batteryMilliVolts).toBe(4100);
+  });
+
+  it('ContactMsgRecv decodes prefix, type, timestamp and text', async () => {
+    const decoded = await decodeWithMeshcore(ResponseCodes.ContactMsgRecv, encodeContactMsgRecv({
+      pubKeyPrefix: hexToBytes(SAMPLE_PUBKEY).subarray(0, 6),
+      pathLen: 0xff,
+      txtType: 0,
+      senderTimestamp: 1_750_000_000,
+      text: 'hello there',
+    }));
+    expect(Buffer.from(decoded.pubKeyPrefix).toString('hex')).toBe(SAMPLE_PUBKEY.slice(0, 12));
+    expect(decoded.pathLen).toBe(0xff);
+    expect(decoded.senderTimestamp).toBe(1_750_000_000);
+    expect(decoded.text).toBe('hello there');
+  });
+
+  it('ChannelMsgRecv decodes channel index and text', async () => {
+    const decoded = await decodeWithMeshcore(ResponseCodes.ChannelMsgRecv, encodeChannelMsgRecv({
+      channelIdx: 0,
+      pathLen: 0xff,
+      txtType: 0,
+      senderTimestamp: 1_750_000_000,
+      text: 'Alice: hi all',
+    }));
+    expect(decoded.channelIdx).toBe(0);
+    expect(decoded.text).toBe('Alice: hi all');
+  });
+});
+
+describe('meshcoreCompanionCodec — timestamp normalization', () => {
+  it('passes through epoch seconds and downscales milliseconds', () => {
+    expect(toEpochSeconds(1_750_000_000)).toBe(1_750_000_000);
+    expect(toEpochSeconds(1_750_000_000_000)).toBe(1_750_000_000);
+    expect(toEpochSeconds(0)).toBe(0);
+    expect(toEpochSeconds(undefined)).toBe(0);
   });
 });
 
