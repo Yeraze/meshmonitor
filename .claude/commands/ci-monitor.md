@@ -1,6 +1,6 @@
 # CI Monitor & Auto-Fix
 
-Monitor a PR's CI pipeline, auto-diagnose failures, apply targeted fixes, and re-push until green.
+Monitor a PR's CI pipeline, auto-diagnose failures, apply targeted fixes, and re-push until green — then review the PR feedback (automated review bots + human reviewers) and address any concerns raised.
 
 ## Usage
 
@@ -82,6 +82,34 @@ After pushing the fix:
 2. Run `bash scripts/watch-ci.sh -q <PR_NUMBER>` again — back to Phase 1's exit-code dispatch
 3. **Maximum 3 fix cycles** — if CI is still red after 3 attempts, stop and report what was tried
 
+### Phase 5: Review feedback
+
+Once CI is green, the PR can still have **review concerns** that are not CI failures — comments from the Claude Code Review bot, and reviews/inline threads from human reviewers. A green checkmark is not "done"; address the feedback too.
+
+1. Gather the feedback (run after CI is green, and again after each push since new comments may arrive):
+   ```bash
+   # Top-level reviews (APPROVED / CHANGES_REQUESTED / COMMENTED) + their summary bodies
+   gh pr view <PR_NUMBER> --json reviews,comments \
+     -q '.reviews[] | "\(.author.login) [\(.state)]: \(.body)"'
+   # Inline review comments anchored to specific lines (the bot posts here)
+   gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments \
+     -q '.[] | "\(.user.login) \(.path):\(.line) — \(.body)"'
+   ```
+2. **Triage each concern** — do not blanket-apply or blanket-ignore:
+   - **Real bug / correctness / security issue** → fix it (same minimal-diff discipline as Phase 3).
+   - **Valid improvement** (naming, edge case, missing test, simplification) → apply it.
+   - **False positive / out-of-scope / intentional** → do NOT silently ignore. Leave a brief reply on the thread explaining why, so the reviewer sees it was considered.
+   - **Ambiguous or a judgment call you're not sure about** → surface it to the user rather than guessing.
+3. **Apply fixes** as one or more focused commits (group related concerns; reference the comment, e.g. `address review: <concern>`). Push.
+4. **Close the loop on each thread** so reviewers know it's handled — reply with the commit SHA that addressed it, or the reason it won't change:
+   ```bash
+   gh pr comment <PR_NUMBER> --body "Addressed in <sha>: <what changed>"
+   # or reply to a specific inline thread:
+   gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments/<comment_id>/replies -f body="..."
+   ```
+5. Any push re-triggers CI → **go back to Phase 1** and re-verify green before considering the feedback resolved. Re-check for new comments after each round (a review may respond to your fix).
+6. **Bound the effort** like the fix loop: at most a few feedback rounds. If concerns are large, contradictory, or you disagree, stop and hand the open items to the user rather than churning.
+
 ### Reporting
 
 When complete (success or max attempts reached), output a summary:
@@ -96,10 +124,17 @@ When complete (success or max attempts reached), output a summary:
 1. [Cycle 1] Fixed: <description> — Files: <list>
 2. [Cycle 2] Fixed: <description> — Files: <list>
 
+### Review Feedback
+- <reviewer/bot>: <concern> → Addressed in <sha> / Declined (<reason>) / Deferred to user
+- (or "No review feedback raised")
+
 ### Final CI Status
 - PR Tests: PASS/FAIL
 - CI: PASS/FAIL
 - Claude Code Review: PASS/FAIL
+
+### Open Items (if any)
+- <concerns handed back to the user — judgment calls, large refactors, disagreements>
 ```
 
 ## Important Rules
@@ -109,3 +144,5 @@ When complete (success or max attempts reached), output a summary:
 - **Always run failing tests locally before pushing** — don't push blind fixes
 - **Check that the branch is up to date** before applying fixes
 - **Don't poll `gh run list` in a loop yourself.** Delegate the wait to `scripts/watch-ci.sh -q <PR>` and dispatch on its exit code. That's the whole point of the script — it keeps polling output out of the model's context.
+- **Green CI is not the finish line** — check PR review feedback (Phase 5) before declaring done.
+- **Never silently ignore a review concern.** Fix it, or reply explaining why not. Don't blindly apply every suggestion either — use judgment and escalate genuine disagreements to the user.
