@@ -165,7 +165,8 @@ fi
 SERVER_ENTRY="/app/dist/server/server.js"
 if [ ! -s "$SERVER_ENTRY" ]; then
     echo "❌ FATAL: $SERVER_ENTRY is missing or empty — the image may be corrupt or incompletely pulled." >&2
-    echo "   Fix: docker rmi ghcr.io/yeraze/meshmonitor && docker compose pull && docker compose up -d" >&2
+    echo "   Fix: remove the cached image and re-pull, e.g.:" >&2
+    echo "        docker rmi <meshmonitor image> && docker compose pull && docker compose up -d" >&2
     exit 1
 fi
 echo "✓ Server bundle present ($(wc -c < "$SERVER_ENTRY") bytes)"
