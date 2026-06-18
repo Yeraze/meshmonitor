@@ -21,6 +21,7 @@ import {
   encodeContactMsgRecv,
   encodeChannelMsgRecv,
   encodeMsgWaitingPush,
+  encodeSent,
   encodeNoMoreMessages,
   encodeOk,
   encodeErr,
@@ -45,6 +46,8 @@ export interface MeshCoreVirtualNodeManager {
   isConnected(): boolean;
   getLocalNode(): MeshCoreNode | null;
   getContacts(): MeshCoreContact[];
+  /** Send a text message to the real node: channel (by index) or DM (full key). */
+  sendMessage(text: string, toPublicKey?: string, channelIdx?: number): Promise<boolean>;
   /** EventEmitter surface — the manager emits 'message' with a MeshCoreMessage. */
   on(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
   off(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
@@ -314,6 +317,12 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
         case CommandCodes.SyncNextMessage:
           this.handleSyncNextMessage(clientId);
           break;
+        case CommandCodes.SendChannelTxtMsg:
+          void this.handleSendChannelTxtMsg(clientId, command);
+          break;
+        case CommandCodes.SendTxtMsg:
+          void this.handleSendTxtMsg(clientId, command);
+          break;
         case CommandCodes.SetFloodScope:
           // Read-only phase: acknowledge but don't apply (avoids the app
           // treating an Err as a fatal handshake failure). Phase 3 forwards it.
@@ -414,6 +423,61 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       return;
     }
     this.send(clientId, this.encodeIncomingMessage(msg));
+  }
+
+  /** Default delivery-timeout hint (ms) returned in Sent responses. */
+  private readonly SEND_EST_TIMEOUT_MS = 8000;
+
+  /** SendChannelTxtMsg → forward to the real node on the given channel, reply Sent. */
+  private async handleSendChannelTxtMsg(clientId: string, cmd: ParsedCommand): Promise<void> {
+    const text = cmd.text ?? '';
+    const channelIdx = cmd.channelIdx ?? 0;
+    try {
+      const ok = await this.options.manager.sendMessage(text, undefined, channelIdx);
+      if (ok) {
+        logger.info(`[MeshCore VN ${this.sourceId}] ▶ forwarded channel ${channelIdx} msg from ${clientId} (${text.length} chars)`);
+        // Channel sends have no per-message ACK → no expectedAckCrc.
+        this.send(clientId, encodeSent(0, 0, this.SEND_EST_TIMEOUT_MS));
+      } else {
+        logger.warn(`[MeshCore VN ${this.sourceId}] channel send from ${clientId} failed at the node`);
+        this.send(clientId, encodeErr(ErrorCodes.BadState));
+      }
+    } catch (err) {
+      logger.error(`[MeshCore VN ${this.sourceId}] channel send from ${clientId} threw: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.BadState));
+    }
+  }
+
+  /** SendTxtMsg → resolve the 6-byte prefix to a contact, forward a DM, reply Sent. */
+  private async handleSendTxtMsg(clientId: string, cmd: ParsedCommand): Promise<void> {
+    const text = cmd.text ?? '';
+    const prefixHex = (cmd.pubKeyPrefix ?? Buffer.alloc(0)).toString('hex');
+    const fullKey = this.resolveContactKey(prefixHex);
+    if (!fullKey) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] DM from ${clientId} to unknown contact prefix ${prefixHex}`);
+      this.send(clientId, encodeErr(ErrorCodes.NotFound));
+      return;
+    }
+    try {
+      const ok = await this.options.manager.sendMessage(text, fullKey);
+      if (ok) {
+        logger.info(`[MeshCore VN ${this.sourceId}] ▶ forwarded DM from ${clientId} to ${prefixHex}… (${text.length} chars)`);
+        this.send(clientId, encodeSent(0, 0, this.SEND_EST_TIMEOUT_MS));
+      } else {
+        logger.warn(`[MeshCore VN ${this.sourceId}] DM from ${clientId} failed at the node`);
+        this.send(clientId, encodeErr(ErrorCodes.BadState));
+      }
+    } catch (err) {
+      logger.error(`[MeshCore VN ${this.sourceId}] DM from ${clientId} threw: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.BadState));
+    }
+  }
+
+  /** Resolve a (≥6-byte) public-key prefix to a full contact key, or null. */
+  private resolveContactKey(prefixHex: string): string | undefined {
+    if (!prefixHex) return undefined;
+    const lc = prefixHex.toLowerCase();
+    return this.options.manager.getContacts().find((c) => c.publicKey?.toLowerCase().startsWith(lc))?.publicKey;
   }
 
   /**

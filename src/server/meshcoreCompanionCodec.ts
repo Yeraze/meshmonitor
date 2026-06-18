@@ -126,6 +126,11 @@ export interface ParsedCommand {
   appName?: string;
   appTargetVer?: number;
   channelIdx?: number;
+  // Send-message fields (SendTxtMsg / SendChannelTxtMsg).
+  txtType?: number;
+  senderTimestamp?: number;
+  pubKeyPrefix?: Buffer;
+  text?: string;
 }
 
 /**
@@ -186,6 +191,26 @@ export function decodeCommand(payload: Buffer): ParsedCommand {
     case CommandCodes.GetChannel: {
       // [code][channelIdx:u8]
       if (payload.length >= 2) cmd.channelIdx = payload[1];
+      break;
+    }
+    case CommandCodes.SendTxtMsg: {
+      // [code][txtType:u8][attempt:u8][senderTimestamp:u32 LE][pubKeyPrefix:6][text…]
+      if (payload.length >= 13) {
+        cmd.txtType = payload[1];
+        cmd.senderTimestamp = payload.readUInt32LE(3);
+        cmd.pubKeyPrefix = Buffer.from(payload.subarray(7, 13));
+        cmd.text = payload.subarray(13).toString('utf8');
+      }
+      break;
+    }
+    case CommandCodes.SendChannelTxtMsg: {
+      // [code][txtType:u8][channelIdx:u8][senderTimestamp:u32 LE][text…]
+      if (payload.length >= 7) {
+        cmd.txtType = payload[1];
+        cmd.channelIdx = payload[2];
+        cmd.senderTimestamp = payload.readUInt32LE(3);
+        cmd.text = payload.subarray(7).toString('utf8');
+      }
       break;
     }
     default:
@@ -405,6 +430,21 @@ export function encodeChannelMsgRecv(m: ChannelMsgRecvWire): Buffer {
 /** Encode a MsgWaiting(0x83) push — tells the app to drain via SyncNextMessage. */
 export function encodeMsgWaitingPush(): Buffer {
   return Buffer.from([PushCodes.MsgWaiting]);
+}
+
+/**
+ * Encode a Sent(6) response — the node's acknowledgement that an outbound
+ * message was accepted for transmission. `result` 0 = queued/sent;
+ * `expectedAckCrc` (DMs) correlates a later SendConfirmed push; `estTimeout`
+ * is the app's hint for how long to wait for delivery.
+ */
+export function encodeSent(result: number, expectedAckCrc = 0, estTimeout = 0): Buffer {
+  const b = Buffer.alloc(1 + 1 + 4 + 4);
+  b[0] = ResponseCodes.Sent;
+  b.writeInt8(clampInt8(result), 1);
+  b.writeUInt32LE(expectedAckCrc >>> 0, 2);
+  b.writeUInt32LE(estTimeout >>> 0, 6);
+  return b;
 }
 
 /** Encode a NoMoreMessages(10) response — mailbox drained. */

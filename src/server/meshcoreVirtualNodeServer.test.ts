@@ -55,9 +55,13 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
     this.localNode = localNode;
     this.contacts = contacts;
   }
+  sendMessageMock = vi.fn().mockResolvedValue(true);
   isConnected() { return this.localNode !== null; }
   getLocalNode() { return this.localNode; }
   getContacts() { return this.contacts; }
+  sendMessage(text: string, toPublicKey?: string, channelIdx?: number) {
+    return this.sendMessageMock(text, toPublicKey, channelIdx) as Promise<boolean>;
+  }
   emitMessage(msg: MeshCoreMessage) { this.emit('message', msg); }
 }
 
@@ -247,6 +251,39 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
     const payload = await client.request([0x7f]); // not a Phase-0 command
     expect(payload[0]).toBe(ResponseCodes.Err);
     expect(payload[1]).toBe(Constants.ErrorCodes.UnsupportedCmd);
+  });
+
+  it('forwards SendChannelTxtMsg to the node and replies Sent', async () => {
+    // [code=3][txtType=0][channelIdx=1][senderTimestamp:u32=0][text]
+    const frame = [CommandCodes.SendChannelTxtMsg, 0, 1, 0, 0, 0, 0, ...Buffer.from('hi chan', 'utf8')];
+    const payload = await client.request(frame);
+    expect(payload[0]).toBe(ResponseCodes.Sent);
+    expect(manager.sendMessageMock).toHaveBeenCalledWith('hi chan', undefined, 1);
+  });
+
+  it('forwards SendTxtMsg as a DM after resolving the contact prefix, replies Sent', async () => {
+    const prefix = Buffer.from('b1'.repeat(6), 'hex'); // first 6 bytes of the sample contact
+    // [code=2][txtType=0][attempt=0][senderTimestamp:u32=0][prefix:6][text]
+    const frame = [CommandCodes.SendTxtMsg, 0, 0, 0, 0, 0, 0, ...prefix, ...Buffer.from('hi dm', 'utf8')];
+    const payload = await client.request(frame);
+    expect(payload[0]).toBe(ResponseCodes.Sent);
+    expect(manager.sendMessageMock).toHaveBeenCalledWith('hi dm', 'b1'.repeat(32), undefined);
+  });
+
+  it('replies Err(NotFound) for a DM to an unknown contact prefix', async () => {
+    const prefix = Buffer.from('ff'.repeat(6), 'hex'); // no matching contact
+    const frame = [CommandCodes.SendTxtMsg, 0, 0, 0, 0, 0, 0, ...prefix, ...Buffer.from('x', 'utf8')];
+    const payload = await client.request(frame);
+    expect(payload[0]).toBe(ResponseCodes.Err);
+    expect(payload[1]).toBe(Constants.ErrorCodes.NotFound);
+    expect(manager.sendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it('replies Err when the node rejects the channel send', async () => {
+    manager.sendMessageMock.mockResolvedValueOnce(false);
+    const frame = [CommandCodes.SendChannelTxtMsg, 0, 0, 0, 0, 0, 0, ...Buffer.from('nope', 'utf8')];
+    const payload = await client.request(frame);
+    expect(payload[0]).toBe(ResponseCodes.Err);
   });
 
   it('counts connected clients', () => {

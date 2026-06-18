@@ -21,6 +21,7 @@ import {
   encodeBatteryVoltage,
   encodeContactMsgRecv,
   encodeChannelMsgRecv,
+  encodeSent,
   encodeNoMoreMessages,
   packTelemetryMode,
   pubKeyHexToBytes,
@@ -192,6 +193,13 @@ describe('meshcoreCompanionCodec — encoders round-trip through meshcore.js dec
     expect(decoded.pathLen).toBe(0xff);
     expect(decoded.senderTimestamp).toBe(1_750_000_000);
     expect(decoded.text).toBe('hello there');
+  });
+
+  it('Sent decodes result, expectedAckCrc and estTimeout', async () => {
+    const decoded = await decodeWithMeshcore(ResponseCodes.Sent, encodeSent(0, 0xdeadbeef, 8000));
+    expect(decoded.result).toBe(0);
+    expect(decoded.expectedAckCrc).toBe(0xdeadbeef);
+    expect(decoded.estTimeout).toBe(8000);
   });
 
   it('ChannelMsgRecv decodes channel index and text', async () => {
