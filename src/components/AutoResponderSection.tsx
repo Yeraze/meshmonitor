@@ -769,13 +769,13 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             </div>
             <button
               onClick={addTrigger}
-              disabled={!localEnabled || !newTrigger.trim() || !newResponse.trim() || !newTriggerValidation.valid}
+              disabled={!localEnabled || !newTrigger.trim() || (newResponseType !== 'mailbox' && !newResponse.trim()) || !newTriggerValidation.valid}
               className="btn-primary"
               style={{
                 padding: '0.5rem 1rem',
                 fontSize: '14px',
-                opacity: (localEnabled && newTrigger.trim() && newResponse.trim() && newTriggerValidation.valid) ? 1 : 0.5,
-                cursor: (localEnabled && newTrigger.trim() && newResponse.trim() && newTriggerValidation.valid) ? 'pointer' : 'not-allowed'
+                opacity: (localEnabled && newTrigger.trim() && (newResponseType === 'mailbox' || !!newResponse.trim()) && newTriggerValidation.valid) ? 1 : 0.5,
+                cursor: (localEnabled && newTrigger.trim() && (newResponseType === 'mailbox' || !!newResponse.trim()) && newTriggerValidation.valid) ? 'pointer' : 'not-allowed'
               }}
             >
               {t('common.add')}
