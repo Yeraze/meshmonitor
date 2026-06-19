@@ -106,6 +106,7 @@ const databaseMock = {
   }),
   setNodeFavorite: vi.fn((_nodeNum: number, _isFavorite: boolean, _sourceId: string, _favoriteLocked?: boolean) => undefined),
   setNodeFavoriteLocked: vi.fn((_nodeNum: number, _favoriteLocked: boolean, _sourceId: string) => undefined),
+  setNodeHideFromMapAsync: vi.fn(async (_nodeNum: number, _hidden: boolean, _sourceId: string) => undefined),
   purgeAllNodes: vi.fn(),
   purgeAllTelemetry: vi.fn(),
   purgeAllMessages: vi.fn(),
@@ -231,6 +232,36 @@ describe('Server API Endpoints', () => {
         res.json({ success: true, nodeNum, locked });
       } catch (error) {
         res.status(500).json({ error: 'Failed to set node favorite lock' });
+      }
+    });
+
+    // Mirrors apiRouter.post('/nodes/:nodeId/hide-from-map') validation contract (#3549)
+    app.post('/api/nodes/:nodeId/hide-from-map', async (req, res) => {
+      try {
+        const { nodeId } = req.params;
+        const { hideFromMap, sourceId } = req.body;
+
+        if (typeof hideFromMap !== 'boolean') {
+          res.status(400).json({ error: 'hideFromMap must be a boolean' });
+          return;
+        }
+
+        if (typeof sourceId !== 'string' || sourceId.length === 0) {
+          res.status(400).json({ error: 'sourceId is required' });
+          return;
+        }
+
+        const nodeNumStr = nodeId.replace('!', '');
+        if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
+          res.status(400).json({ error: 'Invalid nodeId format' });
+          return;
+        }
+        const nodeNum = parseInt(nodeNumStr, 16);
+
+        await databaseMock.setNodeHideFromMapAsync(nodeNum, hideFromMap, sourceId);
+        res.json({ success: true, nodeNum, hideFromMap });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to set node hideFromMap' });
       }
     });
 
@@ -577,6 +608,56 @@ describe('Server API Endpoints', () => {
       const response = await request(app)
         .post('/api/nodes/invalid/favorite-lock')
         .send({ locked: true, sourceId: 'default' })
+        .expect(400);
+
+      expect(response.body.error).toBe('Invalid nodeId format');
+    });
+
+    it('POST /api/nodes/:nodeId/hide-from-map should set the flag (#3549)', async () => {
+      const response = await request(app)
+        .post('/api/nodes/!00000001/hide-from-map')
+        .send({ hideFromMap: true, sourceId: 'default' })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.nodeNum).toBe(1);
+      expect(response.body.hideFromMap).toBe(true);
+      expect(databaseMock.setNodeHideFromMapAsync).toHaveBeenCalledWith(1, true, 'default');
+    });
+
+    it('POST /api/nodes/:nodeId/hide-from-map should clear the flag (#3549)', async () => {
+      const response = await request(app)
+        .post('/api/nodes/!00000001/hide-from-map')
+        .send({ hideFromMap: false, sourceId: 'default' })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.hideFromMap).toBe(false);
+      expect(databaseMock.setNodeHideFromMapAsync).toHaveBeenCalledWith(1, false, 'default');
+    });
+
+    it('POST /api/nodes/:nodeId/hide-from-map should reject non-boolean hideFromMap', async () => {
+      const response = await request(app)
+        .post('/api/nodes/!00000001/hide-from-map')
+        .send({ hideFromMap: 'yes', sourceId: 'default' })
+        .expect(400);
+
+      expect(response.body.error).toBe('hideFromMap must be a boolean');
+    });
+
+    it('POST /api/nodes/:nodeId/hide-from-map should reject missing sourceId', async () => {
+      const response = await request(app)
+        .post('/api/nodes/!00000001/hide-from-map')
+        .send({ hideFromMap: true })
+        .expect(400);
+
+      expect(response.body.error).toBe('sourceId is required');
+    });
+
+    it('POST /api/nodes/:nodeId/hide-from-map should reject invalid nodeId format', async () => {
+      const response = await request(app)
+        .post('/api/nodes/invalid/hide-from-map')
+        .send({ hideFromMap: true, sourceId: 'default' })
         .expect(400);
 
       expect(response.body.error).toBe('Invalid nodeId format');

@@ -3867,9 +3867,7 @@
   "messages.override_position": "Override Position",
   "messages.override_position_title": "Set a custom position for this node",
   "messages.hide_from_map": "Hide from Map",
-  "messages.hide_from_map_title": "Suppress this node's marker on maps (it stays visible everywhere else)",
   "messages.unhide_from_map": "Show on Map",
-  "messages.unhide_from_map_title": "Show this node's marker on maps again",
 
   "position_override.title": "Position Override: {{nodeName}}",
   "position_override.description": "Override this node's position on the map. When enabled, this custom position will be used instead of the GPS or estimated position for map display and distance calculations.",
