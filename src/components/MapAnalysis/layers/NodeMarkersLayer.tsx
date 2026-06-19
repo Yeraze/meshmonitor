@@ -12,6 +12,7 @@ import { useMarkerSpiderfier } from '../../../hooks/useMarkerSpiderfier';
 import { resolveNodeLatLng, type MaybePositionedNode } from '../nodePositionUtil';
 import { nodeMatchesSearch } from '../nodeSearch';
 import { createNodeIcon } from '../../../utils/mapIcons';
+import { getNodeTypeCategory } from '../../../utils/nodeTypeCategory';
 
 interface NodeRecord extends MaybePositionedNode {
   nodeNum: number;
@@ -20,6 +21,8 @@ interface NodeRecord extends MaybePositionedNode {
   longName?: string | null;
   shortName?: string | null;
   user?: { role?: string | number | null } | null;
+  isMeshCore?: boolean;
+  advType?: number | null;
 }
 
 interface HopEntry {
@@ -97,6 +100,8 @@ export default function NodeMarkersLayer() {
       if (!latLng) return false;
       // Node search (issue #3399): hide non-matches.
       if (!nodeMatchesSearch(node, nodeFilter)) return false;
+      // Node-type filter (issue #3546): hide categories the user toggled off.
+      if (config.nodeTypes[getNodeTypeCategory(node)] === false) return false;
       if (config.sources.length === 0) return true;
       if (!node.sourceId) return false;
       return config.sources.includes(node.sourceId);
@@ -121,10 +126,12 @@ export default function NodeMarkersLayer() {
               ? n.user.role
               : 0;
         const isRouter = roleNum === 2;
+        const roleCategory = getNodeTypeCategory(n);
         const icon = createNodeIcon({
           hops,
           isSelected,
           isRouter,
+          roleCategory,
           shortName: n.shortName ?? undefined,
           showLabel: true,
           pinStyle: mapPinStyle,

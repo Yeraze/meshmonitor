@@ -966,6 +966,9 @@ router.get('/:id/nodes', requirePermission('nodes', 'read', { sourceIdFrom: 'par
             lastHeard,
             hopsAway: 0,
             role: 0,
+            // MeshCore advert type drives role-based map icons + filtering
+            // (issue #3546): 1=Companion, 2=Repeater, 3=Room, 4=Sensor.
+            advType: typeof n.advType === 'number' ? n.advType : 0,
           });
         }
       }

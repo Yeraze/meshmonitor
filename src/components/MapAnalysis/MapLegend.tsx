@@ -1,5 +1,29 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
+import { roleGlyphInnerSvg } from '../../utils/mapIcons';
+import {
+  NODE_TYPE_CATEGORIES,
+  NODE_TYPE_CATEGORY_META,
+  type NodeTypeCategory,
+} from '../../utils/nodeTypeCategory';
+
+/** Mini marker preview for the node-type legend rows (issue #3546). */
+function RoleIcon({ category }: { category: NodeTypeCategory }) {
+  const color = '#6698f5';
+  return (
+    <span
+      className="map-analysis-legend-swatch"
+      style={{ background: 'transparent', width: 20, height: 20, display: 'inline-block' }}
+      dangerouslySetInnerHTML={{
+        __html: `<svg width="20" height="20" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="24" cy="24" r="20" fill="white" fill-opacity="0.95" stroke="${color}" stroke-width="2" />
+          ${roleGlyphInnerSvg(category, color)}
+        </svg>`,
+      }}
+    />
+  );
+}
 
 interface SwatchProps {
   color: string;
@@ -31,6 +55,7 @@ function GradientBar({ stops }: { stops: string[] }) {
  */
 export default function MapLegend() {
   const { config } = useMapAnalysisCtx();
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
 
   const showTraceroutes = config.layers.traceroutes.enabled;
@@ -65,6 +90,16 @@ export default function MapLegend() {
             <section>
               <h4>Markers</h4>
               <div className="row"><Swatch color="#6698f5" /> Node</div>
+            </section>
+          )}
+          {showMarkers && (
+            <section>
+              <h4>{t('map.nodeType.legendTitle', 'Node Types')}</h4>
+              {NODE_TYPE_CATEGORIES.filter((c) => c !== 'standard').map((c) => (
+                <div className="row" key={c}>
+                  <RoleIcon category={c} /> {t(NODE_TYPE_CATEGORY_META[c].labelKey, NODE_TYPE_CATEGORY_META[c].label)}
+                </div>
+              ))}
             </section>
           )}
           {showHopShading && (

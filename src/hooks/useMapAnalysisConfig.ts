@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { NODE_TYPE_CATEGORIES, type NodeTypeCategory } from '../utils/nodeTypeCategory';
 
 export type LayerKey =
   | 'markers'
@@ -38,6 +39,8 @@ export const DEFAULT_TRACEROUTE_OPTIONS: TracerouteLayerOptions = {
 export interface MapAnalysisConfig {
   version: 1;
   layers: Record<LayerKey, LayerConfig>;
+  /** Per-category marker visibility (issue #3546); missing key = visible. */
+  nodeTypes: Record<NodeTypeCategory, boolean>;
   sources: string[]; // empty = "all"
   timeSlider: {
     enabled: boolean;
@@ -46,6 +49,10 @@ export interface MapAnalysisConfig {
   };
   inspectorOpen: boolean;
 }
+
+const ALL_NODE_TYPES_VISIBLE = Object.fromEntries(
+  NODE_TYPE_CATEGORIES.map((c) => [c, true]),
+) as Record<NodeTypeCategory, boolean>;
 
 export const DEFAULT_CONFIG: MapAnalysisConfig = {
   version: 1,
@@ -59,6 +66,7 @@ export const DEFAULT_CONFIG: MapAnalysisConfig = {
     snrOverlay: { enabled: false, lookbackHours: null },
     waypoints:  { enabled: true,  lookbackHours: null },
   },
+  nodeTypes: { ...ALL_NODE_TYPES_VISIBLE },
   sources: [],
   timeSlider: { enabled: false },
   inspectorOpen: true,
@@ -84,6 +92,7 @@ function load(): MapAnalysisConfig {
       ...DEFAULT_CONFIG,
       ...parsed,
       layers: { ...DEFAULT_CONFIG.layers, ...(parsed.layers ?? {}) },
+      nodeTypes: { ...ALL_NODE_TYPES_VISIBLE, ...(parsed.nodeTypes ?? {}) },
       timeSlider: { ...DEFAULT_CONFIG.timeSlider, ...(parsed.timeSlider ?? {}) },
     };
   } catch {
@@ -133,6 +142,13 @@ export function useMapAnalysisConfig() {
     }));
   }, []);
 
+  const setNodeTypeEnabled = useCallback((category: NodeTypeCategory, enabled: boolean) => {
+    setConfig((prev) => ({
+      ...prev,
+      nodeTypes: { ...prev.nodeTypes, [category]: enabled },
+    }));
+  }, []);
+
   const setSources = useCallback((sources: string[]) => {
     setConfig((prev) => ({ ...prev, sources }));
   }, []);
@@ -152,6 +168,7 @@ export function useMapAnalysisConfig() {
     setLayerEnabled,
     setLayerLookback,
     setLayerOptions,
+    setNodeTypeEnabled,
     setSources,
     setTimeSlider,
     setInspectorOpen,
