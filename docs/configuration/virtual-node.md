@@ -2,6 +2,15 @@
 
 The Virtual Node Server is a powerful feature that allows multiple Meshtastic mobile apps to connect to MeshMonitor simultaneously without overwhelming your physical Meshtastic node.
 
+::: tip Two variants
+MeshMonitor exposes a virtual node for **both** mesh protocols it supports:
+
+- **Meshtastic Virtual Node Server** — the original feature, documented in the sections below (Meshtastic TCP protocol, historical default port `4404`).
+- **MeshCore Virtual Node** *(new in 4.11.0)* — connect the **MeshCore** mobile app to a managed MeshCore device over WiFi (companion protocol, default port `5000`). See [MeshCore Virtual Node](#meshcore-virtual-node).
+
+Both are configured per source in the Dashboard and follow the same proxy model: MeshMonitor holds the single physical connection and serves every app client from its mirrored state.
+:::
+
 ## Overview
 
 The Virtual Node Server acts as a TCP proxy between your mobile devices and your physical Meshtastic node. Instead of connecting directly to your physical node (typically on port 4403), mobile apps connect to MeshMonitor's Virtual Node Server (default port 4404). MeshMonitor then manages all communication with the physical node, caching configuration data and serializing messages to prevent overload.
@@ -385,8 +394,88 @@ There's no hard-coded limit, but practical considerations apply:
 
 In practice, 3-5 simultaneous mobile connections work well. Beyond that, you may experience delays as the message queue grows.
 
+## MeshCore Virtual Node
+
+*New in 4.11.0.*
+
+The **MeshCore Virtual Node** brings the same proxy model to MeshCore. A MeshCore device that MeshMonitor already manages (a TCP companion, or a USB/serial device) can be exposed as a virtual node that the **MeshCore mobile app** connects to over your local WiFi — no separate BLE or serial pairing required, and multiple people on the LAN can connect at once while every message and contact stays mirrored in the MeshMonitor web UI.
+
+### How it differs from the Meshtastic Virtual Node
+
+- **Protocol**: it speaks the MeshCore **companion wire protocol** (the same framing the MeshCore app uses over BLE/serial), not Meshtastic protobuf-over-TCP.
+- **Default port**: `5000` (the Meshtastic VN historically defaulted to `4404`). The port is configurable and must be unique across all sources.
+- **Synthesised, not replayed**: rather than replaying a captured config stream, MeshMonitor answers each app request from its mirrored per-source state — node identity, contacts, channels, and battery are served from MeshMonitor's database and live device state, and outgoing messages are forwarded to the real node.
+
+```
+MeshCore App 1 ┐
+MeshCore App 2 ├─→ MeshCore Virtual Node (5000) ─→ MeshMonitor ─→ Physical MeshCore Node
+MeshCore App 3 ┘
+```
+
+### What works
+
+- **Identity & device info** — the app connects, shows the node's identity, and reads device/firmware info.
+- **Contacts** — served from the durable per-source contact list (so the app sees the full set even when the live companion read is flaky).
+- **Channels & battery** — channel info (including PSK) and the local node's battery level.
+- **Messaging** — incoming channel and direct messages are pushed to the app; outgoing **direct** and **channel** text messages are forwarded to the real node.
+
+### Enabling MeshCore Virtual Node on a Source
+
+1. Open the MeshMonitor Dashboard and sign in as an admin.
+2. On the **MeshCore** source card, open the kebab menu and choose **Edit**.
+3. In the **Virtual Node** section, toggle **Enable Virtual Node**.
+4. Enter the **TCP port** the MeshCore app should connect to. Leave it blank to use the default `5000`. It must not collide with another source's virtual-node port.
+5. Optionally enable **Allow admin commands** — leave this **off** unless you trust every connected client (see [Safety](#safety-admin-commands) below).
+6. Click **Save**. The endpoint hot-swaps without restarting the upstream connection to the device.
+
+Configuration lives in the source's `config.virtualNode` JSON:
+
+```json
+{
+  "virtualNode": {
+    "enabled": true,
+    "port": 5000,
+    "allowAdminCommands": false
+  }
+}
+```
+
+As with the Meshtastic VN, expose the port in your Docker/Helm config so it's reachable when you enable it:
+
+```yaml
+services:
+  meshmonitor:
+    image: ghcr.io/yeraze/meshmonitor:latest
+    ports:
+      - "8080:3001"      # Web interface
+      - "5000:5000"      # MeshCore Virtual Node endpoint
+    volumes:
+      - meshmonitor-data:/data
+    restart: unless-stopped
+
+volumes:
+  meshmonitor-data:
+```
+
+### MeshCore App Setup
+
+In the MeshCore mobile app, add a new device using the **TCP / network** connection option and point it at your MeshMonitor server's IP/hostname on the port you configured (default `5000`). MeshMonitor must already be connected to the physical MeshCore device.
+
+### Safety: admin commands
+
+By default the MeshCore Virtual Node is **read-and-message only**: read operations and sending text messages are allowed, but configuration-mutating commands (set radio params, set advert name, import private key, reboot, set channel, set TX power, etc.) are **blocked** and rejected back to the app. Exporting the device's private key is **always blocked**, regardless of settings.
+
+Enabling **Allow admin commands** forwards those configuration commands through to the real node. Only enable it on a trusted LAN where you control every device that can reach the port — any connected app would then be able to reconfigure your node.
+
+### Status & Troubleshooting
+
+- **App can't connect**: confirm the source is connected to the physical device and the virtual node is enabled, that the port is published in your container config, and that a firewall isn't blocking it. The Dashboard source card shows a virtual-node badge when it's listening.
+- **Contacts look incomplete**: the list is seeded from MeshMonitor's stored per-source contacts on connect, so reconnecting the source (or letting it complete a contact sync) fills it in.
+- **A config change from the app did nothing**: that's expected unless **Allow admin commands** is enabled — config-mutating commands are blocked by default.
+
 ## Version History
 
+- **v4.11.0**: MeshCore Virtual Node added — connect the MeshCore mobile app to a managed MeshCore device over WiFi (default port 5000)
 - **v2.13.0**: Virtual Node Server officially released with capture/replay and connection stability improvements
 - **v2.12.x**: Virtual Node Server beta testing and refinements
 
