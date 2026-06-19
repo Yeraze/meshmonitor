@@ -51,7 +51,7 @@
   "auto_favorite.save_failed": "Failed to save auto-favorite settings",
   "auto_favorite.load_failed": "Failed to load auto-favorite config",
   "nav.nodes": "Nodes",
-  "nav.messages": "Messages",
+  "nav.messages": "Node Details",
   "nav.channels": "Channels",
   "nav.info": "Info",
   "nav.dashboard": "Dashboard",
@@ -2508,7 +2508,7 @@
   "automation.schedule.ending_at": "Ending At",
 
   "automation.time_sync.title": "Auto Time Sync",
-  "automation.time_sync.description": "Automatically synchronize the MeshMonitor server time to nodes that have remote admin access. Useful for nodes without NTP or GPS time sync capabilities. Each interval syncs one eligible node.",
+  "automation.time_sync.description": "Push the MeshMonitor server's time to your nodes (the server is the time authority). Targets nodes that have remote admin access — useful for nodes without NTP or GPS time sync. Each interval syncs one eligible node.",
   "automation.time_sync.interval": "Sync Interval (minutes)",
   "automation.time_sync.interval_description": "How often to sync time to nodes. Each interval syncs one eligible node. Range: 15-1440 minutes",
   "automation.time_sync.expiration_hours": "Re-sync After (hours)",

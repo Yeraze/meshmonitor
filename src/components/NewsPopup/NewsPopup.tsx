@@ -29,7 +29,6 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [dontShowAgain, setDontShowAgain] = useState(false);
 
   // Track the full feed for updating lastSeenNewsId
   const [fullFeed, setFullFeed] = useState<NewsItem[]>([]);
@@ -106,14 +105,15 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
   // Reset state when popup closes
   useEffect(() => {
     if (!isOpen) {
-      setDontShowAgain(false);
       setCurrentIndex(0);
     }
   }, [isOpen]);
 
   const handleClose = useCallback(async () => {
-    // If "don't show again" is checked and we're authenticated, dismiss ALL currently shown items
-    if (dontShowAgain && isAuthenticated && newsItems.length > 0) {
+    // Closing the popup always marks the shown items as "don't show again"
+    // (unless we're in the forced "view all" mode opened via the News icon).
+    // Users can re-open the feed any time from the News icon.
+    if (isAuthenticated && !forceShowAll && newsItems.length > 0) {
       try {
         for (const item of newsItems) {
           await api.dismissNewsItem(item.id);
@@ -140,7 +140,7 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
     }
 
     onClose();
-  }, [dontShowAgain, isAuthenticated, newsItems, currentIndex, onClose, fullFeed, forceShowAll]);
+  }, [isAuthenticated, newsItems, onClose, fullFeed, forceShowAll]);
 
   const handleNext = useCallback(() => {
     if (currentIndex < newsItems.length - 1) {
@@ -155,7 +155,6 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
   const handlePrevious = useCallback(() => {
     if (currentIndex > 0) {
       setCurrentIndex(prev => prev - 1);
-      setDontShowAgain(false);
       // Scroll content to top for new item
       contentRef.current?.scrollTo({ top: 0, behavior: 'instant' });
     }
@@ -281,18 +280,9 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
         </div>
 
         <div className="modal-footer news-modal-footer">
-          <div className="news-footer-left">
-            {isAuthenticated && !forceShowAll && (
-              <label className="news-dont-show-checkbox">
-                <input
-                  type="checkbox"
-                  checked={dontShowAgain}
-                  onChange={e => setDontShowAgain(e.target.checked)}
-                />
-                {t('news.do_not_show_again', "Don't show these again")}
-              </label>
-            )}
-          </div>
+          {/* Closing the popup marks items as seen by default; the News icon
+              re-opens the feed at any time. */}
+          <div className="news-footer-left" />
 
           <div className="news-footer-right">
             {currentIndex > 0 && (

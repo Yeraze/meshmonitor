@@ -1988,6 +1988,28 @@
   font-size: 0.82rem;
 }
 
+/* Clickable variant used on the Unified map: links to the source's Node Details. */
+.node-popup-source-row-button {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+  transition: background-color 0.12s ease;
+}
+
+.node-popup-source-row-button:hover:not(:disabled) {
+  background: var(--ctp-surface1);
+}
+
+.node-popup-source-row-button:disabled {
+  cursor: default;
+}
+
 .node-popup-source-name {
   color: var(--ctp-text);
   font-weight: 500;

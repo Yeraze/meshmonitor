@@ -4,9 +4,14 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSource } from '../../contexts/SourceContext';
-import { getTilesetById } from '../../config/tilesets';
+import { getTilesetById, type TilesetId } from '../../config/tilesets';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import api from '../../services/api';
+import { useCsrfFetch } from '../../hooks/useCsrfFetch';
+import GeoJsonOverlay from '../GeoJsonOverlay';
+import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
+import { TilesetSelector } from '../TilesetSelector';
+import MapLegend from '../MapLegend';
 
 const MESHCORE_COLOR = '#cba6f7';
 const NEIGHBOR_COLOR = '#06b6d4';
@@ -85,12 +90,60 @@ function makeIcon(name: string): L.DivIcon {
 }
 
 export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition, onNavigateToDm }) => {
-  const { mapTileset, customTilesets } = useSettings();
+  const { mapTileset, customTilesets, setMapTileset } = useSettings();
   const { sourceId } = useSource();
+  const csrfFetch = useCsrfFetch();
   const tileset = getTilesetById(mapTileset, customTilesets);
   const [showPaths, setShowPaths] = useState(true);
   const [showNeighbors, setShowNeighbors] = useState(true);
   const [neighborEdges, setNeighborEdges] = useState<NeighborEdge[]>([]);
+
+  // Tile selector + legend overlays — hidden by default, toggled from the Map
+  // Features panel. Persisted under the same localStorage keys the other maps
+  // use so the preference is unified across every map surface.
+  const [showTileSelector, setShowTileSelector] = useState(
+    () => localStorage.getItem('meshmonitor-showTileSelector') === 'true',
+  );
+  const [showLegend, setShowLegend] = useState(
+    () => localStorage.getItem('meshmonitor-showLegend') === 'true',
+  );
+  useEffect(() => {
+    localStorage.setItem('meshmonitor-showTileSelector', String(showTileSelector));
+  }, [showTileSelector]);
+  useEffect(() => {
+    localStorage.setItem('meshmonitor-showLegend', String(showLegend));
+  }, [showLegend]);
+
+  // GeoJSON overlay layers (global, file-based) — fetched and toggled here so
+  // the MeshCore map matches the NodesTab and Dashboard maps. Layer visibility
+  // is global and shared with those maps' controls.
+  const [geoJsonLayers, setGeoJsonLayers] = useState<GeoJsonLayer[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const baseUrl = await api.getBaseUrl();
+        const response = await fetch(`${baseUrl}/api/geojson/layers`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled) setGeoJsonLayers(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error('Failed to fetch GeoJSON layers:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleGeoJsonLayer = (id: string, visible: boolean) => {
+    setGeoJsonLayers(prev => prev.map(l => (l.id === id ? { ...l, visible } : l)));
+    api.getBaseUrl().then(baseUrl => {
+      csrfFetch(`${baseUrl}/api/geojson/layers/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visible }),
+      }).catch(err => console.error('Failed to update layer visibility:', err));
+    }).catch(err => console.error('Failed to get base URL:', err));
+  };
 
   const positioned = useMemo(
     () => contacts.filter(c =>
@@ -177,6 +230,8 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
           url={tileset.url}
           maxZoom={tileset.maxZoom}
         />
+        {showLegend && <MapLegend />}
+        {geoJsonLayers.length > 0 && <GeoJsonOverlay layers={geoJsonLayers} />}
         {positioned.map(c => {
           const name = c.advName || c.name || 'MeshCore';
           return (
@@ -262,6 +317,13 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
         ))}
       </MapContainer>
 
+      {showTileSelector && (
+        <TilesetSelector
+          selectedTilesetId={mapTileset as TilesetId}
+          onTilesetChange={setMapTileset}
+        />
+      )}
+
       <div className="map-controls dashboard-map-controls">
         <div className="map-controls-body">
           <div className="map-controls-title">Features</div>
@@ -281,6 +343,39 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
             />
             <span>Show Neighbors</span>
           </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showTileSelector}
+              onChange={(e) => setShowTileSelector(e.target.checked)}
+            />
+            <span>Show Tile Selection</span>
+          </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showLegend}
+              onChange={(e) => setShowLegend(e.target.checked)}
+            />
+            <span>Show Legend</span>
+          </label>
+          {/* GeoJSON overlay layers — per-layer on/off, mirroring the other maps. */}
+          {geoJsonLayers.map(layer => (
+            <label key={layer.id} className="map-control-item">
+              <input
+                type="checkbox"
+                checked={layer.visible}
+                onChange={(e) => toggleGeoJsonLayer(layer.id, e.target.checked)}
+              />
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{
+                  display: 'inline-block', width: '8px', height: '8px',
+                  borderRadius: '50%', backgroundColor: layer.style.color,
+                }} />
+                {layer.name}
+              </span>
+            </label>
+          ))}
         </div>
       </div>
     </div>
