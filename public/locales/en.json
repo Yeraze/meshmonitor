@@ -4526,6 +4526,17 @@
     "showUdp": "Show UDP",
     "showRf": "Show RF",
     "showMeshCore": "Show MeshCore",
+    "nodeType": {
+      "legendTitle": "Node Types",
+      "allTypes": "All node types",
+      "someHidden": "{{count}} type hidden",
+      "showAll": "Show all",
+      "repeater": "Repeater",
+      "roomServer": "Room Server",
+      "sensor": "Sensor",
+      "companion": "Companion",
+      "standard": "Standard"
+    },
     "showWaypoints": "Show Waypoints",
     "showPositionHistory": "Show Position History",
     "positionHistoryPointsOnly": "Points only (no line)",

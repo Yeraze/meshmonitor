@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import LayerToggleButton from './LayerToggleButton';
 import SourceMultiSelect from './SourceMultiSelect';
+import NodeTypeFilterControl from './NodeTypeFilterControl';
 import NodeSearchControl from './NodeSearchControl';
 import TracerouteControls from './TracerouteControls';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
@@ -102,6 +103,7 @@ export default function MapAnalysisToolbar() {
         value={config.sources}
         onChange={setSources}
       />
+      <NodeTypeFilterControl />
       <NodeSearchControl />
       <button
         type="button"
