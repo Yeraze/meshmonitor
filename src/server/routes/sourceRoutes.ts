@@ -1008,7 +1008,42 @@ router.get('/:id/nodes', requirePermission('nodes', 'read', { sourceIdFrom: 'par
     // Filter by channel viewOnMap permissions and mask private position channels
     const filtered = await filterNodesByChannelPermission(nodes, user, source.id);
     const masked = await maskNodeLocationByChannel(filtered, user, source.id);
-    res.json(masked);
+
+    // Apply per-node position override to the flat lat/lng the dashboard map
+    // reads (issue #3551). These are raw DB rows, so unlike /api/poll they
+    // never passed through enhanceNodeForClient — without this the map renders
+    // the raw GPS position and ignores the override. Mirror that helper's
+    // privacy semantics: private overrides are honored only for callers with
+    // nodes_private read, and the override coords are stripped for everyone else.
+    const canViewPrivate = user?.isAdmin
+      ? true
+      : (user ? await hasPermission(user, 'nodes_private', 'read') : false);
+    const withOverride = masked.map(node => {
+      const n = node as any;
+      const isPrivate = n.positionOverrideIsPrivate === true;
+
+      // Hide the override coordinates from callers who can't view private positions.
+      if (isPrivate && !canViewPrivate) {
+        const stripped = { ...n };
+        delete stripped.latitudeOverride;
+        delete stripped.longitudeOverride;
+        delete stripped.altitudeOverride;
+        return stripped;
+      }
+
+      const eff = getEffectivePosition(n);
+      if (eff.isOverride) {
+        return {
+          ...n,
+          latitude: eff.latitude,
+          longitude: eff.longitude,
+          altitude: eff.altitude,
+          positionIsOverride: true,
+        };
+      }
+      return n;
+    });
+    res.json(withOverride);
   } catch (error) {
     logger.error('Error fetching nodes for source:', error);
     res.status(500).json({ error: 'Failed to fetch nodes' });
