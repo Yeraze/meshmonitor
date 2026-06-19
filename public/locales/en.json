@@ -234,6 +234,8 @@
   "common.days_ago": "{{count}}d ago",
 
   "savebar.save_changes_to": "Save changes to {{section}}",
+  "savebar.save_all_changes": "Save unsaved changes in {{count}} sections",
+  "savebar.save_all": "Save All",
 
   "auth.login": "Login",
   "auth.username": "Username",

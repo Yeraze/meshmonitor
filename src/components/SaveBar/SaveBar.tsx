@@ -33,23 +33,47 @@ export const SaveBar: React.FC = () => {
     return null;
   }
 
+  // When the active section belongs to a group, a single Save/Dismiss action
+  // applies to every changed section in that group ("Save All"). Ungrouped
+  // sections (e.g. Device Configuration) keep the per-section tab behavior.
+  const groupSections = effectiveSection.group
+    ? sectionsWithChanges.filter(s => s.group === effectiveSection.group)
+    : [effectiveSection];
+  const isBatch = groupSections.length > 1;
+  const anySaving = groupSections.some(s => s.isSaving);
+
   const handleSave = async () => {
-    await effectiveSection.onSave();
+    // Save sequentially so sections that hit the same endpoint don't race.
+    // Each section's onSave handles its own errors/toasts, but guard anyway so
+    // one failure doesn't abort the rest of the batch.
+    for (const section of groupSections) {
+      try {
+        await section.onSave();
+      } catch {
+        // section reports its own failure; continue with the remaining sections
+      }
+    }
   };
 
   const handleDismiss = () => {
-    effectiveSection.onDismiss();
+    for (const section of groupSections) {
+      section.onDismiss();
+    }
   };
 
   const handleSectionClick = (sectionId: string) => {
     setActiveSection(sectionId);
   };
 
+  // Per-section tabs are only meaningful for ungrouped sections — a grouped
+  // batch saves them all at once, so picking one isn't necessary.
+  const showTabs = !effectiveSection.group && sectionsWithChanges.length > 1;
+
   return (
     <div className="save-bar">
       <div className="save-bar-content">
         <div className="save-bar-left">
-          {sectionsWithChanges.length > 1 && (
+          {showTabs && (
             <div className="save-bar-section-tabs">
               {sectionsWithChanges.map(section => (
                 <button
@@ -64,27 +88,33 @@ export const SaveBar: React.FC = () => {
             </div>
           )}
           <span className="save-bar-message">
-            {t('savebar.save_changes_to', { section: effectiveSection.sectionName })}
+            {isBatch
+              ? t('savebar.save_all_changes', { count: groupSections.length })
+              : t('savebar.save_changes_to', { section: effectiveSection.sectionName })}
           </span>
         </div>
         <div className="save-bar-actions">
           <button
             className="save-bar-dismiss"
             onClick={handleDismiss}
-            disabled={effectiveSection.isSaving}
+            disabled={anySaving}
           >
             {t('common.dismiss')}
           </button>
           <button
             className="save-bar-save"
             onClick={handleSave}
-            disabled={effectiveSection.isSaving}
+            disabled={anySaving}
           >
-            {effectiveSection.isSaving ? t('common.saving') : t('common.save')}
+            {anySaving
+              ? t('common.saving')
+              : isBatch
+                ? t('savebar.save_all')
+                : t('common.save')}
           </button>
         </div>
       </div>
-      {sectionsWithChanges.length > 1 && (
+      {showTabs && (
         <div className="save-bar-badge">
           {sectionsWithChanges.length}
         </div>

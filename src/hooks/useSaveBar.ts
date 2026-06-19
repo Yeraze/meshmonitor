@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { useSaveBarContext, SaveBarSection } from '../contexts/SaveBarContext';
+import { useSaveBarContext, useSaveBarGroup, SaveBarSection } from '../contexts/SaveBarContext';
 
 export interface UseSaveBarOptions {
   id: string;
@@ -8,6 +8,11 @@ export interface UseSaveBarOptions {
   isSaving: boolean;
   onSave: () => Promise<void>;
   onDismiss: () => void;
+  /**
+   * Optional grouping key. Defaults to the nearest <SaveBarGroup> in the tree.
+   * Pass `null` to force this section to save individually even inside a group.
+   */
+  group?: string | null;
 }
 
 /**
@@ -17,6 +22,9 @@ export interface UseSaveBarOptions {
 export const useSaveBar = (options: UseSaveBarOptions): void => {
   const { id, sectionName, hasChanges, isSaving, onSave, onDismiss } = options;
   const { registerSection, unregisterSection, updateSection, setActiveSection, activeSection } = useSaveBarContext();
+  const inheritedGroup = useSaveBarGroup();
+  // Explicit option wins; otherwise inherit from the nearest <SaveBarGroup>.
+  const group = options.group !== undefined ? options.group ?? undefined : inheritedGroup ?? undefined;
 
   // Store callbacks in refs to avoid triggering effects on callback identity changes
   const onSaveRef = useRef(onSave);
@@ -47,14 +55,15 @@ export const useSaveBar = (options: UseSaveBarOptions): void => {
       hasChanges,
       isSaving,
       onSave: stableOnSave,
-      onDismiss: stableOnDismiss
+      onDismiss: stableOnDismiss,
+      group
     };
     registerSection(section);
 
     return () => {
       unregisterSection(id);
     };
-  }, [id, sectionName, registerSection, unregisterSection, stableOnSave, stableOnDismiss]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, sectionName, group, registerSection, unregisterSection, stableOnSave, stableOnDismiss]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update hasChanges and isSaving when they change
   useEffect(() => {

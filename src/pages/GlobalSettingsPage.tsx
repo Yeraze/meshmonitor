@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { SettingsProvider, useSettings } from '../contexts/SettingsContext';
 import { UIProvider } from '../contexts/UIContext';
-import { SaveBarProvider } from '../contexts/SaveBarContext';
+import { SaveBarProvider, SaveBarGroup } from '../contexts/SaveBarContext';
 import { ToastProvider } from '../components/ToastContainer';
 import { SaveBar } from '../components/SaveBar';
 import SettingsTab from '../components/SettingsTab';
@@ -84,6 +84,7 @@ function GlobalSettingsInner() {
       >
         {t('admin.back_to_dashboard')}
       </button>
+      <SaveBarGroup id="settings">
       <SettingsTab
         mode="global"
         maxNodeAgeHours={maxNodeAgeHours}
@@ -135,6 +136,7 @@ function GlobalSettingsInner() {
         onSolarMonitoringAzimuthChange={setSolarMonitoringAzimuth}
         onSolarMonitoringDeclinationChange={setSolarMonitoringDeclination}
       />
+      </SaveBarGroup>
     </div>
   );
 }
