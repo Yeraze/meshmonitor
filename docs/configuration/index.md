@@ -17,7 +17,7 @@ Connect MeshMonitor to Serial or USB-connected Meshtastic devices using the Seri
 Connect MeshMonitor to Bluetooth Low Energy (BLE) Meshtastic devices using the BLE Bridge. Perfect for portable devices and systems with Bluetooth support.
 
 ### [Virtual Node Server](/configuration/virtual-node)
-Connect multiple Meshtastic mobile apps simultaneously through MeshMonitor's Virtual Node proxy. Configuration caching, message queuing, and connection stability for 3-5+ concurrent mobile clients.
+Connect multiple Meshtastic mobile apps simultaneously through MeshMonitor's Virtual Node proxy. Configuration caching, message queuing, and connection stability for 3-5+ concurrent mobile clients. As of 4.11.0, a parallel **MeshCore Virtual Node** lets the MeshCore app connect to a managed MeshCore device over WiFi.
 
 ### [Using meshtasticd](/configuration/meshtasticd)
 Learn how to configure MeshMonitor to work with `meshtasticd`, the virtual Meshtastic node daemon, perfect for testing and development without physical hardware.

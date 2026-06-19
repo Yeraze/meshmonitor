@@ -252,7 +252,7 @@ MeshMonitor supports multiple deployment methods:
 - **Authentication** - Local, OIDC/SSO, and reverse proxy authentication with RBAC
 - **Security Monitoring** - Encryption key analysis and vulnerability detection
 - **Device Configuration** - Full node configuration UI
-- **Virtual Node Server** - Remote TCP access for Meshtastic Python clients
+- **Virtual Node Server** - Remote TCP access for Meshtastic mobile/Python clients, plus a MeshCore Virtual Node to connect the MeshCore app to a managed device over WiFi
 - **REST API** - v1 API with Bearer token authentication for external integrations
 - **Docker Ready** - Pre-built multi-architecture images
 - **One-click Self-Upgrade** - Automatic upgrades from the UI with backup and rollback

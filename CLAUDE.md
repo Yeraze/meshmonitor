@@ -1,6 +1,6 @@
 # MeshMonitor — Claude Agent Brief
 
-**Version:** 4.10.0 (multi-source architecture)
+**Version:** 4.11.0 (multi-source architecture)
 **Stack:** React 19 + TS + Vite frontend / Node.js 20+ (Docker image ships Node 24; CI matrix covers 20/22/24/25) + Express 5 + TS backend / SQLite (default), PostgreSQL, MySQL via Drizzle ORM / Meshtastic protobuf-over-TCP and MeshCore (native `meshcore.js` for companion, serial CLI for repeater) through a per-source manager registry.
 
 ## Read order for new agents
@@ -98,7 +98,7 @@ For per-source permission tests, mock `getUserPermissionSetAsync(userId, sourceI
 ### Migration Registry
 Migrations use a centralized registry in `src/db/migrations.ts`. Each migration has functions for all three backends.
 
-**Current migration count:** 84 (latest: `084_add_auto_favorite_targets`).
+**Current migration count:** 92 (latest: `092_add_hide_from_map_to_nodes`).
 
 For the full "adding a migration" recipe see [Migration recipe](#migration-recipe) below.
 

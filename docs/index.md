@@ -34,7 +34,7 @@ features:
 
   - icon: 🌐
     title: Per-Source Virtual Node
-    details: Each TCP source exposes its own Virtual Node endpoint. Run multiple Meshtastic mobile apps through MeshMonitor with message queuing and config caching.
+    details: Each source exposes its own Virtual Node endpoint. Run multiple Meshtastic mobile apps through MeshMonitor with message queuing and config caching — and, new in 4.11.0, connect the MeshCore app to a managed MeshCore device over WiFi.
 
   - icon: 🗺️
     title: Interactive Map
