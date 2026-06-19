@@ -54,10 +54,6 @@ export async function validateVirtualNodeConfig(
   return null;
 }
 
-// Pure utility — no request-specific state. Delegates to the shared helper
-// so override behaviour matches the rest of the API surface (issue #2847).
-const getEffectivePosition = (node: any) => getEffectiveDbNodePosition(node);
-
 // Build the right ISourceManager for a stored Source row. Used by both the
 // HTTP create path and the startup wiring in server.ts.
 export function buildMqttManagerForSource(
@@ -937,7 +933,10 @@ router.get('/:id/nodes', requirePermission('nodes', 'read', { sourceIdFrom: 'par
 
     // MeshCore sources don't share the meshtastic node table — pull contacts
     // (and localNode) directly from the per-source MeshCoreManager and map
-    // them into the dashboard's flat node shape.
+    // them into the dashboard's flat node shape. These return early and never
+    // reach the position-override logic below: MeshCore contacts have no
+    // override columns (that's a Meshtastic-node feature, #3551), so there's
+    // nothing to apply.
     if (source.type === 'meshcore') {
       const mcManager = meshcoreManagerRegistry.get(source.id);
       const mcNodes: any[] = [];
@@ -1008,7 +1007,42 @@ router.get('/:id/nodes', requirePermission('nodes', 'read', { sourceIdFrom: 'par
     // Filter by channel viewOnMap permissions and mask private position channels
     const filtered = await filterNodesByChannelPermission(nodes, user, source.id);
     const masked = await maskNodeLocationByChannel(filtered, user, source.id);
-    res.json(masked);
+
+    // Apply per-node position override to the flat lat/lng the dashboard map
+    // reads (issue #3551). These are raw DB rows, so unlike /api/poll they
+    // never passed through enhanceNodeForClient — without this the map renders
+    // the raw GPS position and ignores the override. Mirror that helper's
+    // privacy semantics: private overrides are honored only for callers with
+    // nodes_private read, and the override coords are stripped for everyone else.
+    const canViewPrivate = user?.isAdmin
+      ? true
+      : (user ? await hasPermission(user, 'nodes_private', 'read') : false);
+    const withOverride = masked.map(node => {
+      const n = node as any;
+      const isPrivate = n.positionOverrideIsPrivate === true;
+
+      // Hide the override coordinates from callers who can't view private positions.
+      if (isPrivate && !canViewPrivate) {
+        const stripped = { ...n };
+        delete stripped.latitudeOverride;
+        delete stripped.longitudeOverride;
+        delete stripped.altitudeOverride;
+        return stripped;
+      }
+
+      const eff = getEffectiveDbNodePosition(n);
+      if (eff.isOverride) {
+        return {
+          ...n,
+          latitude: eff.latitude,
+          longitude: eff.longitude,
+          altitude: eff.altitude,
+          positionIsOverride: true,
+        };
+      }
+      return n;
+    });
+    res.json(withOverride);
   } catch (error) {
     logger.error('Error fetching nodes for source:', error);
     res.status(500).json({ error: 'Failed to fetch nodes' });
@@ -1165,8 +1199,8 @@ router.get('/:id/neighbor-info', requirePermission('nodes', 'read', { sourceIdFr
       .map(ni => {
       const node = nodeMap.get(ni.nodeNum) ?? null;
       const neighbor = nodeMap.get(ni.neighborNodeNum) ?? null;
-      const nodePos = getEffectivePosition(node);
-      const neighborPos = getEffectivePosition(neighbor);
+      const nodePos = getEffectiveDbNodePosition(node);
+      const neighborPos = getEffectiveDbNodePosition(neighbor);
 
       const TX_MQTT = 5;
       const TX_UDP = 6;
