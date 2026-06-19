@@ -735,9 +735,14 @@ class ApiService {
     return response.json();
   }
 
-  async getTracerouteHistory(fromNodeNum: number, toNodeNum: number, limit: number = 50) {
+  async getTracerouteHistory(fromNodeNum: number, toNodeNum: number, limit: number = 50, sourceId?: string | null) {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/traceroutes/history/${fromNodeNum}/${toNodeNum}?limit=${limit}`);
+    // Scope to the active source so a single-source view (e.g. the radio/TCP
+    // source) does not mix in traceroutes recorded by other sources — MQTT
+    // broker/bridge sources record many flood-relayed copies of the same reply
+    // (see backend traceroute history handler).
+    const sourceQuery = sourceId ? `&sourceId=${encodeURIComponent(sourceId)}` : '';
+    const response = await fetch(`${this.baseUrl}/api/traceroutes/history/${fromNodeNum}/${toNodeNum}?limit=${limit}${sourceQuery}`);
     if (!response.ok) throw new Error('Failed to fetch traceroute history');
     return response.json();
   }

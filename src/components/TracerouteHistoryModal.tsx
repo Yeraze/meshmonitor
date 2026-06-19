@@ -14,6 +14,8 @@ interface TracerouteHistoryModalProps {
   fromNodeName: string;
   toNodeName: string;
   nodes: DeviceInfo[];
+  /** Active source to scope history to. When null/undefined, history is unscoped (legacy single-source views). */
+  sourceId?: string | null;
   onClose: () => void;
 }
 
@@ -27,6 +29,7 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
   fromNodeName,
   toNodeName,
   nodes,
+  sourceId,
   onClose,
 }) => {
   const { t } = useTranslation();
@@ -41,7 +44,7 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
     const fetchHistory = async () => {
       try {
         setLoading(true);
-        const data = await ApiService.getTracerouteHistory(fromNodeNum, toNodeNum);
+        const data = await ApiService.getTracerouteHistory(fromNodeNum, toNodeNum, undefined, sourceId);
         if (!isMounted.current) return;
         setTraceroutes(data);
         setError(null);
@@ -58,7 +61,7 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
     return () => {
       isMounted.current = false;
     };
-  }, [fromNodeNum, toNodeNum]);
+  }, [fromNodeNum, toNodeNum, sourceId]);
 
   // Filter traceroutes based on the checkbox state
   const filteredTraceroutes = useMemo(() => {
