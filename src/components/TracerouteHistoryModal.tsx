@@ -44,7 +44,7 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
     const fetchHistory = async () => {
       try {
         setLoading(true);
-        const data = await ApiService.getTracerouteHistory(fromNodeNum, toNodeNum, sourceId);
+        const data = await ApiService.getTracerouteHistory(fromNodeNum, toNodeNum, undefined, sourceId);
         if (!isMounted.current) return;
         setTraceroutes(data);
         setError(null);

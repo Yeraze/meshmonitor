@@ -109,7 +109,7 @@ describe('TracerouteHistoryModal - Node Direction Display', () => {
 
     // Wait for the component to load data
     await waitFor(() => {
-      expect(ApiService.getTracerouteHistory).toHaveBeenCalledWith(100, 200, undefined);
+      expect(ApiService.getTracerouteHistory).toHaveBeenCalledWith(100, 200, undefined, undefined);
     });
 
     // The header should show the correct direction
@@ -168,7 +168,7 @@ describe('TracerouteHistoryModal - Node Direction Display', () => {
     );
 
     await waitFor(() => {
-      expect(ApiService.getTracerouteHistory).toHaveBeenCalledWith(100, 200, 'c9dde95e-radio');
+      expect(ApiService.getTracerouteHistory).toHaveBeenCalledWith(100, 200, undefined, 'c9dde95e-radio');
     });
   });
 
@@ -277,9 +277,9 @@ describe('TracerouteHistoryModal - Node Direction Display', () => {
       />
     );
 
-    expect(ApiService.getTracerouteHistory).toHaveBeenCalledWith(100, 200, undefined);
+    expect(ApiService.getTracerouteHistory).toHaveBeenCalledWith(100, 200, undefined, undefined);
     // Ensure it's NOT called with reversed parameters
-    expect(ApiService.getTracerouteHistory).not.toHaveBeenCalledWith(200, 100, undefined);
+    expect(ApiService.getTracerouteHistory).not.toHaveBeenCalledWith(200, 100, undefined, undefined);
   });
 
   /**

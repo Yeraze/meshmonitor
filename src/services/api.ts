@@ -735,7 +735,7 @@ class ApiService {
     return response.json();
   }
 
-  async getTracerouteHistory(fromNodeNum: number, toNodeNum: number, sourceId?: string | null, limit: number = 50) {
+  async getTracerouteHistory(fromNodeNum: number, toNodeNum: number, limit: number = 50, sourceId?: string | null) {
     await this.ensureBaseUrl();
     // Scope to the active source so a single-source view (e.g. the radio/TCP
     // source) does not mix in traceroutes recorded by other sources — MQTT
