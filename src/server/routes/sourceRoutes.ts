@@ -54,10 +54,6 @@ export async function validateVirtualNodeConfig(
   return null;
 }
 
-// Pure utility — no request-specific state. Delegates to the shared helper
-// so override behaviour matches the rest of the API surface (issue #2847).
-const getEffectivePosition = (node: any) => getEffectiveDbNodePosition(node);
-
 // Build the right ISourceManager for a stored Source row. Used by both the
 // HTTP create path and the startup wiring in server.ts.
 export function buildMqttManagerForSource(
@@ -937,7 +933,10 @@ router.get('/:id/nodes', requirePermission('nodes', 'read', { sourceIdFrom: 'par
 
     // MeshCore sources don't share the meshtastic node table — pull contacts
     // (and localNode) directly from the per-source MeshCoreManager and map
-    // them into the dashboard's flat node shape.
+    // them into the dashboard's flat node shape. These return early and never
+    // reach the position-override logic below: MeshCore contacts have no
+    // override columns (that's a Meshtastic-node feature, #3551), so there's
+    // nothing to apply.
     if (source.type === 'meshcore') {
       const mcManager = meshcoreManagerRegistry.get(source.id);
       const mcNodes: any[] = [];
@@ -1031,7 +1030,7 @@ router.get('/:id/nodes', requirePermission('nodes', 'read', { sourceIdFrom: 'par
         return stripped;
       }
 
-      const eff = getEffectivePosition(n);
+      const eff = getEffectiveDbNodePosition(n);
       if (eff.isOverride) {
         return {
           ...n,
@@ -1200,8 +1199,8 @@ router.get('/:id/neighbor-info', requirePermission('nodes', 'read', { sourceIdFr
       .map(ni => {
       const node = nodeMap.get(ni.nodeNum) ?? null;
       const neighbor = nodeMap.get(ni.neighborNodeNum) ?? null;
-      const nodePos = getEffectivePosition(node);
-      const neighborPos = getEffectivePosition(neighbor);
+      const nodePos = getEffectiveDbNodePosition(node);
+      const neighborPos = getEffectiveDbNodePosition(neighbor);
 
       const TX_MQTT = 5;
       const TX_UDP = 6;
