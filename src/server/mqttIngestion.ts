@@ -81,6 +81,7 @@ import {
 import { calculateDistance } from '../utils/distance.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
+import { resolveLastHeardSec } from './utils/replayGuard.js';
 import { logger } from '../utils/logger.js';
 import {
   nodeNumToId,
@@ -165,6 +166,11 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
   const fromNodeId = nodeNumToId(fromNum);
   const toNodeId = toNum !== null ? nodeNumToId(toNum) : '!ffffffff';
   const nowMs = Date.now();
+  // Replay guard: resolve the lastHeard stamp once for this packet. Returns
+  // undefined for a replayed/retained frame (rxTime far in the past), so the
+  // node-upsert merges below preserve the node's existing lastHeard instead of
+  // resurrecting an offline node. See utils/replayGuard.ts.
+  const lastHeardSec = resolveLastHeardSec(packet.rxTime, nowMs);
 
   let payload: unknown;
   try {
@@ -232,7 +238,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         publicKey: user.publicKey
           ? Buffer.from(user.publicKey).toString('base64')
           : (user.public_key ? Buffer.from(user.public_key).toString('base64') : undefined),
-        lastHeard: Math.floor(nowMs / 1000),
+        lastHeard: lastHeardSec,
         sourceId,
         createdAt: nowMs,
         updatedAt: nowMs,
@@ -266,7 +272,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         altitude: typeof alt === 'number' ? alt : undefined,
         viaMqtt: true,
         transportMechanism: TransportMechanism.MQTT,
-        lastHeard: Math.floor(nowMs / 1000),
+        lastHeard: lastHeardSec,
         sourceId,
         createdAt: nowMs,
         updatedAt: nowMs,
@@ -342,7 +348,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         // saved from a NODEINFO_APP packet, because the upsert merge treats
         // an empty string / 0 as a provided value and overwrites. This was the
         // root cause of MQTT nodes appearing nameless after their NodeInfo.
-        lastHeard: Math.floor(nowMs / 1000),
+        lastHeard: lastHeardSec,
         viaMqtt: true,
         transportMechanism: TransportMechanism.MQTT,
         sourceId,
@@ -395,7 +401,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         // saved from a NODEINFO_APP packet, because the upsert merge treats
         // an empty string / 0 as a provided value and overwrites. This was the
         // root cause of MQTT nodes appearing nameless after their NodeInfo.
-        lastHeard: Math.floor(nowMs / 1000),
+        lastHeard: lastHeardSec,
         viaMqtt: true,
         transportMechanism: TransportMechanism.MQTT,
         sourceId,
@@ -411,7 +417,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
     }
 
     case PortNum.NEIGHBORINFO_APP: {
-      const ok = await ingestNeighborInfo(sourceId, payload as Record<string, any>, fromNum, fromNodeId, nowMs);
+      const ok = await ingestNeighborInfo(sourceId, payload as Record<string, any>, fromNum, fromNodeId, nowMs, lastHeardSec);
       return ok ? { ingested: true, portnum } : { ingested: false, reason: 'decode-error', portnum };
     }
 
@@ -449,7 +455,9 @@ async function ingestTraceroute(
   effectiveChannel: number,
 ): Promise<void> {
   const BROADCAST_ADDR = 4294967295;
-  const lastHeard = Math.floor(nowMs / 1000);
+  // Replay guard (see utils/replayGuard.ts): undefined for a stale replay so the
+  // upsert preserves the node's existing lastHeard.
+  const lastHeard = resolveLastHeardSec(packet.rxTime, nowMs);
   const isValidRouteNode = (n: number): boolean => n > 3 && n !== 255 && n !== 65535;
 
   // Refresh sender. Don't clobber an existing name.
@@ -653,6 +661,9 @@ async function ingestNeighborInfo(
   fromNum: number,
   fromNodeId: string,
   nowMs: number,
+  // Replay guard: undefined for a stale replay so the reporter's lastHeard is
+  // preserved rather than refreshed. See utils/replayGuard.ts.
+  lastHeardSec: number | undefined,
 ): Promise<boolean> {
   const neighbors = neighborInfo.neighbors;
   if (!Array.isArray(neighbors)) return false;
@@ -668,7 +679,7 @@ async function ingestNeighborInfo(
         hwModel: 0,
         viaMqtt: true,
         transportMechanism: TransportMechanism.MQTT,
-        lastHeard: Math.floor(nowMs / 1000),
+        lastHeard: lastHeardSec,
         createdAt: nowMs,
         updatedAt: nowMs,
       },
@@ -758,13 +769,15 @@ function ingestPaxcounter(
   tryInsert('paxcounterBle', paxcount.ble, 'devices');
   tryInsert('paxcounterUptime', paxcount.uptime, 's');
 
+  // Replay guard (see utils/replayGuard.ts): undefined for a stale replay.
+  const lastHeardSec = resolveLastHeardSec(packet.rxTime, nowMs);
   databaseService.upsertNode({
     nodeNum: fromNum,
     nodeId: fromNodeId,
     // Omit longName/shortName/hwModel — lastHeard refresh only. Passing '' / 0
     // would clobber names saved from a NODEINFO_APP packet (the merge treats an
     // empty string / 0 as a provided value and overwrites).
-    lastHeard: Math.floor(nowMs / 1000),
+    lastHeard: lastHeardSec,
     viaMqtt: true,
     transportMechanism: TransportMechanism.MQTT,
     sourceId,
@@ -849,13 +862,15 @@ async function ingestStoreForward(
   }
 
   if (rr === StoreForwardRequestResponse.ROUTER_HEARTBEAT) {
+    // Replay guard (see utils/replayGuard.ts): undefined for a stale replay.
+    const lastHeardSec = resolveLastHeardSec(packet.rxTime, nowMs);
     databaseService.upsertNode({
       nodeNum: fromNum,
       nodeId: fromNodeId,
       // Omit longName/shortName/hwModel — lastHeard refresh only. Passing '' / 0
       // would clobber names saved from a NODEINFO_APP packet (the merge treats an
       // empty string / 0 as a provided value and overwrites).
-      lastHeard: Math.floor(nowMs / 1000),
+      lastHeard: lastHeardSec,
       viaMqtt: true,
       transportMechanism: TransportMechanism.MQTT,
       sourceId,
