@@ -1,6 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
+import {
+  parsePathHops,
+  joinPathHops,
+  repeaterHopOptions,
+  resolveHop,
+  type PathHop,
+} from '../../utils/meshcorePath';
 import { formatRelativeTime } from '../../utils/datetime';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSource } from '../../contexts/SourceContext';
@@ -28,9 +35,12 @@ interface MeshCoreContactDetailPanelProps {
   onShareContact?: (publicKey: string) => Promise<{ ok: boolean; error?: string }>;
   /** Manually push a forwarding route into the device's contact record
    *  via CMD_ADD_UPDATE_CONTACT. `outPath` is a comma-separated hex chain
-   *  ("a3,7f,02"). Unset OR `advancedPathEditEnabled=false` hides the
-   *  Edit Path… button. */
+   *  ("a3,7f,02"). Unset hides the Define Path… button. */
   onSetOutPath?: (publicKey: string, outPath: string) => Promise<boolean>;
+  /** Known contacts used to build a path by repeater name (the picker maps a
+   *  repeater to its first-public-key-byte hop). Typically the full contact
+   *  list; the panel filters to repeaters/room servers internally. */
+  repeaters?: MeshCoreContact[];
   /** Send a trace-path diagnostic along the contact's cached path and
    *  return per-hop SNR data. Unset hides the Trace Path button. */
   onTracePath?: (publicKey: string) => Promise<TracePathResult | null>;
@@ -46,10 +56,6 @@ interface MeshCoreContactDetailPanelProps {
    *  that don't pass this still see the buttons when handlers are
    *  supplied. */
   isCompanion?: boolean;
-  /** Server-side gated advanced toggle (settings.meshcoreAdvancedPathEdit).
-   *  When false the Edit Path… button is hidden even if onSetOutPath is
-   *  supplied. The server route also enforces this for defense in depth. */
-  advancedPathEditEnabled?: boolean;
   /** Remove a contact from the device. Unset hides the Remove button. */
   onRemoveContact?: (publicKey: string) => Promise<boolean>;
   /** Export a contact as a signed advert blob. Unset hides the Export button. */
@@ -87,6 +93,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   onResetPath,
   onShareContact,
   onSetOutPath,
+  repeaters,
   onTracePath,
   onDiscoverPath,
   onRemoveContact,
@@ -94,7 +101,6 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   onGetNeighbours,
   canWriteNodes = false,
   isCompanion = true,
-  advancedPathEditEnabled = false,
   remoteAdminActions,
   canRemoteAdmin = false,
 }) => {
@@ -132,9 +138,11 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     fetchedAt?: number;
   } | null>(null);
 
-  // Path-editor modal state. Only mounted when advancedPathEditEnabled.
+  // Path-editor modal state. The hop chain is built by repeater name; each
+  // hop is a 1-byte hex routing hash.
   const [editorOpen, setEditorOpen] = useState(false);
-  const [editorDraft, setEditorDraft] = useState('');
+  const [editorHops, setEditorHops] = useState<PathHop[]>([]);
+  const [customByte, setCustomByte] = useState('');
   const [editorSaving, setEditorSaving] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
 
@@ -213,7 +221,10 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const canShowShareButton =
     !!onShareContact && canWriteNodes && isCompanion;
   const canShowEditButton =
-    !!onSetOutPath && canWriteNodes && isCompanion && advancedPathEditEnabled;
+    !!onSetOutPath && canWriteNodes && isCompanion;
+
+  // Repeater/room options for the path picker, derived from the contact list.
+  const hopOptions = React.useMemo(() => repeaterHopOptions(repeaters ?? []), [repeaters]);
   const canShowTraceButton =
     !!onTracePath && canWriteNodes && isCompanion && pathKnown && pathLen! > 0;
   const canShowDiscoverButton =
@@ -278,39 +289,56 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   };
 
   const openEditor = () => {
-    setEditorDraft(outPath ?? '');
+    setEditorHops(parsePathHops(outPath));
+    setCustomByte('');
     setEditorError(null);
     setEditorOpen(true);
   };
 
-  const HEX_PATH_REGEX = /^\s*([0-9a-fA-F]{1,2})(\s*,\s*[0-9a-fA-F]{1,2})*\s*$/;
+  const addHop = (byte: PathHop) => {
+    if (editorHops.length >= 64) return;
+    setEditorHops((prev) => [...prev, byte]);
+  };
 
-  const handleSaveEditor = async () => {
-    if (!onSetOutPath || editorSaving) return;
-    const draft = editorDraft.trim();
-    if (draft !== '' && !HEX_PATH_REGEX.test(draft)) {
+  const addCustomHop = () => {
+    const tok = customByte.trim().toLowerCase();
+    if (!/^[0-9a-f]{1,2}$/.test(tok)) {
       setEditorError(
-        t(
-          'meshcore.contact_details.edit_path_invalid',
-          'Path must be comma-separated hex bytes, e.g. "a3,7f,02" (max 64).',
-        ),
+        t('meshcore.contact_details.edit_path_invalid_byte', 'Enter a single hex byte, e.g. "a3".'),
       );
       return;
     }
-    const hopCount = draft === '' ? 0 : draft.split(',').length;
-    if (hopCount > 64) {
+    setEditorError(null);
+    addHop(tok.padStart(2, '0'));
+    setCustomByte('');
+  };
+
+  const removeHop = (index: number) => {
+    setEditorHops((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const moveHop = (index: number, delta: number) => {
+    setEditorHops((prev) => {
+      const next = [...prev];
+      const target = index + delta;
+      if (target < 0 || target >= next.length) return prev;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+
+  const handleSaveEditor = async () => {
+    if (!onSetOutPath || editorSaving) return;
+    if (editorHops.length > 64) {
       setEditorError(
-        t(
-          'meshcore.contact_details.edit_path_too_long',
-          `Path too long: ${hopCount} hops (max 64).`,
-        ),
+        t('meshcore.contact_details.edit_path_too_long', `Path too long: ${editorHops.length} hops (max 64).`),
       );
       return;
     }
     setEditorSaving(true);
     setEditorError(null);
     try {
-      const ok = await onSetOutPath(publicKey, draft);
+      const ok = await onSetOutPath(publicKey, joinPathHops(editorHops));
       if (!ok) {
         setEditorError(
           t('meshcore.contact_details.edit_path_save_failed', 'Save failed.'),
@@ -533,9 +561,9 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     type="button"
                     className="btn-secondary"
                     onClick={openEditor}
-                    aria-label={t('meshcore.contact_details.edit_path_button', 'Edit Path…')}
+                    aria-label={t('meshcore.contact_details.edit_path_button', 'Define Path…')}
                   >
-                    {t('meshcore.contact_details.edit_path_button', 'Edit Path…')}
+                    {t('meshcore.contact_details.edit_path_button', 'Define Path…')}
                   </button>
                 )}
                 {canShowTraceButton && (
@@ -829,12 +857,12 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
             }}
           >
             <h3 style={{ marginTop: 0 }}>
-              {t('meshcore.contact_details.edit_path_dialog_title', 'Edit forwarding path')}
+              {t('meshcore.contact_details.edit_path_dialog_title', 'Define forwarding path')}
             </h3>
             <p style={{ marginBottom: '0.75rem' }}>
               {t(
                 'meshcore.contact_details.edit_path_dialog_hint',
-                'Enter the new hop chain as comma-separated hex bytes (e.g. "a3,7f,02"). Each byte is one hop hash; 0..64 bytes total. Leave empty to set a zero-hop direct path.',
+                'Build the route to this contact by adding repeater hops in order, from your node outward. An empty path is a zero-hop direct send (0..64 hops).',
               )}
             </p>
             <div
@@ -853,28 +881,91 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                 'Manual paths bypass auto-discovery. Stale hops silently drop direct sends until the next flood. Use "Reset Path" instead if you just want to re-discover.',
               )}
             </div>
-            <label style={{ display: 'block', marginBottom: '0.5rem' }}>
-              {t('meshcore.contact_details.edit_path_label', 'New path (hex chain):')}
+
+            {/* Ordered hop list */}
+            <label style={{ display: 'block', marginBottom: '0.4rem' }}>
+              {t('meshcore.contact_details.edit_path_label', 'Path ({{count}} hops):', { count: editorHops.length })}
             </label>
-            <input
-              type="text"
-              value={editorDraft}
-              onChange={(e) => setEditorDraft(e.target.value)}
-              disabled={editorSaving}
-              placeholder="a3,7f,02"
-              style={{
-                width: '100%',
-                padding: '0.5rem',
-                marginBottom: '0.5rem',
-                fontFamily: 'var(--font-mono, monospace)',
-                boxSizing: 'border-box',
-              }}
-              autoFocus
-            />
-            <div style={{ fontSize: '0.85em', opacity: 0.8, marginBottom: '0.75rem' }}>
-              {editorDraft.trim() === ''
-                ? t('meshcore.contact_details.edit_path_zero_hops', '0 hops (direct path)')
-                : t('meshcore.contact_details.edit_path_hop_count', { count: editorDraft.trim().split(',').length })}
+            {editorHops.length === 0 ? (
+              <div style={{ fontSize: '0.85em', opacity: 0.7, marginBottom: '0.6rem' }}>
+                {t('meshcore.contact_details.edit_path_zero_hops', 'Direct path (no repeater hops).')}
+              </div>
+            ) : (
+              <ol style={{ listStyle: 'none', padding: 0, margin: '0 0 0.6rem' }}>
+                {editorHops.map((byte, i) => {
+                  const resolved = resolveHop(byte, hopOptions);
+                  return (
+                    <li
+                      key={`${byte}-${i}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        padding: '0.35rem 0.5rem',
+                        marginBottom: '0.25rem',
+                        background: 'var(--ctp-surface0, #313244)',
+                        borderRadius: '4px',
+                      }}
+                    >
+                      <span style={{ opacity: 0.6, minWidth: '1.4rem' }}>{i + 1}.</span>
+                      <span style={{ flex: 1 }}>
+                        {resolved.label}
+                        <span style={{ opacity: 0.6, fontFamily: 'var(--font-mono, monospace)', marginLeft: '0.4rem' }}>
+                          (0x{byte})
+                        </span>
+                      </span>
+                      <button type="button" className="btn-secondary" disabled={editorSaving || i === 0}
+                        aria-label={t('meshcore.contact_details.edit_path_move_up', 'Move hop up')}
+                        onClick={() => moveHop(i, -1)} style={{ padding: '0.1rem 0.4rem' }}>↑</button>
+                      <button type="button" className="btn-secondary" disabled={editorSaving || i === editorHops.length - 1}
+                        aria-label={t('meshcore.contact_details.edit_path_move_down', 'Move hop down')}
+                        onClick={() => moveHop(i, 1)} style={{ padding: '0.1rem 0.4rem' }}>↓</button>
+                      <button type="button" className="btn-secondary" disabled={editorSaving}
+                        aria-label={t('meshcore.contact_details.edit_path_remove_hop', 'Remove hop')}
+                        onClick={() => removeHop(i)} style={{ padding: '0.1rem 0.4rem' }}>✕</button>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+
+            {/* Add a repeater hop by name */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+              <select
+                aria-label={t('meshcore.contact_details.edit_path_add_repeater_aria', 'Add repeater hop')}
+                disabled={editorSaving || editorHops.length >= 64}
+                value=""
+                onChange={(e) => { if (e.target.value) addHop(e.target.value); }}
+                style={{ flex: 1, minWidth: '12rem', padding: '0.45rem', boxSizing: 'border-box' }}
+              >
+                <option value="">
+                  {hopOptions.length === 0
+                    ? t('meshcore.contact_details.edit_path_no_repeaters', 'No known repeaters')
+                    : t('meshcore.contact_details.edit_path_add_repeater', '+ Add repeater hop…')}
+                </option>
+                {hopOptions.map((o) => (
+                  <option key={o.publicKey} value={o.hopByte}>
+                    {o.name} (0x{o.hopByte})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Add a raw byte for a repeater you haven't met */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', alignItems: 'center' }}>
+              <input
+                type="text"
+                value={customByte}
+                onChange={(e) => setCustomByte(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomHop(); } }}
+                disabled={editorSaving || editorHops.length >= 64}
+                placeholder={t('meshcore.contact_details.edit_path_custom_byte', 'or hex byte (a3)')}
+                style={{ width: '8rem', padding: '0.45rem', fontFamily: 'var(--font-mono, monospace)', boxSizing: 'border-box' }}
+              />
+              <button type="button" className="btn-secondary" onClick={addCustomHop}
+                disabled={editorSaving || editorHops.length >= 64 || customByte.trim() === ''}>
+                {t('meshcore.contact_details.edit_path_add_byte', 'Add')}
+              </button>
             </div>
             {editorError && (
               <div style={{ color: 'var(--ctp-red)', marginBottom: '0.75rem' }} role="alert">

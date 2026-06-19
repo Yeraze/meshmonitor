@@ -163,11 +163,6 @@ vi.mock('../services/meshcorePacketLogService.js', () => ({ default: mockPacketS
 
 import DatabaseService from '../../services/database.js';
 
-// Mutable holder so individual tests can flip the toggle for the
-// feature-flag-gated out-path route.
-const globalSettingsMock = {
-  meshcoreAdvancedPathEdit: 'false' as string | boolean | null,
-};
 import meshcoreRoutes from './meshcoreRoutes.js';
 import authRoutes from './authRoutes.js';
 
@@ -213,14 +208,8 @@ describe('MeshCore Routes', () => {
     (DatabaseService as any).auditLogAsync = vi.fn(async () => undefined);
     (DatabaseService as any).drizzleDbType = 'sqlite';
 
-    // The out-path PUT route reads the advanced-path-edit toggle from
-    // global settings. Default the mock to "off" so tests opt-in to the
-    // "feature flag enabled" branch.
     (DatabaseService as any).settings = {
-      getSetting: vi.fn(async (key: string) => {
-        if (key === 'meshcoreAdvancedPathEdit') return globalSettingsMock.meshcoreAdvancedPathEdit;
-        return null;
-      }),
+      getSetting: vi.fn(async () => null),
     };
 
     // Add async method mocks
@@ -1503,7 +1492,6 @@ describe('MeshCore Routes', () => {
     beforeEach(() => {
       meshcoreManager.setContactOutPath.mockReset();
       meshcoreManager.setContactOutPath.mockResolvedValue(true);
-      globalSettingsMock.meshcoreAdvancedPathEdit = 'false';
     });
 
     it('requires authentication', async () => {
@@ -1513,18 +1501,7 @@ describe('MeshCore Routes', () => {
       expect(response.status).toBe(401);
     });
 
-    it('returns 403 when the advanced toggle is off', async () => {
-      globalSettingsMock.meshcoreAdvancedPathEdit = 'false';
-      const response = await authenticatedAgent
-        .put(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/out-path`)
-        .send({ outPath: 'a3,7f,02' });
-      expect(response.status).toBe(403);
-      expect(response.body.error).toMatch(/meshcoreAdvancedPathEdit/);
-      expect(meshcoreManager.setContactOutPath).not.toHaveBeenCalled();
-    });
-
-    it('rejects an invalid public key (regardless of toggle)', async () => {
-      globalSettingsMock.meshcoreAdvancedPathEdit = 'true';
+    it('rejects an invalid public key', async () => {
       const response = await authenticatedAgent
         .put('/api/sources/test-source/meshcore/contacts/not-hex/out-path')
         .send({ outPath: 'a3,7f,02' });
@@ -1534,7 +1511,6 @@ describe('MeshCore Routes', () => {
     });
 
     it('rejects a malformed hex chain', async () => {
-      globalSettingsMock.meshcoreAdvancedPathEdit = 'true';
       const response = await authenticatedAgent
         .put(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/out-path`)
         .send({ outPath: 'a3,nothex,02' });
@@ -1544,7 +1520,6 @@ describe('MeshCore Routes', () => {
     });
 
     it('rejects an oversize path (>64 hops)', async () => {
-      globalSettingsMock.meshcoreAdvancedPathEdit = 'true';
       const oversized = Array(65).fill('aa').join(',');
       const response = await authenticatedAgent
         .put(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/out-path`)
@@ -1555,7 +1530,6 @@ describe('MeshCore Routes', () => {
     });
 
     it('forwards valid path bytes to the manager and returns 200', async () => {
-      globalSettingsMock.meshcoreAdvancedPathEdit = 'true';
       const response = await authenticatedAgent
         .put(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/out-path`)
         .send({ outPath: 'a3,7f,02' });
@@ -1568,7 +1542,6 @@ describe('MeshCore Routes', () => {
     });
 
     it('accepts an empty path as zero-hop direct', async () => {
-      globalSettingsMock.meshcoreAdvancedPathEdit = 'true';
       const response = await authenticatedAgent
         .put(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/out-path`)
         .send({ outPath: '' });
@@ -1578,7 +1551,6 @@ describe('MeshCore Routes', () => {
     });
 
     it('returns 409 when the manager rejects', async () => {
-      globalSettingsMock.meshcoreAdvancedPathEdit = 'true';
       meshcoreManager.setContactOutPath.mockResolvedValueOnce(false);
       const response = await authenticatedAgent
         .put(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/out-path`)

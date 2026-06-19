@@ -116,6 +116,60 @@ describe('MeshCoreContactDetailPanel', () => {
     confirmSpy.mockRestore();
   });
 
+  it('builds a path by repeater name and saves the hex chain', async () => {
+    const contact: MeshCoreContact = { publicKey: PK, advType: 1 };
+    const repeaters: MeshCoreContact[] = [
+      { publicKey: 'b1' + 'c'.repeat(62), advType: 2, advName: 'North Repeater' },
+      { publicKey: '7f' + 'd'.repeat(62), advType: 2, advName: 'East Repeater' },
+    ];
+    const onSetOutPath = vi.fn().mockResolvedValue(true);
+
+    render(
+      <MeshCoreContactDetailPanel
+        contact={contact}
+        publicKey={PK}
+        onSetOutPath={onSetOutPath}
+        repeaters={repeaters}
+        canWriteNodes
+        isCompanion
+      />,
+    );
+
+    // Define Path… is visible without any advanced toggle.
+    fireEvent.click(screen.getByRole('button', { name: 'Define Path…' }));
+
+    // Pick a repeater by name from the hop selector.
+    const select = screen.getByRole('combobox', { name: 'Add repeater hop' });
+    fireEvent.change(select, { target: { value: 'b1' } });
+
+    // The hop appears with its repeater name.
+    expect(screen.getByText('North Repeater')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Path' }));
+    await waitFor(() => expect(onSetOutPath).toHaveBeenCalledWith(PK, 'b1'));
+  });
+
+  it('pre-populates the editor from the existing out_path, resolving names', () => {
+    const contact: MeshCoreContact = { publicKey: PK, advType: 1, outPath: 'b1,7f' };
+    const repeaters: MeshCoreContact[] = [
+      { publicKey: 'b1' + 'c'.repeat(62), advType: 2, advName: 'North Repeater' },
+    ];
+    render(
+      <MeshCoreContactDetailPanel
+        contact={contact}
+        publicKey={PK}
+        onSetOutPath={vi.fn().mockResolvedValue(true)}
+        repeaters={repeaters}
+        canWriteNodes
+        isCompanion
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Define Path…' }));
+    // Known hop resolves to its name; unknown hop falls back to "Unknown (0x..)".
+    expect(screen.getByText('North Repeater')).toBeTruthy();
+    expect(screen.getByText('Unknown (0x7f)')).toBeTruthy();
+  });
+
   it('falls back to a generic message when onShareContact returns no error text', async () => {
     const contact: MeshCoreContact = { publicKey: PK, advType: 1 };
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);

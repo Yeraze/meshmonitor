@@ -109,9 +109,7 @@ export interface MeshCoreActions {
   shareContact: (publicKey: string) => Promise<{ ok: boolean; error?: string }>;
   /** Manually push a forwarding route into the device's contact record.
    *  `outPath` is a comma-separated hex chain ("a3,7f,02"); empty string
-   *  sets a zero-hop direct path. Server gates this on the
-   *  `meshcoreAdvancedPathEdit` toggle, so a 403 is expected when the
-   *  setting is off. */
+   *  sets a zero-hop direct path. Requires nodes:write. */
   setContactOutPath: (publicKey: string, outPath: string) => Promise<boolean>;
   /** Send a trace-path diagnostic along the contact's cached forwarding
    *  route and return per-hop SNR data. Resolves `null` on failure. */

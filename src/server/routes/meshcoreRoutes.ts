@@ -625,9 +625,9 @@ router.post(
  * opcode 9), with the non-path fields preserved verbatim by
  * meshcore.js's setContactPath helper.
  *
- * Gated by the `meshcoreAdvancedPathEdit` setting because stale hops
- * silently drop direct sends to this contact. When the toggle is off
- * (default), the route returns 403 even for users with nodes:write.
+ * Requires nodes:write. Note: a stale manual path silently drops direct
+ * sends to this contact until the next flood — the UI surfaces this and
+ * offers "Reset Path" to re-discover.
  *
  * Body: { outPath: "a3,7f,02" }  — comma-separated hex chain, 0..64
  *                                   bytes (empty string = 0 hops).
@@ -644,16 +644,6 @@ router.put(
         return res.status(400).json({
           success: false,
           error: 'Invalid public key — must be 64-char hex',
-        });
-      }
-      // Settings are stored as string values; the boolean check is here
-      // only for robustness against future schema changes.
-      const flagRaw: unknown = await databaseService.settings.getSetting('meshcoreAdvancedPathEdit');
-      const flagEnabled = flagRaw === 'true' || flagRaw === '1' || flagRaw === true;
-      if (!flagEnabled) {
-        return res.status(403).json({
-          success: false,
-          error: 'Advanced MeshCore path editing is disabled. Enable meshcoreAdvancedPathEdit in Settings to use this endpoint.',
         });
       }
       const rawPath = (req.body ?? {}).outPath;
