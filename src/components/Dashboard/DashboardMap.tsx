@@ -17,10 +17,12 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, Rectangle, useMap } f
 import L from 'leaflet';
 import { createNodeIcon } from '../../utils/mapIcons';
 import { getTilesetById } from '../../config/tilesets';
-import type { CustomTileset } from '../../config/tilesets';
+import type { CustomTileset, TilesetId } from '../../config/tilesets';
 import DashboardWaypoints from './DashboardWaypoints';
-import DashboardNodePopup from './DashboardNodePopup';
+import DashboardNodePopup, { type NodeSourceRef } from './DashboardNodePopup';
 import GeoJsonOverlay from '../GeoJsonOverlay';
+import { TilesetSelector } from '../TilesetSelector';
+import MapLegend from '../MapLegend';
 import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
 import { useMapContext } from '../../contexts/MapContext';
 import { useSettings } from '../../contexts/SettingsContext';
@@ -46,6 +48,11 @@ export interface DashboardMapProps {
   sourceId: string | null;
   /** Hours since lastHeard to count a node as "active". Favorites bypass this gate. */
   maxNodeAgeHours: number;
+  /**
+   * On the Unified map, called when a node popup's source row is clicked so the
+   * page can navigate to that source's Node Details view for the node.
+   */
+  onNodeSourceSelect?: (source: NodeSourceRef, nodeId: string | undefined) => void;
 }
 
 /** Extract lat/lng from a node — handles both flat (API) and nested (position) shapes. */
@@ -144,9 +151,26 @@ export default function DashboardMap({
   defaultCenter,
   sourceId,
   maxNodeAgeHours,
+  onNodeSourceSelect,
 }: DashboardMapProps) {
   const tileset = getTilesetById(tilesetId, customTilesets);
-  const { mapPinStyle } = useSettings();
+  const { mapPinStyle, setMapTileset } = useSettings();
+
+  // Tile selector + legend overlays — hidden by default, toggled from the Map
+  // Features panel. Persisted under the same localStorage keys the NodesTab map
+  // uses so the preference is unified across every map surface.
+  const [showTileSelector, setShowTileSelector] = useState(
+    () => localStorage.getItem('meshmonitor-showTileSelector') === 'true',
+  );
+  const [showLegend, setShowLegend] = useState(
+    () => localStorage.getItem('meshmonitor-showLegend') === 'true',
+  );
+  useEffect(() => {
+    localStorage.setItem('meshmonitor-showTileSelector', String(showTileSelector));
+  }, [showTileSelector]);
+  useEffect(() => {
+    localStorage.setItem('meshmonitor-showLegend', String(showLegend));
+  }, [showLegend]);
 
   const {
     showPaths,
@@ -185,7 +209,7 @@ export default function DashboardMap({
         const response = await fetch(`${baseUrl}/api/geojson/layers`);
         if (!response.ok) return;
         const data = await response.json();
-        if (!cancelled) setGeoJsonLayers(data);
+        if (!cancelled) setGeoJsonLayers(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error('Failed to fetch GeoJSON layers:', err);
       }
@@ -339,6 +363,8 @@ export default function DashboardMap({
 
         <MapBoundsUpdater positions={nodePositions} sourceId={sourceId} />
 
+        {showLegend && <MapLegend />}
+
         {geoJsonLayers.length > 0 && <GeoJsonOverlay layers={geoJsonLayers} />}
 
         {showWaypoints && <DashboardWaypoints sourceId={sourceId} />}
@@ -364,7 +390,7 @@ export default function DashboardMap({
               icon={icon}
             >
               <Popup>
-                <DashboardNodePopup node={node} pos={pos} />
+                <DashboardNodePopup node={node} pos={pos} onSourceSelect={onNodeSourceSelect} />
               </Popup>
             </Marker>
           );
@@ -476,6 +502,13 @@ export default function DashboardMap({
         })}
       </MapContainer>
 
+      {showTileSelector && (
+        <TilesetSelector
+          selectedTilesetId={tilesetId as TilesetId}
+          onTilesetChange={setMapTileset}
+        />
+      )}
+
       {/* Map Features control panel — mirrors NodesTab's "Features" panel but
           trimmed to the toggles meaningful on a cross-source map. */}
       <div className="map-controls dashboard-map-controls">
@@ -581,6 +614,22 @@ export default function DashboardMap({
               onChange={(e) => setShowWaypoints(e.target.checked)}
             />
             <span>Show Waypoints</span>
+          </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showTileSelector}
+              onChange={(e) => setShowTileSelector(e.target.checked)}
+            />
+            <span>Show Tile Selection</span>
+          </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showLegend}
+              onChange={(e) => setShowLegend(e.target.checked)}
+            />
+            <span>Show Legend</span>
           </label>
           {/* GeoJSON overlay layers — per-layer on/off, mirroring NodesTab. */}
           {geoJsonLayers.map(layer => (

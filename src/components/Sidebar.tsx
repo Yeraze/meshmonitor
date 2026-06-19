@@ -104,12 +104,16 @@ const Sidebar: React.FC<SidebarProps> = ({
       : (LUCIDE_ICONS[name] || null);
   }, [iconStyle]);
 
-  // Start collapsed (narrow/icon-only) by default for cleaner desktop UI
-  const [isCollapsed, setIsCollapsed] = useState(true);
   // Pin state persisted to localStorage - when pinned, sidebar won't auto-collapse on nav click
   const [isPinned, setIsPinned] = useState(() => {
     const saved = localStorage.getItem('sidebar-pinned');
     return saved === 'true';
+  });
+  // Start collapsed (narrow/icon-only) by default for cleaner desktop UI, but if
+  // the sidebar was pinned expanded, honor that on load instead of rendering
+  // collapsed-with-pin-selected.
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    return localStorage.getItem('sidebar-pinned') !== 'true';
   });
 
   // Persist pin state to localStorage

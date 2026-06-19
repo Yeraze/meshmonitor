@@ -26,6 +26,11 @@ export interface NodeSourceRef {
 interface DashboardNodePopupProps {
   node: any;
   pos: { lat: number; lng: number };
+  /**
+   * Called when the user clicks one of the "seen by" source rows. The Unified
+   * map uses this to jump to that source's Node Details view for this node.
+   */
+  onSourceSelect?: (source: NodeSourceRef, nodeId: string | undefined) => void;
 }
 
 /** Coerce a field that may live on the flat node or its nested `user`. */
@@ -36,7 +41,7 @@ function pick<T>(node: any, flatKey: string, userKey: string): T | undefined {
   return nested === null ? undefined : (nested as T | undefined);
 }
 
-export default function DashboardNodePopup({ node, pos }: DashboardNodePopupProps) {
+export default function DashboardNodePopup({ node, pos, onSourceSelect }: DashboardNodePopupProps) {
   const { timeFormat, dateFormat } = useDisplaySettings();
 
   const longName = pick<string>(node, 'longName', 'longName')
@@ -145,20 +150,31 @@ export default function DashboardNodePopup({ node, pos }: DashboardNodePopupProp
           </div>
         )}
 
-        {/* Unified view: which sources reported this node + protocol. */}
+        {/* Unified view: which sources reported this node + protocol. Each row
+            links to that source's Node Details view for this node. */}
         {sources && sources.length > 0 && (
           <div className="node-popup-sources">
             <div className="node-popup-sources-title">
               Seen by {sources.length} source{sources.length !== 1 ? 's' : ''}
             </div>
-            {sources.map((s) => (
-              <div key={s.sourceId} className="node-popup-source-row">
-                <span className={`node-popup-protocol-badge protocol-${s.protocol.toLowerCase()}`}>
-                  {s.protocol}
-                </span>
-                <span className="node-popup-source-name">{s.sourceName}</span>
-              </div>
-            ))}
+            {sources.map((s) => {
+              const clickable = !!onSourceSelect;
+              return (
+                <button
+                  key={s.sourceId}
+                  type="button"
+                  className="node-popup-source-row node-popup-source-row-button"
+                  disabled={!clickable}
+                  onClick={clickable ? () => onSourceSelect!(s, nodeId) : undefined}
+                  title={clickable ? `Open ${s.sourceName} → Node Details` : undefined}
+                >
+                  <span className={`node-popup-protocol-badge protocol-${s.protocol.toLowerCase()}`}>
+                    {s.protocol}
+                  </span>
+                  <span className="node-popup-source-name">{s.sourceName}</span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>

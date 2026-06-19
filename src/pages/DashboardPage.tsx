@@ -26,6 +26,7 @@ import { useMeshCoreNeighbors } from '../hooks/useMapAnalysisData';
 import type { DashboardSource } from '../hooks/useDashboardData';
 import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import DashboardMap from '../components/Dashboard/DashboardMap';
+import type { NodeSourceRef } from '../components/Dashboard/DashboardNodePopup';
 import { buildBridgeConfig, formFromBridgeConfig } from '../components/MQTT/mqttBridgeConfig';
 import LoginModal from '../components/LoginModal';
 import UserMenu from '../components/UserMenu';
@@ -58,6 +59,22 @@ function DashboardInner() {
    */
   const refreshSources = () => {
     queryClient.invalidateQueries({ queryKey: ['dashboard', 'sources'] });
+  };
+
+  /**
+   * Unified map: clicking a "seen by" source row in a node popup jumps to that
+   * source's Node Details view for the node. Meshtastic sources open the
+   * Node Details (Messages) tab focused on the node's DM; MeshCore sources use
+   * their own internal panes, so we just switch to that source.
+   */
+  const handleNodeSourceSelect = (source: NodeSourceRef, nodeId: string | undefined) => {
+    if (source.protocol === 'MeshCore') {
+      navigate(`/source/${source.sourceId}/`);
+      return;
+    }
+    navigate(`/source/${source.sourceId}/#messages`, {
+      state: nodeId ? { focusDmNodeId: nodeId } : undefined,
+    });
   };
 
   const isAuthenticated = authStatus?.authenticated ?? false;
@@ -977,6 +994,7 @@ function DashboardInner() {
           defaultCenter={defaultCenter}
           sourceId={selectedSourceId}
           maxNodeAgeHours={maxNodeAgeHours}
+          onNodeSourceSelect={handleNodeSourceSelect}
         />
       </div>
 

@@ -78,7 +78,7 @@ import { AutomationProvider, useAutomation } from './contexts/AutomationContext'
 import { useAuth } from './contexts/AuthContext';
 import { useCsrf } from './contexts/CsrfContext';
 import { useSource } from './contexts/SourceContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocketConnected } from './contexts/WebSocketContext';
 import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
@@ -129,6 +129,7 @@ function App() {
   // surfaces; the bridge feeds us inbound packets only.
   const isMqttBridge = sourceType === 'mqtt_bridge';
   const navigate = useNavigate();
+const location = useLocation();
   const webSocketConnected = useWebSocketConnected();
   const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -560,6 +561,22 @@ function App() {
     showIncompleteNodes,
     setShowIncompleteNodes,
   } = useUI();
+
+  // When the user clicks a source row in the Unified map's node popup, we
+  // navigate here (this source) with `state.focusDmNodeId` set. Open that
+  // node's direct-message conversation once on mount. The active tab itself
+  // comes from the `#messages` hash, so we only need to focus the DM target.
+  const focusDmFromNavRef = useRef(false);
+  useEffect(() => {
+    if (focusDmFromNavRef.current) return;
+    const navState = location.state as { focusDmNodeId?: string } | null;
+    const focusId = navState?.focusDmNodeId;
+    if (!focusId) return;
+    focusDmFromNavRef.current = true;
+    setActiveTab('messages');
+    setSelectedChannel(-1);
+    setSelectedDMNode(focusId);
+  }, [location.state, setActiveTab, setSelectedChannel, setSelectedDMNode]);
 
   // Automation context
   const {

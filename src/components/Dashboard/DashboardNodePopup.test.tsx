@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import DashboardNodePopup from './DashboardNodePopup';
 
 vi.mock('../../contexts/SettingsContext', () => ({
@@ -74,6 +74,45 @@ describe('DashboardNodePopup', () => {
     expect(screen.getByText('Core Bravo')).toBeInTheDocument();
     expect(screen.getByText('Meshtastic')).toBeInTheDocument();
     expect(screen.getByText('MeshCore')).toBeInTheDocument();
+  });
+
+  it('calls onSourceSelect with the source and node id when a source row is clicked', () => {
+    const onSourceSelect = vi.fn();
+    render(
+      <DashboardNodePopup
+        pos={pos}
+        onSourceSelect={onSourceSelect}
+        node={{
+          nodeNum: 100,
+          nodeId: '!00000064',
+          longName: 'Shared Node',
+          sources: [
+            { sourceId: 'a', sourceName: 'Tower Alpha', protocol: 'Meshtastic' },
+            { sourceId: 'b', sourceName: 'Core Bravo', protocol: 'MeshCore' },
+          ],
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByText('Core Bravo'));
+    expect(onSourceSelect).toHaveBeenCalledWith(
+      { sourceId: 'b', sourceName: 'Core Bravo', protocol: 'MeshCore' },
+      '!00000064',
+    );
+  });
+
+  it('renders source rows as disabled (non-clickable) when no onSourceSelect is given', () => {
+    render(
+      <DashboardNodePopup
+        pos={pos}
+        node={{
+          nodeNum: 100,
+          longName: 'Shared Node',
+          sources: [{ sourceId: 'a', sourceName: 'Tower Alpha', protocol: 'Meshtastic' }],
+        }}
+      />,
+    );
+    const row = screen.getByText('Tower Alpha').closest('button');
+    expect(row).toBeDisabled();
   });
 
   it('omits the sources section for single-source nodes', () => {
