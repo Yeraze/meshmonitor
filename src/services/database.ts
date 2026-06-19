@@ -100,6 +100,7 @@ export interface DbNode {
   longitudeOverride?: number; // Override longitude
   altitudeOverride?: number; // Override altitude
   positionOverrideIsPrivate?: boolean; // Override privacy (false = public, true = private)
+  hideFromMap?: boolean; // #3549: suppress this node's marker on maps only
   // Remote admin discovery (Migration 055)
   hasRemoteAdmin?: boolean; // Has remote admin access
   lastRemoteAdminCheck?: number; // Unix timestamp ms of last check
@@ -370,6 +371,7 @@ class DatabaseService {
       longitudeOverride: node.longitudeOverride ?? undefined,
       altitudeOverride: node.altitudeOverride ?? undefined,
       positionOverrideIsPrivate: node.positionOverrideIsPrivate ?? undefined,
+      hideFromMap: node.hideFromMap ?? undefined,
       hasRemoteAdmin: node.hasRemoteAdmin ?? undefined,
       lastRemoteAdminCheck: node.lastRemoteAdminCheck ?? undefined,
       remoteAdminMetadata: node.remoteAdminMetadata ?? undefined,
@@ -971,6 +973,7 @@ class DatabaseService {
             longitudeOverride: node.longitudeOverride ?? undefined,
             altitudeOverride: node.altitudeOverride ?? undefined,
             positionOverrideIsPrivate: node.positionOverrideIsPrivate ?? undefined,
+            hideFromMap: node.hideFromMap ?? undefined,
             hasRemoteAdmin: node.hasRemoteAdmin ?? undefined,
             lastRemoteAdminCheck: node.lastRemoteAdminCheck ?? undefined,
             remoteAdminMetadata: node.remoteAdminMetadata ?? undefined,
@@ -1251,6 +1254,7 @@ class DatabaseService {
         longitudeOverride REAL,
         altitudeOverride REAL,
         positionOverrideIsPrivate INTEGER DEFAULT 0,
+        hideFromMap INTEGER DEFAULT 0,
         hasRemoteAdmin INTEGER DEFAULT 0,
         lastRemoteAdminCheck INTEGER,
         remoteAdminMetadata TEXT,
@@ -2231,6 +2235,8 @@ class DatabaseService {
           longitudeOverride: nodeData.longitudeOverride ?? existingNode?.longitudeOverride,
           altitudeOverride: nodeData.altitudeOverride ?? existingNode?.altitudeOverride,
           positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? existingNode?.positionOverrideIsPrivate,
+          // Map visibility (#3549) - preserve existing toggle across packet upserts
+          hideFromMap: nodeData.hideFromMap ?? existingNode?.hideFromMap,
           // Remote admin discovery - preserve existing values
           hasRemoteAdmin: existingNode?.hasRemoteAdmin,
           lastRemoteAdminCheck: existingNode?.lastRemoteAdminCheck,
@@ -7458,6 +7464,62 @@ class DatabaseService {
     this.setNodePositionOverride(nodeNum, false, sourceId);
   }
 
+  /**
+   * Set the per-node "Hide from Map" flag (issue #3549). When true, MeshMonitor
+   * suppresses the node's marker on every map view while leaving it visible in
+   * node lists, packet monitor, DMs, etc. Display-only — never synced to mesh.
+   */
+  setNodeHideFromMap(nodeNum: number, hidden: boolean, sourceId: string): void {
+    const now = Date.now();
+
+    // For PostgreSQL/MySQL, use cache and async repo
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const existingNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      if (!existingNode) {
+        const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+        logger.warn(`⚠️ Failed to update hideFromMap for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in cache`);
+        throw new Error(`Node ${nodeId} not found`);
+      }
+
+      existingNode.hideFromMap = hidden;
+      existingNode.updatedAt = now;
+
+      if (this.nodesRepo) {
+        this.nodesRepo.upsertNode(existingNode, sourceId).catch(err => {
+          logger.error('Failed to update hideFromMap:', err);
+        });
+      }
+
+      logger.debug(`🗺️ Node ${nodeNum}@${sourceId} hideFromMap ${hidden ? 'enabled' : 'disabled'}`);
+      return;
+    }
+
+    // SQLite path
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
+    const stmt = this.db.prepare(`
+      UPDATE nodes SET
+        hideFromMap = ?,
+        updatedAt = ?
+      WHERE nodeNum = ? AND sourceId = ?
+    `);
+    const result = stmt.run(hidden ? 1 : 0, now, nodeNum, sourceId);
+
+    if (result.changes === 0) {
+      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+      logger.warn(`⚠️ Failed to update hideFromMap for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
+      throw new Error(`Node ${nodeId} not found`);
+    }
+
+    // Keep the in-memory cache consistent for sync readers.
+    const cached = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+    if (cached) {
+      cached.hideFromMap = hidden;
+      cached.updatedAt = now;
+    }
+
+    logger.debug(`🗺️ Node ${nodeNum}@${sourceId} hideFromMap ${hidden ? 'enabled' : 'disabled'}`);
+  }
+
   // Authentication and Authorization
   private ensureAdminUser(): void {
     // Run asynchronously without blocking initialization
@@ -9110,6 +9172,10 @@ class DatabaseService {
 
   async clearNodePositionOverrideAsync(nodeNum: number, sourceId: string): Promise<void> {
     this.clearNodePositionOverride(nodeNum, sourceId);
+  }
+
+  async setNodeHideFromMapAsync(nodeNum: number, hidden: boolean, sourceId: string): Promise<void> {
+    this.setNodeHideFromMap(nodeNum, hidden, sourceId);
   }
 
   async handleAutoWelcomeEnabledAsync(): Promise<number> {

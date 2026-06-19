@@ -236,6 +236,7 @@ export default function DashboardMap({
   const cutoffTime = Date.now() / 1000 - effectiveMaxAge * 60 * 60;
   const nodesWithPosition = nodes
     .filter((n) => !n.isIgnored)
+    .filter((n) => !n.hideFromMap) // #3549: per-node "Hide from Map" suppresses the marker only
     .filter((n) => n.isFavorite || (n.lastHeard != null && n.lastHeard >= cutoffTime))
     .filter((n) => nodePassesTransportFilter(n, { showRfNodes, showUdpNodes, showMqttNodes }))
     .map((n) => ({ node: n, pos: getNodeLatLng(n) }))

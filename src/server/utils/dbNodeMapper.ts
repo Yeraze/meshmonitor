@@ -106,6 +106,9 @@ export function mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number): Device
   if (node.positionOverrideIsPrivate !== null && node.positionOverrideIsPrivate !== undefined) {
     deviceInfo.positionOverrideIsPrivate = Boolean(node.positionOverrideIsPrivate);
   }
+  if (node.hideFromMap !== null && node.hideFromMap !== undefined) {
+    deviceInfo.hideFromMap = Boolean(node.hideFromMap);
+  }
   if (node.hasRemoteAdmin !== null && node.hasRemoteAdmin !== undefined) {
     deviceInfo.hasRemoteAdmin = Boolean(node.hasRemoteAdmin);
     logger.debug(`🔍 Node ${node.nodeNum} hasRemoteAdmin: ${node.hasRemoteAdmin}`);

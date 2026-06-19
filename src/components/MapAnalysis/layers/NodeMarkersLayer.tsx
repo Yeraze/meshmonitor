@@ -19,6 +19,7 @@ interface NodeRecord extends MaybePositionedNode {
   nodeId?: string | null;
   longName?: string | null;
   shortName?: string | null;
+  hideFromMap?: boolean | null;
   user?: { role?: string | number | null } | null;
 }
 
@@ -95,6 +96,8 @@ export default function NodeMarkersLayer() {
     .map((n) => ({ node: n, latLng: resolveNodeLatLng(n) }))
     .filter(({ node, latLng }) => {
       if (!latLng) return false;
+      // #3549: per-node "Hide from Map" suppresses the marker on every map surface.
+      if (node.hideFromMap) return false;
       // Node search (issue #3399): hide non-matches.
       if (!nodeMatchesSearch(node, nodeFilter)) return false;
       if (config.sources.length === 0) return true;

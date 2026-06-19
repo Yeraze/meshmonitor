@@ -406,6 +406,8 @@ export class NodesRepository extends BaseRepository {
           longitudeOverride: nodeData.longitudeOverride ?? existingNode.longitudeOverride,
           altitudeOverride: nodeData.altitudeOverride ?? existingNode.altitudeOverride,
           positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? existingNode.positionOverrideIsPrivate,
+          // #3549: preserve the user's "Hide from Map" toggle across packet-driven updates
+          hideFromMap: nodeData.hideFromMap ?? existingNode.hideFromMap,
           updatedAt: now,
         })
         .where(and(eq(nodes.nodeNum, nodeData.nodeNum), eq(nodes.sourceId, effectiveSourceId)));
@@ -453,6 +455,7 @@ export class NodesRepository extends BaseRepository {
         longitudeOverride: nodeData.longitudeOverride ?? null,
         altitudeOverride: nodeData.altitudeOverride ?? null,
         positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? false,
+        hideFromMap: nodeData.hideFromMap ?? false,
         createdAt: now,
         updatedAt: now,
       } as any;
@@ -510,6 +513,7 @@ export class NodesRepository extends BaseRepository {
         longitudeOverride: nodeData.longitudeOverride ?? null,
         altitudeOverride: nodeData.altitudeOverride ?? null,
         positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? false,
+        hideFromMap: nodeData.hideFromMap ?? false,
         updatedAt: now,
       };
 

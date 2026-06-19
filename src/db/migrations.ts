@@ -106,6 +106,7 @@ import { migration as sourcePkiKeysMigration, runMigration088Postgres as runSour
 import { migration as positionSnrHopsMigration, runMigration089Postgres as runPositionSnrHopsPostgres, runMigration089Mysql as runPositionSnrHopsMysql } from '../server/migrations/089_add_position_snr_hops.js';
 import { migration as positionPointsOnlyMigration, runMigration090Postgres as runPositionPointsOnlyPostgres, runMigration090Mysql as runPositionPointsOnlyMysql } from '../server/migrations/090_add_position_points_only_to_map_prefs.js';
 import { migration as estimatedPositionsDoublePrecisionMigration, runMigration091Postgres as runEstimatedPositionsDoublePrecisionPostgres, runMigration091Mysql as runEstimatedPositionsDoublePrecisionMysql } from '../server/migrations/091_estimated_positions_double_precision.js';
+import { migration as hideFromMapMigration, runMigration092Postgres as runHideFromMapPostgres, runMigration092Mysql as runHideFromMapMysql } from '../server/migrations/092_add_hide_from_map_to_nodes.js';
 
 // ============================================================================
 // Registry
@@ -1454,4 +1455,18 @@ registry.register({
   sqlite: (db) => estimatedPositionsDoublePrecisionMigration.up(db),
   postgres: (client) => runEstimatedPositionsDoublePrecisionPostgres(client),
   mysql: (pool) => runEstimatedPositionsDoublePrecisionMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 092: nodes.hideFromMap — per-node "Hide from Map" toggle (#3549).
+// Suppresses the node's map marker only; the node stays visible everywhere else.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 92,
+  name: 'add_hide_from_map_to_nodes',
+  settingsKey: 'migration_092_add_hide_from_map_to_nodes',
+  sqlite: (db) => hideFromMapMigration.up(db),
+  postgres: (client) => runHideFromMapPostgres(client),
+  mysql: (pool) => runHideFromMapMysql(pool),
 });
