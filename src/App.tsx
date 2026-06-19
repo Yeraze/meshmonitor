@@ -87,7 +87,7 @@ import { useTraceroutePaths } from './hooks/useTraceroutePaths';
 import { useNotificationNavigationHandler } from './hooks/useNotificationNavigationHandler';
 import LoginModal from './components/LoginModal';
 import LoginPage from './components/LoginPage';
-import { SaveBarProvider } from './contexts/SaveBarContext';
+import { SaveBarProvider, SaveBarGroup } from './contexts/SaveBarContext';
 import { SaveBar } from './components/SaveBar';
 import ErrorBoundary from './components/common/ErrorBoundary';
 
@@ -4918,6 +4918,7 @@ function App() {
         )}
         {activeTab === 'settings' && (
           <ErrorBoundary fallbackTitle="Settings failed to load">
+          <SaveBarGroup id="settings">
           <SettingsTab
             mode="source"
             maxNodeAgeHours={maxNodeAgeHours}
@@ -4969,10 +4970,12 @@ function App() {
             onSolarMonitoringAzimuthChange={setSolarMonitoringAzimuth}
             onSolarMonitoringDeclinationChange={setSolarMonitoringDeclination}
           />
+          </SaveBarGroup>
           </ErrorBoundary>
         )}
         {activeTab === 'automation' && (
           <ErrorBoundary fallbackTitle="Automation failed to load">
+          <SaveBarGroup id="automation">
           <div className="settings-tab">
             <SectionNav
               items={[
@@ -5192,6 +5195,7 @@ function App() {
               </div>
             </div>
           </div>
+          </SaveBarGroup>
           </ErrorBoundary>
         )}
         {activeTab === 'configuration' && (

@@ -7,6 +7,13 @@ export interface SaveBarSection {
   isSaving: boolean;
   onSave: () => Promise<void>;
   onDismiss: () => void;
+  /**
+   * Optional grouping key. Sections sharing a group are saved/dismissed together
+   * by a single SaveBar action ("Save All"). Sections without a group are saved
+   * individually (the default — e.g. Device Configuration, where each section is a
+   * separate device admin write).
+   */
+  group?: string;
 }
 
 interface SaveBarContextType {
@@ -73,3 +80,21 @@ export const useSaveBarContext = (): SaveBarContextType => {
   }
   return context;
 };
+
+/**
+ * Context carrying the active SaveBar group id for a region of the tree.
+ * Sections rendered inside a <SaveBarGroup> inherit its id (unless they pass an
+ * explicit `group` to useSaveBar). `null` means "no group" (per-section save).
+ */
+const SaveBarGroupContext = createContext<string | null>(null);
+
+/**
+ * Wraps a region whose SaveBar sections should be saved together with a single
+ * "Save All" action. Used for Settings/Automation areas; Device Configuration is
+ * intentionally left ungrouped so each section saves on its own.
+ */
+export const SaveBarGroup: React.FC<{ id: string; children: ReactNode }> = ({ id, children }) => (
+  <SaveBarGroupContext.Provider value={id}>{children}</SaveBarGroupContext.Provider>
+);
+
+export const useSaveBarGroup = (): string | null => useContext(SaveBarGroupContext);

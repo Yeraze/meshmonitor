@@ -29,7 +29,7 @@ import { MeshCoreRoomsView } from './MeshCoreRoomsView';
 import { MeshCoreAutomationsView } from './MeshCoreAutomationsView';
 import NotificationsTab from '../NotificationsTab';
 import { useAuth } from '../../contexts/AuthContext';
-import { SaveBarProvider } from '../../contexts/SaveBarContext';
+import { SaveBarProvider, SaveBarGroup } from '../../contexts/SaveBarContext';
 import { SaveBar } from '../SaveBar';
 import './MeshCoreTab.css';
 import './MeshCorePage.css';
@@ -169,10 +169,12 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
           )}
           {view === 'automations' && (
             <SaveBarProvider>
-              <MeshCoreAutomationsView
-                baseUrl={baseUrl}
-                sourceId={sourceId}
-              />
+              <SaveBarGroup id="meshcore-automation">
+                <MeshCoreAutomationsView
+                  baseUrl={baseUrl}
+                  sourceId={sourceId}
+                />
+              </SaveBarGroup>
               <SaveBar />
             </SaveBarProvider>
           )}
