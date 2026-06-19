@@ -322,21 +322,21 @@ export default function UnifiedPacketMonitorPage() {
               </colgroup>
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>{t('unified.packets.column_source', 'Source')}</th>
-                  <th>{t('packet_monitor.column.dir')}</th>
-                  <th>{t('packet_monitor.column.via')}</th>
-                  <th>{t('packet_monitor.column.date')}</th>
-                  <th>{t('packet_monitor.column.time')}</th>
-                  <th>{t('packet_monitor.column.from')}</th>
-                  <th>{t('packet_monitor.column.to')}</th>
-                  <th>{t('packet_monitor.column.type')}</th>
-                  <th>{t('packet_monitor.column.slot')}</th>
-                  <th>{t('packet_monitor.column.snr')}</th>
-                  <th>{t('packet_monitor.column.rssi')}</th>
-                  <th>{t('packet_monitor.column.hops')}</th>
-                  <th>{t('packet_monitor.column.size')}</th>
-                  <th>{t('packet_monitor.column.content')}</th>
+                  <th style={{ width: '50px' }}>#</th>
+                  <th style={{ width: '120px' }}>{t('unified.packets.column_source', 'Source')}</th>
+                  <th style={{ width: '35px' }}>{t('packet_monitor.column.dir')}</th>
+                  <th style={{ width: '45px' }}>{t('packet_monitor.column.via')}</th>
+                  <th style={{ width: '55px' }}>{t('packet_monitor.column.date')}</th>
+                  <th style={{ width: '110px' }}>{t('packet_monitor.column.time')}</th>
+                  <th style={{ width: '140px' }}>{t('packet_monitor.column.from')}</th>
+                  <th style={{ width: '140px' }}>{t('packet_monitor.column.to')}</th>
+                  <th style={{ width: '120px' }}>{t('packet_monitor.column.type')}</th>
+                  <th style={{ width: '70px' }}>{t('packet_monitor.column.slot')}</th>
+                  <th style={{ width: '60px' }}>{t('packet_monitor.column.snr')}</th>
+                  <th style={{ width: '60px' }}>{t('packet_monitor.column.rssi')}</th>
+                  <th style={{ width: '60px' }}>{t('packet_monitor.column.hops')}</th>
+                  <th style={{ width: '60px' }}>{t('packet_monitor.column.size')}</th>
+                  <th style={{ minWidth: '200px' }}>{t('packet_monitor.column.content')}</th>
                 </tr>
               </thead>
             </table>
@@ -387,8 +387,8 @@ export default function UnifiedPacketMonitorPage() {
                         className={selectedPacket?.id === packet.id && selectedPacket?.sourceId === packet.sourceId ? 'selected' : ''}
                         style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)`, display: 'table', tableLayout: 'fixed' }}
                       >
-                        <td className="packet-number" style={{ textAlign: 'right' }}>{virtualRow.index + 1}</td>
-                        <td className="unified-packets-source-cell" title={packet.sourceName}>
+                        <td className="packet-number" style={{ width: '50px', textAlign: 'right' }}>{virtualRow.index + 1}</td>
+                        <td className="unified-packets-source-cell" style={{ width: '120px' }} title={packet.sourceName}>
                           <span
                             className="unified-packets-source-badge"
                             style={{ background: `color-mix(in srgb, ${srcColor} 18%, transparent)`, color: srcColor, border: `1px solid color-mix(in srgb, ${srcColor} 38%, transparent)` }}
@@ -396,33 +396,33 @@ export default function UnifiedPacketMonitorPage() {
                             {packet.sourceName}
                           </span>
                         </td>
-                        <td className={`direction ${packet.direction === 'tx' ? 'direction-tx' : 'direction-rx'}`} title={packet.direction === 'tx' ? t('packet_monitor.direction_tx') : t('packet_monitor.direction_rx')}>
+                        <td className={`direction ${packet.direction === 'tx' ? 'direction-tx' : 'direction-rx'}`} style={{ width: '35px' }} title={packet.direction === 'tx' ? t('packet_monitor.direction_tx') : t('packet_monitor.direction_rx')}>
                           {packet.direction === 'tx' ? 'TX' : 'RX'}
                         </td>
-                        <td className={`transport-mechanism transport-${packet.transport_mechanism ?? 'unknown'}`} title={getTransportMechanismName(packet.transport_mechanism).full}>
+                        <td className={`transport-mechanism transport-${packet.transport_mechanism ?? 'unknown'}`} style={{ width: '45px' }} title={getTransportMechanismName(packet.transport_mechanism).full}>
                           {getTransportMechanismName(packet.transport_mechanism).short}
                         </td>
-                        <td className="date">{formatPacketDateColumn(packet.timestamp, dateFormat, t('packet_monitor.today', 'Today'))}</td>
-                        <td className="timestamp">{formatPacketTimestamp(packet.timestamp, timeFormat)}</td>
-                        <td className="from-node" title={packet.from_node_longName || packet.from_node_id || ''}>
+                        <td className="date" style={{ width: '55px' }}>{formatPacketDateColumn(packet.timestamp, dateFormat, t('packet_monitor.today', 'Today'))}</td>
+                        <td className="timestamp" style={{ width: '110px' }}>{formatPacketTimestamp(packet.timestamp, timeFormat)}</td>
+                        <td className="from-node" style={{ width: '140px' }} title={packet.from_node_longName || packet.from_node_id || ''}>
                           {packet.from_node_longName || packet.from_node_id || packet.from_node || t('common.na')}
                         </td>
-                        <td className="to-node" title={packet.to_node_longName || packet.to_node_id || ''}>
+                        <td className="to-node" style={{ width: '140px' }} title={packet.to_node_longName || packet.to_node_id || ''}>
                           {packet.to_node_id === '!ffffffff'
                             ? t('packet_monitor.broadcast')
                             : packet.to_node_longName || packet.to_node_id || packet.to_node || t('common.na')}
                         </td>
-                        <td className="portnum" style={{ color: getPortnumColor(packet.portnum) }} title={packet.portnum_name || ''}>
+                        <td className="portnum" style={{ width: '120px', color: getPortnumColor(packet.portnum) }} title={packet.portnum_name || ''}>
                           {packet.portnum_name || packet.portnum}
                         </td>
-                        <td className="channel">
+                        <td className="channel" style={{ width: '70px' }}>
                           {packet.encrypted && packet.channel !== undefined && packet.channel > 7 ? `?? (${packet.channel})` : (packet.channel ?? t('common.na'))}
                         </td>
-                        <td className="snr">{packet.snr !== null && packet.snr !== undefined ? packet.snr.toFixed(1) : t('common.na')}</td>
-                        <td className="rssi">{packet.rssi !== null && packet.rssi !== undefined ? packet.rssi.toFixed(0) : t('common.na')}</td>
-                        <td className="hops">{hops !== null ? `${hops}/${packet.hop_start}` : t('common.na')}</td>
-                        <td className="size">{packet.payload_size ?? t('common.na')}</td>
-                        <td className="content">
+                        <td className="snr" style={{ width: '60px' }}>{packet.snr !== null && packet.snr !== undefined ? packet.snr.toFixed(1) : t('common.na')}</td>
+                        <td className="rssi" style={{ width: '60px' }}>{packet.rssi !== null && packet.rssi !== undefined ? packet.rssi.toFixed(0) : t('common.na')}</td>
+                        <td className="hops" style={{ width: '60px' }}>{hops !== null ? `${hops}/${packet.hop_start}` : t('common.na')}</td>
+                        <td className="size" style={{ width: '60px' }}>{packet.payload_size ?? t('common.na')}</td>
+                        <td className="content" style={{ minWidth: '200px' }}>
                           {packet.encrypted ? (
                             <span className="encrypted-indicator">🔒 {t('packet_monitor.encrypted')}</span>
                           ) : (
