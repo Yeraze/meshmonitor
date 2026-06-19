@@ -147,13 +147,12 @@ describe('Neighbor Info API with Position Overrides', () => {
             };
           })
           .filter(ni => {
-            // Mirror server.ts filter — reporter must be fresh, but neighbor can
-            // fall back to NeighborInfo report freshness when lastHeard is null (#3025)
-            if (!ni.node?.lastHeard || ni.node.lastHeard < cutoffTime) return false;
-            if (ni.neighbor?.lastHeard && ni.neighbor.lastHeard >= cutoffTime) return true;
+            // Mirror the route filter — report-time freshness: keep a neighbor
+            // edge only when its NeighborInfo report is within the window
+            // (matches the Map Analysis "Neighbors" view). lastHeard is no longer
+            // consulted, which also preserves indirect-neighbor links (#3025/#2615).
             const reportSec = Math.floor(((ni as any).timestamp ?? 0) / 1000);
-            const rxSec = (ni as any).lastRxTime ?? 0;
-            return Math.max(reportSec, rxSec) >= cutoffTime;
+            return reportSec >= cutoffTime;
           })
           .map(({ node, neighbor, ...rest }) => rest);
 

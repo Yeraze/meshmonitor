@@ -182,16 +182,18 @@ describe('GET /:id/neighbor-info', () => {
     expect(res.body[0].bidirectional).toBe(false);
   });
 
-  it('filters out records where the reporter lastHeard is older than maxNodeAge', async () => {
-    const staleTime = nowSec() - 30 * 60 * 60; // 30 hours ago — beyond default 24h
-    const ni = makeNeighborRecord({ nodeNum: 111, neighborNodeNum: 222 });
+  it('filters out records whose NeighborInfo report is older than maxNodeAge', async () => {
+    // Report-time semantics: a stale report drops out, which is what aligns the
+    // live map with the Map Analysis "Neighbors" view (both filter on the record
+    // timestamp, not on whether the endpoint nodes are still otherwise active).
+    const staleMs = Date.now() - 30 * 60 * 60 * 1000; // 30 hours ago — beyond default 24h
+    const ni = makeNeighborRecord({ nodeNum: 111, neighborNodeNum: 222, timestamp: staleMs });
 
     mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni]);
-    // reporter (111) is stale — we haven't heard from them recently, so we can't
-    // trust the link even if the NeighborInfo row in the DB is otherwise recent.
+    // Both endpoint nodes are still fresh — only the report itself is stale.
     mockDb.nodes.getNodesByNums.mockImplementation(async (nums: number[]) =>
-      new Map(nums.map(n => [n, n === 111 ? makeNode(n, { lastHeard: staleTime }) : makeNode(n)]))
+      new Map(nums.map(n => [n, makeNode(n)]))
     );
 
     const res = await request(createApp()).get('/src-abc/neighbor-info');
@@ -200,12 +202,35 @@ describe('GET /:id/neighbor-info', () => {
     expect(res.body).toEqual([]);
   });
 
-  it('filters out records where the reporter node has no lastHeard', async () => {
-    const ni = makeNeighborRecord({ nodeNum: 111, neighborNodeNum: 222 });
+  it('keeps a fresh report even when an endpoint node lastHeard is stale (aligns with Map Analysis)', async () => {
+    // Core of the neighbor-view alignment fix: freshness is determined by the
+    // report timestamp, not by whether the nodes are otherwise still active.
+    // Previously a fresh report was dropped whenever the reporter's node row had
+    // a stale/null lastHeard, surfacing far fewer links than the analysis view
+    // (and conversely keeping stale reports of active nodes — the user-reported
+    // mismatch).
+    const ni = makeNeighborRecord({ nodeNum: 111, neighborNodeNum: 222 }); // fresh report
+    const staleNodeTime = nowSec() - 72 * 60 * 60;
 
     mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni]);
-    // reporter (111) has null lastHeard — we never heard from them directly
+    mockDb.nodes.getNodesByNums.mockImplementation(async (nums: number[]) =>
+      new Map(nums.map(n => [n, makeNode(n, { lastHeard: staleNodeTime })]))
+    );
+
+    const res = await request(createApp()).get('/src-abc/neighbor-info');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+  });
+
+  it('keeps a fresh report even when the reporter node row has no lastHeard', async () => {
+    // We no longer gate on node.lastHeard, so the #3025 local-node lastHeard
+    // refresh is no longer load-bearing for this path.
+    const ni = makeNeighborRecord({ nodeNum: 111, neighborNodeNum: 222 }); // fresh report
+
+    mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
+    mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni]);
     mockDb.nodes.getNodesByNums.mockImplementation(async (nums: number[]) =>
       new Map(nums.map(n => [n, n === 111 ? makeNode(n, { lastHeard: null }) : makeNode(n)]))
     );
@@ -213,7 +238,7 @@ describe('GET /:id/neighbor-info', () => {
     const res = await request(createApp()).get('/src-abc/neighbor-info');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([]);
+    expect(res.body).toHaveLength(1);
   });
 
   it('keeps records where the neighbor has null lastHeard but the NeighborInfo report is fresh', async () => {
@@ -258,26 +283,28 @@ describe('GET /:id/neighbor-info', () => {
     expect(res.body).toEqual([]);
   });
 
-  it('keeps records when neighbor lastHeard is null but lastRxTime (seconds) is fresh', async () => {
-    // Stale NI report row timestamp but recent firmware-supplied lastRxTime
+  it('filters out a stale report even when firmware lastRxTime is fresh', async () => {
+    // We key freshness off our own receipt timestamp (reliable) rather than the
+    // firmware-supplied lastRxTime (subject to device clock skew), matching the
+    // Map Analysis "Neighbors" view which filters on `timestamp` alone.
     const staleMs = Date.now() - 48 * 60 * 60 * 1000;
     const ni = makeNeighborRecord({
       nodeNum: 111,
       neighborNodeNum: 222,
       timestamp: staleMs,
-      lastRxTime: nowSec(), // firmware time, seconds
+      lastRxTime: nowSec(), // firmware time, seconds — no longer rescues a stale report
     });
 
     mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni]);
     mockDb.nodes.getNodesByNums.mockImplementation(async (nums: number[]) =>
-      new Map(nums.map(n => [n, n === 222 ? makeNode(n, { lastHeard: null }) : makeNode(n)]))
+      new Map(nums.map(n => [n, makeNode(n)]))
     );
 
     const res = await request(createApp()).get('/src-abc/neighbor-info');
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
+    expect(res.body).toEqual([]);
   });
 
   it('uses positionOverride when positionOverrideEnabled is true', async () => {
@@ -302,16 +329,16 @@ describe('GET /:id/neighbor-info', () => {
   });
 
   it('uses custom maxNodeAge from settings', async () => {
-    // maxNodeAge = 1 hour; stale reporter is 2 hours old
-    const staleTime = nowSec() - 2 * 60 * 60;
-    const ni = makeNeighborRecord({ nodeNum: 111, neighborNodeNum: 222 });
+    // maxNodeAge = 1 hour; the NeighborInfo report is 2 hours old
+    const staleMs = Date.now() - 2 * 60 * 60 * 1000;
+    const ni = makeNeighborRecord({ nodeNum: 111, neighborNodeNum: 222, timestamp: staleMs });
 
     mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni]);
     mockDb.settings.getSetting.mockResolvedValue('1'); // 1-hour window
-    // Reporter (111) is stale relative to the custom 1-hour window
+    // Endpoint nodes are fresh — the report is stale relative to the 1-hour window.
     mockDb.nodes.getNodesByNums.mockImplementation(async (nums: number[]) =>
-      new Map(nums.map(n => [n, n === 111 ? makeNode(n, { lastHeard: staleTime }) : makeNode(n)]))
+      new Map(nums.map(n => [n, makeNode(n)]))
     );
 
     const res = await request(createApp()).get('/src-abc/neighbor-info');

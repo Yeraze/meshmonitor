@@ -1227,17 +1227,21 @@ router.get('/:id/neighbor-info', requirePermission('nodes', 'read', { sourceIdFr
       };
     })
       .filter(ni => {
-        // The reporter (`node`) is a node we've directly heard from — we require a fresh
-        // `lastHeard` on them. The neighbor side may be a node we've only learned about
-        // second-hand through this NeighborInfo report (see #2615 zombie-node guard,
-        // which intentionally NULLs `lastHeard` on placeholder rows). For those, fall
-        // back to the freshness of the NeighborInfo record itself so we don't drop
-        // every indirect-neighbor link (#3025).
-        if (!ni.node?.lastHeard || ni.node.lastHeard < cutoffTime) return false;
-        if (ni.neighbor?.lastHeard && ni.neighbor.lastHeard >= cutoffTime) return true;
+        // Report-time freshness: show a neighbor edge only when its NeighborInfo
+        // *report* falls within the window. This matches the Map Analysis
+        // "Neighbors" layer (GET /api/analysis/neighbors), which filters purely
+        // on the record `timestamp`. Previously this gated on the endpoint
+        // nodes' `lastHeard`, so a node's stale last-known neighbor list stayed
+        // on the map for as long as the node was otherwise active (e.g. still
+        // sending position/telemetry) — surfacing far more links than the
+        // analysis view and misrepresenting how recently each RF link was seen.
+        // Keying off the record timestamp also naturally keeps indirect-neighbor
+        // links whose neighbor row has a null `lastHeard` (#3025/#2615), since
+        // `lastHeard` is no longer consulted here. `timestamp` is set to the
+        // packet-receipt time (ms) when the report is stored, so a fresh report
+        // implies we heard the reporter within the window.
         const reportSec = Math.floor((ni.timestamp ?? 0) / 1000);
-        const rxSec = ni.lastRxTime ?? 0;
-        return Math.max(reportSec, rxSec) >= cutoffTime;
+        return reportSec >= cutoffTime;
       })
       .map(({ node, neighbor, ...rest }) => rest);
 
