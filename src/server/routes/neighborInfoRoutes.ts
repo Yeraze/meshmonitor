@@ -40,11 +40,14 @@ router.get('/', requirePermission('info', 'read'), async (req: Request, res: Res
         };
       })))
       .filter(ni => {
-        if (!ni.node?.lastHeard || ni.node.lastHeard < cutoffTime) return false;
-        if (ni.neighbor?.lastHeard && ni.neighbor.lastHeard >= cutoffTime) return true;
+        // Report-time freshness: show a neighbor edge only when its NeighborInfo
+        // *report* falls within the window, matching the Map Analysis
+        // "Neighbors" layer (which filters on the record `timestamp`). See the
+        // longer note on GET /api/sources/:id/neighbor-info in sourceRoutes.ts.
+        // Keying off the record timestamp keeps indirect-neighbor links whose
+        // neighbor row has a null `lastHeard` (#3025/#2615).
         const reportSec = Math.floor((ni.timestamp ?? 0) / 1000);
-        const rxSec = ni.lastRxTime ?? 0;
-        return Math.max(reportSec, rxSec) >= cutoffTime;
+        return reportSec >= cutoffTime;
       })
       .map(({ node, neighbor, ...rest }) => rest);
 
