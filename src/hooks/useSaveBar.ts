@@ -23,8 +23,15 @@ export const useSaveBar = (options: UseSaveBarOptions): void => {
   const { id, sectionName, hasChanges, isSaving, onSave, onDismiss } = options;
   const { registerSection, unregisterSection, updateSection, setActiveSection, activeSection } = useSaveBarContext();
   const inheritedGroup = useSaveBarGroup();
-  // Explicit option wins; otherwise inherit from the nearest <SaveBarGroup>.
-  const group = options.group !== undefined ? options.group ?? undefined : inheritedGroup ?? undefined;
+  // Resolve the group: an explicit option wins (including `null` to opt out of
+  // an inherited group); otherwise inherit from the nearest <SaveBarGroup>.
+  // Normalize `null` -> `undefined` so "no group" has a single representation.
+  let group: string | undefined;
+  if (options.group !== undefined) {
+    group = options.group ?? undefined; // explicit `null` => no group
+  } else {
+    group = inheritedGroup ?? undefined; // inherit, `null` => no group
+  }
 
   // Store callbacks in refs to avoid triggering effects on callback identity changes
   const onSaveRef = useRef(onSave);

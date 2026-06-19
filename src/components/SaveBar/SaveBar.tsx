@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBarContext, SaveBarSection } from '../../contexts/SaveBarContext';
 import './SaveBar.css';
@@ -6,6 +6,9 @@ import './SaveBar.css';
 export const SaveBar: React.FC = () => {
   const { t } = useTranslation();
   const { sections, activeSection, setActiveSection } = useSaveBarContext();
+  // True for the full duration of a batch save, so the buttons stay disabled
+  // between sequential section saves (no re-enable window for double-clicks).
+  const [isBatchSaving, setIsBatchSaving] = useState(false);
 
   // Get sections with changes
   const sectionsWithChanges: SaveBarSection[] = [];
@@ -40,18 +43,23 @@ export const SaveBar: React.FC = () => {
     ? sectionsWithChanges.filter(s => s.group === effectiveSection.group)
     : [effectiveSection];
   const isBatch = groupSections.length > 1;
-  const anySaving = groupSections.some(s => s.isSaving);
+  const anySaving = isBatchSaving || groupSections.some(s => s.isSaving);
 
   const handleSave = async () => {
     // Save sequentially so sections that hit the same endpoint don't race.
     // Each section's onSave handles its own errors/toasts, but guard anyway so
     // one failure doesn't abort the rest of the batch.
-    for (const section of groupSections) {
-      try {
-        await section.onSave();
-      } catch {
-        // section reports its own failure; continue with the remaining sections
+    setIsBatchSaving(true);
+    try {
+      for (const section of groupSections) {
+        try {
+          await section.onSave();
+        } catch {
+          // section reports its own failure; continue with the remaining sections
+        }
       }
+    } finally {
+      setIsBatchSaving(false);
     }
   };
 
