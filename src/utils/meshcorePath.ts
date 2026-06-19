@@ -29,7 +29,16 @@ export function joinPathHops(hops: PathHop[]): string {
   return hops.join(',');
 }
 
-/** The routing hop byte for a node = the first byte of its public key. */
+/**
+ * The routing hop byte for a node = the first byte of its public key.
+ *
+ * NOTE: assumes the **1-byte path hash width**, which is MeshCore's default and
+ * the only width this name-picker supports. The firmware can negotiate 2- or
+ * 3-byte hashes (`outPathLenRaw >> 6` on the wire); on such a network the mapped
+ * byte would be wrong. 1-byte is overwhelmingly the norm, so we scope to it here
+ * rather than plumb hash-width through the UI — revisit if multi-byte hashes
+ * become common.
+ */
 export function hopByteForKey(publicKey: string): PathHop {
   return publicKey.slice(0, 2).toLowerCase();
 }

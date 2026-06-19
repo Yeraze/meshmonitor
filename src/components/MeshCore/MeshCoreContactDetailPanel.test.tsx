@@ -21,6 +21,10 @@ vi.mock('../../contexts/SettingsContext', () => ({
   useSettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
 }));
 
+vi.mock('../../contexts/SourceContext', () => ({
+  useSource: () => ({ sourceId: 'test-source', sourceName: 'Test' }),
+}));
+
 const PK = 'a'.repeat(64);
 
 describe('MeshCoreContactDetailPanel', () => {
@@ -147,6 +151,47 @@ describe('MeshCoreContactDetailPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Save Path' }));
     await waitFor(() => expect(onSetOutPath).toHaveBeenCalledWith(PK, 'b1'));
+  });
+
+  it('reorders hops with the up button before saving', async () => {
+    const contact: MeshCoreContact = { publicKey: PK, advType: 1 };
+    const repeaters: MeshCoreContact[] = [
+      { publicKey: 'b1' + 'c'.repeat(62), advType: 2, advName: 'North Repeater' },
+      { publicKey: '7f' + 'd'.repeat(62), advType: 2, advName: 'East Repeater' },
+    ];
+    const onSetOutPath = vi.fn().mockResolvedValue(true);
+    render(
+      <MeshCoreContactDetailPanel contact={contact} publicKey={PK} onSetOutPath={onSetOutPath}
+        repeaters={repeaters} canWriteNodes isCompanion />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Define Path…' }));
+    const select = screen.getByRole('combobox', { name: 'Add repeater hop' });
+    fireEvent.change(select, { target: { value: 'b1' } });
+    fireEvent.change(select, { target: { value: '7f' } }); // hops: [b1, 7f]
+    // Move the second hop (East/7f) up → [7f, b1].
+    fireEvent.click(screen.getAllByRole('button', { name: 'Move hop up' })[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Save Path' }));
+    await waitFor(() => expect(onSetOutPath).toHaveBeenCalledWith(PK, '7f,b1'));
+  });
+
+  it('adds a custom hex byte and rejects an invalid one', async () => {
+    const contact: MeshCoreContact = { publicKey: PK, advType: 1 };
+    const onSetOutPath = vi.fn().mockResolvedValue(true);
+    render(
+      <MeshCoreContactDetailPanel contact={contact} publicKey={PK} onSetOutPath={onSetOutPath}
+        repeaters={[]} canWriteNodes isCompanion />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Define Path…' }));
+    const input = screen.getByPlaceholderText('or hex byte (a3)');
+    // Invalid byte → error, no hop added.
+    fireEvent.change(input, { target: { value: 'zz' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(screen.getByText(/single hex byte/i)).toBeTruthy();
+    // Valid byte → hop added and saved.
+    fireEvent.change(input, { target: { value: 'ab' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Path' }));
+    await waitFor(() => expect(onSetOutPath).toHaveBeenCalledWith(PK, 'ab'));
   });
 
   it('pre-populates the editor from the existing out_path, resolving names', () => {
