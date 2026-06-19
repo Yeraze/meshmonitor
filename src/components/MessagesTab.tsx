@@ -186,6 +186,7 @@ export interface MessagesTabProps {
   handleSendTapback: (emoji: string, message: MeshMessage) => void;
   getRecentTraceroute: (nodeId: string) => TracerouteData | null;
   toggleIgnored: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
+  toggleHideFromMap: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
   toggleFavorite: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
   toggleFavoriteLock: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
 
@@ -271,6 +272,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   handleSendTapback,
   getRecentTraceroute,
   toggleIgnored,
+  toggleHideFromMap,
   toggleFavorite,
   toggleFavoriteLock,
   setShowTracerouteHistoryModal,
@@ -1252,6 +1254,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             }}
                           >
                             📍 {t('messages.override_position')}
+                          </button>
+                        )}
+                        {hasPermission('nodes', 'write') && selectedNode && (
+                          <button
+                            className="actions-menu-item"
+                            onClick={(e) => {
+                              toggleHideFromMap(selectedNode, e);
+                              setShowActionsMenu(false);
+                            }}
+                          >
+                            {selectedNode.hideFromMap
+                              ? `🗺️ ${t('messages.unhide_from_map', 'Show on Map')}`
+                              : `🙈 ${t('messages.hide_from_map', 'Hide from Map')}`}
                           </button>
                         )}
 

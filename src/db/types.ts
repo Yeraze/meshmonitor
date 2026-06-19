@@ -81,6 +81,8 @@ export interface DbNode {
   longitudeOverride?: number | null;
   altitudeOverride?: number | null;
   positionOverrideIsPrivate?: boolean | null;
+  // Map visibility — #3549: suppress this node's marker on maps only
+  hideFromMap?: boolean | null;
   // Spam detection
   isExcessivePackets?: boolean | null;
   packetRatePerHour?: number | null;

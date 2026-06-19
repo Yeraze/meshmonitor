@@ -101,6 +101,7 @@ const favoritePendingKey = (sourceId: string | null | undefined, nodeNum: number
   `${sourceId ?? ''}:${nodeNum}`;
 const pendingFavoriteRequests = new Map<string, boolean>();
 const pendingIgnoredRequests = new Map<string, boolean>();
+const pendingHideFromMapRequests = new Map<string, boolean>();
 import TracerouteHistoryModal from './components/TracerouteHistoryModal';
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal';
 
@@ -2424,8 +2425,9 @@ const location = useLocation();
       if (data.nodes) {
         const pendingFavorite = pendingFavoriteRequests;
         const pendingIgnored = pendingIgnoredRequests;
+        const pendingHideFromMap = pendingHideFromMapRequests;
 
-        if (pendingFavorite.size === 0 && pendingIgnored.size === 0) {
+        if (pendingFavorite.size === 0 && pendingIgnored.size === 0 && pendingHideFromMap.size === 0) {
           setNodes(data.nodes as DeviceInfo[]);
         } else {
           setNodes(
@@ -2452,6 +2454,17 @@ const location = useLocation();
                   pendingIgnored.delete(ignKey);
                 } else {
                   updatedNode.isIgnored = pendingIgnoredState;
+                }
+              }
+
+              // Handle pending hide-from-map requests — same per-source scoping
+              const hfmKey = favoritePendingKey(sourceId, serverNode.nodeNum);
+              const pendingHideFromMapState = pendingHideFromMap.get(hfmKey);
+              if (pendingHideFromMapState !== undefined) {
+                if (Boolean(serverNode.hideFromMap) === pendingHideFromMapState) {
+                  pendingHideFromMap.delete(hfmKey);
+                } else {
+                  updatedNode.hideFromMap = pendingHideFromMapState;
                 }
               }
 
@@ -4355,6 +4368,70 @@ const location = useLocation();
     // when it detects the server has caught up
   };
 
+  // Toggle the per-node "Hide from Map" flag (issue #3549). Display-only: the
+  // node stays visible everywhere except map markers. Mirrors toggleIgnored's
+  // optimistic-update + per-source pending-request pattern, minus device sync.
+  const toggleHideFromMap = async (node: DeviceInfo, event: React.MouseEvent) => {
+    event.stopPropagation();
+
+    if (!node.user?.id) {
+      logger.error('Cannot toggle hideFromMap: node has no user ID');
+      return;
+    }
+
+    const hfmKey = favoritePendingKey(sourceId, node.nodeNum);
+    if (pendingHideFromMapRequests.has(hfmKey)) {
+      return;
+    }
+
+    const originalStatus = Boolean(node.hideFromMap);
+    const newStatus = !originalStatus;
+
+    try {
+      pendingHideFromMapRequests.set(hfmKey, newStatus);
+
+      flushSync(() => {
+        setNodes(prevNodes =>
+          prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, hideFromMap: newStatus } : n))
+        );
+      });
+
+      const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/hide-from-map`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          hideFromMap: newStatus,
+          sourceId,
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          showToast(t('toast.insufficient_permissions_hide_from_map', 'You do not have permission to change map visibility'), 'error');
+          setNodes(prevNodes =>
+            prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, hideFromMap: originalStatus } : n))
+          );
+          pendingHideFromMapRequests.delete(hfmKey);
+          return;
+        }
+        throw new Error('Failed to update hideFromMap status');
+      }
+
+      logger.debug(`🗺️ Node ${node.user.id} hideFromMap → ${newStatus}`);
+    } catch (error) {
+      logger.error('Error toggling hideFromMap:', error);
+      setNodes(prevNodes =>
+        prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, hideFromMap: originalStatus } : n))
+      );
+      pendingHideFromMapRequests.delete(hfmKey);
+      showToast(t('toast.failed_update_hide_from_map', 'Failed to update map visibility'), 'error');
+    }
+    // Note: On success, the polling logic will remove from pendingHideFromMapRequests
+    // when it detects the server has caught up
+  };
+
   // Function to handle sender icon clicks
   const handleSenderClick = useCallback((nodeId: string, event: React.MouseEvent) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -4881,6 +4958,7 @@ const location = useLocation();
             onFocusMessageHandled={() => setFocusMessageId(null)}
             mqttReadOnly={isMqttBridge}
             toggleIgnored={toggleIgnored}
+            toggleHideFromMap={toggleHideFromMap}
             toggleFavorite={toggleFavorite}
             toggleFavoriteLock={toggleFavoriteLock}
             handleShowOnMap={(nodeId: string) => {

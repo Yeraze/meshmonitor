@@ -1340,7 +1340,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   }, [displayedNodes, nodeHopsCalculation, traceroutes, currentNodeNum, currentNodeId, timeFormat, dateFormat]);
 
   // Calculate nodes with position - uses effective position (respects position overrides, Issue #1526)
-  const nodesWithPosition = processedNodes.filter(node => hasValidEffectivePosition(node));
+  // #3549: per-node "Hide from Map" suppresses the marker only; the node remains in the list above.
+  const nodesWithPosition = processedNodes.filter(node => !node.hideFromMap && hasValidEffectivePosition(node));
 
   // Memoize node positions to prevent React-Leaflet from resetting marker positions
   // Creating new [lat, lng] arrays causes React-Leaflet to move markers, destroying spiderfier state

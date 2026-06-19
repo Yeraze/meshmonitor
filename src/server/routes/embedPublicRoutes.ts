@@ -84,6 +84,9 @@ router.get('/:profileId/nodes', createEmbedCspMiddleware(), async (req: Request,
     const filtered = allNodes
       .map(node => ({ node, eff: getEffectiveDbNodePosition(node) }))
       .filter(({ node, eff }) => {
+        // #3549: per-node "Hide from Map" suppresses the marker on every map surface
+        if (node.hideFromMap) return false;
+
         // Must have a position (override or device-reported)
         if (eff.latitude == null || eff.longitude == null) return false;
         if (eff.latitude === 0 && eff.longitude === 0) return false;

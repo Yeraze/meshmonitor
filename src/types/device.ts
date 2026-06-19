@@ -41,6 +41,7 @@ export interface DeviceInfo {
   isFavorite?: boolean;
   favoriteLocked?: boolean;
   isIgnored?: boolean;
+  hideFromMap?: boolean; // #3549: suppress this node's marker on maps only
   keyIsLowEntropy?: boolean;
   duplicateKeyDetected?: boolean;
   keyMismatchDetected?: boolean;

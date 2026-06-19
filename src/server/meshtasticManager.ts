@@ -245,6 +245,7 @@ export interface DeviceInfo {
   altitudeOverride?: number;
   positionOverrideIsPrivate?: boolean;
   positionIsOverride?: boolean;
+  hideFromMap?: boolean;
   isStoreForwardServer?: boolean;
 }
 

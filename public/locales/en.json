@@ -873,6 +873,8 @@
   "toast.failed_update_favorite": "Failed to update favorite status. Please try again.",
   "toast.insufficient_permissions_ignored": "Insufficient permissions to update ignored status",
   "toast.failed_update_ignored": "Failed to update ignored status. Please try again.",
+  "toast.insufficient_permissions_hide_from_map": "Insufficient permissions to change map visibility",
+  "toast.failed_update_hide_from_map": "Failed to update map visibility. Please try again.",
 
   "roles.client": "Client",
   "roles.client_mute": "Client Mute",
@@ -3864,6 +3866,8 @@
 
   "messages.override_position": "Override Position",
   "messages.override_position_title": "Set a custom position for this node",
+  "messages.hide_from_map": "Hide from Map",
+  "messages.unhide_from_map": "Show on Map",
 
   "position_override.title": "Position Override: {{nodeName}}",
   "position_override.description": "Override this node's position on the map. When enabled, this custom position will be used instead of the GPS or estimated position for map display and distance calculations.",

@@ -77,6 +77,7 @@ const POSTGRES_CREATE = `
     "longitudeOverride" REAL,
     "altitudeOverride" REAL,
     "positionOverrideIsPrivate" BOOLEAN DEFAULT FALSE,
+    "hideFromMap" BOOLEAN DEFAULT FALSE,
     "hasRemoteAdmin" BOOLEAN DEFAULT FALSE,
     "lastRemoteAdminCheck" BIGINT,
     "remoteAdminMetadata" TEXT,
@@ -145,6 +146,7 @@ const MYSQL_CREATE = `
     longitudeOverride DOUBLE,
     altitudeOverride DOUBLE,
     positionOverrideIsPrivate BOOLEAN DEFAULT FALSE,
+    hideFromMap BOOLEAN DEFAULT FALSE,
     hasRemoteAdmin BOOLEAN DEFAULT FALSE,
     lastRemoteAdminCheck BIGINT,
     remoteAdminMetadata TEXT,
@@ -639,6 +641,52 @@ function runNodesTests(getBackend: () => TestBackend) {
     expect(Number(node!.latitudeOverride)).toBeCloseTo(12.34);
     expect(Number(node!.longitudeOverride)).toBeCloseTo(56.78);
     expect(Number(node!.altitudeOverride)).toBe(100);
+  });
+
+  // --- hideFromMap (#3549) ---
+
+  it('upsertNode - round-trips and preserves hideFromMap across packet updates (#3549)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // User toggles "Hide from Map" on
+    await repo.upsertNode({
+      ...makeNode(808),
+      hideFromMap: true,
+    } as any, 'default');
+
+    let node = await repo.getNode(808) as any;
+    expect(Boolean(node!.hideFromMap)).toBe(true);
+
+    // A later mesh packet updates position but carries no hideFromMap field —
+    // the user's toggle must survive the packet-driven upsert.
+    await repo.upsertNode({
+      ...makeNode(808),
+      latitude: 1.0,
+      longitude: 2.0,
+    }, 'default');
+
+    node = await repo.getNode(808) as any;
+    expect(Boolean(node!.hideFromMap)).toBe(true);
+  });
+
+  it('upsertNode - hideFromMap is per-source isolated (#3549)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertNode({ ...makeNode(809), hideFromMap: true } as any, 'source-a');
+    await repo.upsertNode({ ...makeNode(809), hideFromMap: false } as any, 'source-b');
+
+    const inA = await repo.getNode(809, 'source-a') as any;
+    const inB = await repo.getNode(809, 'source-b') as any;
+    expect(Boolean(inA!.hideFromMap)).toBe(true);
+    expect(Boolean(inB!.hideFromMap)).toBe(false);
   });
 
   // --- setNodeIgnored ---
