@@ -29,6 +29,7 @@ import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
 import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
 import { resolveLastHopName } from './utils/lastHop.js';
+import { resolveLastHeardSec } from './utils/replayGuard.js';
 import { scriptDependencyEnv } from './utils/scriptRunner.js';
 import { canonicalMessageTime } from './utils/messageTime.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
@@ -5375,8 +5376,15 @@ class MeshtasticManager implements ISourceManager {
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
-        // Use server time for lastHeard — rxTime from the device clock is unreliable
-        lastHeard: Date.now() / 1000,
+        // Use server time for lastHeard — rxTime from the device clock is unreliable.
+        // Replay guard: a packet whose rxTime is far in the past is a replayed/
+        // retained frame (e.g. an MQTT bridge re-injecting an offline node's old
+        // telemetry). Omit lastHeard for those so upsertNode preserves the node's
+        // existing value instead of resurrecting a dead node. See replayGuard.ts.
+        lastHeard: resolveLastHeardSec(
+          meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
+          Date.now(),
+        ),
         // Update channel from every firmware-decoded packet so outbound messages (DMs,
         // traceroutes, position requests) use the channel the node is actually communicating
         // on. Previously only set from NodeInfo, which could get stuck on a secondary channel.
@@ -6202,8 +6210,13 @@ class MeshtasticManager implements ISourceManager {
         hwModel: user.hwModel,
         role: user.role,
         hopsAway: meshPacket.hopsAway,
-        // Use server time for lastHeard — rxTime from the device clock is unreliable
-        lastHeard: Date.now() / 1000,
+        // Use server time for lastHeard — rxTime from the device clock is unreliable.
+        // Replay guard (see replayGuard.ts): omit lastHeard for replayed/retained
+        // frames so a stale NodeInfo can't resurrect an offline node.
+        lastHeard: resolveLastHeardSec(
+          meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
+          Date.now(),
+        ),
       };
 
       // Capture public key if present

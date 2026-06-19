@@ -833,3 +833,61 @@ describe('ingestServiceEnvelope — lastHeard refresh must not clobber NodeInfo'
     expect(node.hwModel).toBe(1);
   });
 });
+
+describe('ingestServiceEnvelope — replay guard for lastHeard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetMqttIngestCachesForTest();
+  });
+
+  // Build a TELEMETRY_APP envelope carrying an explicit gateway rxTime (unix s).
+  const telemetryEnv = (rxTime?: number): ServiceEnvelopeShape => ({
+    channelId: 'LongFast',
+    gatewayId: '!00000001',
+    packet: {
+      id: 0x12345678,
+      from: NODE_IN,
+      to: 0xffffffff,
+      channel: 0,
+      decoded: { portnum: 67 /* TELEMETRY_APP */, payload: new Uint8Array([0]) },
+      ...(rxTime !== undefined ? { rxTime } : {}),
+    },
+  });
+
+  const telemetryUpsert = () =>
+    (databaseService.upsertNode as any).mock.calls
+      .map((c: any[]) => c[0])
+      .find((n: any) => n.nodeNum === NODE_IN);
+
+  it('omits lastHeard for a replayed telemetry packet (rxTime weeks in the past)', async () => {
+    // The reported bug: an offline node kept looking "recently heard" because an
+    // MQTT bridge replayed its frozen telemetry. A stale rxTime must NOT refresh
+    // lastHeard — omit it so the upsert merge preserves the node's existing value.
+    const staleRxTime = Math.floor(Date.now() / 1000) - 20 * 24 * 60 * 60; // ~20 days old
+    const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: telemetryEnv(staleRxTime) });
+    expect(result.ingested).toBe(true);
+    const node = telemetryUpsert();
+    expect(node).toBeDefined();
+    expect(node.lastHeard).toBeUndefined();
+  });
+
+  it('refreshes lastHeard for a live telemetry packet (recent rxTime)', async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: telemetryEnv(nowSec) });
+    expect(result.ingested).toBe(true);
+    const node = telemetryUpsert();
+    expect(node).toBeDefined();
+    expect(typeof node.lastHeard).toBe('number');
+    expect(node.lastHeard).toBeGreaterThanOrEqual(nowSec - 5);
+  });
+
+  it('refreshes lastHeard when the gateway omits rxTime (no signal => stamp now)', async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: telemetryEnv(undefined) });
+    expect(result.ingested).toBe(true);
+    const node = telemetryUpsert();
+    expect(node).toBeDefined();
+    expect(typeof node.lastHeard).toBe('number');
+    expect(node.lastHeard).toBeGreaterThanOrEqual(nowSec - 5);
+  });
+});
