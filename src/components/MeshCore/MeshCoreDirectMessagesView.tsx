@@ -85,25 +85,6 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   // default; flipping it on/off in the Settings tab takes effect on the
   // next mount. We don't subscribe to settings changes here — the panel
   // is mounted often enough that polling isn't worth the complexity.
-  const [advancedPathEditEnabled, setAdvancedPathEditEnabled] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    const base = (baseUrl ?? '').replace(/\/$/, '');
-    fetch(`${base}/api/settings`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (cancelled || !j) return;
-        const value = j?.data?.meshcoreAdvancedPathEdit ?? j?.meshcoreAdvancedPathEdit;
-        setAdvancedPathEditEnabled(value === 'true' || value === '1' || value === true);
-      })
-      .catch(() => {
-        /* leave default false on error */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [baseUrl]);
-
   // Contacts that have at least one DM thread (filtered on top).
   const contactsByKey = useMemo(() => {
     const map = new Map<string, MeshCoreContact>();
@@ -371,7 +352,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 onGetNeighbours={actions.getNeighbours}
                 canWriteNodes={canWriteNodes && connected}
                 isCompanion={isCompanion}
-                advancedPathEditEnabled={advancedPathEditEnabled}
+                repeaters={contacts}
                 canRemoteAdmin={canRemoteAdmin && connected}
                 remoteAdminActions={{
                   loginRemote: actions.loginRemote,

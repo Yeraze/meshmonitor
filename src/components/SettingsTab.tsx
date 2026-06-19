@@ -249,7 +249,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // the UI checkbox says "Hide" while the context uses "show" semantics
   const [localHideIncompleteNodes, setLocalHideIncompleteNodes] = useState(!showIncompleteNodes);
   const [localHomoglyphEnabled, setLocalHomoglyphEnabled] = useState(false);
-  const [localMeshcoreAdvancedPathEdit, setLocalMeshcoreAdvancedPathEdit] = useState(false);
   const [localLocalStatsIntervalMinutes, setLocalLocalStatsIntervalMinutes] = useState(15);
   const [initialLocalStatsIntervalMinutes, setInitialLocalStatsIntervalMinutes] = useState(15);
   const [isFetchingSolarEstimates, setIsFetchingSolarEstimates] = useState(false);
@@ -337,13 +336,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           // Load link preview setting (issue #3416). Absent key => enabled.
           const linkPreviewsOn = !(settings.linkPreviewsEnabled === '0' || settings.linkPreviewsEnabled === 'false');
           setLocalLinkPreviewsEnabled(linkPreviewsOn);
-
-          // Load MeshCore advanced path-edit toggle (gates the manual
-          // Edit Path… button on the per-contact detail panel and is
-          // server-side-checked by the matching PUT route).
-          const meshcorePathEditOn = settings.meshcoreAdvancedPathEdit === 'true';
-          setLocalMeshcoreAdvancedPathEdit(meshcorePathEditOn);
-          setInitialMeshcoreAdvancedPathEdit(meshcorePathEditOn);
 
           // Load LocalStats interval setting
           const statsInterval = parseInt(settings.localStatsIntervalMinutes || '15', 10);
@@ -440,7 +432,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // Instead, we'll track initial packet monitor values separately
   const [initialPacketMonitorSettings, setInitialPacketMonitorSettings] = useState({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
   const [initialHomoglyphEnabled, setInitialHomoglyphEnabled] = useState(false);
-  const [initialMeshcoreAdvancedPathEdit, setInitialMeshcoreAdvancedPathEdit] = useState(false);
   const [initialNodeDimmingSettings, setInitialNodeDimmingSettings] = useState({
     enabled: nodeDimmingEnabled,
     startHours: nodeDimmingStartHours,
@@ -486,7 +477,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localLinkPreviewsEnabled !== linkPreviewsEnabled ||
       localHideIncompleteNodes !== !showIncompleteNodes ||
       localHomoglyphEnabled !== initialHomoglyphEnabled ||
-      localMeshcoreAdvancedPathEdit !== initialMeshcoreAdvancedPathEdit ||
       localLocalStatsIntervalMinutes !== initialLocalStatsIntervalMinutes ||
       nodeDimmingEnabled !== initialNodeDimmingSettings.enabled ||
       nodeDimmingStartHours !== initialNodeDimmingSettings.startHours ||
@@ -502,7 +492,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       localLinkPreviewsEnabled, linkPreviewsEnabled,
       localHideIncompleteNodes, showIncompleteNodes, localHomoglyphEnabled, initialHomoglyphEnabled,
-      localMeshcoreAdvancedPathEdit, initialMeshcoreAdvancedPathEdit,
       localLocalStatsIntervalMinutes, initialLocalStatsIntervalMinutes,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, initialNodeDimmingSettings,
       localAnalyticsProvider, localAnalyticsConfig, initialAnalyticsProvider, initialAnalyticsConfig,
@@ -546,7 +535,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalLinkPreviewsEnabled(linkPreviewsEnabled);
     setLocalHideIncompleteNodes(!showIncompleteNodes);
     setLocalHomoglyphEnabled(initialHomoglyphEnabled);
-    setLocalMeshcoreAdvancedPathEdit(initialMeshcoreAdvancedPathEdit);
     setLocalLocalStatsIntervalMinutes(initialLocalStatsIntervalMinutes);
     setNodeDimmingEnabled(initialNodeDimmingSettings.enabled);
     setNodeDimmingStartHours(initialNodeDimmingSettings.startHours);
@@ -561,7 +549,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
       solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes,
       linkPreviewsEnabled,
-      initialHomoglyphEnabled, initialMeshcoreAdvancedPathEdit, initialLocalStatsIntervalMinutes, initialNodeDimmingSettings,
+      initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialNodeDimmingSettings,
       setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity,
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl]);
 
@@ -615,7 +603,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         linkPreviewsEnabled: localLinkPreviewsEnabled ? '1' : '0',
         hideIncompleteNodes: localHideIncompleteNodes ? '1' : '0',
         homoglyphEnabled: String(localHomoglyphEnabled),
-        meshcoreAdvancedPathEdit: String(localMeshcoreAdvancedPathEdit),
         localStatsIntervalMinutes: localLocalStatsIntervalMinutes.toString(),
         nodeHopsCalculation: localNodeHopsCalculation,
         nodeDimmingEnabled: nodeDimmingEnabled ? '1' : '0',
@@ -1721,25 +1708,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 {t('settings.homoglyph_enabled')}
               </span>
               <span className="setting-description">{t('settings.homoglyph_description')}</span>
-            </label>
-          </div>
-          <div className="setting-item">
-            <label>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={localMeshcoreAdvancedPathEdit}
-                  onChange={(e) => setLocalMeshcoreAdvancedPathEdit(e.target.checked)}
-                  style={{ cursor: 'pointer' }}
-                />
-                {t('settings.meshcore_advanced_path_edit', 'MeshCore: enable manual path editing (advanced)')}
-              </span>
-              <span className="setting-description">
-                {t(
-                  'settings.meshcore_advanced_path_edit_description',
-                  'Exposes an Edit Path… button on each MeshCore contact that lets you push arbitrary hop bytes into the device. Stale hops silently drop direct sends until the next flood, so leave this off unless you know exactly what you\'re doing.',
-                )}
-              </span>
             </label>
           </div>
         </div>}

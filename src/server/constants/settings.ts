@@ -185,12 +185,6 @@ export const VALID_SETTINGS_KEYS = [
   'remoteLocalStatsFilterLastHeardHours',
   'defaultLandingPage',
   'appriseApiServerUrl',
-  // Advanced/unsafe MeshCore actions. When true the per-contact detail
-  // panel exposes a manual "Edit Path…" button that lets the user push
-  // arbitrary hop hashes into the device's contact record. Stale hops
-  // silently drop direct sends, so this is gated behind an explicit
-  // toggle (off by default).
-  'meshcoreAdvancedPathEdit',
   // MeshCore auto-pathfinding
   'meshcoreAutoPathfindingEnabled',
   'meshcoreAutoPathfindingPathDiscoveryEnabled',
