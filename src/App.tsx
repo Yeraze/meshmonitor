@@ -4700,6 +4700,7 @@ const location = useLocation();
           fromNodeName={getNodeName(currentNodeId)}
           toNodeName={getNodeName(selectedDMNode)}
           nodes={nodes}
+          sourceId={sourceId}
           onClose={() => setShowTracerouteHistoryModal(false)}
         />
       )}

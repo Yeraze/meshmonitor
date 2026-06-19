@@ -109,7 +109,7 @@ describe('TracerouteHistoryModal - Node Direction Display', () => {
 
     // Wait for the component to load data
     await waitFor(() => {
-      expect(ApiService.getTracerouteHistory).toHaveBeenCalledWith(100, 200);
+      expect(ApiService.getTracerouteHistory).toHaveBeenCalledWith(100, 200, undefined);
     });
 
     // The header should show the correct direction
@@ -147,6 +147,29 @@ describe('TracerouteHistoryModal - Node Direction Display', () => {
     // The header text should NOT have Remote Node before Local Node
     const headerText = screen.getByText(/Local Node/).closest('div');
     expect(headerText?.textContent).not.toMatch(/traceroute_history\.from.*Remote Node.*→.*traceroute_history\.to.*Local Node/);
+  });
+
+  /**
+   * REGRESSION: history must be scoped to the active source so a single-source
+   * view (e.g. the radio/TCP source) does not mix in traceroutes recorded by
+   * other sources (MQTT broker/bridge sources record many flood-relayed copies).
+   */
+  it('passes the active sourceId through to the API so history is source-scoped', async () => {
+    render(
+      <TracerouteHistoryModal
+        fromNodeNum={100}
+        toNodeNum={200}
+        fromNodeName="Local Node"
+        toNodeName="Remote Node"
+        nodes={mockNodes}
+        sourceId="c9dde95e-radio"
+        onClose={mockOnClose}
+      />
+    );
+
+    await waitFor(() => {
+      expect(ApiService.getTracerouteHistory).toHaveBeenCalledWith(100, 200, 'c9dde95e-radio');
+    });
   });
 
   /**
@@ -254,9 +277,9 @@ describe('TracerouteHistoryModal - Node Direction Display', () => {
       />
     );
 
-    expect(ApiService.getTracerouteHistory).toHaveBeenCalledWith(100, 200);
+    expect(ApiService.getTracerouteHistory).toHaveBeenCalledWith(100, 200, undefined);
     // Ensure it's NOT called with reversed parameters
-    expect(ApiService.getTracerouteHistory).not.toHaveBeenCalledWith(200, 100);
+    expect(ApiService.getTracerouteHistory).not.toHaveBeenCalledWith(200, 100, undefined);
   });
 
   /**
