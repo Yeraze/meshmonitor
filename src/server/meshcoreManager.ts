@@ -652,6 +652,15 @@ class MeshCoreManager extends EventEmitter {
 
       // Get initial info
       await this.refreshLocalNode();
+      // Pre-seed the in-memory contact list from the DB BEFORE the live
+      // get_contacts. On a flaky/slow companion the live refresh can return
+      // empty or time out (and refreshContacts deliberately won't wipe on
+      // empty), which previously left getContacts() — the source for the DM
+      // contact list — nearly empty even though the node list (DB-backed) was
+      // full. Seeding first means the DM list mirrors the known contacts when
+      // the live sync degrades; a successful refresh then replaces it with the
+      // device-authoritative list.
+      await this.seedContactsFromDb();
       await this.refreshContacts();
       // Pull the device's channel list and mirror it into the DB. MeshCore has
       // no push event for channel changes, so re-sync is connect-time and
@@ -1829,6 +1838,44 @@ class MeshCoreManager extends EventEmitter {
     }
 
     return this.contacts;
+  }
+
+  /**
+   * Pre-seed `this.contacts` from the persisted node list (the same DB the
+   * node/map view reads) so the DM contact list isn't empty when the live
+   * `get_contacts` sync degrades. Existing in-memory entries (e.g. a live
+   * advert push that raced ahead) are left untouched. Companion-only — repeater
+   * sources don't maintain a companion contact list. Non-fatal on DB error.
+   */
+  private async seedContactsFromDb(): Promise<void> {
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) return;
+    try {
+      const dbNodes = await databaseService.meshcore.getNodesBySource(this.sourceId);
+      let seeded = 0;
+      for (const n of dbNodes) {
+        if (n.isLocalNode) continue;
+        if (this.contacts.has(n.publicKey)) continue;
+        this.contacts.set(n.publicKey, {
+          publicKey: n.publicKey,
+          advName: n.name ?? undefined,
+          name: n.name ?? undefined,
+          advType: (n.advType ?? undefined) as MeshCoreDeviceType | undefined,
+          rssi: n.rssi ?? undefined,
+          snr: n.snr ?? undefined,
+          latitude: n.latitude ?? undefined,
+          longitude: n.longitude ?? undefined,
+          lastSeen: n.lastHeard ?? undefined,
+          outPath: n.outPath ?? null,
+          pathLen: n.pathLen ?? null,
+        });
+        seeded++;
+      }
+      if (seeded > 0) {
+        logger.info(`[MeshCore:${this.sourceId}] Seeded ${seeded} contact(s) from DB`);
+      }
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] seedContactsFromDb failed: ${(err as Error).message}`);
+    }
   }
 
   /**
