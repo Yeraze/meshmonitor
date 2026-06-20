@@ -18,6 +18,7 @@ export type DataEventType =
   | 'channel:updated'
   | 'telemetry:batch'
   | 'connection:status'
+  | 'client-notification'
   | 'traceroute:complete'
   | 'routing:update'
   | 'auto-ping:update'
@@ -71,6 +72,14 @@ export interface AutoPingUpdateData {
 
 export interface TelemetryBatchData {
   [nodeNum: number]: DbTelemetry[];
+}
+
+export interface ClientNotificationData {
+  /** LogRecord.Level numeric value (WARNING=30, ERROR=40, …). */
+  level: number;
+  message: string;
+  replyId?: number;
+  time?: number;
 }
 
 class DataEventEmitter extends EventEmitter {
@@ -191,6 +200,22 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.info(`[DataEventEmitter] Connection status: ${status.connected ? 'connected' : 'disconnected'}`);
+  }
+
+  /**
+   * Emit a client notification event (a warning/info message from the connected
+   * node about its own operation). Forwarded to the UI as a toast. Per-source
+   * scoped so multi-source clients only see their joined node's notifications.
+   */
+  emitClientNotification(data: ClientNotificationData, sourceId?: string): void {
+    const event: DataEvent = {
+      type: 'client-notification',
+      data,
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.info(`[DataEventEmitter] Client notification (level ${data.level}): ${data.message}`);
   }
 
   /**

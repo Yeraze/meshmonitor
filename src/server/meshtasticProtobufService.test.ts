@@ -380,6 +380,73 @@ describe('MeshtasticProtobufService', () => {
     });
   });
 
+  // Regression guard for firmware 2.8 (issue #3548). The 2.8 NodeDB stores SNR
+  // as Q4 (dB×4, integer) in the ON-DISK deviceonly.proto NodeInfoLite, but the
+  // OVER-THE-AIR mesh.proto NodeInfo that MeshMonitor decodes keeps `float snr`.
+  // If a future protobufs bump ever leaked snr_q4 / integer quantization into the
+  // OTA path, this test would catch it. MeshMonitor must keep reading snr as a
+  // float in dB — do NOT add an snr_q4 conversion to the TCP decode path.
+  describe('OTA NodeInfo.snr stays a float (2.8 snr_q4 guard, #3548)', () => {
+    it('round-trips a fractional SNR that integer quantization would mangle', async () => {
+      if (!requireProtobufs()) return;
+      // -7.25 is not an integer and not a clean Q4 step → any accidental
+      // int/quantized handling would visibly change the decoded value.
+      const result = await service.createNodeInfo({
+        nodeNum: 0x0badf00d,
+        user: { id: '!0badf00d', longName: 'SNR Node', shortName: 'SNR', hwModel: 1 },
+        snr: -7.25,
+        lastHeard: 1702300100,
+      });
+      expect(result).not.toBeNull();
+
+      const parsed = service.parseIncomingData(result!);
+      expect(parsed?.type).toBe('nodeInfo');
+      expect(typeof parsed!.data.snr).toBe('number');
+      expect(parsed!.data.snr).toBeCloseTo(-7.25, 2);
+      expect(Number.isInteger(parsed!.data.snr)).toBe(false);
+      // The OTA NodeInfo must not carry the on-disk-only snr_q4 field.
+      expect(parsed!.data.snrQ4).toBeUndefined();
+    });
+  });
+
+  // ClientNotification dispatch (firmware warnings incl. 2.8 favorite/ignore cap
+  // refusals). Confirms the real protobuf field maps through parseIncomingData;
+  // the suppression/throttle/reconciliation policy is unit-tested separately in
+  // clientNotificationPolicy.test.ts.
+  describe('FromRadio.ClientNotification dispatch', () => {
+    function encodeClientNotification(fields: Record<string, unknown>): Uint8Array {
+      const root = getProtobufRoot()!;
+      const FromRadio = root.lookupType('meshtastic.FromRadio');
+      const msg = FromRadio.create({ clientNotification: fields });
+      return FromRadio.encode(msg).finish();
+    }
+
+    it('parses a plain warning into a clientNotification result', () => {
+      if (!requireProtobufs()) return;
+      const data = encodeClientNotification({
+        level: 30, // WARNING
+        message: "Can't favorite 0xdeadbeef: protected-node limit (118) reached",
+      });
+      const parsed = service.parseIncomingData(data);
+      expect(parsed?.type).toBe('clientNotification');
+      expect(parsed!.data.level).toBe(30);
+      expect(parsed!.data.message).toContain('protected-node limit');
+      expect(parsed!.data.isKeyVerification).toBe(false);
+    });
+
+    it('flags key-verification variants so the manager can skip toasting them', () => {
+      if (!requireProtobufs()) return;
+      const data = encodeClientNotification({
+        level: 30,
+        message: 'Enter Security Number for Key Verification',
+        keyVerificationNumberRequest: { nonce: 1, remoteLongname: 'Peer' },
+      });
+      const parsed = service.parseIncomingData(data);
+      expect(parsed?.type).toBe('clientNotification');
+      expect(parsed!.data.isKeyVerification).toBe(true);
+    });
+  });
+
   describe('decodeServiceEnvelope', () => {
     it('decodes a valid ServiceEnvelope with packet', () => {
       if (!protobufInitialized) return;

@@ -722,9 +722,11 @@ export class MeshtasticProtobufService {
         hasFileInfo: !!(fromRadio as any).fileInfo
       });
 
-      // Debug: dump all keys of fromRadio for unknown messages
+      // Debug: dump all keys of fromRadio for genuinely unknown messages. Exclude
+      // clientNotification (handled below) so it doesn't trigger the JSON.stringify.
       if (!fromRadio.packet && !fromRadio.myInfo && !fromRadio.nodeInfo && !fromRadio.config &&
-          !fromRadio.channel && !fromRadio.metadata && !fromRadio.moduleConfig && !fromRadio.configCompleteId) {
+          !fromRadio.channel && !fromRadio.metadata && !fromRadio.moduleConfig && !fromRadio.configCompleteId &&
+          !(fromRadio as any).clientNotification) {
         logger.debug('🔍 DEBUG: All FromRadio keys:', Object.keys(fromRadio));
         logger.debug('🔍 DEBUG: Full FromRadio object:', JSON.stringify(fromRadio, null, 2));
       }
@@ -789,6 +791,28 @@ export class MeshtasticProtobufService {
             data: m.data instanceof Uint8Array ? m.data : (m.data ? new Uint8Array(m.data) : new Uint8Array()),
             text: typeof m.text === 'string' ? m.text : undefined,
             retained: !!m.retained,
+          },
+        };
+      } else if ((fromRadio as any).clientNotification) {
+        // FromRadio.ClientNotification (field 16): a message from the connected
+        // node about its own operation (duty-cycle limits, config errors,
+        // duplicate-key warnings, and — on firmware 2.8 — favorite/ignore cap
+        // refusals). Surfaced to the UI by the manager. See clientNotificationPolicy.
+        const cn = (fromRadio as any).clientNotification;
+        return {
+          type: 'clientNotification',
+          data: {
+            level: typeof cn.level === 'number' ? cn.level : 0,
+            message: typeof cn.message === 'string' ? cn.message : '',
+            replyId: cn.replyId ?? undefined,
+            time: cn.time ?? undefined,
+            // Key-verification handshake variants (payload_variant 11–13) are an
+            // interactive flow we don't implement — flag so they aren't toasted.
+            isKeyVerification: !!(
+              cn.keyVerificationNumberInform ||
+              cn.keyVerificationNumberRequest ||
+              cn.keyVerificationFinal
+            ),
           },
         };
       } else {

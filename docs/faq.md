@@ -246,6 +246,17 @@ docker compose up -d
 
 ---
 
+### My node count or a blocked node looks different after upgrading to firmware 2.8
+
+Meshtastic firmware 2.8 reorganizes how a device stores its node database, but **none of this changes what MeshMonitor records.** MeshMonitor keeps its own persistent history of every node it has heard, independent of how many the device holds at any moment.
+
+Two things you might notice:
+
+- **Lower "nodes" count on the device, not in MeshMonitor.** On nRF52 hardware, 2.8 keeps full detail for ~120 recent nodes (down from 150); older ones become compact records on the device. The device's own app may show fewer nodes, but **MeshMonitor's counts are unaffected** — and can be higher than the device's, because MeshMonitor remembers nodes the device has compacted.
+- **A blocked node is blocked, not gone.** Under 2.8 a device protects blocked nodes from being dropped and may stop listing them in full node queries. MeshMonitor stores its block list per source and re-applies it automatically, so a blocked node stays blocked even if it disappears from the device's node list. To review or un-block, use **Settings → Ignored Nodes**.
+
+---
+
 ## 🔐 User Management
 
 ### How do I reset a user's password as an admin?
@@ -764,6 +775,16 @@ The **anonymous** user controls what unauthenticated visitors can see. Common se
 ---
 
 ## 🔔 Notifications
+
+### I see pop-up toasts with messages from my node (duty cycle, config errors, etc.)
+
+MeshMonitor surfaces **device notifications** — short warning/info messages that your connected Meshtastic node sends about its own operation — as pop-up toasts in the top-right corner. Examples include duplicate-key security warnings, invalid-config errors, duty-cycle limits, and (on firmware 2.8+) a notice when a favorite/ignore couldn't be saved because the node's protected-node list is full.
+
+These messages were always sent by the node; earlier MeshMonitor versions simply ignored them. To avoid noise, MeshMonitor drops the routine recurring ones (e.g. the power-saving "sleeping for N interval" message) and shows an identical message at most once per minute per source. The notifications come from the node MeshMonitor is connected to — there is no setting to forward arbitrary mesh traffic here.
+
+If a "Set Favorite"/"Ignore" toast says the protected-node limit was reached, the node refused the change and MeshMonitor reverts the star/ignore toggle to match. This refusal warning is only emitted for your locally-connected node, not for remote-admin targets.
+
+---
 
 ### Push notifications don't work in Brave browser
 
