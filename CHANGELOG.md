@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Features
 
+- **Auto-Acknowledge 2×2 matrix — message type × hop distance (discussion #3564)**: Auto-Acknowledge previously tangled two concepts — its "Direct" toggles actually meant *0 hops* (not direct messages), tapback/reply were keyed only on hop distance (shared across channel & DM), and a single global "Respond via DM" applied everywhere. It's now a clean **{Channel, Direct} × {0-hop, Multi-hop}** matrix: each of the four cells independently configures **Message** (reply), **Tapback** (emoji reaction), and **Respond via DM**. "Respond via DM" applies to the reply only (tapback-via-DM is unreliable) and is disabled until Message is enabled; for Direct cells, replies are inherently DMs. Existing configurations are migrated automatically (migration 093) so behavior is preserved on upgrade. MeshCore auto-ack is unchanged.
+
 - **MeshCore node-type icons & filter on the source map (#3546, #3576)**: The per-source MeshCore map now renders role-based marker glyphs by advert type — Repeater (tower), Room Server (server rack), Sensor (broadcast), Companion (person) — instead of the generic "MC" badge (kept as the fallback for standard/unknown nodes). The Map Features panel gains a **Node Types** filter (per-category checkboxes, persisted) to show/hide markers by role, and the legend gains a matching **Node Types** section when shown. This brings the MeshCore source map to parity with the Map Analysis workspace. The shared map legend opts into the new section via a `showNodeTypes` prop, so the Meshtastic maps are unchanged.
 
 ## [4.11.0] - 2026-06-19
