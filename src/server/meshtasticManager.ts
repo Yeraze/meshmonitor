@@ -37,6 +37,7 @@ import { compileUserRegex } from '../utils/safeRegex.js';
 import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
 import { resolveLastHopName } from './utils/lastHop.js';
 import { resolveLastHeardSec } from './utils/replayGuard.js';
+import { autoAckIsZeroHop, autoAckCellKey, resolveAutoAckReplyRouting } from './utils/autoAckDecision.js';
 import { scriptDependencyEnv } from './utils/scriptRunner.js';
 import { canonicalMessageTime } from './utils/messageTime.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
@@ -9083,14 +9084,12 @@ class MeshtasticManager implements ISourceManager {
 
       // Check channel-specific settings
       const autoAckChannels = await settings.getSettingForSource(sourceId, 'autoAckChannels');
-      const autoAckDirectMessages = await settings.getSettingForSource(sourceId, 'autoAckDirectMessages');
       const autoAckIgnoredNodes = await settings.getSettingForSource(sourceId, 'autoAckIgnoredNodes');
 
       // Parse enabled channels (comma-separated list of channel indices)
       const enabledChannels = autoAckChannels
         ? autoAckChannels.split(',').map(c => parseInt(c.trim())).filter(n => !isNaN(n))
         : [];
-      const dmEnabled = autoAckDirectMessages === 'true';
 
       // Parse optional node ignore list. Supports canonical !xxxxxxxx entries.
       const ignoredNodeNums = new Set<number>();
@@ -9108,14 +9107,11 @@ class MeshtasticManager implements ISourceManager {
         }
       }
 
-      // Check if auto-ack is enabled for this channel/DM
-      if (isDirectMessage) {
-        if (!dmEnabled) {
-          logger.debug('⏭️  Skipping auto-acknowledge for direct message (DM auto-ack disabled)');
-          return;
-        }
-      } else {
-        // Use Set for O(1) lookup performance
+      // Channel allowlist gate. Direct messages have no separate "DM enabled"
+      // master anymore — they're gated later by the Direct matrix cells (a DM
+      // only acks if its DirectZeroHop/DirectMultiHop cell enables reply or
+      // tapback). Channel messages must still be on an allowlisted channel.
+      if (!isDirectMessage) {
         const enabledChannelsSet = new Set(enabledChannels);
         if (!enabledChannelsSet.has(channelIndex)) {
           logger.debug(`⏭️  Skipping auto-acknowledge for channel ${channelIndex} (not in enabled channels)`);
@@ -9194,54 +9190,46 @@ class MeshtasticManager implements ISourceManager {
           ? message.hopStart - message.hopLimit
           : 0;
 
-      // Determine if this is a direct message (0 hops) or multi-hop
-      // MQTT-relayed packets are never "direct" even with 0 hops — they traversed
-      // the internet, not a direct RF link, so RF metrics (SNR/RSSI) are meaningless
-      const isDirect = hopsTraveled === 0 && message.viaMqtt !== true;
+      // 2x2 matrix (discussion #3564): {Channel,Direct} × {ZeroHop,MultiHop}.
+      // Message type comes from isDirectMessage (DM vs channel); hop distance
+      // from hopsTraveled. MQTT-relayed packets are never "zero hop" even at 0
+      // hops — they traversed the internet, not a direct RF link, so RF metrics
+      // (SNR/RSSI) and the 0-hop notion don't apply.
+      const isZeroHop = autoAckIsZeroHop(hopsTraveled, message.viaMqtt);
+      const cellKey = autoAckCellKey(isDirectMessage, isZeroHop);
 
-      // Check if this message type is enabled
-      const typeEnabled = isDirect
-        ? await settings.getSettingForSource(sourceId, 'autoAckDirectEnabled') !== 'false'
-        : await settings.getSettingForSource(sourceId, 'autoAckMultihopEnabled') !== 'false';
+      // Per-cell toggles. Unset reads as OFF — the matrix is opt-in per cell;
+      // migration 093 backfills explicit values for pre-existing configs so they
+      // keep their behavior.
+      const cellReplyEnabled =
+        (await settings.getSettingForSource(sourceId, `${cellKey}ReplyEnabled`)) === 'true';
+      const cellTapbackEnabled =
+        (await settings.getSettingForSource(sourceId, `${cellKey}TapbackEnabled`)) === 'true';
+      const cellReplyDmEnabled =
+        (await settings.getSettingForSource(sourceId, `${cellKey}ReplyDmEnabled`)) === 'true';
 
-      if (!typeEnabled) {
-        logger.debug(`⏭️ Skipping auto-acknowledge: ${isDirect ? 'direct' : 'multihop'} messages disabled`);
+      // If neither reply nor tapback is enabled for this cell, skip
+      if (!cellReplyEnabled && !cellTapbackEnabled) {
+        logger.debug(`⏭️ Skipping auto-acknowledge: ${cellKey} has neither reply nor tapback enabled`);
         return;
       }
 
-      // Get tapback/reply settings for this message type
-      const autoAckTapbackEnabled = isDirect
-        ? await settings.getSettingForSource(sourceId, 'autoAckDirectTapbackEnabled') !== 'false'
-        : await settings.getSettingForSource(sourceId, 'autoAckMultihopTapbackEnabled') !== 'false';
+      // "Respond via DM" applies to the message reply only — tapback reactions
+      // sent as DMs are unreliable on Meshtastic, so tapbacks always go back the
+      // way the trigger arrived (see resolveAutoAckReplyRouting for reply routing).
 
-      const autoAckReplyEnabled = isDirect
-        ? await settings.getSettingForSource(sourceId, 'autoAckDirectReplyEnabled') !== 'false'
-        : await settings.getSettingForSource(sourceId, 'autoAckMultihopReplyEnabled') !== 'false';
-
-      // If neither tapback nor reply is enabled for this type, skip
-      if (!autoAckTapbackEnabled && !autoAckReplyEnabled) {
-        logger.debug(`⏭️ Skipping auto-acknowledge: both tapback and reply are disabled for ${isDirect ? 'direct' : 'multihop'} messages`);
-        return;
-      }
-
-      // Check if we should always use DM
-      const autoAckUseDM = await settings.getSettingForSource(sourceId, 'autoAckUseDM');
-      const alwaysUseDM = autoAckUseDM === 'true';
-
-      // Format target for logging
-      const target = (alwaysUseDM || isDirectMessage)
-        ? `!${fromNum.toString(16).padStart(8, '0')}`
-        : `channel ${channelIndex}`;
-
-      // Send tapback with hop count emoji if enabled
-      // Note: packetId can be 0 (valid unsigned integer), so check for null/undefined explicitly
-      if (autoAckTapbackEnabled && packetId != null) {
+      // --- Tapback (hop-count emoji reaction) ---
+      // Delivered the same way the trigger arrived: DM→DM, channel→channel.
+      // Note: packetId can be 0 (valid unsigned integer), so check explicitly.
+      if (cellTapbackEnabled && packetId != null) {
         // Hop count emojis: *️⃣ for 0 (direct), 1️⃣-7️⃣ for 1-7+ hops
         const HOP_COUNT_EMOJIS = ['*️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣'];
-        const hopEmojiIndex = Math.min(hopsTraveled, 7); // Cap at 7 for 7+ hops
-        const hopEmoji = HOP_COUNT_EMOJIS[hopEmojiIndex];
+        const hopEmoji = HOP_COUNT_EMOJIS[Math.min(hopsTraveled, 7)];
+        const tapbackTarget = isDirectMessage
+          ? `!${fromNum.toString(16).padStart(8, '0')}`
+          : `channel ${channelIndex}`;
 
-        logger.debug(`🤖 Auto-acknowledging with tapback ${hopEmoji} (${hopsTraveled} hops) to ${target}`);
+        logger.debug(`🤖 Auto-acknowledging with tapback ${hopEmoji} (${hopsTraveled} hops) to ${tapbackTarget}`);
 
         // Route tapback through message queue for rate limiting
         this.messageQueue.enqueue(
@@ -9249,10 +9237,10 @@ class MeshtasticManager implements ISourceManager {
           isDirectMessage ? fromNum : 0, // destination: node number for DM, 0 for channel
           packetId, // replyId - react to the original message
           () => {
-            logger.info(`✅ Auto-acknowledge tapback ${hopEmoji} delivered to ${target}`);
+            logger.info(`✅ Auto-acknowledge tapback ${hopEmoji} delivered to ${tapbackTarget}`);
           },
           (reason: string) => {
-            logger.warn(`❌ Auto-acknowledge tapback failed to ${target}: ${reason}`);
+            logger.warn(`❌ Auto-acknowledge tapback failed to ${tapbackTarget}: ${reason}`);
           },
           isDirectMessage ? undefined : channelIndex, // channel
           1, // maxAttempts - tapbacks are best-effort, don't retry
@@ -9260,8 +9248,8 @@ class MeshtasticManager implements ISourceManager {
         );
       }
 
-      // Send message reply if enabled
-      if (autoAckReplyEnabled) {
+      // --- Message reply ---
+      if (cellReplyEnabled) {
         // Get auto-acknowledge message template (per-source)
         // Use the direct message template for 0 hops if available, otherwise fall back to standard template
         const autoAckMessageDirect = await settings.getSettingForSource(sourceId, 'autoAckMessageDirect') || '';
@@ -9284,23 +9272,28 @@ class MeshtasticManager implements ISourceManager {
         // Replace tokens in the message template
         const ackText = await this.replaceAcknowledgementTokens(autoAckMessage, message.fromNodeId, fromNum, hopsTraveled, receivedDate, receivedTime, channelIndex, isDirectMessage, rxSnr, rxRssi, message.viaMqtt, false, message.relayNode);
 
-        // Don't make it a reply if we're changing channels (DM when triggered by channel message)
-        const replyId = (alwaysUseDM && !isDirectMessage) ? undefined : packetId;
+        // Route the reply (on-channel vs DM, and whether it can be threaded).
+        const { replyViaDm, replyDest, replyChannel, replyId } = resolveAutoAckReplyRouting({
+          isDirectMessage, cellReplyDmEnabled, channelIndex, fromNum, packetId,
+        });
+        const replyTarget = replyViaDm
+          ? `!${fromNum.toString(16).padStart(8, '0')}`
+          : `channel ${channelIndex}`;
 
-        logger.debug(`🤖 Auto-acknowledging message from ${message.fromNodeId}: "${messageText}" with "${ackText}" ${alwaysUseDM ? '(via DM)' : ''}`);
+        logger.debug(`🤖 Auto-acknowledging message from ${message.fromNodeId}: "${messageText}" with "${ackText}"${replyViaDm ? ' (via DM)' : ''}`);
 
         // Use message queue to send auto-acknowledge with rate limiting and retry logic
         this.messageQueue.enqueue(
           ackText,
-          (alwaysUseDM || isDirectMessage) ? fromNum : 0, // destination: node number for DM, 0 for channel
+          replyDest, // destination: node number for DM, 0 for channel
           replyId, // replyId
           () => {
-            logger.info(`✅ Auto-acknowledge message delivered to ${target}`);
+            logger.info(`✅ Auto-acknowledge message delivered to ${replyTarget}`);
           },
           (reason: string) => {
-            logger.warn(`❌ Auto-acknowledge message failed to ${target}: ${reason}`);
+            logger.warn(`❌ Auto-acknowledge message failed to ${replyTarget}: ${reason}`);
           },
-          (alwaysUseDM || isDirectMessage) ? undefined : channelIndex // channel: undefined for DM, channel number for channel
+          replyChannel // channel: undefined for DM, channel number for channel
         );
       }
 

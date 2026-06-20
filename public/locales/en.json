@@ -2329,6 +2329,12 @@
   "automation.auto_ack.direct_section_description": "Configure responses for direct connections (messages received with 0 hops).",
   "automation.auto_ack.multihop_section": "Multi-hop Messages (1+ hops)",
   "automation.auto_ack.multihop_section_description": "Configure responses for relayed messages (received via 1 or more hops).",
+  "automation.auto_ack.response_matrix": "Response Matrix",
+  "automation.auto_ack.response_matrix_description": "Configure responses for each combination of message type (channel or direct) and hop distance (0 hops or multi-hop).",
+  "automation.auto_ack.matrix_message": "Message",
+  "automation.auto_ack.matrix_tapback": "Tapback",
+  "automation.auto_ack.matrix_respond_via_dm": "Respond via DM",
+  "automation.auto_ack.direct_reply_always_dm": "Direct replies are always sent as DMs",
 
   "automation.auto_welcome.title": "Auto Welcome",
   "automation.auto_welcome.description": "When enabled, automatically send a welcome message when a new node joins the mesh network.",
