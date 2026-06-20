@@ -41,7 +41,8 @@ def get_ham_data():
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
 
     try:
-        http_response = urllib.request.urlopen(req)
+        # timeout so a slow/unreachable feed can't hang the auto-responder worker
+        http_response = urllib.request.urlopen(req, timeout=10)
         xml_data = http_response.read()
         root = ET.fromstring(xml_data)
 
@@ -76,20 +77,26 @@ def get_ham_data():
                     time = band.get('time', 'N/A')
                     if "day" in time:
                         day_conditions.append(condition_str)
-                    else:
+                    elif "night" in time:
                         night_conditions.append(condition_str)
+                    # else: unknown time category — skip rather than mislabel
 
             flux = solar_data.get('solarflux', 'N/A')
             kindex = solar_data.get('kindex', 'N/A')
             aindex = solar_data.get('aindex', 'N/A')
 
+            day_str = "\n".join(day_conditions) if day_conditions else "  (no data)"
+            night_str = "\n".join(night_conditions) if night_conditions else "  (no data)"
             reply = (
                 f"Flux:{flux} KI:{kindex} AI:{aindex}\n"
-                + "Day:\n" + "\n".join(day_conditions)
-                + "\nNight:\n" + "\n".join(night_conditions)
+                + "Day:\n" + day_str
+                + "\nNight:\n" + night_str
             )
 
             print(json.dumps({"response": reply}))
+        else:
+            # Malformed feed — surface an error so the responder doesn't reply with nothing
+            print(json.dumps({"error": "Malformed response from hamqsl.com (no solardata)"}))
 
     except Exception as e:
         print(json.dumps({"error": str(e)}, indent=4))
