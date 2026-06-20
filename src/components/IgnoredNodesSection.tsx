@@ -128,7 +128,7 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
 
       <div className="settings-section">
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
-          {t('automation.ignored_nodes.description', "Nodes on this list stay ignored permanently. MeshMonitor re-applies the ignored flag automatically whenever a listed node reappears without it — for example after inactive-node cleanup, or when the device's node database fills up and clears the ignore on its own.")}
+          {t('automation.ignored_nodes.description', "Nodes on this list stay ignored permanently. MeshMonitor re-applies the ignored flag automatically whenever a listed node reappears without it — for example after inactive-node cleanup, or when the device's node database fills up and clears the ignore on its own. A blocked node is blocked, not deleted: on firmware 2.8+ it may stop appearing in the device's full node list while still being retained, and it stays on this list either way.")}
         </p>
 
         {/* Stats */}
