@@ -7,6 +7,12 @@ import { useSettings } from '../contexts/SettingsContext';
 import { formatTime, formatDate } from '../utils/datetime';
 import { Channel } from '../types/device';
 import { useSaveBar } from '../hooks/useSaveBar';
+import {
+  AutoAckMatrix,
+  AutoAckCellId,
+  AUTOACK_CELLS,
+  matrixToSettings,
+} from '../utils/autoAckMatrix';
 
 interface AutoAcknowledgeSectionProps {
   enabled: boolean;
@@ -15,38 +21,18 @@ interface AutoAcknowledgeSectionProps {
   messageDirect: string;
   channels: Channel[];
   enabledChannels: number[];
-  directMessagesEnabled: boolean;
-  useDM: boolean;
   skipIncompleteNodes: boolean;
   ignoredNodes: string;
-  tapbackEnabled: boolean;
-  replyEnabled: boolean;
-  // New direct/multihop settings
-  directEnabled: boolean;
-  directTapbackEnabled: boolean;
-  directReplyEnabled: boolean;
-  multihopEnabled: boolean;
-  multihopTapbackEnabled: boolean;
-  multihopReplyEnabled: boolean;
+  matrix: AutoAckMatrix;
   baseUrl: string;
   onEnabledChange: (enabled: boolean) => void;
   onRegexChange: (regex: string) => void;
   onMessageChange: (message: string) => void;
   onMessageDirectChange: (message: string) => void;
   onChannelsChange: (channels: number[]) => void;
-  onDirectMessagesChange: (enabled: boolean) => void;
-  onUseDMChange: (enabled: boolean) => void;
   onSkipIncompleteNodesChange: (enabled: boolean) => void;
   onIgnoredNodesChange: (ignoredNodes: string) => void;
-  onTapbackEnabledChange: (enabled: boolean) => void;
-  onReplyEnabledChange: (enabled: boolean) => void;
-  // New direct/multihop callbacks
-  onDirectEnabledChange: (enabled: boolean) => void;
-  onDirectTapbackEnabledChange: (enabled: boolean) => void;
-  onDirectReplyEnabledChange: (enabled: boolean) => void;
-  onMultihopEnabledChange: (enabled: boolean) => void;
-  onMultihopTapbackEnabledChange: (enabled: boolean) => void;
-  onMultihopReplyEnabledChange: (enabled: boolean) => void;
+  onMatrixChange: (m: AutoAckMatrix) => void;
   cooldownSeconds: number;
   onCooldownSecondsChange: (value: number) => void;
   testMessages: string;
@@ -56,9 +42,6 @@ interface AutoAcknowledgeSectionProps {
 const DEFAULT_MESSAGE = '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
 const DEFAULT_MESSAGE_DIRECT = '🤖 Copy, direct connection! SNR: {SNR}dB RSSI: {RSSI}dBm at {TIME}';
 
-// Hop count emojis for tapback (keycap digits 0-7+)
-const HOP_COUNT_EMOJIS = ['*️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣'];
-
 const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   enabled,
   regex,
@@ -66,36 +49,18 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   messageDirect,
   channels,
   enabledChannels,
-  directMessagesEnabled,
-  useDM,
   skipIncompleteNodes,
   ignoredNodes,
-  tapbackEnabled,
-  replyEnabled,
-  directEnabled,
-  directTapbackEnabled,
-  directReplyEnabled,
-  multihopEnabled,
-  multihopTapbackEnabled,
-  multihopReplyEnabled,
+  matrix,
   baseUrl,
   onEnabledChange,
   onRegexChange,
   onMessageChange,
   onMessageDirectChange,
   onChannelsChange,
-  onDirectMessagesChange,
-  onUseDMChange,
   onSkipIncompleteNodesChange,
   onIgnoredNodesChange,
-  onTapbackEnabledChange,
-  onReplyEnabledChange,
-  onDirectEnabledChange,
-  onDirectTapbackEnabledChange,
-  onDirectReplyEnabledChange,
-  onMultihopEnabledChange,
-  onMultihopTapbackEnabledChange,
-  onMultihopReplyEnabledChange,
+  onMatrixChange,
   cooldownSeconds,
   onCooldownSecondsChange,
   testMessages: testMessagesProp,
@@ -111,18 +76,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [localMessage, setLocalMessage] = useState(message || DEFAULT_MESSAGE);
   const [localMessageDirect, setLocalMessageDirect] = useState(messageDirect || DEFAULT_MESSAGE_DIRECT);
   const [localEnabledChannels, setLocalEnabledChannels] = useState<number[]>(enabledChannels);
-  const [localDirectMessagesEnabled, setLocalDirectMessagesEnabled] = useState(directMessagesEnabled);
-  const [localUseDM, setLocalUseDM] = useState(useDM);
   const [localSkipIncompleteNodes, setLocalSkipIncompleteNodes] = useState(skipIncompleteNodes);
   const [localIgnoredNodes, setLocalIgnoredNodes] = useState(ignoredNodes || '');
-  const [localTapbackEnabled, setLocalTapbackEnabled] = useState(tapbackEnabled);
-  const [localReplyEnabled, setLocalReplyEnabled] = useState(replyEnabled);
-  const [localDirectEnabled, setLocalDirectEnabled] = useState(directEnabled);
-  const [localDirectTapbackEnabled, setLocalDirectTapbackEnabled] = useState(directTapbackEnabled);
-  const [localDirectReplyEnabled, setLocalDirectReplyEnabled] = useState(directReplyEnabled);
-  const [localMultihopEnabled, setLocalMultihopEnabled] = useState(multihopEnabled);
-  const [localMultihopTapbackEnabled, setLocalMultihopTapbackEnabled] = useState(multihopTapbackEnabled);
-  const [localMultihopReplyEnabled, setLocalMultihopReplyEnabled] = useState(multihopReplyEnabled);
+  const [localMatrix, setLocalMatrix] = useState<AutoAckMatrix>(matrix);
   const [localCooldownSeconds, setLocalCooldownSeconds] = useState(cooldownSeconds);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -137,31 +93,23 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalMessage(message || DEFAULT_MESSAGE);
     setLocalMessageDirect(messageDirect || DEFAULT_MESSAGE_DIRECT);
     setLocalEnabledChannels(enabledChannels);
-    setLocalDirectMessagesEnabled(directMessagesEnabled);
-    setLocalUseDM(useDM);
     setLocalSkipIncompleteNodes(skipIncompleteNodes);
     setLocalIgnoredNodes(ignoredNodes || '');
-    setLocalTapbackEnabled(tapbackEnabled);
-    setLocalReplyEnabled(replyEnabled);
-    setLocalDirectEnabled(directEnabled);
-    setLocalDirectTapbackEnabled(directTapbackEnabled);
-    setLocalDirectReplyEnabled(directReplyEnabled);
-    setLocalMultihopEnabled(multihopEnabled);
-    setLocalMultihopTapbackEnabled(multihopTapbackEnabled);
-    setLocalMultihopReplyEnabled(multihopReplyEnabled);
+    setLocalMatrix(matrix);
     setLocalCooldownSeconds(cooldownSeconds);
     if (testMessagesProp) {
       setTestMessages(testMessagesProp);
     }
-  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, ignoredNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled, cooldownSeconds, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, testMessagesProp]);
 
   // Check if any settings have changed
   useEffect(() => {
     const channelsChanged = JSON.stringify(localEnabledChannels.sort()) !== JSON.stringify(enabledChannels.sort());
     const cooldownChanged = localCooldownSeconds !== cooldownSeconds;
-    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localDirectMessagesEnabled !== directMessagesEnabled || localUseDM !== useDM || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || localTapbackEnabled !== tapbackEnabled || localReplyEnabled !== replyEnabled || localDirectEnabled !== directEnabled || localDirectTapbackEnabled !== directTapbackEnabled || localDirectReplyEnabled !== directReplyEnabled || localMultihopEnabled !== multihopEnabled || localMultihopTapbackEnabled !== multihopTapbackEnabled || localMultihopReplyEnabled !== multihopReplyEnabled || cooldownChanged || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
+    const matrixChanged = JSON.stringify(localMatrix) !== JSON.stringify(matrix);
+    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || matrixChanged || cooldownChanged || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
     setHasChanges(changed);
-  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localIgnoredNodes, localTapbackEnabled, localReplyEnabled, localDirectEnabled, localDirectTapbackEnabled, localDirectReplyEnabled, localMultihopEnabled, localMultihopTapbackEnabled, localMultihopReplyEnabled, localCooldownSeconds, testMessages, enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, ignoredNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled, cooldownSeconds, testMessagesProp]);
+  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, testMessages, enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, testMessagesProp]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -170,21 +118,12 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalMessage(message || DEFAULT_MESSAGE);
     setLocalMessageDirect(messageDirect || DEFAULT_MESSAGE_DIRECT);
     setLocalEnabledChannels(enabledChannels);
-    setLocalDirectMessagesEnabled(directMessagesEnabled);
-    setLocalUseDM(useDM);
     setLocalSkipIncompleteNodes(skipIncompleteNodes);
     setLocalIgnoredNodes(ignoredNodes || '');
-    setLocalTapbackEnabled(tapbackEnabled);
-    setLocalReplyEnabled(replyEnabled);
-    setLocalDirectEnabled(directEnabled);
-    setLocalDirectTapbackEnabled(directTapbackEnabled);
-    setLocalDirectReplyEnabled(directReplyEnabled);
-    setLocalMultihopEnabled(multihopEnabled);
-    setLocalMultihopTapbackEnabled(multihopTapbackEnabled);
-    setLocalMultihopReplyEnabled(multihopReplyEnabled);
+    setLocalMatrix(matrix);
     setLocalCooldownSeconds(cooldownSeconds);
     setTestMessages(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
-  }, [enabled, regex, message, messageDirect, enabledChannels, directMessagesEnabled, useDM, skipIncompleteNodes, ignoredNodes, tapbackEnabled, replyEnabled, directEnabled, directTapbackEnabled, directReplyEnabled, multihopEnabled, multihopTapbackEnabled, multihopReplyEnabled, cooldownSeconds, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, testMessagesProp]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -265,6 +204,18 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     return sample;
   };
 
+  // Immutably update a single field of a single matrix cell.
+  // Toggling reply off also forces replyDm off (reply-DM applies to the reply only).
+  const updateCell = (id: AutoAckCellId, field: keyof AutoAckMatrix[AutoAckCellId], value: boolean) => {
+    setLocalMatrix(prev => {
+      const nextCell = { ...prev[id], [field]: value };
+      if (field === 'reply' && !value) {
+        nextCell.replyDm = false;
+      }
+      return { ...prev, [id]: nextCell };
+    });
+  };
+
   const handleSaveForSaveBar = useCallback(async () => {
     // Validate regex before saving
     const validation = validateRegex(localRegex);
@@ -285,18 +236,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           autoAckMessage: localMessage,
           autoAckMessageDirect: localMessageDirect,
           autoAckChannels: localEnabledChannels.join(','),
-          autoAckDirectMessages: String(localDirectMessagesEnabled),
-          autoAckUseDM: String(localUseDM),
           autoAckSkipIncompleteNodes: String(localSkipIncompleteNodes),
           autoAckIgnoredNodes: localIgnoredNodes,
-          autoAckTapbackEnabled: String(localTapbackEnabled),
-          autoAckReplyEnabled: String(localReplyEnabled),
-          autoAckDirectEnabled: String(localDirectEnabled),
-          autoAckDirectTapbackEnabled: String(localDirectTapbackEnabled),
-          autoAckDirectReplyEnabled: String(localDirectReplyEnabled),
-          autoAckMultihopEnabled: String(localMultihopEnabled),
-          autoAckMultihopTapbackEnabled: String(localMultihopTapbackEnabled),
-          autoAckMultihopReplyEnabled: String(localMultihopReplyEnabled),
+          ...matrixToSettings(localMatrix),
           autoAckCooldownSeconds: String(localCooldownSeconds),
           autoAckTestMessages: testMessages
         })
@@ -316,18 +258,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onMessageChange(localMessage);
       onMessageDirectChange(localMessageDirect);
       onChannelsChange(localEnabledChannels);
-      onDirectMessagesChange(localDirectMessagesEnabled);
-      onUseDMChange(localUseDM);
       onSkipIncompleteNodesChange(localSkipIncompleteNodes);
       onIgnoredNodesChange(localIgnoredNodes);
-      onTapbackEnabledChange(localTapbackEnabled);
-      onReplyEnabledChange(localReplyEnabled);
-      onDirectEnabledChange(localDirectEnabled);
-      onDirectTapbackEnabledChange(localDirectTapbackEnabled);
-      onDirectReplyEnabledChange(localDirectReplyEnabled);
-      onMultihopEnabledChange(localMultihopEnabled);
-      onMultihopTapbackEnabledChange(localMultihopTapbackEnabled);
-      onMultihopReplyEnabledChange(localMultihopReplyEnabled);
+      onMatrixChange(localMatrix);
       onCooldownSecondsChange(localCooldownSeconds);
       onTestMessagesChange(testMessages);
 
@@ -339,7 +272,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localDirectMessagesEnabled, localUseDM, localSkipIncompleteNodes, localIgnoredNodes, localTapbackEnabled, localReplyEnabled, localDirectEnabled, localDirectTapbackEnabled, localDirectReplyEnabled, localMultihopEnabled, localMultihopTapbackEnabled, localMultihopReplyEnabled, localCooldownSeconds, testMessages, baseUrl, csrfFetch, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onDirectMessagesChange, onUseDMChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onTapbackEnabledChange, onReplyEnabledChange, onDirectEnabledChange, onDirectTapbackEnabledChange, onDirectReplyEnabledChange, onMultihopEnabledChange, onMultihopTapbackEnabledChange, onMultihopReplyEnabledChange, onCooldownSecondsChange, onTestMessagesChange]);
+  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, testMessages, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onMatrixChange, onCooldownSecondsChange, onTestMessagesChange]);
 
   // Register with SaveBar
   useSaveBar({
@@ -420,19 +353,6 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             </span>
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input
-                type="checkbox"
-                id="autoAckDM"
-                checked={localDirectMessagesEnabled}
-                onChange={(e) => setLocalDirectMessagesEnabled(e.target.checked)}
-                disabled={!localEnabled}
-                style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
-              />
-              <label htmlFor="autoAckDM" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
-                {t('automation.auto_ack.direct_messages')}
-              </label>
-            </div>
             {channels.map((channel, idx) => (
               <div key={channel.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <input
@@ -454,31 +374,6 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
                 </label>
               </div>
             ))}
-          </div>
-        </div>
-
-        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
-          <label>
-            {t('automation.auto_ack.response_delivery')}
-            <span className="setting-description">
-              {t('automation.auto_ack.response_delivery_description')}
-            </span>
-          </label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-            <input
-              type="checkbox"
-              id="autoAckUseDM"
-              checked={localUseDM}
-              onChange={(e) => setLocalUseDM(e.target.checked)}
-              disabled={!localEnabled}
-              style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
-            />
-            <label htmlFor="autoAckUseDM" style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
-              {t('automation.auto_ack.always_respond_dm')}
-            </label>
-          </div>
-          <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
-            {t('automation.auto_ack.always_respond_dm_description')}
           </div>
         </div>
 
@@ -552,209 +447,177 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           </div>
         </div>
 
-        {/* Direct Messages Section (0 hops) */}
-        <div className="setting-item" style={{
-          marginTop: '1.5rem',
-          padding: '1rem',
-          background: 'var(--ctp-surface0)',
-          border: '2px solid var(--ctp-green)',
-          borderRadius: '8px',
-          opacity: localEnabled ? 1 : 0.5
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-            <input
-              type="checkbox"
-              id="autoAckDirectEnabled"
-              checked={localDirectEnabled}
-              onChange={(e) => setLocalDirectEnabled(e.target.checked)}
-              disabled={!localEnabled}
-              style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
-            />
-            <label htmlFor="autoAckDirectEnabled" style={{ margin: 0, fontWeight: 'bold', fontSize: '1.1rem' }}>
-              {t('automation.auto_ack.direct_section')}
-            </label>
-          </div>
-          <p style={{ marginBottom: '1rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)', marginLeft: '1.75rem' }}>
-            {t('automation.auto_ack.direct_section_description')}
-          </p>
-
-          <div style={{ marginLeft: '1.75rem', opacity: localDirectEnabled ? 1 : 0.5 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-              <input
-                type="checkbox"
-                id="autoAckDirectTapback"
-                checked={localDirectTapbackEnabled}
-                onChange={(e) => setLocalDirectTapbackEnabled(e.target.checked)}
-                disabled={!localEnabled || !localDirectEnabled}
-                style={{ width: 'auto', margin: 0, cursor: (localEnabled && localDirectEnabled) ? 'pointer' : 'not-allowed' }}
-              />
-              <label htmlFor="autoAckDirectTapback" style={{ margin: 0, cursor: (localEnabled && localDirectEnabled) ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
-                {t('automation.auto_ack.tapback_with_hop_count')}
-              </label>
-              <span style={{ marginLeft: '0.5rem', fontSize: '1.2rem' }} title="Direct (0 hops)">*️⃣</span>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-              <input
-                type="checkbox"
-                id="autoAckDirectReply"
-                checked={localDirectReplyEnabled}
-                onChange={(e) => setLocalDirectReplyEnabled(e.target.checked)}
-                disabled={!localEnabled || !localDirectEnabled}
-                style={{ width: 'auto', margin: 0, cursor: (localEnabled && localDirectEnabled) ? 'pointer' : 'not-allowed' }}
-              />
-              <label htmlFor="autoAckDirectReply" style={{ margin: 0, cursor: (localEnabled && localDirectEnabled) ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
-                {t('automation.auto_ack.reply_with_message')}
-              </label>
-            </div>
-
-            {localDirectReplyEnabled && (
-              <>
-                <label htmlFor="autoAckMessageDirect" style={{ display: 'block', marginBottom: '0.5rem' }}>
-                  {t('automation.auto_ack.message_direct')}
-                  <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
-                    {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{SNR}'}, {'{RSSI}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{TOTALNODES}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{TRANSPORT}'}
-                  </span>
-                </label>
-                <textarea
-                  id="autoAckMessageDirect"
-                  ref={textareaDirectRef}
-                  value={localMessageDirect}
-                  onChange={(e) => setLocalMessageDirect(e.target.value)}
-                  disabled={!localEnabled || !localDirectEnabled || !localDirectReplyEnabled}
-                  className="setting-input"
-                  rows={3}
+        {/* Response matrix: {Channel | Direct} × {0 hops | Multi-hop} */}
+        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+          <label>
+            {t('automation.auto_ack.response_matrix')}
+            <span className="setting-description">
+              {t('automation.auto_ack.response_matrix_description')}
+            </span>
+          </label>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              gap: '1rem',
+              marginTop: '0.75rem',
+              opacity: localEnabled ? 1 : 0.5,
+            }}
+          >
+            {AUTOACK_CELLS.map((cell) => {
+              const config = localMatrix[cell.id];
+              const isDirect = cell.type === 'direct';
+              const borderColor = cell.hop === 'zeroHop' ? 'var(--ctp-green)' : 'var(--ctp-blue)';
+              // Direct replies are inherently DMs: show the "Respond via DM" checkbox
+              // checked + disabled. Channel cells gate it on the cell's reply toggle.
+              const replyDmChecked = isDirect ? true : config.replyDm;
+              const replyDmDisabled = !localEnabled || isDirect || !config.reply;
+              const replyDmTitle = isDirect
+                ? t('automation.auto_ack.direct_reply_always_dm')
+                : undefined;
+              return (
+                <div
+                  key={cell.id}
                   style={{
-                    fontFamily: 'monospace',
-                    resize: 'vertical',
-                    minHeight: '60px'
+                    padding: '1rem',
+                    background: 'var(--ctp-surface0)',
+                    border: `2px solid ${borderColor}`,
+                    borderRadius: '8px',
                   }}
-                />
-                <div style={{ marginTop: '0.5rem' }}>
-                  <label style={{ fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
-                    {t('automation.auto_ack.sample_preview_direct')}:
-                  </label>
-                  <div style={{
-                    marginTop: '0.25rem',
-                    padding: '0.5rem',
-                    background: 'var(--ctp-base)',
-                    border: '1px solid var(--ctp-green)',
-                    borderRadius: '4px',
-                    fontFamily: 'monospace',
-                    fontSize: '0.9rem',
-                    color: 'var(--ctp-text)'
-                  }}>
-                    {generateSampleMessage(true)}
+                >
+                  <div style={{ fontWeight: 'bold', marginBottom: '0.75rem' }}>{cell.label}</div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      id={`autoAck-${cell.id}-reply`}
+                      checked={config.reply}
+                      onChange={(e) => updateCell(cell.id, 'reply', e.target.checked)}
+                      disabled={!localEnabled}
+                      style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+                    />
+                    <label htmlFor={`autoAck-${cell.id}-reply`} style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}>
+                      {t('automation.auto_ack.matrix_message')}
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      id={`autoAck-${cell.id}-tapback`}
+                      checked={config.tapback}
+                      onChange={(e) => updateCell(cell.id, 'tapback', e.target.checked)}
+                      disabled={!localEnabled}
+                      style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
+                    />
+                    <label htmlFor={`autoAck-${cell.id}-tapback`} style={{ margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}>
+                      {t('automation.auto_ack.matrix_tapback')}
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      id={`autoAck-${cell.id}-replyDm`}
+                      checked={replyDmChecked}
+                      onChange={(e) => updateCell(cell.id, 'replyDm', e.target.checked)}
+                      disabled={replyDmDisabled}
+                      title={replyDmTitle}
+                      style={{ width: 'auto', margin: 0, cursor: replyDmDisabled ? 'not-allowed' : 'pointer' }}
+                    />
+                    <label
+                      htmlFor={`autoAck-${cell.id}-replyDm`}
+                      title={replyDmTitle}
+                      style={{ margin: 0, cursor: replyDmDisabled ? 'not-allowed' : 'pointer' }}
+                    >
+                      {t('automation.auto_ack.matrix_respond_via_dm')}
+                    </label>
                   </div>
                 </div>
-              </>
-            )}
+              );
+            })}
           </div>
         </div>
 
-        {/* Multi-hop Messages Section (1+ hops) */}
-        <div className="setting-item" style={{
-          marginTop: '1.5rem',
-          padding: '1rem',
-          background: 'var(--ctp-surface0)',
-          border: '2px solid var(--ctp-blue)',
-          borderRadius: '8px',
-          opacity: localEnabled ? 1 : 0.5
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-            <input
-              type="checkbox"
-              id="autoAckMultihopEnabled"
-              checked={localMultihopEnabled}
-              onChange={(e) => setLocalMultihopEnabled(e.target.checked)}
-              disabled={!localEnabled}
-              style={{ width: 'auto', margin: 0, cursor: localEnabled ? 'pointer' : 'not-allowed' }}
-            />
-            <label htmlFor="autoAckMultihopEnabled" style={{ margin: 0, fontWeight: 'bold', fontSize: '1.1rem' }}>
-              {t('automation.auto_ack.multihop_section')}
+        {/* Multi-hop reply template */}
+        <div className="setting-item" style={{ marginTop: '1.5rem', opacity: localEnabled ? 1 : 0.5 }}>
+          <label htmlFor="autoAckMessage" style={{ display: 'block', marginBottom: '0.5rem' }}>
+            {t('automation.auto_ack.message_multihop')}
+            <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
+              {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{NUMBER_HOPS}'}, {'{HOPS}'}, {'{RABBIT_HOPS}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{TOTALNODES}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'}, {'{RSSI}'}, {'{TRANSPORT}'}, {'{LAST_HOP}'}
+            </span>
+          </label>
+          <textarea
+            id="autoAckMessage"
+            ref={textareaRef}
+            value={localMessage}
+            onChange={(e) => setLocalMessage(e.target.value)}
+            disabled={!localEnabled}
+            className="setting-input"
+            rows={3}
+            style={{
+              fontFamily: 'monospace',
+              resize: 'vertical',
+              minHeight: '60px'
+            }}
+          />
+          <div style={{ marginTop: '0.5rem' }}>
+            <label style={{ fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+              {t('automation.auto_ack.sample_preview_multihop')}:
             </label>
+            <div style={{
+              marginTop: '0.25rem',
+              padding: '0.5rem',
+              background: 'var(--ctp-base)',
+              border: '1px solid var(--ctp-blue)',
+              borderRadius: '4px',
+              fontFamily: 'monospace',
+              fontSize: '0.9rem',
+              color: 'var(--ctp-text)'
+            }}>
+              {generateSampleMessage(false)}
+            </div>
           </div>
-          <p style={{ marginBottom: '1rem', fontSize: '0.9rem', color: 'var(--ctp-subtext0)', marginLeft: '1.75rem' }}>
-            {t('automation.auto_ack.multihop_section_description')}
-          </p>
+        </div>
 
-          <div style={{ marginLeft: '1.75rem', opacity: localMultihopEnabled ? 1 : 0.5 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-              <input
-                type="checkbox"
-                id="autoAckMultihopTapback"
-                checked={localMultihopTapbackEnabled}
-                onChange={(e) => setLocalMultihopTapbackEnabled(e.target.checked)}
-                disabled={!localEnabled || !localMultihopEnabled}
-                style={{ width: 'auto', margin: 0, cursor: (localEnabled && localMultihopEnabled) ? 'pointer' : 'not-allowed' }}
-              />
-              <label htmlFor="autoAckMultihopTapback" style={{ margin: 0, cursor: (localEnabled && localMultihopEnabled) ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
-                {t('automation.auto_ack.tapback_with_hop_count')}
-              </label>
-              <div style={{ marginLeft: '0.5rem', display: 'flex', gap: '0.15rem' }}>
-                {HOP_COUNT_EMOJIS.slice(1).map((emoji, idx) => (
-                  <span key={idx} title={`${idx + 1} hop${idx > 0 ? 's' : ''}`} style={{ fontSize: '1rem' }}>
-                    {emoji}
-                  </span>
-                ))}
-              </div>
+        {/* Direct (0-hop) reply template */}
+        <div className="setting-item" style={{ marginTop: '1.5rem', opacity: localEnabled ? 1 : 0.5 }}>
+          <label htmlFor="autoAckMessageDirect" style={{ display: 'block', marginBottom: '0.5rem' }}>
+            {t('automation.auto_ack.message_direct')}
+            <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
+              {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{SNR}'}, {'{RSSI}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{TOTALNODES}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{TRANSPORT}'}
+            </span>
+          </label>
+          <textarea
+            id="autoAckMessageDirect"
+            ref={textareaDirectRef}
+            value={localMessageDirect}
+            onChange={(e) => setLocalMessageDirect(e.target.value)}
+            disabled={!localEnabled}
+            className="setting-input"
+            rows={3}
+            style={{
+              fontFamily: 'monospace',
+              resize: 'vertical',
+              minHeight: '60px'
+            }}
+          />
+          <div style={{ marginTop: '0.5rem' }}>
+            <label style={{ fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
+              {t('automation.auto_ack.sample_preview_direct')}:
+            </label>
+            <div style={{
+              marginTop: '0.25rem',
+              padding: '0.5rem',
+              background: 'var(--ctp-base)',
+              border: '1px solid var(--ctp-green)',
+              borderRadius: '4px',
+              fontFamily: 'monospace',
+              fontSize: '0.9rem',
+              color: 'var(--ctp-text)'
+            }}>
+              {generateSampleMessage(true)}
             </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-              <input
-                type="checkbox"
-                id="autoAckMultihopReply"
-                checked={localMultihopReplyEnabled}
-                onChange={(e) => setLocalMultihopReplyEnabled(e.target.checked)}
-                disabled={!localEnabled || !localMultihopEnabled}
-                style={{ width: 'auto', margin: 0, cursor: (localEnabled && localMultihopEnabled) ? 'pointer' : 'not-allowed' }}
-              />
-              <label htmlFor="autoAckMultihopReply" style={{ margin: 0, cursor: (localEnabled && localMultihopEnabled) ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
-                {t('automation.auto_ack.reply_with_message')}
-              </label>
-            </div>
-
-            {localMultihopReplyEnabled && (
-              <>
-                <label htmlFor="autoAckMessage" style={{ display: 'block', marginBottom: '0.5rem' }}>
-                  {t('automation.auto_ack.message_multihop')}
-                  <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
-                    {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{NUMBER_HOPS}'}, {'{HOPS}'}, {'{RABBIT_HOPS}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{TOTALNODES}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'}, {'{RSSI}'}, {'{TRANSPORT}'}, {'{LAST_HOP}'}
-                  </span>
-                </label>
-                <textarea
-                  id="autoAckMessage"
-                  ref={textareaRef}
-                  value={localMessage}
-                  onChange={(e) => setLocalMessage(e.target.value)}
-                  disabled={!localEnabled || !localMultihopEnabled || !localMultihopReplyEnabled}
-                  className="setting-input"
-                  rows={3}
-                  style={{
-                    fontFamily: 'monospace',
-                    resize: 'vertical',
-                    minHeight: '60px'
-                  }}
-                />
-                <div style={{ marginTop: '0.5rem' }}>
-                  <label style={{ fontSize: '0.9rem', color: 'var(--ctp-subtext0)' }}>
-                    {t('automation.auto_ack.sample_preview_multihop')}:
-                  </label>
-                  <div style={{
-                    marginTop: '0.25rem',
-                    padding: '0.5rem',
-                    background: 'var(--ctp-base)',
-                    border: '1px solid var(--ctp-blue)',
-                    borderRadius: '4px',
-                    fontFamily: 'monospace',
-                    fontSize: '0.9rem',
-                    color: 'var(--ctp-text)'
-                  }}>
-                    {generateSampleMessage(false)}
-                  </div>
-                </div>
-              </>
-            )}
           </div>
         </div>
 

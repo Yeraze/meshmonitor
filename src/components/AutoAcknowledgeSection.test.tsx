@@ -6,6 +6,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AutoAcknowledgeSection from './AutoAcknowledgeSection';
 import { Channel } from '../types/device';
+import { DEFAULT_AUTOACK_MATRIX } from '../utils/autoAckMatrix';
 
 // Mock the useCsrfFetch hook
 const mockCsrfFetch = vi.fn();
@@ -17,6 +18,17 @@ vi.mock('../hooks/useCsrfFetch', () => ({
 const mockShowToast = vi.fn();
 vi.mock('./ToastContainer', () => ({
   useToast: () => ({ showToast: mockShowToast })
+}));
+
+// Mock supporting hooks/contexts so the component renders in isolation.
+vi.mock('../hooks/useSourceQuery', () => ({
+  useSourceQuery: () => ''
+}));
+vi.mock('../hooks/useSaveBar', () => ({
+  useSaveBar: vi.fn()
+}));
+vi.mock('../contexts/SettingsContext', () => ({
+  useSettings: () => ({ timeFormat: '24h', dateFormat: 'YYYY-MM-DD' })
 }));
 
 // Skip: component has diverged substantially from the original test expectations.
@@ -39,21 +51,19 @@ describe.skip('AutoAcknowledgeSection Component', () => {
     onRegexChange: vi.fn(),
     onMessageChange: vi.fn(),
     onChannelsChange: vi.fn(),
-    onDirectMessagesChange: vi.fn(),
-    onUseDMChange: vi.fn()
+    onMatrixChange: vi.fn()
   };
 
-  // NOTE: Cast to any — the component has grown 24+ new props since these
-  // tests were written. The suite is skipped pending a wholesale rewrite,
-  // but we still need TypeScript to accept the file.
+  // NOTE: Cast to any — this legacy suite is skipped pending a wholesale
+  // rewrite against the new matrix UI, but we still need TypeScript to
+  // accept the file.
   const defaultProps = {
     enabled: true,
     regex: '^(test|ping)',
     message: '🤖 Copy, {NUMBER_HOPS} hops at {TIME}',
     channels: mockChannels,
     enabledChannels: [0, 1],
-    directMessagesEnabled: true,
-    useDM: false,
+    matrix: DEFAULT_AUTOACK_MATRIX,
     baseUrl: '',
     ...mockCallbacks
   } as any;
@@ -729,5 +739,93 @@ describe.skip('AutoAcknowledgeSection Component', () => {
       const preview2 = screen.getByText(/Sample Message Preview/).parentElement?.querySelector('div[style*="border: 2px solid"]');
       expect(preview2?.textContent).toContain('!a1b2c3d4');
     });
+  });
+});
+
+/**
+ * Active suite for the new 2×2 response matrix UI.
+ *
+ * Under the test i18n mock, t(key) returns the key verbatim, so the
+ * "Respond via DM" checkboxes are labelled
+ * `automation.auto_ack.matrix_respond_via_dm`.
+ */
+describe('AutoAcknowledgeSection — response matrix', () => {
+  const mockChannels: Channel[] = [
+    { id: 0, name: 'Primary', psk: 'test', uplinkEnabled: true, downlinkEnabled: true, createdAt: 0, updatedAt: 0 },
+  ];
+
+  const matrixProps = {
+    enabled: true,
+    regex: '^(test|ping)',
+    message: '🤖 Copy, {NUMBER_HOPS} hops at {TIME}',
+    messageDirect: '🤖 Copy, direct! {TIME}',
+    channels: mockChannels,
+    enabledChannels: [0],
+    skipIncompleteNodes: false,
+    ignoredNodes: '',
+    matrix: DEFAULT_AUTOACK_MATRIX,
+    baseUrl: '',
+    cooldownSeconds: 60,
+    testMessages: 'test',
+    onEnabledChange: vi.fn(),
+    onRegexChange: vi.fn(),
+    onMessageChange: vi.fn(),
+    onMessageDirectChange: vi.fn(),
+    onChannelsChange: vi.fn(),
+    onSkipIncompleteNodesChange: vi.fn(),
+    onIgnoredNodesChange: vi.fn(),
+    onMatrixChange: vi.fn(),
+    onCooldownSecondsChange: vi.fn(),
+    onTestMessagesChange: vi.fn(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const replyDmCheckboxFor = (cellId: string): HTMLInputElement => {
+    return document.getElementById(`autoAck-${cellId}-replyDm`) as HTMLInputElement;
+  };
+  const replyCheckboxFor = (cellId: string): HTMLInputElement => {
+    return document.getElementById(`autoAck-${cellId}-reply`) as HTMLInputElement;
+  };
+
+  it('renders all four matrix cells with three checkboxes each', () => {
+    render(<AutoAcknowledgeSection {...matrixProps} />);
+    for (const cellId of ['channelZeroHop', 'channelMultiHop', 'directZeroHop', 'directMultiHop']) {
+      expect(document.getElementById(`autoAck-${cellId}-reply`)).toBeInTheDocument();
+      expect(document.getElementById(`autoAck-${cellId}-tapback`)).toBeInTheDocument();
+      expect(document.getElementById(`autoAck-${cellId}-replyDm`)).toBeInTheDocument();
+    }
+  });
+
+  it('disables "Respond via DM" for a channel cell until "Message" (reply) is checked', async () => {
+    const user = userEvent.setup();
+    render(<AutoAcknowledgeSection {...matrixProps} />);
+
+    const replyDm = replyDmCheckboxFor('channelZeroHop');
+    // Reply is off by default → Respond via DM disabled
+    expect(replyDm).toBeDisabled();
+
+    // Check the Message (reply) checkbox → Respond via DM becomes enabled
+    await user.click(replyCheckboxFor('channelZeroHop'));
+
+    await waitFor(() => {
+      expect(replyDmCheckboxFor('channelZeroHop')).not.toBeDisabled();
+    });
+  });
+
+  it('renders "Respond via DM" as checked + disabled for direct cells', () => {
+    render(<AutoAcknowledgeSection {...matrixProps} />);
+
+    for (const cellId of ['directZeroHop', 'directMultiHop']) {
+      const replyDm = replyDmCheckboxFor(cellId);
+      expect(replyDm).toBeChecked();
+      expect(replyDm).toBeDisabled();
+    }
   });
 });
