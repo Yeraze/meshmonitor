@@ -14,6 +14,7 @@
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { waypointService } from './waypointService.js';
+import { EXPIRY_MS as DEAD_DROP_EXPIRY_MS } from './deadDropService.js';
 
 export interface MaintenanceStats {
   messagesDeleted: number;
@@ -260,6 +261,17 @@ class DatabaseMaintenanceService {
         }
       } catch (error) {
         logger.error('Waypoint expire sweep failed:', error);
+      }
+
+      // Hard-purge Dead Drop / Mailbox messages past their fixed 7-day expiry.
+      // Read filters hide expired rows, but the rows themselves must be reclaimed.
+      try {
+        const deadDropDeleted = await databaseService.deadDrop.purgeExpired(Date.now() - DEAD_DROP_EXPIRY_MS);
+        if (deadDropDeleted > 0) {
+          logger.info(`🗑️ Purged ${deadDropDeleted} expired dead-drop message(s)`);
+        }
+      } catch (error) {
+        logger.error('Dead Drop expire purge failed:', error);
       }
 
       // Run VACUUM to reclaim space

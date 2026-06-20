@@ -110,7 +110,7 @@ describe('DeadDropRepository', () => {
     await repo.insertMessage(msg({ shortId: 'A2', recipientName: 'wisp', senderNodeNum: 111 }), NOW);
     await repo.insertMessage(msg({ shortId: 'A3', recipientName: 'wisp', senderNodeNum: 222 }), NOW);
 
-    expect(await repo.countPendingForRecipient('source-a', 'wisp', cutoff)).toBe(3);
+    expect(await repo.countPendingForRecipient('source-a', ['wisp'], cutoff)).toBe(3);
     expect(await repo.countPendingFromSender('source-a', 111, cutoff)).toBe(2);
     expect(await repo.countPendingFromSender('source-a', 222, cutoff)).toBe(1);
   });
@@ -120,13 +120,13 @@ describe('DeadDropRepository', () => {
     await repo.insertMessage(msg({ shortId: 'LIVE1' }), NOW);
 
     expect(await repo.getPendingForRecipient('source-a', ['wisp'], cutoff)).toHaveLength(1);
-    expect(await repo.countPendingForRecipient('source-a', 'wisp', cutoff)).toBe(1);
+    expect(await repo.countPendingForRecipient('source-a', ['wisp'], cutoff)).toBe(1);
   });
 
   it('purgeExpired hard-deletes old rows', async () => {
     await repo.insertMessage(msg({ shortId: 'EXP1' }), cutoff - 1);
     await repo.insertMessage(msg({ shortId: 'LIVE1' }), NOW);
-    await repo.purgeExpired(cutoff);
+    expect(await repo.purgeExpired(cutoff)).toBe(1);
     // The live one (created at NOW) is retained; only the row older than cutoff is gone.
     expect(await repo.getByShortId('source-a', 'LIVE1')).not.toBeNull();
     expect(await repo.getByShortId('source-a', 'EXP1')).toBeNull();

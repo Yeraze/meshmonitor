@@ -13,15 +13,15 @@
  *
  * Messages are addressed to a *name* as typed by the sender. Retrieval matches
  * that name against any identity form (short name, long name, node id, node num)
- * of the DM sender — the retriever proves identity via the DM sender context,
- * so there is no fragile store-time node lookup.
+ * of the DM sender — the retriever proves identity via the DM sender context.
  *
- * All state is per-source (each radio keeps its own mailbox). The repository is
- * injected so the service is unit-testable against a real SQLite repo.
+ * All state is per-source (each radio keeps its own mailbox). The repository and
+ * a recipient-identity resolver are injected so the service is unit-testable.
  */
 import { randomBytes } from 'crypto';
 import { DeadDropRepository } from '../../db/repositories/deadDrop.js';
 import databaseService from '../../services/database.js';
+import { logger } from '../../utils/logger.js';
 
 export interface DeadDropContext {
   sourceId: string;
@@ -33,6 +33,22 @@ export interface DeadDropContext {
   senderShortName: string;
   senderLongName: string;
 }
+
+/**
+ * Result of handling a mailbox command.
+ *
+ * `playOnDelivery` ties `inbox play` messages to the *successful delivery* of
+ * their body line — the caller marks a message played only when that line is
+ * confirmed delivered, so a dropped body DM leaves the message pending instead
+ * of silently lost. `index` is the position in `responses` of the body line.
+ */
+export interface DeadDropResult {
+  responses: string[];
+  playOnDelivery?: Array<{ index: number; messageId: number }>;
+}
+
+/** Resolve a typed recipient name to all identity forms of the matching node. */
+export type RecipientResolver = (sourceId: string, name: string) => Promise<string[]>;
 
 // Tuning. Body limit is in BYTES (UTF-8) because emoji/multibyte eat payload;
 // 180 leaves headroom under Meshtastic's ~200-byte text limit.
@@ -52,7 +68,7 @@ function byteLen(s: string): number {
 }
 
 /** Meshtastic node id form, e.g. 3273359375 -> "!c318d28f". */
-function nodeIdHex(nodeNum: number): string {
+export function nodeIdHex(nodeNum: number): string {
   return `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`;
 }
 
@@ -66,11 +82,16 @@ function ago(ts: number, now: number): string {
 
 /** Identity forms a stored recipient name could match the DM sender by. */
 function recipientIdentities(ctx: DeadDropContext): string[] {
+  return identityForms(ctx.senderNodeNum, ctx.senderShortName, ctx.senderLongName);
+}
+
+/** All normalized identity forms for a node (short/long name, !hex, node num). */
+function identityForms(nodeNum: number, shortName: string, longName: string): string[] {
   const forms = [
-    norm(ctx.senderShortName),
-    norm(ctx.senderLongName),
-    norm(nodeIdHex(ctx.senderNodeNum)),
-    norm(String(ctx.senderNodeNum)),
+    norm(shortName),
+    norm(longName),
+    norm(nodeIdHex(nodeNum)),
+    norm(String(nodeNum)),
   ];
   return [...new Set(forms.filter(Boolean))];
 }
@@ -90,25 +111,29 @@ function senderNames(msgs: { senderShortName: string; senderLongName: string; se
 }
 
 export class DeadDropService {
-  constructor(private getRepo: () => DeadDropRepository) {}
+  constructor(
+    private getRepo: () => DeadDropRepository,
+    /**
+     * Resolves a typed recipient name to the matching node's identity forms so
+     * the per-recipient cap is counted against the same set retrieval pools by.
+     * Defaults to the typed name alone (used in tests / when no node is known).
+     */
+    private resolveRecipient: RecipientResolver = async (_sourceId, name) => [norm(name)],
+  ) {}
 
   private get repo(): DeadDropRepository {
     return this.getRepo();
   }
 
   /** Parse + execute one mailbox command. Returns the lines to send back. */
-  async handleCommand(ctx: DeadDropContext, now: number = Date.now()): Promise<string[]> {
+  async handleCommand(ctx: DeadDropContext, now: number = Date.now()): Promise<DeadDropResult> {
+    // DM-only. Return a true no-op for channel messages so a misconfigured
+    // trigger never DMs an unsolicited rejection back to the poster.
     if (!ctx.isDirect) {
-      return ['Mailbox commands must be sent by DM.'];
+      return { responses: [] };
     }
 
-    // The auto-responder trigger pattern decides which messages reach here, so
-    // we parse leniently: tolerate an optional keyword prefix on the leading
-    // verb (e.g. "betamsg"/"betainbox") by normalizing it to the bare verb.
-    // This lets the mailbox run alongside another responder that already uses
-    // plain "msg"/"inbox" (configure the mailbox trigger with prefixed keywords
-    // and the bare ones keep going to the other responder). No-op for "msg"/"inbox".
-    const text = ctx.text.trim().replace(/^(\S*?)(msg|inbox)\b/i, '$2');
+    const text = ctx.text.trim();
     const lower = text.toLowerCase();
 
     // msg <recipient> <body>
@@ -117,7 +142,7 @@ export class DeadDropService {
       return this.cmdMsg(ctx, msgMatch[1], msgMatch[2].trim(), now);
     }
     if (/^msg(\s+\S+)?\s*$/i.test(text)) {
-      return ['Usage: msg <name> <message>'];
+      return { responses: ['Usage: msg <name> <message>'] };
     }
 
     if (lower.startsWith('inbox play ')) {
@@ -136,7 +161,15 @@ export class DeadDropService {
       return this.cmdInbox(ctx, now);
     }
 
-    return ['Commands: msg <name> <text> | inbox | inbox play | inbox delete <id> | inbox clear'];
+    return { responses: ['Commands: msg <name> <text> | inbox | inbox play | inbox delete <id> | inbox clear'] };
+  }
+
+  /**
+   * Mark one message played — called by the auto-responder from the delivery
+   * success callback of that message's body line, not at enqueue time.
+   */
+  async markDelivered(sourceId: string, messageId: number, ts: number = Date.now()): Promise<void> {
+    await this.repo.markPlayed(sourceId, [messageId], ts);
   }
 
   private async generateShortId(sourceId: string): Promise<string> {
@@ -150,25 +183,29 @@ export class DeadDropService {
     return randomBytes(3).toString('hex').toUpperCase();
   }
 
-  private async cmdMsg(ctx: DeadDropContext, recipientRaw: string, body: string, now: number): Promise<string[]> {
+  private async cmdMsg(ctx: DeadDropContext, recipientRaw: string, body: string, now: number): Promise<DeadDropResult> {
     const recipient = norm(recipientRaw);
-    if (!recipient) return ['Usage: msg <name> <message>'];
-    if (!body) return ['Usage: msg <name> <message>'];
+    if (!recipient) return { responses: ['Usage: msg <name> <message>'] };
+    if (!body) return { responses: ['Usage: msg <name> <message>'] };
 
     if (byteLen(body) > MAX_BODY_BYTES) {
-      return [`Message too long (${byteLen(body)} bytes). Limit ${MAX_BODY_BYTES}.`];
+      return { responses: [`Message too long (${byteLen(body)} bytes). Limit ${MAX_BODY_BYTES}.`] };
     }
 
     const cutoff = now - EXPIRY_MS;
 
-    const recipientPending = await this.repo.countPendingForRecipient(ctx.sourceId, recipient, cutoff);
+    // Count the per-recipient cap against the same identity set retrieval pools
+    // by — otherwise a sender could address one node by several name forms and
+    // get an independent counter for each, blowing past the cap.
+    const recipientForms = await this.resolveRecipient(ctx.sourceId, recipient);
+    const recipientPending = await this.repo.countPendingForRecipient(ctx.sourceId, recipientForms, cutoff);
     if (recipientPending >= MAX_PENDING_PER_RECIPIENT) {
-      return [`${recipientRaw}'s inbox is full (${MAX_PENDING_PER_RECIPIENT} pending). Not stored.`];
+      return { responses: [`${recipientRaw}'s inbox is full (${MAX_PENDING_PER_RECIPIENT} pending). Not stored.`] };
     }
 
     const senderPending = await this.repo.countPendingFromSender(ctx.sourceId, ctx.senderNodeNum, cutoff);
     if (senderPending >= MAX_PENDING_PER_SENDER) {
-      return ['You have too many pending messages out. Wait for some to be picked up.'];
+      return { responses: ['You have too many pending messages out. Wait for some to be picked up.'] };
     }
 
     const shortId = await this.generateShortId(ctx.sourceId);
@@ -182,13 +219,13 @@ export class DeadDropService {
       body,
     }, now);
 
-    return [`Stored for ${recipientRaw} (id ${shortId}). Tell them to DM 'inbox'.`];
+    return { responses: [`Stored for ${recipientRaw} (id ${shortId}). Tell them to DM 'inbox'.`] };
   }
 
-  private async cmdInbox(ctx: DeadDropContext, now: number): Promise<string[]> {
+  private async cmdInbox(ctx: DeadDropContext, now: number): Promise<DeadDropResult> {
     const cutoff = now - EXPIRY_MS;
     const pending = await this.repo.getPendingForRecipient(ctx.sourceId, recipientIdentities(ctx), cutoff);
-    if (pending.length === 0) return ['No pending messages.'];
+    if (pending.length === 0) return { responses: ['No pending messages.'] };
 
     const names = senderNames(pending);
     const oldest = ago(pending[0].createdAt, now);
@@ -196,22 +233,27 @@ export class DeadDropService {
     const sc = names.length;
     const playHint = sc === 1 ? `inbox play ${names[0]}` : 'inbox play';
 
-    return [
-      `${mc} msg${mc !== 1 ? 's' : ''} from ${sc} node${sc !== 1 ? 's' : ''} (${names.join(', ')}). ` +
-      `Oldest: ${oldest}. Reply '${playHint}'.`,
-    ];
+    return {
+      responses: [
+        `${mc} msg${mc !== 1 ? 's' : ''} from ${sc} node${sc !== 1 ? 's' : ''} (${names.join(', ')}). ` +
+        `Oldest: ${oldest}. Reply '${playHint}'.`,
+      ],
+    };
   }
 
-  private async cmdInboxPlay(ctx: DeadDropContext, senderFilter: string | null, now: number): Promise<string[]> {
+  private async cmdInboxPlay(ctx: DeadDropContext, senderFilter: string | null, now: number): Promise<DeadDropResult> {
     const cutoff = now - EXPIRY_MS;
     let pending = await this.repo.getPendingForRecipient(ctx.sourceId, recipientIdentities(ctx), cutoff);
 
     if (senderFilter) {
       const sf = norm(senderFilter);
-      pending = pending.filter(m => norm(m.senderShortName) === sf || norm(m.senderLongName) === sf);
-      if (pending.length === 0) return [`No pending messages from ${senderFilter}.`];
+      // Match against every identity form of the sender, so the `inbox play
+      // <name>` hint (which may be a !hex/node-num) actually filters.
+      pending = pending.filter(m =>
+        identityForms(m.senderNodeNum, m.senderShortName, m.senderLongName).includes(sf));
+      if (pending.length === 0) return { responses: [`No pending messages from ${senderFilter}.`] };
     } else if (pending.length === 0) {
-      return ['No pending messages.'];
+      return { responses: ['No pending messages.'] };
     }
 
     const total = pending.length;
@@ -219,51 +261,78 @@ export class DeadDropService {
     const remaining = total - batch.length;
 
     const responses: string[] = [];
-    const playedIds: number[] = [];
+    const playOnDelivery: Array<{ index: number; messageId: number }> = [];
     batch.forEach((m, i) => {
       const sender = m.senderShortName || m.senderLongName || nodeIdHex(m.senderNodeNum);
       responses.push(`MSG ${i + 1}/${total} from ${sender}, ${ago(m.createdAt, now)}, id ${m.shortId}`);
       responses.push(m.body);
-      if (m.id != null) playedIds.push(m.id);
+      // Mark played only once the body line is confirmed delivered.
+      if (m.id != null) playOnDelivery.push({ index: responses.length - 1, messageId: m.id });
     });
-
-    await this.repo.markPlayed(ctx.sourceId, playedIds, now);
 
     if (remaining > 0) {
       responses.push(`${batch.length} delivered. ${remaining} more — reply 'inbox play'. Or 'inbox clear' to delete played.`);
     } else {
       responses.push(`All ${batch.length} delivered. Reply 'inbox clear' to delete.`);
     }
-    return responses;
+    return { responses, playOnDelivery };
   }
 
-  private async cmdInboxDelete(ctx: DeadDropContext, idRaw: string, now: number): Promise<string[]> {
+  private async cmdInboxDelete(ctx: DeadDropContext, idRaw: string, now: number): Promise<DeadDropResult> {
     const shortId = idRaw.trim().toUpperCase();
-    if (!shortId) return ['Usage: inbox delete <id>'];
+    if (!shortId) return { responses: ['Usage: inbox delete <id>'] };
 
     const row = await this.repo.getByShortId(ctx.sourceId, shortId);
-    if (!row) return [`Message ${shortId} not found.`];
-
-    if (!recipientIdentities(ctx).includes(norm(row.recipientName))) {
-      return ['That message is not addressed to you.'];
+    // Same response whether the id doesn't exist or belongs to another node, so
+    // the 4-hex-char id space can't be brute-forced to enumerate stored ids.
+    if (!row || !recipientIdentities(ctx).includes(norm(row.recipientName))) {
+      return { responses: [`Message ${shortId} not found.`] };
     }
 
     if (row.id != null) await this.repo.softDelete(ctx.sourceId, [row.id], now);
-    return [`Message ${shortId} deleted.`];
+    return { responses: [`Message ${shortId} deleted.`] };
   }
 
-  private async cmdInboxClear(ctx: DeadDropContext, now: number): Promise<string[]> {
+  private async cmdInboxClear(ctx: DeadDropContext, now: number): Promise<DeadDropResult> {
     const cutoff = now - EXPIRY_MS;
     const played = await this.repo.getPlayedForRecipient(ctx.sourceId, recipientIdentities(ctx), cutoff);
-    if (played.length === 0) return ['No played messages to clear.'];
+    if (played.length === 0) return { responses: ['No played messages to clear.'] };
 
     const ids = played.map(m => m.id).filter((id): id is number => id != null);
     await this.repo.softDelete(ctx.sourceId, ids, now);
 
     const n = played.length;
-    return [`Cleared ${n} played message${n !== 1 ? 's' : ''}.`];
+    return { responses: [`Cleared ${n} played message${n !== 1 ? 's' : ''}.`] };
   }
 }
 
-/** Process-wide singleton; resolves the repo lazily after DB init. */
-export const deadDropService = new DeadDropService(() => databaseService.deadDrop);
+/**
+ * Default recipient resolver for the singleton: looks up the node matching the
+ * typed name within the source and returns all of its identity forms, so the
+ * per-recipient cap counts every form. Falls back to the typed name alone when
+ * the node isn't known to this source yet.
+ */
+async function defaultRecipientResolver(sourceId: string, name: string): Promise<string[]> {
+  const typed = norm(name);
+  try {
+    const nodes = await databaseService.nodes.getAllNodes(sourceId);
+    const match = nodes.find(n =>
+      norm(n.shortName) === typed ||
+      norm(n.longName) === typed ||
+      norm(n.nodeId) === typed ||
+      norm(String(n.nodeNum)) === typed);
+    if (match) {
+      const forms = identityForms(Number(match.nodeNum), match.shortName || '', match.longName || '');
+      return forms.length ? forms : [typed];
+    }
+  } catch (err) {
+    logger.warn('Dead Drop recipient resolve failed, using typed name only:', err);
+  }
+  return [typed];
+}
+
+/** Process-wide singleton; resolves the repo + node data lazily after DB init. */
+export const deadDropService = new DeadDropService(
+  () => databaseService.deadDrop,
+  defaultRecipientResolver,
+);

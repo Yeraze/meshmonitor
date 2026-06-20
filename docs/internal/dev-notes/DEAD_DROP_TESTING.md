@@ -34,11 +34,16 @@ Design notes:
   — the DM sender context proves identity, avoiding a brittle store-time lookup.
 - **Soft state**: a row is pending until `playedAt`, hidden once `deletedAt`,
   and treated as expired when older than the cutoff (filtered from every read).
-- **Command-prefix tolerance**: the service strips an optional prefix from the
-  leading verb (`/^(\S*?)(msg|inbox)\b/i`), so a trigger configured with
-  `betamsg`/`betainbox` can coexist with another responder already using bare
-  `msg`/`inbox`. The trigger pattern is the source of truth for which messages
-  reach the handler; the service parses leniently.
+  Expired rows are hard-purged by the daily `databaseMaintenanceService` run.
+- **Delivery-tied play**: `inbox play` does **not** mark a message `playedAt` at
+  enqueue time. The service returns `playOnDelivery` (body-line index → message
+  id); the auto-responder marks each message played only from that line's
+  delivery-success callback, so a dropped body DM leaves the message pending and
+  it resurfaces in `inbox`.
+- **Cap counts across identity forms**: the per-recipient cap resolves the typed
+  recipient name to the matching node and counts pending across all of its
+  identity forms, matching the set retrieval pools — so it can't be bypassed by
+  addressing one node by several name forms.
 
 ## Automated test coverage
 
@@ -48,9 +53,11 @@ Run: `npm run test:run` (Node 20+). Relevant suites:
 - `src/db/repositories/deadDrop.perSource.test.ts` — store/read/play/clear,
   per-recipient & per-sender caps, expiry filtering, **source isolation**.
 - `src/server/services/deadDropService.test.ts` — full command brain: DM-only
-  gate, store, multi-word body, byte limit, inbox summary/names, play (incl.
-  batch cap + remainder), play-by-sender, delete (recipient-scoped), clear,
-  node-id matching, caps, **keyword-prefix tolerance**.
+  no-op, store, multi-word body, byte limit, inbox summary/names, **delivery-tied
+  play** (pending until `markDelivered`), play-by-sender (incl. `!hex`/node-num
+  filter forms), batch cap + remainder, delete (same response for not-yours vs
+  missing — no enumeration), clear, node-id matching, and the per-recipient cap
+  **counted across identity forms**.
 - `src/server/routes/settingsRoutes.test.ts` — settings save accepts a mailbox
   trigger with empty `response` (200); non-mailbox empty response still 400;
   unknown `responseType` still 400.
@@ -60,8 +67,11 @@ Run: `npm run test:run` (Node 20+). Relevant suites:
 Hardware: ALTO MF hosts the mailbox; ALTO LF (`ALLF`) and ZN Office (`ZNOF`) act
 as clients. All traffic was **direct messages only** (no channel broadcasts).
 
-Trigger on ALTO MF (beta keywords to coexist with the existing `msg`/`inbox`
-prototype during the soak):
+Trigger on ALTO MF during the soak used `beta`-prefixed keywords to coexist with
+an existing `msg`/`inbox` script responder. That prefix-tolerance was **removed
+after review** (it decoupled the parser from the trigger config); the shipped
+feature uses the bare keywords, so the run below reads `betamsg`/`betainbox`
+where the shipped commands are `msg`/`inbox`.
 
 ```
 betamsg {recipient} {body:.+},betainbox,betainbox play {sender},betainbox play,betainbox delete {id},betainbox clear
@@ -80,14 +90,6 @@ Verified against the database at each step: `dead_drop_messages` row created
 `deletedAt` set after clear. Server logs showed `📬 Auto-responder mailbox
 completed` for each command, confirming the native `mailbox` dispatch path (not
 the separate Python prototype, whose wording differs).
-
-## Known limitation
-
-In prefixed-keyword mode, the mailbox's reply hints suggest the **bare** verb
-("Reply 'inbox play'") rather than the prefixed form, because the service is
-prefix-unaware when composing hints. With the default `msg`/`inbox` keywords the
-hints are exact. A future refinement could pass the configured prefix to the
-service so hints echo it.
 
 ## Reproducing
 

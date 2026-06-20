@@ -109,15 +109,21 @@ export class DeadDropRepository extends BaseRepository {
     return (this.normalizeBigInts(result) as DbDeadDropMessage[]).filter(m => m.playedAt != null);
   }
 
-  /** Count of pending messages addressed to a recipient (per-recipient cap). */
-  async countPendingForRecipient(sourceId: string, recipientName: string, cutoff: number): Promise<number> {
+  /**
+   * Count of pending messages addressed to a recipient (per-recipient cap),
+   * across every identity form the recipient may be addressed by — so the cap
+   * matches the set retrieval pools, and can't be bypassed by addressing the
+   * same node as `wisp`, then `!hex`, then `wisp node`.
+   */
+  async countPendingForRecipient(sourceId: string, recipientNames: string[], cutoff: number): Promise<number> {
+    if (recipientNames.length === 0) return 0;
     const { deadDropMessages } = this.tables;
     const result = await this.db
       .select({ c: count() })
       .from(deadDropMessages)
       .where(and(
         eq(deadDropMessages.sourceId, sourceId),
-        eq(deadDropMessages.recipientName, recipientName),
+        inArray(deadDropMessages.recipientName, recipientNames),
         isNull(deadDropMessages.playedAt),
         isNull(deadDropMessages.deletedAt),
         gt(deadDropMessages.createdAt, cutoff),
@@ -177,11 +183,18 @@ export class DeadDropRepository extends BaseRepository {
       .where(and(eq(deadDropMessages.sourceId, sourceId), inArray(deadDropMessages.id, ids)));
   }
 
-  /** Hard-delete rows older than the cutoff (maintenance). Returns nothing. */
-  async purgeExpired(cutoff: number): Promise<void> {
+  /** Hard-delete rows older than the cutoff (maintenance). Returns the count removed. */
+  async purgeExpired(cutoff: number): Promise<number> {
     const { deadDropMessages } = this.tables;
+    const before = await this.db
+      .select({ c: count() })
+      .from(deadDropMessages)
+      .where(lt(deadDropMessages.createdAt, cutoff));
+    const toDelete = Number(before[0]?.c ?? 0);
+    if (toDelete === 0) return 0;
     await this.db
       .delete(deadDropMessages)
       .where(lt(deadDropMessages.createdAt, cutoff));
+    return toDelete;
   }
 }

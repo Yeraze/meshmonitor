@@ -835,12 +835,6 @@ router back online after battery swap
 | Pending per sender | 20 |
 | Message expiry | 7 days |
 
-#### Coexisting with another responder (command prefix)
-
-The mailbox keywords come from the trigger pattern, and the service tolerates an optional prefix on the leading verb. This lets the mailbox run on a node that already has a different `msg`/`inbox` responder: configure the mailbox trigger with prefixed keywords (e.g. `betamsg` / `betainbox`) and the bare `msg` / `inbox` keep going to the other responder.
-
-> Note: in prefixed mode, the mailbox's reply hints still suggest the bare verb (e.g. "Reply 'inbox play'") — type the prefixed form (`betainbox play`). With the default `msg` / `inbox` keywords the hints are exact.
-
 #### Configuration
 
 1. Open **Automation → Auto Responder** for the source whose node should host the mailbox.
@@ -851,7 +845,7 @@ The mailbox keywords come from the trigger pattern, and the service tolerates an
      ```
      msg {recipient} {body:.+},inbox,inbox play {sender},inbox play,inbox delete {id},inbox clear
      ```
-   - **Cooldown**: 2 seconds (recommended)
+   - **Cooldown**: not needed — the mailbox is interactive (e.g. `inbox` then `inbox play` a second apart) and bypasses the per-node cooldown, so any value here is ignored for this trigger.
 3. Click **Add**, then **Save**.
 
 No response text is required — the **Add** button enables once the trigger pattern is valid.
