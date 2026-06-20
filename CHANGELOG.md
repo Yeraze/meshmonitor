@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.11.2] - 2026-06-20
+
+### Bug Fixes
+
+- **Startup crash loop after upgrading to 4.11.1 with an existing Auto-Acknowledge config (PostgreSQL/MySQL)**: Migration 093 (the Auto-Acknowledge 2×2 matrix backfill, new in 4.11.1) inserted `settings` rows without the table's NOT NULL `createdAt`/`updatedAt` columns. On PostgreSQL/MySQL this aborted the migration with a `null value in column "createdAt" … violates not-null constraint` error, failing database initialization on boot — a restart loop. On SQLite the `INSERT OR IGNORE` silently swallowed the violation, so the matrix settings were never actually written. The migration now supplies both timestamps (and a regression test runs it against a real settings table). Affected instances recover automatically on upgrade: the migration had not been marked complete, so it re-runs and succeeds, correctly migrating the auto-ack settings.
+
 ## [4.11.1] - 2026-06-20
 
 ### Features
