@@ -3011,14 +3011,22 @@ const location = useLocation();
       const nodeNumStr = nodeId.replace('!', '');
       const nodeNum = parseInt(nodeNumStr, 16);
 
-      // Use direct fetch with CSRF token
-      await authFetch(`${baseUrl}/api/telemetry/request`, {
+      // Use direct fetch with CSRF token. Pass sourceId so the request is routed
+      // through the correct source's manager AND the destination channel is looked
+      // up on that source (issue #3573) — omitting it let the backend cross-source
+      // match a wrong channel and send the request unanswerably.
+      const response = await authFetch(`${baseUrl}/api/telemetry/request`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ destination: nodeNum, telemetryType }),
+        body: JSON.stringify({ destination: nodeNum, telemetryType, sourceId: sourceId || undefined }),
       });
+
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail.error || `Telemetry request failed (${response.status})`);
+      }
 
       logger.debug(`📊 Telemetry request (${telemetryType}) sent to ${nodeId}`);
 

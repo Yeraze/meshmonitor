@@ -4,6 +4,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { parseDestinationNum } from '../utils/parseDestination.js';
+import { resolveDestinationChannel } from '../utils/resolveDestinationChannel.js';
 import { PortNum } from '../constants/meshtastic.js';
 
 const router = Router();
@@ -20,12 +21,10 @@ router.post('/traceroute', requirePermission('traceroute', 'write'), async (req:
       return res.status(400).json({ error: `Invalid destination: ${destination}` });
     }
 
-    // Look up the node to get its channel — scope to this source so the channel
-    // reflects the mesh this traceroute will actually traverse.
-    const node = await databaseService.nodes.getNode(destinationNum, traceSourceId);
-    const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
-
+    // Scope the channel lookup to the source we actually send through (issue
+    // #3573) so the channel reflects the mesh this traceroute will traverse.
     const traceManager = (resolveSourceManager(traceSourceId));
+    const channel = await resolveDestinationChannel(destinationNum, traceManager, databaseService);
     await traceManager.sendTraceroute(destinationNum, channel);
     res.json({
       success: true,
@@ -50,14 +49,10 @@ router.post('/position/request', requirePermission('messages', 'write'), async (
       return res.status(400).json({ error: `Invalid destination: ${destination}` });
     }
 
-    // Look up the node to get its channel (scoped to this source)
-    const node = await databaseService.nodes.getNode(destinationNum, posSourceId);
-    // Use explicit channel from request if provided and valid (0-7), otherwise fall back to node's stored channel
-    const channel = (typeof req.body.channel === 'number' && req.body.channel >= 0 && req.body.channel <= 7)
-      ? req.body.channel
-      : (node?.channel ?? 0);
-
+    // Scope the channel lookup to the source we actually send through (issue
+    // #3573). An explicit, valid (0-7) channel from the request still wins.
     const posManager = (resolveSourceManager(posSourceId));
+    const channel = await resolveDestinationChannel(destinationNum, posManager, databaseService, req.body.channel);
     const { packetId, requestId } = await posManager.sendPositionRequest(destinationNum, channel);
 
     // Get local node info to create system message
@@ -126,11 +121,9 @@ router.post('/nodeinfo/request', requirePermission('messages', 'write'), async (
       return res.status(400).json({ error: `Invalid destination: ${destination}` });
     }
 
-    // Look up the node to get its channel (scoped to this source)
-    const node = await databaseService.nodes.getNode(destinationNum, niSourceId);
-    const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
-
+    // Scope the channel lookup to the source we actually send through (issue #3573).
     const niManager = (resolveSourceManager(niSourceId));
+    const channel = await resolveDestinationChannel(destinationNum, niManager, databaseService);
     const { packetId, requestId } = await niManager.sendNodeInfoRequest(destinationNum, channel);
 
     // Get local node info to create system message
@@ -204,8 +197,10 @@ router.post('/neighborinfo/request', requirePermission('traceroute', 'write'), a
     // Eligibility check: only allow requests to local node or 0-hop nodes
     const neighborManager = (resolveSourceManager(neighborSourceId));
     const localNodeNum = neighborManager.getLocalNodeInfo()?.nodeNum;
-    // Scope to the target source so hopsAway/channel reflect this mesh
-    const node = await databaseService.nodes.getNode(destinationNum, neighborSourceId);
+    // Scope to the source we actually send through so hopsAway/channel reflect
+    // this mesh (issue #3573) — not the request-body sourceId, which may be
+    // undefined and cross-source-match a wrong row.
+    const node = await databaseService.nodes.getNode(destinationNum, neighborManager.sourceId);
     const isLocalNode = localNodeNum != null && Number(destinationNum) === Number(localNodeNum);
     const isDirectNode = node != null && node.hopsAway != null && Number(node.hopsAway) === 0;
 
@@ -231,7 +226,8 @@ router.post('/neighborinfo/request', requirePermission('traceroute', 'write'), a
       neighborInfoRequestTimestamps.delete(Number(destinationNum));
     }
 
-    const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
+    // node is already scoped to neighborManager.sourceId above; clamp to a valid index.
+    const channel = await resolveDestinationChannel(destinationNum, neighborManager, databaseService);
 
     const { packetId, requestId } = await neighborManager.sendNeighborInfoRequest(destinationNum, channel);
     neighborInfoRequestTimestamps.set(Number(destinationNum), now);
@@ -269,11 +265,13 @@ router.post('/telemetry/request', requirePermission('messages', 'write'), async 
       return res.status(400).json({ error: `Invalid destination: ${destination}` });
     }
 
-    // Look up the node to get its channel (scoped to this source)
-    const node = await databaseService.nodes.getNode(destinationNum, telSourceId);
-    const channel = node?.channel ?? 0; // Default to 0 if node not found or channel not set
-
+    // Resolve the manager first, then scope the channel lookup to the source it
+    // actually sends through (issue #3573) — not the request-body sourceId, which
+    // the frontend often omits and which can cross-source-match an MQTT row whose
+    // `channel` (e.g. 101) is not a valid Meshtastic channel index.
     const telManager = (resolveSourceManager(telSourceId));
+    const channel = await resolveDestinationChannel(destinationNum, telManager, databaseService);
+
     const { packetId, requestId } = await telManager.sendTelemetryRequest(
       destinationNum,
       channel,
