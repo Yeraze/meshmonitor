@@ -1332,18 +1332,11 @@
     height: 100%;
   }
 
-  /* Adjust map controls on mobile - keep in upper right, no dragging */
-  .map-controls {
-    top: 16px;
-    right: 8px;
-    left: auto;
-    max-width: calc(100vw - 64px);
-    /* Sit below the mobile sidebar drawer (999) and its backdrop (998) so the
-       Features panel yields when the Sources sidebar is open (#3532). When the
-       drawer is closed the backdrop is opacity:0/pointer-events:none, so this
-       has no effect on the normal map-controls interaction. */
-    z-index: 997;
-  }
+  /* NOTE: the mobile `.map-controls` position + z-index override lives AFTER
+     the base `.map-controls` rule (search "Map Controls (mobile override)"),
+     not here. The base rule is declared later in this file; since media
+     queries add no specificity, an override placed here would lose the cascade
+     to the base rule's `top/right/z-index` and silently do nothing (#3532). */
 
   .map-controls .map-controls-body {
     padding: 0.5rem;
@@ -2253,6 +2246,27 @@
   flex-direction: row;
   align-items: stretch;
   overflow: hidden;
+}
+
+/* Map Controls (mobile override)
+   Declared AFTER the base `.map-controls` rule on purpose: media queries add
+   no specificity, so this must come later in source order to win the cascade
+   over the base `top/right/z-index` above. (Issue #3532 — the original fix
+   placed this in an earlier media block and was silently overridden, so the
+   Features panel still painted over the slide-in Sources sidebar on mobile.) */
+@media (max-width: 768px) {
+  .map-controls {
+    top: 16px;
+    right: 8px;
+    left: auto;
+    max-width: calc(100vw - 64px);
+    /* Sit below the mobile sidebar drawer (.dashboard-sidebar, z-index 999)
+       and its backdrop (998) so the Features panel yields when the Sources
+       sidebar is open. When the drawer is closed its backdrop is
+       opacity:0/pointer-events:none, so this has no effect on the normal
+       map-controls interaction. */
+    z-index: 997;
+  }
 }
 
 .map-controls-body {
