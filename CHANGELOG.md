@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.11.1] - 2026-06-20
+
 ### Features
 
 - **Device notifications surfaced as toasts + firmware 2.8 favorite/ignore cap handling (#3548)**: MeshMonitor now shows `ClientNotification` messages the connected node emits about its own operation — duplicate-key security warnings, invalid-config errors, duty-cycle limits, and more — as top-right toasts. These were always sent by the node but previously decoded and dropped. A server-side policy (`clientNotificationPolicy.ts`) suppresses the routine recurring ones (e.g. the power-saving "sleeping for N interval" message) and dedupes identical messages to at most once per minute per source, so the feed stays useful rather than noisy. On firmware **2.8**, when a Set Favorite / Ignore is refused because the device's protected-node list is full, MeshMonitor reverts its optimistic star/ignore toggle to match the device and surfaces the refusal (this warning is only emitted for the locally-connected node, not remote-admin targets). No protobuf changes were needed — the 2.8 NodeDB warm-tier restructure and the `snr_q4` on-disk field do not affect the over-the-air wire MeshMonitor reads (SNR stays a `float` in dB; a regression test guards this). See `docs/internal/dev-notes/MT28_NODEDB_SUPPORT_PLAN.md`.
