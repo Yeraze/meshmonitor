@@ -50,6 +50,26 @@ export function roleGlyphInnerSvg(category: NodeTypeCategory, color: string): st
 }
 
 /**
+ * Standalone role-glyph marker: the node-type glyph ({@link roleGlyphInnerSvg})
+ * drawn over a white background circle, as a complete `<svg>` string sized to
+ * `size`px. Used by maps that render their own markers (e.g. the MeshCore
+ * source map) and by the legend swatches, so the glyph stays identical to the
+ * one `createNodeIcon`'s official style produces. Returns '' for 'standard'
+ * (and unknown categories) so callers fall back to their default marker.
+ */
+export function roleGlyphMarkerSvg(
+  category: NodeTypeCategory,
+  color: string,
+  size = 24,
+): string {
+  const inner = roleGlyphInnerSvg(category, color);
+  if (!inner) return '';
+  return `<svg width="${size}" height="${size}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">`
+    + `<circle cx="24" cy="24" r="20" fill="white" fill-opacity="0.95" stroke="${color}" stroke-width="2" />`
+    + `${inner}</svg>`;
+}
+
+/**
  * Get color based on hop count
  * Uses a blue-to-red gradient (through purple/magenta)
  * 0 hops: Green (#22c55e) - Direct connection (local node)

@@ -3,7 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { useSettings, TimeFormat, DateFormat } from '../contexts/SettingsContext';
 import { formatDateTime } from '../utils/datetime';
 import { DraggableOverlay } from './DraggableOverlay';
+import { NODE_TYPE_CATEGORIES, NODE_TYPE_CATEGORY_META } from '../utils/nodeTypeCategory';
+import { roleGlyphMarkerSvg } from '../utils/mapIcons';
 import './MapLegend.css';
+
+// Color for the node-type glyph swatches. Matches the MeshCore map's marker
+// accent (the only surface that currently opts into the node-type legend).
+const NODE_TYPE_LEGEND_COLOR = '#cba6f7';
 
 interface LinkLegendItem {
   color: string;
@@ -24,6 +30,9 @@ interface MapLegendProps {
   positionHistory?: PositionHistoryData;
   /** Count of known nodes with neither a real nor an estimated position (issue #3271). */
   unmappedCount?: number;
+  /** Render the MeshCore node-type glyph legend (issue #3546). Opt-in so the
+   *  Meshtastic maps that share this component are unaffected. */
+  showNodeTypes?: boolean;
 }
 
 // Default position: top-right, below the Features checkbox panel, right-aligned with it
@@ -34,7 +43,7 @@ const getDefaultPosition = () => ({
   y: 60 + 10 + 250 + 20 // header + features top + features height + gap = 340
 });
 
-const MapLegend: React.FC<MapLegendProps> = ({ positionHistory, unmappedCount }) => {
+const MapLegend: React.FC<MapLegendProps> = ({ positionHistory, unmappedCount, showNodeTypes }) => {
   const { t } = useTranslation();
   const { overlayColors } = useSettings();
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -125,6 +134,28 @@ const MapLegend: React.FC<MapLegendProps> = ({ positionHistory, unmappedCount })
                 <span className="legend-label">{item.label}</span>
               </div>
             ))}
+            {showNodeTypes && (
+              <>
+                <div className="legend-divider" />
+                <span className="legend-title">{t('map.nodeType.legendTitle', 'Node Types')}</span>
+                {/* Standard nodes keep the default marker, so only the four
+                    glyph categories are listed (matches the analysis legend). */}
+                {NODE_TYPE_CATEGORIES.filter((c) => c !== 'standard').map((category) => {
+                  const meta = NODE_TYPE_CATEGORY_META[category];
+                  return (
+                    <div key={category} className="legend-item">
+                      <span
+                        className="legend-line-sample"
+                        style={{ display: 'inline-flex', width: 20, height: 20 }}
+                        aria-hidden="true"
+                        dangerouslySetInnerHTML={{ __html: roleGlyphMarkerSvg(category, NODE_TYPE_LEGEND_COLOR, 20) }}
+                      />
+                      <span className="legend-label">{t(meta.labelKey, meta.label)}</span>
+                    </div>
+                  );
+                })}
+              </>
+            )}
             {positionHistory && (
               <>
                 <div className="legend-divider" />

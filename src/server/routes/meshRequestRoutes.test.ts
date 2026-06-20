@@ -3,6 +3,7 @@ import request from 'supertest';
 import express from 'express';
 
 const mockManager = vi.hoisted(() => ({
+  sourceId: 'mgr-src',
   sendTraceroute: vi.fn(),
   sendPositionRequest: vi.fn(),
   sendNodeInfoRequest: vi.fn(),
@@ -142,5 +143,21 @@ describe('POST /telemetry/request', () => {
     const res = await request(app).post('/telemetry/request').send({ destination: '!12345678', telemetryType: 'environment' });
     expect(res.status).toBe(200);
     expect(mockManager.sendTelemetryRequest).toHaveBeenCalledWith(0x12345678, 2, 'environment');
+  });
+
+  // Regression for #3573: when the frontend omits sourceId, the channel lookup
+  // must be scoped to the resolved manager's source (not undefined, which would
+  // cross-source-match a wrong row and send on an invalid channel).
+  it('scopes the channel lookup to the manager source when no sourceId is sent', async () => {
+    mockManager.sendTelemetryRequest.mockResolvedValue({ packetId: 1, requestId: 2 });
+    await request(app).post('/telemetry/request').send({ destination: '!12345678', telemetryType: 'device' });
+    expect(databaseService.nodes.getNode).toHaveBeenCalledWith(0x12345678, 'mgr-src');
+  });
+
+  it('clamps an out-of-range stored channel (the MQTT channel=101 case) to 0', async () => {
+    (databaseService.nodes.getNode as any).mockResolvedValue({ channel: 101 });
+    mockManager.sendTelemetryRequest.mockResolvedValue({ packetId: 1, requestId: 2 });
+    await request(app).post('/telemetry/request').send({ destination: '!12345678', telemetryType: 'device' });
+    expect(mockManager.sendTelemetryRequest).toHaveBeenCalledWith(0x12345678, 0, 'device');
   });
 });

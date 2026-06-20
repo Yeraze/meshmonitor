@@ -1,8 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useSettings } from '../../contexts/SettingsContext';
+import {
+  getNodeTypeCategory,
+  nodePassesTypeFilter,
+  NODE_TYPE_CATEGORIES,
+  NODE_TYPE_CATEGORY_META,
+  type NodeTypeCategory,
+} from '../../utils/nodeTypeCategory';
+import { roleGlyphMarkerSvg } from '../../utils/mapIcons';
 import { useSource } from '../../contexts/SourceContext';
 import { getTilesetById, type TilesetId } from '../../config/tilesets';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
@@ -53,10 +62,17 @@ interface MeshCoreMapProps {
   onNavigateToDm?: (publicKey: string) => void;
 }
 
-function makeIcon(name: string): L.DivIcon {
-  return L.divIcon({
-    className: 'meshcore-marker',
-    html: `
+/**
+ * Marker body: a node-type role glyph (repeater/room/sensor/companion) on a
+ * white circle when the contact's advert type is known (issue #3546), else the
+ * original purple "MC" badge for standard/unknown nodes. The name label is
+ * unchanged so existing behavior is preserved.
+ */
+function makeIcon(name: string, category: NodeTypeCategory): L.DivIcon {
+  const glyph = roleGlyphMarkerSvg(category, MESHCORE_COLOR, 24);
+  const body = glyph
+    ? `<div style="width:24px;height:24px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">${glyph}</div>`
+    : `
       <div style="
         width: 24px;
         height: 24px;
@@ -70,7 +86,11 @@ function makeIcon(name: string): L.DivIcon {
         color: #1e1e2e;
         font-size: 10px;
         font-weight: bold;
-      ">MC</div>
+      ">MC</div>`;
+  return L.divIcon({
+    className: 'meshcore-marker',
+    html: `
+      ${body}
       <div style="
         position: absolute;
         top: -20px;
@@ -90,6 +110,7 @@ function makeIcon(name: string): L.DivIcon {
 }
 
 export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition, onNavigateToDm }) => {
+  const { t } = useTranslation();
   const { mapTileset, customTilesets, setMapTileset } = useSettings();
   const { sourceId } = useSource();
   const csrfFetch = useCsrfFetch();
@@ -97,6 +118,23 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
   const [showPaths, setShowPaths] = useState(true);
   const [showNeighbors, setShowNeighbors] = useState(true);
   const [neighborEdges, setNeighborEdges] = useState<NeighborEdge[]>([]);
+
+  // Per-node-type visibility filter (issue #3546), persisted like the other map
+  // toggles. Missing/true => visible; a category is hidden only when explicitly
+  // set false. Mirrors the Map Analysis workspace so behavior matches there.
+  const [nodeTypeFilter, setNodeTypeFilter] = useState<Partial<Record<NodeTypeCategory, boolean>>>(() => {
+    try {
+      const raw = localStorage.getItem('meshmonitor-meshcore-nodeTypeFilter');
+      return raw ? (JSON.parse(raw) as Partial<Record<NodeTypeCategory, boolean>>) : {};
+    } catch {
+      return {};
+    }
+  });
+  useEffect(() => {
+    localStorage.setItem('meshmonitor-meshcore-nodeTypeFilter', JSON.stringify(nodeTypeFilter));
+  }, [nodeTypeFilter]);
+  const setNodeTypeEnabled = (category: NodeTypeCategory, enabled: boolean) =>
+    setNodeTypeFilter((prev) => ({ ...prev, [category]: enabled }));
 
   // Tile selector + legend overlays — hidden by default, toggled from the Map
   // Features panel. Persisted under the same localStorage keys the other maps
@@ -150,6 +188,14 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
       typeof c.latitude === 'number' && isFinite(c.latitude)
       && typeof c.longitude === 'number' && isFinite(c.longitude)),
     [contacts],
+  );
+
+  // Markers visible after the node-type filter. Paths/neighbor lines keep using
+  // `positioned` so the filter only hides markers — matching the Map Analysis
+  // workspace, where the type filter never removes route/neighbor overlays.
+  const visibleContacts = useMemo(
+    () => positioned.filter(c => nodePassesTypeFilter({ advType: c.advType }, nodeTypeFilter)),
+    [positioned, nodeTypeFilter],
   );
 
   const localPos = useMemo((): [number, number] | null => {
@@ -230,15 +276,15 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
           url={tileset.url}
           maxZoom={tileset.maxZoom}
         />
-        {showLegend && <MapLegend />}
+        {showLegend && <MapLegend showNodeTypes />}
         {geoJsonLayers.length > 0 && <GeoJsonOverlay layers={geoJsonLayers} />}
-        {positioned.map(c => {
+        {visibleContacts.map(c => {
           const name = c.advName || c.name || 'MeshCore';
           return (
             <Marker
               key={c.publicKey}
               position={[c.latitude!, c.longitude!]}
-              icon={makeIcon(name)}
+              icon={makeIcon(name, getNodeTypeCategory({ advType: c.advType }))}
             >
               <Tooltip>
                 <strong>{name}</strong>
@@ -359,6 +405,24 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
             />
             <span>Show Legend</span>
           </label>
+          {/* Per-node-type visibility (issue #3546) — hide infrastructure or
+              end-user nodes to focus the map. Same categories as the legend. */}
+          <div className="map-controls-title" style={{ marginTop: '0.5rem' }}>
+            {t('map.nodeType.legendTitle', 'Node Types')}
+          </div>
+          {NODE_TYPE_CATEGORIES.map((category) => {
+            const meta = NODE_TYPE_CATEGORY_META[category];
+            return (
+              <label key={category} className="map-control-item">
+                <input
+                  type="checkbox"
+                  checked={nodeTypeFilter[category] !== false}
+                  onChange={(e) => setNodeTypeEnabled(category, e.target.checked)}
+                />
+                <span>{t(meta.labelKey, meta.label)}</span>
+              </label>
+            );
+          })}
           {/* GeoJSON overlay layers — per-layer on/off, mirroring the other maps. */}
           {geoJsonLayers.map(layer => (
             <label key={layer.id} className="map-control-item">
