@@ -20,6 +20,12 @@ import { channelDecryptionService } from './services/channelDecryptionService.js
 import { pkiDecryptionService } from './services/pkiDecryptionService.js';
 import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from './services/sourcePkiKeyStore.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
+import {
+  ToastThrottle,
+  shouldSuppressToast,
+  parseProtectedCapRefusal,
+  type ParsedClientNotification,
+} from './services/clientNotificationPolicy.js';
 import { waypointService } from './services/waypointService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
 import { MessageQueueService } from './messageQueueService.js';
@@ -651,6 +657,10 @@ class MeshtasticManager implements ISourceManager {
   private autoAckProcessedPackets: Set<number> = new Set(); // packetIds already auto-acked (dedup guard)
   private autoResponderCooldowns: Map<string, number> = new Map(); // "triggerIndex:nodeNum" -> lastResponseTimestamp
   private autoResponderProcessedPackets: Set<number> = new Set(); // packetIds already auto-responded (dedup guard)
+
+  // Dedupe/throttle for device ClientNotifications surfaced as toasts, so
+  // recurring warnings (duty-cycle, etc.) don't spam the UI. See handleClientNotification.
+  private clientNotificationThrottle = new ToastThrottle();
 
   // Ring buffer of packet ids we recently originated, used to recognise our own
   // packets when overheard/echoed/replayed so they aren't flagged as local-node
@@ -3938,6 +3948,9 @@ class MeshtasticManager implements ISourceManager {
         case 'mqttClientProxyMessage':
           await this.handleDeviceMqttProxyMessage(parsed.data);
           break;
+        case 'clientNotification':
+          await this.handleClientNotification(parsed.data as ParsedClientNotification);
+          break;
         case 'meshPacket':
           await this.processMeshPacket(parsed.data, context);
           break;
@@ -5536,6 +5549,55 @@ class MeshtasticManager implements ISourceManager {
    * (favorite/ignore toggles) so VN clients see updated node metadata
    * immediately. No-op if VN is not enabled for this source.
    */
+  /**
+   * Handle a FromRadio.ClientNotification — a message the connected node sends
+   * about its own operation (duty-cycle limits, config errors, duplicate-key
+   * warnings, and — on firmware 2.8 — favorite/ignore protected-node-cap
+   * refusals). Two responsibilities:
+   *   1. Reconcile optimistic favorite/ignore state when the device refuses at
+   *      the protected-node cap: the device set NO flag, so revert ours.
+   *   2. Surface the message to the UI as a toast, applying the suppression +
+   *      dedupe policy so recurring/structured noise doesn't spam users.
+   * See clientNotificationPolicy.ts for the rules and the 2.7.x background.
+   */
+  private async handleClientNotification(data: ParsedClientNotification): Promise<void> {
+    const message = data.message ?? '';
+    logger.info(`🔔 [${this.sourceId}] Device notification (level ${data.level}): ${message}`);
+
+    // (1) Reconcile a protected-node-cap refusal (firmware 2.8+). Runs
+    // independently of the toast policy below.
+    const refusal = parseProtectedCapRefusal(message);
+    if (refusal && this.sourceId) {
+      try {
+        if (refusal.verb === 'favorite') {
+          await databaseService.nodes.setNodeFavorite(refusal.nodeNum, false, this.sourceId);
+          dataEventEmitter.emitNodeUpdate(refusal.nodeNum, { isFavorite: false }, this.sourceId);
+        } else {
+          await databaseService.setNodeIgnoredAsync(refusal.nodeNum, false, this.sourceId);
+          dataEventEmitter.emitNodeUpdate(refusal.nodeNum, { isIgnored: false }, this.sourceId);
+        }
+        logger.warn(
+          `🔔 [${this.sourceId}] Reverted ${refusal.verb} for node !${refusal.nodeNum
+            .toString(16)
+            .padStart(8, '0')} — device refused (protected-node cap full)`,
+        );
+      } catch (err) {
+        logger.error(`Failed to reconcile ${refusal.verb} cap refusal:`, err);
+      }
+    }
+
+    // (2) Toast surfacing policy: drop noise, then dedupe recurring messages
+    // per source so e.g. a per-packet duty-cycle warning toasts once per window.
+    if (shouldSuppressToast(data)) return;
+    const throttleKey = `${this.sourceId ?? '__default__'}::${message}`;
+    if (!this.clientNotificationThrottle.shouldEmit(throttleKey, Date.now())) return;
+
+    dataEventEmitter.emitClientNotification(
+      { level: data.level, message, replyId: data.replyId, time: data.time },
+      this.sourceId,
+    );
+  }
+
   async broadcastNodeInfoUpdate(nodeNum: number): Promise<void> {
     if (!this.virtualNodeServer) return;
     try {

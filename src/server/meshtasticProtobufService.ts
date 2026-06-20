@@ -791,6 +791,28 @@ export class MeshtasticProtobufService {
             retained: !!m.retained,
           },
         };
+      } else if ((fromRadio as any).clientNotification) {
+        // FromRadio.ClientNotification (field 16): a message from the connected
+        // node about its own operation (duty-cycle limits, config errors,
+        // duplicate-key warnings, and — on firmware 2.8 — favorite/ignore cap
+        // refusals). Surfaced to the UI by the manager. See clientNotificationPolicy.
+        const cn = (fromRadio as any).clientNotification;
+        return {
+          type: 'clientNotification',
+          data: {
+            level: typeof cn.level === 'number' ? cn.level : 0,
+            message: typeof cn.message === 'string' ? cn.message : '',
+            replyId: cn.replyId ?? undefined,
+            time: cn.time ?? undefined,
+            // Key-verification handshake variants (payload_variant 11–13) are an
+            // interactive flow we don't implement — flag so they aren't toasted.
+            isKeyVerification: !!(
+              cn.keyVerificationNumberInform ||
+              cn.keyVerificationNumberRequest ||
+              cn.keyVerificationFinal
+            ),
+          },
+        };
       } else {
         return {
           type: 'fromRadio',

@@ -40,6 +40,7 @@ import AirtimeCutoffSection from './components/AirtimeCutoffSection';
 import IgnoredNodesSection from './components/IgnoredNodesSection';
 import SectionNav from './components/SectionNav';
 import { ToastProvider, useToast } from './components/ToastContainer';
+import DeviceNotificationToaster from './components/DeviceNotificationToaster';
 import { RebootModal } from './components/RebootModal';
 import { AppBanners } from './components/AppBanners';
 import { AppHeader } from './components/AppHeader';
@@ -5455,6 +5456,7 @@ const AppWithToast = () => {
             <UIProvider>
               <AutomationProvider baseUrl={initialBaseUrl}>
               <ToastProvider>
+                <DeviceNotificationToaster />
                 <SaveBarProvider>
                   <App />
                 </SaveBarProvider>
