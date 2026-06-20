@@ -919,8 +919,19 @@ router.post(
   requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
-      const ok = await managerFor(req).syncDeviceTime();
-      if (!ok) {
+      const result = await managerFor(req).syncDeviceTime();
+      if (!result.ok) {
+        if (result.reason === 'command-failed') {
+          // The guards passed but the device rejected (or never acked) the
+          // command — surface the real reason instead of the misleading
+          // "disconnected or not a Companion device" (issue #3570).
+          return res.status(502).json({
+            success: false,
+            error: result.error
+              ? `Device rejected the time-sync command: ${result.error}`
+              : 'Device rejected the time-sync command',
+          });
+        }
         return res.status(409).json({
           success: false,
           error: 'Sync time failed — source disconnected or not a Companion device',

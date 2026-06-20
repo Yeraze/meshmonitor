@@ -57,6 +57,8 @@ class MockConnection extends EventEmitter {
   public statsRequests: number[] = [];
   public binaryRequests: Array<{ key: Uint8Array; req: number[] }> = [];
   public syncNextMessageQueue: any[] = [];
+  public setDeviceTimeCalls: number[] = [];
+  public setDeviceTimeErr = false;
   public deviceTimeResponse: { epochSecs: number } | null = { epochSecs: 1700000000 };
   public statsResponse: any = {
     type: StatsTypes.Core,
@@ -127,6 +129,16 @@ class MockConnection extends EventEmitter {
 
   async setRadioParams(freq: number, bw: number, sf: number, cr: number) {
     this.setRadioParamsCalls.push([freq, bw, sf, cr]);
+  }
+
+  // The backend drives set_device_time via this low-level send and then waits
+  // for an Ok/Err response event (issue #3570). Emit on the next tick so the
+  // backend's once() listeners are attached first.
+  async sendCommandSetDeviceTime(epochSecs: number) {
+    this.setDeviceTimeCalls.push(epochSecs);
+    setTimeout(() => {
+      this.emit(this.setDeviceTimeErr ? ResponseCodes.Err : ResponseCodes.Ok, {});
+    }, 1);
   }
 
   async setAdvertLocPolicy(policy: number) {
@@ -342,6 +354,36 @@ describe('MeshCoreNativeBackend', () => {
     // Not the useless "undefined" — a real, actionable message.
     expect(resp.error).toMatch(/firmware may not support CMD_SHARE_CONTACT/i);
     expect(resp.error).not.toBe('undefined');
+  });
+
+  it('set_device_time resolves on Ok and forwards the epoch', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    const resp = await backend.sendCommand('set_device_time', { epoch: 1700000000 });
+    expect(resp.success).toBe(true);
+    expect(conn.setDeviceTimeCalls).toEqual([1700000000]);
+  });
+
+  it('set_device_time turns a firmware Err into an actionable error, not "undefined" (issue #3570)', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    conn.setDeviceTimeErr = true;
+
+    const resp = await backend.sendCommand('set_device_time', {});
+    expect(resp.success).toBe(false);
+    expect(resp.error).toMatch(/Err to set_device_time/i);
+    expect(resp.error).not.toBe('undefined');
+    // Falls back to "now" when no epoch is supplied (still issues the command).
+    expect(conn.setDeviceTimeCalls).toHaveLength(1);
   });
 
   it('maps get_contacts to bridge-shaped contact rows', async () => {

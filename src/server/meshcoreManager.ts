@@ -162,6 +162,15 @@ export interface ShareContactResult {
   error?: string;
 }
 
+/**
+ * Result of {@link MeshCoreManager.syncDeviceTime}. `reason` distinguishes the
+ * pre-flight guard failures (which the route reports as a 409) from an actual
+ * device/command failure (`command-failed`, reported as a 502 with `error`).
+ */
+export type SyncDeviceTimeResult =
+  | { ok: true }
+  | { ok: false; reason: 'not-companion' | 'disconnected' | 'command-failed'; error?: string };
+
 // Connection types
 export enum ConnectionType {
   SERIAL = 'serial',
@@ -2394,24 +2403,40 @@ class MeshCoreManager extends EventEmitter {
 
   /**
    * Sync the device's RTC to the server's clock. Companion only.
+   *
+   * Returns a discriminated result so the caller can tell the guard cases
+   * (wrong device type / disconnected) apart from an actual command failure,
+   * and surface the real reason. Previously this returned a bare boolean and
+   * the route reported every failure as "disconnected or not a Companion
+   * device" even when the device had rejected the command (issue #3570).
    */
-  async syncDeviceTime(): Promise<boolean> {
+  async syncDeviceTime(): Promise<SyncDeviceTimeResult> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Sync-device-time requires Companion firmware');
-      return false;
+      return { ok: false, reason: 'not-companion' };
     }
-    if (!this.connected) return false;
+    if (!this.connected) return { ok: false, reason: 'disconnected' };
     try {
       const response = await this.sendBridgeCommand('set_device_time', {});
       if (!response.success) {
-        logger.warn(`[MeshCore] set_device_time failed: ${response.error}`);
-        return false;
+        // meshcore.js rejects with NO argument on a firmware Err, which can
+        // surface as the literal string "undefined" (issue #3570). Manufacture
+        // an actionable reason rather than logging/returning "undefined".
+        const raw = response.error ?? '';
+        const friendly = /timeout/i.test(raw)
+          ? 'Device did not respond to the time-sync command — the firmware may not support setting the RTC over this transport.'
+          : raw && raw !== 'undefined'
+            ? raw
+            : 'Device rejected the time-sync command — the firmware may not support setting the RTC over this transport.';
+        logger.warn(`[MeshCore:${this.sourceId}] set_device_time failed: ${friendly}`);
+        return { ok: false, reason: 'command-failed', error: friendly };
       }
       logger.info(`[MeshCore:${this.sourceId}] Device time synced to server clock`);
-      return true;
+      return { ok: true };
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       logger.error('[MeshCore] syncDeviceTime threw:', error);
-      return false;
+      return { ok: false, reason: 'command-failed', error: message };
     }
   }
 

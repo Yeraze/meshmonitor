@@ -63,6 +63,7 @@ const meshcoreManager = {
   sendLocalCliCommand: vi.fn().mockResolvedValue({ reply: 'v1.7.0', elapsedMs: 12 }),
   setName: vi.fn().mockResolvedValue(true),
   setRadio: vi.fn().mockResolvedValue(true),
+  syncDeviceTime: vi.fn().mockResolvedValue({ ok: true }),
   importPrivateKey: vi.fn().mockResolvedValue(true),
   exportPrivateKey: vi.fn().mockResolvedValue('a'.repeat(128)),
   isConnected: vi.fn().mockReturnValue(false),
@@ -972,6 +973,45 @@ describe('MeshCore Routes', () => {
         .send({ freq: 915.0, bw: 125, sf: 7, cr: 5 });
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
+    });
+  });
+
+  describe('POST /api/sources/test-source/meshcore/config/sync-time', () => {
+    it('should require authentication', async () => {
+      const response = await request(app)
+        .post('/api/sources/test-source/meshcore/config/sync-time');
+      expect(response.status).toBe(401);
+    });
+
+    it('returns 200 when the device time sync succeeds', async () => {
+      meshcoreManager.syncDeviceTime.mockResolvedValueOnce({ ok: true });
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/config/sync-time');
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+    });
+
+    it('returns 409 for the guard cases (not a Companion / disconnected)', async () => {
+      meshcoreManager.syncDeviceTime.mockResolvedValueOnce({ ok: false, reason: 'not-companion' });
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/config/sync-time');
+      expect(response.status).toBe(409);
+      expect(response.body.error).toMatch(/Companion device/i);
+    });
+
+    it('returns 502 with the real reason when the device rejects the command (issue #3570)', async () => {
+      meshcoreManager.syncDeviceTime.mockResolvedValueOnce({
+        ok: false,
+        reason: 'command-failed',
+        error: 'device returned Err to set_device_time (firmware may not support setting the RTC over this transport)',
+      });
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/config/sync-time');
+      expect(response.status).toBe(502);
+      // The misleading "disconnected or not a Companion device" must NOT appear.
+      expect(response.body.error).not.toMatch(/disconnected or not a Companion/i);
+      expect(response.body.error).toMatch(/Device rejected the time-sync command/i);
+      expect(response.body.error).toMatch(/firmware may not support/i);
     });
   });
 
