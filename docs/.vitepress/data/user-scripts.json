@@ -665,5 +665,26 @@
       "Reverse-geocodes GPS coordinates to city name via OSM Nominatim",
       "No external Python dependencies"
     ]
+  },
+  {
+    "name": "Ham Conditions",
+    "filename": "ham.py",
+    "icon": "📻",
+    "description": "Returns current HF band conditions for day and night propagation, including solar flux, K-index, and A-index. Data pulled from the HamQSL solar XML feed — no API key required.",
+    "language": "Python",
+    "tags": ["Ham Radio", "Solar", "Propagation", "HF", "Community"],
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/ham.py",
+    "exampleTrigger": "!ham",
+    "requirements": [
+      "Python 3 (included in MeshMonitor)",
+      "Internet access to hamqsl.com"
+    ],
+    "author": "itxpress",
+    "features": [
+      "Day and night HF band condition summary",
+      "Solar flux, K-index, and A-index",
+      "Color-coded status (🟢 Good / 🟡 Fair / 🔴 Poor)",
+      "No API key or external Python packages required"
+    ]
   }
 ]
