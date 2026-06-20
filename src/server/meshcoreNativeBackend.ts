@@ -1217,12 +1217,28 @@ export class MeshCoreNativeBackend extends EventEmitter {
       }
 
       case 'set_device_time': {
-        const epoch = params.epoch as number | undefined;
-        if (epoch !== undefined) {
-          await c.setDeviceTime(epoch);
-        } else {
-          await c.syncDeviceTime();
-        }
+        // meshcore.js's setDeviceTime()/syncDeviceTime() reject with NO argument
+        // on an `Err` response, which surfaces upstream as the literal string
+        // "undefined" (issue #3570). Drive the command ourselves with the same
+        // descriptive Ok/Err idiom used by discover_nodes so a device rejection
+        // produces an actionable error instead of `undefined`.
+        const epoch = (params.epoch as number | undefined) ?? Math.floor(Date.now() / 1000);
+        logger.debug(`[MeshCoreNative:${this.sourceId}] set_device_time → epoch=${epoch}`);
+        await new Promise<void>((resolve, reject) => {
+          const onOk = () => {
+            c.off(this.constants!.ResponseCodes.Ok, onOk);
+            c.off(this.constants!.ResponseCodes.Err, onErr);
+            resolve();
+          };
+          const onErr = () => {
+            c.off(this.constants!.ResponseCodes.Ok, onOk);
+            c.off(this.constants!.ResponseCodes.Err, onErr);
+            reject(new Error('device returned Err to set_device_time (firmware may not support setting the RTC over this transport)'));
+          };
+          c.once(this.constants!.ResponseCodes.Ok, onOk);
+          c.once(this.constants!.ResponseCodes.Err, onErr);
+          c.sendCommandSetDeviceTime(epoch).catch(reject);
+        });
         return { ok: true };
       }
 
