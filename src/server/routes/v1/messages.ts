@@ -13,7 +13,7 @@ import { hasPermission } from '../../auth/authMiddleware.js';
 import { ResourceType } from '../../../types/permission.js';
 import { messageLimiter } from '../../middleware/rateLimiters.js';
 import { logger } from '../../../utils/logger.js';
-import { MAX_MESSAGE_BYTES } from '../../constants/meshtastic.js';
+import { MAX_MESSAGE_BYTES, PortNum } from '../../constants/meshtastic.js';
 
 /** Maximum number of message parts allowed when splitting long messages */
 const MAX_MESSAGE_PARTS = 3;
@@ -125,7 +125,7 @@ router.get('/', async (req: Request, res: Response) => {
       messages = await databaseService.messages.getMessagesAfterTimestamp(sinceTimestamp, sourceIdStr);
       messages = messages.slice(0, maxLimit);
     } else {
-      messages = await databaseService.messages.getMessages(maxLimit, 0, sourceIdStr);
+      messages = await databaseService.messages.getMessages(maxLimit, 0, sourceIdStr, [PortNum.TRACEROUTE_APP]);
     }
 
     // Filter messages by accessible channels (unless admin)
