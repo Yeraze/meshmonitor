@@ -1224,6 +1224,11 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // produces an actionable error instead of `undefined`.
         const epoch = (params.epoch as number | undefined) ?? Math.floor(Date.now() / 1000);
         logger.debug(`[MeshCoreNative:${this.sourceId}] set_device_time → epoch=${epoch}`);
+        // Resolution depends on the radio emitting Ok or Err. A synchronous
+        // send failure propagates via `.catch(reject)`; if the firmware never
+        // answers at all, the outer `withTimeout` wrapper in sendCommand() is
+        // the only safety net (surfacing a generic timeout). Same structure as
+        // discover_nodes / discover_path.
         await new Promise<void>((resolve, reject) => {
           const onOk = () => {
             c.off(this.constants!.ResponseCodes.Ok, onOk);
