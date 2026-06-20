@@ -226,8 +226,10 @@ router.post('/neighborinfo/request', requirePermission('traceroute', 'write'), a
       neighborInfoRequestTimestamps.delete(Number(destinationNum));
     }
 
-    // node is already scoped to neighborManager.sourceId above; clamp to a valid index.
-    const channel = await resolveDestinationChannel(destinationNum, neighborManager, databaseService);
+    // node is already scoped to neighborManager.sourceId above; reuse its channel
+    // (passed as explicitChannel) so we don't re-query the same row, while still
+    // clamping any out-of-range value to a valid index.
+    const channel = await resolveDestinationChannel(destinationNum, neighborManager, databaseService, node?.channel);
 
     const { packetId, requestId } = await neighborManager.sendNeighborInfoRequest(destinationNum, channel);
     neighborInfoRequestTimestamps.set(Number(destinationNum), now);
