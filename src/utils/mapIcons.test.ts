@@ -8,7 +8,7 @@ vi.mock('leaflet', () => ({
   },
 }));
 
-import { getHopColor } from './mapIcons';
+import { getHopColor, roleGlyphMarkerSvg } from './mapIcons';
 
 describe('getHopColor', () => {
   describe('special hop counts', () => {
@@ -166,5 +166,29 @@ describe('getHopColor', () => {
         expect(getHopColor(hops)).toBe(expectedColor);
       });
     });
+  });
+});
+
+describe('roleGlyphMarkerSvg', () => {
+  const COLOR = '#cba6f7';
+
+  it('returns an <svg> with a backing circle and the glyph for known categories', () => {
+    for (const category of ['repeater', 'roomServer', 'sensor', 'companion'] as const) {
+      const svg = roleGlyphMarkerSvg(category, COLOR, 24);
+      expect(svg).toContain('<svg');
+      expect(svg).toContain('viewBox="0 0 48 48"');
+      expect(svg).toContain('<circle'); // white backing circle
+      expect(svg).toContain(COLOR);     // glyph/stroke uses the passed color
+    }
+  });
+
+  it('honors the requested size', () => {
+    const svg = roleGlyphMarkerSvg('repeater', COLOR, 30);
+    expect(svg).toContain('width="30"');
+    expect(svg).toContain('height="30"');
+  });
+
+  it('returns empty string for standard (so callers keep their default marker)', () => {
+    expect(roleGlyphMarkerSvg('standard', COLOR, 24)).toBe('');
   });
 });

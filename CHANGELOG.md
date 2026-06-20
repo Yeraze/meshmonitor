@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Features
+
+- **MeshCore node-type icons & filter on the source map (#3546, #3576)**: The per-source MeshCore map now renders role-based marker glyphs by advert type — Repeater (tower), Room Server (server rack), Sensor (broadcast), Companion (person) — instead of the generic "MC" badge (kept as the fallback for standard/unknown nodes). The Map Features panel gains a **Node Types** filter (per-category checkboxes, persisted) to show/hide markers by role, and the legend gains a matching **Node Types** section when shown. This brings the MeshCore source map to parity with the Map Analysis workspace. The shared map legend opts into the new section via a `showNodeTypes` prop, so the Meshtastic maps are unchanged.
+
 ## [4.11.0] - 2026-06-19
 
 ### Features
