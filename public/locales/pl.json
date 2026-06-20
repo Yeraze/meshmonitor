@@ -115,5 +115,19 @@
     "purgeModal.warning": "Tych działań nie można cofnąć. Wszystkie dane tego węzła zostaną trwale usunięte.",
     "purgeModal.purgeMessages": "🗑️ Usuń wszystkie wiadomości",
     "purgeModal.purgeTraceroutes": "🗺️ Usuń dane śledzenia tras",
-    "purgeModal.purgeTelemetry": "📊 Usuń dane telemetryczne"
+    "purgeModal.purgeTelemetry": "📊 Usuń dane telemetryczne",
+    "purgeModal.purgePositionHistory": "📍 Usuń historię pozycji",
+    "purgeModal.deleteNodeTitle": "Całkowicie usuń węzeł:",
+    "purgeModal.deleteNodeDescription": "Wybierz sposób usunięcia węzła: tylko z lokalnej bazy danych albo zarówno z urządzenia, jak i z bazy danych.",
+    "purgeModal.deleteLocal": "❌ Usuń węzeł (tylko z lokalnej bazy danych)",
+    "purgeModal.deleteDevice": "🗑️ Usuń z urządzenia i z bazy danych",
+    "header.disconnect": "Rozłącz",
+    "header.disconnectTitle": "Rozłącz z węzłem",
+    "header.connect": "Połącz",
+    "meshcore.connect": "Połącz",
+    "source.connect": "Połącz",
+    "source.connecting": "Łączenie…",
+    "source.add_short": "+Dodaj",
+    "source.edit_mode": "Edytuj",
+    "source.edit_mode_done": "Gotowe"
 }
