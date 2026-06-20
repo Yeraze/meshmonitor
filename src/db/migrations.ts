@@ -107,6 +107,7 @@ import { migration as positionSnrHopsMigration, runMigration089Postgres as runPo
 import { migration as positionPointsOnlyMigration, runMigration090Postgres as runPositionPointsOnlyPostgres, runMigration090Mysql as runPositionPointsOnlyMysql } from '../server/migrations/090_add_position_points_only_to_map_prefs.js';
 import { migration as estimatedPositionsDoublePrecisionMigration, runMigration091Postgres as runEstimatedPositionsDoublePrecisionPostgres, runMigration091Mysql as runEstimatedPositionsDoublePrecisionMysql } from '../server/migrations/091_estimated_positions_double_precision.js';
 import { migration as hideFromMapMigration, runMigration092Postgres as runHideFromMapPostgres, runMigration092Mysql as runHideFromMapMysql } from '../server/migrations/092_add_hide_from_map_to_nodes.js';
+import { migration as autoackMatrixMigration, runMigration093Postgres as runAutoackMatrixPostgres, runMigration093Mysql as runAutoackMatrixMysql } from '../server/migrations/093_autoack_matrix.js';
 
 // ============================================================================
 // Registry
@@ -1469,4 +1470,19 @@ registry.register({
   sqlite: (db) => hideFromMapMigration.up(db),
   postgres: (client) => runHideFromMapPostgres(client),
   mysql: (pool) => runHideFromMapMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 093: fold legacy hop-only auto-ack settings into the new
+// {Channel,Direct} × {ZeroHop,MultiHop} matrix, each cell with its own
+// Reply / Tapback / Respond-via-DM toggles (discussion #3564).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 93,
+  name: 'autoack_matrix',
+  settingsKey: 'migration_093_autoack_matrix',
+  sqlite: (db) => autoackMatrixMigration.up(db),
+  postgres: (client) => runAutoackMatrixPostgres(client),
+  mysql: (pool) => runAutoackMatrixMysql(pool),
 });

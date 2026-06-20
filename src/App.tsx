@@ -65,6 +65,7 @@ import { logger } from './utils/logger';
 import { isNodeComplete, getEffectivePosition } from './utils/nodeHelpers';
 import { effectiveMapMaxAgeHours } from './utils/mapAge';
 import { nodePassesTransportFilter } from './utils/nodeTransport';
+import { settingsToMatrix } from './utils/autoAckMatrix';
 import { applyHomoglyphOptimization } from './utils/homoglyph';
 import { playSound, playChannelSound, DEFAULT_SOUND_ID } from './utils/notificationSounds';
 import Sidebar from './components/Sidebar';
@@ -586,18 +587,9 @@ const location = useLocation();
     autoAckMessage, setAutoAckMessage,
     autoAckMessageDirect, setAutoAckMessageDirect,
     autoAckChannels, setAutoAckChannels,
-    autoAckDirectMessages, setAutoAckDirectMessages,
-    autoAckUseDM, setAutoAckUseDM,
     autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes,
     autoAckIgnoredNodes, setAutoAckIgnoredNodes,
-    autoAckTapbackEnabled, setAutoAckTapbackEnabled,
-    autoAckReplyEnabled, setAutoAckReplyEnabled,
-    autoAckDirectEnabled, setAutoAckDirectEnabled,
-    autoAckDirectTapbackEnabled, setAutoAckDirectTapbackEnabled,
-    autoAckDirectReplyEnabled, setAutoAckDirectReplyEnabled,
-    autoAckMultihopEnabled, setAutoAckMultihopEnabled,
-    autoAckMultihopTapbackEnabled, setAutoAckMultihopTapbackEnabled,
-    autoAckMultihopReplyEnabled, setAutoAckMultihopReplyEnabled,
+    autoAckMatrix, setAutoAckMatrix,
     autoAckCooldownSeconds, setAutoAckCooldownSeconds,
     autoAckTestMessages, setAutoAckTestMessages,
     autoAnnounceEnabled, setAutoAnnounceEnabled,
@@ -1016,14 +1008,6 @@ const location = useLocation();
             setAutoAckChannels(channels);
           }
 
-          if (settings.autoAckDirectMessages !== undefined) {
-            setAutoAckDirectMessages(settings.autoAckDirectMessages === 'true');
-          }
-
-          if (settings.autoAckUseDM !== undefined) {
-            setAutoAckUseDM(settings.autoAckUseDM === 'true');
-          }
-
           if (settings.autoAckSkipIncompleteNodes !== undefined) {
             setAutoAckSkipIncompleteNodes(settings.autoAckSkipIncompleteNodes === 'true');
           }
@@ -1032,33 +1016,7 @@ const location = useLocation();
             setAutoAckIgnoredNodes(settings.autoAckIgnoredNodes);
           }
 
-          if (settings.autoAckTapbackEnabled !== undefined) {
-            setAutoAckTapbackEnabled(settings.autoAckTapbackEnabled === 'true');
-          }
-
-          if (settings.autoAckReplyEnabled !== undefined) {
-            setAutoAckReplyEnabled(settings.autoAckReplyEnabled !== 'false'); // Default true for backward compatibility
-          }
-
-          // New direct/multihop settings
-          if (settings.autoAckDirectEnabled !== undefined) {
-            setAutoAckDirectEnabled(settings.autoAckDirectEnabled !== 'false');
-          }
-          if (settings.autoAckDirectTapbackEnabled !== undefined) {
-            setAutoAckDirectTapbackEnabled(settings.autoAckDirectTapbackEnabled !== 'false');
-          }
-          if (settings.autoAckDirectReplyEnabled !== undefined) {
-            setAutoAckDirectReplyEnabled(settings.autoAckDirectReplyEnabled !== 'false');
-          }
-          if (settings.autoAckMultihopEnabled !== undefined) {
-            setAutoAckMultihopEnabled(settings.autoAckMultihopEnabled !== 'false');
-          }
-          if (settings.autoAckMultihopTapbackEnabled !== undefined) {
-            setAutoAckMultihopTapbackEnabled(settings.autoAckMultihopTapbackEnabled !== 'false');
-          }
-          if (settings.autoAckMultihopReplyEnabled !== undefined) {
-            setAutoAckMultihopReplyEnabled(settings.autoAckMultihopReplyEnabled !== 'false');
-          }
+          setAutoAckMatrix(settingsToMatrix(settings));
 
           if (settings.autoAckCooldownSeconds !== undefined) {
             setAutoAckCooldownSeconds(parseInt(settings.autoAckCooldownSeconds) || 60);
@@ -5167,18 +5125,9 @@ const location = useLocation();
                   messageDirect={autoAckMessageDirect}
                   channels={channels}
                   enabledChannels={autoAckChannels}
-                  directMessagesEnabled={autoAckDirectMessages}
-                  useDM={autoAckUseDM}
                   skipIncompleteNodes={autoAckSkipIncompleteNodes}
                   ignoredNodes={autoAckIgnoredNodes}
-                  tapbackEnabled={autoAckTapbackEnabled}
-                  replyEnabled={autoAckReplyEnabled}
-                  directEnabled={autoAckDirectEnabled}
-                  directTapbackEnabled={autoAckDirectTapbackEnabled}
-                  directReplyEnabled={autoAckDirectReplyEnabled}
-                  multihopEnabled={autoAckMultihopEnabled}
-                  multihopTapbackEnabled={autoAckMultihopTapbackEnabled}
-                  multihopReplyEnabled={autoAckMultihopReplyEnabled}
+                  matrix={autoAckMatrix}
                   testMessages={autoAckTestMessages}
                   cooldownSeconds={autoAckCooldownSeconds}
                   onCooldownSecondsChange={setAutoAckCooldownSeconds}
@@ -5188,18 +5137,9 @@ const location = useLocation();
                   onMessageChange={setAutoAckMessage}
                   onMessageDirectChange={setAutoAckMessageDirect}
                   onChannelsChange={setAutoAckChannels}
-                  onDirectMessagesChange={setAutoAckDirectMessages}
-                  onUseDMChange={setAutoAckUseDM}
                   onSkipIncompleteNodesChange={setAutoAckSkipIncompleteNodes}
                   onIgnoredNodesChange={setAutoAckIgnoredNodes}
-                  onTapbackEnabledChange={setAutoAckTapbackEnabled}
-                  onReplyEnabledChange={setAutoAckReplyEnabled}
-                  onDirectEnabledChange={setAutoAckDirectEnabled}
-                  onDirectTapbackEnabledChange={setAutoAckDirectTapbackEnabled}
-                  onDirectReplyEnabledChange={setAutoAckDirectReplyEnabled}
-                  onMultihopEnabledChange={setAutoAckMultihopEnabled}
-                  onMultihopTapbackEnabledChange={setAutoAckMultihopTapbackEnabled}
-                  onMultihopReplyEnabledChange={setAutoAckMultihopReplyEnabled}
+                  onMatrixChange={setAutoAckMatrix}
                   onTestMessagesChange={setAutoAckTestMessages}
                 />
               </div>

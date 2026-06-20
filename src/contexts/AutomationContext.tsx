@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { AutoResponderTrigger, TimerTrigger, GeofenceTrigger } from '../components/auto-responder/types';
 import { useSource } from './SourceContext';
 import { logger } from '../utils/logger';
+import { AutoAckMatrix, DEFAULT_AUTOACK_MATRIX, settingsToMatrix } from '../utils/autoAckMatrix';
 
 interface AutomationContextType {
   autoAckEnabled: boolean;
@@ -14,30 +15,12 @@ interface AutomationContextType {
   setAutoAckMessageDirect: React.Dispatch<React.SetStateAction<string>>;
   autoAckChannels: number[];
   setAutoAckChannels: React.Dispatch<React.SetStateAction<number[]>>;
-  autoAckDirectMessages: boolean;
-  setAutoAckDirectMessages: React.Dispatch<React.SetStateAction<boolean>>;
-  autoAckUseDM: boolean;
-  setAutoAckUseDM: React.Dispatch<React.SetStateAction<boolean>>;
   autoAckSkipIncompleteNodes: boolean;
   setAutoAckSkipIncompleteNodes: React.Dispatch<React.SetStateAction<boolean>>;
   autoAckIgnoredNodes: string;
   setAutoAckIgnoredNodes: React.Dispatch<React.SetStateAction<string>>;
-  autoAckTapbackEnabled: boolean;
-  setAutoAckTapbackEnabled: React.Dispatch<React.SetStateAction<boolean>>;
-  autoAckReplyEnabled: boolean;
-  setAutoAckReplyEnabled: React.Dispatch<React.SetStateAction<boolean>>;
-  autoAckDirectEnabled: boolean;
-  setAutoAckDirectEnabled: React.Dispatch<React.SetStateAction<boolean>>;
-  autoAckDirectTapbackEnabled: boolean;
-  setAutoAckDirectTapbackEnabled: React.Dispatch<React.SetStateAction<boolean>>;
-  autoAckDirectReplyEnabled: boolean;
-  setAutoAckDirectReplyEnabled: React.Dispatch<React.SetStateAction<boolean>>;
-  autoAckMultihopEnabled: boolean;
-  setAutoAckMultihopEnabled: React.Dispatch<React.SetStateAction<boolean>>;
-  autoAckMultihopTapbackEnabled: boolean;
-  setAutoAckMultihopTapbackEnabled: React.Dispatch<React.SetStateAction<boolean>>;
-  autoAckMultihopReplyEnabled: boolean;
-  setAutoAckMultihopReplyEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  autoAckMatrix: AutoAckMatrix;
+  setAutoAckMatrix: React.Dispatch<React.SetStateAction<AutoAckMatrix>>;
   autoAckCooldownSeconds: number;
   setAutoAckCooldownSeconds: React.Dispatch<React.SetStateAction<number>>;
   autoAckTestMessages: string;
@@ -124,18 +107,9 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoAckMessage, setAutoAckMessage] = useState<string>('🤖 Copy, {NUMBER_HOPS} hops at {TIME}');
   const [autoAckMessageDirect, setAutoAckMessageDirect] = useState<string>('🤖 Copy, direct connection! SNR: {SNR}dB RSSI: {RSSI}dBm at {TIME}');
   const [autoAckChannels, setAutoAckChannels] = useState<number[]>([]);
-  const [autoAckDirectMessages, setAutoAckDirectMessages] = useState<boolean>(false);
-  const [autoAckUseDM, setAutoAckUseDM] = useState<boolean>(false);
   const [autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes] = useState<boolean>(false);
   const [autoAckIgnoredNodes, setAutoAckIgnoredNodes] = useState<string>('');
-  const [autoAckTapbackEnabled, setAutoAckTapbackEnabled] = useState<boolean>(false);
-  const [autoAckReplyEnabled, setAutoAckReplyEnabled] = useState<boolean>(true); // Default true for backward compatibility
-  const [autoAckDirectEnabled, setAutoAckDirectEnabled] = useState<boolean>(true);
-  const [autoAckDirectTapbackEnabled, setAutoAckDirectTapbackEnabled] = useState<boolean>(true);
-  const [autoAckDirectReplyEnabled, setAutoAckDirectReplyEnabled] = useState<boolean>(true);
-  const [autoAckMultihopEnabled, setAutoAckMultihopEnabled] = useState<boolean>(true);
-  const [autoAckMultihopTapbackEnabled, setAutoAckMultihopTapbackEnabled] = useState<boolean>(true);
-  const [autoAckMultihopReplyEnabled, setAutoAckMultihopReplyEnabled] = useState<boolean>(true);
+  const [autoAckMatrix, setAutoAckMatrix] = useState<AutoAckMatrix>(DEFAULT_AUTOACK_MATRIX);
   const [autoAckCooldownSeconds, setAutoAckCooldownSeconds] = useState<number>(60);
   const [autoAckTestMessages, setAutoAckTestMessages] = useState<string>('');
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
@@ -216,18 +190,9 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         if (s.autoAckMessage !== undefined) setAutoAckMessage(s.autoAckMessage);
         if (s.autoAckMessageDirect !== undefined) setAutoAckMessageDirect(s.autoAckMessageDirect);
         if (s.autoAckChannels !== undefined) setAutoAckChannels(jsonArr<number>('autoAckChannels', []));
-        if (s.autoAckDirectMessages !== undefined) setAutoAckDirectMessages(bool('autoAckDirectMessages'));
-        if (s.autoAckUseDM !== undefined) setAutoAckUseDM(bool('autoAckUseDM'));
         if (s.autoAckSkipIncompleteNodes !== undefined) setAutoAckSkipIncompleteNodes(bool('autoAckSkipIncompleteNodes'));
         if (s.autoAckIgnoredNodes !== undefined) setAutoAckIgnoredNodes(s.autoAckIgnoredNodes);
-        if (s.autoAckTapbackEnabled !== undefined) setAutoAckTapbackEnabled(bool('autoAckTapbackEnabled'));
-        if (s.autoAckReplyEnabled !== undefined) setAutoAckReplyEnabled(bool('autoAckReplyEnabled'));
-        if (s.autoAckDirectEnabled !== undefined) setAutoAckDirectEnabled(bool('autoAckDirectEnabled'));
-        if (s.autoAckDirectTapbackEnabled !== undefined) setAutoAckDirectTapbackEnabled(bool('autoAckDirectTapbackEnabled'));
-        if (s.autoAckDirectReplyEnabled !== undefined) setAutoAckDirectReplyEnabled(bool('autoAckDirectReplyEnabled'));
-        if (s.autoAckMultihopEnabled !== undefined) setAutoAckMultihopEnabled(bool('autoAckMultihopEnabled'));
-        if (s.autoAckMultihopTapbackEnabled !== undefined) setAutoAckMultihopTapbackEnabled(bool('autoAckMultihopTapbackEnabled'));
-        if (s.autoAckMultihopReplyEnabled !== undefined) setAutoAckMultihopReplyEnabled(bool('autoAckMultihopReplyEnabled'));
+        setAutoAckMatrix(settingsToMatrix(s));
         if (s.autoAckCooldownSeconds !== undefined) setAutoAckCooldownSeconds(num('autoAckCooldownSeconds', 60));
         if (s.autoAckTestMessages !== undefined) setAutoAckTestMessages(s.autoAckTestMessages);
 
@@ -284,18 +249,9 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         autoAckMessage, setAutoAckMessage,
         autoAckMessageDirect, setAutoAckMessageDirect,
         autoAckChannels, setAutoAckChannels,
-        autoAckDirectMessages, setAutoAckDirectMessages,
-        autoAckUseDM, setAutoAckUseDM,
         autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes,
         autoAckIgnoredNodes, setAutoAckIgnoredNodes,
-        autoAckTapbackEnabled, setAutoAckTapbackEnabled,
-        autoAckReplyEnabled, setAutoAckReplyEnabled,
-        autoAckDirectEnabled, setAutoAckDirectEnabled,
-        autoAckDirectTapbackEnabled, setAutoAckDirectTapbackEnabled,
-        autoAckDirectReplyEnabled, setAutoAckDirectReplyEnabled,
-        autoAckMultihopEnabled, setAutoAckMultihopEnabled,
-        autoAckMultihopTapbackEnabled, setAutoAckMultihopTapbackEnabled,
-        autoAckMultihopReplyEnabled, setAutoAckMultihopReplyEnabled,
+        autoAckMatrix, setAutoAckMatrix,
         autoAckCooldownSeconds, setAutoAckCooldownSeconds,
         autoAckTestMessages, setAutoAckTestMessages,
         autoAnnounceEnabled, setAutoAnnounceEnabled,
