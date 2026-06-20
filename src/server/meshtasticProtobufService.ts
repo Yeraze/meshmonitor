@@ -722,9 +722,11 @@ export class MeshtasticProtobufService {
         hasFileInfo: !!(fromRadio as any).fileInfo
       });
 
-      // Debug: dump all keys of fromRadio for unknown messages
+      // Debug: dump all keys of fromRadio for genuinely unknown messages. Exclude
+      // clientNotification (handled below) so it doesn't trigger the JSON.stringify.
       if (!fromRadio.packet && !fromRadio.myInfo && !fromRadio.nodeInfo && !fromRadio.config &&
-          !fromRadio.channel && !fromRadio.metadata && !fromRadio.moduleConfig && !fromRadio.configCompleteId) {
+          !fromRadio.channel && !fromRadio.metadata && !fromRadio.moduleConfig && !fromRadio.configCompleteId &&
+          !(fromRadio as any).clientNotification) {
         logger.debug('🔍 DEBUG: All FromRadio keys:', Object.keys(fromRadio));
         logger.debug('🔍 DEBUG: Full FromRadio object:', JSON.stringify(fromRadio, null, 2));
       }

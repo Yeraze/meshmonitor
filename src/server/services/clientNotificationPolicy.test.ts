@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 import {
   shouldSuppressToast,
   parseProtectedCapRefusal,
+  sanitizeNotificationMessage,
   toastTypeForLevel,
   ToastThrottle,
   NOTIFICATION_LEVEL,
@@ -101,6 +102,13 @@ describe('parseProtectedCapRefusal', () => {
     });
   });
 
+  it('accepts a short (non-zero-padded) node id', () => {
+    expect(parseProtectedCapRefusal("Can't ignore 0x1: protected-node limit (118) reached")).toEqual({
+      verb: 'ignore',
+      nodeNum: 0x1,
+    });
+  });
+
   it('ignores the verify verb (not MeshMonitor-actionable)', () => {
     expect(parseProtectedCapRefusal("Can't verify 0xdeadbeef: protected-node limit (118) reached")).toBeNull();
   });
@@ -109,6 +117,29 @@ describe('parseProtectedCapRefusal', () => {
     expect(parseProtectedCapRefusal('Duty cycle limit exceeded. You can send again in 3 mins')).toBeNull();
     expect(parseProtectedCapRefusal('Sending telemetry and sleeping for 900s interval in a moment')).toBeNull();
     expect(parseProtectedCapRefusal('')).toBeNull();
+  });
+});
+
+describe('sanitizeNotificationMessage', () => {
+  it('strips control characters from untrusted device text', () => {
+    expect(sanitizeNotificationMessage('line1\nline2\tend')).toBe('line1 line2 end');
+    // ANSI escape sequences (ESC = \x1b) are neutralized to spaces.
+    expect(sanitizeNotificationMessage('alert\x1b[31mRED\x1b[0m')).toBe('alert [31mRED [0m');
+  });
+
+  it('collapses whitespace and trims', () => {
+    expect(sanitizeNotificationMessage('  too    many   spaces  ')).toBe('too many spaces');
+  });
+
+  it('truncates overlong messages with an ellipsis', () => {
+    const out = sanitizeNotificationMessage('x'.repeat(1000), 500);
+    expect(out.length).toBe(500);
+    expect(out.endsWith('…')).toBe(true);
+  });
+
+  it('handles empty/undefined input', () => {
+    expect(sanitizeNotificationMessage('')).toBe('');
+    expect(sanitizeNotificationMessage(undefined as unknown as string)).toBe('');
   });
 });
 

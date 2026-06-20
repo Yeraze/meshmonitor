@@ -24,6 +24,7 @@ import {
   ToastThrottle,
   shouldSuppressToast,
   parseProtectedCapRefusal,
+  sanitizeNotificationMessage,
   type ParsedClientNotification,
 } from './services/clientNotificationPolicy.js';
 import { waypointService } from './services/waypointService.js';
@@ -5561,13 +5562,15 @@ class MeshtasticManager implements ISourceManager {
    * See clientNotificationPolicy.ts for the rules and the 2.7.x background.
    */
   private async handleClientNotification(data: ParsedClientNotification): Promise<void> {
-    const message = data.message ?? '';
+    // `message` is device-controlled — sanitize before logging or forwarding it.
+    const message = sanitizeNotificationMessage(data.message ?? '');
     logger.info(`🔔 [${this.sourceId}] Device notification (level ${data.level}): ${message}`);
 
     // (1) Reconcile a protected-node-cap refusal (firmware 2.8+). Runs
-    // independently of the toast policy below.
+    // independently of the toast policy below. `this.sourceId` is always set
+    // (constructor default 'default'), so no null-guard is needed here.
     const refusal = parseProtectedCapRefusal(message);
-    if (refusal && this.sourceId) {
+    if (refusal) {
       try {
         if (refusal.verb === 'favorite') {
           await databaseService.nodes.setNodeFavorite(refusal.nodeNum, false, this.sourceId);
@@ -5582,14 +5585,16 @@ class MeshtasticManager implements ISourceManager {
             .padStart(8, '0')} — device refused (protected-node cap full)`,
         );
       } catch (err) {
+        // Revert failed — local state may now diverge from the device. We still
+        // fall through and surface the warning below so the user sees the refusal.
         logger.error(`Failed to reconcile ${refusal.verb} cap refusal:`, err);
       }
     }
 
     // (2) Toast surfacing policy: drop noise, then dedupe recurring messages
     // per source so e.g. a per-packet duty-cycle warning toasts once per window.
-    if (shouldSuppressToast(data)) return;
-    const throttleKey = `${this.sourceId ?? '__default__'}::${message}`;
+    if (shouldSuppressToast({ ...data, message })) return;
+    const throttleKey = `${this.sourceId}::${message}`;
     if (!this.clientNotificationThrottle.shouldEmit(throttleKey, Date.now())) return;
 
     dataEventEmitter.emitClientNotification(

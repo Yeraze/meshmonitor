@@ -66,6 +66,22 @@ export function shouldSuppressToast(n: ParsedClientNotification): boolean {
   return SUPPRESS_PATTERNS.some((re) => re.test(msg));
 }
 
+/**
+ * The notification `message` is device-controlled (and could be attacker-shaped
+ * via a compromised node or MitM). Strip control characters (newlines/ANSI etc.)
+ * that could pollute logs, collapse whitespace, and bound the length so it can't
+ * spam the log or render an oversized toast. Applied once before the message is
+ * logged or forwarded to the UI.
+ */
+export function sanitizeNotificationMessage(message: string, maxLen = 500): string {
+  const cleaned = (message ?? '')
+    // eslint-disable-next-line no-control-regex -- strip control chars from untrusted device input
+    .replace(/[\x00-\x1f\x7f-\x9f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned.length > maxLen ? `${cleaned.slice(0, maxLen - 1)}…` : cleaned;
+}
+
 /** Maps a notification level to a toast severity. */
 export function toastTypeForLevel(level: number): 'error' | 'warning' | 'info' {
   if (level >= NOTIFICATION_LEVEL.ERROR) return 'error';
@@ -82,8 +98,11 @@ export interface ProtectedCapRefusal {
  * Firmware 2.8 protected-node-cap refusal:
  *   "Can't <favorite|ignore|verify> 0x%08x: protected-node limit (%d) reached"
  * Only favorite/ignore are MeshMonitor-actionable. Returns null on no match.
+ *
+ * Firmware zero-pads the node id to 8 hex digits (`%08x`), but accept 1–8 so a
+ * future/short id (e.g. `0x1`) still reconciles.
  */
-const PROTECTED_CAP_RE = /can't (favorite|ignore) 0x([0-9a-f]{8}): protected-node limit/i;
+const PROTECTED_CAP_RE = /can't (favorite|ignore) 0x([0-9a-f]{1,8}): protected-node limit/i;
 
 export function parseProtectedCapRefusal(message: string): ProtectedCapRefusal | null {
   const m = PROTECTED_CAP_RE.exec(message ?? '');
@@ -111,6 +130,7 @@ export class ToastThrottle {
     }
     this.last.set(key, nowMs);
     // Opportunistic cleanup so the map can't grow unbounded over a long uptime.
+    // Bounded at ~200 distinct in-window keys; expired entries are purged here.
     if (this.last.size > 200) {
       for (const [k, t] of this.last) {
         if (nowMs - t >= this.windowMs) this.last.delete(k);

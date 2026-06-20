@@ -130,6 +130,22 @@ describe('MeshtasticManager — handleClientNotification', () => {
     expect(emitNode).toHaveBeenCalledWith(NODE, { isIgnored: false }, SOURCE);
   });
 
+  it('still surfaces the warning when the DB revert fails', async () => {
+    const mgr = seedManager();
+    setNodeFavorite.mockRejectedValueOnce(new Error('db down'));
+
+    // Must not throw, and the user still sees the refusal toast.
+    await expect(
+      mgr.handleClientNotification({
+        level: 30,
+        message: "Can't favorite 0xdeadbeef: protected-node limit (118) reached",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(setNodeFavorite).toHaveBeenCalledWith(NODE, false, SOURCE);
+    expect(emitClient).toHaveBeenCalledTimes(1);
+  });
+
   it('surfaces a normal device warning without mutating any node', async () => {
     const mgr = seedManager();
 

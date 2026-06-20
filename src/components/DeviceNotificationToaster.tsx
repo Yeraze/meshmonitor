@@ -20,10 +20,15 @@ interface ClientNotificationEvent {
   time?: number;
 }
 
-// LogRecord.Level: WARNING=30, ERROR=40, CRITICAL=50.
+// mesh.proto LogRecord.Level. Mirrors NOTIFICATION_LEVEL in the backend
+// clientNotificationPolicy.ts — duplicated because the browser bundle can't
+// import server code. Keep in sync if the firmware proto enum ever changes.
+const LEVEL_WARNING = 30;
+const LEVEL_ERROR = 40;
+
 function toastTypeForLevel(level: number): 'error' | 'warning' | 'info' {
-  if (level >= 40) return 'error';
-  if (level >= 30) return 'warning';
+  if (level >= LEVEL_ERROR) return 'error';
+  if (level >= LEVEL_WARNING) return 'warning';
   return 'info';
 }
 
