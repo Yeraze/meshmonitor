@@ -211,6 +211,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 <option value="http">HTTP Request</option>
                 <option value="script">Script Execution</option>
                 <option value="traceroute">Traceroute</option>
+                <option value="mailbox">Mailbox</option>
               </select>
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
@@ -260,6 +261,14 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                       </option>
                     ))}
                   </select>
+                ) : editResponseType === 'mailbox' ? (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                    Built-in async message store ("mesh voicemail"). No response text needed — the
+                    mailbox handles <code>msg &lt;name&gt; &lt;text&gt;</code>, <code>inbox</code>,
+                    {' '}<code>inbox play</code>, <code>inbox delete &lt;id&gt;</code> and <code>inbox clear</code>.
+                    Set this trigger DM-only and use the pattern:{' '}
+                    <code>msg &#123;recipient&#125; &#123;body:.+&#125;,inbox,inbox play &#123;sender&#125;,inbox play,inbox delete &#123;id&#125;,inbox clear</code>
+                  </span>
                 ) : (
                   <input
                     type="text"
@@ -357,7 +366,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 ))}
               </div>
             </div>
-            {editResponseType !== 'script' && editResponseType !== 'traceroute' && (
+            {editResponseType !== 'script' && editResponseType !== 'traceroute' && editResponseType !== 'mailbox' && (
               <div style={{ paddingLeft: '0.5rem', marginTop: '0.25rem' }}>
                 <label style={{ display: 'block', fontSize: '0.85rem', cursor: 'pointer', color: 'var(--ctp-subtext0)' }}>
                   <input
@@ -371,7 +380,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               </div>
             )}
             {/* Response Preview */}
-            {editResponse.trim() && editTrigger.trim() && editResponseType !== 'script' && editResponseType !== 'traceroute' && (() => {
+            {editResponse.trim() && editTrigger.trim() && editResponseType !== 'script' && editResponseType !== 'traceroute' && editResponseType !== 'mailbox' && (() => {
               // Simple preview function for TriggerItem
               const getPreview = () => {
                 let preview = editResponse;
@@ -685,7 +694,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               </div>
             )}
             <div style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem', marginTop: '0.25rem', whiteSpace: 'pre-wrap' }}>
-              {trigger.responseType !== 'script' && trigger.responseType !== 'traceroute' ? trigger.response : null}
+              {trigger.responseType !== 'script' && trigger.responseType !== 'traceroute' && trigger.responseType !== 'mailbox' ? trigger.response : null}
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
@@ -718,7 +727,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 <span style={{
                   fontSize: '0.7rem',
                   padding: '0.15rem 0.4rem',
-                  background: trigger.responseType === 'text' ? 'var(--ctp-green)' : trigger.responseType === 'script' ? 'var(--ctp-yellow)' : trigger.responseType === 'traceroute' ? 'var(--ctp-sapphire)' : 'var(--ctp-mauve)',
+                  background: trigger.responseType === 'text' ? 'var(--ctp-green)' : trigger.responseType === 'script' ? 'var(--ctp-yellow)' : trigger.responseType === 'traceroute' ? 'var(--ctp-sapphire)' : trigger.responseType === 'mailbox' ? 'var(--ctp-pink)' : 'var(--ctp-mauve)',
                   color: 'var(--ctp-base)',
                   borderRadius: '3px',
                   fontWeight: 'bold'

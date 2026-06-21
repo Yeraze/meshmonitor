@@ -14,6 +14,7 @@ import { logger } from '../utils/logger.js';
 import { calculateLoRaFrequency } from '../utils/loraFrequency.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
+import { deadDropService, nodeIdHex } from './services/deadDropService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import packetLogService from './services/packetLogService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
@@ -381,7 +382,7 @@ type TextMessage = {
 interface AutoResponderTrigger {
   trigger: string | string[];
   response: string;
-  responseType?: 'text' | 'http' | 'script' | 'traceroute';
+  responseType?: 'text' | 'http' | 'script' | 'traceroute' | 'mailbox';
   channel?: number | 'dm' | 'none';
   verifyResponse?: boolean;
   multiline?: boolean;
@@ -10024,8 +10025,11 @@ class MeshtasticManager implements ISourceManager {
         }
 
         if (matchedPattern) {
-          // Per-node cooldown rate limiting
-          const cooldownSeconds = trigger.cooldownSeconds || 0;
+          // Per-node cooldown rate limiting. Mailbox is inherently interactive
+          // (e.g. `inbox` then `inbox play` within a couple seconds share one
+          // trigger), so it bypasses the per-node cooldown — otherwise the
+          // recommended cooldown would silently swallow follow-up commands.
+          const cooldownSeconds = trigger.responseType === 'mailbox' ? 0 : (trigger.cooldownSeconds || 0);
           if (cooldownSeconds > 0) {
             const cooldownKey = `${triggerIdx}:${message.fromNodeNum}`;
             const lastResponse = this.autoResponderCooldowns.get(cooldownKey);
@@ -10396,6 +10400,69 @@ class MeshtasticManager implements ISourceManager {
                 1
               );
             }
+            return;
+
+          } else if (trigger.responseType === 'mailbox') {
+            // Dead Drop / Mailbox — async message store ("mesh voicemail").
+            // Parse + execute the command and DM the resulting lines back to
+            // the sender. Wrapped in try/catch like the script branch so a
+            // repo/DB throw logs and continues instead of aborting the rest of
+            // this packet's processing. Mailbox bypasses the per-node cooldown
+            // (see the cooldown gate above), so nothing is set here.
+            const mailboxStart = Date.now();
+            const mailboxTarget = nodeIdHex(message.fromNodeNum);
+            try {
+              const fromNode = await databaseService.nodes.getNode(message.fromNodeNum, this.sourceId);
+              const mailboxResult = await deadDropService.handleCommand({
+                sourceId: this.sourceId,
+                text: message.text,
+                isDirect: isDirectMessage,
+                senderNodeNum: message.fromNodeNum,
+                senderShortName: fromNode?.shortName || '',
+                senderLongName: fromNode?.longName || '',
+              });
+              const mailboxResponses = mailboxResult.responses;
+              if (mailboxResponses.length === 0) {
+                return;
+              }
+
+              // index -> messageId: mark a message played only when its body
+              // line is confirmed delivered, so a dropped DM leaves it pending.
+              const playOnDelivery = new Map<number, number>();
+              for (const p of mailboxResult.playOnDelivery ?? []) playOnDelivery.set(p.index, p.messageId);
+
+              const mailboxMaxAttempts = trigger.verifyResponse ? 3 : 1;
+              logger.debug(`📬 Enqueueing ${mailboxResponses.length} mailbox response(s) to ${mailboxTarget}`);
+
+              mailboxResponses.forEach((resp, index) => {
+                const truncated = this.truncateMessageForMeshtastic(resp, 200);
+                const isFirstMessage = index === 0;
+                this.messageQueue.enqueue(
+                  truncated,
+                  message.fromNodeNum, // destination: always DM the sender
+                  isFirstMessage ? packetId : undefined, // reply to original for first response
+                  () => {
+                    logger.info(`✅ Mailbox response ${index + 1}/${mailboxResponses.length} delivered to ${mailboxTarget}`);
+                    const playId = playOnDelivery.get(index);
+                    if (playId !== undefined) {
+                      deadDropService.markDelivered(this.sourceId, playId)
+                        .catch(err => logger.warn(`📬 Failed to mark mailbox message ${playId} played:`, err));
+                    }
+                  },
+                  (reason: string) => {
+                    logger.warn(`❌ Mailbox response ${index + 1}/${mailboxResponses.length} failed to ${mailboxTarget}: ${reason}`);
+                  },
+                  undefined, // channel undefined => DM
+                  mailboxMaxAttempts
+                );
+              });
+
+              const mailboxDuration = Date.now() - mailboxStart;
+              logger.info(`📬 Auto-responder mailbox completed in ${mailboxDuration}ms, ${mailboxResponses.length} response(s) queued to ${mailboxTarget}`);
+            } catch (error: any) {
+              logger.error(`📬 Auto-responder mailbox failed for ${mailboxTarget}: ${error?.message || error}`);
+            }
+
             return;
 
           } else {

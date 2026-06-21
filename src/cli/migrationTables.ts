@@ -73,6 +73,8 @@ export const TABLE_ORDER = [
   'auto_favorite_assignments',
   // 3441: per-source encrypted X25519 private key for PKI DM decryption
   'source_pki_keys',
+  // per-source async message store (Dead Drop / Mailbox)
+  'dead_drop_messages',
 ];
 
 // Tables in the 4.0 schema that carry a `sourceId` column. When the source
@@ -93,6 +95,7 @@ export const SOURCE_SCOPED_TABLES = new Set([
   'embed_profiles', 'meshcore_nodes', 'meshcore_messages',
   'meshcore_neighbor_info', 'meshcore_packet_log',
   'auto_favorite_targets', 'auto_favorite_assignments',
+  'dead_drop_messages',
 ]);
 
 // Tables to skip entirely during migration (incompatible schemas or non-essential)
