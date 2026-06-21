@@ -1,6 +1,6 @@
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, real as pgReal } from 'drizzle-orm/pg-core';
-import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, serial as mySerial } from 'drizzle-orm/mysql-core';
+import { pgTable, text as pgText, integer as pgInteger, real as pgReal, bigint as pgBigint } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, serial as mySerial, bigint as myBigint } from 'drizzle-orm/mysql-core';
 
 // ============ SQLite Schema ============
 
@@ -24,8 +24,9 @@ export const meshcoreNeighborsPostgres = pgTable('meshcore_neighbor_info', {
   neighborPublicKey: pgText('neighborPublicKey').notNull(),
   snr: pgReal('snr'),
   lastHeardSecs: pgInteger('lastHeardSecs'),
-  timestamp: pgInteger('timestamp').notNull(),
-  createdAt: pgInteger('createdAt').notNull(),
+  // ms-epoch timestamps overflow 32-bit INTEGER (~2.1e9); JS Date.now() is ~1.8e12.
+  timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
+  createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
 });
 
 // ============ MySQL Schema ============
@@ -37,6 +38,7 @@ export const meshcoreNeighborsMysql = mysqlTable('meshcore_neighbor_info', {
   neighborPublicKey: myVarchar('neighborPublicKey', { length: 64 }).notNull(),
   snr: myDouble('snr'),
   lastHeardSecs: myInt('lastHeardSecs'),
-  timestamp: myInt('timestamp').notNull(),
-  createdAt: myInt('createdAt').notNull(),
+  // ms-epoch timestamps overflow 32-bit INT (~2.1e9); JS Date.now() is ~1.8e12.
+  timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
 });

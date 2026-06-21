@@ -110,6 +110,7 @@ import { migration as hideFromMapMigration, runMigration092Postgres as runHideFr
 import { migration as autoackMatrixMigration, runMigration093Postgres as runAutoackMatrixPostgres, runMigration093Mysql as runAutoackMatrixMysql } from '../server/migrations/093_autoack_matrix.js';
 import { migration as meshcoreNodeFavoriteMigration, runMigration094Postgres as runMeshcoreNodeFavoritePostgres, runMigration094Mysql as runMeshcoreNodeFavoriteMysql } from '../server/migrations/094_add_meshcore_node_favorite.js';
 import { migration as deadDropMigration, runMigration095Postgres as runDeadDropPostgres, runMigration095Mysql as runDeadDropMysql } from '../server/migrations/095_create_dead_drop.js';
+import { migration as meshcoreNeighborTimestampBigintMigration, runMigration096Postgres as runMeshcoreNeighborTimestampBigintPostgres, runMigration096Mysql as runMeshcoreNeighborTimestampBigintMysql } from '../server/migrations/096_meshcore_neighbor_timestamp_bigint.js';
 
 // ============================================================================
 // Registry
@@ -1516,4 +1517,20 @@ registry.register({
   sqlite: (db) => deadDropMigration.up(db),
   postgres: (client) => runDeadDropPostgres(client),
   mysql: (pool) => runDeadDropMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 096: widen meshcore_neighbor_info.timestamp / .createdAt to BIGINT
+// on PostgreSQL and MySQL. Both store ms-epoch values (Date.now()), which
+// overflow signed 32-bit INTEGER/INT and crashed getNeighbors in production.
+// SQLite INTEGER is already 64-bit (no-op there).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 96,
+  name: 'meshcore_neighbor_timestamp_bigint',
+  settingsKey: 'migration_096_meshcore_neighbor_timestamp_bigint',
+  sqlite: (db) => meshcoreNeighborTimestampBigintMigration.up(db),
+  postgres: (client) => runMeshcoreNeighborTimestampBigintPostgres(client),
+  mysql: (pool) => runMeshcoreNeighborTimestampBigintMysql(pool),
 });
