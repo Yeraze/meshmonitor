@@ -1021,10 +1021,18 @@ class MeshtasticManager implements ISourceManager {
   }
 
   private async getConfig(): Promise<MeshtasticConfig> {
-    // Per-source config takes priority (set when this manager was created from a source record)
-    if (this.sourceConfigOverride?.host) {
+    // Per-source config takes priority (set when this manager was created from a
+    // source record via the constructor or configureSource()). A configured
+    // source MUST resolve to its own host — even on a reconnect that fires before
+    // anything else is ready — and must never fall through to the env default
+    // ('192.168.1.100'), which would surface the wrong address in the connection
+    // status (#3611). The presence of sourceConfigOverride is the signal that
+    // this manager belongs to a configured source; only the truly unconfigured
+    // legacy singleton (no override at all) is allowed to use the env/runtime
+    // default below.
+    if (this.sourceConfigOverride) {
       return {
-        nodeIp: this.sourceConfigOverride.host,
+        nodeIp: this.sourceConfigOverride.host ?? getEnvironmentConfig().meshtasticNodeIp,
         tcpPort: this.sourceConfigOverride.port ?? 4403,
       };
     }
