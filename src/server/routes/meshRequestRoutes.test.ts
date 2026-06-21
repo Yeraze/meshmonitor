@@ -77,7 +77,9 @@ describe('POST /traceroute', () => {
     mockManager.sendTraceroute.mockRejectedValue(new Error('Not connected to Meshtastic node'));
     const res = await request(app).post('/traceroute').send({ destination: '!12345678' });
     expect(res.status).toBe(503);
-    expect(res.body.error).toContain('Not connected');
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toBe('Service Unavailable');
+    expect(res.body.message).toContain('Not connected');
   });
 });
 
@@ -99,7 +101,9 @@ describe('POST /position/request', () => {
     mockManager.sendPositionRequest.mockRejectedValue(new Error('Not connected to Meshtastic node'));
     const res = await request(app).post('/position/request').send({ destination: '!12345678' });
     expect(res.status).toBe(503);
-    expect(res.body.error).toContain('Not connected');
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toBe('Service Unavailable');
+    expect(res.body.message).toContain('Not connected');
   });
 });
 
@@ -110,6 +114,15 @@ describe('POST /nodeinfo/request', () => {
     expect(res.status).toBe(200);
     expect(mockManager.sendNodeInfoRequest).toHaveBeenCalledWith(0x12345678, 2);
     expect(databaseService.messages.insertMessage).toHaveBeenCalled();
+  });
+
+  it('returns 503 when node is not connected', async () => {
+    mockManager.sendNodeInfoRequest.mockRejectedValue(new Error('Not connected to Meshtastic node'));
+    const res = await request(app).post('/nodeinfo/request').send({ destination: '!12345678' });
+    expect(res.status).toBe(503);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toBe('Service Unavailable');
+    expect(res.body.message).toContain('Not connected');
   });
 });
 
@@ -144,6 +157,19 @@ describe('POST /neighborinfo/request', () => {
     expect(res.status).toBe(429);
     expect(res.body.retryAfter).toBeGreaterThan(0);
   });
+
+  it('returns 503 when node is not connected (after eligibility passes)', async () => {
+    // Unique destination so the module-level rate-limit map doesn't bleed across tests.
+    (parseDestinationNum as any).mockResolvedValue(0x0000cccc);
+    mockManager.getLocalNodeInfo.mockReturnValue({ nodeNum: 1, nodeId: '!00000001' });
+    (databaseService.nodes.getNode as any).mockResolvedValue({ channel: 1, hopsAway: 0 });
+    mockManager.sendNeighborInfoRequest.mockRejectedValue(new Error('Not connected to Meshtastic node'));
+    const res = await request(app).post('/neighborinfo/request').send({ destination: '!0000cccc' });
+    expect(res.status).toBe(503);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toBe('Service Unavailable');
+    expect(res.body.message).toContain('Not connected');
+  });
 });
 
 describe('POST /telemetry/request', () => {
@@ -173,5 +199,14 @@ describe('POST /telemetry/request', () => {
     mockManager.sendTelemetryRequest.mockResolvedValue({ packetId: 1, requestId: 2 });
     await request(app).post('/telemetry/request').send({ destination: '!12345678', telemetryType: 'device' });
     expect(mockManager.sendTelemetryRequest).toHaveBeenCalledWith(0x12345678, 0, 'device');
+  });
+
+  it('returns 503 when node is not connected', async () => {
+    mockManager.sendTelemetryRequest.mockRejectedValue(new Error('Not connected to Meshtastic node'));
+    const res = await request(app).post('/telemetry/request').send({ destination: '!12345678', telemetryType: 'environment' });
+    expect(res.status).toBe(503);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toBe('Service Unavailable');
+    expect(res.body.message).toContain('Not connected');
   });
 });

@@ -33,7 +33,11 @@ router.post('/traceroute', requirePermission('traceroute', 'write'), async (req:
   } catch (error: any) {
     logger.error('Error sending traceroute:', error);
     if (error?.message?.includes('Not connected')) {
-      return res.status(503).json({ error: 'Not connected to Meshtastic node' });
+      return res.status(503).json({
+        success: false,
+        error: 'Service Unavailable',
+        message: 'Not connected to Meshtastic node',
+      });
     }
     res.status(500).json({ error: 'Failed to send traceroute' });
   }
@@ -108,7 +112,11 @@ router.post('/position/request', requirePermission('messages', 'write'), async (
   } catch (error: any) {
     logger.error('Error sending position request:', error);
     if (error?.message?.includes('Not connected')) {
-      return res.status(503).json({ error: 'Not connected to Meshtastic node' });
+      return res.status(503).json({
+        success: false,
+        error: 'Service Unavailable',
+        message: 'Not connected to Meshtastic node',
+      });
     }
     res.status(500).json({ error: 'Failed to send position request' });
   }
@@ -179,7 +187,11 @@ router.post('/nodeinfo/request', requirePermission('messages', 'write'), async (
   } catch (error: any) {
     logger.error('Error sending nodeinfo request:', error);
     if (error?.message?.includes('Not connected')) {
-      return res.status(503).json({ error: 'Not connected to Meshtastic node' });
+      return res.status(503).json({
+        success: false,
+        error: 'Service Unavailable',
+        message: 'Not connected to Meshtastic node',
+      });
     }
     res.status(500).json({ error: 'Failed to send nodeinfo request' });
   }
@@ -254,7 +266,11 @@ router.post('/neighborinfo/request', requirePermission('traceroute', 'write'), a
   } catch (error: any) {
     logger.error('Error sending neighborinfo request:', error);
     if (error?.message?.includes('Not connected')) {
-      return res.status(503).json({ error: 'Not connected to Meshtastic node' });
+      return res.status(503).json({
+        success: false,
+        error: 'Service Unavailable',
+        message: 'Not connected to Meshtastic node',
+      });
     }
     res.status(500).json({ error: 'Failed to send neighborinfo request' });
   }
@@ -304,7 +320,11 @@ router.post('/telemetry/request', requirePermission('messages', 'write'), async 
   } catch (error: any) {
     logger.error('Error sending telemetry request:', error);
     if (error?.message?.includes('Not connected')) {
-      return res.status(503).json({ error: 'Not connected to Meshtastic node' });
+      return res.status(503).json({
+        success: false,
+        error: 'Service Unavailable',
+        message: 'Not connected to Meshtastic node',
+      });
     }
     res.status(500).json({ error: 'Failed to send telemetry request' });
   }
