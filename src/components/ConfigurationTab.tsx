@@ -80,6 +80,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [hopLimit, setHopLimit] = useState<number>(3);
   const [txPower, setTxPower] = useState<number>(0);
   const [channelNum, setChannelNum] = useState<number>(0);
+  // FEM_LNA_Mode enum (firmware >= v2.7.20): 0=DISABLED (proto3 zero/default), 1=ENABLED, 2=NOT_PRESENT
+  const [femLnaMode, setFemLnaMode] = useState<number>(0);
   const [sx126xRxBoostedGain, setSx126xRxBoostedGain] = useState<boolean>(false);
   const [ignoreMqtt, setIgnoreMqtt] = useState<boolean>(false);
   const [configOkToMqtt, setConfigOkToMqtt] = useState<boolean>(false);
@@ -406,6 +408,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           }
           if (config.deviceConfig.lora.channelNum !== undefined) {
             setChannelNum(config.deviceConfig.lora.channelNum);
+          }
+          if (config.deviceConfig.lora.femLnaMode !== undefined) {
+            setFemLnaMode(config.deviceConfig.lora.femLnaMode);
           }
           if (config.deviceConfig.lora.sx126xRxBoostedGain !== undefined) {
             setSx126xRxBoostedGain(config.deviceConfig.lora.sx126xRxBoostedGain);
@@ -873,6 +878,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         hopLimit: validHopLimit,
         txPower,
         channelNum,
+        femLnaMode,
         sx126xRxBoostedGain,
         ignoreMqtt,
         configOkToMqtt,
@@ -1626,6 +1632,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         if (lora.frequencyOffset !== undefined) setFrequencyOffset(lora.frequencyOffset);
         if (lora.overrideFrequency !== undefined) setOverrideFrequency(lora.overrideFrequency);
         if (lora.channelNum !== undefined) setChannelNum(lora.channelNum);
+        if (lora.femLnaMode !== undefined) setFemLnaMode(lora.femLnaMode);
         if (lora.sx126xRxBoostedGain !== undefined) setSx126xRxBoostedGain(lora.sx126xRxBoostedGain);
         if (lora.ignoreMqtt !== undefined) setIgnoreMqtt(lora.ignoreMqtt);
         if (lora.configOkToMqtt !== undefined) setConfigOkToMqtt(lora.configOkToMqtt);
@@ -2113,6 +2120,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setTxPower={setTxPower}
             channelNum={channelNum}
             setChannelNum={setChannelNum}
+            femLnaMode={femLnaMode}
+            setFemLnaMode={setFemLnaMode}
             sx126xRxBoostedGain={sx126xRxBoostedGain}
             setSx126xRxBoostedGain={setSx126xRxBoostedGain}
             ignoreMqtt={ignoreMqtt}

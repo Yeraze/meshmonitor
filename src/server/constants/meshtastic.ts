@@ -125,6 +125,36 @@ export function isViaMqtt(mechanism: number | undefined): boolean {
 }
 
 /**
+ * Config.LoRaConfig.FEM_LNA_Mode — FEM (Front-End Module) LNA (Low Noise Amplifier) mode.
+ * Added in Meshtastic firmware v2.7.20 (meshtastic/firmware#9809). Surfaced from
+ * meshtastic/protobufs config.proto `enum FEM_LNA_Mode` (field `fem_lna_mode = 106`).
+ * The zero value (DISABLED) is a real selectable mode, so proto3 elision must default to it.
+ */
+export const FemLnaMode = {
+  /** FEM_LNA is present but disabled */
+  DISABLED: 0,
+  /** FEM_LNA is present and enabled */
+  ENABLED: 1,
+  /** FEM_LNA is not present on the device */
+  NOT_PRESENT: 2,
+} as const;
+
+export type FemLnaModeType = typeof FemLnaMode[keyof typeof FemLnaMode];
+
+/**
+ * Get the name of a FEM LNA mode value.
+ */
+export function getFemLnaModeName(mode: number): string {
+  const entries = Object.entries(FemLnaMode);
+  for (const [name, value] of entries) {
+    if (value === mode) {
+      return name;
+    }
+  }
+  return 'UNKNOWN';
+}
+
+/**
  * Get the name of a port number
  */
 export function getPortNumName(portnum: number): string {

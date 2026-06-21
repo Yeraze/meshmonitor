@@ -4009,6 +4009,12 @@ class MeshtasticManager implements ISourceManager {
               parsed.data.lora.channelNum = 0;
               logger.info('📊 Set channelNum to 0 (was undefined - Proto3 default)');
             }
+            // femLnaMode (FEM_LNA_Mode enum) — zero value DISABLED is a real mode, so
+            // proto3 elision must default to 0, NOT to a non-zero fallback (see #3594).
+            if (parsed.data.lora.femLnaMode === undefined) {
+              parsed.data.lora.femLnaMode = 0;
+              logger.info('📊 Set femLnaMode to 0 (DISABLED - was undefined, Proto3 default)');
+            }
 
             // Persist the modem preset per-source so the unified channels
             // endpoint can use it as the display-name fallback for slot 0
@@ -4761,7 +4767,9 @@ class MeshtasticManager implements ISourceManager {
         frequencyOffset: deviceConfig.lora.frequencyOffset !== undefined ? deviceConfig.lora.frequencyOffset : 0,
         overrideFrequency: deviceConfig.lora.overrideFrequency !== undefined ? deviceConfig.lora.overrideFrequency : 0,
         modemPreset: deviceConfig.lora.modemPreset !== undefined ? deviceConfig.lora.modemPreset : 0,
-        channelNum: deviceConfig.lora.channelNum !== undefined ? deviceConfig.lora.channelNum : 0
+        channelNum: deviceConfig.lora.channelNum !== undefined ? deviceConfig.lora.channelNum : 0,
+        // FEM_LNA_Mode enum: default to 0 (DISABLED), the proto3 zero value (firmware ≥ v2.7.20)
+        femLnaMode: deviceConfig.lora.femLnaMode !== undefined ? deviceConfig.lora.femLnaMode : 0
       };
 
       deviceConfig = {
@@ -8310,7 +8318,8 @@ class MeshtasticManager implements ISourceManager {
         ),
         txEnabled: loraConfigWithDefaults.txEnabled !== undefined ? loraConfigWithDefaults.txEnabled : 'Unknown',
         sx126xRxBoostedGain: loraConfigWithDefaults.sx126xRxBoostedGain !== undefined ? loraConfigWithDefaults.sx126xRxBoostedGain : 'Unknown',
-        configOkToMqtt: loraConfigWithDefaults.configOkToMqtt !== undefined ? loraConfigWithDefaults.configOkToMqtt : 'Unknown'
+        configOkToMqtt: loraConfigWithDefaults.configOkToMqtt !== undefined ? loraConfigWithDefaults.configOkToMqtt : 'Unknown',
+        femLnaMode: loraConfigWithDefaults.femLnaMode !== undefined ? loraConfigWithDefaults.femLnaMode : 'Unknown'
       },
       mqtt: {
         enabled: mqttConfigWithDefaults.enabled,

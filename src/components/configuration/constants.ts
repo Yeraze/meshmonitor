@@ -124,6 +124,14 @@ export const REGION_OPTIONS: RegionOption[] = [
   { value: 32, label: 'EU_N_868 - European Union 868MHz Narrow' }
 ];
 
+// Config.LoRaConfig.FEM_LNA_Mode (firmware >= v2.7.20, meshtastic/firmware#9809).
+// Value 0 (DISABLED) is the proto3 zero/default and a real selectable mode.
+export const FEM_LNA_MODE_OPTIONS: RegionOption[] = [
+  { value: 0, label: 'DISABLED - FEM LNA present but disabled' },
+  { value: 1, label: 'ENABLED - FEM LNA present and enabled' },
+  { value: 2, label: 'NOT_PRESENT - No FEM LNA on this device' }
+];
+
 // Mapping from string role names to numeric values
 export const ROLE_MAP: Record<string, number> = {
   'CLIENT': 0,
