@@ -6083,7 +6083,13 @@ class MeshtasticManager implements ISourceManager {
         // Stored on the always-present lat/lon rows; the position-history API
         // surfaces them per fix for the hover tooltip. "Directly heard" (so SNR
         // is meaningful) is hopStart === hopLimit, i.e. zero hops decremented.
-        const posRxSnr = meshPacket.rxSnr ?? (meshPacket as any).rx_snr ?? undefined;
+        // -128 is the firmware "no SNR" sentinel; normalize it (and only it) to
+        // undefined so a legitimate 0.0 dB direct-hear SNR is still recorded
+        // (issue #3590). A node heard directly often reports an SNR at or near
+        // 0 dB, which the old truthiness check (`snr && snr !== 0`) silently
+        // dropped.
+        const rawPosRxSnr = meshPacket.rxSnr ?? (meshPacket as any).rx_snr ?? undefined;
+        const posRxSnr = (rawPosRxSnr != null && rawPosRxSnr !== -128) ? rawPosRxSnr : undefined;
         const posHopStart = meshPacket.hopStart ?? (meshPacket as any).hop_start ?? undefined;
         const posHopLimit = meshPacket.hopLimit ?? (meshPacket as any).hop_limit ?? undefined;
 
@@ -6155,7 +6161,8 @@ class MeshtasticManager implements ISourceManager {
             nodeId: nodeId,
             lastHeard: Date.now() / 1000,
           };
-          if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+          // -128 is the firmware "no SNR" sentinel; accept 0 dB (issue #3590).
+          if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
             technicalData.snr = meshPacket.rxSnr;
           }
           if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
@@ -6178,8 +6185,10 @@ class MeshtasticManager implements ISourceManager {
             positionTimestamp: now
           };
 
-          // Only include SNR/RSSI if they have valid values
-          if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+          // Only include SNR/RSSI if they have valid values. -128 is the
+          // firmware "no SNR" sentinel; accept a legitimate 0 dB so direct
+          // hears update the node's last-known SNR (issue #3590).
+          if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
             nodeData.snr = meshPacket.rxSnr;
           }
           if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
@@ -6405,8 +6414,10 @@ class MeshtasticManager implements ISourceManager {
       // Track if this packet was PKI encrypted (using the helper method)
       await this.trackPKIEncryption(meshPacket, fromNum);
 
-      // Only include SNR/RSSI if they have valid values
-      if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+      // Only include SNR/RSSI if they have valid values.
+      // Use the firmware-sentinel check (-128 = "no SNR") rather than a truthiness
+      // guard, so a legitimate 0 dB SNR from a directly-heard node is not dropped (#3590).
+      if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
         nodeData.snr = meshPacket.rxSnr;
 
         // Save SNR as telemetry if it has changed OR if 10+ minutes have passed
