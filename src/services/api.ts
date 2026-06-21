@@ -699,7 +699,9 @@ class ApiService {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Failed to send traceroute');
+      // Prefer the specific `message` (e.g. "Not connected to Meshtastic node")
+      // over the generic `error` status reason, matching the v1 API error shape.
+      throw new Error(error.message || error.error || 'Failed to send traceroute');
     }
 
     return response.json();
@@ -722,7 +724,7 @@ class ApiService {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Failed to request position');
+      throw new Error(error.message || error.error || 'Failed to request position');
     }
 
     return response.json();
