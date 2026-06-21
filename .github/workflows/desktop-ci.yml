@@ -330,7 +330,27 @@ jobs:
           cp package-lock.json desktop/resources/dist/
           # Install production-only dependencies into the bundle (matches Windows step).
           # Excludes dev deps — shrinks the debug build proportionally to the release build.
-          (cd desktop/resources/dist && npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund)
+          # IMPORTANT: this runner is macos-14 (arm64) but the bundle ships x64 binaries.
+          # Force prebuild-install (better-sqlite3 et al.) to fetch x64 prebuilds — without
+          # this, native .node files are downloaded for arm64 and the x64 DMG fails to load
+          # them at runtime (see issue #2901).
+          (cd desktop/resources/dist && \
+            npm_config_arch=x64 \
+            npm_config_target_arch=x64 \
+            npm_config_platform=darwin \
+            npm_config_target_platform=darwin \
+            npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund)
+          # re2 uses install-artifact-from-github (not prebuild-install) to download
+          # prebuilt binaries. That tool reads process.arch — arm64 on this runner —
+          # instead of npm_config_arch, so it fetches an arm64 re2.node even when the
+          # arch env vars are set. Delete it and rebuild from source with clang
+          # -arch x86_64 so the bundled binary is x86_64. See issue #3603 and #2901.
+          rm -f desktop/resources/dist/node_modules/re2/build/Release/re2.node
+          (cd desktop/resources/dist/node_modules/re2 && \
+            CFLAGS="-arch x86_64" CXXFLAGS="-arch x86_64" LDFLAGS="-arch x86_64" \
+            ../.bin/node-gyp rebuild --arch=x64)
+          echo "re2.node architecture after rebuild:"
+          file desktop/resources/dist/node_modules/re2/build/Release/re2.node
 
       - name: Download Node.js binary for bundling (x64)
         run: |

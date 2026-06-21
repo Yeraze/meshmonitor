@@ -730,6 +730,17 @@ jobs:
             npm_config_platform=darwin \
             npm_config_target_platform=darwin \
             npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund)
+          # re2 uses install-artifact-from-github (not prebuild-install) to download
+          # prebuilt binaries. That tool reads process.arch — arm64 on this runner —
+          # instead of npm_config_arch, so it fetches an arm64 re2.node even when the
+          # arch env vars are set. Delete it and rebuild from source with clang
+          # -arch x86_64 so the bundled binary is x86_64. See issue #3603 and #2901.
+          rm -f desktop/resources/dist/node_modules/re2/build/Release/re2.node
+          (cd desktop/resources/dist/node_modules/re2 && \
+            CFLAGS="-arch x86_64" CXXFLAGS="-arch x86_64" LDFLAGS="-arch x86_64" \
+            ../.bin/node-gyp rebuild --arch=x64)
+          echo "re2.node architecture after rebuild:"
+          file desktop/resources/dist/node_modules/re2/build/Release/re2.node
 
       # Sign all native binaries in node_modules for notarization
       # Native addons with JIT also need the entitlements
