@@ -6414,8 +6414,10 @@ class MeshtasticManager implements ISourceManager {
       // Track if this packet was PKI encrypted (using the helper method)
       await this.trackPKIEncryption(meshPacket, fromNum);
 
-      // Only include SNR/RSSI if they have valid values
-      if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+      // Only include SNR/RSSI if they have valid values.
+      // Use the firmware-sentinel check (-128 = "no SNR") rather than a truthiness
+      // guard, so a legitimate 0 dB SNR from a directly-heard node is not dropped (#3590).
+      if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
         nodeData.snr = meshPacket.rxSnr;
 
         // Save SNR as telemetry if it has changed OR if 10+ minutes have passed
