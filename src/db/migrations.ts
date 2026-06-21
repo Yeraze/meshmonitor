@@ -109,6 +109,7 @@ import { migration as estimatedPositionsDoublePrecisionMigration, runMigration09
 import { migration as hideFromMapMigration, runMigration092Postgres as runHideFromMapPostgres, runMigration092Mysql as runHideFromMapMysql } from '../server/migrations/092_add_hide_from_map_to_nodes.js';
 import { migration as autoackMatrixMigration, runMigration093Postgres as runAutoackMatrixPostgres, runMigration093Mysql as runAutoackMatrixMysql } from '../server/migrations/093_autoack_matrix.js';
 import { migration as meshcoreNodeFavoriteMigration, runMigration094Postgres as runMeshcoreNodeFavoritePostgres, runMigration094Mysql as runMeshcoreNodeFavoriteMysql } from '../server/migrations/094_add_meshcore_node_favorite.js';
+import { migration as meshcoreNeighborTimestampBigintMigration, runMigration095Postgres as runMeshcoreNeighborTimestampBigintPostgres, runMigration095Mysql as runMeshcoreNeighborTimestampBigintMysql } from '../server/migrations/095_meshcore_neighbor_timestamp_bigint.js';
 
 // ============================================================================
 // Registry
@@ -1501,4 +1502,20 @@ registry.register({
   sqlite: (db) => meshcoreNodeFavoriteMigration.up(db),
   postgres: (client) => runMeshcoreNodeFavoritePostgres(client),
   mysql: (pool) => runMeshcoreNodeFavoriteMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 095: widen meshcore_neighbor_info.timestamp / .createdAt to BIGINT
+// on PostgreSQL and MySQL. Both store ms-epoch values (Date.now()), which
+// overflow signed 32-bit INTEGER/INT and crashed getNeighbors in production.
+// SQLite INTEGER is already 64-bit (no-op there).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 95,
+  name: 'meshcore_neighbor_timestamp_bigint',
+  settingsKey: 'migration_095_meshcore_neighbor_timestamp_bigint',
+  sqlite: (db) => meshcoreNeighborTimestampBigintMigration.up(db),
+  postgres: (client) => runMeshcoreNeighborTimestampBigintPostgres(client),
+  mysql: (pool) => runMeshcoreNeighborTimestampBigintMysql(pool),
 });
