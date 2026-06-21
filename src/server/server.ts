@@ -13,6 +13,7 @@ import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { resolveSourceManager } from './utils/resolveSourceManager.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
 import { canonicalMessageTime, messageReceivedAt } from './utils/messageTime.js';
+import { pivotPositionHistory } from './utils/positionHistoryPivot.js';
 import protobufService from './protobufService.js';
 
 // Make meshtasticManager available globally for routes that need it
@@ -1342,40 +1343,11 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
     // Get only position-related telemetry (lat/lon/alt/speed/track) for the node - much more efficient!
     const positionTelemetry = await databaseService.getPositionTelemetryByNodeAsync(nodeId, 1500, cutoffTime);
 
-    // Group by timestamp to get lat/lon pairs with optional speed/track
-    const positionMap = new Map<number, { lat?: number; lon?: number; alt?: number; groundSpeed?: number; groundTrack?: number }>();
-
-    positionTelemetry.forEach(t => {
-      if (!positionMap.has(t.timestamp)) {
-        positionMap.set(t.timestamp, {});
-      }
-      const pos = positionMap.get(t.timestamp)!;
-
-      if (t.telemetryType === 'latitude') {
-        pos.lat = t.value;
-      } else if (t.telemetryType === 'longitude') {
-        pos.lon = t.value;
-      } else if (t.telemetryType === 'altitude') {
-        pos.alt = t.value;
-      } else if (t.telemetryType === 'ground_speed') {
-        pos.groundSpeed = t.value;
-      } else if (t.telemetryType === 'ground_track') {
-        pos.groundTrack = t.value;
-      }
-    });
-
-    // Convert to array of positions, filter incomplete ones
-    const positions = Array.from(positionMap.entries())
-      .filter(([_timestamp, pos]) => pos.lat !== undefined && pos.lon !== undefined)
-      .map(([timestamp, pos]) => ({
-        timestamp,
-        latitude: pos.lat!,
-        longitude: pos.lon!,
-        altitude: pos.alt,
-        groundSpeed: pos.groundSpeed,
-        groundTrack: pos.groundTrack,
-      }))
-      .sort((a, b) => a.timestamp - b.timestamp);
+    // Pivot the per-metric telemetry rows into per-fix position objects.
+    // Per-fix receive metadata (SNR + hop info, issue #3492) stamped on the
+    // lat/lon rows is surfaced so the map history tooltip can show
+    // "Heard directly (0 hops)" + SNR for direct hears (issue #3590).
+    const positions = pivotPositionHistory(positionTelemetry);
 
     res.json(positions);
   } catch (error) {
