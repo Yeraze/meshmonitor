@@ -72,6 +72,13 @@ describe('POST /traceroute', () => {
     expect(res.body.success).toBe(true);
     expect(mockManager.sendTraceroute).toHaveBeenCalledWith(0x12345678, 2);
   });
+
+  it('returns 503 when node is not connected', async () => {
+    mockManager.sendTraceroute.mockRejectedValue(new Error('Not connected to Meshtastic node'));
+    const res = await request(app).post('/traceroute').send({ destination: '!12345678' });
+    expect(res.status).toBe(503);
+    expect(res.body.error).toContain('Not connected');
+  });
 });
 
 describe('POST /position/request', () => {
@@ -86,6 +93,13 @@ describe('POST /position/request', () => {
   it('returns 400 when destination missing', async () => {
     const res = await request(app).post('/position/request').send({});
     expect(res.status).toBe(400);
+  });
+
+  it('returns 503 when node is not connected', async () => {
+    mockManager.sendPositionRequest.mockRejectedValue(new Error('Not connected to Meshtastic node'));
+    const res = await request(app).post('/position/request').send({ destination: '!12345678' });
+    expect(res.status).toBe(503);
+    expect(res.body.error).toContain('Not connected');
   });
 });
 
