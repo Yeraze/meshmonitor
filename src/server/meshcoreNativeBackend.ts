@@ -217,7 +217,21 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * (it only appears on LogRxData, not on the txt-msg recv event) so the
    * message event — and {SNR} in auto-ack/auto-responder templates — has it.
    */
-  private pendingTxtMsgPath: { hops: string[]; rawPathLen: number; snr?: number } | null = null;
+  private pendingTxtMsgPath: { hops: string[]; rawPathLen: number; snr?: number; bufferedAt: number } | null = null;
+
+  /**
+   * Maximum age (ms) of a buffered LogRxData path before we treat it as stale
+   * and refuse to attach it to a message-recv event. LogRxData is emitted by
+   * the firmware immediately before the matching txt-msg recv for the SAME
+   * packet, so the correlated recv lands within the same I/O tick (sub-ms). A
+   * buffer older than this window almost certainly belongs to a *different*
+   * packet whose recv event never arrived (e.g. a non-TXT packet, or a
+   * LogRxData with no following recv), so consuming it would attach the wrong
+   * SNR/route to {SNR}/{ROUTE}. 500ms is generous enough to absorb event-loop
+   * scheduling jitter while still rejecting genuinely stale buffers — this is
+   * a core guard against the intermittent mis-correlation in issue #3589.
+   */
+  private static readonly PENDING_PATH_MAX_AGE_MS = 500;
   /** Constructor reference for the meshcore.js Packet parser, populated when the module loads. */
   private PacketCtor: MeshCoreJsModule['Packet'] | null = null;
   /**
@@ -334,6 +348,47 @@ export class MeshCoreNativeBackend extends EventEmitter {
     return hops;
   }
 
+  /**
+   * Consume the LogRxData path/SNR buffered by the preceding push event,
+   * correlating it to the current message-recv event so {SNR}/{ROUTE} only
+   * populate from the *matching* packet (issue #3589).
+   *
+   * The buffer is ALWAYS cleared (single-slot, consume-once) so a later recv
+   * that got no LogRxData of its own can't reuse a stale buffer. Two guards
+   * decide whether the buffered data is actually attached:
+   *
+   *  1. Freshness — the buffer must be younger than `PENDING_PATH_MAX_AGE_MS`.
+   *     LogRxData fires immediately before its txt-msg recv on the same tick;
+   *     an older buffer belongs to a packet whose recv never arrived.
+   *  2. pathLen correlation — when the recv event carries its own packed
+   *     `pathLen` byte, it must equal the buffered packet's `rawPathLen`.
+   *     They are the same wire byte for the same packet, so a mismatch proves
+   *     the buffer is from a *different* packet and must not be attached.
+   *
+   * Returns `{ hops, snr }` to attach, or `undefined` when the buffer is
+   * absent, stale, or for a different packet.
+   */
+  private consumePendingPath(msgPathLen: unknown): { hops: string[]; snr?: number } | undefined {
+    const buffered = this.pendingTxtMsgPath;
+    // Consume-once: clear regardless of whether we end up attaching it.
+    this.pendingTxtMsgPath = null;
+    if (!buffered) return undefined;
+
+    if (Date.now() - buffered.bufferedAt > MeshCoreNativeBackend.PENDING_PATH_MAX_AGE_MS) {
+      // Stale buffer — its matching recv never arrived. Don't mis-attach.
+      return undefined;
+    }
+    if (
+      typeof msgPathLen === 'number' &&
+      typeof buffered.rawPathLen === 'number' &&
+      msgPathLen !== buffered.rawPathLen
+    ) {
+      // Buffer is from a different packet (packed pathLen bytes differ).
+      return undefined;
+    }
+    return { hops: buffered.hops, snr: buffered.snr };
+  }
+
   private wirePushEvents(): void {
     if (!this.connection || !this.constants) return;
     const { PushCodes, ResponseCodes } = this.constants;
@@ -369,8 +424,10 @@ export class MeshCoreNativeBackend extends EventEmitter {
           const rssi = typeof rx?.lastRssi === 'number' ? rx.lastRssi : undefined;
 
           // Buffer the relay-hash chain + SNR for the next TXT_MSG recv event.
+          // `bufferedAt` lets the recv handler reject a stale buffer whose
+          // matching recv never arrived (issue #3589 mis-correlation guard).
           if (pkt.payload_type === TXT_MSG) {
-            this.pendingTxtMsgPath = { hops, rawPathLen: pkt.pathLen, snr };
+            this.pendingTxtMsgPath = { hops, rawPathLen: pkt.pathLen, snr, bufferedAt: Date.now() };
           }
           this.emitBridgeEvent('ota_packet', {
             payload_type: pkt.payload_type,
@@ -409,6 +466,13 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // SignedPlain: room server post. The first 4 bytes of the text body
         // are the original author's public-key prefix (raw binary); the
         // remainder is the post text.
+        //
+        // A room post is still a TXT_MSG on the wire, so the preceding
+        // LogRxData buffered a path for it. Consume (and discard) it here so
+        // the room post's own buffer can't leak onto the NEXT contact/channel
+        // message — that leak attached a stale SNR/route to an unrelated
+        // message (part of issue #3589). We don't surface SNR on room posts.
+        this.consumePendingPath(msg.pathLen);
         const rawText: string = msg.text ?? '';
         const authorPrefixHex = Array.from(rawText.substring(0, 4))
           .map((ch: string) => ch.charCodeAt(0).toString(16).padStart(2, '0'))
@@ -425,11 +489,10 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return;
       }
 
-      // Consume the path buffered by the preceding LogRxData event (if any).
-      // Same-tick consumption: clear the buffer so a subsequent recv that
-      // didn't get a matching LogRxData (rare) doesn't reuse stale hops.
-      const consumedPath = this.pendingTxtMsgPath;
-      this.pendingTxtMsgPath = null;
+      // Consume the path buffered by the preceding LogRxData event, correlated
+      // to THIS packet (freshness + pathLen match). Returns undefined when the
+      // buffer is absent, stale, or for a different packet (issue #3589).
+      const consumedPath = this.consumePendingPath(msg.pathLen);
       const payload = {
         pubkey_prefix: bytesToHex(msg.pubKeyPrefix),
         text: msg.text,
@@ -450,8 +513,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
 
     // ChannelMsgRecv → channel_message
     this.connection.on(ResponseCodes.ChannelMsgRecv, (msg: any) => {
-      const consumedPath = this.pendingTxtMsgPath;
-      this.pendingTxtMsgPath = null;
+      const consumedPath = this.consumePendingPath(msg.pathLen);
       this.emitBridgeEvent('channel_message', {
         channel_idx: msg.channelIdx,
         text: msg.text,
