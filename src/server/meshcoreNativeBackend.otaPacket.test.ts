@@ -12,7 +12,7 @@
  * meshcoreNativeBackend.test.ts — provides a `Packet` constructor and the
  * LogRxData push code.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'events';
 import { MeshCoreNativeBackend, __setMeshCoreModule } from './meshcoreNativeBackend.js';
 
@@ -200,5 +200,109 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
     const { conn, events } = await connectedBackend();
     expect(() => conn.emit(PushCodes.LogRxData, { lastSnr: 0, lastRssi: 0, raw: new Uint8Array(0) })).not.toThrow();
     expect(events.find((e) => e.event_type === 'ota_packet')).toBeUndefined();
+  });
+
+  // --- issue #3589: buffered-path mis-correlation guards ---------------------
+
+  it('does NOT attach a buffered path when the recv pathLen differs (different packet)', async () => {
+    const { conn, events } = await connectedBackend();
+    // LogRxData buffers a 2-hop path with pathLen=0x02.
+    const raw = Uint8Array.from([0x02, 0x01, 0x02, 0xa3, 0x7f]);
+    conn.emit(PushCodes.LogRxData, { lastSnr: 9, lastRssi: -30, raw });
+    // The recv that follows is a DIFFERENT packet (direct, pathLen=0xff) whose
+    // own LogRxData never arrived. The buffered 0x02 path must NOT be attached.
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([0xde, 0xad, 0xbe, 0xef, 0x00, 0x01]),
+      text: 'hello',
+      senderTimestamp: 1700,
+      pathLen: 0xff,
+      txtType: TxtTypes.Plain,
+    });
+    const msg = events.find((e) => e.event_type === 'contact_message');
+    expect(msg).toBeDefined();
+    expect(msg.data.snr).toBeUndefined();
+    expect(msg.data.path_hops).toBeUndefined();
+  });
+
+  it('does NOT attach a stale buffered path (older than the freshness window)', async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, events } = await connectedBackend();
+      const raw = Uint8Array.from([0x02, 0x01, 0x02, 0xa3, 0x7f]);
+      conn.emit(PushCodes.LogRxData, { lastSnr: 7, lastRssi: -35, raw });
+      // Advance well past PENDING_PATH_MAX_AGE_MS (500ms) before the recv lands.
+      vi.advanceTimersByTime(1000);
+      conn.emit(ResponseCodes.ContactMsgRecv, {
+        pubKeyPrefix: Uint8Array.from([0xde, 0xad, 0xbe, 0xef, 0x00, 0x01]),
+        text: 'late',
+        senderTimestamp: 1700,
+        pathLen: 0x02,
+        txtType: TxtTypes.Plain,
+      });
+      const msg = events.find((e) => e.event_type === 'contact_message');
+      expect(msg).toBeDefined();
+      expect(msg.data.snr).toBeUndefined();
+      expect(msg.data.path_hops).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('consumes the buffer once — a second recv with no LogRxData gets nothing', async () => {
+    const { conn, events } = await connectedBackend();
+    const raw = Uint8Array.from([0x02, 0x01, 0x02, 0xa3, 0x7f]);
+    conn.emit(PushCodes.LogRxData, { lastSnr: 4, lastRssi: -50, raw });
+    // First recv consumes the buffer.
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([0x11, 0x22, 0x33, 0x44, 0x55, 0x66]),
+      text: 'first',
+      senderTimestamp: 1700,
+      pathLen: 0x02,
+      txtType: TxtTypes.Plain,
+    });
+    // Second recv (no preceding LogRxData) must NOT reuse the consumed buffer.
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc]),
+      text: 'second',
+      senderTimestamp: 1800,
+      pathLen: 0x02,
+      txtType: TxtTypes.Plain,
+    });
+    const msgs = events.filter((e) => e.event_type === 'contact_message');
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0].data.snr).toBe(4);
+    expect(msgs[0].data.path_hops).toEqual(['a3', '7f']);
+    expect(msgs[1].data.snr).toBeUndefined();
+    expect(msgs[1].data.path_hops).toBeUndefined();
+  });
+
+  it('a room post consumes (and discards) the buffer so it cannot leak onto the next message', async () => {
+    const { conn, events } = await connectedBackend();
+    // LogRxData for the room post's own packet.
+    const raw = Uint8Array.from([0x02, 0x01, 0x02, 0xa3, 0x7f]);
+    conn.emit(PushCodes.LogRxData, { lastSnr: 8, lastRssi: -25, raw });
+    // Room post (SignedPlain) — first 4 bytes of text are the author prefix.
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]),
+      text: '\x01\x02\x03\x04hello room',
+      senderTimestamp: 1700,
+      pathLen: 0x02,
+      txtType: TxtTypes.SignedPlain,
+    });
+    // A subsequent DM (no LogRxData of its own) must NOT inherit the room
+    // post's buffered SNR/path.
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([0x11, 0x22, 0x33, 0x44, 0x55, 0x66]),
+      text: 'plain dm',
+      senderTimestamp: 1800,
+      pathLen: 0x02,
+      txtType: TxtTypes.Plain,
+    });
+    const room = events.find((e) => e.event_type === 'room_message');
+    expect(room).toBeDefined();
+    const dm = events.find((e) => e.event_type === 'contact_message');
+    expect(dm).toBeDefined();
+    expect(dm.data.snr).toBeUndefined();
+    expect(dm.data.path_hops).toBeUndefined();
   });
 });
