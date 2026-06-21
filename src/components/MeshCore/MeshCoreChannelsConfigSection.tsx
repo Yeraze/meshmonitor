@@ -217,14 +217,33 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
       showToast(t('meshcore.channels.name_too_long', 'Channel name must be {{max}} bytes or less', { max: MAX_NAME_BYTES }), 'error');
       return;
     }
-    if (!isValid16ByteHex(editSecretHex)) {
+
+    // For hashtag channels the secret MUST be the deterministic
+    // SHA-256("#name")[0:16] key — never the random placeholder set by
+    // startAdd()/regenerate. The live-derive useEffect also computes this,
+    // but it runs asynchronously, so a user who types "#bot" and saves
+    // quickly can race ahead of it and persist the stale random secret
+    // (issue #3607). Re-derive here at save time so the stored/displayed key
+    // is always deterministic and matches the MeshCore app.
+    let secretHexToSave = editSecretHex;
+    if (isHashtagChannelName(trimmedName)) {
+      try {
+        secretHexToSave = await deriveHashtagSecretHex(trimmedName);
+      } catch (err) {
+        logger.error('Failed to derive hashtag channel secret on save:', err);
+        showToast(t('meshcore.channels.invalid_secret', 'Secret must be exactly 32 hex characters (16 bytes)'), 'error');
+        return;
+      }
+    }
+
+    if (!isValid16ByteHex(secretHexToSave)) {
       showToast(t('meshcore.channels.invalid_secret', 'Secret must be exactly 32 hex characters (16 bytes)'), 'error');
       return;
     }
 
     setSaving(true);
     try {
-      const pskBase64 = hexToBase64(editSecretHex);
+      const pskBase64 = hexToBase64(secretHexToSave);
       const response = await csrfFetch(`${baseUrl}/api/channels/${editingIdx}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
