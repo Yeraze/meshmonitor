@@ -53,6 +53,9 @@ export interface MeshCoreNode {
   latitude?: number;
   longitude?: number;
   advLocPolicy?: number;
+  /** Server-side favorite flag (issue #3588). Stored locally only — never
+   *  pushed to the device. Favorited nodes pin to the top of the node list. */
+  isFavorite?: boolean;
   telemetryModeBase?: TelemetryMode;
   telemetryModeLoc?: TelemetryMode;
   telemetryModeEnv?: TelemetryMode;
@@ -129,6 +132,11 @@ export interface MeshCoreActions {
   /** Remove a contact from the device's contact list. Resolves `true` when
    *  the device ACKed the removal; `false` for any error. */
   removeContact: (publicKey: string) => Promise<boolean>;
+  /** Toggle the server-side favorite flag for a node (issue #3588). MeshCore
+   *  has no native favorite concept, so this persists locally only and never
+   *  touches the device. Favorited nodes pin to the top of the node list.
+   *  Resolves `true` on success. */
+  setNodeFavorite: (publicKey: string, isFavorite: boolean) => Promise<boolean>;
   /** Export a contact as a signed advert blob for sharing. Pass 'self' to
    *  export the local node's identity. Returns the raw bytes or null. */
   exportContact: (publicKey: string) => Promise<number[] | null>;
@@ -325,10 +333,23 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   }), []);
 
   const recomputeNodes = useCallback(() => {
-    const merged: MeshCoreNode[] = [];
-    if (localNodeRef.current) merged.push(localNodeRef.current);
-    for (const c of contactsRef.current.values()) merged.push(contactToNode(c));
-    setNodes(merged);
+    // Rebuild the node list from in-memory contacts. Contacts carry no
+    // favorite flag (it lives server-side, issue #3588), so carry forward the
+    // last-known isFavorite per publicKey from the previous nodes state — a
+    // contact push must not transiently un-pin a favorite before the next
+    // snapshot poll reconciles from the DB.
+    setNodes(prev => {
+      const favByKey = new Map(prev.map(n => [n.publicKey, n.isFavorite]));
+      const merged: MeshCoreNode[] = [];
+      if (localNodeRef.current) merged.push(localNodeRef.current);
+      for (const c of contactsRef.current.values()) {
+        const node = contactToNode(c);
+        const fav = favByKey.get(c.publicKey);
+        if (fav !== undefined) node.isFavorite = fav;
+        merged.push(node);
+      }
+      return merged;
+    });
   }, [contactToNode]);
 
   const fetchStatus = useCallback(async (): Promise<boolean> => {
@@ -937,6 +958,33 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, recomputeNodes]);
 
+  const setNodeFavorite = useCallback(async (publicKey: string, isFavorite: boolean): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(
+        `${mcPrefix}/nodes/${encodeURIComponent(publicKey)}/favorite`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isFavorite }),
+        },
+      );
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to update favorite');
+        return false;
+      }
+      // Optimistically reflect the new flag so the list re-pins immediately,
+      // without waiting for the next snapshot poll. The server is the source
+      // of truth — getAllNodes() will confirm on the next refresh.
+      setNodes(prev => prev.map(n =>
+        n.publicKey === publicKey ? { ...n, isFavorite } : n));
+      return true;
+    } catch (_err) {
+      setError('Failed to update favorite');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const exportContact = useCallback(async (publicKey: string): Promise<number[] | null> => {
     try {
       const response = await csrfFetch(
@@ -1346,6 +1394,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setContactOutPath,
       traceContactPath,
       removeContact,
+      setNodeFavorite,
       exportContact,
       importContact,
       syncDeviceTime,

@@ -2380,6 +2380,75 @@ router.patch(
   },
 );
 
+/**
+ * POST /api/sources/:id/meshcore/nodes/:publicKey/favorite
+ *
+ * Toggle the server-side favorite flag for a MeshCore node (any role:
+ * Companion, Repeater, Room Server, …). Body: { isFavorite: boolean }.
+ *
+ * MeshCore firmware has no native favorite concept, so this persists locally
+ * only and never pushes anything to the device (unlike Meshtastic, whose
+ * favorite toggle round-trips a SetFavoriteNode admin message). Favorited
+ * nodes pin to the top of the node list (issue #3588).
+ *
+ * Gated by `nodes:write` to match the Meshtastic favorite endpoint and the
+ * other MeshCore node-mutation routes.
+ */
+router.post(
+  '/nodes/:publicKey/favorite',
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id: string }).id;
+      const { publicKey } = req.params;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
+      }
+
+      const { isFavorite } = req.body ?? {};
+      if (typeof isFavorite !== 'boolean') {
+        return res.status(400).json({ success: false, error: 'isFavorite must be a boolean' });
+      }
+
+      // Backfill identity from the in-memory contact before seeding the stub
+      // row, so a node favorited while it only exists in-memory still carries
+      // a name/type for the node list (mirrors the telemetry-config route).
+      const manager = managerFor(req);
+      const contact = manager.getContact(publicKey);
+      if (contact) {
+        try {
+          await databaseService.meshcore.upsertNode(
+            {
+              publicKey,
+              name: contact.advName ?? contact.name ?? null,
+              advType: contact.advType ?? null,
+              latitude: contact.latitude ?? null,
+              longitude: contact.longitude ?? null,
+              lastHeard: contact.lastSeen ?? null,
+            },
+            sourceId,
+          );
+        } catch (err) {
+          logger.warn(
+            `[API] favorite: contact backfill for ${publicKey.substring(0, 16)}… failed: ${(err as Error).message}`,
+          );
+        }
+      }
+
+      await manager.setNodeFavorite(publicKey, isFavorite);
+
+      res.json({
+        success: true,
+        data: { publicKey, sourceId, isFavorite },
+      });
+    } catch (error) {
+      logger.error('[API] Error setting MeshCore node favorite:', error);
+      res.status(500).json({ success: false, error: 'Failed to set favorite' });
+    }
+  },
+);
+
 // ============ Auto-Pathfinding Automation ============
 
 router.get(
