@@ -846,6 +846,7 @@ router back online after battery swap
      msg {recipient} {body:.+},inbox,inbox play {sender},inbox play,inbox delete {id},inbox clear
      ```
    - **Cooldown**: not needed — the mailbox is interactive (e.g. `inbox` then `inbox play` a second apart) and bypasses the per-node cooldown, so any value here is ignored for this trigger.
+   - **Verify response**: recommended **on**. A stored message is only marked *played* once the radio confirms delivery of its body line. With *Verify response* off, a single unacknowledged send can still count as delivered, so a voicemail could be marked played even if it never reached the recipient. Enabling it (the default) makes an undelivered body resurface on the next `inbox play`.
 3. Click **Add**, then **Save**.
 
 No response text is required — the **Add** button enables once the trigger pattern is valid.
