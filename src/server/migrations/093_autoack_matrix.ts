@@ -127,10 +127,15 @@ export const migration = {
       logger.debug(`${LABEL} (SQLite): no legacy auto-ack config to migrate`);
       return;
     }
+    // The settings table has NOT NULL createdAt/updatedAt (no DB default), so a
+    // (key, value)-only insert violates the constraint — on SQLite `OR IGNORE`
+    // would silently swallow it (writing nothing); on Postgres it hard-fails.
+    // Always supply the timestamps.
+    const now = Date.now();
     // eslint-disable-next-line no-restricted-syntax -- migrations require raw SQL
-    const stmt = db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`);
+    const stmt = db.prepare(`INSERT OR IGNORE INTO settings (key, value, createdAt, updatedAt) VALUES (?, ?, ?, ?)`);
     const tx = db.transaction((items: SettingRow[]) => {
-      for (const it of items) stmt.run(it.key, it.value);
+      for (const it of items) stmt.run(it.key, it.value, now, now);
     });
     tx(inserts);
     logger.info(`${LABEL} (SQLite): wrote ${inserts.length} matrix setting(s)`);
@@ -147,10 +152,13 @@ export async function runMigration093Postgres(client: any): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): folding legacy auto-ack settings into the 2x2 matrix...`);
   const res = await client.query(`SELECT key, value FROM settings WHERE key LIKE '%autoAck%'`);
   const inserts = computeMigrationInserts(res.rows as SettingRow[]);
+  // createdAt/updatedAt are NOT NULL with no DB default (camelCase → must be
+  // quoted in Postgres). Supplying them avoids the not-null violation.
+  const now = Date.now();
   for (const it of inserts) {
     await client.query(
-      `INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING`,
-      [it.key, it.value],
+      `INSERT INTO settings (key, value, "createdAt", "updatedAt") VALUES ($1, $2, $3, $4) ON CONFLICT (key) DO NOTHING`,
+      [it.key, it.value, now, now],
     );
   }
   logger.info(`${LABEL} (PostgreSQL): wrote up to ${inserts.length} matrix setting(s)`);
@@ -164,8 +172,13 @@ export async function runMigration093Mysql(pool: any): Promise<void> {
   try {
     const [rows] = await conn.query("SELECT `key`, value FROM settings WHERE `key` LIKE '%autoAck%'");
     const inserts = computeMigrationInserts(rows as SettingRow[]);
+    // createdAt/updatedAt are NOT NULL with no DB default — supply them.
+    const now = Date.now();
     for (const it of inserts) {
-      await conn.query('INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)', [it.key, it.value]);
+      await conn.query(
+        'INSERT IGNORE INTO settings (`key`, value, createdAt, updatedAt) VALUES (?, ?, ?, ?)',
+        [it.key, it.value, now, now],
+      );
     }
     logger.info(`${LABEL} (MySQL): wrote up to ${inserts.length} matrix setting(s)`);
   } finally {

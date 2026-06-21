@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { computeMatrixValues, computeMigrationInserts } from './093_autoack_matrix.js';
+import Database from 'better-sqlite3';
+import { computeMatrixValues, computeMigrationInserts, migration } from './093_autoack_matrix.js';
+
+// Mirrors src/db/schema/settings.ts — createdAt/updatedAt are NOT NULL with no
+// DB default, which is exactly what the migration insert must satisfy.
+function makeSettingsDb() {
+  const db = new Database(':memory:');
+  db.exec(`CREATE TABLE settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL
+  )`);
+  return db;
+}
 
 describe('093 auto-ack matrix migration — computeMatrixValues', () => {
   it('uses legacy defaults (behavior ON, DM gates OFF) when nothing is set', () => {
@@ -106,5 +120,52 @@ describe('093 auto-ack matrix migration — computeMigrationInserts', () => {
     // Defaults: channel cells active, direct cells off.
     expect(rows.find((r) => r.key === 'source:s3:autoAckChannelZeroHopReplyEnabled')?.value).toBe('true');
     expect(rows.find((r) => r.key === 'source:s3:autoAckDirectZeroHopReplyEnabled')?.value).toBe('false');
+  });
+});
+
+describe('093 SQLite migration — runs against a real settings table', () => {
+  it('inserts the 12 matrix rows with non-null createdAt/updatedAt', () => {
+    const db = makeSettingsDb();
+    const now = 1_700_000_000_000;
+    db.prepare('INSERT INTO settings (key, value, createdAt, updatedAt) VALUES (?,?,?,?)')
+      .run('autoAckEnabled', 'true', now, now);
+    db.prepare('INSERT INTO settings (key, value, createdAt, updatedAt) VALUES (?,?,?,?)')
+      .run('autoAckDirectMessages', 'true', now, now);
+
+    // Must not throw (the bug was a NOT NULL violation on createdAt/updatedAt).
+    expect(() => migration.up(db as any)).not.toThrow();
+
+    const matrixRows = db.prepare(
+      "SELECT key, value, createdAt, updatedAt FROM settings WHERE key LIKE 'autoAck%Hop%Enabled'",
+    ).all() as Array<{ key: string; value: string; createdAt: number; updatedAt: number }>;
+    expect(matrixRows).toHaveLength(12);
+    for (const row of matrixRows) {
+      expect(row.createdAt).not.toBeNull();
+      expect(typeof row.createdAt).toBe('number');
+      expect(typeof row.updatedAt).toBe('number');
+    }
+    // DM column enabled because autoAckDirectMessages was true.
+    expect(matrixRows.find((r) => r.key === 'autoAckDirectZeroHopReplyEnabled')?.value).toBe('true');
+    db.close();
+  });
+
+  it('is idempotent — a second run does not throw or duplicate', () => {
+    const db = makeSettingsDb();
+    const now = 1_700_000_000_000;
+    db.prepare('INSERT INTO settings (key, value, createdAt, updatedAt) VALUES (?,?,?,?)')
+      .run('autoAckEnabled', 'true', now, now);
+    migration.up(db as any);
+    expect(() => migration.up(db as any)).not.toThrow();
+    const count = (db.prepare("SELECT COUNT(*) c FROM settings WHERE key LIKE 'autoAck%Hop%Enabled'").get() as { c: number }).c;
+    expect(count).toBe(12);
+    db.close();
+  });
+
+  it('writes nothing when there is no legacy auto-ack config', () => {
+    const db = makeSettingsDb();
+    migration.up(db as any);
+    const count = (db.prepare('SELECT COUNT(*) c FROM settings').get() as { c: number }).c;
+    expect(count).toBe(0);
+    db.close();
   });
 });
