@@ -19,6 +19,7 @@ export interface LoRaConfigState {
   hopLimit: number;
   txPower: number;
   channelNum: number;
+  femLnaMode: number;
   sx126xRxBoostedGain: boolean;
   ignoreMqtt: boolean;
   configOkToMqtt: boolean;
@@ -215,6 +216,7 @@ const initialState: AdminCommandsState = {
     hopLimit: 3,
     txPower: 0,
     channelNum: 0,
+    femLnaMode: 0, // FEM_LNA_Mode DISABLED (proto3 zero/default; firmware >= v2.7.20)
     sx126xRxBoostedGain: false,
     ignoreMqtt: false,
     configOkToMqtt: false,

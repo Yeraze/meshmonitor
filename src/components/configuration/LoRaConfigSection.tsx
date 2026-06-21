@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from './constants';
+import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, FEM_LNA_MODE_OPTIONS } from './constants';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface LoRaConfigSectionProps {
@@ -15,6 +15,7 @@ interface LoRaConfigSectionProps {
   hopLimit: number;
   txPower: number;
   channelNum: number;
+  femLnaMode: number;
   sx126xRxBoostedGain: boolean;
   ignoreMqtt: boolean;
   configOkToMqtt: boolean;
@@ -32,6 +33,7 @@ interface LoRaConfigSectionProps {
   setHopLimit: (value: number) => void;
   setTxPower: (value: number) => void;
   setChannelNum: (value: number) => void;
+  setFemLnaMode: (value: number) => void;
   setSx126xRxBoostedGain: (value: boolean) => void;
   setIgnoreMqtt: (value: boolean) => void;
   setConfigOkToMqtt: (value: boolean) => void;
@@ -54,6 +56,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   hopLimit,
   txPower,
   channelNum,
+  femLnaMode,
   sx126xRxBoostedGain,
   ignoreMqtt,
   configOkToMqtt,
@@ -71,6 +74,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   setHopLimit,
   setTxPower,
   setChannelNum,
+  setFemLnaMode,
   setSx126xRxBoostedGain,
   setIgnoreMqtt,
   setConfigOkToMqtt,
@@ -86,7 +90,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   // Track initial values for change detection
   const initialValuesRef = useRef({
     usePreset, modemPreset, bandwidth, spreadFactor, codingRate, frequencyOffset,
-    overrideFrequency, region, hopLimit, txPower, channelNum, sx126xRxBoostedGain,
+    overrideFrequency, region, hopLimit, txPower, channelNum, femLnaMode, sx126xRxBoostedGain,
     ignoreMqtt, configOkToMqtt, txEnabled, overrideDutyCycle, paFanDisabled
   });
 
@@ -105,6 +109,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
       hopLimit !== initial.hopLimit ||
       txPower !== initial.txPower ||
       channelNum !== initial.channelNum ||
+      femLnaMode !== initial.femLnaMode ||
       sx126xRxBoostedGain !== initial.sx126xRxBoostedGain ||
       ignoreMqtt !== initial.ignoreMqtt ||
       configOkToMqtt !== initial.configOkToMqtt ||
@@ -113,7 +118,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
       paFanDisabled !== initial.paFanDisabled
     );
   }, [usePreset, modemPreset, bandwidth, spreadFactor, codingRate, frequencyOffset,
-      overrideFrequency, region, hopLimit, txPower, channelNum, sx126xRxBoostedGain,
+      overrideFrequency, region, hopLimit, txPower, channelNum, femLnaMode, sx126xRxBoostedGain,
       ignoreMqtt, configOkToMqtt, txEnabled, overrideDutyCycle, paFanDisabled]);
 
   // Reset to initial values (for SaveBar dismiss)
@@ -130,6 +135,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
     setHopLimit(initial.hopLimit);
     setTxPower(initial.txPower);
     setChannelNum(initial.channelNum);
+    setFemLnaMode(initial.femLnaMode);
     setSx126xRxBoostedGain(initial.sx126xRxBoostedGain);
     setIgnoreMqtt(initial.ignoreMqtt);
     setConfigOkToMqtt(initial.configOkToMqtt);
@@ -138,7 +144,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
     setPaFanDisabled(initial.paFanDisabled);
   }, [setUsePreset, setModemPreset, setBandwidth, setSpreadFactor, setCodingRate,
       setFrequencyOffset, setOverrideFrequency, setRegion, setHopLimit, setTxPower,
-      setChannelNum, setSx126xRxBoostedGain, setIgnoreMqtt, setConfigOkToMqtt,
+      setChannelNum, setFemLnaMode, setSx126xRxBoostedGain, setIgnoreMqtt, setConfigOkToMqtt,
       setTxEnabled, setOverrideDutyCycle, setPaFanDisabled]);
 
   // Update initial values after successful save
@@ -146,11 +152,11 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
     await onSave();
     initialValuesRef.current = {
       usePreset, modemPreset, bandwidth, spreadFactor, codingRate, frequencyOffset,
-      overrideFrequency, region, hopLimit, txPower, channelNum, sx126xRxBoostedGain,
+      overrideFrequency, region, hopLimit, txPower, channelNum, femLnaMode, sx126xRxBoostedGain,
       ignoreMqtt, configOkToMqtt, txEnabled, overrideDutyCycle, paFanDisabled
     };
   }, [onSave, usePreset, modemPreset, bandwidth, spreadFactor, codingRate, frequencyOffset,
-      overrideFrequency, region, hopLimit, txPower, channelNum, sx126xRxBoostedGain,
+      overrideFrequency, region, hopLimit, txPower, channelNum, femLnaMode, sx126xRxBoostedGain,
       ignoreMqtt, configOkToMqtt, txEnabled, overrideDutyCycle, paFanDisabled]);
 
   // Register with SaveBar
@@ -424,6 +430,24 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           onChange={(e) => setChannelNum(parseInt(e.target.value))}
           className="setting-input"
         />
+      </div>
+      <div className="setting-item">
+        <label htmlFor="femLnaMode">
+          {t('lora_config.fem_lna_mode')}
+          <span className="setting-description">{t('lora_config.fem_lna_mode_description')}</span>
+        </label>
+        <select
+          id="femLnaMode"
+          value={femLnaMode}
+          onChange={(e) => setFemLnaMode(parseInt(e.target.value))}
+          className="setting-input"
+        >
+          {FEM_LNA_MODE_OPTIONS.map(option => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="setting-item">
         <label htmlFor="sx126xRxBoostedGain" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>

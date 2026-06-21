@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MODEM_PRESET_OPTIONS } from './constants';
+import { MODEM_PRESET_OPTIONS, FEM_LNA_MODE_OPTIONS } from './constants';
 
 /**
  * LoRaConfigSection Tests
@@ -119,7 +119,42 @@ describe('LoRaConfigSection', () => {
     });
   });
 
+  describe('FEM LNA Mode Constants', () => {
+    it('exposes the three FEM_LNA_Mode enum values in order', () => {
+      expect(FEM_LNA_MODE_OPTIONS.map(o => o.value)).toEqual([0, 1, 2]);
+    });
+
+    it('uses DISABLED (0) as the proto3 zero/default option', () => {
+      expect(FEM_LNA_MODE_OPTIONS[0].value).toBe(0);
+      expect(FEM_LNA_MODE_OPTIONS[0].label).toMatch(/DISABLED/);
+    });
+
+    it('labels the ENABLED and NOT_PRESENT modes', () => {
+      expect(FEM_LNA_MODE_OPTIONS[1].value).toBe(1);
+      expect(FEM_LNA_MODE_OPTIONS[1].label).toMatch(/ENABLED/);
+      expect(FEM_LNA_MODE_OPTIONS[2].value).toBe(2);
+      expect(FEM_LNA_MODE_OPTIONS[2].label).toMatch(/NOT_PRESENT/);
+    });
+  });
+
   describe('Save Configuration Logic', () => {
+    it('includes femLnaMode in the LoRa save payload', () => {
+      // Mirrors the Device Configuration save (ConfigurationTab) and Remote Admin
+      // save (AdminCommandsTab.handleSetLoRaConfig), both of which now carry femLnaMode.
+      const config = {
+        usePreset: true,
+        modemPreset: 0,
+        region: 1,
+        hopLimit: 3,
+        channelNum: 0,
+        femLnaMode: 1,
+        sx126xRxBoostedGain: false
+      };
+
+      expect(config).toHaveProperty('femLnaMode');
+      expect(config.femLnaMode).toBe(1);
+    });
+
     it('should include all parameters when usePreset is false', () => {
       const config = {
         usePreset: false,

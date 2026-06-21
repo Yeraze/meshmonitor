@@ -4576,7 +4576,8 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
                 channelNum: finalConfig.deviceConfig.lora.channelNum,
                 sx126xRxBoostedGain: finalConfig.deviceConfig.lora.sx126xRxBoostedGain,
                 ignoreMqtt: finalConfig.deviceConfig.lora.ignoreMqtt,
-                configOkToMqtt: finalConfig.deviceConfig.lora.configOkToMqtt
+                configOkToMqtt: finalConfig.deviceConfig.lora.configOkToMqtt,
+                femLnaMode: finalConfig.deviceConfig.lora.femLnaMode
               };
             } else {
               return res.status(404).json({ error: 'LoRa config not available. The device may not have sent its configuration yet.' });
@@ -4753,7 +4754,8 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
               channelNum: remoteConfig.channelNum,
               sx126xRxBoostedGain: remoteConfig.sx126xRxBoostedGain,
               ignoreMqtt: remoteConfig.ignoreMqtt,
-              configOkToMqtt: remoteConfig.configOkToMqtt
+              configOkToMqtt: remoteConfig.configOkToMqtt,
+              femLnaMode: remoteConfig.femLnaMode
             };
             break;
           case 'position':
