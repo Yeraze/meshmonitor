@@ -40,6 +40,12 @@ export interface DbMeshCoreNode {
   hasAdminAccess?: boolean | null;
   lastAdminCheck?: number | null;
   isLocalNode?: boolean | null;
+  /**
+   * Server-side favorite flag (migration 094). MeshCore firmware has no
+   * native favorite concept, so this is stored locally only and never
+   * pushed to the device. Favorited nodes pin to the top of the node list.
+   */
+  isFavorite?: boolean | null;
   /** Owning source id; required on writes since slice 1 (migration 056). */
   sourceId?: string | null;
   /**
@@ -319,6 +325,45 @@ export class MeshCoreRepository extends BaseRepository {
     if (cfg.enabled !== undefined) seed.telemetryEnabled = cfg.enabled;
     if (cfg.intervalMinutes !== undefined) seed.telemetryIntervalMinutes = cfg.intervalMinutes;
     await this.db.insert(meshcoreNodes).values(seed);
+  }
+
+  /**
+   * Set the server-side favorite flag for a (sourceId, publicKey) node
+   * (migration 094). MeshCore firmware has no native favorite concept, so
+   * this only ever touches local state — there is no device round-trip.
+   *
+   * Inserts a stub row if one doesn't yet exist, because the user may
+   * favorite a node that has only been seen in-memory (the same situation
+   * `setNodeTelemetryConfig` handles). Idempotent on the (publicKey,
+   * sourceId) pair.
+   */
+  async setNodeFavorite(
+    sourceId: string,
+    publicKey: string,
+    isFavorite: boolean,
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.setNodeFavorite requires a sourceId');
+    }
+    const now = this.now();
+    const { meshcoreNodes } = this.tables;
+    const existing = await this.getNodeByPublicKeyAndSource(publicKey, sourceId);
+
+    if (existing) {
+      await this.db
+        .update(meshcoreNodes)
+        .set({ isFavorite, updatedAt: now })
+        .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+      return;
+    }
+
+    await this.db.insert(meshcoreNodes).values({
+      publicKey,
+      sourceId,
+      isFavorite,
+      createdAt: now,
+      updatedAt: now,
+    });
   }
 
   /**

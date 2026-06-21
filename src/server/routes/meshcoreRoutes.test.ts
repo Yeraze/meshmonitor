@@ -57,6 +57,7 @@ const meshcoreManager = {
   setRespondToDiscovery: vi.fn().mockResolvedValue(undefined),
   shareContact: vi.fn().mockResolvedValue({ ok: true }),
   setContactOutPath: vi.fn().mockResolvedValue(true),
+  setNodeFavorite: vi.fn().mockResolvedValue(undefined),
   loginToNode: vi.fn().mockResolvedValue(true),
   requestNodeStatus: vi.fn().mockResolvedValue({ batteryMv: 4200, uptimeSecs: 3600 }),
   sendCliCommand: vi.fn().mockResolvedValue({ reply: 'ok', elapsedMs: 42 }),
@@ -1206,6 +1207,84 @@ describe('MeshCore Routes', () => {
       expect(response.status).toBe(200);
       expect(upsertNode).not.toHaveBeenCalled();
       expect(setNodeTelemetryConfig).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('POST /api/sources/test-source/meshcore/nodes/:publicKey/favorite', () => {
+    const FAV_PUBKEY = 'c'.repeat(64);
+    const MALFORMED = 'abcd1234';
+    const upsertNode = vi.fn().mockResolvedValue(undefined);
+
+    beforeEach(() => {
+      (DatabaseService as any).meshcore = { upsertNode };
+      upsertNode.mockClear();
+      meshcoreManager.setNodeFavorite.mockReset();
+      meshcoreManager.setNodeFavorite.mockResolvedValue(undefined);
+      meshcoreManager.getContact.mockReset();
+    });
+
+    it('requires authentication', async () => {
+      const response = await request(app)
+        .post(`/api/sources/test-source/meshcore/nodes/${FAV_PUBKEY}/favorite`)
+        .send({ isFavorite: true });
+      expect(response.status).toBe(401);
+    });
+
+    it('rejects a malformed public key', async () => {
+      const response = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${MALFORMED}/favorite`)
+        .send({ isFavorite: true });
+      expect(response.status).toBe(400);
+    });
+
+    it('rejects a non-boolean isFavorite', async () => {
+      const response = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${FAV_PUBKEY}/favorite`)
+        .send({ isFavorite: 'yes' });
+      expect(response.status).toBe(400);
+      expect(meshcoreManager.setNodeFavorite).not.toHaveBeenCalled();
+    });
+
+    it('favorites a node locally without any device round-trip', async () => {
+      meshcoreManager.getContact.mockReturnValueOnce(undefined);
+      const response = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${FAV_PUBKEY}/favorite`)
+        .send({ isFavorite: true });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toMatchObject({ publicKey: FAV_PUBKEY, isFavorite: true });
+      expect(meshcoreManager.setNodeFavorite).toHaveBeenCalledWith(FAV_PUBKEY, true);
+    });
+
+    it('backfills identity from the in-memory contact before seeding the row', async () => {
+      meshcoreManager.getContact.mockReturnValueOnce({
+        publicKey: FAV_PUBKEY,
+        advName: 'MyRepeater',
+        advType: 2,
+        lastSeen: 1_700_000_000_000,
+      });
+
+      const response = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${FAV_PUBKEY}/favorite`)
+        .send({ isFavorite: true });
+
+      expect(response.status).toBe(200);
+      expect(upsertNode).toHaveBeenCalledWith(
+        expect.objectContaining({ publicKey: FAV_PUBKEY, name: 'MyRepeater', advType: 2 }),
+        'test-source',
+      );
+      expect(meshcoreManager.setNodeFavorite).toHaveBeenCalledWith(FAV_PUBKEY, true);
+    });
+
+    it('un-favorites a node', async () => {
+      meshcoreManager.getContact.mockReturnValueOnce(undefined);
+      const response = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${FAV_PUBKEY}/favorite`)
+        .send({ isFavorite: false });
+
+      expect(response.status).toBe(200);
+      expect(meshcoreManager.setNodeFavorite).toHaveBeenCalledWith(FAV_PUBKEY, false);
     });
   });
 

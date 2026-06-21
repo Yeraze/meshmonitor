@@ -62,6 +62,11 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   // Local node indicator
   isLocalNode: integer('isLocalNode', { mode: 'boolean' }).default(false),
 
+  // Favorite indicator (migration 094). MeshCore firmware has no native
+  // favorite concept, so this is stored server-side only and never pushed to
+  // the device. Favorited nodes are pinned to the top of the node list.
+  isFavorite: integer('isFavorite', { mode: 'boolean' }).default(false),
+
   // Owning source — required as part of composite PK after migration 061.
   sourceId: text('sourceId').notNull(),
 
@@ -125,6 +130,8 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
 
   isLocalNode: pgBoolean('isLocalNode').default(false),
 
+  isFavorite: pgBoolean('isFavorite').default(false),
+
   sourceId: pgText('sourceId').notNull(),
 
   telemetryEnabled: pgBoolean('telemetryEnabled').default(false),
@@ -177,6 +184,8 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   adminCredential: myVarchar('adminCredential', { length: 1024 }),
 
   isLocalNode: myBoolean('isLocalNode').default(false),
+
+  isFavorite: myBoolean('isFavorite').default(false),
 
   sourceId: myVarchar('sourceId', { length: 64 }).notNull(),
 

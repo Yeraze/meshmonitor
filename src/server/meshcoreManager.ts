@@ -309,6 +309,11 @@ export interface MeshCoreNode {
   latitude?: number;
   longitude?: number;
   advLocPolicy?: number;
+  /**
+   * Server-side favorite flag (migration 094). Stored locally only — never
+   * pushed to the device. Favorited nodes pin to the top of the node list.
+   */
+  isFavorite?: boolean;
   telemetryModeBase?: TelemetryMode;
   telemetryModeLoc?: TelemetryMode;
   telemetryModeEnv?: TelemetryMode;
@@ -3608,6 +3613,7 @@ class MeshCoreManager extends EventEmitter {
           radioBw: n.radioBw ?? undefined,
           radioSf: n.radioSf ?? undefined,
           radioCr: n.radioCr ?? undefined,
+          isFavorite: n.isFavorite ?? false,
         });
       }
     } catch (err) {
@@ -3640,6 +3646,16 @@ class MeshCoreManager extends EventEmitter {
     }
     nodes.push(...byKey.values());
     return nodes;
+  }
+
+  /**
+   * Toggle the server-side favorite flag for a node (issue #3588). MeshCore
+   * firmware has no native favorite concept, so this persists locally only
+   * and never pushes anything to the device. Favorited nodes pin to the top
+   * of the node list.
+   */
+  async setNodeFavorite(publicKey: string, isFavorite: boolean): Promise<void> {
+    await databaseService.meshcore.setNodeFavorite(this.sourceId, publicKey, isFavorite);
   }
 
   getRecentMessages(limit: number = 50): MeshCoreMessage[] {
