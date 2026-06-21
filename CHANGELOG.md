@@ -6,7 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.11.3] - 2026-06-21
+
+### Features
+
+- **Dead Drop / Mailbox auto-responder — async "mesh voicemail" (#3538)**: A new fifth auto-responder `responseType: 'mailbox'` turns the connected radio into an asynchronous message store. A node DMs `msg <name> <text>` to leave a message for another node (by short name, long name, or `!nodeid`); the recipient retrieves it later with `inbox` (count + waiting senders), `inbox play` (release up to 5 oldest), `inbox play <name>`, `inbox delete <id>`, or `inbox clear` — the recipient need not be online when the message is sent. It reuses the existing auto-responder machinery (DM gating, per-source scoping) and is configured entirely through the Auto Responder UI, no scripts required. Messages are per-source, marked played only on delivery-success (so a dropped body DM resurfaces), and expired/played rows are purged by the periodic maintenance sweep (migration 095). See `docs/features/automation.md`.
+
+- **MeshCore node favoriting — pin nodes to the top of the list (#3588)**: Any MeshCore node (Companion, Repeater, Room Server, …) can now be marked a favorite, pinning it to the top of the node list consistent with Meshtastic favorites. Because MeshCore firmware has no native favorite concept, the flag is stored server-side only and never pushed to the device (migration 094). Toggle it from the per-row star in the MeshCore Nodes view.
+
+- **FEM LNA Mode configuration for LoRa (#3599)**: MeshMonitor now surfaces the `Config.LoRaConfig.fem_lna_mode` setting (`FEM_LNA_Mode`: Disabled / Enabled / Not Present, firmware ≥ v2.7.20) for hardware with an external Front-End Module LNA (e.g. certain RAK / amplified boards). The control appears on **both** the Device Configuration LoRa panel and the Remote Admin LoRa panel — each reads, displays, and writes the field. No protobuf bump was needed (already vendored at v2.7.25); proto3 elision is handled so the Disabled (0) default is never inflated.
+
+- **MeshCore CLI bundled in the Docker image (#3587)**: The Docker image now ships the MeshCore CLI Python application (`meshcore-cli` / `meshcli`) alongside the existing Meshtastic Python CLI, so operators managing both Meshtastic and MeshCore devices have a complete toolkit in-container without separate installs.
+
 ### Bug Fixes
+
+- **MeshCore neighbor query crashed on PostgreSQL/MySQL (int32 timestamp overflow) (#3602)**: `meshcore_neighbor_info.timestamp` / `.createdAt` were declared as 32-bit `INTEGER`/`INT`, but store millisecond-epoch values (`Date.now()`, e.g. `1781969045993`) that overflow the signed 32-bit max — so `getNeighbors` threw `value … is out of range for type integer (22003)` and the MeshCore neighbors API returned 500. Both columns are promoted to `BIGINT` on PostgreSQL and MySQL (SQLite's INTEGER is already 64-bit), matching the convention used by sibling meshcore tables (migration 096). A schema audit confirmed this was the lone offender.
+
+- **`downlinkEnabled: false` (and `uplinkEnabled: false`) reverted to true after a container restart (#3594)**: proto3 elides boolean `false` on the wire, so on device reconnect `processChannelProtobuf()` decoded a user-disabled channel flag as `undefined`, and a `?? true` fallback inflated it back to `true` — silently overwriting the saved setting on restart. Both flags now default to `false` to match proto3 semantics (the user-save and UPDATE-preserve paths were already correct).
+
+- **Position history dropped SNR for directly-heard (0-hop) nodes (#3590)**: A node heard directly showed its position fix with no SNR even though the packet carried it. The read path wasn't forwarding the per-fix `rxSnr`/hops columns, and the write path used a truthiness guard that discarded a legitimate **0 dB** SNR. SNR is now captured and shown in the position-history tooltip for direct hears, and the same 0 dB drop was fixed on the central `snr_local` telemetry path so any directly-heard packet updates the node's last-known SNR.
+
+- **MeshCore auto-ack `{SNR}` / `{ROUTE}` tokens intermittently blank (#3589)**: The SNR and relay-path data for a MeshCore message arrives on a separate `LogRxData` push correlated to the text-message receive via a single-slot buffer. A room-post path leaked that buffer forward and a stale/mismatched buffer could attach the wrong packet's data, so the tokens rendered empty (or wrong) with no pattern. Buffer consumption is now guarded by freshness + `pathLen` correlation and consumed exactly once, so the tokens populate reliably when the data is present and degrade cleanly when it isn't.
+
+- **macOS x64 (Intel) desktop app crashed on launch — `re2.node` bundled as arm64 (#3603)**: `re2` fetches prebuilt binaries via `install-artifact-from-github`, which reads `process.arch` (always `arm64` on the `macos-14` CI runner) and ignored the `npm_config_arch=x64` vars that steer the other native deps — so the x64 DMG shipped an arm64 `re2.node` and failed with `ERR_DLOPEN_FAILED` on Intel Macs. The desktop build now deletes the wrong binary and rebuilds `re2` from source with `clang -arch x86_64`, producing a genuine x86_64 Mach-O (verified in CI), and backfills the missing arch flags into the CI workflow.
 
 - **Mesh request endpoints return 503 (not a generic 500) when the node is disconnected (#3596)**: `/api/traceroute`, `/api/position/request`, `/api/nodeinfo/request`, `/api/neighborinfo/request`, and `/api/telemetry/request` previously re-emitted a `"Not connected to Meshtastic node"` failure as an opaque `500 { error: 'Failed to send …' }`, so the UI couldn't tell the user what was wrong. They now return **503** with the v1-API error shape (`{ success: false, error: 'Service Unavailable', message: 'Not connected to Meshtastic node' }`), and the `api.ts` callers surface the specific `message`.
 
