@@ -385,6 +385,50 @@ describe('settingsRoutes', () => {
     });
   });
 
+  describe('POST /api/settings autoResponderTriggers (mailbox responseType)', () => {
+    it('saves a mailbox trigger that has no response text', async () => {
+      const app = createApp(adminUser);
+      const triggers = [{
+        id: 'mb1',
+        trigger: 'betamsg {recipient} {body:.+},betainbox',
+        responseType: 'mailbox',
+        response: '',
+        channels: ['dm'],
+      }];
+
+      await request(app)
+        .post('/api/settings')
+        .send({ autoResponderTriggers: JSON.stringify(triggers) })
+        .expect(200);
+
+      expect(databaseService.settings.setSettings).toHaveBeenCalled();
+    });
+
+    it('still requires response text for non-mailbox trigger types', async () => {
+      const app = createApp(adminUser);
+      const triggers = [{ id: 't1', trigger: 'hi', responseType: 'text', response: '' }];
+
+      const res = await request(app)
+        .post('/api/settings')
+        .send({ autoResponderTriggers: JSON.stringify(triggers) })
+        .expect(400);
+
+      expect(res.body.error).toContain('response');
+    });
+
+    it('rejects an unknown responseType', async () => {
+      const app = createApp(adminUser);
+      const triggers = [{ id: 'x1', trigger: 'hi', responseType: 'bogus', response: 'x' }];
+
+      const res = await request(app)
+        .post('/api/settings')
+        .send({ autoResponderTriggers: JSON.stringify(triggers) })
+        .expect(400);
+
+      expect(res.body.error).toContain('responseType');
+    });
+  });
+
   describe('POST /api/settings/test-apprise (#3012)', () => {
     const fetchMock = vi.fn();
     const originalFetch = globalThis.fetch;

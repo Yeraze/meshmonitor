@@ -109,7 +109,8 @@ import { migration as estimatedPositionsDoublePrecisionMigration, runMigration09
 import { migration as hideFromMapMigration, runMigration092Postgres as runHideFromMapPostgres, runMigration092Mysql as runHideFromMapMysql } from '../server/migrations/092_add_hide_from_map_to_nodes.js';
 import { migration as autoackMatrixMigration, runMigration093Postgres as runAutoackMatrixPostgres, runMigration093Mysql as runAutoackMatrixMysql } from '../server/migrations/093_autoack_matrix.js';
 import { migration as meshcoreNodeFavoriteMigration, runMigration094Postgres as runMeshcoreNodeFavoritePostgres, runMigration094Mysql as runMeshcoreNodeFavoriteMysql } from '../server/migrations/094_add_meshcore_node_favorite.js';
-import { migration as meshcoreNeighborTimestampBigintMigration, runMigration095Postgres as runMeshcoreNeighborTimestampBigintPostgres, runMigration095Mysql as runMeshcoreNeighborTimestampBigintMysql } from '../server/migrations/095_meshcore_neighbor_timestamp_bigint.js';
+import { migration as deadDropMigration, runMigration095Postgres as runDeadDropPostgres, runMigration095Mysql as runDeadDropMysql } from '../server/migrations/095_create_dead_drop.js';
+import { migration as meshcoreNeighborTimestampBigintMigration, runMigration096Postgres as runMeshcoreNeighborTimestampBigintPostgres, runMigration096Mysql as runMeshcoreNeighborTimestampBigintMysql } from '../server/migrations/096_meshcore_neighbor_timestamp_bigint.js';
 
 // ============================================================================
 // Registry
@@ -1505,16 +1506,30 @@ registry.register({
 });
 
 // ---------------------------------------------------------------------------
-// Migration 095: widen meshcore_neighbor_info.timestamp / .createdAt to BIGINT
+// Migration 095: dead_drop_messages — per-source async message store
+// ("mesh voicemail"). Backs the Dead Drop / Mailbox auto-responder feature.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 95,
+  name: 'create_dead_drop',
+  settingsKey: 'migration_095_create_dead_drop',
+  sqlite: (db) => deadDropMigration.up(db),
+  postgres: (client) => runDeadDropPostgres(client),
+  mysql: (pool) => runDeadDropMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 096: widen meshcore_neighbor_info.timestamp / .createdAt to BIGINT
 // on PostgreSQL and MySQL. Both store ms-epoch values (Date.now()), which
 // overflow signed 32-bit INTEGER/INT and crashed getNeighbors in production.
 // SQLite INTEGER is already 64-bit (no-op there).
 // ---------------------------------------------------------------------------
 
 registry.register({
-  number: 95,
+  number: 96,
   name: 'meshcore_neighbor_timestamp_bigint',
-  settingsKey: 'migration_095_meshcore_neighbor_timestamp_bigint',
+  settingsKey: 'migration_096_meshcore_neighbor_timestamp_bigint',
   sqlite: (db) => meshcoreNeighborTimestampBigintMigration.up(db),
   postgres: (client) => runMeshcoreNeighborTimestampBigintPostgres(client),
   mysql: (pool) => runMeshcoreNeighborTimestampBigintMysql(pool),

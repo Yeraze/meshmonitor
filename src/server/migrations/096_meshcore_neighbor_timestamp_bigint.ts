@@ -1,5 +1,5 @@
 /**
- * Migration 095: Widen meshcore_neighbor_info timestamp columns to BIGINT (PG/MySQL only).
+ * Migration 096: Widen meshcore_neighbor_info timestamp columns to BIGINT (PG/MySQL only).
  *
  * The meshcore_neighbor_info table (created in migration 073) declared its
  * `timestamp` and `createdAt` columns as 32-bit INTEGER on PostgreSQL and INT
@@ -22,7 +22,7 @@
 import type { Database } from 'better-sqlite3';
 import { logger } from '../../utils/logger.js';
 
-const LABEL = 'Migration 095';
+const LABEL = 'Migration 096';
 const TABLE = 'meshcore_neighbor_info';
 const COLUMNS = ['timestamp', 'createdAt'];
 
@@ -38,7 +38,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration095Postgres(client: any): Promise<void> {
+export async function runMigration096Postgres(client: any): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): widening ${TABLE} timestamp columns to BIGINT...`);
   for (const col of COLUMNS) {
     // Check information_schema first so the ALTER is idempotent (re-runnable).
@@ -65,7 +65,7 @@ export async function runMigration095Postgres(client: any): Promise<void> {
 
 // ============ MySQL ============
 
-export async function runMigration095Mysql(pool: any): Promise<void> {
+export async function runMigration096Mysql(pool: any): Promise<void> {
   logger.info(`${LABEL} (MySQL): widening ${TABLE} timestamp columns to BIGINT...`);
   const conn = await pool.getConnection();
   try {

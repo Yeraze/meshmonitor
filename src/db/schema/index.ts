@@ -50,3 +50,6 @@ export * from './autoFavoriteTargets.js';
 
 // Per-source PKI private keys for server-side DM decryption (issue #3441)
 export * from './sourcePkiKeys.js';
+
+// Dead Drop / Mailbox — async per-source message store
+export * from './deadDrop.js';

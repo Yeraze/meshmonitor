@@ -784,6 +784,73 @@ You can specify custom regex patterns for parameters using `{paramName:regex}` s
 - Example trigger: `weather {location}`
 - Example response: `/data/scripts/weather.py`
 
+**Mailbox Response** (Dead Drop): A built-in asynchronous message store — "mesh voicemail"
+
+- A node DMs the radio `msg <name> <text>` and MeshMonitor holds the message until the named recipient retrieves it with `inbox` / `inbox play` — the recipient need not be online when the message is sent
+- No response text is needed; the mailbox parses the commands itself
+- DM-only by design; set the trigger's channels to **Direct Messages** only
+- See [Mailbox (Dead Drop)](#mailbox-dead-drop) below for the full command set and configuration
+- Example trigger pattern: `msg {recipient} {body:.+},inbox,inbox play {sender},inbox play,inbox delete {id},inbox clear`
+
+### Mailbox (Dead Drop)
+
+The **Mailbox** response type turns the connected node into an asynchronous message drop — think mesh voicemail. A sender leaves a message addressed to another node by name; that node collects it later with `inbox` / `inbox play`. All state is per-source (each connected radio keeps its own mailbox) and is stored in the database (`dead_drop_messages` table), so it survives restarts.
+
+#### Commands
+
+All commands are sent as **direct messages** to the node running the mailbox:
+
+| Command | Description |
+|---------|-------------|
+| `msg <name> <text>` | Store a message for `<name>` (short name, long name, or `!nodeid`) |
+| `inbox` | Show how many messages are waiting and from whom |
+| `inbox play` | Release up to 5 of the oldest messages (header + body per message) |
+| `inbox play <name>` | Release only messages from a specific sender |
+| `inbox delete <id>` | Delete one message by its 4-character id |
+| `inbox clear` | Delete all messages you have already played |
+
+#### How recipient matching works
+
+A message is addressed to a **name** as typed by the sender. When a node retrieves its inbox, the mailbox matches that stored name against any identity form of the requesting node — its short name, long name, node id (`!hex`), or node number. The requester proves its identity through the direct-message sender context, so there is no fragile store-time node lookup. Names are matched case-insensitively.
+
+#### Delivery format
+
+Metadata and body are sent as **separate messages**, so a near-200-byte body is never truncated by a prefixed header:
+
+```
+MSG 1/2 from ALLF, 14m ago, id 6458
+antenna mount loose
+MSG 2/2 from ZNOF, 3m ago, id C22D
+router back online after battery swap
+2 delivered. Reply 'inbox clear' to delete.
+```
+
+#### Limits and expiry
+
+| Limit | Default |
+|-------|---------|
+| Max message body | 180 bytes (UTF-8) |
+| Messages per `inbox play` | 5 (oldest first) |
+| Pending per recipient | 20 |
+| Pending per sender | 20 |
+| Message expiry | 7 days |
+
+#### Configuration
+
+1. Open **Automation → Auto Responder** for the source whose node should host the mailbox.
+2. Add a trigger:
+   - **Type**: Mailbox
+   - **Channels**: Direct Messages only
+   - **Trigger pattern**:
+     ```
+     msg {recipient} {body:.+},inbox,inbox play {sender},inbox play,inbox delete {id},inbox clear
+     ```
+   - **Cooldown**: not needed — the mailbox is interactive (e.g. `inbox` then `inbox play` a second apart) and bypasses the per-node cooldown, so any value here is ignored for this trigger.
+   - **Verify response**: recommended **on**. A stored message is only marked *played* once the radio confirms delivery of its body line. With *Verify response* off, a single unacknowledged send can still count as delivered, so a voicemail could be marked played even if it never reached the recipient. Enabling it (the default) makes an undelivered body resurface on the next `inbox play`.
+3. Click **Add**, then **Save**.
+
+No response text is required — the **Add** button enables once the trigger pattern is valid.
+
 ### Script Arguments (Auto Responder)
 
 When using Script responses, you can pass command-line arguments to scripts via the **Arguments** field. Arguments support token expansion, allowing dynamic values to be injected at runtime.
