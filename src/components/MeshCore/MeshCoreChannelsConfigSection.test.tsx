@@ -253,14 +253,65 @@ describe('MeshCoreChannelsConfigSection — hashtag channels', () => {
       fireEvent.click(screen.getByText('Save'));
     });
 
-    const putCall = csrfFetchMock.mock.calls.find(
-      c => typeof c[1]?.method === 'string' && c[1].method === 'PUT',
-    );
-    expect(putCall).toBeDefined();
+    let putCall: any;
+    await waitFor(() => {
+      putCall = csrfFetchMock.mock.calls.find(
+        c => typeof c[1]?.method === 'string' && c[1].method === 'PUT',
+      );
+      expect(putCall).toBeDefined();
+    });
     const body = JSON.parse(putCall![1].body);
     expect(body.name).toBe('#test');
     // base64 of 9cd8fcf22a47333b591d96a2b848b73f.
     expect(body.psk).toBe('nNj88ipHMztZHZaiuEi3Pw==');
+  });
+
+  // Regression for #3607: a user who typed a #hashtag name and clicked Save
+  // before the async live-derive useEffect committed could persist the random
+  // placeholder secret (different on every attempt, never matching the app).
+  // handleSave now re-derives the deterministic key at save time, so the PUT
+  // must carry SHA-256("#bot")[0:16] even when we never wait for the field to
+  // update first.
+  it('re-derives the deterministic hashtag PSK at save time (no race on the live-derive effect)', async () => {
+    csrfFetchMock
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse({ success: true }))
+      .mockResolvedValueOnce(jsonResponse([
+        { id: 0, name: '#bot', psk: '61ChvLPk5de/aaV8na2iEQ==' },
+      ]));
+
+    render(
+      <MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText('No channels reported by the device yet.')).toBeTruthy(),
+    );
+
+    fireEvent.click(screen.getByText('+ Add channel'));
+    const nameInput = screen.getByLabelText('Name') as HTMLInputElement;
+
+    // Type the hashtag name AND save inside the same act() flush — without a
+    // waitFor on the derived secret. The displayed field may still hold the
+    // random placeholder, but the saved PSK must be the deterministic key.
+    await act(async () => {
+      fireEvent.change(nameInput, { target: { value: '#bot' } });
+      fireEvent.click(screen.getByText('Save'));
+    });
+
+    let putCall: any;
+    await waitFor(() => {
+      putCall = csrfFetchMock.mock.calls.find(
+        c => typeof c[1]?.method === 'string' && c[1].method === 'PUT',
+      );
+      expect(putCall).toBeDefined();
+    });
+    const body = JSON.parse(putCall![1].body);
+    expect(body.name).toBe('#bot');
+    // SHA-256("#bot")[0:16] = eb50a1bcb3e4e5d7bf69a57c9dada211 → base64 below.
+    // This is NOT the random getRandomValues placeholder (which would be
+    // 0102…0f10 base64 'AQIDBAUGBwgJCgsMDQ4PEA==').
+    expect(body.psk).toBe('61ChvLPk5de/aaV8na2iEQ==');
+    expect(body.psk).not.toBe('AQIDBAUGBwgJCgsMDQ4PEA==');
   });
 });
 
