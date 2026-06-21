@@ -127,6 +127,9 @@ import {
 import {
   sourcePkiKeysSqlite, sourcePkiKeysPostgres, sourcePkiKeysMysql,
 } from './schema/sourcePkiKeys.js';
+import {
+  deadDropMessagesSqlite, deadDropMessagesPostgres, deadDropMessagesMysql,
+} from './schema/deadDrop.js';
 
 /**
  * Runtime table map interface.
@@ -210,6 +213,9 @@ export interface ActiveSchema {
   // Per-source PKI private keys for DM decryption (issue #3441)
   sourcePkiKeys: any;
 
+  // Dead Drop / Mailbox — async per-source message store
+  deadDropMessages: any;
+
   // Allow dynamic access for flexibility
   [key: string]: any;
 }
@@ -265,6 +271,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteTargets: autoFavoriteTargetsSqlite,
     autoFavoriteAssignments: autoFavoriteAssignmentsSqlite,
     sourcePkiKeys: sourcePkiKeysSqlite,
+    deadDropMessages: deadDropMessagesSqlite,
   },
   postgres: {
     nodes: nodesPostgres,
@@ -313,6 +320,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteTargets: autoFavoriteTargetsPostgres,
     autoFavoriteAssignments: autoFavoriteAssignmentsPostgres,
     sourcePkiKeys: sourcePkiKeysPostgres,
+    deadDropMessages: deadDropMessagesPostgres,
   },
   mysql: {
     nodes: nodesMysql,
@@ -361,6 +369,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteTargets: autoFavoriteTargetsMysql,
     autoFavoriteAssignments: autoFavoriteAssignmentsMysql,
     sourcePkiKeys: sourcePkiKeysMysql,
+    deadDropMessages: deadDropMessagesMysql,
   },
 };
 

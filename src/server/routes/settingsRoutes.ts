@@ -309,7 +309,10 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
         }
 
         for (const trigger of triggers) {
-          if (!trigger.id || !trigger.trigger || !trigger.responseType || !trigger.response) {
+          // Mailbox is a built-in handler that parses the message itself — it
+          // carries no `response`, so exempt it from the response-required check.
+          const responseRequired = trigger.responseType !== 'mailbox';
+          if (!trigger.id || !trigger.trigger || !trigger.responseType || (responseRequired && !trigger.response)) {
             return res
               .status(400)
               .json({ error: 'Each trigger must have id, trigger, responseType, and response fields' });
@@ -325,9 +328,10 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
           if (
             trigger.responseType !== 'text' &&
             trigger.responseType !== 'http' &&
-            trigger.responseType !== 'script'
+            trigger.responseType !== 'script' &&
+            trigger.responseType !== 'mailbox'
           ) {
-            return res.status(400).json({ error: 'responseType must be "text", "http", or "script"' });
+            return res.status(400).json({ error: 'responseType must be "text", "http", "script", or "mailbox"' });
           }
 
           if (trigger.responseType === 'script') {

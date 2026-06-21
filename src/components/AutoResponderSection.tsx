@@ -297,6 +297,12 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   };
 
   const validateResponse = (response: string, type: ResponseType): { valid: boolean; error?: string } => {
+    // Mailbox is a built-in handler that parses the message itself — it needs
+    // no response text, so skip the non-empty check entirely.
+    if (type === 'mailbox') {
+      return { valid: true };
+    }
+
     if (!response.trim()) {
       return { valid: false, error: 'Response cannot be empty' };
     }
@@ -688,9 +694,16 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               <option value="text">{t('auto_responder.type_text')}</option>
               <option value="http">{t('auto_responder.type_http')}</option>
               <option value="script">{t('auto_responder.type_script')}</option>
+              <option value="mailbox">Mailbox</option>
             </select>
             <div style={{ flex: '2' }}>
-              {newResponseType === 'text' ? (
+              {newResponseType === 'mailbox' ? (
+                <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
+                  Built-in async message store ("mesh voicemail"). No response text needed.
+                  Set DM-only and use a pattern like:{' '}
+                  <code>msg &#123;recipient&#125; &#123;body:.+&#125;,inbox,inbox play &#123;sender&#125;,inbox play,inbox delete &#123;id&#125;,inbox clear</code>
+                </span>
+              ) : newResponseType === 'text' ? (
                 <textarea
                   value={newResponse}
                   onChange={(e) => setNewResponse(e.target.value)}
@@ -756,13 +769,13 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             </div>
             <button
               onClick={addTrigger}
-              disabled={!localEnabled || !newTrigger.trim() || !newResponse.trim() || !newTriggerValidation.valid}
+              disabled={!localEnabled || !newTrigger.trim() || (newResponseType !== 'mailbox' && !newResponse.trim()) || !newTriggerValidation.valid}
               className="btn-primary"
               style={{
                 padding: '0.5rem 1rem',
                 fontSize: '14px',
-                opacity: (localEnabled && newTrigger.trim() && newResponse.trim() && newTriggerValidation.valid) ? 1 : 0.5,
-                cursor: (localEnabled && newTrigger.trim() && newResponse.trim() && newTriggerValidation.valid) ? 'pointer' : 'not-allowed'
+                opacity: (localEnabled && newTrigger.trim() && (newResponseType === 'mailbox' || !!newResponse.trim()) && newTriggerValidation.valid) ? 1 : 0.5,
+                cursor: (localEnabled && newTrigger.trim() && (newResponseType === 'mailbox' || !!newResponse.trim()) && newTriggerValidation.valid) ? 'pointer' : 'not-allowed'
               }}
             >
               {t('common.add')}
