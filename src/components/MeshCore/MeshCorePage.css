@@ -414,6 +414,36 @@
   border-left-color: color-mix(in srgb, var(--ctp-accent-text) 30%, transparent);
 }
 
+/* Favorite (pin-to-top) toggle in each node row (#3588) */
+.mc-node-row-favorite-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0 0.6rem;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--ctp-surface1);
+  color: var(--ctp-subtext0);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.mc-node-row-favorite-btn:hover {
+  color: var(--ctp-yellow);
+  background: var(--ctp-surface2);
+}
+
+.mc-node-row-favorite-btn.is-favorite {
+  color: var(--ctp-yellow);
+}
+
+.mc-node-row-favorite-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* Discover dropdown in the nodes list header (#3351) */
 .mc-discover-menu-anchor {
   position: relative;

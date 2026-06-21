@@ -113,6 +113,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               contacts={contacts}
               onImportContact={actions.importContact}
               onNavigateToDm={navigateToDm}
+              onToggleFavorite={actions.setNodeFavorite}
               onDiscoverNodes={actions.discoverNodes}
               canDiscover={(status?.connected ?? false) && status?.deviceType === DEVICE_TYPE_COMPANION}
             />

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Bug Fixes
+
+- **Mesh request endpoints return 503 (not a generic 500) when the node is disconnected (#3596)**: `/api/traceroute`, `/api/position/request`, `/api/nodeinfo/request`, `/api/neighborinfo/request`, and `/api/telemetry/request` previously re-emitted a `"Not connected to Meshtastic node"` failure as an opaque `500 { error: 'Failed to send …' }`, so the UI couldn't tell the user what was wrong. They now return **503** with the v1-API error shape (`{ success: false, error: 'Service Unavailable', message: 'Not connected to Meshtastic node' }`), and the `api.ts` callers surface the specific `message`.
+
 ## [4.11.2] - 2026-06-20
 
 ### Bug Fixes

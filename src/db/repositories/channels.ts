@@ -172,8 +172,12 @@ export class ChannelsRepository extends BaseRepository {
         name: data.name,
         psk: data.psk ?? null,
         role: data.role ?? null,
-        uplinkEnabled: data.uplinkEnabled ?? true,
-        downlinkEnabled: data.downlinkEnabled ?? true,
+        // proto3 elides boolean `false` (the zero value), so an absent
+        // uplink/downlink must reconstruct to `false`, matching the Meshtastic
+        // ChannelSettings proto where both default to false (#3594). The update
+        // branch above preserves the existing stored value instead.
+        uplinkEnabled: data.uplinkEnabled ?? false,
+        downlinkEnabled: data.downlinkEnabled ?? false,
         positionPrecision: data.positionPrecision ?? null,
         createdAt: now,
         updatedAt: now,

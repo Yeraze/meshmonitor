@@ -108,7 +108,8 @@ import { migration as positionPointsOnlyMigration, runMigration090Postgres as ru
 import { migration as estimatedPositionsDoublePrecisionMigration, runMigration091Postgres as runEstimatedPositionsDoublePrecisionPostgres, runMigration091Mysql as runEstimatedPositionsDoublePrecisionMysql } from '../server/migrations/091_estimated_positions_double_precision.js';
 import { migration as hideFromMapMigration, runMigration092Postgres as runHideFromMapPostgres, runMigration092Mysql as runHideFromMapMysql } from '../server/migrations/092_add_hide_from_map_to_nodes.js';
 import { migration as autoackMatrixMigration, runMigration093Postgres as runAutoackMatrixPostgres, runMigration093Mysql as runAutoackMatrixMysql } from '../server/migrations/093_autoack_matrix.js';
-import { migration as deadDropMigration, runMigration094Postgres as runDeadDropPostgres, runMigration094Mysql as runDeadDropMysql } from '../server/migrations/094_create_dead_drop.js';
+import { migration as meshcoreNodeFavoriteMigration, runMigration094Postgres as runMeshcoreNodeFavoritePostgres, runMigration094Mysql as runMeshcoreNodeFavoriteMysql } from '../server/migrations/094_add_meshcore_node_favorite.js';
+import { migration as deadDropMigration, runMigration095Postgres as runDeadDropPostgres, runMigration095Mysql as runDeadDropMysql } from '../server/migrations/095_create_dead_drop.js';
 
 // ============================================================================
 // Registry
@@ -1489,14 +1490,29 @@ registry.register({
 });
 
 // ---------------------------------------------------------------------------
-// Migration 094: dead_drop_messages — per-source async message store
-// ("mesh voicemail"). Backs the Dead Drop / Mailbox auto-responder feature.
+// Migration 094: server-side favorite flag on meshcore_nodes. MeshCore has no
+// native favorite concept, so the flag is stored locally and never pushed to
+// the device; favorited nodes pin to the top of the node list (issue #3588).
 // ---------------------------------------------------------------------------
 
 registry.register({
   number: 94,
+  name: 'add_meshcore_node_favorite',
+  settingsKey: 'migration_094_add_meshcore_node_favorite',
+  sqlite: (db) => meshcoreNodeFavoriteMigration.up(db),
+  postgres: (client) => runMeshcoreNodeFavoritePostgres(client),
+  mysql: (pool) => runMeshcoreNodeFavoriteMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 095: dead_drop_messages — per-source async message store
+// ("mesh voicemail"). Backs the Dead Drop / Mailbox auto-responder feature.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 95,
   name: 'create_dead_drop',
-  settingsKey: 'migration_094_create_dead_drop',
+  settingsKey: 'migration_095_create_dead_drop',
   sqlite: (db) => deadDropMigration.up(db),
   postgres: (client) => runDeadDropPostgres(client),
   mysql: (pool) => runDeadDropMysql(pool),

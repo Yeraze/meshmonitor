@@ -4010,6 +4010,12 @@ class MeshtasticManager implements ISourceManager {
               parsed.data.lora.channelNum = 0;
               logger.info('📊 Set channelNum to 0 (was undefined - Proto3 default)');
             }
+            // femLnaMode (FEM_LNA_Mode enum) — zero value DISABLED is a real mode, so
+            // proto3 elision must default to 0, NOT to a non-zero fallback (see #3594).
+            if (parsed.data.lora.femLnaMode === undefined) {
+              parsed.data.lora.femLnaMode = 0;
+              logger.info('📊 Set femLnaMode to 0 (DISABLED - was undefined, Proto3 default)');
+            }
 
             // Persist the modem preset per-source so the unified channels
             // endpoint can use it as the display-name fallback for slot 0
@@ -4762,7 +4768,9 @@ class MeshtasticManager implements ISourceManager {
         frequencyOffset: deviceConfig.lora.frequencyOffset !== undefined ? deviceConfig.lora.frequencyOffset : 0,
         overrideFrequency: deviceConfig.lora.overrideFrequency !== undefined ? deviceConfig.lora.overrideFrequency : 0,
         modemPreset: deviceConfig.lora.modemPreset !== undefined ? deviceConfig.lora.modemPreset : 0,
-        channelNum: deviceConfig.lora.channelNum !== undefined ? deviceConfig.lora.channelNum : 0
+        channelNum: deviceConfig.lora.channelNum !== undefined ? deviceConfig.lora.channelNum : 0,
+        // FEM_LNA_Mode enum: default to 0 (DISABLED), the proto3 zero value (firmware ≥ v2.7.20)
+        femLnaMode: deviceConfig.lora.femLnaMode !== undefined ? deviceConfig.lora.femLnaMode : 0
       };
 
       deviceConfig = {
@@ -5082,8 +5090,15 @@ class MeshtasticManager implements ISourceManager {
             name: channelName,
             psk: pskString,
             role: channelRole,
-            uplinkEnabled: channel.settings.uplinkEnabled ?? true,
-            downlinkEnabled: channel.settings.downlinkEnabled ?? true,
+            // proto3 elides boolean `false` on the wire (it's the zero value), so a
+            // disabled uplink/downlink arrives as undefined when the device streams
+            // its channel config on reconnect. `uplink_enabled`/`downlink_enabled`
+            // both default to false in the Meshtastic ChannelSettings proto, so the
+            // correct reconstruction of an absent value is `false`, not `true`.
+            // Defaulting to `true` here silently re-enabled a user-disabled downlink
+            // after a container restart (#3594).
+            uplinkEnabled: channel.settings.uplinkEnabled ?? false,
+            downlinkEnabled: channel.settings.downlinkEnabled ?? false,
             positionPrecision: positionPrecision !== undefined ? positionPrecision : undefined
           }, this.sourceId);
           logger.debug(`📡 Saved channel: ${displayName} (role: ${channel.role}, index: ${channel.index}, psk: ${pskString ? 'set' : 'none'}, uplink: ${channel.settings.uplinkEnabled}, downlink: ${channel.settings.downlinkEnabled}, positionPrecision: ${positionPrecision})`);
@@ -6084,7 +6099,13 @@ class MeshtasticManager implements ISourceManager {
         // Stored on the always-present lat/lon rows; the position-history API
         // surfaces them per fix for the hover tooltip. "Directly heard" (so SNR
         // is meaningful) is hopStart === hopLimit, i.e. zero hops decremented.
-        const posRxSnr = meshPacket.rxSnr ?? (meshPacket as any).rx_snr ?? undefined;
+        // -128 is the firmware "no SNR" sentinel; normalize it (and only it) to
+        // undefined so a legitimate 0.0 dB direct-hear SNR is still recorded
+        // (issue #3590). A node heard directly often reports an SNR at or near
+        // 0 dB, which the old truthiness check (`snr && snr !== 0`) silently
+        // dropped.
+        const rawPosRxSnr = meshPacket.rxSnr ?? (meshPacket as any).rx_snr ?? undefined;
+        const posRxSnr = (rawPosRxSnr != null && rawPosRxSnr !== -128) ? rawPosRxSnr : undefined;
         const posHopStart = meshPacket.hopStart ?? (meshPacket as any).hop_start ?? undefined;
         const posHopLimit = meshPacket.hopLimit ?? (meshPacket as any).hop_limit ?? undefined;
 
@@ -6156,7 +6177,8 @@ class MeshtasticManager implements ISourceManager {
             nodeId: nodeId,
             lastHeard: Date.now() / 1000,
           };
-          if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+          // -128 is the firmware "no SNR" sentinel; accept 0 dB (issue #3590).
+          if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
             technicalData.snr = meshPacket.rxSnr;
           }
           if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
@@ -6179,8 +6201,10 @@ class MeshtasticManager implements ISourceManager {
             positionTimestamp: now
           };
 
-          // Only include SNR/RSSI if they have valid values
-          if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+          // Only include SNR/RSSI if they have valid values. -128 is the
+          // firmware "no SNR" sentinel; accept a legitimate 0 dB so direct
+          // hears update the node's last-known SNR (issue #3590).
+          if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
             nodeData.snr = meshPacket.rxSnr;
           }
           if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
@@ -6406,8 +6430,10 @@ class MeshtasticManager implements ISourceManager {
       // Track if this packet was PKI encrypted (using the helper method)
       await this.trackPKIEncryption(meshPacket, fromNum);
 
-      // Only include SNR/RSSI if they have valid values
-      if (meshPacket.rxSnr && meshPacket.rxSnr !== 0) {
+      // Only include SNR/RSSI if they have valid values.
+      // Use the firmware-sentinel check (-128 = "no SNR") rather than a truthiness
+      // guard, so a legitimate 0 dB SNR from a directly-heard node is not dropped (#3590).
+      if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
         nodeData.snr = meshPacket.rxSnr;
 
         // Save SNR as telemetry if it has changed OR if 10+ minutes have passed
@@ -8293,7 +8319,8 @@ class MeshtasticManager implements ISourceManager {
         ),
         txEnabled: loraConfigWithDefaults.txEnabled !== undefined ? loraConfigWithDefaults.txEnabled : 'Unknown',
         sx126xRxBoostedGain: loraConfigWithDefaults.sx126xRxBoostedGain !== undefined ? loraConfigWithDefaults.sx126xRxBoostedGain : 'Unknown',
-        configOkToMqtt: loraConfigWithDefaults.configOkToMqtt !== undefined ? loraConfigWithDefaults.configOkToMqtt : 'Unknown'
+        configOkToMqtt: loraConfigWithDefaults.configOkToMqtt !== undefined ? loraConfigWithDefaults.configOkToMqtt : 'Unknown',
+        femLnaMode: loraConfigWithDefaults.femLnaMode !== undefined ? loraConfigWithDefaults.femLnaMode : 'Unknown'
       },
       mqtt: {
         enabled: mqttConfigWithDefaults.enabled,

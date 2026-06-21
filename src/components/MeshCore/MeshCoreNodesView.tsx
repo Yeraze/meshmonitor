@@ -23,6 +23,10 @@ interface MeshCoreNodesViewProps {
   contacts: MeshCoreContact[];
   onImportContact?: (advertBytes: number[]) => Promise<boolean>;
   onNavigateToDm?: (publicKey: string) => void;
+  /** Toggle the server-side favorite flag for a node (issue #3588). When
+   *  provided, each row shows a star toggle and favorited nodes pin to the
+   *  top of the list. */
+  onToggleFavorite?: (publicKey: string, isFavorite: boolean) => Promise<boolean>;
   /** Active node discovery (companion-only). When provided together with
    *  `canDiscover`, the list header shows a "Discover" menu. */
   onDiscoverNodes?: (mode: DiscoverMode) => Promise<{ returned: number; newCount: number } | null>;
@@ -38,6 +42,7 @@ interface MergedRow {
   snr?: number;
   lastHeard?: number;
   hasPosition: boolean;
+  isFavorite: boolean;
 }
 
 type SortField = 'name' | 'lastHeard';
@@ -58,6 +63,7 @@ function mergeNodesAndContacts(
       snr: n.snr,
       lastHeard: n.lastHeard,
       hasPosition: false,
+      isFavorite: n.isFavorite ?? false,
     });
   }
   for (const c of contacts) {
@@ -82,6 +88,7 @@ function mergeNodesAndContacts(
         snr: c.snr,
         lastHeard: c.lastSeen,
         hasPosition: hasPos,
+        isFavorite: false,
       });
     }
   }
@@ -90,14 +97,20 @@ function mergeNodesAndContacts(
 
 function sortRows(rows: MergedRow[], field: SortField, direction: SortDirection): MergedRow[] {
   const dir = direction === 'asc' ? 1 : -1;
-  return [...rows].sort((a, b) => {
+  const comparator = (a: MergedRow, b: MergedRow): number => {
     if (field === 'name') {
       return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) * dir;
     }
     const at = a.lastHeard ?? 0;
     const bt = b.lastHeard ?? 0;
     return (at - bt) * dir;
-  });
+  };
+  // Pin favorites to the top, mirroring the Meshtastic node list
+  // (useProcessedNodes): sort favorites and non-favorites independently by the
+  // chosen field/direction, then concatenate favorites first.
+  const favorites = rows.filter(r => r.isFavorite).sort(comparator);
+  const nonFavorites = rows.filter(r => !r.isFavorite).sort(comparator);
+  return [...favorites, ...nonFavorites];
 }
 
 export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
@@ -105,11 +118,26 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   contacts,
   onImportContact,
   onNavigateToDm,
+  onToggleFavorite,
   onDiscoverNodes,
   canDiscover,
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
+  const [favoriteBusy, setFavoriteBusy] = useState<string | null>(null);
+
+  const handleToggleFavorite = useCallback(async (publicKey: string, next: boolean) => {
+    if (!onToggleFavorite || favoriteBusy) return;
+    setFavoriteBusy(publicKey);
+    try {
+      const ok = await onToggleFavorite(publicKey, next);
+      if (!ok) {
+        showToast(t('meshcore.favorite.failed', 'Failed to update favorite'), 'error');
+      }
+    } finally {
+      setFavoriteBusy(null);
+    }
+  }, [onToggleFavorite, favoriteBusy, showToast, t]);
   const [selected, setSelected] = useState<string | null>(null);
   const [discoverMenuOpen, setDiscoverMenuOpen] = useState(false);
   const [discovering, setDiscovering] = useState<DiscoverMode | null>(null);
@@ -337,6 +365,23 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                   {row.publicKey.substring(0, 16)}…
                 </div>
               </button>
+              {onToggleFavorite && (
+                <button
+                  type="button"
+                  className={`mc-node-row-favorite-btn${row.isFavorite ? ' is-favorite' : ''}`}
+                  title={row.isFavorite
+                    ? t('meshcore.favorite.remove', 'Remove from favorites')
+                    : t('meshcore.favorite.add', 'Add to favorites')}
+                  aria-label={row.isFavorite
+                    ? t('meshcore.favorite.remove', 'Remove from favorites')
+                    : t('meshcore.favorite.add', 'Add to favorites')}
+                  aria-pressed={row.isFavorite}
+                  disabled={favoriteBusy === row.publicKey}
+                  onClick={() => void handleToggleFavorite(row.publicKey, !row.isFavorite)}
+                >
+                  {row.isFavorite ? '★' : '☆'}
+                </button>
+              )}
               {onNavigateToDm && (
                 <button
                   type="button"

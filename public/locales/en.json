@@ -3192,6 +3192,8 @@
   "lora_config.tx_power_description": "LoRa transmit power in dBm. A value of 0 uses the default maximum safe power for your hardware. Negative values are permitted (the field is signed) but only meaningful on radios that support reduced/negative output power, e.g. SX126x; firmware does not clamp the lower bound, so behavior for negatives is radio-dependent.",
   "lora_config.channel_num": "Channel Number",
   "lora_config.channel_num_description": "LoRa channel number for frequency hopping. Range: 0-255 (default: 0)",
+  "lora_config.fem_lna_mode": "FEM LNA Mode",
+  "lora_config.fem_lna_mode_description": "Front-End Module (FEM) Low Noise Amplifier (LNA) mode for amplified boards with an external LNA (e.g. certain RAK modules). Requires firmware v2.7.20 or later; leave DISABLED on hardware without an external LNA.",
   "lora_config.rx_boosted_gain": "RX Boosted Gain (SX126x)",
   "lora_config.rx_boosted_gain_description": "Enable boosted receive gain for SX126x radios (improves sensitivity but increases power consumption)",
   "lora_config.ignore_mqtt": "Ignore MQTT",

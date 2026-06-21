@@ -1,5 +1,5 @@
 /**
- * Migration 094: Dead Drop / Mailbox feature.
+ * Migration 095: Dead Drop / Mailbox feature.
  *
  * Creates one per-source table:
  *   - dead_drop_messages: async message store ("mesh voicemail"). A node DMs
@@ -11,7 +11,7 @@
 import type { Database } from 'better-sqlite3';
 import { logger } from '../../utils/logger.js';
 
-const LABEL = 'Migration 094';
+const LABEL = 'Migration 095';
 const MESSAGES = 'dead_drop_messages';
 
 // ============ SQLite ============
@@ -49,7 +49,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration094Postgres(client: any): Promise<void> {
+export async function runMigration095Postgres(client: any): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): creating ${MESSAGES}...`);
 
   await client.query(`
@@ -75,7 +75,7 @@ export async function runMigration094Postgres(client: any): Promise<void> {
 
 // ============ MySQL ============
 
-export async function runMigration094Mysql(pool: any): Promise<void> {
+export async function runMigration095Mysql(pool: any): Promise<void> {
   logger.info(`${LABEL} (MySQL): creating ${MESSAGES}...`);
 
   const conn = await pool.getConnection();
