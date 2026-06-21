@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
 import { useToast } from './ToastContainer';
 import { useSource } from '../contexts/SourceContext';
-import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from './configuration/constants';
+import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, FEM_LNA_MODE_OPTIONS } from './configuration/constants';
 import type { Channel } from '../types/device';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
@@ -492,6 +492,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           hopLimit: config.hopLimit,
           txPower: config.txPower,
           channelNum: config.channelNum,
+          // FEM_LNA_Mode: proto3 elides the zero value, so default undefined to 0 (DISABLED)
+          femLnaMode: config.femLnaMode ?? 0,
           sx126xRxBoostedGain: config.sx126xRxBoostedGain,
           ignoreMqtt: config.ignoreMqtt,
           configOkToMqtt: config.configOkToMqtt,
@@ -1046,6 +1048,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   hopLimit: config.hopLimit,
                   txPower: config.txPower,
                   channelNum: config.channelNum,
+                  // FEM_LNA_Mode: proto3 elides the zero value, so default undefined to 0 (DISABLED)
+                  femLnaMode: config.femLnaMode ?? 0,
                   sx126xRxBoostedGain: config.sx126xRxBoostedGain,
                   ignoreMqtt: config.ignoreMqtt,
                   configOkToMqtt: config.configOkToMqtt,
@@ -1638,6 +1642,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       hopLimit: validHopLimit,
       txPower: configState.lora.txPower,
       channelNum: configState.lora.channelNum,
+      femLnaMode: configState.lora.femLnaMode,
       sx126xRxBoostedGain: configState.lora.sx126xRxBoostedGain,
       ignoreMqtt: configState.lora.ignoreMqtt,
       configOkToMqtt: configState.lora.configOkToMqtt,
@@ -2730,6 +2735,26 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             className="setting-input"
             style={{ width: '200px' }}
           />
+        </div>
+        <div className="setting-item">
+          <label htmlFor="adminFemLnaMode">
+            FEM LNA Mode
+            <span className="setting-description">Front-End Module (FEM) Low Noise Amplifier (LNA) mode for amplified boards with an external LNA. Requires firmware v2.7.20 or later.</span>
+          </label>
+          <select
+            id="adminFemLnaMode"
+            value={configState.lora.femLnaMode}
+            onChange={(e) => setLoRaConfig({ femLnaMode: Number(e.target.value) })}
+            disabled={isExecuting}
+            className="setting-input"
+            style={{ width: '400px' }}
+          >
+            {FEM_LNA_MODE_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>

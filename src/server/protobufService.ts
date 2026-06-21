@@ -1110,6 +1110,10 @@ class ProtobufService {
       if (config.overrideFrequency !== undefined) loraConfigData.overrideFrequency = config.overrideFrequency;
       if (config.paFanDisabled !== undefined) loraConfigData.paFanDisabled = config.paFanDisabled;
       if (config.ignoreMqtt !== undefined) loraConfigData.ignoreMqtt = config.ignoreMqtt;
+      // FEM_LNA_Mode enum (firmware ≥ v2.7.20). Writing 0 (DISABLED) is harmless on older
+      // firmware that doesn't know field 106. Both local config-set and remote admin set
+      // funnel through here, so this covers Device Config and Remote Admin save paths.
+      if (config.femLnaMode !== undefined) loraConfigData.femLnaMode = config.femLnaMode;
 
       logger.debug('LoRa config data being sent to device:', JSON.stringify(loraConfigData, null, 2));
 
