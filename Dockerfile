@@ -64,8 +64,10 @@ RUN apk add --no-cache \
     su-exec \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && python3 -m venv /opt/apprise-venv \
-    && /opt/apprise-venv/bin/pip install --no-cache-dir apprise "paho-mqtt<2.0" meshtastic \
+    && /opt/apprise-venv/bin/pip install --no-cache-dir apprise "paho-mqtt<2.0" meshtastic meshcore-cli \
     && ln -sf /opt/apprise-venv/bin/meshtastic /usr/local/bin/meshtastic \
+    && ln -sf /opt/apprise-venv/bin/meshcore-cli /usr/local/bin/meshcore-cli \
+    && ln -sf /opt/apprise-venv/bin/meshcli /usr/local/bin/meshcli \
     && ln -sf /usr/bin/python3 /usr/local/bin/python3
 
 # Copy package files
