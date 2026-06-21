@@ -5081,8 +5081,15 @@ class MeshtasticManager implements ISourceManager {
             name: channelName,
             psk: pskString,
             role: channelRole,
-            uplinkEnabled: channel.settings.uplinkEnabled ?? true,
-            downlinkEnabled: channel.settings.downlinkEnabled ?? true,
+            // proto3 elides boolean `false` on the wire (it's the zero value), so a
+            // disabled uplink/downlink arrives as undefined when the device streams
+            // its channel config on reconnect. `uplink_enabled`/`downlink_enabled`
+            // both default to false in the Meshtastic ChannelSettings proto, so the
+            // correct reconstruction of an absent value is `false`, not `true`.
+            // Defaulting to `true` here silently re-enabled a user-disabled downlink
+            // after a container restart (#3594).
+            uplinkEnabled: channel.settings.uplinkEnabled ?? false,
+            downlinkEnabled: channel.settings.downlinkEnabled ?? false,
             positionPrecision: positionPrecision !== undefined ? positionPrecision : undefined
           }, this.sourceId);
           logger.debug(`📡 Saved channel: ${displayName} (role: ${channel.role}, index: ${channel.index}, psk: ${pskString ? 'set' : 'none'}, uplink: ${channel.settings.uplinkEnabled}, downlink: ${channel.settings.downlinkEnabled}, positionPrecision: ${positionPrecision})`);
