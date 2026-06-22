@@ -254,7 +254,9 @@ describe('MeshtasticManager — traceroute intermediate hop handling (issues 261
     id: 99999,
     channel: 0,
     rxTime: Math.floor(Date.now() / 1000),
-    decoded: { portnum: 70 },
+    // requestId must be non-zero to pass the REQUEST-skip guard added in issue #3622.
+    // All packets in this test file represent RESPONSE packets.
+    decoded: { portnum: 70, requestId: 12345 },
   });
 
   /** All upsertNode calls that targeted a specific nodeNum. */
