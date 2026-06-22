@@ -176,10 +176,27 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
 router.get('/collisions', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const sourceId = req.query.sourceId as string | undefined;
-    const channels = await databaseService.channels.getAllChannels(sourceId);
+    const allChannels = await databaseService.channels.getAllChannels(sourceId);
+    const isAdmin = req.user?.isAdmin === true;
+
+    // Per-row permission gate (MM-SEC-2), mirroring GET /. Only consider
+    // channels the caller may read so collision detection can't leak the names
+    // of restricted channels to unauthorized callers.
+    const accessible: typeof allChannels = [];
+    for (const channel of allChannels) {
+      if (isAdmin) {
+        accessible.push(channel);
+        continue;
+      }
+      const channelResource = `channel_${channel.id}` as import('../../types/permission.js').ResourceType;
+      if (req.user && await hasPermission(req.user, channelResource, 'read')) {
+        accessible.push(channel);
+      }
+    }
+
     const dbEntries = await databaseService.channelDatabase.getAllAsync();
     const collisions = detectChannelCollisions(
-      channels.map(c => ({ id: c.id, name: c.name, psk: c.psk })),
+      accessible.map(c => ({ id: c.id, name: c.name, psk: c.psk })),
       dbEntries
         .filter((d): d is typeof d & { id: number } => typeof d.id === 'number')
         .map(d => ({ id: d.id, name: d.name, psk: d.psk })),
