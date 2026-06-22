@@ -7182,6 +7182,7 @@ class MeshtasticManager implements ISourceManager {
         snrBack: JSON.stringify(snrBack),
         routePositions: JSON.stringify(routePositions),
         channel: channelIndex >= 0 ? channelIndex : null,
+        packetId: meshPacket.id != null ? Number(meshPacket.id) : null,
         timestamp: timestamp,
         createdAt: Date.now()
       };

@@ -188,6 +188,8 @@ export interface DbTraceroute {
   snrBack: string;
   /** JSON: `{ [nodeNum]: { lat, lng, alt? } }` — position snapshot at traceroute time. */
   routePositions?: string;
+  /** Originating Meshtastic packet id (null/undefined = not captured). Enables cross-source correlation (#3623). */
+  packetId?: number | null;
   timestamp: number;
   createdAt: number;
 }
@@ -4346,7 +4348,8 @@ class DatabaseService {
                 tracerouteData.routeBack || null,
                 tracerouteData.snrTowards || null,
                 tracerouteData.snrBack || null,
-                tracerouteData.timestamp
+                tracerouteData.timestamp,
+                tracerouteData.packetId ?? null
               );
             } else {
               // Insert new traceroute

@@ -34,6 +34,7 @@ export class TraceroutesRepository extends BaseRepository {
       snrBack: tracerouteData.snrBack,
       routePositions: tracerouteData.routePositions ?? null,
       channel: tracerouteData.channel ?? null,
+      packetId: tracerouteData.packetId ?? null,
       timestamp: tracerouteData.timestamp,
       createdAt: tracerouteData.createdAt,
     };
@@ -70,11 +71,15 @@ export class TraceroutesRepository extends BaseRepository {
   /**
    * Update a pending traceroute with response data
    */
-  async updateTracerouteResponse(id: number, route: string | null, routeBack: string | null, snrTowards: string | null, snrBack: string | null, timestamp: number): Promise<void> {
+  async updateTracerouteResponse(id: number, route: string | null, routeBack: string | null, snrTowards: string | null, snrBack: string | null, timestamp: number, packetId?: number | null): Promise<void> {
     const { traceroutes } = this.tables;
+    const set: any = { route, routeBack, snrTowards, snrBack, timestamp };
+    // Only overwrite packetId when the response carries one — preserves any id
+    // already stored on the pending row if this update doesn't supply it.
+    if (packetId !== undefined) set.packetId = packetId;
     await this.db
       .update(traceroutes)
-      .set({ route, routeBack, snrTowards, snrBack, timestamp })
+      .set(set)
       .where(eq(traceroutes.id, id));
   }
 
@@ -543,6 +548,7 @@ export class TraceroutesRepository extends BaseRepository {
             routeBack: tracerouteData.routeBack || null,
             snrTowards: tracerouteData.snrTowards || null,
             snrBack: tracerouteData.snrBack || null,
+            packetId: tracerouteData.packetId ?? null,
             timestamp: tracerouteData.timestamp,
           })
           .where(eq(traceroutes.id, id))
@@ -557,6 +563,7 @@ export class TraceroutesRepository extends BaseRepository {
           routeBack: tracerouteData.routeBack || null,
           snrTowards: tracerouteData.snrTowards || null,
           snrBack: tracerouteData.snrBack || null,
+          packetId: tracerouteData.packetId ?? null,
           timestamp: tracerouteData.timestamp,
           createdAt: tracerouteData.createdAt,
           sourceId: sourceId ?? null,
@@ -857,6 +864,7 @@ export class TraceroutesRepository extends BaseRepository {
   private normalizeTracerouteRow(r: any): DbTraceroute {
     const n = this.normalizeBigInts(r) as any;
     if (n.channel === null) n.channel = undefined;
+    if (n.packetId === null) n.packetId = undefined;
     if (n.routePositions === null) n.routePositions = undefined;
     if (n.sourceId === null) n.sourceId = undefined;
     if (n.route === null) n.route = undefined;
@@ -881,6 +889,7 @@ export class TraceroutesRepository extends BaseRepository {
     return (rows as any[]).map((r) => {
       const n = this.normalizeBigInts(r) as any;
       if (n.channel === null) n.channel = undefined;
+      if (n.packetId === null) n.packetId = undefined;
       if (n.routePositions === null) n.routePositions = undefined;
       if (n.sourceId === null) n.sourceId = undefined;
       return n as DbTraceroute;
