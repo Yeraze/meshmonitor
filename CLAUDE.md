@@ -171,3 +171,24 @@ When adding a new user-configurable setting:
 - When updating the version, update all five files: `package.json`, `package-lock.json` (regenerate via `npm install --package-lock-only` — `.npmrc` now pins `legacy-peer-deps=true`, so the explicit flag is no longer needed), `helm/meshmonitor/Chart.yaml`, `desktop/src-tauri/tauri.conf.json`, `desktop/package.json`.
 - Use shared constants from `src/server/constants/meshtastic.ts` for PortNum, RoutingError, and helper functions — never magic numbers for protocol values.
 - Official Meshtastic protobuf definitions: https://github.com/meshtastic/protobufs/
+
+## LXC Template Build
+
+The Proxmox LXC template is built by `lxc/build-lxc-template.sh` using a
+partial + sparse git clone. The cone directory list lives in
+`lxc/sparse-cone.txt` — **not** in the build script itself.
+
+### Hard rules
+
+- **If you add a top-level directory that is required at runtime, add it to
+  `lxc/sparse-cone.txt` in the same commit.** Omitting it silently drops
+  those files from every future LXC template build.
+- **All `npm install`/`npm run build` steps run inside `chroot`** against the
+  container's own Node.js (NodeSource 24). Never move them to the host/CI
+  workspace — native modules (better-sqlite3) must compile for the container's
+  ABI, not the runner's.
+- **`PUPPETEER_SKIP_DOWNLOAD=true` on every npm step.** The container is
+  headless — Chromium download will fail or hang without it.
+- **`.git` inside `/opt/meshmonitor` is intentional.** It is what enables
+  `meshmonitor-update` to manage future in-place upgrades. Do not add it to
+  `.gitignore` or strip it in cleanup steps.
