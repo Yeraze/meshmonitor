@@ -115,6 +115,19 @@ export function formatTracerouteRoute(
     return '(No response received)';
   }
 
+  // When both route and snr are empty arrays the return path has not been
+  // recorded yet (e.g. seen from the target node before relays populate
+  // routeBack). Avoid rendering a fictitious direct A→B line. (Issue #3622)
+  try {
+    const _r = JSON.parse(route);
+    const _s = snr ? JSON.parse(snr) : [];
+    if (Array.isArray(_r) && _r.length === 0 && Array.isArray(_s) && _s.length === 0) {
+      return '(No return path data)';
+    }
+  } catch {
+    // fall through to normal parsing below
+  }
+
   // Filter function to remove invalid/reserved node numbers from route arrays.
   // BROADCAST_ADDR (0xffffffff) is intentionally NOT filtered — the firmware
   // uses it as a placeholder for relay-role hops that refused to self-identify.

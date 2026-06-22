@@ -147,15 +147,21 @@ function segmentsForTraceroute(tr: TracerouteAnalysisInput): RawSegment[] {
     });
   }
 
-  // Response leg: responder -> ...routeBack -> requester
-  const backPath = [responder, ...routeBack, requester];
-  for (let i = 0; i < backPath.length - 1; i++) {
-    out.push({
-      sourceId: tr.sourceId,
-      from: backPath[i],
-      to: backPath[i + 1],
-      snr: scaleSnr(snrBack[i]),
-    });
+  // Response leg: responder -> ...routeBack -> requester.
+  // When routeBack AND snrBack are both empty the return path has not been
+  // recorded yet (e.g. MeshMonitor sees its own outgoing response before relay
+  // nodes populate routeBack). Skip rather than drawing a fictitious direct
+  // responder→requester line. (Issues #1140, #3622)
+  if (routeBack.length > 0 || snrBack.length > 0) {
+    const backPath = [responder, ...routeBack, requester];
+    for (let i = 0; i < backPath.length - 1; i++) {
+      out.push({
+        sourceId: tr.sourceId,
+        from: backPath[i],
+        to: backPath[i + 1],
+        snr: scaleSnr(snrBack[i]),
+      });
+    }
   }
 
   return out;
