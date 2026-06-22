@@ -13172,13 +13172,27 @@ class MeshtasticManager implements ISourceManager {
     logger.info('📦 Requesting all module configs for complete backup...');
 
     for (const configType of moduleConfigTypes) {
+      // Abort early if we lost the connection mid-fetch (#3637). Propagating
+      // the error prevents the caller from setting moduleConfigsEverFetched=true,
+      // so the fetch is retried on the next reconnection rather than silently
+      // skipped forever.
+      if (!this.isConnected || !this.transport) {
+        logger.warn(`⚠️ Connection lost during module config fetch — aborting at type ${configType}, will retry on reconnect`);
+        throw new Error('Not connected to Meshtastic node');
+      }
       try {
         await this.requestModuleConfig(configType);
         // Configurable delay between requests to avoid overwhelming the device
         await new Promise(resolve => setTimeout(resolve, getEnvironmentConfig().meshtasticModuleConfigDelayMs));
       } catch (error) {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        if (errMsg === 'Not connected to Meshtastic node') {
+          // Connectivity loss mid-send: propagate so caller doesn't mark fetch complete (#3637)
+          logger.warn(`⚠️ Lost connection during module config fetch at type ${configType} — aborting, will retry on reconnect`);
+          throw error;
+        }
         logger.error(`❌ Failed to request module config type ${configType}:`, error);
-        // Continue with other configs even if one fails
+        // Continue with other configs even if one type fails for non-connectivity reasons
       }
     }
 
