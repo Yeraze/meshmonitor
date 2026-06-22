@@ -204,6 +204,18 @@ button.unified-source-pill.is-active {
   color: var(--ctp-red);
 }
 
+/* Channel overshadow / key-collision notice (#3644) */
+.unified-warning {
+  margin: 8px 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-yellow);
+  color: var(--ctp-yellow);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
 /* ── Date divider (messages) ─────────────────────────────────────────────── */
 
 .unified-date-divider {
