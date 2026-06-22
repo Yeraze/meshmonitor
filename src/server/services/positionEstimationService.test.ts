@@ -97,6 +97,65 @@ describe('solveNodePosition', () => {
     const dayOld = observationWeight(obs({ timestamp: NOW - 24 * 60 * 60 * 1000 }), NOW);
     expect(dayOld).toBeCloseTo(fresh / 2, 5); // 24h half-life
   });
+
+  describe('SNR → weight ordering (issue #3616)', () => {
+    // The weight model must be 10^(snr/10): higher (less negative) SNR → higher
+    // weight → node pulled toward that anchor. A weak link must NOT pull harder.
+    it('maps higher SNR to higher weight (not inverted)', () => {
+      const w = (snrDb: number) => observationWeight(obs({ snrDb }), NOW);
+      // Independently computed expected weights: 10^(-12/10)≈0.063, 10^0=1, 10^1=10.
+      expect(w(-12)).toBeCloseTo(0.0631, 4);
+      expect(w(0)).toBeCloseTo(1, 5);
+      expect(w(10)).toBeCloseTo(10, 5);
+      // Strictly increasing with SNR — the whole point of issue #3616.
+      expect(w(-12)).toBeLessThan(w(0));
+      expect(w(0)).toBeLessThan(w(10));
+    });
+  });
+
+  describe('single low-confidence anchor stays uncertain (issue #3616)', () => {
+    // A node seen by exactly one anchor at -12 dB collapses to that anchor (the
+    // max-likelihood point for a single observation) but MUST report a large,
+    // unreliable radius — not a tight confident one.
+    it('a lone -12 dB anchor reports the full radio-range uncertainty', () => {
+      const solved = solveNodePosition([
+        obs({ anchorLat: 10, anchorLon: 20, snrDb: -12 }),
+      ], NOW)!;
+      expect(solved.latitude).toBeCloseTo(10, 5);  // at the anchor
+      expect(solved.uncertaintyKm).toBe(5);        // DEFAULT_SINGLE_ANCHOR_KM, unreliable
+    });
+
+    // The regression case from issue #3616: a strong anchor and a far weak (-12 dB)
+    // anchor. The centroid collapses onto the strong anchor and the weak/far one
+    // barely contributes to the weighted RMS. Before the fix nEff was ~1.01 (just
+    // above the old `nEff <= 1` cutoff) so it skipped the radio-range default and
+    // reported a spuriously tight <1 km radius. It must now stay large/unreliable.
+    it('does not report false confidence when one strong anchor dominates a far weak one', () => {
+      const solved = solveNodePosition([
+        obs({ anchorLat: 10.0, anchorLon: 20, snrDb: 10 }),    // strong, "reporter's house"
+        obs({ anchorLat: 10.036, anchorLon: 20, snrDb: -12 }), // weak, ~4 km away
+      ], NOW)!;
+      // Estimate collapses onto the strong anchor (expected — it dominates).
+      expect(solved.latitude).toBeCloseTo(10.0, 2);
+      // ...but the radius reflects the near-single-observation confidence: large,
+      // close to the radio-range default — NOT a sub-km confident circle.
+      expect(solved.uncertaintyKm).toBeGreaterThan(4);
+    });
+
+    // Guard against regressing genuinely balanced multi-anchor estimates: equal
+    // SNR anchors give nEff == anchor count, confidence == 1, so the radius is the
+    // pure statistical estimate. A tight cluster must stay confident (small).
+    it('keeps a balanced tight 4-anchor cluster confident', () => {
+      const tight = solveNodePosition([
+        obs({ anchorLat: 10.005, anchorLon: 20, snrDb: 0 }),
+        obs({ anchorLat: 9.995, anchorLon: 20, snrDb: 0 }),
+        obs({ anchorLat: 10, anchorLon: 20.005, snrDb: 0 }),
+        obs({ anchorLat: 10, anchorLon: 19.995, snrDb: 0 }),
+      ], NOW)!;
+      expect(tight.latitude).toBeCloseTo(10, 4);
+      expect(tight.uncertaintyKm).toBeLessThan(1); // confident, unchanged by the fix
+    });
+  });
 });
 
 describe('buildObservations', () => {
