@@ -14,7 +14,8 @@
  *   3. Drop the old unique constraint on (user_id, resource) which prevents
  *      multiple per-source rows for the same user+resource.
  *   4. Create a new unique index on (user_id, resource, sourceId).
- *   5. Update channel_database rows with NULL sourceId to use the first source.
+ *   (Step 5 — channel_database.sourceId backfill — removed: migration 021 no longer
+ *    adds sourceId to channel_database and migration 063 drops it; see #3657.)
  *
  * Dialect notes:
  *   - SQLite column names: user_id, resource, can_view_on_map, can_read,
@@ -141,16 +142,10 @@ export const migration = {
     `);
     logger.info(`Migration 033 (SQLite): created unique index '${NEW_INDEX_NAME}'`);
 
-    // Fix orphaned channel_database rows
-    if (sources.length > 0) {
-      const firstSource = sources[0].id;
-      const cdResult = db.prepare(`
-        UPDATE channel_database SET sourceId = ? WHERE sourceId IS NULL
-      `).run(firstSource);
-      if (cdResult.changes > 0) {
-        logger.info(`Migration 033 (SQLite): migrated ${cdResult.changes} channel_database row(s) to source '${firstSource}'`);
-      }
-    }
+    // NOTE: channel_database.sourceId backfill intentionally removed.
+    // Migration 021 no longer adds sourceId to channel_database (global-by-design;
+    // see issue #3639), and migration 063 drops the column. Attempting to UPDATE
+    // a column that no longer exists crashes PostgreSQL on every boot (#3657).
 
     logger.info('Migration 033 complete (SQLite)');
   },
@@ -221,16 +216,10 @@ export async function runMigration033Postgres(client: any): Promise<void> {
   `);
   logger.info(`Migration 033 (PostgreSQL): created unique index '${NEW_INDEX_NAME}'`);
 
-  // Fix orphaned channel_database rows
-  if (sources.length > 0) {
-    const firstSource = sources[0];
-    const cdRes = await client.query(`
-      UPDATE channel_database SET "sourceId" = $1 WHERE "sourceId" IS NULL
-    `, [firstSource]);
-    if (cdRes.rowCount && cdRes.rowCount > 0) {
-      logger.info(`Migration 033 (PostgreSQL): migrated ${cdRes.rowCount} channel_database row(s) to source '${firstSource}'`);
-    }
-  }
+  // NOTE: channel_database.sourceId backfill intentionally removed.
+  // Migration 021 no longer adds sourceId to channel_database (global-by-design;
+  // see issue #3639), and migration 063 drops the column. Attempting to UPDATE
+  // a column that no longer exists crashes PostgreSQL on every boot (#3657).
 
   logger.info('Migration 033 complete (PostgreSQL)');
 }
@@ -313,18 +302,10 @@ export async function runMigration033Mysql(pool: any): Promise<void> {
       logger.debug(`Migration 033 (MySQL): unique index '${NEW_INDEX_NAME}' already exists`);
     }
 
-    // Fix orphaned channel_database rows
-    if (sources.length > 0) {
-      const firstSource = sources[0];
-      const [cdResult] = await conn.query(
-        `UPDATE channel_database SET sourceId = ? WHERE sourceId IS NULL`,
-        [firstSource],
-      );
-      const cdAffected = (cdResult as any)?.affectedRows ?? 0;
-      if (cdAffected > 0) {
-        logger.info(`Migration 033 (MySQL): migrated ${cdAffected} channel_database row(s) to source '${firstSource}'`);
-      }
-    }
+    // NOTE: channel_database.sourceId backfill intentionally removed.
+    // Migration 021 no longer adds sourceId to channel_database (global-by-design;
+    // see issue #3639), and migration 063 drops the column. Attempting to UPDATE
+    // a column that no longer exists crashes on every boot (#3657).
   } finally {
     conn.release();
   }
