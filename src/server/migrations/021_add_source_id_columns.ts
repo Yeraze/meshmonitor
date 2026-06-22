@@ -6,7 +6,15 @@
  * source" (assigned during startup by server.ts).
  *
  * Tables: nodes, messages, telemetry, traceroutes, channels,
- *         neighbor_info, packet_log, ignored_nodes, channel_database
+ *         neighbor_info, packet_log, ignored_nodes
+ *
+ * NOTE: channel_database is intentionally excluded. It is global-by-design
+ * (channelDecryptionService queries all rows regardless of source). Migration
+ * 063 drops any sourceId that was added here by earlier runs of this migration.
+ * Including channel_database caused a boot-loop on PostgreSQL: because PG runs
+ * all migrations on every startup, the ADD/DROP cycle (021 adds, 063 drops,
+ * repeat) steadily consumed PostgreSQL's 1600-column tombstone limit on the
+ * channel_database table. See: https://github.com/Yeraze/meshmonitor/issues/3639
  *
  * Indexes are created on nodes, messages, and telemetry for query efficiency.
  */
@@ -15,7 +23,7 @@ import { logger } from '../../utils/logger.js';
 
 const DATA_TABLES = [
   'nodes', 'messages', 'telemetry', 'traceroutes',
-  'channels', 'neighbor_info', 'packet_log', 'ignored_nodes', 'channel_database',
+  'channels', 'neighbor_info', 'packet_log', 'ignored_nodes',
 ] as const;
 
 // ============ SQLite ============
