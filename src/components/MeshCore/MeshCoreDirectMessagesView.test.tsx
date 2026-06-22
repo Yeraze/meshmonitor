@@ -289,6 +289,43 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     expect(document.querySelector('.mc-node-row .mc-dm-row-favorite')?.textContent).toBe('★');
   });
 
+  // The `aFav !== bFav` pin runs ahead of BOTH sort branches, so favorites must
+  // also stay on top under name sort (not just the default lastMessage sort).
+  it('keeps favorited peers pinned when the user switches to name sort', () => {
+    const contactsList: MeshCoreContact[] = [
+      { publicKey: REAL_PK, advName: 'Charlie', advType: 1, lastSeen: 1000 },
+      { publicKey: REAL_PK_2, advName: 'alpha', advType: 1, lastSeen: 2000 },
+      { publicKey: 'c'.repeat(64), advName: 'Zeta', advType: 1, lastSeen: 3000 },
+    ];
+    // 'Zeta' is favorited — alphabetically last, so it would normally sort to
+    // the bottom under name/asc; the favorite pin must override that.
+    const nodes: MeshCoreNode[] = [
+      { publicKey: REAL_PK, name: 'Charlie', advType: 1, isFavorite: false },
+      { publicKey: REAL_PK_2, name: 'alpha', advType: 1, isFavorite: false },
+      { publicKey: 'c'.repeat(64), name: 'Zeta', advType: 1, isFavorite: true },
+    ];
+
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={contactsList}
+        nodes={nodes}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+
+    const dropdown = screen.getByTitle('Sort by') as HTMLSelectElement;
+    fireEvent.change(dropdown, { target: { value: 'name' } });
+    // Flip from the default 'desc' to ascending.
+    fireEvent.click(screen.getByTitle('Descending'));
+
+    const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
+      .map((el) => el.querySelector('span:not(.mc-dm-row-favorite)')?.textContent || '');
+    // Zeta pinned first despite name/asc; non-favorites follow in name order.
+    expect(names).toEqual(['Zeta', 'alpha', 'Charlie']);
+  });
+
   it('collapses the node list when the toggle button is clicked, and restores it on re-click', () => {
     render(
       <MeshCoreDirectMessagesView
