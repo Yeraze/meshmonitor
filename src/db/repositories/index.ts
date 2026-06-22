@@ -44,6 +44,15 @@ export type {
   AutomationRunStatus,
   CreateAutomationRunInput,
 } from './automations.js';
+export { AutomationVariablesRepository } from './automationVariables.js';
+export type {
+  VariableType,
+  VariableScope,
+  AutomationVariableRecord,
+  CreateVariableInput,
+  UpdateVariableInput,
+  AutomationVariableValueRecord,
+} from './automationVariables.js';
 export { SourcesRepository } from './sources.js';
 export type { Source, CreateSourceInput } from './sources.js';
 export { AnalysisRepository } from './analysis.js';

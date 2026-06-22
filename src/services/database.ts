@@ -42,6 +42,7 @@ import {
   SourcePkiKeysRepository,
   DeadDropRepository,
   AutomationsRepository,
+  AutomationVariablesRepository,
 } from '../db/repositories/index.js';
 import type { EstimatedPosition, EstimatedPositionInput } from '../db/repositories/index.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
@@ -505,6 +506,7 @@ class DatabaseService {
   public sourcePkiKeysRepo: SourcePkiKeysRepository | null = null;
   public deadDropRepo: DeadDropRepository | null = null;
   public automationsRepo: AutomationsRepository | null = null;
+  public automationVariablesRepo: AutomationVariablesRepository | null = null;
 
   /**
    * Typed repository accessors — throw if database not initialized.
@@ -563,6 +565,11 @@ class DatabaseService {
   get automations(): AutomationsRepository {
     if (!this.automationsRepo) throw new Error('Database not initialized');
     return this.automationsRepo;
+  }
+
+  get automationVariables(): AutomationVariablesRepository {
+    if (!this.automationVariablesRepo) throw new Error('Database not initialized');
+    return this.automationVariablesRepo;
   }
 
   get auth(): AuthRepository {
@@ -901,6 +908,7 @@ class DatabaseService {
       this.sourcePkiKeysRepo = new SourcePkiKeysRepository(drizzleDb, this.drizzleDbType);
       this.deadDropRepo = new DeadDropRepository(drizzleDb, this.drizzleDbType);
       this.automationsRepo = new AutomationsRepository(drizzleDb, this.drizzleDbType);
+      this.automationVariablesRepo = new AutomationVariablesRepository(drizzleDb, this.drizzleDbType);
 
       logger.info('[DatabaseService] Drizzle repositories initialized successfully');
 

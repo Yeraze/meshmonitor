@@ -107,6 +107,10 @@ import {
   automationsSqlite, automationsPostgres, automationsMysql,
   automationRunsSqlite, automationRunsPostgres, automationRunsMysql,
 } from './schema/automations.js';
+import {
+  automationVariablesSqlite, automationVariablesPostgres, automationVariablesMysql,
+  automationVariableValuesSqlite, automationVariableValuesPostgres, automationVariableValuesMysql,
+} from './schema/automationVariables.js';
 
 // Waypoints table
 import {
@@ -204,6 +208,8 @@ export interface ActiveSchema {
   // Automation Engine (global — no sourceId)
   automations: any;
   automationRuns: any;
+  automationVariables: any;
+  automationVariableValues: any;
 
   // Waypoints
   waypoints: any;
@@ -275,6 +281,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     embedProfiles: embedProfilesSqlite,
     automations: automationsSqlite,
     automationRuns: automationRunsSqlite,
+    automationVariables: automationVariablesSqlite,
+    automationVariableValues: automationVariableValuesSqlite,
     waypoints: waypointsSqlite,
     sources: sourcesSqlite,
     estimatedPositions: estimatedPositionsSqlite,
@@ -326,6 +334,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     embedProfiles: embedProfilesPostgres,
     automations: automationsPostgres,
     automationRuns: automationRunsPostgres,
+    automationVariables: automationVariablesPostgres,
+    automationVariableValues: automationVariableValuesPostgres,
     waypoints: waypointsPostgres,
     sources: sourcesPostgres,
     estimatedPositions: estimatedPositionsPostgres,
@@ -377,6 +387,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     embedProfiles: embedProfilesMysql,
     automations: automationsMysql,
     automationRuns: automationRunsMysql,
+    automationVariables: automationVariablesMysql,
+    automationVariableValues: automationVariableValuesMysql,
     waypoints: waypointsMysql,
     sources: sourcesMysql,
     estimatedPositions: estimatedPositionsMysql,

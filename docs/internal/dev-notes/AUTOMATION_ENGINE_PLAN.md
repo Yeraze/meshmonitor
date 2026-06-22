@@ -21,6 +21,7 @@ keep running unchanged; the new engine is the "Advanced Mode" and ships alongsid
 | **State** | **Full stateful workflows**, but **split**: Phase **1a** = synchronous runs (cooldowns + single-run variables, no waits). Phase **1b** = persisted `flow.delay`/wait-for-event + cross-event variables + restart rehydration. |
 | **Branching** | **If / ElseIf / Else** replaces hardcoded routing matrices (esp. the ~15-key auto-ack matrix). Conditions are **routers with `true`/`false` ports**; ElseIf = cascaded conditions. UI shows a friendly If/ElseIf/Else widget compiling to labeled condition edges. |
 | **Scripts** | **Deferred** from Phase 1 (no `RunScript` action yet). Import EULA-gate hook still built so scripts slot in later. |
+| **Variables** | First-class **user-defined variables** with a discrete management UI. Types `string｜integer｜float｜boolean｜flag`; scopes `global｜source｜node｜sourceNode`. `readonly` variables are user-set **constants** (thresholds); the rest are automation-managed (flags/counters). `flag` = a boolean that auto-clears after a duration (anti-spam). See §5.2. |
 | **Export format** | **JSON only.** |
 | **Phase-1 triggers** | Packet/Message received · Node discovered/updated · Telemetry threshold · Timer/cron + system events. |
 | **Phase-1 actions** | Send message/tapback · Node management (delete/ignore/ban/favorite) · Notify (Apprise/webhook) · Delay/wait + set-variable. |
@@ -168,12 +169,13 @@ Both tables follow the 3-backend Drizzle pattern (`src/db/schema/settings.ts` ex
 - `condition.string` — exact / contains / regex.
 - `condition.distance` — distance from a reference node/point `< / > km`.
 - `condition.timeRange` — within a time-of-day / day-of-week window.
+- `condition.variable` — compare a user-defined variable (§5.2) against a literal or another value; "is flag set?". Powers thresholds and the flag anti-spam gate.
 - `condition.logical` — AND/OR/NOT wrapper (Collapse covers most of this at the graph level).
 
 **Flow:**
 - `flow.fanout` — split to multiple branches.
 - `flow.collapse` — join with `ANY | ALL | NONE`.
-- `flow.setVar` — set/increment a workflow variable (single-run scope in 1a; cross-event in 1b).
+- `flow.setVar` — write a **dynamic** user-defined variable (§5.2): set/clear/increment; arm a `flag` with its TTL. Rejects `readonly` constants.
 - `flow.delay` — **(Phase 1b)** wait N seconds / until-event (stateful).
 
 > **If/ElseIf/Else widget:** a UI affordance, not a distinct node type — it emits one or more `condition.*` routers wired by `true`/`false` ports, with each branch holding its own action(s). This is the user-built replacement for the hardcoded auto-ack matrix; `action.tapback` therefore stays minimal (emoji + target) and carries no routing logic.
@@ -240,6 +242,64 @@ in `src/services/database.ts`). **Resolution rules (apply to every field):**
 
 **Global system vars** (all triggers): `{{ CURRENT_SOURCE_NODE_ID }}` (resolved per target source at action time), `{{ NOW }}`, `{{ trigger.sourceId }}`, `{{ trigger.timestamp }}`. Export rewrites personal node ids back into these so shared workflows are portable.
 
+### 5.2 User-defined variables
+
+A first-class, **discrete** subsystem (its own management area under the Automations tab) for declaring
+reusable values, separate from any single automation. A variable is referenced everywhere as
+`{{ var.<name> }}` and participates in conditions, actions, and interpolation.
+
+**Two roles** (a single `readonly` flag on the definition):
+- **Constant** (`readonly: true`) — the user sets the value directly in the Variables UI (e.g.
+  `lowBatteryThreshold = 20`, `welcomeChannel = 2`). Automations may **read** it but never write it; it is
+  not a valid `setVar`/flag target. This is the "thresholds / config" use case.
+- **Dynamic** (`readonly: false`) — the value is managed by automations at runtime (flags, counters,
+  last-seen text). The user may seed an initial value but normally doesn't touch it.
+
+**Types:** `string · integer · float · boolean · flag`.
+- **`flag`** = a boolean that **auto-clears after `flagDurationSeconds`**. Setting it stores
+  `value=true, expiresAt = NOW + duration`. A read after `expiresAt` returns **false** (evaluated
+  at read-time → robust across restarts; an optional periodic sweep prunes expired rows). This is the
+  anti-spam primitive: *"have I welcomed this node in the last 24h?"*.
+
+**Scopes (4)** — define the value's key in the value store:
+| scope | one value per… | `scopeKey` encoding |
+|-------|----------------|---------------------|
+| `global` | the whole instance | `''` |
+| `source` | source connection | `sourceId` |
+| `node` | physical node (shared across sources) | `String(nodeNum)` |
+| `sourceNode` | (source, node) pair | `${sourceId}:${nodeNum}` |
+
+> **Default binding from context:** when an automation reads/writes a scoped variable, the key is
+> resolved from the trigger context unless the user picks an explicit reference —
+> `node`/`sourceNode` → the trigger's **subject node** (`trigger.from` for messages, `trigger.nodeNum`
+> for telemetry/node events); `source`/`sourceNode` → `trigger.sourceId`. Schedule/system triggers have
+> no subject node, so node-scoped variables there require an explicit node reference.
+
+**Tables (migration 099):**
+- `automation_variables` (definitions, **global**): `id`, `name` (unique slug used in `{{ var.name }}`),
+  `description`, `type`, `scope`, `readonly`, `config` JSON (`{ flagDurationSeconds?, defaultValue? }`),
+  `createdAt`, `updatedAt`.
+- `automation_variable_values`: `id`, `variableId`, `scopeKey`, `value` TEXT (type-encoded:
+  decimal string / `'true'|'false'`), `expiresAt` (nullable, flags only), `updatedAt`. Unique
+  `(variableId, scopeKey)`.
+
+**Engine blocks that use variables:**
+- `flow.setVar` — write a **dynamic** variable (rejects `readonly`); for flags, "set" (arm with TTL) and
+  "clear". Increment/decrement for counters.
+- `condition.variable` — compare a variable against a literal or another value (numeric/string/boolean
+  ops; "is flag set?"). Powers both thresholds (`battery < {{ var.lowBatteryThreshold }}`) and the
+  flag anti-spam gate (`if NOT flag welcomed → welcome + setVar flag`).
+
+**Smart suggestions (UI affordance, engine treats all uniformly):** the variable picker filters by
+**type compatibility** and **scope relevance** to the current trigger. When capturing a value from a
+telemetry trigger (e.g. battery), the UI proposes creating a `node`+`float` variable. When comparing
+`trigger.hops`, it surfaces `integer` variables. The engine itself applies no such heuristics — they are
+purely editor ergonomics driven by the definition's `type`/`scope` and the trigger contract (§5.1).
+
+**Export/import:** an exported automation carries the **definitions** of the variables it references (so
+import can recreate them), but **not** live values — flags/counters reset, and constant values import as
+the shared `defaultValue` flagged for the importer to review (never another instance's live state).
+
 **Actions:**
 - `action.sendMessage` — text to channel or DM (`sendTextMessage`).
 - `action.tapback` — reaction/tapback.
@@ -278,6 +338,7 @@ All gated by `requirePermission('automations', <action>)` (global resource):
 
 **Phase 1a (this effort) — synchronous engine + linear builder, Meshtastic:**
 - Migration #098 (`automations` + `automation_runs` with full schema incl. `status`/`state`, 3 backends) + count test. (1a never sets `waiting`.)
+- Migration #099 + `automation_variables` / `automation_variable_values` (§5.2): variable registry repository, CRUD routes, a discrete **Variables** management area, the `{{ var.* }}` resolver (scope/context binding + flag TTL at read), `condition.variable`, and `flow.setVar`.
 - `automations` global permission resource (`permission.ts` union + RESOURCES + admin/default sets; NOT in SOURCEY_RESOURCES).
 - `automationEngineService` (load, event-type-indexed dispatch, graph eval with `true`/`false` condition routing, scheduler-armed timer triggers, safety rails, single-run var interpolation), started in `server.ts`.
 - Zod block-catalog schema + types (shared FE/BE).
