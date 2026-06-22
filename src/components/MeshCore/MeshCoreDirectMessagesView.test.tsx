@@ -250,7 +250,7 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     fireEvent.click(screen.getByTitle('Descending'));
 
     const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
-      .map((el) => el.querySelector('span')?.textContent || '');
+      .map((el) => el.querySelector('.mc-node-row-display-name')?.textContent || '');
     expect(names).toEqual(['alpha', 'Bravo', 'Charlie']);
   });
 
@@ -283,7 +283,7 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     );
 
     const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
-      .map((el) => el.querySelector('span:not(.mc-dm-row-favorite)')?.textContent || '');
+      .map((el) => el.querySelector('.mc-node-row-display-name')?.textContent || '');
     // Bravo (favorite) pinned first despite oldest lastSeen; ★ indicator shown.
     expect(names[0]).toBe('Bravo');
     expect(document.querySelector('.mc-node-row .mc-dm-row-favorite')?.textContent).toBe('★');
@@ -321,7 +321,7 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     fireEvent.click(screen.getByTitle('Descending'));
 
     const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
-      .map((el) => el.querySelector('span:not(.mc-dm-row-favorite)')?.textContent || '');
+      .map((el) => el.querySelector('.mc-node-row-display-name')?.textContent || '');
     // Zeta pinned first despite name/asc; non-favorites follow in name order.
     expect(names).toEqual(['Zeta', 'alpha', 'Charlie']);
   });

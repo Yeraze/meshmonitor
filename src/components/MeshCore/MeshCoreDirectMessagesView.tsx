@@ -4,6 +4,7 @@ import {
   MeshCoreMessage, MeshCoreActions, ConnectionStatus, MeshCoreNode,
 } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
+import { meshcoreRoleIcon, meshcoreRoleLabelKey, meshcoreRoleLabel } from './meshcoreRole';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
 import { MeshCoreNodeTelemetryConfig } from './MeshCoreNodeTelemetryConfig';
@@ -322,6 +323,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               const c = contactsByKey.get(key);
               const name = c?.advName || c?.name || `${key.substring(0, 8)}…`;
               const isFavorite = favoriteByKey.get(key) ?? false;
+              const roleIcon = meshcoreRoleIcon(c?.advType);
               return (
                 <button
                   key={key}
@@ -329,10 +331,20 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   onClick={() => handleSelectContact(key)}
                 >
                   <div className="mc-node-row-name">
+                    {roleIcon && (
+                      <span
+                        className="mc-node-role-icon"
+                        role="img"
+                        aria-label={t(meshcoreRoleLabelKey(c?.advType), meshcoreRoleLabel(c?.advType))}
+                        title={t(meshcoreRoleLabelKey(c?.advType), meshcoreRoleLabel(c?.advType))}
+                      >
+                        {roleIcon}
+                      </span>
+                    )}
                     {isFavorite && (
                       <span className="mc-dm-row-favorite" aria-label={t('meshcore.favorite.is_favorite', 'Favorite')} title={t('meshcore.favorite.is_favorite', 'Favorite')}>★</span>
                     )}
-                    <span>{name}</span>
+                    <span className="mc-node-row-display-name">{name}</span>
                   </div>
                   <div className="mc-node-row-key">{key.substring(0, 20)}…</div>
                 </button>
