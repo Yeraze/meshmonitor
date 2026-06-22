@@ -14,8 +14,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Rectangle, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import L, { type Marker as LeafletMarker } from 'leaflet';
 import { createNodeIcon } from '../../utils/mapIcons';
+import { SpiderfierController, type SpiderfierControllerRef } from '../SpiderfierController';
 import { getTilesetById } from '../../config/tilesets';
 import type { CustomTileset, TilesetId } from '../../config/tilesets';
 import DashboardWaypoints from './DashboardWaypoints';
@@ -155,6 +156,33 @@ export default function DashboardMap({
 }: DashboardMapProps) {
   const tileset = getTilesetById(tilesetId, customTilesets);
   const { mapPinStyle, setMapTileset } = useSettings();
+
+  // Spiderfier: fan out co-located markers so each node (incl. estimated-position
+  // nodes that collapse onto the same anchor) is individually selectable (#3612).
+  // Reuses the SAME shared SpiderfierController + tuning as the per-source NodesTab
+  // map and Map Analysis. Stable per-key ref handlers bridge react-leaflet's
+  // declarative <Marker> to the imperative Leaflet markers the spiderfier tracks.
+  const spiderfierRef = useRef<SpiderfierControllerRef>(null);
+  const markerByKey = useRef<Map<string, LeafletMarker>>(new Map());
+  const refHandlers = useRef<Map<string, (m: LeafletMarker | null) => void>>(new Map());
+  const getMarkerRef = (key: string) => {
+    let h = refHandlers.current.get(key);
+    if (!h) {
+      h = (m: LeafletMarker | null) => {
+        const prev = markerByKey.current.get(key);
+        if (m) {
+          markerByKey.current.set(key, m);
+          spiderfierRef.current?.addMarker(m, key);
+        } else {
+          if (prev) spiderfierRef.current?.removeMarker(prev);
+          markerByKey.current.delete(key);
+          refHandlers.current.delete(key);
+        }
+      };
+      refHandlers.current.set(key, h);
+    }
+    return h;
+  };
 
   // Tile selector + legend overlays — hidden by default, toggled from the Map
   // Features panel. Persisted under the same localStorage keys the NodesTab map
@@ -362,6 +390,8 @@ export default function DashboardMap({
           maxZoom={tileset.maxZoom}
         />
 
+        <SpiderfierController ref={spiderfierRef} />
+
         <MapBoundsUpdater positions={nodePositions} sourceId={sourceId} />
 
         {showLegend && <MapLegend />}
@@ -383,10 +413,18 @@ export default function DashboardMap({
             showLabel: true,
             pinStyle: mapPinStyle,
           });
+          // Stable spiderfier key — prefer the cross-source identity, fall back to
+          // nodeId so MeshCore (no nodeNum) and unmerged rows still register.
+          const markerKey = String(
+            node.sourceId != null && node.nodeNum != null
+              ? `${node.sourceId}:${node.nodeNum}`
+              : nodeId ?? node.nodeNum,
+          );
 
           return (
             <Marker
               key={nodeId}
+              ref={getMarkerRef(markerKey)}
               position={[pos.lat, pos.lng]}
               icon={icon}
             >

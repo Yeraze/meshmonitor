@@ -8,6 +8,40 @@ import { useMap } from 'react-leaflet';
 import { Marker as LeafletMarker } from 'leaflet';
 import { OverlappingMarkerSpiderfier, type SpiderfierEventMap, type SpiderfierEventHandler } from 'ts-overlapping-marker-spiderfier-leaflet';
 
+/**
+ * Shared spiderfier tuning used by every map surface (per-source NodesTab map,
+ * Map Analysis, and the Unified/Dashboard map) so overlapping markers fan out
+ * identically everywhere (issue #3612).
+ *
+ * These values come from the per-source NodesTab map (`SpiderfierController`),
+ * which is the working reference. A 50px `nearbyDistance` is deliberately
+ * larger than the library default (20px) so that co-located nodes — including
+ * estimated-position nodes that collapse onto the same anchor point — are
+ * reliably grouped and separable.
+ */
+export const SHARED_SPIDERFIER_OPTIONS: SpiderfierOptions = {
+  /** Keep markers fanned out after clicking so each is individually selectable. */
+  keepSpiderfied: true,
+  /** Pixel radius for detecting overlapping markers — 50px catches markers at (near-)identical coords. */
+  nearbyDistance: 50,
+  /** Number of markers before switching from circle to spiral layout. */
+  circleSpiralSwitchover: 9,
+  /** Distance between markers in circle layout (pixels). */
+  circleFootSeparation: 50,
+  /** Distance between markers in spiral layout (pixels). */
+  spiralFootSeparation: 50,
+  /** Starting radius for spiral layout (pixels). */
+  spiralLengthStart: 20,
+  /** How quickly the spiral grows — higher = faster growth and more spacing. */
+  spiralLengthFactor: 8,
+  /** Line thickness for spider legs. */
+  legWeight: 2,
+  legColors: {
+    usual: 'rgba(100, 100, 100, 0.6)', // Semi-transparent gray
+    highlighted: 'rgba(50, 50, 50, 0.8)', // Darker when hovering
+  },
+};
+
 export interface SpiderfierOptions {
   /**
    * Keep markers spiderfied after clicking (default: false)

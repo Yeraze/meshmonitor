@@ -88,6 +88,14 @@ vi.mock('./DashboardWaypoints', () => ({
   default: () => <div data-testid="dashboard-waypoints" />,
 }));
 
+// SpiderfierController drives the real Leaflet OverlappingMarkerSpiderfier, which
+// needs a live map instance. In these DOM-light tests the map is mocked, so stub
+// the controller to a no-op that still renders (#3612). The marker-ref bridge
+// only invokes spiderfierRef methods, so a null ref is harmless here.
+vi.mock('../SpiderfierController', () => ({
+  SpiderfierController: () => <div data-testid="spiderfier-controller" />,
+}));
+
 // ---------------------------------------------------------------------------
 // Test data
 // ---------------------------------------------------------------------------
@@ -190,6 +198,11 @@ describe('DashboardMap', () => {
     render(<DashboardMap {...defaultProps} />);
     expect(screen.getByTestId('map-container')).toBeInTheDocument();
     expect(screen.getByTestId('tile-layer')).toBeInTheDocument();
+  });
+
+  it('mounts the shared SpiderfierController so co-located markers fan out (#3612)', () => {
+    render(<DashboardMap {...defaultProps} nodes={[nodeWithPosition]} />);
+    expect(screen.getByTestId('spiderfier-controller')).toBeInTheDocument();
   });
 
   it('renders markers for nodes with valid positions', () => {

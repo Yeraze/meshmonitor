@@ -8,7 +8,7 @@ import {
 import { useHopCounts } from '../../../hooks/useMapAnalysisData';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
-import { useMarkerSpiderfier } from '../../../hooks/useMarkerSpiderfier';
+import { useMarkerSpiderfier, SHARED_SPIDERFIER_OPTIONS } from '../../../hooks/useMarkerSpiderfier';
 import { resolveNodeLatLng, type MaybePositionedNode } from '../nodePositionUtil';
 import { nodeMatchesSearch } from '../nodeSearch';
 import { createNodeIcon } from '../../../utils/mapIcons';
@@ -48,9 +48,12 @@ export default function NodeMarkersLayer() {
   const { mapPinStyle } = useSettings();
 
   // Spiderfier fans out markers that share (rounded) coordinates so each node in
-  // a cluster is individually selectable (issue #3399). Same bridge pattern as
-  // NodesTab: stable per-key ref handlers feed the imperative Leaflet markers in.
-  const { addMarker, removeMarker } = useMarkerSpiderfier({ keepSpiderfied: true });
+  // a cluster is individually selectable (issues #3399, #3612). Same bridge
+  // pattern as NodesTab: stable per-key ref handlers feed the imperative Leaflet
+  // markers in. Uses the SHARED tuning (50px nearbyDistance etc.) so every map
+  // surface fans out identically — the prior default 20px radius missed
+  // near-but-not-identical co-located nodes.
+  const { addMarker, removeMarker } = useMarkerSpiderfier(SHARED_SPIDERFIER_OPTIONS);
   const markerByKey = useRef<Map<string, LeafletMarker>>(new Map());
   const refHandlers = useRef<Map<string, (m: LeafletMarker | null) => void>>(new Map());
   const getMarkerRef = (key: string) => {
