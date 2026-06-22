@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   deriveHashtagSecretHex,
   formatMeshCoreChannelName,
   isHashtagChannelName,
+  sha256PureJS,
 } from './meshcoreHelpers';
 
 describe('isHashtagChannelName', () => {
@@ -54,5 +55,41 @@ describe('deriveHashtagSecretHex', () => {
   it('returns a 32-char (16-byte) lowercase hex string', async () => {
     const hex = await deriveHashtagSecretHex('#general');
     expect(hex).toMatch(/^[0-9a-f]{32}$/);
+  });
+});
+
+// Regression: crypto.subtle is undefined in non-secure HTTP contexts (plain HTTP
+// over IP). The pure-JS fallback must produce the same key as crypto.subtle.
+// See issue #3606.
+describe('deriveHashtagSecretHex — pure-JS fallback (non-secure context)', () => {
+  it('sha256PureJS matches the authoritative #test vector', () => {
+    const encoded = new TextEncoder().encode('#test');
+    const result = sha256PureJS(encoded);
+    const hex = Array.from(result.slice(0, 16))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    expect(hex).toBe('9cd8fcf22a47333b591d96a2b848b73f');
+  });
+
+  it('sha256PureJS matches the authoritative #general vector', () => {
+    const encoded = new TextEncoder().encode('#general');
+    const result = sha256PureJS(encoded);
+    const hex = Array.from(result.slice(0, 16))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    // Verify against the known base64 from the component test: TEnz8kYp9e5K1bOWXbR5hQ==
+    // = 0x4c49f3f24629f5ee4ad5b3965db47985
+    expect(hex).toBe('4c49f3f24629f5ee4ad5b3965db47985');
+  });
+
+  it('deriveHashtagSecretHex falls back to pure-JS when crypto.subtle is unavailable', async () => {
+    const originalSubtle = crypto.subtle;
+    try {
+      // Simulate a non-secure context where crypto.subtle is undefined
+      Object.defineProperty(crypto, 'subtle', { value: undefined, configurable: true });
+      await expect(deriveHashtagSecretHex('#test')).resolves.toBe('9cd8fcf22a47333b591d96a2b848b73f');
+    } finally {
+      Object.defineProperty(crypto, 'subtle', { value: originalSubtle, configurable: true });
+    }
   });
 });
