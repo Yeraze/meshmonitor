@@ -1,5 +1,5 @@
 # Build stage
-FROM node:24.15.0-alpine3.22 AS builder
+FROM node:26.3.0-alpine3.22 AS builder
 
 WORKDIR /app
 
@@ -47,7 +47,7 @@ RUN --mount=type=cache,target=/app/node_modules/.vite \
 RUN npm run build:server
 
 # Production stage
-FROM node:24.15.0-alpine3.22
+FROM node:26.3.0-alpine3.22
 
 WORKDIR /app
 
