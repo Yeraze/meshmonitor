@@ -11,7 +11,7 @@ import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, createArrowIcon } from '../utils/mapHelpers.tsx';
 import { convertSpeed } from '../utils/speedConversion';
-import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId } from '../utils/nodeHelpers';
+import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, resolveMapEndpoint } from '../utils/nodeHelpers';
 import MapLegend from './MapLegend';
 import { formatTime, formatDateTime } from '../utils/datetime';
 import { getDistanceToNode, calculateDistance, formatDistance } from '../utils/distance';
@@ -2441,10 +2441,19 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
               {/* Draw neighbor info connections */}
               {showNeighborInfo && neighborInfo.length > 0 && neighborInfo.map((ni, idx) => {
-                // Skip if either node doesn't have position
-                if (!ni.nodeLatitude || !ni.nodeLongitude || !ni.neighborLatitude || !ni.neighborLongitude) {
+                // Anchor each endpoint to where the node's MARKER is rendered
+                // (merged / override-aware position, keyed by nodeNum) so the
+                // line connects to the visible marker rather than the
+                // source-specific reported coords (#3642). Falls back to the
+                // record's embedded coords when the node isn't on the map.
+                const nodeEndpoint = resolveMapEndpoint(nodePositions, ni.nodeNum, ni.nodeLatitude, ni.nodeLongitude);
+                const neighborEndpoint = resolveMapEndpoint(nodePositions, ni.neighborNodeNum, ni.neighborLatitude, ni.neighborLongitude);
+                // Skip if either endpoint has no resolvable position
+                if (!nodeEndpoint || !neighborEndpoint) {
                   return null;
                 }
+                const [nodeLat, nodeLng] = nodeEndpoint;
+                const [neighborLat, neighborLng] = neighborEndpoint;
 
                 // Filter out segments where either endpoint is not visible (Issue #1149)
                 if (visibleNodeNums && (!visibleNodeNums.has(ni.nodeNum) || !visibleNodeNums.has(ni.neighborNodeNum))) {
@@ -2457,8 +2466,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 }
 
                 const positions: [number, number][] = [
-                  [ni.nodeLatitude, ni.nodeLongitude],
-                  [ni.neighborLatitude, ni.neighborLongitude]
+                  [nodeLat, nodeLng],
+                  [neighborLat, neighborLng]
                 ];
 
                 // Zoom-adaptive: hide neighbor lines at low zoom
@@ -2476,7 +2485,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 } else { lineWeight = 2; lineOpacity = 0.3; }
 
                 // Calculate distance between nodes (coordinates guaranteed non-null by early return above)
-                const distKm = calculateDistance(ni.nodeLatitude!, ni.nodeLongitude!, ni.neighborLatitude!, ni.neighborLongitude!);
+                const distKm = calculateDistance(nodeLat, nodeLng, neighborLat, neighborLng);
                 const distStr = formatDistance(distKm, distanceUnit);
 
                 // Normalize timestamp: old data may be in seconds, new data in milliseconds
@@ -2494,11 +2503,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 // Calculate bearing for unidirectional arrow (degrees from north)
                 // Arrow points FROM neighbor TO node (neighbor→node = "I heard this neighbor")
                 // Scale longitude difference by cos(lat) to correct for latitude
-                const latMid = (ni.nodeLatitude! + ni.neighborLatitude!) / 2;
+                const latMid = (nodeLat + neighborLat) / 2;
                 const bearing = !isBidirectional
                   ? Math.atan2(
-                      (ni.nodeLongitude! - ni.neighborLongitude!) * Math.cos(latMid * Math.PI / 180),
-                      ni.nodeLatitude! - ni.neighborLatitude!
+                      (nodeLng - neighborLng) * Math.cos(latMid * Math.PI / 180),
+                      nodeLat - neighborLat
                     ) * (180 / Math.PI)
                   : 0;
 
@@ -2542,14 +2551,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       </Popup>
                     </Polyline>
                     {/* Direction arrows along unidirectional lines at 25%, 50%, 75% for visibility at any zoom */}
-                    {!isBidirectional && ni.nodeLatitude && ni.neighborLatitude && (
+                    {!isBidirectional && (
                       <>
                         {[0.25, 0.5, 0.75].map(fraction => (
                           <Marker
                             key={`arrow-${fraction}`}
                             position={[
-                              ni.neighborLatitude! + (ni.nodeLatitude! - ni.neighborLatitude!) * fraction,
-                              ni.neighborLongitude! + (ni.nodeLongitude! - ni.neighborLongitude!) * fraction
+                              neighborLat + (nodeLat - neighborLat) * fraction,
+                              neighborLng + (nodeLng - neighborLng) * fraction
                             ]}
                             icon={createArrowIcon(bearing, overlayColors.neighborLine)}
                             interactive={false}

@@ -1,7 +1,28 @@
 import { describe, it, expect } from 'vitest';
-import { getEffectivePosition, getRoleName, getHardwareModelName, getNodeName, getNodeShortName, hasValidEffectivePosition, isNodeComplete } from './nodeHelpers';
+import { getEffectivePosition, getRoleName, getHardwareModelName, getNodeName, getNodeShortName, hasValidEffectivePosition, isNodeComplete, resolveMapEndpoint } from './nodeHelpers';
 import { ROLE_NAMES, HARDWARE_MODELS } from '../constants/index.js';
 import type { DeviceInfo } from '../types/device';
+
+describe('resolveMapEndpoint (#3642)', () => {
+  it('prefers the rendered marker position over the record-embedded coords', () => {
+    // Marker is rendered at the merged position (37.0); the neighbor record
+    // carries a divergent source-specific position (36.9). The line endpoint
+    // must follow the marker.
+    const markers = new Map<number, [number, number]>([[0x11223344, [37.0, -122.0]]]);
+    expect(resolveMapEndpoint(markers, 0x11223344, 36.9, -121.9)).toEqual([37.0, -122.0]);
+  });
+
+  it('falls back to embedded coords when the node is not on the map', () => {
+    const markers = new Map<number, [number, number]>();
+    expect(resolveMapEndpoint(markers, 0xAABBCCDD, 40.5, -74.0)).toEqual([40.5, -74.0]);
+  });
+
+  it('returns null when neither a marker nor embedded coords are available', () => {
+    const markers = new Map<number, [number, number]>();
+    expect(resolveMapEndpoint(markers, 1, null, null)).toBeNull();
+    expect(resolveMapEndpoint(markers, 1, 40.5, undefined)).toBeNull();
+  });
+});
 
 describe('Node Helpers', () => {
   describe('getRoleName', () => {

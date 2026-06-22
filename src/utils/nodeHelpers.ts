@@ -106,6 +106,31 @@ export const hasValidEffectivePosition = (node: DeviceInfo): boolean => {
   return pos.latitude != null && pos.longitude != null;
 };
 
+/**
+ * Resolve a map-overlay line endpoint (e.g. a neighbor-info link) to the
+ * position the node's MARKER is actually rendered at.
+ *
+ * On the Unified (multi-source) map a node's marker uses the merged /
+ * override-aware position (keyed by nodeNum in the rendered position map), but
+ * neighbor-info records carry the source-specific reported coordinates. Drawing
+ * a line from those embedded coords makes it float away from the marker when the
+ * two differ (#3642). Prefer the rendered marker position; fall back to the
+ * record's embedded coords only when the node isn't currently on the map.
+ *
+ * Returns `null` when no position can be resolved (caller should skip the line).
+ */
+export const resolveMapEndpoint = (
+  markerPositions: Map<number, [number, number]>,
+  nodeNum: number,
+  embeddedLat: number | null | undefined,
+  embeddedLng: number | null | undefined,
+): [number, number] | null => {
+  const marker = markerPositions.get(nodeNum);
+  if (marker) return marker;
+  if (embeddedLat != null && embeddedLng != null) return [embeddedLat, embeddedLng];
+  return null;
+};
+
 export const getRoleName = (role: number | string | undefined): string | null => {
   if (role === undefined || role === null) return null;
   const roleNum = typeof role === 'string' ? parseInt(role) : role;
