@@ -29,6 +29,10 @@ observations, plus an **uncertainty radius** (in km):
 - A node seen from **multiple converging anchors** gets a much smaller radius
   (weighted RMS distance ÷ √effective-sample-size).
 
+For the full math behind the accuracy circle — the SNR/time weighting, the
+weighted centroid, the effective-sample-size confidence blend, and worked
+examples — see **[Estimated Accuracy](/features/estimated-accuracy)**.
+
 Estimates are written to a global table — one row per physical node — so every
 source shows the same estimate. A node that later reports a real position is
 dropped from the estimate set automatically.
@@ -80,6 +84,7 @@ The estimator's status and controls map to the global `settings` resource:
 
 ## Related
 
+- [Estimated Accuracy](/features/estimated-accuracy) — the accuracy-circle algorithm in depth
 - [Global Settings](/features/global-settings)
 - [Interactive Maps](/features/maps)
 - [Multi-Source](/features/multi-source)
