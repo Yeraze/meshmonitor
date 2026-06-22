@@ -582,6 +582,9 @@ async function ingestTraceroute(
     snrTowards: JSON.stringify(snrTowards),
     snrBack: JSON.stringify(snrBack),
     routePositions: JSON.stringify(routePositions),
+    // Originating packet id enables correlating this trace with the same packet
+    // heard on another source (e.g. a direct TCP listener) — issue #3623.
+    packetId: typeof packet.id === 'number' ? packet.id >>> 0 : null,
     timestamp: nowMs,
     createdAt: nowMs,
   };

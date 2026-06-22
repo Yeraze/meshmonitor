@@ -193,6 +193,7 @@ export interface DbTraceroute {
   snrBack: string | null;
   routePositions?: string | null;
   channel?: number | null;
+  packetId?: number | null;
   timestamp: number;
   createdAt: number;
 }
