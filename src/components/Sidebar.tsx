@@ -275,6 +275,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           {!mqttReadOnly && hasPermission('automation', 'read') && (
             <NavItem id="automation" label={t('nav.automation')} icon={icon('automation')} />
           )}
+          {!mqttReadOnly && hasPermission('automations', 'read') && (
+            <NavItem id="automations" label={t('nav.automations', 'Automation Engine')} icon={icon('automation')} />
+          )}
           {!mqttReadOnly && hasPermission('configuration', 'read') && (
             <NavItem id="configuration" label={t('nav.device')} icon={icon('configuration')} />
           )}

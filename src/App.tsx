@@ -21,6 +21,7 @@ import NodesTab from './components/NodesTab';
 import MessagesTab from './components/MessagesTab';
 import ChannelsTab from './components/ChannelsTab';
 import PacketMonitorPanel from './components/PacketMonitorPanel';
+import AutomationsPage from './components/automations/AutomationsPage';
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection';
 import AutoTracerouteSection from './components/AutoTracerouteSection';
 import AutoLocalStatsSection from './components/AutoLocalStatsSection';
@@ -669,6 +670,7 @@ const location = useLocation();
       audit: () => hasPermission('audit', 'read'),
       security: () => hasPermission('security', 'read'),
       packetmonitor: () => packetLogEnabled && hasPermission('packetmonitor', 'read'),
+      automations: () => !isMqttBridge && hasPermission('automations', 'read'),
     };
 
     // Check if current tab requires permission. `activeTab` is user-controllable
@@ -5309,6 +5311,11 @@ const location = useLocation();
             <div style={{ height: 'calc(100dvh - var(--header-height, 60px) - 4rem)', overflow: 'hidden' }}>
               <PacketMonitorPanel onClose={() => setActiveTab('nodes')} />
             </div>
+          </ErrorBoundary>
+        )}
+        {activeTab === 'automations' && (
+          <ErrorBoundary fallbackTitle="Automation Engine failed to load">
+            <AutomationsPage />
           </ErrorBoundary>
         )}
       </main>
