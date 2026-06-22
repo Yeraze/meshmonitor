@@ -15,15 +15,18 @@ If arguments contain descriptive text, use it as context for the PR description.
 
 ### 1a. Run Unit Tests
 ```bash
-npx vitest run
+npx vitest run --reporter=json --outputFile=/tmp/vitest.json >/dev/null 2>&1
+python3 -c "import json; d=json.load(open('/tmp/vitest.json')); print('success:', d['success'], 'passed:', d['numPassedTests'], 'failed:', d['numFailedTests'], 'suitesFailed:', d['numFailedTestSuites'])"
 ```
-All tests MUST pass. If any fail, fix them before proceeding. Do NOT create a PR with failing tests.
+All tests MUST pass. **Confirm `success: true`** — do NOT trust the rtk `PASS (N) FAIL (0)` summary line, which counts only assertion failures and lets suite-level (collection/import) failures slip through. Do NOT create a PR with failing tests.
+
+> In a fresh worktree, run `git submodule update --init` first — otherwise a few protobuf-dependent tests fail with "encode failed".
 
 ### 1b. TypeScript Check
 ```bash
-npx tsc --noEmit
+npx tsc -p tsconfig.server.json --noEmit
 ```
-Must compile cleanly. Fix any errors.
+Server code must compile cleanly. **Note:** the base `npx tsc --noEmit` reports ~57–60 **pre-existing** frontend errors (TelemetryChart.tsx, etc.) on clean `origin/main` — those are NOT yours; **only NEW errors you introduced matter**. Don't try to "fix" the pre-existing noise.
 
 ### 1c. Check for uncommitted changes
 ```bash
@@ -55,9 +58,9 @@ Ensure:
 - Branch has a descriptive name (fix/, feature/, docs/)
 - All commits are meaningful
 
-Push the branch:
+Push the branch using an **explicit branch ref** (this checkout may be shared with concurrent sessions, and worktree upstream tracking can be misconfigured — never rely on the currently-checked-out branch staying put):
 ```bash
-git push -u origin $(git branch --show-current)
+git push -u origin <branch-name>
 ```
 
 ## Step 4: Create the Pull Request
@@ -97,21 +100,18 @@ EOF
 
 ## Step 5: Monitor CI Feedback
 
-After creating or pushing the PR, wait 5 minutes for CI to run:
+Don't hand-poll the GitHub API. Delegate the wait to the same watcher `/ci-monitor` uses — it blocks until the picture is decided and emits one terminal line plus an exit code (`0`=green, `1`=failure, `2`=usage/API error):
 
 ```bash
-sleep 300
+bash scripts/watch-ci.sh -q <PR_NUMBER>; echo "EXIT=$?"
 ```
 
-Then check CI results:
-```bash
-gh pr view <PR_NUMBER> --json statusCheckRollup --jq '[.statusCheckRollup[] | {name: .name, status: .status, conclusion: .conclusion}]'
-```
+Run it in the background with an explicit long timeout (full CI exceeds the 2-min default), and read the output file's final `EXIT=` line — don't trust the task exit code, the backgrounded watcher occasionally loses network and dies with EXIT=2.
 
-Also check for review comments:
+On exit `1`, hand off to **`/ci-monitor <PR_NUMBER>`** rather than re-implementing diagnosis here. Once green, gather review feedback (bot + humans):
 ```bash
-gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/reviews
-gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments
+gh pr view <PR_NUMBER> --json reviews -q '.reviews[] | "\(.author.login) [\(.state)]: \(.body)"'
+gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments -q '.[] | "\(.user.login) \(.path):\(.line) — \(.body)"'
 ```
 
 ### Handling CI Findings

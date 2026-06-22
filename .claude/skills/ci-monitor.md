@@ -72,7 +72,12 @@ Apply a **minimal targeted fix** — touch ONLY the files related to the failure
 
 After fixing:
 - Run the failing test file locally first: `node_modules/.bin/vitest run <failing_test_file>`
-- If green, run the relevant suite: `npm test 2>&1 | tail -5`
+- If green, run the full suite. **Do NOT trust the `PASS (N) FAIL (0)` summary line** — the rtk wrapper counts only assertion failures, so suite-level (collection/import) failures slip through. Confirm `success: true` via the JSON reporter:
+  ```bash
+  npx vitest run --reporter=json --outputFile=/tmp/vitest.json >/dev/null 2>&1
+  python3 -c "import json; d=json.load(open('/tmp/vitest.json')); print('success:', d['success'], 'passed:', d['numPassedTests'], 'failed:', d['numFailedTests'], 'suitesFailed:', d['numFailedTestSuites'])"
+  ```
+- **TypeScript check:** use `npx tsc -p tsconfig.server.json --noEmit` for server code. The base `npx tsc --noEmit` reports ~57–60 **pre-existing** frontend errors (TelemetryChart.tsx, etc.) on clean `origin/main` — ignore those; **only NEW errors you introduced matter**. Do not waste cycles "fixing" the pre-existing noise.
 - Commit and push: `git add -A && git commit -m "fix: <describe>" && git push`
 
 ### Phase 4: Re-monitor

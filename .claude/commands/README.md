@@ -58,12 +58,57 @@ Runs the complete PR workflow: unit tests, TypeScript check, documentation revie
 ```
 
 **What it does:**
-1. Runs unit tests and TypeScript check
+1. Runs unit tests (via the JSON reporter — `success: true`, not the rtk summary) and the server TypeScript check
 2. Reviews internal and website documentation for accuracy
-3. Creates branch and pushes if needed
+3. Creates branch and pushes (explicit branch ref) if needed
 4. Creates PR with detailed description (intent, changes, issues, testing steps)
-5. Waits 5 minutes for CI, then reviews feedback
+5. Watches CI via `scripts/watch-ci.sh`, then reviews feedback (hands off to `/ci-monitor` on failure)
 6. Fixes urgent findings automatically, prompts for non-urgent ones
+
+---
+
+### /deploy
+**Build and deploy the dev container from local code, then verify**
+
+The "build and deploy for testing" / "rebuild and redeploy" / "tear it down" loop, with the data-loss guardrails (never `down -v`), the mandatory USB override, and the access details baked in.
+
+**Usage:**
+```bash
+/deploy                # redeploy (build + up -d), preserves data
+/deploy fresh          # build --no-cache + up -d
+/deploy tear down      # docker compose down (no -v)
+```
+
+**What it does:**
+1. Pre-flight (no competing `npm run dev`; copy the gitignored USB override into worktrees)
+2. `build` + `up -d` with both `-f docker-compose.dev.yml -f docker-compose.dev.local.yml`
+3. Verifies the *right* commit is actually running (not a stale cached layer)
+4. Reports access URL (`http://localhost:8081/meshmonitor`), login `admin/changeme`
+
+---
+
+### /merge
+**Merge a green/approved PR and clean up afterward**
+
+The full "Merge it" sequence: pre-merge gate → squash-merge → fast-forward local `main` (stashing `.claude/agent-memory/` first) → worktree/branch cleanup. Safe under concurrent shared-checkout sessions.
+
+**Usage:**
+```bash
+/merge 3621
+/merge            # resolves the PR from the current branch
+```
+
+---
+
+### /migration
+**Scaffold a migration across all three backends**
+
+Creates `NNN_<name>.ts` (SQLite + PostgreSQL + MySQL, idempotent), registers it in `src/db/migrations.ts`, and updates the count/last-name assertions in `migrations.test.ts`. Determines the next number dynamically.
+
+**Usage:**
+```bash
+/migration add isPinned to messages
+```
 
 ---
 
