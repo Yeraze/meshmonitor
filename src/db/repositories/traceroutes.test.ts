@@ -36,6 +36,7 @@ const POSTGRES_CREATE = `
     "snrBack" TEXT,
     "routePositions" TEXT,
     channel INTEGER,
+    "packetId" BIGINT,
     timestamp BIGINT NOT NULL,
     "createdAt" BIGINT NOT NULL,
     "sourceId" TEXT
@@ -74,6 +75,7 @@ const MYSQL_CREATE = `
     snrBack TEXT,
     routePositions TEXT,
     channel INT,
+    packetId BIGINT,
     timestamp BIGINT NOT NULL,
     createdAt BIGINT NOT NULL,
     sourceId VARCHAR(36)
@@ -253,6 +255,53 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
     expect(all[0].snrTowards).toBe('10.5,8.2');
     expect(all[0].snrBack).toBe('9.1,7.3');
     expect(Number(all[0].timestamp)).toBe(updatedTs);
+  });
+
+  it('packetId (#3623) - persists on insert and is returned', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const now = Date.now();
+    // Unsigned 32-bit packet id near the top of the range — would overflow a
+    // signed 32-bit INTEGER, which is why PG/MySQL store it as BIGINT.
+    const packetId = 4_000_000_001;
+    await repo.insertTraceroute(makeTraceroute({ timestamp: now, createdAt: now, packetId }));
+
+    const all = await repo.getAllTraceroutes();
+    expect(all.length).toBe(1);
+    expect(Number(all[0].packetId)).toBe(packetId);
+  });
+
+  it('packetId (#3623) - populated when a pending traceroute gets its response', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const now = Date.now();
+    // Pending row inserted with no packetId (route null).
+    await repo.insertTraceroute(makeTraceroute({ timestamp: now, createdAt: now }));
+    const pending = await repo.findPendingTraceroute(1001, 2002, now - 60000);
+    expect(pending).not.toBeNull();
+
+    const packetId = 3_500_000_123;
+    await repo.updateTracerouteResponse(
+      pending!.id,
+      '1001,3003,2002',
+      '2002,3003,1001',
+      '10.5,8.2',
+      '9.1,7.3',
+      now + 5000,
+      packetId,
+    );
+
+    const all = await repo.getAllTraceroutes();
+    expect(all.length).toBe(1);
+    expect(Number(all[0].packetId)).toBe(packetId);
   });
 
   it('getTraceroutesByNodes - filter by from/to (bidirectional)', async () => {

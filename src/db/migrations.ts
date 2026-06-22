@@ -111,6 +111,7 @@ import { migration as autoackMatrixMigration, runMigration093Postgres as runAuto
 import { migration as meshcoreNodeFavoriteMigration, runMigration094Postgres as runMeshcoreNodeFavoritePostgres, runMigration094Mysql as runMeshcoreNodeFavoriteMysql } from '../server/migrations/094_add_meshcore_node_favorite.js';
 import { migration as deadDropMigration, runMigration095Postgres as runDeadDropPostgres, runMigration095Mysql as runDeadDropMysql } from '../server/migrations/095_create_dead_drop.js';
 import { migration as meshcoreNeighborTimestampBigintMigration, runMigration096Postgres as runMeshcoreNeighborTimestampBigintPostgres, runMigration096Mysql as runMeshcoreNeighborTimestampBigintMysql } from '../server/migrations/096_meshcore_neighbor_timestamp_bigint.js';
+import { migration as traceroutePacketIdMigration, runMigration097Postgres as runTraceroutePacketIdPostgres, runMigration097Mysql as runTraceroutePacketIdMysql } from '../server/migrations/097_add_packet_id_to_traceroutes.js';
 
 // ============================================================================
 // Registry
@@ -1533,4 +1534,20 @@ registry.register({
   sqlite: (db) => meshcoreNeighborTimestampBigintMigration.up(db),
   postgres: (client) => runMeshcoreNeighborTimestampBigintPostgres(client),
   mysql: (pool) => runMeshcoreNeighborTimestampBigintMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 097: add traceroutes.packetId (#3623). Records the originating
+// Meshtastic packet id so traces can be correlated across sources and grouped
+// per-packet. BIGINT on PG/MySQL (packet ids are unsigned 32-bit); SQLite
+// INTEGER is already 64-bit.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 97,
+  name: 'add_packet_id_to_traceroutes',
+  settingsKey: 'migration_097_add_packet_id_to_traceroutes',
+  sqlite: (db) => traceroutePacketIdMigration.up(db),
+  postgres: (client) => runTraceroutePacketIdPostgres(client),
+  mysql: (pool) => runTraceroutePacketIdMysql(pool),
 });
