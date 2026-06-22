@@ -444,6 +444,14 @@
   cursor: default;
 }
 
+/* Read-only favorite star shown next to pinned peers in the DM list (#3620) */
+.mc-dm-row-favorite {
+  flex: 0 0 auto;
+  margin-right: 0.35rem;
+  color: var(--ctp-yellow);
+  line-height: 1;
+}
+
 /* Discover dropdown in the nodes list header (#3351) */
 .mc-discover-menu-anchor {
   position: relative;

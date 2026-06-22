@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  MeshCoreMessage, MeshCoreActions, ConnectionStatus,
+  MeshCoreMessage, MeshCoreActions, ConnectionStatus, MeshCoreNode,
 } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
@@ -13,6 +13,14 @@ import { useAuth } from '../../contexts/AuthContext';
 interface MeshCoreDirectMessagesViewProps {
   messages: MeshCoreMessage[];
   contacts: MeshCoreContact[];
+  /**
+   * Full node list for this source. Contacts carry no favorite flag (it lives
+   * server-side, issue #3588), so the favorite status — used to pin favorited
+   * peers to the top of the DM list (issue #3620) — is sourced from here, keyed
+   * by publicKey. Optional — when omitted (e.g. legacy callers/tests) no peer
+   * is pinned and the list sorts purely by the chosen field.
+   */
+  nodes?: MeshCoreNode[];
   status: ConnectionStatus | null;
   actions: MeshCoreActions;
   /** Frontend basename — required for the per-node telemetry-config panel. */
@@ -42,6 +50,7 @@ const isMobileViewport = (): boolean =>
 export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProps> = ({
   messages,
   contacts,
+  nodes = [],
   status,
   actions,
   baseUrl,
@@ -93,6 +102,18 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     }
     return map;
   }, [contacts]);
+
+  // Favorite status lives server-side on the node list (issue #3588), not on
+  // contacts. Build a publicKey -> isFavorite lookup so favorited peers can be
+  // pinned to the top of the DM list (issue #3620), mirroring the Meshtastic
+  // DM list and the MeshCore node list.
+  const favoriteByKey = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const n of nodes) {
+      if (n.publicKey && n.isFavorite) map.set(n.publicKey, true);
+    }
+    return map;
+  }, [nodes]);
 
   // Inbound `contact_message` arrives with only `pubkey_prefix` (typically
   // 12 hex chars), while contacts and outbound messages use the full pubkey.
@@ -171,6 +192,11 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     };
     const dir = sortDirection === 'asc' ? 1 : -1;
     return Array.from(peers).sort((a, b) => {
+      // Favorites pin to the top regardless of sort field/direction, matching
+      // the Meshtastic DM list and the MeshCore node list (issue #3620).
+      const aFav = favoriteByKey.get(a) ?? false;
+      const bFav = favoriteByKey.get(b) ?? false;
+      if (aFav !== bFav) return aFav ? -1 : 1;
       if (sortField === 'name') {
         return peerNameFor(a).localeCompare(peerNameFor(b), undefined, { sensitivity: 'base' }) * dir;
       }
@@ -178,7 +204,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
       const bt = lastMessageAt.get(b) ?? 0;
       return (at - bt) * dir;
     });
-  }, [messages, contacts, selfKey, canonicalize, contactsByKey, sortField, sortDirection]);
+  }, [messages, contacts, selfKey, canonicalize, contactsByKey, favoriteByKey, sortField, sortDirection]);
 
   const filteredPeers = useMemo(() => {
     if (!searchQuery.trim()) return dmPeers;
@@ -295,6 +321,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
             ) : filteredPeers.map(key => {
               const c = contactsByKey.get(key);
               const name = c?.advName || c?.name || `${key.substring(0, 8)}…`;
+              const isFavorite = favoriteByKey.get(key) ?? false;
               return (
                 <button
                   key={key}
@@ -302,6 +329,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   onClick={() => handleSelectContact(key)}
                 >
                   <div className="mc-node-row-name">
+                    {isFavorite && (
+                      <span className="mc-dm-row-favorite" aria-label={t('meshcore.favorite.is_favorite', 'Favorite')} title={t('meshcore.favorite.is_favorite', 'Favorite')}>★</span>
+                    )}
                     <span>{name}</span>
                   </div>
                   <div className="mc-node-row-key">{key.substring(0, 20)}…</div>

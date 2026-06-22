@@ -144,6 +144,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             <MeshCoreDirectMessagesView
               messages={messages}
               contacts={contacts}
+              nodes={nodes}
               status={status}
               actions={actions}
               baseUrl={baseUrl}

@@ -43,7 +43,7 @@ vi.mock('../TelemetryGraphs', () => ({
 }));
 
 import { MeshCoreDirectMessagesView } from './MeshCoreDirectMessagesView';
-import type { MeshCoreActions, ConnectionStatus, MeshCoreMessage } from './hooks/useMeshCore';
+import type { MeshCoreActions, ConnectionStatus, MeshCoreMessage, MeshCoreNode } from './hooks/useMeshCore';
 import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
 
 function makeActions(overrides: Partial<MeshCoreActions> = {}): MeshCoreActions {
@@ -252,6 +252,41 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
       .map((el) => el.querySelector('span')?.textContent || '');
     expect(names).toEqual(['alpha', 'Bravo', 'Charlie']);
+  });
+
+  // Issue #3620: favorited MeshCore nodes pin to the top of the DM contact
+  // list, consistent with the Meshtastic DM list and the MeshCore node list.
+  // The favorite flag lives server-side on the node list (issue #3588), not on
+  // contacts, so it's threaded in via the `nodes` prop.
+  it('pins favorited peers to the top of the DM list regardless of sort order', () => {
+    const contactsList: MeshCoreContact[] = [
+      { publicKey: REAL_PK, advName: 'Charlie', advType: 1, lastSeen: 3000 },
+      { publicKey: REAL_PK_2, advName: 'alpha', advType: 1, lastSeen: 2000 },
+      { publicKey: 'c'.repeat(64), advName: 'Bravo', advType: 1, lastSeen: 1000 },
+    ];
+    // Only 'Bravo' is favorited; it has the OLDEST lastSeen and would normally
+    // sort last under the default (lastMessage / desc) order.
+    const nodes: MeshCoreNode[] = [
+      { publicKey: REAL_PK, name: 'Charlie', advType: 1, isFavorite: false },
+      { publicKey: REAL_PK_2, name: 'alpha', advType: 1, isFavorite: false },
+      { publicKey: 'c'.repeat(64), name: 'Bravo', advType: 1, isFavorite: true },
+    ];
+
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={contactsList}
+        nodes={nodes}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+
+    const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
+      .map((el) => el.querySelector('span:not(.mc-dm-row-favorite)')?.textContent || '');
+    // Bravo (favorite) pinned first despite oldest lastSeen; ★ indicator shown.
+    expect(names[0]).toBe('Bravo');
+    expect(document.querySelector('.mc-node-row .mc-dm-row-favorite')?.textContent).toBe('★');
   });
 
   it('collapses the node list when the toggle button is clicked, and restores it on re-click', () => {
