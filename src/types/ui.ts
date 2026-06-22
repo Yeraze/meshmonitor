@@ -14,7 +14,6 @@ export type TabType =
   | 'themes'
   | 'admin'
   | 'packetmonitor'
-  | 'automations'
   | 'mqtt-config';
 
 export type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'hops';

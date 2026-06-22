@@ -814,6 +814,14 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         >
           {t('source.sidebar.reports', 'Analysis & Reports')}
         </button>
+        {hasPermission('automations', 'read') && (
+          <button
+            className="dashboard-sidebar-link dashboard-sidebar-link--active"
+            onClick={() => navigate('/automations')}
+          >
+            {t('source.sidebar.automations', '🤖 Automation Engine')}
+          </button>
+        )}
       </div>
 
       <div className="dashboard-sidebar-footer">

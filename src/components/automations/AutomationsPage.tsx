@@ -65,7 +65,8 @@ export default function AutomationsPage() {
   const [view, setView] = useState<'automations' | 'variables'>('automations');
 
   return (
-    <div style={{ padding: '1rem', maxWidth: 1000, margin: '0 auto', overflowY: 'auto', height: '100%' }}>
+    <div style={{ padding: '1rem', maxWidth: 1000, margin: '0 auto', overflowY: 'auto', height: '100dvh' }}>
+      <button style={{ ...btn, marginBottom: '0.75rem' }} onClick={() => { window.location.href = import.meta.env.BASE_URL || '/'; }}>← Dashboard</button>
       <h1 style={{ marginTop: 0 }}>Automation Engine</h1>
       <p style={{ opacity: 0.7, marginTop: '-0.5rem' }}>
         Advanced Mode (beta) — define global trigger → condition → action workflows.
