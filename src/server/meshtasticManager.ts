@@ -1742,6 +1742,35 @@ class MeshtasticManager implements ISourceManager {
     }
   }
 
+  /**
+   * Persist (or clear) the per-source modem preset used as the slot-0
+   * display-name fallback (`lora.preset.<sourceId>` → `computeChannelDisplayName`
+   * / `unifiedChannelDisplayName`).
+   *
+   * Only persist when the node is ACTUALLY running on a preset
+   * (`usePreset === true`). With a custom LoRa config (`usePreset === false`) the
+   * `modemPreset` field is meaningless and sits at its proto3 default of 0
+   * (= LONG_FAST), so persisting it would mislabel a blank-named primary channel
+   * as "LongFast" even though the node isn't using that preset (#3644). In that
+   * case delete any stale preset so slot 0 falls back to "Primary".
+   *
+   * `usePreset` is normalized to a real boolean by the proto3-defaults pass
+   * before this runs (proto3 elides `false`).
+   */
+  private async persistModemPreset(lora: { usePreset?: boolean; modemPreset?: number } | undefined): Promise<void> {
+    if (!this.sourceId || !lora) return;
+    const presetKey = `lora.preset.${this.sourceId}`;
+    try {
+      if (lora.usePreset === true && typeof lora.modemPreset === 'number') {
+        await databaseService.settings.setSetting(presetKey, String(lora.modemPreset));
+      } else {
+        await databaseService.settings.deleteSetting(presetKey);
+      }
+    } catch (err) {
+      logger.debug(`Failed to persist ${presetKey}:`, err);
+    }
+  }
+
   private async ensureBasicSetup(): Promise<void> {
     logger.debug('🔧 Ensuring basic setup is complete...');
 
@@ -4025,21 +4054,10 @@ class MeshtasticManager implements ISourceManager {
               logger.info('📊 Set femLnaMode to 0 (DISABLED - was undefined, Proto3 default)');
             }
 
-            // Persist the modem preset per-source so the unified channels
-            // endpoint can use it as the display-name fallback for slot 0
-            // (which the firmware leaves blank when running on a preset).
-            // See `unifiedChannelDisplayName` in unifiedRoutes.ts.
-            if (this.sourceId && typeof parsed.data.lora.modemPreset === 'number') {
-              const presetKey = `lora.preset.${this.sourceId}`;
-              try {
-                await databaseService.settings.setSetting(
-                  presetKey,
-                  String(parsed.data.lora.modemPreset),
-                );
-              } catch (err) {
-                logger.debug(`Failed to persist ${presetKey}:`, err);
-              }
-            }
+            // Persist the per-source modem preset used as the slot-0
+            // display-name fallback — only when the node actually runs on a
+            // preset. See persistModemPreset (#3644).
+            await this.persistModemPreset(parsed.data.lora);
           }
 
           // Apply Proto3 defaults to device config
