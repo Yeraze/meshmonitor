@@ -919,7 +919,10 @@ const location = useLocation();
           setBaseUrl(configBaseUrl);
         } catch (error) {
           logger.error('Failed to load config:', error);
-          setNodeAddress('192.168.1.100');
+          // Don't assert a hardcoded fallback address (#3611) — that would show
+          // the wrong IP for a configured source. Leave it empty; the per-source
+          // address arrives with the next poll (status.nodeIp).
+          setNodeAddress('');
           // Keep initialBaseUrl detected from pathname — resetting to '' would break
           // API calls when BASE_URL is configured on the server.
           configBaseUrl = initialBaseUrl;
@@ -1194,7 +1197,9 @@ const location = useLocation();
         // Check connection status with the loaded baseUrl
         await checkConnectionStatus(configBaseUrl);
       } catch (_error) {
-        setNodeAddress('192.168.1.100');
+        // Avoid asserting a hardcoded fallback address (#3611); leave empty so a
+        // wrong IP never appears for a configured source.
+        setNodeAddress('');
         setError('Failed to load configuration');
       }
     };
@@ -2195,6 +2200,16 @@ const location = useLocation();
           return;
         }
 
+        // Keep the displayed/error address in sync with the per-source address
+        // the server resolved for THIS poll (status.nodeIp comes from the active
+        // manager's own getConfig().nodeIp). This makes reconnects always show
+        // the configured source's address instead of a stale value or the env
+        // default (#3611). Anonymous users don't receive nodeIp — leave the
+        // existing value untouched in that case.
+        if (typeof status.nodeIp === 'string' && status.nodeIp) {
+          setNodeAddress(status.nodeIp);
+        }
+
         logger.debug(
           `📡 Connection API response: connected=${status.connected}, nodeResponsive=${status.nodeResponsive}, configuring=${status.configuring}, userDisconnected=${status.userDisconnected}`
         );
@@ -2264,8 +2279,16 @@ const location = useLocation();
         } else {
           logger.debug('⚠️ Connection API returned connected=false');
           setConnectionStatus('disconnected');
+          // Prefer the address the server just resolved for this source; fall
+          // back to the stored nodeAddress. Never interpolate an unresolved
+          // value (empty string / 'Loading...') — omit the address phrase
+          // entirely if it isn't known yet (#3611).
+          const resolvedAddress =
+            (typeof status.nodeIp === 'string' && status.nodeIp) ? status.nodeIp : nodeAddress;
           setError(
-            `Cannot connect to Meshtastic node at ${nodeAddress}. Please ensure the node is reachable and has HTTP API enabled.`
+            resolvedAddress && resolvedAddress !== 'Loading...'
+              ? `Cannot connect to Meshtastic node at ${resolvedAddress}. Please ensure the node is reachable and has HTTP API enabled.`
+              : `Cannot connect to the Meshtastic node. Please ensure the node is reachable and has HTTP API enabled.`
           );
         }
       } else {

@@ -56,7 +56,10 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   const [deviceInfo, setDeviceInfo] = useState<any>(null);
   const [deviceConfig, setDeviceConfig] = useState<any>(null);
   const [currentNodeId, setCurrentNodeId] = useState<string>('');
-  const [nodeAddress, setNodeAddress] = useState<string>('Loading...');
+  // Starts empty (not a 'Loading...' placeholder): the connection-status string
+  // interpolates nodeAddress, and the literal 'Loading...' must never leak into
+  // "Connecting to …" before the real per-source address is resolved (#3611).
+  const [nodeAddress, setNodeAddress] = useState<string>('');
   const [nodesWithTelemetry, setNodesWithTelemetry] = useState<Set<string>>(new Set());
   const [nodesWithWeatherTelemetry, setNodesWithWeatherTelemetry] = useState<Set<string>>(new Set());
   const [nodesWithEstimatedPosition, setNodesWithEstimatedPosition] = useState<Set<string>>(new Set());
