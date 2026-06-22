@@ -33,6 +33,9 @@ export function deriveHops(msg: Pick<DbMessage, 'hopStart' | 'hopLimit'>): numbe
 /** Build the trigger context for a `message:new` event. */
 export function buildMessageContext(msg: DbMessage, sourceId: string | null, timestamp: number): TriggerContext {
   const to = Number(msg.toNodeNum);
+  // Message ids are `${sourceId}_${fromNum}_${packetId}` (load-bearing format);
+  // the trailing segment is the Meshtastic packet id used as a tapback replyId.
+  const parsedPacketId = Number(String(msg.id).split('_').pop());
   const fields: Record<string, unknown> = {
     from: Number(msg.fromNodeNum),
     fromId: msg.fromNodeId,
@@ -41,6 +44,7 @@ export function buildMessageContext(msg: DbMessage, sourceId: string | null, tim
     text: msg.text,
     channel: msg.channel,
     portnum: msg.portnum,
+    packetId: Number.isFinite(parsedPacketId) ? parsedPacketId : undefined,
     hops: deriveHops(msg),
     hopStart: msg.hopStart,
     hopLimit: msg.hopLimit,
