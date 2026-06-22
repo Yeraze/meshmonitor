@@ -326,7 +326,9 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                 ? t('meshcore.no_search_results', 'No nodes match your search')
                 : t('meshcore.no_nodes', 'No nodes seen yet')}
             </div>
-          ) : rows.map(row => (
+          ) : rows.map(row => {
+            const roleIcon = meshcoreRoleIcon(row.advType);
+            return (
             // Wrapper div (not a button) so the details quick-access can be a
             // real sibling <button> — nested buttons are invalid HTML.
             <div
@@ -340,14 +342,14 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                 onDoubleClick={onNavigateToDm ? () => onNavigateToDm(row.publicKey) : undefined}
               >
                 <div className="mc-node-row-name">
-                  {meshcoreRoleIcon(row.advType) && (
+                  {roleIcon && (
                     <span
                       className="mc-node-role-icon"
                       role="img"
                       aria-label={t(meshcoreRoleLabelKey(row.advType), meshcoreRoleLabel(row.advType))}
                       title={t(meshcoreRoleLabelKey(row.advType), meshcoreRoleLabel(row.advType))}
                     >
-                      {meshcoreRoleIcon(row.advType)}
+                      {roleIcon}
                     </span>
                   )}
                   <span className="mc-node-row-display-name">{row.name}</span>
@@ -393,7 +395,8 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                 </button>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
       <div className="meshcore-main-pane">
