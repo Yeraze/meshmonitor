@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { MeshCoreNode } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMap } from './MeshCoreMap';
+import { meshcoreRoleIcon, meshcoreRoleLabelKey, meshcoreRoleLabel } from './meshcoreRole';
 import { useToast } from '../ToastContainer';
 
 type DiscoverMode = 'nearby' | 'repeaters' | 'sensors';
@@ -10,13 +11,6 @@ type DiscoverMode = 'nearby' | 'repeaters' | 'sensors';
 const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = (): boolean =>
   typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
-
-const DEVICE_TYPE_KEYS: Record<number, string> = {
-  0: 'meshcore.device_type.unknown',
-  1: 'meshcore.device_type.companion',
-  2: 'meshcore.device_type.repeater',
-  3: 'meshcore.device_type.room_server',
-};
 
 interface MeshCoreNodesViewProps {
   nodes: MeshCoreNode[];
@@ -346,12 +340,17 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                 onDoubleClick={onNavigateToDm ? () => onNavigateToDm(row.publicKey) : undefined}
               >
                 <div className="mc-node-row-name">
-                  <span>{row.name}</span>
-                  {typeof row.advType === 'number' && (
-                    <span className="mc-node-row-type">
-                      {t(DEVICE_TYPE_KEYS[row.advType] || 'meshcore.device_type.unknown', '')}
+                  {meshcoreRoleIcon(row.advType) && (
+                    <span
+                      className="mc-node-role-icon"
+                      role="img"
+                      aria-label={t(meshcoreRoleLabelKey(row.advType), meshcoreRoleLabel(row.advType))}
+                      title={t(meshcoreRoleLabelKey(row.advType), meshcoreRoleLabel(row.advType))}
+                    >
+                      {meshcoreRoleIcon(row.advType)}
                     </span>
                   )}
+                  <span className="mc-node-row-display-name">{row.name}</span>
                 </div>
                 <div className="mc-node-row-meta">
                   {typeof row.rssi === 'number' && <span>RSSI {row.rssi}</span>}

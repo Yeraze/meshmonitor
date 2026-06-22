@@ -559,6 +559,14 @@
   font-weight: normal;
 }
 
+/* Compact role icon shown to the LEFT of the node name (#3647) — node list
+   (map page) and Direct Messages peer list. */
+.mc-node-role-icon {
+  flex: 0 0 auto;
+  line-height: 1;
+  font-size: 0.95rem;
+}
+
 .mc-node-row-meta {
   display: flex;
   gap: 0.6rem;
