@@ -7263,6 +7263,9 @@ class MeshtasticManager implements ISourceManager {
       //      null (e.g. connection not yet fully initialized), closing a pre-existing race window.
       // Either condition is sufficient; both are checked for defence-in-depth. (Issues #1140, #3622)
       const isEmptyReturnPath = routeBack.length === 0 && snrBack.length === 0;
+      if (!isLocalNodeResponse && isEmptyReturnPath) {
+        logger.debug(`🗺️ Skipping segment creation — empty return path from remote node ${fromNodeId} (old firmware or unresolved path)`);
+      }
       if (!isLocalNodeResponse && !isEmptyReturnPath) try {
         // Build the full route path: toNode (requester) -> route intermediates -> fromNode (responder)
         // route contains intermediate hops from requester toward responder
