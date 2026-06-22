@@ -95,6 +95,18 @@ export function observationWeight(obs: PositionObservation, now: number): number
  * few / spread-out observations → large radius. A lone anchor falls back to a
  * radio-range default.
  *
+ * Effective-sample-size guard (issue #3616): with skewed SNR weights one strong
+ * anchor can dominate, collapsing the centroid onto it while the weak/far anchors
+ * contribute almost nothing to the weighted RMS — yielding a tiny, falsely
+ * confident radius for what is effectively a single observation. The weight model
+ * itself is correct (higher SNR → higher weight → pulled toward that anchor); the
+ * fix is purely on uncertainty. We blend the radio-range default toward the
+ * statistical radius using the Kish effective sample size `nEff`: at `nEff = 1`
+ * (a lone — or weight-dominated — anchor) uncertainty is the full radio-range
+ * default; it reaches the pure statistical estimate only once `nEff >= 2` (a
+ * genuinely balanced multi-anchor solve). This does not change balanced
+ * multi-anchor estimates, only the degenerate near-single cases.
+ *
  * @returns null if there are no usable (positive-weight) observations.
  */
 export function solveNodePosition(observations: PositionObservation[], now: number): SolvedPosition | null {
@@ -131,12 +143,19 @@ export function solveNodePosition(observations: PositionObservation[], now: numb
   }
   const rmsKm = Math.sqrt(weightedDist2 / wSum);
 
-  let uncertaintyKm: number;
-  if (nEff <= 1) {
-    uncertaintyKm = DEFAULT_SINGLE_ANCHOR_KM;
-  } else {
-    uncertaintyKm = Math.max(MIN_UNCERTAINTY_KM, rmsKm / Math.sqrt(nEff));
-  }
+  // Statistical radius: weighted-RMS spread shrunk by sqrt(effective N). Only
+  // trustworthy once we genuinely have multiple balanced observations.
+  const statisticalKm = Math.max(MIN_UNCERTAINTY_KM, rmsKm / Math.sqrt(Math.max(nEff, 1)));
+
+  // Blend factor from 0 (nEff = 1, effectively a single observation) to 1
+  // (nEff >= 2, a balanced multi-anchor solve). This closes issue #3616: a
+  // strong anchor that dominates the weights (nEff barely above 1) no longer
+  // skips the radio-range default and report a spuriously tight radius.
+  const confidence = Math.min(1, Math.max(0, nEff - 1));
+  const uncertaintyKm = Math.max(
+    MIN_UNCERTAINTY_KM,
+    DEFAULT_SINGLE_ANCHOR_KM * (1 - confidence) + statisticalKm * confidence,
+  );
 
   return { latitude, longitude, uncertaintyKm, observationCount: observations.length };
 }
