@@ -1822,7 +1822,18 @@ class MeshCoreManager extends EventEmitter {
       // keeps the in-memory map authoritative too.)
       if (response.success && Array.isArray(response.data) && response.data.length > 0) {
         this.contacts.clear();
+        const nowMs = Date.now();
         for (const c of response.data) {
+          // Preserve the real Last Heard across reconnect (#3645). The companion
+          // reports each contact's last advert time (epoch seconds) — use it for
+          // lastSeen instead of the reconnect wall-clock, which previously reset
+          // every node's Last Heard to "now". Falls back to now only when the
+          // device didn't report an advert time. (Guard handles a value already
+          // in ms, mirroring MeshCoreContactDetailPanel.)
+          const advertSec = typeof c.last_advert === 'number' ? c.last_advert : 0;
+          const advertMs = advertSec > 0
+            ? (advertSec < 1e12 ? advertSec * 1000 : advertSec)
+            : undefined;
           this.contacts.set(c.public_key, {
             publicKey: c.public_key,
             advName: c.adv_name,
@@ -1832,7 +1843,8 @@ class MeshCoreManager extends EventEmitter {
             advType: c.adv_type,
             latitude: c.latitude,
             longitude: c.longitude,
-            lastSeen: Date.now(),
+            lastAdvert: advertSec > 0 ? advertSec : undefined,
+            lastSeen: advertMs ?? nowMs,
             outPath: c.out_path ?? null,
             pathLen: c.path_len ?? null,
           });
