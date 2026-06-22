@@ -91,6 +91,7 @@ export default defineConfig({
           items: [
             { text: 'Interactive Maps', link: '/features/maps' },
             { text: 'Position Estimation', link: '/features/position-estimation' },
+            { text: 'Estimated Accuracy', link: '/features/estimated-accuracy' },
             { text: 'Embed Maps', link: '/features/embed-maps' },
             { text: 'Map Analysis', link: '/features/map-analysis' },
             { text: 'Waypoints', link: '/features/waypoints' }
