@@ -4,7 +4,13 @@
 # Creates a Proxmox-compatible LXC container template
 #
 # Usage: ./build-lxc-template.sh [version]
-#   version: Optional version tag (e.g., "2.19.4" or "latest")
+#   version: Release tag (e.g. "4.11.3") or "latest" for main branch
+#
+# Requires: root, debootstrap, git, curl, tar
+# Output:   lxc/build/<template>.tar.gz  +  .sha256
+#
+# See docs/deployment/PROXMOX_LXC_GUIDE.md for full build and deployment docs.
+# Sparse cone: lxc/sparse-cone.txt — update there if new runtime dirs are added.
 #
 
 set -e  # Exit on error
@@ -12,7 +18,6 @@ set -u  # Exit on undefined variable
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR="${BUILD_DIR:-$SCRIPT_DIR/build}"
 TEMPLATE_NAME="meshmonitor"
 VERSION="${1:-latest}"
@@ -43,10 +48,10 @@ mkdir -p "$BUILD_DIR"
 mkdir -p "$ROOTFS_DIR"
 
 # Check for required commands
-for cmd in debootstrap tar; do
+for cmd in debootstrap tar git curl; do
     if ! command -v $cmd &> /dev/null; then
         echo "ERROR: Required command '$cmd' not found"
-        echo "Install with: sudo apt-get install $cmd"
+        echo "Install with: apt-get install -y $cmd"
         exit 1
     fi
 done
@@ -107,7 +112,8 @@ chroot "$ROOTFS_DIR" apt-get install -y --no-install-recommends \
     iproute2 \
     dbus \
     nano \
-    iputils-ping
+    iputils-ping \
+    git
 
 # Create /etc/network/interfaces for Proxmox networking support
 cat > "$ROOTFS_DIR/etc/network/interfaces" << EOF
@@ -154,56 +160,98 @@ chroot "$ROOTFS_DIR" apt-get install -y --no-install-recommends \
     libsqlite3-dev
 
 echo ""
-echo "Step 6: Building MeshMonitor application..."
+echo "Step 6: Cloning MeshMonitor repository into container..."
 
-# Build the application in the project root
-cd "$PROJECT_ROOT"
+# Resolve the git ref to check out:
+#   - A specific version (e.g. "4.11.3") pins to its release tag (v4.11.3),
+#     fetched directly via --branch so the tag is guaranteed reachable
+#     regardless of its position in history.
+#   - "latest" uses main so local/test builds always succeed even without
+#     a version argument.
+if [ "$VERSION" = "latest" ]; then
+    GIT_REF="main"
+else
+    GIT_REF="v${VERSION}"
+fi
 
-echo "Installing npm dependencies..."
-npm install --legacy-peer-deps
+REPO_URL="https://github.com/Yeraze/meshmonitor.git"
 
-echo "Building React frontend..."
-npm run build
+# Read the cone directory list from lxc/sparse-cone.txt.
+# MAINTENANCE: if a new top-level runtime directory is added upstream,
+# add it to sparse-cone.txt — never hardcode the list here.
+CONE_DIRS=$(grep -v '^#' "$SCRIPT_DIR/sparse-cone.txt" | grep -v '^$' | tr '\n' ' ')
+[ -n "$CONE_DIRS" ] || { echo "ERROR: sparse-cone.txt is empty or missing"; exit 1; }
 
-echo "Building Express backend..."
-npm run build:server
+# Partial + sparse clone into the container rootfs.
+# --branch pins to the exact tag at clone time (no separate checkout needed).
+# --filter=blob:none + --sparse: only fetch blobs for cone dirs (~8MB vs ~51MB).
+# --no-single-branch: keeps remote refs so meshmonitor-update's
+#   'git fetch origin main' works after deploy.
+git clone \
+    --branch "$GIT_REF" \
+    --depth 1 \
+    --filter=blob:none \
+    --sparse \
+    --no-single-branch \
+    "$REPO_URL" \
+    "$ROOTFS_DIR/opt/meshmonitor"
+
+# Materialize only the cone directories (and all root-level files, which
+# cone mode always includes automatically: package.json, tsconfig*.json, etc.)
+# Everything outside the cone (docs/, desktop/, .github/, …) is not fetched.
+git -C "$ROOTFS_DIR/opt/meshmonitor" sparse-checkout set $CONE_DIRS
+
+# Confirm the cone is correct before spending time on npm
+echo "Cone contents:"
+ls "$ROOTFS_DIR/opt/meshmonitor"
+
+# Initialise the protobufs submodule (required for Meshtastic protocol support;
+# confirmed working under sparse-checkout in CI).
+git -C "$ROOTFS_DIR/opt/meshmonitor" submodule update --init --recursive
 
 echo ""
-echo "Step 7: Installing MeshMonitor into container..."
+echo "Step 7: Building MeshMonitor application inside container..."
 
 # Create application directory structure
-mkdir -p "$ROOTFS_DIR/opt/meshmonitor"
 mkdir -p "$ROOTFS_DIR/data/apprise-config"
 mkdir -p "$ROOTFS_DIR/data/scripts"
 mkdir -p "$ROOTFS_DIR/data/logs"
 mkdir -p "$ROOTFS_DIR/etc/meshmonitor"
 
-# Copy built application
-echo "Copying built application files..."
-cp -r "$PROJECT_ROOT/dist" "$ROOTFS_DIR/opt/meshmonitor/"
-cp -r "$PROJECT_ROOT/node_modules" "$ROOTFS_DIR/opt/meshmonitor/"
-cp -r "$PROJECT_ROOT/protobufs" "$ROOTFS_DIR/opt/meshmonitor/"
-cp "$PROJECT_ROOT/package.json" "$ROOTFS_DIR/opt/meshmonitor/"
-cp "$PROJECT_ROOT/package-lock.json" "$ROOTFS_DIR/opt/meshmonitor/"
+# All build steps run inside the chroot against the container's own Node.js
+# (NodeSource v24), ensuring native modules (better-sqlite3, bcrypt) compile
+# for the correct target ABI — not the host/CI runner's ABI.
+#
+# PUPPETEER_SKIP_DOWNLOAD=true: the LXC container is headless and has no
+# display/sandbox for Chrome. Without this flag, npm install will attempt
+# to download Chromium and fail or hang.
 
-echo "Rebuilding native modules against container Node.js..."
-chroot "$ROOTFS_DIR" bash -c "cd /opt/meshmonitor && npm rebuild better-sqlite3 --build-from-source"
+echo "Installing npm dependencies..."
+chroot "$ROOTFS_DIR" bash -c "
+    cd /opt/meshmonitor
+    PUPPETEER_SKIP_DOWNLOAD=true npm install --legacy-peer-deps
+"
 
-# Copy Docker helper scripts (apprise-api.py and others)
-mkdir -p "$ROOTFS_DIR/opt/meshmonitor/docker"
-cp "$PROJECT_ROOT/docker/apprise-api.py" "$ROOTFS_DIR/opt/meshmonitor/docker/"
-chmod +x "$ROOTFS_DIR/opt/meshmonitor/docker/apprise-api.py"
+echo "Building React frontend..."
+chroot "$ROOTFS_DIR" bash -c "
+    cd /opt/meshmonitor
+    PUPPETEER_SKIP_DOWNLOAD=true npm run build
+"
 
-# Copy utility scripts (upgrade-watchdog won't work without Docker, but include for completeness)
-if [ -d "$PROJECT_ROOT/scripts" ]; then
-    cp -r "$PROJECT_ROOT/scripts/"*.sh "$ROOTFS_DIR/data/scripts/" 2>/dev/null || true
-    cp -r "$PROJECT_ROOT/scripts/"*.py "$ROOTFS_DIR/data/scripts/" 2>/dev/null || true
+echo "Building Express backend..."
+chroot "$ROOTFS_DIR" bash -c "
+    cd /opt/meshmonitor
+    PUPPETEER_SKIP_DOWNLOAD=true npm run build:server
+"
+
+# docker/apprise-api.py is already present at /opt/meshmonitor/docker/
+# via the sparse-checkout cone — no separate copy needed.
+
+# Copy utility scripts to /data/scripts (separate runtime location)
+if [ -d "$ROOTFS_DIR/opt/meshmonitor/scripts" ]; then
+    cp -r "$ROOTFS_DIR/opt/meshmonitor/scripts/"*.sh "$ROOTFS_DIR/data/scripts/" 2>/dev/null || true
+    cp -r "$ROOTFS_DIR/opt/meshmonitor/scripts/"*.py "$ROOTFS_DIR/data/scripts/" 2>/dev/null || true
     chmod +x "$ROOTFS_DIR/data/scripts/"* 2>/dev/null || true
-fi
-
-# Copy admin password reset script
-if [ -f "$PROJECT_ROOT/reset-admin.mjs" ]; then
-    cp "$PROJECT_ROOT/reset-admin.mjs" "$ROOTFS_DIR/opt/meshmonitor/"
 fi
 
 echo ""
@@ -221,13 +269,16 @@ chroot "$ROOTFS_DIR" ln -sf /opt/apprise-venv/bin/meshtastic /usr/local/bin/mesh
 echo ""
 echo "Step 9: Creating meshmonitor user and setting permissions..."
 
-# Create meshmonitor user (UID 1000 to match Docker)
+# Create meshmonitor user (UID 1000 to match Docker image)
 chroot "$ROOTFS_DIR" useradd -u 1000 -m -s /bin/bash meshmonitor || true
 
 # Add to dialout group for MeshCore serial device access
 chroot "$ROOTFS_DIR" usermod -aG dialout meshmonitor || true
 
-# Set ownership
+# chown covers .git along with everything else — since .git is created in
+# Step 6 (before this chown), the repo owner is meshmonitor from first boot.
+# This means meshmonitor-update always runs git as the correct owner and
+# never encounters a "dubious ownership" error (git 2.35+ safety check).
 chroot "$ROOTFS_DIR" chown -R meshmonitor:meshmonitor /opt/meshmonitor
 chroot "$ROOTFS_DIR" chown -R meshmonitor:meshmonitor /data
 chroot "$ROOTFS_DIR" chown -R meshmonitor:meshmonitor /opt/apprise-venv
@@ -305,8 +356,9 @@ MESHTASTIC_NODE_IP=192.168.1.100
 #TRUST_PROXY=true
 
 # ── CORS ─────────────────────────────────────────────────────────
-# Comma-separated list of allowed origins
-#ALLOWED_ORIGINS=http://localhost:8080
+# Comma-separated list of allowed origins (browser URLs you access the UI from)
+# Example: http://192.168.1.50:3001,https://meshmonitor.yourdomain.com
+#ALLOWED_ORIGINS=http://<CONTAINER-IP>:3001
 
 # ── Web Push Notifications ───────────────────────────────────────
 #VAPID_PUBLIC_KEY=
@@ -317,6 +369,7 @@ MESHTASTIC_NODE_IP=192.168.1.100
 # ── OIDC/SSO (optional) ─────────────────────────────────────────
 #OIDC_ISSUER=
 #OIDC_CLIENT_ID=
+#OIDC_CALLBACK_URL=
 #OIDC_CLIENT_SECRET=
 #OIDC_ALLOW_HTTP=false
 
@@ -334,15 +387,20 @@ chroot "$ROOTFS_DIR" chown meshmonitor:meshmonitor /etc/meshmonitor/meshmonitor.
 echo ""
 echo "Step 12: Cleaning up container..."
 
-# Clean up apt cache
+# Clean up apt cache and temp files
 chroot "$ROOTFS_DIR" apt-get clean
 rm -rf "$ROOTFS_DIR/var/lib/apt/lists/"*
 rm -rf "$ROOTFS_DIR/tmp/"*
 rm -rf "$ROOTFS_DIR/var/tmp/"*
 
-# Remove any build artifacts
+# Remove npm/pip build caches
+# NOTE: node_modules/ and .git/ are intentionally kept —
+#   node_modules/ is needed at runtime by the app
+#   .git/ is needed by meshmonitor-update for future in-place updates
 rm -rf "$ROOTFS_DIR/root/.npm"
 rm -rf "$ROOTFS_DIR/root/.cache"
+rm -rf "$ROOTFS_DIR/opt/meshmonitor/.npm"
+rm -rf "$ROOTFS_DIR/opt/meshmonitor/.cache"
 
 echo ""
 echo "Step 13: Creating container metadata..."
@@ -367,20 +425,21 @@ cd "$ROOTFS_DIR"
 tar czf "$TEMPLATE_FILE" .
 
 cd "$BUILD_DIR"
+
+# Calculate SHA256 checksum
+sha256sum "$TEMPLATE_FILE" > "$TEMPLATE_FILE.sha256"
+
 echo ""
 echo "================================================"
 echo "Build Complete!"
 echo "================================================"
 echo "Template file: $TEMPLATE_FILE"
 echo "Size: $(du -h "$TEMPLATE_FILE" | cut -f1)"
+echo "SHA256: $(cat "$TEMPLATE_FILE.sha256")"
 echo ""
 echo "To use with Proxmox VE:"
-echo "1. Upload to Proxmox: scp $TEMPLATE_FILE root@proxmox:/var/lib/vz/template/cache/"
-echo "2. Create container from template in Proxmox web UI"
-echo "3. Configure MESHTASTIC_NODE_IP in /etc/meshmonitor/meshmonitor.env"
-echo "4. Start the container"
+echo "  1. Upload: scp $TEMPLATE_FILE root@proxmox:/var/lib/vz/template/cache/"
+echo "  2. Create container from template in Proxmox web UI or pct create"
+echo "  3. Configure: /etc/meshmonitor/meshmonitor.env (see meshmonitor.env.example)"
+echo "  4. Start the container — meshmonitor-update is ready to use immediately"
 echo "================================================"
-
-# Calculate SHA256 checksum
-sha256sum "$TEMPLATE_FILE" > "$TEMPLATE_FILE.sha256"
-echo "SHA256: $(cat "$TEMPLATE_FILE.sha256")"
