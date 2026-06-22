@@ -1,81 +1,56 @@
 /**
  * Automation Engine page (#3653) — Phase 1a management UI.
  *
- * Functional management surface (the visual node-graph builder is Phase 2): list
- * and toggle automations, edit their trigger/condition/action graph as validated
- * JSON, manage user-defined variables, import/export, and inspect run-logs.
+ * Styled to the app theme. Automations are edited with an IFTTT/Maintainerr-style
+ * structured builder (AutomationBuilder) over the graph model, with a raw-JSON
+ * "advanced" fallback for imported/complex graphs. Variables have a help drawer
+ * explaining types and scopes.
  */
-import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import apiService from '../../services/api';
+import AutomationBuilder, { type VariableOption } from './AutomationBuilder';
+import { compile, decompile, type WorkflowForm } from './compile';
+import './AutomationsPage.css';
 
 interface Automation {
-  id: string;
-  name: string;
-  description: string | null;
-  enabled: boolean;
-  config: string;
-  createdAt: number;
-  updatedAt: number;
+  id: string; name: string; description: string | null; enabled: boolean; config: string;
+  createdAt: number; updatedAt: number;
 }
-
 interface Variable {
-  id: string;
-  name: string;
-  description: string | null;
+  id: string; name: string; description: string | null;
   type: 'string' | 'integer' | 'float' | 'boolean' | 'flag';
-  scope: 'global' | 'source' | 'node' | 'sourceNode';
-  readonly: boolean;
-  config: string;
+  scope: 'global' | 'source' | 'node' | 'sourceNode'; readonly: boolean; config: string;
 }
-
-interface Run {
-  id: string;
-  status: string;
-  sourceId: string | null;
-  startedAt: number;
-  log: string | null;
-}
+interface Run { id: string; status: string; sourceId: string | null; startedAt: number; log: string | null; }
 
 const VARIABLE_TYPES = ['string', 'integer', 'float', 'boolean', 'flag'] as const;
-const VARIABLE_SCOPES = ['global', 'source', 'node', 'sourceNode'] as const;
+const VARIABLE_SCOPES: { value: Variable['scope']; label: string }[] = [
+  { value: 'global', label: 'Global' }, { value: 'source', label: 'Per Source' },
+  { value: 'node', label: 'Per Node' }, { value: 'sourceNode', label: 'Per Source + Node' },
+];
 
-const TEMPLATE = {
-  version: 1,
-  nodes: [
-    { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
-    { id: 'a', type: 'action.tapback', params: { emoji: '👍' } },
-  ],
-  edges: [{ from: 't', to: 'a' }],
-};
-
-const card: CSSProperties = {
-  border: '1px solid var(--border-color, #333)', borderRadius: 8, padding: '0.75rem 1rem',
-  marginBottom: '0.75rem', background: 'var(--bg-secondary, #1c1c1c)',
-};
-const btn: CSSProperties = {
-  padding: '0.35rem 0.7rem', marginRight: '0.4rem', borderRadius: 6, cursor: 'pointer',
-  border: '1px solid var(--border-color, #444)', background: 'var(--bg-tertiary, #2a2a2a)', color: 'inherit',
-};
-const input: CSSProperties = {
-  width: '100%', padding: '0.4rem', borderRadius: 6, marginBottom: '0.5rem',
-  border: '1px solid var(--border-color, #444)', background: 'var(--bg-primary, #111)', color: 'inherit',
+const DEFAULT_FORM: WorkflowForm = {
+  trigger: { type: 'trigger.message', params: { textContains: 'ping' } },
+  conditions: [],
+  actions: [{ type: 'action.tapback', params: { emoji: '👍' } }],
 };
 
 export default function AutomationsPage() {
   const [view, setView] = useState<'automations' | 'variables'>('automations');
-
   return (
-    <div style={{ padding: '1rem', maxWidth: 1000, margin: '0 auto', overflowY: 'auto', height: '100dvh' }}>
-      <button style={{ ...btn, marginBottom: '0.75rem' }} onClick={() => { window.location.href = import.meta.env.BASE_URL || '/'; }}>← Dashboard</button>
-      <h1 style={{ marginTop: 0 }}>Automation Engine</h1>
-      <p style={{ opacity: 0.7, marginTop: '-0.5rem' }}>
-        Advanced Mode (beta) — define global trigger → condition → action workflows.
-      </p>
-      <div style={{ marginBottom: '1rem' }}>
-        <button style={{ ...btn, fontWeight: view === 'automations' ? 700 : 400 }} onClick={() => setView('automations')}>Automations</button>
-        <button style={{ ...btn, fontWeight: view === 'variables' ? 700 : 400 }} onClick={() => setView('variables')}>Variables</button>
+    <div className="ae-page">
+      <div className="ae-container">
+        <div className="ae-topbar">
+          <button className="ae-btn ae-btn--ghost" onClick={() => { window.location.href = import.meta.env.BASE_URL || '/'; }}>← Dashboard</button>
+        </div>
+        <h1 className="ae-title">Automation Engine</h1>
+        <p className="ae-subtitle">Advanced Mode (beta) — global “when this happens, do that” workflows across every source.</p>
+        <div className="ae-tabs">
+          <button className={`ae-tab ${view === 'automations' ? 'is-active' : ''}`} onClick={() => setView('automations')}>Automations</button>
+          <button className={`ae-tab ${view === 'variables' ? 'is-active' : ''}`} onClick={() => setView('variables')}>Variables</button>
+        </div>
+        {view === 'automations' ? <AutomationsList /> : <VariablesList />}
       </div>
-      {view === 'automations' ? <AutomationsList /> : <VariablesList />}
     </div>
   );
 }
@@ -89,26 +64,16 @@ function AutomationsList() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    try {
-      setItems(await apiService.get<Automation[]>('/api/automations'));
-      setError(null);
-    } catch (e: any) { setError(e?.message ?? 'Failed to load'); }
+    try { setItems(await apiService.get<Automation[]>('/api/automations')); setError(null); }
+    catch (e: any) { setError(e?.message ?? 'Failed to load'); }
   }, []);
-
   useEffect(() => { load(); }, [load]);
 
-  const toggle = async (a: Automation) => {
-    await apiService.post(`/api/automations/${a.id}/${a.enabled ? 'disable' : 'enable'}`);
-    load();
-  };
-  const remove = async (a: Automation) => {
-    if (!confirm(`Delete automation "${a.name}"?`)) return;
-    await apiService.delete(`/api/automations/${a.id}`);
-    load();
-  };
+  const toggle = async (a: Automation) => { await apiService.post(`/api/automations/${a.id}/${a.enabled ? 'disable' : 'enable'}`); load(); };
+  const remove = async (a: Automation) => { if (!confirm(`Delete automation “${a.name}”?`)) return; await apiService.delete(`/api/automations/${a.id}`); load(); };
   const exportOne = async (a: Automation) => {
     const data = await apiService.get(`/api/automations/${a.id}/export`);
-    navigator.clipboard?.writeText(JSON.stringify(data, null, 2));
+    await navigator.clipboard?.writeText(JSON.stringify(data, null, 2));
     alert('Exported JSON copied to clipboard.');
   };
 
@@ -117,25 +82,24 @@ function AutomationsList() {
 
   return (
     <div>
-      <button style={{ ...btn, marginBottom: '0.75rem' }} onClick={() => setEditing('new')}>+ New automation</button>
-      {error && <div style={{ color: 'tomato' }}>{error}</div>}
-      {items.length === 0 && <p style={{ opacity: 0.6 }}>No automations yet.</p>}
+      <div className="ae-btn-row" style={{ marginBottom: '1rem' }}>
+        <button className="ae-btn ae-btn--primary" onClick={() => setEditing('new')}>+ New automation</button>
+      </div>
+      {error && <div className="ae-error-list">{error}</div>}
+      {items.length === 0 && <div className="ae-empty">No automations yet. Create one to get started.</div>}
       {items.map((a) => (
-        <div key={a.id} style={card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <strong>{a.name}</strong>{' '}
-              <span style={{ fontSize: 12, opacity: 0.6 }}>{triggerOf(a)}</span>
-              {a.description && <div style={{ fontSize: 13, opacity: 0.7 }}>{a.description}</div>}
+        <div className="ae-card" key={a.id}>
+          <div className="ae-row">
+            <div className="ae-row-main">
+              <div className="ae-row-title">{a.name}<span className="ae-chip">{triggerLabel(a)}</span></div>
+              {a.description && <div className="ae-muted">{a.description}</div>}
             </div>
-            <div>
-              <label style={{ marginRight: '0.75rem', fontSize: 13 }}>
-                <input type="checkbox" checked={a.enabled} onChange={() => toggle(a)} /> Enabled
-              </label>
-              <button style={btn} onClick={() => setEditing(a)}>Edit</button>
-              <button style={btn} onClick={() => setRunsFor(a)}>Runs</button>
-              <button style={btn} onClick={() => exportOne(a)}>Export</button>
-              <button style={{ ...btn, color: 'tomato' }} onClick={() => remove(a)}>Delete</button>
+            <div className="ae-btn-row">
+              <label className="ae-switch"><input type="checkbox" checked={a.enabled} onChange={() => toggle(a)} /> Enabled</label>
+              <button className="ae-btn" onClick={() => setEditing(a)}>Edit</button>
+              <button className="ae-btn" onClick={() => setRunsFor(a)}>Runs</button>
+              <button className="ae-btn" onClick={() => exportOne(a)}>Export</button>
+              <button className="ae-btn ae-btn--danger" onClick={() => remove(a)}>Delete</button>
             </div>
           </div>
         </div>
@@ -144,11 +108,10 @@ function AutomationsList() {
   );
 }
 
-function triggerOf(a: Automation): string {
+function triggerLabel(a: Automation): string {
   try {
-    const g = JSON.parse(a.config);
-    const t = (g.nodes ?? []).find((n: any) => String(n.type).startsWith('trigger.'));
-    return t ? t.type : '';
+    const t = (JSON.parse(a.config).nodes ?? []).find((n: any) => String(n.type).startsWith('trigger.'));
+    return t ? String(t.type).replace('trigger.', '') : '';
   } catch { return ''; }
 }
 
@@ -158,18 +121,40 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
   const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [enabled, setEnabled] = useState(initial?.enabled ?? false);
-  const [configText, setConfigText] = useState(
-    initial ? pretty(initial.config) : JSON.stringify(TEMPLATE, null, 2),
-  );
+  const [variables, setVariables] = useState<VariableOption[]>([]);
+
+  // Decide builder vs JSON from the existing config.
+  const parsedInitial = (() => { try { return initial ? decompile(JSON.parse(initial.config)) : DEFAULT_FORM; } catch { return null; } })();
+  const [mode, setMode] = useState<'builder' | 'json'>(parsedInitial ? 'builder' : 'json');
+  const [form, setForm] = useState<WorkflowForm>(parsedInitial ?? DEFAULT_FORM);
+  const [jsonText, setJsonText] = useState(() => initial ? pretty(initial.config) : JSON.stringify(compile(DEFAULT_FORM), null, 2));
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    apiService.get<Variable[]>('/api/automations/variables')
+      .then((vs) => setVariables(vs.map((v) => ({ name: v.name, type: v.type }))))
+      .catch(() => setVariables([]));
+  }, []);
+
+  const switchToJson = () => { setJsonText(JSON.stringify(compile(form), null, 2)); setMode('json'); };
+  const switchToBuilder = () => {
+    try {
+      const f = decompile(JSON.parse(jsonText));
+      if (!f) { setErrors(['This workflow is too advanced for the builder (branches/fanout) — edit it as JSON.']); return; }
+      setForm(f); setErrors([]); setMode('builder');
+    } catch { setErrors(['Invalid JSON.']); }
+  };
+
   const save = async () => {
-    setSaving(true);
-    setErrors([]);
+    setSaving(true); setErrors([]);
     let config: unknown;
-    try { config = JSON.parse(configText); }
-    catch { setErrors(['Config is not valid JSON']); setSaving(false); return; }
+    if (mode === 'builder') {
+      if (form.actions.length === 0) { setErrors(['Add at least one action (THEN).']); setSaving(false); return; }
+      config = compile(form);
+    } else {
+      try { config = JSON.parse(jsonText); } catch { setErrors(['Config is not valid JSON']); setSaving(false); return; }
+    }
     try {
       const body = { name, description, enabled, config };
       if (isNew) await apiService.post('/api/automations', body);
@@ -183,51 +168,60 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
 
   return (
     <div>
-      <button style={btn} onClick={onClose}>← Back</button>
-      <h2>{isNew ? 'New automation' : `Edit: ${initial?.name}`}</h2>
-      <label>Name</label>
-      <input style={input} value={name} onChange={(e) => setName(e.target.value)} />
-      <label>Description</label>
-      <input style={input} value={description ?? ''} onChange={(e) => setDescription(e.target.value)} />
-      <label style={{ display: 'block', margin: '0.25rem 0' }}>
-        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Enabled
-      </label>
-      <label>Workflow graph (JSON)</label>
-      <textarea
-        style={{ ...input, height: 320, fontFamily: 'monospace', fontSize: 13 }}
-        value={configText}
-        onChange={(e) => setConfigText(e.target.value)}
-        spellCheck={false}
-      />
-      {errors.length > 0 && (
-        <ul style={{ color: 'tomato' }}>{errors.map((er, i) => <li key={i}>{er}</li>)}</ul>
-      )}
-      <button style={{ ...btn, background: 'var(--accent-color, #2563eb)' }} disabled={saving} onClick={save}>
-        {saving ? 'Saving…' : 'Save'}
-      </button>
+      <div className="ae-btn-row" style={{ marginBottom: '0.75rem' }}>
+        <button className="ae-btn ae-btn--ghost" onClick={onClose}>← Back</button>
+        <span style={{ marginLeft: 'auto' }} />
+        {mode === 'builder'
+          ? <button className="ae-btn" onClick={switchToJson}>Advanced (JSON)</button>
+          : <button className="ae-btn" onClick={switchToBuilder}>Use builder</button>}
+      </div>
+      <h2 className="ae-title" style={{ fontSize: '1.25rem' }}>{isNew ? 'New automation' : `Edit: ${initial?.name}`}</h2>
+
+      <div className="ae-card">
+        <div className="ae-grid2">
+          <div className="ae-field"><label className="ae-field-label">Name</label>
+            <input className="ae-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Ping responder" /></div>
+          <div className="ae-field"><label className="ae-field-label">Description</label>
+            <input className="ae-input" value={description ?? ''} onChange={(e) => setDescription(e.target.value)} /></div>
+        </div>
+        <label className="ae-switch"><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Enabled</label>
+      </div>
+
+      {mode === 'builder'
+        ? <AutomationBuilder form={form} variables={variables} onChange={setForm} />
+        : (
+          <div className="ae-field">
+            <label className="ae-field-label">Workflow graph (JSON)</label>
+            <textarea className="ae-textarea ae-textarea--code" value={jsonText} spellCheck={false} onChange={(e) => setJsonText(e.target.value)} />
+          </div>
+        )}
+
+      {errors.length > 0 && <ul className="ae-error-list">{errors.map((er, i) => <li key={i}>{er}</li>)}</ul>}
+      <div className="ae-btn-row" style={{ marginTop: '0.75rem' }}>
+        <button className="ae-btn ae-btn--primary" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save automation'}</button>
+      </div>
     </div>
   );
 }
 
 function RunLog({ automation, onClose }: { automation: Automation; onClose: () => void }) {
   const [runs, setRuns] = useState<Run[]>([]);
-  useEffect(() => {
-    apiService.get<Run[]>(`/api/automations/${automation.id}/runs`).then(setRuns).catch(() => setRuns([]));
-  }, [automation.id]);
+  useEffect(() => { apiService.get<Run[]>(`/api/automations/${automation.id}/runs`).then(setRuns).catch(() => setRuns([])); }, [automation.id]);
   return (
     <div>
-      <button style={btn} onClick={onClose}>← Back</button>
-      <h2>Runs: {automation.name}</h2>
-      {runs.length === 0 && <p style={{ opacity: 0.6 }}>No runs yet.</p>}
+      <button className="ae-btn ae-btn--ghost" onClick={onClose} style={{ marginBottom: '0.75rem' }}>← Back</button>
+      <h2 className="ae-title" style={{ fontSize: '1.25rem' }}>Runs: {automation.name}</h2>
+      {runs.length === 0 && <div className="ae-empty">No runs yet.</div>}
       {runs.map((r) => (
-        <div key={r.id} style={card}>
-          <div>
-            <span style={{ color: r.status === 'completed' ? 'limegreen' : r.status === 'failed' ? 'tomato' : 'inherit' }}>
-              {r.status}
-            </span>{' '}
-            <span style={{ fontSize: 12, opacity: 0.6 }}>{new Date(r.startedAt).toLocaleString()} · {r.sourceId ?? '—'}</span>
+        <div className="ae-card" key={r.id}>
+          <div className="ae-row">
+            <div className="ae-row-main">
+              <span style={{ fontWeight: 700, color: r.status === 'completed' ? 'var(--ctp-green)' : r.status === 'failed' ? 'var(--ctp-red)' : 'inherit' }}>{r.status}</span>
+              <span className="ae-chip">{r.sourceId ?? '—'}</span>
+            </div>
+            <span className="ae-muted">{new Date(r.startedAt).toLocaleString()}</span>
           </div>
-          {r.log && <pre style={{ fontSize: 11, opacity: 0.8, overflowX: 'auto', margin: '0.4rem 0 0' }}>{r.log}</pre>}
+          {r.log && <pre className="ae-muted" style={{ overflowX: 'auto', marginBottom: 0, fontSize: '0.72rem' }}>{r.log}</pre>}
         </div>
       ))}
     </div>
@@ -245,6 +239,7 @@ function VariablesList() {
   const [defaultValue, setDefaultValue] = useState('');
   const [flagDuration, setFlagDuration] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const load = useCallback(async () => {
     try { setItems(await apiService.get<Variable[]>('/api/automations/variables')); }
@@ -255,77 +250,108 @@ function VariablesList() {
   const create = async () => {
     setError(null);
     const config: Record<string, unknown> = {};
-    if (defaultValue !== '') config.defaultValue = type === 'integer' || type === 'float' ? Number(defaultValue) : defaultValue;
+    if (defaultValue !== '') config.defaultValue = (type === 'integer' || type === 'float') ? Number(defaultValue) : defaultValue;
     if (type === 'flag' && flagDuration !== '') config.flagDurationSeconds = Number(flagDuration);
     try {
       await apiService.post('/api/automations/variables', { name, type, scope, readonly, config });
-      setName(''); setDefaultValue(''); setFlagDuration('');
-      load();
+      setName(''); setDefaultValue(''); setFlagDuration(''); load();
     } catch (e: any) { setError(e?.message ?? 'Create failed'); }
   };
-  const remove = async (v: Variable) => {
-    if (!confirm(`Delete variable "${v.name}"?`)) return;
-    await apiService.delete(`/api/automations/variables/${v.id}`);
-    load();
-  };
+  const remove = async (v: Variable) => { if (!confirm(`Delete variable “${v.name}”?`)) return; await apiService.delete(`/api/automations/variables/${v.id}`); load(); };
 
   return (
     <div>
-      <div style={card}>
-        <strong>New variable</strong>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.5rem' }}>
-          <div>
-            <label>Name</label>
-            <input style={input} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. lowBatteryThreshold" />
-          </div>
-          <div>
-            <label>Type</label>
-            <select style={input} value={type} onChange={(e) => setType(e.target.value as Variable['type'])}>
+      <div className="ae-card">
+        <div className="ae-row" style={{ marginBottom: '0.6rem' }}>
+          <strong>New variable</strong>
+          <button className="ae-btn ae-btn--ghost" onClick={() => setHelpOpen(true)}>What are types &amp; scopes? <span className="ae-help-icon">?</span></button>
+        </div>
+        <div className="ae-grid2">
+          <div className="ae-field"><label className="ae-field-label">Name</label>
+            <input className="ae-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. lowBatteryThreshold" /></div>
+          <div className="ae-field">
+            <label className="ae-field-label">Type <button className="ae-help-icon" onClick={() => setHelpOpen(true)} title="Explain types">?</button></label>
+            <select className="ae-select" value={type} onChange={(e) => setType(e.target.value as Variable['type'])}>
               {VARIABLE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
-          <div>
-            <label>Scope</label>
-            <select style={input} value={scope} onChange={(e) => setScope(e.target.value as Variable['scope'])}>
-              {VARIABLE_SCOPES.map((s) => <option key={s} value={s}>{s}</option>)}
+          <div className="ae-field">
+            <label className="ae-field-label">Scope <button className="ae-help-icon" onClick={() => setHelpOpen(true)} title="Explain scopes">?</button></label>
+            <select className="ae-select" value={scope} onChange={(e) => setScope(e.target.value as Variable['scope'])}>
+              {VARIABLE_SCOPES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
-          <div>
-            <label>Default value {readonly ? '(constant)' : ''}</label>
-            <input style={input} value={defaultValue} onChange={(e) => setDefaultValue(e.target.value)} />
-          </div>
+          <div className="ae-field"><label className="ae-field-label">Default value {readonly ? '(constant)' : ''}</label>
+            <input className="ae-input" value={defaultValue} onChange={(e) => setDefaultValue(e.target.value)} /></div>
           {type === 'flag' && (
-            <div>
-              <label>Flag auto-clear (seconds)</label>
-              <input style={input} value={flagDuration} onChange={(e) => setFlagDuration(e.target.value)} placeholder="e.g. 86400" />
-            </div>
+            <div className="ae-field"><label className="ae-field-label">Flag auto-clear (seconds)</label>
+              <input className="ae-input" value={flagDuration} onChange={(e) => setFlagDuration(e.target.value)} placeholder="e.g. 86400" /></div>
           )}
-          <div style={{ alignSelf: 'end' }}>
-            <label style={{ fontSize: 13 }}>
-              <input type="checkbox" checked={readonly} onChange={(e) => setReadonly(e.target.checked)} /> Constant (read-only to automations)
-            </label>
+          <div className="ae-field" style={{ alignSelf: 'end' }}>
+            <label className="ae-switch"><input type="checkbox" checked={readonly} onChange={(e) => setReadonly(e.target.checked)} /> Constant (read-only to automations)</label>
           </div>
         </div>
-        <button style={{ ...btn, marginTop: '0.5rem' }} disabled={!name} onClick={create}>Create</button>
-        {error && <div style={{ color: 'tomato', marginTop: '0.5rem' }}>{error}</div>}
+        <button className="ae-btn ae-btn--primary" disabled={!name} onClick={create}>Create variable</button>
+        {error && <div className="ae-error-list">{error}</div>}
       </div>
 
+      {items.length === 0 && <div className="ae-empty">No variables yet.</div>}
       {items.map((v) => (
-        <div key={v.id} style={card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <div>
-              <strong>{v.name}</strong>{' '}
-              <span style={{ fontSize: 12, opacity: 0.6 }}>{v.type} · {v.scope}{v.readonly ? ' · constant' : ''}</span>
-              <div style={{ fontSize: 12, opacity: 0.6 }}>{v.config}</div>
+        <div className="ae-card" key={v.id}>
+          <div className="ae-row">
+            <div className="ae-row-main">
+              <div className="ae-row-title">{v.name}<span className="ae-chip">{v.type} · {scopeLabel(v.scope)}{v.readonly ? ' · constant' : ''}</span></div>
+              {v.config && v.config !== '{}' && <div className="ae-muted">{v.config}</div>}
             </div>
-            <button style={{ ...btn, color: 'tomato' }} onClick={() => remove(v)}>Delete</button>
+            <button className="ae-btn ae-btn--danger" onClick={() => remove(v)}>Delete</button>
           </div>
         </div>
       ))}
+
+      {helpOpen && <VariablesHelpDrawer onClose={() => setHelpOpen(false)} />}
     </div>
   );
 }
 
-function pretty(jsonStr: string): string {
-  try { return JSON.stringify(JSON.parse(jsonStr), null, 2); } catch { return jsonStr; }
+function scopeLabel(s: Variable['scope']): string {
+  return VARIABLE_SCOPES.find((x) => x.value === s)?.label ?? s;
 }
+
+function VariablesHelpDrawer({ onClose }: { onClose: () => void }) {
+  return (
+    <>
+      <div className="ae-drawer-overlay" onClick={onClose} />
+      <div className="ae-drawer">
+        <button className="ae-btn ae-btn--ghost ae-drawer-close" onClick={onClose}>✕</button>
+        <h2>Variables</h2>
+        <p className="ae-muted">Reusable values you can read and write from automations, referenced as <code>{'{{ var.name }}'}</code>.</p>
+
+        <h3>Types</h3>
+        <dl>
+          <dt>string</dt><dd>Free text — e.g. a node name or the last message received.</dd>
+          <dt>integer</dt><dd>A whole number — e.g. a counter, or a threshold like 20.</dd>
+          <dt>float</dt><dd>A decimal number — e.g. a temperature.</dd>
+          <dt>boolean</dt><dd>True / false.</dd>
+          <dt>flag</dt><dd>A boolean that <strong>automatically clears itself</strong> after a set duration. The anti-spam primitive — e.g. “have I welcomed this node in the last 24h?”. Raise it after acting; it lowers itself when the timer elapses.</dd>
+        </dl>
+
+        <h3>Scopes</h3>
+        <p className="ae-muted">A scope decides how many separate values a variable holds.</p>
+        <dl>
+          <dt>Global</dt><dd>One shared value for the whole system.</dd>
+          <dt>Per Source</dt><dd>A separate value for each connection/source.</dd>
+          <dt>Per Node</dt><dd>A separate value for each node, shared across every source that hears it.</dd>
+          <dt>Per Source + Node</dt><dd>A separate value for each node within each source — the most granular.</dd>
+        </dl>
+        <p className="ae-muted">For node-scoped variables, automations read/write the value for the trigger’s subject node (e.g. the message sender) automatically.</p>
+
+        <h3>Constant (read-only)</h3>
+        <p className="ae-muted">Tick <strong>Constant</strong> to make a value you set here and reference as a threshold/config. Automations can read it but never overwrite it.</p>
+
+        <p className="ae-muted" style={{ marginTop: '1.25rem' }}>Full documentation will be published at <a href="https://meshmonitor.org" target="_blank" rel="noreferrer">meshmonitor.org</a>.</p>
+      </div>
+    </>
+  );
+}
+
+function pretty(jsonStr: string): string { try { return JSON.stringify(JSON.parse(jsonStr), null, 2); } catch { return jsonStr; } }
