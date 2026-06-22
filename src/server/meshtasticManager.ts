@@ -6747,13 +6747,30 @@ class MeshtasticManager implements ISourceManager {
       const toNum = Number(meshPacket.to);
       const toNodeId = `!${toNum.toString(16).padStart(8, '0')}`;
 
-      // Skip traceroute responses FROM our local node (Issue #1140)
-      // When another node traceroutes us, we capture our own outgoing response.
-      // This response only has the forward path (route), not a meaningful return path (routeBack),
-      // which causes incorrect "direct line" route segments to be displayed on the map.
-      if (this.localNodeInfo && fromNum === this.localNodeInfo.nodeNum) {
-        logger.debug(`🗺️ Skipping traceroute response from local node ${fromNodeId} (our response to someone else's request)`);
+      // Determine whether this is a traceroute RESPONSE (requestId ≠ 0) or a
+      // traceroute REQUEST (requestId = 0, the initiating packet).
+      const tracerouteRequestId = Number(meshPacket.decoded?.requestId ?? 0);
+      const isTracerouteResponse = tracerouteRequestId !== 0;
+
+      if (!isTracerouteResponse) {
+        // This is an incoming traceroute REQUEST addressed to our local node —
+        // another node is discovering the path to us. Our firmware will
+        // immediately send a response; we record THAT response when it arrives
+        // (below). Processing the request here would save a record with the
+        // wrong from/to orientation and an empty routeBack, which previously
+        // caused a fictitious direct-connection line on the map. (Issue #3622)
+        logger.debug(`🗺️ Skipping traceroute REQUEST from ${fromNodeId} to ${toNodeId} — will record when our response is processed`);
         return;
+      }
+
+      // When another node traceroutes us, we see our OWN outgoing response via
+      // TCP before relay nodes have populated routeBack. Save the record so the
+      // traceroute is visible, but skip route-segment creation — segments from
+      // an empty routeBack would draw a fictitious direct line on the map.
+      // (Issues #1140, #3622)
+      const isLocalNodeResponse = this.localNodeInfo != null && fromNum === this.localNodeInfo.nodeNum;
+      if (isLocalNodeResponse) {
+        logger.debug(`🗺️ Outgoing traceroute response from local node ${fromNodeId} — will record without segments`);
       }
 
       logger.info(`🗺️ Traceroute response from ${fromNodeId}:`, JSON.stringify(routeDiscovery, null, 2));
@@ -7238,8 +7255,18 @@ class MeshtasticManager implements ISourceManager {
         .then(sourceName => notificationService.notifyTraceroute(fromNodeId, toNodeId, routeText, this.sourceId, sourceName))
         .catch(err => logger.error('Failed to send traceroute notification:', err));
 
-      // Calculate and store route segment distances, and estimate positions for nodes without GPS
-      try {
+      // Calculate and store route segment distances, and estimate positions for nodes without GPS.
+      // Guard: skip segment creation when the return path has not been populated yet. Two conditions
+      // cover this:
+      //   1. isLocalNodeResponse — our own outgoing response seen before relay nodes fill routeBack.
+      //   2. routeBack and snrBack both empty — catches the same state even when localNodeInfo is
+      //      null (e.g. connection not yet fully initialized), closing a pre-existing race window.
+      // Either condition is sufficient; both are checked for defence-in-depth. (Issues #1140, #3622)
+      const isEmptyReturnPath = routeBack.length === 0 && snrBack.length === 0;
+      if (!isLocalNodeResponse && isEmptyReturnPath) {
+        logger.debug(`🗺️ Skipping segment creation — empty return path from remote node ${fromNodeId} (old firmware or unresolved path)`);
+      }
+      if (!isLocalNodeResponse && !isEmptyReturnPath) try {
         // Build the full route path: toNode (requester) -> route intermediates -> fromNode (responder)
         // route contains intermediate hops from requester toward responder
         // So the full path is: requester -> route[0] -> route[1] -> ... -> route[N-1] -> responder
