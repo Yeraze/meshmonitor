@@ -10,6 +10,25 @@ import type { WorkflowForm, FormBlock } from './compile';
 
 export interface VariableOption { name: string; type: string; }
 
+/**
+ * Seed a block's params with the first option of each select field, so a
+ * never-touched dropdown still persists its (visible) default value — a `<select>`
+ * shows its first option but fires no onChange until changed.
+ */
+function defaultParams(type: string, triggerType: string): Record<string, unknown> {
+  const def = BLOCK_BY_TYPE[type];
+  if (!def) return {};
+  const params: Record<string, unknown> = {};
+  for (const f of def.fields) {
+    if (f.kind !== 'select') continue;
+    const opts = f.name === 'field' && (f.options?.length ?? 0) === 0
+      ? (TRIGGER_FIELDS[triggerType] ?? [])
+      : (f.options ?? []);
+    if (opts.length > 0 && opts[0].value !== '') params[f.name] = opts[0].value;
+  }
+  return params;
+}
+
 interface Props {
   form: WorkflowForm;
   variables: VariableOption[];
@@ -82,14 +101,16 @@ function BlockFields({ block, triggerType, variables, onParams }: {
 }
 
 export default function AutomationBuilder({ form, variables, onChange }: Props) {
-  const setTrigger = (type: string) => onChange({ ...form, trigger: { type, params: {} } });
+  const setTrigger = (type: string) => onChange({ ...form, trigger: { type, params: defaultParams(type, type) } });
   const setTriggerParams = (params: Record<string, unknown>) => onChange({ ...form, trigger: { ...form.trigger, params } });
 
   const updateList = (key: 'conditions' | 'actions', i: number, block: FormBlock) => {
     const list = [...form[key]]; list[i] = block; onChange({ ...form, [key]: list });
   };
   const addBlock = (key: 'conditions' | 'actions', defaultType: string) =>
-    onChange({ ...form, [key]: [...form[key], { type: defaultType, params: {} }] });
+    onChange({ ...form, [key]: [...form[key], { type: defaultType, params: defaultParams(defaultType, form.trigger.type) }] });
+  const changeType = (key: 'conditions' | 'actions', i: number, type: string) =>
+    updateList(key, i, { type, params: defaultParams(type, form.trigger.type) });
   const removeBlock = (key: 'conditions' | 'actions', i: number) =>
     onChange({ ...form, [key]: form[key].filter((_, j) => j !== i) });
 
@@ -125,7 +146,7 @@ export default function AutomationBuilder({ form, variables, onChange }: Props) 
             <div className="ae-block" key={i}>
               <div className="ae-block-head">
                 <select className="ae-select" style={{ maxWidth: 220 }} value={c.type}
-                  onChange={(e) => updateList('conditions', i, { type: e.target.value, params: {} })}>
+                  onChange={(e) => changeType('conditions', i, e.target.value)}>
                   {CONDITIONS.map((cd) => <option key={cd.type} value={cd.type}>{cd.label}</option>)}
                 </select>
                 <button className="ae-btn ae-btn--ghost" onClick={() => removeBlock('conditions', i)}>✕</button>
@@ -150,7 +171,7 @@ export default function AutomationBuilder({ form, variables, onChange }: Props) 
             <div className="ae-block" key={i}>
               <div className="ae-block-head">
                 <select className="ae-select" style={{ maxWidth: 240 }} value={a.type}
-                  onChange={(e) => updateList('actions', i, { type: e.target.value, params: {} })}>
+                  onChange={(e) => changeType('actions', i, e.target.value)}>
                   {ACTIONS.map((ac) => <option key={ac.type} value={ac.type}>{ac.label}</option>)}
                 </select>
                 <button className="ae-btn ae-btn--ghost" onClick={() => removeBlock('actions', i)}>✕</button>
