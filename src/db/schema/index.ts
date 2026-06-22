@@ -39,6 +39,9 @@ export * from './meshcorePacketLog.js';
 // Embed Profiles table
 export * from './embedProfiles.js';
 
+// Automation Engine tables (global — no sourceId)
+export * from './automations.js';
+
 // Waypoints table
 export * from './waypoints.js';
 

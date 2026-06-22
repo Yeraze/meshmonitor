@@ -112,6 +112,7 @@ import { migration as meshcoreNodeFavoriteMigration, runMigration094Postgres as 
 import { migration as deadDropMigration, runMigration095Postgres as runDeadDropPostgres, runMigration095Mysql as runDeadDropMysql } from '../server/migrations/095_create_dead_drop.js';
 import { migration as meshcoreNeighborTimestampBigintMigration, runMigration096Postgres as runMeshcoreNeighborTimestampBigintPostgres, runMigration096Mysql as runMeshcoreNeighborTimestampBigintMysql } from '../server/migrations/096_meshcore_neighbor_timestamp_bigint.js';
 import { migration as traceroutePacketIdMigration, runMigration097Postgres as runTraceroutePacketIdPostgres, runMigration097Mysql as runTraceroutePacketIdMysql } from '../server/migrations/097_add_packet_id_to_traceroutes.js';
+import { migration as createAutomationsMigration, runMigration098Postgres, runMigration098Mysql } from '../server/migrations/098_create_automations.js';
 
 // ============================================================================
 // Registry
@@ -1550,4 +1551,20 @@ registry.register({
   sqlite: (db) => traceroutePacketIdMigration.up(db),
   postgres: (client) => runTraceroutePacketIdPostgres(client),
   mysql: (pool) => runTraceroutePacketIdMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 098: create automations + automation_runs tables (#3653).
+// Foundation for the generic Automation Engine. `automations` is GLOBAL (no
+// sourceId) by design; `automation_runs` is the execution log (Phase 1a) and
+// stateful run store (Phase 1b).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 98,
+  name: 'create_automations',
+  settingsKey: 'migration_098_create_automations',
+  sqlite: (db) => createAutomationsMigration.up(db),
+  postgres: (client) => runMigration098Postgres(client),
+  mysql: (pool) => runMigration098Mysql(pool),
 });

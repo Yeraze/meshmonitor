@@ -103,6 +103,10 @@ import {
 import {
   embedProfilesSqlite, embedProfilesPostgres, embedProfilesMysql,
 } from './schema/embedProfiles.js';
+import {
+  automationsSqlite, automationsPostgres, automationsMysql,
+  automationRunsSqlite, automationRunsPostgres, automationRunsMysql,
+} from './schema/automations.js';
 
 // Waypoints table
 import {
@@ -197,6 +201,10 @@ export interface ActiveSchema {
   // Embed Profiles
   embedProfiles: any;
 
+  // Automation Engine (global — no sourceId)
+  automations: any;
+  automationRuns: any;
+
   // Waypoints
   waypoints: any;
 
@@ -265,6 +273,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNeighbors: meshcoreNeighborsSqlite,
     meshcorePacketLog: meshcorePacketLogSqlite,
     embedProfiles: embedProfilesSqlite,
+    automations: automationsSqlite,
+    automationRuns: automationRunsSqlite,
     waypoints: waypointsSqlite,
     sources: sourcesSqlite,
     estimatedPositions: estimatedPositionsSqlite,
@@ -314,6 +324,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNeighbors: meshcoreNeighborsPostgres,
     meshcorePacketLog: meshcorePacketLogPostgres,
     embedProfiles: embedProfilesPostgres,
+    automations: automationsPostgres,
+    automationRuns: automationRunsPostgres,
     waypoints: waypointsPostgres,
     sources: sourcesPostgres,
     estimatedPositions: estimatedPositionsPostgres,
@@ -363,6 +375,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreNeighbors: meshcoreNeighborsMysql,
     meshcorePacketLog: meshcorePacketLogMysql,
     embedProfiles: embedProfilesMysql,
+    automations: automationsMysql,
+    automationRuns: automationRunsMysql,
     waypoints: waypointsMysql,
     sources: sourcesMysql,
     estimatedPositions: estimatedPositionsMysql,
