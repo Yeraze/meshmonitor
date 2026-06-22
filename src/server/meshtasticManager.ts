@@ -7256,9 +7256,14 @@ class MeshtasticManager implements ISourceManager {
         .catch(err => logger.error('Failed to send traceroute notification:', err));
 
       // Calculate and store route segment distances, and estimate positions for nodes without GPS.
-      // Skip for our own outgoing response: routeBack is not yet populated by relay nodes, so
-      // creating segments now would draw fictitious direct-line connections. (Issues #1140, #3622)
-      if (!isLocalNodeResponse) try {
+      // Guard: skip segment creation when the return path has not been populated yet. Two conditions
+      // cover this:
+      //   1. isLocalNodeResponse — our own outgoing response seen before relay nodes fill routeBack.
+      //   2. routeBack and snrBack both empty — catches the same state even when localNodeInfo is
+      //      null (e.g. connection not yet fully initialized), closing a pre-existing race window.
+      // Either condition is sufficient; both are checked for defence-in-depth. (Issues #1140, #3622)
+      const isEmptyReturnPath = routeBack.length === 0 && snrBack.length === 0;
+      if (!isLocalNodeResponse && !isEmptyReturnPath) try {
         // Build the full route path: toNode (requester) -> route intermediates -> fromNode (responder)
         // route contains intermediate hops from requester toward responder
         // So the full path is: requester -> route[0] -> route[1] -> ... -> route[N-1] -> responder

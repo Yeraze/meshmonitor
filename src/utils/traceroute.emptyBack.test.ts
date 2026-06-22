@@ -74,7 +74,7 @@ describe('formatTracerouteRoute — empty route + empty snr (issue #3622)', () =
   it('renders a multi-hop route correctly when both route and snr have data', () => {
     // The guard must not accidentally block valid multi-hop paths.
     const result = formatTracerouteRoute(
-      '[3221291011]',  // one intermediate hop (0xcccc0003)
+      '[3221291011]',  // one intermediate hop (0xc0010003)
       '[40, 32]',      // SNR for each hop
       0xbbbb0002,
       0xaaaa0001,
