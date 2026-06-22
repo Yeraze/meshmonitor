@@ -1044,6 +1044,14 @@ class MeshCoreManager extends EventEmitter {
         dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
         if (!wasKnown) {
           void this.notifyNewNodeDiscovered(updated);
+          // A brand-new node whose advert didn't carry its name/type — the full
+          // record (name, type, position) lives on the device's contact list.
+          // Pull it via a debounced refreshContacts() so those fields populate
+          // immediately instead of only after a manual disconnect/reconnect
+          // (#3646). Coalesced with path-refreshes over the same window.
+          if (!updated.advName || updated.advType === undefined) {
+            this.schedulePathRefresh(publicKey);
+          }
         }
         logger.info(`[MeshCore] ${event_type} for ${publicKey} (${data.adv_name ?? ''})`);
       }
@@ -1159,6 +1167,15 @@ class MeshCoreManager extends EventEmitter {
         void this.persistContact(updated);
         this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
         dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+
+        // A discovery response carries only key+type — name and position aren't
+        // included. For a newly-seen node, pull the full contact record
+        // (debounced) so those fields populate without a manual reconnect
+        // (#3646) rather than waiting on a later passive advert that may not
+        // carry them either.
+        if (isNew) {
+          this.schedulePathRefresh(publicKey);
+        }
 
         // Tally the burst, de-duplicating repeated responses from the same node.
         if (this.activeDiscovery && !this.activeDiscovery.seen.has(publicKey)) {
@@ -1768,7 +1785,7 @@ class MeshCoreManager extends EventEmitter {
       const pending = Array.from(this.pathRefreshPendingKeys);
       this.pathRefreshPendingKeys.clear();
       logger.info(
-        `[MeshCore:${this.sourceId}] Refreshing contacts after ${pending.length} path-update push(es)`,
+        `[MeshCore:${this.sourceId}] Refreshing contacts after ${pending.length} contact push(es) (path/new-node)`,
       );
       void this.refreshContacts()
         .then(() => {
