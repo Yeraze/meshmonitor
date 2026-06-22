@@ -74,7 +74,10 @@ identifiers so the two coexist:
 
 ### 3.1 Workflow graph (the `config` JSON)
 
-A workflow is a directed graph. Stored as a JSON document validated by a Zod schema.
+A workflow is a directed graph. Stored as a JSON document validated by a small hand-written
+validator (`validateAutomationGraph` in `src/types/automation.ts`) — the project carries no
+schema-validation dependency, and the validator returns structured per-problem errors suited to the
+import UI. Swappable for Zod later if richer schemas are wanted.
 
 ```jsonc
 {
@@ -313,7 +316,7 @@ the shared `defaultValue` flagged for the importer to review (never another inst
 All gated by `requirePermission('automations', <action>)` (global resource):
 
 - `GET    /api/automations` — list.
-- `POST   /api/automations` — create (validates graph via Zod; rejects unknown block types / cycles where illegal).
+- `POST   /api/automations` — create (validates graph via `validateAutomationGraph`; rejects unknown block types / cycles / orphans).
 - `GET    /api/automations/:id` — fetch.
 - `PUT    /api/automations/:id` — update (cancels in-flight runs).
 - `DELETE /api/automations/:id`.
@@ -329,7 +332,7 @@ All gated by `requirePermission('automations', <action>)` (global resource):
 - **New global tab `automations`** — register in `TabType` (`src/types/ui.ts`), `VALID_TABS` (`UIContext.tsx`), render in `App.tsx`. Model the page after `MapAnalysisPage` (global, iterates sources, doesn't depend on `SourceContext`).
 - **`AutomationsPage`** — list of automations (enable toggle, run-status badge, edit/delete), "New automation" button.
 - **`AutomationBuilder` (UI v1)** — constrained linear editor: pick one trigger → ordered conditions → ordered actions. Emits valid graph JSON. Block params are typed forms. Designed so the Phase-2 React Flow canvas is a drop-in replacement reading/writing the same JSON.
-- **Import/Export modal** — paste/show JSON, Zod-validate before accept, copy-to-clipboard. EULA scroll-gate component built but inert until scripts exist.
+- **Import/Export modal** — paste/show JSON, run `validateAutomationGraph` before accept, copy-to-clipboard. EULA scroll-gate component built but inert until scripts exist.
 - **Run-log viewer** — per-automation list of recent runs with step outcomes.
 
 ---
@@ -341,7 +344,7 @@ All gated by `requirePermission('automations', <action>)` (global resource):
 - Migration #099 + `automation_variables` / `automation_variable_values` (§5.2): variable registry repository, CRUD routes, a discrete **Variables** management area, the `{{ var.* }}` resolver (scope/context binding + flag TTL at read), `condition.variable`, and `flow.setVar`.
 - `automations` global permission resource (`permission.ts` union + RESOURCES + admin/default sets; NOT in SOURCEY_RESOURCES).
 - `automationEngineService` (load, event-type-indexed dispatch, graph eval with `true`/`false` condition routing, scheduler-armed timer triggers, safety rails, single-run var interpolation), started in `server.ts`.
-- Zod block-catalog schema + types (shared FE/BE).
+- Shared block-catalog types + hand-written graph validator (`src/types/automation.ts`, FE/BE).
 - `automationRoutes` CRUD/enable/disable/runs/import/export.
 - `AutomationsPage` + `AutomationBuilder` (linear chain + inline If/ElseIf/Else widget) + import/export modal + run-log viewer + new tab.
 - Tests: engine unit (each trigger fires / condition routes true+false / If-ElseIf-Else cascade / action exec / collapse ANY-ALL-NONE / fanout / loop-guard / cooldown), migration test, API CRUD + import-security tests, global-scope + sourceFilter test.
@@ -378,5 +381,5 @@ All gated by `requirePermission('automations', <action>)` (global resource):
 - Engine unit (1a): each trigger type fires; each condition routes both `true` and `false`; If/ElseIf/Else cascade picks first match; collapse ANY/ALL/NONE; fanout; single-run variable interpolation; loop-guard trips; cooldown enforced; action errors isolated.
 - Stateful (1b): wait → persist → resume on event/timer; restart rehydration of `waiting` runs; edit/disable cancels in-flight runs.
 - Migration test (count + last-name) across SQLite/PG/MySQL shape.
-- API: CRUD, import lands disabled + admin-gated, export round-trips through Zod, run-log returns steps.
+- API: CRUD, import lands disabled + admin-gated, export round-trips through `validateAutomationGraph`, run-log returns steps.
 - Global-scope test: automation with no source filter evaluates across all sources; with `sourceFilter` restricts correctly.

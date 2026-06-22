@@ -18,9 +18,10 @@ import { randomUUID } from 'crypto';
 import { eq, and } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
+import type { VariableType, VariableScope } from '../../types/automation.js';
 
-export type VariableType = 'string' | 'integer' | 'float' | 'boolean' | 'flag';
-export type VariableScope = 'global' | 'source' | 'node' | 'sourceNode';
+// Re-export the canonical shared types so existing repo consumers keep working.
+export type { VariableType, VariableScope };
 
 export interface AutomationVariableRecord {
   id: string;
