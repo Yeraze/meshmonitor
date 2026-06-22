@@ -141,14 +141,22 @@ export const migration = {
     `);
     logger.info(`Migration 033 (SQLite): created unique index '${NEW_INDEX_NAME}'`);
 
-    // Fix orphaned channel_database rows
+    // Fix orphaned channel_database rows — ONLY when the legacy `sourceId`
+    // column still exists. channel_database is global-by-design: migration 021
+    // no longer adds `sourceId` and migration 063 drops it, so on current
+    // databases the column is absent and this backfill is a no-op. Guard so 033
+    // doesn't crash with "no such column: sourceId" on fresh installs (#3657).
     if (sources.length > 0) {
-      const firstSource = sources[0].id;
-      const cdResult = db.prepare(`
-        UPDATE channel_database SET sourceId = ? WHERE sourceId IS NULL
-      `).run(firstSource);
-      if (cdResult.changes > 0) {
-        logger.info(`Migration 033 (SQLite): migrated ${cdResult.changes} channel_database row(s) to source '${firstSource}'`);
+      const cdHasSourceId = (db.prepare(`PRAGMA table_info(channel_database)`).all() as Array<{ name: string }>)
+        .some((c) => c.name === 'sourceId');
+      if (cdHasSourceId) {
+        const firstSource = sources[0].id;
+        const cdResult = db.prepare(`
+          UPDATE channel_database SET sourceId = ? WHERE sourceId IS NULL
+        `).run(firstSource);
+        if (cdResult.changes > 0) {
+          logger.info(`Migration 033 (SQLite): migrated ${cdResult.changes} channel_database row(s) to source '${firstSource}'`);
+        }
       }
     }
 
@@ -221,14 +229,24 @@ export async function runMigration033Postgres(client: any): Promise<void> {
   `);
   logger.info(`Migration 033 (PostgreSQL): created unique index '${NEW_INDEX_NAME}'`);
 
-  // Fix orphaned channel_database rows
+  // Fix orphaned channel_database rows — ONLY when the legacy `sourceId` column
+  // still exists. channel_database is global-by-design: migration 021 no longer
+  // adds `sourceId` and migration 063 drops it, so on current databases the
+  // column is absent and this backfill is a no-op. Without this guard, 033
+  // crashes on every PostgreSQL boot (PG re-runs all migrations) with
+  // `column "sourceId" does not exist` (#3657).
   if (sources.length > 0) {
-    const firstSource = sources[0];
-    const cdRes = await client.query(`
-      UPDATE channel_database SET "sourceId" = $1 WHERE "sourceId" IS NULL
-    `, [firstSource]);
-    if (cdRes.rowCount && cdRes.rowCount > 0) {
-      logger.info(`Migration 033 (PostgreSQL): migrated ${cdRes.rowCount} channel_database row(s) to source '${firstSource}'`);
+    const { rows: cdCol } = await client.query(
+      `SELECT 1 FROM information_schema.columns WHERE table_name = 'channel_database' AND column_name = 'sourceId'`
+    );
+    if (cdCol.length > 0) {
+      const firstSource = sources[0];
+      const cdRes = await client.query(`
+        UPDATE channel_database SET "sourceId" = $1 WHERE "sourceId" IS NULL
+      `, [firstSource]);
+      if (cdRes.rowCount && cdRes.rowCount > 0) {
+        logger.info(`Migration 033 (PostgreSQL): migrated ${cdRes.rowCount} channel_database row(s) to source '${firstSource}'`);
+      }
     }
   }
 
@@ -313,16 +331,25 @@ export async function runMigration033Mysql(pool: any): Promise<void> {
       logger.debug(`Migration 033 (MySQL): unique index '${NEW_INDEX_NAME}' already exists`);
     }
 
-    // Fix orphaned channel_database rows
+    // Fix orphaned channel_database rows — ONLY when the legacy `sourceId`
+    // column still exists. channel_database is global-by-design: migration 021
+    // no longer adds `sourceId` and migration 063 drops it, so on current
+    // databases the column is absent and this backfill is a no-op. Guard so 033
+    // doesn't crash with "Unknown column 'sourceId'" (#3657).
     if (sources.length > 0) {
-      const firstSource = sources[0];
-      const [cdResult] = await conn.query(
-        `UPDATE channel_database SET sourceId = ? WHERE sourceId IS NULL`,
-        [firstSource],
+      const [cdCols] = await conn.query(
+        `SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'channel_database' AND COLUMN_NAME = 'sourceId'`,
       );
-      const cdAffected = (cdResult as any)?.affectedRows ?? 0;
-      if (cdAffected > 0) {
-        logger.info(`Migration 033 (MySQL): migrated ${cdAffected} channel_database row(s) to source '${firstSource}'`);
+      if (Array.isArray(cdCols) && cdCols.length > 0) {
+        const firstSource = sources[0];
+        const [cdResult] = await conn.query(
+          `UPDATE channel_database SET sourceId = ? WHERE sourceId IS NULL`,
+          [firstSource],
+        );
+        const cdAffected = (cdResult as any)?.affectedRows ?? 0;
+        if (cdAffected > 0) {
+          logger.info(`Migration 033 (MySQL): migrated ${cdAffected} channel_database row(s) to source '${firstSource}'`);
+        }
       }
     }
   } finally {
