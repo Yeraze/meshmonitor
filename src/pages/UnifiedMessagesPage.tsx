@@ -73,6 +73,15 @@ interface UnifiedChannel {
   sources: Array<{ sourceId: string; sourceName: string; channelNumber: number }>;
 }
 
+/** A device channel sharing its key with a differently-named Channel Database
+ *  (server-decryption) entry (#3644). */
+interface ChannelCollisionRow {
+  channelId: number;
+  channelName: string;
+  dbId: number;
+  dbName: string;
+}
+
 // ── Constants ────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 100;
@@ -186,6 +195,53 @@ export default function UnifiedMessagesPage() {
       setSelectedChannel(preferred?.name ?? channels[0].name);
     }
   }, [channels, selectedChannel]);
+
+  // ── Channel collisions (#3644) ────────────────────────────────────────
+  // A device channel can share its key with a differently-named server-side
+  // decryption (Channel Database) entry; matching messages then appear under
+  // that entry's tab rather than the device channel. Detect it per source
+  // (channel_database is global) so we can warn when the viewed channel may be
+  // overshadowed.
+  const collisionSourceIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const c of channels) for (const src of c.sources) ids.add(src.sourceId);
+    return Array.from(ids).sort();
+  }, [channels]);
+
+  const { data: channelCollisions = [] } = useQuery<ChannelCollisionRow[]>({
+    queryKey: ['unified', 'channel-collisions', collisionSourceIds],
+    enabled: canReadAnyMessages && collisionSourceIds.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const perSource = await Promise.all(
+        collisionSourceIds.map(async (sid) => {
+          const res = await fetch(
+            `${appBasename}/api/channels/collisions?sourceId=${encodeURIComponent(sid)}`,
+            { credentials: 'include' },
+          );
+          if (!res.ok) return [] as ChannelCollisionRow[];
+          const json = await res.json();
+          return (json.collisions ?? []) as ChannelCollisionRow[];
+        }),
+      );
+      return perSource.flat();
+    },
+  });
+
+  // Names of channels colliding with the viewed channel — the "other side" of
+  // each collision (the entry messages may be landing under, or vice versa).
+  const overshadowNames = useMemo(() => {
+    if (!selectedChannel) return [] as string[];
+    const sel = selectedChannel.trim().toLowerCase();
+    const names = new Set<string>();
+    for (const c of channelCollisions) {
+      const ch = c.channelName.trim().toLowerCase();
+      const db = c.dbName.trim().toLowerCase();
+      if (ch === sel && c.dbName.trim()) names.add(c.dbName);
+      else if (db === sel && c.channelName.trim()) names.add(c.channelName);
+    }
+    return Array.from(names);
+  }, [channelCollisions, selectedChannel]);
 
   // ── Messages infinite query ───────────────────────────────────────────
   const {
@@ -452,6 +508,14 @@ export default function UnifiedMessagesPage() {
       <div className="unified-scroll" ref={scrollRef} onScroll={handleScroll}>
       <div className="unified-body">
         {!canReadAnyMessages && <div className="unified-empty">{t('unified.messages.sign_in_required')}</div>}
+        {canReadAnyMessages && overshadowNames.length > 0 && (
+          <div className="unified-warning" role="status">
+            ⚠️ {t('unified.messages.channel_collision_warning', {
+              defaultValue: 'This channel shares its key with "{{names}}" (a Channel Database / device channel under a different name). Messages may be split between those tabs — reconcile the names on the Channels page.',
+              names: overshadowNames.join('", "'),
+            })}
+          </div>
+        )}
         {canReadAnyMessages && channelsError && <div className="unified-error">{t('unified.messages.failed_channels')}</div>}
         {canReadAnyMessages && messagesError && <div className="unified-error">{t('unified.messages.failed_messages')}</div>}
         {canReadAnyMessages && loadingMessages && feedMessages.length === 0 && (
