@@ -63,6 +63,9 @@ const mockDb = vi.hoisted(() => ({
     deleteChannel: vi.fn().mockResolvedValue(undefined),
     getChannelCount: vi.fn().mockResolvedValue(0),
   },
+  channelDatabase: {
+    getAllAsync: vi.fn().mockResolvedValue([]),
+  },
   messages: {
     purgeChannelMessages: vi.fn().mockResolvedValue(0),
     migrateMessagesForChannelMoves: vi.fn().mockResolvedValue(undefined),
@@ -108,6 +111,7 @@ beforeEach(() => {
   // mockResolvedValue/mockRejectedValue, so re-assert the defaults each test.
   mockDb.channels.getAllChannels.mockResolvedValue([]);
   mockDb.channels.getChannelCount.mockResolvedValue(0);
+  mockDb.channelDatabase.getAllAsync.mockResolvedValue([]);
   mockDb.messages.purgeChannelMessages.mockResolvedValue(0);
   mockDb.sources.getSource.mockResolvedValue({ type: 'meshtastic_tcp' });
   mockMeshcoreRegistry.get.mockReturnValue(mockMeshcoreManager);
@@ -139,6 +143,41 @@ describe('GET /channels and /channels/all', () => {
     const res = await request(app).get('/channels');
     expect(res.status).toBe(500);
     expect(res.body.error).toBe('Failed to fetch channels');
+  });
+});
+
+describe('GET /channels/collisions (#3644)', () => {
+  it('flags a device channel sharing a key with a differently-named Channel Database entry', async () => {
+    mockDb.channels.getAllChannels.mockResolvedValue([
+      { id: 0, name: 'Custom', role: 1, psk: 'AQ==' },
+    ]);
+    mockDb.channelDatabase.getAllAsync.mockResolvedValue([
+      { id: 5, name: 'LongFast', psk: 'AQ==' },
+    ]);
+    const res = await request(app).get('/channels/collisions');
+    expect(res.status).toBe(200);
+    expect(res.body.collisions).toEqual([
+      { channelId: 0, channelName: 'Custom', dbId: 5, dbName: 'LongFast' },
+    ]);
+  });
+
+  it('returns no collisions for a same-name mirror', async () => {
+    mockDb.channels.getAllChannels.mockResolvedValue([
+      { id: 0, name: 'LongFast', role: 1, psk: 'AQ==' },
+    ]);
+    mockDb.channelDatabase.getAllAsync.mockResolvedValue([
+      { id: 5, name: 'LongFast', psk: 'AQ==' },
+    ]);
+    const res = await request(app).get('/channels/collisions');
+    expect(res.status).toBe(200);
+    expect(res.body.collisions).toEqual([]);
+  });
+
+  it('returns 500 when the DB query throws', async () => {
+    mockDb.channels.getAllChannels.mockRejectedValue(new Error('boom'));
+    const res = await request(app).get('/channels/collisions');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Failed to detect channel collisions');
   });
 });
 

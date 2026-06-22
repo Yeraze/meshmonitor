@@ -27,6 +27,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { optionalAuth, requireAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import { transformChannel } from '../utils/channelView.js';
+import { detectChannelCollisions } from '../utils/channelCollision.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { migrateAutomationChannels } from '../utils/automationChannelMigration.js';
 import { modemPresetChannelName } from '../constants/meshtastic.js';
@@ -163,6 +164,47 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error fetching channels:', error);
     res.status(500).json({ error: 'Failed to fetch channels' });
+  }
+});
+
+// GET /collisions — device channels whose PSK matches a channel_database
+// (server-decryption) entry under a DIFFERENT name (#3644). Such a channel's
+// messages get filed under the other name's tab, leaving the device channel's
+// own tab empty. PSKs are compared server-side (readers don't receive raw PSKs)
+// and only names/ids are returned. Registered before `/:id` so it isn't
+// swallowed by the id param route.
+router.get('/collisions', optionalAuth(), async (req: Request, res: Response) => {
+  try {
+    const sourceId = req.query.sourceId as string | undefined;
+    const allChannels = await databaseService.channels.getAllChannels(sourceId);
+    const isAdmin = req.user?.isAdmin === true;
+
+    // Per-row permission gate (MM-SEC-2), mirroring GET /. Only consider
+    // channels the caller may read so collision detection can't leak the names
+    // of restricted channels to unauthorized callers.
+    const accessible: typeof allChannels = [];
+    for (const channel of allChannels) {
+      if (isAdmin) {
+        accessible.push(channel);
+        continue;
+      }
+      const channelResource = `channel_${channel.id}` as import('../../types/permission.js').ResourceType;
+      if (req.user && await hasPermission(req.user, channelResource, 'read')) {
+        accessible.push(channel);
+      }
+    }
+
+    const dbEntries = await databaseService.channelDatabase.getAllAsync();
+    const collisions = detectChannelCollisions(
+      accessible.map(c => ({ id: c.id, name: c.name, psk: c.psk })),
+      dbEntries
+        .filter((d): d is typeof d & { id: number } => typeof d.id === 'number')
+        .map(d => ({ id: d.id, name: d.name, psk: d.psk })),
+    );
+    res.json({ collisions });
+  } catch (error) {
+    logger.error('Error detecting channel collisions:', error);
+    res.status(500).json({ error: 'Failed to detect channel collisions' });
   }
 });
 

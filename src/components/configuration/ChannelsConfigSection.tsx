@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   DndContext,
@@ -29,6 +29,15 @@ import { formatPrecisionAccuracy } from '../../utils/distance';
 
 // Default public PSK (base64 encoded value of single byte 0x01)
 const DEFAULT_PUBLIC_PSK = 'AQ==';
+
+/** A device channel sharing its key with a differently-named Channel Database
+ *  (server-decryption) entry (#3644). */
+interface ChannelCollision {
+  channelId: number;
+  channelName: string;
+  dbId: number;
+  dbName: string;
+}
 
 type EncryptionStatus = 'none' | 'default' | 'secure';
 
@@ -137,6 +146,30 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
   const { showToast } = useToast();
   const { distanceUnit } = useSettings();
   const { sourceId } = useSource();
+
+  // #3644: device channels whose PSK matches a server-side decryption (Channel
+  // Database) entry under a DIFFERENT name. Messages on such a channel get filed
+  // under that entry's tab instead of this channel. Detected server-side because
+  // readers don't receive raw PSKs.
+  const [channelCollisions, setChannelCollisions] = useState<ChannelCollision[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const qs = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+    apiService.get<{ collisions: ChannelCollision[] }>(`/api/channels/collisions${qs}`)
+      .then(res => { if (!cancelled) setChannelCollisions(res.collisions ?? []); })
+      .catch(() => { if (!cancelled) setChannelCollisions([]); });
+    return () => { cancelled = true; };
+  }, [sourceId, channels]);
+  const collisionDbNamesByChannelId = useMemo(() => {
+    const m = new Map<number, string[]>();
+    for (const c of channelCollisions) {
+      const list = m.get(c.channelId) ?? [];
+      list.push(c.dbName);
+      m.set(c.channelId, list);
+    }
+    return m;
+  }, [channelCollisions]);
+
   const [editingChannel, setEditingChannel] = useState<ChannelEditState | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -537,6 +570,17 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                             ? `📍 ${t('channels_config.location_auto_broadcast')}`
                             : `📌 ${t('channels_config.location_enabled')}`}
                           {` (${formatPrecisionAccuracy(channel.positionPrecision ?? 0, distanceUnit)})`}
+                        </div>
+                      )}
+                      {collisionDbNamesByChannelId.has(channel.id) && (
+                        <div
+                          style={{ marginTop: '0.5rem', color: 'var(--ctp-yellow)', fontSize: '0.85rem' }}
+                          title={t('channels_config.collision_tooltip', 'This channel shares its encryption key with a Channel Database (server-side decryption) entry under a different name, so its messages are filed under that entry instead.')}
+                        >
+                          ⚠️ {t('channels_config.collision_warning', {
+                            defaultValue: 'Key shared with Channel Database entry "{{names}}" — messages may appear under that name instead of here.',
+                            names: collisionDbNamesByChannelId.get(channel.id)!.join('", "'),
+                          })}
                         </div>
                       )}
                     </div>
