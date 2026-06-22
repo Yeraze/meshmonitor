@@ -1,15 +1,18 @@
 import L from 'leaflet';
 import { isEmoji } from './text';
-import type { NodeTypeCategory } from './nodeTypeCategory';
+import { categoryGlyphFamily, type NodeTypeCategory } from './nodeTypeCategory';
 
 /**
  * Inner SVG markup for a node-type role glyph, drawn inside the 48×48 viewBox
  * over a white background circle (issue #3546). Returns '' for 'standard' so
  * callers fall back to the default pin/circle. `color` is the hop color so the
  * glyph stays consistent with the marker's stroke.
+ *
+ * Meshtastic role categories (issue #3610) reuse the MeshCore glyph silhouettes
+ * via {@link categoryGlyphFamily} (a ROUTER draws as a repeater tower, etc.).
  */
 export function roleGlyphInnerSvg(category: NodeTypeCategory, color: string): string {
-  switch (category) {
+  switch (categoryGlyphFamily(category)) {
     case 'repeater':
       // Tower with signal waves — the existing router silhouette, overflows
       // the circle so backbone nodes read at a glance.

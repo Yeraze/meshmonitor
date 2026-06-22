@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
+import { useVisibleNodeTypeCategories } from './useVisibleNodeTypeCategories';
 import { roleGlyphInnerSvg } from '../../utils/mapIcons';
 import {
-  NODE_TYPE_CATEGORIES,
+  categoryGlyphFamily,
   NODE_TYPE_CATEGORY_META,
   type NodeTypeCategory,
 } from '../../utils/nodeTypeCategory';
@@ -57,6 +58,12 @@ export default function MapLegend() {
   const { config } = useMapAnalysisCtx();
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
+  const visibleCategories = useVisibleNodeTypeCategories();
+  // Only categories with a distinct glyph deserve a legend row; client/standard
+  // buckets render as the default pin and would be a meaningless swatch.
+  const legendCategories = visibleCategories.filter(
+    (c) => categoryGlyphFamily(c) !== 'standard',
+  );
 
   const showTraceroutes = config.layers.traceroutes.enabled;
   const showNeighbors = config.layers.neighbors.enabled;
@@ -92,10 +99,10 @@ export default function MapLegend() {
               <div className="row"><Swatch color="#6698f5" /> Node</div>
             </section>
           )}
-          {showMarkers && (
+          {showMarkers && legendCategories.length > 0 && (
             <section>
               <h4>{t('map.nodeType.legendTitle', 'Node Types')}</h4>
-              {NODE_TYPE_CATEGORIES.filter((c) => c !== 'standard').map((c) => (
+              {legendCategories.map((c) => (
                 <div className="row" key={c}>
                   <RoleIcon category={c} /> {t(NODE_TYPE_CATEGORY_META[c].labelKey, NODE_TYPE_CATEGORY_META[c].label)}
                 </div>

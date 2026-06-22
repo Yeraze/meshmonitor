@@ -191,4 +191,16 @@ describe('roleGlyphMarkerSvg', () => {
   it('returns empty string for standard (so callers keep their default marker)', () => {
     expect(roleGlyphMarkerSvg('standard', COLOR, 24)).toBe('');
   });
+
+  it('renders Meshtastic role categories via their shared glyph family (issue #3610)', () => {
+    // A Meshtastic ROUTER draws as the repeater tower; identical markup.
+    expect(roleGlyphMarkerSvg('mtRouter', COLOR, 24)).toBe(roleGlyphMarkerSvg('repeater', COLOR, 24));
+    expect(roleGlyphMarkerSvg('mtRouterLate', COLOR, 24)).toBe(roleGlyphMarkerSvg('repeater', COLOR, 24));
+    expect(roleGlyphMarkerSvg('mtSensor', COLOR, 24)).toBe(roleGlyphMarkerSvg('sensor', COLOR, 24));
+  });
+
+  it('returns empty string for Meshtastic client-type roles (default pin)', () => {
+    expect(roleGlyphMarkerSvg('mtClient', COLOR, 24)).toBe('');
+    expect(roleGlyphMarkerSvg('mtTracker', COLOR, 24)).toBe('');
+  });
 });

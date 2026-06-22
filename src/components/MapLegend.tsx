@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSettings, TimeFormat, DateFormat } from '../contexts/SettingsContext';
 import { formatDateTime } from '../utils/datetime';
 import { DraggableOverlay } from './DraggableOverlay';
-import { NODE_TYPE_CATEGORIES, NODE_TYPE_CATEGORY_META } from '../utils/nodeTypeCategory';
+import { MESHCORE_CATEGORIES, NODE_TYPE_CATEGORY_META } from '../utils/nodeTypeCategory';
 import { roleGlyphMarkerSvg } from '../utils/mapIcons';
 import './MapLegend.css';
 
@@ -140,7 +140,7 @@ const MapLegend: React.FC<MapLegendProps> = ({ positionHistory, unmappedCount, s
                 <span className="legend-title">{t('map.nodeType.legendTitle', 'Node Types')}</span>
                 {/* Standard nodes keep the default marker, so only the four
                     glyph categories are listed (matches the analysis legend). */}
-                {NODE_TYPE_CATEGORIES.filter((c) => c !== 'standard').map((category) => {
+                {MESHCORE_CATEGORIES.filter((c) => c !== 'standard').map((category) => {
                   const meta = NODE_TYPE_CATEGORY_META[category];
                   return (
                     <div key={category} className="legend-item">

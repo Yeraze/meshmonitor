@@ -7,7 +7,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import {
   getNodeTypeCategory,
   nodePassesTypeFilter,
-  NODE_TYPE_CATEGORIES,
+  MESHCORE_CATEGORIES,
   NODE_TYPE_CATEGORY_META,
   type NodeTypeCategory,
 } from '../../utils/nodeTypeCategory';
@@ -410,7 +410,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
           <div className="map-controls-title" style={{ marginTop: '0.5rem' }}>
             {t('map.nodeType.legendTitle', 'Node Types')}
           </div>
-          {NODE_TYPE_CATEGORIES.map((category) => {
+          {MESHCORE_CATEGORIES.map((category) => {
             const meta = NODE_TYPE_CATEGORY_META[category];
             return (
               <label key={category} className="map-control-item">
