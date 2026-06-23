@@ -670,7 +670,7 @@ router.put(
       if (!ok) {
         return res.status(409).json({
           success: false,
-          error: 'Set out_path failed — contact may be unknown, source disconnected, or not a Companion device',
+          error: 'Set out_path failed — the device did not respond in time. Verify the device is connected and try again.',
         });
       }
       res.json({ success: true });

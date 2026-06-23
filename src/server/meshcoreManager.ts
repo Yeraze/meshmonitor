@@ -2294,12 +2294,18 @@ class MeshCoreManager extends EventEmitter {
       return false;
     }
     try {
+      // 12 s is generous for a single serial write; fail fast so the UI
+      // doesn't leave the user stuck waiting for an unresponsive device.
       const response = await this.sendBridgeCommand('set_out_path', {
         public_key: publicKey,
         out_path: outPathBytes,
-      });
+      }, 12000);
       if (!response.success) {
-        logger.warn(`[MeshCore] set_out_path failed for ${publicKey}: ${response.error}`);
+        const isTimeout = response.error?.includes('timeout');
+        logger.warn(
+          `[MeshCore] set_out_path failed for ${publicKey}: ${response.error}` +
+            (isTimeout ? ' — check serial/TCP connection to the device' : ''),
+        );
         return false;
       }
       const hex = Array.from(outPathBytes)
