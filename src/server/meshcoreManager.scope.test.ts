@@ -182,3 +182,58 @@ describe('MeshCoreManager — setChannel / setDefaultScope scope handling (#3667
     expect(await manager.setDefaultScope('  ')).toBe('');
   });
 });
+
+describe('MeshCoreManager — Phase 2: scope on originated flood traffic (#3667)', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  // Sequence of scope-asserts + the originated command under test.
+  const seq = (calls: BridgeCall[], cmd: string) =>
+    calls.filter(c => c.cmd === 'set_flood_scope' || c.cmd === cmd).map(c => c.cmd);
+
+  it('asserts the default scope before a companion advert', async () => {
+    const { manager, bridgeCalls } = makeManager({ defaultScope: 'berlin' });
+    const ok = await manager.sendAdvert();
+    expect(ok).toBe(true);
+    expect(seq(bridgeCalls, 'send_advert')).toEqual(['set_flood_scope', 'send_advert']);
+    expect(scopeOf(bridgeCalls)).toEqual(['berlin']);
+  });
+
+  it('asserts the default scope before a remote login', async () => {
+    const { manager, bridgeCalls } = makeManager({ defaultScope: 'berlin' });
+    await manager.loginToNode('deadbeef', 'pw');
+    expect(seq(bridgeCalls, 'login')).toEqual(['set_flood_scope', 'login']);
+  });
+
+  it('asserts the default scope before a telemetry request', async () => {
+    const { manager, bridgeCalls } = makeManager({ defaultScope: 'berlin' });
+    await manager.requestRemoteTelemetry('deadbeef');
+    expect(seq(bridgeCalls, 'request_telemetry')).toEqual(['set_flood_scope', 'request_telemetry']);
+  });
+
+  it('asserts unscoped (null) for originated traffic when no default scope is set', async () => {
+    const { manager, bridgeCalls } = makeManager({});
+    await manager.sendAdvert();
+    expect(scopeOf(bridgeCalls)).toEqual([null]);
+  });
+
+  it('serialises an advert (default scope) concurrent with a channel send (channel scope)', async () => {
+    const { manager, bridgeCalls } = makeManager({ channelScopes: { 1: 'muenchen' }, defaultScope: 'berlin' });
+    // Advert first, then a channel message — both serialise on the same lock.
+    await Promise.all([
+      manager.sendAdvert(),
+      manager.sendMessage('hi', undefined, 1),
+    ]);
+    // Each scope is asserted immediately before its own send — never interleaved.
+    const relevant = bridgeCalls
+      .filter(c => ['set_flood_scope', 'send_advert', 'send_message'].includes(c.cmd))
+      .map(c => c.cmd === 'set_flood_scope' ? `scope:${c.params.region}` : c.cmd);
+    expect(relevant).toEqual(['scope:berlin', 'send_advert', 'scope:muenchen', 'send_message']);
+  });
+
+  it('does not emit the advert when the scope assertion fails', async () => {
+    const { manager, bridgeCalls } = makeManager({ defaultScope: 'berlin', failFloodScopeTimes: 1 });
+    const ok = await manager.sendAdvert();
+    expect(ok).toBe(false);
+    expect(bridgeCalls.some(c => c.cmd === 'send_advert')).toBe(false);
+  });
+});
