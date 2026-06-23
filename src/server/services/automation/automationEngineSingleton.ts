@@ -13,6 +13,7 @@ import type { DbMessage, DbTelemetry } from '../../../services/database.js';
 import { AutomationEngineService } from './automationEngineService.js';
 import { VariableResolver } from './variableResolver.js';
 import { createMeshActionDeps } from './meshActionDeps.js';
+import { createMeshNodeDataProvider } from './meshNodeData.js';
 
 let engine: AutomationEngineService | null = null;
 let subscribed = false;
@@ -42,10 +43,13 @@ export async function startAutomationEngine(): Promise<void> {
     automationsRepo: databaseService.automationsRepo,
     varResolver,
     deps: createMeshActionDeps(),
+    data: createMeshNodeDataProvider(),
   });
   await engine.load();
   subscribe();
   logger.info('[AutomationEngine] started');
+  // Fire the system-start event so `trigger.system` (event: bootup) automations run.
+  engine.onSystem('bootup', null, null).catch((e) => logger.error(`[AutomationEngine] bootup trigger error: ${e?.message}`));
 }
 
 function subscribe(): void {

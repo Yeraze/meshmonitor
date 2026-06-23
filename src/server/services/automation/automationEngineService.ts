@@ -34,6 +34,7 @@ import { evaluateCondition } from './conditionEvaluator.js';
 import { executeAction, type ActionDeps } from './actionExecutor.js';
 import {
   type EngineEvalContext,
+  type NodeDataProvider,
   varContextFromTrigger,
   resolveOperand,
 } from './engineContext.js';
@@ -51,6 +52,8 @@ export interface EngineServiceOptions {
   automationsRepo: AutomationsRepository;
   varResolver: VariableResolver;
   deps: ActionDeps;
+  /** Hydrates the subject node + telemetry for conditions. */
+  data: NodeDataProvider;
   /** Injectable clock (cooldown + flag TTL). Defaults to Date.now. */
   now?: () => number;
   /** Per-run action cap (loop/spam guard). Default 50. */
@@ -61,6 +64,7 @@ export class AutomationEngineService {
   private readonly automationsRepo: AutomationsRepository;
   private readonly vars: VariableResolver;
   private readonly deps: ActionDeps;
+  private readonly data: NodeDataProvider;
   private readonly now: () => number;
   private readonly maxActions: number;
 
@@ -73,6 +77,7 @@ export class AutomationEngineService {
     this.automationsRepo = opts.automationsRepo;
     this.vars = opts.varResolver;
     this.deps = opts.deps;
+    this.data = opts.data;
     this.now = opts.now ?? (() => Date.now());
     this.maxActions = opts.maxActions ?? 50;
   }
@@ -162,6 +167,7 @@ export class AutomationEngineService {
       const evalCtx: EngineEvalContext = {
         trigger: ctx,
         vars: this.vars,
+        data: this.data,
         varCtx: varContextFromTrigger(ctx),
         now,
       };

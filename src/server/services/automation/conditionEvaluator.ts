@@ -8,8 +8,9 @@
 import type { AutomationNode, NumericOp } from '../../../types/automation.js';
 import {
   type EngineEvalContext,
-  resolveField,
+  resolveFieldValue,
   resolveOperand,
+  getSubjectNode,
 } from './engineContext.js';
 
 function numericCompare(op: string, a: number, b: number): boolean {
@@ -79,13 +80,13 @@ export async function evaluateCondition(node: AutomationNode, ctx: EngineEvalCon
     }
 
     case 'condition.numeric': {
-      const left = asNumber(resolveField(ctx, String(p.field ?? '')));
+      const left = asNumber(await resolveFieldValue(ctx, String(p.field ?? '')));
       const right = asNumber(await resolveOperand(ctx, p.value));
       return numericCompare(String(p.op ?? ''), left, right);
     }
 
     case 'condition.string': {
-      const left = String(resolveField(ctx, String(p.field ?? '')) ?? '');
+      const left = String((await resolveFieldValue(ctx, String(p.field ?? ''))) ?? '');
       const right = String((await resolveOperand(ctx, p.value)) ?? '');
       return stringCompare(String(p.op ?? 'eq'), left, right);
     }
@@ -111,8 +112,10 @@ export async function evaluateCondition(node: AutomationNode, ctx: EngineEvalCon
     }
 
     case 'condition.distance': {
-      const lat = asNumber(resolveField(ctx, 'latitude') ?? resolveField(ctx, 'lat'));
-      const lon = asNumber(resolveField(ctx, 'longitude') ?? resolveField(ctx, 'lon'));
+      // Distance from the subject node's position to a reference lat/lon.
+      const node = await getSubjectNode(ctx);
+      const lat = asNumber(node?.latitude ?? ctx.trigger.fields.latitude);
+      const lon = asNumber(node?.longitude ?? ctx.trigger.fields.longitude);
       const refLat = asNumber(p.lat);
       const refLon = asNumber(p.lon);
       if (![lat, lon, refLat, refLon].every(Number.isFinite)) return false;

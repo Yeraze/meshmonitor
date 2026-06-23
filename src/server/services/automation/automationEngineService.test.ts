@@ -59,8 +59,9 @@ describe('AutomationEngineService', () => {
   });
   afterEach(() => db.close());
 
+  const data = { getNode: async () => null, getTelemetry: async () => null };
   const engineWith = (deps: ActionDeps) =>
-    new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, now: () => clock });
+    new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data, now: () => clock });
 
   async function createEnabled(name: string, graph: AutomationGraph) {
     return autos.createAutomation({ name, enabled: true, config: JSON.stringify(graph) });

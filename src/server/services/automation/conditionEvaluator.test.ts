@@ -26,7 +26,7 @@ describe('evaluateCondition', () => {
 
   function ctx(
     fields: Record<string, unknown>,
-    opts: { sourceId?: string | null; nodeNum?: number | null; now?: number } = {},
+    opts: { sourceId?: string | null; nodeNum?: number | null; now?: number; node?: any; telemetry?: Record<string, number> } = {},
   ): EngineEvalContext {
     const trigger: TriggerContext = {
       triggerType: 'trigger.message',
@@ -38,6 +38,10 @@ describe('evaluateCondition', () => {
     return {
       trigger,
       vars: resolver,
+      data: {
+        getNode: async () => opts.node ?? null,
+        getTelemetry: async (_s, _n, type) => opts.telemetry?.[type] ?? null,
+      },
       varCtx: { sourceId: trigger.sourceId, nodeNum: trigger.subjectNodeNum },
       now: opts.now ?? 1000,
     };
@@ -54,6 +58,38 @@ describe('evaluateCondition', () => {
   it('numeric: compares a trigger field (hops == 0)', async () => {
     expect(await evaluateCondition(node('condition.numeric', { field: 'hops', op: '==', value: 0 }), ctx({ hops: 0 }))).toBe(true);
     expect(await evaluateCondition(node('condition.numeric', { field: 'hops', op: '==', value: 0 }), ctx({ hops: 2 }))).toBe(false);
+  });
+
+  it('numeric: compares a hydrated node field (battery < 20)', async () => {
+    const n = node('condition.numeric', { field: 'node.batteryLevel', op: '<', value: 20 });
+    expect(await evaluateCondition(n, ctx({}, { node: { nodeNum: 111, batteryLevel: 15 } }))).toBe(true);
+    expect(await evaluateCondition(n, ctx({}, { node: { nodeNum: 111, batteryLevel: 80 } }))).toBe(false);
+  });
+
+  it('numeric: compares any telemetry metric (not just the trigger field)', async () => {
+    const n = node('condition.numeric', { field: 'telemetry.temperature', op: '>', value: 30 });
+    expect(await evaluateCondition(n, ctx({}, { telemetry: { temperature: 35 } }))).toBe(true);
+    expect(await evaluateCondition(n, ctx({}, { telemetry: { temperature: 20 } }))).toBe(false);
+  });
+
+  it('numeric: node age in minutes (calculated from lastHeard)', async () => {
+    const now = 10_000_000; // ms
+    const n = node('condition.numeric', { field: 'node.ageMinutes', op: '>', value: 30 });
+    const lastHeardSec = (now / 1000) - 60 * 60; // 60 minutes ago
+    expect(await evaluateCondition(n, ctx({}, { now, node: { nodeNum: 111, lastHeard: lastHeardSec } }))).toBe(true);
+  });
+
+  it('string: compares node longName and roleName', async () => {
+    expect(await evaluateCondition(node('condition.string', { field: 'node.longName', op: 'contains', value: 'base' }),
+      ctx({}, { node: { nodeNum: 111, longName: 'Base Station' } }))).toBe(true);
+    expect(await evaluateCondition(node('condition.string', { field: 'node.roleName', op: 'eq', value: 'ROUTER' }),
+      ctx({}, { node: { nodeNum: 111, role: 2 } }))).toBe(true);
+  });
+
+  it('distance: uses the hydrated node position', async () => {
+    const n = node('condition.distance', { op: '<', km: 5, lat: 0, lon: 0 });
+    expect(await evaluateCondition(n, ctx({}, { node: { nodeNum: 111, latitude: 0.01, longitude: 0 } }))).toBe(true);
+    expect(await evaluateCondition(n, ctx({}, { node: { nodeNum: 111, latitude: 1, longitude: 0 } }))).toBe(false);
   });
 
   it('numeric: resolves a {{ var }} threshold', async () => {

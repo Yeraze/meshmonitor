@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import apiService from '../../services/api';
-import AutomationBuilder, { type VariableOption } from './AutomationBuilder';
+import AutomationBuilder, { type VariableOption, type SourceOption } from './AutomationBuilder';
 import { compile, decompile, type WorkflowForm } from './compile';
 import './AutomationsPage.css';
 
@@ -135,6 +135,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
   const [description, setDescription] = useState(initial?.description ?? '');
   const [enabled, setEnabled] = useState(initial?.enabled ?? false);
   const [variables, setVariables] = useState<VariableOption[]>([]);
+  const [sources, setSources] = useState<SourceOption[]>([]);
 
   // Decide builder vs JSON from the existing config.
   const parsedInitial = (() => { try { return initial ? decompile(JSON.parse(initial.config)) : DEFAULT_FORM; } catch { return null; } })();
@@ -148,6 +149,9 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
     apiService.get<Variable[]>('/api/automations/variables')
       .then((vs) => setVariables(vs.map((v) => ({ name: v.name, type: v.type }))))
       .catch(() => setVariables([]));
+    apiService.get<Array<{ id: string; name: string }>>('/api/sources')
+      .then((ss) => setSources(ss.map((s) => ({ id: s.id, name: s.name }))))
+      .catch(() => setSources([]));
   }, []);
 
   const switchToJson = () => { setJsonText(JSON.stringify(compile(form), null, 2)); setMode('json'); };
@@ -202,7 +206,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
       </div>
 
       {mode === 'builder'
-        ? <AutomationBuilder form={form} variables={variables} onChange={setForm} />
+        ? <AutomationBuilder form={form} variables={variables} sources={sources} onChange={setForm} />
         : (
           <div className="ae-field">
             <label className="ae-field-label">Workflow graph (JSON)</label>

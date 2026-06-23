@@ -2,38 +2,41 @@
  * AutomationBuilder (#3653) — IFTTT/Maintainerr-style structured editor.
  *
  * WHEN one trigger → a list of RULES (the trigger fans out to each: IF conditions
- * → THEN actions) → an optional FINALLY combine step (reduce: run actions if
- * ANY/ALL/NONE of the rules matched). Compiles to the graph model in compile.ts.
+ * → THEN actions) → an optional FINALLY combine step (ANY/ALL/NONE). Compiles to
+ * the graph model in compile.ts.
  */
-import { TRIGGERS, CONDITIONS, ACTIONS, TRIGGER_FIELDS, BLOCK_BY_TYPE, type BlockDef, type FieldDef } from './catalog';
+import { TRIGGERS, CONDITIONS, ACTIONS, BLOCK_BY_TYPE, fieldsFor, type BlockDef, type FieldDef } from './catalog';
 import type { WorkflowForm, FormBlock, Rule } from './compile';
 
 export interface VariableOption { name: string; type: string; }
+export interface SourceOption { id: string; name: string; }
 
 interface Props {
   form: WorkflowForm;
   variables: VariableOption[];
+  sources: SourceOption[];
   onChange: (form: WorkflowForm) => void;
 }
 
-/** Seed a block's params with each select field's first option (a never-touched
- *  <select> shows its default but fires no onChange until changed). */
+/** Seed a block's params with each select/fieldselect field's first option. */
 function defaultParams(type: string, triggerType: string): Record<string, unknown> {
   const def = BLOCK_BY_TYPE[type];
   if (!def) return {};
   const params: Record<string, unknown> = {};
   for (const f of def.fields) {
-    if (f.kind !== 'select') continue;
-    const opts = f.name === 'field' && (f.options?.length ?? 0) === 0
-      ? (TRIGGER_FIELDS[triggerType] ?? [])
-      : (f.options ?? []);
-    if (opts.length > 0 && opts[0].value !== '') params[f.name] = opts[0].value;
+    if (f.kind === 'fieldselect') {
+      const first = fieldsFor(type, triggerType)[0]?.options[0]?.value;
+      if (first) params[f.name] = first;
+    } else if (f.kind === 'select') {
+      const opts = f.options ?? [];
+      if (opts.length > 0 && opts[0].value !== '') params[f.name] = opts[0].value;
+    }
   }
   return params;
 }
 
-function FieldInput({ field, value, onChange, variables }: {
-  field: FieldDef; value: unknown; onChange: (v: unknown) => void; variables: VariableOption[];
+function FieldInput({ field, value, onChange, variables, sources }: {
+  field: FieldDef; value: unknown; onChange: (v: unknown) => void; variables: VariableOption[]; sources: SourceOption[];
 }) {
   let control;
   switch (field.kind) {
@@ -51,6 +54,32 @@ function FieldInput({ field, value, onChange, variables }: {
         </select>
       );
       break;
+    case 'fieldselect':
+      control = (
+        <select className="ae-select" value={(value ?? '') as string} onChange={(e) => onChange(e.target.value)}>
+          {(field.groups ?? []).map((g) => (
+            <optgroup key={g.label} label={g.label}>
+              {g.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </optgroup>
+          ))}
+        </select>
+      );
+      break;
+    case 'sourceMulti': {
+      const sel = Array.isArray(value) ? (value as string[]) : [];
+      control = (
+        <div>
+          {sources.length === 0 && <div className="ae-muted">No sources available.</div>}
+          {sources.map((s) => (
+            <label key={s.id} className="ae-switch" style={{ display: 'block', marginBottom: '0.2rem' }}>
+              <input type="checkbox" checked={sel.includes(s.id)} onChange={(e) =>
+                onChange(e.target.checked ? [...sel, s.id] : sel.filter((x) => x !== s.id))} /> {s.name}
+            </label>
+          ))}
+        </div>
+      );
+      break;
+    }
     case 'checkbox':
       control = <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} />;
       break;
@@ -74,27 +103,24 @@ function FieldInput({ field, value, onChange, variables }: {
   );
 }
 
-function BlockFields({ block, triggerType, variables, onParams }: {
-  block: FormBlock; triggerType: string; variables: VariableOption[]; onParams: (p: Record<string, unknown>) => void;
+function BlockFields({ block, triggerType, variables, sources, onParams }: {
+  block: FormBlock; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; onParams: (p: Record<string, unknown>) => void;
 }) {
   const def = BLOCK_BY_TYPE[block.type];
   if (!def) return null;
   return (
     <>
       {def.fields.map((f) => {
-        const field = f.name === 'field' && (f.options?.length ?? 0) === 0
-          ? { ...f, options: TRIGGER_FIELDS[triggerType] ?? [] }
-          : f;
-        return <FieldInput key={f.name} field={field} value={block.params[f.name]} variables={variables}
+        const field = f.kind === 'fieldselect' ? { ...f, groups: fieldsFor(block.type, triggerType) } : f;
+        return <FieldInput key={f.name} field={field} value={block.params[f.name]} variables={variables} sources={sources}
           onChange={(v) => onParams({ ...block.params, [f.name]: v })} />;
       })}
     </>
   );
 }
 
-/** A list of condition/action blocks with add / remove / type-change. */
-function BlockListEditor({ blocks, options, triggerType, variables, onChange, addLabel }: {
-  blocks: FormBlock[]; options: BlockDef[]; triggerType: string; variables: VariableOption[];
+function BlockListEditor({ blocks, options, triggerType, variables, sources, onChange, addLabel }: {
+  blocks: FormBlock[]; options: BlockDef[]; triggerType: string; variables: VariableOption[]; sources: SourceOption[];
   onChange: (b: FormBlock[]) => void; addLabel: string;
 }) {
   const update = (i: number, b: FormBlock) => { const l = [...blocks]; l[i] = b; onChange(l); };
@@ -109,7 +135,7 @@ function BlockListEditor({ blocks, options, triggerType, variables, onChange, ad
             </select>
             <button className="ae-btn ae-btn--ghost" onClick={() => onChange(blocks.filter((_, j) => j !== i))}>✕</button>
           </div>
-          <BlockFields block={b} triggerType={triggerType} variables={variables} onParams={(p) => update(i, { ...b, params: p })} />
+          <BlockFields block={b} triggerType={triggerType} variables={variables} sources={sources} onParams={(p) => update(i, { ...b, params: p })} />
         </div>
       ))}
       <button className="ae-btn" onClick={() => onChange([...blocks, { type: options[0].type, params: defaultParams(options[0].type, triggerType) }])}>{addLabel}</button>
@@ -117,7 +143,7 @@ function BlockListEditor({ blocks, options, triggerType, variables, onChange, ad
   );
 }
 
-export default function AutomationBuilder({ form, variables, onChange }: Props) {
+export default function AutomationBuilder({ form, variables, sources, onChange }: Props) {
   const triggerType = form.trigger.type;
   const setTrigger = (type: string) => onChange({ ...form, trigger: { type, params: defaultParams(type, type) } });
   const setTriggerParams = (params: Record<string, unknown>) => onChange({ ...form, trigger: { ...form.trigger, params } });
@@ -125,12 +151,10 @@ export default function AutomationBuilder({ form, variables, onChange }: Props) 
   const updateRule = (i: number, rule: Rule) => { const r = [...form.rules]; r[i] = rule; onChange({ ...form, rules: r }); };
   const addRule = () => onChange({ ...form, rules: [...form.rules, { conditions: [], actions: [{ type: ACTIONS[0].type, params: defaultParams(ACTIONS[0].type, triggerType) }] }] });
   const removeRule = (i: number) => onChange({ ...form, rules: form.rules.filter((_, j) => j !== i) });
-
   const setCombine = (combine: WorkflowForm['combine']) => onChange({ ...form, combine });
 
   return (
     <div>
-      {/* WHEN */}
       <div className="ae-section">
         <div className="ae-section-head"><span className="ae-section-kw">WHEN</span><span className="ae-section-hint">this happens</span></div>
         <div className="ae-section-body">
@@ -141,11 +165,10 @@ export default function AutomationBuilder({ form, variables, onChange }: Props) 
             </select>
             <div className="ae-help-text">{BLOCK_BY_TYPE[triggerType]?.description}</div>
           </div>
-          <BlockFields block={form.trigger} triggerType={triggerType} variables={variables} onParams={setTriggerParams} />
+          <BlockFields block={form.trigger} triggerType={triggerType} variables={variables} sources={sources} onParams={setTriggerParams} />
         </div>
       </div>
 
-      {/* RULES (fanout) */}
       {form.rules.map((rule, i) => (
         <div className="ae-section" key={i}>
           <div className="ae-section-head">
@@ -156,10 +179,10 @@ export default function AutomationBuilder({ form, variables, onChange }: Props) 
           <div className="ae-section-body">
             <div className="ae-field-label" style={{ marginBottom: '0.4rem' }}>IF — all of these are true (optional)</div>
             {rule.conditions.length === 0 && <div className="ae-muted" style={{ marginBottom: '0.5rem' }}>No conditions — runs every time the trigger fires.</div>}
-            <BlockListEditor blocks={rule.conditions} options={CONDITIONS} triggerType={triggerType} variables={variables}
+            <BlockListEditor blocks={rule.conditions} options={CONDITIONS} triggerType={triggerType} variables={variables} sources={sources}
               onChange={(c) => updateRule(i, { ...rule, conditions: c })} addLabel="+ Add condition" />
             <div className="ae-field-label" style={{ margin: '0.9rem 0 0.4rem' }}>THEN — do this</div>
-            <BlockListEditor blocks={rule.actions} options={ACTIONS} triggerType={triggerType} variables={variables}
+            <BlockListEditor blocks={rule.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources}
               onChange={(a) => updateRule(i, { ...rule, actions: a })} addLabel="+ Add action" />
           </div>
         </div>
@@ -168,7 +191,6 @@ export default function AutomationBuilder({ form, variables, onChange }: Props) 
         <button className="ae-btn" onClick={addRule}>+ Add rule</button>
       </div>
 
-      {/* FINALLY (collapse / reduce) */}
       {form.combine ? (
         <div className="ae-section">
           <div className="ae-section-head">
@@ -188,7 +210,7 @@ export default function AutomationBuilder({ form, variables, onChange }: Props) 
               <div className="ae-help-text">“Matched” means a rule’s IF conditions passed.</div>
             </div>
             <div className="ae-field-label" style={{ margin: '0.6rem 0 0.4rem' }}>THEN — do this</div>
-            <BlockListEditor blocks={form.combine.actions} options={ACTIONS} triggerType={triggerType} variables={variables}
+            <BlockListEditor blocks={form.combine.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources}
               onChange={(a) => setCombine({ ...form.combine!, actions: a })} addLabel="+ Add action" />
           </div>
         </div>

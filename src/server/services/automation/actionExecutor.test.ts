@@ -28,7 +28,8 @@ function ctx(fields: Record<string, unknown>, sourceId: string | null = 'default
   const vars = {
     getValue: async (name: string) => (name === 'greeting' ? 'hi there' : null),
   } as unknown as VariableResolver;
-  return { trigger, vars, varCtx: { sourceId, nodeNum: trigger.subjectNodeNum }, now: 1000 };
+  const data = { getNode: async () => null, getTelemetry: async () => null };
+  return { trigger, vars, data, varCtx: { sourceId, nodeNum: trigger.subjectNodeNum }, now: 1000 };
 }
 
 const node = (type: string, params: Record<string, unknown>): AutomationNode => ({ id: 'a', type: type as any, params });

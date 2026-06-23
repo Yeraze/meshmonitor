@@ -6,13 +6,18 @@
  * `kind` maps to an input renderer in AutomationBuilder.
  */
 
-export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji';
+export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti';
+
+export interface FieldOpt { value: string; label: string; }
+export interface FieldGroup { label: string; options: FieldOpt[]; }
 
 export interface FieldDef {
   name: string;
   label: string;
   kind: FieldKind;
-  options?: { value: string; label: string }[];
+  options?: FieldOpt[];
+  /** Grouped options for `fieldselect` (event / node / telemetry). Computed at render time. */
+  groups?: FieldGroup[];
   placeholder?: string;
   help?: string;
   advanced?: boolean;
@@ -84,27 +89,86 @@ export const TRIGGERS: BlockDef[] = [
       { name: 'cron', label: 'Cron expression', kind: 'text', placeholder: '0 * * * *', help: 'Standard 5-field cron, e.g. "0 * * * *" = top of every hour.' },
     ],
   },
+  {
+    type: 'trigger.system',
+    label: 'A system event',
+    description: 'Fires on a MeshMonitor system event.',
+    fields: [
+      {
+        name: 'event', label: 'Event', kind: 'select',
+        options: [
+          { value: 'bootup', label: 'System start (MeshMonitor started)' },
+          { value: 'source-connected', label: 'Source came online' },
+          { value: 'source-disconnected', label: 'Source went offline' },
+        ],
+        help: '“Upgrade available” is coming in a later update.',
+      },
+    ],
+  },
 ];
 
-// Field options available to numeric/string conditions, by trigger type.
-export const TRIGGER_FIELDS: Record<string, { value: string; label: string }[]> = {
+// ─── Comparison field registry (event / node / latest-telemetry) ─────────────
+
+const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry'];
+const hasSubjectNode = (t: string) => SUBJECT_NODE_TRIGGERS.includes(t);
+
+const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
   'trigger.message': [
-    { value: 'hops', label: 'Hop count' },
-    { value: 'from', label: 'Sender node #' },
-    { value: 'channel', label: 'Channel #' },
-    { value: 'text', label: 'Message text' },
-    { value: 'snr', label: 'SNR' },
-    { value: 'rssi', label: 'RSSI' },
-    { value: 'isDM', label: 'Is a direct message' },
+    { value: 'hops', label: 'Hop count' }, { value: 'from', label: 'Sender node #' },
+    { value: 'channel', label: 'Channel #' }, { value: 'snr', label: 'SNR' }, { value: 'rssi', label: 'RSSI' },
   ],
-  'trigger.telemetry': [
-    { value: 'value', label: 'Reading value' },
-    { value: 'nodeNum', label: 'Node #' },
-  ],
+  'trigger.telemetry': [{ value: 'value', label: 'Reading value' }, { value: 'nodeNum', label: 'Node #' }],
   'trigger.nodeUpdated': [{ value: 'nodeNum', label: 'Node #' }],
   'trigger.nodeDiscovered': [{ value: 'nodeNum', label: 'Node #' }],
-  'trigger.schedule': [],
 };
+const EVENT_STRING: Record<string, FieldOpt[]> = {
+  'trigger.message': [
+    { value: 'text', label: 'Message text' }, { value: 'fromId', label: 'Sender node id' }, { value: 'toId', label: 'Recipient node id' },
+  ],
+  'trigger.telemetry': [{ value: 'telemetryType', label: 'Metric name' }],
+  'trigger.system': [{ value: 'event', label: 'System event' }],
+};
+
+// Subject-node fields (resolved from the hydrated node record).
+const NODE_NUMERIC: FieldOpt[] = [
+  { value: 'node.batteryLevel', label: 'Battery level (%)' }, { value: 'node.voltage', label: 'Voltage' },
+  { value: 'node.hopsAway', label: 'Hops away' }, { value: 'node.role', label: 'Role (number)' },
+  { value: 'node.ageMinutes', label: 'Node age (minutes since heard)' },
+  { value: 'node.channelUtilization', label: 'Channel utilization' }, { value: 'node.airUtilTx', label: 'Air util TX' },
+  { value: 'node.snr', label: 'Last SNR' },
+  { value: 'node.latitude', label: 'Latitude' }, { value: 'node.longitude', label: 'Longitude' }, { value: 'node.altitude', label: 'Altitude' },
+];
+const NODE_STRING: FieldOpt[] = [
+  { value: 'node.longName', label: 'Long name' }, { value: 'node.shortName', label: 'Short name' },
+  { value: 'node.nodeId', label: 'Node id' }, { value: 'node.roleName', label: 'Role name (e.g. ROUTER)' },
+];
+// Latest telemetry of a metric for the subject node.
+const TELEMETRY_FIELDS: FieldOpt[] = [
+  { value: 'telemetry.batteryLevel', label: 'Battery level' }, { value: 'telemetry.voltage', label: 'Voltage' },
+  { value: 'telemetry.temperature', label: 'Temperature' }, { value: 'telemetry.relativeHumidity', label: 'Humidity' },
+  { value: 'telemetry.barometricPressure', label: 'Pressure' }, { value: 'telemetry.channelUtilization', label: 'Channel utilization' },
+  { value: 'telemetry.airUtilTx', label: 'Air util TX' }, { value: 'telemetry.current', label: 'Current' }, { value: 'telemetry.iaq', label: 'IAQ (air quality)' },
+];
+
+export function numericFields(triggerType: string): FieldGroup[] {
+  const groups: FieldGroup[] = [];
+  if (EVENT_NUMERIC[triggerType]?.length) groups.push({ label: 'This event', options: EVENT_NUMERIC[triggerType] });
+  if (hasSubjectNode(triggerType)) {
+    groups.push({ label: 'Node', options: NODE_NUMERIC });
+    groups.push({ label: 'Latest telemetry', options: TELEMETRY_FIELDS });
+  }
+  return groups;
+}
+export function stringFields(triggerType: string): FieldGroup[] {
+  const groups: FieldGroup[] = [];
+  if (EVENT_STRING[triggerType]?.length) groups.push({ label: 'This event', options: EVENT_STRING[triggerType] });
+  if (hasSubjectNode(triggerType)) groups.push({ label: 'Node', options: NODE_STRING });
+  return groups;
+}
+/** Grouped field options for a numeric/string condition under the given trigger. */
+export function fieldsFor(blockType: string, triggerType: string): FieldGroup[] {
+  return blockType === 'condition.string' ? stringFields(triggerType) : numericFields(triggerType);
+}
 
 const NUMERIC_OP_OPTIONS = [
   { value: '==', label: '= equals' }, { value: '!=', label: '≠ not equals' },
@@ -123,9 +187,9 @@ export const CONDITIONS: BlockDef[] = [
   {
     type: 'condition.numeric',
     label: 'Number comparison',
-    description: 'Compare a numeric field (battery, hops…).',
+    description: 'Compare a number — event field, node field, or latest telemetry.',
     fields: [
-      { name: 'field', label: 'Field', kind: 'select', options: [] /* filled from trigger */ },
+      { name: 'field', label: 'Field', kind: 'fieldselect' },
       { name: 'op', label: 'Operator', kind: 'select', options: NUMERIC_OP_OPTIONS },
       { name: 'value', label: 'Value', kind: 'text', placeholder: 'e.g. 20 or {{ var.threshold }}', help: 'A number, or {{ var.name }} to compare against a variable.' },
     ],
@@ -133,11 +197,30 @@ export const CONDITIONS: BlockDef[] = [
   {
     type: 'condition.string',
     label: 'Text comparison',
-    description: 'Compare a text field.',
+    description: 'Compare text — message text, node name, role name…',
     fields: [
-      { name: 'field', label: 'Field', kind: 'select', options: [] },
+      { name: 'field', label: 'Field', kind: 'fieldselect' },
       { name: 'op', label: 'Operator', kind: 'select', options: STRING_OP_OPTIONS },
-      { name: 'value', label: 'Value', kind: 'text', placeholder: 'e.g. hello' },
+      { name: 'value', label: 'Value', kind: 'text', placeholder: 'e.g. ROUTER' },
+    ],
+  },
+  {
+    type: 'condition.sourceFilter',
+    label: 'Source is one of…',
+    description: 'Only continue for the selected source connection(s).',
+    fields: [
+      { name: 'sourceIds', label: 'Sources', kind: 'sourceMulti', help: 'Leave none selected to allow any source.' },
+    ],
+  },
+  {
+    type: 'condition.distance',
+    label: 'Distance from a point',
+    description: "Compare the node's distance from a location.",
+    fields: [
+      { name: 'op', label: 'Operator', kind: 'select', options: [{ value: '<', label: 'within (<)' }, { value: '>', label: 'farther than (>)' }] },
+      { name: 'km', label: 'Distance (km)', kind: 'number', placeholder: '5' },
+      { name: 'lat', label: 'Reference latitude', kind: 'number' },
+      { name: 'lon', label: 'Reference longitude', kind: 'number' },
     ],
   },
   {
