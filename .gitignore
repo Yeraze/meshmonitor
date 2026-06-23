@@ -87,3 +87,7 @@ docs/public/news.json
 # Generated Helm chart repository — packaged from helm/meshmonitor by
 # scripts/build-helm-repo.sh during the docs deploy (served at /charts). See #3431.
 docs/public/charts/
+
+# Python bytecode caches
+__pycache__/
+*.pyc
