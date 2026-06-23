@@ -25,7 +25,6 @@ vi.mock('../../services/database.js', () => ({
     notifications: {
       getUsersWithInactiveNodeNotifications: mockGetUsersWithInactiveNodeNotifications,
     },
-    getInactiveMonitoredNodesAsync: mockGetInactiveMonitoredNodesAsync,
     nodes: {
       getInactiveMonitoredNodes: mockGetInactiveMonitoredNodesAsync,
     },
