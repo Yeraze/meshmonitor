@@ -2,7 +2,10 @@
 
 Tracking issue: **#3667** ([FEAT] MeshCore: Region/Scope Support)
 
-> Status: Draft plan. No code written yet.
+> Status: **Phase 1 merged** (PR #3669, migration 100). **Phase 2 in progress** —
+> scoping all originated flood traffic (adverts, logins, telemetry/CLI requests)
+> via the shared `sendWithDefaultScope` helper on the per-source send mutex.
+> Phase 3 (region discovery) not started.
 
 ## 1. Background — how scopes/regions work in MeshCore
 

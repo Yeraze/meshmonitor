@@ -1972,11 +1972,36 @@ class MeshCoreManager extends EventEmitter {
     // Serialise the scope-assert→send pair per source (#3667). The device's
     // flood scope is a single global setting; two concurrent sends with
     // different scopes must not interleave, or a message could ship under the
-    // wrong region. Chain on the lock and keep the chain alive regardless of
-    // this send's outcome.
-    const task = this.sendScopeLock.then(() => this.performScopedSend(text, toPublicKey, channelIdx));
+    // wrong region.
+    return this.runSerialized(() => this.performScopedSend(text, toPublicKey, channelIdx));
+  }
+
+  /**
+   * Serialise an originated send on the per-source scope lock so the global
+   * device flood scope can't be changed by another send mid-flight (#3667).
+   * The lock chain continues on both success and failure so one failed send
+   * can't wedge the queue.
+   */
+  private runSerialized<T>(fn: () => Promise<T>): Promise<T> {
+    const task = this.sendScopeLock.then(fn);
     this.sendScopeLock = task.then(() => undefined, () => undefined);
     return task;
+  }
+
+  /**
+   * Assert the source default scope on the device (serialised with all other
+   * sends) and then run `fn`. For flood-originating traffic that is NOT a
+   * channel message — adverts, logins, telemetry/CLI/stats requests
+   * (#3667 phase 2). If the scope can't be asserted, `fn` does not run and the
+   * error propagates, so nothing leaves un-scoped in a `region denyf *` mesh.
+   * (Zero-hop traffic like node discovery is exempt — it is never repeater-
+   * forwarded, so scope is irrelevant.)
+   */
+  private async sendWithDefaultScope<T>(fn: () => Promise<T>): Promise<T> {
+    return this.runSerialized(async () => {
+      await this.applyFloodScope(await this.resolveScopeForSend());
+      return fn();
+    });
   }
 
   /**
@@ -2089,7 +2114,9 @@ class MeshCoreManager extends EventEmitter {
       }
     } else {
       try {
-        const response = await this.sendBridgeCommand('send_advert', {});
+        // Adverts flood, so they carry the default scope (#3667). Repeaters
+        // (handled above) scope via their own `region` config instead.
+        const response = await this.sendWithDefaultScope(() => this.sendBridgeCommand('send_advert', {}));
         if (response.success) {
           logger.info('[MeshCore] Advert sent (Companion)');
           return true;
@@ -2716,10 +2743,12 @@ class MeshCoreManager extends EventEmitter {
     }
 
     try {
-      const response = await this.sendBridgeCommand('login', {
+      // A login request floods when the path to the node is unknown, so it
+      // carries the default scope (#3667).
+      const response = await this.sendWithDefaultScope(() => this.sendBridgeCommand('login', {
         public_key: publicKey,
         password: password,
-      });
+      }));
 
       if (response.success) {
         logger.info(`[MeshCore] Logged into node ${publicKey.substring(0, 8)}...`);
@@ -3138,7 +3167,18 @@ class MeshCoreManager extends EventEmitter {
         sentAt,
       });
 
-      void this.sendBridgeCommand('send_cli', { public_key: fullKey, text: command }, timeoutMs)
+      // A CLI command to a remote node floods when its path is unknown, so it
+      // carries the default scope (#3667). The scope assertion is serialised
+      // with all other sends; if it fails the command rejects rather than
+      // leaving un-scoped.
+      //
+      // Intentionally fire-and-forget (`void` + `.then`/`.catch`) rather than
+      // `await`ed: we're already inside the per-prefix `cliCommandLocks` chain,
+      // and awaiting the global `sendScopeLock` here would nest the two locks.
+      // Keeping it non-awaited means neither lock is held while waiting on the
+      // other. A scope-assert failure still surfaces — it rejects via the
+      // `.catch` below, which clears the timer and rejects the outer promise.
+      void this.sendWithDefaultScope(() => this.sendBridgeCommand('send_cli', { public_key: fullKey, text: command }, timeoutMs))
         .then((resp) => {
           if (!resp.success) {
             clearTimeout(timer);
@@ -3529,8 +3569,9 @@ class MeshCoreManager extends EventEmitter {
       }
       // request_telemetry can wait several seconds on the air; widen the
       // command timeout so a slow node doesn't trip the default 30s ceiling
-      // on a back-to-back retry.
-      const response = await this.sendBridgeCommand('request_telemetry', params, 45_000);
+      // on a back-to-back retry. It floods when the path is unknown, so it
+      // carries the default scope (#3667).
+      const response = await this.sendWithDefaultScope(() => this.sendBridgeCommand('request_telemetry', params, 45_000));
       if (!response.success) {
         logger.warn(
           `[MeshCore:${this.sourceId}] requestRemoteTelemetry(${publicKey.substring(0, 16)}…) failed: ${response.error}`,
