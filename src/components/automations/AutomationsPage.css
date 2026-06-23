@@ -125,3 +125,8 @@
 .ae-test-action { background: var(--ctp-base); border: 1px solid var(--ctp-surface0); border-radius: var(--radius-sm, 6px); padding: 0.4rem 0.55rem; margin-bottom: 0.4rem; }
 .ae-test-action.is-err { border-color: var(--ctp-red); }
 .ae-test-params { margin: 0.3rem 0 0; font-size: 0.72rem; overflow-x: auto; white-space: pre-wrap; }
+
+/* Test panel — expanded "what would be sent" block + raw params toggle */
+.ae-test-sent { background: var(--ctp-mantle); border-left: 3px solid var(--ctp-green); padding: 0.4rem 0.6rem; margin: 0.3rem 0; border-radius: var(--radius-sm, 6px); white-space: pre-wrap; word-break: break-word; font-size: 0.86rem; color: var(--ctp-text); }
+.ae-test-raw { margin-top: 0.25rem; }
+.ae-test-raw summary { cursor: pointer; font-size: 0.74rem; list-style: revert; }
