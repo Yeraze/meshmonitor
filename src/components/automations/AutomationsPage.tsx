@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import apiService from '../../services/api';
 import AutomationBuilder, { type VariableOption, type SourceOption } from './AutomationBuilder';
+import AutomationTester from './AutomationTester';
 import { compile, decompile, type WorkflowForm } from './compile';
 import './AutomationsPage.css';
 
@@ -144,6 +145,18 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
   const [jsonText, setJsonText] = useState(() => initial ? pretty(initial.config) : JSON.stringify(compile(DEFAULT_FORM), null, 2));
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [showTest, setShowTest] = useState(false);
+
+  /** Compile the current editor state → graph config for the Test panel. */
+  const getTestConfig = () => {
+    try {
+      const config: any = mode === 'builder' ? compile(form) : JSON.parse(jsonText);
+      const trig = (config.nodes ?? []).find((n: any) => String(n.type).startsWith('trigger.'));
+      return { ok: true, config, triggerType: trig?.type as string | undefined };
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? 'invalid config' };
+    }
+  };
 
   useEffect(() => {
     apiService.get<Variable[]>('/api/automations/variables')
@@ -217,7 +230,10 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
       {errors.length > 0 && <ul className="ae-error-list">{errors.map((er, i) => <li key={i}>{er}</li>)}</ul>}
       <div className="ae-btn-row" style={{ marginTop: '0.75rem' }}>
         <button className="ae-btn ae-btn--primary" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save automation'}</button>
+        <button className="ae-btn" onClick={() => setShowTest((s) => !s)}>{showTest ? 'Hide test' : '▶ Test'}</button>
       </div>
+
+      {showTest && <AutomationTester getConfig={getTestConfig} variables={variables} />}
     </div>
   );
 }

@@ -22,6 +22,8 @@ import {
   NUMERIC_OPS,
 } from '../../types/automation.js';
 import { reloadAutomations } from '../services/automation/automationEngineSingleton.js';
+import { simulateAutomation, type SimEventInput } from '../services/automation/automationSimulator.js';
+import { createMeshNodeDataProvider } from '../services/automation/meshNodeData.js';
 
 const router = Router();
 
@@ -111,6 +113,54 @@ router.delete('/variables/:id', canWrite, async (req: Request, res: Response) =>
   } catch (error) {
     logger.error('Error deleting automation variable:', error);
     res.status(500).json({ error: 'Failed to delete variable' });
+  }
+});
+
+// ─── test / dry-run (in-app "Test", also the system-test substrate) ──────────
+
+/**
+ * Dry-run a graph against a synthetic event and return the full trace. No mesh
+ * IO, no Apprise dispatch, no variable persistence, no run-log row. Gated on
+ * `automations:write` (same as editing). Used by the builder's Test panel.
+ */
+async function runSimulation(req: Request, res: Response, configRaw: unknown): Promise<Response | void> {
+  const v = validateConfig(configRaw);
+  if (!v.ok) return res.status(400).json({ error: 'invalid automation config', details: v.errors });
+  const event = (req.body ?? {}).event;
+  if (!event || typeof event !== 'object' || typeof event.kind !== 'string') {
+    return res.status(400).json({ error: 'event.kind is required' });
+  }
+  if (!databaseService.automationVariablesRepo) {
+    return res.status(503).json({ error: 'automation engine not ready' });
+  }
+  const { node, telemetry, variables } = req.body ?? {};
+  const result = await simulateAutomation({
+    graph: JSON.parse(v.json),
+    event: event as SimEventInput,
+    node, telemetry, variables,
+    varsRepo: databaseService.automationVariablesRepo,
+    liveData: createMeshNodeDataProvider(),
+  });
+  return res.json(result);
+}
+
+router.post('/test', canWrite, async (req: Request, res: Response) => {
+  try {
+    await runSimulation(req, res, (req.body ?? {}).config);
+  } catch (error) {
+    logger.error('Error simulating automation:', error);
+    res.status(500).json({ error: 'Failed to simulate automation' });
+  }
+});
+
+router.post('/:id/test', canWrite, async (req: Request, res: Response) => {
+  try {
+    const a = await databaseService.automations.getAutomation(req.params.id);
+    if (!a) return res.status(404).json({ error: 'automation not found' });
+    await runSimulation(req, res, a.config);
+  } catch (error) {
+    logger.error('Error simulating automation:', error);
+    res.status(500).json({ error: 'Failed to simulate automation' });
   }
 });
 

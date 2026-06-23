@@ -1,7 +1,23 @@
 # Automation Engine — Simulated System-Test Proposal (#3653)
 
-**Status:** proposal • **Scope:** end-to-end tests that exercise triggers + condition
-sets **without real Meshtastic/MeshCore hardware**.
+**Status:** in progress — the simulate substrate + the first two script batches are
+**implemented** (see "Implemented" below); the remaining batches are still proposed.
+**Scope:** end-to-end tests that exercise triggers + condition sets **without real
+Meshtastic/MeshCore hardware**.
+
+## Implemented
+
+- **`POST /api/automations/test`** (and `/:id/test`) — dry-run a graph against a
+  synthetic event. Recording deps (no mesh IO / no Apprise / no persistence), a stub
+  `NodeDataProvider` overlaying caller-supplied node facts + telemetry on the live DB,
+  and a recording `VariableResolver` (reads real values + overrides, records writes).
+  Returns `{ matched, status, steps, actions(resolvedParams), conditionResults,
+  variableWrites }`. Code: `src/server/services/automation/automationSimulator.ts`,
+  wired in `automationRoutes.ts`. Unit tests: `automationSimulator.test.ts`.
+- **In-app Test panel** — `src/components/automations/AutomationTester.tsx`, mounted
+  in the builder (the "▶ Test" button) so authors preview a rule before saving.
+- **System-test scripts** — `tests/automation/{lib.sh,test-triggers.sh,test-conditions.sh}`
+  built on the endpoint (covers a first slice of §2.1/§2.2/§2.3 below).
 
 The engine already has strong *unit* coverage (graph eval, condition evaluator,
 trigger context, compile/decompile, geofence, apprise notifyDirect, …). What is

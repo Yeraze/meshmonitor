@@ -103,3 +103,25 @@
 .ae-drawer dt { font-weight: 700; margin-top: 0.7rem; font-family: var(--font-mono, monospace); font-size: 0.85rem; color: var(--ctp-text); }
 .ae-drawer dd { margin: 0.15rem 0 0; color: var(--ctp-subtext1); font-size: 0.85rem; line-height: 1.45; }
 .ae-drawer-close { position: absolute; top: 0.9rem; right: 1rem; }
+
+/* Test / dry-run panel */
+.ae-test { border-color: var(--ctp-blue); }
+.ae-test-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.6rem; }
+.ae-test-advanced { border-top: 1px dashed var(--ctp-surface1); margin-top: 0.5rem; padding-top: 0.3rem; }
+.ae-test-result { border-top: 1px solid var(--ctp-surface0); margin-top: 0.7rem; padding-top: 0.5rem; }
+.ae-test-badge { font-weight: 800; font-size: 0.78rem; padding: 0.18rem 0.6rem; border-radius: 999px; }
+.ae-test-badge--ok { background: var(--ctp-green); color: var(--ctp-accent-text, #11111b); }
+.ae-test-badge--err { background: var(--ctp-red); color: var(--ctp-accent-text, #11111b); }
+.ae-test-badge--no { background: var(--ctp-surface1); color: var(--ctp-subtext1); }
+.ae-test-badge--muted { background: var(--ctp-surface1); color: var(--ctp-subtext1); }
+.ae-trace { display: flex; flex-direction: column; gap: 0.2rem; }
+.ae-trace-step { display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.84rem; padding: 0.18rem 0.4rem; border-radius: var(--radius-sm, 6px); background: var(--ctp-base); }
+.ae-trace-icon { font-weight: 800; width: 1.1rem; text-align: center; flex: none; }
+.ae-trace-type { font-family: var(--font-mono, monospace); font-size: 0.78rem; color: var(--ctp-text); min-width: 9rem; }
+.ae-trace-step--ok .ae-trace-icon { color: var(--ctp-green); }
+.ae-trace-step--no .ae-trace-icon { color: var(--ctp-yellow); }
+.ae-trace-step--err .ae-trace-icon { color: var(--ctp-red); }
+.ae-trace-step--muted .ae-trace-icon { color: var(--ctp-overlay0); }
+.ae-test-action { background: var(--ctp-base); border: 1px solid var(--ctp-surface0); border-radius: var(--radius-sm, 6px); padding: 0.4rem 0.55rem; margin-bottom: 0.4rem; }
+.ae-test-action.is-err { border-color: var(--ctp-red); }
+.ae-test-params { margin: 0.3rem 0 0; font-size: 0.72rem; overflow-x: auto; white-space: pre-wrap; }
