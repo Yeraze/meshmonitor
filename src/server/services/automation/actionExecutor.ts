@@ -87,8 +87,9 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       const body = await interpolateAsync(String(p.body ?? ''), ctx);
       const type = typeof p.type === 'string' ? p.type : undefined;
       // `urls` is an optional newline/comma-separated list of Apprise service
-      // URLs entered on the action; interpolated so {{ var.* }} can supply them.
-      const rawUrls = typeof p.urls === 'string' ? await interpolateAsync(p.urls, ctx) : '';
+      // URLs entered on the action. Interpolation is restricted to {{ var.* }} —
+      // mesh-controlled {{ trigger.* }} must NOT be able to inject a target URL.
+      const rawUrls = typeof p.urls === 'string' ? await interpolateAsync(p.urls, ctx, { varsOnly: true }) : '';
       const urls = rawUrls.split(/[\n,]/).map((u) => u.trim()).filter((u) => u.length > 0);
       return deps.notify({ sourceId, title, body, type, urls });
     }

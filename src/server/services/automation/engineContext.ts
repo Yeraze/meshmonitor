@@ -79,11 +79,21 @@ export async function resolvePath(ctx: EngineEvalContext, path: string): Promise
   return resolveTriggerPath(ctx.trigger, path, ctx.now);
 }
 
-export async function interpolateAsync(template: string, ctx: EngineEvalContext): Promise<string> {
+export async function interpolateAsync(
+  template: string,
+  ctx: EngineEvalContext,
+  opts?: { varsOnly?: boolean },
+): Promise<string> {
   if (typeof template !== 'string' || template.indexOf('{{') === -1) return template;
   const paths = extractPaths(template);
   const resolved = new Map<string, InterpolationValue>();
-  for (const p of paths) resolved.set(p, await resolvePath(ctx, p));
+  for (const p of paths) {
+    // `varsOnly` (used for sensitive fields like Apprise URLs) permits only
+    // `var.*` — never mesh-controlled `trigger.*`, which would let an inbound
+    // message inject an arbitrary notification target.
+    if (opts?.varsOnly && !p.startsWith('var.')) { resolved.set(p, undefined); continue; }
+    resolved.set(p, await resolvePath(ctx, p));
+  }
   return interpolate(template, (p) => resolved.get(p));
 }
 

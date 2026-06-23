@@ -53,7 +53,7 @@ export const TRIGGERS: BlockDef[] = [
   {
     type: 'trigger.nodeDiscovered',
     label: 'A new node is discovered',
-    description: 'Fires the first time a node is seen.',
+    description: 'Fires the first time a node is seen. Note: new-vs-updated detection is coming in a later update — for now this behaves like “A node is updated”. Use that trigger meanwhile.',
     fields: [COOLDOWN],
   },
   {

@@ -8,6 +8,7 @@
  */
 import type { DbMessage } from '../../../services/database.js';
 import type { TriggerType } from '../../../types/automation.js';
+import { compileUserRegex } from '../../../utils/safeRegex.js';
 
 /** Meshtastic broadcast address (0xFFFFFFFF); also defined inline in the manager. */
 export const BROADCAST_ADDR = 0xffffffff;
@@ -169,9 +170,10 @@ export function messageMatchesFilter(msg: DbMessage, params: Record<string, unkn
   if (typeof params.regex === 'string' && params.regex.length > 0) {
     let re: RegExp;
     try {
-      re = new RegExp(params.regex);
+      // RE2 (linear-time) — immune to ReDoS from user-supplied patterns.
+      re = compileUserRegex(params.regex);
     } catch {
-      return false; // an invalid regex never matches
+      return false; // an invalid/unsupported regex never matches
     }
     if (!re.test(text)) return false;
   }

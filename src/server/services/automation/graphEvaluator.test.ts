@@ -46,6 +46,50 @@ describe('evaluateGraph', () => {
     expect(r.actions).toEqual([{ nodeId: 'a', ok: true, value: { sent: 'a' } }]);
   });
 
+  it('records a single step when a condition throws (no double-push)', async () => {
+    const hooks: EvaluatorHooks<unknown> = {
+      evaluateCondition: () => { throw new Error('boom'); },
+      executeAction: () => ({}),
+      applySetVar: () => {},
+    };
+    const graph = g({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message' },
+        { id: 'c', type: 'condition.numeric', params: { field: 'hops', op: '==', value: 0 } },
+        { id: 'a', type: 'action.tapback' },
+      ],
+      edges: [{ from: 't', to: 'c' }, { from: 'c', to: 'a', port: 'true' }],
+    });
+    const r = await evaluateGraph(graph, {}, hooks);
+    const cSteps = r.steps.filter((s) => s.nodeId === 'c');
+    expect(cSteps).toHaveLength(1);
+    expect(cSteps[0].outcome).toBe('condition:false');
+    expect(cSteps[0].error).toBe('boom');
+    expect(r.conditionResults['c']).toBe(false);
+  });
+
+  it('does not pollute Object.prototype via an adversarial node id', async () => {
+    const hooks: EvaluatorHooks<unknown> = {
+      evaluateCondition: () => true,
+      executeAction: () => ({}),
+      applySetVar: () => {},
+    };
+    const graph = g({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message' },
+        { id: '__proto__', type: 'condition.numeric', params: { field: 'hops', op: '==', value: 0 } },
+        { id: 'a', type: 'action.tapback' },
+      ],
+      edges: [{ from: 't', to: '__proto__' }, { from: '__proto__', to: 'a', port: 'true' }],
+    });
+    const r = await evaluateGraph(graph, {}, hooks);
+    // No prototype pollution; the id is a safe own property of the result map.
+    expect(({} as Record<string, unknown>).hops).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(r.conditionResults, '__proto__')).toBe(true);
+  });
+
   it('routes If/Else by condition result (true → tapback, false skipped)', async () => {
     const { hooks, ran } = makeHooks();
     const graph = g({

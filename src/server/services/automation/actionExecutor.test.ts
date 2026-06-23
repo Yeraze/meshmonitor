@@ -102,14 +102,17 @@ describe('executeAction', () => {
     });
   });
 
-  it('notify: parses newline/comma-separated Apprise urls (with interpolation)', async () => {
+  it('notify: parses urls list but does NOT interpolate mesh-controlled trigger.* (security)', async () => {
     const { calls, deps } = recorder();
     await executeAction(
-      node('action.notify', { body: 'hi', urls: 'discord://x\ntgram://{{ trigger.from }}, json://y' }),
-      ctx({ from: 9 }),
+      node('action.notify', { body: 'hi', urls: 'discord://x\ntgram://{{ trigger.text }}, json://y' }),
+      ctx({ from: 9, text: 'evil-token' }),
       deps,
     );
-    expect(calls[0].args.urls).toEqual(['discord://x', 'tgram://9', 'json://y']);
+    // {{ trigger.text }} is stripped (varsOnly) — a mesh message can't inject a
+    // notification target; "evil-token" must NOT appear anywhere in the urls.
+    expect(calls[0].args.urls).toEqual(['discord://x', 'tgram://', 'json://y']);
+    expect(JSON.stringify(calls[0].args.urls)).not.toContain('evil-token');
   });
 
   it('honors an explicit target source override', async () => {

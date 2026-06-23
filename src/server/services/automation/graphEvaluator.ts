@@ -105,7 +105,10 @@ export async function evaluateGraph<Ctx>(
   for (const e of graph.edges) incomingByNode.get(e.to)?.push(e);
 
   const active = new Set<string>();
-  const conditionResults: Record<string, boolean> = {};
+  // Keyed by user-config-derived node ids → a Map, not a plain object, so an
+  // adversarial id (`__proto__`, `constructor`, …) can't pollute Object.prototype
+  // (CodeQL js/remote-property-injection).
+  const conditionResults = new Map<string, boolean>();
   const actions: EvaluationResult['actions'] = [];
   const steps: EvaluationStep[] = [];
   let actionCount = 0;
@@ -118,7 +121,7 @@ export async function evaluateGraph<Ctx>(
     if (!active.has(edge.from)) return false;
     const src = nodeById.get(edge.from)!;
     if (categoryOf(src.type) === 'condition') {
-      const result = conditionResults[edge.from];
+      const result = conditionResults.get(edge.from);
       if (edge.port === 'true' || edge.port === undefined) return result === true;
       return result === false; // edge.port === 'false'
     }
@@ -150,14 +153,16 @@ export async function evaluateGraph<Ctx>(
     // Execute node behavior.
     if (cat === 'condition') {
       let result = false;
+      let error: string | undefined;
       try {
         result = await hooks.evaluateCondition(node, ctx);
       } catch (e: any) {
         result = false;
-        steps.push({ nodeId, type: node.type, outcome: 'condition:false', error: e?.message });
+        error = e?.message;
       }
-      conditionResults[nodeId] = result;
-      steps.push({ nodeId, type: node.type, outcome: result ? 'condition:true' : 'condition:false' });
+      conditionResults.set(nodeId, result);
+      // Single step per condition (a throw evaluates to false, recorded with its error).
+      steps.push({ nodeId, type: node.type, outcome: result ? 'condition:true' : 'condition:false', ...(error ? { error } : {}) });
     } else if (cat === 'action') {
       if (actionCount >= maxActions) {
         steps.push({ nodeId, type: node.type, outcome: 'guard:maxActions' });
@@ -185,5 +190,7 @@ export async function evaluateGraph<Ctx>(
     }
   }
 
-  return { activatedNodeIds: [...active], conditionResults, actions, steps };
+  // Object.fromEntries materialises keys via defineProperty semantics, so even a
+  // `__proto__` node id becomes a safe own property (no prototype pollution).
+  return { activatedNodeIds: [...active], conditionResults: Object.fromEntries(conditionResults), actions, steps };
 }

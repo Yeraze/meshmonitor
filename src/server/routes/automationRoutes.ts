@@ -83,7 +83,10 @@ router.post('/variables', canWrite, async (req: Request, res: Response) => {
     });
     res.status(201).json(created);
   } catch (error: any) {
-    if (String(error?.message).includes('UNIQUE')) {
+    // Unique-violation text differs per backend: SQLite "UNIQUE constraint failed",
+    // PostgreSQL "duplicate key value violates unique constraint", MySQL "Duplicate entry".
+    const emsg = String(error?.message).toLowerCase();
+    if (emsg.includes('unique') || emsg.includes('duplicate')) {
       return res.status(409).json({ error: 'a variable with that name already exists' });
     }
     logger.error('Error creating automation variable:', error);

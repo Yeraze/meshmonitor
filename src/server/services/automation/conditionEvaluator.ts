@@ -13,6 +13,7 @@ import {
   getSubjectNode,
 } from './engineContext.js';
 import { haversineKm } from './geo.js';
+import { compileUserRegex } from '../../../utils/safeRegex.js';
 
 function numericCompare(op: string, a: number, b: number): boolean {
   if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
@@ -38,7 +39,8 @@ function stringCompare(op: string, a: string, b: string): boolean {
     case 'startsWith': return al.startsWith(bl);
     case 'endsWith': return al.endsWith(bl);
     case 'regex':
-      try { return new RegExp(b).test(a); } catch { return false; }
+      // RE2 (linear-time) — immune to ReDoS from user-supplied patterns.
+      try { return compileUserRegex(b).test(a); } catch { return false; }
     default: return false;
   }
 }
