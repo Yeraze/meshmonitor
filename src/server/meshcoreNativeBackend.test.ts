@@ -225,6 +225,11 @@ class MockConnection extends EventEmitter {
   async setContactPath(contact: any, path: Uint8Array) {
     this.setContactPathCalls.push({ contact, path });
   }
+
+  public addOrUpdateContactCalls: Array<any[]> = [];
+  async addOrUpdateContact(...args: any[]) {
+    this.addOrUpdateContactCalls.push(args);
+  }
 }
 
 function installMockModule(MockConn: typeof MockConnection): MockConnection {
@@ -1062,6 +1067,55 @@ describe('MeshCoreNativeBackend', () => {
     expect(conn.setContactPathCalls).toHaveLength(1);
     expect(conn.setContactPathCalls[0].contact).toBe(fullContact);
     expect(Array.from(conn.setContactPathCalls[0].path)).toEqual([0xa3, 0x7f, 0x02]);
+    // 1-byte width keeps the proven library path, never the packed bypass.
+    expect(conn.addOrUpdateContactCalls).toHaveLength(0);
+  });
+
+  it('set_out_path packs out_path_len for a 2-byte-width path via addOrUpdateContact', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    const targetBytes = new Uint8Array(32);
+    targetBytes[0] = 0xab; targetBytes[1] = 0xcd; targetBytes[2] = 0xef; targetBytes[3] = 0x01;
+    const fullContact = {
+      publicKey: targetBytes,
+      type: AdvType.Chat,
+      flags: 0,
+      outPathLen: 0xff,
+      outPath: new Uint8Array(64),
+      advName: 'Bob',
+      lastAdvert: 1700000000,
+      advLat: 10_000_000,
+      advLon: 20_000_000,
+      lastMod: 1700000000,
+    };
+    conn.contactsResponse = [fullContact];
+
+    // Two 2-byte hops: a3f2, 7f01 → 4 flat bytes, hop_count 2.
+    const pathBytes = Uint8Array.from([0xa3, 0xf2, 0x7f, 0x01]);
+    const resp = await backend.sendCommand('set_out_path', {
+      public_key: 'abcdef01' + '0'.repeat(56),
+      out_path: pathBytes,
+      hash_bytes: 2,
+    });
+
+    expect(resp.success).toBe(true);
+    // Multi-byte width must bypass the library's plain-count setContactPath.
+    expect(conn.setContactPathCalls).toHaveLength(0);
+    expect(conn.addOrUpdateContactCalls).toHaveLength(1);
+    const args = conn.addOrUpdateContactCalls[0];
+    // addOrUpdateContact(publicKey, type, flags, outPathLen, outPath, advName, lastAdvert, advLat, advLon)
+    const packedLen = args[3];
+    const outPath = args[4] as Uint8Array;
+    // packed = ((2-1)<<6) | hop_count(2) = 0x42 (66)
+    expect(packedLen).toBe(0x42);
+    expect(Array.from(outPath.slice(0, 4))).toEqual([0xa3, 0xf2, 0x7f, 0x01]);
+    expect(outPath.length).toBe(64);
+    expect(args[1]).toBe(fullContact.type); // preserves contact fields
+    expect(args[5]).toBe('Bob');
   });
 
   it('set_out_path rejects oversize paths (>64 bytes)', async () => {

@@ -4,6 +4,7 @@ import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import {
   parsePathHops,
   joinPathHops,
+  pathHashBytesOf,
   repeaterHopOptions,
   resolveHop,
   type PathHop,
@@ -36,7 +37,7 @@ interface MeshCoreContactDetailPanelProps {
   /** Manually push a forwarding route into the device's contact record
    *  via CMD_ADD_UPDATE_CONTACT. `outPath` is a comma-separated hex chain
    *  ("a3,7f,02"). Unset hides the Define Path… button. */
-  onSetOutPath?: (publicKey: string, outPath: string) => Promise<boolean>;
+  onSetOutPath?: (publicKey: string, outPath: string, hashBytes?: 1 | 2 | 3) => Promise<boolean>;
   /** Known contacts used to build a path by repeater name (the picker maps a
    *  repeater to its first-public-key-byte hop). Typically the full contact
    *  list; the panel filters to repeaters/room servers internally. */
@@ -142,6 +143,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   // hop is a 1-byte hex routing hash.
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorHops, setEditorHops] = useState<PathHop[]>([]);
+  const [editorHashBytes, setEditorHashBytes] = useState<1 | 2 | 3>(1);
   const [customByte, setCustomByte] = useState('');
   const [editorSaving, setEditorSaving] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
@@ -224,7 +226,10 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     !!onSetOutPath && canWriteNodes && isCompanion;
 
   // Repeater/room options for the path picker, derived from the contact list.
-  const hopOptions = React.useMemo(() => repeaterHopOptions(repeaters ?? []), [repeaters]);
+  const hopOptions = React.useMemo(
+    () => repeaterHopOptions(repeaters ?? [], editorHashBytes),
+    [repeaters, editorHashBytes],
+  );
   const canShowTraceButton =
     !!onTracePath && canWriteNodes && isCompanion && pathKnown && pathLen! > 0;
   const canShowDiscoverButton =
@@ -289,27 +294,43 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   };
 
   const openEditor = () => {
-    setEditorHops(parsePathHops(outPath));
+    const hops = parsePathHops(outPath);
+    setEditorHops(hops);
+    setEditorHashBytes(pathHashBytesOf(hops));
     setCustomByte('');
     setEditorError(null);
     setEditorOpen(true);
   };
 
+  // Max hops the firmware allows (bottom 6 bits of the packed path_len byte),
+  // also bounded by the 64-byte path buffer (hops * hashBytes <= 64).
+  const maxHops = Math.min(63, Math.floor(64 / editorHashBytes));
+
   const addHop = (byte: PathHop) => {
-    if (editorHops.length >= 64) return;
+    if (editorHops.length >= maxHops) return;
     setEditorHops((prev) => [...prev, byte]);
+  };
+
+  // Changing the hash width invalidates existing hex hops (a 1-byte "a3" can't
+  // be widened without the repeater's extra bytes), so clear them.
+  const changeHashBytes = (next: 1 | 2 | 3) => {
+    if (next === editorHashBytes) return;
+    setEditorHashBytes(next);
+    setEditorHops([]);
+    setCustomByte('');
+    setEditorError(null);
   };
 
   const addCustomHop = () => {
     const tok = customByte.trim().toLowerCase();
-    if (!/^[0-9a-f]{1,2}$/.test(tok)) {
+    if (!new RegExp(`^[0-9a-f]{${editorHashBytes * 2}}$`).test(tok)) {
       setEditorError(
-        t('meshcore.contact_details.edit_path_invalid_byte', 'Enter a single hex byte, e.g. "a3".'),
+        t('meshcore.contact_details.edit_path_invalid_byte', `Enter a ${editorHashBytes}-byte hex hash (${editorHashBytes * 2} hex chars).`),
       );
       return;
     }
     setEditorError(null);
-    addHop(tok.padStart(2, '0'));
+    addHop(tok);
     setCustomByte('');
   };
 
@@ -329,16 +350,16 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
 
   const handleSaveEditor = async () => {
     if (!onSetOutPath || editorSaving) return;
-    if (editorHops.length > 64) {
+    if (editorHops.length > maxHops) {
       setEditorError(
-        t('meshcore.contact_details.edit_path_too_long', `Path too long: ${editorHops.length} hops (max 64).`),
+        t('meshcore.contact_details.edit_path_too_long', `Path too long: ${editorHops.length} hops (max ${maxHops}).`),
       );
       return;
     }
     setEditorSaving(true);
     setEditorError(null);
     try {
-      const ok = await onSetOutPath(publicKey, joinPathHops(editorHops));
+      const ok = await onSetOutPath(publicKey, joinPathHops(editorHops), editorHashBytes);
       if (!ok) {
         setEditorError(
           t('meshcore.contact_details.edit_path_save_failed', 'Save failed.'),
@@ -882,6 +903,26 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               )}
             </div>
 
+            {/* Per-hop hash width (1/2/3 bytes). Changing it clears the
+                current hops since the hex hashes are width-specific. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+              <label htmlFor="mc-path-hash-bytes">
+                {t('meshcore.contact_details.edit_path_hash_width', 'Hop hash width:')}
+              </label>
+              <select
+                id="mc-path-hash-bytes"
+                aria-label={t('meshcore.contact_details.edit_path_hash_width', 'Hop hash width:')}
+                value={editorHashBytes}
+                disabled={editorSaving}
+                onChange={(e) => changeHashBytes(Number(e.target.value) as 1 | 2 | 3)}
+                style={{ padding: '0.4rem', boxSizing: 'border-box' }}
+              >
+                <option value={1}>{t('meshcore.contact_details.edit_path_hash_1', '1 byte (default)')}</option>
+                <option value={2}>{t('meshcore.contact_details.edit_path_hash_2', '2 bytes')}</option>
+                <option value={3}>{t('meshcore.contact_details.edit_path_hash_3', '3 bytes')}</option>
+              </select>
+            </div>
+
             {/* Ordered hop list */}
             <label style={{ display: 'block', marginBottom: '0.4rem' }}>
               {t('meshcore.contact_details.edit_path_label', 'Path ({{count}} hops):', { count: editorHops.length })}
@@ -933,7 +974,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
               <select
                 aria-label={t('meshcore.contact_details.edit_path_add_repeater_aria', 'Add repeater hop')}
-                disabled={editorSaving || editorHops.length >= 64}
+                disabled={editorSaving || editorHops.length >= maxHops}
                 value=""
                 onChange={(e) => { if (e.target.value) addHop(e.target.value); }}
                 style={{ flex: 1, minWidth: '12rem', padding: '0.45rem', boxSizing: 'border-box' }}
@@ -958,12 +999,12 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                 value={customByte}
                 onChange={(e) => setCustomByte(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomHop(); } }}
-                disabled={editorSaving || editorHops.length >= 64}
+                disabled={editorSaving || editorHops.length >= maxHops}
                 placeholder={t('meshcore.contact_details.edit_path_custom_byte', 'or hex byte (a3)')}
                 style={{ width: '8rem', padding: '0.45rem', fontFamily: 'var(--font-mono, monospace)', boxSizing: 'border-box' }}
               />
               <button type="button" className="btn-secondary" onClick={addCustomHop}
-                disabled={editorSaving || editorHops.length >= 64 || customByte.trim() === ''}>
+                disabled={editorSaving || editorHops.length >= maxHops || customByte.trim() === ''}>
                 {t('meshcore.contact_details.edit_path_add_byte', 'Add')}
               </button>
             </div>

@@ -150,7 +150,7 @@ describe('MeshCoreContactDetailPanel', () => {
     expect(screen.getByText('North Repeater')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Save Path' }));
-    await waitFor(() => expect(onSetOutPath).toHaveBeenCalledWith(PK, 'b1'));
+    await waitFor(() => expect(onSetOutPath).toHaveBeenCalledWith(PK, 'b1', 1));
   });
 
   it('reorders hops with the up button before saving', async () => {
@@ -171,7 +171,7 @@ describe('MeshCoreContactDetailPanel', () => {
     // Move the second hop (East/7f) up → [7f, b1].
     fireEvent.click(screen.getAllByRole('button', { name: 'Move hop up' })[1]);
     fireEvent.click(screen.getByRole('button', { name: 'Save Path' }));
-    await waitFor(() => expect(onSetOutPath).toHaveBeenCalledWith(PK, '7f,b1'));
+    await waitFor(() => expect(onSetOutPath).toHaveBeenCalledWith(PK, '7f,b1', 1));
   });
 
   it('adds a custom hex byte and rejects an invalid one', async () => {
@@ -186,12 +186,49 @@ describe('MeshCoreContactDetailPanel', () => {
     // Invalid byte → error, no hop added.
     fireEvent.change(input, { target: { value: 'zz' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
-    expect(screen.getByText(/single hex byte/i)).toBeTruthy();
+    expect(screen.getByText(/hex hash/i)).toBeTruthy();
     // Valid byte → hop added and saved.
     fireEvent.change(input, { target: { value: 'ab' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save Path' }));
-    await waitFor(() => expect(onSetOutPath).toHaveBeenCalledWith(PK, 'ab'));
+    await waitFor(() => expect(onSetOutPath).toHaveBeenCalledWith(PK, 'ab', 1));
+  });
+
+  it('builds a 2-byte-width path and saves it with hashBytes=2', async () => {
+    const contact: MeshCoreContact = { publicKey: PK, advType: 1 };
+    const repeaters: MeshCoreContact[] = [
+      { publicKey: 'b1f2' + 'c'.repeat(60), advType: 2, advName: 'North Repeater' },
+    ];
+    const onSetOutPath = vi.fn().mockResolvedValue(true);
+    render(
+      <MeshCoreContactDetailPanel contact={contact} publicKey={PK} onSetOutPath={onSetOutPath}
+        repeaters={repeaters} canWriteNodes isCompanion />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Define Path…' }));
+    // Switch the hop hash width to 2 bytes.
+    fireEvent.change(screen.getByRole('combobox', { name: 'Hop hash width:' }), { target: { value: '2' } });
+    // The repeater's hop is now its 2-byte prefix.
+    const select = screen.getByRole('combobox', { name: 'Add repeater hop' });
+    fireEvent.change(select, { target: { value: 'b1f2' } });
+    expect(screen.getByText('North Repeater')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Path' }));
+    await waitFor(() => expect(onSetOutPath).toHaveBeenCalledWith(PK, 'b1f2', 2));
+  });
+
+  it('infers 2-byte width from an existing multi-byte out_path', () => {
+    const contact: MeshCoreContact = { publicKey: PK, advType: 1, outPath: 'b1f2,7f01' };
+    const repeaters: MeshCoreContact[] = [
+      { publicKey: 'b1f2' + 'c'.repeat(60), advType: 2, advName: 'North Repeater' },
+    ];
+    render(
+      <MeshCoreContactDetailPanel contact={contact} publicKey={PK}
+        onSetOutPath={vi.fn().mockResolvedValue(true)} repeaters={repeaters} canWriteNodes isCompanion />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Define Path…' }));
+    // Width selector pre-selected to 2 bytes; known 2-byte hop resolves by name.
+    expect((screen.getByRole('combobox', { name: 'Hop hash width:' }) as HTMLSelectElement).value).toBe('2');
+    expect(screen.getByText('North Repeater')).toBeTruthy();
+    expect(screen.getByText('Unknown (0x7f01)')).toBeTruthy();
   });
 
   it('pre-populates the editor from the existing out_path, resolving names', () => {
