@@ -5,8 +5,10 @@
  * → THEN actions) → an optional FINALLY combine step (ANY/ALL/NONE). Compiles to
  * the graph model in compile.ts.
  */
+import { useState } from 'react';
 import { TRIGGERS, CONDITIONS, ACTIONS, BLOCK_BY_TYPE, fieldsFor, type BlockDef, type FieldDef } from './catalog';
 import type { WorkflowForm, FormBlock, Rule } from './compile';
+import SubstitutionsHelpDrawer from './SubstitutionsHelp';
 
 export interface VariableOption { name: string; type: string; }
 export interface SourceOption { id: string; name: string; }
@@ -145,6 +147,7 @@ function BlockListEditor({ blocks, options, triggerType, variables, sources, onC
 
 export default function AutomationBuilder({ form, variables, sources, onChange }: Props) {
   const triggerType = form.trigger.type;
+  const [showHelp, setShowHelp] = useState(false);
   const setTrigger = (type: string) => onChange({ ...form, trigger: { type, params: defaultParams(type, type) } });
   const setTriggerParams = (params: Record<string, unknown>) => onChange({ ...form, trigger: { ...form.trigger, params } });
 
@@ -155,6 +158,12 @@ export default function AutomationBuilder({ form, variables, sources, onChange }
 
   return (
     <div>
+      {showHelp && <SubstitutionsHelpDrawer triggerType={triggerType} variables={variables} onClose={() => setShowHelp(false)} />}
+      <div className="ae-row ae-builder-hint" style={{ marginBottom: '0.6rem' }}>
+        <span className="ae-muted">Tip: insert <code>{'{{ trigger.* }}'}</code> / <code>{'{{ var.* }}'}</code> tokens in any message or notification text.</span>
+        <button className="ae-help-icon" style={{ marginLeft: '0.4rem' }} title="All available substitutions" onClick={() => setShowHelp(true)}>?</button>
+      </div>
+
       <div className="ae-section">
         <div className="ae-section-head"><span className="ae-section-kw">WHEN</span><span className="ae-section-hint">this happens</span></div>
         <div className="ae-section-body">
