@@ -106,6 +106,15 @@ export default function NodeMarkersLayer() {
     return h;
   };
 
+  // Stable, UNIQUE spiderfier key per node. MeshCore nodes carry no Meshtastic
+  // nodeNum, so `${sourceId}:${nodeNum}` collapses every MeshCore node in a
+  // source onto one key (`…:undefined`) — only one would register with the
+  // spiderfier and MeshCore piles never fan out. Fall back to the (unique)
+  // nodeId for MeshCore, matching DashboardMap. Meshtastic/MQTT keys are
+  // unchanged. (issue: spiderfy not working for MeshCore markers on Map Analysis)
+  const keyOf = (n: NodeRecord): string =>
+    n.isMeshCore ? `mc:${n.nodeId ?? n.nodeNum}` : `${n.sourceId ?? ''}:${n.nodeNum}`;
+
   const { data: sources = [] } = useDashboardSources();
   const sourceList = sources as Array<{ id: string; name: string }>;
   const sourceIds = sourceList.map((s) => s.id);
@@ -148,7 +157,7 @@ export default function NodeMarkersLayer() {
   // rather than from the ref `null` bounce — drop any tracked marker whose key
   // is no longer rendered, and unregister it from the spiderfier. Keyed off the
   // rendered key SET so it only does work when membership actually changes.
-  const renderedKeysSig = filteredNodes.map(({ node: n }) => `${n.sourceId ?? ''}:${n.nodeNum}`).join('|');
+  const renderedKeysSig = filteredNodes.map(({ node: n }) => keyOf(n)).join('|');
   useEffect(() => {
     const rendered = new Set(renderedKeysSig ? renderedKeysSig.split('|') : []);
     for (const key of [...markerByKey.current.keys()]) {
@@ -182,7 +191,7 @@ export default function NodeMarkersLayer() {
               : 0;
         const isRouter = roleNum === 2;
         const roleCategory = getNodeTypeCategory(n);
-        const markerKey = `${sourceId}:${n.nodeNum}`;
+        const markerKey = keyOf(n);
         // Reuse cached icon/position unless an input changed, so a poll that
         // returns identical data doesn't churn the marker and collapse an active
         // spiderfy fan. Selection IS part of the signature, so highlighting the
@@ -214,7 +223,11 @@ export default function NodeMarkersLayer() {
                 }),
             }}
           >
-            <Popup>
+            {/* Render in the default popupPane (z-index 700). Without this the
+                Popup inherits the surrounding <Pane name="markers"> (z-index
+                600) from MapAnalysisCanvas, so node markers paint over the
+                popup ("details popup under the markers"). */}
+            <Popup pane="popupPane">
               <strong>
                 {n.longName ?? n.shortName ?? `!${Number(n.nodeNum).toString(16)}`}
               </strong>
