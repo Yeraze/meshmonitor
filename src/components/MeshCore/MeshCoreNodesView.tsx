@@ -5,6 +5,8 @@ import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMap } from './MeshCoreMap';
 import { meshcoreRoleIcon, meshcoreRoleLabelKey, meshcoreRoleLabel } from './meshcoreRole';
 import { useToast } from '../ToastContainer';
+import { useSettings } from '../../contexts/SettingsContext';
+import { formatTimeOrDate } from '../../utils/datetime';
 
 type DiscoverMode = 'nearby' | 'repeaters' | 'sensors';
 
@@ -118,6 +120,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
+  const { timeFormat, dateFormat } = useSettings();
   const [favoriteBusy, setFavoriteBusy] = useState<string | null>(null);
 
   const handleToggleFavorite = useCallback(async (publicKey: string, next: boolean) => {
@@ -358,7 +361,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                   {typeof row.rssi === 'number' && <span>RSSI {row.rssi}</span>}
                   {typeof row.snr === 'number' && <span>SNR {row.snr}</span>}
                   {row.lastHeard && (
-                    <span>{new Date(row.lastHeard).toLocaleTimeString()}</span>
+                    <span>{formatTimeOrDate(new Date(row.lastHeard), timeFormat, dateFormat)}</span>
                   )}
                   {row.hasPosition && <span>📍</span>}
                 </div>
