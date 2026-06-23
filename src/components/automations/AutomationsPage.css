@@ -130,3 +130,7 @@
 .ae-test-sent { background: var(--ctp-mantle); border-left: 3px solid var(--ctp-green); padding: 0.4rem 0.6rem; margin: 0.3rem 0; border-radius: var(--radius-sm, 6px); white-space: pre-wrap; word-break: break-word; font-size: 0.86rem; color: var(--ctp-text); }
 .ae-test-raw { margin-top: 0.25rem; }
 .ae-test-raw summary { cursor: pointer; font-size: 0.74rem; list-style: revert; }
+
+/* Test panel — "no actions ran" guidance note */
+.ae-test-note { background: var(--ctp-surface0); border-left: 3px solid var(--ctp-yellow); padding: 0.4rem 0.6rem; border-radius: var(--radius-sm, 6px); font-size: 0.82rem; color: var(--ctp-subtext1); line-height: 1.45; }
+.ae-test-note code { background: var(--ctp-mantle); padding: 0 0.25rem; border-radius: 3px; }

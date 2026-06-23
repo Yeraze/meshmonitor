@@ -88,9 +88,9 @@ export default function AutomationTester({ getConfig, variables }: Props) {
 
   const buildNode = (): Record<string, unknown> | undefined => {
     const out: Record<string, unknown> = {};
-    if (facts.batteryLevel) out.batteryLevel = Number(facts.batteryLevel);
-    if (facts.voltage) out.voltage = Number(facts.voltage);
-    if (facts.role) out.role = Number(facts.role);
+    const numFact = (k: string) => { if (facts[k] !== undefined && facts[k] !== '') out[k] = Number(facts[k]); };
+    numFact('batteryLevel'); numFact('voltage'); numFact('role'); numFact('hopsAway');
+    numFact('channelUtilization'); numFact('airUtilTx'); numFact('snr'); numFact('altitude');
     if (facts.longName) out.longName = facts.longName;
     if (facts.shortName) out.shortName = facts.shortName;
     if (facts.latitude) out.latitude = Number(facts.latitude);
@@ -142,7 +142,12 @@ export default function AutomationTester({ getConfig, variables }: Props) {
           <div className="ae-test-inputs">
             <Field label="Battery %" value={facts.batteryLevel} onChange={(v) => setFact('batteryLevel', v)} type="number" />
             <Field label="Voltage" value={facts.voltage} onChange={(v) => setFact('voltage', v)} type="number" />
+            <Field label="Hops away" value={facts.hopsAway} onChange={(v) => setFact('hopsAway', v)} type="number" />
             <Field label="Role (#)" value={facts.role} onChange={(v) => setFact('role', v)} type="number" />
+            <Field label="Channel util %" value={facts.channelUtilization} onChange={(v) => setFact('channelUtilization', v)} type="number" />
+            <Field label="Air util TX %" value={facts.airUtilTx} onChange={(v) => setFact('airUtilTx', v)} type="number" />
+            <Field label="SNR (node)" value={facts.snr} onChange={(v) => setFact('snr', v)} type="number" />
+            <Field label="Altitude" value={facts.altitude} onChange={(v) => setFact('altitude', v)} type="number" />
             <Field label="Long name" value={facts.longName} onChange={(v) => setFact('longName', v)} />
             <Field label="Short name" value={facts.shortName} onChange={(v) => setFact('shortName', v)} />
             <Field label="Latitude" value={facts.latitude} onChange={(v) => setFact('latitude', v)} type="number" />
@@ -295,7 +300,10 @@ function TestResult({ result }: { result: SimResult }) {
             </>
           )}
           {result.matched && result.actions.length === 0 && (
-            <div className="ae-muted" style={{ marginTop: '0.4rem' }}>No actions ran — conditions routed past every action.</div>
+            <div className="ae-test-note" style={{ marginTop: '0.4rem' }}>
+              No actions ran — every condition evaluated <strong>false</strong> (see the trace above), so no branch reached an action.
+              {' '}Adjust the event inputs or “Subject-node facts” (e.g. set <code>Hops away</code> for a <code>node.hopsAway</code> check, or <code>Hop start/limit</code> for a <code>hops</code> check) so a condition passes.
+            </div>
           )}
 
           {result.variableWrites.length > 0 && (
