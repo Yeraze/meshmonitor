@@ -931,6 +931,67 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { ok: true };
       }
 
+      case 'request_regions': {
+        // Ask a repeater/room-server for its allowed region/scope list (#3667
+        // phase 3). Sends CMD_SEND_ANON_REQ (57) with the "regions" sub-type
+        // (0x01); the node replies with PUSH_CODE_BINARY_RESPONSE (0x8C)
+        // carrying clock(4 LE) + a NUL-terminated, comma-separated ASCII list
+        // of region names (the wildcard '*' is the legacy null region). This
+        // command isn't in meshcore.js, so we build the raw frame and match the
+        // reply by tag, mirroring the library's sendBinaryRequest().
+        const publicKey = await this.resolvePublicKey(params.public_key as string);
+        if (!publicKey || publicKey.length !== 32) {
+          throw new Error('request_regions: repeater public key not found');
+        }
+        const timeoutMs = Number(params.timeout_ms) || 15_000;
+        const K = this.constants!;
+        // Frame: [57][pubkey:32][0x01 regions][0x00 reply_path_len → flood reply]
+        const frame = new Uint8Array(1 + 32 + 2);
+        frame[0] = 57; // CMD_SEND_ANON_REQ
+        frame.set(publicKey, 1);
+        frame[33] = 0x01; // ANON_REQ_TYPE_REGIONS
+        frame[34] = 0x00; // reply_path_len = 0
+
+        const responseData: Uint8Array = await new Promise((resolve, reject) => {
+          let tag: number | null = null;
+          let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+            cleanup();
+            reject(new Error('request_regions timed out'));
+          }, timeoutMs);
+          const onSent = (r: any) => { tag = (r?.expectedAckCrc ?? null); };
+          const onResp = (r: any) => {
+            // Only accept the reply once the Sent ack has given us our tag (the
+            // firmware always sends Sent before the BinaryResponse). A response
+            // arriving before that, or carrying a different tag, isn't ours.
+            if (tag === null || r?.tag !== tag) return;
+            cleanup();
+            resolve((r?.responseData ?? new Uint8Array()) as Uint8Array);
+          };
+          const onErr = () => { cleanup(); reject(new Error('Device rejected regions request')); };
+          function cleanup() {
+            if (timer) { clearTimeout(timer); timer = null; }
+            c.off(K.ResponseCodes.Sent, onSent);
+            c.off(K.PushCodes.BinaryResponse, onResp);
+            c.off(K.ResponseCodes.Err, onErr);
+          }
+          // `on` (not `once`) so a non-matching binary response doesn't consume
+          // our listener; cleanup removes them once we resolve/fail.
+          c.on(K.ResponseCodes.Sent, onSent);
+          c.on(K.PushCodes.BinaryResponse, onResp);
+          c.once(K.ResponseCodes.Err, onErr);
+          void c.sendToRadioFrame(frame);
+        });
+
+        // Parse: clock(4 LE) + NUL-terminated, comma-separated ASCII names.
+        const buf = Buffer.from(responseData);
+        const clock = buf.length >= 4 ? buf.readUInt32LE(0) : 0;
+        let end = buf.indexOf(0, 4);
+        if (end < 0) end = buf.length;
+        const namesStr = buf.length > 4 ? buf.toString('ascii', 4, end) : '';
+        const regions = namesStr.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+        return { ok: true, clock, regions };
+      }
+
       case 'trace_path': {
         const pathBytes = params.path as Uint8Array | number[] | undefined;
         if (!pathBytes || (Array.isArray(pathBytes) ? pathBytes.length : pathBytes.byteLength) === 0) {
