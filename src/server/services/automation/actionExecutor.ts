@@ -27,7 +27,7 @@ export interface ActionDeps {
     replyId?: number;
   }): Promise<unknown>;
   manageNode(a: { sourceId: string | null; nodeNum: number; op: NodeManageOp }): Promise<unknown>;
-  notify(a: { sourceId: string | null; title: string; body: string; type?: string }): Promise<unknown>;
+  notify(a: { sourceId: string | null; title: string; body: string; type?: string; urls?: string[] }): Promise<unknown>;
 }
 
 /** Target source for an action: explicit param wins, else the trigger's source. */
@@ -86,7 +86,11 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       const title = await interpolateAsync(String(p.title ?? 'MeshMonitor automation'), ctx);
       const body = await interpolateAsync(String(p.body ?? ''), ctx);
       const type = typeof p.type === 'string' ? p.type : undefined;
-      return deps.notify({ sourceId, title, body, type });
+      // `urls` is an optional newline/comma-separated list of Apprise service
+      // URLs entered on the action; interpolated so {{ var.* }} can supply them.
+      const rawUrls = typeof p.urls === 'string' ? await interpolateAsync(p.urls, ctx) : '';
+      const urls = rawUrls.split(/[\n,]/).map((u) => u.trim()).filter((u) => u.length > 0);
+      return deps.notify({ sourceId, title, body, type, urls });
     }
 
     default:

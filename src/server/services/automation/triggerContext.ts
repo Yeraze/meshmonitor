@@ -128,20 +128,28 @@ export function buildGeofenceContext(
   };
 }
 
-/** Build the trigger context for a system event (bootup / source connect/disconnect). */
+/** System events the engine can raise (param `event` on a `trigger.system` block). */
+export type SystemEvent = 'bootup' | 'source-connected' | 'source-disconnected' | 'upgrade-available';
+
+/**
+ * Build the trigger context for a system event. `extra` carries event-specific
+ * fields (e.g. upgrade-available → latestVersion / currentVersion / releaseUrl)
+ * that conditions and {{ trigger.* }} interpolation can read.
+ */
 export function buildSystemContext(
-  event: 'bootup' | 'source-connected' | 'source-disconnected',
+  event: SystemEvent,
   sourceId: string | null,
   nodeNum: number | null,
   reason: string | undefined,
   timestamp: number,
+  extra?: Record<string, unknown>,
 ): TriggerContext {
   return {
     triggerType: 'trigger.system',
     sourceId,
     subjectNodeNum: nodeNum == null ? null : Number(nodeNum),
     timestamp,
-    fields: { event, sourceId, nodeNum: nodeNum == null ? null : Number(nodeNum), reason, timestamp },
+    fields: { event, sourceId, nodeNum: nodeNum == null ? null : Number(nodeNum), reason, timestamp, ...extra },
   };
 }
 

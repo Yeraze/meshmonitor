@@ -98,8 +98,18 @@ describe('executeAction', () => {
     );
     expect(calls[0]).toEqual({
       fn: 'notify',
-      args: { sourceId: 'default', title: 'Node 9', body: 'said mayday', type: 'warning' },
+      args: { sourceId: 'default', title: 'Node 9', body: 'said mayday', type: 'warning', urls: [] },
     });
+  });
+
+  it('notify: parses newline/comma-separated Apprise urls (with interpolation)', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.notify', { body: 'hi', urls: 'discord://x\ntgram://{{ trigger.from }}, json://y' }),
+      ctx({ from: 9 }),
+      deps,
+    );
+    expect(calls[0].args.urls).toEqual(['discord://x', 'tgram://9', 'json://y']);
   });
 
   it('honors an explicit target source override', async () => {

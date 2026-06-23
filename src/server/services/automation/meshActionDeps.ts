@@ -6,14 +6,13 @@
  * registry) exposes sendTextMessage + the node-admin senders. Tapbacks reuse
  * sendTextMessage with the emoji flag = 1 and replyId = the triggering packet.
  *
- * NOTE: `notify` is not yet wired — appriseNotificationService has no clean
- * per-source notify entry point (only sendNotificationToUrls + a private config
- * resolver). It throws for now, so a notify action records a failed step in the
- * run-log rather than crashing. Tracked as remaining Phase-1a work.
+ * `notify` dispatches through appriseNotificationService.notifyDirect (the
+ * automation-specific, non-user-filtered path). A failed dispatch throws so the
+ * graph evaluator records a failed step in the run-log.
  */
 import databaseService from '../../../services/database.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
-import { logger } from '../../../utils/logger.js';
+import { appriseNotificationService } from '../appriseNotificationService.js';
 import type { ActionDeps } from './actionExecutor.js';
 
 interface MeshSendManager {
@@ -61,11 +60,10 @@ export function createMeshActionDeps(): ActionDeps {
       }
     },
 
-    async notify({ title, body }) {
-      // TODO(#3653): wire to appriseNotificationService once a per-source notify
-      // helper exists. Until then, surface clearly and fail this step only.
-      logger.warn(`[AutomationEngine] notify action not yet wired — would send "${title}: ${body}"`);
-      throw new Error('notify action is not yet available');
+    async notify({ sourceId, title, body, type, urls }) {
+      const r = await appriseNotificationService.notifyDirect({ sourceId, title, body, type }, urls);
+      if (!r.ok) throw new Error(`notify failed: ${r.message}`);
+      return r;
     },
   };
 }

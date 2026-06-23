@@ -29,6 +29,7 @@ import {
   buildGeofenceContext,
   messageMatchesFilter,
   type TriggerContext,
+  type SystemEvent,
 } from './triggerContext.js';
 import { haversineKm, geofenceFires, type GeofenceMode } from './geo.js';
 import { evaluateGraph, type EvaluatorHooks } from './graphEvaluator.js';
@@ -235,12 +236,19 @@ export class AutomationEngineService {
   }
 
   async onSystem(
-    event: 'bootup' | 'source-connected' | 'source-disconnected',
+    event: SystemEvent,
     sourceId: string | null,
     nodeNum: number | null,
     reason?: string,
+    extra?: Record<string, unknown>,
   ): Promise<number> {
-    return this.runTrigger(buildSystemContext(event, sourceId, nodeNum, reason, this.now()));
+    const ctx = buildSystemContext(event, sourceId, nodeNum, reason, this.now(), extra);
+    // Pre-filter on the configured `event` param so a "system start" automation
+    // doesn't also fire on "source online" etc. An unset event matches any.
+    return this.runTrigger(ctx, (a) => {
+      const want = (a.triggerNode.params as any)?.event;
+      return want == null || want === '' || want === event;
+    });
   }
 
   /**

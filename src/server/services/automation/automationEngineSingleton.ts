@@ -17,9 +17,37 @@ import { createMeshNodeDataProvider } from './meshNodeData.js';
 
 let engine: AutomationEngineService | null = null;
 let subscribed = false;
+/** Last version we raised an `upgrade-available` event for (dedupe across polls). */
+let lastUpgradeNotified: string | null = null;
 
 export function getAutomationEngine(): AutomationEngineService | null {
   return engine;
+}
+
+/**
+ * Raise the `upgrade-available` system event when a newer MeshMonitor release is
+ * detected. Called from the version-check route. Deduped by version so repeated
+ * polls (the route caches ~5 min) only fire automations once per new version.
+ */
+export async function notifyUpgradeAvailable(info: {
+  latestVersion: string;
+  currentVersion: string;
+  releaseUrl?: string;
+  releaseName?: string;
+}): Promise<void> {
+  if (!engine) return;
+  if (!info.latestVersion || info.latestVersion === lastUpgradeNotified) return;
+  lastUpgradeNotified = info.latestVersion;
+  try {
+    await engine.onSystem('upgrade-available', null, null, undefined, {
+      latestVersion: info.latestVersion,
+      currentVersion: info.currentVersion,
+      releaseUrl: info.releaseUrl,
+      releaseName: info.releaseName,
+    });
+  } catch (e: any) {
+    logger.error(`[AutomationEngine] upgrade-available trigger error: ${e?.message}`);
+  }
 }
 
 /** Reload enabled automations into the engine (called after CRUD). No-op if not started. */

@@ -100,8 +100,8 @@ export const TRIGGERS: BlockDef[] = [
           { value: 'bootup', label: 'System start (MeshMonitor started)' },
           { value: 'source-connected', label: 'Source came online' },
           { value: 'source-disconnected', label: 'Source went offline' },
+          { value: 'upgrade-available', label: 'Upgrade available (new release detected)' },
         ],
-        help: '“Upgrade available” is coming in a later update.',
       },
     ],
   },
@@ -145,7 +145,12 @@ const EVENT_STRING: Record<string, FieldOpt[]> = {
     { value: 'text', label: 'Message text' }, { value: 'fromId', label: 'Sender node id' }, { value: 'toId', label: 'Recipient node id' },
   ],
   'trigger.telemetry': [{ value: 'telemetryType', label: 'Metric name' }],
-  'trigger.system': [{ value: 'event', label: 'System event' }],
+  'trigger.system': [
+    { value: 'event', label: 'System event' },
+    { value: 'latestVersion', label: 'Latest version (upgrade event)' },
+    { value: 'currentVersion', label: 'Current version (upgrade event)' },
+    { value: 'reason', label: 'Reason / detail' },
+  ],
 };
 
 // Subject-node fields (resolved from the hydrated node record).
@@ -305,6 +310,19 @@ export const ACTIONS: BlockDef[] = [
     fields: [
       { name: 'title', label: 'Title', kind: 'text', placeholder: 'MeshMonitor alert' },
       { name: 'body', label: 'Body', kind: 'textarea', placeholder: 'Node {{ trigger.fromId }} said {{ trigger.text }}' },
+      {
+        name: 'type', label: 'Severity', kind: 'select', advanced: true,
+        options: [
+          { value: 'info', label: 'Info' }, { value: 'success', label: 'Success' },
+          { value: 'warning', label: 'Warning' }, { value: 'failure', label: 'Failure' },
+        ],
+        help: 'Apprise notification type (affects colour/icon on supported services).',
+      },
+      {
+        name: 'urls', label: 'Apprise URL(s)', kind: 'textarea', advanced: true,
+        placeholder: 'discord://… or tgram://… (one per line)',
+        help: 'Optional. One Apprise service URL per line. Leave blank to use the Apprise API server’s configured targets.',
+      },
     ],
   },
   {

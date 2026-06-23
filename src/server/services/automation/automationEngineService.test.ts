@@ -192,6 +192,64 @@ describe('AutomationEngineService', () => {
     expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(1);
   });
 
+  it('system: a trigger only fires for its configured event (prefilter)', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('on-boot', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.system', params: { event: 'bootup' } },
+        { id: 'a', type: 'action.notify', params: { body: 'booted' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    const engine = engineWith(deps);
+    await engine.load();
+
+    expect(await engine.onSystem('source-connected', 'default', null)).toBe(0); // wrong event
+    expect(await engine.onSystem('bootup', null, null)).toBe(1); // matching event
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(1);
+  });
+
+  it('system: upgrade-available exposes version fields to interpolation', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('upgrade-msg', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.system', params: { event: 'upgrade-available' } },
+        { id: 'a', type: 'action.sendMessage', params: { text: '{{ trigger.currentVersion }} -> {{ trigger.latestVersion }}' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    const engine = engineWith(deps);
+    await engine.load();
+
+    const fired = await engine.onSystem('upgrade-available', null, null, undefined, {
+      latestVersion: '9.9.9',
+      currentVersion: '1.0.0',
+    });
+    expect(fired).toBe(1);
+    const send = calls.find((c) => c.fn === 'sendMessage');
+    expect(send?.args.text).toBe('1.0.0 -> 9.9.9');
+  });
+
+  it('records a failed run when a notify action throws', async () => {
+    const { deps } = recorder();
+    deps.notify = async () => { throw new Error('apprise down'); };
+    const a = await createEnabled('notify-fail', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.system', params: { event: 'bootup' } },
+        { id: 'n', type: 'action.notify', params: { body: 'x' } },
+      ],
+      edges: [{ from: 't', to: 'n' }],
+    });
+    const engine = engineWith(deps);
+    await engine.load();
+    expect(await engine.onSystem('bootup', null, null)).toBe(1);
+    const runs = await autos.listRuns(a.id);
+    expect(runs[0].status).toBe('failed');
+  });
+
   it('geofence: exit fires on inside→outside', async () => {
     const { deps } = recorder();
     await createEnabled('geo-exit', {
