@@ -22,7 +22,7 @@ const ResponseCodes = {
 };
 const PushCodes = {
   Advert: 0x80, PathUpdated: 0x81, MsgWaiting: 0x83, NewAdvert: 0x8a,
-  ControlData: 0x8e,
+  BinaryResponse: 0x8c, ControlData: 0x8e,
 };
 const StatsTypes = { Core: 0, Radio: 1, Packets: 2 };
 const SelfAdvertTypes = { ZeroHop: 0, Flood: 1 };
@@ -33,15 +33,26 @@ const TxtTypes = { Plain: 0, CliData: 1, SignedPlain: 2 };
 class MockConnection extends EventEmitter {
   sentFrames: Uint8Array[] = [];
   addOrUpdateContact = vi.fn().mockResolvedValue(undefined);
+  /** Reply bytes a `request_regions` (CMD 57) frame should produce. */
+  regionsResponseData: Uint8Array | null = null;
   async connect() { /* no-op */ }
   async close() { /* no-op */ }
   async getSelfInfo() {
     return { type: AdvType.Chat, publicKey: Uint8Array.from(Array(32).fill(0)), name: 'TestNode' };
   }
-  // The discover_nodes command sends the frame then waits for an OK ack.
   sendToRadioFrame(frame: Uint8Array) {
     this.sentFrames.push(frame);
-    // Ack on the next tick so the awaiting command resolves.
+    if (frame[0] === 57) {
+      // CMD_SEND_ANON_REQ (regions): reply with a Sent ack (carrying the tag)
+      // then the BinaryResponse push with the canned region bytes.
+      const tag = 0x99;
+      setImmediate(() => {
+        this.emit(ResponseCodes.Sent, { expectedAckCrc: tag, estTimeout: 1000 });
+        this.emit(PushCodes.BinaryResponse, { reserved: 0, tag, responseData: this.regionsResponseData ?? new Uint8Array() });
+      });
+      return;
+    }
+    // discover_nodes (CMD 55) and others: ack with OK on the next tick.
     setImmediate(() => this.emit(ResponseCodes.Ok));
   }
 }
@@ -239,5 +250,32 @@ describe('MeshCoreNativeBackend — discovery responder', () => {
       conn.emit('rx', buildDiscoverReq({ snrX4: 12, filter: selfTypeBit, tag: 0x40000000 + i }));
     }
     expect(conn.sentFrames.filter((f) => f[0] === 55).length).toBe(4);
+  });
+
+  it('request_regions sends [57, pubkey, 0x01, 0x00] and parses clock + region names (#3667)', async () => {
+    const { backend, conn } = await connectedBackend();
+    // clock(4 LE)=1 + "muenchen,bayern,*" + NUL + trailing junk (must be ignored)
+    conn.regionsResponseData = Uint8Array.from([
+      1, 0, 0, 0,
+      ...Buffer.from('muenchen,bayern,*', 'ascii'),
+      0,
+      ...Buffer.from('JUNK', 'ascii'),
+    ]);
+
+    const res = await backend.sendCommand('request_regions', { public_key: 'aa'.repeat(32) });
+    expect(res.success).toBe(true);
+
+    // Outbound frame layout: CMD 57 + 32-byte pubkey + req_type 0x01 + reply_path_len 0.
+    const frame = conn.sentFrames.at(-1)!;
+    expect(frame.length).toBe(1 + 32 + 2);
+    expect(frame[0]).toBe(57);
+    expect(Array.from(frame.slice(1, 33))).toEqual(Array(32).fill(0xaa));
+    expect(frame[33]).toBe(0x01);
+    expect(frame[34]).toBe(0x00);
+
+    // Parsed reply: clock from the first 4 bytes, names split on ',' up to the
+    // NUL. The wildcard '*' is preserved here (the manager filters it).
+    expect(res.data.clock).toBe(1);
+    expect(res.data.regions).toEqual(['muenchen', 'bayern', '*']);
   });
 });

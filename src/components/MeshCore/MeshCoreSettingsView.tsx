@@ -26,13 +26,16 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   const [discovering, setDiscovering] = useState<'nearby' | 'repeaters' | 'sensors' | null>(null);
   // "Be discoverable" toggle — whether we answer inbound discovery requests.
   const [discoverable, setDiscoverableState] = useState(false);
-  const { getDiscoverable, setDiscoverable, getDefaultScope, setDefaultScope } = actions;
+  const { getDiscoverable, setDiscoverable, getDefaultScope, setDefaultScope, discoverRegions } = actions;
 
   // Default region/scope (#3667). `defaultScope` is the persisted value;
   // `scopeInput` is the editable field (so we can show a dirty state).
   const [defaultScope, setDefaultScopeState] = useState('');
   const [scopeInput, setScopeInput] = useState('');
   const [savingScope, setSavingScope] = useState(false);
+  // Region discovery (#3667 phase 3) — names served by nearby repeaters.
+  const [discoveredRegions, setDiscoveredRegions] = useState<string[] | null>(null);
+  const [discoveringRegions, setDiscoveringRegions] = useState(false);
 
   useEffect(() => {
     if (connected && isCompanion) {
@@ -51,9 +54,30 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
       }
       setDefaultScopeState(result);
       setScopeInput(result);
+      setDiscoveredRegions(null); // collapse the suggestion chips once applied
       showToast(t('meshcore.scope.saved', 'Default scope saved'), 'success');
     } finally {
       setSavingScope(false);
+    }
+  };
+
+  const handleDiscoverRegions = async () => {
+    setDiscoveringRegions(true);
+    try {
+      const result = await discoverRegions();
+      if (!result) {
+        showToast(t('meshcore.scope.discover_failed', 'Failed to discover regions'), 'error');
+        return;
+      }
+      setDiscoveredRegions(result.regions);
+      if (result.regions.length === 0) {
+        showToast(
+          t('meshcore.scope.discover_none', 'No regions found. Try "Discover Repeaters" first, then retry.'),
+          'info',
+        );
+      }
+    } finally {
+      setDiscoveringRegions(false);
     }
   };
 
@@ -157,7 +181,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button
               onClick={() => void handleDiscover('nearby')}
-              disabled={!connected || loading || discovering !== null}
+              disabled={!connected || loading || discovering !== null || discoveringRegions}
             >
               {discovering === 'nearby'
                 ? t('meshcore.discover.running', 'Discovering…')
@@ -165,7 +189,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
             </button>
             <button
               onClick={() => void handleDiscover('repeaters')}
-              disabled={!connected || loading || discovering !== null}
+              disabled={!connected || loading || discovering !== null || discoveringRegions}
             >
               {discovering === 'repeaters'
                 ? t('meshcore.discover.running', 'Discovering…')
@@ -173,7 +197,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
             </button>
             <button
               onClick={() => void handleDiscover('sensors')}
-              disabled={!connected || loading || discovering !== null}
+              disabled={!connected || loading || discovering !== null || discoveringRegions}
             >
               {discovering === 'sensors'
                 ? t('meshcore.discover.running', 'Discovering…')
@@ -225,6 +249,41 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
             >
               {savingScope ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
             </button>
+          </div>
+
+          <div style={{ marginTop: '0.75rem' }}>
+            <button
+              onClick={() => void handleDiscoverRegions()}
+              disabled={!connected || loading || discoveringRegions || discovering !== null}
+            >
+              {discoveringRegions
+                ? t('meshcore.scope.discovering', 'Discovering regions…')
+                : t('meshcore.scope.discover', 'Discover regions from repeaters')}
+            </button>
+            <p className="hint" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
+              {t('meshcore.scope.discover_hint',
+                'Queries known repeaters for the regions they serve. Run "Discover Repeaters" (above) first for the fullest list.')}
+            </p>
+            {discoveredRegions && discoveredRegions.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
+                {discoveredRegions.map((region) => (
+                  <button
+                    key={region}
+                    type="button"
+                    onClick={() => setScopeInput(region)}
+                    title={t('meshcore.scope.use_region', 'Use "{{region}}" as the default scope', { region })}
+                    style={{
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: 999,
+                      border: '1px solid var(--ctp-blue)',
+                      background: scopeInput.trim().replace(/^#/, '') === region ? 'var(--ctp-blue)' : 'transparent',
+                    }}
+                  >
+                    {region}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
