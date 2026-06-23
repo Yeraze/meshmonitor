@@ -1,5 +1,5 @@
 import { Marker, Popup } from 'react-leaflet';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { Marker as LeafletMarker } from 'leaflet';
 import {
   useDashboardSources,
@@ -86,16 +86,19 @@ export default function NodeMarkersLayer() {
     let h = refHandlers.current.get(key);
     if (!h) {
       h = (m: LeafletMarker | null) => {
-        const prev = markerByKey.current.get(key);
+        // NOTE: react-leaflet registers its forwarded ref via
+        // `useImperativeHandle(ref, () => instance)` with NO dependency array,
+        // so React bounces this callback `null → instance` on EVERY re-render —
+        // not just on mount/unmount. Treating `null` as "removed" here would
+        // call removeMarker on a still-present (often spiderfied) marker every
+        // time the selection or polled data changes, and OMS auto-unspiderfies
+        // when a spiderfied marker is removed → the fan collapses (issue #3685).
+        // So we ONLY register on an instance (addMarker is idempotent) and
+        // ignore the null bounce. Genuine removals are reconciled by the effect
+        // below, driven by which keys are still rendered.
         if (m) {
           markerByKey.current.set(key, m);
           addMarker(m, key);
-        } else {
-          if (prev) removeMarker(prev);
-          markerByKey.current.delete(key);
-          refHandlers.current.delete(key);
-          positionCacheRef.current.delete(key);
-          iconCacheRef.current.delete(key);
         }
       };
       refHandlers.current.set(key, h);
@@ -140,6 +143,24 @@ export default function NodeMarkersLayer() {
       if (!node.sourceId) return false;
       return config.sources.includes(node.sourceId);
     });
+
+  // Genuine removals (a node aged out / filtered away) are reconciled here
+  // rather than from the ref `null` bounce — drop any tracked marker whose key
+  // is no longer rendered, and unregister it from the spiderfier. Keyed off the
+  // rendered key SET so it only does work when membership actually changes.
+  const renderedKeysSig = filteredNodes.map(({ node: n }) => `${n.sourceId ?? ''}:${n.nodeNum}`).join('|');
+  useEffect(() => {
+    const rendered = new Set(renderedKeysSig ? renderedKeysSig.split('|') : []);
+    for (const key of [...markerByKey.current.keys()]) {
+      if (rendered.has(key)) continue;
+      const m = markerByKey.current.get(key);
+      if (m) removeMarker(m);
+      markerByKey.current.delete(key);
+      refHandlers.current.delete(key);
+      positionCacheRef.current.delete(key);
+      iconCacheRef.current.delete(key);
+    }
+  }, [renderedKeysSig, removeMarker]);
 
   return (
     <>

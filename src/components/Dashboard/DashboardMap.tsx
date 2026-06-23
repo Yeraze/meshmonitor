@@ -194,16 +194,17 @@ export default function DashboardMap({
     let h = refHandlers.current.get(key);
     if (!h) {
       h = (m: LeafletMarker | null) => {
-        const prev = markerByKey.current.get(key);
+        // react-leaflet forwards its ref via `useImperativeHandle(ref, () =>
+        // instance)` with NO dependency array, so React bounces this callback
+        // `null → instance` on EVERY re-render — not just mount/unmount.
+        // Treating `null` as "removed" would call removeMarker on a still-present
+        // (often spiderfied) marker on every poll/selection change, and OMS
+        // auto-unspiderfies when a spiderfied marker is removed → the fan
+        // collapses (issue #3685). Register on an instance only (addMarker is
+        // idempotent); genuine removals are reconciled by the effect below.
         if (m) {
           markerByKey.current.set(key, m);
           spiderfierRef.current?.addMarker(m, key);
-        } else {
-          if (prev) spiderfierRef.current?.removeMarker(prev);
-          markerByKey.current.delete(key);
-          refHandlers.current.delete(key);
-          positionCacheRef.current.delete(key);
-          iconCacheRef.current.delete(key);
         }
       };
       refHandlers.current.set(key, h);
@@ -298,6 +299,34 @@ export default function DashboardMap({
     .filter((entry): entry is { node: any; pos: { lat: number; lng: number } } => entry.pos !== null);
 
   const nodePositions: [number, number][] = nodesWithPosition.map((e) => [e.pos.lat, e.pos.lng]);
+
+  // Genuine removals (a node aged out / filtered away) are reconciled here
+  // rather than from the ref `null` bounce (see getMarkerRef): drop any tracked
+  // marker whose key is no longer rendered, and unregister it from the
+  // spiderfier. Keyed off the rendered key SET so it only does work when
+  // membership actually changes — must match the markerKey used in the JSX.
+  const renderedKeysSig = nodesWithPosition
+    .map(({ node }) => {
+      const nodeId = node.nodeId ?? node.user?.id;
+      return String(
+        node.sourceId != null && node.nodeNum != null
+          ? `${node.sourceId}:${node.nodeNum}`
+          : nodeId ?? node.nodeNum,
+      );
+    })
+    .join('|');
+  useEffect(() => {
+    const rendered = new Set(renderedKeysSig ? renderedKeysSig.split('|') : []);
+    for (const key of [...markerByKey.current.keys()]) {
+      if (rendered.has(key)) continue;
+      const m = markerByKey.current.get(key);
+      if (m) spiderfierRef.current?.removeMarker(m);
+      markerByKey.current.delete(key);
+      refHandlers.current.delete(key);
+      positionCacheRef.current.delete(key);
+      iconCacheRef.current.delete(key);
+    }
+  }, [renderedKeysSig]);
 
   // nodeNum → [lat, lng] map used to resolve traceroute hop positions. The
   // unified view merges per-source node rows by nodeNum (see mergeUnifiedSourceData
