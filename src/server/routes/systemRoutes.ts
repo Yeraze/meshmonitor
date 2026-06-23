@@ -20,6 +20,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { upgradeService } from '../services/upgradeService.js';
+import { notifyUpgradeAvailable } from '../services/automation/automationEngineSingleton.js';
 import meshtasticManager from '../meshtasticManager.js';
 import {
   serverStartTime,
@@ -212,6 +213,17 @@ router.get('/version/check', optionalAuth(), async (_req: Request, res: Response
 
     // Cache the result
     versionCheckCache = { data: result, timestamp: Date.now() };
+
+    // Fire the `upgrade-available` automation system event (deduped by version
+    // inside the helper). Runs on cache-miss only, so at most once per ~5 min.
+    if (updateAvailable) {
+      notifyUpgradeAvailable({
+        latestVersion,
+        currentVersion,
+        releaseUrl: release.html_url,
+        releaseName: release.name,
+      }).catch((err) => logger.error('Failed to raise upgrade-available automation event:', err));
+    }
 
     return res.json(result);
   } catch (error) {
