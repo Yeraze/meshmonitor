@@ -113,7 +113,7 @@ export interface MeshCoreActions {
   /** Manually push a forwarding route into the device's contact record.
    *  `outPath` is a comma-separated hex chain ("a3,7f,02"); empty string
    *  sets a zero-hop direct path. Requires nodes:write. */
-  setContactOutPath: (publicKey: string, outPath: string) => Promise<boolean>;
+  setContactOutPath: (publicKey: string, outPath: string, hashBytes?: 1 | 2 | 3) => Promise<boolean>;
   /** Send a trace-path diagnostic along the contact's cached forwarding
    *  route and return per-hop SNR data. Resolves `null` on failure. */
   traceContactPath: (publicKey: string) => Promise<TracePathResult | null>;
@@ -937,14 +937,14 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
-  const setContactOutPath = useCallback(async (publicKey: string, outPath: string): Promise<boolean> => {
+  const setContactOutPath = useCallback(async (publicKey: string, outPath: string, hashBytes: 1 | 2 | 3 = 1): Promise<boolean> => {
     try {
       const response = await csrfFetch(
         `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/out-path`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ outPath }),
+          body: JSON.stringify({ outPath, hashBytes }),
         },
       );
       const data = await response.json();

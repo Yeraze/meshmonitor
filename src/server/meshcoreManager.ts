@@ -2365,8 +2365,18 @@ class MeshCoreManager extends EventEmitter {
       logger.warn(`[MeshCore] Trace-path: no known path for ${publicKey.substring(0, 16)}…`);
       return null;
     }
+    // Expand each comma-separated hop token into its constituent bytes so
+    // multi-byte hops (e.g. "a3f2") yield [0xa3, 0xf2] rather than being
+    // truncated to a single byte by parseInt. 1-byte paths are unaffected.
     const pathBytes = Uint8Array.from(
-      contact.outPath.split(',').map((h) => parseInt(h, 16)),
+      contact.outPath.split(',').flatMap((h) => {
+        const tok = h.trim();
+        const bytes: number[] = [];
+        for (let i = 0; i + 2 <= tok.length; i += 2) {
+          bytes.push(parseInt(tok.slice(i, i + 2), 16));
+        }
+        return bytes;
+      }),
     );
     try {
       const response = await this.sendBridgeCommand('trace_path', {
@@ -2455,7 +2465,11 @@ class MeshCoreManager extends EventEmitter {
    * Returns `true` on success, `false` if the device rejected the
    * request or this isn't a connected Companion.
    */
-  async setContactOutPath(publicKey: string, outPathBytes: Uint8Array): Promise<boolean> {
+  async setContactOutPath(
+    publicKey: string,
+    outPathBytes: Uint8Array,
+    hashBytes: 1 | 2 | 3 = 1,
+  ): Promise<boolean> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Set-out-path requires Companion firmware');
       return false;
@@ -2467,12 +2481,17 @@ class MeshCoreManager extends EventEmitter {
       logger.warn(`[MeshCore] Set-out-path rejected: ${outPathBytes.length} > 64 bytes`);
       return false;
     }
+    if (outPathBytes.length % hashBytes !== 0) {
+      logger.warn(`[MeshCore] Set-out-path rejected: ${outPathBytes.length} bytes not a multiple of hashBytes ${hashBytes}`);
+      return false;
+    }
     try {
       // 12 s is generous for a single serial write; fail fast so the UI
       // doesn't leave the user stuck waiting for an unresponsive device.
       const response = await this.sendBridgeCommand('set_out_path', {
         public_key: publicKey,
         out_path: outPathBytes,
+        hash_bytes: hashBytes,
       }, 12000);
       if (!response.success) {
         const isTimeout = response.error?.includes('timeout');
@@ -2482,15 +2501,25 @@ class MeshCoreManager extends EventEmitter {
         );
         return false;
       }
-      const hex = Array.from(outPathBytes)
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join(',');
+      // Group the flat byte buffer into hashBytes-wide hop tokens so the
+      // mirrored outPath string carries the per-hop width (e.g. "a3f2,7f01"
+      // for a 2-byte path) and pathLen reflects hop COUNT, not byte count.
+      const hopCount = outPathBytes.length / hashBytes;
+      const hopTokens: string[] = [];
+      for (let i = 0; i + hashBytes <= outPathBytes.length; i += hashBytes) {
+        let tok = '';
+        for (let j = 0; j < hashBytes; j++) {
+          tok += outPathBytes[i + j].toString(16).padStart(2, '0');
+        }
+        hopTokens.push(tok);
+      }
+      const hex = hopTokens.join(',');
       const existing = this.contacts.get(publicKey);
       if (existing) {
         const updated: MeshCoreContact = {
           ...existing,
           outPath: hex,
-          pathLen: outPathBytes.length,
+          pathLen: hopCount,
           lastSeen: Date.now(),
         };
         this.contacts.set(publicKey, updated);
@@ -2498,7 +2527,7 @@ class MeshCoreManager extends EventEmitter {
         this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
         dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
       }
-      logger.info(`[MeshCore] Set out_path (${outPathBytes.length} hops) for ${publicKey.substring(0, 16)}…`);
+      logger.info(`[MeshCore] Set out_path (${hopCount} hops, ${hashBytes}-byte) for ${publicKey.substring(0, 16)}…`);
       return true;
     } catch (error) {
       logger.error('[MeshCore] setContactOutPath threw:', error);
