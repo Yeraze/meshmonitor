@@ -551,6 +551,10 @@ setTimeout(async () => {
     autoFavoriteManagementScheduler.initialize();
     logger.debug('Auto-favorite management scheduler initialized');
 
+    // Start the Automation Engine (#3653) — loads enabled automations and
+    // subscribes to the event bus so they fire on live mesh traffic.
+    await startAutomationEngine();
+
     // Start inactive node notification service with validation
     const inactiveThresholdHoursRaw = parseInt(await databaseService.settings.getSetting('inactiveNodeThresholdHours') || '24', 10);
     const inactiveCheckIntervalMinutesRaw = parseInt(
@@ -877,6 +881,8 @@ const apiRouter = express.Router();
 
 // Import route handlers
 import authRoutes from './routes/authRoutes.js';
+import automationRoutes from './routes/automationRoutes.js';
+import { startAutomationEngine } from './services/automation/automationEngineSingleton.js';
 import userRoutes from './routes/userRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import securityRoutes from './routes/securityRoutes.js';
@@ -1060,6 +1066,7 @@ apiRouter.use('/system/backup', systemBackupRouter);
 apiRouter.use('/push', pushRouter);
 apiRouter.use('/apprise', appriseRouter);
 apiRouter.use('/connection', connectionRoutes);
+apiRouter.use('/automations', automationRoutes);
 // Mounted at '/' because these routers contain mixed top-level paths
 // (e.g. /traceroute, /telemetry/:nodeId, /device/tx-status, /virtual-node/status).
 apiRouter.use('/', meshRequestRoutes);
