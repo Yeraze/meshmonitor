@@ -78,6 +78,8 @@ const POSTGRES_CREATE = `
     "altitudeOverride" REAL,
     "positionOverrideIsPrivate" BOOLEAN DEFAULT FALSE,
     "hideFromMap" BOOLEAN DEFAULT FALSE,
+    "isUnmessagable" BOOLEAN DEFAULT FALSE,
+    "isLicensed" BOOLEAN DEFAULT FALSE,
     "hasRemoteAdmin" BOOLEAN DEFAULT FALSE,
     "lastRemoteAdminCheck" BIGINT,
     "remoteAdminMetadata" TEXT,
@@ -147,6 +149,8 @@ const MYSQL_CREATE = `
     altitudeOverride DOUBLE,
     positionOverrideIsPrivate BOOLEAN DEFAULT FALSE,
     hideFromMap BOOLEAN DEFAULT FALSE,
+    isUnmessagable BOOLEAN DEFAULT FALSE,
+    isLicensed BOOLEAN DEFAULT FALSE,
     hasRemoteAdmin BOOLEAN DEFAULT FALSE,
     lastRemoteAdminCheck BIGINT,
     remoteAdminMetadata TEXT,
@@ -213,6 +217,35 @@ function runNodesTests(getBackend: () => TestBackend) {
     const node = await repo.getNode(200);
     expect(node).not.toBeNull();
     expect(node!.longName).toBe('Updated');
+  });
+
+  // #3684: isUnmessagable / isLicensed must round-trip through upsert + getNode
+  it('upsertNode - persists isUnmessagable / isLicensed (#3684)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // Defaults to false when not supplied (insert path)
+    await repo.upsertNode(makeNode(220));
+    const defaulted = await repo.getNode(220);
+    expect(defaulted).not.toBeNull();
+    expect(Boolean(defaulted!.isUnmessagable)).toBe(false);
+    expect(Boolean(defaulted!.isLicensed)).toBe(false);
+
+    // Stored true on insert
+    await repo.upsertNode(makeNode(221, { isUnmessagable: true, isLicensed: true }));
+    const stored = await repo.getNode(221);
+    expect(stored).not.toBeNull();
+    expect(Boolean(stored!.isUnmessagable)).toBe(true);
+    expect(Boolean(stored!.isLicensed)).toBe(true);
+
+    // Updated on a subsequent upsert (update path)
+    await repo.upsertNode(makeNode(221, { isUnmessagable: false, isLicensed: false }));
+    const updated = await repo.getNode(221);
+    expect(Boolean(updated!.isUnmessagable)).toBe(false);
+    expect(Boolean(updated!.isLicensed)).toBe(false);
   });
 
   it('upsertNode - does NOT clobber learned name/macaddr/hwModel with blanks (#3505)', async () => {

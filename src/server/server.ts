@@ -5069,15 +5069,23 @@ apiRouter.post('/admin/load-owner', requireAdmin(), async (req, res) => {
         // specific source, not a possibly-stale row with the same nodeNum on
         // another source.
         let publicKeyBase64: string | undefined;
+        // #3684: read the persisted User capability flags so the Config tab's
+        // "Unmessageable"/"Licensed" checkboxes reflect the local node's actual
+        // setting instead of always showing unchecked. nodeNum may be absent
+        // before the local node row exists — fall back to false in that case.
+        let isUnmessagable = false;
+        let isLicensed = false;
         if (localNodeInfo.nodeNum) {
           const nodeData = await databaseService.nodes.getNode(localNodeInfo.nodeNum, loSourceId);
           publicKeyBase64 = nodeData?.publicKey || undefined;
+          isUnmessagable = nodeData?.isUnmessagable ?? false;
+          isLicensed = nodeData?.isLicensed ?? false;
         }
         return res.json({ owner: {
           longName: localNodeInfo.longName || '' ,
           shortName: localNodeInfo.shortName || '' ,
-          isUnmessagable: false,
-          isLicensed: false,
+          isUnmessagable,
+          isLicensed,
           publicKey: publicKeyBase64
         }});
       } else {

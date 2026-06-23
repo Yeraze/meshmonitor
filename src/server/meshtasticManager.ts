@@ -617,6 +617,10 @@ class MeshtasticManager implements ISourceManager {
     hasWifi?: boolean;
     hasEthernet?: boolean;
     hasBluetooth?: boolean;
+    // #3684: User capability flags from the local node's NodeInfo, surfaced to the
+    // frontend Config tab via getCurrentConfig().localNodeInfo.
+    isUnmessagable?: boolean;
+    isLicensed?: boolean;
   } | null = null;
   private actualDeviceConfig: any = null;  // Store actual device config (local node)
   private actualModuleConfig: any = null;  // Store actual module config (local node)
@@ -7919,6 +7923,11 @@ class MeshtasticManager implements ISourceManager {
         nodeData.shortName = nodeInfo.user.shortName;
         nodeData.hwModel = nodeInfo.user.hwModel;
         nodeData.role = nodeInfo.user.role;
+        // #3684: persist User capability flags so the Config tab "Unmessageable"
+        // checkbox reflects the local node's actual setting (is_unmessagable is an
+        // optional proto field → default false; is_licensed is a required bool).
+        nodeData.isUnmessagable = nodeInfo.user.isUnmessagable ?? false;
+        nodeData.isLicensed = nodeInfo.user.isLicensed ?? false;
 
         // Capture public key if present (important for local node)
         if (nodeInfo.user.publicKey && nodeInfo.user.publicKey.length > 0) {
@@ -8116,6 +8125,13 @@ class MeshtasticManager implements ISourceManager {
           this.localNodeInfo.shortName = nodeInfo.user.shortName;
           this.localNodeInfo.isLocked = true;  // Lock it now that we have complete info
           logger.debug(`📱 Local node: ${nodeInfo.user.longName} (${nodeInfo.user.shortName}) - LOCKED`);
+        }
+        // #3684: surface the local node's User capability flags to the Config tab.
+        // Updated independently of the names guard since is_unmessagable can change
+        // without a name change. is_unmessagable is an optional proto field.
+        if (nodeInfo.user) {
+          this.localNodeInfo.isUnmessagable = nodeInfo.user.isUnmessagable ?? false;
+          this.localNodeInfo.isLicensed = nodeInfo.user.isLicensed ?? false;
         }
       }
 

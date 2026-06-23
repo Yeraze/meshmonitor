@@ -104,6 +104,8 @@ export interface DbNode {
   altitudeOverride?: number; // Override altitude
   positionOverrideIsPrivate?: boolean; // Override privacy (false = public, true = private)
   hideFromMap?: boolean; // #3549: suppress this node's marker on maps only
+  isUnmessagable?: boolean; // #3684: User.is_unmessagable — node won't receive DMs
+  isLicensed?: boolean; // #3684: User.is_licensed — amateur-radio licensed operator
   // Remote admin discovery (Migration 055)
   hasRemoteAdmin?: boolean; // Has remote admin access
   lastRemoteAdminCheck?: number; // Unix timestamp ms of last check
