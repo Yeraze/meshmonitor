@@ -1,5 +1,6 @@
 import { Marker, Popup } from 'react-leaflet';
 import { useEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Marker as LeafletMarker } from 'leaflet';
 import {
   useDashboardSources,
@@ -13,6 +14,8 @@ import { resolveNodeLatLng, type MaybePositionedNode } from '../nodePositionUtil
 import { nodeMatchesSearch } from '../nodeSearch';
 import { createNodeIcon } from '../../../utils/mapIcons';
 import { getNodeTypeCategory } from '../../../utils/nodeTypeCategory';
+import DashboardNodePopup, { type NodeSourceRef } from '../../Dashboard/DashboardNodePopup';
+import '../../../styles/nodes.css'; // `.node-popup-*` classes used by DashboardNodePopup
 
 interface NodeRecord extends MaybePositionedNode {
   nodeNum: number;
@@ -24,6 +27,8 @@ interface NodeRecord extends MaybePositionedNode {
   user?: { role?: string | number | null } | null;
   isMeshCore?: boolean;
   advType?: number | null;
+  /** Every configured source that reported this node (unified merge, #2805). */
+  sources?: NodeSourceRef[];
 }
 
 interface HopEntry {
@@ -46,6 +51,19 @@ interface HopEntry {
 export default function NodeMarkersLayer() {
   const { config, selected, setSelected, nodeFilter } = useMapAnalysisCtx();
   const { mapPinStyle } = useSettings();
+  const navigate = useNavigate();
+
+  // Clicking a "Seen by" source row in the popup jumps to that source's view —
+  // mirrors the Unified/Dashboard map (DashboardPage.handleNodeSourceSelect).
+  const handleSourceSelect = (source: NodeSourceRef, nodeId: string | undefined) => {
+    if (source.protocol === 'MeshCore') {
+      navigate(`/source/${source.sourceId}/`);
+      return;
+    }
+    navigate(`/source/${source.sourceId}/#messages`, {
+      state: nodeId ? { focusDmNodeId: nodeId } : undefined,
+    });
+  };
 
   // Spiderfier fans out markers that share (rounded) coordinates so each node in
   // a cluster is individually selectable (issues #3399, #3612). Same bridge
@@ -118,11 +136,6 @@ export default function NodeMarkersLayer() {
   const { data: sources = [] } = useDashboardSources();
   const sourceList = sources as Array<{ id: string; name: string }>;
   const sourceIds = sourceList.map((s) => s.id);
-  const sourceNameById = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const s of sourceList) m.set(s.id, s.name);
-    return m;
-  }, [sourceList]);
   const { nodes } = useDashboardUnifiedData(sourceIds, sourceIds.length > 0);
   const hop = useHopCounts({
     enabled: config.layers.hopShading.enabled,
@@ -149,8 +162,14 @@ export default function NodeMarkersLayer() {
       // Node-type filter (issue #3546): hide categories the user toggled off.
       if (config.nodeTypes[getNodeTypeCategory(node)] === false) return false;
       if (config.sources.length === 0) return true;
-      if (!node.sourceId) return false;
-      return config.sources.includes(node.sourceId);
+      // Source filter: a unified-merged node can be reported by several sources
+      // (node.sources). It must stay visible if ANY of those is enabled — not
+      // just its primary sourceId — so multi-source nodes don't vanish when only
+      // one of their sources is selected. Fall back to sourceId for unmerged rows.
+      const sourceIds = node.sources && node.sources.length > 0
+        ? node.sources.map((s) => s.sourceId)
+        : (node.sourceId ? [node.sourceId] : []);
+      return sourceIds.some((id) => config.sources.includes(id));
     });
 
   // Genuine removals (a node aged out / filtered away) are reconciled here
@@ -223,16 +242,18 @@ export default function NodeMarkersLayer() {
                 }),
             }}
           >
-            {/* Render in the default popupPane (z-index 700). Without this the
-                Popup inherits the surrounding <Pane name="markers"> (z-index
-                600) from MapAnalysisCanvas, so node markers paint over the
-                popup ("details popup under the markers"). */}
+            {/* Same rich card as the Unified/Dashboard map, incl. the "Seen by
+                N sources" list for multi-source nodes. Rendered in the default
+                popupPane (z-index 700): without this the Popup inherits the
+                surrounding <Pane name="markers"> (z600) from MapAnalysisCanvas
+                and the markers paint over it. Inject the hop count computed from
+                /api/analysis/hopCounts so the popup shows it. */}
             <Popup pane="popupPane">
-              <strong>
-                {n.longName ?? n.shortName ?? `!${Number(n.nodeNum).toString(16)}`}
-              </strong>
-              <div>Source: {sourceNameById.get(sourceId) ?? sourceId ?? '(unknown)'}</div>
-              {hopVal !== undefined && <div>Hops: {hopVal}</div>}
+              <DashboardNodePopup
+                node={hopVal !== undefined ? { ...n, hopsAway: hopVal } : n}
+                pos={{ lat, lng: lon }}
+                onSourceSelect={handleSourceSelect}
+              />
             </Popup>
           </Marker>
         );
