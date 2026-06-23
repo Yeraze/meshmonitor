@@ -14,6 +14,7 @@ import PacketMonitorPage from './pages/PacketMonitorPage.tsx';
 import DashboardPage from './pages/DashboardPage.tsx';
 import MapAnalysisPage from './pages/MapAnalysisPage.tsx';
 import ReportsPage from './pages/ReportsPage.tsx';
+import AutomationsPage from './components/automations/AutomationsPage.tsx';
 import UnifiedMessagesPage from './pages/UnifiedMessagesPage.tsx';
 import UnifiedTelemetryPage from './pages/UnifiedTelemetryPage.tsx';
 import UnifiedPacketMonitorPage from './pages/UnifiedPacketMonitorPage.tsx';
@@ -149,6 +150,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route
               path="reports"
               element={sharedProviders(<ReportsPage />)}
+            />
+
+            {/* Automation Engine (global, #3653) */}
+            <Route
+              path="automations"
+              element={sharedProviders(<AutomationsPage />)}
             />
 
             {/* Global settings */}
