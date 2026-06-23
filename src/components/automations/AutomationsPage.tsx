@@ -31,9 +31,22 @@ const VARIABLE_SCOPES: { value: Variable['scope']; label: string }[] = [
 
 const DEFAULT_FORM: WorkflowForm = {
   trigger: { type: 'trigger.message', params: { textContains: 'ping' } },
-  conditions: [],
-  actions: [{ type: 'action.tapback', params: { emoji: '👍' } }],
+  rules: [{ conditions: [], actions: [{ type: 'action.tapback', params: { emoji: '👍' } }] }],
+  combine: null,
 };
+
+/** Builder-form validation: each rule needs an action (unless it only feeds a combine). */
+function validateForm(form: WorkflowForm): string[] {
+  const errs: string[] = [];
+  if (form.rules.length === 0) errs.push('Add at least one rule.');
+  form.rules.forEach((r, i) => {
+    if (r.actions.length === 0 && !(form.combine && r.conditions.length > 0)) {
+      errs.push(`Rule ${i + 1} needs at least one action.`);
+    }
+  });
+  if (form.combine && form.combine.actions.length === 0) errs.push('The FINALLY step needs at least one action.');
+  return errs;
+}
 
 export default function AutomationsPage() {
   const [view, setView] = useState<'automations' | 'variables'>('automations');
@@ -150,7 +163,8 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
     setSaving(true); setErrors([]);
     let config: unknown;
     if (mode === 'builder') {
-      if (form.actions.length === 0) { setErrors(['Add at least one action (THEN).']); setSaving(false); return; }
+      const formErrors = validateForm(form);
+      if (formErrors.length > 0) { setErrors(formErrors); setSaving(false); return; }
       config = compile(form);
     } else {
       try { config = JSON.parse(jsonText); } catch { setErrors(['Config is not valid JSON']); setSaving(false); return; }
