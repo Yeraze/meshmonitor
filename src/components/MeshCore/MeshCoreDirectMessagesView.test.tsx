@@ -24,7 +24,7 @@ vi.mock('../../contexts/AuthContext', () => ({
 }));
 
 vi.mock('../../contexts/SettingsContext', () => ({
-  useSettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
+  useSettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY', temperatureUnit: 'F', telemetryVisualizationHours: 48 }),
 }));
 
 const csrfFetchMock = vi.fn();
@@ -37,8 +37,14 @@ vi.mock('../../hooks/useCsrfFetch', () => ({
 // met. Stub the heavy graphs component with a sentinel so we don't need
 // ToastProvider / QueryClientProvider / SourceProvider in this test.
 vi.mock('../TelemetryGraphs', () => ({
-  default: (props: { nodeId: string; baseUrl?: string }) => (
-    <div data-testid="telemetry-graphs" data-node-id={props.nodeId} data-base-url={props.baseUrl ?? ''} />
+  default: (props: { nodeId: string; baseUrl?: string; temperatureUnit?: string; telemetryHours?: number }) => (
+    <div
+      data-testid="telemetry-graphs"
+      data-node-id={props.nodeId}
+      data-base-url={props.baseUrl ?? ''}
+      data-temp-unit={props.temperatureUnit ?? ''}
+      data-telemetry-hours={props.telemetryHours ?? ''}
+    />
   ),
 }));
 
@@ -189,6 +195,10 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     const graphs = await screen.findByTestId('telemetry-graphs');
     expect(graphs.getAttribute('data-node-id')).toBe(REAL_PK);
     expect(graphs.getAttribute('data-base-url')).toBe('/meshmonitor');
+    // #3659: the user's Temperature Unit + telemetry time-range settings are
+    // forwarded so the graph isn't hardcoded to Celsius / 24h.
+    expect(graphs.getAttribute('data-temp-unit')).toBe('F');
+    expect(graphs.getAttribute('data-telemetry-hours')).toBe('48');
   });
 
   it('does NOT mount TelemetryGraphs for a non-real-pubkey peer', () => {
