@@ -165,6 +165,31 @@ export default function DashboardMap({
   const spiderfierRef = useRef<SpiderfierControllerRef>(null);
   const markerByKey = useRef<Map<string, LeafletMarker>>(new Map());
   const refHandlers = useRef<Map<string, (m: LeafletMarker | null) => void>>(new Map());
+  // Stable position/icon refs keyed by the spiderfier key — fixes the fan
+  // auto-collapsing a few seconds after spiderfying (issue #3685). react-leaflet
+  // only calls marker.setLatLng()/setIcon() when the prop *reference* changes,
+  // and doing either on a spiderfied marker snaps it back to its anchor,
+  // collapsing the fan. The unified node list refetches on every poll and
+  // rebuilds these objects even when nothing actually moved, so we cache them by
+  // value: an unchanged marker keeps identical refs across refreshes and the fan
+  // persists. (The per-source NodesTab map solves the same churn via a memoized
+  // marker.)
+  const positionCacheRef = useRef<Map<string, [number, number]>>(new Map());
+  const iconCacheRef = useRef<Map<string, { sig: string; icon: L.DivIcon }>>(new Map());
+  const stablePosition = (key: string, lat: number, lng: number): [number, number] => {
+    const cached = positionCacheRef.current.get(key);
+    if (cached && cached[0] === lat && cached[1] === lng) return cached;
+    const next: [number, number] = [lat, lng];
+    positionCacheRef.current.set(key, next);
+    return next;
+  };
+  const stableIcon = (key: string, sig: string, build: () => L.DivIcon): L.DivIcon => {
+    const cached = iconCacheRef.current.get(key);
+    if (cached && cached.sig === sig) return cached.icon;
+    const icon = build();
+    iconCacheRef.current.set(key, { sig, icon });
+    return icon;
+  };
   const getMarkerRef = (key: string) => {
     let h = refHandlers.current.get(key);
     if (!h) {
@@ -177,6 +202,8 @@ export default function DashboardMap({
           if (prev) spiderfierRef.current?.removeMarker(prev);
           markerByKey.current.delete(key);
           refHandlers.current.delete(key);
+          positionCacheRef.current.delete(key);
+          iconCacheRef.current.delete(key);
         }
       };
       refHandlers.current.set(key, h);
@@ -405,14 +432,6 @@ export default function DashboardMap({
           const shortName = node.shortName ?? node.user?.shortName;
           const nodeId = node.nodeId ?? node.user?.id;
           const isRouter = node.role === 2;
-          const icon = createNodeIcon({
-            hops,
-            isSelected: false,
-            isRouter,
-            shortName,
-            showLabel: true,
-            pinStyle: mapPinStyle,
-          });
           // Stable spiderfier key — prefer the cross-source identity, fall back to
           // nodeId so MeshCore (no nodeNum) and unmerged rows still register.
           const markerKey = String(
@@ -420,12 +439,26 @@ export default function DashboardMap({
               ? `${node.sourceId}:${node.nodeNum}`
               : nodeId ?? node.nodeNum,
           );
+          // Reuse the cached icon/position unless an input actually changed, so a
+          // poll that returns identical data doesn't churn the marker and collapse
+          // any active spiderfy fan.
+          const iconSig = `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${mapPinStyle}`;
+          const icon = stableIcon(markerKey, iconSig, () =>
+            createNodeIcon({
+              hops,
+              isSelected: false,
+              isRouter,
+              shortName,
+              showLabel: true,
+              pinStyle: mapPinStyle,
+            }),
+          );
 
           return (
             <Marker
               key={nodeId}
               ref={getMarkerRef(markerKey)}
-              position={[pos.lat, pos.lng]}
+              position={stablePosition(markerKey, pos.lat, pos.lng)}
               icon={icon}
             >
               <Popup>

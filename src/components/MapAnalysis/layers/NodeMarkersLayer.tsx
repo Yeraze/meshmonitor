@@ -56,6 +56,32 @@ export default function NodeMarkersLayer() {
   const { addMarker, removeMarker } = useMarkerSpiderfier(SHARED_SPIDERFIER_OPTIONS);
   const markerByKey = useRef<Map<string, LeafletMarker>>(new Map());
   const refHandlers = useRef<Map<string, (m: LeafletMarker | null) => void>>(new Map());
+  // Stable position/icon refs keyed by the spiderfier key — fixes the fan
+  // auto-collapsing after a refresh (issue #3685). react-leaflet only
+  // moves/restyles a marker when the prop *reference* changes, and doing so on a
+  // spiderfied marker snaps it back to its anchor, collapsing the fan. The
+  // unified data refetches on every poll and rebuilds these objects even when
+  // nothing moved, so cache them by value to keep refs stable across refreshes.
+  const positionCacheRef = useRef<Map<string, [number, number]>>(new Map());
+  const iconCacheRef = useRef<Map<string, { sig: string; icon: ReturnType<typeof createNodeIcon> }>>(new Map());
+  const stablePosition = (key: string, lat: number, lng: number): [number, number] => {
+    const cached = positionCacheRef.current.get(key);
+    if (cached && cached[0] === lat && cached[1] === lng) return cached;
+    const next: [number, number] = [lat, lng];
+    positionCacheRef.current.set(key, next);
+    return next;
+  };
+  const stableIcon = (
+    key: string,
+    sig: string,
+    build: () => ReturnType<typeof createNodeIcon>,
+  ): ReturnType<typeof createNodeIcon> => {
+    const cached = iconCacheRef.current.get(key);
+    if (cached && cached.sig === sig) return cached.icon;
+    const icon = build();
+    iconCacheRef.current.set(key, { sig, icon });
+    return icon;
+  };
   const getMarkerRef = (key: string) => {
     let h = refHandlers.current.get(key);
     if (!h) {
@@ -68,6 +94,8 @@ export default function NodeMarkersLayer() {
           if (prev) removeMarker(prev);
           markerByKey.current.delete(key);
           refHandlers.current.delete(key);
+          positionCacheRef.current.delete(key);
+          iconCacheRef.current.delete(key);
         }
       };
       refHandlers.current.set(key, h);
@@ -133,21 +161,28 @@ export default function NodeMarkersLayer() {
               : 0;
         const isRouter = roleNum === 2;
         const roleCategory = getNodeTypeCategory(n);
-        const icon = createNodeIcon({
-          hops,
-          isSelected,
-          isRouter,
-          roleCategory,
-          shortName: n.shortName ?? undefined,
-          showLabel: true,
-          pinStyle: mapPinStyle,
-        });
         const markerKey = `${sourceId}:${n.nodeNum}`;
+        // Reuse cached icon/position unless an input changed, so a poll that
+        // returns identical data doesn't churn the marker and collapse an active
+        // spiderfy fan. Selection IS part of the signature, so highlighting the
+        // chosen node still re-renders just that marker.
+        const iconSig = `${hops}|${isSelected ? 1 : 0}|${isRouter ? 1 : 0}|${roleCategory}|${n.shortName ?? ''}|${mapPinStyle}`;
+        const icon = stableIcon(markerKey, iconSig, () =>
+          createNodeIcon({
+            hops,
+            isSelected,
+            isRouter,
+            roleCategory,
+            shortName: n.shortName ?? undefined,
+            showLabel: true,
+            pinStyle: mapPinStyle,
+          }),
+        );
         return (
           <Marker
             key={markerKey}
             ref={getMarkerRef(markerKey)}
-            position={[lat, lon]}
+            position={stablePosition(markerKey, lat, lon)}
             icon={icon}
             eventHandlers={{
               click: () =>
