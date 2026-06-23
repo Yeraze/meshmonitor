@@ -20,6 +20,13 @@ export interface ChannelInput {
   uplinkEnabled?: boolean | null;
   downlinkEnabled?: boolean | null;
   positionPrecision?: number | null;
+  /**
+   * MeshCore region/scope tag (#3667). `undefined` = preserve the existing
+   * stored value (device-config ingest never carries scope — it must not be
+   * clobbered); `null` or '' = clear; non-empty string = set. Stored without a
+   * leading '#'.
+   */
+  scope?: string | null;
 }
 
 /**
@@ -140,6 +147,11 @@ export class ChannelsRepository extends BaseRepository {
         uplinkEnabled: data.uplinkEnabled ?? existingChannel.uplinkEnabled,
         downlinkEnabled: data.downlinkEnabled ?? existingChannel.downlinkEnabled,
         positionPrecision: data.positionPrecision ?? existingChannel.positionPrecision,
+        // Scope is MeshMonitor-owned and never reported by the device. Only
+        // overwrite when the caller explicitly supplies it (undefined = preserve,
+        // empty string = clear). This keeps `syncChannelsFromDevice()` (which
+        // omits scope) from wiping a user-configured region (#3667).
+        scope: data.scope !== undefined ? (data.scope || null) : (existingChannel.scope ?? null),
         updatedAt: now,
       };
       // Stamp sourceId on existing rows that were created without it (legacy migration)
@@ -179,6 +191,7 @@ export class ChannelsRepository extends BaseRepository {
         uplinkEnabled: data.uplinkEnabled ?? false,
         downlinkEnabled: data.downlinkEnabled ?? false,
         positionPrecision: data.positionPrecision ?? null,
+        scope: data.scope || null,
         createdAt: now,
         updatedAt: now,
       };
@@ -189,6 +202,23 @@ export class ChannelsRepository extends BaseRepository {
 
       logger.debug(`Created channel: ${data.name} (ID: ${data.id})`);
     }
+  }
+
+  /**
+   * Set (or clear) a channel's MeshCore region/scope tag (#3667), scoped to a
+   * source. Pass `null`/'' to clear. Stored without a leading '#'. This is a
+   * targeted update so it never touches name/psk — the device write happens
+   * separately and scope lives only in MeshMonitor's DB.
+   */
+  async updateChannelScope(id: number, scope: string | null, sourceId?: string): Promise<void> {
+    const { channels } = this.tables;
+    const whereClause = sourceId
+      ? and(eq(channels.id, id), eq(channels.sourceId, sourceId))
+      : eq(channels.id, id);
+    await this.db
+      .update(channels)
+      .set({ scope: scope || null, updatedAt: this.now() })
+      .where(whereClause);
   }
 
   /**

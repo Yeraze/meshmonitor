@@ -40,6 +40,7 @@ const POSTGRES_CREATE = `
     "createdAt" BIGINT NOT NULL DEFAULT 0,
     "updatedAt" BIGINT NOT NULL DEFAULT 0,
     "sourceId" TEXT,
+    scope TEXT,
     UNIQUE ("sourceId", id)
   );
   DROP TABLE IF EXISTS sources CASCADE;
@@ -69,6 +70,7 @@ const MYSQL_CREATE = `
     createdAt BIGINT NOT NULL DEFAULT 0,
     updatedAt BIGINT NOT NULL DEFAULT 0,
     sourceId VARCHAR(36),
+    scope VARCHAR(64),
     UNIQUE KEY channels_source_id_uniq (sourceId, id)
   );
   DROP TABLE IF EXISTS sources;
@@ -142,6 +144,66 @@ function runChannelsTests(getBackend: () => TestBackend) {
     const channel = await repo.getChannelById(2);
     expect(channel).not.toBeNull();
     expect(channel!.name).toBe('KeepMe');
+  });
+
+  // --- MeshCore region/scope (#3667) ------------------------------------
+
+  it('upsertChannel - persists scope on insert and update', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertChannel({ id: 4, name: 'Scoped', psk: 'p', role: 2, scope: 'muenchen' });
+    expect((await repo.getChannelById(4))!.scope).toBe('muenchen');
+
+    // Explicitly changing scope works...
+    await repo.upsertChannel({ id: 4, name: 'Scoped', psk: 'p', role: 2, scope: 'berlin' });
+    expect((await repo.getChannelById(4))!.scope).toBe('berlin');
+
+    // ...and an empty string clears it.
+    await repo.upsertChannel({ id: 4, name: 'Scoped', psk: 'p', role: 2, scope: '' });
+    expect((await repo.getChannelById(4))!.scope ?? null).toBeNull();
+  });
+
+  it('upsertChannel - preserves existing scope when scope is omitted (sync must not clobber)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // User sets a scope...
+    await repo.upsertChannel({ id: 5, name: 'Town', psk: 'p', role: 2, scope: 'muenchen' });
+    // ...then a device re-sync upserts WITHOUT scope (the device never reports
+    // it). The stored scope must survive — this is the load-bearing regression
+    // guard for syncChannelsFromDevice.
+    await repo.upsertChannel({ id: 5, name: 'Town', psk: 'p2', role: 2 }, undefined, { allowBlankName: true });
+
+    const channel = await repo.getChannelById(5);
+    expect(channel!.psk).toBe('p2');        // other fields still update
+    expect(channel!.scope).toBe('muenchen'); // scope preserved
+  });
+
+  it('updateChannelScope - sets and clears scope without touching other fields', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertChannel({ id: 6, name: 'Chan6', psk: 'keepme', role: 2 });
+    await repo.updateChannelScope(6, 'sample-west');
+    let channel = await repo.getChannelById(6);
+    expect(channel!.scope).toBe('sample-west');
+    expect(channel!.name).toBe('Chan6');
+    expect(channel!.psk).toBe('keepme');
+
+    await repo.updateChannelScope(6, null);
+    channel = await repo.getChannelById(6);
+    expect(channel!.scope ?? null).toBeNull();
+    expect(channel!.psk).toBe('keepme');
   });
 
   it('upsertChannel - enforces channel 0 as PRIMARY role', async () => {

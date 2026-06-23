@@ -112,6 +112,7 @@ import { migration as meshcoreNodeFavoriteMigration, runMigration094Postgres as 
 import { migration as deadDropMigration, runMigration095Postgres as runDeadDropPostgres, runMigration095Mysql as runDeadDropMysql } from '../server/migrations/095_create_dead_drop.js';
 import { migration as meshcoreNeighborTimestampBigintMigration, runMigration096Postgres as runMeshcoreNeighborTimestampBigintPostgres, runMigration096Mysql as runMeshcoreNeighborTimestampBigintMysql } from '../server/migrations/096_meshcore_neighbor_timestamp_bigint.js';
 import { migration as traceroutePacketIdMigration, runMigration097Postgres as runTraceroutePacketIdPostgres, runMigration097Mysql as runTraceroutePacketIdMysql } from '../server/migrations/097_add_packet_id_to_traceroutes.js';
+import { migration as meshcoreChannelScopeMigration, runMigration098Postgres as runMeshcoreChannelScopePostgres, runMigration098Mysql as runMeshcoreChannelScopeMysql } from '../server/migrations/098_meshcore_channel_scope.js';
 
 // ============================================================================
 // Registry
@@ -1550,4 +1551,19 @@ registry.register({
   sqlite: (db) => traceroutePacketIdMigration.up(db),
   postgres: (client) => runTraceroutePacketIdPostgres(client),
   mysql: (pool) => runTraceroutePacketIdMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 098: add channels.scope (#3667). MeshCore region/scope tag per
+// channel; MeshMonitor-owned (never reported by the device), NULL = inherit
+// the source default scope / unscoped.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 98,
+  name: 'meshcore_channel_scope',
+  settingsKey: 'migration_098_meshcore_channel_scope',
+  sqlite: (db) => meshcoreChannelScopeMigration.up(db),
+  postgres: (client) => runMeshcoreChannelScopePostgres(client),
+  mysql: (pool) => runMeshcoreChannelScopeMysql(pool),
 });

@@ -359,7 +359,25 @@ router.put('/:id', requireAuth(), async (req: Request, res: Response) => {
       });
     }
 
-    const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision } = req.body;
+    const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision, scope } = req.body;
+
+    // Validate MeshCore region/scope if provided (#3667). Plain region name —
+    // alphanumeric + hyphen, optional leading '#' which we strip. Empty string
+    // clears the scope. Meaningful only for MeshCore; ignored for Meshtastic.
+    let normalizedScope: string | null | undefined;
+    if (scope !== undefined) {
+      if (scope === null || scope === '') {
+        normalizedScope = null;
+      } else if (typeof scope !== 'string') {
+        return res.status(400).json({ error: 'Scope must be a string' });
+      } else {
+        const stripped = scope.trim().replace(/^#/, '');
+        if (stripped !== '' && !/^[A-Za-z0-9-]{1,63}$/.test(stripped)) {
+          return res.status(400).json({ error: 'Scope must be 1-63 chars: letters, digits, hyphen' });
+        }
+        normalizedScope = stripped || null;
+      }
+    }
 
     // Validate name if provided (allow empty names for unnamed channels).
     // Meshtastic caps channel names at 11 chars; MeshCore allows up to 31.
@@ -455,7 +473,7 @@ router.put('/:id', requireAuth(), async (req: Request, res: Response) => {
       }
 
       try {
-        await mcManager.setChannel(channelId, updatedChannelData.name, secretHex);
+        await mcManager.setChannel(channelId, updatedChannelData.name, secretHex, normalizedScope);
         logger.info(`✅ MeshCore: pushed channel ${channelId} to device + re-synced DB`);
       } catch (deviceError) {
         logger.error(`⚠️ MeshCore: failed to push channel ${channelId} to device:`, deviceError);

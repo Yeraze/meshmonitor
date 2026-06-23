@@ -234,6 +234,10 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreAutoResponderTriggers',
   // MeshCore timer triggers
   'meshcoreTimerTriggers',
+  // MeshCore default region/scope (#3667) — applied to all originated flood
+  // traffic (DMs, adverts, requests) unless a channel overrides it. Empty =
+  // unscoped (legacy '*' / null region).
+  'meshcoreDefaultScope',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];
@@ -371,6 +375,8 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreAutoResponderTriggers',
   // MeshCore timer triggers
   'meshcoreTimerTriggers',
+  // MeshCore default region/scope (#3667) — per source (per node)
+  'meshcoreDefaultScope',
   // Misc per-source
   'externalUrl',
   'geofenceTriggers',
