@@ -83,6 +83,9 @@ export interface DbNode {
   positionOverrideIsPrivate?: boolean | null;
   // Map visibility — #3549: suppress this node's marker on maps only
   hideFromMap?: boolean | null;
+  // User capability flags from the node's User protobuf — #3684
+  isUnmessagable?: boolean | null;
+  isLicensed?: boolean | null;
   // Spam detection
   isExcessivePackets?: boolean | null;
   packetRatePerHour?: number | null;

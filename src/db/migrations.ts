@@ -115,6 +115,7 @@ import { migration as traceroutePacketIdMigration, runMigration097Postgres as ru
 import { migration as createAutomationsMigration, runMigration098Postgres, runMigration098Mysql } from '../server/migrations/098_create_automations.js';
 import { migration as createAutomationVariablesMigration, runMigration099Postgres, runMigration099Mysql } from '../server/migrations/099_create_automation_variables.js';
 import { migration as meshcoreChannelScopeMigration, runMigration100Postgres as runMeshcoreChannelScopePostgres, runMigration100Mysql as runMeshcoreChannelScopeMysql } from '../server/migrations/100_meshcore_channel_scope.js';
+import { migration as nodeUnmessagableMigration, runMigration101Postgres as runNodeUnmessagablePostgres, runMigration101Mysql as runNodeUnmessagableMysql } from '../server/migrations/101_add_node_unmessagable.js';
 
 // ============================================================================
 // Registry
@@ -1598,4 +1599,13 @@ registry.register({
   sqlite: (db) => meshcoreChannelScopeMigration.up(db),
   postgres: (client) => runMeshcoreChannelScopePostgres(client),
   mysql: (pool) => runMeshcoreChannelScopeMysql(pool),
+});
+
+registry.register({
+  number: 101,
+  name: 'add_node_unmessagable',
+  settingsKey: 'migration_101_add_node_unmessagable',
+  sqlite: (db) => nodeUnmessagableMigration.up(db),
+  postgres: (client) => runNodeUnmessagablePostgres(client),
+  mysql: (pool) => runNodeUnmessagableMysql(pool),
 });
