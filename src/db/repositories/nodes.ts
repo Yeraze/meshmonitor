@@ -408,6 +408,9 @@ export class NodesRepository extends BaseRepository {
           positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? existingNode.positionOverrideIsPrivate,
           // #3549: preserve the user's "Hide from Map" toggle across packet-driven updates
           hideFromMap: nodeData.hideFromMap ?? existingNode.hideFromMap,
+          // #3684: User capability flags from NodeInfo (preserve prior value if not present)
+          isUnmessagable: nodeData.isUnmessagable ?? existingNode.isUnmessagable,
+          isLicensed: nodeData.isLicensed ?? existingNode.isLicensed,
           updatedAt: now,
         })
         .where(and(eq(nodes.nodeNum, nodeData.nodeNum), eq(nodes.sourceId, effectiveSourceId)));
@@ -456,6 +459,8 @@ export class NodesRepository extends BaseRepository {
         altitudeOverride: nodeData.altitudeOverride ?? null,
         positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? false,
         hideFromMap: nodeData.hideFromMap ?? false,
+        isUnmessagable: nodeData.isUnmessagable ?? false,
+        isLicensed: nodeData.isLicensed ?? false,
         createdAt: now,
         updatedAt: now,
       } as any;
@@ -514,6 +519,8 @@ export class NodesRepository extends BaseRepository {
         altitudeOverride: nodeData.altitudeOverride ?? null,
         positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? false,
         hideFromMap: nodeData.hideFromMap ?? false,
+        isUnmessagable: nodeData.isUnmessagable ?? false,
+        isLicensed: nodeData.isLicensed ?? false,
         updatedAt: now,
       };
 

@@ -73,6 +73,9 @@ export const nodesSqlite = sqliteTable('nodes', {
   positionOverrideIsPrivate: integer('positionOverrideIsPrivate', { mode: 'boolean' }).default(false),
   // Map visibility — when true, suppress this node's marker on maps only (issue #3549)
   hideFromMap: integer('hideFromMap', { mode: 'boolean' }).default(false),
+  // User capability flags from the node's User protobuf (issue #3684)
+  isUnmessagable: integer('isUnmessagable', { mode: 'boolean' }).default(false),
+  isLicensed: integer('isLicensed', { mode: 'boolean' }).default(false),
   // Remote admin discovery
   hasRemoteAdmin: integer('hasRemoteAdmin', { mode: 'boolean' }).default(false),
   lastRemoteAdminCheck: integer('lastRemoteAdminCheck'),
@@ -153,6 +156,9 @@ export const nodesPostgres = pgTable('nodes', {
   positionOverrideIsPrivate: pgBoolean('positionOverrideIsPrivate').default(false),
   // Map visibility — when true, suppress this node's marker on maps only (issue #3549)
   hideFromMap: pgBoolean('hideFromMap').default(false),
+  // User capability flags from the node's User protobuf (issue #3684)
+  isUnmessagable: pgBoolean('isUnmessagable').default(false),
+  isLicensed: pgBoolean('isLicensed').default(false),
   // Remote admin discovery
   hasRemoteAdmin: pgBoolean('hasRemoteAdmin').default(false),
   lastRemoteAdminCheck: pgBigint('lastRemoteAdminCheck', { mode: 'number' }),
@@ -232,6 +238,9 @@ export const nodesMysql = mysqlTable('nodes', {
   positionOverrideIsPrivate: myBoolean('positionOverrideIsPrivate').default(false),
   // Map visibility — when true, suppress this node's marker on maps only (issue #3549)
   hideFromMap: myBoolean('hideFromMap').default(false),
+  // User capability flags from the node's User protobuf (issue #3684)
+  isUnmessagable: myBoolean('isUnmessagable').default(false),
+  isLicensed: myBoolean('isLicensed').default(false),
   // Remote admin discovery
   hasRemoteAdmin: myBoolean('hasRemoteAdmin').default(false),
   lastRemoteAdminCheck: myBigint('lastRemoteAdminCheck', { mode: 'number' }),
