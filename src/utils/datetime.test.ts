@@ -96,7 +96,10 @@ describe('datetime utilities', () => {
     });
 
     it('treats local midnight today as today (time), and 23:59 yesterday as a date', () => {
-      expect(formatTimeOrDate(new Date('2024-03-15T00:00:00'), '24')).toBe('00:00');
+      // Midnight today must render as a TIME, not a date. The exact 24h midnight
+      // form is ICU-version-dependent ("00:00" on newer Node, "24:00" on Node 20),
+      // so assert it's a time rather than pinning the value.
+      expect(formatTimeOrDate(new Date('2024-03-15T00:00:00'), '24')).toMatch(/^(00|24):00$/);
       expect(formatTimeOrDate(new Date('2024-03-14T23:59:00'), '24', 'MM/DD/YYYY')).toBe('03/14/2024');
     });
   });
