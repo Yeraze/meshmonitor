@@ -3,6 +3,7 @@ import {
   formatTime,
   formatDate,
   formatDateTime,
+  formatTimeOrDate,
   formatRelativeTime,
   formatMessageTime,
   getMessageDateSeparator,
@@ -68,6 +69,38 @@ describe('datetime utilities', () => {
       const date = new Date('2024-03-15T14:30:00');
       expect(formatDateTime(date)).toBe('03/15/2024 14:30');
       expect(formatDateTime(date, '12', 'DD/MM/YYYY')).toMatch(/15\/03\/2024 2:30\s*PM/i);
+    });
+  });
+
+  describe('formatTimeOrDate (#3656)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      // "now" = 2024-03-15 14:32 local
+      vi.setSystemTime(new Date('2024-03-15T14:32:00'));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('shows the TIME when the date is today', () => {
+      const earlierToday = new Date('2024-03-15T09:05:00');
+      expect(formatTimeOrDate(earlierToday, '24')).toBe('09:05');
+      expect(formatTimeOrDate(earlierToday, '12')).toMatch(/9:05\s*AM/i);
+    });
+
+    it('shows the DATE (per dateFormat) when the date is before today', () => {
+      const yesterday = new Date('2024-03-14T20:00:00');
+      expect(formatTimeOrDate(yesterday, '24', 'MM/DD/YYYY')).toBe('03/14/2024');
+      expect(formatTimeOrDate(yesterday, '24', 'DD/MM/YYYY')).toBe('14/03/2024');
+      expect(formatTimeOrDate(yesterday, '24', 'YYYY-MM-DD')).toBe('2024-03-14');
+    });
+
+    it('treats local midnight today as today (time), and 23:59 yesterday as a date', () => {
+      // Midnight today must render as a TIME, not a date. The exact 24h midnight
+      // form is ICU-version-dependent ("00:00" on newer Node, "24:00" on Node 20),
+      // so assert it's a time rather than pinning the value.
+      expect(formatTimeOrDate(new Date('2024-03-15T00:00:00'), '24')).toMatch(/^(00|24):00$/);
+      expect(formatTimeOrDate(new Date('2024-03-14T23:59:00'), '24', 'MM/DD/YYYY')).toBe('03/14/2024');
     });
   });
 

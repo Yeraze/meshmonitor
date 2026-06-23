@@ -25,6 +25,10 @@ vi.mock('../ToastContainer', () => ({
   useToast: () => ({ showToast }),
 }));
 
+vi.mock('../../contexts/SettingsContext', () => ({
+  useSettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
+}));
+
 import { MeshCoreNodesView } from './MeshCoreNodesView';
 import type { MeshCoreNode } from './hooks/useMeshCore';
 import type { MeshCoreContact } from '../../utils/meshcoreHelpers';

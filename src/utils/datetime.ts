@@ -58,6 +58,28 @@ export function formatDateTime(
 }
 
 /**
+ * Compact "last heard"-style label: show the TIME when `date` falls on the
+ * current local day, otherwise show the DATE. Keeps recent activity readable as
+ * a time while disambiguating older activity by date (#3656). "Today" is the
+ * local calendar day (consistent with how times are otherwise displayed).
+ * @param date - Date to format
+ * @param timeFormat - '12' or '24' (used when the date is today)
+ * @param dateFormat - 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD' (used otherwise)
+ */
+export function formatTimeOrDate(
+  date: Date,
+  timeFormat: TimeFormat = '24',
+  dateFormat: DateFormat = 'MM/DD/YYYY'
+): string {
+  const now = new Date();
+  const isToday =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  return isToday ? formatTime(date, timeFormat) : formatDate(date, dateFormat);
+}
+
+/**
  * Formats a timestamp (milliseconds since epoch) according to user preferences
  * @param timestamp - Timestamp in milliseconds
  * @param timeFormat - '12' for 12-hour format, '24' for 24-hour format
