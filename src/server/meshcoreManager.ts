@@ -2020,6 +2020,12 @@ class MeshCoreManager extends EventEmitter {
       const isChannelSend = !toPublicKey && channelIdx !== undefined;
 
       // Assert the effective region/scope on the device before sending (#3667).
+      // DMs are scoped too, by design: MeshCore firmware applies the default
+      // scope to DMs/logins/requests that flood (path unknown), so a DM in a
+      // `region denyf *` mesh must carry the default scope or it is dropped.
+      // When the DM has a known direct path the scope is simply inert. Setting
+      // it changes the device's single global scope, but the activeFloodScope
+      // cache + re-assert keeps a later channel send correct regardless.
       const region = await this.resolveScopeForSend(isChannelSend ? channelIdx : undefined);
       await this.applyFloodScope(region);
 

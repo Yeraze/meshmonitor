@@ -20,6 +20,8 @@ function makeManager(opts: {
   channelScopes?: Record<number, string | null>;
   /** value returned for the meshcoreDefaultScope per-source setting */
   defaultScope?: string | null;
+  /** make the first N `set_flood_scope` bridge calls fail (transport error) */
+  failFloodScopeTimes?: number;
 } = {}): { manager: MeshCoreManager; bridgeCalls: BridgeCall[]; scopeUpdates: Array<{ id: number; scope: string | null }> } {
   const m = new MeshCoreManager('test-source');
   (m as any).deviceType = MeshCoreDeviceType.COMPANION;
@@ -27,10 +29,15 @@ function makeManager(opts: {
 
   const bridgeCalls: BridgeCall[] = [];
   const scopeUpdates: Array<{ id: number; scope: string | null }> = [];
+  let floodScopeFailsLeft = opts.failFloodScopeTimes ?? 0;
 
   (m as any).sendBridgeCommand = async (cmd: string, params: Record<string, unknown>) => {
     bridgeCalls.push({ cmd, params });
     if (cmd === 'get_channels') return { id: '1', success: true, data: [] };
+    if (cmd === 'set_flood_scope' && floodScopeFailsLeft > 0) {
+      floodScopeFailsLeft -= 1;
+      return { id: '1', success: false, error: 'transport closed' };
+    }
     return { id: '1', success: true, data: {} };
   };
 
@@ -113,6 +120,24 @@ describe('MeshCoreManager — scope resolution on send (#3667)', () => {
     await manager.sendMessage('one', undefined, 1);
     await manager.sendMessage('two', undefined, 2);
     expect(scopeOf(bridgeCalls)).toEqual(['muenchen', 'berlin']);
+  });
+
+  it('does NOT send when the scope assertion fails, and re-asserts on the next send', async () => {
+    // Load-bearing for the Germany use case: if we can't assert the scope we
+    // must not fall back to an unscoped send (which the mesh would drop). The
+    // failed send returns false and leaves the cached scope invalidated so the
+    // next attempt re-asserts.
+    const { manager, bridgeCalls } = makeManager({ channelScopes: { 1: 'muenchen' }, failFloodScopeTimes: 1 });
+
+    const first = await manager.sendMessage('one', undefined, 1);
+    expect(first).toBe(false);
+    // set_flood_scope was attempted but send_message was NOT reached.
+    expect(cmdSeq(bridgeCalls)).toEqual(['set_flood_scope']);
+
+    // Next send re-asserts the scope (cache was invalidated) and goes through.
+    const second = await manager.sendMessage('two', undefined, 1);
+    expect(second).toBe(true);
+    expect(cmdSeq(bridgeCalls)).toEqual(['set_flood_scope', 'set_flood_scope', 'send_message']);
   });
 
   it('serialises concurrent sends so each scope is asserted right before its own send', async () => {

@@ -372,6 +372,8 @@ router.put('/:id', requireAuth(), async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'Scope must be a string' });
       } else {
         const stripped = scope.trim().replace(/^#/, '');
+        // An all-whitespace or bare '#' value strips to '' and clears the scope
+        // (same as sending null/'') — the regex check only applies to a real name.
         if (stripped !== '' && !/^[A-Za-z0-9-]{1,63}$/.test(stripped)) {
           return res.status(400).json({ error: 'Scope must be 1-63 chars: letters, digits, hyphen' });
         }
