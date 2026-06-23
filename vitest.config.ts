@@ -51,7 +51,17 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(__dirname, './src'),
+      // Force the ESM build of the spiderfier under Vitest. Its package `main`
+      // is a UMD bundle whose named `OverlappingMarkerSpiderfier` export isn't a
+      // constructor when Vitest externalizes it, so any test that mounts a
+      // spiderfier-using map component (e.g. MeshCoreSourcePage → MeshCoreMap)
+      // throws "OverlappingMarkerSpiderfier is not a constructor". The `module`
+      // (ESM) entry exports the real class. App build (vite.config) is unaffected.
+      'ts-overlapping-marker-spiderfier-leaflet': path.resolve(
+        __dirname,
+        'node_modules/ts-overlapping-marker-spiderfier-leaflet/dist/omsleaflet.js',
+      ),
     }
   }
 });
