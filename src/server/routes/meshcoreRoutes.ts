@@ -12,7 +12,11 @@ import { Router, Request, Response } from 'express';
 import { ConnectionType, MeshCoreDeviceType, MeshCoreManager, MeshCoreDiscoverFilter, type MeshCoreDiscoverMode } from '../meshcoreManager.js';
 import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
 import { getMeshCoreTelemetryPoller, nodeNumFromPubkey } from '../services/meshcoreTelemetryPoller.js';
-import { MAX_INTERVAL_MINUTES } from '../services/meshcoreRemoteTelemetryScheduler.js';
+import {
+  MAX_INTERVAL_MINUTES,
+  MIN_INTERVAL_BETWEEN_REQUESTS_MS,
+  getMeshCoreRemoteTelemetryScheduler,
+} from '../services/meshcoreRemoteTelemetryScheduler.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
@@ -2366,6 +2370,93 @@ router.get(
     } catch (error) {
       logger.error('[API] Error getting per-node telemetry-config:', error);
       res.status(500).json({ success: false, error: 'Failed to read telemetry-config' });
+    }
+  },
+);
+
+/**
+ * POST /api/sources/:id/meshcore/nodes/:publicKey/telemetry/poll
+ *
+ * Manually trigger an immediate remote-telemetry poll for one node,
+ * outside the scheduler's cadence (issue #3674). Body:
+ *   { type: 'status' | 'lpp' }
+ * selecting which telemetry path to request — the UI exposes one button
+ * per type. Reuses the scheduler's shared request → convert → insert
+ * logic and honours the same per-source 60s mesh-TX gate so the buttons
+ * can't be spammed onto the air.
+ *
+ * Gated by `nodes:read` (a manual poll is a user-initiated read that
+ * happens to transmit), and additionally rate-limited at the HTTP layer
+ * by `meshcoreDeviceLimiter`.
+ */
+router.post(
+  '/nodes/:publicKey/telemetry/poll',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id: string }).id;
+      const { publicKey } = req.params;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
+      }
+
+      const type = (req.body?.type ?? '') as string;
+      if (type !== 'status' && type !== 'lpp') {
+        return res.status(400).json({ success: false, error: "type must be 'status' or 'lpp'" });
+      }
+
+      const manager = meshcoreManagerRegistry.get(sourceId);
+      if (!manager || !manager.isConnected()) {
+        return res.status(409).json({ success: false, error: 'MeshCore source is not connected' });
+      }
+
+      const scheduler = getMeshCoreRemoteTelemetryScheduler();
+      if (!scheduler) {
+        return res.status(503).json({ success: false, error: 'Telemetry scheduler unavailable' });
+      }
+
+      // Per-source 60s mesh-TX gate — the same primitive the scheduler
+      // uses, so a manual poll can't flood the air or collide with a
+      // scheduled request already in flight on this source.
+      const lastTx = manager.getLastMeshTxAt();
+      const sinceLastTx = Date.now() - lastTx;
+      if (lastTx > 0 && sinceLastTx < MIN_INTERVAL_BETWEEN_REQUESTS_MS) {
+        const retryAfterSecs = Math.ceil((MIN_INTERVAL_BETWEEN_REQUESTS_MS - sinceLastTx) / 1000);
+        res.set('Retry-After', String(retryAfterSecs));
+        return res.status(429).json({
+          success: false,
+          error: `Too soon since last mesh transmission; retry in ${retryAfterSecs}s`,
+          retryAfterSecs,
+        });
+      }
+
+      // Load the persisted node (if any) so the scheduler can classify
+      // advType for guest-login decisions. A node not yet in the DB is
+      // fine — requestTelemetryForNode treats an unknown advType as a
+      // companion (LPP-only, no guest login).
+      const node = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId);
+
+      // Stamp before issuing so the gate applies regardless of result and
+      // the scheduler's fair-rotation clock advances too.
+      const now = Date.now();
+      manager.recordMeshTx(now);
+      await databaseService.meshcore.markTelemetryRequested(sourceId, publicKey, now);
+
+      const result = await scheduler.requestTelemetryForNode(
+        manager,
+        { publicKey, advType: node?.advType ?? null },
+        { includeStatus: type === 'status', includeLpp: type === 'lpp' },
+      );
+
+      res.json({
+        success: true,
+        data: { type, written: result.written, sources: result.sources },
+      });
+    } catch (error) {
+      logger.error('[API] Error polling node telemetry:', error);
+      res.status(500).json({ success: false, error: 'Telemetry poll failed' });
     }
   },
 );

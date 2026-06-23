@@ -48,6 +48,9 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
   const csrfFetch = useCsrfFetch();
   const { hasPermission } = useAuth();
   const canWriteConfig = hasPermission('configuration', 'write');
+  // A manual poll is a user-initiated read that happens to transmit, so it's
+  // gated on nodes:read to match the backend route (#3674).
+  const canPoll = hasPermission('nodes', 'read');
 
   const [cfg, setCfg] = useState<TelemetryConfigState>(DEFAULT_CFG);
   const [intervalDraft, setIntervalDraft] = useState<string>('60');
@@ -55,8 +58,11 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [polling, setPolling] = useState<null | 'status' | 'lpp'>(null);
+  const [pollMsg, setPollMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   const endpoint = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/nodes/${encodeURIComponent(publicKey)}/telemetry-config`;
+  const pollEndpoint = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/nodes/${encodeURIComponent(publicKey)}/telemetry/poll`;
 
   // Refetch whenever the selected node or source changes.
   useEffect(() => {
@@ -64,6 +70,7 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
     setLoading(true);
     setError(null);
     setSaved(false);
+    setPollMsg(null);
     (async () => {
       try {
         const response = await csrfFetch(endpoint);
@@ -136,6 +143,38 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
     }
     if (n === cfg.intervalMinutes) return;
     void save({ intervalMinutes: n });
+  };
+
+  const poll = async (type: 'status' | 'lpp') => {
+    setPolling(type);
+    setPollMsg(null);
+    try {
+      const response = await csrfFetch(pollEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type }),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        const written: number = typeof data.data?.written === 'number' ? data.data.written : 0;
+        setPollMsg({
+          kind: 'ok',
+          text:
+            written > 0
+              ? t('meshcore.telemetry_config.poll_wrote', `Wrote ${written} telemetry row(s).`)
+              : t('meshcore.telemetry_config.poll_empty', 'Request sent — no telemetry returned.'),
+        });
+      } else {
+        setPollMsg({
+          kind: 'err',
+          text: data.error || t('meshcore.telemetry_config.poll_error', 'Poll failed'),
+        });
+      }
+    } catch (_err) {
+      setPollMsg({ kind: 'err', text: t('meshcore.telemetry_config.poll_error', 'Poll failed') });
+    } finally {
+      setPolling(null);
+    }
   };
 
   return (
@@ -222,6 +261,51 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
           )}
         </div>
       )}
+
+      <div style={{ marginTop: '1rem', borderTop: '1px solid var(--ctp-surface0)', paddingTop: '0.75rem' }}>
+        <div className="node-details-header">
+          <h4 className="node-details-title" style={{ fontSize: '0.95rem' }}>
+            {t('meshcore.telemetry_config.poll_title', 'Poll Now')}
+          </h4>
+        </div>
+        <p className="hint" style={{ marginBottom: '0.5rem' }}>
+          {t(
+            'meshcore.telemetry_config.poll_hint',
+            'Request telemetry immediately, outside the scheduled interval. Subject to the same 60-second mesh-TX spacing. Status applies to repeaters; Environment (LPP) to nodes with sensors.',
+          )}
+        </p>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void poll('status')}
+            disabled={!canPoll || polling !== null}
+          >
+            {polling === 'status'
+              ? t('meshcore.telemetry_config.polling', 'Polling…')
+              : t('meshcore.telemetry_config.poll_status', 'Poll Status')}
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void poll('lpp')}
+            disabled={!canPoll || polling !== null}
+          >
+            {polling === 'lpp'
+              ? t('meshcore.telemetry_config.polling', 'Polling…')
+              : t('meshcore.telemetry_config.poll_lpp', 'Poll Environment (LPP)')}
+          </button>
+        </div>
+        {pollMsg && (
+          <div
+            className="meshcore-empty-state"
+            style={{ marginTop: '0.5rem', color: pollMsg.kind === 'ok' ? 'var(--ctp-green)' : 'var(--ctp-red)' }}
+            role={pollMsg.kind === 'ok' ? 'status' : 'alert'}
+          >
+            {pollMsg.text}
+          </div>
+        )}
+      </div>
 
       {error && (
         <div className="meshcore-empty-state" style={{ marginTop: '0.5rem', color: 'var(--ctp-red)' }} role="alert">

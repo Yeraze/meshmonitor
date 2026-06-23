@@ -7,7 +7,7 @@
  * - Authentication requirements
  */
 
-import { describe, it, expect, beforeEach, beforeAll, vi, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, vi, afterAll, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import * as schema from '../../db/schema/index.js';
@@ -68,6 +68,9 @@ const meshcoreManager = {
   importPrivateKey: vi.fn().mockResolvedValue(true),
   exportPrivateKey: vi.fn().mockResolvedValue('a'.repeat(128)),
   isConnected: vi.fn().mockReturnValue(false),
+  // Mesh-TX throttle primitives read by the manual telemetry-poll route.
+  getLastMeshTxAt: vi.fn().mockReturnValue(0),
+  recordMeshTx: vi.fn(),
 };
 
 vi.mock('../meshcoreManager.js', () => ({
@@ -167,6 +170,7 @@ import DatabaseService from '../../services/database.js';
 
 import meshcoreRoutes from './meshcoreRoutes.js';
 import authRoutes from './authRoutes.js';
+import { setMeshCoreRemoteTelemetryScheduler } from '../services/meshcoreRemoteTelemetryScheduler.js';
 
 describe('MeshCore Routes', () => {
   let app: Express;
@@ -1207,6 +1211,120 @@ describe('MeshCore Routes', () => {
       expect(response.status).toBe(200);
       expect(upsertNode).not.toHaveBeenCalled();
       expect(setNodeTelemetryConfig).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('POST /api/sources/test-source/meshcore/nodes/:publicKey/telemetry/poll', () => {
+    const POLL_PUBKEY = 'a'.repeat(64);
+    const MALFORMED = 'abcd1234';
+    const getNodeByPublicKeyAndSource = vi.fn();
+    const markTelemetryRequested = vi.fn();
+    const requestTelemetryForNode = vi.fn();
+
+    beforeEach(() => {
+      (DatabaseService as any).meshcore = {
+        getNodeByPublicKeyAndSource,
+        markTelemetryRequested,
+      };
+      getNodeByPublicKeyAndSource.mockReset().mockResolvedValue({ publicKey: POLL_PUBKEY, advType: 2 });
+      markTelemetryRequested.mockReset().mockResolvedValue(undefined);
+      requestTelemetryForNode.mockReset().mockResolvedValue({ written: 16, sources: ['status:16'] });
+      meshcoreManager.isConnected.mockReturnValue(true);
+      meshcoreManager.getLastMeshTxAt.mockReturnValue(0);
+      meshcoreManager.recordMeshTx.mockReset();
+      setMeshCoreRemoteTelemetryScheduler({ requestTelemetryForNode } as any);
+    });
+
+    afterEach(() => {
+      setMeshCoreRemoteTelemetryScheduler(null);
+      meshcoreManager.isConnected.mockReturnValue(false);
+      meshcoreManager.getLastMeshTxAt.mockReturnValue(0);
+    });
+
+    it('requires authentication', async () => {
+      const res = await request(app)
+        .post(`/api/sources/test-source/meshcore/nodes/${POLL_PUBKEY}/telemetry/poll`)
+        .send({ type: 'status' });
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects a malformed public key', async () => {
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${MALFORMED}/telemetry/poll`)
+        .send({ type: 'status' });
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects an invalid poll type', async () => {
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${POLL_PUBKEY}/telemetry/poll`)
+        .send({ type: 'bogus' });
+      expect(res.status).toBe(400);
+      expect(requestTelemetryForNode).not.toHaveBeenCalled();
+    });
+
+    it('polls status: stamps the gate and returns the written count', async () => {
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${POLL_PUBKEY}/telemetry/poll`)
+        .send({ type: 'status' });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toMatchObject({ type: 'status', written: 16 });
+      expect(requestTelemetryForNode).toHaveBeenCalledWith(
+        meshcoreManager,
+        { publicKey: POLL_PUBKEY, advType: 2 },
+        { includeStatus: true, includeLpp: false },
+      );
+      expect(meshcoreManager.recordMeshTx).toHaveBeenCalledTimes(1);
+      expect(markTelemetryRequested).toHaveBeenCalledWith('test-source', POLL_PUBKEY, expect.any(Number));
+    });
+
+    it('polls lpp with includeLpp set', async () => {
+      requestTelemetryForNode.mockResolvedValueOnce({ written: 3, sources: ['lpp:3'] });
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${POLL_PUBKEY}/telemetry/poll`)
+        .send({ type: 'lpp' });
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({ type: 'lpp', written: 3 });
+      expect(requestTelemetryForNode).toHaveBeenCalledWith(
+        meshcoreManager,
+        expect.objectContaining({ publicKey: POLL_PUBKEY }),
+        { includeStatus: false, includeLpp: true },
+      );
+    });
+
+    it('treats an unknown node as a companion (advType null)', async () => {
+      getNodeByPublicKeyAndSource.mockResolvedValueOnce(null);
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${POLL_PUBKEY}/telemetry/poll`)
+        .send({ type: 'lpp' });
+      expect(res.status).toBe(200);
+      expect(requestTelemetryForNode).toHaveBeenCalledWith(
+        meshcoreManager,
+        { publicKey: POLL_PUBKEY, advType: null },
+        { includeStatus: false, includeLpp: true },
+      );
+    });
+
+    it('returns 409 when the source is not connected', async () => {
+      meshcoreManager.isConnected.mockReturnValue(false);
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${POLL_PUBKEY}/telemetry/poll`)
+        .send({ type: 'status' });
+      expect(res.status).toBe(409);
+      expect(requestTelemetryForNode).not.toHaveBeenCalled();
+    });
+
+    it('enforces the 60s mesh-TX gate with 429 + Retry-After', async () => {
+      meshcoreManager.getLastMeshTxAt.mockReturnValue(Date.now() - 5_000);
+      const res = await authenticatedAgent
+        .post(`/api/sources/test-source/meshcore/nodes/${POLL_PUBKEY}/telemetry/poll`)
+        .send({ type: 'status' });
+      expect(res.status).toBe(429);
+      expect(res.body.retryAfterSecs).toBeGreaterThan(0);
+      expect(res.headers['retry-after']).toBeDefined();
+      expect(requestTelemetryForNode).not.toHaveBeenCalled();
+      expect(meshcoreManager.recordMeshTx).not.toHaveBeenCalled();
     });
   });
 

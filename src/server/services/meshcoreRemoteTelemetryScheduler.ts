@@ -371,6 +371,42 @@ export class MeshCoreRemoteTelemetryScheduler {
     await this.database.meshcore.markTelemetryRequested(manager.sourceId, target.publicKey, now);
     manager.recordMeshTx(now);
 
+    // For repeater-like targets, request both the status blob and LPP;
+    // companions only ship LPP. Throttle/stamp bookkeeping is owned here
+    // (above); the actual request → convert → insert is shared with the
+    // manual-poll routes via requestTelemetryForNode.
+    await this.requestTelemetryForNode(manager, target, {
+      includeStatus: isRepeaterLike,
+      includeLpp: true,
+    });
+  }
+
+  /**
+   * Issue the telemetry request(s) for a single target and persist any
+   * resulting rows. Shared by the scheduler tick and the manual-poll
+   * routes so both paths use identical request → convert → insert logic.
+   *
+   * This does NOT enforce the per-source 60s gate or stamp
+   * `lastMeshTxAt` / `lastTelemetryRequestAt` — callers own that policy
+   * (the scheduler pre-stamps for fair rotation; the manual routes gate
+   * and stamp themselves before calling in).
+   *
+   * @param opts.includeStatus request the `SendStatusReq` stats blob
+   *   (path #1). Only meaningful for Repeater / Room Server targets;
+   *   companions don't ship these counters.
+   * @param opts.includeLpp request `GetTelemetryData` LPP sensor data
+   *   (path #3), best-effort guest-login first on repeater-like targets.
+   * @returns the number of telemetry rows written and the per-path
+   *   source tags (e.g. `['status:16', 'lpp:3']`).
+   */
+  async requestTelemetryForNode(
+    manager: MeshCoreManager,
+    target: Pick<DbMeshCoreNode, 'publicKey'> & { advType?: number | null },
+    opts: { includeStatus: boolean; includeLpp: boolean },
+  ): Promise<{ written: number; sources: string[] }> {
+    const isRepeaterLike =
+      typeof target.advType === 'number' && REPEATER_ADV_TYPES.has(target.advType);
+    const keyShort = target.publicKey.substring(0, 16);
     const nodeNum = nodeNumFromPubkey(target.publicKey);
     const ts = this.nowFn();
     const rows: DbTelemetry[] = [];
@@ -380,9 +416,9 @@ export class MeshCoreRemoteTelemetryScheduler {
     // Repeater / Room Server with no login required, returns the
     // 16-field operational stats blob (battery, uptime, queue, packet
     // counters, RSSI/SNR, errors). Companion firmware doesn't ship
-    // these counters, so we skip the call there to avoid wasted air
-    // time. See https://github.com/Yeraze/meshmonitor/issues/3092.
-    if (isRepeaterLike) {
+    // these counters, so the scheduler skips the call there to avoid
+    // wasted air time. See https://github.com/Yeraze/meshmonitor/issues/3092.
+    if (opts.includeStatus) {
       try {
         const status = await manager.requestNodeStatus(target.publicKey);
         if (status) {
@@ -415,7 +451,13 @@ export class MeshCoreRemoteTelemetryScheduler {
           err,
         );
       }
+    }
 
+    // Path #3: GetTelemetryData binary request → BinaryResponse with a
+    // Cayenne-LPP payload. Companion targets are the primary consumer of
+    // this path (they're where actual sensors live), and Repeater targets
+    // may also expose LPP channels once a guest session is established.
+    if (opts.includeLpp) {
       // Best-effort guest-login: empty-password login is the canonical
       // way to unlock LPP `GetTelemetryData` responses on repeaters
       // whose `telemetry_mode_*` is set to `Disabled` for anonymous
@@ -423,41 +465,41 @@ export class MeshCoreRemoteTelemetryScheduler {
       // every tick. Failure is silently fine — the LPP request below
       // still runs in case the repeater is configured for anonymous
       // access.
-      try {
-        await manager.ensureGuestLogin(target.publicKey);
-      } catch (err) {
-        logger.debug(
-          `[MeshCoreRemoteTelem:${manager.sourceId}] ensureGuestLogin(${keyShort}…) threw:`,
-          err,
-        );
+      if (isRepeaterLike) {
+        try {
+          await manager.ensureGuestLogin(target.publicKey);
+        } catch (err) {
+          logger.debug(
+            `[MeshCoreRemoteTelem:${manager.sourceId}] ensureGuestLogin(${keyShort}…) threw:`,
+            err,
+          );
+        }
       }
-    }
 
-    // Path #3: GetTelemetryData binary request → BinaryResponse with a
-    // Cayenne-LPP payload. Always attempted: Companion targets are the
-    // primary consumer of this path (they're where actual sensors
-    // live), and Repeater targets may also expose LPP channels once a
-    // guest session is established.
-    const records = await manager.requestRemoteTelemetry(target.publicKey);
-    if (records && records.length > 0) {
-      const lppRows: DbTelemetry[] = [];
-      for (const rec of records) {
-        lppRows.push(...recordToTelemetryRows(rec, target.publicKey, nodeNum, ts));
-      }
-      if (lppRows.length > 0) {
-        rows.push(...lppRows);
-        sources.push(`lpp:${lppRows.length}`);
+      const records = await manager.requestRemoteTelemetry(target.publicKey);
+      if (records && records.length > 0) {
+        const lppRows: DbTelemetry[] = [];
+        for (const rec of records) {
+          lppRows.push(...recordToTelemetryRows(rec, target.publicKey, nodeNum, ts));
+        }
+        if (lppRows.length > 0) {
+          rows.push(...lppRows);
+          sources.push(`lpp:${lppRows.length}`);
+        }
       }
     }
 
     if (rows.length === 0) {
-      // Promoted from debug → info so silent-empty failures are visible
-      // in normal log levels. Operators have no other signal when a
-      // repeater's `telemetry_mode_*` is set restrictively.
+      // Logged at info so silent-empty results are visible at normal log
+      // levels. Operators have no other signal when a repeater's
+      // `telemetry_mode_*` is set restrictively.
+      const wanted = [opts.includeStatus ? 'status' : null, opts.includeLpp ? 'LPP' : null]
+        .filter(Boolean)
+        .join(' + ');
       logger.info(
-        `[MeshCoreRemoteTelem:${manager.sourceId}] No telemetry from ${keyShort}… (${isRepeaterLike ? 'status + LPP both empty/timeout' : 'LPP empty/timeout'})`,
+        `[MeshCoreRemoteTelem:${manager.sourceId}] No telemetry from ${keyShort}… (${wanted} empty/timeout)`,
       );
-      return;
+      return { written: 0, sources };
     }
 
     try {
@@ -465,8 +507,10 @@ export class MeshCoreRemoteTelemetryScheduler {
       logger.info(
         `[MeshCoreRemoteTelem:${manager.sourceId}] Wrote ${rows.length} telemetry rows for ${keyShort}… (${sources.join(', ')})`,
       );
+      return { written: rows.length, sources };
     } catch (err) {
       logger.warn(`[MeshCoreRemoteTelem:${manager.sourceId}] insertTelemetryBatch failed:`, err);
+      return { written: 0, sources };
     }
   }
 }
