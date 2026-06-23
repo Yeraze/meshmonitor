@@ -169,21 +169,27 @@ function enhanceNeighborsReply(reply: string, manager: ReturnType<typeof manager
 }
 
 /**
- * Parse a comma-separated hex chain like "a3,7f,02" into a Uint8Array.
+ * Parse a comma-separated hex chain into a flat Uint8Array of hop bytes.
+ *
+ * Each token is exactly `hashBytes` bytes wide (`hashBytes * 2` hex chars):
+ * "a3,7f,02" for the default 1-byte width, "a3f2,7f01" for 2-byte, etc.
  * Empty string parses to a zero-length array (zero-hop direct path).
- * Returns null on any malformed token so the route can return a 400.
+ * Returns null on any malformed/wrong-width token so the route can 400.
  */
-function parseHexPathChain(input: string): Uint8Array | null {
+function parseHexPathChain(input: string, hashBytes: 1 | 2 | 3 = 1): Uint8Array | null {
   const trimmed = input.trim();
   if (trimmed.length === 0) return new Uint8Array(0);
   const parts = trimmed.split(',');
-  const out = new Uint8Array(parts.length);
+  const out = new Uint8Array(parts.length * hashBytes);
+  const tokenRe = new RegExp(`^[0-9a-fA-F]{${hashBytes * 2}}$`);
   for (let i = 0; i < parts.length; i++) {
     const tok = parts[i].trim();
-    if (!/^[0-9a-fA-F]{1,2}$/.test(tok)) return null;
-    const n = parseInt(tok, 16);
-    if (!Number.isFinite(n) || n < 0 || n > 0xff) return null;
-    out[i] = n;
+    if (!tokenRe.test(tok)) return null;
+    for (let j = 0; j < hashBytes; j++) {
+      const n = parseInt(tok.slice(j * 2, j * 2 + 2), 16);
+      if (!Number.isFinite(n) || n < 0 || n > 0xff) return null;
+      out[i * hashBytes + j] = n;
+    }
   }
   return out;
 }
@@ -705,11 +711,26 @@ router.put(
           error: 'Body must include `outPath` as a comma-separated hex string',
         });
       }
-      const parsed = parseHexPathChain(rawPath);
+      // Per-hop hash width (1/2/3 bytes). Defaults to 1 for backward
+      // compatibility with callers that don't send it. MeshCore packs the
+      // width into the top 2 bits of out_path_len; 4-byte (and up) is
+      // rejected by firmware, so only 1/2/3 are accepted here. See #3670.
+      const rawHashBytes = (req.body ?? {}).hashBytes;
+      let hashBytes: 1 | 2 | 3 = 1;
+      if (rawHashBytes !== undefined) {
+        if (rawHashBytes !== 1 && rawHashBytes !== 2 && rawHashBytes !== 3) {
+          return res.status(400).json({
+            success: false,
+            error: 'hashBytes must be 1, 2, or 3',
+          });
+        }
+        hashBytes = rawHashBytes;
+      }
+      const parsed = parseHexPathChain(rawPath, hashBytes);
       if (!parsed) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid outPath — expected comma-separated hex bytes, e.g. "a3,7f,02"',
+          error: `Invalid outPath — expected a comma-separated hex chain of ${hashBytes}-byte hops (${hashBytes * 2} hex chars each), e.g. "${'a3f27f01'.slice(0, hashBytes * 2)}"`,
         });
       }
       if (parsed.length > 64) {
@@ -718,7 +739,14 @@ router.put(
           error: `outPath too long: ${parsed.length} bytes (max 64)`,
         });
       }
-      const ok = await managerFor(req).setContactOutPath(publicKey, parsed);
+      const hopCount = parsed.length / hashBytes;
+      if (hopCount > 63) {
+        return res.status(400).json({
+          success: false,
+          error: `outPath too long: ${hopCount} hops (max 63)`,
+        });
+      }
+      const ok = await managerFor(req).setContactOutPath(publicKey, parsed, hashBytes);
       if (!ok) {
         return res.status(409).json({
           success: false,

@@ -974,16 +974,19 @@ export class MeshCoreNativeBackend extends EventEmitter {
 
       case 'set_out_path': {
         // Manually push a forwarding route into the device's contact
-        // record. Wraps meshcore.js's setContactPath(contact, path),
-        // which reads the contact's existing type/flags/name/advert
-        // timestamp/lat/lon and only mutates outPath + outPathLen via
-        // CMD_ADD_UPDATE_CONTACT (opcode 9). Stale hops silently drop
-        // direct sends, so this is gated behind the advanced toggle at
+        // record via CMD_ADD_UPDATE_CONTACT (opcode 9). Stale hops silently
+        // drop direct sends, so this is gated behind the advanced toggle at
         // the route layer.
         //
-        // `out_path` is the parsed Uint8Array of hop hashes (0..64 bytes).
-        // Caller is responsible for validating the byte length; we just
-        // forward.
+        // `out_path` is the parsed Uint8Array of hop hashes
+        // (hop_count * hash_bytes, 0..64 bytes). `hash_bytes` (1/2/3) is the
+        // per-hop hash width; the firmware stores it packed in the top 2
+        // bits of out_path_len (= ((hash_bytes-1)<<6) | hop_count) — the
+        // same encoding it uses for OTA packets. meshcore.js's
+        // setContactPath() only ever writes a PLAIN byte count (correct only
+        // for 1-byte hops), so for 2/3-byte widths we bypass it and call
+        // addOrUpdateContact() directly with a hand-packed length. Caller is
+        // responsible for validating lengths; we just forward.
         const publicKey = await this.resolvePublicKey(params.public_key as string);
         if (!publicKey) throw new Error('Set-out-path target not found');
         const pathBytes = params.out_path as Uint8Array | number[] | undefined;
@@ -992,13 +995,39 @@ export class MeshCoreNativeBackend extends EventEmitter {
         if (path.length > 64) {
           throw new Error(`out_path too long: ${path.length} > 64`);
         }
+        const hashBytesRaw = params.hash_bytes;
+        const hashBytes = hashBytesRaw === 2 || hashBytesRaw === 3 ? hashBytesRaw : 1;
+        if (path.length % hashBytes !== 0) {
+          throw new Error(`out_path length ${path.length} not a multiple of hash_bytes ${hashBytes}`);
+        }
         const contacts: any[] = await c.getContacts();
         const contact = contacts.find((ct) => {
           const hex = bytesToHex(ct.publicKey);
           return hex === bytesToHex(publicKey);
         });
         if (!contact) throw new Error('Set-out-path target not in device contact list');
-        await c.setContactPath(contact, path);
+        if (hashBytes === 1) {
+          // Default width: keep the proven library path (its plain byte
+          // count == packed length when the hash-size bits are 0).
+          await c.setContactPath(contact, path);
+        } else {
+          // Multi-byte width: pack out_path_len ourselves.
+          const hopCount = path.length / hashBytes;
+          const packedLen = path.length === 0 ? 0 : (((hashBytes - 1) << 6) | (hopCount & 0x3f));
+          const outPath = new Uint8Array(64);
+          outPath.set(path.subarray(0, Math.min(path.length, 64)));
+          await c.addOrUpdateContact(
+            contact.publicKey,
+            contact.type,
+            contact.flags,
+            packedLen,
+            outPath,
+            contact.advName,
+            contact.lastAdvert,
+            contact.advLat,
+            contact.advLon,
+          );
+        }
         return { ok: true };
       }
 

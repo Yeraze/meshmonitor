@@ -1655,9 +1655,37 @@ describe('MeshCore Routes', () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(meshcoreManager.setContactOutPath).toHaveBeenCalledTimes(1);
-      const [pk, bytes] = meshcoreManager.setContactOutPath.mock.calls[0];
+      const [pk, bytes, hashBytes] = meshcoreManager.setContactOutPath.mock.calls[0];
       expect(pk).toBe(VALID_PUBKEY);
       expect(Array.from(bytes)).toEqual([0xa3, 0x7f, 0x02]);
+      expect(hashBytes).toBe(1); // defaults to 1-byte when omitted
+    });
+
+    it('forwards a 2-byte-width path as flat bytes plus hashBytes=2', async () => {
+      const response = await authenticatedAgent
+        .put(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/out-path`)
+        .send({ outPath: 'a3f2,7f01', hashBytes: 2 });
+      expect(response.status).toBe(200);
+      const [, bytes, hashBytes] = meshcoreManager.setContactOutPath.mock.calls[0];
+      expect(Array.from(bytes)).toEqual([0xa3, 0xf2, 0x7f, 0x01]);
+      expect(hashBytes).toBe(2);
+    });
+
+    it('rejects a hop token whose width does not match hashBytes', async () => {
+      const response = await authenticatedAgent
+        .put(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/out-path`)
+        .send({ outPath: 'a3,7f', hashBytes: 2 }); // 1-byte tokens under a 2-byte width
+      expect(response.status).toBe(400);
+      expect(meshcoreManager.setContactOutPath).not.toHaveBeenCalled();
+    });
+
+    it('rejects an invalid hashBytes value', async () => {
+      const response = await authenticatedAgent
+        .put(`/api/sources/test-source/meshcore/contacts/${VALID_PUBKEY}/out-path`)
+        .send({ outPath: 'a3', hashBytes: 4 });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/hashBytes/);
+      expect(meshcoreManager.setContactOutPath).not.toHaveBeenCalled();
     });
 
     it('accepts an empty path as zero-hop direct', async () => {
