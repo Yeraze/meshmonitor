@@ -10,6 +10,7 @@ import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
 import { MeshCoreNodeTelemetryConfig } from './MeshCoreNodeTelemetryConfig';
 import TelemetryGraphs from '../TelemetryGraphs';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSettings } from '../../contexts/SettingsContext';
 
 interface MeshCoreDirectMessagesViewProps {
   messages: MeshCoreMessage[];
@@ -60,6 +61,10 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
 }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
+  // Honor the user's Temperature Unit + telemetry time-range settings on the
+  // per-node telemetry graph, consistent with the Meshtastic DM view and the
+  // MeshCore Telemetry dashboard (#3659).
+  const { temperatureUnit, telemetryVisualizationHours } = useSettings();
   const canSend = hasPermission('messages', 'write');
   const canWriteNodes = hasPermission('nodes', 'write');
   const canRemoteAdmin = hasPermission('remote_admin', 'write');
@@ -412,7 +417,12 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                     sourceId={sourceId}
                     publicKey={selected}
                   />
-                  <TelemetryGraphs nodeId={selected} baseUrl={baseUrl} />
+                  <TelemetryGraphs
+                    nodeId={selected}
+                    temperatureUnit={temperatureUnit}
+                    telemetryHours={telemetryVisualizationHours}
+                    baseUrl={baseUrl}
+                  />
                 </>
               )}
             </div>
