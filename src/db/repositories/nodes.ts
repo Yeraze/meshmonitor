@@ -132,7 +132,9 @@ export class NodesRepository extends BaseRepository {
       // Defensive guard: PG `bigint` rejects out-of-range JS numbers with
       // `invalid input syntax for type bigint` (issue #3186). Treat the
       // value as "no such node" rather than crashing the query.
-      logger.warn(`NodesRepository.getNode: rejecting out-of-range nodeNum ${nodeNum}`);
+      // Values ~1e+76 are typically a PKI public key (64 hex chars) being
+      // parsed as a node number — this is safe to ignore.
+      logger.warn(`NodesRepository.getNode: rejecting out-of-range nodeNum ${nodeNum} (corrupted packet or PKI key misparse; packet ignored)`);
       return null;
     }
     const { nodes } = this.tables;
