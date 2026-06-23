@@ -12,6 +12,7 @@
  */
 
 import { EventEmitter } from 'events';
+import { createHash } from 'node:crypto';
 import { logger } from '../utils/logger.js';
 
 // Lazy meshcore.js import. Hold the module reference so tests can swap it
@@ -1032,6 +1033,23 @@ export class MeshCoreNativeBackend extends EventEmitter {
         }
         await c.sendChannelTextMessage(channelIdx, text);
         return { sent: true };
+      }
+
+      case 'set_flood_scope': {
+        // MeshCore region/scope (#3667). The device holds a single global flood
+        // scope (CMD_SET_FLOOD_SCOPE=54); the manager asserts it before each
+        // send. The transport key is the first 16 bytes of sha256("#region").
+        // An empty/null region clears the scope (back to legacy null '*').
+        const regionRaw = params.region;
+        const region = typeof regionRaw === 'string' ? regionRaw.trim() : '';
+        if (!region) {
+          await c.clearFloodScope();
+          return { ok: true, scope: null };
+        }
+        const name = region.startsWith('#') ? region : `#${region}`;
+        const transportKey = createHash('sha256').update(name, 'utf8').digest().subarray(0, 16);
+        await c.setFloodScope(Uint8Array.from(transportKey));
+        return { ok: true, scope: region };
       }
 
       case 'send_advert':

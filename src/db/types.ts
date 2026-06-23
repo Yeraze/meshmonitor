@@ -150,6 +150,7 @@ export interface DbChannel {
   uplinkEnabled: boolean;
   downlinkEnabled: boolean;
   positionPrecision?: number; // Location precision bits (0-32)
+  scope?: string | null; // MeshCore region/scope tag (#3667); null = inherit default/unscoped
   createdAt: number;
   updatedAt: number;
 }

@@ -114,6 +114,7 @@ import { migration as meshcoreNeighborTimestampBigintMigration, runMigration096P
 import { migration as traceroutePacketIdMigration, runMigration097Postgres as runTraceroutePacketIdPostgres, runMigration097Mysql as runTraceroutePacketIdMysql } from '../server/migrations/097_add_packet_id_to_traceroutes.js';
 import { migration as createAutomationsMigration, runMigration098Postgres, runMigration098Mysql } from '../server/migrations/098_create_automations.js';
 import { migration as createAutomationVariablesMigration, runMigration099Postgres, runMigration099Mysql } from '../server/migrations/099_create_automation_variables.js';
+import { migration as meshcoreChannelScopeMigration, runMigration100Postgres as runMeshcoreChannelScopePostgres, runMigration100Mysql as runMeshcoreChannelScopeMysql } from '../server/migrations/100_meshcore_channel_scope.js';
 
 // ============================================================================
 // Registry
@@ -1553,7 +1554,6 @@ registry.register({
   postgres: (client) => runTraceroutePacketIdPostgres(client),
   mysql: (pool) => runTraceroutePacketIdMysql(pool),
 });
-
 // ---------------------------------------------------------------------------
 // Migration 098: create automations + automation_runs tables (#3653).
 // Foundation for the generic Automation Engine. `automations` is GLOBAL (no
@@ -1583,4 +1583,19 @@ registry.register({
   sqlite: (db) => createAutomationVariablesMigration.up(db),
   postgres: (client) => runMigration099Postgres(client),
   mysql: (pool) => runMigration099Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 100: add channels.scope (#3667). MeshCore region/scope tag per
+// channel; MeshMonitor-owned (never reported by the device), NULL = inherit
+// the source default scope / unscoped.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 100,
+  name: 'meshcore_channel_scope',
+  settingsKey: 'migration_100_meshcore_channel_scope',
+  sqlite: (db) => meshcoreChannelScopeMigration.up(db),
+  postgres: (client) => runMeshcoreChannelScopePostgres(client),
+  mysql: (pool) => runMeshcoreChannelScopeMysql(pool),
 });

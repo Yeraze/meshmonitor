@@ -32,6 +32,10 @@ export const channelsSqlite = sqliteTable('channels', {
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
   sourceId: text('sourceId'),
+  // MeshCore region/scope tag for this channel (#3667). Plain region name
+  // (no leading '#'); NULL = inherit the source default scope / unscoped.
+  // MeshMonitor-owned — never reported by the device.
+  scope: text('scope'),
 }, (t) => ({
   sourceChannelUniq: uniqueIndex('channels_source_id_idx').on(t.sourceId, t.id),
 }));
@@ -49,6 +53,7 @@ export const channelsPostgres = pgTable('channels', {
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
   sourceId: pgText('sourceId'),
+  scope: pgText('scope'),
 });
 
 // MySQL schema
@@ -64,6 +69,7 @@ export const channelsMysql = mysqlTable('channels', {
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
   sourceId: myVarchar('sourceId', { length: 36 }),
+  scope: myVarchar('scope', { length: 64 }),
 });
 
 // Type inference
