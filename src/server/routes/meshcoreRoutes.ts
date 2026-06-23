@@ -582,6 +582,58 @@ router.post(
 );
 
 /**
+ * GET /api/sources/:id/meshcore/config/default-scope
+ *
+ * The per-source default MeshCore region/scope (#3667). Empty = unscoped.
+ */
+router.get(
+  '/config/default-scope',
+  requireAuth(),
+  requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const scope = await managerFor(req).getDefaultScope();
+      res.json({ success: true, scope });
+    } catch (error) {
+      logger.error('[API] Error reading default scope:', error);
+      res.status(500).json({ success: false, error: 'Failed to read setting' });
+    }
+  },
+);
+
+/**
+ * POST /api/sources/:id/meshcore/config/default-scope
+ *
+ * Set the per-source default region/scope. Body: { scope: string } — a plain
+ * region name (alphanumeric + hyphen, optional leading '#' which is stripped),
+ * or '' to clear (unscoped). Applied to all originated flood traffic that has
+ * no channel-specific scope.
+ */
+router.post(
+  '/config/default-scope',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const raw = req.body?.scope;
+      if (raw !== '' && typeof raw !== 'string') {
+        return res.status(400).json({ success: false, error: 'scope must be a string' });
+      }
+      const stripped = (raw as string).trim().replace(/^#/, '');
+      if (stripped !== '' && !/^[A-Za-z0-9-]{1,63}$/.test(stripped)) {
+        return res.status(400).json({ success: false, error: 'Scope must be 1-63 chars: letters, digits, hyphen' });
+      }
+      const scope = await managerFor(req).setDefaultScope(stripped);
+      res.json({ success: true, scope });
+    } catch (error) {
+      logger.error('[API] Error setting default scope:', error);
+      res.status(500).json({ success: false, error: 'Failed to update setting' });
+    }
+  },
+);
+
+/**
  * POST /api/sources/:id/meshcore/contacts/:publicKey/trace-path
  *
  * Send a diagnostic trace along the contact's cached forwarding path,

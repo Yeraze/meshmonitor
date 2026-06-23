@@ -44,6 +44,9 @@ interface ChannelRow {
    *  permission to this channel (issue #2951). For MeshCore the underlying
    *  bytes are exactly 16. */
   psk?: string | null;
+  /** MeshCore region/scope tag (#3667). Plain region name (no '#') or null =
+   *  inherit the source default scope / unscoped. */
+  scope?: string | null;
 }
 
 const SECRET_BYTES = 16;
@@ -107,6 +110,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editSecretHex, setEditSecretHex] = useState('');
+  const [editScope, setEditScope] = useState('');
   const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
@@ -131,6 +135,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
                 id: c.id as number,
                 name: String(c.name ?? ''),
                 psk: typeof c.psk === 'string' ? c.psk : null,
+                scope: typeof c.scope === 'string' ? c.scope : null,
               }))
               .sort((a, b) => a.id - b.id)
           : [];
@@ -179,6 +184,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
     setEditingIdx(row.id);
     setEditName(row.name);
     setEditSecretHex(base64ToHex(row.psk));
+    setEditScope(row.scope ?? '');
     setShowSecret(false);
   }, []);
 
@@ -186,6 +192,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
     setEditingIdx(nextFreeIdx);
     setEditName('');
     setEditSecretHex(generateSecretHex());
+    setEditScope('');
     setShowSecret(false);
   }, [nextFreeIdx]);
 
@@ -193,6 +200,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
     setEditingIdx(null);
     setEditName('');
     setEditSecretHex('');
+    setEditScope('');
     setShowSecret(false);
   }, []);
 
@@ -250,6 +258,8 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
         body: JSON.stringify({
           name: trimmedName,
           psk: pskBase64,
+          // Plain region name (no '#'); '' clears the scope (#3667).
+          scope: editScope.trim().replace(/^#/, ''),
           sourceId,
         }),
       });
@@ -268,7 +278,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
     } finally {
       setSaving(false);
     }
-  }, [editingIdx, editName, editSecretHex, baseUrl, sourceId, csrfFetch, showToast, t, cancelEdit, reload]);
+  }, [editingIdx, editName, editSecretHex, editScope, baseUrl, sourceId, csrfFetch, showToast, t, cancelEdit, reload]);
 
   const handleDelete = useCallback(async (idx: number) => {
     if (!confirm(t('meshcore.channels.confirm_delete', 'Delete channel {{idx}}? This will remove it from the device.', { idx }))) {
@@ -367,6 +377,8 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
                     onNameChange={setEditName}
                     secretHex={editSecretHex}
                     onSecretChange={setEditSecretHex}
+                    scope={editScope}
+                    onScopeChange={setEditScope}
                     showSecret={showSecret}
                     onToggleShowSecret={() => setShowSecret(v => !v)}
                     onRegenerate={handleRegenerate}
@@ -403,6 +415,8 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
             onNameChange={setEditName}
             secretHex={editSecretHex}
             onSecretChange={setEditSecretHex}
+            scope={editScope}
+            onScopeChange={setEditScope}
             showSecret={showSecret}
             onToggleShowSecret={() => setShowSecret(v => !v)}
             onRegenerate={handleRegenerate}
@@ -436,6 +450,10 @@ interface ChannelEditorProps {
   onNameChange: (v: string) => void;
   secretHex: string;
   onSecretChange: (v: string) => void;
+  /** MeshCore region/scope tag (#3667). Plain region name (no '#'); empty =
+   *  inherit the source default scope / unscoped. */
+  scope: string;
+  onScopeChange: (v: string) => void;
   showSecret: boolean;
   onToggleShowSecret: () => void;
   onRegenerate: () => void;
@@ -454,6 +472,8 @@ const ChannelEditor: React.FC<ChannelEditorProps> = ({
   onNameChange,
   secretHex,
   onSecretChange,
+  scope,
+  onScopeChange,
   showSecret,
   onToggleShowSecret,
   onRegenerate,
@@ -532,6 +552,29 @@ const ChannelEditor: React.FC<ChannelEditorProps> = ({
           )}
         </p>
       )}
+    </div>
+    <div style={{ marginBottom: '0.5rem' }}>
+      <label htmlFor={`mc-ch-scope-${idx}`}>
+        {t('meshcore.channels.scope_label', 'Region / Scope (optional)')}
+      </label>
+      <input
+        id={`mc-ch-scope-${idx}`}
+        type="text"
+        value={scope}
+        onChange={e => onScopeChange(e.target.value)}
+        placeholder={t('meshcore.channels.scope_placeholder', 'e.g. muenchen — leave blank to inherit default')}
+        spellCheck={false}
+        autoComplete="off"
+        disabled={saving}
+        maxLength={63}
+        style={{ width: '100%' }}
+      />
+      <p className="hint" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
+        {t(
+          'meshcore.channels.scope_hint',
+          'Messages on this channel are forwarded only by repeaters configured for this region. Blank uses the source default scope (or unscoped). Letters, digits and hyphens only.',
+        )}
+      </p>
     </div>
     <div style={{ display: 'flex', gap: '0.5rem' }}>
       <button

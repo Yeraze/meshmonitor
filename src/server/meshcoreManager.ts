@@ -533,6 +533,16 @@ class MeshCoreManager extends EventEmitter {
   private nextReconnectAt: number | null = null;
   private shouldReconnect: boolean = false;
 
+  // MeshCore region/scope (#3667). The device holds a SINGLE global flood
+  // scope, asserted via the `set_flood_scope` bridge command before a send.
+  // `activeFloodScope` caches the region name currently set on the device
+  // (`null` = unscoped, `undefined` = unknown/not-yet-asserted) so we skip the
+  // extra round-trip when the next send needs the same scope. `sendScopeLock`
+  // serialises the set-scope→send pair per source: because the scope is global
+  // and stateful, two concurrent sends with different scopes must not interleave.
+  private activeFloodScope: string | null | undefined = undefined;
+  private sendScopeLock: Promise<unknown> = Promise.resolve();
+
   // Shared state
   private localNode: MeshCoreNode | null = null;
   private contacts: Map<string, MeshCoreContact> = new Map();
@@ -688,6 +698,9 @@ class MeshCoreManager extends EventEmitter {
       }
 
       this.connected = true;
+      // The device's flood scope is unknown right after (re)connect — force the
+      // next send to re-assert it (#3667).
+      this.activeFloodScope = undefined;
       this.connectionState = 'connected';
       this.heartbeatConsecutiveFailures = 0;
       this.reconnectAttempts = 0;
@@ -1349,8 +1362,13 @@ class MeshCoreManager extends EventEmitter {
    * Write a channel slot on the device. `secretHex` must decode to 16 bytes
    * (AES-128). Re-syncs the DB from the device afterwards so any side-effect
    * (e.g. the firmware normalising the name) is reflected immediately.
+   *
+   * `scope` (#3667) is a MeshMonitor-owned region tag the device never stores;
+   * when provided it is persisted to the DB row AFTER the device re-sync (which
+   * preserves but never sets scope). `undefined` leaves any existing scope
+   * untouched; `null`/'' clears it. Plain region name, no leading '#'.
    */
-  async setChannel(idx: number, name: string, secretHex: string): Promise<void> {
+  async setChannel(idx: number, name: string, secretHex: string, scope?: string | null): Promise<void> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       throw new Error('setChannel: MeshCore source is not in Companion mode');
     }
@@ -1363,6 +1381,12 @@ class MeshCoreManager extends EventEmitter {
       throw new Error(response.error || 'set_channel failed');
     }
     await this.syncChannelsFromDevice();
+    if (scope !== undefined) {
+      await databaseService.channels.updateChannelScope(idx, (scope || '').trim() || null, this.sourceId);
+      // A scope change may affect the next send on this channel — force a
+      // re-assert rather than trusting the cached device scope.
+      this.activeFloodScope = undefined;
+    }
   }
 
   /**
@@ -1945,8 +1969,66 @@ class MeshCoreManager extends EventEmitter {
       return false;
     }
 
+    // Serialise the scope-assert→send pair per source (#3667). The device's
+    // flood scope is a single global setting; two concurrent sends with
+    // different scopes must not interleave, or a message could ship under the
+    // wrong region. Chain on the lock and keep the chain alive regardless of
+    // this send's outcome.
+    const task = this.sendScopeLock.then(() => this.performScopedSend(text, toPublicKey, channelIdx));
+    this.sendScopeLock = task.then(() => undefined, () => undefined);
+    return task;
+  }
+
+  /**
+   * Resolve the effective MeshCore region/scope for an outbound send (#3667):
+   * a channel's own scope overrides the source default scope; otherwise the
+   * source default applies; otherwise unscoped. Returns the plain region name
+   * (no leading '#') or null for unscoped.
+   */
+  private async resolveScopeForSend(channelIdx?: number): Promise<string | null> {
+    if (channelIdx !== undefined) {
+      const channel = await databaseService.channels.getChannelById(channelIdx, this.sourceId);
+      const channelScope = (channel?.scope ?? '').trim();
+      if (channelScope) return channelScope;
+    }
+    const def = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreDefaultScope')) ?? '';
+    return def.trim() || null;
+  }
+
+  /**
+   * Ensure the device's global flood scope matches `region` (null = unscoped),
+   * sending a `set_flood_scope` bridge command only when it differs from the
+   * cached value. On failure the cached scope is invalidated so the next send
+   * re-asserts, and the error propagates.
+   */
+  private async applyFloodScope(region: string | null): Promise<void> {
+    if (this.activeFloodScope === region) return;
+    try {
+      const resp = await this.sendBridgeCommand('set_flood_scope', { region });
+      if (!resp.success) {
+        throw new Error(resp.error || 'set_flood_scope failed');
+      }
+      this.activeFloodScope = region;
+    } catch (err) {
+      this.activeFloodScope = undefined;
+      throw err;
+    }
+  }
+
+  private async performScopedSend(text: string, toPublicKey?: string, channelIdx?: number): Promise<boolean> {
     try {
       const isChannelSend = !toPublicKey && channelIdx !== undefined;
+
+      // Assert the effective region/scope on the device before sending (#3667).
+      // DMs are scoped too, by design: MeshCore firmware applies the default
+      // scope to DMs/logins/requests that flood (path unknown), so a DM in a
+      // `region denyf *` mesh must carry the default scope or it is dropped.
+      // When the DM has a known direct path the scope is simply inert. Setting
+      // it changes the device's single global scope, but the activeFloodScope
+      // cache + re-assert keeps a later channel send correct regardless.
+      const region = await this.resolveScopeForSend(isChannelSend ? channelIdx : undefined);
+      await this.applyFloodScope(region);
+
       const response = await this.sendBridgeCommand('send_message', {
         text,
         to: toPublicKey || null,
@@ -2166,6 +2248,28 @@ class MeshCoreManager extends EventEmitter {
     await databaseService.settings.setSourceSetting(this.sourceId, 'meshcoreRespondToDiscovery', enabled ? 'true' : 'false');
     this.nativeBackend?.setRespondToDiscovery(enabled);
     logger.info(`[MeshCore:${this.sourceId}] Discovery responder ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * The per-source default MeshCore region/scope (#3667). Applied to all
+   * originated flood traffic that has no channel-specific scope. Empty string
+   * means unscoped (legacy null '*' region).
+   */
+  async getDefaultScope(): Promise<string> {
+    return ((await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreDefaultScope')) ?? '').trim();
+  }
+
+  /**
+   * Set the per-source default region/scope. Pass '' to clear (unscoped).
+   * Stored without a leading '#'. Invalidates the cached device flood scope so
+   * the next send re-asserts under the new default.
+   */
+  async setDefaultScope(scope: string): Promise<string> {
+    const normalized = (scope || '').trim().replace(/^#/, '');
+    await databaseService.settings.setSourceSetting(this.sourceId, 'meshcoreDefaultScope', normalized);
+    this.activeFloodScope = undefined;
+    logger.info(`[MeshCore:${this.sourceId}] Default scope set to ${normalized || '(unscoped)'}`);
+    return normalized;
   }
 
   /**

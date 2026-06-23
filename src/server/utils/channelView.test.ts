@@ -72,7 +72,7 @@ describe('channelView', () => {
         [
           'id', 'name', 'displayName', 'role', 'roleName',
           'uplinkEnabled', 'downlinkEnabled', 'positionPrecision',
-          'pskSet', 'encryptionStatus',
+          'scope', 'pskSet', 'encryptionStatus',
         ].sort()
       );
     });

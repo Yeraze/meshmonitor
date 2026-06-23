@@ -129,6 +129,10 @@ export interface MeshCoreActions {
   getDiscoverable: () => Promise<boolean>;
   /** Enable/disable answering inbound discovery requests. */
   setDiscoverable: (enabled: boolean) => Promise<boolean>;
+  /** Read the per-source default MeshCore region/scope ('' = unscoped) (#3667). */
+  getDefaultScope: () => Promise<string>;
+  /** Set the per-source default region/scope. Returns the normalized value, or null on error. */
+  setDefaultScope: (scope: string) => Promise<string | null>;
   /** Remove a contact from the device's contact list. Resolves `true` when
    *  the device ACKed the removal; `false` for any error. */
   removeContact: (publicKey: string) => Promise<boolean>;
@@ -731,6 +735,35 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     } catch (_err) {
       setError('Failed to update discoverable setting');
       return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const getDefaultScope = useCallback(async (): Promise<string> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/default-scope`);
+      const data = await response.json();
+      return data.success ? (typeof data.scope === 'string' ? data.scope : '') : '';
+    } catch (_err) {
+      return '';
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const setDefaultScope = useCallback(async (scope: string): Promise<string | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/config/default-scope`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to update default scope');
+        return null;
+      }
+      return typeof data.scope === 'string' ? data.scope : '';
+    } catch (_err) {
+      setError('Failed to update default scope');
+      return null;
     }
   }, [mcPrefix, csrfFetch]);
 
@@ -1390,6 +1423,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       discoverNodes,
       getDiscoverable,
       setDiscoverable,
+      getDefaultScope,
+      setDefaultScope,
       shareContact,
       setContactOutPath,
       traceContactPath,

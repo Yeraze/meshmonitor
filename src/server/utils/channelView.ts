@@ -106,6 +106,9 @@ export function transformChannel(channel: any, options: TransformChannelOptions 
     uplinkEnabled: channel.uplinkEnabled,
     downlinkEnabled: channel.downlinkEnabled,
     positionPrecision: channel.positionPrecision,
+    // MeshCore region/scope tag (#3667). Plain region name or null; not
+    // sensitive, so always surfaced for the config UI.
+    scope: channel.scope ?? null,
     pskSet: !!channel.psk,
     encryptionStatus: getEncryptionStatus(channel.psk),
   };

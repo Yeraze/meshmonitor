@@ -26,13 +26,36 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   const [discovering, setDiscovering] = useState<'nearby' | 'repeaters' | 'sensors' | null>(null);
   // "Be discoverable" toggle — whether we answer inbound discovery requests.
   const [discoverable, setDiscoverableState] = useState(false);
-  const { getDiscoverable, setDiscoverable } = actions;
+  const { getDiscoverable, setDiscoverable, getDefaultScope, setDefaultScope } = actions;
+
+  // Default region/scope (#3667). `defaultScope` is the persisted value;
+  // `scopeInput` is the editable field (so we can show a dirty state).
+  const [defaultScope, setDefaultScopeState] = useState('');
+  const [scopeInput, setScopeInput] = useState('');
+  const [savingScope, setSavingScope] = useState(false);
 
   useEffect(() => {
     if (connected && isCompanion) {
       void getDiscoverable().then(setDiscoverableState);
+      void getDefaultScope().then((s) => { setDefaultScopeState(s); setScopeInput(s); });
     }
-  }, [connected, isCompanion, getDiscoverable]);
+  }, [connected, isCompanion, getDiscoverable, getDefaultScope]);
+
+  const handleSaveScope = async () => {
+    setSavingScope(true);
+    try {
+      const result = await setDefaultScope(scopeInput);
+      if (result === null) {
+        showToast(t('meshcore.scope.save_failed', 'Failed to save default scope'), 'error');
+        return;
+      }
+      setDefaultScopeState(result);
+      setScopeInput(result);
+      showToast(t('meshcore.scope.saved', 'Default scope saved'), 'success');
+    } finally {
+      setSavingScope(false);
+    }
+  };
 
   const handleToggleDiscoverable = async () => {
     const next = !discoverable;
@@ -172,6 +195,37 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
               'MeshCore companion firmware does not answer discovery on its own, so other nodes can only ' +
               'find this one when this is enabled. Replies are zero-hop (direct range) and rate-limited.')}
           </p>
+        </div>
+      )}
+
+      {isCompanion && (
+        <div className="form-section">
+          <h3>{t('meshcore.scope.title', 'Default region / scope')}</h3>
+          <p className="hint">
+            {t('meshcore.scope.hint',
+              'Region applied to all outgoing flood traffic (direct messages, adverts, requests) that has no channel-specific scope. ' +
+              'Use a large region that includes you and the contacts you message — both your messages and the returning ACKs are scoped to it. ' +
+              'Leave blank to send unscoped (legacy). Letters, digits and hyphens only.')}
+          </p>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <input
+              type="text"
+              value={scopeInput}
+              onChange={(e) => setScopeInput(e.target.value)}
+              placeholder={t('meshcore.scope.placeholder', 'e.g. muenchen — blank for unscoped')}
+              disabled={!connected || loading || savingScope}
+              maxLength={63}
+              spellCheck={false}
+              autoComplete="off"
+              style={{ flex: 1 }}
+            />
+            <button
+              onClick={() => void handleSaveScope()}
+              disabled={!connected || loading || savingScope || scopeInput.trim().replace(/^#/, '') === defaultScope}
+            >
+              {savingScope ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
+            </button>
+          </div>
         </div>
       )}
 
