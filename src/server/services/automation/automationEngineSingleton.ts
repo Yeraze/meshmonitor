@@ -74,9 +74,14 @@ async function handleEvent(event: DataEvent): Promise<void> {
 
     case 'node:updated': {
       const { nodeNum, node } = event.data as { nodeNum: number; node: Record<string, unknown> };
+      const changed = Object.keys(node ?? {});
       // Discovered vs updated detection (isNew) is deferred to a later phase; fire
       // as nodeUpdated with the changed field keys.
-      await e.onNode('trigger.nodeUpdated', nodeNum, Object.keys(node ?? {}), sourceId);
+      await e.onNode('trigger.nodeUpdated', nodeNum, changed, sourceId);
+      // Geofence checks only matter when position changed.
+      if (changed.includes('latitude') || changed.includes('longitude')) {
+        await e.checkGeofences(nodeNum, sourceId);
+      }
       break;
     }
 

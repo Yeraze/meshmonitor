@@ -20,7 +20,8 @@ export type TriggerType =
   | 'trigger.nodeUpdated'
   | 'trigger.telemetry'
   | 'trigger.schedule'
-  | 'trigger.system';
+  | 'trigger.system'
+  | 'trigger.geofence';
 
 export type ConditionType =
   | 'condition.sourceFilter'
@@ -51,6 +52,7 @@ export const TRIGGER_TYPES: readonly TriggerType[] = [
   'trigger.telemetry',
   'trigger.schedule',
   'trigger.system',
+  'trigger.geofence',
 ];
 
 export const CONDITION_TYPES: readonly ConditionType[] = [

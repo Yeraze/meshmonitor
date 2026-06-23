@@ -169,4 +169,46 @@ describe('AutomationEngineService', () => {
     await engine.load();
     expect(engine.countFor('trigger.message')).toBe(0);
   });
+
+  it('geofence: baseline does not fire; enter fires once on outside→inside', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('geo-enter', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.geofence', params: { event: 'enter', lat: 0, lon: 0, radiusKm: 5 } },
+        { id: 'a', type: 'action.notify', params: { body: 'entered' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    const pos = { lat: 1, lon: 0 }; // ~111km away → outside
+    const geoData = { getNode: async () => ({ nodeNum: 5, latitude: pos.lat, longitude: pos.lon }), getTelemetry: async () => null };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: geoData, now: () => clock });
+    await engine.load();
+
+    expect(await engine.checkGeofences(5, 'default')).toBe(0); // baseline (outside)
+    pos.lat = 0.01; // move inside (~1.1km)
+    expect(await engine.checkGeofences(5, 'default')).toBe(1); // enter
+    expect(await engine.checkGeofences(5, 'default')).toBe(0); // still inside → no re-fire
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(1);
+  });
+
+  it('geofence: exit fires on inside→outside', async () => {
+    const { deps } = recorder();
+    await createEnabled('geo-exit', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.geofence', params: { event: 'exit', lat: 0, lon: 0, radiusKm: 5 } },
+        { id: 'a', type: 'action.notify', params: { body: 'left' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    const pos = { lat: 0.01, lon: 0 }; // inside
+    const geoData = { getNode: async () => ({ nodeNum: 7, latitude: pos.lat, longitude: pos.lon }), getTelemetry: async () => null };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: geoData, now: () => clock });
+    await engine.load();
+
+    expect(await engine.checkGeofences(7, 'default')).toBe(0); // baseline (inside)
+    pos.lat = 1; // move outside
+    expect(await engine.checkGeofences(7, 'default')).toBe(1); // exit
+  });
 });

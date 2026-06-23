@@ -105,11 +105,30 @@ export const TRIGGERS: BlockDef[] = [
       },
     ],
   },
+  {
+    type: 'trigger.geofence',
+    label: 'A node enters/leaves a region',
+    description: 'Fires when a node crosses a circular geofence (checked on position updates).',
+    fields: [
+      {
+        name: 'event', label: 'Event', kind: 'select',
+        options: [
+          { value: 'enter', label: 'Enters the region' },
+          { value: 'exit', label: 'Leaves the region' },
+          { value: 'dwell', label: 'Moves while inside the region' },
+        ],
+      },
+      { name: 'lat', label: 'Center latitude', kind: 'number', placeholder: 'e.g. 27.95' },
+      { name: 'lon', label: 'Center longitude', kind: 'number', placeholder: 'e.g. -82.46' },
+      { name: 'radiusKm', label: 'Radius (km)', kind: 'number', placeholder: 'e.g. 1' },
+      COOLDOWN,
+    ],
+  },
 ];
 
 // ─── Comparison field registry (event / node / latest-telemetry) ─────────────
 
-const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry'];
+const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence'];
 const hasSubjectNode = (t: string) => SUBJECT_NODE_TRIGGERS.includes(t);
 
 const EVENT_NUMERIC: Record<string, FieldOpt[]> = {

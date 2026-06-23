@@ -26,9 +26,11 @@ import {
   buildNodeContext,
   buildTelemetryContext,
   buildSystemContext,
+  buildGeofenceContext,
   messageMatchesFilter,
   type TriggerContext,
 } from './triggerContext.js';
+import { haversineKm, geofenceFires, type GeofenceMode } from './geo.js';
 import { evaluateGraph, type EvaluatorHooks } from './graphEvaluator.js';
 import { evaluateCondition } from './conditionEvaluator.js';
 import { executeAction, type ActionDeps } from './actionExecutor.js';
@@ -72,6 +74,8 @@ export class AutomationEngineService {
   private index = new Map<TriggerType, LoadedAutomation[]>();
   /** automationId → last fired ms (cooldown). */
   private lastFired = new Map<string, number>();
+  /** `${automationId}:${nodeNum}` → was the node inside the geofence last check. */
+  private geofenceState = new Map<string, boolean>();
 
   constructor(opts: EngineServiceOptions) {
     this.automationsRepo = opts.automationsRepo;
@@ -164,35 +168,40 @@ export class AutomationEngineService {
       if (!this.cooledDown(a, now)) continue;
       this.lastFired.set(a.id, now);
       fired++;
-      const evalCtx: EngineEvalContext = {
-        trigger: ctx,
-        vars: this.vars,
-        data: this.data,
-        varCtx: varContextFromTrigger(ctx),
-        now,
-      };
-      try {
-        const result = await evaluateGraph(a.graph, evalCtx, this.hooks(), { maxActions: this.maxActions });
-        const anyFailed = result.actions.some((x) => !x.ok);
-        await this.automationsRepo.createRun({
-          automationId: a.id,
-          sourceId: ctx.sourceId,
-          status: anyFailed ? 'failed' : 'completed',
-          triggerEvent: JSON.stringify(ctx.fields),
-          log: JSON.stringify(result.steps),
-        });
-      } catch (e: any) {
-        logger.error(`[AutomationEngine] automation "${a.name}" threw: ${e?.message}`);
-        await this.automationsRepo.createRun({
-          automationId: a.id,
-          sourceId: ctx.sourceId,
-          status: 'failed',
-          triggerEvent: JSON.stringify(ctx.fields),
-          log: JSON.stringify([{ outcome: 'engine:error', error: e?.message }]),
-        });
-      }
+      await this.fireAutomation(a, ctx, now);
     }
     return fired;
+  }
+
+  /** Evaluate one automation's graph against a trigger context and write a run-log row. */
+  private async fireAutomation(a: LoadedAutomation, ctx: TriggerContext, now: number): Promise<void> {
+    const evalCtx: EngineEvalContext = {
+      trigger: ctx,
+      vars: this.vars,
+      data: this.data,
+      varCtx: varContextFromTrigger(ctx),
+      now,
+    };
+    try {
+      const result = await evaluateGraph(a.graph, evalCtx, this.hooks(), { maxActions: this.maxActions });
+      const anyFailed = result.actions.some((x) => !x.ok);
+      await this.automationsRepo.createRun({
+        automationId: a.id,
+        sourceId: ctx.sourceId,
+        status: anyFailed ? 'failed' : 'completed',
+        triggerEvent: JSON.stringify(ctx.fields),
+        log: JSON.stringify(result.steps),
+      });
+    } catch (e: any) {
+      logger.error(`[AutomationEngine] automation "${a.name}" threw: ${e?.message}`);
+      await this.automationsRepo.createRun({
+        automationId: a.id,
+        sourceId: ctx.sourceId,
+        status: 'failed',
+        triggerEvent: JSON.stringify(ctx.fields),
+        log: JSON.stringify([{ outcome: 'engine:error', error: e?.message }]),
+      });
+    }
   }
 
   // ─── event entry points ─────────────────────────────────────────────────
@@ -232,5 +241,39 @@ export class AutomationEngineService {
     reason?: string,
   ): Promise<number> {
     return this.runTrigger(buildSystemContext(event, sourceId, nodeNum, reason, this.now()));
+  }
+
+  /**
+   * Geofence check — call when a node's position changes. For each geofence
+   * automation, compute inside/outside vs its region, compare to the node's last
+   * state, and fire on the configured enter/exit/dwell transition. The first
+   * sighting only establishes a baseline (no fire). Returns the number fired.
+   */
+  async checkGeofences(nodeNum: number, sourceId: string | null): Promise<number> {
+    const entries = this.index.get('trigger.geofence');
+    if (!entries || entries.length === 0) return 0;
+    const node = await this.data.getNode(sourceId, nodeNum);
+    if (!node || node.latitude == null || node.longitude == null) return 0;
+    const now = this.now();
+    let fired = 0;
+    for (const a of entries) {
+      const p = (a.triggerNode.params ?? {}) as Record<string, unknown>;
+      const lat = Number(p.lat), lon = Number(p.lon), radiusKm = Number(p.radiusKm);
+      const mode = (String(p.event ?? 'enter') as GeofenceMode);
+      if (![lat, lon, radiusKm].every(Number.isFinite)) continue;
+
+      const distanceKm = haversineKm(node.latitude, node.longitude, lat, lon);
+      const inside = distanceKm <= radiusKm;
+      const key = `${a.id}:${nodeNum}`;
+      const prev = this.geofenceState.get(key);
+      this.geofenceState.set(key, inside);
+
+      if (!geofenceFires(prev, inside, mode)) continue;
+      if (!this.cooledDown(a, now)) continue;
+      this.lastFired.set(a.id, now);
+      fired++;
+      await this.fireAutomation(a, buildGeofenceContext(nodeNum, mode, node.latitude, node.longitude, distanceKm, sourceId, now), now);
+    }
+    return fired;
   }
 }

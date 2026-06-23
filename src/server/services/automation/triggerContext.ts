@@ -109,6 +109,25 @@ export function buildTelemetryContext(
   };
 }
 
+/** Build the trigger context for a geofence crossing. Subject node = the moving node. */
+export function buildGeofenceContext(
+  nodeNum: number,
+  event: 'enter' | 'exit' | 'dwell',
+  latitude: number,
+  longitude: number,
+  distanceKm: number,
+  sourceId: string | null,
+  timestamp: number,
+): TriggerContext {
+  return {
+    triggerType: 'trigger.geofence',
+    sourceId,
+    subjectNodeNum: Number(nodeNum),
+    timestamp,
+    fields: { event, nodeNum: Number(nodeNum), latitude, longitude, distanceKm, sourceId, timestamp },
+  };
+}
+
 /** Build the trigger context for a system event (bootup / source connect/disconnect). */
 export function buildSystemContext(
   event: 'bootup' | 'source-connected' | 'source-disconnected',
