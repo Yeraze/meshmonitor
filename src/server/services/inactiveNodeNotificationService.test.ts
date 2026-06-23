@@ -50,6 +50,13 @@ vi.mock('../sourceManagerRegistry.js', () => ({
   },
 }));
 
+const mockMeshcoreList = vi.fn();
+vi.mock('../meshcoreRegistry.js', () => ({
+  meshcoreManagerRegistry: {
+    list: mockMeshcoreList,
+  },
+}));
+
 const mockBroadcastToPreferenceUsers = vi.fn();
 vi.mock('./notificationService.js', () => ({
   notificationService: {
@@ -74,8 +81,9 @@ describe('InactiveNodeNotificationService', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-15T12:00:00Z'));
 
-    // Phase C defaults: one source, name resolves, all permissions allowed
-    mockGetAllManagers.mockReturnValue([{ sourceId: 'src1' }]);
+    // Phase C defaults: one Meshtastic source, no MeshCore sources
+    mockGetAllManagers.mockReturnValue([{ sourceId: 'src1', sourceType: 'meshtastic_tcp' }]);
+    mockMeshcoreList.mockReturnValue([]);
     mockGetSource.mockResolvedValue({ id: 'src1', name: 'Source One' });
     mockCheckPermissionAsync.mockResolvedValue(true);
 
@@ -234,9 +242,10 @@ describe('InactiveNodeNotificationService', () => {
     const MC_NODE_ID = 'mc:mc1:aabbccddeeff';
 
     beforeEach(() => {
-      // A single MeshCore source. The presence of sourceType==='meshcore'
-      // routes the service down the MeshCore collection branch.
-      mockGetAllManagers.mockReturnValue([{ sourceId: 'mc1', sourceType: 'meshcore' }]);
+      // MeshCore managers come from meshcoreManagerRegistry, not sourceManagerRegistry.
+      // The service adapts them to { sourceId, sourceType: 'meshcore' }.
+      mockGetAllManagers.mockReturnValue([]);
+      mockMeshcoreList.mockReturnValue([{ sourceId: 'mc1' }]);
       mockGetSource.mockResolvedValue({ id: 'mc1', name: 'MeshCore One' });
     });
 
