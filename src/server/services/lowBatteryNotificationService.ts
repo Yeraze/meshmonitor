@@ -2,6 +2,7 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { notificationService } from './notificationService.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
 
 interface LowBatteryNodeCheck {
   nodeId: string;
@@ -106,7 +107,13 @@ class LowBatteryNotificationService {
 
       logger.debug(`🔍 Checking low battery for ${users.length} user(s)`);
 
-      const managers = sourceManagerRegistry.getAllManagers();
+      // MeshCore managers live in meshcoreManagerRegistry (not sourceManagerRegistry),
+      // so combine both to ensure voltage-threshold checks run for MeshCore sources.
+      type MinimalManager = { sourceId: string; sourceType: string };
+      const managers: MinimalManager[] = [
+        ...sourceManagerRegistry.getAllManagers(),
+        ...meshcoreManagerRegistry.list().map(m => ({ sourceId: m.sourceId, sourceType: 'meshcore' as const })),
+      ];
       if (managers.length === 0) {
         logger.debug('No source managers registered — skipping low battery check');
         return;
