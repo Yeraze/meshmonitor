@@ -2326,7 +2326,10 @@ class MeshCoreManager extends EventEmitter {
     for (const r of repeaters) {
       try {
         const resp = await this.sendBridgeCommand('request_regions', { public_key: r.publicKey }, 20_000);
-        if (!resp.success) continue;
+        if (!resp.success) {
+          logger.debug(`[MeshCore:${this.sourceId}] regions request to ${r.publicKey.substring(0, 12)}… returned an error: ${resp.error}`);
+          continue;
+        }
         const regions: string[] = (Array.isArray(resp.data?.regions) ? resp.data.regions : [])
           .map((x: unknown) => String(x).trim())
           .filter((x: string) => x.length > 0 && x !== '*');

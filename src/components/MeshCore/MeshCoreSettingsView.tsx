@@ -54,6 +54,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
       }
       setDefaultScopeState(result);
       setScopeInput(result);
+      setDiscoveredRegions(null); // collapse the suggestion chips once applied
       showToast(t('meshcore.scope.saved', 'Default scope saved'), 'success');
     } finally {
       setSavingScope(false);
@@ -180,7 +181,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button
               onClick={() => void handleDiscover('nearby')}
-              disabled={!connected || loading || discovering !== null}
+              disabled={!connected || loading || discovering !== null || discoveringRegions}
             >
               {discovering === 'nearby'
                 ? t('meshcore.discover.running', 'Discovering…')
@@ -188,7 +189,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
             </button>
             <button
               onClick={() => void handleDiscover('repeaters')}
-              disabled={!connected || loading || discovering !== null}
+              disabled={!connected || loading || discovering !== null || discoveringRegions}
             >
               {discovering === 'repeaters'
                 ? t('meshcore.discover.running', 'Discovering…')
@@ -196,7 +197,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
             </button>
             <button
               onClick={() => void handleDiscover('sensors')}
-              disabled={!connected || loading || discovering !== null}
+              disabled={!connected || loading || discovering !== null || discoveringRegions}
             >
               {discovering === 'sensors'
                 ? t('meshcore.discover.running', 'Discovering…')
@@ -253,7 +254,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
           <div style={{ marginTop: '0.75rem' }}>
             <button
               onClick={() => void handleDiscoverRegions()}
-              disabled={!connected || loading || discoveringRegions}
+              disabled={!connected || loading || discoveringRegions || discovering !== null}
             >
               {discoveringRegions
                 ? t('meshcore.scope.discovering', 'Discovering regions…')

@@ -330,4 +330,15 @@ describe('MeshCoreManager — Phase 3: region discovery (#3667)', () => {
     expect(result).toEqual({ regions: [], perRepeater: [] });
     expect(bridgeCalls.some(c => c.cmd === 'request_regions')).toBe(false);
   });
+
+  it('returns empty on a non-companion device without querying', async () => {
+    const { manager, bridgeCalls } = makeManager({
+      contacts: [{ publicKey: 'aa'.repeat(32), advType: 2 }],
+      regionsByRepeater: { ['aa'.repeat(32)]: ['muenchen'] },
+    });
+    (manager as any).deviceType = MeshCoreDeviceType.REPEATER;
+    const result = await manager.discoverRegions();
+    expect(result).toEqual({ regions: [], perRepeater: [] });
+    expect(bridgeCalls.some(c => c.cmd === 'request_regions')).toBe(false);
+  });
 });

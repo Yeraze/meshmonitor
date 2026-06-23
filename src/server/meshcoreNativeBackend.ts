@@ -960,8 +960,10 @@ export class MeshCoreNativeBackend extends EventEmitter {
           }, timeoutMs);
           const onSent = (r: any) => { tag = (r?.expectedAckCrc ?? null); };
           const onResp = (r: any) => {
-            // Match the reply to our request by tag once the Sent ack has set it.
-            if (tag !== null && r?.tag !== tag) return;
+            // Only accept the reply once the Sent ack has given us our tag (the
+            // firmware always sends Sent before the BinaryResponse). A response
+            // arriving before that, or carrying a different tag, isn't ours.
+            if (tag === null || r?.tag !== tag) return;
             cleanup();
             resolve((r?.responseData ?? new Uint8Array()) as Uint8Array);
           };

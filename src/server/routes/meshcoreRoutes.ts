@@ -541,12 +541,15 @@ router.post(
  * de-duplicated set plus a per-repeater breakdown. Coverage depends on which
  * repeaters are in the contact list; run POST /discover (mode 'repeaters')
  * first for the fullest picture.
+ *
+ * Requires 'nodes' 'write' — like POST /discover, this transmits radio frames
+ * (a regions request to each repeater), not just a DB read.
  */
 router.post(
   '/regions/discover',
   meshcoreDeviceLimiter,
   requireAuth(),
-  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
       const result = await managerFor(req).discoverRegions();
