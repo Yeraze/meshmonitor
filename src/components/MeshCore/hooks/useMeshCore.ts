@@ -133,6 +133,8 @@ export interface MeshCoreActions {
   getDefaultScope: () => Promise<string>;
   /** Set the per-source default region/scope. Returns the normalized value, or null on error. */
   setDefaultScope: (scope: string) => Promise<string | null>;
+  /** Discover region/scope names served by nearby repeaters (#3667 phase 3). */
+  discoverRegions: () => Promise<{ regions: string[]; perRepeater: Array<{ publicKey: string; name: string; regions: string[] }> } | null>;
   /** Remove a contact from the device's contact list. Resolves `true` when
    *  the device ACKed the removal; `false` for any error. */
   removeContact: (publicKey: string) => Promise<boolean>;
@@ -763,6 +765,24 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       return typeof data.scope === 'string' ? data.scope : '';
     } catch (_err) {
       setError('Failed to update default scope');
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const discoverRegions = useCallback(async () => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/regions/discover`, { method: 'POST' });
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to discover regions');
+        return null;
+      }
+      return {
+        regions: Array.isArray(data.regions) ? data.regions : [],
+        perRepeater: Array.isArray(data.perRepeater) ? data.perRepeater : [],
+      };
+    } catch (_err) {
+      setError('Failed to discover regions');
       return null;
     }
   }, [mcPrefix, csrfFetch]);
@@ -1425,6 +1445,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setDiscoverable,
       getDefaultScope,
       setDefaultScope,
+      discoverRegions,
       shareContact,
       setContactOutPath,
       traceContactPath,

@@ -25,10 +25,18 @@ function makeManager(opts: {
   /** make `set_flood_scope` await a real macrotask so interleaving is actually
    *  exercised (the lock must hold scope-assert→send together) */
   floodScopeDelayMs?: number;
+  /** contacts to seed for region discovery (advType 2=repeater, 3=room) */
+  contacts?: Array<{ publicKey: string; advType: number; name?: string }>;
+  /** per-repeater `request_regions` replies, keyed by publicKey. A value of
+   *  'fail' makes that repeater's request reject. */
+  regionsByRepeater?: Record<string, string[] | 'fail'>;
 } = {}): { manager: MeshCoreManager; bridgeCalls: BridgeCall[]; scopeUpdates: Array<{ id: number; scope: string | null }> } {
   const m = new MeshCoreManager('test-source');
   (m as any).deviceType = MeshCoreDeviceType.COMPANION;
   (m as any).connected = true;
+  if (opts.contacts) {
+    (m as any).contacts = new Map(opts.contacts.map((c) => [c.publicKey, c]));
+  }
 
   const bridgeCalls: BridgeCall[] = [];
   const scopeUpdates: Array<{ id: number; scope: string | null }> = [];
@@ -37,6 +45,12 @@ function makeManager(opts: {
   (m as any).sendBridgeCommand = async (cmd: string, params: Record<string, unknown>) => {
     bridgeCalls.push({ cmd, params });
     if (cmd === 'get_channels') return { id: '1', success: true, data: [] };
+    if (cmd === 'request_regions') {
+      const pk = params.public_key as string;
+      const r = opts.regionsByRepeater?.[pk];
+      if (r === 'fail') throw new Error('repeater did not answer');
+      return { id: '1', success: true, data: { clock: 0, regions: r ?? [] } };
+    }
     if (cmd === 'set_flood_scope') {
       if (floodScopeFailsLeft > 0) {
         floodScopeFailsLeft -= 1;
@@ -262,5 +276,58 @@ describe('MeshCoreManager — Phase 2: scope on originated flood traffic (#3667)
     const ok = await manager.sendAdvert();
     expect(ok).toBe(false);
     expect(bridgeCalls.some(c => c.cmd === 'send_advert')).toBe(false);
+  });
+});
+
+describe('MeshCoreManager — Phase 3: region discovery (#3667)', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it('queries repeater/room contacts and returns the de-duplicated, sorted region set', async () => {
+    const { manager, bridgeCalls } = makeManager({
+      contacts: [
+        { publicKey: 'aa'.repeat(32), advType: 2, name: 'Rptr-A' }, // repeater
+        { publicKey: 'bb'.repeat(32), advType: 3, name: 'Room-B' },  // room server
+        { publicKey: 'cc'.repeat(32), advType: 0, name: 'Chat-C' },  // plain chat — must be skipped
+      ],
+      regionsByRepeater: {
+        ['aa'.repeat(32)]: ['muenchen', 'bayern', '*'], // '*' wildcard must be filtered
+        ['bb'.repeat(32)]: ['bayern', 'augsburg'],       // 'bayern' overlaps → deduped
+      },
+    });
+
+    const result = await manager.discoverRegions();
+
+    // Only the two infra contacts were queried (chat contact skipped).
+    expect(bridgeCalls.filter(c => c.cmd === 'request_regions').map(c => c.params.public_key))
+      .toEqual(['aa'.repeat(32), 'bb'.repeat(32)]);
+    // De-duplicated, sorted, wildcard removed.
+    expect(result.regions).toEqual(['augsburg', 'bayern', 'muenchen']);
+    expect(result.perRepeater).toHaveLength(2);
+    expect(result.perRepeater[0].regions).toEqual(['muenchen', 'bayern']);
+  });
+
+  it('skips repeaters that do not answer and still returns the rest', async () => {
+    const { manager } = makeManager({
+      contacts: [
+        { publicKey: 'aa'.repeat(32), advType: 2 },
+        { publicKey: 'bb'.repeat(32), advType: 2 },
+      ],
+      regionsByRepeater: {
+        ['aa'.repeat(32)]: 'fail',
+        ['bb'.repeat(32)]: ['muenchen'],
+      },
+    });
+    const result = await manager.discoverRegions();
+    expect(result.regions).toEqual(['muenchen']);
+    expect(result.perRepeater.map(r => r.publicKey)).toEqual(['bb'.repeat(32)]);
+  });
+
+  it('returns empty when there are no repeater contacts', async () => {
+    const { manager, bridgeCalls } = makeManager({
+      contacts: [{ publicKey: 'cc'.repeat(32), advType: 0 }],
+    });
+    const result = await manager.discoverRegions();
+    expect(result).toEqual({ regions: [], perRepeater: [] });
+    expect(bridgeCalls.some(c => c.cmd === 'request_regions')).toBe(false);
   });
 });

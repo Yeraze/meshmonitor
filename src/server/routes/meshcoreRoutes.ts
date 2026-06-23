@@ -534,6 +534,31 @@ router.post(
 );
 
 /**
+ * POST /api/sources/:id/meshcore/regions/discover
+ *
+ * Region/scope discovery (#3667 phase 3) — queries each known repeater /
+ * room-server contact for the list of regions it serves, and returns the
+ * de-duplicated set plus a per-repeater breakdown. Coverage depends on which
+ * repeaters are in the contact list; run POST /discover (mode 'repeaters')
+ * first for the fullest picture.
+ */
+router.post(
+  '/regions/discover',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const result = await managerFor(req).discoverRegions();
+      res.json({ success: true, ...result });
+    } catch (error) {
+      logger.error('[API] Error discovering regions:', error);
+      res.status(500).json({ success: false, error: 'Failed to discover regions' });
+    }
+  },
+);
+
+/**
  * GET /api/sources/:id/meshcore/config/discoverable
  *
  * Whether this node answers inbound discovery requests (is discoverable by

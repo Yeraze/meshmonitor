@@ -2300,6 +2300,46 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
+   * Discover the region/scope names served by nearby repeaters (#3667 phase 3).
+   * Queries each known repeater / room-server contact with a "regions request"
+   * (firmware ANON_REQ sub-type 0x01) and collects the region names each one
+   * reports. Like the official app, coverage depends on which repeaters are in
+   * the contact list — run "Discover Repeaters" first for the fullest picture.
+   *
+   * Queries are issued sequentially: the firmware's per-request `tag` only
+   * arrives on the `Sent` ack, so overlapping requests could cross-match
+   * replies. The wildcard `*` (null region) is filtered out — it isn't a
+   * selectable scope. Repeaters that don't answer in time are skipped.
+   */
+  async discoverRegions(): Promise<{
+    regions: string[];
+    perRepeater: Array<{ publicKey: string; name: string; regions: string[] }>;
+  }> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      return { regions: [], perRepeater: [] };
+    }
+    const repeaters = [...this.contacts.values()].filter(
+      (c) => c.advType === MeshCoreDeviceType.REPEATER || c.advType === MeshCoreDeviceType.ROOM_SERVER,
+    );
+    const perRepeater: Array<{ publicKey: string; name: string; regions: string[] }> = [];
+    const all = new Set<string>();
+    for (const r of repeaters) {
+      try {
+        const resp = await this.sendBridgeCommand('request_regions', { public_key: r.publicKey }, 20_000);
+        if (!resp.success) continue;
+        const regions: string[] = (Array.isArray(resp.data?.regions) ? resp.data.regions : [])
+          .map((x: unknown) => String(x).trim())
+          .filter((x: string) => x.length > 0 && x !== '*');
+        perRepeater.push({ publicKey: r.publicKey, name: r.name || r.advName || r.publicKey.substring(0, 12), regions });
+        regions.forEach((x) => all.add(x));
+      } catch (err) {
+        logger.debug(`[MeshCore:${this.sourceId}] regions request to ${r.publicKey.substring(0, 12)}… failed: ${(err as Error).message}`);
+      }
+    }
+    return { regions: [...all].sort((a, b) => a.localeCompare(b)), perRepeater };
+  }
+
+  /**
    * Trace the cached forwarding path to a contact, collecting per-hop SNR.
    * The contact must have a known `outPath`; trace path sends a diagnostic
    * packet along that exact route and each repeater appends its received
