@@ -1999,7 +1999,7 @@ class MeshCoreManager extends EventEmitter {
    */
   private async sendWithDefaultScope<T>(fn: () => Promise<T>): Promise<T> {
     return this.runSerialized(async () => {
-      await this.applyFloodScope(await this.resolveScopeForSend(undefined));
+      await this.applyFloodScope(await this.resolveScopeForSend());
       return fn();
     });
   }
@@ -3171,6 +3171,13 @@ class MeshCoreManager extends EventEmitter {
       // carries the default scope (#3667). The scope assertion is serialised
       // with all other sends; if it fails the command rejects rather than
       // leaving un-scoped.
+      //
+      // Intentionally fire-and-forget (`void` + `.then`/`.catch`) rather than
+      // `await`ed: we're already inside the per-prefix `cliCommandLocks` chain,
+      // and awaiting the global `sendScopeLock` here would nest the two locks.
+      // Keeping it non-awaited means neither lock is held while waiting on the
+      // other. A scope-assert failure still surfaces — it rejects via the
+      // `.catch` below, which clears the timer and rejects the outer promise.
       void this.sendWithDefaultScope(() => this.sendBridgeCommand('send_cli', { public_key: fullKey, text: command }, timeoutMs))
         .then((resp) => {
           if (!resp.success) {

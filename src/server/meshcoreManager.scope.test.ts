@@ -22,6 +22,9 @@ function makeManager(opts: {
   defaultScope?: string | null;
   /** make the first N `set_flood_scope` bridge calls fail (transport error) */
   failFloodScopeTimes?: number;
+  /** make `set_flood_scope` await a real macrotask so interleaving is actually
+   *  exercised (the lock must hold scope-assert→send together) */
+  floodScopeDelayMs?: number;
 } = {}): { manager: MeshCoreManager; bridgeCalls: BridgeCall[]; scopeUpdates: Array<{ id: number; scope: string | null }> } {
   const m = new MeshCoreManager('test-source');
   (m as any).deviceType = MeshCoreDeviceType.COMPANION;
@@ -34,9 +37,14 @@ function makeManager(opts: {
   (m as any).sendBridgeCommand = async (cmd: string, params: Record<string, unknown>) => {
     bridgeCalls.push({ cmd, params });
     if (cmd === 'get_channels') return { id: '1', success: true, data: [] };
-    if (cmd === 'set_flood_scope' && floodScopeFailsLeft > 0) {
-      floodScopeFailsLeft -= 1;
-      return { id: '1', success: false, error: 'transport closed' };
+    if (cmd === 'set_flood_scope') {
+      if (floodScopeFailsLeft > 0) {
+        floodScopeFailsLeft -= 1;
+        return { id: '1', success: false, error: 'transport closed' };
+      }
+      if (opts.floodScopeDelayMs) {
+        await new Promise((r) => setTimeout(r, opts.floodScopeDelayMs));
+      }
     }
     return { id: '1', success: true, data: {} };
   };
@@ -216,8 +224,27 @@ describe('MeshCoreManager — Phase 2: scope on originated flood traffic (#3667)
     expect(scopeOf(bridgeCalls)).toEqual([null]);
   });
 
+  it('asserts the default scope before a remote CLI command', async () => {
+    const { manager, bridgeCalls } = makeManager({ defaultScope: 'berlin' });
+    // The reply never arrives in the harness, so the command times out — but by
+    // then the scope-assert→send ordering is already observable.
+    await expect(manager.sendCliCommand('ab'.repeat(32), 'ver', { timeoutMs: 50 }))
+      .rejects.toThrow(/timed out/);
+    expect(seq(bridgeCalls, 'send_cli')).toEqual(['set_flood_scope', 'send_cli']);
+  });
+
+  it('rejects a CLI command without sending when the scope assertion fails', async () => {
+    const { manager, bridgeCalls } = makeManager({ defaultScope: 'berlin', failFloodScopeTimes: 1 });
+    await expect(manager.sendCliCommand('ab'.repeat(32), 'ver', { timeoutMs: 1000 }))
+      .rejects.toThrow('transport closed');
+    expect(bridgeCalls.some(c => c.cmd === 'send_cli')).toBe(false);
+  });
+
   it('serialises an advert (default scope) concurrent with a channel send (channel scope)', async () => {
-    const { manager, bridgeCalls } = makeManager({ channelScopes: { 1: 'muenchen' }, defaultScope: 'berlin' });
+    // floodScopeDelayMs forces a real yield between scope-assert and send, so a
+    // broken lock would let the second send interleave — the ordering assertion
+    // below would then fail.
+    const { manager, bridgeCalls } = makeManager({ channelScopes: { 1: 'muenchen' }, defaultScope: 'berlin', floodScopeDelayMs: 5 });
     // Advert first, then a channel message — both serialise on the same lock.
     await Promise.all([
       manager.sendAdvert(),
