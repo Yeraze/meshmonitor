@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { optionalAuth, requireAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { isValidNodeNum } from '../constants/meshtastic.js';
 import {
   filterNodesByChannelPermission,
   checkNodeChannelAccess,
@@ -55,9 +56,17 @@ router.get('/telemetry/:nodeId', optionalAuth(), async (req: Request, res: Respo
     // Calculate cutoff timestamp for filtering
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
 
-    // Check if node has private position override
-    const nodeNum = parseInt(nodeId.replace('!', ''), 16);
-    const node = await databaseService.nodes.getNode(nodeNum, telSourceId);
+    // Check if node has private position override. Meshtastic nodeIds are an
+    // 8-hex nodeNum; MeshCore peers arrive here as a 64-hex public key, which
+    // overflows parseInt to ~6e+76 and trips the getNode out-of-range guard on
+    // every poll (#3677). Skip the lookup for non-Meshtastic ids — they have no
+    // Meshtastic position-override semantics, so isPrivate is simply false.
+    const nodeNum = /^[0-9a-fA-F]{64}$/.test(nodeId)
+      ? NaN
+      : parseInt(nodeId.replace('!', ''), 16);
+    const node = isValidNodeNum(nodeNum)
+      ? await databaseService.nodes.getNode(nodeNum, telSourceId)
+      : null;
     const isPrivate = node?.positionOverrideIsPrivate === true;
     const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
 

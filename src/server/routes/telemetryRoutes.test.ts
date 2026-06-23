@@ -77,6 +77,19 @@ describe('GET /telemetry/:nodeId', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
   });
+
+  it('skips the node lookup for a 64-hex MeshCore pubkey (no out-of-range nodeNum) (#3677)', async () => {
+    // A 64-char pubkey would overflow parseInt and trip getNode's
+    // out-of-range guard on every poll; the route must not call getNode.
+    (databaseService.getTelemetryByNodeAveragedAsync as any).mockResolvedValue([
+      { telemetryType: 'temperature', value: 20 },
+    ]);
+    const pubkey = 'a'.repeat(64);
+    const res = await request(app).get(`/telemetry/${pubkey}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(databaseService.nodes.getNode).not.toHaveBeenCalled();
+  });
 });
 
 describe('GET /telemetry/:nodeId/rates', () => {

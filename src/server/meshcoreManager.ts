@@ -3573,8 +3573,12 @@ class MeshCoreManager extends EventEmitter {
       // carries the default scope (#3667).
       const response = await this.sendWithDefaultScope(() => this.sendBridgeCommand('request_telemetry', params, 45_000));
       if (!response.success) {
+        // This is the LPP (environment telemetry) path specifically — name it
+        // so operators don't confuse it with the separate status/stats request
+        // that runs alongside it for repeater-like targets (#3676). An LPP
+        // timeout here is common and non-fatal; the status path is unaffected.
         logger.warn(
-          `[MeshCore:${this.sourceId}] requestRemoteTelemetry(${publicKey.substring(0, 16)}…) failed: ${response.error}`,
+          `[MeshCore:${this.sourceId}] requestRemoteTelemetry (LPP) (${publicKey.substring(0, 16)}…) failed: ${response.error}`,
         );
         return null;
       }
@@ -3584,7 +3588,7 @@ class MeshCoreManager extends EventEmitter {
       return records;
     } catch (error) {
       logger.warn(
-        `[MeshCore:${this.sourceId}] requestRemoteTelemetry(${publicKey.substring(0, 16)}…) threw:`,
+        `[MeshCore:${this.sourceId}] requestRemoteTelemetry (LPP) (${publicKey.substring(0, 16)}…) threw:`,
         error,
       );
       return null;
