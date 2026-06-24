@@ -136,7 +136,10 @@ export default function NodeMarkersLayer() {
   const { data: sources = [] } = useDashboardSources();
   const sourceList = sources as Array<{ id: string; name: string }>;
   const sourceIds = sourceList.map((s) => s.id);
-  const { nodes } = useDashboardUnifiedData(sourceIds, sourceIds.length > 0);
+  // Pass the FULL source objects (not bare ids) so the unified merge stamps the
+  // per-node `sources` array used by the popup's "Seen by N sources" list and by
+  // the multi-source filter. Bare-string callers get no `sources` field.
+  const { nodes } = useDashboardUnifiedData(sources, sourceIds.length > 0);
   const hop = useHopCounts({
     enabled: config.layers.hopShading.enabled,
     sources: config.sources.length === 0 ? sourceIds : config.sources,
