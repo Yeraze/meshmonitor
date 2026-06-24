@@ -383,3 +383,36 @@ All gated by `requirePermission('automations', <action>)` (global resource):
 - Migration test (count + last-name) across SQLite/PG/MySQL shape.
 - API: CRUD, import lands disabled + admin-gated, export round-trips through `validateAutomationGraph`, run-log returns steps.
 - Global-scope test: automation with no source filter evaluates across all sources; with `sourceFilter` restricts correctly.
+
+---
+
+## 11. Follow-ups after the geofence/multi-source PR (2026-06-24)
+
+Deferred from the builder/test-panel UX work (geofence map editor, docked
+substitutions sidebar, channel-name trigger matching, source selector,
+`condition.always`, FINALLY `ALWAYS`, `action.nothing`, multi-source +
+protocol-aware unified-channel send, Test-panel selects, timestamp
+formatting). To pick up **after that PR merges**:
+
+1. **Implement the Schedule trigger fully.** `trigger.schedule` is currently a
+   catalog-only stub — it is **not fired by the engine at all** (no cron
+   wiring). The Test panel dry-runs it (`automationSimulator` `schedule` case →
+   matched), but nothing fires it live. Wire a cron scheduler (reuse
+   `src/server/utils/cronScheduler.ts` / croner) into
+   `automationEngineSingleton`: register a job per enabled `trigger.schedule`
+   automation from its `cron` param, re-register on automation create/update/
+   enable/disable and on engine reload, and call a new
+   `engine.onSchedule(automationId)` that builds a schedule `TriggerContext` and
+   runs the graph. Add a `buildScheduleContext` in `triggerContext.ts`. Tests:
+   job registered/cancelled on enable/disable/edit; fires on tick; invalid cron
+   rejected at save.
+
+2. **Smarter `{{ }}` text entry.** In the builder's text/textarea fields, render
+   `{{ trigger.* }}` / `{{ var.* }}` tokens **visually distinct** from plain text
+   (chip/highlight), and **flag unrecognized tokens as an error** to catch typos
+   (e.g. `{{ trigger.lastestVersion }}`, or a `var.` name with no matching
+   variable). Validate against the per-trigger token registry in
+   `SubstitutionsHelp.ts` (`TRIGGER_TOKENS` + `UNIVERSAL_TOKENS`) and the known
+   variables list. Likely a small highlighting input/overlay component used by
+   the `text`/`textarea` field kinds; surface unknown-token warnings inline (and
+   optionally in `validateForm` before save).
