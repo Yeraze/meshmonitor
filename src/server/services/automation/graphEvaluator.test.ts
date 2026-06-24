@@ -221,6 +221,12 @@ describe('evaluateGraph', () => {
       await evaluateGraph(build('NONE'), {}, hooks);
       expect(ran).toEqual([]);
     });
+
+    it('ALWAYS fires regardless of how many rules matched', async () => {
+      const { hooks, ran } = makeHooks();
+      await evaluateGraph(build('ALWAYS'), {}, hooks);
+      expect(ran).toEqual(['a']);
+    });
   });
 
   it('isolates an action error and keeps running others', async () => {

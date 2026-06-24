@@ -9,14 +9,33 @@ import { useState } from 'react';
 import { TRIGGERS, CONDITIONS, ACTIONS, BLOCK_BY_TYPE, fieldsFor, type BlockDef, type FieldDef } from './catalog';
 import type { WorkflowForm, FormBlock, Rule } from './compile';
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
+import GeofenceFieldInput from './GeofenceFieldInput';
+import type { GeofenceShape } from '../auto-responder/types';
 
 export interface VariableOption { name: string; type: string; }
-export interface SourceOption { id: string; name: string; }
+export interface SourceOption { id: string; name: string; type?: string; enabled?: boolean; }
+export interface UnifiedChannelOption {
+  name: string; protocol?: string; encryption?: string;
+  sources?: Array<{ sourceId: string; sourceName?: string; slot: number }>;
+}
+
+/** Sendable = enabled and not an MQTT (receive-only) source. */
+const isSendableSource = (s: SourceOption): boolean =>
+  s.enabled !== false && !String(s.type ?? '').startsWith('mqtt');
+
+/** Short protocol badge for a source type / channel protocol. */
+const protoBadge = (proto?: string): 'MC' | 'MT' | null => {
+  const t = String(proto ?? '');
+  if (t === 'meshcore') return 'MC';
+  if (t.startsWith('meshtastic')) return 'MT';
+  return null;
+};
 
 interface Props {
   form: WorkflowForm;
   variables: VariableOption[];
   sources: SourceOption[];
+  channels: UnifiedChannelOption[];
   onChange: (form: WorkflowForm) => void;
 }
 
@@ -37,8 +56,8 @@ function defaultParams(type: string, triggerType: string): Record<string, unknow
   return params;
 }
 
-function FieldInput({ field, value, onChange, variables, sources }: {
-  field: FieldDef; value: unknown; onChange: (v: unknown) => void; variables: VariableOption[]; sources: SourceOption[];
+function FieldInput({ field, value, onChange, variables, sources, channels }: {
+  field: FieldDef; value: unknown; onChange: (v: unknown) => void; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[];
 }) {
   let control;
   switch (field.kind) {
@@ -93,6 +112,53 @@ function FieldInput({ field, value, onChange, variables, sources }: {
         </select>
       );
       break;
+    case 'geofence':
+      control = <GeofenceFieldInput value={value as GeofenceShape | undefined} onChange={onChange} />;
+      break;
+    case 'sendSourceMulti': {
+      const sel = Array.isArray(value) ? (value as string[]) : [];
+      const sendable = sources.filter(isSendableSource);
+      control = (
+        <div>
+          {sendable.length === 0 && <div className="ae-muted">No sendable (non-MQTT) sources.</div>}
+          {sendable.map((s) => {
+            const badge = protoBadge(s.type);
+            return (
+              <label key={s.id} className="ae-switch" style={{ display: 'block', marginBottom: '0.2rem' }}>
+                <input type="checkbox" checked={sel.includes(s.id)} onChange={(e) =>
+                  onChange(e.target.checked ? [...sel, s.id] : sel.filter((x) => x !== s.id))} />
+                {' '}{s.name}{badge ? <span className="ae-chip">{badge}</span> : null}
+              </label>
+            );
+          })}
+        </div>
+      );
+      break;
+    }
+    case 'channelMulti': {
+      const sel = Array.isArray(value) ? (value as Array<{ name: string; protocol?: string }>) : [];
+      const same = (a: { name: string; protocol?: string }, c: UnifiedChannelOption) =>
+        a.name === c.name && (a.protocol ?? '') === (c.protocol ?? '');
+      const isSel = (c: UnifiedChannelOption) => sel.some((x) => same(x, c));
+      control = (
+        <div>
+          {channels.length === 0 && <div className="ae-muted">No channels found on sendable sources.</div>}
+          {channels.map((c) => (
+            <label key={`${c.protocol}/${c.name}`} className="ae-switch" style={{ display: 'block', marginBottom: '0.2rem' }}>
+              <input type="checkbox" checked={isSel(c)} onChange={(e) =>
+                onChange(e.target.checked
+                  ? [...sel, { name: c.name, protocol: c.protocol }]
+                  : sel.filter((x) => !same(x, c)))} />
+              {' '}{c.name || '(Primary)'}
+              {protoBadge(c.protocol) ? <span className="ae-chip">{protoBadge(c.protocol)}</span> : null}
+              {c.encryption ? <span className="ae-chip">{c.encryption}</span> : null}
+              {c.sources && c.sources.length > 1 ? <span className="ae-chip">{c.sources.length} sources</span> : null}
+            </label>
+          ))}
+        </div>
+      );
+      break;
+    }
     default:
       control = <input className="ae-input" value={(value ?? '') as string} placeholder={field.placeholder} onChange={(e) => onChange(e.target.value)} />;
   }
@@ -105,8 +171,8 @@ function FieldInput({ field, value, onChange, variables, sources }: {
   );
 }
 
-function BlockFields({ block, triggerType, variables, sources, onParams }: {
-  block: FormBlock; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; onParams: (p: Record<string, unknown>) => void;
+function BlockFields({ block, triggerType, variables, sources, channels, onParams }: {
+  block: FormBlock; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; onParams: (p: Record<string, unknown>) => void;
 }) {
   const def = BLOCK_BY_TYPE[block.type];
   if (!def) return null;
@@ -114,15 +180,15 @@ function BlockFields({ block, triggerType, variables, sources, onParams }: {
     <>
       {def.fields.map((f) => {
         const field = f.kind === 'fieldselect' ? { ...f, groups: fieldsFor(block.type, triggerType) } : f;
-        return <FieldInput key={f.name} field={field} value={block.params[f.name]} variables={variables} sources={sources}
+        return <FieldInput key={f.name} field={field} value={block.params[f.name]} variables={variables} sources={sources} channels={channels}
           onChange={(v) => onParams({ ...block.params, [f.name]: v })} />;
       })}
     </>
   );
 }
 
-function BlockListEditor({ blocks, options, triggerType, variables, sources, onChange, addLabel }: {
-  blocks: FormBlock[]; options: BlockDef[]; triggerType: string; variables: VariableOption[]; sources: SourceOption[];
+function BlockListEditor({ blocks, options, triggerType, variables, sources, channels, onChange, addLabel }: {
+  blocks: FormBlock[]; options: BlockDef[]; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[];
   onChange: (b: FormBlock[]) => void; addLabel: string;
 }) {
   const update = (i: number, b: FormBlock) => { const l = [...blocks]; l[i] = b; onChange(l); };
@@ -137,7 +203,7 @@ function BlockListEditor({ blocks, options, triggerType, variables, sources, onC
             </select>
             <button className="ae-btn ae-btn--ghost" onClick={() => onChange(blocks.filter((_, j) => j !== i))}>✕</button>
           </div>
-          <BlockFields block={b} triggerType={triggerType} variables={variables} sources={sources} onParams={(p) => update(i, { ...b, params: p })} />
+          <BlockFields block={b} triggerType={triggerType} variables={variables} sources={sources} channels={channels} onParams={(p) => update(i, { ...b, params: p })} />
         </div>
       ))}
       <button className="ae-btn" onClick={() => onChange([...blocks, { type: options[0].type, params: defaultParams(options[0].type, triggerType) }])}>{addLabel}</button>
@@ -145,7 +211,7 @@ function BlockListEditor({ blocks, options, triggerType, variables, sources, onC
   );
 }
 
-export default function AutomationBuilder({ form, variables, sources, onChange }: Props) {
+export default function AutomationBuilder({ form, variables, sources, channels, onChange }: Props) {
   const triggerType = form.trigger.type;
   const [showHelp, setShowHelp] = useState(false);
   const setTrigger = (type: string) => onChange({ ...form, trigger: { type, params: defaultParams(type, type) } });
@@ -174,7 +240,7 @@ export default function AutomationBuilder({ form, variables, sources, onChange }
             </select>
             <div className="ae-help-text">{BLOCK_BY_TYPE[triggerType]?.description}</div>
           </div>
-          <BlockFields block={form.trigger} triggerType={triggerType} variables={variables} sources={sources} onParams={setTriggerParams} />
+          <BlockFields block={form.trigger} triggerType={triggerType} variables={variables} sources={sources} channels={channels} onParams={setTriggerParams} />
         </div>
       </div>
 
@@ -188,10 +254,10 @@ export default function AutomationBuilder({ form, variables, sources, onChange }
           <div className="ae-section-body">
             <div className="ae-field-label" style={{ marginBottom: '0.4rem' }}>IF — all of these are true (optional)</div>
             {rule.conditions.length === 0 && <div className="ae-muted" style={{ marginBottom: '0.5rem' }}>No conditions — runs every time the trigger fires.</div>}
-            <BlockListEditor blocks={rule.conditions} options={CONDITIONS} triggerType={triggerType} variables={variables} sources={sources}
+            <BlockListEditor blocks={rule.conditions} options={CONDITIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels}
               onChange={(c) => updateRule(i, { ...rule, conditions: c })} addLabel="+ Add condition" />
             <div className="ae-field-label" style={{ margin: '0.9rem 0 0.4rem' }}>THEN — do this</div>
-            <BlockListEditor blocks={rule.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources}
+            <BlockListEditor blocks={rule.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels}
               onChange={(a) => updateRule(i, { ...rule, actions: a })} addLabel="+ Add action" />
           </div>
         </div>
@@ -215,11 +281,12 @@ export default function AutomationBuilder({ form, variables, sources, onChange }
                 <option value="ANY">ANY of the rules above matched</option>
                 <option value="ALL">ALL of the rules above matched</option>
                 <option value="NONE">NONE of the rules above matched</option>
+                <option value="ALWAYS">ALWAYS — run no matter what</option>
               </select>
               <div className="ae-help-text">“Matched” means a rule’s IF conditions passed.</div>
             </div>
             <div className="ae-field-label" style={{ margin: '0.6rem 0 0.4rem' }}>THEN — do this</div>
-            <BlockListEditor blocks={form.combine.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources}
+            <BlockListEditor blocks={form.combine.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels}
               onChange={(a) => setCombine({ ...form.combine!, actions: a })} addLabel="+ Add action" />
           </div>
         </div>

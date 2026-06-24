@@ -141,4 +141,37 @@ describe('simulateAutomation', () => {
     const miss = await simulateAutomation({ graph, varsRepo, event: { kind: 'system', event: 'bootup' } });
     expect(miss.matched).toBe(false);
   });
+
+  it('schedule trigger dry-runs as matched (cron tick assumed)', async () => {
+    const graph: AutomationGraph = {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.schedule', params: { cron: '0 * * * *' } },
+        { id: 'a', type: 'action.notify', params: { body: 'tick' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    };
+    const r = await simulateAutomation({ graph, varsRepo, event: { kind: 'schedule' } });
+    expect(r.matched).toBe(true);
+    expect(r.status).toBe('completed');
+    expect(r.actions).toHaveLength(1);
+  });
+
+  it('sourceFilter: the test panel can set the event source so the condition can pass', async () => {
+    const graph: AutomationGraph = {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: {} },
+        { id: 'c', type: 'condition.sourceFilter', params: { sourceIds: ['src-A'] } },
+        { id: 'a', type: 'action.tapback', params: { emoji: '👍' } },
+      ],
+      edges: [{ from: 't', to: 'c' }, { from: 'c', to: 'a', port: 'true' }],
+    };
+    const pass = await simulateAutomation({ graph, varsRepo, event: { kind: 'message', text: 'hi', sourceId: 'src-A' } });
+    expect(pass.conditionResults['c']).toBe(true);
+    expect(pass.actions).toHaveLength(1);
+
+    const fail = await simulateAutomation({ graph, varsRepo, event: { kind: 'message', text: 'hi', sourceId: 'other' } });
+    expect(fail.conditionResults['c']).toBe(false);
+  });
 });

@@ -49,6 +49,11 @@ describe('evaluateCondition', () => {
   const node = (type: string, params: Record<string, unknown>): AutomationNode =>
     ({ id: 'c', type: type as any, params });
 
+  it('always: passes unconditionally regardless of trigger/fields', async () => {
+    expect(await evaluateCondition(node('condition.always', {}), ctx({}))).toBe(true);
+    expect(await evaluateCondition(node('condition.always', {}), ctx({ event: 'bootup' }))).toBe(true);
+  });
+
   it('sourceFilter: empty = pass; membership respected', async () => {
     expect(await evaluateCondition(node('condition.sourceFilter', {}), ctx({}))).toBe(true);
     expect(await evaluateCondition(node('condition.sourceFilter', { sourceIds: ['default'] }), ctx({}))).toBe(true);

@@ -24,6 +24,7 @@ export type TriggerType =
   | 'trigger.geofence';
 
 export type ConditionType =
+  | 'condition.always'
   | 'condition.sourceFilter'
   | 'condition.numeric'
   | 'condition.string'
@@ -33,6 +34,7 @@ export type ConditionType =
   | 'condition.logical';
 
 export type ActionType =
+  | 'action.nothing'
   | 'action.sendMessage'
   | 'action.tapback'
   | 'action.nodeManage'
@@ -56,6 +58,7 @@ export const TRIGGER_TYPES: readonly TriggerType[] = [
 ];
 
 export const CONDITION_TYPES: readonly ConditionType[] = [
+  'condition.always',
   'condition.sourceFilter',
   'condition.numeric',
   'condition.string',
@@ -66,6 +69,7 @@ export const CONDITION_TYPES: readonly ConditionType[] = [
 ];
 
 export const ACTION_TYPES: readonly ActionType[] = [
+  'action.nothing',
   'action.sendMessage',
   'action.tapback',
   'action.nodeManage',
@@ -88,7 +92,7 @@ export function categoryOf(type: AutomationNodeType): BlockCategory {
   return 'flow';
 }
 
-export const COLLAPSE_MODES = ['ANY', 'ALL', 'NONE'] as const;
+export const COLLAPSE_MODES = ['ANY', 'ALL', 'NONE', 'ALWAYS'] as const;
 export type CollapseMode = (typeof COLLAPSE_MODES)[number];
 
 export const NUMERIC_OPS = ['>', '<', '>=', '<=', '==', '!='] as const;
@@ -294,7 +298,7 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
       switch (n.type) {
         case 'flow.collapse':
           if (!COLLAPSE_MODES.includes(p.mode as CollapseMode)) {
-            errors.push(`flow.collapse "${n.id}" requires params.mode ∈ {ANY,ALL,NONE}`);
+            errors.push(`flow.collapse "${n.id}" requires params.mode ∈ {ANY,ALL,NONE,ALWAYS}`);
           }
           break;
         case 'condition.numeric':

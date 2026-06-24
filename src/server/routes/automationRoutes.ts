@@ -24,6 +24,7 @@ import {
 import { reloadAutomations } from '../services/automation/automationEngineSingleton.js';
 import { simulateAutomation, type SimEventInput } from '../services/automation/automationSimulator.js';
 import { createMeshNodeDataProvider } from '../services/automation/meshNodeData.js';
+import { unifyChannels, sourceProtocol } from '../services/automation/channelUnify.js';
 
 const router = Router();
 
@@ -55,6 +56,30 @@ router.get('/catalog', canRead, (_req: Request, res: Response) => {
     variableTypes: VARIABLE_TYPES,
     variableScopes: VARIABLE_SCOPES,
   });
+});
+
+// ─── unified channels (for the Send-a-message picker) ────────────────────────
+
+/**
+ * Channels across all enabled, sendable (non-MQTT) sources, unified by name +
+ * key fingerprint. The raw PSK is never returned — only a one-way fingerprint
+ * the builder stores so the engine can resolve each source's local slot.
+ */
+router.get('/channels', canRead, async (_req: Request, res: Response) => {
+  try {
+    const sources = (await databaseService.sources.getAllSources())
+      .filter((s) => s.enabled && !String(s.type).startsWith('mqtt'));
+    const perSource = await Promise.all(sources.map(async (s) => ({
+      sourceId: s.id,
+      sourceName: s.name,
+      protocol: sourceProtocol(s.type),
+      channels: (await databaseService.channels.getAllChannels(s.id)).map((c) => ({ id: c.id, name: c.name, psk: c.psk, role: c.role })),
+    })));
+    res.json(unifyChannels(perSource));
+  } catch (error) {
+    logger.error('Error listing unified automation channels:', error);
+    res.status(500).json({ error: 'Failed to list channels' });
+  }
 });
 
 // ─── variables ───────────────────────────────────────────────────────────────

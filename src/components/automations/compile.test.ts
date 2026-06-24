@@ -70,7 +70,7 @@ describe('compile — combine (collapse / reduce)', () => {
     combine: { mode, actions: [{ type: 'flow.setVar', params: { variable: 'responded', op: 'flag' } }] },
   });
 
-  it.each(['ANY', 'ALL', 'NONE'] as const)('emits a collapse(%s) joining rule tails and round-trips', (mode) => {
+  it.each(['ANY', 'ALL', 'NONE', 'ALWAYS'] as const)('emits a collapse(%s) joining rule tails and round-trips', (mode) => {
     const g = valid(mk(mode));
     const col = g.nodes.find((n) => n.type === 'flow.collapse');
     expect(col?.params).toMatchObject({ mode });
@@ -83,6 +83,27 @@ describe('compile — combine (collapse / reduce)', () => {
     expect(back!.rules).toHaveLength(2);
     expect(back!.rules[1].actions).toHaveLength(0); // condition-only rule preserved
     expect(back!.combine).toEqual({ mode, actions: [{ type: 'flow.setVar', params: { variable: 'responded', op: 'flag' } }] });
+  });
+});
+
+describe('compile — geofence shape param round-trips', () => {
+  const geoTrig = (shape: unknown) => ({ type: 'trigger.geofence', params: { event: 'enter', shape } });
+
+  it('preserves a nested polygon shape (vertices array survives clean())', () => {
+    const shape = { type: 'polygon', vertices: [{ lat: -1, lng: -1 }, { lat: -1, lng: 1 }, { lat: 1, lng: 0 }] };
+    const form: WorkflowForm = { trigger: geoTrig(shape), rules: [{ conditions: [], actions: [tap] }], combine: null };
+    const g = compile(form);
+    expect(g.nodes[0].params).toMatchObject({ event: 'enter', shape });
+    const back = decompile(g);
+    expect(back).not.toBeNull();
+    expect(back!.trigger.params.shape).toEqual(shape);
+  });
+
+  it('preserves a nested circle shape', () => {
+    const shape = { type: 'circle', center: { lat: 27.95, lng: -82.46 }, radiusKm: 5 };
+    const form: WorkflowForm = { trigger: geoTrig(shape), rules: [{ conditions: [], actions: [tap] }], combine: null };
+    const back = decompile(compile(form));
+    expect(back!.trigger.params.shape).toEqual(shape);
   });
 });
 

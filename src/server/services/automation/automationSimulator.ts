@@ -38,7 +38,7 @@ import {
   type TriggerContext,
   type SystemEvent,
 } from './triggerContext.js';
-import { haversineKm, type GeofenceMode } from './geo.js';
+import { haversineKm, geofenceCenter, normalizeGeofenceParams, type GeofenceMode } from './geo.js';
 import {
   varContextFromTrigger,
   resolveOperand,
@@ -48,7 +48,7 @@ import {
 } from './engineContext.js';
 
 export type SimEventKind =
-  | 'message' | 'nodeUpdated' | 'nodeDiscovered' | 'telemetry' | 'system' | 'geofence';
+  | 'message' | 'nodeUpdated' | 'nodeDiscovered' | 'telemetry' | 'system' | 'geofence' | 'schedule';
 
 /** Synthetic trigger event the caller fills in (Test form / system test). */
 export interface SimEventInput {
@@ -59,6 +59,7 @@ export interface SimEventInput {
   from?: number;
   to?: number;
   channel?: number;
+  channelName?: string;
   portnum?: number;
   packetId?: number;
   hopStart?: number;
@@ -135,6 +136,15 @@ function stubData(
       }
       return live ? live.getTelemetry(sourceId, nodeNum, type).catch(() => null) : null;
     },
+    async getChannelName(sourceId, channelIndex) {
+      return live?.getChannelName ? live.getChannelName(sourceId, channelIndex).catch(() => null) : null;
+    },
+    async getChannels(sourceId) {
+      return live?.getChannels ? live.getChannels(sourceId).catch(() => []) : [];
+    },
+    async getSourceProtocol(sourceId) {
+      return live?.getSourceProtocol ? live.getSourceProtocol(sourceId).catch(() => null) : null;
+    },
   };
 }
 
@@ -209,7 +219,9 @@ function buildContext(graph: AutomationGraph, ev: SimEventInput, node: Partial<N
   switch (ev.kind) {
     case 'message': {
       const msg = synthMessage(ev, sourceId);
-      return { ctx: buildMessageContext(msg, sourceId, now), matched: messageMatchesFilter(msg, params) };
+      // Dry-run: the tester supplies the channel name directly (no per-source DB
+      // lookup), so name-based filters can be previewed.
+      return { ctx: buildMessageContext(msg, sourceId, now), matched: messageMatchesFilter(msg, params, ev.channelName) };
     }
     case 'nodeDiscovered':
     case 'nodeUpdated': {
@@ -233,11 +245,20 @@ function buildContext(graph: AutomationGraph, ev: SimEventInput, node: Partial<N
       const mode = (String(params.event ?? 'enter') as GeofenceMode);
       const lat = Number(node?.latitude ?? 0);
       const lon = Number(node?.longitude ?? 0);
-      const distanceKm = haversineKm(lat, lon, Number(params.lat), Number(params.lon));
+      const shape = normalizeGeofenceParams(params);
+      const center = shape ? geofenceCenter(shape) : { lat, lng: lon };
+      const distanceKm = haversineKm(lat, lon, center.lat, center.lng);
       // Preview: assume the configured crossing occurred; conditions still run
       // against the supplied position. matched=true so the trace is informative.
       return { ctx: buildGeofenceContext(Number(ev.nodeNum ?? 0), mode, lat, lon, distanceKm, sourceId, now), matched: true };
     }
+    case 'schedule':
+      // No mesh payload — a cron tick. Assume it fires so the downstream
+      // conditions/actions can be dry-run. (Live cron firing is not yet wired.)
+      return {
+        ctx: { triggerType: 'trigger.schedule', sourceId, subjectNodeNum: null, timestamp: now, fields: { sourceId, timestamp: now } },
+        matched: true,
+      };
     default:
       return { ctx: buildSystemContext('bootup', sourceId, null, undefined, now), matched: false };
   }

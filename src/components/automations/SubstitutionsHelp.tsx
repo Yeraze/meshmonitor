@@ -26,7 +26,7 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
   'trigger.geofence': [['event', 'enter / exit / dwell'], ['nodeNum', 'Node number'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude'], ['distanceKm', 'Distance from the region centre (km)']],
   'trigger.schedule': [],
 };
-const UNIVERSAL_TOKENS: Array<[string, string]> = [['sourceId', 'The source the event came from'], ['timestamp', 'Event time (epoch ms)']];
+const UNIVERSAL_TOKENS: Array<[string, string]> = [['sourceId', 'The source the event came from'], ['timestamp', 'Event time (rendered as a local date/time)']];
 const TRIGGER_LABEL: Record<string, string> = {
   'trigger.message': 'Message', 'trigger.telemetry': 'Telemetry', 'trigger.nodeUpdated': 'Node updated',
   'trigger.nodeDiscovered': 'Node discovered', 'trigger.system': 'System event', 'trigger.geofence': 'Geofence', 'trigger.schedule': 'Schedule',
@@ -37,32 +37,31 @@ export default function SubstitutionsHelpDrawer({ triggerType, variables, onClos
   triggerType: string; variables: Array<{ name: string }>; onClose: () => void;
 }) {
   const order = [triggerType, ...Object.keys(TRIGGER_TOKENS).filter((t) => t !== triggerType)];
+  // Docked, non-modal slide-in panel (no backdrop / click-away) so it stays open
+  // beside the builder while you keep editing the page.
   return (
-    <>
-      <div className="ae-drawer-overlay" onClick={onClose} />
-      <div className="ae-drawer">
-        <button className="ae-btn ae-btn--ghost ae-drawer-close" onClick={onClose}>✕</button>
-        <h2>Substitutions</h2>
-        <p className="ae-muted">Insert these <code>{'{{ … }}'}</code> tokens in any text field (message, notify title/body). An unknown or empty value renders blank.</p>
+    <aside className="ae-drawer" role="complementary" aria-label="Substitutions reference">
+      <button className="ae-btn ae-btn--ghost ae-drawer-close" onClick={onClose}>✕</button>
+      <h2>Substitutions</h2>
+      <p className="ae-muted">Insert these <code>{'{{ … }}'}</code> tokens in any text field (message, notify title/body). An unknown or empty value renders blank.</p>
 
-        <h3>Variables &amp; misc</h3>
-        <dl>
-          <dt>{'{{ var.NAME }}'}</dt><dd>Any user variable{variables.length ? `: ${variables.map((v) => v.name).join(', ')}` : ' (none defined yet)'}.</dd>
-          <dt>{'{{ NOW }}'}</dt><dd>Current time (epoch ms).</dd>
-        </dl>
+      <h3>Variables &amp; misc</h3>
+      <dl>
+        <dt>{'{{ var.NAME }}'}</dt><dd>Any user variable{variables.length ? `: ${variables.map((v) => v.name).join(', ')}` : ' (none defined yet)'}.</dd>
+        <dt>{'{{ NOW }}'}</dt><dd>Current time (rendered as a local date/time).</dd>
+      </dl>
 
-        {order.filter((t) => TRIGGER_TOKENS[t]).map((t) => (
-          <div key={t}>
-            <h3>{TRIGGER_LABEL[t] ?? t}{t === triggerType ? ' — current trigger' : ''}</h3>
-            <dl>
-              {[...TRIGGER_TOKENS[t], ...UNIVERSAL_TOKENS].flatMap(([k, d]) => [
-                <dt key={`${k}-t`}>{`{{ trigger.${k} }}`}</dt>,
-                <dd key={`${k}-d`}>{d}</dd>,
-              ])}
-            </dl>
-          </div>
-        ))}
-      </div>
-    </>
+      {order.filter((t) => TRIGGER_TOKENS[t]).map((t) => (
+        <div key={t}>
+          <h3>{TRIGGER_LABEL[t] ?? t}{t === triggerType ? ' — current trigger' : ''}</h3>
+          <dl>
+            {[...TRIGGER_TOKENS[t], ...UNIVERSAL_TOKENS].flatMap(([k, d]) => [
+              <dt key={`${k}-t`}>{`{{ trigger.${k} }}`}</dt>,
+              <dd key={`${k}-d`}>{d}</dd>,
+            ])}
+          </dl>
+        </div>
+      ))}
+    </aside>
   );
 }

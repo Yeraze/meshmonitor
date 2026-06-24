@@ -23,6 +23,11 @@ interface MeshSendManager {
   sendRemoveIgnoredNode(nodeNum: number, destinationNodeNum?: number): Promise<void>;
 }
 
+/** MeshCore companion managers send via a different method signature. */
+interface MeshCoreSendManager {
+  sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null): Promise<boolean>;
+}
+
 function mgr(sourceId: string | null): MeshSendManager {
   if (!sourceId) throw new Error('automation action requires a target source');
   const m = sourceManagerRegistry.getManager(sourceId) as unknown as MeshSendManager | undefined;
@@ -32,10 +37,36 @@ function mgr(sourceId: string | null): MeshSendManager {
   return m;
 }
 
+/**
+ * Send a channel/DM text message through whichever protocol the source speaks:
+ * Meshtastic (`sendTextMessage`) or MeshCore (`sendMessage`). MeshCore has no
+ * reply/emoji concept, so those are dropped for that protocol.
+ */
+async function sendTextVia(
+  sourceId: string | null,
+  text: string,
+  channel: number,
+  destination?: number,
+  replyId?: number,
+  emoji = 0,
+): Promise<unknown> {
+  if (!sourceId) throw new Error('automation action requires a target source');
+  const raw = sourceManagerRegistry.getManager(sourceId) as unknown as
+    (Partial<MeshSendManager> & Partial<MeshCoreSendManager>) | undefined;
+  if (raw && typeof raw.sendTextMessage === 'function') {
+    return raw.sendTextMessage(text, channel, destination, replyId, emoji);
+  }
+  if (raw && typeof raw.sendMessage === 'function') {
+    // MeshCore: channel send only (DM-by-nodeNum / tapbacks not supported here).
+    return raw.sendMessage(text, undefined, channel);
+  }
+  throw new Error(`source "${sourceId}" cannot send messages`);
+}
+
 export function createMeshActionDeps(): ActionDeps {
   return {
     async sendMessage({ sourceId, text, channel, destination, replyId }) {
-      return mgr(sourceId).sendTextMessage(text, channel ?? 0, destination, replyId, 0);
+      return sendTextVia(sourceId, text, channel ?? 0, destination, replyId, 0);
     },
 
     async sendTapback({ sourceId, emoji, channel, destination, replyId }) {
