@@ -2087,6 +2087,59 @@ describe('MeshCore Routes', () => {
     });
   });
 
+  describe('GET /api/sources/test-source/meshcore/packets (list)', () => {
+    const samplePackets = [
+      { id: 2, sourceId: 'test-source', timestamp: 1700000002000, payloadType: 1, routeType: 0, rawHex: 'beef' },
+      { id: 1, sourceId: 'test-source', timestamp: 1700000001000, payloadType: 2, routeType: 1, rawHex: 'cafe' },
+    ];
+
+    beforeEach(() => {
+      mockPacketService.getPackets.mockResolvedValue(samplePackets);
+      mockPacketService.getPacketCount.mockResolvedValue(samplePackets.length);
+      mockPacketService.isEnabled.mockResolvedValue(true);
+      mockPacketService.getMaxAgeHours.mockResolvedValue(24);
+      mockPacketService.getMaxCount.mockResolvedValue(1000);
+    });
+
+    it('honors meshcore_packet_log_max_count as the default query limit (#3690)', async () => {
+      // The user has configured a max count of 500. With no explicit ?limit,
+      // the list endpoint must query up to 500 rows — not the old hard-coded 100.
+      mockPacketService.getMaxCount.mockResolvedValue(500);
+
+      const response = await authenticatedAgent.get('/api/sources/test-source/meshcore/packets');
+
+      expect(response.status).toBe(200);
+      expect(response.body.maxCount).toBe(500);
+      expect(mockPacketService.getPackets).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceId: 'test-source', offset: 0, limit: 500 }),
+      );
+      expect(response.body.limit).toBe(500);
+    });
+
+    it('clamps the configured max count to the hard ceiling (1000)', async () => {
+      mockPacketService.getMaxCount.mockResolvedValue(5000);
+
+      const response = await authenticatedAgent.get('/api/sources/test-source/meshcore/packets');
+
+      expect(response.status).toBe(200);
+      expect(mockPacketService.getPackets).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: 1000 }),
+      );
+    });
+
+    it('honors an explicit smaller client-supplied limit', async () => {
+      mockPacketService.getMaxCount.mockResolvedValue(500);
+
+      const response = await authenticatedAgent.get('/api/sources/test-source/meshcore/packets?limit=50');
+
+      expect(response.status).toBe(200);
+      expect(mockPacketService.getPackets).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: 50 }),
+      );
+      expect(response.body.limit).toBe(50);
+    });
+  });
+
   describe('GET /api/sources/test-source/meshcore/packets/export', () => {
     const samplePackets = [
       { id: 2, sourceId: 'test-source', timestamp: 1700000002000, payloadType: 1, routeType: 0, rawHex: 'beef' },

@@ -35,7 +35,6 @@ interface MeshCorePacketMonitorViewProps {
 type Packet = MeshCoreOtaPacketEvent;
 
 const MAX_BUFFER = 2000;
-const PAGE_LIMIT = 200;
 
 function payloadLabel(p: Packet): string {
   if (p.payloadTypeName) return p.payloadTypeName;
@@ -89,7 +88,9 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ limit: String(PAGE_LIMIT) });
+      // Don't send an explicit limit: let the server apply the configured
+      // meshcore_packet_log_max_count as the effective page size (issue #3690).
+      const params = new URLSearchParams();
       if (payloadFilter !== '') params.set('payload_type', String(payloadFilter));
       if (routeFilter !== '') params.set('route_type', String(routeFilter));
       const res = await csrfFetch(`${mcPrefix}/packets?${params.toString()}`);
