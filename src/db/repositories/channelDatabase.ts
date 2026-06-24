@@ -62,6 +62,16 @@ export class ChannelDatabaseRepository extends BaseRepository {
     super(db, dbType);
   }
 
+  /**
+   * In-flight passive creates keyed by lower(name). MQTT ingest handles packets
+   * concurrently, so two packets for the same channel name can both miss the
+   * find SELECT and each INSERT a duplicate row. There is no cross-backend
+   * unique index on name (a functional/text unique index is awkward across
+   * SQLite/PostgreSQL/MySQL), so we serialize creates here — the race is in this
+   * single Node process. (Migration 102 merges any duplicates already on disk.)
+   */
+  private passiveCreateInFlight = new Map<string, Promise<number | null>>();
+
   // ============ CHANNEL DATABASE METHODS ============
 
   /**
@@ -126,15 +136,36 @@ export class ChannelDatabaseRepository extends BaseRepository {
     // from the DB always has it set, so fall through to create only if it
     // somehow isn't.
     if (existing && typeof existing.id === 'number') return existing.id;
-    return this.createAsync({
-      name: trimmed,
-      psk: '',
-      pskLength: 0,
-      isEnabled: false,
-      enforceNameValidation: false,
-      description: 'Auto-registered for MQTT channel permissions (no PSK)',
-      createdBy: null,
-    });
+
+    // Serialize concurrent creates for the same name (case-insensitive, matching
+    // getByNameAsync) so two in-flight MQTT packets don't each insert a
+    // duplicate passive row.
+    const key = trimmed.toLowerCase();
+    const inFlight = this.passiveCreateInFlight.get(key);
+    if (inFlight) return inFlight;
+
+    const promise = (async (): Promise<number | null> => {
+      // Re-check inside the guard: another call may have created the row between
+      // our initial find and acquiring the in-flight slot.
+      const recheck = await this.getByNameAsync(trimmed);
+      if (recheck && typeof recheck.id === 'number') return recheck.id;
+      return this.createAsync({
+        name: trimmed,
+        psk: '',
+        pskLength: 0,
+        isEnabled: false,
+        enforceNameValidation: false,
+        description: 'Auto-registered for MQTT channel permissions (no PSK)',
+        createdBy: null,
+      });
+    })();
+    // Register before the first await above has a chance to clear it.
+    this.passiveCreateInFlight.set(key, promise);
+    try {
+      return await promise;
+    } finally {
+      this.passiveCreateInFlight.delete(key);
+    }
   }
 
   /**

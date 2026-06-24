@@ -116,6 +116,7 @@ import { migration as createAutomationsMigration, runMigration098Postgres, runMi
 import { migration as createAutomationVariablesMigration, runMigration099Postgres, runMigration099Mysql } from '../server/migrations/099_create_automation_variables.js';
 import { migration as meshcoreChannelScopeMigration, runMigration100Postgres as runMeshcoreChannelScopePostgres, runMigration100Mysql as runMeshcoreChannelScopeMysql } from '../server/migrations/100_meshcore_channel_scope.js';
 import { migration as nodeUnmessagableMigration, runMigration101Postgres as runNodeUnmessagablePostgres, runMigration101Mysql as runNodeUnmessagableMysql } from '../server/migrations/101_add_node_unmessagable.js';
+import { migration as consolidateMqttChannelsMigration, runMigration102Postgres as runConsolidateMqttChannelsPostgres, runMigration102Mysql as runConsolidateMqttChannelsMysql } from '../server/migrations/102_consolidate_mqtt_channels.js';
 
 // ============================================================================
 // Registry
@@ -1608,4 +1609,13 @@ registry.register({
   sqlite: (db) => nodeUnmessagableMigration.up(db),
   postgres: (client) => runNodeUnmessagablePostgres(client),
   mysql: (pool) => runNodeUnmessagableMysql(pool),
+});
+
+registry.register({
+  number: 102,
+  name: 'consolidate_mqtt_channels',
+  settingsKey: 'migration_102_consolidate_mqtt_channels',
+  sqlite: (db) => consolidateMqttChannelsMigration.up(db),
+  postgres: (client) => runConsolidateMqttChannelsPostgres(client),
+  mysql: (pool) => runConsolidateMqttChannelsMysql(pool),
 });

@@ -180,11 +180,13 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
     return { ingested: false, reason: 'decode-error', portnum };
   }
 
-  // Surface the channel this packet came in on so the unified channel
-  // picker shows it. Fire-and-forget: a failed upsert just means the
-  // picker won't surface this channel for this source — the packet
-  // ingest itself is unaffected.
-  recordChannelFromEnvelope(sourceId, envelope, packet);
+  // NOTE: we intentionally do NOT write a slot/hash-keyed row to the `channels`
+  // table here. On MQTT `packet.channel` is a per-sender channel *hash* (0-255),
+  // not a stable 0-7 slot, so doing so split one logical channel (e.g. LongFast)
+  // into many rows keyed by whatever hash each gateway used. The channel instead
+  // surfaces by NAME through its channel_database row (resolved just below) — as
+  // message rows on `CHANNEL_DB_OFFSET + dbId` and as a virtual channel in
+  // /api/unified/channels. See docs/internal/dev-notes/MQTT_CHANNEL_CONSOLIDATION.md.
 
   // Resolve the channel_database row for this packet so downstream rows are
   // permission-keyed via channel_database_permissions instead of the raw
@@ -891,15 +893,6 @@ async function ingestStoreForward(
 }
 
 /**
- * Per-source memo of (slot, channelName) pairs we've already upserted into
- * the channels table this process lifetime. Used to keep `recordChannelFromEnvelope`
- * cheap: only the first packet on a given (source, slot, name) combination
- * actually hits the DB. Names that change for an existing slot still trigger
- * a fresh upsert so the picker stays in sync.
- */
-const channelMemo = new Map<string, Map<number, string>>();
-
-/**
  * Process-lifetime cache mapping lower-cased channel names to channel_database
  * row IDs. Avoids hitting the DB on every MQTT packet for the same name. The
  * cache is invalidated for a single name on the rare write that mints a new
@@ -951,56 +944,7 @@ async function resolveChannelDatabaseIdForMqtt(
 
 /** Exposed for tests to reset between cases. */
 export function _resetMqttIngestCachesForTest(): void {
-  channelMemo.clear();
   channelNameToDbIdCache.clear();
-}
-
-function recordChannelFromEnvelope(
-  sourceId: string,
-  envelope: ServiceEnvelopeShape,
-  packet: NonNullable<ServiceEnvelopeShape['packet']>,
-): void {
-  const name = envelope.channelId?.trim();
-  if (!name) return;
-  const slot = typeof packet.channel === 'number' ? packet.channel : 0;
-  if (slot < 0 || slot > 255) return;
-
-  let perSource = channelMemo.get(sourceId);
-  if (!perSource) {
-    perSource = new Map();
-    channelMemo.set(sourceId, perSource);
-  }
-  if (perSource.get(slot) === name) return;
-  perSource.set(slot, name);
-
-  try {
-    const result = databaseService.channels?.upsertChannel(
-      {
-        id: slot,
-        name,
-        // Slot 0 is the primary channel on Meshtastic; anything else is
-        // secondary. Matches the role rules in `upsertChannel`.
-        role: slot === 0 ? 1 : 2,
-        uplinkEnabled: true,
-        downlinkEnabled: true,
-      },
-      sourceId,
-    );
-    if (result && typeof (result as any).catch === 'function') {
-      (result as Promise<unknown>).catch((err) => {
-        // Clear the memo entry so a retry can run on the next packet —
-        // losing a single write isn't fatal, but persistently skipping
-        // it would keep the channel invisible in the picker.
-        perSource!.delete(slot);
-        const m = err instanceof Error ? err.message : String(err);
-        logger.debug(`MQTT channel upsert skipped for source ${sourceId} slot ${slot}: ${m}`);
-      });
-    }
-  } catch (err) {
-    perSource.delete(slot);
-    const m = err instanceof Error ? err.message : String(err);
-    logger.debug(`MQTT channel upsert unavailable for source ${sourceId} slot ${slot}: ${m}`);
-  }
 }
 
 function bytesToHex(buf: Uint8Array | ArrayLike<number>): string {

@@ -434,6 +434,33 @@ function runChannelDbTests(getBackend: () => TestBackend) {
 
     expect(await repo.getPermissionAsync(testUserId, channelId)).toBeNull();
   });
+
+  // --- findOrCreatePassiveByNameAsync (MQTT ingest) ---
+
+  it('findOrCreatePassiveByNameAsync - reuses an existing row (case-insensitive)', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const id = await repo.findOrCreatePassiveByNameAsync('LongFast');
+    const again = await repo.findOrCreatePassiveByNameAsync('longfast'); // case drift
+    expect(again).toBe(id);
+    const all = await repo.getAllAsync();
+    expect(all.filter((c) => (c.name ?? '').toLowerCase() === 'longfast')).toHaveLength(1);
+  });
+
+  it('findOrCreatePassiveByNameAsync - concurrent calls do not create duplicate rows (race guard)', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    // Fire many concurrent creates for the same name — the in-flight guard must
+    // collapse them to a single row so MQTT ingest can't race in duplicates.
+    const ids = await Promise.all(
+      Array.from({ length: 12 }, () => repo.findOrCreatePassiveByNameAsync('Primary')),
+    );
+    expect(new Set(ids).size).toBe(1);
+    const all = await repo.getAllAsync();
+    expect(all.filter((c) => (c.name ?? '').toLowerCase() === 'primary')).toHaveLength(1);
+  });
 }
 
 // --- SQLite Backend ---
