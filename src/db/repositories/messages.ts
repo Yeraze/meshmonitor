@@ -931,11 +931,24 @@ export class MessagesRepository extends BaseRepository {
    * @param moves - Array of {from, to} slot pairs. Handles swaps automatically.
    * @returns {success, totalRowsAffected} or throws on failure (transaction rolled back)
    */
-  async migrateMessagesForChannelMoves(moves: { from: number; to: number }[]): Promise<{ success: boolean; totalRowsAffected: number }> {
+  async migrateMessagesForChannelMoves(
+    moves: { from: number; to: number }[],
+    sourceId?: string,
+  ): Promise<{ success: boolean; totalRowsAffected: number }> {
     if (moves.length === 0) return { success: true, totalRowsAffected: 0 };
 
     const TEMP_CHANNEL = -99;
     let totalRowsAffected = 0;
+
+    // Source scope (#3712): without this, a channel move detected on one source
+    // rewrites the `channel` column for EVERY source's messages that happen to
+    // sit in the same slot, corrupting message-channel assignment across
+    // sources. The column is `sourceId` in all three dialects (quoted for PG).
+    const scope = sourceId
+      ? (this.isPostgres()
+          ? sql` AND ${sql.raw('"sourceId"')} = ${sourceId}`
+          : sql` AND sourceId = ${sourceId}`)
+      : sql``;
 
     // Detect swaps: if A→B and B→A both exist
     const swapPairs = new Set<string>();
@@ -959,9 +972,9 @@ export class MessagesRepository extends BaseRepository {
         const a = Math.min(move.from, move.to);
         const b = Math.max(move.from, move.to);
         operations.push(
-          { sql: sql`UPDATE messages SET channel = ${TEMP_CHANNEL} WHERE channel = ${a}`, description: `swap step 1: channel ${a} → temp` },
-          { sql: sql`UPDATE messages SET channel = ${a} WHERE channel = ${b}`, description: `swap step 2: channel ${b} → ${a}` },
-          { sql: sql`UPDATE messages SET channel = ${b} WHERE channel = ${TEMP_CHANNEL}`, description: `swap step 3: temp → ${b}` }
+          { sql: sql`UPDATE messages SET channel = ${TEMP_CHANNEL} WHERE channel = ${a}${scope}`, description: `swap step 1: channel ${a} → temp` },
+          { sql: sql`UPDATE messages SET channel = ${a} WHERE channel = ${b}${scope}`, description: `swap step 2: channel ${b} → ${a}` },
+          { sql: sql`UPDATE messages SET channel = ${b} WHERE channel = ${TEMP_CHANNEL}${scope}`, description: `swap step 3: temp → ${b}` }
         );
       }
     }
@@ -971,7 +984,7 @@ export class MessagesRepository extends BaseRepository {
       const key = [Math.min(move.from, move.to), Math.max(move.from, move.to)].join(',');
       if (!swapPairs.has(key)) {
         operations.push(
-          { sql: sql`UPDATE messages SET channel = ${move.to} WHERE channel = ${move.from}`, description: `move: channel ${move.from} → ${move.to}` }
+          { sql: sql`UPDATE messages SET channel = ${move.to} WHERE channel = ${move.from}${scope}`, description: `move: channel ${move.from} → ${move.to}` }
         );
       }
     }

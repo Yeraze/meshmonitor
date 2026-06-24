@@ -315,15 +315,20 @@ export class ChannelsRepository extends BaseRepository {
   // Used by legacy sync callers of DatabaseService. Throws on PG/MySQL.
 
   /**
-   * Synchronously get a channel by id (SQLite only).
+   * Synchronously get a channel by id (SQLite only), optionally scoped to a
+   * source (#3712). Without sourceId, returns the first matching row (legacy
+   * single-source behaviour).
    */
-  getChannelByIdSync(id: number): DbChannel | null {
+  getChannelByIdSync(id: number, sourceId?: string): DbChannel | null {
     const db = this.getSqliteDb();
     const { channels } = this.tables;
+    const whereClause = sourceId
+      ? and(eq(channels.id, id), eq(channels.sourceId, sourceId))
+      : eq(channels.id, id);
     const rows = db
       .select()
       .from(channels)
-      .where(eq(channels.id, id))
+      .where(whereClause)
       .limit(1)
       .all();
     if (rows.length === 0) return null;
@@ -331,26 +336,32 @@ export class ChannelsRepository extends BaseRepository {
   }
 
   /**
-   * Synchronously get all channels (SQLite only).
+   * Synchronously get all channels (SQLite only), optionally scoped to a
+   * source (#3712).
    */
-  getAllChannelsSync(): DbChannel[] {
+  getAllChannelsSync(sourceId?: string): DbChannel[] {
     const db = this.getSqliteDb();
     const { channels } = this.tables;
     const rows = db
       .select()
       .from(channels)
+      .where(this.withSourceScope(channels, sourceId))
       .orderBy(channels.id)
       .all();
     return (rows as any[]).map((row) => this.normalizeBigInts(row)) as DbChannel[];
   }
 
   /**
-   * Synchronously count channels (SQLite only).
+   * Synchronously count channels (SQLite only), optionally scoped to a
+   * source (#3712).
    */
-  getChannelCountSync(): number {
+  getChannelCountSync(sourceId?: string): number {
     const db = this.getSqliteDb();
     const { channels } = this.tables;
-    const rows = db.select({ count: count() }).from(channels).all();
+    const whereClause = this.withSourceScope(channels, sourceId);
+    const rows = whereClause
+      ? db.select({ count: count() }).from(channels).where(whereClause).all()
+      : db.select({ count: count() }).from(channels).all();
     return Number((rows[0] as any).count);
   }
 

@@ -376,6 +376,30 @@ describe('POST /channels/reorder', () => {
     expect(res.body.requiresReboot).toBe(false);
     expect(mockManager.beginEditSettings).not.toHaveBeenCalled();
   });
+
+  it('scopes the message migration to the resolved source (#3712)', async () => {
+    mockManager.sourceId = 'src-reorder';
+    mockDb.channels.getAllChannels.mockResolvedValue([
+      { id: 0, name: 'Primary', role: 1, psk: 'AQ==' },
+      { id: 1, name: 'Second', role: 2, psk: 'BB==' },
+    ]);
+    // Swap slots 0 and 1 so the reorder produces real moves.
+    const res = await request(app)
+      .post('/channels/reorder')
+      .send({ newOrder: [1, 0, 2, 3, 4, 5, 6, 7], sourceId: 'src-reorder' });
+    expect(res.status).toBe(200);
+    // The DB lookup driving the reorder must be scoped to the resolved source.
+    expect(mockDb.channels.getAllChannels).toHaveBeenCalledWith('src-reorder');
+    // The key fix: message migration must carry the sourceId so messages from
+    // other sources sharing the same slot ids are not migrated.
+    expect(mockDb.messages.migrateMessagesForChannelMoves).toHaveBeenCalledTimes(1);
+    const [moves, passedSourceId] = mockDb.messages.migrateMessagesForChannelMoves.mock.calls[0];
+    expect(passedSourceId).toBe('src-reorder');
+    expect(moves).toEqual(expect.arrayContaining([
+      { from: 1, to: 0 },
+      { from: 0, to: 1 },
+    ]));
+  });
 });
 
 describe('POST /channels/decode-url', () => {

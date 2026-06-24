@@ -2556,7 +2556,7 @@ apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
       markedCount = await databaseService.markAllDMMessagesAsReadAsync(localNodeInfo.nodeId, userId);
     } else if (channelId !== undefined) {
       // Mark all messages in a channel as read (specific channel permission already checked above)
-      markedCount = await databaseService.markChannelMessagesAsReadAsync(channelId, userId, beforeTimestamp);
+      markedCount = await databaseService.markChannelMessagesAsReadAsync(channelId, userId, beforeTimestamp, markReadSourceId);
     } else if (nodeId) {
       // Mark all DMs with a node as read (permission already checked above)
       const localNodeInfo = markReadManager.getLocalNodeInfo();
@@ -3337,7 +3337,9 @@ apiRouter.post('/nodes/refresh', requirePermission('nodes', 'write'), async (req
     await refreshManager.refreshNodeDatabase();
 
     const nodeCount = await databaseService.nodes.getNodeCount();
-    const channelCount = await databaseService.channels.getChannelCount();
+    const channelCount = await databaseService.channels.getChannelCount(
+      typeof refreshSourceId === 'string' && refreshSourceId.length > 0 ? refreshSourceId : undefined,
+    );
 
     logger.debug(`✅ Node refresh complete: ${nodeCount} nodes, ${channelCount} channels`);
 
@@ -4973,8 +4975,9 @@ apiRouter.post('/admin/get-channel', requireAdmin(), async (req, res) => {
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
 
     if (isLocalNode) {
-      // For local node, get from database
-      const channel = await databaseService.channels.getChannelById(channelIndex);
+      // For local node, get from database (scoped to source — #3712)
+      const gcScopedSourceId = typeof gcSourceId === 'string' && gcSourceId.length > 0 ? gcSourceId : undefined;
+      const channel = await databaseService.channels.getChannelById(channelIndex, gcScopedSourceId);
       if (channel) {
         return res.json({ channel: {
           name: channel.name || '',
@@ -5271,10 +5274,13 @@ apiRouter.post('/admin/export-config', requireAdmin(), async (req, res) => {
     const channelUrlService = (await import('./services/channelUrlService.js')).default;
 
     // Get channels from local or remote node
+    const aecScopedSourceId = typeof aecSourceId === 'string' && aecSourceId.length > 0 ? aecSourceId : undefined;
     const channels = [];
     for (const channelId of channelIds) {
       if (isLocalNode) {
-        const channel = await databaseService.channels.getChannelById(channelId);
+        // Scoped to source (#3712) so the local-node export path reads this
+        // source's channel row, not the first matching source.
+        const channel = await databaseService.channels.getChannelById(channelId, aecScopedSourceId);
         if (channel) {
           channels.push({
             psk: channel.psk ? channel.psk : 'none',
