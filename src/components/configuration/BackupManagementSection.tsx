@@ -4,6 +4,7 @@ import apiService from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSource } from '../../contexts/SourceContext';
 import '../../styles/BackupManagement.css';
 
 interface BackupFile {
@@ -20,6 +21,7 @@ interface BackupManagementSectionProps {
 const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBackupCreated }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
+  const { sourceId } = useSource();
 
   // State
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
@@ -149,7 +151,14 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
       showToast(t('backup_management.toast_creating_backup'), 'info');
 
       const baseUrl = await apiService.getBaseUrl();
-      const response = await fetch(`${baseUrl}/api/device/backup?save=true`, {
+      // Scope the backup to the currently-selected source so multi-source
+      // setups back up the active source rather than always the primary one.
+      // When sourceId is null (legacy/single-source view) the backend falls
+      // back to the primary manager, preserving existing behavior.
+      const backupUrl = sourceId
+        ? `${baseUrl}/api/device/backup?save=true&sourceId=${encodeURIComponent(sourceId)}`
+        : `${baseUrl}/api/device/backup?save=true`;
+      const response = await fetch(backupUrl, {
         method: 'GET',
         credentials: 'same-origin'
       });
