@@ -24,6 +24,9 @@ vi.mock('../utils/channelView.js', () => ({
     role: channel.role,
     ...(opts.includePsk ? { psk: channel.psk } : {}),
   })),
+  getEncryptionStatus: vi.fn((psk: string | null | undefined) =>
+    !psk || psk === '' ? 'none' : psk === 'AQ==' ? 'default' : 'secure'),
+  getRoleName: vi.fn(() => 'Unknown'),
 }));
 
 vi.mock('../utils/automationChannelMigration.js', () => ({
@@ -32,6 +35,7 @@ vi.mock('../utils/automationChannelMigration.js', () => ({
 
 vi.mock('../constants/meshtastic.js', () => ({
   modemPresetChannelName: vi.fn(() => 'LongFast'),
+  CHANNEL_DB_OFFSET: 100,
 }));
 
 const mockMeshcoreManager = vi.hoisted(() => ({
@@ -65,11 +69,14 @@ const mockDb = vi.hoisted(() => ({
   },
   channelDatabase: {
     getAllAsync: vi.fn().mockResolvedValue([]),
+    getByIdAsync: vi.fn().mockResolvedValue(null),
   },
   messages: {
     purgeChannelMessages: vi.fn().mockResolvedValue(0),
     migrateMessagesForChannelMoves: vi.fn().mockResolvedValue(undefined),
+    getDistinctChannelsForSource: vi.fn().mockResolvedValue([]),
   },
+  getChannelDatabasePermissionsForUserAsSetAsync: vi.fn().mockResolvedValue({}),
   settings: {
     getSetting: vi.fn().mockResolvedValue(null),
     setSetting: vi.fn().mockResolvedValue(undefined),
@@ -112,7 +119,10 @@ beforeEach(() => {
   mockDb.channels.getAllChannels.mockResolvedValue([]);
   mockDb.channels.getChannelCount.mockResolvedValue(0);
   mockDb.channelDatabase.getAllAsync.mockResolvedValue([]);
+  mockDb.channelDatabase.getByIdAsync.mockResolvedValue(null);
   mockDb.messages.purgeChannelMessages.mockResolvedValue(0);
+  mockDb.messages.getDistinctChannelsForSource.mockResolvedValue([]);
+  mockDb.getChannelDatabasePermissionsForUserAsSetAsync.mockResolvedValue({});
   mockDb.sources.getSource.mockResolvedValue({ type: 'meshtastic_tcp' });
   mockMeshcoreRegistry.get.mockReturnValue(mockMeshcoreManager);
 });
@@ -143,6 +153,56 @@ describe('GET /channels and /channels/all', () => {
     const res = await request(app).get('/channels');
     expect(res.status).toBe(500);
     expect(res.body.error).toBe('Failed to fetch channels');
+  });
+});
+
+describe('GET /channels for MQTT sources (virtual channel enumeration)', () => {
+  it('enumerates channel_database-backed channels that have messages', async () => {
+    mockDb.sources.getSource.mockResolvedValue({ type: 'mqtt_bridge' });
+    // Two virtual channels (100+id) plus one raw straggler, ordered by activity.
+    mockDb.messages.getDistinctChannelsForSource.mockResolvedValue([
+      { channel: 101, messageCount: 50, lastTimestamp: 2000 },
+      { channel: 102, messageCount: 10, lastTimestamp: 1000 },
+      { channel: 3, messageCount: 2, lastTimestamp: 500 },
+    ]);
+    mockDb.channelDatabase.getByIdAsync.mockImplementation(async (id: number) => {
+      if (id === 1) return { id: 1, name: 'MediumFast', psk: '' };
+      if (id === 2) return { id: 2, name: 'Secret', psk: 'AQ==' };
+      return null;
+    });
+
+    const res = await request(app).get('/channels?sourceId=mqtt-1');
+    expect(res.status).toBe(200);
+    // Device-slot getAllChannels must NOT be the source of truth here.
+    expect(mockDb.messages.getDistinctChannelsForSource).toHaveBeenCalledWith('mqtt-1');
+
+    const byId = Object.fromEntries(res.body.map((c: any) => [c.id, c]));
+    expect(res.body.map((c: any) => c.id)).toEqual([101, 102, 3]);
+    expect(byId[101].name).toBe('MediumFast');
+    expect(byId[101].displayName).toBe('MediumFast #101');
+    expect(byId[101].pskSet).toBe(false);
+    expect(byId[102].displayName).toBe('Secret #102');
+    expect(byId[102].pskSet).toBe(true);
+    expect(byId[3].name).toBe('Channel 3');
+  });
+
+  it('returns [] for an MQTT source with no messages', async () => {
+    mockDb.sources.getSource.mockResolvedValue({ type: 'mqtt_broker' });
+    mockDb.messages.getDistinctChannelsForSource.mockResolvedValue([]);
+    const res = await request(app).get('/channels?sourceId=mqtt-1');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('TCP sources keep the device-slot code path (getDistinctChannelsForSource not used)', async () => {
+    mockDb.sources.getSource.mockResolvedValue({ type: 'meshtastic_tcp' });
+    mockDb.channels.getAllChannels.mockResolvedValue([
+      { id: 0, name: 'Primary', role: 1, psk: 'AQ==' },
+    ]);
+    const res = await request(app).get('/channels?sourceId=tcp-1');
+    expect(res.status).toBe(200);
+    expect(res.body.map((c: any) => c.id)).toEqual([0]);
+    expect(mockDb.messages.getDistinctChannelsForSource).not.toHaveBeenCalled();
   });
 });
 

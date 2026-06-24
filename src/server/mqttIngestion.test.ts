@@ -37,7 +37,10 @@ vi.mock('../services/database.js', () => ({
       // slot — keeps every pre-existing test seeing the same channel values
       // it asserted under the old behavior. Tests that want to exercise
       // the channel_database-keyed path override the mock per-case.
+      // The ingest path now resolves by (name, hash); the legacy name-only
+      // method is kept mocked too for any other callers.
       findOrCreatePassiveByNameAsync: vi.fn(async () => undefined),
+      findOrCreateByNameAndHashAsync: vi.fn(async () => undefined),
     },
   },
 }));
@@ -521,7 +524,7 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
   });
 
   it('stamps `channel` with CHANNEL_DB_OFFSET + id when the channel name resolves', async () => {
-    (databaseService.channelDatabase!.findOrCreatePassiveByNameAsync as any).mockResolvedValueOnce(7);
+    (databaseService.channelDatabase!.findOrCreateByNameAndHashAsync as any).mockResolvedValueOnce(7);
 
     const result = await ingestServiceEnvelope({
       sourceId: 'bridge-1',
@@ -529,13 +532,14 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
     });
 
     expect(result.ingested).toBe(true);
-    expect(databaseService.channelDatabase!.findOrCreatePassiveByNameAsync).toHaveBeenCalledWith('LongFast');
+    // envFor packets carry channel: 0, which normalizes to a null hash.
+    expect(databaseService.channelDatabase!.findOrCreateByNameAndHashAsync).toHaveBeenCalledWith('LongFast', null);
     const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
     expect(inserted.channel).toBe(CHANNEL_DB_OFFSET + 7);
   });
 
-  it('memoizes lookups per channel name so repeated packets do not hit the DB twice', async () => {
-    (databaseService.channelDatabase!.findOrCreatePassiveByNameAsync as any).mockResolvedValue(11);
+  it('memoizes lookups per channel name+hash so repeated packets do not hit the DB twice', async () => {
+    (databaseService.channelDatabase!.findOrCreateByNameAndHashAsync as any).mockResolvedValue(11);
 
     await ingestServiceEnvelope({
       sourceId: 'bridge-1',
@@ -546,10 +550,46 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
       envelope: envFor(NODE_IN, 1 /* TEXT_MESSAGE_APP */),
     });
 
-    expect(databaseService.channelDatabase!.findOrCreatePassiveByNameAsync).toHaveBeenCalledTimes(1);
+    expect(databaseService.channelDatabase!.findOrCreateByNameAndHashAsync).toHaveBeenCalledTimes(1);
     const inserts = (databaseService.messages.insertMessage as any).mock.calls;
     expect(inserts[0][0].channel).toBe(CHANNEL_DB_OFFSET + 11);
     expect(inserts[1][0].channel).toBe(CHANNEL_DB_OFFSET + 11);
+  });
+
+  it('passes the packet channel hash to the resolver and keys the cache by name+hash', async () => {
+    // Two packets, same channel name "LongFast", DIFFERENT channel hashes.
+    // The resolver must be called once per distinct hash (cache keyed by
+    // name+hash), and each gets its own channel_database id.
+    (databaseService.channelDatabase!.findOrCreateByNameAndHashAsync as any)
+      .mockImplementation(async (_name: string, hash: number | null) => (hash === 8 ? 1 : 2));
+
+    const envWithHash = (hash: number): ServiceEnvelopeShape => ({
+      channelId: 'LongFast',
+      gatewayId: '!00000001',
+      packet: {
+        id: 0xfeed1000 + hash,
+        from: NODE_IN,
+        to: 0xffffffff,
+        channel: hash,
+        decoded: { portnum: 1 /* TEXT_MESSAGE_APP */, payload: new Uint8Array([0]) },
+      },
+    });
+
+    // Hash 8 → id 1.
+    await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: envWithHash(8) });
+    // Hash 42 → id 2 (same name, different key).
+    await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: envWithHash(42) });
+    // Hash 8 again → cache hit, resolver not called a third time.
+    await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: envWithHash(8) });
+
+    expect(databaseService.channelDatabase!.findOrCreateByNameAndHashAsync).toHaveBeenCalledWith('LongFast', 8);
+    expect(databaseService.channelDatabase!.findOrCreateByNameAndHashAsync).toHaveBeenCalledWith('LongFast', 42);
+    expect(databaseService.channelDatabase!.findOrCreateByNameAndHashAsync).toHaveBeenCalledTimes(2);
+
+    const inserts = (databaseService.messages.insertMessage as any).mock.calls;
+    expect(inserts[0][0].channel).toBe(CHANNEL_DB_OFFSET + 1);
+    expect(inserts[1][0].channel).toBe(CHANNEL_DB_OFFSET + 2);
+    expect(inserts[2][0].channel).toBe(CHANNEL_DB_OFFSET + 1);
   });
 
   it('falls back to the raw slot when envelope.channelId is missing', async () => {
@@ -567,7 +607,7 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
 
     const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope });
     expect(result.ingested).toBe(true);
-    expect(databaseService.channelDatabase!.findOrCreatePassiveByNameAsync).not.toHaveBeenCalled();
+    expect(databaseService.channelDatabase!.findOrCreateByNameAndHashAsync).not.toHaveBeenCalled();
     const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
     expect(inserted.channel).toBe(3);
   });
@@ -595,7 +635,7 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
 
     const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope });
     expect(result.ingested).toBe(true);
-    expect(databaseService.channelDatabase!.findOrCreatePassiveByNameAsync).not.toHaveBeenCalled();
+    expect(databaseService.channelDatabase!.findOrCreateByNameAndHashAsync).not.toHaveBeenCalled();
     const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
     expect(inserted.channel).toBe(CHANNEL_DB_OFFSET + 42);
   });
@@ -604,7 +644,7 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
     // Edge case: an empty/whitespace-only channel name reaches the repo and
     // returns null — surface should still ingest the row with the slot
     // value, just not permission-key it through channel_database.
-    (databaseService.channelDatabase!.findOrCreatePassiveByNameAsync as any).mockResolvedValueOnce(null);
+    (databaseService.channelDatabase!.findOrCreateByNameAndHashAsync as any).mockResolvedValueOnce(null);
 
     const result = await ingestServiceEnvelope({
       sourceId: 'bridge-1',
@@ -616,7 +656,7 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
   });
 
   it('encodes the channel on traceroute rows the same way as messages', async () => {
-    (databaseService.channelDatabase!.findOrCreatePassiveByNameAsync as any).mockResolvedValueOnce(5);
+    (databaseService.channelDatabase!.findOrCreateByNameAndHashAsync as any).mockResolvedValueOnce(5);
 
     const result = await ingestServiceEnvelope({
       sourceId: 'bridge-1',
@@ -634,7 +674,7 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
     // grant. But #3108 hides the channel_0..7 toggles for MQTT scopes
     // and directs admins to Virtual Channel Permissions, leaving no
     // way to grant map access — every non-admin saw "No nodes visible".
-    (databaseService.channelDatabase!.findOrCreatePassiveByNameAsync as any).mockResolvedValueOnce(9);
+    (databaseService.channelDatabase!.findOrCreateByNameAndHashAsync as any).mockResolvedValueOnce(9);
 
     const result = await ingestServiceEnvelope({
       sourceId: 'bridge-1',
@@ -647,7 +687,7 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
   });
 
   it('stamps node.channel on POSITION upserts the same way as NODEINFO', async () => {
-    (databaseService.channelDatabase!.findOrCreatePassiveByNameAsync as any).mockResolvedValueOnce(4);
+    (databaseService.channelDatabase!.findOrCreateByNameAndHashAsync as any).mockResolvedValueOnce(4);
 
     const result = await ingestServiceEnvelope({
       sourceId: 'bridge-1',
@@ -663,7 +703,7 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
     // Mirrors the same fallback semantics as the message-side test
     // above — an empty channelId or null find-or-create should still
     // ingest the node, just keyed to the raw slot.
-    (databaseService.channelDatabase!.findOrCreatePassiveByNameAsync as any).mockResolvedValueOnce(null);
+    (databaseService.channelDatabase!.findOrCreateByNameAndHashAsync as any).mockResolvedValueOnce(null);
 
     const result = await ingestServiceEnvelope({
       sourceId: 'bridge-1',

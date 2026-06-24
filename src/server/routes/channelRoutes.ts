@@ -30,10 +30,90 @@ import { transformChannel } from '../utils/channelView.js';
 import { detectChannelCollisions } from '../utils/channelCollision.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { migrateAutomationChannels } from '../utils/automationChannelMigration.js';
-import { modemPresetChannelName } from '../constants/meshtastic.js';
+import { modemPresetChannelName, CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
+import { getEncryptionStatus, getRoleName } from '../utils/channelView.js';
 import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
 
 const router: Router = Router();
+
+/**
+ * Build the Channels-tab channel list for an MQTT source (mqtt_bridge /
+ * mqtt_broker). MQTT sources don't sync device channel slots, so their
+ * per-source `channels` table is empty; instead every message is filed under a
+ * channel_database-backed virtual channel (`CHANNEL_DB_OFFSET + id`) or, for
+ * legacy stragglers, a raw hash slot (`< CHANNEL_DB_OFFSET`).
+ *
+ * We enumerate the distinct `messages.channel` values that actually carry
+ * traffic for the source and project each into the same shape `transformChannel`
+ * emits (id, name, displayName, role, roleName, pskSet, encryptionStatus, …),
+ * so the existing frontend Channels tab renders them without changes. Virtual
+ * channels resolve their name/PSK/enabled state from the channel_database row;
+ * raw stragglers get a best-effort label. Per-channel read permission is
+ * enforced (channel_database permissions for virtual ids, channel_${id} for raw
+ * ids); admins see all. Sorted most-active first.
+ */
+async function buildMqttSourceChannels(
+  req: Request,
+  sourceId: string,
+  isAdmin: boolean,
+): Promise<unknown[]> {
+  const distinct = await databaseService.messages.getDistinctChannelsForSource(sourceId);
+  if (distinct.length === 0) return [];
+
+  // Virtual-channel read permissions (channel_database) for the caller.
+  const virtualPerms = (!isAdmin && req.user)
+    ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(req.user.id)
+    : {};
+
+  const out: unknown[] = [];
+  for (const { channel } of distinct) {
+    if (channel >= CHANNEL_DB_OFFSET) {
+      const dbId = channel - CHANNEL_DB_OFFSET;
+      // Permission gate for virtual channels.
+      if (!isAdmin && !(virtualPerms[dbId]?.read === true)) continue;
+
+      const row = await databaseService.channelDatabase.getByIdAsync(dbId);
+      const name = (row?.name ?? '').trim() || `Channel ${channel}`;
+      const psk = row?.psk ?? '';
+      out.push({
+        id: channel,
+        name,
+        // Virtual channels carry the channel number in their display name so
+        // the tab disambiguates same-name channels (e.g. "MediumFast #101").
+        displayName: `${name} #${channel}`,
+        role: null,
+        roleName: getRoleName(undefined),
+        uplinkEnabled: false,
+        downlinkEnabled: false,
+        positionPrecision: undefined,
+        scope: null,
+        pskSet: !!psk,
+        encryptionStatus: getEncryptionStatus(psk),
+      });
+    } else {
+      // Raw hash straggler (< OFFSET). Gate on channel_${id} read.
+      if (!isAdmin) {
+        const channelResource = `channel_${channel}` as import('../../types/permission.js').ResourceType;
+        const ok = req.user ? await hasPermission(req.user, channelResource, 'read', sourceId) : false;
+        if (!ok) continue;
+      }
+      out.push({
+        id: channel,
+        name: `Channel ${channel}`,
+        displayName: `Channel ${channel}`,
+        role: null,
+        roleName: getRoleName(undefined),
+        uplinkEnabled: false,
+        downlinkEnabled: false,
+        positionPrecision: undefined,
+        scope: null,
+        pskSet: false,
+        encryptionStatus: getEncryptionStatus(''),
+      });
+    }
+  }
+  return out;
+}
 
 // Get all channels (unfiltered, for export/config purposes)
 // MM-SEC-2: Per-row permission gate + transformChannel projection so the
@@ -80,8 +160,30 @@ router.get('/all', optionalAuth(), async (req: Request, res: Response) => {
 router.get('/', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const channelsSourceId = req.query.sourceId as string | undefined;
-    const allChannels = await databaseService.channels.getAllChannels(channelsSourceId);
     const isAdmin = req.user?.isAdmin === true;
+
+    // MQTT sources (mqtt_bridge / mqtt_broker) don't sync device channel slots;
+    // migration 103 emptied their `channels` table and ingestion files messages
+    // under channel_database-backed virtual channels (`CHANNEL_DB_OFFSET + id`).
+    // For those sources enumerate the virtual channels that actually carry
+    // traffic so the Channels tab isn't empty. TCP/device sources keep the
+    // existing slot-based code path below.
+    if (channelsSourceId) {
+      try {
+        const source = await databaseService.sources.getSource(channelsSourceId);
+        if (source && (source.type === 'mqtt_bridge' || source.type === 'mqtt_broker')) {
+          const mqttChannels = await buildMqttSourceChannels(req, channelsSourceId, isAdmin);
+          logger.debug(`📡 Serving ${mqttChannels.length} MQTT virtual channels for source ${channelsSourceId}`);
+          res.json(mqttChannels);
+          return;
+        }
+      } catch (err) {
+        logger.warn(`Failed to build MQTT channel list for source ${channelsSourceId}:`, err);
+        // Fall through to the slot-based path (returns [] for MQTT, but never 500s).
+      }
+    }
+
+    const allChannels = await databaseService.channels.getAllChannels(channelsSourceId);
 
     // Resolve the source's persisted modem preset (if scoped to one source)
     // so empty-name slot 0 displays as "MediumFast"/"LongFast"/etc. via
