@@ -209,7 +209,18 @@ export class AutomationEngineService {
 
   async onMessage(msg: DbMessage, sourceId: string | null): Promise<number> {
     const ctx = buildMessageContext(msg, sourceId, this.now());
-    return this.runTrigger(ctx, (a) => messageMatchesFilter(msg, a.triggerNode.params ?? {}));
+    // Resolve the message's channel NAME once (per-source slot→name), but only
+    // when a loaded message automation actually filters by channelName — keeps
+    // the hot path DB-free when nobody uses name matching.
+    let channelName: string | null | undefined;
+    const usesChannelName = (this.index.get('trigger.message') ?? []).some((a) => {
+      const p = a.triggerNode.params as Record<string, unknown> | undefined;
+      return typeof p?.channelName === 'string' && p.channelName.length > 0;
+    });
+    if (usesChannelName && this.data.getChannelName) {
+      channelName = await this.data.getChannelName(sourceId, Number(msg.channel));
+    }
+    return this.runTrigger(ctx, (a) => messageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName));
   }
 
   async onNode(

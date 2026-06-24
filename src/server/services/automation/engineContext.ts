@@ -39,6 +39,12 @@ export interface NodeFacts {
 export interface NodeDataProvider {
   getNode(sourceId: string | null, nodeNum: number): Promise<NodeFacts | null>;
   getTelemetry(sourceId: string | null, nodeNum: number, telemetryType: string): Promise<number | null>;
+  /**
+   * Resolve a source's channel slot index to its channel name, for
+   * `trigger.message` channel-by-name matching. Optional — providers that don't
+   * implement it disable name matching (the filter then never matches a name).
+   */
+  getChannelName?(sourceId: string | null, channelIndex: number): Promise<string | null>;
 }
 
 export interface EngineEvalContext {

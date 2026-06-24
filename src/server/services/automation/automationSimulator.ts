@@ -59,6 +59,7 @@ export interface SimEventInput {
   from?: number;
   to?: number;
   channel?: number;
+  channelName?: string;
   portnum?: number;
   packetId?: number;
   hopStart?: number;
@@ -209,7 +210,9 @@ function buildContext(graph: AutomationGraph, ev: SimEventInput, node: Partial<N
   switch (ev.kind) {
     case 'message': {
       const msg = synthMessage(ev, sourceId);
-      return { ctx: buildMessageContext(msg, sourceId, now), matched: messageMatchesFilter(msg, params) };
+      // Dry-run: the tester supplies the channel name directly (no per-source DB
+      // lookup), so name-based filters can be previewed.
+      return { ctx: buildMessageContext(msg, sourceId, now), matched: messageMatchesFilter(msg, params, ev.channelName) };
     }
     case 'nodeDiscovered':
     case 'nodeUpdated': {

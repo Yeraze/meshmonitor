@@ -107,6 +107,30 @@ describe('AutomationEngineService', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('matches a message trigger by channel NAME, resolving the per-source slot→name', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('on-gauntlet', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { channelName: 'gauntlet' } },
+        { id: 'tap', type: 'action.tapback', params: { emoji: '👍' } },
+      ],
+      edges: [{ from: 't', to: 'tap' }],
+    });
+    // Slot 2 is "Gauntlet" on this source; slot 0 is "Primary".
+    const chData = {
+      getNode: async () => null,
+      getTelemetry: async () => null,
+      getChannelName: async (_sourceId: string | null, idx: number) => (idx === 2 ? 'Gauntlet' : 'Primary'),
+    };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: chData, now: () => clock });
+    await engine.load();
+
+    expect(await engine.onMessage(message({ channel: 2 }), 'default')).toBe(1); // name matches (case-insensitive)
+    expect(await engine.onMessage(message({ channel: 0 }), 'default')).toBe(0); // "Primary" ≠ "gauntlet"
+    expect(calls.map((c) => c.fn)).toEqual(['sendTapback']);
+  });
+
   it('enforces the per-automation cooldown', async () => {
     const { calls, deps } = recorder();
     await createEnabled('ping', {

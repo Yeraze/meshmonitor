@@ -94,12 +94,16 @@
   background: var(--ctp-surface1); color: var(--ctp-subtext1); border: none; cursor: pointer; flex: none;
 }
 .ae-help-icon:hover { background: var(--ctp-blue); color: var(--ctp-accent-text); }
-.ae-drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1000; }
+/* Docked, non-modal reference panel: slides in from the right and stays put (no
+   backdrop), so it can remain open while you keep editing the page. */
 .ae-drawer {
   position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 92vw); z-index: 1001;
   background: var(--ctp-mantle); border-left: 1px solid var(--ctp-surface1);
   box-shadow: -8px 0 24px rgba(0,0,0,0.35); padding: 1.25rem 1.4rem; overflow-y: auto;
+  animation: ae-drawer-slide-in 0.2s ease;
 }
+@keyframes ae-drawer-slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { .ae-drawer { animation: none; } }
 .ae-drawer h2 { margin-top: 0; font-size: 1.15rem; }
 /* Drawer headings sit on the dark --ctp-mantle drawer — use the theme foreground,
    not the black --ctp-accent-text (which is meant for bright accent backgrounds). */

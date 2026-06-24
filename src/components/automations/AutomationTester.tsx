@@ -70,6 +70,7 @@ export default function AutomationTester({ getConfig, variables }: Props) {
     switch (kind) {
       case 'message':
         return { ...base, text: ev.text ?? '', from: numOrUndef(ev.from), channel: numOrUndef(ev.channel),
+          channelName: ev.channelName || undefined,
           hopStart: numOrUndef(ev.hopStart), hopLimit: numOrUndef(ev.hopLimit), packetId: numOrUndef(ev.packetId) ?? 1,
           snr: numOrUndef(ev.snr), rssi: numOrUndef(ev.rssi), viaMqtt: ev.viaMqtt === 'true' ? true : undefined };
       case 'telemetry':
@@ -193,7 +194,7 @@ function renderEventInputs(kind: string, ev: EventState, set: (k: string, v: str
   switch (kind) {
     case 'message':
       return <>
-        {f('Message text', 'text')}{f('From node #', 'from', 'number')}{f('Channel #', 'channel', 'number')}
+        {f('Message text', 'text')}{f('From node #', 'from', 'number')}{f('Channel #', 'channel', 'number')}{f('Channel name', 'channelName')}
         {f('Hop start', 'hopStart', 'number')}{f('Hop limit', 'hopLimit', 'number')}
         {f('SNR', 'snr', 'number')}{f('RSSI', 'rssi', 'number')}
         <div className="ae-field">

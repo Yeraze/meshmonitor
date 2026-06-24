@@ -45,7 +45,8 @@ export const TRIGGERS: BlockDef[] = [
     fields: [
       { name: 'textContains', label: 'Text contains', kind: 'text', placeholder: 'e.g. ping', help: 'Case-insensitive substring match. Leave blank to match any text.' },
       { name: 'regex', label: 'Text matches regex', kind: 'text', placeholder: 'e.g. ^(test|ping)', advanced: true, help: 'A regular expression matched against the message text.' },
-      { name: 'channel', label: 'On channel #', kind: 'number', placeholder: 'any', advanced: true },
+      { name: 'channelName', label: 'On channel (name)', kind: 'text', placeholder: 'any', advanced: true, help: 'Match by channel name (case-insensitive) — portable across sources where the same channel sits in a different slot. Preferred over the channel # below.' },
+      { name: 'channel', label: 'On channel #', kind: 'number', placeholder: 'any', advanced: true, help: 'Match by raw channel index. Note: the same channel can be a different index on different sources — use the name above for cross-source automations.' },
       { name: 'from', label: 'From node #', kind: 'number', placeholder: 'any', advanced: true, help: 'Only fire for messages from this node number.' },
       COOLDOWN,
     ],

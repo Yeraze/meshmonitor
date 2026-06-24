@@ -29,5 +29,14 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
         return null;
       }
     },
+
+    async getChannelName(sourceId, channelIndex) {
+      try {
+        const ch = await databaseService.channels.getChannelById(channelIndex, sourceId ?? undefined);
+        return ch?.name ?? null;
+      } catch {
+        return null;
+      }
+    },
   };
 }

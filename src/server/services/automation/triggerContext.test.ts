@@ -103,6 +103,18 @@ describe('messageMatchesFilter', () => {
     expect(messageMatchesFilter(msg({ text: 'nope' }), { regex: '^(test|ping)' })).toBe(false);
     expect(messageMatchesFilter(msg({ text: 'x' }), { regex: '(' })).toBe(false);
   });
+  it('filters by channel name case-insensitively against the resolved name', () => {
+    // The resolved name is passed in (3rd arg) — the engine looks up msg.channel→name per source.
+    expect(messageMatchesFilter(msg(), { channelName: 'gauntlet' }, 'Gauntlet')).toBe(true);
+    expect(messageMatchesFilter(msg(), { channelName: 'gauntlet' }, 'Primary')).toBe(false);
+  });
+  it('channel-name filter never matches when the name could not be resolved', () => {
+    expect(messageMatchesFilter(msg(), { channelName: 'gauntlet' }, null)).toBe(false);
+    expect(messageMatchesFilter(msg(), { channelName: 'gauntlet' })).toBe(false);
+  });
+  it('an empty channelName does not constrain', () => {
+    expect(messageMatchesFilter(msg(), { channelName: '' }, null)).toBe(true);
+  });
 });
 
 describe('resolveTriggerPath', () => {
