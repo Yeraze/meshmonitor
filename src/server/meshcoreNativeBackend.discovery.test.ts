@@ -314,4 +314,114 @@ describe('MeshCoreNativeBackend — discovery responder', () => {
     expect(res.data.clock).toBe(2);
     expect(res.data.regions).toEqual(['berlin']);
   });
+
+  it('serializes overlapping 0x8C consumers so a concurrent telemetry reply is not stolen by request_regions (#3667)', async () => {
+    // request_regions (raw frame, tag-blind first-match) and request_telemetry
+    // (library sendBinaryRequest) both ride PUSH_CODE_BINARY_RESPONSE (0x8C).
+    // runExclusiveBinaryResponse must keep them from overlapping on this
+    // connection — otherwise the regions listener consumes the telemetry reply
+    // and parses CayenneLPP bytes as a region list.
+    const { backend, conn } = await connectedBackend();
+    const callLog: string[] = [];
+
+    // Regions: payload-less Sent (sendToRadioFrame path) + a recognizable list.
+    (conn as any).sendToRadioFrame = (frame: Uint8Array) => {
+      conn.sentFrames.push(frame);
+      if (frame[0] === 57) {
+        callLog.push('regions:send');
+        setImmediate(() => {
+          conn.emit(ResponseCodes.Sent);
+          callLog.push('regions:reply');
+          conn.emit(PushCodes.BinaryResponse, {
+            reserved: 0,
+            tag: 0xcafef00d,
+            responseData: Uint8Array.from([1, 0, 0, 0, ...Buffer.from('saxony', 'ascii'), 0]),
+          });
+        });
+        return;
+      }
+      setImmediate(() => conn.emit(ResponseCodes.Ok));
+    };
+
+    // Telemetry: emit a 0x8C push on the SHARED bus (what a real reply does, and
+    // exactly what a concurrent regions listener would wrongly grab) then
+    // resolve with the binary payload the library's sendBinaryRequest returns.
+    const telemetryBytes = Uint8Array.from([0xff, 0xfe, 0xfd, 0xfc]);
+    (conn as any).sendBinaryRequest = (_pubkey: Uint8Array, _req: number[]) =>
+      new Promise<Uint8Array>((resolve) => {
+        callLog.push('telemetry:send');
+        setImmediate(() => {
+          conn.emit(PushCodes.BinaryResponse, { reserved: 0, tag: 0x11111111, responseData: telemetryBytes });
+          callLog.push('telemetry:reply');
+          resolve(telemetryBytes);
+        });
+      });
+
+    // Fire both concurrently on the same connection.
+    const [regionsRes, telemetryRes] = await Promise.all([
+      backend.sendCommand('request_regions', { public_key: 'aa'.repeat(32) }),
+      backend.sendCommand('request_telemetry', { public_key: 'bb'.repeat(32) }),
+    ]);
+
+    // Each op resolved with its OWN payload — no cross-contamination. If the
+    // regions listener had stolen the telemetry reply, regions would be [] (the
+    // 4 telemetry bytes parse as clock-only with no names).
+    expect(regionsRes.success).toBe(true);
+    expect(regionsRes.data.regions).toEqual(['saxony']);
+    expect(telemetryRes.success).toBe(true);
+
+    // The two ops never overlapped: each ':send' is immediately followed by its
+    // own ':reply' before the other op's ':send' (order between them is
+    // microtask-dependent, so assert pairing rather than absolute order).
+    expect(callLog).toHaveLength(4);
+    const op = (s: string) => s.split(':')[0];
+    expect(op(callLog[0])).toBe(op(callLog[1]));
+    expect(op(callLog[2])).toBe(op(callLog[3]));
+    expect(op(callLog[0])).not.toBe(op(callLog[2]));
+  });
+
+  it('advances the 0x8C chain when an op times out so the next op still runs (#3667)', async () => {
+    // The serializer must release on rejection, not just resolution: if
+    // request_regions times out (never receives a BinaryResponse), a queued
+    // request_telemetry must still proceed — otherwise a single dead repeater
+    // would wedge the connection's 0x8C queue.
+    const { backend, conn } = await connectedBackend();
+    const callLog: string[] = [];
+
+    // Regions: send the frame but NEVER reply, forcing the inner timeout.
+    (conn as any).sendToRadioFrame = (frame: Uint8Array) => {
+      conn.sentFrames.push(frame);
+      if (frame[0] === 57) {
+        callLog.push('regions:send');
+        return; // no Sent / no BinaryResponse → request_regions times out
+      }
+      setImmediate(() => conn.emit(ResponseCodes.Ok));
+    };
+
+    const telemetryBytes = Uint8Array.from([0xaa, 0xbb]);
+    (conn as any).sendBinaryRequest = (_pubkey: Uint8Array, _req: number[]) =>
+      new Promise<Uint8Array>((resolve) => {
+        callLog.push('telemetry:send');
+        setImmediate(() => {
+          callLog.push('telemetry:reply');
+          resolve(telemetryBytes);
+        });
+      });
+
+    // Regions is issued first, so it acquires the lock first (both resume from
+    // resolvePublicKey in FIFO microtask order); a short timeout_ms keeps the
+    // test fast. Telemetry must wait, then run once regions' timeout rejects.
+    const [regionsRes, telemetryRes] = await Promise.all([
+      backend.sendCommand('request_regions', { public_key: 'aa'.repeat(32), timeout_ms: 30 }),
+      backend.sendCommand('request_telemetry', { public_key: 'bb'.repeat(32) }),
+    ]);
+
+    expect(regionsRes.success).toBe(false);
+    expect(regionsRes.error).toMatch(/timed out/i);
+    expect(telemetryRes.success).toBe(true);
+
+    // Order proves the chain advanced past the rejection: regions sent (and held
+    // the lock) first, and telemetry only sent after regions' timeout released it.
+    expect(callLog).toEqual(['regions:send', 'telemetry:send', 'telemetry:reply']);
+  });
 });

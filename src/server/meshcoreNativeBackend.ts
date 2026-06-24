@@ -827,6 +827,37 @@ export class MeshCoreNativeBackend extends EventEmitter {
     }
   }
 
+  /**
+   * Serializes operations that await the shared PUSH_CODE_BINARY_RESPONSE
+   * (0x8C) push on THIS connection. That push carries only a 4-byte correlation
+   * `tag` and no responder pubkey. Our raw-frame `request_regions` can't obtain
+   * a tag — `sendToRadioFrame` fires the `Sent` ack with no `expectedAckCrc` —
+   * so it falls back to accepting the *first* 0x8C reply it sees. A
+   * `request_telemetry` binary request rides the same 0x8C push, so if the two
+   * overlap they race for that first reply and mis-attribute each other's
+   * payload (a telemetry CayenneLPP body parsed as a regions list, or vice
+   * versa). Chaining every 0x8C consumer on a single per-instance promise
+   * guarantees exactly one is listening at a time.
+   *
+   * The chain is an instance field, so it is inherently per-source: each source
+   * owns its own MeshCoreNativeBackend (and physical connection), so this never
+   * serializes across sources — only same-connection 0x8C ops wait on each
+   * other. The lock is held until the operation's own listeners tear down
+   * (bounded by each op's internal timeout), so it always releases.
+   */
+  private binaryResponseChain: Promise<unknown> = Promise.resolve();
+
+  private runExclusiveBinaryResponse<T>(fn: () => Promise<T>): Promise<T> {
+    // Run after whatever is already queued, regardless of how it settled
+    // (using `fn` for both handlers means a prior rejection still releases us).
+    const run = this.binaryResponseChain.then(fn, fn);
+    // Advance the chain to this op's completion. Swallow settlement here so the
+    // chain never carries an unhandled rejection — the caller still receives
+    // `run` (and its rejection) directly.
+    this.binaryResponseChain = run.then(() => {}, () => {});
+    return run;
+  }
+
   private async dispatch(cmd: string, params: Record<string, unknown>): Promise<any> {
     if (!this.connection || !this.constants) {
       throw new Error('Native backend not connected');
@@ -967,7 +998,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
         frame[33] = 0x01; // ANON_REQ_TYPE_REGIONS
         frame[34] = 0x00; // reply_path_len = 0
 
-        const responseData: Uint8Array = await new Promise((resolve, reject) => {
+        // Serialize against other 0x8C consumers (e.g. request_telemetry) on
+        // this connection — see runExclusiveBinaryResponse.
+        const responseData: Uint8Array = await this.runExclusiveBinaryResponse(() => new Promise<Uint8Array>((resolve, reject) => {
           let sentReceived = false;
           let tag: number | null = null;
           let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
@@ -1008,7 +1041,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           c.on(K.PushCodes.BinaryResponse, onResp);
           c.once(K.ResponseCodes.Err, onErr);
           void c.sendToRadioFrame(frame);
-        });
+        }));
 
         // Parse: clock(4 LE) + NUL-terminated, comma-separated ASCII names.
         const buf = Buffer.from(responseData);
@@ -1016,7 +1049,14 @@ export class MeshCoreNativeBackend extends EventEmitter {
         let end = buf.indexOf(0, 4);
         if (end < 0) end = buf.length;
         const namesStr = buf.length > 4 ? buf.toString('ascii', 4, end) : '';
-        const regions = namesStr.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+        // Defense-in-depth on top of the 0x8C serialization: a genuine regions
+        // reply is printable ASCII. If a stray non-regions binary payload ever
+        // reached us, its control/high bytes would survive the split — drop any
+        // such token rather than render garbage region chips.
+        const regions = namesStr
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0 && /^[\x20-\x7e]+$/.test(s));
         return { ok: true, clock, regions };
       }
 
@@ -1348,7 +1388,13 @@ export class MeshCoreNativeBackend extends EventEmitter {
         const publicKey = await this.resolvePublicKey(params.public_key as string);
         if (!publicKey) throw new Error('Telemetry target not found');
         const reqType = K.BinaryRequestTypes.GetTelemetryData;
-        const responseData: Uint8Array = await c.sendBinaryRequest(publicKey, [reqType]);
+        // Serialize against other 0x8C consumers (e.g. request_regions) on this
+        // connection — see runExclusiveBinaryResponse. The library's own
+        // sendBinaryRequest tag-matches its reply, but our raw-frame regions
+        // request can't, so the two must not overlap.
+        const responseData: Uint8Array = await this.runExclusiveBinaryResponse(
+          () => c.sendBinaryRequest(publicKey, [reqType]),
+        );
         const mod = await loadMeshCoreJs();
         const records = mod.CayenneLpp.parse(responseData);
         return { records };
