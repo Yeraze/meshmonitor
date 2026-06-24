@@ -106,14 +106,6 @@ import {
 import {
   embedProfilesSqlite, embedProfilesPostgres, embedProfilesMysql,
 } from './schema/embedProfiles.js';
-import {
-  automationsSqlite, automationsPostgres, automationsMysql,
-  automationRunsSqlite, automationRunsPostgres, automationRunsMysql,
-} from './schema/automations.js';
-import {
-  automationVariablesSqlite, automationVariablesPostgres, automationVariablesMysql,
-  automationVariableValuesSqlite, automationVariableValuesPostgres, automationVariableValuesMysql,
-} from './schema/automationVariables.js';
 
 // Waypoints table
 import {
@@ -209,12 +201,6 @@ export interface ActiveSchema {
   // Embed Profiles
   embedProfiles: any;
 
-  // Automation Engine (global — no sourceId)
-  automations: any;
-  automationRuns: any;
-  automationVariables: any;
-  automationVariableValues: any;
-
   // Waypoints
   waypoints: any;
 
@@ -284,10 +270,6 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcorePacketLog: meshcorePacketLogSqlite,
     meshcoreHeardRepeaters: meshcoreHeardRepeatersSqlite,
     embedProfiles: embedProfilesSqlite,
-    automations: automationsSqlite,
-    automationRuns: automationRunsSqlite,
-    automationVariables: automationVariablesSqlite,
-    automationVariableValues: automationVariableValuesSqlite,
     waypoints: waypointsSqlite,
     sources: sourcesSqlite,
     estimatedPositions: estimatedPositionsSqlite,
@@ -338,10 +320,6 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcorePacketLog: meshcorePacketLogPostgres,
     meshcoreHeardRepeaters: meshcoreHeardRepeatersPostgres,
     embedProfiles: embedProfilesPostgres,
-    automations: automationsPostgres,
-    automationRuns: automationRunsPostgres,
-    automationVariables: automationVariablesPostgres,
-    automationVariableValues: automationVariableValuesPostgres,
     waypoints: waypointsPostgres,
     sources: sourcesPostgres,
     estimatedPositions: estimatedPositionsPostgres,
@@ -392,10 +370,6 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcorePacketLog: meshcorePacketLogMysql,
     meshcoreHeardRepeaters: meshcoreHeardRepeatersMysql,
     embedProfiles: embedProfilesMysql,
-    automations: automationsMysql,
-    automationRuns: automationRunsMysql,
-    automationVariables: automationVariablesMysql,
-    automationVariableValues: automationVariableValuesMysql,
     waypoints: waypointsMysql,
     sources: sourcesMysql,
     estimatedPositions: estimatedPositionsMysql,

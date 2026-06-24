@@ -2,8 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { registry } from './migrations.js';
 
 describe('migrations registry', () => {
-  it('has all 104 migrations registered', () => {
-    expect(registry.count()).toBe(104);
+  // The 4.11.x release line excludes the Automation Engine (#3653), which owned
+  // migrations 98 and 99. Those two are intentionally absent here, so the total
+  // is 102 (1–97 + 100–104) and the numbering has a deliberate 98/99 gap.
+  it('has all 102 migrations registered', () => {
+    expect(registry.count()).toBe(102);
   });
 
   // Bumping these counts: when adding a new migration, increment to <N>+1 and
@@ -22,11 +25,16 @@ describe('migrations registry', () => {
     expect(last.name).toContain('add_channel_database_hash');
   });
 
-  it('migrations are sequentially numbered from 1 to 104', () => {
+  it('migrations are strictly ascending and unique (98/99 reserved for the excluded Automation Engine)', () => {
     const all = registry.getAll();
-    for (let i = 0; i < all.length; i++) {
-      expect(all[i].number).toBe(i + 1);
+    for (let i = 1; i < all.length; i++) {
+      expect(all[i].number).toBeGreaterThan(all[i - 1].number);
     }
+    const numbers = all.map((m) => m.number);
+    expect(new Set(numbers).size).toBe(numbers.length);
+    // Automation Engine migrations are intentionally absent on the 4.11.x line.
+    expect(numbers).not.toContain(98);
+    expect(numbers).not.toContain(99);
   });
 
   it('all migrations have at least one function', () => {

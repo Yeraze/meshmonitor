@@ -40,10 +40,6 @@ export * from './meshcoreHeardRepeaters.js';
 // Embed Profiles table
 export * from './embedProfiles.js';
 
-// Automation Engine tables (global — no sourceId)
-export * from './automations.js';
-export * from './automationVariables.js';
-
 // Waypoints table
 export * from './waypoints.js';
 

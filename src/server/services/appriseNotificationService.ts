@@ -245,59 +245,6 @@ class AppriseNotificationService {
   }
 
   /**
-   * Direct, non-user-filtered notification used by the Automation Engine
-   * (#3653, `action.notify`). Unlike broadcastWithFiltering / broadcastTo
-   * PreferenceUsers, this does NOT consult per-user preferences — an automation
-   * is an explicit, admin-authored rule, so it dispatches straight to the Apprise
-   * API server.
-   *
-   * Targets, in order:
-   *   1. explicit `urls` (Apprise service URLs entered on the action), if any;
-   *   2. otherwise the Apprise API server's own stored configuration (a
-   *      persistent config key / tag set the operator configured server-side).
-   *
-   * Returns a structured result so the engine can record a completed/failed
-   * run-log step rather than throwing through the event bus.
-   */
-  public async notifyDirect(
-    payload: { sourceId: string | null; title: string; body: string; type?: string },
-    urls?: string[],
-  ): Promise<{ ok: boolean; message: string }> {
-    await this.waitForInit();
-    const sourceId = payload.sourceId ?? 'default';
-    const config = await this.resolveAppriseConfig(sourceId);
-    if (!config) return { ok: false, message: `Apprise not configured for source ${sourceId}` };
-    if (!config.enabled) return { ok: false, message: `Apprise disabled for source ${sourceId}` };
-
-    const ALLOWED_TYPES = ['info', 'success', 'warning', 'failure'];
-    const type = ALLOWED_TYPES.includes(String(payload.type)) ? payload.type : 'info';
-    const cleanUrls = (urls ?? []).map((u) => u.trim()).filter((u) => u.length > 0);
-
-    try {
-      const reqBody: Record<string, unknown> = { title: payload.title, body: payload.body, type };
-      if (cleanUrls.length > 0) reqBody.urls = cleanUrls;
-      const response = await fetch(`${config.url}/notify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(reqBody),
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!response.ok) {
-        const detail = await response.text().catch(() => '');
-        const msg = `Apprise API ${response.status}${detail ? `: ${detail.slice(0, 200)}` : ''}`;
-        logger.warn(`[Apprise] automation notify failed — ${msg}`);
-        return { ok: false, message: msg };
-      }
-      logger.debug(`[Apprise] automation notify sent: "${payload.title}"`);
-      return { ok: true, message: 'sent' };
-    } catch (error: any) {
-      const msg = error?.name === 'TimeoutError' ? 'Apprise request timed out' : (error?.message ?? 'Apprise request failed');
-      logger.warn(`[Apprise] automation notify error — ${msg}`);
-      return { ok: false, message: msg };
-    }
-  }
-
-  /**
    * Broadcast notification with per-user filtering
    * Note: Uses shared filtering logic from pushNotificationService
    */

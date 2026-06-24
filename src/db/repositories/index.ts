@@ -35,24 +35,6 @@ export { MeshCoreRepository } from './meshcore.js';
 export type { DbMeshCoreNode, DbMeshCoreMessage } from './meshcore.js';
 export { EmbedProfileRepository } from './embedProfiles.js';
 export type { EmbedProfile, EmbedProfileInput } from './embedProfiles.js';
-export { AutomationsRepository } from './automations.js';
-export type {
-  AutomationRecord,
-  CreateAutomationInput,
-  UpdateAutomationInput,
-  AutomationRunRecord,
-  AutomationRunStatus,
-  CreateAutomationRunInput,
-} from './automations.js';
-export { AutomationVariablesRepository } from './automationVariables.js';
-export type {
-  VariableType,
-  VariableScope,
-  AutomationVariableRecord,
-  CreateVariableInput,
-  UpdateVariableInput,
-  AutomationVariableValueRecord,
-} from './automationVariables.js';
 export { SourcesRepository } from './sources.js';
 export type { Source, CreateSourceInput } from './sources.js';
 export { AnalysisRepository } from './analysis.js';

@@ -76,13 +76,6 @@ export const TABLE_ORDER = [
   'source_pki_keys',
   // per-source async message store (Dead Drop / Mailbox)
   'dead_drop_messages',
-  // 3653: global Automation Engine tables. No sourceId / no FK to users; the
-  // run-log FKs to automations and variable values FK to automation_variables,
-  // so parents precede children here.
-  'automations',
-  'automation_runs',
-  'automation_variables',
-  'automation_variable_values',
 ];
 
 // Tables in the 4.0 schema that carry a `sourceId` column. When the source
