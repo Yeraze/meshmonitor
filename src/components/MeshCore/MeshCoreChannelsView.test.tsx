@@ -67,6 +67,10 @@ function makeActions(overrides: Partial<MeshCoreActions> = {}): MeshCoreActions 
     setTelemetryModeEnv: vi.fn().mockResolvedValue(true),
     refreshAll: vi.fn().mockResolvedValue(undefined),
     clearError: vi.fn(),
+    // Scope helpers invoked by the component when status.connected is true; the
+    // component swallows failures, but mocking them avoids unhandled rejections.
+    getDefaultScope: vi.fn().mockResolvedValue(''),
+    discoverRegions: vi.fn().mockResolvedValue({ regions: [] }),
     ...overrides,
   };
 }

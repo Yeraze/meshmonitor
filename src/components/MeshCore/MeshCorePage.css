@@ -495,6 +495,7 @@
 
 /* Channel list items — card button style matching Meshtastic .channel-button */
 .mc-channel-row {
+  position: relative; /* anchor for the unread dot (#3703) */
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -541,10 +542,6 @@
 }
 
 /* Unread indicator (#3703) */
-.mc-channel-row {
-  position: relative;
-}
-
 .mc-channel-row.unread .mc-channel-row-name {
   font-weight: 700;
 }
