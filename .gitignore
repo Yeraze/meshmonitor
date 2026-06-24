@@ -91,3 +91,6 @@ docs/public/charts/
 # Python bytecode caches
 __pycache__/
 *.pyc
+
+# Local Docker dev overrides (machine-specific device mappings, etc.)
+docker-compose.dev.local.yml

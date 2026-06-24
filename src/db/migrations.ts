@@ -117,6 +117,7 @@ import { migration as createAutomationVariablesMigration, runMigration099Postgre
 import { migration as meshcoreChannelScopeMigration, runMigration100Postgres as runMeshcoreChannelScopePostgres, runMigration100Mysql as runMeshcoreChannelScopeMysql } from '../server/migrations/100_meshcore_channel_scope.js';
 import { migration as nodeUnmessagableMigration, runMigration101Postgres as runNodeUnmessagablePostgres, runMigration101Mysql as runNodeUnmessagableMysql } from '../server/migrations/101_add_node_unmessagable.js';
 import { migration as meshcoreHeardRepeatersMigration, runMigration102Postgres as runMeshcoreHeardRepeatersPostgres, runMigration102Mysql as runMeshcoreHeardRepeatersMysql } from '../server/migrations/102_create_meshcore_heard_repeaters.js';
+import { migration as consolidateMqttChannelsMigration, runMigration103Postgres as runConsolidateMqttChannelsPostgres, runMigration103Mysql as runConsolidateMqttChannelsMysql } from '../server/migrations/103_consolidate_mqtt_channels.js';
 
 // ============================================================================
 // Registry
@@ -1624,4 +1625,13 @@ registry.register({
   sqlite: (db) => meshcoreHeardRepeatersMigration.up(db),
   postgres: (client) => runMeshcoreHeardRepeatersPostgres(client),
   mysql: (pool) => runMeshcoreHeardRepeatersMysql(pool),
+});
+
+registry.register({
+  number: 103,
+  name: 'consolidate_mqtt_channels',
+  settingsKey: 'migration_103_consolidate_mqtt_channels',
+  sqlite: (db) => consolidateMqttChannelsMigration.up(db),
+  postgres: (client) => runConsolidateMqttChannelsPostgres(client),
+  mysql: (pool) => runConsolidateMqttChannelsMysql(pool),
 });
