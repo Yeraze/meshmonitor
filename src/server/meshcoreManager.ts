@@ -4287,6 +4287,12 @@ class MeshCoreManager extends EventEmitter {
    * relevant half of `disconnect()` but preserves reconnect intent.
    */
   private async teardownTransportOnly(): Promise<void> {
+    // Stop the Virtual Node server first, same as disconnect() does. Without
+    // this, the VN server keeps accepting app connections while isConnected()
+    // is false, causing every AppStart to get BadState and the app to loop in
+    // "Connecting". The server restarts in connect() once the real node is back.
+    await this.stopVirtualNodeServer();
+
     if (this.nativeBackend) {
       try {
         await this.nativeBackend.disconnect();
