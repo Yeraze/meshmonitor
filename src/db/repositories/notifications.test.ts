@@ -141,7 +141,8 @@ const POSTGRES_CREATE = `
     emoji INTEGER,
     "viaMqtt" BOOLEAN,
     "rxSnr" DOUBLE PRECISION,
-    "rxRssi" DOUBLE PRECISION
+    "rxRssi" DOUBLE PRECISION,
+    "sourceId" TEXT
   );
 
   CREATE TABLE read_messages (
@@ -277,7 +278,8 @@ const MYSQL_CREATE = `
     emoji INTEGER,
     viaMqtt BOOLEAN,
     rxSnr DOUBLE,
-    rxRssi DOUBLE
+    rxRssi DOUBLE,
+    sourceId VARCHAR(36)
   );
 
   CREATE TABLE read_messages (
