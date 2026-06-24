@@ -7,10 +7,9 @@
  * params, and simulated variable writes. Calls POST /api/automations/test, which
  * performs NO mesh IO, NO Apprise dispatch, and NO persistence.
  */
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import apiService from '../../services/api';
 import type { VariableOption } from './AutomationBuilder';
-import SubstitutionsHelpDrawer from './SubstitutionsHelp';
 
 export interface SimResult {
   matched: boolean;
@@ -60,7 +59,6 @@ export default function AutomationTester({ getConfig, variables }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
 
   const setEvField = (k: string, v: string) => setEv((s) => ({ ...s, [k]: v }));
   const setFact = (k: string, v: string) => setFacts((s) => ({ ...s, [k]: v }));
@@ -70,8 +68,7 @@ export default function AutomationTester({ getConfig, variables }: Props) {
     switch (kind) {
       case 'message':
         return { ...base, text: ev.text ?? '', from: numOrUndef(ev.from), channel: numOrUndef(ev.channel),
-          hopStart: numOrUndef(ev.hopStart), hopLimit: numOrUndef(ev.hopLimit), packetId: numOrUndef(ev.packetId) ?? 1,
-          snr: numOrUndef(ev.snr), rssi: numOrUndef(ev.rssi), viaMqtt: ev.viaMqtt === 'true' ? true : undefined };
+          hopStart: numOrUndef(ev.hopStart), hopLimit: numOrUndef(ev.hopLimit), packetId: numOrUndef(ev.packetId) ?? 1 };
       case 'telemetry':
         return { ...base, nodeNum: numOrUndef(ev.nodeNum), telemetryType: ev.telemetryType ?? 'batteryLevel', value: numOrUndef(ev.value) };
       case 'nodeUpdated':
@@ -88,9 +85,9 @@ export default function AutomationTester({ getConfig, variables }: Props) {
 
   const buildNode = (): Record<string, unknown> | undefined => {
     const out: Record<string, unknown> = {};
-    const numFact = (k: string) => { if (facts[k] !== undefined && facts[k] !== '') out[k] = Number(facts[k]); };
-    numFact('batteryLevel'); numFact('voltage'); numFact('role'); numFact('hopsAway');
-    numFact('channelUtilization'); numFact('airUtilTx'); numFact('snr'); numFact('altitude');
+    if (facts.batteryLevel) out.batteryLevel = Number(facts.batteryLevel);
+    if (facts.voltage) out.voltage = Number(facts.voltage);
+    if (facts.role) out.role = Number(facts.role);
     if (facts.longName) out.longName = facts.longName;
     if (facts.shortName) out.shortName = facts.shortName;
     if (facts.latitude) out.latitude = Number(facts.latitude);
@@ -127,9 +124,7 @@ export default function AutomationTester({ getConfig, variables }: Props) {
       <div className="ae-row" style={{ marginBottom: '0.5rem' }}>
         <strong>Test this workflow</strong>
         <span className="ae-muted" style={{ marginLeft: '0.5rem' }}>simulated — nothing is sent or saved</span>
-        <button className="ae-help-icon" style={{ marginLeft: 'auto' }} title="All {{ }} substitutions" onClick={() => setShowHelp(true)}>?</button>
       </div>
-      {showHelp && <SubstitutionsHelpDrawer triggerType={triggerType} variables={variables} onClose={() => setShowHelp(false)} />}
 
       <div className="ae-test-inputs">{renderEventInputs(kind, ev, setEvField)}</div>
 
@@ -142,12 +137,7 @@ export default function AutomationTester({ getConfig, variables }: Props) {
           <div className="ae-test-inputs">
             <Field label="Battery %" value={facts.batteryLevel} onChange={(v) => setFact('batteryLevel', v)} type="number" />
             <Field label="Voltage" value={facts.voltage} onChange={(v) => setFact('voltage', v)} type="number" />
-            <Field label="Hops away" value={facts.hopsAway} onChange={(v) => setFact('hopsAway', v)} type="number" />
             <Field label="Role (#)" value={facts.role} onChange={(v) => setFact('role', v)} type="number" />
-            <Field label="Channel util %" value={facts.channelUtilization} onChange={(v) => setFact('channelUtilization', v)} type="number" />
-            <Field label="Air util TX %" value={facts.airUtilTx} onChange={(v) => setFact('airUtilTx', v)} type="number" />
-            <Field label="SNR (node)" value={facts.snr} onChange={(v) => setFact('snr', v)} type="number" />
-            <Field label="Altitude" value={facts.altitude} onChange={(v) => setFact('altitude', v)} type="number" />
             <Field label="Long name" value={facts.longName} onChange={(v) => setFact('longName', v)} />
             <Field label="Short name" value={facts.shortName} onChange={(v) => setFact('shortName', v)} />
             <Field label="Latitude" value={facts.latitude} onChange={(v) => setFact('latitude', v)} type="number" />
@@ -192,17 +182,7 @@ function renderEventInputs(kind: string, ev: EventState, set: (k: string, v: str
   );
   switch (kind) {
     case 'message':
-      return <>
-        {f('Message text', 'text')}{f('From node #', 'from', 'number')}{f('Channel #', 'channel', 'number')}
-        {f('Hop start', 'hopStart', 'number')}{f('Hop limit', 'hopLimit', 'number')}
-        {f('SNR', 'snr', 'number')}{f('RSSI', 'rssi', 'number')}
-        <div className="ae-field">
-          <label className="ae-field-label">Via MQTT</label>
-          <label className="ae-switch" style={{ paddingTop: '0.35rem' }}>
-            <input type="checkbox" checked={ev.viaMqtt === 'true'} onChange={(e) => set('viaMqtt', e.target.checked ? 'true' : '')} /> received over MQTT
-          </label>
-        </div>
-      </>;
+      return <>{f('Message text', 'text')}{f('From node #', 'from', 'number')}{f('Channel #', 'channel', 'number')}{f('Hop start', 'hopStart', 'number')}{f('Hop limit', 'hopLimit', 'number')}</>;
     case 'telemetry':
       return <>{f('Node #', 'nodeNum', 'number')}{f('Metric', 'telemetryType')}{f('Value', 'value', 'number')}</>;
     case 'nodeUpdated':
@@ -227,44 +207,6 @@ const OUTCOME_META: Record<string, { icon: string; cls: string; label: string }>
   'activated': { icon: '•', cls: 'muted', label: 'activated' },
   'guard:maxActions': { icon: '⛔', cls: 'err', label: 'action cap hit' },
 };
-
-/** Human-readable "what would be sent" for one simulated action. */
-function ActionView({ a }: { a: SimResult['actions'][number] }) {
-  const p = (a.resolvedParams ?? {}) as Record<string, unknown>;
-  let headline: string = a.type.replace('action.', '');
-  let sent: ReactNode = null;
-  if (a.type === 'action.sendMessage') {
-    headline = `Send message → ${p.destination != null ? `DM to node ${p.destination}` : `channel ${p.channel ?? 0}`}`;
-    sent = <div className="ae-test-sent">{String(p.text ?? '')}</div>;
-  } else if (a.type === 'action.tapback') {
-    headline = `Tapback → ${p.destination != null ? `DM to node ${p.destination}` : `channel ${p.channel ?? 0}`}`;
-    sent = <div className="ae-test-sent">{String(p.emoji ?? '')}</div>;
-  } else if (a.type === 'action.notify') {
-    headline = 'Notify (Apprise)';
-    sent = (
-      <div className="ae-test-sent">
-        {p.title ? <strong>{String(p.title)}</strong> : null}{p.title ? ' — ' : ''}{String(p.body ?? '')}
-        {Array.isArray(p.urls) && (p.urls as unknown[]).length > 0 &&
-          <div className="ae-muted" style={{ marginTop: '0.2rem' }}>→ {(p.urls as string[]).join(', ')}</div>}
-      </div>
-    );
-  } else if (a.type === 'action.nodeManage') {
-    headline = `Manage node → ${String(p.op ?? '')} ${p.nodeNum ?? ''}`.trim();
-  }
-  return (
-    <div className={`ae-test-action ${a.ok ? '' : 'is-err'}`}>
-      <strong>{headline}</strong>
-      {a.error
-        ? <span className="ae-test-badge ae-test-badge--err" style={{ marginLeft: '0.4rem' }}>{a.error}</span>
-        : <>
-            {sent}
-            <details className="ae-test-raw"><summary className="ae-muted">resolved params</summary>
-              <pre className="ae-muted ae-test-params">{JSON.stringify(a.resolvedParams, null, 2)}</pre>
-            </details>
-          </>}
-    </div>
-  );
-}
 
 function TestResult({ result }: { result: SimResult }) {
   const statusCls = result.status === 'completed' ? 'ok' : result.status === 'failed' ? 'err' : 'muted';
@@ -295,15 +237,16 @@ function TestResult({ result }: { result: SimResult }) {
 
           {result.actions.length > 0 && (
             <>
-              <div className="ae-field-label" style={{ margin: '0.6rem 0 0.3rem' }}>Actions (simulated — nothing is sent)</div>
-              {result.actions.map((a, i) => <ActionView key={i} a={a} />)}
+              <div className="ae-field-label" style={{ margin: '0.6rem 0 0.3rem' }}>Actions (simulated)</div>
+              {result.actions.map((a, i) => (
+                <div className={`ae-test-action ${a.ok ? '' : 'is-err'}`} key={i}>
+                  <strong>{a.type.replace('action.', '')}</strong>
+                  {a.error
+                    ? <span className="ae-test-badge ae-test-badge--err" style={{ marginLeft: '0.4rem' }}>{a.error}</span>
+                    : <pre className="ae-muted ae-test-params">{JSON.stringify(a.resolvedParams, null, 2)}</pre>}
+                </div>
+              ))}
             </>
-          )}
-          {result.matched && result.actions.length === 0 && (
-            <div className="ae-test-note" style={{ marginTop: '0.4rem' }}>
-              No actions ran — every condition evaluated <strong>false</strong> (see the trace above), so no branch reached an action.
-              {' '}Adjust the event inputs or “Subject-node facts” (e.g. set <code>Hops away</code> for a <code>node.hopsAway</code> check, or <code>Hop start/limit</code> for a <code>hops</code> check) so a condition passes.
-            </div>
           )}
 
           {result.variableWrites.length > 0 && (
