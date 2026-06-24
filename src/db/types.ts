@@ -403,6 +403,9 @@ export interface DbChannelDatabase {
   name: string;
   psk: string; // Base64-encoded PSK
   pskLength: number; // 16 for AES-128, 32 for AES-256
+  // Observed Meshtastic 1-byte channel hash (0-255) for passive (no-PSK) MQTT
+  // rows; null for enabled rows (computable from name + psk).
+  channelHash?: number | null;
   description?: string | null;
   isEnabled: boolean;
   enforceNameValidation: boolean;

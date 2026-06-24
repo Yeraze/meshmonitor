@@ -8,6 +8,28 @@ import { eq, and, asc, sql } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbChannelDatabase, DbChannelDatabasePermission } from '../types.js';
 import { logger } from '../../utils/logger.js';
+import { expandShorthandPsk } from '../../server/constants/meshtastic.js';
+
+/**
+ * Meshtastic 8-bit XOR hash over a byte buffer. Mirrors `xorHash` in
+ * channelDecryptionService.ts. Duplicated here (rather than imported) to keep
+ * repositories free of a dependency on the server service layer, which would
+ * create a circular import (channelDecryptionService → databaseService →
+ * repositories).
+ */
+function xorHashBytes(bytes: Buffer): number {
+  let hash = 0;
+  for (let i = 0; i < bytes.length; i++) hash ^= bytes[i];
+  return hash & 0xff;
+}
+
+/**
+ * Compute the Meshtastic channel hash from a channel name and its (already
+ * expanded) PSK buffer: hash = xorHash(utf8(name)) ^ xorHash(psk).
+ */
+function computeChannelHashFromName(name: string, psk: Buffer): number {
+  return xorHashBytes(Buffer.from(name, 'utf8')) ^ xorHashBytes(psk);
+}
 
 /**
  * Channel database data for insert/update operations
@@ -16,6 +38,7 @@ export interface ChannelDatabaseInput {
   name: string;
   psk: string; // Base64-encoded PSK
   pskLength: number; // 16 for AES-128, 32 for AES-256
+  channelHash?: number | null; // Observed channel hash for passive MQTT rows
   description?: string | null;
   isEnabled?: boolean;
   enforceNameValidation?: boolean;
@@ -63,12 +86,13 @@ export class ChannelDatabaseRepository extends BaseRepository {
   }
 
   /**
-   * In-flight passive creates keyed by lower(name). MQTT ingest handles packets
-   * concurrently, so two packets for the same channel name can both miss the
-   * find SELECT and each INSERT a duplicate row. There is no cross-backend
-   * unique index on name (a functional/text unique index is awkward across
-   * SQLite/PostgreSQL/MySQL), so we serialize creates here — the race is in this
-   * single Node process. (Migration 103 merges any duplicates already on disk.)
+   * In-flight passive creates keyed by `lower(name)::hash`. MQTT ingest handles
+   * packets concurrently, so two packets for the same channel identity can both
+   * miss the find SELECT and each INSERT a duplicate row. There is no
+   * cross-backend unique index on (name, hash) (a functional/text unique index
+   * is awkward across SQLite/PostgreSQL/MySQL), so we serialize creates here —
+   * the race is in this single Node process. (Migration 103 merges any
+   * duplicates already on disk.)
    */
   private passiveCreateInFlight = new Map<string, Promise<number | null>>();
 
@@ -116,43 +140,64 @@ export class ChannelDatabaseRepository extends BaseRepository {
   }
 
   /**
-   * Find-or-create a "passive" channel_database row keyed by name. Passive =
-   * isEnabled=false with an empty PSK, so the row exists only as a target for
-   * channel_database_permissions (admins can grant view/read on it) and never
-   * participates in server-side decryption. Used by MQTT ingest to materialize
-   * a row for every observed channel name so the permission model can key
-   * MQTT-source data through channel_database instead of slot-indexed
-   * channel_0..7 grants.
-   *
-   * If a row already exists for the name (regardless of isEnabled), that row's
-   * id is returned and no changes are made — we never demote a real decryption
-   * entry by reusing its slot here.
+   * Find-or-create a "passive" channel_database row keyed by name only. Thin
+   * back-compat wrapper over {@link findOrCreateByNameAndHashAsync} with a null
+   * hash. Callers that have no observed channel hash (e.g. an unencrypted MQTT
+   * packet whose broker strips the channel byte) use this; it preserves the
+   * historical name-only matching behaviour.
    */
   async findOrCreatePassiveByNameAsync(name: string): Promise<number | null> {
+    return this.findOrCreateByNameAndHashAsync(name, null);
+  }
+
+  /**
+   * Find-or-create a channel_database row keyed by (name, channel hash). The
+   * channel hash is the Meshtastic 1-byte XOR hash seen on MQTT packets
+   * (`packet.channel`), which equals `xorHash(name) ^ xorHash(psk)`. Using it as
+   * a second identity dimension keeps two same-name / different-key channels
+   * distinct even when neither can be decrypted server-side.
+   *
+   * Matching, among rows sharing the same (case-insensitive) name:
+   *   1. An ENABLED row whose computed hash (from its name + expanded PSK)
+   *      equals `hash` → return it. This is the same, decryptable channel.
+   *   2. A PASSIVE row (no PSK) whose stored `channelHash` equals `hash` → return
+   *      it. This is the same observed-but-undecryptable channel.
+   *   3. If `hash` is null and a passive row with a null `channelHash` exists for
+   *      the name → return it (back-compat with name-only registration).
+   *   4. Otherwise create a new PASSIVE row (psk='', isEnabled=false) carrying
+   *      `channelHash = hash`.
+   *
+   * Passive rows exist only as targets for channel_database_permissions and
+   * never participate in server-side decryption. Enabled (real decryption)
+   * rows are never demoted or modified here.
+   */
+  async findOrCreateByNameAndHashAsync(name: string, hash: number | null): Promise<number | null> {
     const trimmed = name.trim();
     if (!trimmed) return null;
-    const existing = await this.getByNameAsync(trimmed);
-    // `DbChannelDatabase.id` is typed optional for insert shapes; a row read
-    // from the DB always has it set, so fall through to create only if it
-    // somehow isn't.
-    if (existing && typeof existing.id === 'number') return existing.id;
+    // Normalize a missing/zero-ish hash to null so callers can pass undefined/0
+    // meaning "no hash observed" without splitting a name-only channel.
+    const normalizedHash =
+      typeof hash === 'number' && Number.isFinite(hash) && hash > 0 ? Math.trunc(hash) & 0xff : null;
 
-    // Serialize concurrent creates for the same name (case-insensitive, matching
-    // getByNameAsync) so two in-flight MQTT packets don't each insert a
-    // duplicate passive row.
-    const key = trimmed.toLowerCase();
+    const matched = await this.matchByNameAndHash(trimmed, normalizedHash);
+    if (matched && typeof matched.id === 'number') return matched.id;
+
+    // Serialize concurrent creates for the same (name, hash) identity so two
+    // in-flight MQTT packets don't each insert a duplicate passive row.
+    const key = `${trimmed.toLowerCase()}::${normalizedHash ?? 'null'}`;
     const inFlight = this.passiveCreateInFlight.get(key);
     if (inFlight) return inFlight;
 
     const promise = (async (): Promise<number | null> => {
       // Re-check inside the guard: another call may have created the row between
       // our initial find and acquiring the in-flight slot.
-      const recheck = await this.getByNameAsync(trimmed);
+      const recheck = await this.matchByNameAndHash(trimmed, normalizedHash);
       if (recheck && typeof recheck.id === 'number') return recheck.id;
       return this.createAsync({
         name: trimmed,
         psk: '',
         pskLength: 0,
+        channelHash: normalizedHash,
         isEnabled: false,
         enforceNameValidation: false,
         description: 'Auto-registered for MQTT channel permissions (no PSK)',
@@ -165,6 +210,61 @@ export class ChannelDatabaseRepository extends BaseRepository {
       return await promise;
     } finally {
       this.passiveCreateInFlight.delete(key);
+    }
+  }
+
+  /**
+   * Find an existing channel_database row matching a (name, hash) identity using
+   * the priority rules documented on {@link findOrCreateByNameAndHashAsync}.
+   * Returns null if nothing matches.
+   */
+  private async matchByNameAndHash(
+    name: string,
+    normalizedHash: number | null,
+  ): Promise<DbChannelDatabase | null> {
+    const lower = name.trim().toLowerCase();
+    const all = await this.getAllAsync();
+    const sameName = all.filter((c) => (c.name ?? '').toLowerCase() === lower);
+    if (sameName.length === 0) return null;
+
+    if (normalizedHash !== null) {
+      // 1. Enabled row whose computed hash matches.
+      for (const row of sameName) {
+        if (!row.isEnabled || !row.psk) continue;
+        const computed = this.computeEnabledRowHash(row);
+        if (computed !== null && computed === normalizedHash) return row;
+      }
+      // 2. Passive row with a matching stored hash.
+      const passiveMatch = sameName.find(
+        (c) => !c.isEnabled && c.channelHash != null && (c.channelHash & 0xff) === normalizedHash,
+      );
+      if (passiveMatch) return passiveMatch;
+      return null;
+    }
+
+    // 3. Hash is null: reuse a passive row with a null stored hash (back-compat).
+    //    Prefer a passive null-hash row; fall back to any enabled row with the
+    //    name so we never mint a duplicate alongside a real decryption entry.
+    const passiveNull = sameName.find((c) => !c.isEnabled && (c.channelHash == null));
+    if (passiveNull) return passiveNull;
+    const enabled = sameName.find((c) => c.isEnabled);
+    if (enabled) return enabled;
+    return null;
+  }
+
+  /**
+   * Compute the Meshtastic channel hash for an ENABLED row from its stored name
+   * and base64 PSK (shorthand keys like `AQ==` are expanded the same way the
+   * decryption service does). Returns null if the PSK can't be expanded.
+   */
+  private computeEnabledRowHash(row: DbChannelDatabase): number | null {
+    try {
+      const raw = Buffer.from(row.psk, 'base64');
+      const expanded = expandShorthandPsk(raw);
+      if (!expanded) return null;
+      return computeChannelHashFromName(row.name, expanded);
+    } catch {
+      return null;
     }
   }
 
@@ -193,6 +293,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       name: data.name,
       psk: data.psk,
       pskLength: data.pskLength,
+      channelHash: data.channelHash ?? null,
       description: data.description ?? null,
       isEnabled: data.isEnabled ?? true,
       enforceNameValidation: data.enforceNameValidation ?? false,
@@ -393,6 +494,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       name: row.name,
       psk: row.psk,
       pskLength: row.pskLength,
+      channelHash: row.channelHash ?? null,
       description: row.description,
       isEnabled: Boolean(row.isEnabled),
       enforceNameValidation: Boolean(row.enforceNameValidation),

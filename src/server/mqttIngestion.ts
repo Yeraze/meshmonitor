@@ -893,11 +893,12 @@ async function ingestStoreForward(
 }
 
 /**
- * Process-lifetime cache mapping lower-cased channel names to channel_database
- * row IDs. Avoids hitting the DB on every MQTT packet for the same name. The
- * cache is invalidated for a single name on the rare write that mints a new
- * row; lookups for unknown names still go through findOrCreatePassiveByName
- * so admin-curated entries are picked up automatically.
+ * Process-lifetime cache mapping `lower(name)::hash` keys to channel_database
+ * row IDs. Avoids hitting the DB on every MQTT packet for the same channel
+ * identity. The key includes the packet channel hash so two same-name /
+ * different-key channels don't collide; lookups for unknown identities still
+ * go through findOrCreateByNameAndHash so admin-curated entries are picked up
+ * automatically.
  */
 const channelNameToDbIdCache = new Map<string, number>();
 
@@ -925,19 +926,30 @@ async function resolveChannelDatabaseIdForMqtt(
 
   const name = envelope.channelId?.trim();
   if (!name) return null;
-  const cacheKey = name.toLowerCase();
+
+  // `packet.channel` on MQTT is the Meshtastic 1-byte channel *hash*
+  // (xorHash(name) ^ xorHash(psk)), not a stable 0-7 slot. We use it as a
+  // second identity dimension so two same-name/different-key undecryptable
+  // channels resolve to distinct channel_database rows. Missing/0 ⇒ null
+  // (name-only path).
+  const rawHash = typeof packet.channel === 'number' ? Number(packet.channel) : null;
+  const hash = rawHash != null && Number.isFinite(rawHash) && rawHash > 0 ? rawHash & 0xff : null;
+
+  // Cache key includes the hash so different-key same-name channels don't
+  // collide in the cache.
+  const cacheKey = `${name.toLowerCase()}::${hash ?? 'null'}`;
   const cached = channelNameToDbIdCache.get(cacheKey);
   if (typeof cached === 'number') return cached;
 
   try {
-    const id = await databaseService.channelDatabase.findOrCreatePassiveByNameAsync(name);
+    const id = await databaseService.channelDatabase.findOrCreateByNameAndHashAsync(name, hash);
     if (typeof id === 'number') {
       channelNameToDbIdCache.set(cacheKey, id);
       return id;
     }
   } catch (err) {
     const m = err instanceof Error ? err.message : String(err);
-    logger.debug(`MQTT ingest: channel_database resolve failed for name="${name}": ${m}`);
+    logger.debug(`MQTT ingest: channel_database resolve failed for name="${name}" hash=${hash}: ${m}`);
   }
   return null;
 }

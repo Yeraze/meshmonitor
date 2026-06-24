@@ -234,6 +234,41 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
+   * Get the distinct `channel` numbers that have messages for a source, with a
+   * per-channel message count and the most recent message timestamp. Used by
+   * the Channels tab to enumerate the channel_database-backed virtual channels
+   * (`CHANNEL_DB_OFFSET + id`) that actually carry traffic for MQTT sources,
+   * which otherwise have no rows in the per-source `channels` table.
+   *
+   * Ordered most-active first (highest count), then by channel number.
+   */
+  async getDistinctChannelsForSource(
+    sourceId: string,
+  ): Promise<Array<{ channel: number; messageCount: number; lastTimestamp: number | null }>> {
+    const { messages } = this.tables;
+    const rows = await this.db
+      .select({
+        channel: messages.channel,
+        messageCount: count(),
+        lastTimestamp: sql<number | null>`MAX(${messages.timestamp})`,
+      })
+      .from(messages)
+      .where(this.withSourceScope(messages, sourceId))
+      .groupBy(messages.channel);
+
+    return rows
+      .map((r: any) => ({
+        channel: Number(r.channel),
+        messageCount: Number(r.messageCount),
+        lastTimestamp: r.lastTimestamp != null ? Number(r.lastTimestamp) : null,
+      }))
+      .filter((r: { channel: number }) => Number.isFinite(r.channel))
+      .sort((a: { messageCount: number; channel: number }, b: { messageCount: number; channel: number }) =>
+        b.messageCount - a.messageCount || a.channel - b.channel,
+      );
+  }
+
+  /**
    * Delete a message by ID
    */
   async deleteMessage(id: string): Promise<boolean> {
