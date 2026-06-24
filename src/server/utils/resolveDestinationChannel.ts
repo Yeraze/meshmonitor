@@ -8,6 +8,16 @@ import { logger } from '../../utils/logger.js';
  */
 export const MAX_MESHTASTIC_CHANNEL_INDEX = 7;
 
+/**
+ * The well-known default Meshtastic PSK: a single 0x01 byte, stored base64 as
+ * "AQ==". The firmware expands this to the public default channel key that
+ * every node ships with, so any node in the mesh can decrypt a channel that
+ * uses it. A channel with no PSK at all is unencrypted and likewise readable by
+ * everyone. These are the only channels guaranteed traversable by intermediate
+ * nodes — which is what traceroute requires (issue #3696).
+ */
+const DEFAULT_PSK_BASE64 = 'AQ==';
+
 function isValidChannelIndex(value: unknown): value is number {
   return (
     typeof value === 'number' &&
@@ -61,6 +71,57 @@ export async function resolveDestinationChannel(
 
   logger.warn(
     `resolveDestinationChannel: node ${destinationNum.toString(16)} on source ${manager.sourceId} has out-of-range channel ${stored}; falling back to channel 0`,
+  );
+  return 0;
+}
+
+/**
+ * True when a channel's PSK is one that every node in the mesh can decrypt:
+ * the well-known default key ("AQ==") or no key at all (unencrypted).
+ */
+function isMeshReadablePsk(psk: string | null | undefined): boolean {
+  return psk == null || psk === '' || psk === DEFAULT_PSK_BASE64;
+}
+
+/**
+ * Resolve the channel a broadcast-style mesh request (e.g. traceroute) should
+ * traverse so that EVERY intermediate node can decrypt and append to the
+ * packet. Returns the lowest-numbered channel on the source whose PSK is the
+ * well-known default key (or unencrypted); falls back to channel 0.
+ *
+ * Background (issue #3696, follow-up): traceroutes were first changed to always
+ * use channel index 0, on the assumption that "channel 0 is readable by all".
+ * That is false — channel 0 is merely the PRIMARY *slot*; its PSK can be a
+ * private custom key. If a user reconfigures channel 0 with a private key,
+ * hardcoding index 0 reproduces the original bug (opaque payload → "Unknown"
+ * hops). What actually matters is the PSK, not the slot number, so we pick the
+ * channel whose key the whole mesh shares.
+ *
+ * If no channel uses a mesh-readable key (the user encrypted every slot,
+ * including PRIMARY), there is no channel a traceroute can cleanly traverse; we
+ * log and fall back to 0 so the request still goes out.
+ *
+ * @param manager The source manager the request will be sent through.
+ * @param db Injected database facade.
+ * @returns A valid Meshtastic channel index (0–7).
+ */
+export async function resolveBroadcastChannel(
+  manager: { sourceId: string },
+  db: typeof databaseService,
+): Promise<number> {
+  const channels = await db.channels.getAllChannels(manager.sourceId);
+  const readable = channels
+    .filter((ch) => isValidChannelIndex(ch.id) && isMeshReadablePsk(ch.psk))
+    .sort((a, b) => a.id - b.id);
+
+  if (readable.length > 0) {
+    return readable[0].id;
+  }
+
+  logger.warn(
+    `resolveBroadcastChannel: source ${manager.sourceId} has no default-keyed (mesh-readable) channel; ` +
+      'falling back to channel 0. Traceroutes may show "Unknown" hops because intermediate nodes ' +
+      'cannot decrypt an encrypted-channel payload (issue #3696).',
   );
   return 0;
 }
