@@ -969,7 +969,7 @@ router.post('/reorder', requireAuth(), async (req: Request, res: Response) => {
     if (moves.length > 0) {
       logger.info(`📦 Channel reorder message migration: ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
       try {
-        await databaseService.messages.migrateMessagesForChannelMoves(moves);
+        await databaseService.messages.migrateMessagesForChannelMoves(moves, reorderSourceScope);
       } catch (error) {
         logger.error('📦 Failed to migrate messages after channel reorder:', error);
       }
@@ -1016,6 +1016,7 @@ router.post('/encode-url', requirePermission('configuration', 'read'), async (re
   try {
     const { channelIds, includeLoraConfig, sourceId: encodeUrlSourceId } = req.body;
     const encodeUrlManager = resolveSourceManager(encodeUrlSourceId);
+    const encodeUrlSourceScope = encodeUrlManager.sourceId;
 
     if (!Array.isArray(channelIds)) {
       return res.status(400).json({ error: 'channelIds must be an array' });
@@ -1023,9 +1024,11 @@ router.post('/encode-url', requirePermission('configuration', 'read'), async (re
 
     const channelUrlService = (await import('../services/channelUrlService.js')).default;
 
-    // Get selected channels from database
+    // Get selected channels from database, scoped to this source. MeshCore and
+    // Meshtastic channels share the `channels` table with the same slot ids, so
+    // an unscoped getChannelById can return another source's row for the slot.
     const channelResults = await Promise.all(
-      channelIds.map((id: number) => databaseService.channels.getChannelById(id))
+      channelIds.map((id: number) => databaseService.channels.getChannelById(id, encodeUrlSourceScope))
     );
     const channels = channelResults
       .filter((ch): ch is NonNullable<typeof ch> => ch !== null)
