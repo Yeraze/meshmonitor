@@ -26,7 +26,7 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
   'trigger.geofence': [['event', 'enter / exit / dwell'], ['nodeNum', 'Node number'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude'], ['distanceKm', 'Distance from the region centre (km)']],
   'trigger.schedule': [],
 };
-const UNIVERSAL_TOKENS: Array<[string, string]> = [['sourceId', 'The source the event came from'], ['timestamp', 'Event time (epoch ms)']];
+const UNIVERSAL_TOKENS: Array<[string, string]> = [['sourceId', 'The source the event came from'], ['timestamp', 'Event time (rendered as a local date/time)']];
 const TRIGGER_LABEL: Record<string, string> = {
   'trigger.message': 'Message', 'trigger.telemetry': 'Telemetry', 'trigger.nodeUpdated': 'Node updated',
   'trigger.nodeDiscovered': 'Node discovered', 'trigger.system': 'System event', 'trigger.geofence': 'Geofence', 'trigger.schedule': 'Schedule',
@@ -48,7 +48,7 @@ export default function SubstitutionsHelpDrawer({ triggerType, variables, onClos
       <h3>Variables &amp; misc</h3>
       <dl>
         <dt>{'{{ var.NAME }}'}</dt><dd>Any user variable{variables.length ? `: ${variables.map((v) => v.name).join(', ')}` : ' (none defined yet)'}.</dd>
-        <dt>{'{{ NOW }}'}</dt><dd>Current time (epoch ms).</dd>
+        <dt>{'{{ NOW }}'}</dt><dd>Current time (rendered as a local date/time).</dd>
       </dl>
 
       {order.filter((t) => TRIGGER_TOKENS[t]).map((t) => (

@@ -13,6 +13,22 @@ export type InterpolationLookup = (path: string) => InterpolationValue;
 
 const TOKEN = /\{\{\s*([^}]+?)\s*\}\}/g;
 
+/**
+ * `NOW` and any `*.timestamp` path carry epoch MILLISECONDS (from Date.now()),
+ * which is unreadable in a sent message. Render those as a local date/time.
+ * (Other epoch fields like `rxTime` are in seconds and are left as-is.)
+ */
+function isMsTimestampPath(path: string): boolean {
+  return path === 'NOW' || /(^|\.)timestamp$/i.test(path);
+}
+
+function formatTimestamp(ms: number): string {
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return String(ms);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 /** Replace all `{{ path }}` tokens in `template`. */
 export function interpolate(template: string, lookup: InterpolationLookup): string {
   if (typeof template !== 'string' || template.indexOf('{{') === -1) return template;
@@ -25,7 +41,9 @@ export function interpolate(template: string, lookup: InterpolationLookup): stri
     } catch {
       value = undefined;
     }
-    return value == null ? '' : String(value);
+    if (value == null) return '';
+    if (typeof value === 'number' && isMsTimestampPath(path)) return formatTimestamp(value);
+    return String(value);
   });
 }
 

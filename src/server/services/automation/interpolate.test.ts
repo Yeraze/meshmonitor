@@ -31,6 +31,20 @@ describe('interpolate', () => {
   it('tolerates whitespace and multiple tokens', () => {
     expect(interpolate('{{trigger.from}}-{{trigger.from}}', lookup)).toBe('123-123');
   });
+
+  it('formats NOW and *.timestamp epoch-ms tokens as a readable date/time', () => {
+    const ms = new Date(2026, 5, 24, 19, 43, 11).getTime(); // local time
+    const tsLookup = (p: string) => ({ 'NOW': ms, 'trigger.timestamp': ms } as Record<string, number>)[p];
+    expect(interpolate('{{ trigger.timestamp }}', tsLookup)).toBe('2026-06-24 19:43:11');
+    expect(interpolate('at {{ NOW }}', tsLookup)).toBe('at 2026-06-24 19:43:11');
+    // raw epoch ms is NOT shown
+    expect(interpolate('{{ trigger.timestamp }}', tsLookup)).not.toContain(String(ms));
+  });
+
+  it('leaves non-timestamp numeric tokens (incl. rxTime seconds) untouched', () => {
+    const lk = (p: string) => ({ 'trigger.from': 123, 'trigger.rxTime': 1782331391 } as Record<string, number>)[p];
+    expect(interpolate('{{ trigger.from }} {{ trigger.rxTime }}', lk)).toBe('123 1782331391');
+  });
 });
 
 describe('extractPaths', () => {
