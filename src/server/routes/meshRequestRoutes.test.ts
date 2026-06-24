@@ -65,12 +65,14 @@ describe('POST /traceroute', () => {
     expect(res.status).toBe(400);
   });
 
-  it('sends traceroute on the node channel', async () => {
+  it('always sends traceroute on channel 0 (Primary) regardless of node stored channel', async () => {
+    // node.channel is 2 from the beforeEach mock, but traceroutes must use
+    // channel 0 so intermediate nodes can read the unencrypted packet (issue #3696).
     mockManager.sendTraceroute.mockResolvedValue(undefined);
     const res = await request(app).post('/traceroute').send({ destination: '!12345678' });
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(mockManager.sendTraceroute).toHaveBeenCalledWith(0x12345678, 2);
+    expect(mockManager.sendTraceroute).toHaveBeenCalledWith(0x12345678, 0);
   });
 
   it('returns 503 when node is not connected', async () => {
