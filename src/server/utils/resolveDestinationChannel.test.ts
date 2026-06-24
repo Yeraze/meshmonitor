@@ -10,12 +10,16 @@
  * This helper scopes the lookup to the manager's real `sourceId` and clamps to 0–7.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { resolveDestinationChannel } from './resolveDestinationChannel.js';
+import { resolveDestinationChannel, resolveBroadcastChannel } from './resolveDestinationChannel.js';
 
 type DbFacade = Parameters<typeof resolveDestinationChannel>[2];
 
 function fakeDb(getNode: ReturnType<typeof vi.fn>): DbFacade {
   return { nodes: { getNode } } as unknown as DbFacade;
+}
+
+function fakeChannelDb(getAllChannels: ReturnType<typeof vi.fn>): DbFacade {
+  return { channels: { getAllChannels } } as unknown as DbFacade;
 }
 
 const manager = { sourceId: 'meshtastic-src' };
@@ -74,5 +78,82 @@ describe('resolveDestinationChannel', () => {
   it('rejects a negative explicit channel', async () => {
     getNode.mockResolvedValue({ channel: 0 });
     expect(await resolveDestinationChannel(0x1234, manager, db, -1)).toBe(0);
+  });
+});
+
+/**
+ * `resolveBroadcastChannel` picks a channel every node in the mesh can decrypt
+ * (the well-known default key "AQ==", or an unencrypted slot). This is what
+ * traceroute needs so intermediate nodes can append to the route — and why
+ * hardcoding slot 0 was wrong: slot 0 can carry a private key (issue #3696).
+ */
+describe('resolveBroadcastChannel', () => {
+  let getAllChannels: ReturnType<typeof vi.fn>;
+  let db: DbFacade;
+
+  beforeEach(() => {
+    getAllChannels = vi.fn();
+    db = fakeChannelDb(getAllChannels);
+  });
+
+  it('scopes the channel lookup to the manager sourceId', async () => {
+    getAllChannels.mockResolvedValue([{ id: 0, psk: 'AQ==' }]);
+    await resolveBroadcastChannel(manager, db);
+    expect(getAllChannels).toHaveBeenCalledWith('meshtastic-src');
+  });
+
+  it('returns the default-keyed channel when it is slot 0', async () => {
+    getAllChannels.mockResolvedValue([
+      { id: 0, psk: 'AQ==' },
+      { id: 2, psk: 'cHJpdmF0ZWtleQ==' },
+    ]);
+    expect(await resolveBroadcastChannel(manager, db)).toBe(0);
+  });
+
+  it('returns the default-keyed channel even when it is NOT slot 0', async () => {
+    getAllChannels.mockResolvedValue([
+      { id: 0, psk: 'cHJpdmF0ZWtleQ==' }, // private primary
+      { id: 3, psk: 'AQ==' },             // default-keyed secondary
+    ]);
+    expect(await resolveBroadcastChannel(manager, db)).toBe(3);
+  });
+
+  it('treats an unencrypted (null/empty PSK) channel as mesh-readable', async () => {
+    getAllChannels.mockResolvedValue([
+      { id: 0, psk: 'cHJpdmF0ZWtleQ==' },
+      { id: 1, psk: null },
+      { id: 2, psk: '' },
+    ]);
+    expect(await resolveBroadcastChannel(manager, db)).toBe(1);
+  });
+
+  it('prefers the lowest-numbered mesh-readable channel', async () => {
+    getAllChannels.mockResolvedValue([
+      { id: 5, psk: 'AQ==' },
+      { id: 1, psk: 'AQ==' },
+      { id: 3, psk: 'AQ==' },
+    ]);
+    expect(await resolveBroadcastChannel(manager, db)).toBe(1);
+  });
+
+  it('falls back to channel 0 when every channel uses a private key', async () => {
+    getAllChannels.mockResolvedValue([
+      { id: 0, psk: 'cHJpdmF0ZTA=' },
+      { id: 2, psk: 'cHJpdmF0ZTI=' },
+    ]);
+    expect(await resolveBroadcastChannel(manager, db)).toBe(0);
+  });
+
+  it('falls back to channel 0 when there are no channels at all', async () => {
+    getAllChannels.mockResolvedValue([]);
+    expect(await resolveBroadcastChannel(manager, db)).toBe(0);
+  });
+
+  it('ignores channels with out-of-range indices', async () => {
+    getAllChannels.mockResolvedValue([
+      { id: 101, psk: 'AQ==' }, // bogus MQTT-style index, must be skipped
+      { id: 4, psk: 'AQ==' },
+    ]);
+    expect(await resolveBroadcastChannel(manager, db)).toBe(4);
   });
 });

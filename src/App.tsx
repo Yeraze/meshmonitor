@@ -2796,7 +2796,7 @@ const location = useLocation();
     }
   };
 
-  const handleTraceroute = async (nodeId: string) => {
+  const handleTraceroute = async (nodeId: string, channel?: number) => {
     if (connectionStatus !== 'connected') {
       return;
     }
@@ -2814,7 +2814,7 @@ const location = useLocation();
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ destination: nodeNum, sourceId }),
+        body: JSON.stringify({ destination: nodeNum, sourceId, ...(channel !== undefined && { channel }) }),
       });
 
       logger.debug(`🗺️ Traceroute request sent to ${nodeId}`);
@@ -2884,7 +2884,7 @@ const location = useLocation();
     }
   };
 
-  const handleExchangeNodeInfo = async (nodeId: string) => {
+  const handleExchangeNodeInfo = async (nodeId: string, channel?: number) => {
     if (connectionStatus !== 'connected') {
       return;
     }
@@ -2909,7 +2909,7 @@ const location = useLocation();
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ destination: nodeNum, sourceId: sourceId || undefined }),
+        body: JSON.stringify({ destination: nodeNum, sourceId: sourceId || undefined, ...(channel !== undefined && { channel }) }),
       });
 
       logger.debug(`🔑 NodeInfo request sent to ${nodeId}`);
