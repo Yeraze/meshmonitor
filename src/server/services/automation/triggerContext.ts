@@ -154,6 +154,17 @@ export function buildSystemContext(
   };
 }
 
+/** Context for a `trigger.schedule` cron tick — no mesh payload, no subject node. */
+export function buildScheduleContext(sourceId: string | null, timestamp: number): TriggerContext {
+  return {
+    triggerType: 'trigger.schedule',
+    sourceId,
+    subjectNodeNum: null,
+    timestamp,
+    fields: { sourceId, timestamp },
+  };
+}
+
 /**
  * Tight pre-filter for `trigger.message`: cheap checks the engine runs before any
  * graph evaluation. Unset params don't constrain. Returns true on match.

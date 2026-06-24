@@ -83,8 +83,6 @@ export const TRIGGERS: BlockDef[] = [
     ],
   },
   {
-    // NOTE: stub — the engine does NOT fire schedule triggers live yet (no cron
-    // wiring; see AUTOMATION_ENGINE_PLAN.md §11). The Test panel can dry-run it.
     type: 'trigger.schedule',
     label: 'On a schedule',
     description: 'Fires on a cron schedule (no mesh event).',

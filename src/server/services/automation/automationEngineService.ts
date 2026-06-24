@@ -27,10 +27,12 @@ import {
   buildTelemetryContext,
   buildSystemContext,
   buildGeofenceContext,
+  buildScheduleContext,
   messageMatchesFilter,
   type TriggerContext,
   type SystemEvent,
 } from './triggerContext.js';
+import { scheduleCron, validateCron } from '../../utils/cronScheduler.js';
 import { haversineKm, geofenceFires, pointInShape, geofenceCenter, normalizeGeofenceParams, type GeofenceMode } from './geo.js';
 import { evaluateGraph, type EvaluatorHooks } from './graphEvaluator.js';
 import { evaluateCondition } from './conditionEvaluator.js';
@@ -51,6 +53,17 @@ interface LoadedAutomation {
   cooldownSeconds: number;
 }
 
+/** Pluggable cron backing for `trigger.schedule` — real croner in prod, a fake in tests. */
+export interface CronScheduler {
+  schedule(expression: string, callback: () => void): { stop: () => void };
+  validate(expression: string): boolean;
+}
+
+const REAL_CRON_SCHEDULER: CronScheduler = {
+  schedule: (expr, cb) => scheduleCron(expr, cb),
+  validate: validateCron,
+};
+
 export interface EngineServiceOptions {
   automationsRepo: AutomationsRepository;
   varResolver: VariableResolver;
@@ -61,6 +74,8 @@ export interface EngineServiceOptions {
   now?: () => number;
   /** Per-run action cap (loop/spam guard). Default 50. */
   maxActions?: number;
+  /** Cron backing for schedule triggers. Defaults to real croner. */
+  cron?: CronScheduler;
 }
 
 export class AutomationEngineService {
@@ -70,6 +85,7 @@ export class AutomationEngineService {
   private readonly data: NodeDataProvider;
   private readonly now: () => number;
   private readonly maxActions: number;
+  private readonly cron: CronScheduler;
 
   /** triggerType → loaded automations. */
   private index = new Map<TriggerType, LoadedAutomation[]>();
@@ -77,6 +93,8 @@ export class AutomationEngineService {
   private lastFired = new Map<string, number>();
   /** `${automationId}:${nodeNum}` → was the node inside the geofence last check. */
   private geofenceState = new Map<string, boolean>();
+  /** automationId → live cron job, for `trigger.schedule` automations. */
+  private cronJobs = new Map<string, { stop: () => void }>();
 
   constructor(opts: EngineServiceOptions) {
     this.automationsRepo = opts.automationsRepo;
@@ -85,6 +103,7 @@ export class AutomationEngineService {
     this.data = opts.data;
     this.now = opts.now ?? (() => Date.now());
     this.maxActions = opts.maxActions ?? 50;
+    this.cron = opts.cron ?? REAL_CRON_SCHEDULER;
   }
 
   /** (Re)load enabled automations and rebuild the trigger index. */
@@ -115,7 +134,49 @@ export class AutomationEngineService {
       index.get(triggerType)!.push(entry);
     }
     this.index = index;
+    this.rescheduleCron();
     logger.info(`[AutomationEngine] loaded ${rows.length} enabled automation(s)`);
+  }
+
+  /**
+   * (Re)arm cron jobs for every enabled `trigger.schedule` automation. Stops all
+   * prior jobs first, so a reload after CRUD never leaves a stale or duplicate
+   * job. An automation with a missing/invalid cron is logged and skipped.
+   */
+  private rescheduleCron(): void {
+    for (const job of this.cronJobs.values()) job.stop();
+    this.cronJobs.clear();
+    for (const a of this.index.get('trigger.schedule') ?? []) {
+      const cron = String((a.triggerNode.params as Record<string, unknown>)?.cron ?? '').trim();
+      if (!cron || !this.cron.validate(cron)) {
+        logger.warn(`[AutomationEngine] automation "${a.name}" has an invalid/missing cron ("${cron}"); not scheduled`);
+        continue;
+      }
+      const job = this.cron.schedule(cron, () => {
+        this.onSchedule(a.id).catch((e) => logger.error(`[AutomationEngine] schedule trigger error: ${e?.message}`));
+      });
+      this.cronJobs.set(a.id, job);
+    }
+  }
+
+  /** Stop all cron jobs (clean shutdown / test teardown). */
+  stop(): void {
+    for (const job of this.cronJobs.values()) job.stop();
+    this.cronJobs.clear();
+  }
+
+  /**
+   * Fire a single `trigger.schedule` automation by id (called from its cron job).
+   * Honors the per-automation cooldown. Returns 1 if it fired, else 0.
+   */
+  async onSchedule(automationId: string): Promise<number> {
+    const a = (this.index.get('trigger.schedule') ?? []).find((x) => x.id === automationId);
+    if (!a) return 0;
+    const now = this.now();
+    if (!this.cooledDown(a, now)) return 0;
+    this.lastFired.set(a.id, now);
+    await this.fireAutomation(a, buildScheduleContext(null, now), now);
+    return 1;
   }
 
   /** Number of loaded automations for a trigger type (test/introspection aid). */

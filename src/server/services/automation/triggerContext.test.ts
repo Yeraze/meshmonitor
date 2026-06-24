@@ -4,6 +4,7 @@ import {
   buildNodeContext,
   buildTelemetryContext,
   buildSystemContext,
+  buildScheduleContext,
   deriveHops,
   messageMatchesFilter,
   resolveTriggerPath,
@@ -80,6 +81,13 @@ describe('other trigger contexts', () => {
     const ctx = buildSystemContext('bootup', null, null, undefined, 5);
     expect(ctx.subjectNodeNum).toBeNull();
     expect(ctx.fields.event).toBe('bootup');
+  });
+
+  it('schedule context carries timestamp, no subject node', () => {
+    const ctx = buildScheduleContext(null, 1234);
+    expect(ctx.triggerType).toBe('trigger.schedule');
+    expect(ctx.subjectNodeNum).toBeNull();
+    expect(ctx.fields.timestamp).toBe(1234);
   });
 });
 
