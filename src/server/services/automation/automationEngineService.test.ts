@@ -269,4 +269,30 @@ describe('AutomationEngineService', () => {
     pos.lat = 1; // move outside
     expect(await engine.checkGeofences(7, 'default')).toBe(1); // exit
   });
+
+  it('geofence: polygon region — enter fires on outside→inside', async () => {
+    const { calls, deps } = recorder();
+    // A 2°×2° square centred on (0,0).
+    const vertices = [
+      { lat: -1, lng: -1 }, { lat: -1, lng: 1 }, { lat: 1, lng: 1 }, { lat: 1, lng: -1 },
+    ];
+    await createEnabled('geo-poly', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.geofence', params: { event: 'enter', shape: { type: 'polygon', vertices } } },
+        { id: 'a', type: 'action.notify', params: { body: 'entered poly' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    const pos = { lat: 5, lon: 5 }; // outside the square
+    const geoData = { getNode: async () => ({ nodeNum: 9, latitude: pos.lat, longitude: pos.lon }), getTelemetry: async () => null };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: geoData, now: () => clock });
+    await engine.load();
+
+    expect(await engine.checkGeofences(9, 'default')).toBe(0); // baseline (outside)
+    pos.lat = 0; pos.lon = 0; // move inside
+    expect(await engine.checkGeofences(9, 'default')).toBe(1); // enter
+    expect(await engine.checkGeofences(9, 'default')).toBe(0); // still inside → no re-fire
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(1);
+  });
 });

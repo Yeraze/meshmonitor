@@ -6,7 +6,7 @@
  * `kind` maps to an input renderer in AutomationBuilder.
  */
 
-export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti';
+export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'geofence';
 
 export interface FieldOpt { value: string; label: string; }
 export interface FieldGroup { label: string; options: FieldOpt[]; }
@@ -108,7 +108,7 @@ export const TRIGGERS: BlockDef[] = [
   {
     type: 'trigger.geofence',
     label: 'A node enters/leaves a region',
-    description: 'Fires when a node crosses a circular geofence (checked on position updates).',
+    description: 'Fires when a node crosses a geofence (checked on position updates). Draw a circle or polygon region on the map.',
     fields: [
       {
         name: 'event', label: 'Event', kind: 'select',
@@ -118,9 +118,7 @@ export const TRIGGERS: BlockDef[] = [
           { value: 'dwell', label: 'Moves while inside the region' },
         ],
       },
-      { name: 'lat', label: 'Center latitude', kind: 'number', placeholder: 'e.g. 27.95' },
-      { name: 'lon', label: 'Center longitude', kind: 'number', placeholder: 'e.g. -82.46' },
-      { name: 'radiusKm', label: 'Radius (km)', kind: 'number', placeholder: 'e.g. 1' },
+      { name: 'shape', label: 'Region', kind: 'geofence', help: 'Draw a circle (center + radius) or a polygon on the map.' },
       COOLDOWN,
     ],
   },

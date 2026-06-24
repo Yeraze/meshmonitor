@@ -9,6 +9,8 @@ import { useState } from 'react';
 import { TRIGGERS, CONDITIONS, ACTIONS, BLOCK_BY_TYPE, fieldsFor, type BlockDef, type FieldDef } from './catalog';
 import type { WorkflowForm, FormBlock, Rule } from './compile';
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
+import GeofenceFieldInput from './GeofenceFieldInput';
+import type { GeofenceShape } from '../auto-responder/types';
 
 export interface VariableOption { name: string; type: string; }
 export interface SourceOption { id: string; name: string; }
@@ -92,6 +94,9 @@ function FieldInput({ field, value, onChange, variables, sources }: {
           {variables.map((v) => <option key={v.name} value={v.name}>{v.name} ({v.type})</option>)}
         </select>
       );
+      break;
+    case 'geofence':
+      control = <GeofenceFieldInput value={value as GeofenceShape | undefined} onChange={onChange} />;
       break;
     default:
       control = <input className="ae-input" value={(value ?? '') as string} placeholder={field.placeholder} onChange={(e) => onChange(e.target.value)} />;

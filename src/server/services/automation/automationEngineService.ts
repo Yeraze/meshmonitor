@@ -31,7 +31,7 @@ import {
   type TriggerContext,
   type SystemEvent,
 } from './triggerContext.js';
-import { haversineKm, geofenceFires, type GeofenceMode } from './geo.js';
+import { haversineKm, geofenceFires, pointInShape, geofenceCenter, normalizeGeofenceParams, type GeofenceMode } from './geo.js';
 import { evaluateGraph, type EvaluatorHooks } from './graphEvaluator.js';
 import { evaluateCondition } from './conditionEvaluator.js';
 import { executeAction, type ActionDeps } from './actionExecutor.js';
@@ -266,12 +266,15 @@ export class AutomationEngineService {
     let fired = 0;
     for (const a of entries) {
       const p = (a.triggerNode.params ?? {}) as Record<string, unknown>;
-      const lat = Number(p.lat), lon = Number(p.lon), radiusKm = Number(p.radiusKm);
       const mode = (String(p.event ?? 'enter') as GeofenceMode);
-      if (![lat, lon, radiusKm].every(Number.isFinite)) continue;
+      const shape = normalizeGeofenceParams(p);
+      if (!shape) continue;
 
-      const distanceKm = haversineKm(node.latitude, node.longitude, lat, lon);
-      const inside = distanceKm <= radiusKm;
+      const inside = pointInShape(node.latitude, node.longitude, shape);
+      // Distance to the region's reference point (circle center / polygon
+      // centroid) so {{ trigger.distanceKm }} stays meaningful for both shapes.
+      const center = geofenceCenter(shape);
+      const distanceKm = haversineKm(node.latitude, node.longitude, center.lat, center.lng);
       const key = `${a.id}:${nodeNum}`;
       const prev = this.geofenceState.get(key);
       this.geofenceState.set(key, inside);

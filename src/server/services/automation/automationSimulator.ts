@@ -38,7 +38,7 @@ import {
   type TriggerContext,
   type SystemEvent,
 } from './triggerContext.js';
-import { haversineKm, type GeofenceMode } from './geo.js';
+import { haversineKm, geofenceCenter, normalizeGeofenceParams, type GeofenceMode } from './geo.js';
 import {
   varContextFromTrigger,
   resolveOperand,
@@ -233,7 +233,9 @@ function buildContext(graph: AutomationGraph, ev: SimEventInput, node: Partial<N
       const mode = (String(params.event ?? 'enter') as GeofenceMode);
       const lat = Number(node?.latitude ?? 0);
       const lon = Number(node?.longitude ?? 0);
-      const distanceKm = haversineKm(lat, lon, Number(params.lat), Number(params.lon));
+      const shape = normalizeGeofenceParams(params);
+      const center = shape ? geofenceCenter(shape) : { lat, lng: lon };
+      const distanceKm = haversineKm(lat, lon, center.lat, center.lng);
       // Preview: assume the configured crossing occurred; conditions still run
       // against the supplied position. matched=true so the trace is informative.
       return { ctx: buildGeofenceContext(Number(ev.nodeNum ?? 0), mode, lat, lon, distanceKm, sourceId, now), matched: true };

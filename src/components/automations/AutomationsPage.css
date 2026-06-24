@@ -21,7 +21,9 @@
   border-bottom: 2px solid transparent; margin-bottom: -1px;
 }
 .ae-tab:hover { color: var(--ctp-text); }
-.ae-tab.is-active { color: var(--ctp-accent-text); border-bottom-color: var(--ctp-blue); }
+/* Active tab text uses the blue accent (matches the underline) — it sits on the
+   dark tab bar with no background, so the black --ctp-accent-text was unreadable. */
+.ae-tab.is-active { color: var(--ctp-blue); border-bottom-color: var(--ctp-blue); }
 
 /* Buttons */
 .ae-btn {
@@ -99,7 +101,9 @@
   box-shadow: -8px 0 24px rgba(0,0,0,0.35); padding: 1.25rem 1.4rem; overflow-y: auto;
 }
 .ae-drawer h2 { margin-top: 0; font-size: 1.15rem; }
-.ae-drawer h3 { margin: 1.1rem 0 0.3rem; font-size: 0.95rem; color: var(--ctp-accent-text); }
+/* Drawer headings sit on the dark --ctp-mantle drawer — use the theme foreground,
+   not the black --ctp-accent-text (which is meant for bright accent backgrounds). */
+.ae-drawer h3 { margin: 1.1rem 0 0.3rem; font-size: 0.95rem; color: var(--ctp-text); }
 .ae-drawer dt { font-weight: 700; margin-top: 0.7rem; font-family: var(--font-mono, monospace); font-size: 0.85rem; color: var(--ctp-text); }
 .ae-drawer dd { margin: 0.15rem 0 0; color: var(--ctp-subtext1); font-size: 0.85rem; line-height: 1.45; }
 .ae-drawer-close { position: absolute; top: 0.9rem; right: 1rem; }

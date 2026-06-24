@@ -7,6 +7,7 @@
  * explaining types and scopes.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { appBasename } from '../../init';
 import apiService from '../../services/api';
 import AutomationBuilder, { type VariableOption, type SourceOption } from './AutomationBuilder';
 import AutomationTester from './AutomationTester';
@@ -39,6 +40,12 @@ const DEFAULT_FORM: WorkflowForm = {
 /** Builder-form validation: each rule needs an action (unless it only feeds a combine). */
 function validateForm(form: WorkflowForm): string[] {
   const errs: string[] = [];
+  if (form.trigger.type === 'trigger.geofence') {
+    const shape = form.trigger.params.shape as { type?: string; vertices?: unknown[] } | undefined;
+    if (!shape || (shape.type === 'polygon' && (shape.vertices?.length ?? 0) < 3)) {
+      errs.push('Draw a geofence region (circle or polygon) on the map.');
+    }
+  }
   if (form.rules.length === 0) errs.push('Add at least one rule.');
   form.rules.forEach((r, i) => {
     if (r.actions.length === 0 && !(form.combine && r.conditions.length > 0)) {
@@ -55,7 +62,7 @@ export default function AutomationsPage() {
     <div className="ae-page">
       <div className="ae-container">
         <div className="ae-topbar">
-          <button className="ae-btn ae-btn--ghost" onClick={() => { window.location.href = import.meta.env.BASE_URL || '/'; }}>← Dashboard</button>
+          <button className="ae-btn ae-btn--ghost" onClick={() => { window.location.href = `${appBasename}/`; }}>← Dashboard</button>
         </div>
         <h1 className="ae-title">Automation Engine</h1>
         <p className="ae-subtitle">Advanced Mode (beta) — global “when this happens, do that” workflows across every source.</p>
