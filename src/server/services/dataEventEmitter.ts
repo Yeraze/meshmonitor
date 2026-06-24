@@ -30,6 +30,7 @@ export type DataEventType =
   | 'meshcore:status:updated'
   | 'meshcore:local-node:updated'
   | 'meshcore:send-confirmed'
+  | 'meshcore:channel-heard'
   | 'meshcore:ota-packet';
 
 export interface DataEvent {
@@ -376,6 +377,26 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] MeshCore send confirmed: RTT=${data.roundTripMs}ms (source: ${sourceId})`);
+  }
+
+  /**
+   * Emit a MeshCore channel "heard repeaters" update (#3700). Fired
+   * incrementally as repeaters re-flood an outgoing channel message and we
+   * correlate the self-echo; carries the current full heard-by set for the
+   * message so the client can replace its state idempotently.
+   */
+  emitMeshCoreChannelHeard(
+    data: { id: string; heardBy: Array<{ hash: string; name?: string | null; snr?: number | null }> },
+    sourceId: string,
+  ): void {
+    const event: DataEvent = {
+      type: 'meshcore:channel-heard',
+      data: { sourceId, ...data },
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] MeshCore channel heard: msg=${data.id} count=${data.heardBy.length} (source: ${sourceId})`);
   }
 
   /**
