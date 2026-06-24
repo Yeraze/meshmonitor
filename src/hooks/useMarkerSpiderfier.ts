@@ -109,6 +109,15 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
   const markersRef = useRef<Set<LeafletMarker>>(new Set());
   // Track markers by nodeId or leaflet ID to allow multiple markers at same location
   const markerByIdRef = useRef<Map<string, LeafletMarker>>(new Map());
+  // Markers whose ref callback fired BEFORE the spiderfier instance existed.
+  // React invokes <Marker ref> callbacks during the commit phase, which runs
+  // *before* the `useEffect` below that creates the spiderfier. Any marker
+  // present at first mount therefore arrives while `spiderfierRef.current` is
+  // still null; without buffering it would be dropped and its overlapping pile
+  // would never fan out (issue #3612 follow-up — Map Analysis / Unified maps,
+  // whose node data is already present at first commit, hit exactly this).
+  // These get flushed into the spiderfier the moment it's created.
+  const pendingRef = useRef<Map<string, LeafletMarker>>(new Map());
 
   // Initialize spiderfier instance (only once when map is available)
   useEffect(() => {
@@ -132,6 +141,23 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
 
     spiderfierRef.current = spiderfier;
 
+    // Flush any markers that registered before the spiderfier existed (their
+    // ref callbacks ran during the commit phase, before this effect). Without
+    // this, markers present at first mount are never handed to the spiderfier
+    // and clicking their pile never spreads them apart.
+    if (pendingRef.current.size > 0) {
+      pendingRef.current.forEach((marker, key) => {
+        try {
+          spiderfier.addMarker(marker);
+          markersRef.current.add(marker);
+          markerByIdRef.current.set(key, marker);
+        } catch {
+          // Ignore — a marker may have been removed before flush.
+        }
+      });
+      pendingRef.current.clear();
+    }
+
     // Cleanup on unmount
     return () => {
       if (spiderfierRef.current) {
@@ -145,6 +171,7 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
         });
         markersRef.current.clear();
         markerByIdRef.current.clear();
+        pendingRef.current.clear();
         spiderfierRef.current = null;
       }
     };
@@ -163,12 +190,19 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
    * @param nodeId - Optional node ID to track this marker (allows multiple markers at same position)
    */
   const addMarker = useCallback((marker: LeafletMarker | null, nodeId?: string) => {
-    if (!marker || !spiderfierRef.current) {
+    if (!marker) {
       return;
     }
 
     // Track by node ID if provided, otherwise generate a unique key
     const trackingKey = nodeId || `marker-${Date.now()}-${Math.random()}`;
+
+    // Spiderfier not created yet (ref callback fired during the commit phase,
+    // before the init effect). Buffer the marker; the init effect flushes it.
+    if (!spiderfierRef.current) {
+      pendingRef.current.set(trackingKey, marker);
+      return;
+    }
     const existingMarker = markerByIdRef.current.get(trackingKey);
 
     // If the existing marker is the same object, we're done (already added)
@@ -236,7 +270,18 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
    * Remove a marker from the spiderfier
    */
   const removeMarker = useCallback((marker: LeafletMarker | null) => {
-    if (!marker || !spiderfierRef.current) return;
+    if (!marker) return;
+
+    // Drop it from the pre-init buffer too, so a marker unmounted before the
+    // spiderfier was created isn't resurrected by the flush.
+    for (const [key, value] of pendingRef.current.entries()) {
+      if (value === marker) {
+        pendingRef.current.delete(key);
+        break;
+      }
+    }
+
+    if (!spiderfierRef.current) return;
 
     if (!markersRef.current.has(marker)) return;
 

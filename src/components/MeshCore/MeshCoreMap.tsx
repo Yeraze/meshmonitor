@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline } from 'react-leaflet';
-import L from 'leaflet';
+import L, { type Marker as LeafletMarker } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { SpiderfierController, type SpiderfierControllerRef } from '../SpiderfierController';
 import { useSettings } from '../../contexts/SettingsContext';
 import {
   getNodeTypeCategory,
@@ -119,6 +120,45 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
   const [showNeighbors, setShowNeighbors] = useState(true);
   const [neighborEdges, setNeighborEdges] = useState<NeighborEdge[]>([]);
 
+  // Spiderfier: fan out co-located MeshCore contacts so each is selectable
+  // (this map had none before). Same robust bridge as the Map Analysis /
+  // Dashboard maps — register on a marker instance, IGNORE react-leaflet's
+  // null ref-bounce (useImperativeHandle has no deps, so it fires null→instance
+  // every re-render), reconcile genuine removals from the rendered key set, and
+  // keep position/icon refs stable so a re-render doesn't collapse an open fan.
+  const spiderfierRef = useRef<SpiderfierControllerRef>(null);
+  const markerByKey = useRef<Map<string, LeafletMarker>>(new Map());
+  const refHandlers = useRef<Map<string, (m: LeafletMarker | null) => void>>(new Map());
+  const positionCacheRef = useRef<Map<string, [number, number]>>(new Map());
+  const iconCacheRef = useRef<Map<string, { sig: string; icon: L.DivIcon }>>(new Map());
+  const stablePosition = (key: string, lat: number, lng: number): [number, number] => {
+    const cached = positionCacheRef.current.get(key);
+    if (cached && cached[0] === lat && cached[1] === lng) return cached;
+    const next: [number, number] = [lat, lng];
+    positionCacheRef.current.set(key, next);
+    return next;
+  };
+  const stableIcon = (key: string, sig: string, build: () => L.DivIcon): L.DivIcon => {
+    const cached = iconCacheRef.current.get(key);
+    if (cached && cached.sig === sig) return cached.icon;
+    const icon = build();
+    iconCacheRef.current.set(key, { sig, icon });
+    return icon;
+  };
+  const getMarkerRef = (key: string) => {
+    let h = refHandlers.current.get(key);
+    if (!h) {
+      h = (m: LeafletMarker | null) => {
+        if (m) {
+          markerByKey.current.set(key, m);
+          spiderfierRef.current?.addMarker(m, key);
+        }
+      };
+      refHandlers.current.set(key, h);
+    }
+    return h;
+  };
+
   // Per-node-type visibility filter (issue #3546), persisted like the other map
   // toggles. Missing/true => visible; a category is hidden only when explicitly
   // set false. Mirrors the Map Analysis workspace so behavior matches there.
@@ -198,6 +238,23 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
     [positioned, nodeTypeFilter],
   );
 
+  // Unregister markers whose contact is no longer rendered (filtered out / gone),
+  // keyed off the rendered publicKey set — genuine removals only, never the
+  // ref null-bounce.
+  const renderedKeysSig = visibleContacts.map(c => c.publicKey).join('|');
+  useEffect(() => {
+    const rendered = new Set(renderedKeysSig ? renderedKeysSig.split('|') : []);
+    for (const key of [...markerByKey.current.keys()]) {
+      if (rendered.has(key)) continue;
+      const m = markerByKey.current.get(key);
+      if (m) spiderfierRef.current?.removeMarker(m);
+      markerByKey.current.delete(key);
+      refHandlers.current.delete(key);
+      positionCacheRef.current.delete(key);
+      iconCacheRef.current.delete(key);
+    }
+  }, [renderedKeysSig]);
+
   const localPos = useMemo((): [number, number] | null => {
     if (localNodePosition?.lat != null && localNodePosition?.lng != null) {
       return [localNodePosition.lat, localNodePosition.lng];
@@ -276,15 +333,19 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
           url={tileset.url}
           maxZoom={tileset.maxZoom}
         />
+        <SpiderfierController ref={spiderfierRef} />
         {showLegend && <MapLegend showNodeTypes />}
         {geoJsonLayers.length > 0 && <GeoJsonOverlay layers={geoJsonLayers} />}
         {visibleContacts.map(c => {
           const name = c.advName || c.name || 'MeshCore';
+          const category = getNodeTypeCategory({ advType: c.advType });
+          const icon = stableIcon(c.publicKey, `${name}|${category}`, () => makeIcon(name, category));
           return (
             <Marker
               key={c.publicKey}
-              position={[c.latitude!, c.longitude!]}
-              icon={makeIcon(name, getNodeTypeCategory({ advType: c.advType }))}
+              ref={getMarkerRef(c.publicKey)}
+              position={stablePosition(c.publicKey, c.latitude!, c.longitude!)}
+              icon={icon}
             >
               <Tooltip>
                 <strong>{name}</strong>

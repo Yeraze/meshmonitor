@@ -1,5 +1,5 @@
 import { Marker, Popup } from 'react-leaflet';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { Marker as LeafletMarker } from 'leaflet';
 import {
   useDashboardSources,
@@ -56,24 +56,64 @@ export default function NodeMarkersLayer() {
   const { addMarker, removeMarker } = useMarkerSpiderfier(SHARED_SPIDERFIER_OPTIONS);
   const markerByKey = useRef<Map<string, LeafletMarker>>(new Map());
   const refHandlers = useRef<Map<string, (m: LeafletMarker | null) => void>>(new Map());
+  // Stable position/icon refs keyed by the spiderfier key — fixes the fan
+  // auto-collapsing after a refresh (issue #3685). react-leaflet only
+  // moves/restyles a marker when the prop *reference* changes, and doing so on a
+  // spiderfied marker snaps it back to its anchor, collapsing the fan. The
+  // unified data refetches on every poll and rebuilds these objects even when
+  // nothing moved, so cache them by value to keep refs stable across refreshes.
+  const positionCacheRef = useRef<Map<string, [number, number]>>(new Map());
+  const iconCacheRef = useRef<Map<string, { sig: string; icon: ReturnType<typeof createNodeIcon> }>>(new Map());
+  const stablePosition = (key: string, lat: number, lng: number): [number, number] => {
+    const cached = positionCacheRef.current.get(key);
+    if (cached && cached[0] === lat && cached[1] === lng) return cached;
+    const next: [number, number] = [lat, lng];
+    positionCacheRef.current.set(key, next);
+    return next;
+  };
+  const stableIcon = (
+    key: string,
+    sig: string,
+    build: () => ReturnType<typeof createNodeIcon>,
+  ): ReturnType<typeof createNodeIcon> => {
+    const cached = iconCacheRef.current.get(key);
+    if (cached && cached.sig === sig) return cached.icon;
+    const icon = build();
+    iconCacheRef.current.set(key, { sig, icon });
+    return icon;
+  };
   const getMarkerRef = (key: string) => {
     let h = refHandlers.current.get(key);
     if (!h) {
       h = (m: LeafletMarker | null) => {
-        const prev = markerByKey.current.get(key);
+        // NOTE: react-leaflet registers its forwarded ref via
+        // `useImperativeHandle(ref, () => instance)` with NO dependency array,
+        // so React bounces this callback `null → instance` on EVERY re-render —
+        // not just on mount/unmount. Treating `null` as "removed" here would
+        // call removeMarker on a still-present (often spiderfied) marker every
+        // time the selection or polled data changes, and OMS auto-unspiderfies
+        // when a spiderfied marker is removed → the fan collapses (issue #3685).
+        // So we ONLY register on an instance (addMarker is idempotent) and
+        // ignore the null bounce. Genuine removals are reconciled by the effect
+        // below, driven by which keys are still rendered.
         if (m) {
           markerByKey.current.set(key, m);
           addMarker(m, key);
-        } else {
-          if (prev) removeMarker(prev);
-          markerByKey.current.delete(key);
-          refHandlers.current.delete(key);
         }
       };
       refHandlers.current.set(key, h);
     }
     return h;
   };
+
+  // Stable, UNIQUE spiderfier key per node. MeshCore nodes carry no Meshtastic
+  // nodeNum, so `${sourceId}:${nodeNum}` collapses every MeshCore node in a
+  // source onto one key (`…:undefined`) — only one would register with the
+  // spiderfier and MeshCore piles never fan out. Fall back to the (unique)
+  // nodeId for MeshCore, matching DashboardMap. Meshtastic/MQTT keys are
+  // unchanged. (issue: spiderfy not working for MeshCore markers on Map Analysis)
+  const keyOf = (n: NodeRecord): string =>
+    n.isMeshCore ? `mc:${n.nodeId ?? n.nodeNum}` : `${n.sourceId ?? ''}:${n.nodeNum}`;
 
   const { data: sources = [] } = useDashboardSources();
   const sourceList = sources as Array<{ id: string; name: string }>;
@@ -113,6 +153,24 @@ export default function NodeMarkersLayer() {
       return config.sources.includes(node.sourceId);
     });
 
+  // Genuine removals (a node aged out / filtered away) are reconciled here
+  // rather than from the ref `null` bounce — drop any tracked marker whose key
+  // is no longer rendered, and unregister it from the spiderfier. Keyed off the
+  // rendered key SET so it only does work when membership actually changes.
+  const renderedKeysSig = filteredNodes.map(({ node: n }) => keyOf(n)).join('|');
+  useEffect(() => {
+    const rendered = new Set(renderedKeysSig ? renderedKeysSig.split('|') : []);
+    for (const key of [...markerByKey.current.keys()]) {
+      if (rendered.has(key)) continue;
+      const m = markerByKey.current.get(key);
+      if (m) removeMarker(m);
+      markerByKey.current.delete(key);
+      refHandlers.current.delete(key);
+      positionCacheRef.current.delete(key);
+      iconCacheRef.current.delete(key);
+    }
+  }, [renderedKeysSig, removeMarker]);
+
   return (
     <>
       {filteredNodes.map(({ node: n, latLng }) => {
@@ -133,21 +191,28 @@ export default function NodeMarkersLayer() {
               : 0;
         const isRouter = roleNum === 2;
         const roleCategory = getNodeTypeCategory(n);
-        const icon = createNodeIcon({
-          hops,
-          isSelected,
-          isRouter,
-          roleCategory,
-          shortName: n.shortName ?? undefined,
-          showLabel: true,
-          pinStyle: mapPinStyle,
-        });
-        const markerKey = `${sourceId}:${n.nodeNum}`;
+        const markerKey = keyOf(n);
+        // Reuse cached icon/position unless an input changed, so a poll that
+        // returns identical data doesn't churn the marker and collapse an active
+        // spiderfy fan. Selection IS part of the signature, so highlighting the
+        // chosen node still re-renders just that marker.
+        const iconSig = `${hops}|${isSelected ? 1 : 0}|${isRouter ? 1 : 0}|${roleCategory}|${n.shortName ?? ''}|${mapPinStyle}`;
+        const icon = stableIcon(markerKey, iconSig, () =>
+          createNodeIcon({
+            hops,
+            isSelected,
+            isRouter,
+            roleCategory,
+            shortName: n.shortName ?? undefined,
+            showLabel: true,
+            pinStyle: mapPinStyle,
+          }),
+        );
         return (
           <Marker
             key={markerKey}
             ref={getMarkerRef(markerKey)}
-            position={[lat, lon]}
+            position={stablePosition(markerKey, lat, lon)}
             icon={icon}
             eventHandlers={{
               click: () =>
@@ -158,7 +223,11 @@ export default function NodeMarkersLayer() {
                 }),
             }}
           >
-            <Popup>
+            {/* Render in the default popupPane (z-index 700). Without this the
+                Popup inherits the surrounding <Pane name="markers"> (z-index
+                600) from MapAnalysisCanvas, so node markers paint over the
+                popup ("details popup under the markers"). */}
+            <Popup pane="popupPane">
               <strong>
                 {n.longName ?? n.shortName ?? `!${Number(n.nodeNum).toString(16)}`}
               </strong>
