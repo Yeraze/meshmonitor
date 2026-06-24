@@ -187,9 +187,24 @@ function Field({ label, value, onChange, type }: { label: string; value: string 
   );
 }
 
+const SYSTEM_EVENT_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'bootup', label: 'System start' },
+  { value: 'source-connected', label: 'Source came online' },
+  { value: 'source-disconnected', label: 'Source went offline' },
+  { value: 'upgrade-available', label: 'Upgrade available' },
+];
+
 function renderEventInputs(kind: string, ev: EventState, set: (k: string, v: string) => void) {
   const f = (label: string, key: string, type?: string) => (
     <Field label={label} value={ev[key]} onChange={(v) => set(key, v)} type={type} key={key} />
+  );
+  const sel = (label: string, key: string, options: Array<{ value: string; label: string }>, dflt: string) => (
+    <div className="ae-field" key={key}>
+      <label className="ae-field-label">{label}</label>
+      <select className="ae-select" value={ev[key] || dflt} onChange={(e) => set(key, e.target.value)}>
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
   );
   switch (kind) {
     case 'message':
@@ -210,7 +225,7 @@ function renderEventInputs(kind: string, ev: EventState, set: (k: string, v: str
     case 'nodeDiscovered':
       return <>{f('Node #', 'nodeNum', 'number')}{f('Changed fields (csv)', 'changed')}</>;
     case 'system':
-      return <>{f('Event', 'event')}{f('Latest version', 'latestVersion')}{f('Current version', 'currentVersion')}</>;
+      return <>{sel('Event', 'event', SYSTEM_EVENT_OPTIONS, 'bootup')}{f('Latest version', 'latestVersion')}{f('Current version', 'currentVersion')}</>;
     case 'geofence':
       return <>{f('Node #', 'nodeNum', 'number')}<div className="ae-muted" style={{ alignSelf: 'end' }}>Set the node’s position under “Subject-node facts”.</div></>;
     default:
