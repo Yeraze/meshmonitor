@@ -65,7 +65,17 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  // Message ids whose "heard repeaters" list (#3700) is expanded.
+  const [expandedHeardBy, setExpandedHeardBy] = useState<Set<string>>(new Set());
   const listRef = useRef<HTMLDivElement>(null);
+
+  const toggleHeardBy = useCallback((id: string) => {
+    setExpandedHeardBy(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
 
   // MeshCore inbound messages carry `pubkey_prefix` (typically 6-byte / 12-char
   // hex) in `fromPublicKey`, while contacts are keyed by full pubkey. Match by
@@ -268,9 +278,32 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                         : ' …'}
                     </span>
                   )}
+                  {outgoing && m.heardBy && m.heardBy.length > 0 && (
+                    <button
+                      type="button"
+                      className="mc-heard-by-badge"
+                      title={t('meshcore.heard_by_tooltip', 'Repeaters that relayed this message')}
+                      aria-expanded={expandedHeardBy.has(m.id)}
+                      onClick={() => toggleHeardBy(m.id)}
+                    >
+                      {' 📡 '}{m.heardBy.length}
+                    </button>
+                  )}
                 </span>
               </div>
               <div className="mc-message-text">{renderMessageText(m.text)}</div>
+              {outgoing && m.heardBy && m.heardBy.length > 0 && expandedHeardBy.has(m.id) && (
+                <ul className="mc-heard-by-list">
+                  {m.heardBy.map(h => (
+                    <li key={h.hash} className="mc-heard-by-item">
+                      <span className="mc-heard-by-name">{h.name || h.hash}</span>
+                      {typeof h.snr === 'number' && (
+                        <span className="mc-heard-by-snr"> ({h.snr} dB)</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
               {m.text && <LinkPreview text={m.text} />}
               </div>
             </React.Fragment>
