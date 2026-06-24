@@ -3274,7 +3274,14 @@ router.get(
     try {
       const sourceId = (req.params as { id?: string }).id!;
       const offset = Math.max(parseInt(req.query.offset as string, 10) || 0, 0);
-      const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 100, 1), MESHCORE_PACKET_MAX_LIMIT);
+      // Honor the user-configured retention cap (meshcore_packet_log_max_count)
+      // as the default effective limit, the same way the export endpoint does
+      // (issue #3690). An explicit client-supplied `limit` still wins so a
+      // caller can request fewer rows; both are clamped by the hard ceiling.
+      const maxCount = await meshcorePacketLogService.getMaxCount();
+      const requestedLimit = parseInt(req.query.limit as string, 10);
+      const effectiveLimit = Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : maxCount;
+      const limit = Math.min(Math.max(effectiveLimit, 1), MESHCORE_PACKET_MAX_LIMIT);
       const payloadType = req.query.payload_type !== undefined ? parseInt(req.query.payload_type as string, 10) : undefined;
       const routeType = req.query.route_type !== undefined ? parseInt(req.query.route_type as string, 10) : undefined;
       let since = req.query.since !== undefined ? parseInt(req.query.since as string, 10) : undefined;
@@ -3290,11 +3297,10 @@ router.get(
         since: Number.isFinite(since as number) ? since : undefined,
       };
 
-      const [packets, total, enabled, maxCount, maxAgeHours] = await Promise.all([
+      const [packets, total, enabled, maxAgeHours] = await Promise.all([
         meshcorePacketLogService.getPackets(query),
         meshcorePacketLogService.getPacketCount({ sourceId, payloadType: query.payloadType, routeType: query.routeType, since: query.since }),
         meshcorePacketLogService.isEnabled(),
-        meshcorePacketLogService.getMaxCount(),
         meshcorePacketLogService.getMaxAgeHours(),
       ]);
 
