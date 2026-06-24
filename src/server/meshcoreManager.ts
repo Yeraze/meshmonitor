@@ -4178,6 +4178,14 @@ class MeshCoreManager extends EventEmitter {
     return databaseService.meshcore.getChannelMessageCounts(channelIndices, this.sourceId);
   }
 
+  /**
+   * Latest persisted message timestamp per channel index, for the channel-list
+   * unread indicator (#3703). Channels with no messages are omitted.
+   */
+  async getChannelLatestTimestamps(channelIndices: number[]): Promise<Record<number, number>> {
+    return databaseService.meshcore.getChannelLatestTimestamps(channelIndices, this.sourceId);
+  }
+
   isConnected(): boolean {
     return this.connected;
   }

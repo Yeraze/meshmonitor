@@ -67,6 +67,10 @@ function makeActions(overrides: Partial<MeshCoreActions> = {}): MeshCoreActions 
     setTelemetryModeEnv: vi.fn().mockResolvedValue(true),
     refreshAll: vi.fn().mockResolvedValue(undefined),
     clearError: vi.fn(),
+    // Scope helpers invoked by the component when status.connected is true; the
+    // component swallows failures, but mocking them avoids unhandled rejections.
+    getDefaultScope: vi.fn().mockResolvedValue(''),
+    discoverRegions: vi.fn().mockResolvedValue({ regions: [] }),
     ...overrides,
   };
 }
@@ -423,5 +427,158 @@ describe('MeshCoreChannelsView — sending', () => {
     });
 
     expect(actions.sendMessage).toHaveBeenCalledWith('channel ops msg', undefined, 2);
+  });
+});
+
+describe('MeshCoreChannelsView — unread indicator (#3703)', () => {
+  // Route the list, per-channel-messages, and channel-counts endpoints. The
+  // counts endpoint now also returns `latestTimestamps` (idx → max ms) which
+  // drives the unread comparison.
+  function routedFetch(opts: {
+    latestTimestamps?: Record<number, number>;
+    counts?: Record<number, number>;
+    messagesByChannel?: Record<number, MeshCoreMessage[]>;
+  }) {
+    return vi.fn((url: string) => {
+      if (url.includes('/api/channels/all')) {
+        return Promise.resolve(jsonResponse([
+          { id: 0, name: 'Public' },
+          { id: 1, name: 'Town' },
+        ]));
+      }
+      if (url.includes('/messages/channel-counts')) {
+        return Promise.resolve(jsonResponse({
+          success: true,
+          counts: opts.counts ?? {},
+          latestTimestamps: opts.latestTimestamps ?? {},
+        }));
+      }
+      const m = url.match(/\/messages\/channel\/(\d+)/);
+      if (m) {
+        const idx = Number(m[1]);
+        const data = opts.messagesByChannel?.[idx] ?? [];
+        return Promise.resolve(jsonResponse({ success: true, data, count: data.length }));
+      }
+      return Promise.resolve(jsonResponse({ success: true, data: [] }));
+    });
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('flags an inactive channel as unread when its latest message is newer than the (absent) last-read marker', async () => {
+    // Active channel is Public (idx 0). Town (idx 1) has a newer message and has
+    // never been opened, so it must show an unread dot.
+    csrfFetchMock.mockImplementation(routedFetch({
+      latestTimestamps: { 0: 100, 1: 9999 },
+      counts: { 0: 1, 1: 1 },
+    }));
+
+    const { container } = render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('# Town')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.mc-channel-unread-dot')).toBeTruthy());
+
+    // The active channel (Public) must NOT be unread.
+    const publicRow = screen.getByText('# Public').closest('.mc-channel-row');
+    expect(publicRow?.classList.contains('unread')).toBe(false);
+  });
+
+  it('clears the unread state for a channel once it is opened', async () => {
+    csrfFetchMock.mockImplementation(routedFetch({
+      latestTimestamps: { 0: 100, 1: 9999 },
+      counts: { 0: 1, 1: 1 },
+      messagesByChannel: { 1: [{ id: 't1', fromPublicKey: 'channel-1', text: 'town msg', timestamp: 9999 }] },
+    }));
+
+    const { container } = render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(container.querySelector('.mc-channel-unread-dot')).toBeTruthy());
+
+    // Open Town — it becomes the active/viewed channel and should clear.
+    fireEvent.click(screen.getByText('# Town'));
+    await waitFor(() => expect(container.querySelector('.mc-channel-unread-dot')).toBeNull());
+
+    // The last-read marker was persisted for this source/channel.
+    const stored = JSON.parse(localStorage.getItem('meshmonitor-meshcore-channel-lastread-src-a') ?? '{}');
+    expect(stored['1']).toBeGreaterThanOrEqual(9999);
+  });
+
+  it('does not flag a channel unread when its last-read marker is current', async () => {
+    localStorage.setItem(
+      'meshmonitor-meshcore-channel-lastread-src-a',
+      JSON.stringify({ 1: 9999 }),
+    );
+    csrfFetchMock.mockImplementation(routedFetch({
+      latestTimestamps: { 0: 100, 1: 9999 },
+      counts: { 0: 1, 1: 1 },
+    }));
+
+    const { container } = render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('# Town')).toBeTruthy());
+    // Give the counts/latest fetch a tick to resolve (both rows show "1 messages").
+    await waitFor(() => expect(screen.getAllByText('1 messages').length).toBe(2));
+    expect(container.querySelector('.mc-channel-unread-dot')).toBeNull();
+  });
+
+  it('reorders channels with unread first when the sort toggle is enabled', async () => {
+    csrfFetchMock.mockImplementation(routedFetch({
+      latestTimestamps: { 0: 100, 1: 9999 },
+      counts: { 0: 1, 1: 1 },
+    }));
+
+    const { container } = render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(container.querySelector('.mc-channel-unread-dot')).toBeTruthy());
+
+    // Default order: Public (idx 0) first.
+    let names = Array.from(container.querySelectorAll('.mc-channel-row-name')).map(n => n.textContent);
+    expect(names[0]).toBe('# Public');
+
+    // Enable "unread first" — Town (unread) should jump to the top.
+    fireEvent.click(screen.getByTitle('Show channels with unread messages first'));
+    await waitFor(() => {
+      const reordered = Array.from(container.querySelectorAll('.mc-channel-row-name')).map(n => n.textContent);
+      expect(reordered[0]).toBe('# Town');
+    });
+    expect(localStorage.getItem('meshmonitor-meshcore-channel-sort-unread-first')).toBe('true');
   });
 });
