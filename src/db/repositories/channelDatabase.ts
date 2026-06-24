@@ -68,7 +68,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
    * find SELECT and each INSERT a duplicate row. There is no cross-backend
    * unique index on name (a functional/text unique index is awkward across
    * SQLite/PostgreSQL/MySQL), so we serialize creates here — the race is in this
-   * single Node process. (Migration 102 merges any duplicates already on disk.)
+   * single Node process. (Migration 103 merges any duplicates already on disk.)
    */
   private passiveCreateInFlight = new Map<string, Promise<number | null>>();
 

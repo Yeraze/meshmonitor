@@ -81,6 +81,10 @@ export interface MeshCoreMessage {
   estTimeout?: number;
   deliveryStatus?: MessageDeliveryStatus;
   roundTripMs?: number;
+  /** Repeaters that re-flooded this outgoing channel message, inferred by
+   *  self-echo correlation (#3700). Best-effort; `name` is null when the relay
+   *  hash couldn't be resolved to a known contact. */
+  heardBy?: Array<{ hash: string; name?: string | null; snr?: number | null }>;
 }
 
 export interface ConnectionStatus {
@@ -163,7 +167,11 @@ export interface MeshCoreActions {
   /** Import an Ed25519 private key onto the device. Destructive — replaces identity. */
   importPrivateKey: (hexKey: string, opts?: { confirm?: boolean }) => Promise<boolean>;
   sendAdvert: () => Promise<void>;
-  sendMessage: (text: string, toPublicKey?: string, channelIdx?: number) => Promise<boolean>;
+  /** Send a message. `scope` is an optional one-off region/scope override
+   *  (#3701) for THIS send only — it is not persisted to the channel; the next
+   *  send re-asserts the channel/default scope. Omit (or pass `undefined`) for
+   *  the normal channel/default resolution. */
+  sendMessage: (text: string, toPublicKey?: string, channelIdx?: number, scope?: string | null) => Promise<boolean>;
   setDeviceName: (name: string) => Promise<boolean>;
   setRadioParams: (params: { freq: number; bw: number; sf: number; cr: number }) => Promise<boolean>;
   setTxPower: (power: number) => Promise<boolean>;
@@ -546,11 +554,26 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       ));
     };
 
+    // Channel "heard repeaters" (#3700): a repeater re-flooded one of our
+    // outgoing channel messages and the server correlated the self-echo. The
+    // event carries the current full heard-by set, so we replace state by id.
+    const onChannelHeard = (evt: {
+      sourceId: string;
+      id: string;
+      heardBy: Array<{ hash: string; name?: string | null; snr?: number | null }>;
+    }) => {
+      if (evt.sourceId !== sourceId) return;
+      setMessages(prev => prev.map(m =>
+        m.id === evt.id ? { ...m, heardBy: evt.heardBy } : m,
+      ));
+    };
+
     socket.on('meshcore:message', onMessage);
     socket.on('meshcore:contact:updated', onContactUpdated);
     socket.on('meshcore:status:updated', onStatusUpdated);
     socket.on('meshcore:local-node:updated', onLocalNodeUpdated);
     socket.on('meshcore:send-confirmed', onSendConfirmed);
+    socket.on('meshcore:channel-heard', onChannelHeard);
     socket.io.on('reconnect', onReconnect);
 
     return () => {
@@ -562,6 +585,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       socket.off('meshcore:status:updated', onStatusUpdated);
       socket.off('meshcore:local-node:updated', onLocalNodeUpdated);
       socket.off('meshcore:send-confirmed', onSendConfirmed);
+      socket.off('meshcore:channel-heard', onChannelHeard);
       socket.io.off('reconnect', onReconnect);
     };
   }, [enabled, sourceId, socket, mcPrefix, csrfFetch, setMeshCoreNodes, recomputeNodes]);
@@ -1174,7 +1198,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
-  const sendMessage = useCallback(async (text: string, toPublicKey?: string, channelIdx?: number): Promise<boolean> => {
+  const sendMessage = useCallback(async (text: string, toPublicKey?: string, channelIdx?: number, scope?: string | null): Promise<boolean> => {
     if (!text.trim()) return false;
     try {
       const response = await csrfFetch(`${mcPrefix}/messages/send`, {
@@ -1184,6 +1208,9 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
           text,
           toPublicKey: toPublicKey || undefined,
           channelIdx,
+          // Only include the override when explicitly provided; omitting the key
+          // lets the backend resolve the channel/default scope as usual (#3701).
+          ...(scope !== undefined ? { scope } : {}),
         }),
       });
       const data = await response.json();

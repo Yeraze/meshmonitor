@@ -374,6 +374,11 @@ export interface MeshCoreMessage {
   /** Estimated timeout in ms before the message should be considered failed.
    *  Only set on outgoing DMs. */
   estTimeout?: number;
+  /** Repeaters that re-flooded this (outgoing channel) message, inferred by
+   *  self-echo correlation (#3700). Best-effort; only set on outgoing channel
+   *  messages that were heard re-flooded. `name` is null when the relay hash
+   *  couldn't be resolved to a known contact. */
+  heardBy?: Array<{ hash: string; name?: string | null; snr?: number | null }>;
 }
 
 export interface MeshCoreStatus {
@@ -557,8 +562,31 @@ class MeshCoreManager extends EventEmitter {
   private pendingCommands: Map<string, { resolve: (value: any) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout }> = new Map();
   private commandId: number = 0;
 
+  /**
+   * Pending outgoing channel sends awaiting self-echo correlation (#3700).
+   * Keyed by message id. Each entry remembers the channel index and send time
+   * so an inbound GRP_TXT OTA packet arriving within HEARD_WINDOW_MS can be
+   * attributed (best-effort) to the most recent matching channel send. Pruned
+   * lazily on each inbound packet and on each new send.
+   */
+  private pendingChannelSends: Map<string, { channelIdx: number; sentAt: number }> = new Map();
+
   // Message limit to prevent unbounded growth
   private static readonly MAX_MESSAGES = 1000;
+
+  /**
+   * MeshCore GRP_TXT (channel/broadcast text) payload type (0x05). Inbound OTA
+   * packets of this type are self-echo candidates for outgoing channel sends.
+   */
+  private static readonly PAYLOAD_TYPE_GRP_TXT = 0x05;
+
+  /**
+   * How long after an outgoing channel send we will attribute an inbound
+   * GRP_TXT OTA packet to it as a self-echo (#3700). Bounded so we never
+   * credit unrelated later channel chatter. Mirrors the bufferedAt-style
+   * staleness window used elsewhere (#3589).
+   */
+  private static readonly HEARD_WINDOW_MS = 30_000;
 
   /** Window over which we coalesce `contact_path_updated` pushes into a
    *  single device-side refreshContacts() call. Long enough to absorb a
@@ -1202,6 +1230,10 @@ class MeshCoreManager extends EventEmitter {
         );
       }
     } else if (event_type === 'ota_packet') {
+      // Self-echo correlation for channel "heard repeaters" (#3700) runs on the
+      // raw OTA data FIRST, independent of the opt-in packet monitor, so it
+      // works regardless of the monitor setting.
+      void this.correlateChannelEcho(data);
       // Full OTA packet metadata for the MeshCore Packet Monitor. Capture is
       // opt-in; gate persistence on the setting so we don't write a row for
       // every received packet unless the user has turned the monitor on.
@@ -1244,6 +1276,133 @@ class MeshCoreManager extends EventEmitter {
     } catch (err) {
       logger.warn(`[MeshCore:${this.sourceId}] Failed to handle OTA packet:`, err);
     }
+  }
+
+  /**
+   * Register an outgoing channel send as a candidate for self-echo correlation
+   * (#3700). Prunes entries older than HEARD_WINDOW_MS so the map never grows
+   * unbounded on a chatty channel.
+   */
+  private registerPendingChannelSend(messageId: string, channelIdx: number): void {
+    const now = Date.now();
+    this.prunePendingChannelSends(now);
+    this.pendingChannelSends.set(messageId, { channelIdx, sentAt: now });
+  }
+
+  /** Drop pending channel sends older than the heard window. */
+  private prunePendingChannelSends(now: number): void {
+    for (const [id, entry] of this.pendingChannelSends) {
+      if (now - entry.sentAt > MeshCoreManager.HEARD_WINDOW_MS) {
+        this.pendingChannelSends.delete(id);
+      }
+    }
+  }
+
+  /**
+   * Best-effort channel "heard repeaters" correlation (#3700).
+   *
+   * When a nearby repeater re-floods one of OUR channel messages, our device
+   * hears it as an inbound GRP_TXT OTA packet whose relay-hash chain
+   * (`path_hops`) names the repeaters that carried it. We can't prove the echo
+   * is ours (the bridge doesn't return our outgoing payload bytes), so we bound
+   * the attribution: only GRP_TXT, only within HEARD_WINDOW_MS of one of our
+   * channel sends, attributed to the most recent such send. Each relay hash is
+   * resolved to a known contact name when possible (raw hash otherwise), the
+   * max SNR is tracked per repeater, and the merged heard-by set is broadcast.
+   *
+   * Failures are swallowed — correlation must never break the packet pipeline.
+   */
+  private async correlateChannelEcho(data: any): Promise<void> {
+    try {
+      const now = Date.now();
+      this.prunePendingChannelSends(now);
+
+      const match = MeshCoreManager.findEchoMatch(
+        data,
+        this.pendingChannelSends,
+        now,
+        MeshCoreManager.HEARD_WINDOW_MS,
+      );
+      if (!match) return;
+
+      const snr = typeof data.snr === 'number' ? Math.round(data.snr) : null;
+      const heardBy: Array<{ hash: string; name?: string | null; snr?: number | null }> = [];
+
+      for (const hash of match.pathHops) {
+        const contact = this.resolveContactByPrefix(hash);
+        const name = contact?.advName ?? contact?.name ?? null;
+        const merged = await databaseService.meshcore.recordHeardRepeater({
+          sourceId: this.sourceId,
+          messageId: match.messageId,
+          repeaterHash: hash,
+          repeaterName: name,
+          snr,
+          heardAt: now,
+        });
+        heardBy.push({ hash: merged.repeaterHash, name: merged.repeaterName, snr: merged.snr });
+      }
+
+      if (heardBy.length === 0) return;
+
+      // Broadcast the current full heard-by set (read back so concurrent
+      // echoes for the same message stay consistent).
+      const all = await databaseService.meshcore.getHeardRepeatersForMessage(
+        match.messageId,
+        this.sourceId,
+      );
+      const fullHeardBy = all.map((r) => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr }));
+      dataEventEmitter.emitMeshCoreChannelHeard({ id: match.messageId, heardBy: fullHeardBy }, this.sourceId);
+
+      logger.debug(
+        `[MeshCore:${this.sourceId}] Channel echo: msg=${match.messageId} +${heardBy.length} repeater(s), total=${fullHeardBy.length}`,
+      );
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] correlateChannelEcho failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Decide whether an inbound OTA packet is a self-echo of a pending channel
+   * send (#3700). Pure (no I/O) so it can be unit-tested directly. Returns the
+   * matched message id and the de-duplicated relay-hash chain, or null.
+   *
+   * A match requires: payload_type === GRP_TXT, a non-empty `path_hops` relay
+   * chain (a direct/zero-hop packet names no repeaters), and at least one
+   * pending channel send within the window. Attribution goes to the MOST RECENT
+   * pending send (best-effort; the window + type bound the risk).
+   */
+  static findEchoMatch(
+    data: any,
+    pendingChannelSends: Map<string, { channelIdx: number; sentAt: number }>,
+    now: number,
+    windowMs: number,
+  ): { messageId: string; channelIdx: number; pathHops: string[] } | null {
+    if (!data || data.payload_type !== MeshCoreManager.PAYLOAD_TYPE_GRP_TXT) return null;
+
+    const rawHops: unknown = data.path_hops;
+    if (!Array.isArray(rawHops) || rawHops.length === 0) return null;
+    // De-dup while preserving order; normalise to lowercase hex strings.
+    const seen = new Set<string>();
+    const pathHops: string[] = [];
+    for (const h of rawHops) {
+      if (typeof h !== 'string' || h.length === 0) continue;
+      const hash = h.toLowerCase();
+      if (seen.has(hash)) continue;
+      seen.add(hash);
+      pathHops.push(hash);
+    }
+    if (pathHops.length === 0) return null;
+
+    let best: { messageId: string; channelIdx: number; sentAt: number } | null = null;
+    for (const [messageId, entry] of pendingChannelSends) {
+      if (now - entry.sentAt > windowMs) continue;
+      if (!best || entry.sentAt > best.sentAt) {
+        best = { messageId, channelIdx: entry.channelIdx, sentAt: entry.sentAt };
+      }
+    }
+    if (!best) return null;
+
+    return { messageId: best.messageId, channelIdx: best.channelIdx, pathHops };
   }
 
   /**
@@ -1958,7 +2117,7 @@ class MeshCoreManager extends EventEmitter {
    * channel 1" from "I sent this to channel 0" — both used to be indistinguishable
    * when only channel 0 was supported (issue follow-up to MeshCore channels plan).
    */
-  async sendMessage(text: string, toPublicKey?: string, channelIdx?: number): Promise<boolean> {
+  async sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null): Promise<boolean> {
     if (!this.connected) {
       logger.error('[MeshCore] Not connected');
       return false;
@@ -1973,7 +2132,43 @@ class MeshCoreManager extends EventEmitter {
     // flood scope is a single global setting; two concurrent sends with
     // different scopes must not interleave, or a message could ship under the
     // wrong region.
-    return this.runSerialized(() => this.performScopedSend(text, toPublicKey, channelIdx));
+    return this.runSerialized(() => this.performScopedSend(text, toPublicKey, channelIdx, scopeOverride));
+  }
+
+  /**
+   * Normalise a per-message scope override (#3701): trim, strip a leading '#',
+   * keep only letters/digits/hyphens (matching the channel/default scope
+   * normalisation). The override is one-off — it is NOT persisted to the
+   * channel row; the next normal send re-asserts the channel/default scope.
+   *
+   * Contract (#3704 review — kept unambiguous and aligned with the send route):
+   *  - `undefined` OR `null` ⇒ NO override. The caller resolves the scope
+   *    normally via {@link resolveScopeForSend} (channel → default → unscoped).
+   *    The route collapses a JSON `null`/absent key to `undefined`, so both
+   *    arrive here as "no override"; we treat them identically.
+   *  - `''` or whitespace/punctuation-only ⇒ explicit UNSCOPED (returns `null`):
+   *    the device flood scope is cleared for this one send.
+   *  - a non-empty string ⇒ the normalised plain region name.
+   *
+   * Normalisation here is intentionally LENIENT (it strips invalid chars rather
+   * than rejecting), unlike the persisted `POST /config/default-scope` setting
+   * which returns 400. Rationale: the override is a transient one-off send, not
+   * stored config, so silently sanitising is lower-risk than failing the send;
+   * but we WARN when characters are dropped so the mangling isn't invisible
+   * (#3704 review item 2). The send route still rejects non-string types and
+   * over-length input up front, so only stray punctuation reaches this strip.
+   */
+  private static normalizeScopeOverride(scope: string | null | undefined): string | null | undefined {
+    if (scope === undefined || scope === null) return undefined;
+    const stripped = scope.trim().replace(/^#/, '');
+    const normalized = stripped.replace(/[^0-9A-Za-z-]/g, '');
+    if (normalized !== stripped) {
+      logger.warn(
+        `[MeshCore] Per-message scope override "${scope}" contained invalid characters; ` +
+        `normalised to "${normalized || '(unscoped)'}"`,
+      );
+    }
+    return normalized || null;
   }
 
   /**
@@ -2040,7 +2235,7 @@ class MeshCoreManager extends EventEmitter {
     }
   }
 
-  private async performScopedSend(text: string, toPublicKey?: string, channelIdx?: number): Promise<boolean> {
+  private async performScopedSend(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null): Promise<boolean> {
     try {
       const isChannelSend = !toPublicKey && channelIdx !== undefined;
 
@@ -2051,7 +2246,16 @@ class MeshCoreManager extends EventEmitter {
       // When the DM has a known direct path the scope is simply inert. Setting
       // it changes the device's single global scope, but the activeFloodScope
       // cache + re-assert keeps a later channel send correct regardless.
-      const region = await this.resolveScopeForSend(isChannelSend ? channelIdx : undefined);
+      //
+      // A per-message scope override (#3701) wins over the channel/default
+      // scope for this one send only — it is NOT persisted, so the next normal
+      // send re-asserts the channel/default scope. It still goes through
+      // applyFloodScope inside runSerialized, so the scope-assert→send pair
+      // stays atomic and the cache + re-assert invariants hold.
+      const normalizedOverride = MeshCoreManager.normalizeScopeOverride(scopeOverride);
+      const region = normalizedOverride !== undefined
+        ? normalizedOverride
+        : await this.resolveScopeForSend(isChannelSend ? channelIdx : undefined);
       await this.applyFloodScope(region);
 
       const response = await this.sendBridgeCommand('send_message', {
@@ -2083,6 +2287,15 @@ class MeshCoreManager extends EventEmitter {
         this.addMessage(sentMessage);
         this.emit('message', sentMessage);
         dataEventEmitter.emitMeshCoreMessage(sentMessage, this.sourceId);
+
+        // Register this channel send for self-echo correlation (#3700): a
+        // nearby repeater that re-floods our packet will be heard back as an
+        // inbound GRP_TXT OTA packet within HEARD_WINDOW_MS, naming the
+        // relaying repeaters in its path. DMs are excluded — they already get
+        // a real ACK (send-confirmed).
+        if (isChannelSend) {
+          this.registerPendingChannelSend(msgId, channelIdx!);
+        }
 
         return true;
       } else {
@@ -3930,18 +4143,30 @@ class MeshCoreManager extends EventEmitter {
       limit,
       this.sourceId,
     );
+    // Enrich outgoing channel messages with their heard-by repeater set (#3700)
+    // in one batched query.
+    const heardByMap = await databaseService.meshcore.getHeardRepeatersForMessages(
+      stored.map(m => m.id),
+      this.sourceId,
+    );
     // DB returns newest-first; reverse to oldest-first for the UI.
-    return stored.reverse().map(dbMsg => ({
-      id: dbMsg.id,
-      fromPublicKey: dbMsg.fromPublicKey,
-      fromName: dbMsg.fromName ?? undefined,
-      toPublicKey: dbMsg.toPublicKey ?? undefined,
-      text: dbMsg.text,
-      timestamp: dbMsg.timestamp,
-      rssi: dbMsg.rssi ?? undefined,
-      snr: dbMsg.snr ?? undefined,
-      sourceId: dbMsg.sourceId ?? undefined,
-    }));
+    return stored.reverse().map(dbMsg => {
+      const heard = heardByMap[dbMsg.id];
+      return {
+        id: dbMsg.id,
+        fromPublicKey: dbMsg.fromPublicKey,
+        fromName: dbMsg.fromName ?? undefined,
+        toPublicKey: dbMsg.toPublicKey ?? undefined,
+        text: dbMsg.text,
+        timestamp: dbMsg.timestamp,
+        rssi: dbMsg.rssi ?? undefined,
+        snr: dbMsg.snr ?? undefined,
+        sourceId: dbMsg.sourceId ?? undefined,
+        heardBy: heard && heard.length > 0
+          ? heard.map(r => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr }))
+          : undefined,
+      };
+    });
   }
 
   /**

@@ -34,6 +34,7 @@ export const TABLE_ORDER = [
   'meshcore_messages',
   'meshcore_neighbor_info',
   'meshcore_packet_log',
+  'meshcore_heard_repeaters',
   // Auth tables (must come before channel_database — channel_database
   // FKs to users for createdBy and channel_database_permissions FKs to users
   // for userId/grantedBy).
@@ -101,6 +102,7 @@ export const SOURCE_SCOPED_TABLES = new Set([
   // every backend, so the `sourceId` backfill check never applies to it.
   'embed_profiles', 'meshcore_nodes', 'meshcore_messages',
   'meshcore_neighbor_info', 'meshcore_packet_log',
+  'meshcore_heard_repeaters',
   'auto_favorite_targets', 'auto_favorite_assignments',
   'dead_drop_messages',
 ]);

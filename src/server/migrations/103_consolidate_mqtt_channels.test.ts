@@ -1,5 +1,5 @@
 /**
- * Migration 102 — consolidate MQTT channels by name.
+ * Migration 103 — consolidate MQTT channels by name.
  *
  * Seeds the observed split scenario (duplicate channel_database rows, hash-keyed
  * MQTT channels rows, stranded raw-hash messages) on an in-memory SQLite DB and
@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { migration } from './102_consolidate_mqtt_channels.js';
+import { migration } from './103_consolidate_mqtt_channels.js';
 
 const OFFSET = 100;
 
@@ -80,7 +80,7 @@ function seedDb(db: Database.Database) {
   m.run('m8', OFFSET + 4, 'mqtt1'); // already-canonical MediumFast (104) — unchanged
 }
 
-describe('migration 102 — consolidate MQTT channels', () => {
+describe('migration 103 — consolidate MQTT channels', () => {
   let db: Database.Database;
   beforeEach(() => {
     db = new Database(':memory:');

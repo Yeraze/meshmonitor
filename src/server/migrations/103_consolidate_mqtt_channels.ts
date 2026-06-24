@@ -1,5 +1,5 @@
 /**
- * Migration 102: Consolidate MQTT channels by name (issue: channels split by
+ * Migration 103: Consolidate MQTT channels by name (issue: channels split by
  * sending slot/hash).
  *
  * For MQTT sources the same logical channel was stored under multiple
@@ -44,7 +44,7 @@ const PASSIVE_DESC = 'Auto-registered for MQTT channel permissions (no PSK)';
 
 export const migration = {
   up: (db: Database): void => {
-    logger.info('Running migration 102 (SQLite): consolidating MQTT channels by name...');
+    logger.info('Running migration 103 (SQLite): consolidating MQTT channels by name...');
 
     // Part A — merge duplicate channel_database rows by (lower(name), psk).
     const dupGroups = db.prepare(`
@@ -117,20 +117,20 @@ export const migration = {
     }
 
     logger.info(
-      `Migration 102 complete (SQLite): merged ${mergedDbRows} duplicate channel_database row(s), ` +
+      `Migration 103 complete (SQLite): merged ${mergedDbRows} duplicate channel_database row(s), ` +
       `collapsed ${collapsedChannelRows} MQTT channel row(s), repointed ${repointedMessages} message(s).`,
     );
   },
 
   down: (_db: Database): void => {
-    logger.debug('Migration 102 down: not implemented (data consolidation is not reversible)');
+    logger.debug('Migration 103 down: not implemented (data consolidation is not reversible)');
   },
 };
 
 // ============ PostgreSQL ============
 
-export async function runMigration102Postgres(client: import('pg').PoolClient): Promise<void> {
-  logger.info('Running migration 102 (PostgreSQL): consolidating MQTT channels by name...');
+export async function runMigration103Postgres(client: import('pg').PoolClient): Promise<void> {
+  logger.info('Running migration 103 (PostgreSQL): consolidating MQTT channels by name...');
 
   let mergedDbRows = 0;
   let collapsedChannelRows = 0;
@@ -202,15 +202,15 @@ export async function runMigration102Postgres(client: import('pg').PoolClient): 
   }
 
   logger.info(
-    `Migration 102 complete (PostgreSQL): merged ${mergedDbRows} duplicate channel_database row(s), ` +
+    `Migration 103 complete (PostgreSQL): merged ${mergedDbRows} duplicate channel_database row(s), ` +
     `collapsed ${collapsedChannelRows} MQTT channel row(s), repointed ${repointedMessages} message(s).`,
   );
 }
 
 // ============ MySQL ============
 
-export async function runMigration102Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
-  logger.info('Running migration 102 (MySQL): consolidating MQTT channels by name...');
+export async function runMigration103Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+  logger.info('Running migration 103 (MySQL): consolidating MQTT channels by name...');
 
   let mergedDbRows = 0;
   let collapsedChannelRows = 0;
@@ -285,7 +285,7 @@ export async function runMigration102Mysql(pool: import('mysql2/promise').Pool):
   }
 
   logger.info(
-    `Migration 102 complete (MySQL): merged ${mergedDbRows} duplicate channel_database row(s), ` +
+    `Migration 103 complete (MySQL): merged ${mergedDbRows} duplicate channel_database row(s), ` +
     `collapsed ${collapsedChannelRows} MQTT channel row(s), repointed ${repointedMessages} message(s).`,
   );
 }
