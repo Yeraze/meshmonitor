@@ -14,7 +14,7 @@
  * send (meshcoreManager.ts:sendMessage, phase 2 addition). The per-channel
  * filter therefore matches either direction.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { MeshCoreMessage, MeshCoreActions, ConnectionStatus } from './hooks/useMeshCore';
@@ -39,6 +39,8 @@ interface MeshCoreChannelsViewProps {
 interface ChannelRow {
   id: number;
   name: string;
+  /** Persisted per-channel region/scope (#3667). null/'' = no channel scope. */
+  scope: string | null;
 }
 
 /** Synthesised pseudo-pubkey used to scope channel messages. Must match the
@@ -94,6 +96,24 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // so a quiet channel doesn't read as empty next to a busy one just because
   // the shared pool's recent-tail happened to exclude it.
   const [counts, setCounts] = useState<Record<number, number>>({});
+  // Per-message scope/region override (#3701). `null` means "no override —
+  // use the channel's resolved scope". A string is a one-off override applied
+  // to the NEXT send only; it is never persisted to the channel row. Reset on
+  // channel switch so the override doesn't leak across channels.
+  const [overrideScope, setOverrideScope] = useState<string | null>(null);
+  const [showScopeOverride, setShowScopeOverride] = useState(false);
+  // Source default scope (#3667) — used as the displayed default when a channel
+  // has no scope of its own, so the operator can see what scope a normal send
+  // would use before deciding to override it.
+  const [defaultScope, setDefaultScope] = useState<string>('');
+  // Region names served by nearby repeaters (#3667 phase 3) for the datalist
+  // suggestions on the override input.
+  const [discoveredRegions, setDiscoveredRegions] = useState<string[]>([]);
+  // Guard so region discovery — which emits active radio traffic — runs at most
+  // once per mount, and only after the operator signals intent by opening the
+  // scope-override control. We must NOT re-discover on every reconnect (#3704
+  // review): status flapping would flood the mesh with discovery requests.
+  const regionsDiscoveredRef = useRef(false);
 
   useEffect(() => {
     const onResize = () => {
@@ -125,7 +145,11 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
         const rows: ChannelRow[] = Array.isArray(raw)
           ? raw
               .filter((c: any) => typeof c?.id === 'number')
-              .map((c: any) => ({ id: c.id as number, name: String(c.name ?? '') }))
+              .map((c: any) => ({
+                id: c.id as number,
+                name: String(c.name ?? ''),
+                scope: typeof c?.scope === 'string' && c.scope ? c.scope : null,
+              }))
               .sort((a, b) => a.id - b.id)
           : [];
         if (!cancelled) setChannels(rows);
@@ -149,7 +173,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // primary channel that hasn't been read yet.
   const displayChannels: ChannelRow[] = useMemo(() => {
     if (channels.length > 0) return channels;
-    return [{ id: 0, name: t('meshcore.channels.public_fallback', 'Public') }];
+    return [{ id: 0, name: t('meshcore.channels.public_fallback', 'Public'), scope: null }];
   }, [channels, t]);
 
   // Keep `selectedIdx` valid if channels change underneath us.
@@ -182,6 +206,56 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
 
   const active = displayChannels.find(c => c.id === selectedIdx) ?? displayChannels[0];
   const activeFilter = useMemo(() => buildChannelFilter(active.id), [active.id]);
+
+  // The scope a *normal* send on the active channel would assert: the channel's
+  // own scope, else the source default, else unscoped. Used as the override
+  // field's default/placeholder so the operator overrides from a known baseline.
+  const resolvedScope = (active.scope && active.scope.trim()) || defaultScope.trim() || '';
+
+  // Load the source default scope when (re)connected so the override control can
+  // show the baseline. This is a cheap local DB read (no radio traffic), so it's
+  // safe to re-run on reconnect.
+  useEffect(() => {
+    if (!status?.connected) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const def = await actions.getDefaultScope();
+        if (!cancelled) setDefaultScope(def ?? '');
+      } catch {
+        /* non-fatal — the override still works without a baseline */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [status?.connected, actions]);
+
+  // Lazily discover regions for the suggestion datalist ONLY once the operator
+  // opens the scope-override control (explicit intent), and at most once per
+  // mount. discoverRegions() emits active radio traffic, so we must never tie it
+  // to status?.connected — reconnect flapping would flood the mesh (#3704 review).
+  useEffect(() => {
+    if (!showScopeOverride || !status?.connected) return;
+    if (regionsDiscoveredRef.current) return;
+    regionsDiscoveredRef.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await actions.discoverRegions();
+        if (!cancelled && res?.regions) setDiscoveredRegions(res.regions);
+      } catch {
+        regionsDiscoveredRef.current = false; // allow a retry on next open
+        /* non-fatal — suggestions are optional */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showScopeOverride, status?.connected, actions]);
+
+  // Reset the one-off override when switching channels so it never leaks across
+  // channels, and collapse the control back to its unobtrusive default.
+  useEffect(() => {
+    setOverrideScope(null);
+    setShowScopeOverride(false);
+  }, [active.id]);
 
   // Fetch the active channel's backlog from the per-channel endpoint. Re-runs on
   // channel switch and on (re)connect. The shared `messages` pool only carries a
@@ -286,13 +360,72 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
             </span>
           </div>
         )}
+        {canSend && connected && (
+          <div className="mc-scope-override">
+            {showScopeOverride ? (
+              <div className="mc-scope-override-row">
+                <label className="mc-scope-override-label" htmlFor={`mc-scope-${active.id}`}>
+                  {t('meshcore.scope.override_label', 'Send scope')}
+                </label>
+                <input
+                  id={`mc-scope-${active.id}`}
+                  className="mc-scope-override-input"
+                  type="text"
+                  list="mc-scope-region-suggestions"
+                  value={overrideScope ?? ''}
+                  placeholder={resolvedScope
+                    ? t('meshcore.scope.override_placeholder', 'e.g. {{scope}}', { scope: resolvedScope })
+                    : t('meshcore.scope.override_placeholder_unscoped', 'unscoped')}
+                  onChange={e => setOverrideScope(e.target.value)}
+                  spellCheck={false}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                />
+                <datalist id="mc-scope-region-suggestions">
+                  {discoveredRegions.map(r => <option key={r} value={r} />)}
+                </datalist>
+                <button
+                  type="button"
+                  className="mc-scope-override-clear"
+                  onClick={() => { setOverrideScope(null); setShowScopeOverride(false); }}
+                  title={t('meshcore.scope.override_clear', 'Use channel scope')}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="mc-scope-override-toggle"
+                onClick={() => setShowScopeOverride(true)}
+                title={t(
+                  'meshcore.scope.override_toggle_title',
+                  'Send this message under a one-off region/scope override',
+                )}
+              >
+                {t('meshcore.scope.override_toggle', 'Scope: {{scope}}', {
+                  scope: resolvedScope || t('meshcore.scope.unscoped', 'unscoped'),
+                })}
+              </button>
+            )}
+          </div>
+        )}
         <MeshCoreMessageStream
           messages={filtered}
           contacts={contacts}
           selfPublicKey={selfKey}
           disabled={!connected || !canSend}
           emptyText={t('meshcore.no_messages', 'No messages on this channel yet')}
-          onSend={text => actions.sendMessage(text, undefined, active.id)}
+          onSend={async text => {
+            // Pass the one-off scope override only when the operator has opened
+            // the control AND typed a value (incl. '' to mean unscoped). When
+            // collapsed, omit the arg so the backend resolves the channel /
+            // default scope as usual (#3701).
+            const ok = showScopeOverride && overrideScope !== null
+              ? await actions.sendMessage(text, undefined, active.id, overrideScope)
+              : await actions.sendMessage(text, undefined, active.id);
+            return ok;
+          }}
           onNodeNameClick={onNodeNameClick}
           conversationKey={`channel-${active.id}`}
         />
