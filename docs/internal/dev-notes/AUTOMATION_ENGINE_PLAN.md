@@ -394,18 +394,13 @@ substitutions sidebar, channel-name trigger matching, source selector,
 protocol-aware unified-channel send, Test-panel selects, timestamp
 formatting). To pick up **after that PR merges**:
 
-1. **Implement the Schedule trigger fully.** `trigger.schedule` is currently a
-   catalog-only stub — it is **not fired by the engine at all** (no cron
-   wiring). The Test panel dry-runs it (`automationSimulator` `schedule` case →
-   matched), but nothing fires it live. Wire a cron scheduler (reuse
-   `src/server/utils/cronScheduler.ts` / croner) into
-   `automationEngineSingleton`: register a job per enabled `trigger.schedule`
-   automation from its `cron` param, re-register on automation create/update/
-   enable/disable and on engine reload, and call a new
-   `engine.onSchedule(automationId)` that builds a schedule `TriggerContext` and
-   runs the graph. Add a `buildScheduleContext` in `triggerContext.ts`. Tests:
-   job registered/cancelled on enable/disable/edit; fires on tick; invalid cron
-   rejected at save.
+1. ~~**Implement the Schedule trigger fully.**~~ **DONE** (follow-up PR). The
+   engine now arms a croner job per enabled `trigger.schedule` automation in
+   `load()` (`rescheduleCron()`), so create/update/enable/disable/reload all
+   re-arm correctly; the job calls `engine.onSchedule(id)` →
+   `buildScheduleContext` → graph run, honoring cooldown. Cron is injectable
+   (`CronScheduler`) for tests; invalid/missing crons are skipped+logged and
+   rejected at save (`validateForm` via `cron-validator`).
 
 2. **Smarter `{{ }}` text entry.** In the builder's text/textarea fields, render
    `{{ trigger.* }}` / `{{ var.* }}` tokens **visually distinct** from plain text
