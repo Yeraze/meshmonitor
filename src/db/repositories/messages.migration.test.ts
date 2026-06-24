@@ -50,6 +50,13 @@ describe('MessagesRepository.migrateMessagesForChannelMoves', () => {
     `);
   };
 
+  const insertMsgWithSource = (id: string, channel: number, sourceId: string) => {
+    db.exec(`
+      INSERT INTO messages (id, fromNodeNum, toNodeNum, fromNodeId, toNodeId, text, channel, portnum, timestamp, createdAt, sourceId)
+      VALUES ('${id}', ${NODE1_NUM}, ${NODE2_NUM}, '${NODE1_ID}', '${NODE2_ID}', 'msg ${id}', ${channel}, 1, ${Date.now()}, ${Date.now()}, '${sourceId}')
+    `);
+  };
+
   const getChannel = (id: string): number => {
     const row = db.prepare('SELECT channel FROM messages WHERE id = ?').get(id) as any;
     return row?.channel;
@@ -157,6 +164,52 @@ describe('MessagesRepository.migrateMessagesForChannelMoves', () => {
     const result = await repo.migrateMessagesForChannelMoves([{ from: 7, to: 3 }]);
     expect(result.success).toBe(true);
     expect(result.totalRowsAffected).toBe(0);
+  });
+
+  // #3712: a channel move detected on one source must not rewrite the channel
+  // column for other sources that happen to share the slot.
+  it('should scope a move to the given sourceId only', async () => {
+    insertMsgWithSource('a-1', 1, 'source-a');
+    insertMsgWithSource('a-2', 1, 'source-a');
+    insertMsgWithSource('b-1', 1, 'source-b'); // same slot, different source
+
+    const result = await repo.migrateMessagesForChannelMoves([{ from: 1, to: 3 }], 'source-a');
+
+    expect(result.success).toBe(true);
+    expect(result.totalRowsAffected).toBe(2);
+    expect(getChannel('a-1')).toBe(3);
+    expect(getChannel('a-2')).toBe(3);
+    expect(getChannel('b-1')).toBe(1); // source-b untouched
+  });
+
+  it('should scope a swap to the given sourceId only', async () => {
+    insertMsgWithSource('a-1', 1, 'source-a');
+    insertMsgWithSource('a-4', 4, 'source-a');
+    insertMsgWithSource('b-1', 1, 'source-b');
+    insertMsgWithSource('b-4', 4, 'source-b');
+
+    const result = await repo.migrateMessagesForChannelMoves(
+      [{ from: 1, to: 4 }, { from: 4, to: 1 }],
+      'source-a',
+    );
+
+    expect(result.success).toBe(true);
+    expect(getChannel('a-1')).toBe(4);
+    expect(getChannel('a-4')).toBe(1);
+    expect(getChannel('b-1')).toBe(1); // source-b untouched
+    expect(getChannel('b-4')).toBe(4);
+  });
+
+  it('without sourceId, migrates across all sources (legacy behaviour)', async () => {
+    insertMsgWithSource('a-1', 1, 'source-a');
+    insertMsgWithSource('b-1', 1, 'source-b');
+
+    const result = await repo.migrateMessagesForChannelMoves([{ from: 1, to: 3 }]);
+
+    expect(result.success).toBe(true);
+    expect(result.totalRowsAffected).toBe(2);
+    expect(getChannel('a-1')).toBe(3);
+    expect(getChannel('b-1')).toBe(3);
   });
 
   it('should handle mix of swaps and simple moves', async () => {

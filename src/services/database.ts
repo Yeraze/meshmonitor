@@ -3718,7 +3718,7 @@ class DatabaseService {
   //  removed — dead code with no callers; all channel upserts go through the
   //  async, #1567-guarded databaseService.channels.upsertChannel)
 
-  getChannelById(id: number): DbChannel | null {
+  getChannelById(id: number, sourceId?: string): DbChannel | null {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (!this.cacheInitialized) {
@@ -3731,32 +3731,34 @@ class DatabaseService {
       }
       return channel;
     }
-    const channel = this.channelsRepo!.getChannelByIdSync(id);
+    const channel = this.channelsRepo!.getChannelByIdSync(id, sourceId);
     return channel;
   }
 
-  getAllChannels(): DbChannel[] {
+  getAllChannels(sourceId?: string): DbChannel[] {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (!this.cacheInitialized) {
         logger.debug(`getAllChannels() called before cache initialized`);
         return [];
       }
-      return Array.from(this.channelsCache.values()).sort((a, b) => a.id - b.id);
+      const cached = Array.from(this.channelsCache.values()).sort((a, b) => a.id - b.id);
+      return sourceId ? cached.filter((c) => (c as any).sourceId === sourceId) : cached;
     }
-    return this.channelsRepo!.getAllChannelsSync();
+    return this.channelsRepo!.getAllChannelsSync(sourceId);
   }
 
-  getChannelCount(): number {
+  getChannelCount(sourceId?: string): number {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (!this.cacheInitialized) {
         logger.debug(`getChannelCount() called before cache initialized`);
         return 0;
       }
-      return this.channelsCache.size;
+      if (!sourceId) return this.channelsCache.size;
+      return Array.from(this.channelsCache.values()).filter((c) => (c as any).sourceId === sourceId).length;
     }
-    return this.channelsRepo!.getChannelCountSync();
+    return this.channelsRepo!.getChannelCountSync(sourceId);
   }
 
   // Clean up invalid channels that shouldn't have been created
@@ -7829,12 +7831,12 @@ class DatabaseService {
     return this.notifications.markMessagesAsReadByIds(messageIds, userId);
   }
 
-  markChannelMessagesAsRead(channelId: number, userId: number | null, beforeTimestamp?: number): number {
-    logger.info(`[DatabaseService] markChannelMessagesAsRead called: channel=${channelId}, userId=${userId}, dbType=${this.drizzleDbType}`);
+  markChannelMessagesAsRead(channelId: number, userId: number | null, beforeTimestamp?: number, sourceId?: string): number {
+    logger.info(`[DatabaseService] markChannelMessagesAsRead called: channel=${channelId}, userId=${userId}, sourceId=${sourceId ?? 'all'}, dbType=${this.drizzleDbType}`);
     // For PostgreSQL/MySQL, use async repo
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.notificationsRepo) {
-        this.notificationsRepo.markChannelMessagesAsRead(channelId, userId, beforeTimestamp)
+        this.notificationsRepo.markChannelMessagesAsRead(channelId, userId, beforeTimestamp, sourceId)
           .then((count) => {
             logger.info(`[DatabaseService] Marked ${count} channel ${channelId} messages as read for user ${userId}`);
           })
@@ -7858,6 +7860,14 @@ class DatabaseService {
         AND portnum = 1
     `;
     const params: any[] = [userId, Date.now(), channelId];
+
+    // Source scope (#3712): without this, marking a slot read on one source
+    // also marks the same slot read on every other source (e.g. an MQTT bridge
+    // and a radio source both using slot 2).
+    if (sourceId) {
+      query += ` AND sourceId = ?`;
+      params.push(sourceId);
+    }
 
     if (beforeTimestamp !== undefined) {
       query += ` AND timestamp <= ?`;
@@ -9160,8 +9170,8 @@ class DatabaseService {
     return this.markAllDMMessagesAsRead(localNodeId, userId);
   }
 
-  async markChannelMessagesAsReadAsync(channelId: number, userId: number | null, beforeTimestamp?: number): Promise<number> {
-    return this.markChannelMessagesAsRead(channelId, userId, beforeTimestamp);
+  async markChannelMessagesAsReadAsync(channelId: number, userId: number | null, beforeTimestamp?: number, sourceId?: string): Promise<number> {
+    return this.markChannelMessagesAsRead(channelId, userId, beforeTimestamp, sourceId);
   }
 
   async markDMMessagesAsReadAsync(localNodeId: string, remoteNodeId: string, userId: number | null, beforeTimestamp?: number): Promise<number> {

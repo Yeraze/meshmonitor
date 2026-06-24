@@ -330,7 +330,12 @@ router.get('/:id/export', requireAuth(), async (req: Request, res: Response) => 
       });
     }
 
-    const channel = await databaseService.channels.getChannelById(channelId);
+    // Scope to a source when supplied (#3712) so a multi-source install can't
+    // export the PSK from a different source's channel that shares this slot.
+    const exportSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? req.query.sourceId
+      : undefined;
+    const channel = await databaseService.channels.getChannelById(channelId, exportSourceId);
     if (!channel) {
       return res.status(404).json({ error: 'Channel not found' });
     }
@@ -406,17 +411,20 @@ function detectChannelMoves(
  * Snapshot channel slots and migrate messages after a channel configuration change.
  * Call snapshotBefore() before applying changes, then migrateIfNeeded() after.
  */
-async function snapshotChannelsBeforeChange() {
-  return (await databaseService.channels.getAllChannels()).map(ch => ({ id: ch.id, psk: ch.psk }));
+async function snapshotChannelsBeforeChange(sourceId?: string) {
+  return (await databaseService.channels.getAllChannels(sourceId)).map(ch => ({ id: ch.id, psk: ch.psk }));
 }
 
-async function migrateMessagesIfChannelsMoved(beforeSnapshot: { id: number; psk?: string | null }[]) {
+async function migrateMessagesIfChannelsMoved(
+  beforeSnapshot: { id: number; psk?: string | null }[],
+  sourceId?: string,
+) {
   try {
-    const afterSnapshot = (await databaseService.channels.getAllChannels()).map(ch => ({ id: ch.id, psk: ch.psk }));
+    const afterSnapshot = (await databaseService.channels.getAllChannels(sourceId)).map(ch => ({ id: ch.id, psk: ch.psk }));
     const moves = detectChannelMoves(beforeSnapshot, afterSnapshot);
     if (moves.length > 0) {
       logger.info(`📦 Detected channel move(s): ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
-      await databaseService.messages.migrateMessagesForChannelMoves(moves);
+      await databaseService.messages.migrateMessagesForChannelMoves(moves, sourceId);
       await migrateAutomationChannels(
         moves,
         (key) => databaseService.settings.getSetting(key),
@@ -518,15 +526,18 @@ router.put('/:id', requireAuth(), async (req: Request, res: Response) => {
     // so there is no pre-existing DB row when adding a new slot. Skip the
     // existence check for MeshCore; enforce 404 only for Meshtastic, which
     // always pre-creates 8 slots.
+    const scopedSourceId = typeof chanSourceId === 'string' && chanSourceId.length > 0
+      ? chanSourceId
+      : undefined;
     const existingChannel = sourceType !== 'meshcore'
-      ? await databaseService.channels.getChannelById(channelId)
+      ? await databaseService.channels.getChannelById(channelId, scopedSourceId)
       : null;
     if (sourceType !== 'meshcore' && !existingChannel) {
       return res.status(404).json({ error: 'Channel not found' });
     }
 
-    // Snapshot channels before change for message migration
-    const beforeSnapshot = await snapshotChannelsBeforeChange();
+    // Snapshot channels before change for message migration (per-source — #3712)
+    const beforeSnapshot = await snapshotChannelsBeforeChange(scopedSourceId);
 
     // Prepare the updated channel data
     const updatedChannelData = {
@@ -598,7 +609,7 @@ router.put('/:id', requireAuth(), async (req: Request, res: Response) => {
     // coalesce in upsertChannel silently keeps the old name (#1567 backfire).
     await databaseService.channels.upsertChannel(
       updatedChannelData,
-      typeof chanSourceId === 'string' && chanSourceId.length > 0 ? chanSourceId : undefined,
+      scopedSourceId,
       { allowBlankName: true },
     );
 
@@ -619,10 +630,10 @@ router.put('/:id', requireAuth(), async (req: Request, res: Response) => {
       // Continue even if device update fails - database is updated
     }
 
-    // Migrate messages if channel PSK moved to a different slot
-    await migrateMessagesIfChannelsMoved(beforeSnapshot);
+    // Migrate messages if channel PSK moved to a different slot (per-source — #3712)
+    await migrateMessagesIfChannelsMoved(beforeSnapshot, scopedSourceId);
 
-    const updatedChannel = await databaseService.channels.getChannelById(channelId);
+    const updatedChannel = await databaseService.channels.getChannelById(channelId, scopedSourceId);
     logger.info(`✅ Updated channel ${channelId}: ${name}`);
     res.json({ success: true, channel: updatedChannel });
   } catch (error) {
@@ -776,8 +787,11 @@ router.post('/:slotId/import', requireAuth(), async (req: Request, res: Response
       return !!value;
     };
 
-    // Snapshot channels before change for message migration
-    const beforeSnapshot = await snapshotChannelsBeforeChange();
+    // Snapshot channels before change for message migration (per-source — #3712)
+    const importScopedSourceId = typeof importSourceId === 'string' && importSourceId.length > 0
+      ? importSourceId
+      : undefined;
+    const beforeSnapshot = await snapshotChannelsBeforeChange(importScopedSourceId);
 
     const importedChannelData = {
       id: slotId,
@@ -789,8 +803,8 @@ router.post('/:slotId/import', requireAuth(), async (req: Request, res: Response
       positionPrecision: positionPrecision !== null && positionPrecision !== undefined ? positionPrecision : undefined,
     };
 
-    // Import channel to the specified slot in database
-    await databaseService.channels.upsertChannel(importedChannelData);
+    // Import channel to the specified slot in database (scoped to source — #3712)
+    await databaseService.channels.upsertChannel(importedChannelData, importScopedSourceId);
 
     // Send channel configuration to Meshtastic device
     const importManager = (resolveSourceManager(importSourceId));
@@ -809,10 +823,10 @@ router.post('/:slotId/import', requireAuth(), async (req: Request, res: Response
       // Continue even if device update fails - database is updated
     }
 
-    // Migrate messages if channel PSK moved to a different slot
-    await migrateMessagesIfChannelsMoved(beforeSnapshot);
+    // Migrate messages if channel PSK moved to a different slot (per-source — #3712)
+    await migrateMessagesIfChannelsMoved(beforeSnapshot, importScopedSourceId);
 
-    const importedChannel = await databaseService.channels.getChannelById(slotId);
+    const importedChannel = await databaseService.channels.getChannelById(slotId, importScopedSourceId);
     logger.info(`✅ Imported channel to slot ${slotId}: ${name}`);
     res.json({ success: true, channel: importedChannel });
   } catch (error) {
@@ -1114,8 +1128,11 @@ router.post('/import-config', requirePermission('configuration', 'write'), async
       throw new Error(`Failed to start configuration transaction: ${errMsg}`, { cause: error });
     }
 
-    // Snapshot channels before change for message migration
-    const beforeSnapshot = await snapshotChannelsBeforeChange();
+    // Snapshot channels before change for message migration (per-source — #3712)
+    const configScopedSourceId = typeof configSourceId === 'string' && configSourceId.length > 0
+      ? configSourceId
+      : undefined;
+    const beforeSnapshot = await snapshotChannelsBeforeChange(configScopedSourceId);
 
     // Import channels FIRST (before LoRa config to avoid premature reboot)
     const importedChannels = [];
@@ -1191,7 +1208,7 @@ router.post('/import-config', requirePermission('configuration', 'write'), async
       if (moves.length > 0) {
         logger.info(`📦 Detected channel move(s) from config import: ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
         try {
-          await databaseService.messages.migrateMessagesForChannelMoves(moves);
+          await databaseService.messages.migrateMessagesForChannelMoves(moves, configScopedSourceId);
           await migrateAutomationChannels(
             moves,
             (key) => databaseService.settings.getSetting(key),
@@ -1243,7 +1260,9 @@ router.post('/refresh', requirePermission('messages', 'write'), async (req: Requ
     // Trigger full node database refresh (includes channels)
     await chanRefreshManager.refreshNodeDatabase();
 
-    const channelCount = await databaseService.channels.getChannelCount();
+    const channelCount = await databaseService.channels.getChannelCount(
+      typeof chanRefreshSourceId === 'string' && chanRefreshSourceId.length > 0 ? chanRefreshSourceId : undefined,
+    );
 
     logger.debug(`✅ Channel refresh complete: ${channelCount} channels`);
 

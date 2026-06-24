@@ -422,7 +422,8 @@ export class NotificationsRepository extends BaseRepository {
   async markChannelMessagesAsRead(
     channelId: number,
     userId: number | null,
-    beforeTimestamp?: number
+    beforeTimestamp?: number,
+    sourceId?: string
   ): Promise<number> {
     const now = this.now();
     const effectiveUserId = userId ?? 0;
@@ -430,28 +431,24 @@ export class NotificationsRepository extends BaseRepository {
     try {
       if (this.isSQLite()) {
         const db = this.getSqliteDb();
-        // Get message IDs for the channel
+        // Get message IDs for the channel, scoped to a source when provided so
+        // marking a slot read on one source doesn't bleed across sources that
+        // share the same slot number (#3712).
+        const baseFilters = [
+          eq(messagesSqlite.channel, channelId),
+          eq(messagesSqlite.portnum, 1),
+        ];
+        if (sourceId) baseFilters.push(eq(messagesSqlite.sourceId, sourceId));
         let query = db
           .select({ id: messagesSqlite.id })
           .from(messagesSqlite)
-          .where(
-            and(
-              eq(messagesSqlite.channel, channelId),
-              eq(messagesSqlite.portnum, 1)
-            )
-          );
+          .where(and(...baseFilters));
 
         if (beforeTimestamp !== undefined) {
           query = db
             .select({ id: messagesSqlite.id })
             .from(messagesSqlite)
-            .where(
-              and(
-                eq(messagesSqlite.channel, channelId),
-                eq(messagesSqlite.portnum, 1),
-                lte(messagesSqlite.timestamp, beforeTimestamp)
-              )
-            );
+            .where(and(...baseFilters, lte(messagesSqlite.timestamp, beforeTimestamp)));
         }
 
         const messages = await query;
@@ -476,6 +473,11 @@ export class NotificationsRepository extends BaseRepository {
         const db = this.getPostgresDb();
         // Use INSERT...SELECT with WHERE NOT EXISTS to avoid duplicates
         // (ON CONFLICT requires a unique constraint which may not exist on all installs)
+        // Source scope (#3712): when provided, restrict to messages owned by
+        // this source so shared slot numbers don't bleed across sources.
+        const pgSourceFilter = sourceId
+          ? sql` AND m.${this.col('sourceId')} = ${sourceId}`
+          : sql``;
         let result;
         if (beforeTimestamp !== undefined) {
           result = await db.execute(sql`
@@ -483,7 +485,7 @@ export class NotificationsRepository extends BaseRepository {
             SELECT m.id, ${effectiveUserId}, ${now} FROM messages m
             WHERE m.channel = ${channelId}
               AND m.portnum = 1
-              AND m.timestamp <= ${beforeTimestamp}
+              AND m.timestamp <= ${beforeTimestamp}${pgSourceFilter}
               AND NOT EXISTS (
                 SELECT 1 FROM read_messages rm
                 WHERE rm.${this.col('messageId')} = m.id AND rm.${this.col('userId')} = ${effectiveUserId}
@@ -494,7 +496,7 @@ export class NotificationsRepository extends BaseRepository {
             INSERT INTO read_messages (${this.col('messageId')}, ${this.col('userId')}, ${this.col('readAt')})
             SELECT m.id, ${effectiveUserId}, ${now} FROM messages m
             WHERE m.channel = ${channelId}
-              AND m.portnum = 1
+              AND m.portnum = 1${pgSourceFilter}
               AND NOT EXISTS (
                 SELECT 1 FROM read_messages rm
                 WHERE rm.${this.col('messageId')} = m.id AND rm.${this.col('userId')} = ${effectiveUserId}
@@ -505,6 +507,10 @@ export class NotificationsRepository extends BaseRepository {
       } else {
         // MySQL
         const db = this.getMysqlDb();
+        // Source scope (#3712): restrict to this source's messages when given.
+        const mysqlSourceFilter = sourceId
+          ? sql` AND sourceId = ${sourceId}`
+          : sql``;
         // MySQL uses INSERT IGNORE for upsert behavior
         if (beforeTimestamp !== undefined) {
           const [result] = await db.execute(sql`
@@ -512,7 +518,7 @@ export class NotificationsRepository extends BaseRepository {
             SELECT id, ${effectiveUserId}, ${now} FROM messages
             WHERE channel = ${channelId}
               AND portnum = 1
-              AND timestamp <= ${beforeTimestamp}
+              AND timestamp <= ${beforeTimestamp}${mysqlSourceFilter}
           `);
           return Number((result as any).affectedRows ?? 0);
         } else {
@@ -520,7 +526,7 @@ export class NotificationsRepository extends BaseRepository {
             INSERT IGNORE INTO read_messages (messageId, userId, readAt)
             SELECT id, ${effectiveUserId}, ${now} FROM messages
             WHERE channel = ${channelId}
-              AND portnum = 1
+              AND portnum = 1${mysqlSourceFilter}
           `);
           return Number((result as any).affectedRows ?? 0);
         }
