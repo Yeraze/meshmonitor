@@ -278,4 +278,40 @@ describe('MeshCoreNativeBackend — discovery responder', () => {
     expect(res.data.clock).toBe(1);
     expect(res.data.regions).toEqual(['muenchen', 'bayern', '*']);
   });
+
+  it('request_regions succeeds when Sent ack carries no expectedAckCrc (sendToRadioFrame path)', async () => {
+    // sendToRadioFrame fires the Sent event without a payload, unlike
+    // sendTextMessage which includes expectedAckCrc. The fix should accept
+    // the first BinaryResponse after Sent when no tag is available.
+    const { backend, conn } = await connectedBackend();
+
+    // Override sendToRadioFrame to emit Sent WITHOUT expectedAckCrc, then
+    // emit BinaryResponse with a non-zero tag (what firmware would send).
+    (conn as any).sendToRadioFrame = (frame: Uint8Array) => {
+      conn.sentFrames.push(frame);
+      if (frame[0] === 57) {
+        const firmwareTag = 0xdeadbeef;
+        setImmediate(() => {
+          // Sent event with no payload — simulates sendToRadioFrame behavior.
+          conn.emit(ResponseCodes.Sent);
+          conn.emit(PushCodes.BinaryResponse, {
+            reserved: 0,
+            tag: firmwareTag,
+            responseData: Uint8Array.from([
+              2, 0, 0, 0, // clock = 2
+              ...Buffer.from('berlin', 'ascii'),
+              0,
+            ]),
+          });
+        });
+        return;
+      }
+      setImmediate(() => conn.emit(ResponseCodes.Ok));
+    };
+
+    const res = await backend.sendCommand('request_regions', { public_key: 'bb'.repeat(32) });
+    expect(res.success).toBe(true);
+    expect(res.data.clock).toBe(2);
+    expect(res.data.regions).toEqual(['berlin']);
+  });
 });

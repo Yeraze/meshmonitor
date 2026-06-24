@@ -953,17 +953,27 @@ export class MeshCoreNativeBackend extends EventEmitter {
         frame[34] = 0x00; // reply_path_len = 0
 
         const responseData: Uint8Array = await new Promise((resolve, reject) => {
+          let sentReceived = false;
           let tag: number | null = null;
           let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
             cleanup();
             reject(new Error('request_regions timed out'));
           }, timeoutMs);
-          const onSent = (r: any) => { tag = (r?.expectedAckCrc ?? null); };
+          const onSent = (r: any) => {
+            sentReceived = true;
+            // sendToRadioFrame fires Sent without a payload (unlike sendTextMessage
+            // which includes expectedAckCrc). Capture it when present; fall back to
+            // tag-less mode when absent so the BinaryResponse isn't silently dropped.
+            tag = (r?.expectedAckCrc ?? null);
+          };
           const onResp = (r: any) => {
-            // Only accept the reply once the Sent ack has given us our tag (the
-            // firmware always sends Sent before the BinaryResponse). A response
-            // arriving before that, or carrying a different tag, isn't ours.
-            if (tag === null || r?.tag !== tag) return;
+            // Wait for the Sent ack before accepting any BinaryResponse.
+            if (!sentReceived) return;
+            // When the Sent ack carried a non-zero tag, require the response to
+            // carry the same tag. When the tag is null/0 (sendToRadioFrame doesn't
+            // populate expectedAckCrc), accept the first BinaryResponse — the
+            // requests are sequential so there's no concurrent reply to confuse.
+            if (tag !== null && tag !== 0 && r?.tag !== tag) return;
             cleanup();
             resolve((r?.responseData ?? new Uint8Array()) as Uint8Array);
           };
@@ -974,9 +984,12 @@ export class MeshCoreNativeBackend extends EventEmitter {
             c.off(K.PushCodes.BinaryResponse, onResp);
             c.off(K.ResponseCodes.Err, onErr);
           }
-          // `on` (not `once`) so a non-matching binary response doesn't consume
-          // our listener; cleanup removes them once we resolve/fail.
-          c.on(K.ResponseCodes.Sent, onSent);
+          // Sent: `once` — there's exactly one Sent ack per frame send, and a
+          // duplicate firing could otherwise overwrite `tag` after the response
+          // has already been matched. BinaryResponse: `on` (not `once`) so a
+          // non-matching response from a different operation doesn't consume our
+          // listener; cleanup removes them both once we resolve/fail.
+          c.once(K.ResponseCodes.Sent, onSent);
           c.on(K.PushCodes.BinaryResponse, onResp);
           c.once(K.ResponseCodes.Err, onErr);
           void c.sendToRadioFrame(frame);
