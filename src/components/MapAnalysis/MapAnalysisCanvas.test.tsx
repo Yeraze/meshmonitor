@@ -5,6 +5,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import MapAnalysisCanvas from './MapAnalysisCanvas';
 import { MapAnalysisProvider } from './MapAnalysisContext';
 
@@ -61,6 +62,11 @@ vi.mock('../../hooks/useDashboardData', () => ({
         longName: 'Alpha',
         shortName: 'A',
         position: { latitude: 30, longitude: -90 },
+        // Reported by two sources — exercises the popup's multi-source list.
+        sources: [
+          { sourceId: 'a', sourceName: 'Alpha Src', protocol: 'Meshtastic' },
+          { sourceId: 'b', sourceName: 'Beta Src', protocol: 'MeshCore' },
+        ],
       },
     ],
     traceroutes: [],
@@ -82,13 +88,17 @@ vi.mock('../../contexts/SettingsContext', () => ({
     customTilesets: [],
     setMapTileset: vi.fn(),
   }),
+  // Used by DashboardNodePopup, which now renders inside the node marker popups.
+  useDisplaySettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
 }));
 
 const wrapper = ({ children }: { children: React.ReactNode }) => {
   const qc = new QueryClient();
   return (
     <QueryClientProvider client={qc}>
-      <MapAnalysisProvider>{children}</MapAnalysisProvider>
+      <MemoryRouter>
+        <MapAnalysisProvider>{children}</MapAnalysisProvider>
+      </MemoryRouter>
     </QueryClientProvider>
   );
 };
@@ -105,5 +115,14 @@ describe('MapAnalysisCanvas', () => {
   it('renders a marker per node when markers layer is enabled (default)', () => {
     render(<MapAnalysisCanvas />, { wrapper });
     expect(screen.getAllByTestId('marker').length).toBeGreaterThan(0);
+  });
+
+  it('node popup lists every source that reported the node', () => {
+    render(<MapAnalysisCanvas />, { wrapper });
+    // The rich DashboardNodePopup now renders inside the marker popup and shows
+    // a "Seen by N sources" list for multi-source nodes (#2805 / Unified parity).
+    expect(screen.getByText(/Seen by 2 sources/i)).toBeInTheDocument();
+    expect(screen.getByText('Alpha Src')).toBeInTheDocument();
+    expect(screen.getByText('Beta Src')).toBeInTheDocument();
   });
 });
