@@ -1399,7 +1399,7 @@ router.get('/info', optionalAuth(), requirePermission('connection', 'read', { so
  */
 router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const { text, toPublicKey, channelIdx } = req.body;
+    const { text, toPublicKey, channelIdx, scope } = req.body;
 
     // Validate message text
     const textValidation = isValidMessage(text);
@@ -1424,7 +1424,24 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
       parsedChannelIdx = n;
     }
 
-    const success = await managerFor(req).sendMessage(text, toPublicKey, parsedChannelIdx);
+    // Optional per-message scope/region override (#3701). `undefined` (key
+    // absent) means "no override — resolve the channel/default scope as usual".
+    // A string (incl. '') is a one-off override for this send only; it is NOT
+    // persisted to the channel. The manager normalises it (strip '#', keep
+    // letters/digits/hyphens). Reject obviously-wrong non-string types so a
+    // malformed body can't silently change scoping.
+    let scopeOverride: string | undefined;
+    if (scope !== undefined && scope !== null) {
+      if (typeof scope !== 'string') {
+        return res.status(400).json({ success: false, error: 'scope must be a string' });
+      }
+      if (scope.length > 63) {
+        return res.status(400).json({ success: false, error: 'scope must be 63 characters or fewer' });
+      }
+      scopeOverride = scope;
+    }
+
+    const success = await managerFor(req).sendMessage(text, toPublicKey, parsedChannelIdx, scopeOverride);
 
     if (success) {
       res.json({ success: true, message: 'Message sent' });

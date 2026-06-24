@@ -163,7 +163,11 @@ export interface MeshCoreActions {
   /** Import an Ed25519 private key onto the device. Destructive — replaces identity. */
   importPrivateKey: (hexKey: string, opts?: { confirm?: boolean }) => Promise<boolean>;
   sendAdvert: () => Promise<void>;
-  sendMessage: (text: string, toPublicKey?: string, channelIdx?: number) => Promise<boolean>;
+  /** Send a message. `scope` is an optional one-off region/scope override
+   *  (#3701) for THIS send only — it is not persisted to the channel; the next
+   *  send re-asserts the channel/default scope. Omit (or pass `undefined`) for
+   *  the normal channel/default resolution. */
+  sendMessage: (text: string, toPublicKey?: string, channelIdx?: number, scope?: string | null) => Promise<boolean>;
   setDeviceName: (name: string) => Promise<boolean>;
   setRadioParams: (params: { freq: number; bw: number; sf: number; cr: number }) => Promise<boolean>;
   setTxPower: (power: number) => Promise<boolean>;
@@ -1174,7 +1178,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
-  const sendMessage = useCallback(async (text: string, toPublicKey?: string, channelIdx?: number): Promise<boolean> => {
+  const sendMessage = useCallback(async (text: string, toPublicKey?: string, channelIdx?: number, scope?: string | null): Promise<boolean> => {
     if (!text.trim()) return false;
     try {
       const response = await csrfFetch(`${mcPrefix}/messages/send`, {
@@ -1184,6 +1188,9 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
           text,
           toPublicKey: toPublicKey || undefined,
           channelIdx,
+          // Only include the override when explicitly provided; omitting the key
+          // lets the backend resolve the channel/default scope as usual (#3701).
+          ...(scope !== undefined ? { scope } : {}),
         }),
       });
       const data = await response.json();

@@ -174,6 +174,54 @@ describe('MeshCoreManager — scope resolution on send (#3667)', () => {
   });
 });
 
+describe('MeshCoreManager — per-message scope override (#3701)', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it('a per-message override beats the channel scope (and still asserts before send)', async () => {
+    const { manager, bridgeCalls } = makeManager({ channelScopes: { 1: 'muenchen' } });
+    const ok = await manager.sendMessage('hi', undefined, 1, 'augsburg');
+    expect(ok).toBe(true);
+    // The override is asserted on the device immediately before the send.
+    expect(cmdSeq(bridgeCalls)).toEqual(['set_flood_scope', 'send_message']);
+    expect(scopeOf(bridgeCalls)).toEqual(['augsburg']);
+  });
+
+  it('a per-message override beats the source default scope', async () => {
+    const { manager, bridgeCalls } = makeManager({ channelScopes: { 1: null }, defaultScope: 'berlin' });
+    await manager.sendMessage('hi', undefined, 1, 'augsburg');
+    expect(scopeOf(bridgeCalls)).toEqual(['augsburg']);
+  });
+
+  it('normalizes the override (strips leading # and disallowed chars)', async () => {
+    const { manager, bridgeCalls } = makeManager({ channelScopes: { 1: 'muenchen' } });
+    await manager.sendMessage('hi', undefined, 1, '#Bad Scope!');
+    // '#' stripped, space + '!' removed, letters/digits kept.
+    expect(scopeOf(bridgeCalls)).toEqual(['BadScope']);
+  });
+
+  it('an empty/whitespace override is an explicit unscoped send (null)', async () => {
+    const { manager, bridgeCalls } = makeManager({ channelScopes: { 1: 'muenchen' }, defaultScope: 'berlin' });
+    await manager.sendMessage('hi', undefined, 1, '   ');
+    expect(scopeOf(bridgeCalls)).toEqual([null]);
+  });
+
+  it('omitting the override falls back to the channel scope (unchanged behaviour)', async () => {
+    const { manager, bridgeCalls } = makeManager({ channelScopes: { 1: 'muenchen' }, defaultScope: 'berlin' });
+    await manager.sendMessage('hi', undefined, 1);
+    expect(scopeOf(bridgeCalls)).toEqual(['muenchen']);
+  });
+
+  it('does NOT persist the override — the next normal send re-asserts the channel scope', async () => {
+    const { manager, bridgeCalls, scopeUpdates } = makeManager({ channelScopes: { 1: 'muenchen' } });
+    await manager.sendMessage('one', undefined, 1, 'augsburg');
+    await manager.sendMessage('two', undefined, 1);
+    // First send used the override, second re-asserts the channel scope.
+    expect(scopeOf(bridgeCalls)).toEqual(['augsburg', 'muenchen']);
+    // The channel row was never written.
+    expect(scopeUpdates).toHaveLength(0);
+  });
+});
+
 describe('MeshCoreManager — setChannel / setDefaultScope scope handling (#3667)', () => {
   beforeEach(() => vi.restoreAllMocks());
 

@@ -1958,7 +1958,7 @@ class MeshCoreManager extends EventEmitter {
    * channel 1" from "I sent this to channel 0" — both used to be indistinguishable
    * when only channel 0 was supported (issue follow-up to MeshCore channels plan).
    */
-  async sendMessage(text: string, toPublicKey?: string, channelIdx?: number): Promise<boolean> {
+  async sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null): Promise<boolean> {
     if (!this.connected) {
       logger.error('[MeshCore] Not connected');
       return false;
@@ -1973,7 +1973,27 @@ class MeshCoreManager extends EventEmitter {
     // flood scope is a single global setting; two concurrent sends with
     // different scopes must not interleave, or a message could ship under the
     // wrong region.
-    return this.runSerialized(() => this.performScopedSend(text, toPublicKey, channelIdx));
+    return this.runSerialized(() => this.performScopedSend(text, toPublicKey, channelIdx, scopeOverride));
+  }
+
+  /**
+   * Normalise a per-message scope override (#3701): trim, strip a leading '#',
+   * keep only letters/digits/hyphens (matching the channel/default scope
+   * normalisation). The override is one-off — it is NOT persisted to the
+   * channel row; the next normal send re-asserts the channel/default scope.
+   *
+   * Returns:
+   *  - `undefined` when there is no override (caller resolves the scope
+   *    normally via {@link resolveScopeForSend}),
+   *  - `null` when the override is an explicit "unscoped" choice (the device
+   *    flood scope is cleared for this one send),
+   *  - the plain region name otherwise.
+   */
+  private static normalizeScopeOverride(scope: string | null | undefined): string | null | undefined {
+    if (scope === undefined) return undefined;
+    if (scope === null) return null;
+    const normalized = scope.trim().replace(/^#/, '').replace(/[^0-9A-Za-z-]/g, '');
+    return normalized || null;
   }
 
   /**
@@ -2040,7 +2060,7 @@ class MeshCoreManager extends EventEmitter {
     }
   }
 
-  private async performScopedSend(text: string, toPublicKey?: string, channelIdx?: number): Promise<boolean> {
+  private async performScopedSend(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null): Promise<boolean> {
     try {
       const isChannelSend = !toPublicKey && channelIdx !== undefined;
 
@@ -2051,7 +2071,16 @@ class MeshCoreManager extends EventEmitter {
       // When the DM has a known direct path the scope is simply inert. Setting
       // it changes the device's single global scope, but the activeFloodScope
       // cache + re-assert keeps a later channel send correct regardless.
-      const region = await this.resolveScopeForSend(isChannelSend ? channelIdx : undefined);
+      //
+      // A per-message scope override (#3701) wins over the channel/default
+      // scope for this one send only — it is NOT persisted, so the next normal
+      // send re-asserts the channel/default scope. It still goes through
+      // applyFloodScope inside runSerialized, so the scope-assert→send pair
+      // stays atomic and the cache + re-assert invariants hold.
+      const normalizedOverride = MeshCoreManager.normalizeScopeOverride(scopeOverride);
+      const region = normalizedOverride !== undefined
+        ? normalizedOverride
+        : await this.resolveScopeForSend(isChannelSend ? channelIdx : undefined);
       await this.applyFloodScope(region);
 
       const response = await this.sendBridgeCommand('send_message', {
