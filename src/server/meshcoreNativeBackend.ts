@@ -984,9 +984,12 @@ export class MeshCoreNativeBackend extends EventEmitter {
             c.off(K.PushCodes.BinaryResponse, onResp);
             c.off(K.ResponseCodes.Err, onErr);
           }
-          // `on` (not `once`) so a non-matching binary response doesn't consume
-          // our listener; cleanup removes them once we resolve/fail.
-          c.on(K.ResponseCodes.Sent, onSent);
+          // Sent: `once` — there's exactly one Sent ack per frame send, and a
+          // duplicate firing could otherwise overwrite `tag` after the response
+          // has already been matched. BinaryResponse: `on` (not `once`) so a
+          // non-matching response from a different operation doesn't consume our
+          // listener; cleanup removes them both once we resolve/fail.
+          c.once(K.ResponseCodes.Sent, onSent);
           c.on(K.PushCodes.BinaryResponse, onResp);
           c.once(K.ResponseCodes.Err, onErr);
           void c.sendToRadioFrame(frame);
