@@ -7,6 +7,7 @@
  * explaining types and scopes.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { isValidCron } from 'cron-validator';
 import { appBasename } from '../../init';
 import apiService from '../../services/api';
 import AutomationBuilder, { type VariableOption, type SourceOption, type UnifiedChannelOption } from './AutomationBuilder';
@@ -44,6 +45,12 @@ function validateForm(form: WorkflowForm): string[] {
     const shape = form.trigger.params.shape as { type?: string; vertices?: unknown[] } | undefined;
     if (!shape || (shape.type === 'polygon' && (shape.vertices?.length ?? 0) < 3)) {
       errs.push('Draw a geofence region (circle or polygon) on the map.');
+    }
+  }
+  if (form.trigger.type === 'trigger.schedule') {
+    const cron = String(form.trigger.params.cron ?? '').trim();
+    if (!cron || !isValidCron(cron, { seconds: false, alias: true, allowBlankDay: true })) {
+      errs.push('Enter a valid 5-field cron expression for the schedule (e.g. "0 * * * *").');
     }
   }
   if (form.rules.length === 0) errs.push('Add at least one rule.');

@@ -319,4 +319,80 @@ describe('AutomationEngineService', () => {
     expect(await engine.checkGeofences(9, 'default')).toBe(0); // still inside → no re-fire
     expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(1);
   });
+
+  // ─── schedule (cron) ───────────────────────────────────────────────────────
+  function fakeCron() {
+    const jobs: Array<{ expr: string; cb: () => void; stopped: boolean }> = [];
+    const cron = {
+      schedule: (expr: string, cb: () => void) => {
+        const j = { expr, cb, stopped: false };
+        jobs.push(j);
+        return { stop: () => { j.stopped = true; } };
+      },
+      validate: (expr: string) => /\S/.test(expr) && expr !== 'BAD',
+    };
+    return { jobs, cron };
+  }
+  const scheduleGraph = (cron: string, cooldownSeconds?: number): AutomationGraph => ({
+    version: 1,
+    nodes: [
+      { id: 't', type: 'trigger.schedule', params: { cron, ...(cooldownSeconds ? { cooldownSeconds } : {}) } },
+      { id: 'a', type: 'action.notify', params: { body: 'tick' } },
+    ],
+    edges: [{ from: 't', to: 'a' }],
+  });
+  const engineWithCron = (deps: ActionDeps, cron: ReturnType<typeof fakeCron>['cron']) =>
+    new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data, now: () => clock, cron });
+
+  it('schedule: arms a cron job per enabled schedule automation and onSchedule fires it', async () => {
+    const { calls, deps } = recorder();
+    const a = await createEnabled('cron-job', scheduleGraph('0 * * * *'));
+    const { jobs, cron } = fakeCron();
+    const engine = engineWithCron(deps, cron);
+    await engine.load();
+
+    expect(jobs.map((j) => j.expr)).toEqual(['0 * * * *']);
+    expect(await engine.onSchedule(a.id)).toBe(1);
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(1);
+    // invoking the registered cron callback also fires it
+    jobs[0].cb();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(2);
+  });
+
+  it('schedule: an invalid/missing cron is not armed', async () => {
+    const { deps } = recorder();
+    await createEnabled('bad-cron', scheduleGraph('BAD'));
+    const { jobs, cron } = fakeCron();
+    const engine = engineWithCron(deps, cron);
+    await engine.load();
+    expect(jobs).toHaveLength(0);
+  });
+
+  it('schedule: reload stops the old job and re-arms', async () => {
+    const { deps } = recorder();
+    await createEnabled('cron-job', scheduleGraph('0 * * * *'));
+    const { jobs, cron } = fakeCron();
+    const engine = engineWithCron(deps, cron);
+    await engine.load();
+    await engine.load(); // simulate a reload after CRUD
+    expect(jobs).toHaveLength(2);
+    expect(jobs[0].stopped).toBe(true);  // old job cancelled
+    expect(jobs[1].stopped).toBe(false); // new job live
+  });
+
+  it('schedule: onSchedule honors the per-automation cooldown', async () => {
+    const { calls, deps } = recorder();
+    const a = await createEnabled('cron-cooldown', scheduleGraph('* * * * *', 60));
+    const { cron } = fakeCron();
+    const engine = engineWithCron(deps, cron);
+    await engine.load();
+
+    expect(await engine.onSchedule(a.id)).toBe(1); // t0
+    clock += 30_000;
+    expect(await engine.onSchedule(a.id)).toBe(0); // within cooldown
+    clock += 31_000;
+    expect(await engine.onSchedule(a.id)).toBe(1); // past cooldown
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(2);
+  });
 });
