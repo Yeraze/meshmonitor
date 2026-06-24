@@ -806,6 +806,35 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * Latest (max) message timestamp per channel index for a source, used by the
+   * channel list to flag channels that have messages newer than the operator's
+   * last-read marker (#3703 unread indicator). Returns a map keyed by channel
+   * index; indices with no messages are omitted. Uses the same channel-scoping
+   * rules as {@link getChannelMessages}.
+   */
+  async getChannelLatestTimestamps(
+    channelIndices: number[],
+    sourceId?: string,
+  ): Promise<Record<number, number>> {
+    const { meshcoreMessages } = this.tables;
+    const entries = await Promise.all(
+      channelIndices.map(async (idx) => {
+        const result = await this.db
+          .select({ latest: sql<number>`MAX(${meshcoreMessages.timestamp})` })
+          .from(meshcoreMessages)
+          .where(this.channelWhereClause(idx, sourceId));
+        const latest = result[0]?.latest;
+        return [idx, latest == null ? null : Number(latest)] as const;
+      }),
+    );
+    const latestTimestamps: Record<number, number> = {};
+    for (const [idx, latest] of entries) {
+      if (latest != null) latestTimestamps[idx] = latest;
+    }
+    return latestTimestamps;
+  }
+
+  /**
    * Build the WHERE clause that matches a single MeshCore channel index,
    * optionally scoped to a source. Shared by the per-channel message and count
    * queries so they stay in lockstep (incl. the channel-0 legacy null-recipient

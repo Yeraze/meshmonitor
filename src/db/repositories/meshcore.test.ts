@@ -616,4 +616,24 @@ describe('MeshCoreRepository — sourceId stamping', () => {
       expect(counts).toEqual({ 0: 3, 1: 1, 2: 0 });
     });
   });
+
+  describe('getChannelLatestTimestamps (#3703)', () => {
+    it('returns the max timestamp per channel, source-scoped, omitting empty channels', async () => {
+      const insert = (id: string, from: string, to: string | null, ts: number, src: string) =>
+        repo.insertMessage(
+          { id, fromPublicKey: from, toPublicKey: to, text: id, timestamp: ts, createdAt: ts },
+          src,
+        );
+      // channel 0: newest at ts 30 (incl. a legacy broadcast). channel 1: ts 40.
+      await insert('a', 'channel-0', null, 10, 'src-a');
+      await insert('b', 'x'.repeat(64), null, 30, 'src-a'); // channel-0 legacy, newest
+      await insert('c', 'channel-1', null, 40, 'src-a');
+      // Same channel, other source must not leak (would otherwise push ch1 to 99).
+      await insert('d', 'channel-1', null, 99, 'src-b');
+
+      const latest = await repo.getChannelLatestTimestamps([0, 1, 2], 'src-a');
+      // Channel 2 has no messages and is omitted entirely.
+      expect(latest).toEqual({ 0: 30, 1: 40 });
+    });
+  });
 });

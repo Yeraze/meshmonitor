@@ -69,6 +69,35 @@ function buildChannelFilter(channelIdx: number): (m: MeshCoreMessage) => boolean
   };
 }
 
+// ---------------------------------------------------------------------------
+// Unread tracking (#3703)
+//
+// MeshCore messages are NOT covered by the Meshtastic server-side read-tracking
+// system (`read_messages` table joins the Meshtastic `messages` table only), so
+// we track the operator's per-channel last-read marker client-side in
+// localStorage, scoped by sourceId. A channel is "unread" when its latest
+// persisted message timestamp is newer than the stored last-read marker. This
+// keeps the feature lightweight (no new per-user DB schema) while answering the
+// request: surface channels with new messages without opening each one.
+// ---------------------------------------------------------------------------
+
+const lastReadStorageKey = (sourceId: string) =>
+  `meshmonitor-meshcore-channel-lastread-${sourceId}`;
+const SORT_UNREAD_FIRST_KEY = 'meshmonitor-meshcore-channel-sort-unread-first';
+
+/** Read the persisted per-channel last-read map for a source (idx → ms). */
+function loadLastRead(sourceId: string): Record<number, number> {
+  if (!sourceId) return {};
+  try {
+    const raw = localStorage.getItem(lastReadStorageKey(sourceId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as Record<number, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
 export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   messages,
   contacts,
@@ -96,6 +125,17 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // so a quiet channel doesn't read as empty next to a busy one just because
   // the shared pool's recent-tail happened to exclude it.
   const [counts, setCounts] = useState<Record<number, number>>({});
+  // Latest persisted message timestamp per channel index (#3703), fetched
+  // alongside `counts`. Compared against the per-channel last-read marker to
+  // decide which channels show an unread indicator.
+  const [latestTimestamps, setLatestTimestamps] = useState<Record<number, number>>({});
+  // Per-channel last-read marker (idx → ms), persisted in localStorage scoped by
+  // sourceId. Seeded from storage on mount/source change.
+  const [lastRead, setLastRead] = useState<Record<number, number>>(() => loadLastRead(sourceId));
+  // Optional "channels with unread first" ordering (#3703), persisted globally.
+  const [sortUnreadFirst, setSortUnreadFirst] = useState<boolean>(
+    () => localStorage.getItem(SORT_UNREAD_FIRST_KEY) === 'true',
+  );
   // Per-message scope/region override (#3701). `null` means "no override —
   // use the channel's resolved scope". A string is a one-off override applied
   // to the NEXT send only; it is never persisted to the channel row. Reset on
@@ -122,6 +162,33 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  // Re-seed the last-read map when the source changes (the map is per-source).
+  useEffect(() => {
+    setLastRead(loadLastRead(sourceId));
+  }, [sourceId]);
+
+  // Persist the sort preference whenever it changes.
+  useEffect(() => {
+    localStorage.setItem(SORT_UNREAD_FIRST_KEY, String(sortUnreadFirst));
+  }, [sortUnreadFirst]);
+
+  // Mark a channel read up to `ts`, persisting to localStorage. Never moves the
+  // marker backwards. `ts` defaults to now so opening an empty/quiet channel
+  // still clears any stale unread state.
+  const markChannelRead = useCallback((idx: number, ts: number = Date.now()) => {
+    if (!sourceId) return;
+    setLastRead(prev => {
+      if ((prev[idx] ?? 0) >= ts) return prev;
+      const next = { ...prev, [idx]: ts };
+      try {
+        localStorage.setItem(lastReadStorageKey(sourceId), JSON.stringify(next));
+      } catch {
+        /* storage full / disabled — unread state is best-effort */
+      }
+      return next;
+    });
+  }, [sourceId]);
 
   const handleSelectChannel = useCallback((idx: number) => {
     setSelectedIdx(idx);
@@ -196,7 +263,12 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
         const response = await csrfFetch(url);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
-        if (!cancelled && data?.success && data.counts) setCounts(data.counts as Record<number, number>);
+        if (!cancelled && data?.success) {
+          if (data.counts) setCounts(data.counts as Record<number, number>);
+          if (data.latestTimestamps) {
+            setLatestTimestamps(data.latestTimestamps as Record<number, number>);
+          }
+        }
       } catch (err) {
         if (!cancelled) console.error('Failed to fetch MeshCore channel counts:', err);
       }
@@ -296,6 +368,59 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     return Array.from(byId.values()).sort((a, b) => a.timestamp - b.timestamp);
   }, [history, messages, activeFilter]);
 
+  // Mark the active channel read up to its newest visible message. Runs whenever
+  // the active channel's content changes (channel switch, backlog load, or a
+  // live message arriving while it's open), so an open channel never shows as
+  // unread. Falls back to "now" for an empty channel so opening it still clears
+  // any stale marker. On mobile the channel isn't actually being viewed until
+  // the operator drills in, so defer marking until the content pane is shown.
+  const newestVisibleTs = filtered.length > 0 ? filtered[filtered.length - 1].timestamp : 0;
+  useEffect(() => {
+    if (isMobileViewport() && !mobileShowContent) return;
+    markChannelRead(active.id, newestVisibleTs || Date.now());
+  }, [active.id, newestVisibleTs, mobileShowContent, markChannelRead]);
+
+  // Effective latest timestamp per channel: the persisted max from the
+  // counts/latest endpoint, bumped by any newer live message in the shared pool
+  // so a just-arrived message flags the channel unread before the next refetch.
+  const effectiveLatest = useMemo(() => {
+    const map: Record<number, number> = { ...latestTimestamps };
+    for (const c of displayChannels) {
+      const liveMatch = messages.filter(buildChannelFilter(c.id));
+      for (const m of liveMatch) {
+        if (m.timestamp > (map[c.id] ?? 0)) map[c.id] = m.timestamp;
+      }
+    }
+    return map;
+  }, [latestTimestamps, messages, displayChannels]);
+
+  /** A channel is unread when its latest message is newer than its last-read
+   *  marker. The currently-active (and viewed) channel is never unread. */
+  const isChannelUnread = useCallback((idx: number): boolean => {
+    if (idx === active.id && (!isMobileViewport() || mobileShowContent)) return false;
+    const latest = effectiveLatest[idx];
+    if (!latest) return false;
+    return latest > (lastRead[idx] ?? 0);
+  }, [active.id, mobileShowContent, effectiveLatest, lastRead]);
+
+  // Channel ordering for the list. Default: by index. "Unread first": unread
+  // channels (most recent activity first) then the rest by index (#3703).
+  const orderedChannels = useMemo(() => {
+    if (!sortUnreadFirst) return displayChannels;
+    return [...displayChannels].sort((a, b) => {
+      const ua = isChannelUnread(a.id);
+      const ub = isChannelUnread(b.id);
+      if (ua !== ub) return ua ? -1 : 1;
+      if (ua && ub) return (effectiveLatest[b.id] ?? 0) - (effectiveLatest[a.id] ?? 0);
+      return a.id - b.id;
+    });
+  }, [displayChannels, sortUnreadFirst, isChannelUnread, effectiveLatest]);
+
+  const unreadChannelCount = useMemo(
+    () => displayChannels.filter(c => isChannelUnread(c.id)).length,
+    [displayChannels, isChannelUnread],
+  );
+
   const selfKey = status?.localNode?.publicKey;
   const connected = status?.connected ?? false;
 
@@ -306,7 +431,26 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       <div className="meshcore-list-pane">
         <div className="meshcore-list-pane-header">
           <span>{t('meshcore.nav.channels', 'Channels')}</span>
-          <span className="pane-count">{displayChannels.length}</span>
+          <span className="meshcore-list-pane-header-actions">
+            {unreadChannelCount > 0 && (
+              <span
+                className="mc-channel-unread-total"
+                title={t('meshcore.channels.unread_total_title', '{{count}} channel(s) with unread messages', { count: unreadChannelCount })}
+              >
+                {unreadChannelCount}
+              </span>
+            )}
+            <button
+              type="button"
+              className={`mc-channel-sort-toggle ${sortUnreadFirst ? 'active' : ''}`}
+              onClick={() => setSortUnreadFirst(v => !v)}
+              aria-pressed={sortUnreadFirst}
+              title={t('meshcore.channels.sort_unread_first', 'Show channels with unread messages first')}
+            >
+              {sortUnreadFirst ? '★' : '☆'}
+            </button>
+            <span className="pane-count">{displayChannels.length}</span>
+          </span>
         </div>
         <div className="meshcore-list-pane-body">
           {loadingChannels && channels.length === 0 && (
@@ -316,18 +460,26 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
               </div>
             </div>
           )}
-          {displayChannels.map(c => {
+          {orderedChannels.map(c => {
             // Accurate persisted count from the counts endpoint. For the active
             // channel, prefer the merged stream length when it's larger so a
             // just-arrived live message bumps the badge before the next refetch.
             const persisted = counts[c.id] ?? messages.filter(buildChannelFilter(c.id)).length;
             const count = c.id === active.id ? Math.max(persisted, filtered.length) : persisted;
+            const unread = isChannelUnread(c.id);
             return (
               <button
                 key={c.id}
-                className={`mc-channel-row ${active.id === c.id ? 'selected' : ''}`}
+                className={`mc-channel-row ${active.id === c.id ? 'selected' : ''} ${unread ? 'unread' : ''}`}
                 onClick={() => handleSelectChannel(c.id)}
               >
+                {unread && (
+                  <span
+                    className="mc-channel-unread-dot"
+                    aria-label={t('meshcore.channels.unread_badge', 'Unread messages')}
+                    title={t('meshcore.channels.unread_badge', 'Unread messages')}
+                  />
+                )}
                 <div className="mc-channel-row-name">
                   {formatMeshCoreChannelName(
                     c.name,

@@ -540,6 +540,69 @@
   opacity: 0.9;
 }
 
+/* Unread indicator (#3703) */
+.mc-channel-row {
+  position: relative;
+}
+
+.mc-channel-row.unread .mc-channel-row-name {
+  font-weight: 700;
+}
+
+.mc-channel-unread-dot {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: var(--ctp-blue);
+  box-shadow: 0 0 0 2px var(--ctp-surface0);
+}
+
+.mc-channel-row.selected .mc-channel-unread-dot {
+  background: var(--ctp-accent-text);
+  box-shadow: 0 0 0 2px var(--ctp-blue);
+}
+
+.meshcore-list-pane-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mc-channel-unread-total {
+  min-width: 1.2rem;
+  height: 1.2rem;
+  padding: 0 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--ctp-blue);
+  color: var(--ctp-accent-text);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.mc-channel-sort-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.1rem 0.2rem;
+  color: var(--ctp-subtext0);
+}
+
+.mc-channel-sort-toggle.active {
+  color: var(--ctp-yellow);
+}
+
+.mc-channel-sort-toggle:hover {
+  color: var(--ctp-text);
+}
+
 .mc-node-row-name {
   color: var(--ctp-text);
   font-weight: 500;

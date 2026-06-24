@@ -1267,7 +1267,9 @@ router.get('/messages/channel/:idx', optionalAuth(), requirePermission('messages
 /**
  * GET /api/meshcore/messages/channel-counts?channels=0,1,2
  * Total persisted message count per channel index, for the channel-list badges.
- * Accurate per channel (not the capped in-memory pool).
+ * Accurate per channel (not the capped in-memory pool). Also returns the latest
+ * message timestamp per channel (`latestTimestamps`) for the unread indicator
+ * (#3703) — channels with no messages are omitted from that map.
  */
 router.get('/messages/channel-counts', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
@@ -1278,10 +1280,14 @@ router.get('/messages/channel-counts', optionalAuth(), requirePermission('messag
       .filter((n) => Number.isInteger(n) && n >= 0);
     // De-dupe and cap to a sane number of channels per request.
     const unique = Array.from(new Set(indices)).slice(0, 64);
-    const counts = unique.length > 0
-      ? await managerFor(req).getChannelMessageCounts(unique)
-      : {};
-    res.json({ success: true, counts });
+    const manager = managerFor(req);
+    const [counts, latestTimestamps] = unique.length > 0
+      ? await Promise.all([
+          manager.getChannelMessageCounts(unique),
+          manager.getChannelLatestTimestamps(unique),
+        ])
+      : [{}, {}];
+    res.json({ success: true, counts, latestTimestamps });
   } catch (error) {
     logger.error('[API] Error getting channel message counts:', error);
     res.status(500).json({ success: false, error: 'Failed to get channel message counts' });
