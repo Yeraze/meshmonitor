@@ -176,9 +176,9 @@ export interface MessagesTabProps {
   handleSendDirectMessage: (destinationNodeId: string) => Promise<void>;
   onSendBell?: (destination: string, text: string) => Promise<void>;
   handleResendMessage: (message: MeshMessage) => Promise<void>;
-  handleTraceroute: (nodeId: string) => Promise<void>;
+  handleTraceroute: (nodeId: string, channel?: number) => Promise<void>;
   handleExchangePosition: (nodeId: string, channel?: number) => Promise<void>;
-  handleExchangeNodeInfo: (nodeId: string) => Promise<void>;
+  handleExchangeNodeInfo: (nodeId: string, channel?: number) => Promise<void>;
   handleRequestNeighborInfo: (nodeId: string) => Promise<void>;
   handleRequestTelemetry: (nodeId: string, telemetryType: 'device' | 'environment' | 'airQuality' | 'power') => Promise<void>;
   handleDeleteMessage: (message: MeshMessage) => Promise<void>;
@@ -298,6 +298,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   // Local state for actions menu
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const [showPositionChannelDropdown, setShowPositionChannelDropdown] = useState(false);
+  const [showTracerouteChannelDropdown, setShowTracerouteChannelDropdown] = useState(false);
+  const [showNodeInfoChannelDropdown, setShowNodeInfoChannelDropdown] = useState(false);
 
   // Relay node modal state
   const [relayModalOpen, setRelayModalOpen] = useState(false);
@@ -361,6 +363,22 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showPositionChannelDropdown]);
+
+  // Close traceroute channel dropdown on click outside
+  useEffect(() => {
+    if (!showTracerouteChannelDropdown) return;
+    const handleClickOutside = () => setShowTracerouteChannelDropdown(false);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showTracerouteChannelDropdown]);
+
+  // Close node info channel dropdown on click outside
+  useEffect(() => {
+    if (!showNodeInfoChannelDropdown) return;
+    const handleClickOutside = () => setShowNodeInfoChannelDropdown(false);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showNodeInfoChannelDropdown]);
 
   // Scroll to and highlight a focused message from search
   useEffect(() => {
@@ -1826,48 +1844,176 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 </button>
               )}
 
-              {/* Traceroute */}
+              {/* Traceroute - Split Button */}
               {!mqttReadOnly && hasPermission('traceroute', 'write') && (
-                <button
-                  onClick={() => handleTraceroute(selectedDMNode)}
-                  disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
-                  style={{
-                    flex: '1 1 auto',
-                    minWidth: '120px',
-                    padding: '0.5rem 1rem',
-                    backgroundColor: 'var(--ctp-blue)',
-                    color: 'var(--ctp-base)',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode ? 'not-allowed' : 'pointer',
-                    opacity: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode ? 0.5 : 1,
-                    fontSize: '0.9rem'
-                  }}
-                >
-                  {tracerouteLoading === selectedDMNode ? <span className="spinner"></span> : '📡'} {t('messages.traceroute_button')}
-                </button>
+                <div style={{ display: 'flex', flex: '1 1 auto', minWidth: '120px', position: 'relative' }}>
+                  <button
+                    onClick={() => handleTraceroute(selectedDMNode)}
+                    disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
+                    style={{
+                      flex: 1,
+                      padding: '0.5rem 1rem',
+                      backgroundColor: 'var(--ctp-blue)',
+                      color: 'var(--ctp-base)',
+                      border: 'none',
+                      borderRadius: channels.length > 1 ? '4px 0 0 4px' : '4px',
+                      cursor: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode ? 'not-allowed' : 'pointer',
+                      opacity: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode ? 0.5 : 1,
+                      fontSize: '0.9rem'
+                    }}
+                  >
+                    {tracerouteLoading === selectedDMNode ? <span className="spinner"></span> : '📡'} {t('messages.traceroute_button')}
+                  </button>
+                  {channels.length > 1 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowTracerouteChannelDropdown(prev => !prev);
+                      }}
+                      disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
+                      title={t('messages.traceroute_channel')}
+                      aria-label={t('messages.traceroute_channel')}
+                      style={{
+                        padding: '0.5rem 0.5rem',
+                        backgroundColor: 'var(--ctp-blue)',
+                        color: 'var(--ctp-base)',
+                        border: 'none',
+                        borderLeft: '1px solid var(--ctp-base)',
+                        borderRadius: '0 4px 4px 0',
+                        cursor: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode ? 'not-allowed' : 'pointer',
+                        opacity: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode ? 0.5 : 1,
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      ▾
+                    </button>
+                  )}
+                  {showTracerouteChannelDropdown && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: '4px',
+                      background: 'var(--ctp-surface0)',
+                      border: '1px solid var(--ctp-surface2)',
+                      borderRadius: '4px',
+                      zIndex: 1000,
+                      minWidth: '160px',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+                    }}>
+                      {channels.map((ch) => (
+                        <button
+                          key={ch.id}
+                          onClick={() => {
+                            handleTraceroute(selectedDMNode, ch.id);
+                            setShowTracerouteChannelDropdown(false);
+                          }}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            padding: '0.5rem 1rem',
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--ctp-text)',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: '0.85rem'
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                        >
+                          {ch.name || `Channel ${ch.id}`}{ch.id === 0 ? ' (Primary)' : ''}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
 
-              {/* Exchange Node Info */}
+              {/* Exchange Node Info - Split Button */}
               {!mqttReadOnly && hasPermission('messages', 'write') && (
-                <button
-                  onClick={() => handleExchangeNodeInfo(selectedDMNode)}
-                  disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode}
-                  style={{
-                    flex: '1 1 auto',
-                    minWidth: '120px',
-                    padding: '0.5rem 1rem',
-                    backgroundColor: 'var(--ctp-blue)',
-                    color: 'var(--ctp-base)',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode ? 'not-allowed' : 'pointer',
-                    opacity: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode ? 0.5 : 1,
-                    fontSize: '0.9rem'
-                  }}
-                >
-                  {nodeInfoLoading === selectedDMNode ? <span className="spinner"></span> : '🔑'} {t('messages.exchange_node_info')}
-                </button>
+                <div style={{ display: 'flex', flex: '1 1 auto', minWidth: '120px', position: 'relative' }}>
+                  <button
+                    onClick={() => handleExchangeNodeInfo(selectedDMNode)}
+                    disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode}
+                    style={{
+                      flex: 1,
+                      padding: '0.5rem 1rem',
+                      backgroundColor: 'var(--ctp-blue)',
+                      color: 'var(--ctp-base)',
+                      border: 'none',
+                      borderRadius: channels.length > 1 ? '4px 0 0 4px' : '4px',
+                      cursor: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode ? 'not-allowed' : 'pointer',
+                      opacity: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode ? 0.5 : 1,
+                      fontSize: '0.9rem'
+                    }}
+                  >
+                    {nodeInfoLoading === selectedDMNode ? <span className="spinner"></span> : '🔑'} {t('messages.exchange_node_info')}
+                  </button>
+                  {channels.length > 1 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowNodeInfoChannelDropdown(prev => !prev);
+                      }}
+                      disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode}
+                      title={t('messages.exchange_node_info_channel')}
+                      aria-label={t('messages.exchange_node_info_channel')}
+                      style={{
+                        padding: '0.5rem 0.5rem',
+                        backgroundColor: 'var(--ctp-blue)',
+                        color: 'var(--ctp-base)',
+                        border: 'none',
+                        borderLeft: '1px solid var(--ctp-base)',
+                        borderRadius: '0 4px 4px 0',
+                        cursor: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode ? 'not-allowed' : 'pointer',
+                        opacity: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode ? 0.5 : 1,
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      ▾
+                    </button>
+                  )}
+                  {showNodeInfoChannelDropdown && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: '4px',
+                      background: 'var(--ctp-surface0)',
+                      border: '1px solid var(--ctp-surface2)',
+                      borderRadius: '4px',
+                      zIndex: 1000,
+                      minWidth: '160px',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+                    }}>
+                      {channels.map((ch) => (
+                        <button
+                          key={ch.id}
+                          onClick={() => {
+                            handleExchangeNodeInfo(selectedDMNode, ch.id);
+                            setShowNodeInfoChannelDropdown(false);
+                          }}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            padding: '0.5rem 1rem',
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--ctp-text)',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: '0.85rem'
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--ctp-surface1)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+                        >
+                          {ch.name || `Channel ${ch.id}`}{ch.id === 0 ? ' (Primary)' : ''}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* Exchange Position - Split Button */}

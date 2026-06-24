@@ -25,6 +25,9 @@ vi.mock('../../services/database.js', () => ({
     nodes: {
       getNode: vi.fn(),
     },
+    channels: {
+      getAllChannels: vi.fn(),
+    },
     messages: {
       insertMessage: vi.fn(),
     },
@@ -50,6 +53,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   (parseDestinationNum as any).mockResolvedValue(0x12345678);
   (databaseService.nodes.getNode as any).mockResolvedValue({ channel: 2 });
+  // Default channel set: slot 0 uses the well-known default PSK ("AQ==") so it
+  // is mesh-readable; slot 2 is a private encrypted channel. resolveBroadcastChannel
+  // should therefore pick slot 0 for traceroutes.
+  (databaseService.channels.getAllChannels as any).mockResolvedValue([
+    { id: 0, psk: 'AQ==' },
+    { id: 2, psk: 'c29tZXByaXZhdGVrZXk=' },
+  ]);
   mockManager.getLocalNodeInfo.mockReturnValue({ nodeNum: 1, nodeId: '!00000001' });
 });
 
@@ -65,13 +75,64 @@ describe('POST /traceroute', () => {
     expect(res.status).toBe(400);
   });
 
-  it('always sends traceroute on channel 0 (Primary) regardless of node stored channel', async () => {
-    // node.channel is 2 from the beforeEach mock, but traceroutes must use
-    // channel 0 so intermediate nodes can read the unencrypted packet (issue #3696).
+  it('sends traceroute on the default-keyed channel, not the node stored channel', async () => {
+    // node.channel is 2 (a private encrypted channel) from the beforeEach mock,
+    // but traceroutes must use a channel every intermediate node can decrypt —
+    // the default-keyed slot 0 — so they can append to the route (issue #3696).
     mockManager.sendTraceroute.mockResolvedValue(undefined);
     const res = await request(app).post('/traceroute').send({ destination: '!12345678' });
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+    expect(mockManager.sendTraceroute).toHaveBeenCalledWith(0x12345678, 0);
+  });
+
+  it('picks the default-keyed channel even when it is NOT slot 0', async () => {
+    // The original #3696 fix hardcoded slot 0; this proves we resolve by PSK.
+    // Slot 0 here has a PRIVATE key, slot 3 carries the default key, so a
+    // traceroute must go out on slot 3 — not the encrypted slot 0.
+    (databaseService.channels.getAllChannels as any).mockResolvedValue([
+      { id: 0, psk: 'cHJpdmF0ZWtleTAwMA==' },
+      { id: 3, psk: 'AQ==' },
+    ]);
+    mockManager.sendTraceroute.mockResolvedValue(undefined);
+    const res = await request(app).post('/traceroute').send({ destination: '!12345678' });
+    expect(res.status).toBe(200);
+    expect(mockManager.sendTraceroute).toHaveBeenCalledWith(0x12345678, 3);
+  });
+
+  it('honors an explicit channel override (the UI channel dropdown)', async () => {
+    mockManager.sendTraceroute.mockResolvedValue(undefined);
+    const res = await request(app).post('/traceroute').send({ destination: '!12345678', channel: 5 });
+    expect(res.status).toBe(200);
+    expect(mockManager.sendTraceroute).toHaveBeenCalledWith(0x12345678, 5);
+  });
+
+  it('honors an explicit channel override of 0 (guards the `?? ` vs `||` falsy trap)', async () => {
+    // The default-keyed resolution would also yield 0 here, so force the broadcast
+    // resolver toward a different slot — proving the explicit 0 is what wins.
+    (databaseService.channels.getAllChannels as any).mockResolvedValue([{ id: 3, psk: 'AQ==' }]);
+    mockManager.sendTraceroute.mockResolvedValue(undefined);
+    const res = await request(app).post('/traceroute').send({ destination: '!12345678', channel: 0 });
+    expect(res.status).toBe(200);
+    expect(mockManager.sendTraceroute).toHaveBeenCalledWith(0x12345678, 0);
+  });
+
+  it('ignores an out-of-range explicit channel and resolves the default-keyed channel', async () => {
+    mockManager.sendTraceroute.mockResolvedValue(undefined);
+    const res = await request(app).post('/traceroute').send({ destination: '!12345678', channel: 101 });
+    expect(res.status).toBe(200);
+    // beforeEach default: slot 0 is the only default-keyed channel.
+    expect(mockManager.sendTraceroute).toHaveBeenCalledWith(0x12345678, 0);
+  });
+
+  it('falls back to channel 0 when no channel uses a mesh-readable key', async () => {
+    (databaseService.channels.getAllChannels as any).mockResolvedValue([
+      { id: 0, psk: 'cHJpdmF0ZWtleTAwMA==' },
+      { id: 2, psk: 'c29tZXByaXZhdGVrZXk=' },
+    ]);
+    mockManager.sendTraceroute.mockResolvedValue(undefined);
+    const res = await request(app).post('/traceroute').send({ destination: '!12345678' });
+    expect(res.status).toBe(200);
     expect(mockManager.sendTraceroute).toHaveBeenCalledWith(0x12345678, 0);
   });
 
@@ -116,6 +177,13 @@ describe('POST /nodeinfo/request', () => {
     expect(res.status).toBe(200);
     expect(mockManager.sendNodeInfoRequest).toHaveBeenCalledWith(0x12345678, 2);
     expect(databaseService.messages.insertMessage).toHaveBeenCalled();
+  });
+
+  it('honors an explicit channel override (the UI channel dropdown)', async () => {
+    mockManager.sendNodeInfoRequest.mockResolvedValue({ packetId: 7, requestId: 11 });
+    const res = await request(app).post('/nodeinfo/request').send({ destination: '!12345678', channel: 4 });
+    expect(res.status).toBe(200);
+    expect(mockManager.sendNodeInfoRequest).toHaveBeenCalledWith(0x12345678, 4);
   });
 
   it('returns 503 when node is not connected', async () => {
