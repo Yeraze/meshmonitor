@@ -32,6 +32,10 @@ export const channelDatabaseSqlite = sqliteTable('channel_database', {
   name: text('name').notNull(),
   psk: text('psk').notNull(), // Base64-encoded PSK
   pskLength: integer('psk_length').notNull(), // 16 for AES-128, 32 for AES-256
+  // Observed Meshtastic 1-byte channel hash (0-255) for PASSIVE (no-PSK) MQTT
+  // rows. Lets two same-name/different-key undecryptable channels stay distinct.
+  // NULL for enabled rows (their hash is computable from name + psk).
+  channelHash: integer('channel_hash'),
   description: text('description'),
   isEnabled: integer('is_enabled', { mode: 'boolean' }).notNull().default(true),
   enforceNameValidation: integer('enforce_name_validation', { mode: 'boolean' }).notNull().default(false),
@@ -66,6 +70,9 @@ export const channelDatabasePostgres = pgTable('channel_database', {
   name: pgText('name').notNull(),
   psk: pgText('psk').notNull(), // Base64-encoded PSK
   pskLength: pgInteger('pskLength').notNull(), // 16 for AES-128, 32 for AES-256
+  // Observed Meshtastic 1-byte channel hash (0-255) for PASSIVE (no-PSK) MQTT
+  // rows; NULL for enabled rows. See SQLite definition above.
+  channelHash: pgInteger('channelHash'),
   description: pgText('description'),
   isEnabled: pgBoolean('isEnabled').notNull().default(true),
   enforceNameValidation: pgBoolean('enforceNameValidation').notNull().default(false),
@@ -100,6 +107,9 @@ export const channelDatabaseMysql = mysqlTable('channel_database', {
   name: myVarchar('name', { length: 255 }).notNull(),
   psk: myVarchar('psk', { length: 255 }).notNull(), // Base64-encoded PSK
   pskLength: myInt('pskLength').notNull(), // 16 for AES-128, 32 for AES-256
+  // Observed Meshtastic 1-byte channel hash (0-255) for PASSIVE (no-PSK) MQTT
+  // rows; NULL for enabled rows. See SQLite definition above.
+  channelHash: myInt('channelHash'),
   description: myText('description'),
   isEnabled: myBoolean('isEnabled').notNull().default(true),
   enforceNameValidation: myBoolean('enforceNameValidation').notNull().default(false),

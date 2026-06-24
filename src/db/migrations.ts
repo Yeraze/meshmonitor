@@ -118,6 +118,7 @@ import { migration as meshcoreChannelScopeMigration, runMigration100Postgres as 
 import { migration as nodeUnmessagableMigration, runMigration101Postgres as runNodeUnmessagablePostgres, runMigration101Mysql as runNodeUnmessagableMysql } from '../server/migrations/101_add_node_unmessagable.js';
 import { migration as meshcoreHeardRepeatersMigration, runMigration102Postgres as runMeshcoreHeardRepeatersPostgres, runMigration102Mysql as runMeshcoreHeardRepeatersMysql } from '../server/migrations/102_create_meshcore_heard_repeaters.js';
 import { migration as consolidateMqttChannelsMigration, runMigration103Postgres as runConsolidateMqttChannelsPostgres, runMigration103Mysql as runConsolidateMqttChannelsMysql } from '../server/migrations/103_consolidate_mqtt_channels.js';
+import { migration as channelDatabaseHashMigration, runMigration104Postgres as runChannelDatabaseHashPostgres, runMigration104Mysql as runChannelDatabaseHashMysql } from '../server/migrations/104_add_channel_database_hash.js';
 
 // ============================================================================
 // Registry
@@ -1634,4 +1635,19 @@ registry.register({
   sqlite: (db) => consolidateMqttChannelsMigration.up(db),
   postgres: (client) => runConsolidateMqttChannelsPostgres(client),
   mysql: (pool) => runConsolidateMqttChannelsMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 104: add channel_hash to channel_database so MQTT channels are
+// identified by (name, hash) — two same-name/different-key undecryptable
+// channels stay distinct.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 104,
+  name: 'add_channel_database_hash',
+  settingsKey: 'migration_104_add_channel_database_hash',
+  sqlite: (db) => channelDatabaseHashMigration.up(db),
+  postgres: (client) => runChannelDatabaseHashPostgres(client),
+  mysql: (pool) => runChannelDatabaseHashMysql(pool),
 });

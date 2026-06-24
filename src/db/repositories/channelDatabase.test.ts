@@ -42,6 +42,7 @@ const POSTGRES_CREATE = `
     name TEXT NOT NULL,
     psk TEXT NOT NULL,
     "pskLength" INTEGER NOT NULL DEFAULT 32,
+    "channelHash" INTEGER,
     description TEXT,
     "isEnabled" BOOLEAN NOT NULL DEFAULT TRUE,
     "enforceNameValidation" BOOLEAN NOT NULL DEFAULT FALSE,
@@ -89,6 +90,7 @@ const MYSQL_CREATE = `
     name VARCHAR(255) NOT NULL,
     psk VARCHAR(255) NOT NULL,
     pskLength INT NOT NULL DEFAULT 32,
+    channelHash INT,
     description TEXT,
     isEnabled BOOLEAN NOT NULL DEFAULT TRUE,
     enforceNameValidation BOOLEAN NOT NULL DEFAULT FALSE,
@@ -460,6 +462,90 @@ function runChannelDbTests(getBackend: () => TestBackend) {
     expect(new Set(ids).size).toBe(1);
     const all = await repo.getAllAsync();
     expect(all.filter((c) => (c.name ?? '').toLowerCase() === 'primary')).toHaveLength(1);
+  });
+
+  // --- findOrCreateByNameAndHashAsync (name + key identity) ---
+  // LongFast on the default key (`AQ==`) has Meshtastic channel hash 8:
+  //   hash = xorHash("LongFast") ^ xorHash(expand(AQ==)).
+
+  it('findOrCreateByNameAndHashAsync - matches an enabled row by its computed hash', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    // Enabled LongFast on the default key.
+    const enabledId = await repo.createAsync({
+      name: 'LongFast', psk: 'AQ==', pskLength: 16, isEnabled: true,
+    });
+
+    // A decoded packet on LongFast with hash 8 should resolve to the enabled row,
+    // not mint a new passive one.
+    const resolved = await repo.findOrCreateByNameAndHashAsync('LongFast', 8);
+    expect(resolved).toBe(enabledId);
+    const all = await repo.getAllAsync();
+    expect(all.filter((c) => (c.name ?? '').toLowerCase() === 'longfast')).toHaveLength(1);
+  });
+
+  it('findOrCreateByNameAndHashAsync - same name, different hash creates a distinct passive row', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    // Enabled LongFast (default key, hash 8).
+    const enabledId = await repo.createAsync({
+      name: 'LongFast', psk: 'AQ==', pskLength: 16, isEnabled: true,
+    });
+
+    // An undecryptable LongFast packet under a DIFFERENT key arrives with hash 42.
+    const otherId = await repo.findOrCreateByNameAndHashAsync('LongFast', 42);
+    expect(otherId).not.toBe(enabledId);
+
+    const all = await repo.getAllAsync();
+    const longfasts = all.filter((c) => (c.name ?? '').toLowerCase() === 'longfast');
+    expect(longfasts).toHaveLength(2);
+    const passive = all.find((c) => c.id === otherId)!;
+    expect(passive.isEnabled).toBe(false);
+    expect(passive.psk).toBe('');
+    expect(passive.channelHash).toBe(42);
+
+    // The same name+hash reuses the passive row (no duplicate).
+    const again = await repo.findOrCreateByNameAndHashAsync('LongFast', 42);
+    expect(again).toBe(otherId);
+    expect((await repo.getAllAsync()).filter((c) => (c.name ?? '').toLowerCase() === 'longfast')).toHaveLength(2);
+  });
+
+  it('findOrCreateByNameAndHashAsync - two passive rows for distinct hashes stay distinct', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const a = await repo.findOrCreateByNameAndHashAsync('Gossip', 10);
+    const b = await repo.findOrCreateByNameAndHashAsync('Gossip', 20);
+    expect(a).not.toBe(b);
+    const all = await repo.getAllAsync();
+    expect(all.filter((c) => (c.name ?? '').toLowerCase() === 'gossip')).toHaveLength(2);
+  });
+
+  it('findOrCreateByNameAndHashAsync - null hash reuses a null-hash passive row (back-compat)', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    // findOrCreatePassiveByNameAsync passes hash=null under the hood.
+    const id = await repo.findOrCreatePassiveByNameAsync('NoHash');
+    const again = await repo.findOrCreateByNameAndHashAsync('NoHash', null);
+    expect(again).toBe(id);
+    // Zero / undefined hash normalizes to null too.
+    const zero = await repo.findOrCreateByNameAndHashAsync('NoHash', 0);
+    expect(zero).toBe(id);
+    expect((await repo.getAllAsync()).filter((c) => (c.name ?? '').toLowerCase() === 'nohash')).toHaveLength(1);
+  });
+
+  it('findOrCreateByNameAndHashAsync - concurrent calls for same name+hash collapse to one row', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const ids = await Promise.all(
+      Array.from({ length: 12 }, () => repo.findOrCreateByNameAndHashAsync('Busy', 99)),
+    );
+    expect(new Set(ids).size).toBe(1);
+    expect((await repo.getAllAsync()).filter((c) => (c.name ?? '').toLowerCase() === 'busy')).toHaveLength(1);
   });
 }
 
