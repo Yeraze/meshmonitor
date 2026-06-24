@@ -8,6 +8,7 @@
  */
 import type { AutomationNode } from '../../../types/automation.js';
 import { type EngineEvalContext, interpolateAsync, resolveOperand } from './engineContext.js';
+import { channelFingerprint } from './channelUnify.js';
 
 export type NodeManageOp = 'favorite' | 'unfavorite' | 'ignore' | 'unignore' | 'delete';
 
@@ -61,9 +62,43 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
     case 'action.sendMessage': {
       const text = await interpolateAsync(String(p.text ?? ''), ctx);
       const destination = await num(ctx, p.to);
-      const channel = p.channel != null ? Number(p.channel) : triggerChannel;
       const replyId = p.replyToTrigger ? (ctx.trigger.fields.packetId as number | undefined) : await num(ctx, p.replyId);
-      return deps.sendMessage({ sourceId, text, channel, destination, replyId });
+      const fallbackChannel = p.channel != null ? Number(p.channel) : triggerChannel;
+
+      // Target sources: explicit multi-select, else the legacy single source /
+      // the triggering source.
+      const sourceIds = Array.isArray(p.sourceIds) && p.sourceIds.length > 0
+        ? (p.sourceIds as unknown[]).map(String)
+        : [sourceId];
+
+      // Selected unified channels (name + key fingerprint). When set, send to
+      // each source on each selected channel it actually carries (source×channel
+      // matrix); a channel absent on a source is skipped.
+      const channelSel = Array.isArray(p.channels)
+        ? (p.channels as Array<Record<string, unknown>>).map((c) => ({ name: String(c?.name ?? ''), fp: String(c?.fp ?? '') }))
+        : [];
+
+      const results: unknown[] = [];
+      for (const sid of sourceIds) {
+        if (destination != null || channelSel.length === 0) {
+          // DM, or no unified-channel selection → single send on the fallback channel.
+          results.push(await deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId }));
+          continue;
+        }
+        const srcChannels = (await ctx.data.getChannels?.(sid)) ?? [];
+        for (const sel of channelSel) {
+          const match = srcChannels.find((c) => c.name === sel.name && channelFingerprint(c.psk) === sel.fp);
+          if (!match) continue; // channel not present on this source
+          results.push(await deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId }));
+        }
+      }
+
+      if (channelSel.length > 0 && destination == null && results.length === 0) {
+        throw new Error('action.sendMessage: none of the selected channels exist on the selected source(s)');
+      }
+      // Unwrap the single-send case so the result shape (and run-log
+      // resolvedParams) matches the original one-target behavior.
+      return results.length === 1 ? results[0] : results;
     }
 
     case 'action.tapback': {

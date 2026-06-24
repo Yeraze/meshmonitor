@@ -38,5 +38,14 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
         return null;
       }
     },
+
+    async getChannels(sourceId) {
+      try {
+        const chans = await databaseService.channels.getAllChannels(sourceId ?? undefined);
+        return chans.map((c) => ({ id: c.id, name: c.name, psk: c.psk ?? null }));
+      } catch {
+        return [];
+      }
+    },
   };
 }

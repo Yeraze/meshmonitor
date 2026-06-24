@@ -136,6 +136,12 @@ function stubData(
       }
       return live ? live.getTelemetry(sourceId, nodeNum, type).catch(() => null) : null;
     },
+    async getChannelName(sourceId, channelIndex) {
+      return live?.getChannelName ? live.getChannelName(sourceId, channelIndex).catch(() => null) : null;
+    },
+    async getChannels(sourceId) {
+      return live?.getChannels ? live.getChannels(sourceId).catch(() => []) : [];
+    },
   };
 }
 

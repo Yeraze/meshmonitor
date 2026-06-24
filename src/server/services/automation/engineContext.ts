@@ -45,6 +45,11 @@ export interface NodeDataProvider {
    * implement it disable name matching (the filter then never matches a name).
    */
   getChannelName?(sourceId: string | null, channelIndex: number): Promise<string | null>;
+  /**
+   * All channels for a source as {slot, name, psk}, for resolving a unified
+   * channel (name + key fingerprint) to its local slot when sending. Optional.
+   */
+  getChannels?(sourceId: string | null): Promise<Array<{ id: number; name: string; psk?: string | null }>>;
 }
 
 export interface EngineEvalContext {

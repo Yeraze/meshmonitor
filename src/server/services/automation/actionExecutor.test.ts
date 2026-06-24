@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { executeAction, type ActionDeps } from './actionExecutor.js';
+import { channelFingerprint } from './channelUnify.js';
 import type { EngineEvalContext } from './engineContext.js';
 import type { TriggerContext } from './triggerContext.js';
 import type { AutomationNode } from '../../../types/automation.js';
@@ -131,6 +132,62 @@ describe('executeAction', () => {
       deps,
     );
     expect(calls[0].args).toMatchObject({ sourceId: 'srcB', text: 'up', channel: 2 });
+  });
+
+  // Helper: a context whose data provider knows each source's channels.
+  const ctxWithChannels = (channelsBySource: Record<string, Array<{ id: number; name: string; psk?: string }>>) => {
+    const base = ctx({ event: 'bootup' }, null);
+    return { ...base, data: { ...base.data, getChannels: async (sid: string | null) => channelsBySource[sid ?? ''] ?? [] } };
+  };
+
+  it('sendMessage: source×channel matrix resolves each source local slot', async () => {
+    const { calls, deps } = recorder();
+    const fp = channelFingerprint('SECRET');
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', sourceIds: ['A', 'B'], channels: [{ name: 'gauntlet', fp }] }),
+      ctxWithChannels({
+        A: [{ id: 2, name: 'gauntlet', psk: 'SECRET' }],
+        B: [{ id: 5, name: 'gauntlet', psk: 'SECRET' }, { id: 0, name: 'Primary', psk: 'AQ==' }],
+      }),
+      deps,
+    );
+    expect(calls.map((c) => ({ s: c.args.sourceId, ch: c.args.channel }))).toEqual([
+      { s: 'A', ch: 2 }, { s: 'B', ch: 5 },
+    ]);
+  });
+
+  it('sendMessage: skips a selected channel that is absent on a source', async () => {
+    const { calls, deps } = recorder();
+    const fp = channelFingerprint('SECRET');
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', sourceIds: ['A', 'B'], channels: [{ name: 'gauntlet', fp }] }),
+      ctxWithChannels({
+        A: [{ id: 2, name: 'gauntlet', psk: 'SECRET' }],
+        B: [{ id: 0, name: 'Primary', psk: 'AQ==' }], // no gauntlet → skipped
+      }),
+      deps,
+    );
+    expect(calls.map((c) => c.args.sourceId)).toEqual(['A']);
+  });
+
+  it('sendMessage: throws when no selected channel exists on any source', async () => {
+    const { deps } = recorder();
+    await expect(executeAction(
+      node('action.sendMessage', { text: 'hi', sourceIds: ['A'], channels: [{ name: 'nope', fp: channelFingerprint('X') }] }),
+      ctxWithChannels({ A: [{ id: 0, name: 'Primary', psk: 'AQ==' }] }),
+      deps,
+    )).rejects.toThrow(/none of the selected channels/);
+  });
+
+  it('sendMessage: back-compat — legacy single sourceId + channel still sends once', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'legacy', sourceId: 'srcB', channel: 3 }),
+      ctx({ from: 5 }, 'default'),
+      deps,
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args).toMatchObject({ sourceId: 'srcB', channel: 3 });
   });
 
   it('nothing: is a no-op that calls no deps', async () => {
