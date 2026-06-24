@@ -305,4 +305,67 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
     expect(dm.data.snr).toBeUndefined();
     expect(dm.data.path_hops).toBeUndefined();
   });
+
+  // --- issue #3710: hop-count (not raw-byte) correlation -----------------------
+  // The recv event's pathLen is a PLAIN hop count (0xFF == direct), while the
+  // buffered LogRxData rawPathLen is the PACKED OTA byte (top 2 bits = hash
+  // width). For any flood packet using a 2- or 3-byte relay-hash width the two
+  // raw values differ even for the SAME packet, so the old raw-equality guard
+  // dropped the path and {ROUTE} resolved to "—". We must correlate on the
+  // decoded hop count instead.
+
+  it('attaches the buffered path for a 2-byte-hash flood packet (issue #3710)', async () => {
+    const { conn, events } = await connectedBackend();
+    // TXT_MSG, FLOOD, packed pathLen=0x42 (2-byte hashes, 2 hops),
+    // path = [adb0, 1234]. extractPathHashCount(0x42) === 2.
+    const raw = Uint8Array.from([0x02, 0x01, 0x42, 0xad, 0xb0, 0x12, 0x34]);
+    conn.emit(PushCodes.LogRxData, { lastSnr: 5.5, lastRssi: -44, raw });
+    // The matching recv reports a PLAIN hop count of 2, NOT the packed 0x42.
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([0xde, 0xad, 0xbe, 0xef, 0x00, 0x01]),
+      text: 'routed hello',
+      senderTimestamp: 1700,
+      pathLen: 2,
+      txtType: TxtTypes.Plain,
+    });
+    const msg = events.find((e) => e.event_type === 'contact_message');
+    expect(msg).toBeDefined();
+    expect(msg.data.path_hops).toEqual(['adb0', '1234']);
+    expect(msg.data.snr).toBe(5.5);
+  });
+
+  it('attaches the buffered path for a 2-byte-hash flood channel_message (issue #3710)', async () => {
+    const { conn, events } = await connectedBackend();
+    const raw = Uint8Array.from([0x02, 0x01, 0x42, 0xad, 0xb0, 0x12, 0x34]);
+    conn.emit(PushCodes.LogRxData, { lastSnr: -2.0, lastRssi: -70, raw });
+    conn.emit(ResponseCodes.ChannelMsgRecv, {
+      channelIdx: 0,
+      text: 'Bob: routed ping',
+      senderTimestamp: 1800,
+      pathLen: 2,
+    });
+    const msg = events.find((e) => e.event_type === 'channel_message');
+    expect(msg).toBeDefined();
+    expect(msg.data.path_hops).toEqual(['adb0', '1234']);
+    expect(msg.data.snr).toBe(-2.0);
+  });
+
+  it('still rejects a buffered 2-byte-hash path when hop counts differ (issue #3710 guard intact)', async () => {
+    const { conn, events } = await connectedBackend();
+    // Buffered: 2-byte hashes, 2 hops (packed 0x42).
+    const raw = Uint8Array.from([0x02, 0x01, 0x42, 0xad, 0xb0, 0x12, 0x34]);
+    conn.emit(PushCodes.LogRxData, { lastSnr: 9, lastRssi: -30, raw });
+    // Recv is a different packet: 3 hops. 3 !== decoded(0x42)=2 → reject.
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([0x11, 0x22, 0x33, 0x44, 0x55, 0x66]),
+      text: 'different',
+      senderTimestamp: 1900,
+      pathLen: 3,
+      txtType: TxtTypes.Plain,
+    });
+    const msg = events.find((e) => e.event_type === 'contact_message');
+    expect(msg).toBeDefined();
+    expect(msg.data.path_hops).toBeUndefined();
+    expect(msg.data.snr).toBeUndefined();
+  });
 });

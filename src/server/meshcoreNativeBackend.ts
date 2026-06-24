@@ -361,10 +361,19 @@ export class MeshCoreNativeBackend extends EventEmitter {
    *  1. Freshness — the buffer must be younger than `PENDING_PATH_MAX_AGE_MS`.
    *     LogRxData fires immediately before its txt-msg recv on the same tick;
    *     an older buffer belongs to a packet whose recv never arrived.
-   *  2. pathLen correlation — when the recv event carries its own packed
-   *     `pathLen` byte, it must equal the buffered packet's `rawPathLen`.
-   *     They are the same wire byte for the same packet, so a mismatch proves
-   *     the buffer is from a *different* packet and must not be attached.
+   *  2. hop-count correlation — when the recv event carries its own
+   *     `pathLen`, the *hop count* it implies must equal the hop count
+   *     decoded from the buffered packet's packed `rawPathLen`. A mismatch
+   *     proves the buffer is from a *different* packet and must not be
+   *     attached.
+   *
+   *     NOTE: the two values are NOT the same wire byte. ContactMsgRecv /
+   *     ChannelMsgRecv report a PLAIN hop count (0xFF == "sent direct"),
+   *     whereas LogRxData's `rawPathLen` is the PACKED OTA byte (top 2 bits
+   *     = hash-size-1, bottom 6 bits = hop count). Comparing them raw made
+   *     every flood packet using a 2- or 3-byte relay-hash width fail to
+   *     correlate, so {ROUTE} resolved to "—" for any routed message
+   *     (issue #3710). We decode the packed byte to a hop count first.
    *
    * Returns `{ hops, snr }` to attach, or `undefined` when the buffer is
    * absent, stale, or for a different packet.
@@ -379,13 +388,19 @@ export class MeshCoreNativeBackend extends EventEmitter {
       // Stale buffer — its matching recv never arrived. Don't mis-attach.
       return undefined;
     }
-    if (
-      typeof msgPathLen === 'number' &&
-      typeof buffered.rawPathLen === 'number' &&
-      msgPathLen !== buffered.rawPathLen
-    ) {
-      // Buffer is from a different packet (packed pathLen bytes differ).
-      return undefined;
+    if (typeof msgPathLen === 'number' && typeof buffered.rawPathLen === 'number') {
+      // Normalize both sides to a plain hop count before comparing. The recv
+      // event's pathLen is already a plain count (0xFF == sent-direct == 0
+      // hops); the buffered rawPathLen is the packed OTA byte.
+      const msgHopCount = msgPathLen === 0xff ? 0 : msgPathLen & 0x3f;
+      const bufferedHopCount =
+        buffered.rawPathLen === 0xff
+          ? 0
+          : (this.PacketCtor?.extractPathHashCount(buffered.rawPathLen) ?? (buffered.rawPathLen & 0x3f));
+      if (msgHopCount !== bufferedHopCount) {
+        // Buffer is from a different packet (hop counts differ).
+        return undefined;
+      }
     }
     return { hops: buffered.hops, snr: buffered.snr };
   }
