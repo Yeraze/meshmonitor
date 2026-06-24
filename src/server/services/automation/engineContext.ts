@@ -39,6 +39,22 @@ export interface NodeFacts {
 export interface NodeDataProvider {
   getNode(sourceId: string | null, nodeNum: number): Promise<NodeFacts | null>;
   getTelemetry(sourceId: string | null, nodeNum: number, telemetryType: string): Promise<number | null>;
+  /**
+   * Resolve a source's channel slot index to its channel name, for
+   * `trigger.message` channel-by-name matching. Optional — providers that don't
+   * implement it disable name matching (the filter then never matches a name).
+   */
+  getChannelName?(sourceId: string | null, channelIndex: number): Promise<string | null>;
+  /**
+   * All channels for a source as {slot, name, psk, role}, for resolving a
+   * unified channel (by name) to its local slot when sending. Optional.
+   */
+  getChannels?(sourceId: string | null): Promise<Array<{ id: number; name: string; psk?: string | null; role?: number | null }>>;
+  /**
+   * Coarse protocol of a source ('meshtastic' | 'meshcore' | 'other'), so a
+   * unified channel only sends to sources of its own protocol. Optional.
+   */
+  getSourceProtocol?(sourceId: string | null): Promise<string | null>;
 }
 
 export interface EngineEvalContext {

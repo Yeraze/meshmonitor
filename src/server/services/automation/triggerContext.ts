@@ -158,11 +158,21 @@ export function buildSystemContext(
  * Tight pre-filter for `trigger.message`: cheap checks the engine runs before any
  * graph evaluation. Unset params don't constrain. Returns true on match.
  */
-export function messageMatchesFilter(msg: DbMessage, params: Record<string, unknown> = {}): boolean {
+/**
+ * @param channelName Pre-resolved name of `msg.channel` for its source (the engine
+ *   resolves the per-source slot→name once before filtering). Required for the
+ *   `params.channelName` check to match; when absent, a channelName filter fails.
+ */
+export function messageMatchesFilter(msg: DbMessage, params: Record<string, unknown> = {}, channelName?: string | null): boolean {
   if (params.portnum != null && Number(msg.portnum) !== Number(params.portnum)) return false;
   if (params.from != null && Number(msg.fromNodeNum) !== Number(params.from)) return false;
   if (params.to != null && Number(msg.toNodeNum) !== Number(params.to)) return false;
   if (params.channel != null && Number(msg.channel) !== Number(params.channel)) return false;
+  // Channel-by-name: portable across sources where the channel sits in a
+  // different slot. Case-insensitive; a non-resolving channel never matches.
+  if (typeof params.channelName === 'string' && params.channelName.length > 0) {
+    if (!channelName || channelName.toLowerCase() !== params.channelName.toLowerCase()) return false;
+  }
   const text = msg.text ?? '';
   if (typeof params.textContains === 'string' && params.textContains.length > 0) {
     if (!text.toLowerCase().includes(params.textContains.toLowerCase())) return false;

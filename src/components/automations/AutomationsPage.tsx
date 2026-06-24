@@ -7,8 +7,9 @@
  * explaining types and scopes.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { appBasename } from '../../init';
 import apiService from '../../services/api';
-import AutomationBuilder, { type VariableOption, type SourceOption } from './AutomationBuilder';
+import AutomationBuilder, { type VariableOption, type SourceOption, type UnifiedChannelOption } from './AutomationBuilder';
 import AutomationTester from './AutomationTester';
 import { compile, decompile, type WorkflowForm } from './compile';
 import './AutomationsPage.css';
@@ -39,6 +40,12 @@ const DEFAULT_FORM: WorkflowForm = {
 /** Builder-form validation: each rule needs an action (unless it only feeds a combine). */
 function validateForm(form: WorkflowForm): string[] {
   const errs: string[] = [];
+  if (form.trigger.type === 'trigger.geofence') {
+    const shape = form.trigger.params.shape as { type?: string; vertices?: unknown[] } | undefined;
+    if (!shape || (shape.type === 'polygon' && (shape.vertices?.length ?? 0) < 3)) {
+      errs.push('Draw a geofence region (circle or polygon) on the map.');
+    }
+  }
   if (form.rules.length === 0) errs.push('Add at least one rule.');
   form.rules.forEach((r, i) => {
     if (r.actions.length === 0 && !(form.combine && r.conditions.length > 0)) {
@@ -55,7 +62,7 @@ export default function AutomationsPage() {
     <div className="ae-page">
       <div className="ae-container">
         <div className="ae-topbar">
-          <button className="ae-btn ae-btn--ghost" onClick={() => { window.location.href = import.meta.env.BASE_URL || '/'; }}>← Dashboard</button>
+          <button className="ae-btn ae-btn--ghost" onClick={() => { window.location.href = `${appBasename}/`; }}>← Dashboard</button>
         </div>
         <h1 className="ae-title">Automation Engine</h1>
         <p className="ae-subtitle">Advanced Mode (beta) — global “when this happens, do that” workflows across every source.</p>
@@ -137,6 +144,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
   const [enabled, setEnabled] = useState(initial?.enabled ?? false);
   const [variables, setVariables] = useState<VariableOption[]>([]);
   const [sources, setSources] = useState<SourceOption[]>([]);
+  const [channels, setChannels] = useState<UnifiedChannelOption[]>([]);
 
   // Decide builder vs JSON from the existing config.
   const parsedInitial = (() => { try { return initial ? decompile(JSON.parse(initial.config)) : DEFAULT_FORM; } catch { return null; } })();
@@ -162,9 +170,12 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
     apiService.get<Variable[]>('/api/automations/variables')
       .then((vs) => setVariables(vs.map((v) => ({ name: v.name, type: v.type }))))
       .catch(() => setVariables([]));
-    apiService.get<Array<{ id: string; name: string }>>('/api/sources')
-      .then((ss) => setSources(ss.map((s) => ({ id: s.id, name: s.name }))))
+    apiService.get<Array<{ id: string; name: string; type?: string; enabled?: boolean }>>('/api/sources')
+      .then((ss) => setSources(ss.map((s) => ({ id: s.id, name: s.name, type: s.type, enabled: s.enabled }))))
       .catch(() => setSources([]));
+    apiService.get<UnifiedChannelOption[]>('/api/automations/channels')
+      .then((cs) => setChannels(cs))
+      .catch(() => setChannels([]));
   }, []);
 
   const switchToJson = () => { setJsonText(JSON.stringify(compile(form), null, 2)); setMode('json'); };
@@ -219,7 +230,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
       </div>
 
       {mode === 'builder'
-        ? <AutomationBuilder form={form} variables={variables} sources={sources} onChange={setForm} />
+        ? <AutomationBuilder form={form} variables={variables} sources={sources} channels={channels} onChange={setForm} />
         : (
           <div className="ae-field">
             <label className="ae-field-label">Workflow graph (JSON)</label>
@@ -233,7 +244,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
         <button className="ae-btn" onClick={() => setShowTest((s) => !s)}>{showTest ? 'Hide test' : '▶ Test'}</button>
       </div>
 
-      {showTest && <AutomationTester getConfig={getTestConfig} variables={variables} />}
+      {showTest && <AutomationTester getConfig={getTestConfig} variables={variables} sources={sources} />}
     </div>
   );
 }

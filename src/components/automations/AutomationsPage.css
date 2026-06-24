@@ -21,7 +21,9 @@
   border-bottom: 2px solid transparent; margin-bottom: -1px;
 }
 .ae-tab:hover { color: var(--ctp-text); }
-.ae-tab.is-active { color: var(--ctp-accent-text); border-bottom-color: var(--ctp-blue); }
+/* Active tab text uses the blue accent (matches the underline) — it sits on the
+   dark tab bar with no background, so the black --ctp-accent-text was unreadable. */
+.ae-tab.is-active { color: var(--ctp-blue); border-bottom-color: var(--ctp-blue); }
 
 /* Buttons */
 .ae-btn {
@@ -92,14 +94,20 @@
   background: var(--ctp-surface1); color: var(--ctp-subtext1); border: none; cursor: pointer; flex: none;
 }
 .ae-help-icon:hover { background: var(--ctp-blue); color: var(--ctp-accent-text); }
-.ae-drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1000; }
+/* Docked, non-modal reference panel: slides in from the right and stays put (no
+   backdrop), so it can remain open while you keep editing the page. */
 .ae-drawer {
   position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 92vw); z-index: 1001;
   background: var(--ctp-mantle); border-left: 1px solid var(--ctp-surface1);
   box-shadow: -8px 0 24px rgba(0,0,0,0.35); padding: 1.25rem 1.4rem; overflow-y: auto;
+  animation: ae-drawer-slide-in 0.2s ease;
 }
+@keyframes ae-drawer-slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { .ae-drawer { animation: none; } }
 .ae-drawer h2 { margin-top: 0; font-size: 1.15rem; }
-.ae-drawer h3 { margin: 1.1rem 0 0.3rem; font-size: 0.95rem; color: var(--ctp-accent-text); }
+/* Drawer headings sit on the dark --ctp-mantle drawer — use the theme foreground,
+   not the black --ctp-accent-text (which is meant for bright accent backgrounds). */
+.ae-drawer h3 { margin: 1.1rem 0 0.3rem; font-size: 0.95rem; color: var(--ctp-text); }
 .ae-drawer dt { font-weight: 700; margin-top: 0.7rem; font-family: var(--font-mono, monospace); font-size: 0.85rem; color: var(--ctp-text); }
 .ae-drawer dd { margin: 0.15rem 0 0; color: var(--ctp-subtext1); font-size: 0.85rem; line-height: 1.45; }
 .ae-drawer-close { position: absolute; top: 0.9rem; right: 1rem; }

@@ -9,7 +9,7 @@
  */
 import { useState, type ReactNode } from 'react';
 import apiService from '../../services/api';
-import type { VariableOption } from './AutomationBuilder';
+import type { VariableOption, SourceOption } from './AutomationBuilder';
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
 
 export interface SimResult {
@@ -27,6 +27,7 @@ interface Props {
   /** Compiles the current editor state → graph config (or an error). */
   getConfig: () => { ok: boolean; config?: unknown; error?: string; triggerType?: string };
   variables: VariableOption[];
+  sources: SourceOption[];
 }
 
 const KIND_BY_TRIGGER: Record<string, string> = {
@@ -48,7 +49,7 @@ function numOrUndef(v: string | undefined): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-export default function AutomationTester({ getConfig, variables }: Props) {
+export default function AutomationTester({ getConfig, variables, sources }: Props) {
   const cfg = getConfig();
   const triggerType = cfg.triggerType ?? '';
   const kind = KIND_BY_TRIGGER[triggerType] ?? 'message';
@@ -66,14 +67,15 @@ export default function AutomationTester({ getConfig, variables }: Props) {
   const setFact = (k: string, v: string) => setFacts((s) => ({ ...s, [k]: v }));
 
   const buildEvent = (): Record<string, unknown> => {
-    const base: Record<string, unknown> = { kind };
+    const base: Record<string, unknown> = { kind, sourceId: ev.sourceId || undefined };
     switch (kind) {
       case 'message':
         return { ...base, text: ev.text ?? '', from: numOrUndef(ev.from), channel: numOrUndef(ev.channel),
+          channelName: ev.channelName || undefined,
           hopStart: numOrUndef(ev.hopStart), hopLimit: numOrUndef(ev.hopLimit), packetId: numOrUndef(ev.packetId) ?? 1,
           snr: numOrUndef(ev.snr), rssi: numOrUndef(ev.rssi), viaMqtt: ev.viaMqtt === 'true' ? true : undefined };
       case 'telemetry':
-        return { ...base, nodeNum: numOrUndef(ev.nodeNum), telemetryType: ev.telemetryType ?? 'batteryLevel', value: numOrUndef(ev.value) };
+        return { ...base, nodeNum: numOrUndef(ev.nodeNum), telemetryType: ev.telemetryType || 'batteryLevel', value: numOrUndef(ev.value) };
       case 'nodeUpdated':
       case 'nodeDiscovered':
         return { ...base, nodeNum: numOrUndef(ev.nodeNum), changed: (ev.changed ?? '').split(',').map((s) => s.trim()).filter(Boolean) };
@@ -131,7 +133,18 @@ export default function AutomationTester({ getConfig, variables }: Props) {
       </div>
       {showHelp && <SubstitutionsHelpDrawer triggerType={triggerType} variables={variables} onClose={() => setShowHelp(false)} />}
 
-      <div className="ae-test-inputs">{renderEventInputs(kind, ev, setEvField)}</div>
+      <div className="ae-test-inputs">
+        {sources.length > 0 && (
+          <div className="ae-field">
+            <label className="ae-field-label">From source</label>
+            <select className="ae-select" value={ev.sourceId ?? ''} onChange={(e) => setEvField('sourceId', e.target.value)}>
+              <option value="">— Default —</option>
+              {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+        )}
+        {renderEventInputs(kind, ev, setEvField)}
+      </div>
 
       <button className="ae-btn ae-btn--ghost" style={{ marginTop: '0.4rem' }} onClick={() => setShowAdvanced((s) => !s)}>
         {showAdvanced ? '▾' : '▸'} Subject-node facts & variable overrides
@@ -186,14 +199,37 @@ function Field({ label, value, onChange, type }: { label: string; value: string 
   );
 }
 
+const SYSTEM_EVENT_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'bootup', label: 'System start' },
+  { value: 'source-connected', label: 'Source came online' },
+  { value: 'source-disconnected', label: 'Source went offline' },
+  { value: 'upgrade-available', label: 'Upgrade available' },
+];
+// Mirrors the trigger.telemetry metric options — the trigger filters on one of these.
+const TELEMETRY_METRIC_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'batteryLevel', label: 'Battery level (%)' },
+  { value: 'voltage', label: 'Voltage' },
+  { value: 'temperature', label: 'Temperature' },
+  { value: 'channelUtilization', label: 'Channel utilization' },
+  { value: 'airUtilTx', label: 'Air util TX' },
+];
+
 function renderEventInputs(kind: string, ev: EventState, set: (k: string, v: string) => void) {
   const f = (label: string, key: string, type?: string) => (
     <Field label={label} value={ev[key]} onChange={(v) => set(key, v)} type={type} key={key} />
   );
+  const sel = (label: string, key: string, options: Array<{ value: string; label: string }>, dflt: string) => (
+    <div className="ae-field" key={key}>
+      <label className="ae-field-label">{label}</label>
+      <select className="ae-select" value={ev[key] || dflt} onChange={(e) => set(key, e.target.value)}>
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
   switch (kind) {
     case 'message':
       return <>
-        {f('Message text', 'text')}{f('From node #', 'from', 'number')}{f('Channel #', 'channel', 'number')}
+        {f('Message text', 'text')}{f('From node #', 'from', 'number')}{f('Channel #', 'channel', 'number')}{f('Channel name', 'channelName')}
         {f('Hop start', 'hopStart', 'number')}{f('Hop limit', 'hopLimit', 'number')}
         {f('SNR', 'snr', 'number')}{f('RSSI', 'rssi', 'number')}
         <div className="ae-field">
@@ -204,12 +240,12 @@ function renderEventInputs(kind: string, ev: EventState, set: (k: string, v: str
         </div>
       </>;
     case 'telemetry':
-      return <>{f('Node #', 'nodeNum', 'number')}{f('Metric', 'telemetryType')}{f('Value', 'value', 'number')}</>;
+      return <>{f('Node #', 'nodeNum', 'number')}{sel('Metric', 'telemetryType', TELEMETRY_METRIC_OPTIONS, 'batteryLevel')}{f('Value', 'value', 'number')}</>;
     case 'nodeUpdated':
     case 'nodeDiscovered':
       return <>{f('Node #', 'nodeNum', 'number')}{f('Changed fields (csv)', 'changed')}</>;
     case 'system':
-      return <>{f('Event', 'event')}{f('Latest version', 'latestVersion')}{f('Current version', 'currentVersion')}</>;
+      return <>{sel('Event', 'event', SYSTEM_EVENT_OPTIONS, 'bootup')}{f('Latest version', 'latestVersion')}{f('Current version', 'currentVersion')}</>;
     case 'geofence':
       return <>{f('Node #', 'nodeNum', 'number')}<div className="ae-muted" style={{ alignSelf: 'end' }}>Set the node’s position under “Subject-node facts”.</div></>;
     default:

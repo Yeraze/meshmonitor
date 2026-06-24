@@ -14,8 +14,8 @@
  *     result===false, and an unported edge behaves as a gate (needs true).
  *   - source is any other node: the edge is satisfied whenever the source is active.
  * A `flow.collapse` node activates per its mode over (satisfied, total) incoming
- * edges: ANY ≥1, ALL = all, NONE = 0. Every other node activates on ≥1 satisfied
- * edge. The single trigger is the always-active entry point.
+ * edges: ANY ≥1, ALL = all, NONE = 0, ALWAYS = unconditional. Every other node
+ * activates on ≥1 satisfied edge. The single trigger is the always-active entry point.
  */
 import {
   type AutomationGraph,
@@ -129,6 +129,7 @@ export async function evaluateGraph<Ctx>(
   };
 
   const collapseActivates = (mode: CollapseMode, satisfied: number, total: number): boolean => {
+    if (mode === 'ALWAYS') return true; // run regardless of which rules matched
     if (mode === 'ANY') return satisfied >= 1;
     if (mode === 'ALL') return total > 0 && satisfied === total;
     return satisfied === 0; // NONE

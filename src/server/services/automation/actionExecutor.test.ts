@@ -121,6 +121,98 @@ describe('executeAction', () => {
     expect(calls[0].args.sourceId).toBe('srcB');
   });
 
+  it('sendMessage: an explicit source routes a source-less (system/schedule) trigger', async () => {
+    const { calls, deps } = recorder();
+    // System triggers carry sourceId=null; the action's "Send via source" param
+    // supplies the radio so the send has a target instead of failing.
+    await executeAction(
+      node('action.sendMessage', { text: 'up', sourceId: 'srcB', channel: 2 }),
+      ctx({ event: 'bootup' }, null),
+      deps,
+    );
+    expect(calls[0].args).toMatchObject({ sourceId: 'srcB', text: 'up', channel: 2 });
+  });
+
+  // Helper: a context whose data provider knows each source's channels + protocol.
+  const ctxWithChannels = (
+    channelsBySource: Record<string, Array<{ id: number; name: string; role?: number | null }>>,
+    protoBySource: Record<string, string> = {},
+  ) => {
+    const base = ctx({ event: 'bootup' }, null);
+    return { ...base, data: {
+      ...base.data,
+      getChannels: async (sid: string | null) => channelsBySource[sid ?? ''] ?? [],
+      getSourceProtocol: async (sid: string | null) => protoBySource[sid ?? ''] ?? null,
+    } };
+  };
+
+  it('sendMessage: source×channel matrix resolves each source local slot', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', sourceIds: ['A', 'B'], channels: [{ name: 'gauntlet', protocol: 'meshtastic' }] }),
+      ctxWithChannels({
+        A: [{ id: 2, name: 'gauntlet', role: 2 }],
+        B: [{ id: 5, name: 'gauntlet', role: 2 }, { id: 0, name: 'Primary', role: 1 }],
+      }, { A: 'meshtastic', B: 'meshtastic' }),
+      deps,
+    );
+    expect(calls.map((c) => ({ s: c.args.sourceId, ch: c.args.channel }))).toEqual([
+      { s: 'A', ch: 2 }, { s: 'B', ch: 5 },
+    ]);
+  });
+
+  it('sendMessage: a Meshtastic channel is NOT sent to a MeshCore source (protocol-scoped)', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', sourceIds: ['MT', 'MC'], channels: [{ name: 'gauntlet', protocol: 'meshtastic' }] }),
+      ctxWithChannels({
+        MT: [{ id: 2, name: 'gauntlet', role: 2 }],
+        MC: [{ id: 1, name: 'gauntlet', role: null }], // same name, but MeshCore → must be skipped
+      }, { MT: 'meshtastic', MC: 'meshcore' }),
+      deps,
+    );
+    expect(calls.map((c) => c.args.sourceId)).toEqual(['MT']);
+  });
+
+  it('sendMessage: skips a selected channel that is absent on a source', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', sourceIds: ['A', 'B'], channels: [{ name: 'gauntlet', protocol: 'meshtastic' }] }),
+      ctxWithChannels({
+        A: [{ id: 2, name: 'gauntlet', role: 2 }],
+        B: [{ id: 0, name: 'Primary', role: 1 }], // no gauntlet → skipped
+      }, { A: 'meshtastic', B: 'meshtastic' }),
+      deps,
+    );
+    expect(calls.map((c) => c.args.sourceId)).toEqual(['A']);
+  });
+
+  it('sendMessage: throws when no selected channel exists on any source', async () => {
+    const { deps } = recorder();
+    await expect(executeAction(
+      node('action.sendMessage', { text: 'hi', sourceIds: ['A'], channels: [{ name: 'nope', protocol: 'meshtastic' }] }),
+      ctxWithChannels({ A: [{ id: 0, name: 'Primary', role: 1 }] }, { A: 'meshtastic' }),
+      deps,
+    )).rejects.toThrow(/none of the selected channels/);
+  });
+
+  it('sendMessage: back-compat — legacy single sourceId + channel still sends once', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'legacy', sourceId: 'srcB', channel: 3 }),
+      ctx({ from: 5 }, 'default'),
+      deps,
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args).toMatchObject({ sourceId: 'srcB', channel: 3 });
+  });
+
+  it('nothing: is a no-op that calls no deps', async () => {
+    const { calls, deps } = recorder();
+    await expect(executeAction(node('action.nothing', {}), ctx({ from: 5 }), deps)).resolves.toBeUndefined();
+    expect(calls).toHaveLength(0);
+  });
+
   it('throws on an unknown action type', async () => {
     const { deps } = recorder();
     await expect(executeAction(node('action.bogus', {}), ctx({}), deps)).rejects.toThrow(/unknown action/);

@@ -6,7 +6,7 @@
  * `kind` maps to an input renderer in AutomationBuilder.
  */
 
-export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti';
+export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence';
 
 export interface FieldOpt { value: string; label: string; }
 export interface FieldGroup { label: string; options: FieldOpt[]; }
@@ -45,7 +45,8 @@ export const TRIGGERS: BlockDef[] = [
     fields: [
       { name: 'textContains', label: 'Text contains', kind: 'text', placeholder: 'e.g. ping', help: 'Case-insensitive substring match. Leave blank to match any text.' },
       { name: 'regex', label: 'Text matches regex', kind: 'text', placeholder: 'e.g. ^(test|ping)', advanced: true, help: 'A regular expression matched against the message text.' },
-      { name: 'channel', label: 'On channel #', kind: 'number', placeholder: 'any', advanced: true },
+      { name: 'channelName', label: 'On channel (name)', kind: 'text', placeholder: 'any', advanced: true, help: 'Match by channel name (case-insensitive) — portable across sources where the same channel sits in a different slot. Preferred over the channel # below.' },
+      { name: 'channel', label: 'On channel #', kind: 'number', placeholder: 'any', advanced: true, help: 'Match by raw channel index. Note: the same channel can be a different index on different sources — use the name above for cross-source automations.' },
       { name: 'from', label: 'From node #', kind: 'number', placeholder: 'any', advanced: true, help: 'Only fire for messages from this node number.' },
       COOLDOWN,
     ],
@@ -82,6 +83,8 @@ export const TRIGGERS: BlockDef[] = [
     ],
   },
   {
+    // NOTE: stub — the engine does NOT fire schedule triggers live yet (no cron
+    // wiring; see AUTOMATION_ENGINE_PLAN.md §11). The Test panel can dry-run it.
     type: 'trigger.schedule',
     label: 'On a schedule',
     description: 'Fires on a cron schedule (no mesh event).',
@@ -108,7 +111,7 @@ export const TRIGGERS: BlockDef[] = [
   {
     type: 'trigger.geofence',
     label: 'A node enters/leaves a region',
-    description: 'Fires when a node crosses a circular geofence (checked on position updates).',
+    description: 'Fires when a node crosses a geofence (checked on position updates). Draw a circle or polygon region on the map.',
     fields: [
       {
         name: 'event', label: 'Event', kind: 'select',
@@ -118,9 +121,7 @@ export const TRIGGERS: BlockDef[] = [
           { value: 'dwell', label: 'Moves while inside the region' },
         ],
       },
-      { name: 'lat', label: 'Center latitude', kind: 'number', placeholder: 'e.g. 27.95' },
-      { name: 'lon', label: 'Center longitude', kind: 'number', placeholder: 'e.g. -82.46' },
-      { name: 'radiusKm', label: 'Radius (km)', kind: 'number', placeholder: 'e.g. 1' },
+      { name: 'shape', label: 'Region', kind: 'geofence', help: 'Draw a circle (center + radius) or a polygon on the map.' },
       COOLDOWN,
     ],
   },
@@ -209,6 +210,12 @@ const STRING_OP_OPTIONS = [
 
 export const CONDITIONS: BlockDef[] = [
   {
+    type: 'condition.always',
+    label: 'Always (no filtering)',
+    description: 'A pass-through that always matches — use it to run the actions on every trigger, with no filtering.',
+    fields: [],
+  },
+  {
     type: 'condition.numeric',
     label: 'Number comparison',
     description: 'Compare a number — event field, node field, or latest telemetry.',
@@ -283,7 +290,8 @@ export const ACTIONS: BlockDef[] = [
     description: 'Send text to a channel or as a DM.',
     fields: [
       { name: 'text', label: 'Message', kind: 'textarea', placeholder: 'Hello {{ trigger.fromId }}!', help: 'Use {{ trigger.field }} or {{ var.name }} to insert values.' },
-      { name: 'channel', label: 'On channel #', kind: 'number', placeholder: 'trigger channel' },
+      { name: 'sourceIds', label: 'Send via sources', kind: 'sendSourceMulti', help: 'Which radios to send through (MQTT sources are receive-only and excluded). Leave none to use the source that triggered the automation — but a source IS required for source-less triggers like System events and Schedules.' },
+      { name: 'channels', label: 'On channels', kind: 'channelMulti', help: 'Channels to post to, unified by name + key across your sources (the correct local slot is resolved per source). Leave none to use the triggering channel.' },
       { name: 'to', label: 'DM to node #', kind: 'text', placeholder: 'blank = channel; {{ trigger.from }} replies to sender', advanced: true },
       { name: 'replyToTrigger', label: 'Reply to the triggering message', kind: 'checkbox', advanced: true },
     ],
@@ -340,6 +348,12 @@ export const ACTIONS: BlockDef[] = [
       },
       { name: 'value', label: 'Value', kind: 'text', placeholder: 'for Set / Increment' },
     ],
+  },
+  {
+    type: 'action.nothing',
+    label: 'Do nothing',
+    description: 'A no-op. Use it when a rule should only contribute its IF result to a FINALLY (ANY/ALL/NONE) step without doing anything on its own.',
+    fields: [],
   },
 ];
 

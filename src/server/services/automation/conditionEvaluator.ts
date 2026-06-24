@@ -68,6 +68,9 @@ function parseHHMM(s: unknown): number | null {
 export async function evaluateCondition(node: AutomationNode, ctx: EngineEvalContext): Promise<boolean> {
   const p = (node.params ?? {}) as Record<string, unknown>;
   switch (node.type) {
+    case 'condition.always':
+      return true; // explicit pass-through — run the actions unconditionally
+
     case 'condition.sourceFilter': {
       const ids = Array.isArray(p.sourceIds) ? (p.sourceIds as unknown[]).map(String) : [];
       if (ids.length === 0) return true; // no constraint
