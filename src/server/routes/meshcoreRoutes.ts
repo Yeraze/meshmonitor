@@ -1399,7 +1399,7 @@ router.get('/info', optionalAuth(), requirePermission('connection', 'read', { so
  */
 router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const { text, toPublicKey, channelIdx } = req.body;
+    const { text, toPublicKey, channelIdx, scope } = req.body;
 
     // Validate message text
     const textValidation = isValidMessage(text);
@@ -1424,7 +1424,31 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
       parsedChannelIdx = n;
     }
 
-    const success = await managerFor(req).sendMessage(text, toPublicKey, parsedChannelIdx);
+    // Optional per-message scope/region override (#3701). Contract (#3704
+    // review — kept unambiguous and matching normalizeScopeOverride):
+    //   - key ABSENT (`undefined`) OR JSON `null` ⇒ NO override; the manager
+    //     resolves the channel/default scope as usual. We collapse both to
+    //     `undefined` here so "no override" has a single representation.
+    //   - `''` (or whitespace/punctuation-only) ⇒ explicit UNSCOPED for this
+    //     one send only.
+    //   - a non-empty string ⇒ a one-off region override for this send only.
+    // The override is NEVER persisted to the channel; the next normal send
+    // re-asserts the channel/default scope. The manager normalises the value
+    // leniently (strip '#', keep letters/digits/hyphens, warn on stripped
+    // chars). Here we only reject wrong types / over-length up front so a
+    // malformed body can't silently change scoping.
+    let scopeOverride: string | undefined;
+    if (scope !== undefined && scope !== null) {
+      if (typeof scope !== 'string') {
+        return res.status(400).json({ success: false, error: 'scope must be a string' });
+      }
+      if (scope.length > 63) {
+        return res.status(400).json({ success: false, error: 'scope must be 63 characters or fewer' });
+      }
+      scopeOverride = scope;
+    }
+
+    const success = await managerFor(req).sendMessage(text, toPublicKey, parsedChannelIdx, scopeOverride);
 
     if (success) {
       res.json({ success: true, message: 'Message sent' });
