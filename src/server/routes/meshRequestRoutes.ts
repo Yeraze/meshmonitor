@@ -4,7 +4,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { parseDestinationNum } from '../utils/parseDestination.js';
-import { resolveDestinationChannel } from '../utils/resolveDestinationChannel.js';
+import { resolveDestinationChannel, resolveBroadcastChannel, isValidChannelIndex } from '../utils/resolveDestinationChannel.js';
 import { PortNum } from '../constants/meshtastic.js';
 
 const router = Router();
@@ -21,12 +21,16 @@ router.post('/traceroute', requirePermission('traceroute', 'write'), async (req:
       return res.status(400).json({ error: `Invalid destination: ${destination}` });
     }
 
-    // Traceroutes must always use channel 0 (Primary) so every intermediate
-    // node can read and append to the packet. Sending on a secondary encrypted
-    // channel causes intermediate nodes to see an opaque payload and appear as
-    // "Unknown" in the route (issue #3696).
+    // Traceroutes must traverse a channel every intermediate node can decrypt,
+    // or those nodes can't append to the route and show up as "Unknown" (issue
+    // #3696). A valid explicit user choice (the channel dropdown) wins; otherwise
+    // resolve the channel whose PSK is the well-known default key — NOT a
+    // hardcoded slot 0, which breaks if the user gave channel 0 a private key.
+    // (The node's stored channel is deliberately never used here.)
     const traceManager = (resolveSourceManager(traceSourceId));
-    const channel = await resolveDestinationChannel(destinationNum, traceManager, databaseService, 0);
+    const channel = isValidChannelIndex(req.body.channel)
+      ? req.body.channel
+      : await resolveBroadcastChannel(traceManager, databaseService);
     await traceManager.sendTraceroute(destinationNum, channel);
     res.json({
       success: true,
@@ -137,9 +141,12 @@ router.post('/nodeinfo/request', requirePermission('messages', 'write'), async (
       return res.status(400).json({ error: `Invalid destination: ${destination}` });
     }
 
-    // Scope the channel lookup to the source we actually send through (issue #3573).
+    // Scope the channel lookup to the source we actually send through (issue
+    // #3573). An explicit, valid (0-7) channel from the request (the channel
+    // dropdown) wins; otherwise default to the node's stored channel so key
+    // repair routes over the shared PSK rather than a PKI DM.
     const niManager = (resolveSourceManager(niSourceId));
-    const channel = await resolveDestinationChannel(destinationNum, niManager, databaseService);
+    const channel = await resolveDestinationChannel(destinationNum, niManager, databaseService, req.body.channel);
     const { packetId, requestId } = await niManager.sendNodeInfoRequest(destinationNum, channel);
 
     // Get local node info to create system message
