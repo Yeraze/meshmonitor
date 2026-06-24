@@ -70,7 +70,7 @@ describe('compile — combine (collapse / reduce)', () => {
     combine: { mode, actions: [{ type: 'flow.setVar', params: { variable: 'responded', op: 'flag' } }] },
   });
 
-  it.each(['ANY', 'ALL', 'NONE'] as const)('emits a collapse(%s) joining rule tails and round-trips', (mode) => {
+  it.each(['ANY', 'ALL', 'NONE', 'ALWAYS'] as const)('emits a collapse(%s) joining rule tails and round-trips', (mode) => {
     const g = valid(mk(mode));
     const col = g.nodes.find((n) => n.type === 'flow.collapse');
     expect(col?.params).toMatchObject({ mode });

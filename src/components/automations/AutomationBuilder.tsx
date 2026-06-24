@@ -98,6 +98,14 @@ function FieldInput({ field, value, onChange, variables, sources }: {
     case 'geofence':
       control = <GeofenceFieldInput value={value as GeofenceShape | undefined} onChange={onChange} />;
       break;
+    case 'sourceselect':
+      control = (
+        <select className="ae-select" value={(value ?? '') as string} onChange={(e) => onChange(e.target.value)}>
+          <option value="">— Trigger&apos;s source —</option>
+          {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      );
+      break;
     default:
       control = <input className="ae-input" value={(value ?? '') as string} placeholder={field.placeholder} onChange={(e) => onChange(e.target.value)} />;
   }
@@ -220,6 +228,7 @@ export default function AutomationBuilder({ form, variables, sources, onChange }
                 <option value="ANY">ANY of the rules above matched</option>
                 <option value="ALL">ALL of the rules above matched</option>
                 <option value="NONE">NONE of the rules above matched</option>
+                <option value="ALWAYS">ALWAYS — run no matter what</option>
               </select>
               <div className="ae-help-text">“Matched” means a rule’s IF conditions passed.</div>
             </div>

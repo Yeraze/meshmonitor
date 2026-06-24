@@ -16,7 +16,7 @@
  */
 import type { AutomationGraph, AutomationNode } from '../../types/automation.js';
 
-export type CollapseMode = 'ANY' | 'ALL' | 'NONE';
+export type CollapseMode = 'ANY' | 'ALL' | 'NONE' | 'ALWAYS';
 
 export interface FormBlock { type: string; params: Record<string, unknown>; }
 export interface Rule { conditions: FormBlock[]; actions: FormBlock[]; }
@@ -182,7 +182,7 @@ export function decompile(graph: unknown): WorkflowForm | null {
   let combine: CombineBlock | null = null;
   if (col) {
     const mode = (col.params as any)?.mode;
-    if (mode !== 'ANY' && mode !== 'ALL' && mode !== 'NONE') return null;
+    if (mode !== 'ANY' && mode !== 'ALL' && mode !== 'NONE' && mode !== 'ALWAYS') return null;
     const colChain = walkLinear(col.id, out, nodeById);
     if (!colChain) return null;
     const actions: FormBlock[] = [];

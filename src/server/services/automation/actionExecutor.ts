@@ -55,6 +55,9 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
   const isDM = ctx.trigger.fields.isDM === true;
 
   switch (node.type) {
+    case 'action.nothing':
+      return undefined; // no-op — used so a rule can contribute only its IF result to a FINALLY step
+
     case 'action.sendMessage': {
       const text = await interpolateAsync(String(p.text ?? ''), ctx);
       const destination = await num(ctx, p.to);

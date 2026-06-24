@@ -6,7 +6,7 @@
  * `kind` maps to an input renderer in AutomationBuilder.
  */
 
-export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'geofence';
+export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sourceselect' | 'geofence';
 
 export interface FieldOpt { value: string; label: string; }
 export interface FieldGroup { label: string; options: FieldOpt[]; }
@@ -208,6 +208,12 @@ const STRING_OP_OPTIONS = [
 
 export const CONDITIONS: BlockDef[] = [
   {
+    type: 'condition.always',
+    label: 'Always (no filtering)',
+    description: 'A pass-through that always matches — use it to run the actions on every trigger, with no filtering.',
+    fields: [],
+  },
+  {
     type: 'condition.numeric',
     label: 'Number comparison',
     description: 'Compare a number — event field, node field, or latest telemetry.',
@@ -282,6 +288,7 @@ export const ACTIONS: BlockDef[] = [
     description: 'Send text to a channel or as a DM.',
     fields: [
       { name: 'text', label: 'Message', kind: 'textarea', placeholder: 'Hello {{ trigger.fromId }}!', help: 'Use {{ trigger.field }} or {{ var.name }} to insert values.' },
+      { name: 'sourceId', label: 'Send via source', kind: 'sourceselect', help: 'Which connected source/radio to send through. Defaults to the source that triggered the automation — you MUST pick one for source-less triggers like System events and Schedules (otherwise the send has no radio and fails).' },
       { name: 'channel', label: 'On channel #', kind: 'number', placeholder: 'trigger channel' },
       { name: 'to', label: 'DM to node #', kind: 'text', placeholder: 'blank = channel; {{ trigger.from }} replies to sender', advanced: true },
       { name: 'replyToTrigger', label: 'Reply to the triggering message', kind: 'checkbox', advanced: true },
@@ -339,6 +346,12 @@ export const ACTIONS: BlockDef[] = [
       },
       { name: 'value', label: 'Value', kind: 'text', placeholder: 'for Set / Increment' },
     ],
+  },
+  {
+    type: 'action.nothing',
+    label: 'Do nothing',
+    description: 'A no-op. Use it when a rule should only contribute its IF result to a FINALLY (ANY/ALL/NONE) step without doing anything on its own.',
+    fields: [],
   },
 ];
 

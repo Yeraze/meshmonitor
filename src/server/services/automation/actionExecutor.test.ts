@@ -121,6 +121,24 @@ describe('executeAction', () => {
     expect(calls[0].args.sourceId).toBe('srcB');
   });
 
+  it('sendMessage: an explicit source routes a source-less (system/schedule) trigger', async () => {
+    const { calls, deps } = recorder();
+    // System triggers carry sourceId=null; the action's "Send via source" param
+    // supplies the radio so the send has a target instead of failing.
+    await executeAction(
+      node('action.sendMessage', { text: 'up', sourceId: 'srcB', channel: 2 }),
+      ctx({ event: 'bootup' }, null),
+      deps,
+    );
+    expect(calls[0].args).toMatchObject({ sourceId: 'srcB', text: 'up', channel: 2 });
+  });
+
+  it('nothing: is a no-op that calls no deps', async () => {
+    const { calls, deps } = recorder();
+    await expect(executeAction(node('action.nothing', {}), ctx({ from: 5 }), deps)).resolves.toBeUndefined();
+    expect(calls).toHaveLength(0);
+  });
+
   it('throws on an unknown action type', async () => {
     const { deps } = recorder();
     await expect(executeAction(node('action.bogus', {}), ctx({}), deps)).rejects.toThrow(/unknown action/);
