@@ -379,4 +379,49 @@ describe('MeshCoreNativeBackend — discovery responder', () => {
     expect(op(callLog[2])).toBe(op(callLog[3]));
     expect(op(callLog[0])).not.toBe(op(callLog[2]));
   });
+
+  it('advances the 0x8C chain when an op times out so the next op still runs (#3667)', async () => {
+    // The serializer must release on rejection, not just resolution: if
+    // request_regions times out (never receives a BinaryResponse), a queued
+    // request_telemetry must still proceed — otherwise a single dead repeater
+    // would wedge the connection's 0x8C queue.
+    const { backend, conn } = await connectedBackend();
+    const callLog: string[] = [];
+
+    // Regions: send the frame but NEVER reply, forcing the inner timeout.
+    (conn as any).sendToRadioFrame = (frame: Uint8Array) => {
+      conn.sentFrames.push(frame);
+      if (frame[0] === 57) {
+        callLog.push('regions:send');
+        return; // no Sent / no BinaryResponse → request_regions times out
+      }
+      setImmediate(() => conn.emit(ResponseCodes.Ok));
+    };
+
+    const telemetryBytes = Uint8Array.from([0xaa, 0xbb]);
+    (conn as any).sendBinaryRequest = (_pubkey: Uint8Array, _req: number[]) =>
+      new Promise<Uint8Array>((resolve) => {
+        callLog.push('telemetry:send');
+        setImmediate(() => {
+          callLog.push('telemetry:reply');
+          resolve(telemetryBytes);
+        });
+      });
+
+    // Regions is issued first, so it acquires the lock first (both resume from
+    // resolvePublicKey in FIFO microtask order); a short timeout_ms keeps the
+    // test fast. Telemetry must wait, then run once regions' timeout rejects.
+    const [regionsRes, telemetryRes] = await Promise.all([
+      backend.sendCommand('request_regions', { public_key: 'aa'.repeat(32), timeout_ms: 30 }),
+      backend.sendCommand('request_telemetry', { public_key: 'bb'.repeat(32) }),
+    ]);
+
+    expect(regionsRes.success).toBe(false);
+    expect(regionsRes.error).toMatch(/timed out/i);
+    expect(telemetryRes.success).toBe(true);
+
+    // Order proves the chain advanced past the rejection: regions sent (and held
+    // the lock) first, and telemetry only sent after regions' timeout released it.
+    expect(callLog).toEqual(['regions:send', 'telemetry:send', 'telemetry:reply']);
+  });
 });
