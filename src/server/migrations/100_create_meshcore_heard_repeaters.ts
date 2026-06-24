@@ -1,5 +1,5 @@
 /**
- * Migration 102: MeshCore channel "heard repeaters" side table (#3700).
+ * Migration 100: MeshCore channel "heard repeaters" side table (#3700).
  *
  * Creates one per-source table:
  *   - meshcore_heard_repeaters: one row per (outgoing channel message, repeater
@@ -18,7 +18,7 @@
 import type { Database } from 'better-sqlite3';
 import { logger } from '../../utils/logger.js';
 
-const LABEL = 'Migration 102';
+const LABEL = 'Migration 100';
 const TABLE = 'meshcore_heard_repeaters';
 
 // ============ SQLite ============
@@ -53,7 +53,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration102Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration100Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): creating ${TABLE}...`);
 
   await client.query(`
@@ -76,7 +76,7 @@ export async function runMigration102Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration102Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration100Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): creating ${TABLE}...`);
 
   const conn = await pool.getConnection();

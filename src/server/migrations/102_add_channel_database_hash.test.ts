@@ -1,16 +1,16 @@
 /**
- * Migration 104 — Add channel_hash to channel_database (SQLite).
+ * Migration 102 — Add channel_hash to channel_database (SQLite).
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { migration } from './104_add_channel_database_hash.js';
+import { migration } from './102_add_channel_database_hash.js';
 
 function columnNames(db: Database.Database, table: string): string[] {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
   return cols.map((c) => c.name);
 }
 
-describe('Migration 104 — add channel_database.channel_hash (SQLite)', () => {
+describe('Migration 102 — add channel_database.channel_hash (SQLite)', () => {
   let db: Database.Database;
 
   beforeEach(() => {

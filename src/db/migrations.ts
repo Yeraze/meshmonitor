@@ -112,11 +112,11 @@ import { migration as meshcoreNodeFavoriteMigration, runMigration094Postgres as 
 import { migration as deadDropMigration, runMigration095Postgres as runDeadDropPostgres, runMigration095Mysql as runDeadDropMysql } from '../server/migrations/095_create_dead_drop.js';
 import { migration as meshcoreNeighborTimestampBigintMigration, runMigration096Postgres as runMeshcoreNeighborTimestampBigintPostgres, runMigration096Mysql as runMeshcoreNeighborTimestampBigintMysql } from '../server/migrations/096_meshcore_neighbor_timestamp_bigint.js';
 import { migration as traceroutePacketIdMigration, runMigration097Postgres as runTraceroutePacketIdPostgres, runMigration097Mysql as runTraceroutePacketIdMysql } from '../server/migrations/097_add_packet_id_to_traceroutes.js';
-import { migration as meshcoreChannelScopeMigration, runMigration100Postgres as runMeshcoreChannelScopePostgres, runMigration100Mysql as runMeshcoreChannelScopeMysql } from '../server/migrations/100_meshcore_channel_scope.js';
-import { migration as nodeUnmessagableMigration, runMigration101Postgres as runNodeUnmessagablePostgres, runMigration101Mysql as runNodeUnmessagableMysql } from '../server/migrations/101_add_node_unmessagable.js';
-import { migration as meshcoreHeardRepeatersMigration, runMigration102Postgres as runMeshcoreHeardRepeatersPostgres, runMigration102Mysql as runMeshcoreHeardRepeatersMysql } from '../server/migrations/102_create_meshcore_heard_repeaters.js';
-import { migration as consolidateMqttChannelsMigration, runMigration103Postgres as runConsolidateMqttChannelsPostgres, runMigration103Mysql as runConsolidateMqttChannelsMysql } from '../server/migrations/103_consolidate_mqtt_channels.js';
-import { migration as channelDatabaseHashMigration, runMigration104Postgres as runChannelDatabaseHashPostgres, runMigration104Mysql as runChannelDatabaseHashMysql } from '../server/migrations/104_add_channel_database_hash.js';
+import { migration as meshcoreChannelScopeMigration, runMigration098Postgres as runMeshcoreChannelScopePostgres, runMigration098Mysql as runMeshcoreChannelScopeMysql } from '../server/migrations/098_meshcore_channel_scope.js';
+import { migration as nodeUnmessagableMigration, runMigration099Postgres as runNodeUnmessagablePostgres, runMigration099Mysql as runNodeUnmessagableMysql } from '../server/migrations/099_add_node_unmessagable.js';
+import { migration as meshcoreHeardRepeatersMigration, runMigration100Postgres as runMeshcoreHeardRepeatersPostgres, runMigration100Mysql as runMeshcoreHeardRepeatersMysql } from '../server/migrations/100_create_meshcore_heard_repeaters.js';
+import { migration as consolidateMqttChannelsMigration, runMigration101Postgres as runConsolidateMqttChannelsPostgres, runMigration101Mysql as runConsolidateMqttChannelsMysql } from '../server/migrations/101_consolidate_mqtt_channels.js';
+import { migration as channelDatabaseHashMigration, runMigration102Postgres as runChannelDatabaseHashPostgres, runMigration102Mysql as runChannelDatabaseHashMysql } from '../server/migrations/102_add_channel_database_hash.js';
 
 // ============================================================================
 // Registry
@@ -1557,63 +1557,63 @@ registry.register({
   mysql: (pool) => runTraceroutePacketIdMysql(pool),
 });
 // ---------------------------------------------------------------------------
-// Migration 100: add channels.scope (#3667). MeshCore region/scope tag per
+// Migration 098: add channels.scope (#3667). MeshCore region/scope tag per
 // channel; MeshMonitor-owned (never reported by the device), NULL = inherit
 // the source default scope / unscoped.
 // ---------------------------------------------------------------------------
 
 registry.register({
-  number: 100,
+  number: 98,
   name: 'meshcore_channel_scope',
-  settingsKey: 'migration_100_meshcore_channel_scope',
+  settingsKey: 'migration_098_meshcore_channel_scope',
   sqlite: (db) => meshcoreChannelScopeMigration.up(db),
   postgres: (client) => runMeshcoreChannelScopePostgres(client),
   mysql: (pool) => runMeshcoreChannelScopeMysql(pool),
 });
 
 registry.register({
-  number: 101,
+  number: 99,
   name: 'add_node_unmessagable',
-  settingsKey: 'migration_101_add_node_unmessagable',
+  settingsKey: 'migration_099_add_node_unmessagable',
   sqlite: (db) => nodeUnmessagableMigration.up(db),
   postgres: (client) => runNodeUnmessagablePostgres(client),
   mysql: (pool) => runNodeUnmessagableMysql(pool),
 });
 
 // ---------------------------------------------------------------------------
-// Migration 102: create meshcore_heard_repeaters (#3700). Per-source side
+// Migration 100: create meshcore_heard_repeaters (#3700). Per-source side
 // table recording repeaters that re-flooded our outgoing channel messages,
 // inferred by self-echo correlation on inbound GRP_TXT OTA packets.
 // ---------------------------------------------------------------------------
 
 registry.register({
-  number: 102,
+  number: 100,
   name: 'create_meshcore_heard_repeaters',
-  settingsKey: 'migration_102_create_meshcore_heard_repeaters',
+  settingsKey: 'migration_100_create_meshcore_heard_repeaters',
   sqlite: (db) => meshcoreHeardRepeatersMigration.up(db),
   postgres: (client) => runMeshcoreHeardRepeatersPostgres(client),
   mysql: (pool) => runMeshcoreHeardRepeatersMysql(pool),
 });
 
 registry.register({
-  number: 103,
+  number: 101,
   name: 'consolidate_mqtt_channels',
-  settingsKey: 'migration_103_consolidate_mqtt_channels',
+  settingsKey: 'migration_101_consolidate_mqtt_channels',
   sqlite: (db) => consolidateMqttChannelsMigration.up(db),
   postgres: (client) => runConsolidateMqttChannelsPostgres(client),
   mysql: (pool) => runConsolidateMqttChannelsMysql(pool),
 });
 
 // ---------------------------------------------------------------------------
-// Migration 104: add channel_hash to channel_database so MQTT channels are
+// Migration 102: add channel_hash to channel_database so MQTT channels are
 // identified by (name, hash) — two same-name/different-key undecryptable
 // channels stay distinct.
 // ---------------------------------------------------------------------------
 
 registry.register({
-  number: 104,
+  number: 102,
   name: 'add_channel_database_hash',
-  settingsKey: 'migration_104_add_channel_database_hash',
+  settingsKey: 'migration_102_add_channel_database_hash',
   sqlite: (db) => channelDatabaseHashMigration.up(db),
   postgres: (client) => runChannelDatabaseHashPostgres(client),
   mysql: (pool) => runChannelDatabaseHashMysql(pool),

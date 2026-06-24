@@ -1,5 +1,5 @@
 /**
- * Migration 100: Add scope column to channels table (#3667)
+ * Migration 098: Add scope column to channels table (#3667)
  *
  * MeshCore "regions"/"scopes" are named flood-forwarding tags. A channel may
  * carry an optional scope so messages on that channel are forwarded only by
@@ -20,7 +20,7 @@ import { logger } from '../../utils/logger.js';
 
 export const migration = {
   up: (db: Database): void => {
-    logger.info('Running migration 100 (SQLite): Adding scope column to channels...');
+    logger.info('Running migration 098 (SQLite): Adding scope column to channels...');
 
     try {
       db.exec('ALTER TABLE channels ADD COLUMN scope TEXT');
@@ -33,34 +33,34 @@ export const migration = {
       }
     }
 
-    logger.info('Migration 100 complete (SQLite): channels.scope added');
+    logger.info('Migration 098 complete (SQLite): channels.scope added');
   },
 
   down: (_db: Database): void => {
-    logger.debug('Migration 100 down: Not implemented (destructive column drops)');
+    logger.debug('Migration 098 down: Not implemented (destructive column drops)');
   }
 };
 
 // ============ PostgreSQL ============
 
-export async function runMigration100Postgres(client: import('pg').PoolClient): Promise<void> {
-  logger.info('Running migration 100 (PostgreSQL): Adding scope to channels...');
+export async function runMigration098Postgres(client: import('pg').PoolClient): Promise<void> {
+  logger.info('Running migration 098 (PostgreSQL): Adding scope to channels...');
 
   try {
     await client.query('ALTER TABLE channels ADD COLUMN IF NOT EXISTS "scope" TEXT');
     logger.debug('Ensured channels.scope exists');
   } catch (error: any) {
-    logger.error('Migration 100 (PostgreSQL) failed:', error.message);
+    logger.error('Migration 098 (PostgreSQL) failed:', error.message);
     throw error;
   }
 
-  logger.info('Migration 100 complete (PostgreSQL): channels.scope added');
+  logger.info('Migration 098 complete (PostgreSQL): channels.scope added');
 }
 
 // ============ MySQL ============
 
-export async function runMigration100Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
-  logger.info('Running migration 100 (MySQL): Adding scope to channels...');
+export async function runMigration098Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+  logger.info('Running migration 098 (MySQL): Adding scope to channels...');
 
   try {
     const [rows] = await pool.query(`
@@ -74,9 +74,9 @@ export async function runMigration100Mysql(pool: import('mysql2/promise').Pool):
       logger.debug('channels.scope already exists, skipping');
     }
   } catch (error: any) {
-    logger.error('Migration 100 (MySQL) failed:', error.message);
+    logger.error('Migration 098 (MySQL) failed:', error.message);
     throw error;
   }
 
-  logger.info('Migration 100 complete (MySQL): channels.scope added');
+  logger.info('Migration 098 complete (MySQL): channels.scope added');
 }

@@ -1,5 +1,5 @@
 /**
- * Migration 101: Add isUnmessagable / isLicensed columns to the nodes table (#3684)
+ * Migration 099: Add isUnmessagable / isLicensed columns to the nodes table (#3684)
  *
  * The Meshtastic User protobuf carries two capability flags:
  *   - is_unmessagable (optional bool) — node will not receive direct messages
@@ -21,7 +21,7 @@ import { logger } from '../../utils/logger.js';
 
 export const migration = {
   up: (db: Database): void => {
-    logger.info('Running migration 101 (SQLite): Adding isUnmessagable/isLicensed to nodes...');
+    logger.info('Running migration 099 (SQLite): Adding isUnmessagable/isLicensed to nodes...');
 
     for (const col of ['isUnmessagable', 'isLicensed']) {
       try {
@@ -36,35 +36,35 @@ export const migration = {
       }
     }
 
-    logger.info('Migration 101 complete (SQLite): nodes.isUnmessagable/isLicensed added');
+    logger.info('Migration 099 complete (SQLite): nodes.isUnmessagable/isLicensed added');
   },
 
   down: (_db: Database): void => {
-    logger.debug('Migration 101 down: Not implemented (destructive column drops)');
+    logger.debug('Migration 099 down: Not implemented (destructive column drops)');
   }
 };
 
 // ============ PostgreSQL ============
 
-export async function runMigration101Postgres(client: import('pg').PoolClient): Promise<void> {
-  logger.info('Running migration 101 (PostgreSQL): Adding isUnmessagable/isLicensed to nodes...');
+export async function runMigration099Postgres(client: import('pg').PoolClient): Promise<void> {
+  logger.info('Running migration 099 (PostgreSQL): Adding isUnmessagable/isLicensed to nodes...');
 
   try {
     await client.query('ALTER TABLE nodes ADD COLUMN IF NOT EXISTS "isUnmessagable" BOOLEAN DEFAULT FALSE');
     await client.query('ALTER TABLE nodes ADD COLUMN IF NOT EXISTS "isLicensed" BOOLEAN DEFAULT FALSE');
     logger.debug('Ensured nodes.isUnmessagable / nodes.isLicensed exist');
   } catch (error: any) {
-    logger.error('Migration 101 (PostgreSQL) failed:', error.message);
+    logger.error('Migration 099 (PostgreSQL) failed:', error.message);
     throw error;
   }
 
-  logger.info('Migration 101 complete (PostgreSQL): nodes.isUnmessagable/isLicensed added');
+  logger.info('Migration 099 complete (PostgreSQL): nodes.isUnmessagable/isLicensed added');
 }
 
 // ============ MySQL ============
 
-export async function runMigration101Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
-  logger.info('Running migration 101 (MySQL): Adding isUnmessagable/isLicensed to nodes...');
+export async function runMigration099Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+  logger.info('Running migration 099 (MySQL): Adding isUnmessagable/isLicensed to nodes...');
 
   try {
     for (const col of ['isUnmessagable', 'isLicensed']) {
@@ -80,9 +80,9 @@ export async function runMigration101Mysql(pool: import('mysql2/promise').Pool):
       }
     }
   } catch (error: any) {
-    logger.error('Migration 101 (MySQL) failed:', error.message);
+    logger.error('Migration 099 (MySQL) failed:', error.message);
     throw error;
   }
 
-  logger.info('Migration 101 complete (MySQL): nodes.isUnmessagable/isLicensed added');
+  logger.info('Migration 099 complete (MySQL): nodes.isUnmessagable/isLicensed added');
 }

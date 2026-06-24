@@ -1,5 +1,5 @@
 /**
- * Migration 104: Add channel_hash column to channel_database.
+ * Migration 102: Add channel_hash column to channel_database.
  *
  * MQTT channels are identified by NAME only, which collapses two same-name but
  * differently-keyed channels into one row when neither can be decrypted
@@ -24,7 +24,7 @@ import { logger } from '../../utils/logger.js';
 
 export const migration = {
   up: (db: Database): void => {
-    logger.info('Running migration 104 (SQLite): Adding channel_hash to channel_database...');
+    logger.info('Running migration 102 (SQLite): Adding channel_hash to channel_database...');
 
     try {
       db.exec('ALTER TABLE channel_database ADD COLUMN channel_hash INTEGER');
@@ -37,34 +37,34 @@ export const migration = {
       }
     }
 
-    logger.info('Migration 104 complete (SQLite): channel_database.channel_hash added');
+    logger.info('Migration 102 complete (SQLite): channel_database.channel_hash added');
   },
 
   down: (_db: Database): void => {
-    logger.debug('Migration 104 down: Not implemented (destructive column drop)');
+    logger.debug('Migration 102 down: Not implemented (destructive column drop)');
   },
 };
 
 // ============ PostgreSQL ============
 
-export async function runMigration104Postgres(client: import('pg').PoolClient): Promise<void> {
-  logger.info('Running migration 104 (PostgreSQL): Adding channel_hash to channel_database...');
+export async function runMigration102Postgres(client: import('pg').PoolClient): Promise<void> {
+  logger.info('Running migration 102 (PostgreSQL): Adding channel_hash to channel_database...');
 
   try {
     await client.query('ALTER TABLE channel_database ADD COLUMN IF NOT EXISTS "channelHash" INTEGER');
     logger.debug('Ensured channel_database.channelHash exists');
   } catch (error: any) {
-    logger.error('Migration 104 (PostgreSQL) failed:', error.message);
+    logger.error('Migration 102 (PostgreSQL) failed:', error.message);
     throw error;
   }
 
-  logger.info('Migration 104 complete (PostgreSQL): channel_database.channelHash added');
+  logger.info('Migration 102 complete (PostgreSQL): channel_database.channelHash added');
 }
 
 // ============ MySQL ============
 
-export async function runMigration104Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
-  logger.info('Running migration 104 (MySQL): Adding channel_hash to channel_database...');
+export async function runMigration102Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+  logger.info('Running migration 102 (MySQL): Adding channel_hash to channel_database...');
 
   try {
     const [rows] = await pool.query(`
@@ -78,9 +78,9 @@ export async function runMigration104Mysql(pool: import('mysql2/promise').Pool):
       logger.debug('channel_database.channelHash already exists, skipping');
     }
   } catch (error: any) {
-    logger.error('Migration 104 (MySQL) failed:', error.message);
+    logger.error('Migration 102 (MySQL) failed:', error.message);
     throw error;
   }
 
-  logger.info('Migration 104 complete (MySQL): channel_database.channelHash added');
+  logger.info('Migration 102 complete (MySQL): channel_database.channelHash added');
 }
