@@ -46,10 +46,15 @@ export interface NodeDataProvider {
    */
   getChannelName?(sourceId: string | null, channelIndex: number): Promise<string | null>;
   /**
-   * All channels for a source as {slot, name, psk}, for resolving a unified
-   * channel (name + key fingerprint) to its local slot when sending. Optional.
+   * All channels for a source as {slot, name, psk, role}, for resolving a
+   * unified channel (by name) to its local slot when sending. Optional.
    */
-  getChannels?(sourceId: string | null): Promise<Array<{ id: number; name: string; psk?: string | null }>>;
+  getChannels?(sourceId: string | null): Promise<Array<{ id: number; name: string; psk?: string | null; role?: number | null }>>;
+  /**
+   * Coarse protocol of a source ('meshtastic' | 'meshcore' | 'other'), so a
+   * unified channel only sends to sources of its own protocol. Optional.
+   */
+  getSourceProtocol?(sourceId: string | null): Promise<string | null>;
 }
 
 export interface EngineEvalContext {

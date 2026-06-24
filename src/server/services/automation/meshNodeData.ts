@@ -5,6 +5,7 @@
  */
 import databaseService from '../../../services/database.js';
 import type { NodeDataProvider, NodeFacts } from './engineContext.js';
+import { sourceProtocol } from './channelUnify.js';
 
 function nodeIdOf(nodeNum: number): string {
   return `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`;
@@ -42,9 +43,19 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
     async getChannels(sourceId) {
       try {
         const chans = await databaseService.channels.getAllChannels(sourceId ?? undefined);
-        return chans.map((c) => ({ id: c.id, name: c.name, psk: c.psk ?? null }));
+        return chans.map((c) => ({ id: c.id, name: c.name, psk: c.psk ?? null, role: c.role ?? null }));
       } catch {
         return [];
+      }
+    },
+
+    async getSourceProtocol(sourceId) {
+      try {
+        if (!sourceId) return null;
+        const s = await databaseService.sources.getSource(sourceId);
+        return s ? sourceProtocol(s.type) : null;
+      } catch {
+        return null;
       }
     },
   };

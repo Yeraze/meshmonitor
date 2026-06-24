@@ -8,7 +8,6 @@
  */
 import type { AutomationNode } from '../../../types/automation.js';
 import { type EngineEvalContext, interpolateAsync, resolveOperand } from './engineContext.js';
-import { channelFingerprint } from './channelUnify.js';
 
 export type NodeManageOp = 'favorite' | 'unfavorite' | 'ignore' | 'unignore' | 'delete';
 
@@ -71,11 +70,12 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
         ? (p.sourceIds as unknown[]).map(String)
         : [sourceId];
 
-      // Selected unified channels (name + key fingerprint). When set, send to
-      // each source on each selected channel it actually carries (source×channel
-      // matrix); a channel absent on a source is skipped.
+      // Selected unified channels (protocol + name). When set, send to each
+      // source on each selected channel it carries — but only channels of the
+      // source's own protocol (MeshCore "gauntlet" ≠ Meshtastic "gauntlet").
+      // A channel absent on a source is skipped (source×channel matrix).
       const channelSel = Array.isArray(p.channels)
-        ? (p.channels as Array<Record<string, unknown>>).map((c) => ({ name: String(c?.name ?? ''), fp: String(c?.fp ?? '') }))
+        ? (p.channels as Array<Record<string, unknown>>).map((c) => ({ name: String(c?.name ?? ''), protocol: String(c?.protocol ?? '') }))
         : [];
 
       const results: unknown[] = [];
@@ -85,9 +85,11 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           results.push(await deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId }));
           continue;
         }
+        const proto = (await ctx.data.getSourceProtocol?.(sid)) ?? null;
         const srcChannels = (await ctx.data.getChannels?.(sid)) ?? [];
         for (const sel of channelSel) {
-          const match = srcChannels.find((c) => c.name === sel.name && channelFingerprint(c.psk) === sel.fp);
+          if (sel.protocol && proto && sel.protocol !== proto) continue; // wrong-protocol channel
+          const match = srcChannels.find((c) => c.name.toLowerCase() === sel.name.toLowerCase() && c.role !== 0);
           if (!match) continue; // channel not present on this source
           results.push(await deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId }));
         }

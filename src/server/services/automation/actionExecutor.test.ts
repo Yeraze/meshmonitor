@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { executeAction, type ActionDeps } from './actionExecutor.js';
-import { channelFingerprint } from './channelUnify.js';
 import type { EngineEvalContext } from './engineContext.js';
 import type { TriggerContext } from './triggerContext.js';
 import type { AutomationNode } from '../../../types/automation.js';
@@ -134,21 +133,27 @@ describe('executeAction', () => {
     expect(calls[0].args).toMatchObject({ sourceId: 'srcB', text: 'up', channel: 2 });
   });
 
-  // Helper: a context whose data provider knows each source's channels.
-  const ctxWithChannels = (channelsBySource: Record<string, Array<{ id: number; name: string; psk?: string }>>) => {
+  // Helper: a context whose data provider knows each source's channels + protocol.
+  const ctxWithChannels = (
+    channelsBySource: Record<string, Array<{ id: number; name: string; role?: number | null }>>,
+    protoBySource: Record<string, string> = {},
+  ) => {
     const base = ctx({ event: 'bootup' }, null);
-    return { ...base, data: { ...base.data, getChannels: async (sid: string | null) => channelsBySource[sid ?? ''] ?? [] } };
+    return { ...base, data: {
+      ...base.data,
+      getChannels: async (sid: string | null) => channelsBySource[sid ?? ''] ?? [],
+      getSourceProtocol: async (sid: string | null) => protoBySource[sid ?? ''] ?? null,
+    } };
   };
 
   it('sendMessage: source×channel matrix resolves each source local slot', async () => {
     const { calls, deps } = recorder();
-    const fp = channelFingerprint('SECRET');
     await executeAction(
-      node('action.sendMessage', { text: 'hi', sourceIds: ['A', 'B'], channels: [{ name: 'gauntlet', fp }] }),
+      node('action.sendMessage', { text: 'hi', sourceIds: ['A', 'B'], channels: [{ name: 'gauntlet', protocol: 'meshtastic' }] }),
       ctxWithChannels({
-        A: [{ id: 2, name: 'gauntlet', psk: 'SECRET' }],
-        B: [{ id: 5, name: 'gauntlet', psk: 'SECRET' }, { id: 0, name: 'Primary', psk: 'AQ==' }],
-      }),
+        A: [{ id: 2, name: 'gauntlet', role: 2 }],
+        B: [{ id: 5, name: 'gauntlet', role: 2 }, { id: 0, name: 'Primary', role: 1 }],
+      }, { A: 'meshtastic', B: 'meshtastic' }),
       deps,
     );
     expect(calls.map((c) => ({ s: c.args.sourceId, ch: c.args.channel }))).toEqual([
@@ -156,15 +161,27 @@ describe('executeAction', () => {
     ]);
   });
 
+  it('sendMessage: a Meshtastic channel is NOT sent to a MeshCore source (protocol-scoped)', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', sourceIds: ['MT', 'MC'], channels: [{ name: 'gauntlet', protocol: 'meshtastic' }] }),
+      ctxWithChannels({
+        MT: [{ id: 2, name: 'gauntlet', role: 2 }],
+        MC: [{ id: 1, name: 'gauntlet', role: null }], // same name, but MeshCore → must be skipped
+      }, { MT: 'meshtastic', MC: 'meshcore' }),
+      deps,
+    );
+    expect(calls.map((c) => c.args.sourceId)).toEqual(['MT']);
+  });
+
   it('sendMessage: skips a selected channel that is absent on a source', async () => {
     const { calls, deps } = recorder();
-    const fp = channelFingerprint('SECRET');
     await executeAction(
-      node('action.sendMessage', { text: 'hi', sourceIds: ['A', 'B'], channels: [{ name: 'gauntlet', fp }] }),
+      node('action.sendMessage', { text: 'hi', sourceIds: ['A', 'B'], channels: [{ name: 'gauntlet', protocol: 'meshtastic' }] }),
       ctxWithChannels({
-        A: [{ id: 2, name: 'gauntlet', psk: 'SECRET' }],
-        B: [{ id: 0, name: 'Primary', psk: 'AQ==' }], // no gauntlet → skipped
-      }),
+        A: [{ id: 2, name: 'gauntlet', role: 2 }],
+        B: [{ id: 0, name: 'Primary', role: 1 }], // no gauntlet → skipped
+      }, { A: 'meshtastic', B: 'meshtastic' }),
       deps,
     );
     expect(calls.map((c) => c.args.sourceId)).toEqual(['A']);
@@ -173,8 +190,8 @@ describe('executeAction', () => {
   it('sendMessage: throws when no selected channel exists on any source', async () => {
     const { deps } = recorder();
     await expect(executeAction(
-      node('action.sendMessage', { text: 'hi', sourceIds: ['A'], channels: [{ name: 'nope', fp: channelFingerprint('X') }] }),
-      ctxWithChannels({ A: [{ id: 0, name: 'Primary', psk: 'AQ==' }] }),
+      node('action.sendMessage', { text: 'hi', sourceIds: ['A'], channels: [{ name: 'nope', protocol: 'meshtastic' }] }),
+      ctxWithChannels({ A: [{ id: 0, name: 'Primary', role: 1 }] }, { A: 'meshtastic' }),
       deps,
     )).rejects.toThrow(/none of the selected channels/);
   });

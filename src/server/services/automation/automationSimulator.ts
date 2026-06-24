@@ -142,6 +142,9 @@ function stubData(
     async getChannels(sourceId) {
       return live?.getChannels ? live.getChannels(sourceId).catch(() => []) : [];
     },
+    async getSourceProtocol(sourceId) {
+      return live?.getSourceProtocol ? live.getSourceProtocol(sourceId).catch(() => null) : null;
+    },
   };
 }
 
