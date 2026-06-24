@@ -220,6 +220,32 @@ describe('MeshCoreManager — per-message scope override (#3701)', () => {
     // The channel row was never written.
     expect(scopeUpdates).toHaveLength(0);
   });
+
+  it('serialises a per-message override send concurrent with a normal send so each scope pairs with its own send', async () => {
+    // #3704 review item 4: the existing concurrency test (above, in the #3667
+    // block) only covers two different *channel* scopes. This proves the
+    // serializer also atomically pairs an explicit per-message override with its
+    // send, and the channel/default scope with the non-override send, without
+    // interleaving. floodScopeDelayMs forces a real yield between scope-assert
+    // and send, so a broken lock would let the second send slip in between.
+    const { manager, bridgeCalls } = makeManager({
+      channelScopes: { 1: 'muenchen' },
+      defaultScope: 'berlin',
+      floodScopeDelayMs: 5,
+    });
+    // Fire both at once: an override send on ch1, and a normal send on ch1.
+    await Promise.all([
+      manager.sendMessage('override', undefined, 1, 'augsburg'),
+      manager.sendMessage('normal', undefined, 1),
+    ]);
+    // Each scope is asserted immediately before its own send — never the broken
+    // ordering scope, scope, send, send. The override asserts 'augsburg', the
+    // normal send re-asserts the channel scope 'muenchen'.
+    const relevant = bridgeCalls
+      .filter(c => c.cmd === 'set_flood_scope' || c.cmd === 'send_message')
+      .map(c => c.cmd === 'set_flood_scope' ? `scope:${c.params.region}` : c.cmd);
+    expect(relevant).toEqual(['scope:augsburg', 'send_message', 'scope:muenchen', 'send_message']);
+  });
 });
 
 describe('MeshCoreManager — setChannel / setDefaultScope scope handling (#3667)', () => {

@@ -1424,11 +1424,18 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
       parsedChannelIdx = n;
     }
 
-    // Optional per-message scope/region override (#3701). `undefined` (key
-    // absent) means "no override — resolve the channel/default scope as usual".
-    // A string (incl. '') is a one-off override for this send only; it is NOT
-    // persisted to the channel. The manager normalises it (strip '#', keep
-    // letters/digits/hyphens). Reject obviously-wrong non-string types so a
+    // Optional per-message scope/region override (#3701). Contract (#3704
+    // review — kept unambiguous and matching normalizeScopeOverride):
+    //   - key ABSENT (`undefined`) OR JSON `null` ⇒ NO override; the manager
+    //     resolves the channel/default scope as usual. We collapse both to
+    //     `undefined` here so "no override" has a single representation.
+    //   - `''` (or whitespace/punctuation-only) ⇒ explicit UNSCOPED for this
+    //     one send only.
+    //   - a non-empty string ⇒ a one-off region override for this send only.
+    // The override is NEVER persisted to the channel; the next normal send
+    // re-asserts the channel/default scope. The manager normalises the value
+    // leniently (strip '#', keep letters/digits/hyphens, warn on stripped
+    // chars). Here we only reject wrong types / over-length up front so a
     // malformed body can't silently change scoping.
     let scopeOverride: string | undefined;
     if (scope !== undefined && scope !== null) {

@@ -1982,17 +1982,33 @@ class MeshCoreManager extends EventEmitter {
    * normalisation). The override is one-off — it is NOT persisted to the
    * channel row; the next normal send re-asserts the channel/default scope.
    *
-   * Returns:
-   *  - `undefined` when there is no override (caller resolves the scope
-   *    normally via {@link resolveScopeForSend}),
-   *  - `null` when the override is an explicit "unscoped" choice (the device
-   *    flood scope is cleared for this one send),
-   *  - the plain region name otherwise.
+   * Contract (#3704 review — kept unambiguous and aligned with the send route):
+   *  - `undefined` OR `null` ⇒ NO override. The caller resolves the scope
+   *    normally via {@link resolveScopeForSend} (channel → default → unscoped).
+   *    The route collapses a JSON `null`/absent key to `undefined`, so both
+   *    arrive here as "no override"; we treat them identically.
+   *  - `''` or whitespace/punctuation-only ⇒ explicit UNSCOPED (returns `null`):
+   *    the device flood scope is cleared for this one send.
+   *  - a non-empty string ⇒ the normalised plain region name.
+   *
+   * Normalisation here is intentionally LENIENT (it strips invalid chars rather
+   * than rejecting), unlike the persisted `POST /config/default-scope` setting
+   * which returns 400. Rationale: the override is a transient one-off send, not
+   * stored config, so silently sanitising is lower-risk than failing the send;
+   * but we WARN when characters are dropped so the mangling isn't invisible
+   * (#3704 review item 2). The send route still rejects non-string types and
+   * over-length input up front, so only stray punctuation reaches this strip.
    */
   private static normalizeScopeOverride(scope: string | null | undefined): string | null | undefined {
-    if (scope === undefined) return undefined;
-    if (scope === null) return null;
-    const normalized = scope.trim().replace(/^#/, '').replace(/[^0-9A-Za-z-]/g, '');
+    if (scope === undefined || scope === null) return undefined;
+    const stripped = scope.trim().replace(/^#/, '');
+    const normalized = stripped.replace(/[^0-9A-Za-z-]/g, '');
+    if (normalized !== stripped) {
+      logger.warn(
+        `[MeshCore] Per-message scope override "${scope}" contained invalid characters; ` +
+        `normalised to "${normalized || '(unscoped)'}"`,
+      );
+    }
     return normalized || null;
   }
 

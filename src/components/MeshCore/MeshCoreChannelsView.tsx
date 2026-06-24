@@ -14,7 +14,7 @@
  * send (meshcoreManager.ts:sendMessage, phase 2 addition). The per-channel
  * filter therefore matches either direction.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { MeshCoreMessage, MeshCoreActions, ConnectionStatus } from './hooks/useMeshCore';
@@ -109,6 +109,11 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // Region names served by nearby repeaters (#3667 phase 3) for the datalist
   // suggestions on the override input.
   const [discoveredRegions, setDiscoveredRegions] = useState<string[]>([]);
+  // Guard so region discovery — which emits active radio traffic — runs at most
+  // once per mount, and only after the operator signals intent by opening the
+  // scope-override control. We must NOT re-discover on every reconnect (#3704
+  // review): status flapping would flood the mesh with discovery requests.
+  const regionsDiscoveredRef = useRef(false);
 
   useEffect(() => {
     const onResize = () => {
@@ -207,8 +212,9 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // field's default/placeholder so the operator overrides from a known baseline.
   const resolvedScope = (active.scope && active.scope.trim()) || defaultScope.trim() || '';
 
-  // Load the source default scope and discovered regions when (re)connected, so
-  // the override control can show the baseline + offer region suggestions.
+  // Load the source default scope when (re)connected so the override control can
+  // show the baseline. This is a cheap local DB read (no radio traffic), so it's
+  // safe to re-run on reconnect.
   useEffect(() => {
     if (!status?.connected) return;
     let cancelled = false;
@@ -219,15 +225,30 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       } catch {
         /* non-fatal — the override still works without a baseline */
       }
+    })();
+    return () => { cancelled = true; };
+  }, [status?.connected, actions]);
+
+  // Lazily discover regions for the suggestion datalist ONLY once the operator
+  // opens the scope-override control (explicit intent), and at most once per
+  // mount. discoverRegions() emits active radio traffic, so we must never tie it
+  // to status?.connected — reconnect flapping would flood the mesh (#3704 review).
+  useEffect(() => {
+    if (!showScopeOverride || !status?.connected) return;
+    if (regionsDiscoveredRef.current) return;
+    regionsDiscoveredRef.current = true;
+    let cancelled = false;
+    (async () => {
       try {
         const res = await actions.discoverRegions();
         if (!cancelled && res?.regions) setDiscoveredRegions(res.regions);
       } catch {
+        regionsDiscoveredRef.current = false; // allow a retry on next open
         /* non-fatal — suggestions are optional */
       }
     })();
     return () => { cancelled = true; };
-  }, [status?.connected, actions]);
+  }, [showScopeOverride, status?.connected, actions]);
 
   // Reset the one-off override when switching channels so it never leaks across
   // channels, and collapse the control back to its unobtrusive default.
