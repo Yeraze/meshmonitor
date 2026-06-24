@@ -18,7 +18,7 @@ export const MAX_MESHTASTIC_CHANNEL_INDEX = 7;
  */
 const DEFAULT_PSK_BASE64 = 'AQ==';
 
-function isValidChannelIndex(value: unknown): value is number {
+export function isValidChannelIndex(value: unknown): value is number {
   return (
     typeof value === 'number' &&
     Number.isInteger(value) &&
@@ -78,6 +78,11 @@ export async function resolveDestinationChannel(
 /**
  * True when a channel's PSK is one that every node in the mesh can decrypt:
  * the well-known default key ("AQ==") or no key at all (unencrypted).
+ *
+ * The ingest path stores an unencrypted channel as NULL psk (meshtasticManager
+ * only base64-encodes a PSK when `psk.length > 0`, otherwise leaves it
+ * undefined → NULL). Empty string is handled too, purely defensively, for any
+ * row that slipped in with `''`.
  */
 function isMeshReadablePsk(psk: string | null | undefined): boolean {
   return psk == null || psk === '' || psk === DEFAULT_PSK_BASE64;
@@ -119,9 +124,9 @@ export async function resolveBroadcastChannel(
   }
 
   logger.warn(
-    `resolveBroadcastChannel: source ${manager.sourceId} has no default-keyed (mesh-readable) channel; ` +
-      'falling back to channel 0. Traceroutes may show "Unknown" hops because intermediate nodes ' +
-      'cannot decrypt an encrypted-channel payload (issue #3696).',
+    `resolveBroadcastChannel: source ${manager.sourceId} has no default-keyed (mesh-readable) channel ` +
+      `among its ${channels.length} channel(s); falling back to channel 0. Traceroutes may show ` +
+      '"Unknown" hops because intermediate nodes cannot decrypt an encrypted-channel payload (issue #3696).',
   );
   return 0;
 }

@@ -107,6 +107,24 @@ describe('POST /traceroute', () => {
     expect(mockManager.sendTraceroute).toHaveBeenCalledWith(0x12345678, 5);
   });
 
+  it('honors an explicit channel override of 0 (guards the `?? ` vs `||` falsy trap)', async () => {
+    // The default-keyed resolution would also yield 0 here, so force the broadcast
+    // resolver toward a different slot — proving the explicit 0 is what wins.
+    (databaseService.channels.getAllChannels as any).mockResolvedValue([{ id: 3, psk: 'AQ==' }]);
+    mockManager.sendTraceroute.mockResolvedValue(undefined);
+    const res = await request(app).post('/traceroute').send({ destination: '!12345678', channel: 0 });
+    expect(res.status).toBe(200);
+    expect(mockManager.sendTraceroute).toHaveBeenCalledWith(0x12345678, 0);
+  });
+
+  it('ignores an out-of-range explicit channel and resolves the default-keyed channel', async () => {
+    mockManager.sendTraceroute.mockResolvedValue(undefined);
+    const res = await request(app).post('/traceroute').send({ destination: '!12345678', channel: 101 });
+    expect(res.status).toBe(200);
+    // beforeEach default: slot 0 is the only default-keyed channel.
+    expect(mockManager.sendTraceroute).toHaveBeenCalledWith(0x12345678, 0);
+  });
+
   it('falls back to channel 0 when no channel uses a mesh-readable key', async () => {
     (databaseService.channels.getAllChannels as any).mockResolvedValue([
       { id: 0, psk: 'cHJpdmF0ZWtleTAwMA==' },

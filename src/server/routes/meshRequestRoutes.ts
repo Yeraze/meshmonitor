@@ -4,7 +4,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { parseDestinationNum } from '../utils/parseDestination.js';
-import { resolveDestinationChannel, resolveBroadcastChannel } from '../utils/resolveDestinationChannel.js';
+import { resolveDestinationChannel, resolveBroadcastChannel, isValidChannelIndex } from '../utils/resolveDestinationChannel.js';
 import { PortNum } from '../constants/meshtastic.js';
 
 const router = Router();
@@ -23,16 +23,14 @@ router.post('/traceroute', requirePermission('traceroute', 'write'), async (req:
 
     // Traceroutes must traverse a channel every intermediate node can decrypt,
     // or those nodes can't append to the route and show up as "Unknown" (issue
-    // #3696). An explicit user choice (the channel dropdown) wins; otherwise we
+    // #3696). A valid explicit user choice (the channel dropdown) wins; otherwise
     // resolve the channel whose PSK is the well-known default key — NOT a
     // hardcoded slot 0, which breaks if the user gave channel 0 a private key.
+    // (The node's stored channel is deliberately never used here.)
     const traceManager = (resolveSourceManager(traceSourceId));
-    const channel = await resolveDestinationChannel(
-      destinationNum,
-      traceManager,
-      databaseService,
-      req.body.channel ?? (await resolveBroadcastChannel(traceManager, databaseService)),
-    );
+    const channel = isValidChannelIndex(req.body.channel)
+      ? req.body.channel
+      : await resolveBroadcastChannel(traceManager, databaseService);
     await traceManager.sendTraceroute(destinationNum, channel);
     res.json({
       success: true,
