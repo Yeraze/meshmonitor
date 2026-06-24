@@ -141,7 +141,8 @@ const POSTGRES_CREATE = `
     emoji INTEGER,
     "viaMqtt" BOOLEAN,
     "rxSnr" DOUBLE PRECISION,
-    "rxRssi" DOUBLE PRECISION
+    "rxRssi" DOUBLE PRECISION,
+    "sourceId" TEXT
   );
 
   CREATE TABLE read_messages (
@@ -277,7 +278,8 @@ const MYSQL_CREATE = `
     emoji INTEGER,
     viaMqtt BOOLEAN,
     rxSnr DOUBLE,
-    rxRssi DOUBLE
+    rxRssi DOUBLE,
+    sourceId VARCHAR(36)
   );
 
   CREATE TABLE read_messages (
@@ -335,6 +337,17 @@ function insertMessageSql(backend: TestBackend, id: string, channel: number, por
     return `INSERT INTO messages (id, "fromNodeNum", "toNodeNum", "fromNodeId", "toNodeId", text, channel, portnum, timestamp) VALUES ('${id}', 1, 2, '${fromNodeId}', '${toNodeId}', 'test', ${channel}, ${portnum}, ${timestamp})`;
   } else {
     return `INSERT INTO messages (id, fromNodeNum, toNodeNum, fromNodeId, toNodeId, \`text\`, channel, portnum, timestamp) VALUES ('${id}', 1, 2, '${fromNodeId}', '${toNodeId}', 'test', ${channel}, ${portnum}, ${timestamp})`;
+  }
+}
+
+// SQL to insert a test message tagged with a sourceId (per-source tests, #3712)
+function insertMessageWithSourceSql(backend: TestBackend, id: string, channel: number, portnum: number, timestamp: number, sourceId: string, fromNodeId: string = '!node1', toNodeId: string = '!node2'): string {
+  if (backend.dbType === 'sqlite') {
+    return `INSERT INTO messages (id, fromNodeNum, toNodeNum, fromNodeId, toNodeId, text, channel, portnum, timestamp, createdAt, sourceId) VALUES ('${id}', 1, 2, '${fromNodeId}', '${toNodeId}', 'test', ${channel}, ${portnum}, ${timestamp}, ${timestamp}, '${sourceId}')`;
+  } else if (backend.dbType === 'postgres') {
+    return `INSERT INTO messages (id, "fromNodeNum", "toNodeNum", "fromNodeId", "toNodeId", text, channel, portnum, timestamp, "sourceId") VALUES ('${id}', 1, 2, '${fromNodeId}', '${toNodeId}', 'test', ${channel}, ${portnum}, ${timestamp}, '${sourceId}')`;
+  } else {
+    return `INSERT INTO messages (id, fromNodeNum, toNodeNum, fromNodeId, toNodeId, \`text\`, channel, portnum, timestamp, sourceId) VALUES ('${id}', 1, 2, '${fromNodeId}', '${toNodeId}', 'test', ${channel}, ${portnum}, ${timestamp}, '${sourceId}')`;
   }
 }
 
@@ -751,6 +764,40 @@ function runNotificationsTests(getBackend: () => TestBackend) {
       // userId maps to 0 internally, which may or may not satisfy FK constraints
       const count = await repo.markChannelMessagesAsRead(0, null);
       expect(typeof count).toBe('number');
+    });
+
+    // #3712: marking a channel slot read must not bleed across sources that
+    // share the same slot number (e.g. an MQTT bridge and a radio source both
+    // using slot 2).
+    it('is source-scoped — does not mark other sources\' messages read', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'testuser'));
+      // Two sources, same slot 2.
+      await backend.exec(insertMessageWithSourceSql(backend, 'src-a-1', 2, 1, 1000, 'source-a'));
+      await backend.exec(insertMessageWithSourceSql(backend, 'src-a-2', 2, 1, 2000, 'source-a'));
+      await backend.exec(insertMessageWithSourceSql(backend, 'src-b-1', 2, 1, 3000, 'source-b'));
+
+      const marked = await repo.markChannelMessagesAsRead(2, 1, undefined, 'source-a');
+      // Only source-a's two messages are marked.
+      expect(marked).toBe(2);
+
+      // source-b's slot-2 message must remain unread (still markable).
+      const markedB = await repo.markChannelMessagesAsRead(2, 1, undefined, 'source-b');
+      expect(markedB).toBe(1);
+    });
+
+    it('without sourceId, marks across all sources (legacy behaviour)', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'testuser'));
+      await backend.exec(insertMessageWithSourceSql(backend, 'all-a', 3, 1, 1000, 'source-a'));
+      await backend.exec(insertMessageWithSourceSql(backend, 'all-b', 3, 1, 2000, 'source-b'));
+
+      const marked = await repo.markChannelMessagesAsRead(3, 1);
+      expect(marked).toBe(2);
     });
   });
 }
