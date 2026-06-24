@@ -45,6 +45,11 @@ describe('interpolate', () => {
     const lk = (p: string) => ({ 'trigger.from': 123, 'trigger.rxTime': 1782331391 } as Record<string, number>)[p];
     expect(interpolate('{{ trigger.from }} {{ trigger.rxTime }}', lk)).toBe('123 1782331391');
   });
+
+  it('does NOT format a var.* token even if it ends in "timestamp" (unknown units)', () => {
+    const lk = (p: string) => ({ 'var.lastTimestamp': 1782331391 } as Record<string, number>)[p];
+    expect(interpolate('{{ var.lastTimestamp }}', lk)).toBe('1782331391');
+  });
 });
 
 describe('extractPaths', () => {

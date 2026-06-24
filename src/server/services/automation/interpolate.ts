@@ -14,12 +14,14 @@ export type InterpolationLookup = (path: string) => InterpolationValue;
 const TOKEN = /\{\{\s*([^}]+?)\s*\}\}/g;
 
 /**
- * `NOW` and any `*.timestamp` path carry epoch MILLISECONDS (from Date.now()),
- * which is unreadable in a sent message. Render those as a local date/time.
- * (Other epoch fields like `rxTime` are in seconds and are left as-is.)
+ * `{{ NOW }}` and `{{ trigger.timestamp }}` carry epoch MILLISECONDS (from
+ * Date.now()), which is unreadable in a sent message — render those as a local
+ * date/time. Scoped to those exact tokens on purpose: other epoch fields like
+ * `trigger.rxTime` are in seconds, and a user `{{ var.* }}` named "...timestamp"
+ * has unknown units, so neither is reformatted.
  */
 function isMsTimestampPath(path: string): boolean {
-  return path === 'NOW' || /(^|\.)timestamp$/i.test(path);
+  return path === 'NOW' || path === 'trigger.timestamp';
 }
 
 function formatTimestamp(ms: number): string {
