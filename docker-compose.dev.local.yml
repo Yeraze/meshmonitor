@@ -1,9 +1,0 @@
-services:
-  meshmonitor-sqlite:
-    devices:
-      - /dev/ttyUSB0:/dev/ttyUSB0:rw
-      - /dev/ttyUSB1:/dev/ttyUSB1:rw
-      - /dev/ttyUSB2:/dev/ttyUSB2:rw
-      - /dev/ttyUSB3:/dev/ttyUSB3:rw
-    group_add:
-      - dialout

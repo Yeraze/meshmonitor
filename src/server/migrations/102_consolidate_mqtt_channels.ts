@@ -132,6 +132,10 @@ export const migration = {
 export async function runMigration102Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info('Running migration 102 (PostgreSQL): consolidating MQTT channels by name...');
 
+  let mergedDbRows = 0;
+  let collapsedChannelRows = 0;
+  let repointedMessages = 0;
+
   // Part A — merge duplicate channel_database rows by (lower(name), psk).
   const dupGroups = await client.query(`
     SELECT lower(name) AS lname, psk, MIN(id) AS "keepId"
@@ -150,6 +154,7 @@ export async function runMigration102Postgres(client: import('pg').PoolClient): 
       await client.query(`UPDATE messages SET channel = $1 WHERE channel = $2`, [OFFSET + keep, OFFSET + dup]);
       await client.query(`UPDATE channel_database_permissions SET "channelDatabaseId" = $1 WHERE "channelDatabaseId" = $2`, [keep, dup]);
       await client.query(`DELETE FROM channel_database WHERE id = $1`, [dup]);
+      mergedDbRows++;
     }
   }
 
@@ -185,22 +190,31 @@ export async function runMigration102Postgres(client: import('pg').PoolClient): 
     for (const r of rows) {
       const dbId = await resolveDbId(r.name);
       if (r.id < OFFSET) {
-        await client.query(
+        const upd = await client.query(
           `UPDATE messages SET channel = $1 WHERE "sourceId" = $2 AND channel = $3`,
           [OFFSET + dbId, sourceId, r.id],
         );
+        repointedMessages += upd.rowCount ?? 0;
       }
       await client.query(`DELETE FROM channels WHERE "sourceId" = $1 AND id = $2`, [sourceId, r.id]);
+      collapsedChannelRows++;
     }
   }
 
-  logger.info('Migration 102 complete (PostgreSQL): MQTT channels consolidated by name.');
+  logger.info(
+    `Migration 102 complete (PostgreSQL): merged ${mergedDbRows} duplicate channel_database row(s), ` +
+    `collapsed ${collapsedChannelRows} MQTT channel row(s), repointed ${repointedMessages} message(s).`,
+  );
 }
 
 // ============ MySQL ============
 
 export async function runMigration102Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info('Running migration 102 (MySQL): consolidating MQTT channels by name...');
+
+  let mergedDbRows = 0;
+  let collapsedChannelRows = 0;
+  let repointedMessages = 0;
 
   // Part A — merge duplicate channel_database rows by (lower(name), psk).
   const [dupRows] = await pool.query(`
@@ -220,11 +234,17 @@ export async function runMigration102Mysql(pool: import('mysql2/promise').Pool):
       await pool.query(`UPDATE messages SET channel = ? WHERE channel = ?`, [OFFSET + keep, OFFSET + dup]);
       await pool.query(`UPDATE channel_database_permissions SET channelDatabaseId = ? WHERE channelDatabaseId = ?`, [keep, dup]);
       await pool.query(`DELETE FROM channel_database WHERE id = ?`, [dup]);
+      mergedDbRows++;
     }
   }
 
-  // Part B — collapse hash-keyed channels rows for MQTT sources.
-  const [srcRows] = await pool.query(`SELECT id FROM sources WHERE type IN (?)`, [MQTT_TYPES]);
+  // Part B — collapse hash-keyed channels rows for MQTT sources. Use explicit
+  // placeholders rather than relying on mysql2's nested-array `IN (?)` expansion.
+  const typePlaceholders = MQTT_TYPES.map(() => '?').join(', ');
+  const [srcRows] = await pool.query(
+    `SELECT id FROM sources WHERE type IN (${typePlaceholders})`,
+    [...MQTT_TYPES],
+  );
   const mqttSources = (srcRows as Array<{ id: string }>).map((r) => r.id);
 
   const resolveDbId = async (name: string): Promise<number> => {
@@ -253,14 +273,19 @@ export async function runMigration102Mysql(pool: import('mysql2/promise').Pool):
     for (const r of rows as Array<{ id: number; name: string }>) {
       const dbId = await resolveDbId(r.name);
       if (r.id < OFFSET) {
-        await pool.query(
+        const [upd] = await pool.query(
           `UPDATE messages SET channel = ? WHERE sourceId = ? AND channel = ?`,
           [OFFSET + dbId, sourceId, r.id],
         );
+        repointedMessages += (upd as { affectedRows?: number }).affectedRows ?? 0;
       }
       await pool.query(`DELETE FROM channels WHERE sourceId = ? AND id = ?`, [sourceId, r.id]);
+      collapsedChannelRows++;
     }
   }
 
-  logger.info('Migration 102 complete (MySQL): MQTT channels consolidated by name.');
+  logger.info(
+    `Migration 102 complete (MySQL): merged ${mergedDbRows} duplicate channel_database row(s), ` +
+    `collapsed ${collapsedChannelRows} MQTT channel row(s), repointed ${repointedMessages} message(s).`,
+  );
 }
