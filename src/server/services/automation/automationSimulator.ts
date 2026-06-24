@@ -48,7 +48,7 @@ import {
 } from './engineContext.js';
 
 export type SimEventKind =
-  | 'message' | 'nodeUpdated' | 'nodeDiscovered' | 'telemetry' | 'system' | 'geofence';
+  | 'message' | 'nodeUpdated' | 'nodeDiscovered' | 'telemetry' | 'system' | 'geofence' | 'schedule';
 
 /** Synthetic trigger event the caller fills in (Test form / system test). */
 export interface SimEventInput {
@@ -252,6 +252,13 @@ function buildContext(graph: AutomationGraph, ev: SimEventInput, node: Partial<N
       // against the supplied position. matched=true so the trace is informative.
       return { ctx: buildGeofenceContext(Number(ev.nodeNum ?? 0), mode, lat, lon, distanceKm, sourceId, now), matched: true };
     }
+    case 'schedule':
+      // No mesh payload — a cron tick. Assume it fires so the downstream
+      // conditions/actions can be dry-run. (Live cron firing is not yet wired.)
+      return {
+        ctx: { triggerType: 'trigger.schedule', sourceId, subjectNodeNum: null, timestamp: now, fields: { sourceId, timestamp: now } },
+        matched: true,
+      };
     default:
       return { ctx: buildSystemContext('bootup', sourceId, null, undefined, now), matched: false };
   }

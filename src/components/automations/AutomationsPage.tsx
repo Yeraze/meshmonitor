@@ -244,7 +244,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
         <button className="ae-btn" onClick={() => setShowTest((s) => !s)}>{showTest ? 'Hide test' : '▶ Test'}</button>
       </div>
 
-      {showTest && <AutomationTester getConfig={getTestConfig} variables={variables} />}
+      {showTest && <AutomationTester getConfig={getTestConfig} variables={variables} sources={sources} />}
     </div>
   );
 }
