@@ -21,10 +21,12 @@ router.post('/traceroute', requirePermission('traceroute', 'write'), async (req:
       return res.status(400).json({ error: `Invalid destination: ${destination}` });
     }
 
-    // Scope the channel lookup to the source we actually send through (issue
-    // #3573) so the channel reflects the mesh this traceroute will traverse.
+    // Traceroutes must always use channel 0 (Primary) so every intermediate
+    // node can read and append to the packet. Sending on a secondary encrypted
+    // channel causes intermediate nodes to see an opaque payload and appear as
+    // "Unknown" in the route (issue #3696).
     const traceManager = (resolveSourceManager(traceSourceId));
-    const channel = await resolveDestinationChannel(destinationNum, traceManager, databaseService);
+    const channel = await resolveDestinationChannel(destinationNum, traceManager, databaseService, 0);
     await traceManager.sendTraceroute(destinationNum, channel);
     res.json({
       success: true,
