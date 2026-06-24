@@ -5531,7 +5531,14 @@ class MeshtasticManager implements ISourceManager {
             });
             break;
           case PortNum.POSITION_APP:
-            await this.processPositionMessageProtobuf(meshPacket, processedPayload as any);
+            // Thread the decryption context so the position's channel resolves
+            // from the channel it was decrypted on (issue #3682), matching the
+            // TEXT_MESSAGE_APP path — not the raw meshPacket.channel hash.
+            await this.processPositionMessageProtobuf(meshPacket, processedPayload as any, {
+              ...context,
+              decryptedBy,
+              decryptedChannelId: decryptedChannelId ?? undefined,
+            });
             break;
           case PortNum.NODEINFO_APP:
             await this.processNodeInfoMessageProtobuf(meshPacket, processedPayload as any);
@@ -6059,9 +6066,55 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * Resolve the broadcast channel slot/index for a packet from its decryption
+   * context, falling back to the raw `meshPacket.channel` only when there is no
+   * server-decryption context.
+   *
+   * IMPORTANT: `meshPacket.channel` is the on-wire LoRa channel *hash*
+   * (`xorHash(name) ^ xorHash(psk)`), NOT a channel slot index. For packets
+   * decrypted server-side via a Channel Database entry it is meaningless as a
+   * slot identifier (e.g. it surfaces as "channel 39" in the UI — issue #3682).
+   * This mirrors exactly the channel resolution that the TEXT_MESSAGE_APP path
+   * performs in {@link processTextMessageProtobuf} so every packet type shows a
+   * consistent channel. Only broadcast (non-DM) packets call this.
+   */
+  private async resolveBroadcastChannelIndex(
+    meshPacket: any,
+    context?: ProcessingContext,
+  ): Promise<number> {
+    if (context?.decryptedBy === 'server' && context?.decryptedChannelId !== undefined) {
+      // Check if the database channel's PSK matches a device channel — if so, prefer the device channel
+      // This prevents database channels from "shadowing" device channels with the same key (#2375, #2413)
+      const dbChannel = await databaseService.channelDatabase.getByIdAsync(context.decryptedChannelId);
+      const deviceChannels = await databaseService.channels.getAllChannels(this.sourceId);
+      // Match by BOTH psk AND name (see processTextMessageProtobuf for the
+      // detailed rationale — the on-wire hash includes the name, so two slots
+      // sharing the default PSK but differing in name are distinct channels).
+      const dbName = (dbChannel?.name ?? '').trim();
+      const matchingDeviceChannel = dbChannel?.psk
+        ? deviceChannels.find(dc =>
+            dc.psk === dbChannel.psk
+            && (dc.name ?? '').trim() === dbName
+            && dc.role !== 0,
+          )
+        : null;
+
+      if (matchingDeviceChannel) {
+        logger.debug(`📡 Server-decrypted packet matches device channel ${matchingDeviceChannel.id} ("${matchingDeviceChannel.name}") — using device channel instead of database channel`);
+        return matchingDeviceChannel.id;
+      }
+      return CHANNEL_DB_OFFSET + context.decryptedChannelId;
+    }
+    // No server-decryption context: unencrypted/primary/node-decrypted packet.
+    // The raw meshPacket.channel here IS a usable slot index (the device
+    // populates it for firmware-decoded packets), so preserve existing behavior.
+    return meshPacket.channel !== undefined ? meshPacket.channel : 0;
+  }
+
+  /**
    * Process position message using protobuf types
    */
-  private async processPositionMessageProtobuf(meshPacket: any, position: any): Promise<void> {
+  private async processPositionMessageProtobuf(meshPacket: any, position: any, context?: ProcessingContext): Promise<void> {
     try {
       logger.debug(`🗺️ Position message: lat=${position.latitudeI}, lng=${position.longitudeI}`);
 
@@ -6089,7 +6142,13 @@ class MeshtasticManager implements ISourceManager {
         // precision setting. We must NOT fall back to the local channel's positionPrecision —
         // that record reflects this MeshMonitor instance's channel config, not the remote
         // node's, and using it caused accuracy boxes to all match the local node (issue #3030).
-        const channelIndex = meshPacket.channel !== undefined ? meshPacket.channel : 0;
+        // Resolve the channel slot from the decryption context — NOT the raw
+        // meshPacket.channel, which is the on-wire LoRa hash (e.g. "channel 39")
+        // for packets decrypted server-side on a secondary channel (issue #3682).
+        // This mirrors the TEXT_MESSAGE_APP path so positions show the same
+        // channel as text messages on the same channel. Falls back to the raw
+        // meshPacket.channel only for unencrypted/primary packets.
+        const channelIndex = await this.resolveBroadcastChannelIndex(meshPacket, context);
         const precisionBits = position.precisionBits ?? position.precision_bits ?? undefined;
         const gpsAccuracy = position.gpsAccuracy ?? position.gps_accuracy ?? undefined;
         const hdop = position.HDOP ?? position.hdop ?? undefined;
