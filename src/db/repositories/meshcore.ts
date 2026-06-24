@@ -122,6 +122,35 @@ export interface DbMeshCorePacket {
 }
 
 /**
+ * MeshCore "heard repeater" row (#3700). One per (outgoing channel message,
+ * repeater relay-hash) inferred by self-echo correlation. See
+ * `src/db/schema/meshcoreHeardRepeaters.ts`.
+ */
+export interface DbMeshCoreHeardRepeater {
+  id?: number;
+  /** Owning source id; required on writes. */
+  sourceId: string;
+  /** meshcore_messages.id of the outgoing channel message that was relayed. */
+  messageId: string;
+  /** Lowercase hex relay-hash of the repeater that re-flooded the packet. */
+  repeaterHash: string;
+  /** Resolved repeater contact name (best-effort; null when unknown). */
+  repeaterName?: string | null;
+  /** Best (max) SNR observed for this repeater across echoes. */
+  snr?: number | null;
+  /** When the echo was heard (Unix ms). */
+  heardAt: number;
+  createdAt: number;
+}
+
+/** Max of two nullable numbers; null only when both are null. */
+function maxNullable(a: number | null, b: number | null): number | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return Math.max(a, b);
+}
+
+/**
  * Filters accepted by the MeshCore packet-log query/count methods.
  */
 export interface MeshCorePacketQuery {
@@ -877,6 +906,134 @@ export class MeshCoreRepository extends BaseRepository {
     const { meshcoreMessages } = this.tables;
     await this.db.delete(meshcoreMessages);
     return count;
+  }
+
+  // ============ Heard-Repeater Methods (#3700) ============
+
+  /**
+   * Record (or refresh) a repeater that re-flooded an outgoing channel message
+   * (self-echo correlation, #3700). Dedups on (sourceId, messageId,
+   * repeaterHash); on a repeat echo we keep the best (max) SNR and fill in a
+   * `repeaterName` if one becomes known. Returns the merged record so the caller
+   * can broadcast the current heard-by state.
+   *
+   * `sourceId` is required — every row is per-source scoped.
+   */
+  async recordHeardRepeater(
+    record: {
+      sourceId: string;
+      messageId: string;
+      repeaterHash: string;
+      repeaterName?: string | null;
+      snr?: number | null;
+      heardAt: number;
+    },
+  ): Promise<DbMeshCoreHeardRepeater> {
+    if (!record.sourceId) {
+      throw new Error('MeshCoreRepository.recordHeardRepeater requires a sourceId');
+    }
+    const { meshcoreHeardRepeaters } = this.tables;
+    const now = this.now();
+
+    const existingRows = await this.db
+      .select()
+      .from(meshcoreHeardRepeaters)
+      .where(
+        and(
+          eq(meshcoreHeardRepeaters.sourceId, record.sourceId),
+          eq(meshcoreHeardRepeaters.messageId, record.messageId),
+          eq(meshcoreHeardRepeaters.repeaterHash, record.repeaterHash),
+        ),
+      )
+      .limit(1);
+    const existing = existingRows[0]
+      ? (this.normalizeBigInts(existingRows[0]) as unknown as DbMeshCoreHeardRepeater)
+      : undefined;
+
+    if (existing) {
+      const mergedSnr = maxNullable(existing.snr ?? null, record.snr ?? null);
+      const mergedName = record.repeaterName ?? existing.repeaterName ?? null;
+      await this.db
+        .update(meshcoreHeardRepeaters)
+        .set({ snr: mergedSnr, repeaterName: mergedName, heardAt: record.heardAt })
+        .where(
+          and(
+            eq(meshcoreHeardRepeaters.sourceId, record.sourceId),
+            eq(meshcoreHeardRepeaters.messageId, record.messageId),
+            eq(meshcoreHeardRepeaters.repeaterHash, record.repeaterHash),
+          ),
+        );
+      return { ...existing, snr: mergedSnr, repeaterName: mergedName, heardAt: record.heardAt };
+    }
+
+    await this.db.insert(meshcoreHeardRepeaters).values({
+      sourceId: record.sourceId,
+      messageId: record.messageId,
+      repeaterHash: record.repeaterHash,
+      repeaterName: record.repeaterName ?? null,
+      snr: record.snr ?? null,
+      heardAt: record.heardAt,
+      createdAt: now,
+    });
+    return {
+      sourceId: record.sourceId,
+      messageId: record.messageId,
+      repeaterHash: record.repeaterHash,
+      repeaterName: record.repeaterName ?? null,
+      snr: record.snr ?? null,
+      heardAt: record.heardAt,
+      createdAt: now,
+    };
+  }
+
+  /**
+   * Fetch all heard-repeater rows for a single message (per-source scoped),
+   * newest first. Used to broadcast the current heard-by set after each echo.
+   */
+  async getHeardRepeatersForMessage(
+    messageId: string,
+    sourceId: string,
+  ): Promise<DbMeshCoreHeardRepeater[]> {
+    const { meshcoreHeardRepeaters } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreHeardRepeaters)
+      .where(
+        and(
+          eq(meshcoreHeardRepeaters.sourceId, sourceId),
+          eq(meshcoreHeardRepeaters.messageId, messageId),
+        ),
+      )
+      .orderBy(desc(meshcoreHeardRepeaters.snr));
+    return this.normalizeBigInts(result) as unknown as DbMeshCoreHeardRepeater[];
+  }
+
+  /**
+   * Fetch heard-repeater rows for many messages at once (per-source scoped),
+   * grouped by messageId — used to enrich a channel message list in one query.
+   */
+  async getHeardRepeatersForMessages(
+    messageIds: string[],
+    sourceId: string,
+  ): Promise<Record<string, DbMeshCoreHeardRepeater[]>> {
+    if (messageIds.length === 0) return {};
+    const { meshcoreHeardRepeaters } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreHeardRepeaters)
+      .where(
+        and(
+          eq(meshcoreHeardRepeaters.sourceId, sourceId),
+          inArray(meshcoreHeardRepeaters.messageId, messageIds),
+        ),
+      )
+      .orderBy(desc(meshcoreHeardRepeaters.snr));
+    const rows = this.normalizeBigInts(result) as unknown as DbMeshCoreHeardRepeater[];
+    const grouped: Record<string, DbMeshCoreHeardRepeater[]> = {};
+    for (const row of rows) {
+      (grouped[row.messageId] ??= []).push(row);
+    }
+    return grouped;
   }
 
   // ============ Neighbor Methods ============

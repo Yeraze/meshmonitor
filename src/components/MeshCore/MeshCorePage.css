@@ -671,6 +671,38 @@
 .mc-delivery-failed { color: var(--ctp-red); }
 .mc-delivery-sending { color: var(--ctp-overlay0); }
 
+/* Channel "heard repeaters" badge + expandable list (#3700) */
+.mc-heard-by-badge {
+  font-size: 0.75rem;
+  margin-left: 0.25rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ctp-blue);
+  cursor: pointer;
+}
+.mc-heard-by-badge:hover {
+  color: var(--ctp-sapphire);
+  text-decoration: underline;
+}
+.mc-heard-by-list {
+  list-style: none;
+  margin: 0.15rem 0 0;
+  padding: 0.15rem 0 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--ctp-subtext0);
+  border-left: 2px solid var(--ctp-surface1);
+}
+.mc-heard-by-item {
+  line-height: 1.3;
+}
+.mc-heard-by-name {
+  color: var(--ctp-blue);
+}
+.mc-heard-by-snr {
+  color: var(--ctp-overlay0);
+}
+
 .meshcore-send-bar {
   display: flex;
   gap: 0.5rem;
