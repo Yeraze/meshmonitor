@@ -87,10 +87,36 @@ export function getSubjectNode(ctx: EngineEvalContext): Promise<NodeFacts | null
 }
 
 /** Resolve a single `{{ }}` path: `var.` (async) or `trigger.`/system (sync). */
+/**
+ * Resolve a `var.NAME` or nested `var.NAME.a.b` reference. Splits on the FIRST
+ * dot: NAME is the variable (names contain no dots), the remainder is a path
+ * into its value (e.g. a JSON-typed variable holding a script result). Returns
+ * the traversed value, or undefined if the variable or any path segment is
+ * missing / not an object.
+ */
+export async function resolveVarValue(
+  vars: VariableResolver,
+  fullName: string,
+  varCtx: VarContext,
+  now: number,
+): Promise<unknown> {
+  const dot = fullName.indexOf('.');
+  const name = dot === -1 ? fullName : fullName.slice(0, dot);
+  const segments = dot === -1 ? [] : fullName.slice(dot + 1).split('.').filter(Boolean);
+  let value: unknown = await vars.getValue(name, varCtx, now);
+  for (const seg of segments) {
+    if (value == null || typeof value !== 'object') return undefined;
+    value = (value as Record<string, unknown>)[seg];
+  }
+  return value;
+}
+
 export async function resolvePath(ctx: EngineEvalContext, path: string): Promise<InterpolationValue> {
   if (path.startsWith('var.')) {
-    const v = await ctx.vars.getValue(path.slice('var.'.length), ctx.varCtx, ctx.now);
-    return v ?? undefined;
+    const v = await resolveVarValue(ctx.vars, path.slice('var.'.length), ctx.varCtx, ctx.now);
+    if (v == null) return undefined;
+    // Render objects/arrays as JSON so {{ var.obj }} shows the blob; scalars pass through.
+    return typeof v === 'object' ? JSON.stringify(v) : (v as InterpolationValue);
   }
   return resolveTriggerPath(ctx.trigger, path, ctx.now);
 }

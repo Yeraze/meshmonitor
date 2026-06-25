@@ -3,7 +3,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { AutomationVariablesRepository } from '../../../db/repositories/automationVariables.js';
 import { VariableResolver } from './variableResolver.js';
 import { evaluateCondition } from './conditionEvaluator.js';
-import type { EngineEvalContext } from './engineContext.js';
+import { resolveVarValue, interpolateAsync, type EngineEvalContext } from './engineContext.js';
 import type { TriggerContext } from './triggerContext.js';
 import type { AutomationNode } from '../../../types/automation.js';
 import * as schema from '../../../db/schema/index.js';
@@ -108,6 +108,21 @@ describe('evaluateCondition', () => {
     expect(await evaluateCondition(node('condition.string', { field: 'text', op: 'contains', value: 'PING' }), ctx({ text: 'a ping b' }))).toBe(true);
     expect(await evaluateCondition(node('condition.string', { field: 'text', op: 'regex', value: '^(test|ping)' }), ctx({ text: 'ping' }))).toBe(true);
     expect(await evaluateCondition(node('condition.string', { field: 'text', op: 'eq', value: 'ping' }), ctx({ text: 'pong' }))).toBe(false);
+  });
+
+  it('json variable: nested access via {{ var.x.y.z }} and condition.variable', async () => {
+    await repo.createVariable({ name: 'obj', type: 'json', scope: 'global', config: '{}' });
+    await resolver.setValue('obj', { greeting: 'hi', stats: { count: 3 } }, { sourceId: 'default', nodeNum: 111 }, 1000);
+    const c = ctx({});
+    // direct traversal helper
+    expect(await resolveVarValue(resolver, 'obj.stats.count', c.varCtx, c.now)).toBe(3);
+    expect(await resolveVarValue(resolver, 'obj.missing.x', c.varCtx, c.now)).toBeUndefined();
+    // interpolation: nested scalar, and whole object as JSON
+    expect(await interpolateAsync('say {{ var.obj.greeting }} ({{ var.obj.stats.count }})', c)).toBe('say hi (3)');
+    expect(await interpolateAsync('{{ var.obj.stats }}', c)).toBe('{"count":3}');
+    // condition.variable on a nested numeric field
+    expect(await evaluateCondition(node('condition.variable', { variable: 'obj.stats.count', op: '>', value: 2 }), c)).toBe(true);
+    expect(await evaluateCondition(node('condition.variable', { variable: 'obj.stats.count', op: '>', value: 5 }), c)).toBe(false);
   });
 
   it('variable: is-set check and comparison', async () => {
