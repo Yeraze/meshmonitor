@@ -17,6 +17,7 @@ import { scheduleCron, validateCron, type CronJob } from './utils/cronScheduler.
 import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js';
 import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
 import { MeshCoreNativeBackend, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
+import { resolveMessageScope } from './meshcoreScopeResolve.js';
 import {
   MeshCoreVirtualNodeServer,
   type MeshCoreVirtualNodeConfig,
@@ -385,6 +386,12 @@ export interface MeshCoreMessage {
   /** Relay-hash chain the message traveled, comma-separated (e.g. "a3,7f,02");
    *  null when no path was reported. (#3742) */
   routePath?: string | null;
+  /** Scope/region the message was sent with (#3742 Phase 2). `scopeCode` is the
+   *  packet's transport_code_1: 0 = sent unscoped, null = no scope info. */
+  scopeCode?: number | null;
+  /** Region name resolved from `scopeCode` against this source's known scopes;
+   *  null = unscoped, or scoped-but-unknown (then the UI shows `#<code-hex>`). */
+  scopeName?: string | null;
 }
 
 export interface MeshCoreStatus {
@@ -553,6 +560,12 @@ class MeshCoreManager extends EventEmitter {
   // and stateful, two concurrent sends with different scopes must not interleave.
   private activeFloodScope: string | null | undefined = undefined;
   private sendScopeLock: Promise<unknown> = Promise.resolve();
+  // Known scope/region names for this source (#3742 Phase 2): the candidate set
+  // a received message's transport code is matched against to resolve its scope
+  // name. Sourced from per-channel scopes + the source default scope. Cached so
+  // the synchronous inbound-message path resolves with no DB round-trip;
+  // refreshed on connect and whenever a scope changes.
+  private knownScopes: Set<string> = new Set();
 
   // Shared state
   private localNode: MeshCoreNode | null = null;
@@ -685,11 +698,17 @@ class MeshCoreManager extends EventEmitter {
         sourceId: dbMsg.sourceId ?? undefined,
         hopCount: dbMsg.hopCount ?? null,
         routePath: dbMsg.routePath ?? null,
+        scopeCode: dbMsg.scopeCode ?? null,
+        scopeName: dbMsg.scopeName ?? null,
       }));
     } catch (loadErr) {
       logger.warn(`[MeshCore:${this.sourceId}] Failed to load messages from DB: ${(loadErr as Error).message}`);
       this.messages = [];
     }
+
+    // Prime the known-scope cache so the first received message can resolve its
+    // scope name without a DB round-trip (#3742 Phase 2).
+    await this.refreshKnownScopes();
 
     logger.info(`[MeshCore] Connecting via ${this.config.connectionType}...`);
     this.connectionState = 'connecting';
@@ -994,6 +1013,7 @@ class MeshCoreManager extends EventEmitter {
       // The {ROUTE} auto-ack template keeps the outPath fallback (existing
       // behavior) so an ack can still cite a route when no LogRxData surfaced.
       const ackRoute = observedRoute || senderContact?.outPath || null;
+      const scope = resolveMessageScope(data.raw_hex, this.knownScopes);
       const message: MeshCoreMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         fromPublicKey: data.pubkey_prefix,
@@ -1004,6 +1024,8 @@ class MeshCoreManager extends EventEmitter {
         sourceId: this.sourceId,
         hopCount,
         routePath: observedRoute,
+        scopeCode: scope.scopeCode,
+        scopeName: scope.scopeName,
       };
       this.addMessage(message);
       this.emit('message', message);
@@ -1024,6 +1046,7 @@ class MeshCoreManager extends EventEmitter {
       // path_hops (when present) is the only source of relay identities.
       const hopCount = decodePathLenHopCount(data.path_len);
       const route = formatPathHops(data.path_hops);
+      const scope = resolveMessageScope(data.raw_hex, this.knownScopes);
       const message: MeshCoreMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         fromPublicKey: MeshCoreManager.channelPublicKey(data.channel_idx),
@@ -1034,6 +1057,8 @@ class MeshCoreManager extends EventEmitter {
         sourceId: this.sourceId,
         hopCount,
         routePath: route,
+        scopeCode: scope.scopeCode,
+        scopeName: scope.scopeName,
       };
       this.addMessage(message);
       this.emit('message', message);
@@ -1561,6 +1586,8 @@ class MeshCoreManager extends EventEmitter {
       // A scope change may affect the next send on this channel — force a
       // re-assert rather than trusting the cached device scope.
       this.activeFloodScope = undefined;
+      // The known-scope set used to resolve received-message scopes changed.
+      void this.refreshKnownScopes();
     }
   }
 
@@ -1763,6 +1790,8 @@ class MeshCoreManager extends EventEmitter {
         sourceId: this.sourceId,
         hopCount: message.hopCount ?? null,
         routePath: message.routePath ?? null,
+        scopeCode: message.scopeCode ?? null,
+        scopeName: message.scopeName ?? null,
         createdAt: Date.now(),
       },
       this.sourceId,
@@ -2526,8 +2555,30 @@ class MeshCoreManager extends EventEmitter {
     const normalized = (scope || '').trim().replace(/^#/, '');
     await databaseService.settings.setSourceSetting(this.sourceId, 'meshcoreDefaultScope', normalized);
     this.activeFloodScope = undefined;
+    void this.refreshKnownScopes();
     logger.info(`[MeshCore:${this.sourceId}] Default scope set to ${normalized || '(unscoped)'}`);
     return normalized;
+  }
+
+  /**
+   * Rebuild the {@link knownScopes} cache from this source's per-channel scopes
+   * plus the default scope (#3742 Phase 2). Best-effort: a failure leaves the
+   * previous cache in place and never breaks the message stream.
+   */
+  private async refreshKnownScopes(): Promise<void> {
+    try {
+      const names = new Set<string>();
+      const channels = await databaseService.channels.getAllChannels(this.sourceId);
+      for (const ch of channels) {
+        const s = (ch.scope ?? '').trim();
+        if (s) names.add(s);
+      }
+      const def = (await this.getDefaultScope()).trim();
+      if (def) names.add(def);
+      this.knownScopes = names;
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] refreshKnownScopes failed: ${(err as Error).message}`);
+    }
   }
 
   /**

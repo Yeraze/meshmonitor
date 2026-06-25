@@ -89,6 +89,10 @@ export interface MeshCoreMessage {
   hopCount?: number | null;
   /** Relay-hash chain the message traveled, comma-separated (e.g. "a3,7f,02") (#3742). */
   routePath?: string | null;
+  /** Scope transport code: 0 = sent unscoped, >0 = scoped, null/undefined = no info (#3742 Ph2). */
+  scopeCode?: number | null;
+  /** Region name resolved from the scope code; null = unscoped or unknown scope (#3742 Ph2). */
+  scopeName?: string | null;
 }
 
 export interface ConnectionStatus {
