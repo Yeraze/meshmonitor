@@ -28,6 +28,7 @@ import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
 import { useMapContext } from '../../contexts/MapContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { nodePassesTransportFilter } from '../../utils/nodeTransport';
+import { isNullIsland } from '../../utils/nullIsland';
 import { effectiveMapMaxAgeHours } from '../../utils/mapAge';
 import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
@@ -61,7 +62,8 @@ function getNodeLatLng(node: any): { lat: number; lng: number } | null {
   // Flat shape from API: node.latitude, node.longitude
   let lat = node?.latitude ?? node?.position?.latitude;
   let lng = node?.longitude ?? node?.position?.longitude;
-  if (lat != null && lng != null && (lat !== 0 || lng !== 0)) {
+  // Skip "Null Island" (0,0) — uninitialized/stale GPS default (issue #3763).
+  if (lat != null && lng != null && !isNullIsland(lat, lng)) {
     return { lat, lng };
   }
   return null;

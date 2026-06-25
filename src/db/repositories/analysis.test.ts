@@ -73,6 +73,25 @@ describe('AnalysisRepository.getPositions', () => {
     expect(result.hasMore).toBe(false);
   });
 
+  it('skips Null Island (0,0) fixes so trails/heatmap never plot them (#3763)', async () => {
+    // A complete (0,0) fix paired at a timestamp between `earlier` and `now`.
+    const nullTs = now - 500;
+    const insert = sqlite.prepare(
+      'INSERT INTO telemetry (nodeId, nodeNum, telemetryType, timestamp, value, createdAt, sourceId) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    );
+    insert.run('!00000001', 1, 'latitude', nullTs, 0.0004, nullTs, 'src-a');
+    insert.run('!00000001', 1, 'longitude', nullTs, -0.0002, nullTs, 'src-a');
+
+    const result = await repo.getPositions({
+      sourceIds: ['src-a'],
+      sinceMs: now - 60_000,
+      pageSize: 10,
+    });
+    // Only the two legitimate fixes survive; the Null Island fix is dropped.
+    expect(result.items).toHaveLength(2);
+    expect(result.items.some((r: { timestamp: number }) => r.timestamp === nullTs)).toBe(false);
+  });
+
   it('skips orphaned latitude rows that have no matching longitude', async () => {
     // Insert an extra latitude row at a timestamp where no longitude exists.
     // Pick a timestamp BETWEEN `earlier` and `now` so it would otherwise be

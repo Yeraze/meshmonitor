@@ -10,6 +10,7 @@
 
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
+import { isNullIsland } from '../utils/nullIsland.js';
 import databaseService from '../services/database.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { compileAutoAckRegex } from './utils/autoAckRegex.js';
@@ -1463,13 +1464,16 @@ class MeshCoreManager extends EventEmitter {
    */
   private async persistContact(contact: MeshCoreContact): Promise<void> {
     try {
+      // Drop "Null Island" (0,0) fixes — the GPS default before a lock — so a
+      // bogus position never lands in the node row (issue #3763).
+      const atNullIsland = isNullIsland(contact.latitude, contact.longitude);
       await databaseService.meshcore.upsertNode(
         {
           publicKey: contact.publicKey,
           name: contact.advName ?? contact.name ?? null,
           advType: contact.advType ?? null,
-          latitude: contact.latitude ?? null,
-          longitude: contact.longitude ?? null,
+          latitude: atNullIsland ? null : (contact.latitude ?? null),
+          longitude: atNullIsland ? null : (contact.longitude ?? null),
           rssi: contact.rssi ?? null,
           snr: contact.snr ?? null,
           lastHeard: contact.lastSeen ?? null,
