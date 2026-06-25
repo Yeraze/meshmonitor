@@ -713,6 +713,7 @@
 .mc-message-text { color: var(--ctp-text); font-size: 0.9rem; word-wrap: break-word; }
 /* Hop count + relay route for received messages (#3742). */
 .mc-message-route { color: var(--ctp-overlay0); font-size: 0.72rem; margin-top: 0.15rem; font-family: var(--font-mono, monospace); }
+.mc-message-scope { color: var(--ctp-overlay0); font-size: 0.72rem; margin-top: 0.1rem; font-family: var(--font-mono, monospace); }
 
 .mc-mention {
   color: var(--ctp-blue);

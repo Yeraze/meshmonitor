@@ -219,7 +219,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * (it only appears on LogRxData, not on the txt-msg recv event) so the
    * message event — and {SNR} in auto-ack/auto-responder templates — has it.
    */
-  private pendingTxtMsgPath: { hops: string[]; rawPathLen: number; snr?: number; bufferedAt: number } | null = null;
+  private pendingTxtMsgPath: { hops: string[]; rawPathLen: number; snr?: number; rawHex?: string; bufferedAt: number } | null = null;
 
   /**
    * Maximum age (ms) of a buffered LogRxData path before we treat it as stale
@@ -379,7 +379,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * Returns `{ hops, snr }` to attach, or `undefined` when the buffer is
    * absent, stale, or for a different packet.
    */
-  private consumePendingPath(msgPathLen: unknown): { hops: string[]; snr?: number } | undefined {
+  private consumePendingPath(msgPathLen: unknown): { hops: string[]; snr?: number; rawHex?: string } | undefined {
     const buffered = this.pendingTxtMsgPath;
     // Consume-once: clear regardless of whether we end up attaching it.
     this.pendingTxtMsgPath = null;
@@ -403,7 +403,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return undefined;
       }
     }
-    return { hops: buffered.hops, snr: buffered.snr };
+    return { hops: buffered.hops, snr: buffered.snr, rawHex: buffered.rawHex };
   }
 
   private wirePushEvents(): void {
@@ -451,7 +451,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
           // lets the recv handler reject a stale buffer whose matching recv never
           // arrived (issue #3589 mis-correlation guard).
           if (pkt.payload_type === TXT_MSG || pkt.payload_type === GRP_TXT) {
-            this.pendingTxtMsgPath = { hops, rawPathLen: pkt.pathLen, snr, bufferedAt: Date.now() };
+            // Buffer raw_hex too so the message handler can resolve the scope/
+            // region the packet was sent under (#3742 Phase 2).
+            this.pendingTxtMsgPath = { hops, rawPathLen: pkt.pathLen, snr, rawHex: bytesToHex(raw), bufferedAt: Date.now() };
           }
           this.emitBridgeEvent('ota_packet', {
             payload_type: pkt.payload_type,
@@ -531,6 +533,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // not available (e.g. backend started without raw logging).
         path_hops: consumedPath?.hops,
         snr: consumedPath?.snr,
+        // Raw OTA bytes (from the same preceding LogRxData) so the manager can
+        // resolve the scope/region the message was sent under (#3742 Phase 2).
+        raw_hex: consumedPath?.rawHex,
       };
       this.emitBridgeEvent(isCliReply ? 'cli_reply' : 'contact_message', payload);
     });
@@ -546,6 +551,8 @@ export class MeshCoreNativeBackend extends EventEmitter {
         path_len: typeof msg.pathLen === 'number' ? msg.pathLen : undefined,
         path_hops: consumedPath?.hops,
         snr: consumedPath?.snr,
+        // Raw OTA bytes for scope/region resolution (#3742 Phase 2).
+        raw_hex: consumedPath?.rawHex,
       });
     });
 

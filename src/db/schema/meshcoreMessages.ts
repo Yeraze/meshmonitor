@@ -35,6 +35,12 @@ export const meshcoreMessagesSqlite = sqliteTable('meshcore_messages', {
   hopCount: integer('hopCount'),
   routePath: text('routePath'),
 
+  // Scope/region (#3742 Phase 2). scopeCode = the packet's transport_code_1
+  // (0 = sent unscoped, NULL = no scope info available). scopeName = the region
+  // name resolved against known scopes at receive time (NULL = unscoped/unknown).
+  scopeCode: integer('scopeCode'),
+  scopeName: text('scopeName'),
+
   // Message type (for future use: text, location, etc.)
   messageType: text('messageType').default('text'),
 
@@ -62,6 +68,8 @@ export const meshcoreMessagesPostgres = pgTable('meshcore_messages', {
   snr: pgInteger('snr'),
   hopCount: pgInteger('hopCount'),
   routePath: pgText('routePath'),
+  scopeCode: pgInteger('scopeCode'),
+  scopeName: pgText('scopeName'),
   messageType: pgText('messageType').default('text'),
   delivered: pgBoolean('delivered').default(false),
   deliveredAt: pgBigint('deliveredAt', { mode: 'number' }),
@@ -82,6 +90,8 @@ export const meshcoreMessagesMysql = mysqlTable('meshcore_messages', {
   snr: myInt('snr'),
   hopCount: myInt('hopCount'),
   routePath: myText('routePath'),
+  scopeCode: myInt('scopeCode'),
+  scopeName: myText('scopeName'),
   messageType: myVarchar('messageType', { length: 32 }).default('text'),
   delivered: myBoolean('delivered').default(false),
   deliveredAt: myBigint('deliveredAt', { mode: 'number' }),

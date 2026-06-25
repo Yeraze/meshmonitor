@@ -96,6 +96,13 @@ export interface DbMeshCoreMessage {
   /** Hop count + relay-hash route path for received messages (#3742). */
   hopCount?: number | null;
   routePath?: string | null;
+  /**
+   * Scope/region the message was sent with (#3742 Phase 2). scopeCode is the
+   * packet's transport_code_1 (0 = unscoped, null = no scope info); scopeName is
+   * the region name resolved against known scopes at receive time.
+   */
+  scopeCode?: number | null;
+  scopeName?: string | null;
   createdAt: number;
 }
 
