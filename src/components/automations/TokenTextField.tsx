@@ -7,7 +7,7 @@
  * listed inline below the field.
  */
 import { useMemo, useRef } from 'react';
-import { tokenize, unknownTokens, foreignTokens, validTokenSet } from './tokenHints';
+import { tokenize, diagnoseTokens, validTokenSet } from './tokenHints';
 
 export default function TokenTextField({ value, onChange, multiline, placeholder, triggerType, variableNames }: {
   value: string;
@@ -20,8 +20,7 @@ export default function TokenTextField({ value, onChange, multiline, placeholder
   const backdropRef = useRef<HTMLDivElement>(null);
   const valid = useMemo(() => validTokenSet(triggerType, variableNames), [triggerType, variableNames]);
   const segs = useMemo(() => tokenize(value, valid), [value, valid]);
-  const unknown = useMemo(() => unknownTokens(value, valid), [value, valid]);
-  const foreign = useMemo(() => foreignTokens(value, valid), [value, valid]);
+  const diags = useMemo(() => diagnoseTokens(value, valid), [value, valid]);
 
   const cls = multiline ? 'ae-textarea' : 'ae-input';
   const markClass = (status: string) =>
@@ -65,14 +64,14 @@ export default function TokenTextField({ value, onChange, multiline, placeholder
           onScroll={(e) => syncScroll(e.currentTarget)}
         />
       )}
-      {unknown.length > 0 && (
-        <div className="ae-token-warn">
-          Unrecognized token{unknown.length > 1 ? 's' : ''}: {unknown.map((t) => `{{ ${t} }}`).join(', ')} — check for typos.
-        </div>
-      )}
-      {foreign.length > 0 && (
-        <div className="ae-token-note">
-          {foreign.map((t) => `{{ ${t} }}`).join(', ')} {foreign.length > 1 ? 'are' : 'is'} not available for this trigger — will render blank.
+      {diags.length > 0 && (
+        <div className="ae-token-bar">
+          {diags.map((d) => (
+            <div key={d.token} className={`ae-token-diag ae-token-diag--${d.severity}`}>
+              <span className="ae-token-diag-icon">{d.severity === 'error' ? '✕' : '⚠'}</span>
+              <code>{`{{ ${d.token} }}`}</code> {d.detail}
+            </div>
+          ))}
         </div>
       )}
     </div>

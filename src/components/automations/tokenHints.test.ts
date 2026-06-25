@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validTokenSet, classifyToken, tokenize, unknownTokens, foreignTokens } from './tokenHints';
+import { validTokenSet, classifyToken, tokenize, diagnoseTokens } from './tokenHints';
 
 describe('validTokenSet', () => {
   it('includes NOW, the trigger tokens, universals, and known vars', () => {
@@ -31,22 +31,27 @@ describe('classifyToken', () => {
   });
 });
 
-describe('unknownTokens / foreignTokens', () => {
-  it('flags only genuine typos as unknown; cross-trigger tokens are foreign, not typos', () => {
-    const sys = validTokenSet('trigger.system', []);
-    const text = 'Hi {{ trigger.from }} welcome to {{ trigger.asfd }} at {{ trigger.event }}';
-    expect(unknownTokens(text, sys)).toEqual(['trigger.asfd']);   // only the real typo
-    expect(foreignTokens(text, sys)).toEqual(['trigger.from']);   // valid elsewhere, not here
-    // trigger.event IS a system token → neither
+describe('diagnoseTokens', () => {
+  it('gives a type-specific message per problematic token, in order, deduped', () => {
+    const sys = validTokenSet('trigger.system', ['known']);
+    const text = 'Hi {{ trigger.from }} {{ trigger.asfd }} {{ var.asfd }} {{ trigger.event }} {{ NOW }} {{ foo }}';
+    expect(diagnoseTokens(text, sys)).toEqual([
+      { token: 'trigger.from', severity: 'warn', detail: 'is undefined for this trigger' },
+      { token: 'trigger.asfd', severity: 'error', detail: 'is not a recognized trigger field' },
+      { token: 'var.asfd', severity: 'error', detail: 'does not exist' },
+      // trigger.event (system token) and NOW are valid → omitted
+      { token: 'foo', severity: 'error', detail: 'is not a recognized token' },
+    ]);
   });
-  it('on the matching trigger, a real token is neither unknown nor foreign', () => {
-    const msg = validTokenSet('trigger.message', []);
-    expect(unknownTokens('{{ trigger.from }}', msg)).toEqual([]);
-    expect(foreignTokens('{{ trigger.from }}', msg)).toEqual([]);
+  it('returns nothing when all tokens are valid for the trigger', () => {
+    const msg = validTokenSet('trigger.message', ['flag']);
+    expect(diagnoseTokens('{{ trigger.from }} {{ var.flag }} {{ NOW }}', msg)).toEqual([]);
   });
-  it('ignores empty tokens and de-dups', () => {
+  it('ignores empty tokens and de-dups repeats', () => {
     const msg = validTokenSet('trigger.message', []);
-    expect(unknownTokens('{{ var.x }} {{ var.x }} {{  }}', msg)).toEqual(['var.x']);
+    expect(diagnoseTokens('{{ var.x }} {{ var.x }} {{  }}', msg)).toEqual([
+      { token: 'var.x', severity: 'error', detail: 'does not exist' },
+    ]);
   });
 });
 

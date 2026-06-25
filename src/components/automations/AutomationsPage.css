@@ -102,8 +102,13 @@
   background: color-mix(in srgb, var(--ctp-red) 26%, transparent);
   color: var(--ctp-text); border-radius: 3px; text-decoration: underline wavy var(--ctp-red);
 }
-.ae-token-warn { font-size: 0.76rem; color: var(--ctp-red); margin-top: 0.25rem; }
-.ae-token-note { font-size: 0.76rem; color: var(--ctp-yellow); margin-top: 0.2rem; }
+/* Diagnostics bar below a token field — one line per problematic token. */
+.ae-token-bar { display: flex; flex-direction: column; gap: 0.12rem; margin-top: 0.3rem; }
+.ae-token-diag { font-size: 0.76rem; display: flex; align-items: baseline; gap: 0.35rem; }
+.ae-token-diag code { font-family: var(--font-mono, monospace); }
+.ae-token-diag-icon { flex: none; font-weight: 700; }
+.ae-token-diag--error { color: var(--ctp-red); }
+.ae-token-diag--warn { color: var(--ctp-yellow); }
 .ae-error-list { color: var(--ctp-red); font-size: 0.85rem; margin: 0.5rem 0; padding-left: 1.1rem; }
 
 /* Builder WHEN / IF / THEN sections */

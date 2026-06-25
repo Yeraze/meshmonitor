@@ -59,22 +59,33 @@ export function tokenize(text: string, valid: Set<string>): TokenSegment[] {
   return segs;
 }
 
-/** Distinct genuinely-unrecognized ('bad') token paths in the text. */
-export function unknownTokens(text: string, valid: Set<string>): string[] {
-  const out = new Set<string>();
-  for (const m of text.matchAll(TOKEN_RE)) {
-    const path = m[1].trim();
-    if (classifyToken(path, valid) === 'bad') out.add(path);
-  }
-  return [...out];
-}
+export type TokenSeverity = 'error' | 'warn';
+export interface TokenDiag { token: string; severity: TokenSeverity; detail: string }
 
-/** Distinct 'foreign' (valid-but-wrong-trigger) token paths in the text. */
-export function foreignTokens(text: string, valid: Set<string>): string[] {
-  const out = new Set<string>();
+/**
+ * Per-token diagnostics for the bar below a field. Distinct, in first-seen
+ * order; only problematic tokens are returned (valid ones produce nothing):
+ *   - `{{ var.x }}` with no such variable   → error "does not exist"
+ *   - `{{ trigger.x }}` of another trigger   → warn  "is undefined for this trigger"
+ *   - `{{ trigger.x }}` of no trigger        → error "is not a recognized trigger field"
+ *   - anything else (no var./trigger. prefix)→ error "is not a recognized token"
+ */
+export function diagnoseTokens(text: string, valid: Set<string>): TokenDiag[] {
+  const seen = new Set<string>();
+  const out: TokenDiag[] = [];
   for (const m of text.matchAll(TOKEN_RE)) {
     const path = m[1].trim();
-    if (classifyToken(path, valid) === 'foreign') out.add(path);
+    if (path.length === 0 || valid.has(path) || seen.has(path)) continue;
+    seen.add(path);
+    if (path.startsWith('var.')) {
+      out.push({ token: path, severity: 'error', detail: 'does not exist' });
+    } else if (path.startsWith('trigger.')) {
+      out.push(anyTriggerTokenSet().has(path)
+        ? { token: path, severity: 'warn', detail: 'is undefined for this trigger' }
+        : { token: path, severity: 'error', detail: 'is not a recognized trigger field' });
+    } else {
+      out.push({ token: path, severity: 'error', detail: 'is not a recognized token' });
+    }
   }
-  return [...out];
+  return out;
 }
