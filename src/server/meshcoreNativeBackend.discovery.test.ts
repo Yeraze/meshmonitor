@@ -503,4 +503,57 @@ describe('MeshCoreNativeBackend — discovery responder', () => {
     // sends afterwards — the two never share the ack channel.
     expect(callLog).toEqual(['regions:send', 'regions:reply', 'discover_path:send', 'discover_path:ack']);
   });
+
+  it('serializes set_device_time against request_regions under the unified lock (#3725)', async () => {
+    // set_device_time uses the same shared Ok/Err ack window as discover_*, and
+    // sends via c.sendCommandSetDeviceTime rather than sendToRadioFrame. The
+    // unified lock must keep it from overlapping request_regions' window.
+    const { backend, conn } = await connectedBackend();
+    const callLog: string[] = [];
+
+    (conn as any).sendToRadioFrame = (frame: Uint8Array) => {
+      conn.sentFrames.push(frame);
+      if (frame[0] === 57) { // request_regions
+        callLog.push('regions:send');
+        setImmediate(() => {
+          conn.emit(ResponseCodes.Sent);
+          callLog.push('regions:reply');
+          conn.emit(PushCodes.BinaryResponse, {
+            reserved: 0,
+            tag: 0x1,
+            responseData: Uint8Array.from([1, 0, 0, 0, ...Buffer.from('hesse', 'ascii'), 0]),
+          });
+        });
+        return;
+      }
+      setImmediate(() => conn.emit(ResponseCodes.Ok));
+    };
+    (conn as any).sendCommandSetDeviceTime = (_epoch: number) => {
+      callLog.push('settime:send');
+      setImmediate(() => {
+        callLog.push('settime:ack');
+        conn.emit(ResponseCodes.Ok);
+      });
+      return Promise.resolve();
+    };
+
+    const [regionsRes, timeRes] = await Promise.all([
+      backend.sendCommand('request_regions', { public_key: 'aa'.repeat(32) }),
+      backend.sendCommand('set_device_time', { epoch: 1_700_000_000 }),
+    ]);
+
+    expect(regionsRes.success).toBe(true);
+    expect(regionsRes.data.regions).toEqual(['hesse']);
+    expect(timeRes.success).toBe(true);
+
+    // The two never overlapped: each op's ':send' is immediately followed by its
+    // own ':ack'/':reply'. Lock-acquisition order is microtask-dependent here
+    // (set_device_time has no await before the lock), so assert pairing rather
+    // than absolute order.
+    expect(callLog).toHaveLength(4);
+    const op = (s: string) => s.split(':')[0];
+    expect(op(callLog[0])).toBe(op(callLog[1]));
+    expect(op(callLog[2])).toBe(op(callLog[3]));
+    expect(op(callLog[0])).not.toBe(op(callLog[2]));
+  });
 });
