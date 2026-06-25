@@ -14148,6 +14148,16 @@ class MeshtasticManager implements ISourceManager {
         deviceInfo.isIgnored = Boolean(node.isIgnored);
       }
 
+      // Add isUnmessagable / isLicensed if they exist (#3684). Without these
+      // the client never learns a remote node is unmessagable, so the DM UI
+      // (NodesTab DM button, MessagesTab compose) fails open for them (#3755).
+      if (node.isUnmessagable !== null && node.isUnmessagable !== undefined) {
+        deviceInfo.isUnmessagable = Boolean(node.isUnmessagable);
+      }
+      if (node.isLicensed !== null && node.isLicensed !== undefined) {
+        deviceInfo.isLicensed = Boolean(node.isLicensed);
+      }
+
       // Add channel if it exists
       if (node.channel !== null && node.channel !== undefined) {
         deviceInfo.channel = node.channel;
