@@ -2833,10 +2833,16 @@ class MeshCoreManager extends EventEmitter {
       }, timeoutMs);
       if (!response.success) {
         const isTimeout = response.error?.includes('timeout');
-        logger.warn(
-          `[MeshCore] set_out_path failed for ${publicKey}: ${response.error}` +
-            (isTimeout ? ' — check serial/TCP connection to the device' : ''),
-        );
+        if (isTimeout) {
+          // meshcore.js resolves CMD_ADD_UPDATE_CONTACT on its Ok ack, which is
+          // frequently lost in unrelated radio chatter even though the device
+          // applied the write. Treat a timeout as a non-fatal "ack not seen" —
+          // not a connectivity error — so it doesn't spam warnings on a path
+          // that did install (e.g. region discovery, #3743).
+          logger.debug(`[MeshCore] set_out_path ack not seen for ${publicKey} (write likely applied)`);
+        } else {
+          logger.warn(`[MeshCore] set_out_path rejected for ${publicKey}: ${response.error}`);
+        }
         return false;
       }
       // Group the flat byte buffer into hashBytes-wide hop tokens so the
