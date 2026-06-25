@@ -384,7 +384,14 @@ touch "$ROOTFS_DIR/etc/meshmonitor/meshmonitor.env"
 chmod 600 "$ROOTFS_DIR/etc/meshmonitor/meshmonitor.env"
 chroot "$ROOTFS_DIR" chown meshmonitor:meshmonitor /etc/meshmonitor/meshmonitor.env
 
+
 echo ""
+# Add /usr/local/bin to PATH — missing from minimal Debian's default PATH.
+
+# Without this, operators cannot run meshmonitor-update directly after first boot.
+echo 'PATH=/usr/local/bin:$PATH' >> "$ROOTFS_DIR/etc/environment"
+echo "/usr/local/bin added to PATH."
+
 echo "Step 12: Cleaning up container..."
 
 # Clean up apt cache and temp files

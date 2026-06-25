@@ -1,0 +1,1181 @@
+#!/bin/bash
+#
+# MeshMonitor Update Script
+# ──────────────────────────────────────────────────────────────────────────────
+# Originally contributed by BeerMan81
+# https://github.com/Yeraze/meshmonitor/blob/main/lxc/meshmonitor-update
+# ──────────────────────────────────────────────────────────────────────────────
+# Updates an existing MeshMonitor installation in-place.
+#
+# Requires a git-native install (i.e. /opt/meshmonitor/.git exists).
+# Templates built from v4.12.0+ include .git from first boot.
+# For older templates (pre-built artifact, no .git), run migrate-to-git.sh
+# first: https://gist.github.com/BeerMan81/06c562c32582b14ab7437dfb2ad8cbd0
+# Works with the official LXC template from:
+#   https://github.com/yeraze/meshmonitor
+#
+# Fresh LXC template (no .git)? Migrate first:
+#   https://gist.github.com/BeerMan81/06c562c32582b14ab7437dfb2ad8cbd0
+#
+# Typical workflow:
+#   1. Deploy the LXC template once (sets up /opt/meshmonitor, systemd services, env file)
+#   2. Run this script whenever a new version is available — no redeployment needed
+#
+# What this script does:
+#   - Backs up /data/, meshmonitor.env, and systemd service files
+#   - Stops services, pulls latest source, rebuilds, restarts
+#   - Keeps the last 5 backups and supports one-command rollback
+#
+# Requirements:
+#   - MeshMonitor installed via git clone (LXC template, bare-metal, or VM)
+#   - Install detected automatically from these locations (in order):
+#       /opt/meshmonitor  (LXC template default)
+#       /var/lib/meshmonitor/meshmonitor  (bare-metal default)
+#       /var/lib/meshmonitor
+#       /home/meshmonitor/meshmonitor
+#       current directory
+#   - Internet access to reach github.com
+#   - Run as root (or with sudo)
+#
+# Usage:
+#   meshmonitor-update                    normal update
+#   meshmonitor-update -n / --dry-run     show what would happen, change nothing
+#   meshmonitor-update -y / --yes         skip non-critical confirmations (after first run)
+#   meshmonitor-update -r / --rollback    restore from the most recent backup
+#   meshmonitor-update -r -n / -rn        preview rollback — show what would be restored, no changes
+#   meshmonitor-update -s / --status      show current version and service state
+#   meshmonitor-update -d / --debug       verbose output + save full log to file
+#   meshmonitor-update -h / --help        show this help
+#   meshmonitor-update -c / --clear-config  forget saved backup directory (prompts again next run)
+#   meshmonitor-update -l / --list-backups  list available backups with sizes and dates
+#
+# Notes:
+#   - Combined short flags are supported: -rn, -nr, -yn, -dny, etc.
+#   - Rollback ALWAYS requires typing 'yes' in full — -y / --yes does NOT bypass it.
+#   - Major version upgrades ALWAYS require typing 'yes' in full — -y / --yes does NOT bypass it.
+#   - -s / --status uses git ls-remote (truly read-only, no local writes).
+#   - PUPPETEER_SKIP_DOWNLOAD=true is set automatically on every npm install.
+#     Stale Puppeteer cache (~/.cache/puppeteer/) is wiped before each install
+#     to prevent the "folder exists but executable missing" Chrome error (4.7.x+).
+#
+# END_HELP
+
+set -euo pipefail
+
+SCRIPT_START=$(date +%s)
+
+# =============================================================================
+# SELF-INSTALL
+# =============================================================================
+SELF_INSTALL_PATH="/usr/local/bin/meshmonitor-update"
+SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
+
+# If not already running from the install path, offer to install
+if [ "$SCRIPT_PATH" != "$SELF_INSTALL_PATH" ] \
+   && [ ! -f "$SELF_INSTALL_PATH" ] \
+   && [ "${1:-}" != "--no-install" ]; then
+    echo ""
+    echo "  This script is not installed as a system command yet."
+    echo "  Install to ${SELF_INSTALL_PATH} so you can run 'meshmonitor-update' from anywhere?"
+    read -r -t 30 -p "  Install now? [Y/n]: " _yn
+    _yn="${_yn:-y}"
+    if [[ "$_yn" =~ ^[Yy]$ ]]; then
+        cp "$SCRIPT_PATH" "$SELF_INSTALL_PATH"
+        chmod +x "$SELF_INSTALL_PATH"
+        export PATH="/usr/local/bin:$PATH"
+        if ! grep -q 'usr/local/bin' /root/.bashrc 2>/dev/null; then
+            echo 'export PATH="/usr/local/bin:$PATH"' >> /root/.bashrc
+        fi
+        echo "  [OK] Installed to ${SELF_INSTALL_PATH}"
+        echo "  [OK] Added /usr/local/bin to /root/.bashrc"
+        echo "  [*]  Run 'source /root/.bashrc' or open a new shell to use 'meshmonitor-update' globally."
+        echo ""
+    fi
+fi
+
+# If running from install path but /usr/local/bin not in PATH, fix .bashrc silently
+if [ "$SCRIPT_PATH" = "$SELF_INSTALL_PATH" ] \
+   && ! grep -q 'usr/local/bin' /root/.bashrc 2>/dev/null; then
+    echo 'export PATH="/usr/local/bin:$PATH"' >> /root/.bashrc
+fi
+
+# =============================================================================
+# COLORS & OUTPUT HELPERS
+# =============================================================================
+if [ -t 1 ]; then
+    R=$'\033[0;31m'; G=$'\033[0;32m'; Y=$'\033[1;33m'
+    B=$'\033[0;34m'; BLD=$'\033[1m'; N=$'\033[0m'
+else
+    R=""; G=""; Y=""; B=""; BLD=""; N=""
+fi
+log()  { echo "${B}[*]${N} $*"; }
+ok()   { echo "${G}[OK]${N} $*"; }
+warn() { echo "${Y}[!]${N} $*"; }
+err()  { echo "${R}[X]${N} $*" >&2; }
+die()  {
+    err "$*"
+    local e=$(( $(date +%s) - SCRIPT_START ))
+    err "Failed after $(( e / 60 ))m $(( e % 60 ))s."
+    [ -n "${LOG_FILE:-}" ] && err "Debug log: $LOG_FILE"
+    # The :-200 fallback is safe — flock on an unacquired fd is a silent no-op.
+    [ -n "${LOCK_FD:-}" ] && flock -u "$LOCK_FD" 2>/dev/null || true
+    exit 1
+}
+hr()   { echo "${B}────────────────────────────────────────────────────────────────────────────────────────${N}"; }
+
+# =============================================================================
+# ARGUMENT PARSING
+# Supports long flags (--rollback) and short flags (-r), including combined
+# short flags (-rn, -nr, -yn, -dny, etc.) via expand_flags().
+#
+#   -n / --dry-run        Show every action that would be taken, change nothing.
+#                         Combine with -r to safely preview a rollback: -rn
+#
+#   -y / --yes            Skip minor confirmations (backup dir create prompt, etc.)
+#                         Does NOT bypass rollback or major version prompts —
+#                         both always require typing 'yes' in full.
+#
+#   -r / --rollback       Restore from most recent backup. Always shows a warning
+#                         banner and requires typing 'yes' in full.
+#                         Combine with -n to preview without changing anything: -rn
+#
+#   -s / --status         Read-only snapshot: installed/available versions and
+#                         service states. Uses git ls-remote (no local writes).
+#
+#   -l / --list-backups   List available backup tarballs with sizes and dates.
+#
+#   -d / --debug          Enables bash -x tracing and saves a timestamped log.
+#                         Log lands in BACKUP_DIR (determined before debug starts
+#                         so the log always goes to the right place).
+#
+#   -c / --clear-config   Forget saved backup directory; prompts on next run.
+#
+#   -h / --help           Print usage summary and exit.
+# =============================================================================
+DRY_RUN=0; ASSUME_YES=0; ROLLBACK=0; DEBUG=0; STATUS=0; CLEAR_CONFIG=0; LIST_BACKUPS=0
+
+expand_flags() {
+    # Splits combined short flags like -rn into -r -n before the main parser.
+    # Long flags and standalone short flags pass through unchanged.
+    # Uses printf to avoid echo misinterpreting flags starting with '-'.
+    local arg
+    for arg in "$@"; do
+        if [[ "$arg" =~ ^-[a-zA-Z]{2,}$ ]] && [[ ! "$arg" =~ ^-- ]]; then
+            local i
+            for (( i=1; i<${#arg}; i++ )); do
+                printf -- '-%s\n' "${arg:$i:1}"
+            done
+        else
+            printf '%s\n' "$arg"
+        fi
+    done
+}
+
+mapfile -t ARGS < <(expand_flags "$@")
+
+for a in "${ARGS[@]}"; do
+    case "$a" in
+        --dry-run|-n)        DRY_RUN=1 ;;
+        --yes|-y)            ASSUME_YES=1 ;;
+        --rollback|-r)       ROLLBACK=1 ;;
+        --debug|-d)          DEBUG=1 ;;
+        --status|-s)         STATUS=1 ;;
+        --list-backups|-l)   LIST_BACKUPS=1 ;;
+        --help|-h)           sed -n '/^# Usage:/,/^# END_HELP/p' "$0" \
+                                 | grep '^#' | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --clear-config|-c)   CLEAR_CONFIG=1 ;;
+        *)                   die "Unknown argument: '$a'  (try -h for help)" ;;
+    esac
+done
+
+[ "$DRY_RUN" -eq 1 ] && warn "[DRY RUN] Nothing will be changed."
+
+# Handle --clear-config immediately (no lock needed)
+if [ "${CLEAR_CONFIG:-0}" -eq 1 ]; then
+    CONFIG_FILE="/etc/meshmonitor/update-config"
+    if [ -f "$CONFIG_FILE" ]; then
+        rm -f "$CONFIG_FILE"
+        ok "Cleared saved config: ${BLD}${CONFIG_FILE}${N}"
+        ok "Next run will prompt for backup directory again."
+    else
+        warn "No saved config found at ${BLD}${CONFIG_FILE}${N} — nothing to clear."
+    fi
+    exit 0
+fi
+
+# =============================================================================
+# RUN LOCK
+# Uses flock on a file descriptor so the lock is automatically released even
+# if the script crashes — no stale lock file to clean up manually.
+# =============================================================================
+LOCK_FILE="/var/run/meshmonitor-update.lock"
+LOCK_FD=200
+eval "exec ${LOCK_FD}>\"${LOCK_FILE}\""
+if ! flock -n "$LOCK_FD"; then
+    die "Another instance of this script is already running (lock: $LOCK_FILE). Aborting."
+fi
+
+# =============================================================================
+# ROOT / SUDO DETECTION
+# =============================================================================
+hr
+if [ "$EUID" -eq 0 ]; then
+    SUDO=""
+    ok "Running as root."
+else
+    command -v sudo >/dev/null 2>&1 \
+        || die "Not root and 'sudo' not found. Re-run as root or install sudo."
+    SUDO="sudo"
+    warn "Not running as root — using sudo."
+    sudo -v || die "Failed to obtain sudo credentials. Try running as root."
+fi
+
+run() {
+    if [ "$DRY_RUN" -eq 1 ]; then echo "    [DRY RUN] ${SUDO:+$SUDO }$*"; else $SUDO "$@"; fi
+}
+run_sh() {
+    if [ "$DRY_RUN" -eq 1 ]; then echo "    [DRY RUN] $*"; else eval "$@"; fi
+}
+
+# =============================================================================
+# DISTRO DETECTION
+# =============================================================================
+hr
+log "Detecting environment..."
+DISTRO_ID="unknown"; DISTRO_NAME="unknown"; DISTRO_PKG_MGR="apt"
+if [ -r /etc/os-release ]; then
+    . /etc/os-release
+    DISTRO_ID="${ID:-unknown}"
+    DISTRO_NAME="${PRETTY_NAME:-$DISTRO_ID}"
+    case "${ID_LIKE:-$ID}" in
+        *fedora*|*rhel*|*centos*) DISTRO_PKG_MGR="dnf" ;;
+        *arch*)                   DISTRO_PKG_MGR="pacman" ;;
+        *alpine*)                 DISTRO_PKG_MGR="apk" ;;
+        *)                        DISTRO_PKG_MGR="apt" ;;
+    esac
+fi
+log "Distro : ${BLD}${DISTRO_NAME}${N}"
+log "Pkg mgr: ${BLD}${DISTRO_PKG_MGR}${N}"
+
+# =============================================================================
+# DOCKER DETECTION
+# =============================================================================
+if [ -f /.dockerenv ] \
+   || grep -q 'docker\|containerd' /proc/1/cgroup 2>/dev/null \
+   || grep -q 'docker\|containerd' /proc/self/cgroup 2>/dev/null; then
+    hr
+    err "Docker environment detected."
+    err ""
+    err "This script is designed for bare-metal/LXC installs only."
+    err "It manages systemd services and expects a git-cloned source tree —"
+    err "neither of which applies to Docker deployments."
+    err ""
+    err "For Docker update instructions, refer to the official documentation:"
+    err "  https://github.com/Yeraze/meshmonitor#updating"
+    err ""
+    flock -u "${LOCK_FD:-200}" 2>/dev/null || true
+    exit 1
+fi
+
+# =============================================================================
+# INSTALL PATH DETECTION
+# =============================================================================
+INSTALL_DIR=""
+declare -a SEARCH_PATHS=(
+    "/opt/meshmonitor"
+    "/var/lib/meshmonitor/meshmonitor"
+    "/var/lib/meshmonitor"
+    "/home/meshmonitor/meshmonitor"
+    "$PWD"
+)
+for p in "${SEARCH_PATHS[@]}"; do
+    if [ -d "$p/.git" ] && [ -f "$p/package.json" ] \
+       && grep -q '"name"[[:space:]]*:[[:space:]]*"meshmonitor"' "$p/package.json" 2>/dev/null; then
+        INSTALL_DIR="$p"; break
+    fi
+done
+[ -n "$INSTALL_DIR" ] \
+    || die "Cannot find MeshMonitor source tree (requires git clone, not a pre-built template).\nSearched: ${SEARCH_PATHS[*]}\nSee script header for setup instructions."
+ok "Install dir: ${BLD}${INSTALL_DIR}${N}"
+
+# =============================================================================
+# APP USER DETECTION
+# Detects the owner of the install directory so git runs as that user,
+# avoiding the Git 2.35.2+ "dubious ownership" error on Debian 12 / git 2.39.x.
+# Falls back to root if the owner account doesn't exist.
+# =============================================================================
+APP_USER=$(stat -c '%U' "$INSTALL_DIR")
+APP_GROUP=$(stat -c '%G' "$INSTALL_DIR")
+log "App user : ${BLD}${APP_USER}:${APP_GROUP}${N}"
+
+if id -u "$APP_USER" >/dev/null 2>&1 && [ "$APP_USER" != "root" ]; then
+    GIT_CMD="sudo -u $APP_USER git"
+else
+    git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+    GIT_CMD="${SUDO:+$SUDO }git"
+fi
+log "Git exec : ${BLD}git${N}  (as: ${BLD}${GIT_CMD}${N})"
+
+# =============================================================================
+# SERVICE DETECTION
+# =============================================================================
+SERVICES=()
+for svc in meshmonitor meshmonitor-apprise; do
+    if systemctl cat "${svc}.service" >/dev/null 2>&1; then
+        SERVICES+=("$svc")
+    fi
+done
+if [ ${#SERVICES[@]} -eq 0 ]; then
+    warn "No systemd services found — is MeshMonitor installed correctly?"
+else
+    log "Services: ${SERVICES[*]}"
+fi
+
+# =============================================================================
+# PORT DETECTION
+# Reads PORT from the EnvironmentFile declared in the systemd unit first,
+# then falls back to known locations. Default: 3001.
+# =============================================================================
+PORT=3001
+ENV_FILE=""
+
+_env_from_unit=$(systemctl cat meshmonitor.service 2>/dev/null \
+    | grep -E '^EnvironmentFile' | head -1 \
+    | sed 's/EnvironmentFile=-\?//' | tr -d ' ' || true)
+[ -n "$_env_from_unit" ] && [ -r "$_env_from_unit" ] && ENV_FILE="$_env_from_unit"
+
+if [ -z "$ENV_FILE" ]; then
+    for _ef in "/etc/meshmonitor/meshmonitor.env" "/var/lib/meshmonitor/.env"; do
+        [ -r "$_ef" ] && ENV_FILE="$_ef" && break
+    done
+fi
+
+if [ -n "$ENV_FILE" ]; then
+    port_from_env=$(grep -E '^PORT=' "$ENV_FILE" | cut -d= -f2 | tr -d '"' | tr -d "'" || true)
+    [ -n "$port_from_env" ] && PORT="$port_from_env"
+    DATA_DIR_FROM_ENV=$(grep -E '^DATA_DIR=' "$ENV_FILE" | cut -d= -f2 | tr -d '"' | tr -d "'" || true)
+    log "Env file : ${BLD}${ENV_FILE}${N}"
+else
+    warn "No environment file found — using default port $PORT."
+fi
+log "App port : ${BLD}${PORT}${N}"
+
+# =============================================================================
+# STATUS MODE
+# Uses git ls-remote — truly read-only, no local writes.
+# git fetch would update .git/FETCH_HEAD and remote-tracking refs.
+# Note: remote version number cannot be shown without fetching the object —
+# ls-remote only retrieves the reference SHA, not the file contents.
+# To see the full incoming version, run: meshmonitor-update --dry-run
+# =============================================================================
+do_status() {
+    hr
+    log "MeshMonitor Status"
+    hr
+
+    local pkg="$INSTALL_DIR/package.json"
+    if [ -f "$pkg" ]; then
+        local ver
+        ver=$(grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' "$pkg" \
+            | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+        log "Installed version : ${BLD}${ver}${N}"
+    fi
+
+    local local_sha
+    local_sha=$(cd "$INSTALL_DIR" && $GIT_CMD rev-parse HEAD 2>/dev/null || echo "unknown")
+    log "Local commit      : ${BLD}${local_sha:0:8}${N}"
+
+    # ls-remote fetches only the remote reference — no objects downloaded.
+    # We can compare SHAs to know if an update is available, but cannot
+    # parse the remote package.json version without a full object fetch.
+    local remote_sha=""
+    remote_sha=$(cd "$INSTALL_DIR" && $GIT_CMD ls-remote origin refs/heads/main 2>/dev/null \
+        | awk '{print $1}' || true)
+
+    if [ -n "$remote_sha" ]; then
+        log "Remote commit     : ${BLD}${remote_sha:0:8}${N}"
+        if [ "$local_sha" = "$remote_sha" ]; then
+            ok "Up to date with origin/main"
+        else
+            warn "origin/main has new commits — run 'meshmonitor-update --dry-run' to see incoming version."
+        fi
+    else
+        warn "Could not reach origin/main (offline or no remote access)."
+    fi
+
+    hr
+    log "Service states:"
+    for s in "${SERVICES[@]}"; do
+        local state
+        state=$(systemctl is-active "$s" 2>/dev/null || echo "unknown")
+        case "$state" in
+            active)   ok   "$s — $state" ;;
+            inactive) warn "$s — $state" ;;
+            *)        err  "$s — $state" ;;
+        esac
+    done
+
+    hr
+    flock -u "$LOCK_FD" 2>/dev/null || true
+    exit 0
+}
+[ "$STATUS" -eq 1 ] && do_status
+
+# =============================================================================
+# BACKUP DIRECTORY — VALIDATION FUNCTION
+# Validates the chosen backup directory: creates it if needed, checks write
+# permissions, runs a write test. Prompts for a new path on each failure.
+# Up to 5 attempts before dying.
+# =============================================================================
+validate_backup_dir() {
+    local max_retries=5 attempt=0
+    while true; do
+        attempt=$((attempt + 1))
+        [ "$attempt" -gt "$max_retries" ] \
+            && die "Could not establish a valid backup directory after $max_retries attempts."
+
+        [ -z "${BACKUP_DIR:-}" ] \
+            && { read -r -p "  Enter backup directory: " BACKUP_DIR; continue; }
+
+        if [ -e "$BACKUP_DIR" ] && [ ! -d "$BACKUP_DIR" ]; then
+            warn "'$BACKUP_DIR' exists but is a FILE, not a directory."
+            read -r -p "  Enter a different path: " BACKUP_DIR; continue
+        fi
+
+        if [ ! -e "$BACKUP_DIR" ]; then
+            local parent; parent=$(dirname "$BACKUP_DIR")
+            if [ ! -d "$parent" ]; then
+                warn "Parent directory '$parent' does not exist."
+                if [ "$ASSUME_YES" -ne 1 ]; then
+                    read -r -p "  Create full path '$BACKUP_DIR'? [Y/n]: " a
+                    if ! [[ "${a:-y}" =~ ^[Yy]$ ]]; then
+                        read -r -p "  Enter a different path: " BACKUP_DIR; continue
+                    fi
+                fi
+            fi
+            if [ "$DRY_RUN" -eq 1 ]; then
+                ok "[DRY RUN] Would create: $BACKUP_DIR"
+                return 0
+            fi
+            if $SUDO mkdir -p "$BACKUP_DIR" 2>/dev/null; then
+                ok "Created: $BACKUP_DIR"
+            else
+                warn "Could not create '$BACKUP_DIR' (permission denied or invalid path)."
+                read -r -p "  Enter a different path: " BACKUP_DIR; continue
+            fi
+        fi
+
+        if [ ! -w "$BACKUP_DIR" ]; then
+            warn "'$BACKUP_DIR' is not writable."
+            if $SUDO chown "$(id -u):$(id -g)" "$BACKUP_DIR" 2>/dev/null \
+               && [ -w "$BACKUP_DIR" ]; then
+                ok "Fixed ownership on '$BACKUP_DIR'."
+            else
+                warn "Cannot fix permissions on '$BACKUP_DIR'."
+                read -r -p "  Enter a different path: " BACKUP_DIR; continue
+            fi
+        fi
+
+        if [ "$DRY_RUN" -eq 0 ]; then
+            if ! touch "$BACKUP_DIR/.write_test" 2>/dev/null; then
+                warn "'$BACKUP_DIR' failed write test (read-only filesystem or full disk?)."
+                read -r -p "  Enter a different path: " BACKUP_DIR; continue
+            fi
+            rm -f "$BACKUP_DIR/.write_test"
+        fi
+
+        ok "Backup directory ready: ${BLD}${BACKUP_DIR}${N}"
+        return 0
+    done
+}
+
+# =============================================================================
+# BACKUP DIRECTORY — CONFIG PERSISTENCE & FIRST-RUN PROMPT
+# =============================================================================
+hr
+log "Checking backup configuration..."
+CONFIG_FILE="/etc/meshmonitor/update-config"
+BACKUP_KEEP=5
+BACKUP_DIR=""
+[ -r "$CONFIG_FILE" ] && . "$CONFIG_FILE"
+
+if [ -z "${BACKUP_DIR:-}" ]; then
+    hr
+    log "First run — choose a backup directory."
+    log "Backups include: /data/, meshmonitor.env, and systemd service files."
+    log "This choice is saved — you will not be asked again."
+    echo
+    echo "  1) /mnt/meshmonitor-backup   (external mount)"
+    echo "  2) /var/backups/meshmonitor  (local, standard system backup location)"
+    echo "  3) Enter a custom path"
+    echo
+    warn "Auto-selecting option 2 in 90 seconds..."
+    echo
+
+    if read -r -t 90 -p "Choice [1-3, default=2]: " choice; then
+        case "${choice:-2}" in
+            1) BACKUP_DIR="/mnt/meshmonitor-backup" ;;
+            2) BACKUP_DIR="/var/backups/meshmonitor" ;;
+            3) read -r -p "  Enter custom path: " BACKUP_DIR ;;
+            *) warn "Invalid choice — using default."
+               BACKUP_DIR="/var/backups/meshmonitor" ;;
+        esac
+    else
+        echo
+        warn "No input received — using default: /var/backups/meshmonitor"
+        BACKUP_DIR="/var/backups/meshmonitor"
+    fi
+fi
+
+validate_backup_dir
+
+if [ "$DRY_RUN" -eq 0 ]; then
+    $SUDO mkdir -p "$(dirname "$CONFIG_FILE")"
+    printf 'BACKUP_DIR="%s"\nBACKUP_KEEP=%s\n' "$BACKUP_DIR" "$BACKUP_KEEP" \
+        | $SUDO tee "$CONFIG_FILE" >/dev/null
+fi
+
+# =============================================================================
+# DEBUG MODE
+# Intentionally placed AFTER the backup config block so BACKUP_DIR is known
+# and the log file lands in the right place rather than always in /tmp.
+# =============================================================================
+LOG_FILE=""
+if [ "$DEBUG" -eq 1 ]; then
+    LOG_DIR="${BACKUP_DIR}"
+    LOG_FILE="${LOG_DIR}/meshmonitor-update-$(date +%Y%m%d-%H%M%S).log"
+    exec > >(tee -a "$LOG_FILE") 2>&1
+    set -x
+    warn "DEBUG mode enabled."
+    warn "Logging to: ${BLD}${LOG_FILE}${N}"
+fi
+
+# =============================================================================
+# LIST BACKUPS MODE
+# =============================================================================
+do_list_backups() {
+    hr
+    log "Available backups in: ${BLD}${BACKUP_DIR}${N}"
+    hr
+    local found=0
+    while IFS= read -r f; do
+        [ -f "$f" ] || continue
+        local size; size=$(du --apparent-size -sh "$f" 2>/dev/null | cut -f1)
+        local fdate; fdate=$(stat -c '%y' "$f" | cut -d'.' -f1)
+        ok "${BLD}$(basename "$f")${N}  [${size}]  ${fdate}"
+        found=1
+    done < <(ls -1t "$BACKUP_DIR"/meshmonitor_backup_*.tar.gz 2>/dev/null)
+
+    if [ "$found" -eq 0 ]; then
+        warn "No backup tarballs found in ${BACKUP_DIR}."
+        warn "Run without -l to perform an update and create the first backup."
+    else
+        echo
+        if [ -f "$BACKUP_DIR/last-commit.txt" ]; then
+            log "Source rollback commit: ${BLD}$(cat "$BACKUP_DIR/last-commit.txt")${N}"
+        else
+            warn "No last-commit.txt — source tree cannot be reset during rollback."
+        fi
+    fi
+
+    hr
+    flock -u "$LOCK_FD" 2>/dev/null || true
+    exit 0
+}
+[ "$LIST_BACKUPS" -eq 1 ] && do_list_backups
+
+# =============================================================================
+# HEALTH CHECK HELPER
+# Shared by post-update and post-rollback checks.
+# Returns 0 if app responds within timeout, 1 otherwise.
+# =============================================================================
+wait_for_healthy() {
+    local label="${1:-update}" timeout="${2:-30}"
+    log "Waiting for app to respond on port ${PORT} (up to ${timeout}s)..."
+    local i
+    for (( i=1; i<=timeout; i++ )); do
+        if curl -fsSL --max-time 3 "http://localhost:${PORT}" >/dev/null 2>&1; then
+            ok "App is responding on port ${PORT} (${label})"
+            return 0
+        fi
+        sleep 1
+    done
+    warn "App did not respond on port ${PORT} after ${timeout} seconds (${label})."
+    systemctl status meshmonitor --no-pager --lines=15 || true
+    return 1
+}
+
+# =============================================================================
+# ROLLBACK MODE
+# Always shows a warning banner listing exactly what will be overwritten.
+# Requires typing 'yes' in full — -y / --yes does NOT bypass this.
+# -n / --dry-run previews the rollback without touching anything.
+# Runs a health check after restart and warns if the rollback itself is unhealthy.
+# =============================================================================
+do_rollback() {
+    echo "${R}${BLD}╔══════════════════════════════════════════════════════════════════════════════════════╗${N}"
+    echo "${R}${BLD}║               ⚠   ROLLBACK  —  DESTRUCTIVE  OPERATION   ⚠                          ║${N}"
+    echo "${R}${BLD}╚══════════════════════════════════════════════════════════════════════════════════════╝${N}"
+
+    # --- Dry-run preview ---
+    if [ "$DRY_RUN" -eq 1 ]; then
+        warn "[DRY RUN] Rollback preview — nothing will be changed."
+        echo
+        local latest_dry=""
+        latest_dry=$(ls -1t "$BACKUP_DIR"/meshmonitor_backup_*.tar.gz 2>/dev/null | head -1 || true)
+        if [ -n "$latest_dry" ]; then
+            local size_dry; size_dry=$(du -sh "$latest_dry" 2>/dev/null | cut -f1)
+            log "Would restore from : ${BLD}${latest_dry}${N} (${size_dry})"
+            log "Tarball contents   :"
+            tar -tzf "$latest_dry" 2>/dev/null | sed 's/^/    /' || true
+        else
+            warn "No backup tarballs found in: ${BACKUP_DIR}"
+            warn "A normal update must complete successfully before rollback is available."
+        fi
+        if [ -f "$BACKUP_DIR/last-commit.txt" ]; then
+            local commit_dry; commit_dry=$(cat "$BACKUP_DIR/last-commit.txt")
+            log "Would reset git to : ${BLD}${commit_dry}${N}"
+        else
+            warn "No last-commit.txt found — source tree would NOT be reset during a real rollback."
+        fi
+        echo
+        log "Services that would be stopped/restarted: ${SERVICES[*]:-none}"
+        echo
+        warn "[DRY RUN] No changes made."
+        local e=$(( $(date +%s) - SCRIPT_START ))
+        ok "Preview complete in $(( e / 60 ))m $(( e % 60 ))s"
+        flock -u "$LOCK_FD" 2>/dev/null || true
+        exit 0
+    fi
+
+    # --- Find latest backup ---
+    if [ -z "$(ls -1 "$BACKUP_DIR"/meshmonitor_backup_*.tar.gz 2>/dev/null)" ]; then
+        err "No backup tarballs found in: ${BLD}${BACKUP_DIR}${N}"
+        err "Rollback requires at least one successful normal update run first."
+        err "Run without -r to perform an update and create a backup."
+        err "Use -l / --list-backups to see available backups."
+        die "Nothing to roll back to."
+    fi
+
+    local latest
+    latest=$(ls -1t "$BACKUP_DIR"/meshmonitor_backup_*.tar.gz | head -1)
+    local size; size=$(du --apparent-size -sh "$latest" 2>/dev/null | cut -f1)
+
+    # --- Rollback scope menu ---
+    echo
+    log  "Available backup : ${BLD}${latest}${N} (${size})"
+    if [ -f "$BACKUP_DIR/last-commit.txt" ]; then
+        log "Saved git commit : ${BLD}$(cat "$BACKUP_DIR/last-commit.txt")${N}"
+    fi
+    echo
+    log  "What would you like to restore?"
+    echo "    1) Everything  — data + code + service files  (default)"
+    echo "    2) Code only   — git reset only, keep current /data/"
+    echo "    3) Data only   — /data/ + env restore, keep current code"
+    echo
+    local scope_choice
+    read -r -t 30 -p "  Restore scope [1-3, default=1]: " scope_choice
+    scope_choice="${scope_choice:-1}"
+    local DO_DATA=1 DO_CODE=1
+    case "$scope_choice" in
+        2) DO_DATA=0; DO_CODE=1 ;;
+        3) DO_DATA=1; DO_CODE=0 ;;
+        *) DO_DATA=1; DO_CODE=1 ;;
+    esac
+    echo
+
+    # --- Warning banner ---
+    warn "The following will be OVERWRITTEN:"
+    [ "$DO_DATA" -eq 1 ] && warn "  • /data/                     (your database and apprise config)"
+    [ "$DO_DATA" -eq 1 ] && warn "  • meshmonitor.env            (your live configuration)"
+    [ "$DO_DATA" -eq 1 ] && warn "  • systemd service files      (/etc/systemd/system/meshmonitor*.service)"
+    [ "$DO_CODE" -eq 1 ] && warn "  • Source tree                (reset to saved git commit)"
+    echo
+    warn "This cannot be undone without another backup."
+    warn "-y / --yes does NOT bypass this confirmation."
+    echo
+    warn "DATABASE SCHEMA NOTE:"
+    warn "  If MeshMonitor 4.0 has already started once, schema migrations have run."
+    warn "  Restoring code to 3.x while keeping a 4.0-migrated database will cause"
+    warn "  startup failures — you must restore EVERYTHING (scope 1) for a safe rollback."
+    warn "  A pre-upgrade backup (taken before the first 4.0 start) is required."
+    echo
+
+    # Full word required — a single keystroke cannot trigger a restore
+    local confirm
+    read -r -p "  Type 'yes' to proceed with rollback, anything else to abort: " confirm
+    if [ "$confirm" != "yes" ]; then
+        ok "Rollback aborted — no changes made."
+        flock -u "$LOCK_FD" 2>/dev/null || true
+        exit 0
+    fi
+
+    hr
+    log "Stopping services..."
+    for s in "${SERVICES[@]}"; do run systemctl stop "$s" 2>/dev/null || true; done
+
+    if [ "$DO_DATA" -eq 1 ]; then
+        log "Restoring data from backup tarball..."
+        if [ "$DO_CODE" -eq 1 ]; then
+            # Full restore — extract everything including service files
+            run tar -xzpf "$latest" -C /
+        else
+            # Data only — exclude service files so systemd units are not overwritten
+            run tar -xzpf "$latest" -C / \
+                --exclude='/etc/systemd/system/meshmonitor.service' \
+                --exclude='/etc/systemd/system/meshmonitor-apprise.service'
+        fi
+    else
+        log "Skipping data restore — keeping current /data/ and env files."
+    fi
+
+    if [ "$DO_CODE" -eq 1 ] && [ -f "$BACKUP_DIR/last-commit.txt" ]; then
+        local commit; commit=$(cat "$BACKUP_DIR/last-commit.txt")
+        log "Resetting source tree to commit ${BLD}${commit}${N}..."
+        run_sh "cd '$INSTALL_DIR' && $GIT_CMD reset --hard '$commit'"
+        run_sh "cd '$INSTALL_DIR' && $GIT_CMD clean -fd"
+        run_sh "cd '$INSTALL_DIR' && export NODE_OPTIONS='--max-old-space-size=${NODE_HEAP_CAP:-1536}' && export PUPPETEER_SKIP_DOWNLOAD=true && $SUDO npm install --legacy-peer-deps --audit false"
+        run_sh "cd '$INSTALL_DIR' && export NODE_OPTIONS='--max-old-space-size=${NODE_HEAP_CAP:-1536}' && $SUDO npm run build"
+        run_sh "cd '$INSTALL_DIR' && export NODE_OPTIONS='--max-old-space-size=${NODE_HEAP_CAP:-1536}' && $SUDO npm run build:server"
+        run_sh "$SUDO chown -R '${APP_USER}:${APP_GROUP}' '$INSTALL_DIR'"
+        if [ -f "$INSTALL_DIR/lxc/systemd/meshmonitor.service" ]; then
+            run_sh "cd '$INSTALL_DIR' && $SUDO cp lxc/systemd/meshmonitor.service /etc/systemd/system/"
+            run_sh "cd '$INSTALL_DIR' && $SUDO cp lxc/systemd/meshmonitor-apprise.service /etc/systemd/system/ 2>/dev/null || true"
+            run systemctl daemon-reload
+        fi
+    elif [ "$DO_CODE" -eq 1 ]; then
+        warn "No last-commit.txt found — source tree was NOT reset."
+        warn "You may need to manually reset to your desired version."
+    else
+        log "Skipping code reset — keeping current source tree."
+    fi
+
+    hr
+    log "Starting services..."
+    for s in "${SERVICES[@]}"; do run systemctl start "$s"; done
+
+    # Health check after rollback — a failed rollback should be surfaced clearly
+    if ! wait_for_healthy "rollback"; then
+        err "App is not responding after rollback."
+        err "Check logs with: journalctl -u meshmonitor -n 50"
+        err "You may need to restore manually from an older backup in: ${BACKUP_DIR}"
+        err "Use -l / --list-backups to see what is available."
+    fi
+
+    ok "Rollback complete."
+    local e=$(( $(date +%s) - SCRIPT_START ))
+    ok "Total time: $(( e / 60 ))m $(( e % 60 ))s"
+    flock -u "$LOCK_FD" 2>/dev/null || true
+    exit 0
+}
+[ "$ROLLBACK" -eq 1 ] && do_rollback
+
+# =============================================================================
+# PRE-FLIGHT CHECKS
+# =============================================================================
+hr
+log "Running pre-flight checks..."
+
+free_mb=$(df -Pm "$INSTALL_DIR" | awk 'NR==2 {print $4}')
+[ "$free_mb" -ge 2048 ] && ok "Disk: ${free_mb}MB free" \
+    || warn "Low disk space: ${free_mb}MB free (need ~2GB for build)"
+
+mem_mb=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+if [ "$mem_mb" -ge 4096 ]; then
+    NODE_HEAP_CAP=$(( mem_mb * 3 / 4 ))
+    ok "RAM: ${mem_mb}MB  (Node heap cap: ${NODE_HEAP_CAP}MB)"
+elif [ "$mem_mb" -ge 2048 ]; then
+    NODE_HEAP_CAP=1536
+    ok "RAM: ${mem_mb}MB  (Node heap cap: ${NODE_HEAP_CAP}MB)"
+else
+    NODE_HEAP_CAP=1536
+    warn "Low RAM: ${mem_mb}MB — capping Node heap at ${NODE_HEAP_CAP}MB"
+fi
+
+command -v node >/dev/null 2>&1 \
+    || die "node is not installed. Install with: $DISTRO_PKG_MGR install nodejs"
+node_major=$(node -v | sed 's/v//;s/\..*//')
+# MeshMonitor 4.0+ requires Node 20+ (uuid v14 dependency bumped the floor).
+# Treat < 20 as a hard failure — the build will fail anyway and leaving it as
+# a warning results in confusing npm errors rather than a clear message here.
+if [ "$node_major" -lt 20 ]; then
+    die "Node $(node -v) is too old. MeshMonitor 4.0+ requires Node 20+ (Node 24 preferred).\nUpgrade with: curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && apt install -y nodejs"
+fi
+[ "$node_major" -ge 24 ] \
+    && ok "Node $(node -v)" \
+    || { ok "Node $(node -v)"; warn "Node 24 is preferred for 4.1.x — current: $(node -v)"; }
+
+command -v npm >/dev/null 2>&1 \
+    || die "npm is not installed. Install with: $DISTRO_PKG_MGR install npm"
+ok "npm $(npm --version)"
+
+command -v git >/dev/null 2>&1 \
+    || die "git is not installed. Install with: $DISTRO_PKG_MGR install git"
+ok "git $(git --version | awk '{print $3}')"
+
+curl -fsSL --max-time 5 https://github.com >/dev/null 2>&1 \
+    && ok "GitHub reachable" \
+    || die "Cannot reach github.com — check network connectivity"
+
+# =============================================================================
+# VERSION DETECTION
+# =============================================================================
+hr
+log "Checking versions..."
+
+read_pkg_version() {
+    grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' "$1" \
+        | head -1 | sed 's/.*"\([^"]*\)"$/\1/'
+}
+
+CURRENT_VERSION=$(read_pkg_version "$INSTALL_DIR/package.json")
+log "Current version : ${BLD}${CURRENT_VERSION}${N}"
+MAJOR_UPGRADE=0
+
+run_sh "cd '$INSTALL_DIR' && $GIT_CMD fetch origin main --quiet"
+
+INCOMING_VERSION=""
+if [ "$DRY_RUN" -eq 0 ]; then
+    INCOMING_VERSION=$(cd "$INSTALL_DIR" && $GIT_CMD show origin/main:package.json 2>/dev/null \
+        | grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' \
+        | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)
+fi
+[ -n "$INCOMING_VERSION" ] \
+    && log "Incoming version: ${BLD}${INCOMING_VERSION}${N}" \
+    || { [ "$DRY_RUN" -eq 1 ] \
+        && echo "    [DRY RUN] Incoming version check skipped — no fetch performed." \
+        || warn "Could not read incoming version (fetch may have failed)."; }
+
+if [ -n "$INCOMING_VERSION" ]; then
+    cur_major=$(echo "$CURRENT_VERSION" | sed 's/^v//;s/-.*//' | cut -d. -f1)
+    new_major=$(echo "$INCOMING_VERSION" | sed 's/^v//;s/-.*//' | cut -d. -f1)
+    if [ "$cur_major" != "$new_major" ]; then
+        MAJOR_UPGRADE=1
+        echo
+        hr
+        warn "${R}${BLD}╔══════════════════════════════════════════════════════════════════════════════════════╗${N}"
+        warn "${R}${BLD}║               ⚠   MAJOR VERSION UPGRADE DETECTED   ⚠                               ║${N}"
+        warn "${R}${BLD}╚══════════════════════════════════════════════════════════════════════════════════════╝${N}"
+        echo
+        warn "Upgrading: ${BLD}v${cur_major}.x${N} → ${BLD}v${new_major}.x${N}"
+        echo
+        log  "This script will back up the following before proceeding:"
+        ok   "  ✔  /data/                    (database)"
+        ok   "  ✔  meshmonitor.env           (your configuration)"
+        ok   "  ✔  systemd service files"
+        ok   "  ✔  git commit hash           (source-tree rollback)"
+        echo
+        log  "If anything goes wrong after upgrading, roll back with:"
+        log  "  ${BLD}meshmonitor-update -rn${N}  — preview what will be restored"
+        log  "  ${BLD}meshmonitor-update -r${N}   — restore previous version + data"
+        echo
+        warn "Review the upstream upgrade guide before proceeding:"
+        warn "  https://github.com/Yeraze/meshmonitor/releases"
+        echo
+
+        # 3.x → 4.x specific warnings
+        if [ "$cur_major" -lt 4 ] && [ "$new_major" -ge 4 ] 2>/dev/null; then
+            warn "Breaking changes in 4.0 that require action after upgrade:"
+            warn ""
+            warn "  ENV VARS REMOVED (safe to delete from meshmonitor.env):"
+            warn "    ENABLE_VIRTUAL_NODE              → configure per source in UI"
+            warn "    VIRTUAL_NODE_PORT                → configure per source in UI"
+            warn "    VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS → configure per source in UI"
+            warn ""
+            warn "  ENV VARS CHANGED:"
+            warn "    MESHTASTIC_NODE_IP   → bootstrap only (seeds first source on first boot,"
+            warn "                          ignored on all subsequent restarts)"
+            warn "    MESHTASTIC_TCP_PORT  → same — bootstrap only"
+            warn ""
+            warn "  POST-UPGRADE UI STEPS REQUIRED:"
+            warn "    • Re-enable Virtual Node per source:"
+            warn "        Dashboard → Sources → Edit Source → Virtual Node → Enable → Save"
+            warn "    • Review per-source permissions — non-admin users may have lost access:"
+            warn "        Dashboard → Sources → Edit Source → Permissions"
+            warn "    • Review per-source settings (auto-responder, scheduler, notifications):"
+            warn "        All previously global settings are now per-source"
+            warn ""
+            warn "  DATABASE:"
+            warn "    Schema migrations run automatically on first start — may be slow."
+            warn "    Rolling back after first start may leave the DB in a state"
+            warn "    that 3.x cannot read. Use a pre-upgrade backup for safe rollback."
+            echo
+        fi
+
+        # Major version always prompts — -y / --yes does not bypass this.
+        read -r -p "  Type 'yes' to proceed with the major version upgrade, anything else to abort: " a
+        [ "$a" = "yes" ] || die "Aborted by user."
+        hr
+    fi
+fi
+
+# =============================================================================
+# STOP SERVICES
+# =============================================================================
+hr
+log "Stopping services..."
+for s in "${SERVICES[@]}"; do
+    run systemctl stop "$s"
+    ok "Stopped: $s"
+done
+
+# =============================================================================
+# BACKUP
+# Timestamped tarball of all persistent data outside the git tree.
+# Prints tarball size after creation — a suspiciously small file is a useful
+# early warning that something important was missing.
+# Prunes old tarballs beyond BACKUP_KEEP.
+# =============================================================================
+hr
+log "Creating backup..."
+
+_VER_SAFE=$(echo "${CURRENT_VERSION:-unknown}" | tr "/: " "---")
+BACKUP_NAME="meshmonitor_backup_v${_VER_SAFE}_$(date +%Y-%m-%d-%H%M).tar.gz"
+BACKUP_PATH="$BACKUP_DIR/$BACKUP_NAME"
+
+BACKUP_PATHS=()
+
+# --- Data directory detection ---
+# MeshMonitor's database location varies by install type. Check in order:
+#   1. DATA_DIR env var from the active env file (most explicit)
+#   2. $INSTALL_DIR/data  (git clone default — data lives inside the repo dir)
+#   3. /data             (LXC container volume mount convention)
+# A 1.0K backup is the symptom of missing the data dir — warn loudly if so.
+DATA_DIR_FOUND=""
+_data_candidates=()
+[ -n "${DATA_DIR_FROM_ENV:-}" ]      && _data_candidates+=("$DATA_DIR_FROM_ENV")
+[ -n "${INSTALL_DIR:-}" ]            && _data_candidates+=("$INSTALL_DIR/data")
+_data_candidates+=("/data")
+
+for _d in "${_data_candidates[@]}"; do
+    if [ -d "$_d" ]; then
+        BACKUP_PATHS+=("$_d")
+        DATA_DIR_FOUND="$_d"
+        log "Data dir : ${BLD}${_d}${N}"
+        break
+    fi
+done
+[ -z "$DATA_DIR_FOUND" ] && warn "Data directory not found — database will NOT be backed up."
+
+[ -f /etc/meshmonitor/meshmonitor.env ]                && BACKUP_PATHS+=("/etc/meshmonitor/meshmonitor.env")
+[ -f /etc/meshmonitor/meshmonitor.env.example ]        && BACKUP_PATHS+=("/etc/meshmonitor/meshmonitor.env.example")
+[ -f /var/lib/meshmonitor/.env ]                       && BACKUP_PATHS+=("/var/lib/meshmonitor/.env")
+[ -f /etc/systemd/system/meshmonitor.service ]         && BACKUP_PATHS+=("/etc/systemd/system/meshmonitor.service")
+[ -f /etc/systemd/system/meshmonitor-apprise.service ] && BACKUP_PATHS+=("/etc/systemd/system/meshmonitor-apprise.service")
+
+if [ "${#BACKUP_PATHS[@]}" -eq 0 ]; then
+    warn "No backup targets found (no /data, env file, or service files). Skipping backup."
+    warn "Continuing without a backup — rollback will not be available for this run."
+else
+    if [ "$DRY_RUN" -eq 1 ]; then
+        ok "[DRY RUN] Would backup: ${BACKUP_PATHS[*]}"
+        ok "[DRY RUN] Would save to: $BACKUP_PATH"
+    else
+        $SUDO tar -czpf "$BACKUP_PATH" -P --ignore-failed-read "${BACKUP_PATHS[@]}" \
+            && true \
+            || die "Backup failed — aborting before any changes are made."
+        local_size=$(du --apparent-size -sh "$BACKUP_PATH" 2>/dev/null | cut -f1)
+        local_size_bytes=$(stat -c '%s' "$BACKUP_PATH" 2>/dev/null || echo 0)
+        ok "Backup created: ${BLD}${BACKUP_PATH}${N} (${local_size})"
+
+        # Warn if the backup is suspiciously small — strong indicator the database
+        # directory was not found and the backup is incomplete.
+        if [ "$local_size_bytes" -lt 51200 ]; then
+            warn "Backup is only ${local_size} — this is unexpectedly small."
+            warn "The MeshMonitor database was likely NOT captured."
+            [ -z "$DATA_DIR_FOUND" ] \
+                && warn "No data directory was found. Set DATA_DIR in your env file or check your install path." \
+                || warn "Data dir was: ${DATA_DIR_FOUND} — verify it contains the database."
+            warn "Proceeding, but rollback will NOT restore your database from this backup."
+        fi
+
+        cd "$INSTALL_DIR" && $GIT_CMD rev-parse HEAD > "$BACKUP_DIR/last-commit.txt"
+        ok "Commit hash saved: $(cat "$BACKUP_DIR/last-commit.txt")"
+
+        mapfile -t old_backups < <(ls -1t "$BACKUP_DIR"/meshmonitor_backup_*.tar.gz 2>/dev/null \
+            | tail -n +$(( BACKUP_KEEP + 1 )))
+        if [ "${#old_backups[@]}" -gt 0 ]; then
+            log "Pruning ${#old_backups[@]} old backup(s) (keeping last ${BACKUP_KEEP})..."
+            for old in "${old_backups[@]}"; do
+                rm -f "$old" && log "  Removed: $(basename "$old")"
+            done
+        fi
+    fi
+fi
+
+# =============================================================================
+# UPDATE SOURCE
+# Uses GIT_CMD (runs as app user) to avoid Git 2.35.2+ "dubious ownership"
+# errors on Debian 12 / git 2.39.x.
+# Stashes local modifications before pulling so git pull never fails mid-update.
+# =============================================================================
+hr
+log "Updating source code..."
+
+GIT_STASHED=0
+if [ "$DRY_RUN" -eq 0 ]; then
+    cd "$INSTALL_DIR"
+    if ! $GIT_CMD diff --quiet || ! $GIT_CMD diff --cached --quiet; then
+        warn "Local modifications detected — stashing before pull..."
+        if $GIT_CMD stash push -m "meshmonitor-update-autostash-$(date +%Y%m%d-%H%M%S)"; then
+            GIT_STASHED=1
+            ok "Local changes stashed."
+        else
+            warn "Could not stash local changes. Proceeding anyway — pull may fail."
+        fi
+    fi
+fi
+
+run_sh "cd '$INSTALL_DIR' && $GIT_CMD pull origin main"
+run_sh "cd '$INSTALL_DIR' && $GIT_CMD submodule update --init --recursive"
+
+if [ "$GIT_STASHED" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
+    log "Re-applying stashed local changes..."
+    if $GIT_CMD -C "$INSTALL_DIR" stash pop; then
+        ok "Stash re-applied cleanly."
+    else
+        warn "Stash pop had conflicts — local changes are still in 'git stash list'."
+        warn "Resolve manually after this update if needed."
+    fi
+fi
+
+# =============================================================================
+# UPDATE SYSTEMD SERVICE FILES & ENV EXAMPLE
+# =============================================================================
+hr
+log "Updating systemd service files..."
+SVC_SRC="$INSTALL_DIR/lxc/systemd"
+if [ -d "$SVC_SRC" ]; then
+    run_sh "$SUDO cp '$SVC_SRC/meshmonitor.service' /etc/systemd/system/"
+    run_sh "$SUDO cp '$SVC_SRC/meshmonitor-apprise.service' /etc/systemd/system/ 2>/dev/null || true"
+    run systemctl daemon-reload
+    ok "Service files updated from ${SVC_SRC}."
+else
+    warn "lxc/systemd/ not found in source tree — service files NOT updated."
+    warn "This is expected only if you're running a non-LXC deployment with custom service files."
+fi
+
+if [ -f "$INSTALL_DIR/.env.example" ]; then
+    run_sh "$SUDO cp '$INSTALL_DIR/.env.example' /etc/meshmonitor/meshmonitor.env.example 2>/dev/null || true"
+    ok "Env example updated."
+fi
+
+# =============================================================================
+# BUILD
+# NODE_OPTIONS heap cap applied to all three npm operations.
+# Guard that both build scripts exist — catches renamed scripts on future refactors.
+# =============================================================================
+hr
+log "Installing dependencies..."
+
+if [ "$DRY_RUN" -eq 0 ]; then
+    grep -q '"build"' "$INSTALL_DIR/package.json" \
+        || die "package.json has no 'build' script — repo may be corrupt or mid-pull."
+    grep -q '"build:server"' "$INSTALL_DIR/package.json" \
+        || die "package.json has no 'build:server' script — repo may be corrupt or mid-pull."
+fi
+
+# Puppeteer (added in MeshMonitor 4.7.x) tries to auto-download Chrome at install
+# time. On a headless server LXC we never need a browser, so skip the download.
+# Also wipe any broken partial cache — leaving it causes:
+#   "folder exists but executable chrome-linux64/chrome is missing"
+if [ "$DRY_RUN" -eq 0 ]; then
+    if [ -d "${HOME}/.cache/puppeteer" ]; then
+        log "Cleaning stale Puppeteer browser cache (prevents Chrome download failures)..."
+        rm -rf "${HOME}/.cache/puppeteer"
+        ok "Puppeteer cache cleared."
+    fi
+fi
+run_sh "cd '$INSTALL_DIR' && export NODE_OPTIONS='--max-old-space-size=${NODE_HEAP_CAP}' \
+    && export PUPPETEER_SKIP_DOWNLOAD=true \
+    && $SUDO npm install --legacy-peer-deps --audit false"
+
+log "Building client (Vite + TypeScript)..."
+run_sh "cd '$INSTALL_DIR' && export NODE_OPTIONS='--max-old-space-size=${NODE_HEAP_CAP}' \
+    && $SUDO npm run build"
+
+log "Building server (TypeScript)..."
+run_sh "cd '$INSTALL_DIR' && export NODE_OPTIONS='--max-old-space-size=${NODE_HEAP_CAP}' \
+    && $SUDO npm run build:server"
+
+# =============================================================================
+# RESTORE OWNERSHIP
+# npm install and build run as root, creating root-owned files inside a
+# directory owned by the app user. Restoring ownership prevents permission
+# issues on next startup.
+# =============================================================================
+if [ "$APP_USER" != "root" ] && [ "$DRY_RUN" -eq 0 ]; then
+    log "Restoring ownership to ${APP_USER}:${APP_GROUP}..."
+    $SUDO chown -R "${APP_USER}:${APP_GROUP}" "$INSTALL_DIR"
+    ok "Ownership restored."
+fi
+
+# =============================================================================
+# START SERVICES & HEALTH CHECK
+# On failure: directs the user to run -r manually rather than prompting
+# inline — ensures the full rollback confirmation flow always runs.
+# =============================================================================
+hr
+log "Starting services..."
+for s in "${SERVICES[@]}"; do
+    run systemctl start "$s"
+    ok "Started: $s"
+done
+
+if [ "$DRY_RUN" -eq 0 ]; then
+    # First start after a major version upgrade runs schema migrations — give it more time.
+    _health_timeout=30
+    if [ "${MAJOR_UPGRADE:-0}" -eq 1 ]; then
+        _health_timeout=60
+        warn "First start after a major version upgrade may be slow — schema migrations are running."
+        warn "Check progress with: journalctl -u meshmonitor -f"
+    fi
+
+    if ! wait_for_healthy "post-update" "$_health_timeout"; then
+        err "Update completed but app is not responding."
+        err "To roll back to the previous version, run:"
+        err "  $0 --rollback"
+        err "To preview what a rollback would do first, run:"
+        err "  $0 --rollback --dry-run"
+    fi
+fi
+
+# =============================================================================
+# FINAL STATUS & ELAPSED TIME
+# =============================================================================
+hr
+log "Final service status:"
+for s in "${SERVICES[@]}"; do
+    systemctl status "$s" --no-pager --lines=3 || true
+done
+
+SCRIPT_END=$(date +%s)
+ELAPSED=$(( SCRIPT_END - SCRIPT_START ))
+MINS=$(( ELAPSED / 60 ))
+SECS=$(( ELAPSED % 60 ))
+echo
+hr
+ok "Update complete in ${BLD}${MINS}m ${SECS}s${N}  (finished $(date '+%H:%M:%S'))"
+[ -n "${LOG_FILE:-}" ] && ok "Debug log: ${BLD}${LOG_FILE}${N}"
+
+# Post-upgrade action reminder for 3.x → 4.x migrations
+if [ "${MAJOR_UPGRADE:-0}" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
+    hr
+    warn "POST-UPGRADE ACTIONS REQUIRED (3.x → 4.x):"
+    warn ""
+    warn "  1. Re-enable Virtual Node per source (if used):"
+    warn "       Dashboard → Sources → Edit Source → Virtual Node → Enable → Save"
+    warn ""
+    warn "  2. Review per-source permissions for non-admin users:"
+    warn "       Dashboard → Sources → Edit Source → Permissions"
+    warn ""
+    warn "  3. Review per-source settings (auto-responder, scheduler, etc.):"
+    warn "       All previously global settings are now configured per source"
+    warn ""
+    warn "  4. Verify your source was created from MESHTASTIC_NODE_IP:"
+    warn "       Dashboard → Sources — if missing, add it manually"
+fi
+
+hr
+
+flock -u "$LOCK_FD" 2>/dev/null || true
