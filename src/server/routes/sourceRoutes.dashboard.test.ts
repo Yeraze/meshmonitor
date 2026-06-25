@@ -40,6 +40,9 @@ vi.mock('../meshtasticManager.js', () => ({
   MeshtasticManager: vi.fn().mockImplementation(() => ({ start: vi.fn(), stop: vi.fn() })),
 }));
 
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+const mockRegistry = sourceManagerRegistry as any;
+
 const mockDb = databaseService as any;
 const MOCK_SOURCE = { id: 'src-mqtt', name: 'Test MQTT', type: 'mqtt_broker', enabled: true };
 
@@ -111,5 +114,26 @@ describe('GET /:id/dashboard — bundled source datasets', () => {
     expect(Array.isArray(res.body.nodes)).toBe(true);
     expect(Array.isArray(res.body.channels)).toBe(true);
     expect(Array.isArray(res.body.neighborInfo)).toBe(true);
+  });
+
+  it('scopes the local-node injection lookup to the source (no cross-source leak)', async () => {
+    // Local node not yet in this source's node list → the injection path fetches
+    // its full record. That lookup MUST be source-scoped, or getNode's
+    // cross-source first-match could inject another source's row (#3735 review).
+    mockDb.nodes.getAllNodes.mockResolvedValue([]); // local node absent from list
+    mockDb.nodes.getNode.mockResolvedValue(null);   // not stored under this source yet
+    mockRegistry.getManager.mockReturnValue({
+      sourceId: 'src-mqtt',
+      getLocalNodeInfo: () => ({ nodeNum: 42, nodeId: '!0000002a', longName: 'Local', shortName: 'LCL' }),
+    });
+
+    const res = await request(createApp(adminUser)).get('/src-mqtt/dashboard');
+
+    expect(res.status).toBe(200);
+    expect(mockDb.nodes.getNode).toHaveBeenCalledWith(42, 'src-mqtt');
+    // Falls through to the synthesized minimal record for this source.
+    expect(res.body.nodes).toHaveLength(1);
+    expect(res.body.nodes[0].nodeNum).toBe(42);
+    expect(res.body.nodes[0].sourceId).toBe('src-mqtt');
   });
 });
