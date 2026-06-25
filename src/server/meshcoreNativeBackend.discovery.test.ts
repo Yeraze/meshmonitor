@@ -318,9 +318,9 @@ describe('MeshCoreNativeBackend — discovery responder', () => {
   it('serializes overlapping 0x8C consumers so a concurrent telemetry reply is not stolen by request_regions (#3667)', async () => {
     // request_regions (raw frame, tag-blind first-match) and request_telemetry
     // (library sendBinaryRequest) both ride PUSH_CODE_BINARY_RESPONSE (0x8C).
-    // runExclusiveBinaryResponse must keep them from overlapping on this
-    // connection — otherwise the regions listener consumes the telemetry reply
-    // and parses CayenneLPP bytes as a region list.
+    // runExclusiveRadioOp must keep them from overlapping on this connection —
+    // otherwise the regions listener consumes the telemetry reply and parses
+    // CayenneLPP bytes as a region list.
     const { backend, conn } = await connectedBackend();
     const callLog: string[] = [];
 
@@ -423,5 +423,137 @@ describe('MeshCoreNativeBackend — discovery responder', () => {
     // Order proves the chain advanced past the rejection: regions sent (and held
     // the lock) first, and telemetry only sent after regions' timeout released it.
     expect(callLog).toEqual(['regions:send', 'telemetry:send', 'telemetry:reply']);
+  });
+
+  it('request_regions ignores a foreign Err that arrives after its Sent ack (#3725)', async () => {
+    // The Err channel is shared and untagged, and unlocked library commands
+    // (e.g. send_message) can emit on it. Once request_regions has its Sent ack,
+    // a later Err belongs to a different command and must NOT reject the in-flight
+    // BinaryResponse wait. Without the !sentReceived gate this rejects instead.
+    const { backend, conn } = await connectedBackend();
+
+    (conn as any).sendToRadioFrame = (frame: Uint8Array) => {
+      conn.sentFrames.push(frame);
+      if (frame[0] === 57) {
+        setImmediate(() => {
+          conn.emit(ResponseCodes.Sent);            // our send was accepted
+          conn.emit(ResponseCodes.Err);             // a FOREIGN command fails on the shared channel
+          conn.emit(PushCodes.BinaryResponse, {     // our real reply still arrives
+            reserved: 0,
+            tag: 0x1,
+            responseData: Uint8Array.from([3, 0, 0, 0, ...Buffer.from('bavaria', 'ascii'), 0]),
+          });
+        });
+        return;
+      }
+      setImmediate(() => conn.emit(ResponseCodes.Ok));
+    };
+
+    const res = await backend.sendCommand('request_regions', { public_key: 'aa'.repeat(32) });
+    expect(res.success).toBe(true);
+    expect(res.data.clock).toBe(3);
+    expect(res.data.regions).toEqual(['bavaria']);
+  });
+
+  it('serializes a command-ack op (discover_path) against request_regions under the unified lock (#3725)', async () => {
+    // discover_path waits on the shared Sent/Err ack; request_regions holds the
+    // lock through its multi-second BinaryResponse wait. The unified lock must
+    // keep discover_path from sending (and registering its Sent/Err listeners)
+    // until regions completes — otherwise regions' own onSent could grab
+    // discover_path's Sent, or vice versa.
+    const { backend, conn } = await connectedBackend();
+    const callLog: string[] = [];
+
+    (conn as any).sendToRadioFrame = (frame: Uint8Array) => {
+      conn.sentFrames.push(frame);
+      if (frame[0] === 57) { // request_regions
+        callLog.push('regions:send');
+        setImmediate(() => {
+          conn.emit(ResponseCodes.Sent);
+          callLog.push('regions:reply');
+          conn.emit(PushCodes.BinaryResponse, {
+            reserved: 0,
+            tag: 0x1,
+            responseData: Uint8Array.from([1, 0, 0, 0, ...Buffer.from('thuringia', 'ascii'), 0]),
+          });
+        });
+        return;
+      }
+      if (frame[0] === 52) { // discover_path
+        callLog.push('discover_path:send');
+        setImmediate(() => {
+          callLog.push('discover_path:ack');
+          conn.emit(ResponseCodes.Sent);
+        });
+        return;
+      }
+      setImmediate(() => conn.emit(ResponseCodes.Ok));
+    };
+
+    const [regionsRes, pathRes] = await Promise.all([
+      backend.sendCommand('request_regions', { public_key: 'aa'.repeat(32) }),
+      backend.sendCommand('discover_path', { public_key: 'cc'.repeat(32) }),
+    ]);
+
+    expect(regionsRes.success).toBe(true);
+    expect(regionsRes.data.regions).toEqual(['thuringia']);
+    expect(pathRes.success).toBe(true);
+
+    // regions (issued first) holds the lock through its reply; discover_path only
+    // sends afterwards — the two never share the ack channel.
+    expect(callLog).toEqual(['regions:send', 'regions:reply', 'discover_path:send', 'discover_path:ack']);
+  });
+
+  it('serializes set_device_time against request_regions under the unified lock (#3725)', async () => {
+    // set_device_time uses the same shared Ok/Err ack window as discover_*, and
+    // sends via c.sendCommandSetDeviceTime rather than sendToRadioFrame. The
+    // unified lock must keep it from overlapping request_regions' window.
+    const { backend, conn } = await connectedBackend();
+    const callLog: string[] = [];
+
+    (conn as any).sendToRadioFrame = (frame: Uint8Array) => {
+      conn.sentFrames.push(frame);
+      if (frame[0] === 57) { // request_regions
+        callLog.push('regions:send');
+        setImmediate(() => {
+          conn.emit(ResponseCodes.Sent);
+          callLog.push('regions:reply');
+          conn.emit(PushCodes.BinaryResponse, {
+            reserved: 0,
+            tag: 0x1,
+            responseData: Uint8Array.from([1, 0, 0, 0, ...Buffer.from('hesse', 'ascii'), 0]),
+          });
+        });
+        return;
+      }
+      setImmediate(() => conn.emit(ResponseCodes.Ok));
+    };
+    (conn as any).sendCommandSetDeviceTime = (_epoch: number) => {
+      callLog.push('settime:send');
+      setImmediate(() => {
+        callLog.push('settime:ack');
+        conn.emit(ResponseCodes.Ok);
+      });
+      return Promise.resolve();
+    };
+
+    const [regionsRes, timeRes] = await Promise.all([
+      backend.sendCommand('request_regions', { public_key: 'aa'.repeat(32) }),
+      backend.sendCommand('set_device_time', { epoch: 1_700_000_000 }),
+    ]);
+
+    expect(regionsRes.success).toBe(true);
+    expect(regionsRes.data.regions).toEqual(['hesse']);
+    expect(timeRes.success).toBe(true);
+
+    // The two never overlapped: each op's ':send' is immediately followed by its
+    // own ':ack'/':reply'. Lock-acquisition order is microtask-dependent here
+    // (set_device_time has no await before the lock), so assert pairing rather
+    // than absolute order.
+    expect(callLog).toHaveLength(4);
+    const op = (s: string) => s.split(':')[0];
+    expect(op(callLog[0])).toBe(op(callLog[1]));
+    expect(op(callLog[2])).toBe(op(callLog[3]));
+    expect(op(callLog[0])).not.toBe(op(callLog[2]));
   });
 });
