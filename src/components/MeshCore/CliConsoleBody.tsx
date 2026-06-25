@@ -148,6 +148,11 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
   const historyRef = useRef<string[]>([]);
   const historyIndexRef = useRef<number | null>(null);
   const draftRef = useRef<string>('');
+  // The command input is disabled while a command is in flight, which drops
+  // keyboard focus. Return focus to it once the send completes so an operator
+  // can fire commands back-to-back without re-clicking the field (#3752).
+  const commandInputRef = useRef<HTMLInputElement | null>(null);
+  const refocusAfterSendRef = useRef(false);
   const HISTORY_MAX = 50;
 
   useEffect(() => {
@@ -201,6 +206,7 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
 
   const runAndLog = useCallback(async (cmd: string, opts?: { confirm?: boolean }) => {
     if (sending) return;
+    refocusAfterSendRef.current = true;
     setSending(true);
     appendTranscript({ kind: 'sent', text: cmd });
     setCommand('');
@@ -228,6 +234,16 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
       appendTranscript({ kind: 'error', text: `${result.error}${hint}` });
     }
   }, [appendTranscript, runCommand, sending, t]);
+
+  // Once a send completes and the input re-enables, return keyboard focus to
+  // the command line (#3752). The flag keeps this from grabbing focus on mount
+  // or on unrelated `sending`/`disabled` transitions.
+  useEffect(() => {
+    if (!sending && refocusAfterSendRef.current) {
+      refocusAfterSendRef.current = false;
+      if (!disabled) commandInputRef.current?.focus();
+    }
+  }, [sending, disabled]);
 
   useImperativeHandle(ref, () => ({
     appendInfo: (text: string) => appendTranscript({ kind: 'info', text }),
@@ -321,6 +337,7 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
         }}
       >
         <input
+          ref={commandInputRef}
           type="text"
           value={command}
           onChange={(e) => {
