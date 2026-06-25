@@ -29,7 +29,35 @@ function makeDb(): Database.Database {
     latitude REAL,
     longitude REAL
   );`);
+  db.exec(`CREATE TABLE telemetry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nodeNum INTEGER NOT NULL,
+    telemetryType TEXT NOT NULL,
+    timestamp INTEGER NOT NULL,
+    value REAL NOT NULL
+  );`);
   return db;
+}
+
+/** Insert a paired position fix (a latitude row + a longitude row) into telemetry. */
+function insertFix(
+  db: Database.Database,
+  nodeNum: number,
+  timestamp: number,
+  lat: number,
+  lon: number,
+): void {
+  const stmt = db.prepare(
+    'INSERT INTO telemetry (nodeNum, telemetryType, timestamp, value) VALUES (?, ?, ?, ?)',
+  );
+  stmt.run(nodeNum, 'latitude', timestamp, lat);
+  stmt.run(nodeNum, 'longitude', timestamp, lon);
+}
+
+function telemetryRows(db: Database.Database): Array<{ telemetryType: string; value: number }> {
+  return db
+    .prepare('SELECT telemetryType, value FROM telemetry ORDER BY id')
+    .all() as Array<{ telemetryType: string; value: number }>;
 }
 
 function getNode(db: Database.Database, table: string, id: string): PosRow {
@@ -82,5 +110,44 @@ describe('Migration 107 — clear Null Island positions (SQLite)', () => {
     migration.up(db);
     expect(() => migration.up(db)).not.toThrow();
     expect(getNode(db, 'nodes', 'exact')).toMatchObject({ latitude: null, longitude: null });
+  });
+
+  describe('telemetry position-history cleanup', () => {
+    it('deletes both rows of a (0,0) fix while keeping legitimate fixes', () => {
+      insertFix(db, 1, 1000, 0, 0); // Null Island → both rows deleted
+      insertFix(db, 1, 2000, 0.0004, -0.0002); // near-zero → both deleted
+      insertFix(db, 2, 3000, 37.7749, -122.4194); // real → kept
+      // Greenwich: lon ~0 but real lat — must be kept (not a pair of near-zeros).
+      insertFix(db, 3, 4000, 51.4778, 0.0001);
+
+      migration.up(db);
+
+      const rows = telemetryRows(db);
+      // Only the two legitimate fixes survive (2 rows each).
+      expect(rows).toHaveLength(4);
+      const lats = rows.filter((r) => r.telemetryType === 'latitude').map((r) => r.value);
+      expect(lats.sort()).toEqual([37.7749, 51.4778]);
+    });
+
+    it('does not delete an unpaired near-zero latitude row', () => {
+      // A lone latitude row with no matching longitude at the same (nodeNum,
+      // timestamp) is not a Null Island fix and must be left untouched.
+      db.prepare(
+        'INSERT INTO telemetry (nodeNum, telemetryType, timestamp, value) VALUES (?, ?, ?, ?)',
+      ).run(1, 'latitude', 5000, 0);
+
+      migration.up(db);
+
+      expect(telemetryRows(db)).toHaveLength(1);
+    });
+
+    it('is idempotent for telemetry — a second run deletes nothing more', () => {
+      insertFix(db, 1, 1000, 0, 0);
+      insertFix(db, 2, 2000, 10, 20);
+      migration.up(db);
+      const after = telemetryRows(db);
+      migration.up(db);
+      expect(telemetryRows(db)).toEqual(after);
+    });
   });
 });
