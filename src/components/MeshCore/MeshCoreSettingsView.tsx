@@ -70,9 +70,14 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
         return;
       }
       setDiscoveredRegions(result.regions);
-      if (result.regions.length === 0) {
+      if (result.noZeroHopRepeaters) {
         showToast(
-          t('meshcore.scope.discover_none', 'No regions found. Try "Discover Repeaters" first, then retry.'),
+          t('meshcore.scope.discover_no_repeaters', 'No nearby (0-hop) repeaters found. Move closer to a repeater and try again.'),
+          'info',
+        );
+      } else if (result.regions.length === 0) {
+        showToast(
+          t('meshcore.scope.discover_none', 'Nearby repeaters reported no regions.'),
           'info',
         );
       }
@@ -262,7 +267,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
             </button>
             <p className="hint" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
               {t('meshcore.scope.discover_hint',
-                'Queries known repeaters for the regions they serve. Run "Discover Repeaters" (above) first for the fullest list.')}
+                'Sweeps for nearby (0-hop / direct-range) repeaters and asks each one which regions it serves.')}
             </p>
             {discoveredRegions && discoveredRegions.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
