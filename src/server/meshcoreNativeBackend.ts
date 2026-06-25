@@ -828,33 +828,51 @@ export class MeshCoreNativeBackend extends EventEmitter {
   }
 
   /**
-   * Serializes operations that await the shared PUSH_CODE_BINARY_RESPONSE
-   * (0x8C) push on THIS connection. That push carries only a 4-byte correlation
-   * `tag` and no responder pubkey. Our raw-frame `request_regions` can't obtain
-   * a tag — `sendToRadioFrame` fires the `Sent` ack with no `expectedAckCrc` —
-   * so it falls back to accepting the *first* 0x8C reply it sees. A
-   * `request_telemetry` binary request rides the same 0x8C push, so if the two
-   * overlap they race for that first reply and mis-attribute each other's
-   * payload (a telemetry CayenneLPP body parsed as a regions list, or vice
-   * versa). Chaining every 0x8C consumer on a single per-instance promise
-   * guarantees exactly one is listening at a time.
+   * Serializes "radio operations" that listen on UNCORRELATED device channels
+   * on THIS connection — i.e. raw-frame commands whose only completion signal is
+   * the shared, tag-less `Ok` / `Sent` / `Err` ack (discover_path, discover_nodes,
+   * request_regions, set_device_time), and/or the shared `PUSH_CODE_BINARY_RESPONSE`
+   * (0x8C) push (request_regions, request_telemetry). None of these carry a
+   * correlation tag we can match on (`sendToRadioFrame` fires `Sent` with no
+   * `expectedAckCrc`, and the 0x8C push carries only a tag we can't obtain), so
+   * each handler grabs the *first* event it sees on its channel. If two such ops
+   * overlap, one consumes the other's ack/reply — a stray `Err` false-rejects a
+   * discovery, or a telemetry CayenneLPP body gets parsed as a region list.
+   * Chaining them on a single per-instance promise guarantees exactly one is
+   * listening at a time (#3722, #3725).
+   *
+   * This is a unified lock (issue #3725, option 2): one chain covers both the
+   * command-ack window and the 0x8C reply window so there is a single mental
+   * model. The tradeoff is that these admin/discovery/telemetry ops serialize
+   * against each other on a connection; that is acceptable since they are
+   * infrequent and short (the only long holder is request_regions' BinaryResponse
+   * wait, which it must hold anyway to keep request_telemetry from stealing its
+   * reply).
    *
    * The chain is an instance field, so it is inherently per-source: each source
    * owns its own MeshCoreNativeBackend (and physical connection), so this never
-   * serializes across sources — only same-connection 0x8C ops wait on each
-   * other. The lock is held until the operation's own listeners tear down
-   * (bounded by each op's internal timeout), so it always releases.
+   * serializes across sources — only same-connection ops wait on each other. The
+   * lock is held until the operation's own listeners tear down (bounded by each
+   * op's internal timeout, or sendCommand's outer withTimeout), so it always
+   * releases.
+   *
+   * NOTE: this does not lock *library* commands (e.g. send_message via
+   * sendTextMessage), which can still emit an `Err` on the shared channel. The
+   * fragile handlers above guard against that where they can — request_regions
+   * ignores `Err` once `Sent` has arrived, so its multi-second reply wait is not
+   * exposed to a foreign `Err`; the discover_nodes, discover_path and
+   * set_device_time ack windows are sub-millisecond.
    */
-  private binaryResponseChain: Promise<unknown> = Promise.resolve();
+  private radioOpChain: Promise<unknown> = Promise.resolve();
 
-  private runExclusiveBinaryResponse<T>(fn: () => Promise<T>): Promise<T> {
+  private runExclusiveRadioOp<T>(fn: () => Promise<T>): Promise<T> {
     // Run after whatever is already queued, regardless of how it settled
     // (using `fn` for both handlers means a prior rejection still releases us).
-    const run = this.binaryResponseChain.then(fn, fn);
+    const run = this.radioOpChain.then(fn, fn);
     // Advance the chain to this op's completion. Swallow settlement here so the
     // chain never carries an unhandled rejection — the caller still receives
     // `run` (and its rejection) directly.
-    this.binaryResponseChain = run.then(() => {}, () => {});
+    this.radioOpChain = run.then(() => {}, () => {});
     return run;
   }
 
@@ -919,7 +937,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
         frame[0] = 52;
         frame[1] = 0x00;
         frame.set(publicKey, 2);
-        await new Promise<void>((resolve, reject) => {
+        // Serialize the Sent/Err command-ack window against other radio ops on
+        // this connection — see runExclusiveRadioOp.
+        await this.runExclusiveRadioOp(() => new Promise<void>((resolve, reject) => {
           const onSent = () => {
             c.off(this.constants!.ResponseCodes.Sent, onSent);
             c.off(this.constants!.ResponseCodes.Err, onErr);
@@ -933,7 +953,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           c.once(this.constants!.ResponseCodes.Sent, onSent);
           c.once(this.constants!.ResponseCodes.Err, onErr);
           c.sendToRadioFrame(frame);
-        });
+        }));
         return { ok: true };
       }
 
@@ -949,7 +969,6 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // Responses arrive asynchronously as 0x8E pushes (see wirePushEvents).
         const filter = Number(params.filter) & 0xff;
         const tag = (Number(params.tag) >>> 0) || 0;
-        this.pendingDiscoverTag = tag;
         const frame = new Uint8Array(2 + 1 + 4);
         frame[0] = 55; // CMD_SEND_CONTROL_DATA
         frame[1] = 0x80; // CTL_TYPE_NODE_DISCOVER_REQ, prefix_only = false
@@ -959,7 +978,13 @@ export class MeshCoreNativeBackend extends EventEmitter {
         frame[5] = (tag >>> 16) & 0xff;
         frame[6] = (tag >>> 24) & 0xff;
         // The firmware acks CMD_SEND_CONTROL_DATA with an OK frame (not Sent).
-        await new Promise<void>((resolve, reject) => {
+        // Serialize the Ok/Err command-ack window against other radio ops on
+        // this connection — see runExclusiveRadioOp.
+        await this.runExclusiveRadioOp(() => new Promise<void>((resolve, reject) => {
+          // Set the pending tag inside the lock, right before sending, so a
+          // discovery queued behind a running one can't clobber its tag while
+          // the running one's 0x8E responses are still arriving.
+          this.pendingDiscoverTag = tag;
           const onOk = () => {
             c.off(this.constants!.ResponseCodes.Ok, onOk);
             c.off(this.constants!.ResponseCodes.Err, onErr);
@@ -973,7 +998,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           c.once(this.constants!.ResponseCodes.Ok, onOk);
           c.once(this.constants!.ResponseCodes.Err, onErr);
           c.sendToRadioFrame(frame);
-        });
+        }));
         return { ok: true };
       }
 
@@ -998,9 +1023,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
         frame[33] = 0x01; // ANON_REQ_TYPE_REGIONS
         frame[34] = 0x00; // reply_path_len = 0
 
-        // Serialize against other 0x8C consumers (e.g. request_telemetry) on
-        // this connection — see runExclusiveBinaryResponse.
-        const responseData: Uint8Array = await this.runExclusiveBinaryResponse(() => new Promise<Uint8Array>((resolve, reject) => {
+        // Serialize the Sent/Err ack AND the 0x8C reply window against other
+        // radio ops on this connection — see runExclusiveRadioOp.
+        const responseData: Uint8Array = await this.runExclusiveRadioOp(() => new Promise<Uint8Array>((resolve, reject) => {
           let sentReceived = false;
           let tag: number | null = null;
           let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
@@ -1025,7 +1050,16 @@ export class MeshCoreNativeBackend extends EventEmitter {
             cleanup();
             resolve((r?.responseData ?? new Uint8Array()) as Uint8Array);
           };
-          const onErr = () => { cleanup(); reject(new Error('Device rejected regions request')); };
+          const onErr = () => {
+            // An Err pertains to OUR send only until the device acks it with
+            // Sent. Once Sent has arrived, any Err on this shared, tag-less
+            // channel belongs to a different command (incl. unlocked library
+            // commands like send_message) — ignore it so a foreign failure can't
+            // false-reject our multi-second BinaryResponse wait (#3725).
+            if (sentReceived) return;
+            cleanup();
+            reject(new Error('Device rejected regions request'));
+          };
           function cleanup() {
             if (timer) { clearTimeout(timer); timer = null; }
             c.off(K.ResponseCodes.Sent, onSent);
@@ -1388,11 +1422,11 @@ export class MeshCoreNativeBackend extends EventEmitter {
         const publicKey = await this.resolvePublicKey(params.public_key as string);
         if (!publicKey) throw new Error('Telemetry target not found');
         const reqType = K.BinaryRequestTypes.GetTelemetryData;
-        // Serialize against other 0x8C consumers (e.g. request_regions) on this
-        // connection — see runExclusiveBinaryResponse. The library's own
+        // Serialize the 0x8C reply window against other radio ops on this
+        // connection — see runExclusiveRadioOp. The library's own
         // sendBinaryRequest tag-matches its reply, but our raw-frame regions
         // request can't, so the two must not overlap.
-        const responseData: Uint8Array = await this.runExclusiveBinaryResponse(
+        const responseData: Uint8Array = await this.runExclusiveRadioOp(
           () => c.sendBinaryRequest(publicKey, [reqType]),
         );
         const mod = await loadMeshCoreJs();
@@ -1472,8 +1506,10 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // send failure propagates via `.catch(reject)`; if the firmware never
         // answers at all, the outer `withTimeout` wrapper in sendCommand() is
         // the only safety net (surfacing a generic timeout). Same structure as
-        // discover_nodes / discover_path.
-        await new Promise<void>((resolve, reject) => {
+        // discover_nodes / discover_path — serialize the Ok/Err command-ack
+        // window against other radio ops on this connection (see
+        // runExclusiveRadioOp) so a concurrent command's Err can't false-reject.
+        await this.runExclusiveRadioOp(() => new Promise<void>((resolve, reject) => {
           const onOk = () => {
             c.off(this.constants!.ResponseCodes.Ok, onOk);
             c.off(this.constants!.ResponseCodes.Err, onErr);
@@ -1487,7 +1523,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           c.once(this.constants!.ResponseCodes.Ok, onOk);
           c.once(this.constants!.ResponseCodes.Err, onErr);
           c.sendCommandSetDeviceTime(epoch).catch(reject);
-        });
+        }));
         return { ok: true };
       }
 
