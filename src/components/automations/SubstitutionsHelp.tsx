@@ -48,6 +48,7 @@ export default function SubstitutionsHelpDrawer({ triggerType, variables, onClos
       <h3>Variables &amp; misc</h3>
       <dl>
         <dt>{'{{ var.NAME }}'}</dt><dd>Any user variable{variables.length ? `: ${variables.map((v) => v.name).join(', ')}` : ' (none defined yet)'}.</dd>
+        <dt>{'{{ var.NAME.a.b }}'}</dt><dd>Index into a <strong>json</strong> variable (e.g. a “Run a script” result) — dotted path into the stored object/array. A whole object renders as JSON.</dd>
         <dt>{'{{ NOW }}'}</dt><dd>Current time (rendered as a local date/time).</dd>
       </dl>
 

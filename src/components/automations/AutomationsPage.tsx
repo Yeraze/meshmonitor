@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { isValidCron } from 'cron-validator';
 import { appBasename } from '../../init';
 import apiService from '../../services/api';
-import AutomationBuilder, { type VariableOption, type SourceOption, type UnifiedChannelOption } from './AutomationBuilder';
+import AutomationBuilder, { type VariableOption, type SourceOption, type UnifiedChannelOption, type ScriptOption } from './AutomationBuilder';
 import AutomationTester from './AutomationTester';
 import { compile, decompile, type WorkflowForm } from './compile';
 import './AutomationsPage.css';
@@ -26,7 +26,7 @@ interface Variable {
 }
 interface Run { id: string; status: string; sourceId: string | null; startedAt: number; log: string | null; }
 
-const VARIABLE_TYPES = ['string', 'integer', 'float', 'boolean', 'flag'] as const;
+const VARIABLE_TYPES = ['string', 'integer', 'float', 'boolean', 'flag', 'json'] as const;
 const VARIABLE_SCOPES: { value: Variable['scope']; label: string }[] = [
   { value: 'global', label: 'Global' }, { value: 'source', label: 'Per Source' },
   { value: 'node', label: 'Per Node' }, { value: 'sourceNode', label: 'Per Source + Node' },
@@ -152,6 +152,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
   const [variables, setVariables] = useState<VariableOption[]>([]);
   const [sources, setSources] = useState<SourceOption[]>([]);
   const [channels, setChannels] = useState<UnifiedChannelOption[]>([]);
+  const [scripts, setScripts] = useState<ScriptOption[]>([]);
 
   // Decide builder vs JSON from the existing config.
   const parsedInitial = (() => { try { return initial ? decompile(JSON.parse(initial.config)) : DEFAULT_FORM; } catch { return null; } })();
@@ -183,6 +184,9 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
     apiService.get<UnifiedChannelOption[]>('/api/automations/channels')
       .then((cs) => setChannels(cs))
       .catch(() => setChannels([]));
+    apiService.get<{ scripts: Array<{ filename: string; name?: string }> }>('/api/scripts')
+      .then((r) => setScripts((r.scripts ?? []).map((s) => ({ value: s.filename, label: s.name || s.filename }))))
+      .catch(() => setScripts([]));
   }, []);
 
   const switchToJson = () => { setJsonText(JSON.stringify(compile(form), null, 2)); setMode('json'); };
@@ -237,7 +241,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
       </div>
 
       {mode === 'builder'
-        ? <AutomationBuilder form={form} variables={variables} sources={sources} channels={channels} onChange={setForm} />
+        ? <AutomationBuilder form={form} variables={variables} sources={sources} channels={channels} scripts={scripts} onChange={setForm} />
         : (
           <div className="ae-field">
             <label className="ae-field-label">Workflow graph (JSON)</label>
@@ -301,6 +305,10 @@ function VariablesList() {
 
   const create = async () => {
     setError(null);
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      setError('Name must be a letters/digits/underscore identifier (no dots or spaces) — needed so {{ var.name.field }} can index JSON.');
+      return;
+    }
     const config: Record<string, unknown> = {};
     if (defaultValue !== '') config.defaultValue = (type === 'integer' || type === 'float') ? Number(defaultValue) : defaultValue;
     if (type === 'flag' && flagDuration !== '') config.flagDurationSeconds = Number(flagDuration);

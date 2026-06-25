@@ -66,3 +66,19 @@ describe('flagExpiry', () => {
     expect(flagExpiry({ flagDurationSeconds: -5 }, 1_000_000)).toBeNull();
   });
 });
+
+describe('json variable type', () => {
+  it('round-trips objects and arrays', () => {
+    const obj = { a: 1, b: { c: 'x' }, d: [1, 2] };
+    expect(decodeValue('json', encodeValue('json', obj))).toEqual(obj);
+    expect(decodeValue('json', encodeValue('json', [1, 2, 3]))).toEqual([1, 2, 3]);
+  });
+  it('stores a JSON string as-is (round-trips)', () => {
+    expect(encodeValue('json', '{"a":1}')).toBe('{"a":1}');
+    expect(decodeValue('json', '{"a":1}')).toEqual({ a: 1 });
+  });
+  it('decodes malformed JSON as null', () => {
+    expect(decodeValue('json', 'not json')).toBeNull();
+    expect(decodeValue('json', null)).toBeNull();
+  });
+});
