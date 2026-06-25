@@ -1231,5 +1231,17 @@ describe('Unified Routes', () => {
       expect(extractPacketIdFromRowId('src_a_4294967296')).toBeNull(); // one over
       expect(extractPacketIdFromRowId('src_a_99999999999')).toBeNull();
     });
+
+    it('strips _dbchan suffix before extracting packetId (#3719)', () => {
+      expect(extractPacketIdFromRowId('src_a_1234_567890_dbchan')).toBe(567890);
+    });
+
+    it('strips _radio suffix before extracting packetId (#3719)', () => {
+      expect(extractPacketIdFromRowId('src_a_1234_567890_radio')).toBe(567890);
+    });
+
+    it('returns null when only a suffix segment remains after stripping', () => {
+      expect(extractPacketIdFromRowId('a_dbchan')).toBeNull();
+    });
   });
 });

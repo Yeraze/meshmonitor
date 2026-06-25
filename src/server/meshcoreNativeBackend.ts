@@ -841,8 +841,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * the shared, tag-less `Ok` / `Sent` / `Err` ack (discover_path, discover_nodes,
    * request_regions, set_device_time), and/or the shared `PUSH_CODE_BINARY_RESPONSE`
    * (0x8C) push (request_regions, request_telemetry). None of these carry a
-   * correlation tag we can match on (`sendToRadioFrame` fires `Sent` with no
-   * `expectedAckCrc`, and the 0x8C push carries only a tag we can't obtain), so
+   * correlation tag we can match on (CMD_SEND_ANON_REQ (57) via sendToRadioFrame
+   * emits a Sent with a real expectedAckCrc, but the repeater's BinaryResponse
+   * tag doesn't echo it — different tagging scheme from SendBinaryReq (50)), so
    * each handler grabs the *first* event it sees on its channel. If two such ops
    * overlap, one consumes the other's ack/reply — a stray `Err` false-rejects a
    * discovery, or a telemetry CayenneLPP body gets parsed as a region list.
@@ -1035,26 +1036,22 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // radio ops on this connection — see runExclusiveRadioOp.
         const responseData: Uint8Array = await this.runExclusiveRadioOp(() => new Promise<Uint8Array>((resolve, reject) => {
           let sentReceived = false;
-          let tag: number | null = null;
           let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
             cleanup();
             reject(new Error('request_regions timed out'));
           }, timeoutMs);
-          const onSent = (r: any) => {
+          const onSent = (_r: any) => {
             sentReceived = true;
-            // sendToRadioFrame fires Sent without a payload (unlike sendTextMessage
-            // which includes expectedAckCrc). Capture it when present; fall back to
-            // tag-less mode when absent so the BinaryResponse isn't silently dropped.
-            tag = (r?.expectedAckCrc ?? null);
           };
           const onResp = (r: any) => {
             // Wait for the Sent ack before accepting any BinaryResponse.
             if (!sentReceived) return;
-            // When the Sent ack carried a non-zero tag, require the response to
-            // carry the same tag. When the tag is null/0 (sendToRadioFrame doesn't
-            // populate expectedAckCrc), accept the first BinaryResponse — the
-            // requests are sequential so there's no concurrent reply to confuse.
-            if (tag !== null && tag !== 0 && r?.tag !== tag) return;
+            // No tag check: CMD_SEND_ANON_REQ (57) uses sendToRadioFrame, and
+            // the Sent ack's expectedAckCrc does NOT match the BinaryResponse's
+            // tag (ANON_REQ uses a different tagging scheme than SendBinaryReq
+            // (50)). The runExclusiveRadioOp lock serializes all radio ops so
+            // the first BinaryResponse after Sent is guaranteed to be ours
+            // (#3734).
             cleanup();
             resolve((r?.responseData ?? new Uint8Array()) as Uint8Array);
           };
@@ -1074,11 +1071,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
             c.off(K.PushCodes.BinaryResponse, onResp);
             c.off(K.ResponseCodes.Err, onErr);
           }
-          // Sent: `once` — there's exactly one Sent ack per frame send, and a
-          // duplicate firing could otherwise overwrite `tag` after the response
-          // has already been matched. BinaryResponse: `on` (not `once`) so a
-          // non-matching response from a different operation doesn't consume our
-          // listener; cleanup removes them both once we resolve/fail.
+          // Sent: `once` — exactly one Sent ack per frame send.
+          // BinaryResponse: `on` (not `once`) so the listener isn't consumed
+          // before our actual reply arrives; cleanup removes it on resolve/fail.
           c.once(K.ResponseCodes.Sent, onSent);
           c.on(K.PushCodes.BinaryResponse, onResp);
           c.once(K.ResponseCodes.Err, onErr);

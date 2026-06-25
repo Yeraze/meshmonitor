@@ -207,13 +207,25 @@ async function loadEnabledVirtualChannels(): Promise<DbChannelDatabase[]> {
 
 const MAX_ROW_ID_LENGTH = 256;
 const MAX_PACKET_ID = 0xffffffff; // unsigned 32-bit
+// Suffixes appended by meshtasticManager when inserting server-decrypted
+// copies of the same mesh packet. Stripping them before numeric extraction
+// ensures _dbchan / _radio copies get the same dedupKey as the original row
+// rather than falling back to the text+timestamp key (#3719).
+const SERVER_COPY_SUFFIXES = new Set(['dbchan', 'radio']);
+
 export function extractPacketIdFromRowId(rowId: unknown): number | null {
   if (typeof rowId !== 'string' || rowId.length === 0 || rowId.length > MAX_ROW_ID_LENGTH) {
     return null;
   }
   const parts = rowId.split('_');
   if (parts.length < 2) return null;
-  const last = parts[parts.length - 1];
+  // Strip known server-added suffixes so `_dbchan` / `_radio` copies resolve
+  // to the same numeric packet id as the original row.
+  const tailIdx = SERVER_COPY_SUFFIXES.has(parts[parts.length - 1])
+    ? parts.length - 2
+    : parts.length - 1;
+  if (tailIdx < 1) return null;
+  const last = parts[tailIdx];
   // Reject anything that isn't pure digits — Number.parseInt would otherwise
   // accept things like "12abc" → 12.
   if (!/^\d+$/.test(last)) return null;
@@ -437,7 +449,16 @@ router.get('/messages', async (req: Request, res: Response) => {
     const merged = new Map<string, Merged>();
 
     // Fetch 2x limit per source so dedup can't starve the result set when
-    // multiple sources all heard the same packet.
+    // multiple sources all heard the same packet (N sources × same packet → 1
+    // entry; need ~N*limit pre-dedup to fill the page).
+    //
+    // This deliberately does NOT widen the window to keep a message exclusive to
+    // a single high-traffic source on-screen longer before it scrolls out
+    // (#3719). That persistence is handled structurally on the client: the
+    // unified feed is append-only (foldUnifiedMessagePages / #3738), so a
+    // message that has been displayed stays displayed regardless of how far the
+    // server window has moved on — at any traffic rate, not just a fixed
+    // headroom. Inflating fetchLimit here would only add per-poll fetch cost.
     const fetchLimit = limit * 2;
 
     // MeshCore channel identity is index-keyed via the synthesised
