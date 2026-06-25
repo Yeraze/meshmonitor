@@ -68,6 +68,33 @@ function makeActions(overrides: Partial<MeshCoreActions> = {}): MeshCoreActions 
     setTelemetryModeEnv: vi.fn().mockResolvedValue(true),
     refreshAll: vi.fn().mockResolvedValue(undefined),
     clearError: vi.fn(),
+    resetContactPath: vi.fn().mockResolvedValue(true),
+    shareContact: vi.fn().mockResolvedValue({ ok: true }),
+    setContactOutPath: vi.fn().mockResolvedValue(true),
+    traceContactPath: vi.fn().mockResolvedValue(null),
+    discoverContactPath: vi.fn().mockResolvedValue(true),
+    discoverNodes: vi.fn().mockResolvedValue(null),
+    getDiscoverable: vi.fn().mockResolvedValue(false),
+    setDiscoverable: vi.fn().mockResolvedValue(false),
+    getDefaultScope: vi.fn().mockResolvedValue(''),
+    setDefaultScope: vi.fn().mockResolvedValue(null),
+    discoverRegions: vi.fn().mockResolvedValue(null),
+    removeContact: vi.fn().mockResolvedValue(true),
+    setNodeFavorite: vi.fn().mockResolvedValue(true),
+    exportContact: vi.fn().mockResolvedValue(null),
+    importContact: vi.fn().mockResolvedValue(false),
+    syncDeviceTime: vi.fn().mockResolvedValue(false),
+    getNeighbours: vi.fn().mockResolvedValue(null),
+    rebootDevice: vi.fn().mockResolvedValue(false),
+    exportPrivateKey: vi.fn().mockResolvedValue(null),
+    importPrivateKey: vi.fn().mockResolvedValue(false),
+    setTxPower: vi.fn().mockResolvedValue(false),
+    loginRemote: vi.fn().mockResolvedValue({ success: false }),
+    loginRemoteWithSaved: vi.fn().mockResolvedValue({ success: false }),
+    sendCliCommand: vi.fn().mockResolvedValue(null),
+    forgetRemoteCredential: vi.fn().mockResolvedValue(undefined),
+    getRemoteAdminCapability: vi.fn().mockResolvedValue(null),
+    getRemoteStatus: vi.fn().mockResolvedValue(null),
     ...overrides,
   };
 }
@@ -388,6 +415,63 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     await waitFor(() => {
       const urls = csrfFetchMock.mock.calls.map(c => c[0] as string);
       expect(urls.some(u => u.includes(REAL_PK_2))).toBe(true);
+    });
+  });
+
+  // Issue #3755: repeaters (advType=2) cannot receive DMs — they must not
+  // appear in the DM peer sidebar list.
+  it('excludes repeater contacts (advType=2) from the DM peer list', () => {
+    const repeaterContact: MeshCoreContact = {
+      publicKey: 'e'.repeat(64),
+      advName: 'My Repeater',
+      advType: 2,
+      lastSeen: Date.now(),
+    };
+    const companionContact: MeshCoreContact = {
+      publicKey: 'f'.repeat(64),
+      advName: 'My Companion',
+      advType: 1,
+      lastSeen: Date.now(),
+    };
+
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={[repeaterContact, companionContact]}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+
+    expect(screen.queryByText('My Repeater')).toBeNull();
+    expect(screen.getByText('My Companion')).toBeTruthy();
+  });
+
+  // Issue #3755: if a repeater IS somehow selected (e.g. navigated via the
+  // nodes view "›" button), the message send input must be disabled.
+  it('disables the send input when the selected contact is a repeater (advType=2)', async () => {
+    const repeaterContact: MeshCoreContact = {
+      publicKey: 'e'.repeat(64),
+      advName: 'My Repeater',
+      advType: 2,
+      lastSeen: Date.now(),
+    };
+
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={[repeaterContact]}
+        status={makeStatus()}
+        actions={makeActions()}
+        initialSelectedContact={'e'.repeat(64)}
+      />,
+    );
+
+    // The message compose input only appears once `selected` is set (via
+    // useEffect from initialSelectedContact). Wait for it, then verify disabled.
+    await waitFor(() => {
+      const sendInput = screen.getByPlaceholderText('Type a message…') as HTMLInputElement;
+      expect(sendInput.disabled).toBe(true);
     });
   });
 

@@ -182,8 +182,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     }
     // Always include all contacts so the user can start a new DM.
     // Exclude room servers (advType=3) — they belong in the Rooms view.
+    // Exclude repeaters (advType=2) — they cannot receive direct messages.
     for (const c of contacts) {
-      if (c.publicKey && !isChannelPseudoKey(c.publicKey) && c.advType !== 3) peers.add(c.publicKey);
+      if (c.publicKey && !isChannelPseudoKey(c.publicKey) && c.advType !== 3 && c.advType !== 2) peers.add(c.publicKey);
     }
     // Drop the local node — DMing yourself is meaningless and the local node
     // sometimes appears in the contacts list as a side-effect of seeding.
@@ -380,7 +381,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               messages={filtered}
               contacts={contacts}
               selfPublicKey={selfKey}
-              disabled={!connected || !canSend}
+              disabled={!connected || !canSend || contactsByKey.get(selected)?.advType === 2}
               emptyText={t('meshcore.no_messages', 'No messages with this contact yet')}
               onSend={text => actions.sendMessage(text, selected)}
               conversationKey={`dm-${selected}`}
