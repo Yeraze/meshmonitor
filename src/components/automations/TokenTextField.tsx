@@ -7,7 +7,7 @@
  * listed inline below the field.
  */
 import { useMemo, useRef } from 'react';
-import { tokenize, unknownTokens, validTokenSet } from './tokenHints';
+import { tokenize, unknownTokens, foreignTokens, validTokenSet } from './tokenHints';
 
 export default function TokenTextField({ value, onChange, multiline, placeholder, triggerType, variableNames }: {
   value: string;
@@ -21,8 +21,11 @@ export default function TokenTextField({ value, onChange, multiline, placeholder
   const valid = useMemo(() => validTokenSet(triggerType, variableNames), [triggerType, variableNames]);
   const segs = useMemo(() => tokenize(value, valid), [value, valid]);
   const unknown = useMemo(() => unknownTokens(value, valid), [value, valid]);
+  const foreign = useMemo(() => foreignTokens(value, valid), [value, valid]);
 
   const cls = multiline ? 'ae-textarea' : 'ae-input';
+  const markClass = (status: string) =>
+    status === 'bad' ? 'ae-token-bad' : status === 'foreign' ? 'ae-token-foreign' : 'ae-token-ok';
   const syncScroll = (el: HTMLTextAreaElement | HTMLInputElement) => {
     if (backdropRef.current) {
       backdropRef.current.scrollTop = el.scrollTop;
@@ -32,7 +35,7 @@ export default function TokenTextField({ value, onChange, multiline, placeholder
 
   const highlighted = segs.map((s, i) =>
     s.token
-      ? <mark key={i} className={s.known ? 'ae-token-ok' : 'ae-token-bad'}>{s.text}</mark>
+      ? <mark key={i} className={markClass(s.status)}>{s.text}</mark>
       : <span key={i}>{s.text}</span>,
   );
 
@@ -65,6 +68,11 @@ export default function TokenTextField({ value, onChange, multiline, placeholder
       {unknown.length > 0 && (
         <div className="ae-token-warn">
           Unrecognized token{unknown.length > 1 ? 's' : ''}: {unknown.map((t) => `{{ ${t} }}`).join(', ')} — check for typos.
+        </div>
+      )}
+      {foreign.length > 0 && (
+        <div className="ae-token-note">
+          {foreign.map((t) => `{{ ${t} }}`).join(', ')} {foreign.length > 1 ? 'are' : 'is'} not available for this trigger — will render blank.
         </div>
       )}
     </div>

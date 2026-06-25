@@ -94,11 +94,16 @@
   background: color-mix(in srgb, var(--ctp-blue) 22%, transparent);
   color: var(--ctp-text); border-radius: 3px;
 }
+.ae-tokenfield-backdrop .ae-token-foreign {
+  background: color-mix(in srgb, var(--ctp-yellow) 26%, transparent);
+  color: var(--ctp-text); border-radius: 3px; text-decoration: underline dotted var(--ctp-yellow);
+}
 .ae-tokenfield-backdrop .ae-token-bad {
   background: color-mix(in srgb, var(--ctp-red) 26%, transparent);
   color: var(--ctp-text); border-radius: 3px; text-decoration: underline wavy var(--ctp-red);
 }
 .ae-token-warn { font-size: 0.76rem; color: var(--ctp-red); margin-top: 0.25rem; }
+.ae-token-note { font-size: 0.76rem; color: var(--ctp-yellow); margin-top: 0.2rem; }
 .ae-error-list { color: var(--ctp-red); font-size: 0.85rem; margin: 0.5rem 0; padding-left: 1.1rem; }
 
 /* Builder WHEN / IF / THEN sections */
