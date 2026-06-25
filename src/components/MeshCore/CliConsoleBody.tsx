@@ -126,6 +126,7 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
    // also drags outer scrollable ancestors (now the DM right pane after
    // #3205) which makes the whole page jump on every Send.
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   // Whether the user is currently near the bottom of the transcript.
   // If they've scrolled up to read history we leave their position alone
   // when new lines arrive — the existing scroll position is more useful
@@ -215,6 +216,7 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
     draftRef.current = '';
     const result = await runCommand(cmd, opts);
     setSending(false);
+    inputRef.current?.focus();
     if (result.ok) {
       appendTranscript({ kind: 'reply', text: result.reply || '(empty reply)' });
     } else {
@@ -366,6 +368,7 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
               ? disabledPlaceholder ?? t('meshcore.remoteConsole.command_placeholder_logged_out', 'Log in first')
               : placeholder ?? t('meshcore.remoteConsole.command_placeholder', 'Type a command (e.g. ver, stats, neighbors)')
           }
+          ref={inputRef}
           disabled={disabled || sending}
           className="mrc-input"
           spellCheck={false}
