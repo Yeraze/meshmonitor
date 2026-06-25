@@ -80,14 +80,14 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
 
   const renderNodeInfo = () => {
     const localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
-    const isClickable = authStatus?.authenticated && onNodeClick;
+    const isClickable = !!onNodeClick;
 
     if (!localNode && deviceInfo?.localNodeInfo) {
       const { nodeId, longName, shortName } = deviceInfo.localNodeInfo;
       return (
         <span
           className={`node-address${isClickable ? ' clickable' : ''}`}
-          title={authStatus?.authenticated ? t('header.clickForNodeInfo') : undefined}
+          title={isClickable ? t('header.clickForNodeInfo') : undefined}
           style={{ cursor: isClickable ? 'pointer' : 'default' }}
           onClick={isClickable ? onNodeClick : undefined}
         >
@@ -100,7 +100,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       return (
         <span
           className={`node-address${isClickable ? ' clickable' : ''}`}
-          title={authStatus?.authenticated ? t('header.clickForNodeInfo') : undefined}
+          title={isClickable ? t('header.clickForNodeInfo') : undefined}
           style={{ cursor: isClickable ? 'pointer' : 'default' }}
           onClick={isClickable ? onNodeClick : undefined}
         >
@@ -131,7 +131,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             <span className="header-source-name">{sourceName}</span>
           )}
         </div>
-        {!mqttReadOnly && <div className="node-info">{renderNodeInfo()}</div>}
+        {!mqttReadOnly && authStatus?.authenticated && <div className="node-info">{renderNodeInfo()}</div>}
       </div>
       <div className="header-right">
         <div className="connection-status-container">
