@@ -99,6 +99,35 @@ describe('MeshCoreManager contact persistence (issue #3092)', () => {
     );
   });
 
+  it('stores null lat/lon for a Null Island (0,0) contact (issue #3763)', async () => {
+    const manager = new MeshCoreManager('src-a');
+    dispatchBridgeEvent(manager, {
+      event_type: 'contact_advertised',
+      data: {
+        public_key: REPEATER_PUBKEY,
+        adv_name: 'MyRepeater',
+        adv_type: MeshCoreDeviceType.REPEATER,
+        // (0,0) — uninitialized GPS default; must not be persisted as a position.
+        latitude: 0,
+        longitude: 0,
+        last_advert: 1_700_000_000,
+      },
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(upsertNode).toHaveBeenCalledTimes(1);
+    expect(upsertNode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        publicKey: REPEATER_PUBKEY,
+        latitude: null,
+        longitude: null,
+      }),
+      'src-a',
+    );
+  });
+
   it('persists advType to meshcore_nodes on contact_added', async () => {
     const manager = new MeshCoreManager('src-a');
     dispatchBridgeEvent(manager, {

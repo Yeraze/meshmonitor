@@ -219,4 +219,43 @@ describe('MeshtasticManager — position channel resolution (issue #3682)', () =
       expect(latCall![0].channel).toBe(0);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Null Island filtering (issue #3763)
+  //
+  // GPS modules emit (0,0) before acquiring a fix. A stale (0,0) fix can still
+  // be transmitted, so we drop any position at or near (0,0) before it reaches
+  // the node row or the position-history telemetry.
+  // -------------------------------------------------------------------------
+  describe('processPositionMessageProtobuf filters Null Island (0,0)', () => {
+    it('drops a near-(0,0) position without storing telemetry', async () => {
+      const mgr = makeManager();
+      // 0.0005°, -0.0003° — both inside the Null Island radius (firmware rounding).
+      const meshPacket = { channel: 0, from: 123456, id: 999 };
+      const position = { latitudeI: 5000, longitudeI: -3000 };
+
+      await (mgr as any).processPositionMessageProtobuf(meshPacket, position, {
+        decryptedBy: null,
+        decryptedChannelId: undefined,
+      });
+
+      expect(insertTelemetryMock).not.toHaveBeenCalled();
+    });
+
+    it('still stores a legitimate position far from (0,0)', async () => {
+      const mgr = makeManager();
+      const meshPacket = { channel: 0, from: 123456, id: 999 };
+      const position = { latitudeI: 400000000, longitudeI: -750000000 };
+
+      await (mgr as any).processPositionMessageProtobuf(meshPacket, position, {
+        decryptedBy: null,
+        decryptedChannelId: undefined,
+      });
+
+      const latCall = insertTelemetryMock.mock.calls.find(
+        (c: any[]) => c[0]?.telemetryType === 'latitude',
+      );
+      expect(latCall).toBeDefined();
+    });
+  });
 });
