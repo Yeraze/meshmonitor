@@ -89,7 +89,10 @@ describe('MeshCoreManager room server support', () => {
       const msg = emittedMessages[0];
       expect(msg.messageType).toBe('room_post');
       expect(msg.toPublicKey).toBe(roomPubkey);
-      expect(msg.fromPublicKey).toBe(authorPubkey.substring(0, 8));
+      // When the author contact is known, fromPublicKey resolves to the FULL
+      // public key (not the wire prefix) so nameForKey() can match it on the
+      // frontend — mirrors toPublicKey above (issue #3732).
+      expect(msg.fromPublicKey).toBe(authorPubkey);
       expect(msg.fromName).toBe('Alice');
       expect(msg.text).toBe('Hello from the room!');
       expect(msg.timestamp).toBe(1700000000000);
