@@ -2481,8 +2481,8 @@ class MeshCoreManager extends EventEmitter {
   async discoverNodes(
     filter: number,
     windowMs: number = 8000,
-  ): Promise<{ returned: number; newCount: number }> {
-    const empty = { returned: 0, newCount: 0 };
+  ): Promise<{ returned: number; newCount: number; seen: string[] }> {
+    const empty = { returned: 0, newCount: 0, seen: [] as string[] };
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Node discovery requires Companion firmware');
       return empty;
@@ -2507,6 +2507,10 @@ class MeshCoreManager extends EventEmitter {
       const result = {
         returned: this.activeDiscovery.returned,
         newCount: this.activeDiscovery.newCount,
+        // Snapshot the public keys that responded to this sweep (insertion
+        // order = arrival order) so callers like discoverRegions() can target
+        // only the current 0-hop set (#3743).
+        seen: [...this.activeDiscovery.seen],
       };
       logger.info(`[MeshCore] Node discovery complete: ${result.returned} returned, ${result.newCount} new`);
       return result;
@@ -2582,27 +2586,60 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
-   * Discover the region/scope names served by nearby repeaters (#3667 phase 3).
-   * Queries each known repeater / room-server contact with a "regions request"
-   * (firmware ANON_REQ sub-type 0x01) and collects the region names each one
-   * reports. Like the official app, coverage depends on which repeaters are in
-   * the contact list — run "Discover Repeaters" first for the fullest picture.
+   * Discover the region/scope names served by nearby repeaters (#3667 phase 3,
+   * refined in #3743).
    *
-   * Queries are issued sequentially: the firmware's per-request `tag` only
-   * arrives on the `Sent` ack, so overlapping requests could cross-match
+   * Rather than querying every repeater ever seen (including far-away ones that
+   * just waste a 20s timeout), this first runs a 0-hop discovery sweep and only
+   * queries the repeaters / room-servers that answered it, in arrival order. If
+   * the first sweep finds no 0-hop repeaters it retries once (a repeater may
+   * have been busy); if the retry is also empty it returns `noZeroHopRepeaters`
+   * so the caller can tell the user, rather than silently querying everyone.
+   *
+   * Region queries are issued sequentially: the firmware's per-request `tag`
+   * only arrives on the `Sent` ack, so overlapping requests could cross-match
    * replies. The wildcard `*` (null region) is filtered out — it isn't a
    * selectable scope. Repeaters that don't answer in time are skipped.
    */
   async discoverRegions(): Promise<{
     regions: string[];
     perRepeater: Array<{ publicKey: string; name: string; regions: string[] }>;
+    noZeroHopRepeaters?: boolean;
   }> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       return { regions: [], perRepeater: [] };
     }
-    const repeaters = [...this.contacts.values()].filter(
-      (c) => c.advType === MeshCoreDeviceType.REPEATER || c.advType === MeshCoreDeviceType.ROOM_SERVER,
-    );
+
+    // 1. Run a 0-hop discovery sweep and resolve it to the subset of known
+    //    repeater/room-server contacts that answered, ordered by arrival.
+    //    Repeaters (2) + room servers (3) → filter bitmask 0x0C.
+    const REPEATER_FILTER =
+      (1 << MeshCoreDeviceType.REPEATER) | (1 << MeshCoreDeviceType.ROOM_SERVER);
+    const sweepZeroHopRepeaters = async () => {
+      const { seen } = await this.discoverNodes(REPEATER_FILTER, 8000);
+      if (seen.length === 0) return [];
+      const order = new Map(seen.map((k, i) => [k, i]));
+      return [...this.contacts.values()]
+        .filter(
+          (c) =>
+            (c.advType === MeshCoreDeviceType.REPEATER ||
+              c.advType === MeshCoreDeviceType.ROOM_SERVER) &&
+            order.has(c.publicKey),
+        )
+        .sort((a, b) => (order.get(a.publicKey)! - order.get(b.publicKey)!));
+    };
+
+    // First attempt; on an empty result retry once before giving up (#3743).
+    let repeaters = await sweepZeroHopRepeaters();
+    if (repeaters.length === 0) {
+      logger.info(`[MeshCore:${this.sourceId}] No 0-hop repeaters on first sweep; retrying once`);
+      repeaters = await sweepZeroHopRepeaters();
+    }
+    if (repeaters.length === 0) {
+      logger.info(`[MeshCore:${this.sourceId}] No 0-hop repeaters found after retry`);
+      return { regions: [], perRepeater: [], noZeroHopRepeaters: true };
+    }
+
     const perRepeater: Array<{ publicKey: string; name: string; regions: string[] }> = [];
     const all = new Set<string>();
     for (const r of repeaters) {

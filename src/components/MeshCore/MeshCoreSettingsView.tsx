@@ -70,9 +70,14 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
         return;
       }
       setDiscoveredRegions(result.regions);
-      if (result.regions.length === 0) {
+      if (result.noZeroHopRepeaters) {
         showToast(
-          t('meshcore.scope.discover_none', 'No regions found. Try "Discover Repeaters" first, then retry.'),
+          t('meshcore.scope.discover_no_repeaters', 'No nearby (0-hop) repeaters found. Move closer to a repeater and try again.'),
+          'info',
+        );
+      } else if (result.regions.length === 0) {
+        showToast(
+          t('meshcore.scope.discover_none', 'Nearby repeaters reported no regions.'),
           'info',
         );
       }
