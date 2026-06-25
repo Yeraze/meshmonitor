@@ -1035,11 +1035,12 @@ class MeshCoreManager extends EventEmitter {
       const roomContact = this.resolveContactByPrefix(roomPubkeyPrefix);
       const roomFullKey = roomContact?.publicKey ?? roomPubkeyPrefix;
       const authorContact = this.resolveContactByPrefix(authorPrefixHex);
+      const authorFullKey = authorContact?.publicKey ?? authorPrefixHex;
       const authorName = authorContact?.advName ?? authorContact?.name ?? undefined;
 
       const message: MeshCoreMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
-        fromPublicKey: authorPrefixHex,
+        fromPublicKey: authorFullKey,
         fromName: authorName,
         toPublicKey: roomFullKey,
         text: data.text,
