@@ -279,24 +279,19 @@ describe('MeshCoreNativeBackend — discovery responder', () => {
     expect(res.data.regions).toEqual(['muenchen', 'bayern', '*']);
   });
 
-  it('request_regions succeeds when Sent ack carries no expectedAckCrc (sendToRadioFrame path)', async () => {
-    // sendToRadioFrame fires the Sent event without a payload, unlike
-    // sendTextMessage which includes expectedAckCrc. The fix should accept
-    // the first BinaryResponse after Sent when no tag is available.
+  it('request_regions succeeds when Sent ack carries no expectedAckCrc (payload-less Sent path)', async () => {
+    // A Sent event emitted with no argument (r=undefined) produces tag=null.
+    // The code must still accept the first BinaryResponse after Sent.
     const { backend, conn } = await connectedBackend();
 
-    // Override sendToRadioFrame to emit Sent WITHOUT expectedAckCrc, then
-    // emit BinaryResponse with a non-zero tag (what firmware would send).
     (conn as any).sendToRadioFrame = (frame: Uint8Array) => {
       conn.sentFrames.push(frame);
       if (frame[0] === 57) {
-        const firmwareTag = 0xdeadbeef;
         setImmediate(() => {
-          // Sent event with no payload — simulates sendToRadioFrame behavior.
-          conn.emit(ResponseCodes.Sent);
+          conn.emit(ResponseCodes.Sent); // no payload → r=undefined
           conn.emit(PushCodes.BinaryResponse, {
             reserved: 0,
-            tag: firmwareTag,
+            tag: 0xdeadbeef,
             responseData: Uint8Array.from([
               2, 0, 0, 0, // clock = 2
               ...Buffer.from('berlin', 'ascii'),
@@ -313,6 +308,44 @@ describe('MeshCoreNativeBackend — discovery responder', () => {
     expect(res.success).toBe(true);
     expect(res.data.clock).toBe(2);
     expect(res.data.regions).toEqual(['berlin']);
+  });
+
+  it('request_regions resolves when expectedAckCrc from Sent does not match BinaryResponse tag (#3734)', async () => {
+    // ANON_REQ (57) via sendToRadioFrame: the Sent ack carries a real
+    // expectedAckCrc (CRC of the outgoing packet), but the repeater's
+    // BinaryResponse carries tag=0 (ANON_REQ does not echo the CRC unlike
+    // SendBinaryReq (50)). The old tag-matching guard rejected every response,
+    // causing a 15-second timeout for every discover attempt.
+    const { backend, conn } = await connectedBackend();
+
+    (conn as any).sendToRadioFrame = (frame: Uint8Array) => {
+      conn.sentFrames.push(frame);
+      if (frame[0] === 57) {
+        setImmediate(() => {
+          // Real firmware sends a non-zero expectedAckCrc (CRC of the ANON_REQ
+          // packet it just sent to the repeater).
+          conn.emit(ResponseCodes.Sent, { expectedAckCrc: 0xcafe1234, estTimeout: 5000 });
+          // The repeater's BinaryResponse carries tag=0 (ANON_REQ tagging is
+          // independent of SendBinaryReq tagging).
+          conn.emit(PushCodes.BinaryResponse, {
+            reserved: 0,
+            tag: 0, // does NOT match expectedAckCrc
+            responseData: Uint8Array.from([
+              5, 0, 0, 0, // clock = 5
+              ...Buffer.from('cologne,duesseldorf', 'ascii'),
+              0,
+            ]),
+          });
+        });
+        return;
+      }
+      setImmediate(() => conn.emit(ResponseCodes.Ok));
+    };
+
+    const res = await backend.sendCommand('request_regions', { public_key: 'cc'.repeat(32) });
+    expect(res.success).toBe(true);
+    expect(res.data.clock).toBe(5);
+    expect(res.data.regions).toEqual(['cologne', 'duesseldorf']);
   });
 
   it('serializes overlapping 0x8C consumers so a concurrent telemetry reply is not stolen by request_regions (#3667)', async () => {
