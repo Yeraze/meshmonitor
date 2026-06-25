@@ -375,7 +375,10 @@ export async function checkNodeChannelAccess(
   const nodeNum = nodeId.startsWith('!')
     ? parseInt(nodeId.replace('!', ''), 16)
     : parseInt(nodeId, 10);
-  const node = await databaseService.nodes.getNode(nodeNum);
+  // Scope the node lookup to the requesting source — the same nodeNum can
+  // exist in multiple sources with different channel assignments, and the
+  // channel drives this permission check (#3745).
+  const node = await databaseService.nodes.getNode(nodeNum, sourceId);
   const channelNum = node?.channel ?? 0;
 
   // Get user's device channel permission set

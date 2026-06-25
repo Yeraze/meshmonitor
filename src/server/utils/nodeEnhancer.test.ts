@@ -298,8 +298,12 @@ describe('nodeEnhancer: checkNodeChannelAccess', () => {
     const db = (await import('../../services/database.js')).default as any;
     const regularUser = { id: 1, isAdmin: false } as any;
     db.getUserPermissionSetAsync.mockClear();
+    db.nodes.getNode.mockClear();
     await checkNodeChannelAccess('!00000001', regularUser, 'src-B');
     expect(db.getUserPermissionSetAsync).toHaveBeenCalledWith(regularUser.id, 'src-B');
+    // The node lookup that resolves the channel must also be source-scoped —
+    // the same nodeNum in another source could carry a different channel.
+    expect(db.nodes.getNode).toHaveBeenCalledWith(1, 'src-B');
   });
 });
 
