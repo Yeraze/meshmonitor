@@ -2653,9 +2653,14 @@ class MeshCoreManager extends EventEmitter {
         // the 0-hop discovery sweep above only hears DIRECT-range repeaters, each
         // one here is a direct neighbour — install a zero-hop direct out_path so
         // the request routes direct instead of flooding into the void (#3743).
-        const routed = await this.setContactOutPath(r.publicKey, new Uint8Array(0), 1);
+        // Best-effort and quick: the device applies the CMD_ADD_UPDATE_CONTACT
+        // write even when its Ok ack is lost in the post-sweep radio chatter
+        // (meshcore.js resolves on Ok, so it reports a timeout while the route
+        // is in fact installed). The real success signal is the request_regions
+        // reply below, so use a short window and don't alarm on a missed ack.
+        const routed = await this.setContactOutPath(r.publicKey, new Uint8Array(0), 1, 3000);
         if (!routed) {
-          logger.warn(`[MeshCore:${this.sourceId}] could not install a direct route to ${r.publicKey.substring(0, 12)}…; regions request may flood and time out`);
+          logger.debug(`[MeshCore:${this.sourceId}] set_out_path ack not seen for ${r.publicKey.substring(0, 12)}… (route still likely applied); proceeding`);
         }
         const resp = await this.sendBridgeCommand('request_regions', { public_key: r.publicKey }, 20_000);
         if (!resp.success) {
@@ -2801,6 +2806,7 @@ class MeshCoreManager extends EventEmitter {
     publicKey: string,
     outPathBytes: Uint8Array,
     hashBytes: 1 | 2 | 3 = 1,
+    timeoutMs: number = 12000,
   ): Promise<boolean> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Set-out-path requires Companion firmware');
@@ -2824,7 +2830,7 @@ class MeshCoreManager extends EventEmitter {
         public_key: publicKey,
         out_path: outPathBytes,
         hash_bytes: hashBytes,
-      }, 12000);
+      }, timeoutMs);
       if (!response.success) {
         const isTimeout = response.error?.includes('timeout');
         logger.warn(

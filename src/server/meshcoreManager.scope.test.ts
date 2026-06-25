@@ -462,7 +462,7 @@ describe('MeshCoreManager — Phase 3: region discovery (#3667)', () => {
     expect(result.regions).toEqual(['muenchen']);
     // Installs a zero-hop direct out_path (empty bytes) before querying, so the
     // regions ANON_REQ routes direct rather than flooding (#3743).
-    expect(manager.setContactOutPath).toHaveBeenCalledWith(bb, expect.any(Uint8Array), 1);
+    expect(manager.setContactOutPath).toHaveBeenCalledWith(bb, expect.any(Uint8Array), 1, expect.any(Number));
     const [, installedPath] = (manager.setContactOutPath as any).mock.calls.find((c: any[]) => c[0] === bb);
     expect(installedPath.length).toBe(0);
   });
