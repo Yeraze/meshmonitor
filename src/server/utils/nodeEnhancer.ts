@@ -160,7 +160,11 @@ export async function filterNodesByChannelPermission<T>(
     ? await databaseService.getUserPermissionSetAsync(user.id, sourceId)
     : {};
 
-  // Get user's virtual channel (channel database) permissions
+  // Get user's virtual channel (channel database) permissions.
+  // NOT source-scoped by design: the channel_database (server-side decryption
+  // PSKs) is global — channelDecryptionService tries every enabled row
+  // regardless of source, and migration 063 dropped its dead sourceId column.
+  // So virtual-channel (>= CHANNEL_DB_OFFSET) permissions are global too.
   const channelDbPermissions = user
     ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(user.id)
     : {};
@@ -210,7 +214,11 @@ export async function maskNodeLocationByChannel<T>(
     ? await databaseService.getUserPermissionSetAsync(user.id, sourceId)
     : {};
 
-  // Get user's virtual channel (channel database) permissions
+  // Get user's virtual channel (channel database) permissions.
+  // NOT source-scoped by design: the channel_database (server-side decryption
+  // PSKs) is global — channelDecryptionService tries every enabled row
+  // regardless of source, and migration 063 dropped its dead sourceId column.
+  // So virtual-channel (>= CHANNEL_DB_OFFSET) permissions are global too.
   const channelDbPermissions = user
     ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(user.id)
     : {};

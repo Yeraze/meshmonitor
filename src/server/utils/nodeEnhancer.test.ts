@@ -293,6 +293,14 @@ describe('nodeEnhancer: checkNodeChannelAccess', () => {
     expect(await checkNodeChannelAccess(meshcorePubkey, null)).toBe(false);
     expect(await checkNodeChannelAccess(meshcorePubkey, undefined)).toBe(false);
   });
+
+  it('forwards sourceId to the permission lookup — no cross-source union (#3745)', async () => {
+    const db = (await import('../../services/database.js')).default as any;
+    const regularUser = { id: 1, isAdmin: false } as any;
+    db.getUserPermissionSetAsync.mockClear();
+    await checkNodeChannelAccess('!00000001', regularUser, 'src-B');
+    expect(db.getUserPermissionSetAsync).toHaveBeenCalledWith(regularUser.id, 'src-B');
+  });
 });
 
 describe('nodeEnhancer: maskNodeLocationByChannel', () => {

@@ -1320,8 +1320,8 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
   try {
     const { nodeId } = req.params;
 
-    // Check channel-based access for this node
-    if (!await checkNodeChannelAccess(nodeId, req.user)) {
+    // Check channel-based access for this node (source-scoped, #3745)
+    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string | undefined)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
@@ -1370,8 +1370,8 @@ apiRouter.get('/nodes/:nodeId/positions', optionalAuth(), async (req, res) => {
   try {
     const { nodeId } = req.params;
 
-    // Check channel-based access for this node
-    if (!await checkNodeChannelAccess(nodeId, req.user)) {
+    // Check channel-based access for this node (source-scoped, #3745)
+    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string | undefined)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
@@ -1800,8 +1800,8 @@ apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), async (req, re
   try {
     const { nodeId } = req.params;
 
-    // Check channel-based access for this node
-    if (!await checkNodeChannelAccess(nodeId, req.user)) {
+    // Check channel-based access for this node (source-scoped, #3745)
+    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string | undefined)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
