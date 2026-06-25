@@ -36,6 +36,7 @@ interface MeshCoreJsModule {
   /** OTA packet parser used to recover relay-hash chains from LogRxData. */
   Packet: {
     PAYLOAD_TYPE_TXT_MSG: number;
+    PAYLOAD_TYPE_GRP_TXT: number;
     fromBytes(bytes: Uint8Array | number[]): {
       payload_type: number;
       payload_type_string?: string;
@@ -425,6 +426,10 @@ export class MeshCoreNativeBackend extends EventEmitter {
     if (typeof PushCodes?.LogRxData === 'number' && this.PacketCtor) {
       const PacketCtor = this.PacketCtor;
       const TXT_MSG = PacketCtor.PAYLOAD_TYPE_TXT_MSG;
+      // Channel/group messages ride GRP_TXT (0x05), not TXT_MSG (0x02). They
+      // surface as ChannelMsgRecv, which also carries a path that {ROUTE}/{SNR}
+      // need — so buffer the path for both payload types (issue #3710).
+      const GRP_TXT = PacketCtor.PAYLOAD_TYPE_GRP_TXT;
       this.connection.on(PushCodes.LogRxData, (rx: any) => {
         try {
           const raw: Uint8Array | undefined = rx?.raw;
@@ -439,10 +444,13 @@ export class MeshCoreNativeBackend extends EventEmitter {
           const snr = typeof rx?.lastSnr === 'number' ? rx.lastSnr : undefined;
           const rssi = typeof rx?.lastRssi === 'number' ? rx.lastRssi : undefined;
 
-          // Buffer the relay-hash chain + SNR for the next TXT_MSG recv event.
-          // `bufferedAt` lets the recv handler reject a stale buffer whose
-          // matching recv never arrived (issue #3589 mis-correlation guard).
-          if (pkt.payload_type === TXT_MSG) {
+          // Buffer the relay-hash chain + SNR for the next message recv event:
+          // TXT_MSG → ContactMsgRecv (DM), GRP_TXT → ChannelMsgRecv (channel).
+          // Buffering DMs only was why {ROUTE}/{SNR} worked on DMs but resolved
+          // to "—" on hashtag/private channel messages (issue #3710). `bufferedAt`
+          // lets the recv handler reject a stale buffer whose matching recv never
+          // arrived (issue #3589 mis-correlation guard).
+          if (pkt.payload_type === TXT_MSG || pkt.payload_type === GRP_TXT) {
             this.pendingTxtMsgPath = { hops, rawPathLen: pkt.pathLen, snr, bufferedAt: Date.now() };
           }
           this.emitBridgeEvent('ota_packet', {
