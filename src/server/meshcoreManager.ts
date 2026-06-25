@@ -2485,8 +2485,8 @@ class MeshCoreManager extends EventEmitter {
   async discoverNodes(
     filter: number,
     windowMs: number = 8000,
-  ): Promise<{ returned: number; newCount: number }> {
-    const empty = { returned: 0, newCount: 0 };
+  ): Promise<{ returned: number; newCount: number; seen: string[] }> {
+    const empty = { returned: 0, newCount: 0, seen: [] as string[] };
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Node discovery requires Companion firmware');
       return empty;
@@ -2511,6 +2511,10 @@ class MeshCoreManager extends EventEmitter {
       const result = {
         returned: this.activeDiscovery.returned,
         newCount: this.activeDiscovery.newCount,
+        // Snapshot the public keys that responded to this sweep (insertion
+        // order = arrival order) so callers like discoverRegions() can target
+        // only the current 0-hop set (#3743).
+        seen: [...this.activeDiscovery.seen],
       };
       logger.info(`[MeshCore] Node discovery complete: ${result.returned} returned, ${result.newCount} new`);
       return result;
@@ -2586,31 +2590,82 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
-   * Discover the region/scope names served by nearby repeaters (#3667 phase 3).
-   * Queries each known repeater / room-server contact with a "regions request"
-   * (firmware ANON_REQ sub-type 0x01) and collects the region names each one
-   * reports. Like the official app, coverage depends on which repeaters are in
-   * the contact list — run "Discover Repeaters" first for the fullest picture.
+   * Discover the region/scope names served by nearby repeaters (#3667 phase 3,
+   * refined in #3743).
    *
-   * Queries are issued sequentially: the firmware's per-request `tag` only
-   * arrives on the `Sent` ack, so overlapping requests could cross-match
+   * Rather than querying every repeater ever seen (including far-away ones that
+   * just waste a 20s timeout), this first runs a 0-hop discovery sweep and only
+   * queries the repeaters / room-servers that answered it, in arrival order. If
+   * the first sweep finds no 0-hop repeaters it retries once (a repeater may
+   * have been busy); if the retry is also empty it returns `noZeroHopRepeaters`
+   * so the caller can tell the user, rather than silently querying everyone.
+   *
+   * Region queries are issued sequentially: the firmware's per-request `tag`
+   * only arrives on the `Sent` ack, so overlapping requests could cross-match
    * replies. The wildcard `*` (null region) is filtered out — it isn't a
    * selectable scope. Repeaters that don't answer in time are skipped.
    */
   async discoverRegions(): Promise<{
     regions: string[];
     perRepeater: Array<{ publicKey: string; name: string; regions: string[] }>;
+    noZeroHopRepeaters?: boolean;
   }> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       return { regions: [], perRepeater: [] };
     }
-    const repeaters = [...this.contacts.values()].filter(
-      (c) => c.advType === MeshCoreDeviceType.REPEATER || c.advType === MeshCoreDeviceType.ROOM_SERVER,
-    );
+
+    // 1. Run a 0-hop discovery sweep and resolve it to the subset of known
+    //    repeater/room-server contacts that answered, ordered by arrival.
+    //    Repeaters (2) + room servers (3) → filter bitmask 0x0C.
+    const REPEATER_FILTER =
+      (1 << MeshCoreDeviceType.REPEATER) | (1 << MeshCoreDeviceType.ROOM_SERVER);
+    const sweepZeroHopRepeaters = async () => {
+      const { seen } = await this.discoverNodes(REPEATER_FILTER, 8000);
+      if (seen.length === 0) return [];
+      const order = new Map(seen.map((k, i) => [k, i]));
+      return [...this.contacts.values()]
+        .filter(
+          (c) =>
+            (c.advType === MeshCoreDeviceType.REPEATER ||
+              c.advType === MeshCoreDeviceType.ROOM_SERVER) &&
+            order.has(c.publicKey),
+        )
+        .sort((a, b) => (order.get(a.publicKey)! - order.get(b.publicKey)!));
+    };
+
+    // First attempt; on an empty result retry once before giving up (#3743).
+    let repeaters = await sweepZeroHopRepeaters();
+    if (repeaters.length === 0) {
+      logger.info(`[MeshCore:${this.sourceId}] No 0-hop repeaters on first sweep; retrying once`);
+      repeaters = await sweepZeroHopRepeaters();
+    }
+    if (repeaters.length === 0) {
+      logger.info(`[MeshCore:${this.sourceId}] No 0-hop repeaters found after retry`);
+      return { regions: [], perRepeater: [], noZeroHopRepeaters: true };
+    }
+
     const perRepeater: Array<{ publicKey: string; name: string; regions: string[] }> = [];
     const all = new Set<string>();
     for (const r of repeaters) {
       try {
+        // v1.15+ repeaters answer a regions ANON_REQ only when it arrives via a
+        // DIRECT route — firmware simple_repeater `onAnonDataRecv` gates the
+        // REGIONS branch on `packet->isRouteDirect()` and silently drops flooded
+        // ones (login is the lone flood-exception, which is why admin CLI works
+        // but Discover Regions didn't). The companion floods whenever the contact
+        // has no installed `out_path` (`sendAnonReq`: out_path_len == 0xFF). Since
+        // the 0-hop discovery sweep above only hears DIRECT-range repeaters, each
+        // one here is a direct neighbour — install a zero-hop direct out_path so
+        // the request routes direct instead of flooding into the void (#3743).
+        // Best-effort and quick: the device applies the CMD_ADD_UPDATE_CONTACT
+        // write even when its Ok ack is lost in the post-sweep radio chatter
+        // (meshcore.js resolves on Ok, so it reports a timeout while the route
+        // is in fact installed). The real success signal is the request_regions
+        // reply below, so use a short window and don't alarm on a missed ack.
+        const routed = await this.setContactOutPath(r.publicKey, new Uint8Array(0), 1, 3000);
+        if (!routed) {
+          logger.debug(`[MeshCore:${this.sourceId}] set_out_path ack not seen for ${r.publicKey.substring(0, 12)}… (route still likely applied); proceeding`);
+        }
         const resp = await this.sendBridgeCommand('request_regions', { public_key: r.publicKey }, 20_000);
         if (!resp.success) {
           logger.debug(`[MeshCore:${this.sourceId}] regions request to ${r.publicKey.substring(0, 12)}… returned an error: ${resp.error}`);
@@ -2755,6 +2810,7 @@ class MeshCoreManager extends EventEmitter {
     publicKey: string,
     outPathBytes: Uint8Array,
     hashBytes: 1 | 2 | 3 = 1,
+    timeoutMs: number = 12000,
   ): Promise<boolean> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Set-out-path requires Companion firmware');
@@ -2778,13 +2834,21 @@ class MeshCoreManager extends EventEmitter {
         public_key: publicKey,
         out_path: outPathBytes,
         hash_bytes: hashBytes,
-      }, 12000);
+      }, timeoutMs);
       if (!response.success) {
+        // NOTE: matches on meshcore.js's timeout error text — fragile if the
+        // library changes its wording; revisit if a structured error code lands.
         const isTimeout = response.error?.includes('timeout');
-        logger.warn(
-          `[MeshCore] set_out_path failed for ${publicKey}: ${response.error}` +
-            (isTimeout ? ' — check serial/TCP connection to the device' : ''),
-        );
+        if (isTimeout) {
+          // meshcore.js resolves CMD_ADD_UPDATE_CONTACT on its Ok ack, which is
+          // frequently lost in unrelated radio chatter even though the device
+          // applied the write. Treat a timeout as a non-fatal "ack not seen" —
+          // not a connectivity error — so it doesn't spam warnings on a path
+          // that did install (e.g. region discovery, #3743).
+          logger.debug(`[MeshCore] set_out_path ack not seen for ${publicKey} (write likely applied)`);
+        } else {
+          logger.warn(`[MeshCore] set_out_path rejected for ${publicKey}: ${response.error}`);
+        }
         return false;
       }
       // Group the flat byte buffer into hashBytes-wide hop tokens so the

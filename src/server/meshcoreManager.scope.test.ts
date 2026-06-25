@@ -30,6 +30,12 @@ function makeManager(opts: {
   /** per-repeater `request_regions` replies, keyed by publicKey. A value of
    *  'fail' makes that repeater's request reject. */
   regionsByRepeater?: Record<string, string[] | 'fail'>;
+  /** Simulated 0-hop discovery sweep result(s) for discoverRegions (#3743).
+   *  - omitted → every sweep "discovers" all seeded repeater/room contacts
+   *  - string[] → every sweep discovers exactly these keys (in this order)
+   *  - string[][] → attempt i discovers zeroHop[i] (drives the retry path);
+   *    attempts past the end repeat the last entry. Pass [] for always-empty. */
+  zeroHop?: string[] | string[][];
 } = {}): { manager: MeshCoreManager; bridgeCalls: BridgeCall[]; scopeUpdates: Array<{ id: number; scope: string | null }> } {
   const m = new MeshCoreManager('test-source');
   (m as any).deviceType = MeshCoreDeviceType.COMPANION;
@@ -83,6 +89,28 @@ function makeManager(opts: {
     }),
     setSourceSetting: vi.fn(async () => {}),
   } as any);
+
+  // Simulate the 0-hop discovery sweep that discoverRegions() runs (#3743) so
+  // tests don't wait on the real 8s collection window or fake discovery packets.
+  const defaultZeroHop = (opts.contacts ?? [])
+    .filter((c) => c.advType === 2 || c.advType === 3)
+    .map((c) => c.publicKey);
+  const sweepAttempts: string[][] =
+    opts.zeroHop === undefined
+      ? [defaultZeroHop]
+      : opts.zeroHop.length > 0 && Array.isArray(opts.zeroHop[0])
+        ? (opts.zeroHop as string[][])
+        : [opts.zeroHop as string[]];
+  let sweepIdx = 0;
+  vi.spyOn(m as any, 'discoverNodes').mockImplementation(async () => {
+    const seen = sweepAttempts[Math.min(sweepIdx, sweepAttempts.length - 1)] ?? [];
+    sweepIdx += 1;
+    return { returned: seen.length, newCount: 0, seen };
+  });
+  // discoverRegions installs a zero-hop direct out_path before each
+  // request_regions (#3743) so the ANON_REQ routes direct. Stub the device
+  // round-trip + DB mirror; these tests assert selection/ordering, not routing.
+  vi.spyOn(m as any, 'setContactOutPath').mockResolvedValue(true);
 
   return { manager: m, bridgeCalls, scopeUpdates };
 }
@@ -396,15 +424,6 @@ describe('MeshCoreManager — Phase 3: region discovery (#3667)', () => {
     expect(result.perRepeater.map(r => r.publicKey)).toEqual(['bb'.repeat(32)]);
   });
 
-  it('returns empty when there are no repeater contacts', async () => {
-    const { manager, bridgeCalls } = makeManager({
-      contacts: [{ publicKey: 'cc'.repeat(32), advType: 0 }],
-    });
-    const result = await manager.discoverRegions();
-    expect(result).toEqual({ regions: [], perRepeater: [] });
-    expect(bridgeCalls.some(c => c.cmd === 'request_regions')).toBe(false);
-  });
-
   it('returns empty on a non-companion device without querying', async () => {
     const { manager, bridgeCalls } = makeManager({
       contacts: [{ publicKey: 'aa'.repeat(32), advType: 2 }],
@@ -413,6 +432,86 @@ describe('MeshCoreManager — Phase 3: region discovery (#3667)', () => {
     (manager as any).deviceType = MeshCoreDeviceType.REPEATER;
     const result = await manager.discoverRegions();
     expect(result).toEqual({ regions: [], perRepeater: [] });
+    expect(bridgeCalls.some(c => c.cmd === 'request_regions')).toBe(false);
+    expect(manager.discoverNodes).not.toHaveBeenCalled();
+  });
+
+  it('runs a repeater+room-server (0x0C) sweep before querying', async () => {
+    const { manager } = makeManager({
+      contacts: [{ publicKey: 'aa'.repeat(32), advType: 2 }],
+      regionsByRepeater: { ['aa'.repeat(32)]: ['muenchen'] },
+    });
+    await manager.discoverRegions();
+    expect(manager.discoverNodes).toHaveBeenCalledWith(0x0c, expect.any(Number));
+  });
+
+  it('queries only the repeaters returned by the 0-hop sweep, not every known repeater', async () => {
+    const aa = 'aa'.repeat(32), bb = 'bb'.repeat(32), dd = 'dd'.repeat(32);
+    const { manager, bridgeCalls } = makeManager({
+      contacts: [
+        { publicKey: aa, advType: 2 }, // known but far — not in sweep
+        { publicKey: bb, advType: 2 }, // 0-hop
+        { publicKey: dd, advType: 3 }, // known but far — not in sweep
+      ],
+      regionsByRepeater: { [bb]: ['muenchen'] },
+      zeroHop: [bb], // only bb answered the sweep
+    });
+    const result = await manager.discoverRegions();
+    expect(bridgeCalls.filter(c => c.cmd === 'request_regions').map(c => c.params.public_key)).toEqual([bb]);
+    expect(result.perRepeater.map(r => r.publicKey)).toEqual([bb]);
+    expect(result.regions).toEqual(['muenchen']);
+    // Installs a zero-hop direct out_path (empty bytes) before querying, so the
+    // regions ANON_REQ routes direct rather than flooding (#3743).
+    expect(manager.setContactOutPath).toHaveBeenCalledWith(bb, expect.any(Uint8Array), 1, expect.any(Number));
+    const [, installedPath] = (manager.setContactOutPath as any).mock.calls.find((c: any[]) => c[0] === bb);
+    expect(installedPath.length).toBe(0);
+  });
+
+  it('queries in sweep arrival order, not contact-map order', async () => {
+    const aa = 'aa'.repeat(32), bb = 'bb'.repeat(32);
+    const { manager, bridgeCalls } = makeManager({
+      contacts: [
+        { publicKey: aa, advType: 2 }, // inserted first
+        { publicKey: bb, advType: 2 },
+      ],
+      regionsByRepeater: { [aa]: ['augsburg'], [bb]: ['muenchen'] },
+      zeroHop: [bb, aa], // bb answered the sweep first
+    });
+    await manager.discoverRegions();
+    expect(bridgeCalls.filter(c => c.cmd === 'request_regions').map(c => c.params.public_key)).toEqual([bb, aa]);
+  });
+
+  it('retries the sweep once when the first finds no 0-hop repeaters, then queries', async () => {
+    const bb = 'bb'.repeat(32);
+    const { manager, bridgeCalls } = makeManager({
+      contacts: [{ publicKey: bb, advType: 2 }],
+      regionsByRepeater: { [bb]: ['muenchen'] },
+      zeroHop: [[], [bb]], // first sweep empty, retry finds bb
+    });
+    const result = await manager.discoverRegions();
+    expect(manager.discoverNodes).toHaveBeenCalledTimes(2);
+    expect(result.regions).toEqual(['muenchen']);
+    expect(result.noZeroHopRepeaters).toBeUndefined();
+    expect(bridgeCalls.filter(c => c.cmd === 'request_regions')).toHaveLength(1);
+  });
+
+  it('returns noZeroHopRepeaters after two empty sweeps, querying nobody', async () => {
+    const { manager, bridgeCalls } = makeManager({
+      contacts: [{ publicKey: 'bb'.repeat(32), advType: 2 }], // known but none answered
+      zeroHop: [], // every sweep empty
+    });
+    const result = await manager.discoverRegions();
+    expect(manager.discoverNodes).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ regions: [], perRepeater: [], noZeroHopRepeaters: true });
+    expect(bridgeCalls.some(c => c.cmd === 'request_regions')).toBe(false);
+  });
+
+  it('reports noZeroHopRepeaters when no known contact is a repeater', async () => {
+    const { manager, bridgeCalls } = makeManager({
+      contacts: [{ publicKey: 'cc'.repeat(32), advType: 0 }], // plain chat only
+    });
+    const result = await manager.discoverRegions();
+    expect(result).toEqual({ regions: [], perRepeater: [], noZeroHopRepeaters: true });
     expect(bridgeCalls.some(c => c.cmd === 'request_regions')).toBe(false);
   });
 });

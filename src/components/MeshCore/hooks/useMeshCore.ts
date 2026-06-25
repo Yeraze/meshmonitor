@@ -146,7 +146,7 @@ export interface MeshCoreActions {
   /** Set the per-source default region/scope. Returns the normalized value, or null on error. */
   setDefaultScope: (scope: string) => Promise<string | null>;
   /** Discover region/scope names served by nearby repeaters (#3667 phase 3). */
-  discoverRegions: () => Promise<{ regions: string[]; perRepeater: Array<{ publicKey: string; name: string; regions: string[] }> } | null>;
+  discoverRegions: () => Promise<{ regions: string[]; perRepeater: Array<{ publicKey: string; name: string; regions: string[] }>; noZeroHopRepeaters?: boolean } | null>;
   /** Remove a contact from the device's contact list. Resolves `true` when
    *  the device ACKed the removal; `false` for any error. */
   removeContact: (publicKey: string) => Promise<boolean>;
@@ -812,6 +812,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       return {
         regions: Array.isArray(data.regions) ? data.regions : [],
         perRepeater: Array.isArray(data.perRepeater) ? data.perRepeater : [],
+        noZeroHopRepeaters: data.noZeroHopRepeaters === true,
       };
     } catch (_err) {
       setError('Failed to discover regions');
