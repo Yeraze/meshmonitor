@@ -174,4 +174,19 @@ describe('simulateAutomation', () => {
     const fail = await simulateAutomation({ graph, varsRepo, event: { kind: 'message', text: 'hi', sourceId: 'other' } });
     expect(fail.conditionResults['c']).toBe(false);
   });
+
+  it('runScript: dry-run records the action without spawning a process', async () => {
+    const graph: AutomationGraph = {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: {} },
+        { id: 'a', type: 'action.runScript', params: { scriptPath: 'foo.sh' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    };
+    const r = await simulateAutomation({ graph, varsRepo, event: { kind: 'message', text: 'hi' } });
+    expect(r.actions).toHaveLength(1);
+    expect(r.actions[0].type).toBe('action.runScript');
+    expect((r.actions[0].resolvedParams as any).scriptPath).toBe('foo.sh');
+  });
 });

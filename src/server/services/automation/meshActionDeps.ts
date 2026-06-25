@@ -13,6 +13,7 @@
 import databaseService from '../../../services/database.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { appriseNotificationService } from '../appriseNotificationService.js';
+import { runScript as runUserScript } from '../../utils/scriptRunner.js';
 import type { ActionDeps } from './actionExecutor.js';
 
 interface MeshSendManager {
@@ -95,6 +96,12 @@ export function createMeshActionDeps(): ActionDeps {
       const r = await appriseNotificationService.notifyDirect({ sourceId, title, body, type }, urls);
       if (!r.ok) throw new Error(`notify failed: ${r.message}`);
       return r;
+    },
+
+    async runScript({ scriptPath, env, timeoutMs }) {
+      // runUserScript resolves the path under $DATA_DIR/scripts (traversal-safe),
+      // picks the interpreter, and never throws — returns { success, ... }.
+      return runUserScript({ scriptPath, env, timeoutMs });
     },
   };
 }

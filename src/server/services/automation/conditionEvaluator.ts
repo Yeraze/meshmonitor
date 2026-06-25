@@ -10,6 +10,7 @@ import {
   type EngineEvalContext,
   resolveFieldValue,
   resolveOperand,
+  resolveVarValue,
   getSubjectNode,
 } from './engineContext.js';
 import { haversineKm } from './geo.js';
@@ -92,7 +93,9 @@ export async function evaluateCondition(node: AutomationNode, ctx: EngineEvalCon
     case 'condition.variable': {
       const name = String(p.variable ?? '');
       if (!name) return false;
-      const value = await ctx.vars.getValue(name, ctx.varCtx, ctx.now);
+      // resolveVarValue supports nested access (var "data.status") for JSON vars;
+      // a plain name behaves exactly like getValue.
+      const value = await resolveVarValue(ctx.vars, name, ctx.varCtx, ctx.now);
       if (p.op == null) {
         // "is set / truthy": flag present, non-empty string, non-zero number, true
         if (value == null) return false;

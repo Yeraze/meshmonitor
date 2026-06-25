@@ -38,7 +38,8 @@ export type ActionType =
   | 'action.sendMessage'
   | 'action.tapback'
   | 'action.nodeManage'
-  | 'action.notify';
+  | 'action.notify'
+  | 'action.runScript';
 
 // flow.delay is intentionally absent — deferred to Phase 1b (stateful waits).
 export type FlowType = 'flow.fanout' | 'flow.collapse' | 'flow.setVar';
@@ -74,6 +75,7 @@ export const ACTION_TYPES: readonly ActionType[] = [
   'action.tapback',
   'action.nodeManage',
   'action.notify',
+  'action.runScript',
 ];
 
 export const FLOW_TYPES: readonly FlowType[] = ['flow.fanout', 'flow.collapse', 'flow.setVar'];
@@ -100,7 +102,7 @@ export type NumericOp = (typeof NUMERIC_OPS)[number];
 
 // ─── Variable types (canonical home; repository re-exports these) ─────────────
 
-export const VARIABLE_TYPES = ['string', 'integer', 'float', 'boolean', 'flag'] as const;
+export const VARIABLE_TYPES = ['string', 'integer', 'float', 'boolean', 'flag', 'json'] as const;
 export type VariableType = (typeof VARIABLE_TYPES)[number];
 
 export const VARIABLE_SCOPES = ['global', 'source', 'node', 'sourceNode'] as const;
@@ -313,6 +315,11 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
         case 'flow.setVar':
           if (typeof p.variable !== 'string' || p.variable.length === 0) {
             errors.push(`${n.type} "${n.id}" requires params.variable`);
+          }
+          break;
+        case 'action.runScript':
+          if (typeof p.scriptPath !== 'string' || p.scriptPath.length === 0) {
+            errors.push(`action.runScript "${n.id}" requires params.scriptPath`);
           }
           break;
         default:

@@ -28,6 +28,41 @@ export interface ActionDeps {
   }): Promise<unknown>;
   manageNode(a: { sourceId: string | null; nodeNum: number; op: NodeManageOp }): Promise<unknown>;
   notify(a: { sourceId: string | null; title: string; body: string; type?: string; urls?: string[] }): Promise<unknown>;
+  /** Run a user script file (in $DATA_DIR/scripts) with the given env. Never throws — returns the outcome. */
+  runScript(a: { scriptPath: string; env: Record<string, string>; timeoutMs?: number }):
+    Promise<{ success: boolean; returnValue?: unknown; stdout: string; error?: string }>;
+}
+
+/**
+ * Build the env a `runScript` action exposes to the script: a generic
+ * MM_TRIGGER_TYPE / MM_SOURCE_ID / MM_NODE_NUM / MM_TIMESTAMP plus every trigger
+ * field as MM_<UPPER_SNAKE> (objects/arrays JSON-stringified, nulls skipped), and
+ * message-compatible aliases (MESSAGE/FROM_NODE/…) so existing scripts still work.
+ * Does NOT include process.env — runScript merges that itself.
+ */
+export function triggerEnv(ctx: EngineEvalContext): Record<string, string> {
+  const fields = ctx.trigger.fields ?? {};
+  const enc = (v: unknown): string => (typeof v === 'object' ? JSON.stringify(v) : String(v));
+  const env: Record<string, string> = {
+    MM_TRIGGER_TYPE: String(ctx.trigger.triggerType ?? ''),
+    MM_SOURCE_ID: ctx.trigger.sourceId ?? '',
+    MM_TIMESTAMP: String(ctx.trigger.timestamp ?? ''),
+  };
+  if (ctx.trigger.subjectNodeNum != null) env.MM_NODE_NUM = String(ctx.trigger.subjectNodeNum);
+  const toEnvKey = (k: string) =>
+    'MM_' + k.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/[^A-Za-z0-9]+/g, '_').toUpperCase();
+  for (const [k, v] of Object.entries(fields)) {
+    if (v == null) continue;
+    env[toEnvKey(k)] = enc(v);
+  }
+  const alias = (key: string, v: unknown) => { if (v != null) env[key] = enc(v); };
+  alias('MESSAGE', fields.text);
+  alias('FROM_NODE', fields.from);
+  alias('PACKET_ID', fields.packetId);
+  alias('CHANNEL', fields.channel);
+  alias('SNR', fields.snr);
+  alias('RSSI', fields.rssi);
+  return env;
 }
 
 /** Target source for an action: explicit param wins, else the trigger's source. */
@@ -57,6 +92,23 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
   switch (node.type) {
     case 'action.nothing':
       return undefined; // no-op — used so a rule can contribute only its IF result to a FINALLY step
+
+    case 'action.runScript': {
+      const scriptPath = String(p.scriptPath ?? '');
+      if (!scriptPath) throw new Error('action.runScript: no scriptPath');
+      const timeoutMs = p.timeoutSeconds != null && Number.isFinite(Number(p.timeoutSeconds))
+        ? Math.max(1, Number(p.timeoutSeconds)) * 1000 : undefined;
+      const result = await deps.runScript({ scriptPath, env: triggerEnv(ctx), timeoutMs });
+      if (!result.success) throw new Error(`script "${scriptPath}" failed: ${result.error ?? 'non-zero exit'}`);
+      // Store the script's JSON result into a variable (usable later as
+      // {{ var.NAME.a.b }}); fall back to trimmed stdout when there's no JSON.
+      const resultVar = typeof p.resultVariable === 'string' ? p.resultVariable : '';
+      if (resultVar) {
+        const value = result.returnValue !== undefined ? result.returnValue : result.stdout.trim();
+        await ctx.vars.setValue(resultVar, value, ctx.varCtx, ctx.now);
+      }
+      return { scriptPath, success: true, returnValue: result.returnValue };
+    }
 
     case 'action.sendMessage': {
       const text = await interpolateAsync(String(p.text ?? ''), ctx);

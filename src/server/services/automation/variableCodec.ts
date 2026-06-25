@@ -15,7 +15,7 @@ export interface ParsedVarConfig {
   defaultValue?: unknown;
 }
 
-export type DecodedValue = string | number | boolean | null;
+export type DecodedValue = string | number | boolean | object | null;
 
 /** Parse the JSON `config` column, tolerating malformed/empty input. */
 export function parseVarConfig(config: string | null | undefined): ParsedVarConfig {
@@ -60,6 +60,12 @@ export function encodeValue(type: VariableType, value: unknown): string | null {
     case 'boolean':
     case 'flag':
       return toBool(value) ? 'true' : 'false';
+    case 'json': {
+      // Store any JSON-serializable value (e.g. a script's parsed result). A
+      // string that is already JSON is stored as-is so it round-trips cleanly.
+      if (typeof value === 'string') return value;
+      try { return JSON.stringify(value ?? null); } catch { return null; }
+    }
     default:
       return null;
   }
@@ -82,6 +88,8 @@ export function decodeValue(type: VariableType, raw: string | null): DecodedValu
     case 'boolean':
     case 'flag':
       return raw === 'true' || raw === '1';
+    case 'json':
+      try { return JSON.parse(raw); } catch { return null; }
     default:
       return null;
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { executeAction, type ActionDeps } from './actionExecutor.js';
+import { executeAction, triggerEnv, type ActionDeps } from './actionExecutor.js';
 import type { EngineEvalContext } from './engineContext.js';
 import type { TriggerContext } from './triggerContext.js';
 import type { AutomationNode } from '../../../types/automation.js';
@@ -12,6 +12,7 @@ function recorder() {
     sendTapback: async (a) => { calls.push({ fn: 'sendTapback', args: a }); return 2; },
     manageNode: async (a) => { calls.push({ fn: 'manageNode', args: a }); return 3; },
     notify: async (a) => { calls.push({ fn: 'notify', args: a }); return 4; },
+    runScript: async (a) => { calls.push({ fn: 'runScript', args: a }); return { success: true, stdout: '', returnValue: { ok: 1 } }; },
   };
   return { calls, deps };
 }
@@ -216,5 +217,43 @@ describe('executeAction', () => {
   it('throws on an unknown action type', async () => {
     const { deps } = recorder();
     await expect(executeAction(node('action.bogus', {}), ctx({}), deps)).rejects.toThrow(/unknown action/);
+  });
+
+  // ─── runScript ─────────────────────────────────────────────────────────────
+  it('triggerEnv maps the trigger context to MM_* + message aliases', () => {
+    const env = triggerEnv(ctx({ from: 5, text: 'hello', telemetryType: 'battery', changed: ['a', 'b'] }, 'src1'));
+    expect(env.MM_TRIGGER_TYPE).toBe('trigger.message');
+    expect(env.MM_SOURCE_ID).toBe('src1');
+    expect(env.MM_TEXT).toBe('hello');
+    expect(env.MM_TELEMETRY_TYPE).toBe('battery');     // camelCase → MM_SNAKE
+    expect(env.MM_CHANGED).toBe('["a","b"]');           // arrays JSON-stringified
+    expect(env.MESSAGE).toBe('hello');                   // message alias
+    expect(env.FROM_NODE).toBe('5');
+    expect('MM_NOTHERE' in env).toBe(false);             // absent field → no key
+  });
+
+  it('runScript: calls the dep with scriptPath + env, stores returnValue in the result variable', async () => {
+    const { calls, deps } = recorder();
+    const writes: Array<{ name: string; value: unknown }> = [];
+    const c = ctx({ from: 5, text: 'hi' });
+    (c.vars as any).setValue = async (name: string, value: unknown) => { writes.push({ name, value }); return { ok: true }; };
+    await executeAction(node('action.runScript', { scriptPath: 'foo.sh', resultVariable: 'scriptOut', timeoutSeconds: 5 }), c, deps);
+    const call = calls.find((x) => x.fn === 'runScript')!;
+    expect(call.args.scriptPath).toBe('foo.sh');
+    expect(call.args.timeoutMs).toBe(5000);
+    expect(call.args.env.MM_TEXT).toBe('hi');
+    expect(writes).toEqual([{ name: 'scriptOut', value: { ok: 1 } }]); // recorder returns returnValue {ok:1}
+  });
+
+  it('runScript: a failing script throws (recorded as action:error)', async () => {
+    const { deps } = recorder();
+    deps.runScript = async () => ({ success: false, stdout: '', error: 'boom' });
+    await expect(executeAction(node('action.runScript', { scriptPath: 'bad.sh' }), ctx({}), deps))
+      .rejects.toThrow(/script "bad\.sh" failed: boom/);
+  });
+
+  it('runScript: requires a scriptPath', async () => {
+    const { deps } = recorder();
+    await expect(executeAction(node('action.runScript', {}), ctx({}), deps)).rejects.toThrow(/no scriptPath/);
   });
 });

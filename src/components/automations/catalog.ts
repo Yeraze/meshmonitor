@@ -6,7 +6,7 @@
  * `kind` maps to an input renderer in AutomationBuilder.
  */
 
-export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence';
+export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect';
 
 export interface FieldOpt { value: string; label: string; }
 export interface FieldGroup { label: string; options: FieldOpt[]; }
@@ -354,6 +354,16 @@ export const ACTIONS: BlockDef[] = [
     label: 'Do nothing',
     description: 'A no-op. Use it when a rule should only contribute its IF result to a FINALLY (ANY/ALL/NONE) step without doing anything on its own.',
     fields: [],
+  },
+  {
+    type: 'action.runScript',
+    label: 'Run a script',
+    description: 'Run a script from the server’s scripts folder. The trigger context is passed as MM_* environment variables; the script’s JSON output can be stored in a variable.',
+    fields: [
+      { name: 'scriptPath', label: 'Script', kind: 'scriptselect', help: 'A script file in the server’s scripts directory ($DATA_DIR/scripts).' },
+      { name: 'resultVariable', label: 'Store result in', kind: 'variable', advanced: true, help: 'Optional. Stores the script’s JSON output in this variable — use a "json" variable and index it later as {{ var.name.field }}.' },
+      { name: 'timeoutSeconds', label: 'Timeout (seconds)', kind: 'number', advanced: true, placeholder: '30' },
+    ],
   },
 ];
 

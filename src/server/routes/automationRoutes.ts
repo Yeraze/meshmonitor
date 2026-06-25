@@ -99,6 +99,11 @@ router.post('/variables', canWrite, async (req: Request, res: Response) => {
     if (!name || !type || !scope) {
       return res.status(400).json({ error: 'name, type and scope are required' });
     }
+    // Names must be dot-free identifiers so `{{ var.name.a.b }}` can split the
+    // variable name from the nested JSON path unambiguously.
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(String(name))) {
+      return res.status(400).json({ error: 'name must be a letters/digits/underscore identifier (no dots or spaces)' });
+    }
     if (!VARIABLE_TYPES.includes(type) || !VARIABLE_SCOPES.includes(scope)) {
       return res.status(400).json({ error: 'invalid type or scope' });
     }
