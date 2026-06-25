@@ -41,6 +41,21 @@ export interface SourceStatus {
   [key: string]: unknown;
 }
 
+/**
+ * One source's bundled dashboard datasets, as returned by the aggregate
+ * endpoints GET /api/sources/:id/dashboard and GET /api/unified/dashboard.
+ * Bundling these four reads into one request (instead of one GET each, per
+ * source, per 15s poll) is what keeps source-heavy dashboards from exhausting
+ * the API rate limiter / hammering low-powered servers (#3735).
+ */
+export interface SourceDashboardBundle {
+  sourceId: string;
+  nodes: unknown[];
+  traceroutes: unknown[];
+  neighborInfo: unknown[];
+  channels: unknown[];
+}
+
 /** Default poll interval for dashboard data (15 seconds) */
 export const DASHBOARD_POLL_INTERVAL = 15_000;
 
@@ -168,25 +183,12 @@ export function useDashboardSourceData(sourceId: string | null): DashboardSource
   const isAuthenticated = authStatus?.authenticated ?? false;
   const enabled = sourceId !== null;
 
-  const nodesQuery = useQuery({
-    queryKey: ['dashboard', 'nodes', sourceId, isAuthenticated],
-    queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${sourceId}/nodes`),
-    enabled,
-    retry: false,
-    refetchInterval: DASHBOARD_POLL_INTERVAL,
-  });
-
-  const traceroutesQuery = useQuery({
-    queryKey: ['dashboard', 'traceroutes', sourceId, isAuthenticated],
-    queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${sourceId}/traceroutes`),
-    enabled,
-    retry: false,
-    refetchInterval: DASHBOARD_POLL_INTERVAL,
-  });
-
-  const neighborInfoQuery = useQuery({
-    queryKey: ['dashboard', 'neighborInfo', sourceId, isAuthenticated],
-    queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${sourceId}/neighbor-info`),
+  // One bundled request for nodes+traceroutes+neighborInfo+channels instead of
+  // four separate GETs per poll (#3735). Status stays its own lightweight query
+  // (cheap COUNT(*)s) and is also polled per-source by the sidebar.
+  const dashboardQuery = useQuery({
+    queryKey: ['dashboard', 'source-dashboard', sourceId, isAuthenticated],
+    queryFn: () => fetchJson<SourceDashboardBundle>(`${appBasename}/api/sources/${sourceId}/dashboard`),
     enabled,
     retry: false,
     refetchInterval: DASHBOARD_POLL_INTERVAL,
@@ -195,14 +197,6 @@ export function useDashboardSourceData(sourceId: string | null): DashboardSource
   const statusQuery = useQuery({
     queryKey: ['dashboard', 'status', sourceId, isAuthenticated],
     queryFn: () => fetchJson<SourceStatus>(`${appBasename}/api/sources/${sourceId}/status`),
-    enabled,
-    retry: false,
-    refetchInterval: DASHBOARD_POLL_INTERVAL,
-  });
-
-  const channelsQuery = useQuery({
-    queryKey: ['dashboard', 'channels', sourceId, isAuthenticated],
-    queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${sourceId}/channels`),
     enabled,
     retry: false,
     refetchInterval: DASHBOARD_POLL_INTERVAL,
@@ -220,25 +214,14 @@ export function useDashboardSourceData(sourceId: string | null): DashboardSource
     };
   }
 
-  const isLoading =
-    nodesQuery.isLoading ||
-    traceroutesQuery.isLoading ||
-    neighborInfoQuery.isLoading ||
-    statusQuery.isLoading ||
-    channelsQuery.isLoading;
-
-  const isError =
-    nodesQuery.isError ||
-    traceroutesQuery.isError ||
-    neighborInfoQuery.isError ||
-    statusQuery.isError ||
-    channelsQuery.isError;
+  const isLoading = dashboardQuery.isLoading || statusQuery.isLoading;
+  const isError = dashboardQuery.isError || statusQuery.isError;
 
   return {
-    nodes: nodesQuery.data ?? [],
-    traceroutes: traceroutesQuery.data ?? [],
-    neighborInfo: neighborInfoQuery.data ?? [],
-    channels: channelsQuery.data ?? [],
+    nodes: dashboardQuery.data?.nodes ?? [],
+    traceroutes: dashboardQuery.data?.traceroutes ?? [],
+    neighborInfo: dashboardQuery.data?.neighborInfo ?? [],
+    channels: dashboardQuery.data?.channels ?? [],
     status: statusQuery.data ?? null,
     isLoading,
     isError,
@@ -437,37 +420,20 @@ export function useDashboardUnifiedData(
   const sourceList = sources.map((s) => (typeof s === 'string' ? { id: s } : s));
   const sourceIds = sourceList.map((s) => s.id);
 
-  const queries = useQueries({
-    queries: sourceIds.flatMap((id) => [
-      {
-        queryKey: ['dashboard', 'nodes', id, isAuthenticated],
-        queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${id}/nodes`),
-        enabled,
-        retry: false,
-        refetchInterval: DASHBOARD_POLL_INTERVAL,
-      },
-      {
-        queryKey: ['dashboard', 'traceroutes', id, isAuthenticated],
-        queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${id}/traceroutes`),
-        enabled,
-        retry: false,
-        refetchInterval: DASHBOARD_POLL_INTERVAL,
-      },
-      {
-        queryKey: ['dashboard', 'neighborInfo', id, isAuthenticated],
-        queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${id}/neighbor-info`),
-        enabled,
-        retry: false,
-        refetchInterval: DASHBOARD_POLL_INTERVAL,
-      },
-      {
-        queryKey: ['dashboard', 'channels', id, isAuthenticated],
-        queryFn: () => fetchJson<unknown[]>(`${appBasename}/api/sources/${id}/channels`),
-        enabled,
-        retry: false,
-        refetchInterval: DASHBOARD_POLL_INTERVAL,
-      },
-    ]),
+  // ONE request for the whole unified view instead of four GETs per source per
+  // poll (#3735). The endpoint returns a per-source bundle array; we re-key it
+  // by sourceId and stamp the caller's name/protocol metadata back on so the
+  // merge can attribute each node to its source.
+  const sourcesKey = sourceIds.join(',');
+  const query = useQuery({
+    queryKey: ['dashboard', 'unified-dashboard', sourcesKey, isAuthenticated],
+    queryFn: () =>
+      fetchJson<SourceDashboardBundle[]>(
+        `${appBasename}/api/unified/dashboard?sources=${encodeURIComponent(sourcesKey)}`,
+      ),
+    enabled: enabled && sourceIds.length > 0,
+    retry: false,
+    refetchInterval: DASHBOARD_POLL_INTERVAL,
   });
 
   if (!enabled || sourceIds.length === 0) {
@@ -482,31 +448,33 @@ export function useDashboardUnifiedData(
     };
   }
 
-  const isLoading = queries.some((q) => q.isLoading);
-  const isError = queries.every((q) => q.isError);
+  const bundlesById = new Map<string, SourceDashboardBundle>(
+    (query.data ?? []).map((b: SourceDashboardBundle): [string, SourceDashboardBundle] => [b.sourceId, b]),
+  );
 
-  // Group every 4 sequential queries back into one source's bundle, mirroring
-  // the order we registered them in (nodes, traceroutes, neighborInfo, channels).
-  // When given full DashboardSource objects we carry id/name/protocol so the
-  // merge can stamp `sources` onto every node (MeshCore source types map to the
-  // MeshCore protocol; everything else is Meshtastic). Bare-string callers get
-  // no metadata, so merged nodes carry no `sources` field.
-  const perSource: UnifiedSourceBundle[] = sourceList.map((s, i) => ({
-    sourceId: 'name' in s ? s.id : undefined,
-    sourceName: 'name' in s ? s.name : undefined,
-    protocol: 'type' in s ? (s.type === 'meshcore' ? 'MeshCore' : 'Meshtastic') : undefined,
-    nodes: (queries[i * 4 + 0]?.data as unknown[] | undefined) ?? [],
-    traceroutes: (queries[i * 4 + 1]?.data as unknown[] | undefined) ?? [],
-    neighborInfo: (queries[i * 4 + 2]?.data as unknown[] | undefined) ?? [],
-    channels: (queries[i * 4 + 3]?.data as unknown[] | undefined) ?? [],
-  }));
+  // Re-attach id/name/protocol so the merge can stamp `sources` onto every node
+  // (MeshCore source types map to the MeshCore protocol; everything else is
+  // Meshtastic). Bare-string callers carry no metadata, so merged nodes get no
+  // `sources` field — matching the previous behavior.
+  const perSource: UnifiedSourceBundle[] = sourceList.map((s) => {
+    const b = bundlesById.get(s.id);
+    return {
+      sourceId: 'name' in s ? s.id : undefined,
+      sourceName: 'name' in s ? s.name : undefined,
+      protocol: 'type' in s ? (s.type === 'meshcore' ? 'MeshCore' : 'Meshtastic') : undefined,
+      nodes: b?.nodes ?? [],
+      traceroutes: b?.traceroutes ?? [],
+      neighborInfo: b?.neighborInfo ?? [],
+      channels: b?.channels ?? [],
+    };
+  });
 
   const merged = mergeUnifiedSourceData(perSource);
 
   return {
     ...merged,
     status: null,
-    isLoading,
-    isError,
+    isLoading: query.isLoading,
+    isError: query.isError,
   };
 }

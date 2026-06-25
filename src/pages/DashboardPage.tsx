@@ -6,7 +6,7 @@
  * per-source data fetched via the useDashboardData hooks.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -59,6 +59,22 @@ function DashboardInner() {
    */
   const refreshSources = () => {
     queryClient.invalidateQueries({ queryKey: ['dashboard', 'sources'] });
+  };
+
+  /**
+   * Debounced variant for bursty mutations (rapid on/off/on source toggling).
+   * Coalesces a flurry of toggles into a single cache invalidation so we fire
+   * one refetch cycle instead of one per click — which, with the batched
+   * dashboard endpoints, keeps toggling comfortably under the API rate limit
+   * (#3735). The PUTs themselves still go through per click (each one changes
+   * server state); only the follow-up refetch is coalesced.
+   */
+  const refreshSourcesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshSourcesDebounced = () => {
+    if (refreshSourcesTimer.current) clearTimeout(refreshSourcesTimer.current);
+    refreshSourcesTimer.current = setTimeout(() => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'sources'] });
+    }, 400);
   };
 
   /**
@@ -802,7 +818,7 @@ function DashboardInner() {
       },
       body: JSON.stringify({ enabled }),
     });
-    if (res.ok) refreshSources();
+    if (res.ok) refreshSourcesDebounced();
   };
 
   const onDeleteSource = (id: string) => {
