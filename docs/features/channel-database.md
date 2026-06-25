@@ -42,7 +42,7 @@ Enter the PSK in Base64 format, the same format used by Meshtastic. You can find
 
 ## Channel Priority and Ordering
 
-Channels in the database are tried in **sort order** during decryption. The first channel that successfully decrypts a packet wins. You can control the order using drag-and-drop:
+Channels in the database are tried in **sort order** during decryption, with one important refinement: when a packet carries a channel hash, channels whose name+PSK hash **matches that packet** are tried first, then the rest in sort order. The first channel that successfully decrypts a packet wins. You can control the order using drag-and-drop:
 
 1. Navigate to **Configuration** > **Channel Database**
 2. Drag channels using the handle on the left side of each channel card
@@ -50,7 +50,7 @@ Channels in the database are tried in **sort order** during decryption. The firs
 4. The new order is saved automatically
 
 ::: tip Decryption Priority
-If multiple channels could potentially decrypt the same packet (e.g., same PSK with different names), only the first matching channel in sort order will be credited with the decryption.
+If multiple channels share the same PSK but have different names (e.g. a default-key `LongFast` plus a custom channel both using `AQ==`), MeshMonitor uses the packet's channel hash to credit the **correct** channel — the one whose name+PSK hash matches the packet — rather than simply the first one in sort order. Sort order is only the tiebreaker when no channel's hash matches (in which case the first channel that decrypts is credited, so a packet is never left undecrypted). This matches how Meshtastic firmware distinguishes same-key channels.
 :::
 
 ## Importing and Exporting Channels
@@ -191,12 +191,15 @@ Toggle channels on or off without deleting them. Disabled channels are not used 
 
 When enabled, this option ensures that a channel will only decrypt packets that have a matching channel hash. This is useful when:
 
-- Multiple channels share the same PSK (e.g., default keys)
-- You want to ensure packets are attributed to the correct channel name
+- You want to *strictly* reject packets that don't match a channel's name+PSK hash
 - You're monitoring networks where channel naming conventions matter
 
+::: tip Same-PSK channels are disambiguated automatically
+You no longer need to enable this just to attribute packets to the correct channel when several channels share a PSK (e.g. default `AQ==` keys). MeshMonitor already prefers the channel whose name+PSK hash matches each packet (see [Channel Priority and Ordering](#channel-priority-and-ordering)). Enforce Name Validation goes further: it makes a hash *mismatch* a hard skip, so the channel will **refuse** non-matching packets entirely rather than serving as a fallback.
+:::
+
 ::: warning
-If the sending device doesn't include channel hash information in packets, enabling this option may prevent decryption even with a valid PSK.
+If the sending device doesn't include channel hash information in packets, enabling this option may prevent decryption even with a valid PSK. Because same-PSK attribution is now handled automatically, leaving this **off** is the safer default — it preserves decryption of default-key traffic across all modem presets.
 :::
 
 ### Editing Channels
