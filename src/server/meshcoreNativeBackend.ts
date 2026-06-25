@@ -452,7 +452,11 @@ export class MeshCoreNativeBackend extends EventEmitter {
           // arrived (issue #3589 mis-correlation guard).
           if (pkt.payload_type === TXT_MSG || pkt.payload_type === GRP_TXT) {
             // Buffer raw_hex too so the message handler can resolve the scope/
-            // region the packet was sent under (#3742 Phase 2).
+            // region the packet was sent under (#3742 Phase 2). Same correlation
+            // limitation as the Phase 1 route/SNR: if LogRxData arrives AFTER its
+            // text-msg recv event (rare ordering on a busy link), the buffer is
+            // missed and scope resolves to null — acceptable and inherent to the
+            // adjacency-buffer design.
             this.pendingTxtMsgPath = { hops, rawPathLen: pkt.pathLen, snr, rawHex: bytesToHex(raw), bufferedAt: Date.now() };
           }
           this.emitBridgeEvent('ota_packet', {

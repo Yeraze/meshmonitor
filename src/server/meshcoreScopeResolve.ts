@@ -20,7 +20,12 @@
 import { createHash, createHmac } from 'node:crypto';
 import { decodeMeshCorePacket, hexToBytes } from '../utils/meshcorePacketDecode.js';
 
-/** Route-type nibble values that carry transport codes (i.e. are scoped). */
+// Route-type nibble values that carry transport codes (i.e. are scoped). These
+// mirror the firmware's TransportRoute enum / meshcore.js Packet.ROUTE_TYPE_*:
+// FLOOD(0x01) and DIRECT(0x02) carry no transport codes (unscoped); the
+// TRANSPORT_* variants prepend the two 16-bit codes. We treat both transport
+// variants as scoped — a scoped DM rides TRANSPORT_DIRECT, a scoped flood/
+// channel message rides TRANSPORT_FLOOD.
 const ROUTE_TYPE_TRANSPORT_FLOOD = 0x00;
 const ROUTE_TYPE_TRANSPORT_DIRECT = 0x03;
 
@@ -89,6 +94,9 @@ export function resolveMessageScope(
   const payloadType = decoded.header.payloadType;
   const payloadHex = decoded.payload.hex;
   if (payloadHex) {
+    // Linear scan: one HMAC per candidate. The candidate set is a source's known
+    // scopes (per-channel scopes + the default scope) — realistically 1–5, a
+    // handful at most — so this is trivially cheap on the inbound-message path.
     for (const name of candidateNames) {
       const trimmed = (name || '').trim();
       if (!trimmed) continue;
