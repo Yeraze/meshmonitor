@@ -269,8 +269,8 @@ router.get('/telemetry/available/nodes', requirePermission('info', 'read'), asyn
   try {
     const telAvailSourceId = req.query.sourceId as string | undefined;
     const allNodes = await databaseService.nodes.getAllNodes(telAvailSourceId);
-    // Filter nodes based on channel read permissions
-    const nodes = await filterNodesByChannelPermission(allNodes, (req as any).user);
+    // Filter nodes based on channel read permissions (source-scoped, #3745)
+    const nodes = await filterNodesByChannelPermission(allNodes, (req as any).user, telAvailSourceId);
 
     const nodesWithTelemetry: string[] = [];
     const nodesWithWeather: string[] = [];

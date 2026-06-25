@@ -1177,8 +1177,10 @@ apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
     const allNodes = await meshtasticManager.getAllNodesAsync(nodesSourceId);
     const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
 
-    // Filter nodes based on channel read permissions
-    const filteredNodes = await filterNodesByChannelPermission(allNodes, (req as any).user);
+    // Filter nodes based on channel read permissions — scope the permission
+    // lookup to the requested source so a guest with channel access on one
+    // source can't see another source's nodes (#3745).
+    const filteredNodes = await filterNodesByChannelPermission(allNodes, (req as any).user, nodesSourceId);
     const enhancedNodes = await Promise.all(filteredNodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions)));
 
     // Append MeshCore contacts/localNodes so the aggregate dashboard map can
@@ -1242,8 +1244,8 @@ apiRouter.get('/nodes/active', optionalAuth(), async (req, res) => {
       : undefined;
     const allDbNodes = await databaseService.nodes.getActiveNodes(days, activeNodesSourceId);
 
-    // Filter nodes based on channel read permissions
-    const dbNodes = await filterNodesByChannelPermission(allDbNodes, (req as any).user);
+    // Filter nodes based on channel read permissions (source-scoped, #3745)
+    const dbNodes = await filterNodesByChannelPermission(allDbNodes, (req as any).user, activeNodesSourceId);
 
     // Map raw DB nodes to DeviceInfo format then enhance
     const maskedNodes = await Promise.all(dbNodes.map(async node => {
@@ -2655,7 +2657,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
     if (hasMessagesRead && localNodeInfo) {
       const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId, unreadSourceId);
       const allNodes = await unreadManager.getAllNodesAsync(unreadSourceId);
-      const visibleNodes = await filterNodesByChannelPermission(allNodes, req.user);
+      const visibleNodes = await filterNodesByChannelPermission(allNodes, req.user, unreadSourceId);
       const visibleNodeIds = new Set(visibleNodes.map(n => n.user?.id).filter(Boolean));
       const directMessages: { [nodeId: string]: number } = {};
       for (const [nodeId, count] of Object.entries(allUnreadDMs)) {
@@ -2868,7 +2870,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     // each show only what they have actually heard. When no sourceId is given
     // (legacy/no-source callers), fall back to the global unscoped query.
     const allMemoryNodes = await activeManager.getAllNodesAsync(pollSourceId);
-    const filteredMemoryNodes = await filterNodesByChannelPermission(allMemoryNodes, user);
+    const filteredMemoryNodes = await filterNodesByChannelPermission(allMemoryNodes, user, pollSourceId);
 
     // Load full permission set once to avoid N sequential DB queries per permission check
     const userPermissionSet = (user && !user.isAdmin && userId)
@@ -3083,7 +3085,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       if (hasInfoRead) {
         // Use DB nodes for telemetry (has telemetryTypes), filtered by channel permissions
         const allDbNodes = await databaseService.nodes.getAllNodes(pollSourceId);
-        const dbNodes = await filterNodesByChannelPermission(allDbNodes, req.user);
+        const dbNodes = await filterNodesByChannelPermission(allDbNodes, req.user, pollSourceId);
 
         const nodesWithTelemetry: string[] = [];
         const nodesWithWeather: string[] = [];

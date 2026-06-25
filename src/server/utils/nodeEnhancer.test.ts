@@ -216,6 +216,16 @@ describe('nodeEnhancer: filterNodesByChannelPermission', () => {
     expect(result[0]).toHaveProperty('nested');
     expect((result[0] as any).nested.value).toBe(1);
   });
+
+  it('forwards sourceId to the permission lookup — no cross-source union (#3745)', async () => {
+    const db = (await import('../../services/database.js')).default as any;
+    const regularUser = { id: 1, isAdmin: false } as any;
+    db.getUserPermissionSetAsync.mockClear();
+    await filterNodesByChannelPermission(testNodes, regularUser, 'src-B');
+    // The permission set must be scoped to the requested source, not a global
+    // union — otherwise a guest with access on source A sees source B's nodes.
+    expect(db.getUserPermissionSetAsync).toHaveBeenCalledWith(regularUser.id, 'src-B');
+  });
 });
 
 describe('nodeEnhancer: checkNodeChannelAccess', () => {
