@@ -7,7 +7,7 @@
  * listed inline below the field.
  */
 import { useMemo, useRef } from 'react';
-import { tokenize, unknownTokens, validTokenSet } from './tokenHints';
+import { tokenize, diagnoseTokens, validTokenSet } from './tokenHints';
 
 export default function TokenTextField({ value, onChange, multiline, placeholder, triggerType, variableNames }: {
   value: string;
@@ -20,9 +20,11 @@ export default function TokenTextField({ value, onChange, multiline, placeholder
   const backdropRef = useRef<HTMLDivElement>(null);
   const valid = useMemo(() => validTokenSet(triggerType, variableNames), [triggerType, variableNames]);
   const segs = useMemo(() => tokenize(value, valid), [value, valid]);
-  const unknown = useMemo(() => unknownTokens(value, valid), [value, valid]);
+  const diags = useMemo(() => diagnoseTokens(value, valid), [value, valid]);
 
   const cls = multiline ? 'ae-textarea' : 'ae-input';
+  const markClass = (status: string) =>
+    status === 'bad' ? 'ae-token-bad' : status === 'foreign' ? 'ae-token-foreign' : 'ae-token-ok';
   const syncScroll = (el: HTMLTextAreaElement | HTMLInputElement) => {
     if (backdropRef.current) {
       backdropRef.current.scrollTop = el.scrollTop;
@@ -32,11 +34,15 @@ export default function TokenTextField({ value, onChange, multiline, placeholder
 
   const highlighted = segs.map((s, i) =>
     s.token
-      ? <mark key={i} className={s.known ? 'ae-token-ok' : 'ae-token-bad'}>{s.text}</mark>
+      ? <mark key={i} className={markClass(s.status)}>{s.text}</mark>
       : <span key={i}>{s.text}</span>,
   );
 
   return (
+    <>
+    {/* Field box = backdrop + transparent input ONLY. The diagnostics bar must
+        stay OUTSIDE this box: the backdrop is position:absolute inset:0 with an
+        opaque background and would otherwise paint over (hide) the bar. */}
     <div className={`ae-tokenfield ${multiline ? 'ae-tokenfield--multiline' : ''}`}>
       <div ref={backdropRef} className={`${cls} ae-tokenfield-backdrop`} aria-hidden="true">
         {highlighted}
@@ -62,11 +68,17 @@ export default function TokenTextField({ value, onChange, multiline, placeholder
           onScroll={(e) => syncScroll(e.currentTarget)}
         />
       )}
-      {unknown.length > 0 && (
-        <div className="ae-token-warn">
-          Unrecognized token{unknown.length > 1 ? 's' : ''}: {unknown.map((t) => `{{ ${t} }}`).join(', ')} — check for typos.
+    </div>
+      {diags.length > 0 && (
+        <div className="ae-token-bar">
+          {diags.map((d) => (
+            <div key={d.token} className={`ae-token-diag ae-token-diag--${d.severity}`}>
+              <span className="ae-token-diag-icon">{d.severity === 'error' ? '✕' : '⚠'}</span>
+              <code>{`{{ ${d.token} }}`}</code> {d.detail}
+            </div>
+          ))}
         </div>
       )}
-    </div>
+    </>
   );
 }
