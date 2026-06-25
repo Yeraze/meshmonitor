@@ -1,5 +1,12 @@
 /**
  * Migration 104 — Add channel_hash to channel_database (SQLite).
+ *
+ * PostgreSQL note: migration 104's PG path detects when channel_database has
+ * accumulated ≥1500 column tombstones (caused by the migration 021/063
+ * ADD/DROP cycle that ran on every startup in older releases) and rebuilds
+ * the table from scratch before adding channelHash.  That logic requires a
+ * live PostgreSQL connection and is exercised by integration tests; it is
+ * not tested here.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
