@@ -39,6 +39,10 @@ export default function TokenTextField({ value, onChange, multiline, placeholder
   );
 
   return (
+    <>
+    {/* Field box = backdrop + transparent input ONLY. The diagnostics bar must
+        stay OUTSIDE this box: the backdrop is position:absolute inset:0 with an
+        opaque background and would otherwise paint over (hide) the bar. */}
     <div className={`ae-tokenfield ${multiline ? 'ae-tokenfield--multiline' : ''}`}>
       <div ref={backdropRef} className={`${cls} ae-tokenfield-backdrop`} aria-hidden="true">
         {highlighted}
@@ -64,6 +68,7 @@ export default function TokenTextField({ value, onChange, multiline, placeholder
           onScroll={(e) => syncScroll(e.currentTarget)}
         />
       )}
+    </div>
       {diags.length > 0 && (
         <div className="ae-token-bar">
           {diags.map((d) => (
@@ -74,6 +79,6 @@ export default function TokenTextField({ value, onChange, multiline, placeholder
           ))}
         </div>
       )}
-    </div>
+    </>
   );
 }
