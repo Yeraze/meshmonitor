@@ -225,6 +225,38 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     expect(row.text).toBe('hello');
   });
 
+  it('insertMessage persists hopCount + routePath and reads them back (#3742)', async () => {
+    await repo.insertMessage(
+      { id: 'm-route', fromPublicKey: 'pk-1', text: 'relayed', timestamp: 2000, createdAt: 2000, hopCount: 2, routePath: 'a3,7f' },
+      'src-a',
+    );
+    await repo.insertMessage(
+      { id: 'm-direct', fromPublicKey: 'pk-1', text: 'direct', timestamp: 2001, createdAt: 2001, hopCount: 0, routePath: null },
+      'src-a',
+    );
+    const msgs = await repo.getRecentMessages(10, 'src-a');
+    const relayed = msgs.find((m) => m.id === 'm-route')!;
+    const direct = msgs.find((m) => m.id === 'm-direct')!;
+    expect(relayed.hopCount).toBe(2);
+    expect(relayed.routePath).toBe('a3,7f');
+    expect(direct.hopCount).toBe(0);
+    expect(direct.routePath).toBeNull();
+  });
+
+  it('insertMessage leaves hopCount/routePath null when omitted (pre-migration rows)', async () => {
+    // A message inserted without the new fields (legacy callers, or rows that
+    // predate migration 105) must read back as null — not undefined — so the
+    // boot DB-load `?? null` mapping and the UI's `typeof === 'number'` guard
+    // behave correctly.
+    await repo.insertMessage(
+      { id: 'm-legacy', fromPublicKey: 'pk-1', text: 'no route', timestamp: 2002, createdAt: 2002 },
+      'src-a',
+    );
+    const legacy = (await repo.getRecentMessages(10, 'src-a')).find((m) => m.id === 'm-legacy')!;
+    expect(legacy.hopCount).toBeNull();
+    expect(legacy.routePath).toBeNull();
+  });
+
   it('insertMessage throws when called without a sourceId', async () => {
     await expect(
       repo.insertMessage(

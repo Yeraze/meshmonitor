@@ -30,6 +30,10 @@ export const meshcoreMessagesSqlite = sqliteTable('meshcore_messages', {
   // Signal quality at receive time
   rssi: integer('rssi'),
   snr: integer('snr'),
+  // Routing metadata for received messages (#3742): hop count (from path_len)
+  // and the comma-separated relay-hash chain (e.g. "a3,7f,02"). Null = direct/unknown.
+  hopCount: integer('hopCount'),
+  routePath: text('routePath'),
 
   // Message type (for future use: text, location, etc.)
   messageType: text('messageType').default('text'),
@@ -56,6 +60,8 @@ export const meshcoreMessagesPostgres = pgTable('meshcore_messages', {
   timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
   rssi: pgInteger('rssi'),
   snr: pgInteger('snr'),
+  hopCount: pgInteger('hopCount'),
+  routePath: pgText('routePath'),
   messageType: pgText('messageType').default('text'),
   delivered: pgBoolean('delivered').default(false),
   deliveredAt: pgBigint('deliveredAt', { mode: 'number' }),
@@ -74,6 +80,8 @@ export const meshcoreMessagesMysql = mysqlTable('meshcore_messages', {
   timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),
   rssi: myInt('rssi'),
   snr: myInt('snr'),
+  hopCount: myInt('hopCount'),
+  routePath: myText('routePath'),
   messageType: myVarchar('messageType', { length: 32 }).default('text'),
   delivered: myBoolean('delivered').default(false),
   deliveredAt: myBigint('deliveredAt', { mode: 'number' }),

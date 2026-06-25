@@ -93,6 +93,9 @@ export interface DbMeshCoreMessage {
   deliveredAt?: number | null;
   /** Owning source id; required on writes since slice 1 (migration 056). */
   sourceId?: string | null;
+  /** Hop count + relay-hash route path for received messages (#3742). */
+  hopCount?: number | null;
+  routePath?: string | null;
   createdAt: number;
 }
 
