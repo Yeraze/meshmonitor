@@ -297,7 +297,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   {m.hopCount === 0
                     ? t('meshcore.route_direct', '📍 direct')
                     : `🛰 ${m.hopCount} ${m.hopCount === 1 ? t('meshcore.hop', 'hop') : t('meshcore.hops', 'hops')}`}
-                  {m.routePath ? ` · ${m.routePath.split(',').filter(Boolean).join(' → ')}` : ''}
+                  {m.hopCount !== 0 && m.routePath ? ` · ${m.routePath.split(',').filter(Boolean).join(' → ')}` : ''}
                 </div>
               )}
               {outgoing && m.heardBy && m.heardBy.length > 0 && expandedHeardBy.has(m.id) && (

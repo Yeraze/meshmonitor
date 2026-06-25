@@ -243,6 +243,20 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     expect(direct.routePath).toBeNull();
   });
 
+  it('insertMessage leaves hopCount/routePath null when omitted (pre-migration rows)', async () => {
+    // A message inserted without the new fields (legacy callers, or rows that
+    // predate migration 105) must read back as null — not undefined — so the
+    // boot DB-load `?? null` mapping and the UI's `typeof === 'number'` guard
+    // behave correctly.
+    await repo.insertMessage(
+      { id: 'm-legacy', fromPublicKey: 'pk-1', text: 'no route', timestamp: 2002, createdAt: 2002 },
+      'src-a',
+    );
+    const legacy = (await repo.getRecentMessages(10, 'src-a')).find((m) => m.id === 'm-legacy')!;
+    expect(legacy.hopCount).toBeNull();
+    expect(legacy.routePath).toBeNull();
+  });
+
   it('insertMessage throws when called without a sourceId', async () => {
     await expect(
       repo.insertMessage(

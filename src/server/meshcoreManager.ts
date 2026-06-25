@@ -983,14 +983,17 @@ class MeshCoreManager extends EventEmitter {
     const { event_type, data } = event;
 
     if (event_type === 'contact_message') {
-      // Prefer the per-packet relay-hash chain recovered from LogRxData
-      // (the actual hops THIS packet traversed). Fall back to the
-      // sender contact's cached outPath if the native backend didn't
-      // surface a LogRxData event for this packet (e.g. mid-buffer race
-      // or a backend that doesn't subscribe to raw logging).
       const hopCount = decodePathLenHopCount(data.path_len);
       const senderContact = this.resolveContactByPrefix(data.pubkey_prefix);
-      const route = formatPathHops(data.path_hops) || senderContact?.outPath || null;
+      // The displayed/stored route is ONLY the per-packet relay-hash chain
+      // recovered from LogRxData — the actual hops THIS packet traversed.
+      // We deliberately do NOT fall back to the contact's cached outPath here:
+      // outPath is the OUTBOUND path from us to the sender, not the inbound
+      // route the message took, so showing it would mislead (#3742 review).
+      const observedRoute = formatPathHops(data.path_hops);
+      // The {ROUTE} auto-ack template keeps the outPath fallback (existing
+      // behavior) so an ack can still cite a route when no LogRxData surfaced.
+      const ackRoute = observedRoute || senderContact?.outPath || null;
       const message: MeshCoreMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         fromPublicKey: data.pubkey_prefix,
@@ -1000,13 +1003,13 @@ class MeshCoreManager extends EventEmitter {
         snr: data.snr,
         sourceId: this.sourceId,
         hopCount,
-        routePath: route,
+        routePath: observedRoute,
       };
       this.addMessage(message);
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix}: ${data.text}`);
-      void this.checkAutoAcknowledge(message, true, undefined, hopCount, route);
+      void this.checkAutoAcknowledge(message, true, undefined, hopCount, ackRoute);
       void this.checkAutoResponder(message, true, undefined);
     } else if (event_type === 'channel_message') {
       // MeshCore channel packets have no sender field on the wire — the sender's
