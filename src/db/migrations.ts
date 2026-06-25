@@ -119,6 +119,7 @@ import { migration as nodeUnmessagableMigration, runMigration101Postgres as runN
 import { migration as meshcoreHeardRepeatersMigration, runMigration102Postgres as runMeshcoreHeardRepeatersPostgres, runMigration102Mysql as runMeshcoreHeardRepeatersMysql } from '../server/migrations/102_create_meshcore_heard_repeaters.js';
 import { migration as consolidateMqttChannelsMigration, runMigration103Postgres as runConsolidateMqttChannelsPostgres, runMigration103Mysql as runConsolidateMqttChannelsMysql } from '../server/migrations/103_consolidate_mqtt_channels.js';
 import { migration as channelDatabaseHashMigration, runMigration104Postgres as runChannelDatabaseHashPostgres, runMigration104Mysql as runChannelDatabaseHashMysql } from '../server/migrations/104_add_channel_database_hash.js';
+import { migration as meshcoreMessageRouteMigration, runMigration105Postgres as runMeshcoreMessageRoutePostgres, runMigration105Mysql as runMeshcoreMessageRouteMysql } from '../server/migrations/105_add_meshcore_message_route.js';
 
 // ============================================================================
 // Registry
@@ -1650,4 +1651,18 @@ registry.register({
   sqlite: (db) => channelDatabaseHashMigration.up(db),
   postgres: (client) => runChannelDatabaseHashPostgres(client),
   mysql: (pool) => runChannelDatabaseHashMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 105: add hopCount + routePath to meshcore_messages so received
+// MeshCore messages can show their hop count and relay route in the UI (#3742).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 105,
+  name: 'add_meshcore_message_route',
+  settingsKey: 'migration_105_add_meshcore_message_route',
+  sqlite: (db) => meshcoreMessageRouteMigration.up(db),
+  postgres: (client) => runMeshcoreMessageRoutePostgres(client),
+  mysql: (pool) => runMeshcoreMessageRouteMysql(pool),
 });

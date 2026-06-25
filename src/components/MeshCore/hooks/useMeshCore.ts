@@ -85,6 +85,10 @@ export interface MeshCoreMessage {
    *  self-echo correlation (#3700). Best-effort; `name` is null when the relay
    *  hash couldn't be resolved to a known contact. */
   heardBy?: Array<{ hash: string; name?: string | null; snr?: number | null }>;
+  /** Hop count for a received message; null/undefined = direct or unknown (#3742). */
+  hopCount?: number | null;
+  /** Relay-hash chain the message traveled, comma-separated (e.g. "a3,7f,02") (#3742). */
+  routePath?: string | null;
 }
 
 export interface ConnectionStatus {
