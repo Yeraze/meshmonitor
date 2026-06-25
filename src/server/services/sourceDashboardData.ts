@@ -96,7 +96,13 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
   if (manager) {
     const localNodeInfo = manager.getLocalNodeInfo();
     if (localNodeInfo && localNodeInfo.nodeNum && !nodes.some(n => n.nodeNum === localNodeInfo.nodeNum)) {
-      const localNode = await databaseService.nodes.getNode(localNodeInfo.nodeNum);
+      // Scope the lookup to THIS source. `getNode(nodeNum)` without a sourceId
+      // does a cross-source first-match, which on a multi-source deployment can
+      // inject another source's row (and its position) into this source's node
+      // list when both have heard the same nodeNum (#3735 review). Per-source
+      // scoping keeps the feed isolated; if this source hasn't stored the local
+      // node yet, fall through to the synthesized minimal record below.
+      const localNode = await databaseService.nodes.getNode(localNodeInfo.nodeNum, source.id);
       if (localNode) {
         nodes.push(localNode);
       } else {
