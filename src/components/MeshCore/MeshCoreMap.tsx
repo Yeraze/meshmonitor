@@ -16,6 +16,7 @@ import { roleGlyphMarkerSvg } from '../../utils/mapIcons';
 import { useSource } from '../../contexts/SourceContext';
 import { getTilesetById, type TilesetId } from '../../config/tilesets';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
+import { isNullIsland } from '../../utils/nullIsland';
 import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import GeoJsonOverlay from '../GeoJsonOverlay';
@@ -226,7 +227,11 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
   const positioned = useMemo(
     () => contacts.filter(c =>
       typeof c.latitude === 'number' && isFinite(c.latitude)
-      && typeof c.longitude === 'number' && isFinite(c.longitude)),
+      && typeof c.longitude === 'number' && isFinite(c.longitude)
+      // Skip "Null Island" (0,0) — uninitialized/stale GPS default (issue #3763).
+      // The DB store filters this too, but live in-memory contacts can still
+      // carry a (0,0) fix that reaches the map via getAllNodes().
+      && !isNullIsland(c.latitude, c.longitude)),
     [contacts],
   );
 

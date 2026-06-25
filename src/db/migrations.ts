@@ -121,6 +121,7 @@ import { migration as consolidateMqttChannelsMigration, runMigration103Postgres 
 import { migration as channelDatabaseHashMigration, runMigration104Postgres as runChannelDatabaseHashPostgres, runMigration104Mysql as runChannelDatabaseHashMysql } from '../server/migrations/104_add_channel_database_hash.js';
 import { migration as meshcoreMessageRouteMigration, runMigration105Postgres as runMeshcoreMessageRoutePostgres, runMigration105Mysql as runMeshcoreMessageRouteMysql } from '../server/migrations/105_add_meshcore_message_route.js';
 import { migration as meshcoreMessageScopeMigration, runMigration106Postgres as runMeshcoreMessageScopePostgres, runMigration106Mysql as runMeshcoreMessageScopeMysql } from '../server/migrations/106_add_meshcore_message_scope.js';
+import { migration as clearNullIslandMigration, runMigration107Postgres as runClearNullIslandPostgres, runMigration107Mysql as runClearNullIslandMysql } from '../server/migrations/107_clear_null_island_positions.js';
 
 // ============================================================================
 // Registry
@@ -1680,4 +1681,19 @@ registry.register({
   sqlite: (db) => meshcoreMessageScopeMigration.up(db),
   postgres: (client) => runMeshcoreMessageScopePostgres(client),
   mysql: (pool) => runMeshcoreMessageScopeMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 107: clear Null Island (0,0) node positions
+// One-shot cleanup of bogus (0,0) GPS fixes stored before the #3763 ingestion
+// filter; nulls latitude/longitude in nodes + meshcore_nodes.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 107,
+  name: 'clear_null_island_positions',
+  settingsKey: 'migration_107_clear_null_island_positions',
+  sqlite: (db) => clearNullIslandMigration.up(db),
+  postgres: (client) => runClearNullIslandPostgres(client),
+  mysql: (pool) => runClearNullIslandMysql(pool),
 });
