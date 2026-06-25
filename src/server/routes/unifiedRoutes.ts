@@ -14,7 +14,7 @@ import { logger } from '../../utils/logger.js';
 import { PortNum, CHANNEL_DB_OFFSET, modemPresetChannelName } from '../constants/meshtastic.js';
 import { filterPacketsByPermissions, getAllowedChannels } from './packetPermissions.js';
 import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
-import { buildSourceDashboard } from '../services/sourceDashboardData.js';
+import { buildSourceDashboard, getMaxNodeAgeHours } from '../services/sourceDashboardData.js';
 import type { DbChannelDatabase, DbPacketLog } from '../../db/types.js';
 import type { DbMeshCorePacket } from '../../db/repositories/meshcore.js';
 
@@ -1308,13 +1308,23 @@ router.get('/status', async (req: Request, res: Response) => {
  */
 router.get('/dashboard', async (req: Request, res: Response) => {
   try {
+    // Anonymous access is deliberate and matches the per-source endpoints: with
+    // user=null, buildSourceDashboard's permission gates return [] for every
+    // dataset, so an unauthenticated caller gets empty bundles, not data.
     const user = (req as any).user ?? null;
     const allSources = await databaseService.sources.getAllSources();
-    const requested = typeof req.query.sources === 'string' && req.query.sources.length > 0
-      ? new Set(req.query.sources.split(',').map((s) => s.trim()).filter(Boolean))
+    // Bound the filter input — values are only used as set-membership keys
+    // against DB ids (no injection surface), but cap the string so a caller
+    // can't force a huge split/allocation.
+    const sourcesParam = typeof req.query.sources === 'string' ? req.query.sources.slice(0, 4096) : '';
+    const requested = sourcesParam.length > 0
+      ? new Set(sourcesParam.split(',').map((s) => s.trim()).filter(Boolean))
       : null;
     const selected = requested ? allSources.filter((s) => requested.has(s.id)) : allSources;
-    const bundles = await Promise.all(selected.map((s) => buildSourceDashboard(s, user)));
+    // maxNodeAgeHours is a global setting — fetch it once and pass it into every
+    // source's neighbor-info build instead of re-querying it per source.
+    const maxNodeAgeHours = await getMaxNodeAgeHours();
+    const bundles = await Promise.all(selected.map((s) => buildSourceDashboard(s, user, { maxNodeAgeHours })));
     res.json(bundles);
   } catch (error) {
     logger.error('Error fetching unified dashboard data:', error);

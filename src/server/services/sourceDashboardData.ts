@@ -29,7 +29,7 @@ import {
   maskTraceroutesByChannel,
   getEffectiveDbNodePosition,
 } from '../utils/nodeEnhancer.js';
-import { modemPresetChannelName } from '../constants/meshtastic.js';
+import { modemPresetChannelName, TransportMechanism } from '../constants/meshtastic.js';
 import { transformChannel } from '../utils/channelView.js';
 import type { ResourceType } from '../../types/permission.js';
 import type { User } from '../../types/auth.js';
@@ -37,6 +37,12 @@ import type { User } from '../../types/auth.js';
 type SourceRow = { id: string; name: string; type: string };
 // The request user (null when anonymous), as attached by optionalAuth/requirePermission.
 type ReqUser = User | null;
+
+/** Resolve the global `maxNodeAgeHours` setting (default 24). */
+export async function getMaxNodeAgeHours(): Promise<number> {
+  const raw = await databaseService.settings.getSetting('maxNodeAgeHours');
+  return raw ? (parseInt(raw, 10) || 24) : 24;
+}
 
 /** Nodes for a source, channel-filtered and position-masked (mirrors GET /:id/nodes). */
 export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promise<unknown[]> {
@@ -198,13 +204,23 @@ export async function buildSourceTraceroutes(
   return maskTraceroutesByChannel(traceroutes, user, source.id);
 }
 
-/** Enriched neighbor-info for a source, channel-gated (mirrors GET /:id/neighbor-info). */
-export async function buildSourceNeighborInfo(source: SourceRow, user: ReqUser): Promise<unknown[]> {
+/**
+ * Enriched neighbor-info for a source, channel-gated (mirrors GET /:id/neighbor-info).
+ *
+ * `maxNodeAgeHours` is a GLOBAL setting; pass it in to avoid re-querying it once
+ * per source when fanning out across many sources (the unified dashboard route
+ * fetches it once). When omitted, it's fetched here so single-source callers
+ * stay self-contained.
+ */
+export async function buildSourceNeighborInfo(
+  source: SourceRow,
+  user: ReqUser,
+  maxNodeAgeHours?: number,
+): Promise<unknown[]> {
   const neighborInfo = await databaseService.neighbors.getAllNeighborInfo(source.id);
 
-  const maxNodeAgeStr = await databaseService.settings.getSetting('maxNodeAgeHours');
-  const maxNodeAgeHours = maxNodeAgeStr ? (parseInt(maxNodeAgeStr, 10) || 24) : 24;
-  const cutoffTime = Math.floor(Date.now() / 1000) - maxNodeAgeHours * 60 * 60;
+  const resolvedMaxAge = maxNodeAgeHours ?? await getMaxNodeAgeHours();
+  const cutoffTime = Math.floor(Date.now() / 1000) - resolvedMaxAge * 60 * 60;
 
   const linkKeys = new Set(neighborInfo.map(ni => `${ni.nodeNum}-${ni.neighborNodeNum}`));
 
@@ -234,12 +250,11 @@ export async function buildSourceNeighborInfo(source: SourceRow, user: ReqUser):
       const nodePos = getEffectiveDbNodePosition(node);
       const neighborPos = getEffectiveDbNodePosition(neighbor);
 
-      const TX_MQTT = 5;
-      const TX_UDP = 6;
       const nTx = (node as any)?.transportMechanism;
       const nbTx = (neighbor as any)?.transportMechanism;
-      const isMqtt = nTx === TX_MQTT || nbTx === TX_MQTT || (node as any)?.viaMqtt || (neighbor as any)?.viaMqtt;
-      const isUdp = nTx === TX_UDP || nbTx === TX_UDP;
+      const isMqtt = nTx === TransportMechanism.MQTT || nbTx === TransportMechanism.MQTT
+        || (node as any)?.viaMqtt || (neighbor as any)?.viaMqtt;
+      const isUdp = nTx === TransportMechanism.MULTICAST_UDP || nbTx === TransportMechanism.MULTICAST_UDP;
       const transportClass: 'rf' | 'udp' | 'mqtt' = isMqtt ? 'mqtt' : isUdp ? 'udp' : 'rf';
 
       return {
@@ -288,7 +303,11 @@ export interface SourceDashboardPayload {
  * would have 403'd; here we degrade gracefully so one missing grant doesn't
  * sink the whole dashboard).
  */
-export async function buildSourceDashboard(source: SourceRow, user: ReqUser): Promise<SourceDashboardPayload> {
+export async function buildSourceDashboard(
+  source: SourceRow,
+  user: ReqUser,
+  opts?: { maxNodeAgeHours?: number },
+): Promise<SourceDashboardPayload> {
   const isAdmin = user?.isAdmin === true;
   const canReadNodes = isAdmin || (user ? await hasPermission(user, 'nodes', 'read', source.id) : false);
   const canReadTraceroutes = isAdmin || (user ? await hasPermission(user, 'traceroute', 'read', source.id) : false);
@@ -296,7 +315,7 @@ export async function buildSourceDashboard(source: SourceRow, user: ReqUser): Pr
   const [nodes, traceroutes, neighborInfo, channels] = await Promise.all([
     canReadNodes ? buildSourceNodes(source, user) : Promise.resolve([]),
     canReadTraceroutes ? buildSourceTraceroutes(source, user) : Promise.resolve([]),
-    canReadNodes ? buildSourceNeighborInfo(source, user) : Promise.resolve([]),
+    canReadNodes ? buildSourceNeighborInfo(source, user, opts?.maxNodeAgeHours) : Promise.resolve([]),
     buildSourceChannels(source, user),
   ]);
 
