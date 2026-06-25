@@ -5,8 +5,9 @@
  *   1. emit an `ota_packet` bridge event for EVERY parsed packet (not just
  *      TXT_MSG), carrying route/payload type, decoded path, SNR/RSSI and raw
  *      bytes;
- *   2. still buffer the relay-hash chain for TXT_MSG packets so the following
- *      ContactMsgRecv event can attach it.
+ *   2. still buffer the relay-hash chain for text-message packets so the
+ *      following recv event can attach it — TXT_MSG (0x02) → ContactMsgRecv
+ *      (DM) and GRP_TXT (0x05) → ChannelMsgRecv (channel/group), issue #3710.
  *
  * Uses an isolated mock meshcore.js module that — unlike the shared harness in
  * meshcoreNativeBackend.test.ts — provides a `Packet` constructor and the
@@ -204,6 +205,27 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
     expect(msg).toBeDefined();
     expect(msg.data.path_hops).toEqual(['dead', 'beef']);
     expect(msg.data.snr).toBe(3.25);
+  });
+
+  it('attaches an empty path for a direct (non-routed) GRP_TXT channel message (issue #3710)', async () => {
+    // Completes the matrix: a direct channel message (pathLen 0xff → 0 hops)
+    // buffers an empty hop list and still carries SNR. {ROUTE} renders this as
+    // "(direct)" downstream, matching the DM direct-path behavior.
+    const { conn, events } = await connectedBackend();
+    // GRP_TXT (0x05), DIRECT, pathLen=0xff (sent direct, no relay hashes).
+    const raw = Uint8Array.from([0x05, 0x02, 0xff]);
+    conn.emit(PushCodes.LogRxData, { lastSnr: 7.0, lastRssi: -38, raw });
+    conn.emit(ResponseCodes.ChannelMsgRecv, {
+      channelIdx: 0,
+      text: 'Dave: direct hello',
+      senderTimestamp: 2100,
+      pathLen: 0xff, // sent direct
+    });
+
+    const msg = events.find((e) => e.event_type === 'channel_message');
+    expect(msg).toBeDefined();
+    expect(msg.data.path_hops).toEqual([]);
+    expect(msg.data.snr).toBe(7.0);
   });
 
   it('leaves snr undefined on a message with no preceding LogRxData', async () => {
