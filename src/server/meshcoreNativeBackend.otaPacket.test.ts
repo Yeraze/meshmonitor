@@ -5,8 +5,9 @@
  *   1. emit an `ota_packet` bridge event for EVERY parsed packet (not just
  *      TXT_MSG), carrying route/payload type, decoded path, SNR/RSSI and raw
  *      bytes;
- *   2. still buffer the relay-hash chain for TXT_MSG packets so the following
- *      ContactMsgRecv event can attach it.
+ *   2. still buffer the relay-hash chain for text-message packets so the
+ *      following recv event can attach it — TXT_MSG (0x02) → ContactMsgRecv
+ *      (DM) and GRP_TXT (0x05) → ChannelMsgRecv (channel/group), issue #3710.
  *
  * Uses an isolated mock meshcore.js module that — unlike the shared harness in
  * meshcoreNativeBackend.test.ts — provides a `Packet` constructor and the
@@ -36,11 +37,12 @@ const TxtTypes = { Plain: 0, CliData: 1, SignedPlain: 2 };
 //   raw[1] = route_type
 //   raw[2] = pathLen (packed: top 2 bits = hashSize-1, bottom 6 = hopCount)
 //   raw[3..] = path bytes
-const PAYLOAD_NAMES: Record<number, string> = { 0x02: 'TXT_MSG', 0x04: 'ADVERT' };
+const PAYLOAD_NAMES: Record<number, string> = { 0x02: 'TXT_MSG', 0x04: 'ADVERT', 0x05: 'GRP_TXT' };
 const ROUTE_NAMES: Record<number, string> = { 0x01: 'FLOOD', 0x02: 'DIRECT' };
 
 class MockPacket {
   static PAYLOAD_TYPE_TXT_MSG = 0x02;
+  static PAYLOAD_TYPE_GRP_TXT = 0x05;
   static fromBytes(raw: Uint8Array | number[]) {
     const arr = raw instanceof Uint8Array ? raw : Uint8Array.from(raw);
     const payload_type = arr[0];
@@ -166,7 +168,8 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
 
   it('carries the buffered LogRxData SNR onto a channel_message event', async () => {
     const { conn, events } = await connectedBackend();
-    const raw = Uint8Array.from([0x02, 0x01, 0x02, 0xa3, 0x7f]);
+    // Channel messages ride GRP_TXT (0x05) on the wire, not TXT_MSG (0x02).
+    const raw = Uint8Array.from([0x05, 0x01, 0x02, 0xa3, 0x7f]);
     conn.emit(PushCodes.LogRxData, { lastSnr: -3.5, lastRssi: -88, raw });
     conn.emit(ResponseCodes.ChannelMsgRecv, {
       channelIdx: 0,
@@ -179,6 +182,50 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
     expect(msg).toBeDefined();
     expect(msg.data.snr).toBe(-3.5);
     expect(msg.data.path_hops).toEqual(['a3', '7f']);
+  });
+
+  it('buffers a GRP_TXT (channel) path so {ROUTE}/{SNR} resolve on routed channel messages (issue #3710)', async () => {
+    // Regression: the LogRxData handler originally buffered the path only for
+    // TXT_MSG (0x02 / DMs). Channel + private messages ride GRP_TXT (0x05), so
+    // their path was never buffered and ChannelMsgRecv got nothing — {ROUTE}
+    // resolved to "—" on routed channel messages while DMs worked. The "hit or
+    // miss" users saw was a coincidental stale TXT_MSG buffer being matched.
+    const { conn, events } = await connectedBackend();
+    // GRP_TXT (0x05), FLOOD, packed pathLen=0x42 (2-byte hashes, 2 hops).
+    const raw = Uint8Array.from([0x05, 0x01, 0x42, 0xde, 0xad, 0xbe, 0xef]);
+    conn.emit(PushCodes.LogRxData, { lastSnr: 3.25, lastRssi: -55, raw });
+    conn.emit(ResponseCodes.ChannelMsgRecv, {
+      channelIdx: 0,
+      text: 'Carol: routed hello',
+      senderTimestamp: 2000,
+      pathLen: 2, // plain hop count from ChannelMsgRecv
+    });
+
+    const msg = events.find((e) => e.event_type === 'channel_message');
+    expect(msg).toBeDefined();
+    expect(msg.data.path_hops).toEqual(['dead', 'beef']);
+    expect(msg.data.snr).toBe(3.25);
+  });
+
+  it('attaches an empty path for a direct (non-routed) GRP_TXT channel message (issue #3710)', async () => {
+    // Completes the matrix: a direct channel message (pathLen 0xff → 0 hops)
+    // buffers an empty hop list and still carries SNR. {ROUTE} renders this as
+    // "(direct)" downstream, matching the DM direct-path behavior.
+    const { conn, events } = await connectedBackend();
+    // GRP_TXT (0x05), DIRECT, pathLen=0xff (sent direct, no relay hashes).
+    const raw = Uint8Array.from([0x05, 0x02, 0xff]);
+    conn.emit(PushCodes.LogRxData, { lastSnr: 7.0, lastRssi: -38, raw });
+    conn.emit(ResponseCodes.ChannelMsgRecv, {
+      channelIdx: 0,
+      text: 'Dave: direct hello',
+      senderTimestamp: 2100,
+      pathLen: 0xff, // sent direct
+    });
+
+    const msg = events.find((e) => e.event_type === 'channel_message');
+    expect(msg).toBeDefined();
+    expect(msg.data.path_hops).toEqual([]);
+    expect(msg.data.snr).toBe(7.0);
   });
 
   it('leaves snr undefined on a message with no preceding LogRxData', async () => {
@@ -336,7 +383,8 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
 
   it('attaches the buffered path for a 2-byte-hash flood channel_message (issue #3710)', async () => {
     const { conn, events } = await connectedBackend();
-    const raw = Uint8Array.from([0x02, 0x01, 0x42, 0xad, 0xb0, 0x12, 0x34]);
+    // GRP_TXT (0x05), FLOOD, packed pathLen=0x42 (2-byte hashes, 2 hops).
+    const raw = Uint8Array.from([0x05, 0x01, 0x42, 0xad, 0xb0, 0x12, 0x34]);
     conn.emit(PushCodes.LogRxData, { lastSnr: -2.0, lastRssi: -70, raw });
     conn.emit(ResponseCodes.ChannelMsgRecv, {
       channelIdx: 0,
