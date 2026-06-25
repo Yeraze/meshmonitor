@@ -107,6 +107,10 @@ function makeManager(opts: {
     sweepIdx += 1;
     return { returned: seen.length, newCount: 0, seen };
   });
+  // discoverRegions installs a zero-hop direct out_path before each
+  // request_regions (#3743) so the ANON_REQ routes direct. Stub the device
+  // round-trip + DB mirror; these tests assert selection/ordering, not routing.
+  vi.spyOn(m as any, 'setContactOutPath').mockResolvedValue(true);
 
   return { manager: m, bridgeCalls, scopeUpdates };
 }
@@ -456,6 +460,11 @@ describe('MeshCoreManager — Phase 3: region discovery (#3667)', () => {
     expect(bridgeCalls.filter(c => c.cmd === 'request_regions').map(c => c.params.public_key)).toEqual([bb]);
     expect(result.perRepeater.map(r => r.publicKey)).toEqual([bb]);
     expect(result.regions).toEqual(['muenchen']);
+    // Installs a zero-hop direct out_path (empty bytes) before querying, so the
+    // regions ANON_REQ routes direct rather than flooding (#3743).
+    expect(manager.setContactOutPath).toHaveBeenCalledWith(bb, expect.any(Uint8Array), 1);
+    const [, installedPath] = (manager.setContactOutPath as any).mock.calls.find((c: any[]) => c[0] === bb);
+    expect(installedPath.length).toBe(0);
   });
 
   it('queries in sweep arrival order, not contact-map order', async () => {

@@ -2644,6 +2644,19 @@ class MeshCoreManager extends EventEmitter {
     const all = new Set<string>();
     for (const r of repeaters) {
       try {
+        // v1.15+ repeaters answer a regions ANON_REQ only when it arrives via a
+        // DIRECT route — firmware simple_repeater `onAnonDataRecv` gates the
+        // REGIONS branch on `packet->isRouteDirect()` and silently drops flooded
+        // ones (login is the lone flood-exception, which is why admin CLI works
+        // but Discover Regions didn't). The companion floods whenever the contact
+        // has no installed `out_path` (`sendAnonReq`: out_path_len == 0xFF). Since
+        // the 0-hop discovery sweep above only hears DIRECT-range repeaters, each
+        // one here is a direct neighbour — install a zero-hop direct out_path so
+        // the request routes direct instead of flooding into the void (#3743).
+        const routed = await this.setContactOutPath(r.publicKey, new Uint8Array(0), 1);
+        if (!routed) {
+          logger.warn(`[MeshCore:${this.sourceId}] could not install a direct route to ${r.publicKey.substring(0, 12)}…; regions request may flood and time out`);
+        }
         const resp = await this.sendBridgeCommand('request_regions', { public_key: r.publicKey }, 20_000);
         if (!resp.success) {
           logger.debug(`[MeshCore:${this.sourceId}] regions request to ${r.publicKey.substring(0, 12)}… returned an error: ${resp.error}`);
