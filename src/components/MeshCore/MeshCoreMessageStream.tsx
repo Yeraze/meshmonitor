@@ -292,6 +292,14 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                 </span>
               </div>
               <div className="mc-message-text">{renderMessageText(m.text)}</div>
+              {!outgoing && typeof m.hopCount === 'number' && (
+                <div className="mc-message-route" title={t('meshcore.route_tooltip', 'How this message reached you')}>
+                  {m.hopCount === 0
+                    ? t('meshcore.route_direct', '📍 direct')
+                    : `🛰 ${m.hopCount} ${m.hopCount === 1 ? t('meshcore.hop', 'hop') : t('meshcore.hops', 'hops')}`}
+                  {m.routePath ? ` · ${m.routePath.split(',').filter(Boolean).join(' → ')}` : ''}
+                </div>
+              )}
               {outgoing && m.heardBy && m.heardBy.length > 0 && expandedHeardBy.has(m.id) && (
                 <ul className="mc-heard-by-list">
                   {m.heardBy.map(h => (

@@ -379,6 +379,12 @@ export interface MeshCoreMessage {
    *  messages that were heard re-flooded. `name` is null when the relay hash
    *  couldn't be resolved to a known contact. */
   heardBy?: Array<{ hash: string; name?: string | null; snr?: number | null }>;
+  /** Hop count for a received message (from path_len); null = direct / unknown.
+   *  Room messages carry no path, so this stays null for them. (#3742) */
+  hopCount?: number | null;
+  /** Relay-hash chain the message traveled, comma-separated (e.g. "a3,7f,02");
+   *  null when no path was reported. (#3742) */
+  routePath?: string | null;
 }
 
 export interface MeshCoreStatus {
@@ -677,6 +683,8 @@ class MeshCoreManager extends EventEmitter {
         rssi: dbMsg.rssi ?? undefined,
         snr: dbMsg.snr ?? undefined,
         sourceId: dbMsg.sourceId ?? undefined,
+        hopCount: dbMsg.hopCount ?? null,
+        routePath: dbMsg.routePath ?? null,
       }));
     } catch (loadErr) {
       logger.warn(`[MeshCore:${this.sourceId}] Failed to load messages from DB: ${(loadErr as Error).message}`);
@@ -975,19 +983,6 @@ class MeshCoreManager extends EventEmitter {
     const { event_type, data } = event;
 
     if (event_type === 'contact_message') {
-      const message: MeshCoreMessage = {
-        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
-        fromPublicKey: data.pubkey_prefix,
-        toPublicKey: this.localNode?.publicKey || 'local',
-        text: data.text,
-        timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
-        snr: data.snr,
-        sourceId: this.sourceId,
-      };
-      this.addMessage(message);
-      this.emit('message', message);
-      dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
-      logger.info(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix}: ${data.text}`);
       // Prefer the per-packet relay-hash chain recovered from LogRxData
       // (the actual hops THIS packet traversed). Fall back to the
       // sender contact's cached outPath if the native backend didn't
@@ -996,6 +991,21 @@ class MeshCoreManager extends EventEmitter {
       const hopCount = decodePathLenHopCount(data.path_len);
       const senderContact = this.resolveContactByPrefix(data.pubkey_prefix);
       const route = formatPathHops(data.path_hops) || senderContact?.outPath || null;
+      const message: MeshCoreMessage = {
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        fromPublicKey: data.pubkey_prefix,
+        toPublicKey: this.localNode?.publicKey || 'local',
+        text: data.text,
+        timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
+        snr: data.snr,
+        sourceId: this.sourceId,
+        hopCount,
+        routePath: route,
+      };
+      this.addMessage(message);
+      this.emit('message', message);
+      dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
+      logger.info(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix}: ${data.text}`);
       void this.checkAutoAcknowledge(message, true, undefined, hopCount, route);
       void this.checkAutoResponder(message, true, undefined);
     } else if (event_type === 'channel_message') {
@@ -1006,6 +1016,11 @@ class MeshCoreManager extends EventEmitter {
       const prefixMatch = rawText.match(/^([^:\n]{1,32}):\s*(.*)$/s);
       const fromName = prefixMatch ? prefixMatch[1].trim() : undefined;
       const body = prefixMatch ? prefixMatch[2] : rawText;
+      // Channel messages carry no sender pubkey on the wire, so there
+      // is no contact outPath fallback for {ROUTE}. The LogRxData
+      // path_hops (when present) is the only source of relay identities.
+      const hopCount = decodePathLenHopCount(data.path_len);
+      const route = formatPathHops(data.path_hops);
       const message: MeshCoreMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         fromPublicKey: MeshCoreManager.channelPublicKey(data.channel_idx),
@@ -1014,16 +1029,13 @@ class MeshCoreManager extends EventEmitter {
         timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
         snr: data.snr,
         sourceId: this.sourceId,
+        hopCount,
+        routePath: route,
       };
       this.addMessage(message);
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore] Channel ${data.channel_idx} message: ${data.text}`);
-      // Channel messages carry no sender pubkey on the wire, so there
-      // is no contact outPath fallback for {ROUTE}. The LogRxData
-      // path_hops (when present) is the only source of relay identities.
-      const hopCount = decodePathLenHopCount(data.path_len);
-      const route = formatPathHops(data.path_hops);
       void this.checkAutoAcknowledge(message, false, data.channel_idx, hopCount, route);
       void this.checkAutoResponder(message, false, data.channel_idx);
     } else if (event_type === 'room_message') {
@@ -1746,6 +1758,8 @@ class MeshCoreManager extends EventEmitter {
         snr: message.snr ?? null,
         messageType: message.messageType ?? 'text',
         sourceId: this.sourceId,
+        hopCount: message.hopCount ?? null,
+        routePath: message.routePath ?? null,
         createdAt: Date.now(),
       },
       this.sourceId,

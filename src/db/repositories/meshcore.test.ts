@@ -225,6 +225,24 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     expect(row.text).toBe('hello');
   });
 
+  it('insertMessage persists hopCount + routePath and reads them back (#3742)', async () => {
+    await repo.insertMessage(
+      { id: 'm-route', fromPublicKey: 'pk-1', text: 'relayed', timestamp: 2000, createdAt: 2000, hopCount: 2, routePath: 'a3,7f' },
+      'src-a',
+    );
+    await repo.insertMessage(
+      { id: 'm-direct', fromPublicKey: 'pk-1', text: 'direct', timestamp: 2001, createdAt: 2001, hopCount: 0, routePath: null },
+      'src-a',
+    );
+    const msgs = await repo.getRecentMessages(10, 'src-a');
+    const relayed = msgs.find((m) => m.id === 'm-route')!;
+    const direct = msgs.find((m) => m.id === 'm-direct')!;
+    expect(relayed.hopCount).toBe(2);
+    expect(relayed.routePath).toBe('a3,7f');
+    expect(direct.hopCount).toBe(0);
+    expect(direct.routePath).toBeNull();
+  });
+
   it('insertMessage throws when called without a sourceId', async () => {
     await expect(
       repo.insertMessage(
