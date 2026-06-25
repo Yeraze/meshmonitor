@@ -267,7 +267,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
             </button>
             <p className="hint" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
               {t('meshcore.scope.discover_hint',
-                'Queries known repeaters for the regions they serve. Run "Discover Repeaters" (above) first for the fullest list.')}
+                'Sweeps for nearby (0-hop / direct-range) repeaters and asks each one which regions it serves.')}
             </p>
             {discoveredRegions && discoveredRegions.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>

@@ -2832,6 +2832,8 @@ class MeshCoreManager extends EventEmitter {
         hash_bytes: hashBytes,
       }, timeoutMs);
       if (!response.success) {
+        // NOTE: matches on meshcore.js's timeout error text — fragile if the
+        // library changes its wording; revisit if a structured error code lands.
         const isTimeout = response.error?.includes('timeout');
         if (isTimeout) {
           // meshcore.js resolves CMD_ADD_UPDATE_CONTACT on its Ok ack, which is
