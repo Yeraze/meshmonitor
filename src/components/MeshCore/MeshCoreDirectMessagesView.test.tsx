@@ -68,6 +68,23 @@ function makeActions(overrides: Partial<MeshCoreActions> = {}): MeshCoreActions 
     setTelemetryModeEnv: vi.fn().mockResolvedValue(true),
     refreshAll: vi.fn().mockResolvedValue(undefined),
     clearError: vi.fn(),
+    // Contact + remote-admin actions: a repeater/room contact-detail panel
+    // mounts the remote-admin console, which calls getRemoteAdminCapability on
+    // mount. Without these the panel throws in JSDOM (#3755 repeater tests).
+    resetContactPath: vi.fn().mockResolvedValue(true),
+    shareContact: vi.fn().mockResolvedValue({ ok: true }),
+    setContactOutPath: vi.fn().mockResolvedValue(true),
+    traceContactPath: vi.fn().mockResolvedValue(null),
+    discoverContactPath: vi.fn().mockResolvedValue(true),
+    removeContact: vi.fn().mockResolvedValue(true),
+    exportContact: vi.fn().mockResolvedValue(null),
+    getNeighbours: vi.fn().mockResolvedValue(null),
+    loginRemote: vi.fn().mockResolvedValue({ success: false }),
+    loginRemoteWithSaved: vi.fn().mockResolvedValue({ success: false }),
+    sendCliCommand: vi.fn().mockResolvedValue(null),
+    getRemoteAdminCapability: vi.fn().mockResolvedValue(null),
+    forgetRemoteCredential: vi.fn().mockResolvedValue(true),
+    getRemoteStatus: vi.fn().mockResolvedValue(null),
     ...overrides,
   };
 }
