@@ -16,6 +16,9 @@ interface MeshCoreMessageStreamProps {
   /** Stable key identifying the current conversation. When it changes, the
    *  stream scrolls to the bottom. */
   conversationKey?: string;
+  /** When set, replaces the send bar with this notice text (e.g. for node
+   *  types that cannot receive DMs). */
+  readOnlyNotice?: string;
 }
 
 function formatTime(ts: number): string {
@@ -60,6 +63,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   onSend,
   onNodeNameClick,
   conversationKey,
+  readOnlyNotice,
 }) => {
   const { t } = useTranslation();
   const [draft, setDraft] = useState('');
@@ -310,23 +314,29 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           );
         })}
       </div>
-      <div className="meshcore-send-bar">
-        <input
-          type="text"
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={t('meshcore.type_message', 'Type a message…')}
-          disabled={disabled || sending}
-          maxLength={230}
-        />
-        <button
-          onClick={() => void handleSend()}
-          disabled={disabled || sending || !draft.trim()}
-        >
-          {sending ? t('meshcore.sending', 'Sending…') : t('meshcore.send', 'Send')}
-        </button>
-      </div>
+      {readOnlyNotice ? (
+        <div className="meshcore-readonly-notice">
+          {readOnlyNotice}
+        </div>
+      ) : (
+        <div className="meshcore-send-bar">
+          <input
+            type="text"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={t('meshcore.type_message', 'Type a message…')}
+            disabled={disabled || sending}
+            maxLength={230}
+          />
+          <button
+            onClick={() => void handleSend()}
+            disabled={disabled || sending || !draft.trim()}
+          >
+            {sending ? t('meshcore.sending', 'Sending…') : t('meshcore.send', 'Send')}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

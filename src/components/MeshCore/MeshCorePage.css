@@ -802,6 +802,16 @@
   cursor: not-allowed;
 }
 
+.meshcore-readonly-notice {
+  padding: 0.6rem 0.75rem;
+  background: var(--ctp-surface0);
+  border-top: 1px solid var(--ctp-surface1);
+  color: var(--ctp-overlay1);
+  font-size: 0.85rem;
+  text-align: center;
+  font-style: italic;
+}
+
 /* Contact detail pane (below the message stream in the DM view).
    No longer height-capped — the surrounding `.meshcore-main-pane` is the
    page-level scroll container, so this block flows naturally below the

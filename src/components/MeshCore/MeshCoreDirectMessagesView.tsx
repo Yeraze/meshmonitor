@@ -240,8 +240,11 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     if (isMobileViewport()) setMobileShowContent(true);
   };
 
+  const selectedContact = selected ? (contactsByKey.get(selected) ?? null) : null;
+  const isRepeater = (selectedContact?.advType ?? 0) === 2;
+
   const selectedContactName = selected
-    ? (contactsByKey.get(selected)?.advName || contactsByKey.get(selected)?.name || `${selected.substring(0, 8)}…`)
+    ? (selectedContact?.advName || selectedContact?.name || `${selected.substring(0, 8)}…`)
     : '';
 
   const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';
@@ -384,6 +387,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               emptyText={t('meshcore.no_messages', 'No messages with this contact yet')}
               onSend={text => actions.sendMessage(text, selected)}
               conversationKey={`dm-${selected}`}
+              readOnlyNotice={isRepeater
+                ? t('meshcore.repeater_no_dm', 'Repeaters cannot receive direct messages.')
+                : undefined}
             />
             <div className="meshcore-detail-pane">
               <MeshCoreContactDetailPanel
