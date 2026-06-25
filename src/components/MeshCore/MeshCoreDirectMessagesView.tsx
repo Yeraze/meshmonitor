@@ -244,6 +244,13 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     ? (contactsByKey.get(selected)?.advName || contactsByKey.get(selected)?.name || `${selected.substring(0, 8)}…`)
     : '';
 
+  // Repeaters (advType=2) cannot receive direct messages — the firmware acks
+  // the relay packet, which surfaced as a misleading "delivered" (✓✓). We keep
+  // the repeater listed in the contact sidebar and still render its detail panel
+  // (telemetry/position/remote-admin), but drop the messaging UI entirely rather
+  // than send messages that can never arrive (issue #3755).
+  const isSelectedRepeater = selected ? contactsByKey.get(selected)?.advType === 2 : false;
+
   const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';
 
   return (
@@ -376,15 +383,21 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
         )}
         {selected ? (
           <>
-            <MeshCoreMessageStream
-              messages={filtered}
-              contacts={contacts}
-              selfPublicKey={selfKey}
-              disabled={!connected || !canSend}
-              emptyText={t('meshcore.no_messages', 'No messages with this contact yet')}
-              onSend={text => actions.sendMessage(text, selected)}
-              conversationKey={`dm-${selected}`}
-            />
+            {isSelectedRepeater ? (
+              <div className="meshcore-dm-no-messaging" role="note">
+                {t('meshcore.repeater_no_messaging', 'Repeaters cannot receive direct messages — showing node details only.')}
+              </div>
+            ) : (
+              <MeshCoreMessageStream
+                messages={filtered}
+                contacts={contacts}
+                selfPublicKey={selfKey}
+                disabled={!connected || !canSend}
+                emptyText={t('meshcore.no_messages', 'No messages with this contact yet')}
+                onSend={text => actions.sendMessage(text, selected)}
+                conversationKey={`dm-${selected}`}
+              />
+            )}
             <div className="meshcore-detail-pane">
               <MeshCoreContactDetailPanel
                 contact={contactsByKey.get(selected) ?? null}
