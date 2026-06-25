@@ -113,7 +113,8 @@ chroot "$ROOTFS_DIR" apt-get install -y --no-install-recommends \
     dbus \
     nano \
     iputils-ping \
-    git
+    git \
+    sudo
 
 # Create /etc/network/interfaces for Proxmox networking support
 cat > "$ROOTFS_DIR/etc/network/interfaces" << EOF
@@ -169,12 +170,12 @@ echo "Step 6: Cloning MeshMonitor repository into container..."
 #   - "latest" uses main so local/test builds always succeed even without
 #     a version argument.
 if [ "$VERSION" = "latest" ]; then
-    GIT_REF="main"
+    GIT_REF="lxc-template-git-clone"
 else
     GIT_REF="v${VERSION}"
 fi
 
-REPO_URL="https://github.com/Yeraze/meshmonitor.git"
+REPO_URL="https://github.com/BeerMan81/meshmonitor.git"
 
 # Read the cone directory list from lxc/sparse-cone.txt.
 # MAINTENANCE: if a new top-level runtime directory is added upstream,
