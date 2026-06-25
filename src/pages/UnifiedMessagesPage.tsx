@@ -28,6 +28,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { appBasename } from '../init';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
+import { foldUnifiedMessagePages } from '../utils/unifiedMessageAccumulator';
 import LinkPreview from '../components/LinkPreview';
 import '../styles/unified.css';
 
@@ -283,28 +284,23 @@ export default function UnifiedMessagesPage() {
     refetchOnMount: true,
   });
 
-  // ── Flatten + dedup pages by dedupKey ─────────────────────────────────
+  // ── Accumulate pages into an append-only feed ─────────────────────────
+  // The server feed is a capped newest-N window; rendering straight off the
+  // latest poll evicts a message once newer traffic pushes it past the window
+  // (#3719/#3720). Fold every poll's pages into a persistent map keyed by
+  // dedupKey so a message that has been shown stays shown regardless of how the
+  // window shifts. Upserts prefer the newest (most-complete) copy; sort is by
+  // createdAt (server DB arrival) so device-clock skew can't reorder (#3122).
+  const accumulatorRef = useRef<Map<string, UnifiedMessage>>(new Map());
+  const accChannelRef = useRef<string>(selectedChannel);
   const allMessages = useMemo<UnifiedMessage[]>(() => {
-    if (!data?.pages) return [];
-    const seen = new Set<string>();
-    const out: UnifiedMessage[] = [];
-    for (const page of data.pages) {
-      for (const m of page) {
-        if (seen.has(m.dedupKey)) continue;
-        seen.add(m.dedupKey);
-        out.push(m);
-      }
+    // Reset synchronously when the channel changes so feeds never blend.
+    if (accChannelRef.current !== selectedChannel) {
+      accChannelRef.current = selectedChannel;
+      accumulatorRef.current = new Map();
     }
-    // Sort ascending (oldest → newest) so the chat-style layout pins the
-    // newest message to the bottom of the scroll container. Polling can bring
-    // in new entries on any page; re-sort defensively so the feed is always
-    // monotonic regardless of how TanStack merged the pages.
-    // Sort by createdAt (server DB arrival) instead of device timestamp so
-    // future-skewed device clocks can't make old messages display as "newest"
-    // and pin themselves at the bottom of the chat window (#3122).
-    out.sort((a, b) => a.createdAt - b.createdAt);
-    return out;
-  }, [data?.pages]);
+    return foldUnifiedMessagePages(accumulatorRef.current, data?.pages);
+  }, [data?.pages, selectedChannel]);
 
   // ── All distinct sources heard across the loaded set ──────────────────
   const sourcesInView = useMemo(() => {
