@@ -1245,3 +1245,42 @@ describe('Unified Routes', () => {
     });
   });
 });
+
+describe('GET /unified/dashboard — bundled cross-source datasets (#3735)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
+    mockDb.findUserByUsernameAsync.mockResolvedValue(null);
+    mockDb.checkPermissionAsync.mockResolvedValue(true);
+    mockDb.getUserPermissionSetAsync.mockResolvedValue({});
+    mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
+    mockDb.nodes.getAllNodes.mockResolvedValue([]);
+    mockDb.nodes.getNodesByNums = vi.fn().mockResolvedValue(new Map());
+    mockDb.traceroutes = { getAllTraceroutes: vi.fn().mockResolvedValue([]) };
+    mockDb.neighbors = { getAllNeighborInfo: vi.fn().mockResolvedValue([]) };
+    mockDb.channels.getAllChannels.mockResolvedValue([{ id: 0, name: 'Primary', role: 1 }]);
+    mockDb.settings.getSetting.mockResolvedValue(null);
+    mockMeshcoreRegistry.get.mockReturnValue(null);
+  });
+
+  it('returns one bundle per source, each with the four dataset arrays', async () => {
+    const res = await request(createApp(adminUser)).get('/dashboard');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    const ids = res.body.map((b: any) => b.sourceId).sort();
+    expect(ids).toEqual(['src-a', 'src-b']);
+    for (const bundle of res.body) {
+      expect(Array.isArray(bundle.nodes)).toBe(true);
+      expect(Array.isArray(bundle.traceroutes)).toBe(true);
+      expect(Array.isArray(bundle.neighborInfo)).toBe(true);
+      expect(Array.isArray(bundle.channels)).toBe(true);
+    }
+  });
+
+  it('scopes the response to the ?sources= filter', async () => {
+    const res = await request(createApp(adminUser)).get('/dashboard?sources=src-a');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].sourceId).toBe('src-a');
+  });
+});

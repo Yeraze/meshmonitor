@@ -141,19 +141,23 @@ describe('useDashboardSourceData', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it('fetches all data for a valid sourceId', async () => {
+  it('fetches data via the bundled dashboard endpoint plus status (#3735)', async () => {
     const mockNodes = [{ num: 1, id: '!abc' }, { num: 2, id: '!def' }];
     const mockTraceroutes = [{ id: 10, fromNodeNum: 1, toNodeNum: 2 }];
     const mockNeighborInfo = [{ nodeId: '!abc', neighbors: [] }];
     const mockChannels = [{ index: 0, name: 'Primary' }];
 
-    // The hook fires 5 parallel queries — provide responses for each.
-    // useQuery fires them in insertion order: nodes, traceroutes, neighborInfo, status, channels
-    mockFetchJson(mockNodes);
-    mockFetchJson(mockTraceroutes);
-    mockFetchJson(mockNeighborInfo);
+    // The hook now fires ONE bundled dashboard request (nodes+traceroutes+
+    // neighborInfo+channels) plus the lightweight status query, instead of five
+    // separate GETs. Insertion order: dashboard, status.
+    mockFetchJson({
+      sourceId: 'src-1',
+      nodes: mockNodes,
+      traceroutes: mockTraceroutes,
+      neighborInfo: mockNeighborInfo,
+      channels: mockChannels,
+    });
     mockFetchJson(mockStatus);
-    mockFetchJson(mockChannels);
 
     const { result } = renderHook(() => useDashboardSourceData('src-1'), {
       wrapper: createWrapper(),
@@ -161,15 +165,11 @@ describe('useDashboardSourceData', () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(mockFetch).toHaveBeenCalledTimes(5);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
 
-    // Verify at least some expected URLs were called
     const calledUrls = mockFetch.mock.calls.map((c: unknown[]) => c[0]);
-    expect(calledUrls).toContain('/meshmonitor/api/sources/src-1/nodes');
-    expect(calledUrls).toContain('/meshmonitor/api/sources/src-1/traceroutes');
-    expect(calledUrls).toContain('/meshmonitor/api/sources/src-1/neighbor-info');
+    expect(calledUrls).toContain('/meshmonitor/api/sources/src-1/dashboard');
     expect(calledUrls).toContain('/meshmonitor/api/sources/src-1/status');
-    expect(calledUrls).toContain('/meshmonitor/api/sources/src-1/channels');
 
     expect(result.current.nodes).toEqual(mockNodes);
     expect(result.current.traceroutes).toEqual(mockTraceroutes);
@@ -502,21 +502,31 @@ describe('useDashboardUnifiedData', () => {
     expect(result.current.nodes).toEqual([]);
   });
 
-  it('fans out 4 fetches per source when enabled and merges deduped nodes', async () => {
-    // For each source we expect 4 endpoints: nodes, traceroutes, neighbor-info, channels.
-    // Returns whatever shape the URL implies; the same nodeNum is heard by both sources
-    // so the merge should keep the freshest entry.
+  it('fetches the whole unified view in ONE request and merges deduped nodes (#3735)', async () => {
+    // The unified hook now hits a single bundled endpoint that returns one
+    // per-source bundle each. The same nodeNum is heard by both sources, so the
+    // merge should keep the freshest entry.
     mockFetch.mockImplementation((url: string) => {
       const respond = (data: unknown) =>
         Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
-      if (url.endsWith('/sources/src-1/nodes')) return respond([{ nodeNum: 42, lastHeard: 100, longName: 'Old' }]);
-      if (url.endsWith('/sources/src-2/nodes')) return respond([{ nodeNum: 42, lastHeard: 200, longName: 'New' }]);
-      if (url.endsWith('/sources/src-1/traceroutes')) return respond([{ id: 'tr-1' }]);
-      if (url.endsWith('/sources/src-2/traceroutes')) return respond([{ id: 'tr-2' }]);
-      if (url.endsWith('/sources/src-1/neighbor-info')) return respond([{ id: 'ni-1' }]);
-      if (url.endsWith('/sources/src-2/neighbor-info')) return respond([]);
-      if (url.endsWith('/sources/src-1/channels')) return respond([{ id: 0, name: 'LongFast' }]);
-      if (url.endsWith('/sources/src-2/channels')) return respond([]);
+      if (url.includes('/api/unified/dashboard')) {
+        return respond([
+          {
+            sourceId: 'src-1',
+            nodes: [{ nodeNum: 42, lastHeard: 100, longName: 'Old' }],
+            traceroutes: [{ id: 'tr-1' }],
+            neighborInfo: [{ id: 'ni-1' }],
+            channels: [{ id: 0, name: 'LongFast' }],
+          },
+          {
+            sourceId: 'src-2',
+            nodes: [{ nodeNum: 42, lastHeard: 200, longName: 'New' }],
+            traceroutes: [{ id: 'tr-2' }],
+            neighborInfo: [],
+            channels: [],
+          },
+        ]);
+      }
       return respond([]);
     });
 
@@ -529,8 +539,11 @@ describe('useDashboardUnifiedData', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    // 2 sources × 4 endpoints = 8 fetches
-    expect(mockFetch).toHaveBeenCalledTimes(8);
+    // One request for the whole view, scoped to the source list.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch.mock.calls[0][0]).toContain('/api/unified/dashboard?sources=');
+    expect(mockFetch.mock.calls[0][0]).toContain('src-1');
+    expect(mockFetch.mock.calls[0][0]).toContain('src-2');
     expect(result.current.nodes).toHaveLength(1);
     expect((result.current.nodes[0] as any).longName).toBe('New');
     expect(result.current.traceroutes).toEqual([{ id: 'tr-1' }, { id: 'tr-2' }]);

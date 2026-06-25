@@ -14,6 +14,7 @@ import { logger } from '../../utils/logger.js';
 import { PortNum, CHANNEL_DB_OFFSET, modemPresetChannelName } from '../constants/meshtastic.js';
 import { filterPacketsByPermissions, getAllowedChannels } from './packetPermissions.js';
 import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
+import { buildSourceDashboard } from '../services/sourceDashboardData.js';
 import type { DbChannelDatabase, DbPacketLog } from '../../db/types.js';
 import type { DbMeshCorePacket } from '../../db/repositories/meshcore.js';
 
@@ -1288,6 +1289,36 @@ router.get('/status', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error fetching unified status:', error);
     res.status(500).json({ error: 'Failed to fetch unified status' });
+  }
+});
+
+/**
+ * GET /api/unified/dashboard?sources=id1,id2
+ *
+ * Bundled cross-source dashboard read: returns one
+ * `{ sourceId, nodes, traceroutes, neighborInfo, channels }` entry per source.
+ *
+ * Replaces the Unified dashboard's old fan-out of FOUR GETs per source on every
+ * 15s poll (4×N requests), which exhausted the API rate limiter and hammered
+ * low-powered / busy servers (#3735). Now the whole view is a single request.
+ * Each dataset is permission-gated inside `buildSourceDashboard` exactly as the
+ * per-source endpoints are (unreadable datasets come back as []). An optional
+ * `sources` filter scopes the response to the caller's known source list;
+ * absent, every source is returned.
+ */
+router.get('/dashboard', async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user ?? null;
+    const allSources = await databaseService.sources.getAllSources();
+    const requested = typeof req.query.sources === 'string' && req.query.sources.length > 0
+      ? new Set(req.query.sources.split(',').map((s) => s.trim()).filter(Boolean))
+      : null;
+    const selected = requested ? allSources.filter((s) => requested.has(s.id)) : allSources;
+    const bundles = await Promise.all(selected.map((s) => buildSourceDashboard(s, user)));
+    res.json(bundles);
+  } catch (error) {
+    logger.error('Error fetching unified dashboard data:', error);
+    res.status(500).json({ error: 'Failed to fetch unified dashboard data' });
   }
 });
 
