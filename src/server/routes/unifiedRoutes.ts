@@ -448,14 +448,18 @@ router.get('/messages', async (req: Request, res: Response) => {
 
     const merged = new Map<string, Merged>();
 
-    // Fetch 5x limit per source. The 2x factor was enough to survive same-packet
-    // dedup (N sources × same packet → 1 entry; need N*limit pre-dedup to fill
-    // the result). But 2x fails for messages exclusive to a single high-traffic
-    // source (e.g. a continental MQTT bridge at ~3 msg/s pushes the 200-message
-    // window past a target message in ~60 s, making it disappear from the feed —
-    // issue #3719). 5x raises the per-source window to 500 rows (≈167 s at 3
-    // msg/s), making starvation effectively impossible at normal poll intervals.
-    const fetchLimit = limit * 5;
+    // Fetch 2x limit per source so dedup can't starve the result set when
+    // multiple sources all heard the same packet (N sources × same packet → 1
+    // entry; need ~N*limit pre-dedup to fill the page).
+    //
+    // This deliberately does NOT widen the window to keep a message exclusive to
+    // a single high-traffic source on-screen longer before it scrolls out
+    // (#3719). That persistence is handled structurally on the client: the
+    // unified feed is append-only (foldUnifiedMessagePages / #3738), so a
+    // message that has been displayed stays displayed regardless of how far the
+    // server window has moved on — at any traffic rate, not just a fixed
+    // headroom. Inflating fetchLimit here would only add per-poll fetch cost.
+    const fetchLimit = limit * 2;
 
     // MeshCore channel identity is index-keyed via the synthesised
     // `channel-${idx}` pseudo-pubkey (see meshcoreManager / MeshCoreChannelsView).

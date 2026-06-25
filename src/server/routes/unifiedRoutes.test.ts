@@ -581,15 +581,15 @@ describe('Unified Routes', () => {
       expect(res.body).toHaveLength(2);
     });
 
-    it('caps limit at 500 (fetches 2500 per source for dedup headroom)', async () => {
+    it('caps limit at 500 (fetches 1000 per source for dedup headroom)', async () => {
       mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
       mockDb.messages.getMessages.mockResolvedValue([]);
 
       const app = createApp(adminUser);
       await request(app).get('/messages?limit=9999');
 
-      // fetchLimit = limit * 5 = 2500
-      expect(mockDb.messages.getMessages).toHaveBeenCalledWith(2500, 0, SOURCE_A.id, [70]);
+      // fetchLimit = limit * 2 = 1000
+      expect(mockDb.messages.getMessages).toHaveBeenCalledWith(1000, 0, SOURCE_A.id, [70]);
     });
 
     it('skips sources the user has no read permission for', async () => {
@@ -638,7 +638,7 @@ describe('Unified Routes', () => {
       expect(mockDb.messages.getMessagesBeforeInChannel).toHaveBeenCalledWith(
         0,          // channel number
         10000,      // before cursor
-        250,        // fetchLimit = limit*5
+        100,        // fetchLimit = limit*2
         SOURCE_A.id
       );
     });
@@ -904,7 +904,7 @@ describe('Unified Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(2);
       // No channel filter → repo.getRecentMessages used (not per-channel).
-      expect(mockDb.meshcore.getRecentMessages).toHaveBeenCalledWith(250, 'mc-1');
+      expect(mockDb.meshcore.getRecentMessages).toHaveBeenCalledWith(100, 'mc-1');
 
       const channelMsg = res.body.find((m: any) => m.text === 'channel hello');
       expect(channelMsg).toBeTruthy();
@@ -931,7 +931,7 @@ describe('Unified Routes', () => {
 
       expect(res.status).toBe(200);
       // Channel 'Ops' resolves to index 3 on this source.
-      expect(mockDb.meshcore.getChannelMessages).toHaveBeenCalledWith(3, 250, 'mc-1');
+      expect(mockDb.meshcore.getChannelMessages).toHaveBeenCalledWith(3, 100, 'mc-1');
       expect(mockDb.meshcore.getRecentMessages).not.toHaveBeenCalled();
       expect(res.body).toHaveLength(1);
       expect(res.body[0].text).toBe('ops traffic');
