@@ -74,6 +74,31 @@
 .ae-textarea--code { font-family: var(--font-mono, monospace); font-size: 0.82rem; min-height: 280px; }
 .ae-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem 1rem; }
 .ae-help-text { font-size: 0.76rem; color: var(--ctp-subtext0); margin-top: 0.25rem; }
+
+/* Token-highlighting text field: a backdrop renders the chrome + highlighted
+   {{ }} tokens; a transparent input/textarea sits on top for editing. Both share
+   the .ae-input/.ae-textarea metrics so the text aligns exactly. */
+.ae-tokenfield { position: relative; }
+.ae-tokenfield-backdrop {
+  position: absolute; inset: 0; margin: 0; overflow: hidden; pointer-events: none;
+  white-space: pre; overflow-wrap: normal;
+}
+.ae-tokenfield--multiline .ae-tokenfield-backdrop { white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word; }
+.ae-tokenfield-input {
+  position: relative; background: transparent; color: transparent; border-color: transparent;
+  caret-color: var(--ctp-text);
+}
+.ae-tokenfield-input::placeholder { color: var(--ctp-subtext0); }
+.ae-tokenfield:focus-within .ae-tokenfield-backdrop { border-color: var(--ctp-blue); }
+.ae-tokenfield-backdrop .ae-token-ok {
+  background: color-mix(in srgb, var(--ctp-blue) 22%, transparent);
+  color: var(--ctp-text); border-radius: 3px;
+}
+.ae-tokenfield-backdrop .ae-token-bad {
+  background: color-mix(in srgb, var(--ctp-red) 26%, transparent);
+  color: var(--ctp-text); border-radius: 3px; text-decoration: underline wavy var(--ctp-red);
+}
+.ae-token-warn { font-size: 0.76rem; color: var(--ctp-red); margin-top: 0.25rem; }
 .ae-error-list { color: var(--ctp-red); font-size: 0.85rem; margin: 0.5rem 0; padding-left: 1.1rem; }
 
 /* Builder WHEN / IF / THEN sections */

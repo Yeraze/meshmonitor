@@ -10,6 +10,7 @@ import { TRIGGERS, CONDITIONS, ACTIONS, BLOCK_BY_TYPE, fieldsFor, type BlockDef,
 import type { WorkflowForm, FormBlock, Rule } from './compile';
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
 import GeofenceFieldInput from './GeofenceFieldInput';
+import TokenTextField from './TokenTextField';
 import type { GeofenceShape } from '../auto-responder/types';
 
 export interface VariableOption { name: string; type: string; }
@@ -56,17 +57,21 @@ function defaultParams(type: string, triggerType: string): Record<string, unknow
   return params;
 }
 
-function FieldInput({ field, value, onChange, variables, sources, channels }: {
-  field: FieldDef; value: unknown; onChange: (v: unknown) => void; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[];
+function FieldInput({ field, value, onChange, variables, sources, channels, triggerType }: {
+  field: FieldDef; value: unknown; onChange: (v: unknown) => void; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; triggerType: string;
 }) {
   let control;
+  const varNames = variables.map((v) => v.name);
   switch (field.kind) {
     case 'number':
       control = <input className="ae-input" type="number" value={(value ?? '') as string} placeholder={field.placeholder}
         onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))} />;
       break;
     case 'textarea':
-      control = <textarea className="ae-textarea" value={(value ?? '') as string} placeholder={field.placeholder} onChange={(e) => onChange(e.target.value)} />;
+      control = field.tokens
+        ? <TokenTextField multiline value={(value ?? '') as string} placeholder={field.placeholder}
+            triggerType={triggerType} variableNames={varNames} onChange={onChange} />
+        : <textarea className="ae-textarea" value={(value ?? '') as string} placeholder={field.placeholder} onChange={(e) => onChange(e.target.value)} />;
       break;
     case 'select':
       control = (
@@ -160,7 +165,10 @@ function FieldInput({ field, value, onChange, variables, sources, channels }: {
       break;
     }
     default:
-      control = <input className="ae-input" value={(value ?? '') as string} placeholder={field.placeholder} onChange={(e) => onChange(e.target.value)} />;
+      control = field.tokens
+        ? <TokenTextField value={(value ?? '') as string} placeholder={field.placeholder}
+            triggerType={triggerType} variableNames={varNames} onChange={onChange} />
+        : <input className="ae-input" value={(value ?? '') as string} placeholder={field.placeholder} onChange={(e) => onChange(e.target.value)} />;
   }
   return (
     <div className="ae-field">
@@ -180,7 +188,7 @@ function BlockFields({ block, triggerType, variables, sources, channels, onParam
     <>
       {def.fields.map((f) => {
         const field = f.kind === 'fieldselect' ? { ...f, groups: fieldsFor(block.type, triggerType) } : f;
-        return <FieldInput key={f.name} field={field} value={block.params[f.name]} variables={variables} sources={sources} channels={channels}
+        return <FieldInput key={f.name} field={field} value={block.params[f.name]} variables={variables} sources={sources} channels={channels} triggerType={triggerType}
           onChange={(v) => onParams({ ...block.params, [f.name]: v })} />;
       })}
     </>
