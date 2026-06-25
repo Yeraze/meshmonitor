@@ -21,6 +21,8 @@ export interface FieldDef {
   placeholder?: string;
   help?: string;
   advanced?: boolean;
+  /** This `text`/`textarea` field accepts `{{ }}` tokens → highlight + typo-check. */
+  tokens?: boolean;
 }
 
 export interface BlockDef {
@@ -220,7 +222,7 @@ export const CONDITIONS: BlockDef[] = [
     fields: [
       { name: 'field', label: 'Field', kind: 'fieldselect' },
       { name: 'op', label: 'Operator', kind: 'select', options: NUMERIC_OP_OPTIONS },
-      { name: 'value', label: 'Value', kind: 'text', placeholder: 'e.g. 20 or {{ var.threshold }}', help: 'A number, or {{ var.name }} to compare against a variable.' },
+      { name: 'value', label: 'Value', kind: 'text', tokens: true, placeholder: 'e.g. 20 or {{ var.threshold }}', help: 'A number, or {{ var.name }} to compare against a variable.' },
     ],
   },
   {
@@ -230,7 +232,7 @@ export const CONDITIONS: BlockDef[] = [
     fields: [
       { name: 'field', label: 'Field', kind: 'fieldselect' },
       { name: 'op', label: 'Operator', kind: 'select', options: STRING_OP_OPTIONS },
-      { name: 'value', label: 'Value', kind: 'text', placeholder: 'e.g. ROUTER' },
+      { name: 'value', label: 'Value', kind: 'text', tokens: true, placeholder: 'e.g. ROUTER' },
     ],
   },
   {
@@ -259,7 +261,7 @@ export const CONDITIONS: BlockDef[] = [
     fields: [
       { name: 'variable', label: 'Variable', kind: 'variable' },
       { name: 'op', label: 'Operator', kind: 'select', help: 'Leave blank to test "is set / true".', options: [{ value: '', label: 'is set / true' }, ...NUMERIC_OP_OPTIONS] },
-      { name: 'value', label: 'Value', kind: 'text', placeholder: 'optional' },
+      { name: 'value', label: 'Value', kind: 'text', tokens: true, placeholder: 'optional' },
     ],
   },
   {
@@ -287,10 +289,10 @@ export const ACTIONS: BlockDef[] = [
     label: 'Send a message',
     description: 'Send text to a channel or as a DM.',
     fields: [
-      { name: 'text', label: 'Message', kind: 'textarea', placeholder: 'Hello {{ trigger.fromId }}!', help: 'Use {{ trigger.field }} or {{ var.name }} to insert values.' },
+      { name: 'text', label: 'Message', kind: 'textarea', tokens: true, placeholder: 'Hello {{ trigger.fromId }}!', help: 'Use {{ trigger.field }} or {{ var.name }} to insert values.' },
       { name: 'sourceIds', label: 'Send via sources', kind: 'sendSourceMulti', help: 'Which radios to send through (MQTT sources are receive-only and excluded). Leave none to use the source that triggered the automation — but a source IS required for source-less triggers like System events and Schedules.' },
       { name: 'channels', label: 'On channels', kind: 'channelMulti', help: 'Channels to post to, unified by name + key across your sources (the correct local slot is resolved per source). Leave none to use the triggering channel.' },
-      { name: 'to', label: 'DM to node #', kind: 'text', placeholder: 'blank = channel; {{ trigger.from }} replies to sender', advanced: true },
+      { name: 'to', label: 'DM to node #', kind: 'text', tokens: true, placeholder: 'blank = channel; {{ trigger.from }} replies to sender', advanced: true },
       { name: 'replyToTrigger', label: 'Reply to the triggering message', kind: 'checkbox', advanced: true },
     ],
   },
@@ -314,8 +316,8 @@ export const ACTIONS: BlockDef[] = [
     label: 'Send a notification',
     description: 'Send an external notification (Apprise).',
     fields: [
-      { name: 'title', label: 'Title', kind: 'text', placeholder: 'MeshMonitor alert' },
-      { name: 'body', label: 'Body', kind: 'textarea', placeholder: 'Node {{ trigger.fromId }} said {{ trigger.text }}' },
+      { name: 'title', label: 'Title', kind: 'text', tokens: true, placeholder: 'MeshMonitor alert' },
+      { name: 'body', label: 'Body', kind: 'textarea', tokens: true, placeholder: 'Node {{ trigger.fromId }} said {{ trigger.text }}' },
       {
         name: 'type', label: 'Severity', kind: 'select', advanced: true,
         options: [
@@ -344,7 +346,7 @@ export const ACTIONS: BlockDef[] = [
           { value: 'flag', label: 'Raise flag' }, { value: 'clear', label: 'Clear / lower flag' },
         ],
       },
-      { name: 'value', label: 'Value', kind: 'text', placeholder: 'for Set / Increment' },
+      { name: 'value', label: 'Value', kind: 'text', tokens: true, placeholder: 'for Set / Increment' },
     ],
   },
   {

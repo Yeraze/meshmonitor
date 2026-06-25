@@ -402,12 +402,10 @@ formatting). To pick up **after that PR merges**:
    (`CronScheduler`) for tests; invalid/missing crons are skipped+logged and
    rejected at save (`validateForm` via `cron-validator`).
 
-2. **Smarter `{{ }}` text entry.** In the builder's text/textarea fields, render
-   `{{ trigger.* }}` / `{{ var.* }}` tokens **visually distinct** from plain text
-   (chip/highlight), and **flag unrecognized tokens as an error** to catch typos
-   (e.g. `{{ trigger.lastestVersion }}`, or a `var.` name with no matching
-   variable). Validate against the per-trigger token registry in
-   `SubstitutionsHelp.ts` (`TRIGGER_TOKENS` + `UNIVERSAL_TOKENS`) and the known
-   variables list. Likely a small highlighting input/overlay component used by
-   the `text`/`textarea` field kinds; surface unknown-token warnings inline (and
-   optionally in `validateForm` before save).
+2. ~~**Smarter `{{ }}` text entry.**~~ **DONE** (follow-up PR). `TokenTextField`
+   wraps token-bearing `text`/`textarea` fields (flagged `tokens: true` in the
+   catalog) with a highlight backdrop — `{{ trigger.* }}`/`{{ var.* }}` tokens
+   render blue when recognized, red+wavy when not — and lists unrecognized tokens
+   inline. Validation is via `tokenHints.ts` (`validTokenSet` from
+   `TRIGGER_TOKENS`+`UNIVERSAL_TOKENS`+known vars). It is a non-blocking hint (not
+   a hard save gate) to avoid false positives.
