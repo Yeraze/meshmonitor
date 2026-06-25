@@ -39,7 +39,9 @@ export default function TokenTextField({ value, onChange, multiline, placeholder
   return (
     <div className={`ae-tokenfield ${multiline ? 'ae-tokenfield--multiline' : ''}`}>
       <div ref={backdropRef} className={`${cls} ae-tokenfield-backdrop`} aria-hidden="true">
-        {highlighted}{'​'}
+        {highlighted}
+        {/* trailing zero-width space keeps a final newline's line visible in the backdrop */}
+        {'\u200b'}
       </div>
       {multiline ? (
         <textarea
