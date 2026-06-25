@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import databaseService from '../../services/database.js';
-import { requirePermission, optionalAuth, hasPermission } from '../auth/authMiddleware.js';
+import { requirePermission, optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
@@ -9,11 +9,15 @@ import { meshcoreManagerRegistry, meshcoreConfigFromSource } from '../meshcoreRe
 import { MqttBrokerManager, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
-import { filterNodesByChannelPermission, maskNodeLocationByChannel, maskTraceroutesByChannel, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
-import { PortNum, modemPresetChannelName } from '../constants/meshtastic.js';
-import { transformChannel } from '../utils/channelView.js';
+import { PortNum } from '../constants/meshtastic.js';
+import {
+  buildSourceNodes,
+  buildSourceChannels,
+  buildSourceTraceroutes,
+  buildSourceNeighborInfo,
+  buildSourceDashboard,
+} from '../services/sourceDashboardData.js';
 import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from '../services/sourcePkiKeyStore.js';
-import type { ResourceType } from '../../types/permission.js';
 
 const router = Router();
 
@@ -931,120 +935,8 @@ router.get('/:id/nodes', requirePermission('nodes', 'read', { sourceIdFrom: 'par
     const source = await databaseService.sources.getSource(req.params.id);
     if (!source) return res.status(404).json({ error: 'Source not found' });
 
-    // MeshCore sources don't share the meshtastic node table — pull contacts
-    // (and localNode) directly from the per-source MeshCoreManager and map
-    // them into the dashboard's flat node shape. These return early and never
-    // reach the position-override logic below: MeshCore contacts have no
-    // override columns (that's a Meshtastic-node feature, #3551), so there's
-    // nothing to apply.
-    if (source.type === 'meshcore') {
-      const mcManager = meshcoreManagerRegistry.get(source.id);
-      const mcNodes: any[] = [];
-      if (mcManager) {
-        for (const n of await mcManager.getAllNodes()) {
-          if (n.latitude == null || n.longitude == null) continue;
-          if (n.latitude === 0 && n.longitude === 0) continue;
-          const lastHeard = typeof n.lastHeard === 'number'
-            ? Math.floor(n.lastHeard / 1000)
-            : Math.floor(Date.now() / 1000);
-          const pubKey = n.publicKey || '';
-          const nodeId = `mc:${mcManager.sourceId}:${pubKey.substring(0, 12)}`;
-          mcNodes.push({
-            nodeId,
-            nodeNum: 0,
-            sourceId: mcManager.sourceId,
-            isMeshCore: true,
-            publicKey: pubKey,
-            isIgnored: false,
-            isFavorite: false,
-            user: { id: nodeId, longName: n.name, shortName: (n.name || '').substring(0, 4) },
-            longName: n.name,
-            shortName: (n.name || '').substring(0, 4),
-            latitude: n.latitude,
-            longitude: n.longitude,
-            position: { latitude: n.latitude, longitude: n.longitude },
-            lastHeard,
-            hopsAway: 0,
-            role: 0,
-            // MeshCore advert type drives role-based map icons + filtering
-            // (issue #3546): 1=Companion, 2=Repeater, 3=Room, 4=Sensor.
-            advType: typeof n.advType === 'number' ? n.advType : 0,
-          });
-        }
-      }
-      return res.json(mcNodes);
-    }
-
-    // Nodes are stored per-source (composite PK (nodeNum, sourceId) since
-    // migration 029). Filter strictly by this source so two sources viewing
-    // overlapping meshes show only what each has actually heard.
-    const nodes = await databaseService.nodes.getAllNodes(source.id);
-
-    // The local node for this source may not be in DB yet (brand new device).
-    // Always include the manager's local node if absent.
-    const manager = sourceManagerRegistry.getManager(source.id);
-    if (manager) {
-      const localNodeInfo = manager.getLocalNodeInfo();
-      if (localNodeInfo && localNodeInfo.nodeNum && !nodes.some(n => n.nodeNum === localNodeInfo.nodeNum)) {
-        // Fetch the full node record from DB (regardless of sourceId) and inject it
-        const localNode = await databaseService.nodes.getNode(localNodeInfo.nodeNum);
-        if (localNode) {
-          nodes.push(localNode);
-        } else {
-          // Synthesize a minimal record if not yet in DB
-          nodes.push({
-            nodeNum: localNodeInfo.nodeNum,
-            nodeId: localNodeInfo.nodeId,
-            longName: localNodeInfo.longName,
-            shortName: localNodeInfo.shortName,
-            hwModel: localNodeInfo.hwModel ?? 0,
-            lastHeard: Math.floor(Date.now() / 1000),
-            sourceId: source.id,
-          } as any);
-        }
-      }
-    }
-
     const user = (req as any).user ?? null;
-
-    // Filter by channel viewOnMap permissions and mask private position channels
-    const filtered = await filterNodesByChannelPermission(nodes, user, source.id);
-    const masked = await maskNodeLocationByChannel(filtered, user, source.id);
-
-    // Apply per-node position override to the flat lat/lng the dashboard map
-    // reads (issue #3551). These are raw DB rows, so unlike /api/poll they
-    // never passed through enhanceNodeForClient — without this the map renders
-    // the raw GPS position and ignores the override. Mirror that helper's
-    // privacy semantics: private overrides are honored only for callers with
-    // nodes_private read, and the override coords are stripped for everyone else.
-    const canViewPrivate = user?.isAdmin
-      ? true
-      : (user ? await hasPermission(user, 'nodes_private', 'read') : false);
-    const withOverride = masked.map(node => {
-      const n = node as any;
-      const isPrivate = n.positionOverrideIsPrivate === true;
-
-      // Hide the override coordinates from callers who can't view private positions.
-      if (isPrivate && !canViewPrivate) {
-        const stripped = { ...n };
-        delete stripped.latitudeOverride;
-        delete stripped.longitudeOverride;
-        delete stripped.altitudeOverride;
-        return stripped;
-      }
-
-      const eff = getEffectiveDbNodePosition(n);
-      if (eff.isOverride) {
-        return {
-          ...n,
-          latitude: eff.latitude,
-          longitude: eff.longitude,
-          altitude: eff.altitude,
-          positionIsOverride: true,
-        };
-      }
-      return n;
-    });
+    const withOverride = await buildSourceNodes(source, user);
     res.json(withOverride);
   } catch (error) {
     logger.error('Error fetching nodes for source:', error);
@@ -1084,47 +976,8 @@ router.get('/:id/channels', optionalAuth(), async (req: Request, res: Response) 
     const source = await databaseService.sources.getSource(req.params.id);
     if (!source) return res.status(404).json({ error: 'Source not found' });
 
-    const allChannels = await databaseService.channels.getAllChannels(source.id);
-    const isAdmin = req.user?.isAdmin === true;
-
-    // Resolve this source's persisted modem preset (if any) so empty-name
-    // slot 0 can display as "MediumFast"/"LongFast"/etc. instead of the
-    // synthetic "Primary" fallback — matching the unified channels picker
-    // and the on-wire label gateways use. The setting is written by
-    // `meshtasticManager` on each LoRa config response.
-    let presetName: string | null = null;
-    try {
-      const raw = await databaseService.settings.getSetting(`lora.preset.${source.id}`);
-      const n = raw != null ? Number(raw) : NaN;
-      if (Number.isFinite(n)) presetName = modemPresetChannelName(n);
-    } catch (err) {
-      logger.debug(`Failed to load preset for source ${source.id}:`, err);
-    }
-
-    const accessible: typeof allChannels = [];
-    for (const channel of allChannels) {
-      if (isAdmin) {
-        accessible.push(channel);
-        continue;
-      }
-      const channelResource = `channel_${channel.id}` as ResourceType;
-      if (req.user && await hasPermission(req.user, channelResource, 'read', source.id)) {
-        accessible.push(channel);
-      }
-    }
-
-    // Issue #2951: include the raw `psk` only for admins or callers with
-    // write permission on the specific channel — otherwise the channel
-    // configuration UI cannot display the existing key for the operator
-    // who is allowed to change it.
-    const projected = await Promise.all(accessible.map(async (channel) => {
-      const channelResource = `channel_${channel.id}` as ResourceType;
-      const includePsk = isAdmin || (req.user
-        ? await hasPermission(req.user, channelResource, 'write', source.id)
-        : false);
-      return transformChannel(channel, { includePsk, presetName });
-    }));
-
+    const user = (req as any).user ?? null;
+    const projected = await buildSourceChannels(source, user);
     res.json(projected);
   } catch (error) {
     logger.error('Error fetching channels for source:', error);
@@ -1139,15 +992,8 @@ router.get('/:id/traceroutes', requirePermission('traceroute', 'read', { sourceI
     if (!source) return res.status(404).json({ error: 'Source not found' });
 
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, source.id);
-    // Channel-gate traceroutes the same way nodes are gated. Without
-    // this, the rows' embedded `routePositions` JSON (a snapshot of
-    // every hop's lat/lng at traceroute time) lets the frontend draw
-    // line segments for routes the user has no viewOnMap permission
-    // for — appearing as "floating lines" once the nodes endpoint has
-    // stripped the corresponding markers. See #3092 follow-up.
     const user = (req as any).user ?? null;
-    const masked = await maskTraceroutesByChannel(traceroutes, user, source.id);
+    const masked = await buildSourceTraceroutes(source, user, limit);
     res.json(masked);
   } catch (error) {
     logger.error('Error fetching traceroutes for source:', error);
@@ -1161,97 +1007,35 @@ router.get('/:id/neighbor-info', requirePermission('nodes', 'read', { sourceIdFr
     const source = await databaseService.sources.getSource(req.params.id);
     if (!source) return res.status(404).json({ error: 'Source not found' });
 
-    const neighborInfo = await databaseService.neighbors.getAllNeighborInfo(source.id);
-
-    // Get max node age setting (default 24 hours)
-    const maxNodeAgeStr = await databaseService.settings.getSetting('maxNodeAgeHours');
-    const maxNodeAgeHours = maxNodeAgeStr ? (parseInt(maxNodeAgeStr, 10) || 24) : 24;
-    const cutoffTime = Math.floor(Date.now() / 1000) - maxNodeAgeHours * 60 * 60;
-
-    // Build a set of all link keys for bidirectionality detection
-    const linkKeys = new Set(neighborInfo.map(ni => `${ni.nodeNum}-${ni.neighborNodeNum}`));
-
-    // Batch-fetch all nodes referenced in neighbor info
-    const allNodeNums = [...new Set([
-      ...neighborInfo.map(ni => ni.nodeNum),
-      ...neighborInfo.map(ni => ni.neighborNodeNum),
-    ])];
-    const nodeMap = await databaseService.nodes.getNodesByNums(allNodeNums);
-
-    // Apply the same channel gate the nodes endpoint uses, so that a
-    // neighbor-info link whose endpoint nodes the user can't see on the
-    // map doesn't leak their positions through the enriched response.
-    // Without this gate the map would draw neighbor lines between
-    // coordinates of nodes the user has no viewOnMap permission for —
-    // same "floating lines" symptom as the traceroute leak above.
-    // See #3092 follow-up.
     const neighborUser = (req as any).user ?? null;
-    const visibleNodes = await filterNodesByChannelPermission(
-      Array.from(nodeMap.values()),
-      neighborUser,
-      source.id,
-    );
-    const visibleNodeNums = new Set(visibleNodes.map(n => Number((n as any).nodeNum)));
-
-    // Enrich each record with node names, positions, and bidirectionality flag
-    const enrichedNeighborInfo = neighborInfo
-      .filter(ni =>
-        visibleNodeNums.has(Number(ni.nodeNum)) &&
-        visibleNodeNums.has(Number(ni.neighborNodeNum)),
-      )
-      .map(ni => {
-      const node = nodeMap.get(ni.nodeNum) ?? null;
-      const neighbor = nodeMap.get(ni.neighborNodeNum) ?? null;
-      const nodePos = getEffectiveDbNodePosition(node);
-      const neighborPos = getEffectiveDbNodePosition(neighbor);
-
-      const TX_MQTT = 5;
-      const TX_UDP = 6;
-      const nTx = (node as any)?.transportMechanism;
-      const nbTx = (neighbor as any)?.transportMechanism;
-      const isMqtt = nTx === TX_MQTT || nbTx === TX_MQTT || (node as any)?.viaMqtt || (neighbor as any)?.viaMqtt;
-      const isUdp = nTx === TX_UDP || nbTx === TX_UDP;
-      const transportClass: 'rf' | 'udp' | 'mqtt' = isMqtt ? 'mqtt' : isUdp ? 'udp' : 'rf';
-
-      return {
-        ...ni,
-        nodeId: node?.nodeId || `!${ni.nodeNum.toString(16).padStart(8, '0')}`,
-        nodeName: node?.longName || `Node !${ni.nodeNum.toString(16).padStart(8, '0')}`,
-        neighborNodeId: neighbor?.nodeId || `!${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
-        neighborName: neighbor?.longName || `Node !${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
-        bidirectional: linkKeys.has(`${ni.neighborNodeNum}-${ni.nodeNum}`),
-        transportClass,
-        nodeLatitude: nodePos.latitude,
-        nodeLongitude: nodePos.longitude,
-        neighborLatitude: neighborPos.latitude,
-        neighborLongitude: neighborPos.longitude,
-        node,
-        neighbor,
-      };
-    })
-      .filter(ni => {
-        // Report-time freshness: show a neighbor edge only when its NeighborInfo
-        // *report* falls within the window. This matches the Map Analysis
-        // "Neighbors" layer (GET /api/analysis/neighbors), which filters purely
-        // on the record `timestamp`. Previously this gated on the endpoint
-        // nodes' `lastHeard`, so a node's stale last-known neighbor list stayed
-        // on the map for as long as the node was otherwise active (e.g. still
-        // sending position/telemetry) — surfacing far more links than the
-        // analysis view and misrepresenting how recently each RF link was seen.
-        // Keying off the record timestamp also naturally keeps indirect-neighbor
-        // links whose neighbor row has a null `lastHeard` (#3025/#2615), since
-        // `lastHeard` is no longer consulted here. `timestamp` is set to the
-        // packet-receipt time (ms) when the report is stored, so a fresh report
-        // implies we heard the reporter within the window.
-        const reportSec = Math.floor((ni.timestamp ?? 0) / 1000);
-        return reportSec >= cutoffTime;
-      })
-      .map(({ node, neighbor, ...rest }) => rest);
-
+    const enrichedNeighborInfo = await buildSourceNeighborInfo(source, neighborUser);
     res.json(enrichedNeighborInfo);
   } catch (error) {
     logger.error('Error fetching neighbor info for source:', error);
     res.status(500).json({ error: 'Failed to fetch neighbor info' });
+  }
+});
+
+// GET /api/sources/:id/dashboard — bundled read of a source's nodes,
+// traceroutes, neighbor-info and channels in ONE response.
+//
+// The dashboard used to fire these as four separate GETs per source on every
+// 15s poll (4×N requests for N sources), exhausting the API rate limiter on
+// multi-source setups and hammering low-powered / heavily-utilized servers
+// (#3735). Bundling collapses that to one request per source. optionalAuth +
+// the per-dataset permission gating inside buildSourceDashboard mirror the
+// individual endpoints' access rules (a dataset the caller can't read comes
+// back as [] rather than 403-ing the whole bundle).
+router.get('/:id/dashboard', optionalAuth(), async (req: Request, res: Response) => {
+  try {
+    const source = await databaseService.sources.getSource(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Source not found' });
+    const user = (req as any).user ?? null;
+    const payload = await buildSourceDashboard(source, user);
+    res.json(payload);
+  } catch (error) {
+    logger.error('Error fetching dashboard data for source:', error);
+    res.status(500).json({ error: 'Failed to fetch dashboard data' });
   }
 });
 
