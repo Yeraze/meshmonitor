@@ -61,7 +61,7 @@ const rateLimitConfig = {
 // Log rate limit configuration at startup
 logger.info('⏱️  Rate limit configuration:');
 logger.info(`   - API: ${env.rateLimitApi === 0 ? 'unlimited (disabled)' : `${env.rateLimitApi} requests per 15 minutes`}${env.rateLimitApiProvided ? ' (custom)' : ' (default)'}`);
-logger.info('   - API private/local network addresses: always exempt (RFC 1918 + loopback)');
+logger.info('   - API GET requests: always exempt (navigation-driven reads)');
 logger.info(`   - Auth: ${env.rateLimitAuth === 0 ? 'unlimited (disabled)' : `${env.rateLimitAuth} attempts per 15 minutes`}${env.rateLimitAuthProvided ? ' (custom)' : ' (default)'}`);
 logger.info(`   - Messages: ${env.rateLimitMessages === 0 ? 'unlimited (disabled)' : `${env.rateLimitMessages} messages per minute`}${env.rateLimitMessagesProvided ? ' (custom)' : ' (default)'}`);
 
@@ -77,11 +77,15 @@ if (!env.trustProxyProvided && env.isProduction) {
 // Private network IPs (RFC 1918 + loopback) are always exempt — a single active
 // MeshMonitor browser session generates ~900+ API requests per 15 minutes via its
 // polling hooks, and local-network deployments have no security need for rate limiting.
+// GET requests are also exempt: source-switching fires 50+ simultaneous read queries
+// and would exhaust the default 1000-req window in just a few toggles (#3735). Write
+// operations (POST/PUT/DELETE) remain rate-limited; auth and message sends have their
+// own dedicated limiters.
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: env.rateLimitApi,
   message: 'Too many requests from this IP, please try again later',
-  skip: (req) => env.rateLimitApi === 0 || isPrivateNetworkIp(req.ip ?? ''),
+  skip: (req) => env.rateLimitApi === 0 || isPrivateNetworkIp(req.ip ?? '') || req.method === 'GET',
   handler: (req, res) => {
     const ip = req.ip || 'unknown';
     logger.warn(`🚫 Rate limit exceeded for API - IP: ${ip}, Path: ${req.path}`);

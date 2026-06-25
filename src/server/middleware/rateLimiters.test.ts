@@ -54,6 +54,7 @@ async function createTestApp(envOverrides: Record<string, unknown>): Promise<Exp
     await import('./rateLimiters.js');
 
   const app = express();
+  app.use(express.json());
   app.use('/api', apiLimiter, (_req, res) => res.json({ ok: true }));
   app.use('/auth', authLimiter, (_req, res) => res.json({ ok: true }));
   app.use('/messages', messageLimiter, (_req, res) => res.json({ ok: true }));
@@ -125,7 +126,7 @@ describe('Rate Limiters Middleware', () => {
   });
 
   describe('When rate limits are set to a small positive value', () => {
-    it('should enforce API rate limit after max requests exceeded from a public IP', async () => {
+    it('should enforce API rate limit on POST requests from a public IP', async () => {
       const app = await createTestApp({
         rateLimitApi: 2,
         rateLimitApiProvided: true,
@@ -133,7 +134,8 @@ describe('Rate Limiters Middleware', () => {
       // Enable trust proxy so X-Forwarded-For is honoured, bypassing the private-IP exemption
       app.set('trust proxy', 1);
 
-      const makeRequest = () => request(app).get('/api').set('X-Forwarded-For', '1.2.3.4');
+      // Use POST — GET is exempt from the API limiter (#3735)
+      const makeRequest = () => request(app).post('/api').set('X-Forwarded-For', '1.2.3.4');
 
       // First 2 should succeed
       expect((await makeRequest()).status).toBe(200);
@@ -143,6 +145,20 @@ describe('Rate Limiters Middleware', () => {
       const res = await makeRequest();
       expect(res.status).toBe(429);
       expect(res.body.error).toContain('Too many requests');
+    });
+
+    it('should NOT enforce API rate limit on GET requests from a public IP (#3735)', async () => {
+      const app = await createTestApp({
+        rateLimitApi: 2,
+        rateLimitApiProvided: true,
+      });
+      app.set('trust proxy', 1);
+
+      // GET requests are always exempt — source-switching fires 50+ simultaneous reads
+      for (let i = 0; i < 5; i++) {
+        const res = await request(app).get('/api').set('X-Forwarded-For', '1.2.3.4');
+        expect(res.status).toBe(200);
+      }
     });
 
     it('should not throttle private/local network IPs regardless of limit', async () => {
@@ -279,9 +295,9 @@ describe('Rate Limiters Middleware', () => {
       );
       expect(disabledLogs).toHaveLength(3);
 
-      // Private-IP exemption line should always be logged
+      // GET-exemption line should always be logged
       expect(infoCalls).toContainEqual(
-        expect.stringContaining('private/local network addresses: always exempt')
+        expect.stringContaining('GET requests: always exempt')
       );
     });
 
