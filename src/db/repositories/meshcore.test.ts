@@ -257,6 +257,41 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     expect(legacy.routePath).toBeNull();
   });
 
+  it('insertMessage persists scopeCode + scopeName and reads them back (#3742 Phase 2)', async () => {
+    await repo.insertMessage(
+      { id: 'm-scoped', fromPublicKey: 'pk-1', text: 'scoped', timestamp: 3000, createdAt: 3000, scopeCode: 30479, scopeName: 'muenchen' },
+      'src-a',
+    );
+    await repo.insertMessage(
+      { id: 'm-unscoped', fromPublicKey: 'pk-1', text: 'unscoped', timestamp: 3001, createdAt: 3001, scopeCode: 0, scopeName: null },
+      'src-a',
+    );
+    await repo.insertMessage(
+      { id: 'm-unknown', fromPublicKey: 'pk-1', text: 'scoped-unknown', timestamp: 3002, createdAt: 3002, scopeCode: 12345, scopeName: null },
+      'src-a',
+    );
+    const msgs = await repo.getRecentMessages(10, 'src-a');
+    const scoped = msgs.find((m) => m.id === 'm-scoped')!;
+    const unscoped = msgs.find((m) => m.id === 'm-unscoped')!;
+    const unknown = msgs.find((m) => m.id === 'm-unknown')!;
+    expect(scoped.scopeCode).toBe(30479);
+    expect(scoped.scopeName).toBe('muenchen');
+    expect(unscoped.scopeCode).toBe(0);     // 0 = known-unscoped sentinel, must round-trip (not coerced to null)
+    expect(unscoped.scopeName).toBeNull();
+    expect(unknown.scopeCode).toBe(12345);
+    expect(unknown.scopeName).toBeNull();
+  });
+
+  it('insertMessage leaves scopeCode/scopeName null when omitted', async () => {
+    await repo.insertMessage(
+      { id: 'm-noscope', fromPublicKey: 'pk-1', text: 'no scope info', timestamp: 3003, createdAt: 3003 },
+      'src-a',
+    );
+    const row = (await repo.getRecentMessages(10, 'src-a')).find((m) => m.id === 'm-noscope')!;
+    expect(row.scopeCode).toBeNull();
+    expect(row.scopeName).toBeNull();
+  });
+
   it('insertMessage throws when called without a sourceId', async () => {
     await expect(
       repo.insertMessage(

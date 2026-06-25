@@ -120,6 +120,7 @@ import { migration as meshcoreHeardRepeatersMigration, runMigration102Postgres a
 import { migration as consolidateMqttChannelsMigration, runMigration103Postgres as runConsolidateMqttChannelsPostgres, runMigration103Mysql as runConsolidateMqttChannelsMysql } from '../server/migrations/103_consolidate_mqtt_channels.js';
 import { migration as channelDatabaseHashMigration, runMigration104Postgres as runChannelDatabaseHashPostgres, runMigration104Mysql as runChannelDatabaseHashMysql } from '../server/migrations/104_add_channel_database_hash.js';
 import { migration as meshcoreMessageRouteMigration, runMigration105Postgres as runMeshcoreMessageRoutePostgres, runMigration105Mysql as runMeshcoreMessageRouteMysql } from '../server/migrations/105_add_meshcore_message_route.js';
+import { migration as meshcoreMessageScopeMigration, runMigration106Postgres as runMeshcoreMessageScopePostgres, runMigration106Mysql as runMeshcoreMessageScopeMysql } from '../server/migrations/106_add_meshcore_message_scope.js';
 
 // ============================================================================
 // Registry
@@ -1665,4 +1666,18 @@ registry.register({
   sqlite: (db) => meshcoreMessageRouteMigration.up(db),
   postgres: (client) => runMeshcoreMessageRoutePostgres(client),
   mysql: (pool) => runMeshcoreMessageRouteMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 106: meshcore_messages scope columns
+// MeshCore messages can show the scope/region they were sent with (#3742 Ph2).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 106,
+  name: 'add_meshcore_message_scope',
+  settingsKey: 'migration_106_add_meshcore_message_scope',
+  sqlite: (db) => meshcoreMessageScopeMigration.up(db),
+  postgres: (client) => runMeshcoreMessageScopePostgres(client),
+  mysql: (pool) => runMeshcoreMessageScopeMysql(pool),
 });
