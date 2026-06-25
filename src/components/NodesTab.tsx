@@ -1686,7 +1686,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       {node.hasRemoteAdmin && (
                         <span className="node-indicator-icon" title={t('nodes.has_remote_admin')}>🛠️</span>
                       )}
-                      {hasPermission('messages', 'read') && (
+                      {hasPermission('messages', 'read') && !node.isUnmessagable && (
                         <button
                           className="dm-icon"
                           title={t('nodes.send_dm')}

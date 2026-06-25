@@ -322,6 +322,15 @@
   overflow-y: auto;
 }
 
+/* Notice shown in place of the message composer when the selected contact is a
+   repeater (advType=2), which cannot receive direct messages (#3755). */
+.meshcore-dm-no-messaging {
+  padding: 12px 16px;
+  font-style: italic;
+  color: var(--ctp-subtext0);
+  border-bottom: 1px solid var(--ctp-surface0);
+}
+
 /* Map area */
 .meshcore-map-pane {
   flex: 1;
