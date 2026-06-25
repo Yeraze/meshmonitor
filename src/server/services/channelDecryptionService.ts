@@ -153,11 +153,18 @@ class ChannelDecryptionService {
             continue;
           }
 
-          // Compute expected channel hash if name validation is enabled
+          // Always compute the Meshtastic channel hash (xorHash(name) ^
+          // xorHash(psk)) — not only when name validation is enforced.
+          // tryDecrypt() uses it to *prefer* the channel whose hash matches the
+          // packet's channel byte when several channels share a key (e.g.
+          // multiple "AQ=="/default-key channels such as "LongFast" plus a
+          // custom channel). Without this preference the first same-key channel
+          // in sortOrder claims every packet, misattributing nodes/messages to
+          // the wrong channel_database row and its permissions. The
+          // enforceNameValidation flag still independently controls whether a
+          // hash *mismatch* is a hard skip (channel never attempted).
           const enforceNameValidation = channel.enforceNameValidation ?? false;
-          const expectedChannelHash = enforceNameValidation
-            ? computeChannelHash(channel.name, pskBuffer)
-            : undefined;
+          const expectedChannelHash = computeChannelHash(channel.name, pskBuffer);
 
           this.channelCache.set(channel.id, {
             id: channel.id,
@@ -377,11 +384,23 @@ class ChannelDecryptionService {
     // Build the nonce once (same for all attempts)
     const nonce = this.buildNonce(packetId, fromNode);
 
-    // Use pre-sorted channels (sorted during cache refresh, not per-packet)
-    let attempts = 0;
+    // Build the ordered list of channels to try. Channels are pre-sorted by
+    // sortOrder during cache refresh.
+    //
+    // 1. Hard skip (name validation): when a channel enforces name validation
+    //    and the packet carries a channel hash that doesn't match, the channel
+    //    is never attempted (and never attributed). Unchanged from before.
+    // 2. Hash-aware preference: when the packet carries a channel hash, try the
+    //    channels whose computed hash matches it FIRST (preserving sortOrder
+    //    within each group), then the rest. This disambiguates channels that
+    //    share a key — the correct same-key channel claims the packet instead
+    //    of whichever happens to sort first. It is only a *preference*: if no
+    //    hash-matching channel decrypts (e.g. a 1-byte hash collision across
+    //    different keys, or the real channel isn't in the database), we still
+    //    fall back to the others, so decryption is never lost — only
+    //    attribution improves. With no channel hash, order is unchanged.
+    const candidates: CachedChannel[] = [];
     for (const [, channel] of this.sortedChannels) {
-      // If channel has name validation enabled and packet has a channel hash,
-      // skip this channel if the hash doesn't match (don't count as an attempt)
       if (
         channel.enforceNameValidation &&
         channel.expectedChannelHash !== undefined &&
@@ -390,11 +409,23 @@ class ChannelDecryptionService {
       ) {
         continue;
       }
+      candidates.push(channel);
+    }
 
+    const ordered =
+      channelHash === undefined
+        ? candidates
+        : [
+            ...candidates.filter((c) => c.expectedChannelHash === channelHash),
+            ...candidates.filter((c) => c.expectedChannelHash !== channelHash),
+          ];
+
+    let attempts = 0;
+    for (const channel of ordered) {
       if (attempts >= this.maxDecryptionAttempts) {
         logger.warn(
           `Decryption attempt limit reached (${this.maxDecryptionAttempts}) for packet ${packetId} — ` +
-          `${this.channelCache.size - attempts} channels were not tried. ` +
+          `${ordered.length - attempts} channels were not tried. ` +
           `Consider increasing maxDecryptionAttempts or enabling name validation on channels.`
         );
         break;

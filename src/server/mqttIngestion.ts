@@ -48,6 +48,15 @@ export async function bootstrapMqttChannelDatabase(sourceId: string): Promise<vo
         psk: ch.psk,
         pskLength: ch.pskLength,
         isEnabled: true,
+        // Intentionally NOT enforcing name validation. Enforcing it would make
+        // this seed a HARD skip for any packet whose channel hash doesn't match
+        // hash("LongFast", defaultKey) — which silently drops default-channel
+        // traffic on non-LongFast modem presets (the default channel hashes as
+        // "MediumSlow", "ShortFast", etc.). Correct attribution among same-key
+        // channels (e.g. this seed vs a custom AQ== channel) is instead handled
+        // by channelDecryptionService.tryDecrypt(), which PREFERS the
+        // hash-matching channel while still falling back, so nothing is ever
+        // left undecrypted. See channelDecryptionService hash-aware attribution.
         enforceNameValidation: false,
         description: `Auto-seeded for MQTT decryption (default Meshtastic key)`,
         createdBy: null,

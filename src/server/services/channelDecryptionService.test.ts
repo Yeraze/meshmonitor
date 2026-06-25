@@ -6,9 +6,10 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 import { createCipheriv } from 'crypto';
-import { channelDecryptionService } from './channelDecryptionService.js';
+import { channelDecryptionService, computeChannelHash } from './channelDecryptionService.js';
 import databaseService from '../../services/database.js';
 import * as protobufLoader from '../protobufLoader.js';
+import { expandShorthandPsk } from '../constants/meshtastic.js';
 
 // Mock the protobuf loader
 vi.mock('../protobufLoader.js', () => ({
@@ -594,6 +595,164 @@ describe('ChannelDecryptionService', () => {
       expect(result.success).toBe(true);
       expect(result.channelDatabaseId).toBe(2);
       expect(result.channelName).toBe('Correct Channel');
+    });
+  });
+
+  describe('Hash-aware attribution (same-key channels)', () => {
+    const packetId = 12345;
+    const fromNode = 0x12345678;
+    // Valid protobuf-like plaintext used across these tests.
+    const testPayload = Buffer.from([0x08, 0x01, 0x12, 0x04, 0x74, 0x65, 0x73, 0x74]);
+
+    function encryptTestData(plaintext: Buffer, psk: Buffer): Buffer {
+      const nonce = Buffer.alloc(16);
+      nonce.writeUInt32LE(packetId >>> 0, 0);
+      nonce.writeUInt32LE(0, 4);
+      nonce.writeUInt32LE(fromNode >>> 0, 8);
+      nonce.writeUInt32LE(0, 12);
+      const algorithm = psk.length === 16 ? 'aes-128-ctr' : 'aes-256-ctr';
+      const cipher = createCipheriv(algorithm, psk, nonce);
+      return Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    }
+
+    // The real-world default key: "AQ==" (1-byte shorthand) expands to the full
+    // 16-byte Meshtastic default key. computeChannelHash() / the service hash
+    // both use the expanded key, so we encrypt and stamp hashes with it too.
+    const defaultKey = expandShorthandPsk(Buffer.from('AQ==', 'base64'))!;
+
+    beforeEach(() => {
+      (databaseService.channelDatabase.incrementDecryptedCountAsync as Mock).mockResolvedValue(undefined);
+      // Any same-key channel decrypts these bytes; the protobuf validator
+      // accepts the result. Which channel WINS is what we're asserting, so a
+      // permissive decode isolates the attribution/ordering logic.
+      mockDataType.decode.mockReturnValue({ portnum: 1, payload: Buffer.from('test') });
+    });
+
+    it('attributes a packet to the same-key channel whose hash matches, not the one that sorts first (the LongFast/Custom bug)', async () => {
+      // Two channels share the default "AQ==" key. "LongFast" sorts first.
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
+        { id: 1, name: 'LongFast', psk: 'AQ==', pskLength: 1, enforceNameValidation: false, sortOrder: 0 },
+        { id: 2, name: 'Custom',   psk: 'AQ==', pskLength: 1, enforceNameValidation: false, sortOrder: 1 },
+      ]);
+
+      const encrypted = encryptTestData(testPayload, defaultKey);
+
+      // Packet was actually sent on "Custom" — it carries Custom's channel hash.
+      const result = await channelDecryptionService.tryDecrypt(
+        new Uint8Array(encrypted),
+        packetId,
+        fromNode,
+        computeChannelHash('Custom', defaultKey),
+      );
+
+      // Before the fix this would attribute to "LongFast" (id 1, sorts first).
+      expect(result.success).toBe(true);
+      expect(result.channelDatabaseId).toBe(2);
+      expect(result.channelName).toBe('Custom');
+    });
+
+    it('attributes to the sort-first channel when the packet carries ITS hash', async () => {
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
+        { id: 1, name: 'LongFast', psk: 'AQ==', pskLength: 1, enforceNameValidation: false, sortOrder: 0 },
+        { id: 2, name: 'Custom',   psk: 'AQ==', pskLength: 1, enforceNameValidation: false, sortOrder: 1 },
+      ]);
+
+      const encrypted = encryptTestData(testPayload, defaultKey);
+
+      const result = await channelDecryptionService.tryDecrypt(
+        new Uint8Array(encrypted),
+        packetId,
+        fromNode,
+        computeChannelHash('LongFast', defaultKey),
+      );
+
+      // Proves attribution is hash-driven, not merely reversed ordering.
+      expect(result.success).toBe(true);
+      expect(result.channelDatabaseId).toBe(1);
+      expect(result.channelName).toBe('LongFast');
+    });
+
+    it('still decrypts (falls back) when no channel hash matches — no decryption lost', async () => {
+      // Mirrors a non-LongFast modem preset on the default key: the packet's
+      // default channel hashes to a name we don't have a row for, so neither
+      // channel matches. Decryption must NOT be lost; attribution falls back to
+      // sortOrder. This is the regression the hard-skip default would cause and
+      // that hash-as-preference avoids.
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
+        { id: 1, name: 'LongFast', psk: 'AQ==', pskLength: 1, enforceNameValidation: false, sortOrder: 0 },
+        { id: 2, name: 'Custom',   psk: 'AQ==', pskLength: 1, enforceNameValidation: false, sortOrder: 1 },
+      ]);
+
+      const encrypted = encryptTestData(testPayload, defaultKey);
+
+      const result = await channelDecryptionService.tryDecrypt(
+        new Uint8Array(encrypted),
+        packetId,
+        fromNode,
+        computeChannelHash('MediumSlow', defaultKey), // a name we don't have
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.channelDatabaseId).toBe(1); // sortOrder fallback
+    });
+
+    it('falls back past a hash-matching but WRONG-key channel to the right-key channel', async () => {
+      // A 1-byte hash can collide across different keys. The hash-matching
+      // channel is tried first but cannot decrypt; we must fall through to the
+      // channel whose key actually works.
+      const rightKey = Buffer.from('0123456789abcdef0123456789abcdef', 'utf8'); // 32B AES-256
+      const wrongKey = Buffer.from('FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF', 'utf8');
+
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
+        { id: 1, name: 'Decoy',   psk: wrongKey.toString('base64'), pskLength: 32, enforceNameValidation: false, sortOrder: 0 },
+        { id: 2, name: 'RealOne', psk: rightKey.toString('base64'), pskLength: 32, enforceNameValidation: false, sortOrder: 1 },
+      ]);
+
+      const encrypted = encryptTestData(testPayload, rightKey);
+
+      // Only the correctly-decrypted bytes are valid protobuf; the wrong-key
+      // channel produces garbage and must be rejected by the validator.
+      mockDataType.decode.mockImplementation((buf: Uint8Array) => {
+        if (Buffer.compare(Buffer.from(buf), testPayload) === 0) {
+          return { portnum: 1, payload: Buffer.from('test') };
+        }
+        throw new Error('Invalid protobuf');
+      });
+
+      // Stamp the packet with the DECOY's hash so it is preferred (tried first).
+      const result = await channelDecryptionService.tryDecrypt(
+        new Uint8Array(encrypted),
+        packetId,
+        fromNode,
+        computeChannelHash('Decoy', wrongKey),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.channelDatabaseId).toBe(2);
+      expect(result.channelName).toBe('RealOne');
+    });
+
+    it('hard-skip still wins over preference: a name-validated channel is never attributed on hash mismatch', async () => {
+      // enforceNameValidation must remain a HARD skip even though we now also
+      // use the hash as a preference. The validated "Custom" channel is skipped
+      // on mismatch; the un-validated "LongFast" still decrypts the packet.
+      (databaseService.channelDatabase.getEnabledAsync as Mock).mockResolvedValue([
+        { id: 1, name: 'LongFast', psk: 'AQ==', pskLength: 1, enforceNameValidation: false, sortOrder: 1 },
+        { id: 2, name: 'Custom',   psk: 'AQ==', pskLength: 1, enforceNameValidation: true,  sortOrder: 0 },
+      ]);
+
+      const encrypted = encryptTestData(testPayload, defaultKey);
+
+      const result = await channelDecryptionService.tryDecrypt(
+        new Uint8Array(encrypted),
+        packetId,
+        fromNode,
+        computeChannelHash('LongFast', defaultKey), // != Custom's hash → Custom hard-skipped
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.channelDatabaseId).toBe(1);
+      expect(result.channelName).toBe('LongFast');
     });
   });
 
