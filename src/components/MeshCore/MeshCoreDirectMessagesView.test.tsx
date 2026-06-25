@@ -68,6 +68,23 @@ function makeActions(overrides: Partial<MeshCoreActions> = {}): MeshCoreActions 
     setTelemetryModeEnv: vi.fn().mockResolvedValue(true),
     refreshAll: vi.fn().mockResolvedValue(undefined),
     clearError: vi.fn(),
+    // Contact + remote-admin actions: a repeater/room contact-detail panel
+    // mounts the remote-admin console, which calls getRemoteAdminCapability on
+    // mount. Without these the panel throws in JSDOM (#3755 repeater tests).
+    resetContactPath: vi.fn().mockResolvedValue(true),
+    shareContact: vi.fn().mockResolvedValue({ ok: true }),
+    setContactOutPath: vi.fn().mockResolvedValue(true),
+    traceContactPath: vi.fn().mockResolvedValue(null),
+    discoverContactPath: vi.fn().mockResolvedValue(true),
+    removeContact: vi.fn().mockResolvedValue(true),
+    exportContact: vi.fn().mockResolvedValue(null),
+    getNeighbours: vi.fn().mockResolvedValue(null),
+    loginRemote: vi.fn().mockResolvedValue({ success: false }),
+    loginRemoteWithSaved: vi.fn().mockResolvedValue({ success: false }),
+    sendCliCommand: vi.fn().mockResolvedValue(null),
+    getRemoteAdminCapability: vi.fn().mockResolvedValue(null),
+    forgetRemoteCredential: vi.fn().mockResolvedValue(true),
+    getRemoteStatus: vi.fn().mockResolvedValue(null),
     ...overrides,
   };
 }
@@ -406,5 +423,82 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     );
     const mainPane = container.querySelector('.meshcore-main-pane');
     expect(mainPane?.classList.contains('meshcore-main-pane--dm')).toBe(true);
+  });
+});
+
+describe('MeshCoreDirectMessagesView — repeaters are not messageable (#3755)', () => {
+  const repeaterContact: MeshCoreContact = {
+    publicKey: REAL_PK_2,
+    advName: 'Repeater Rita',
+    advType: 2, // Repeater — cannot receive DMs
+    rssi: -80,
+    snr: 5,
+    pathLen: 1,
+    lastSeen: Date.now(),
+  };
+
+  it('keeps the repeater listed in the contact sidebar (still browsable)', () => {
+    render(
+      <MeshCoreDirectMessagesView
+        messages={messages}
+        contacts={[realContact, repeaterContact]}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+    // Repeaters are NOT filtered out of the list — only their messaging is removed.
+    expect(screen.getByText('Remote Bob')).toBeTruthy();
+    expect(screen.getByText('Repeater Rita')).toBeTruthy();
+  });
+
+  it('hides the message composer and shows a notice when a repeater is selected', () => {
+    render(
+      <MeshCoreDirectMessagesView
+        messages={messages}
+        contacts={[realContact, repeaterContact]}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+    fireEvent.click(screen.getByText('Repeater Rita'));
+
+    // No compose input for a repeater — the messaging feature is gone, not just disabled.
+    expect(screen.queryByPlaceholderText('Type a message…')).toBeNull();
+    // Replaced by an explanatory notice.
+    expect(screen.getByText(/Repeaters cannot receive direct messages/i)).toBeTruthy();
+  });
+
+  it('still renders the message composer for a normal (companion) contact', () => {
+    render(
+      <MeshCoreDirectMessagesView
+        messages={messages}
+        contacts={[realContact, repeaterContact]}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+    fireEvent.click(screen.getByText('Remote Bob'));
+
+    expect(screen.getByPlaceholderText('Type a message…')).toBeTruthy();
+    expect(screen.queryByText(/Repeaters cannot receive direct messages/i)).toBeNull();
+  });
+
+  it('still renders node details (telemetry) for a selected repeater', async () => {
+    render(
+      <MeshCoreDirectMessagesView
+        messages={messages}
+        contacts={[realContact, repeaterContact]}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+    fireEvent.click(screen.getByText('Repeater Rita'));
+
+    // The detail/telemetry side still mounts even though messaging is removed.
+    await waitFor(() => {
+      expect(screen.getByText('Telemetry Retrieval')).toBeTruthy();
+    });
   });
 });
