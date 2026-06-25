@@ -160,7 +160,11 @@ export async function filterNodesByChannelPermission<T>(
     ? await databaseService.getUserPermissionSetAsync(user.id, sourceId)
     : {};
 
-  // Get user's virtual channel (channel database) permissions
+  // Get user's virtual channel (channel database) permissions.
+  // NOT source-scoped by design: the channel_database (server-side decryption
+  // PSKs) is global — channelDecryptionService tries every enabled row
+  // regardless of source, and migration 063 dropped its dead sourceId column.
+  // So virtual-channel (>= CHANNEL_DB_OFFSET) permissions are global too.
   const channelDbPermissions = user
     ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(user.id)
     : {};
@@ -210,7 +214,11 @@ export async function maskNodeLocationByChannel<T>(
     ? await databaseService.getUserPermissionSetAsync(user.id, sourceId)
     : {};
 
-  // Get user's virtual channel (channel database) permissions
+  // Get user's virtual channel (channel database) permissions.
+  // NOT source-scoped by design: the channel_database (server-side decryption
+  // PSKs) is global — channelDecryptionService tries every enabled row
+  // regardless of source, and migration 063 dropped its dead sourceId column.
+  // So virtual-channel (>= CHANNEL_DB_OFFSET) permissions are global too.
   const channelDbPermissions = user
     ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(user.id)
     : {};
@@ -367,7 +375,10 @@ export async function checkNodeChannelAccess(
   const nodeNum = nodeId.startsWith('!')
     ? parseInt(nodeId.replace('!', ''), 16)
     : parseInt(nodeId, 10);
-  const node = await databaseService.nodes.getNode(nodeNum);
+  // Scope the node lookup to the requesting source — the same nodeNum can
+  // exist in multiple sources with different channel assignments, and the
+  // channel drives this permission check (#3745).
+  const node = await databaseService.nodes.getNode(nodeNum, sourceId);
   const channelNum = node?.channel ?? 0;
 
   // Get user's device channel permission set

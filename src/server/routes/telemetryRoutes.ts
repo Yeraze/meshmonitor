@@ -43,8 +43,8 @@ router.get('/telemetry/:nodeId', optionalAuth(), async (req: Request, res: Respo
 
     const { nodeId } = req.params;
 
-    // Check channel-based access for this node
-    if (!await checkNodeChannelAccess(nodeId, req.user)) {
+    // Check channel-based access for this node (source-scoped, #3745)
+    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string | undefined)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     // parseFloat (not parseInt) so sub-hour windows like 0.25h (15 minutes)
@@ -106,8 +106,8 @@ router.get('/telemetry/:nodeId/rates', optionalAuth(), async (req: Request, res:
 
     const { nodeId } = req.params;
 
-    // Check channel-based access for this node
-    if (!await checkNodeChannelAccess(nodeId, req.user)) {
+    // Check channel-based access for this node (source-scoped, #3745)
+    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string | undefined)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
@@ -187,8 +187,8 @@ router.get('/telemetry/:nodeId/smarthops', optionalAuth(), async (req: Request, 
 
     const { nodeId } = req.params;
 
-    // Check channel-based access for this node
-    if (!await checkNodeChannelAccess(nodeId, req.user)) {
+    // Check channel-based access for this node (source-scoped, #3745)
+    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string | undefined)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     // Validate and clamp hours (1-168, default 24)
@@ -223,8 +223,8 @@ router.get('/telemetry/:nodeId/linkquality', optionalAuth(), async (req: Request
 
     const { nodeId } = req.params;
 
-    // Check channel-based access for this node
-    if (!await checkNodeChannelAccess(nodeId, req.user)) {
+    // Check channel-based access for this node (source-scoped, #3745)
+    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string | undefined)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     // Validate and clamp hours (1-168, default 24)
@@ -269,8 +269,8 @@ router.get('/telemetry/available/nodes', requirePermission('info', 'read'), asyn
   try {
     const telAvailSourceId = req.query.sourceId as string | undefined;
     const allNodes = await databaseService.nodes.getAllNodes(telAvailSourceId);
-    // Filter nodes based on channel read permissions
-    const nodes = await filterNodesByChannelPermission(allNodes, (req as any).user);
+    // Filter nodes based on channel read permissions (source-scoped, #3745)
+    const nodes = await filterNodesByChannelPermission(allNodes, (req as any).user, telAvailSourceId);
 
     const nodesWithTelemetry: string[] = [];
     const nodesWithWeather: string[] = [];

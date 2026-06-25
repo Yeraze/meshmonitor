@@ -216,6 +216,16 @@ describe('nodeEnhancer: filterNodesByChannelPermission', () => {
     expect(result[0]).toHaveProperty('nested');
     expect((result[0] as any).nested.value).toBe(1);
   });
+
+  it('forwards sourceId to the permission lookup — no cross-source union (#3745)', async () => {
+    const db = (await import('../../services/database.js')).default as any;
+    const regularUser = { id: 1, isAdmin: false } as any;
+    db.getUserPermissionSetAsync.mockClear();
+    await filterNodesByChannelPermission(testNodes, regularUser, 'src-B');
+    // The permission set must be scoped to the requested source, not a global
+    // union — otherwise a guest with access on source A sees source B's nodes.
+    expect(db.getUserPermissionSetAsync).toHaveBeenCalledWith(regularUser.id, 'src-B');
+  });
 });
 
 describe('nodeEnhancer: checkNodeChannelAccess', () => {
@@ -282,6 +292,18 @@ describe('nodeEnhancer: checkNodeChannelAccess', () => {
     const meshcorePubkey = 'b'.repeat(64);
     expect(await checkNodeChannelAccess(meshcorePubkey, null)).toBe(false);
     expect(await checkNodeChannelAccess(meshcorePubkey, undefined)).toBe(false);
+  });
+
+  it('forwards sourceId to the permission lookup — no cross-source union (#3745)', async () => {
+    const db = (await import('../../services/database.js')).default as any;
+    const regularUser = { id: 1, isAdmin: false } as any;
+    db.getUserPermissionSetAsync.mockClear();
+    db.nodes.getNode.mockClear();
+    await checkNodeChannelAccess('!00000001', regularUser, 'src-B');
+    expect(db.getUserPermissionSetAsync).toHaveBeenCalledWith(regularUser.id, 'src-B');
+    // The node lookup that resolves the channel must also be source-scoped —
+    // the same nodeNum in another source could carry a different channel.
+    expect(db.nodes.getNode).toHaveBeenCalledWith(1, 'src-B');
   });
 });
 
