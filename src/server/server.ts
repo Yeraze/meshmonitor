@@ -3183,8 +3183,8 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         meshtasticUseTls: false,
         meshtasticSourceType: conn.sourceType,
         baseUrl: BASE_URL,
-        deviceMetadata: deviceMetadata,
-        localNodeInfo: pollLocalNodeInfo,
+        // Only expose node identity and device metadata to authenticated users
+        ...(req.session.userId ? { deviceMetadata, localNodeInfo: pollLocalNodeInfo } : {}),
       };
     } catch (error) {
       logger.error('Error in config section of poll:', error);

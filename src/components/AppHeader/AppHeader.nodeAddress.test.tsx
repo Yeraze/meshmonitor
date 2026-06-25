@@ -8,6 +8,17 @@ import type { AuthStatus } from '../../contexts/AuthContext';
 
 // react-i18next is globally mocked in src/test/setup.ts (t(key) => key).
 
+// UserMenu calls useAuth() — provide a minimal mock so tests that render the
+// authenticated header state (authStatus.authenticated = true) don't require
+// a full AuthProvider tree.
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    authStatus: { authenticated: true, user: { username: 'admin' } },
+    logout: vi.fn(),
+    hasPermission: () => false,
+  }),
+}));
+
 function baseProps(overrides: Partial<React.ComponentProps<typeof AppHeader>> = {}) {
   const props: React.ComponentProps<typeof AppHeader> = {
     baseUrl: '',
@@ -45,8 +56,30 @@ describe('AppHeader — node address never leaks the loading placeholder (#3611)
     expect(statusArea?.textContent ?? '').not.toContain('Loading...');
   });
 
-  it('renders the per-source address when it has been resolved', () => {
-    render(<AppHeader {...baseProps({ nodeAddress: '10.20.30.40:4403' })} />);
+  it('renders the per-source address for authenticated users', () => {
+    render(<AppHeader {...baseProps({
+      nodeAddress: '10.20.30.40:4403',
+      authStatus: { authenticated: true } as AuthStatus,
+    })} />);
     expect(screen.getByText('10.20.30.40:4403')).toBeInTheDocument();
+  });
+});
+
+describe('AppHeader — node identity hidden from unauthenticated users (#3729)', () => {
+  it('does not show node-info div to unauthenticated users', () => {
+    const { container } = render(<AppHeader {...baseProps({
+      nodeAddress: '10.20.30.40:4403',
+      deviceInfo: { localNodeInfo: { nodeId: '!aabbccdd', longName: 'Test Node', shortName: 'TN' } },
+      authStatus: { authenticated: false } as AuthStatus,
+    })} />);
+    expect(container.querySelector('.node-info')).toBeNull();
+  });
+
+  it('shows node identity to authenticated users', () => {
+    render(<AppHeader {...baseProps({
+      deviceInfo: { localNodeInfo: { nodeId: '!aabbccdd', longName: 'Test Node', shortName: 'TN' } },
+      authStatus: { authenticated: true } as AuthStatus,
+    })} />);
+    expect(screen.getByText(/Test Node/)).toBeInTheDocument();
   });
 });
