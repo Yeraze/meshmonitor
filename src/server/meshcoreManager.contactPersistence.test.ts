@@ -284,4 +284,48 @@ describe('MeshCoreManager contact persistence (issue #3092)', () => {
       advType: MeshCoreDeviceType.REPEATER,
     });
   });
+
+  it('keeps the known name when a later advert has an empty adv_name (issue #3756)', async () => {
+    const manager = new MeshCoreManager('src-a');
+
+    // First advert carries the real name.
+    dispatchBridgeEvent(manager, {
+      event_type: 'contact_advertised',
+      data: {
+        public_key: REPEATER_PUBKEY,
+        adv_name: 'MyRepeater',
+        adv_type: MeshCoreDeviceType.REPEATER,
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Second advert (e.g. a zero-hop repeater) arrives with an empty name.
+    // With `??` this would overwrite the stored name with ""; `||` keeps it.
+    dispatchBridgeEvent(manager, {
+      event_type: 'contact_advertised',
+      data: {
+        public_key: REPEATER_PUBKEY,
+        adv_name: '',
+        adv_type: MeshCoreDeviceType.REPEATER,
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // In-memory contact retains the original name.
+    expect(manager.getContact(REPEATER_PUBKEY)).toMatchObject({
+      publicKey: REPEATER_PUBKEY,
+      advName: 'MyRepeater',
+    });
+
+    // The DB write from the empty-name advert also preserves the name.
+    expect(upsertNode).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        publicKey: REPEATER_PUBKEY,
+        name: 'MyRepeater',
+      }),
+      'src-a',
+    );
+  });
 });

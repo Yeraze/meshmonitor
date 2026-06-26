@@ -1109,7 +1109,10 @@ class MeshCoreManager extends EventEmitter {
         const updated: MeshCoreContact = {
           ...existing,
           publicKey,
-          advName: data.adv_name ?? existing.advName,
+          // `||` not `??`: zero-hop repeaters (and some firmware builds) emit
+          // `contact_advertised` with adv_name === "", which `??` would pass
+          // through and overwrite the known name with an empty string (#3756).
+          advName: data.adv_name || existing.advName,
           advType: data.adv_type ?? existing.advType,
           lastAdvert: data.last_advert ?? existing.lastAdvert,
           latitude: data.latitude ?? existing.latitude,
@@ -1470,7 +1473,9 @@ class MeshCoreManager extends EventEmitter {
       await databaseService.meshcore.upsertNode(
         {
           publicKey: contact.publicKey,
-          name: contact.advName ?? contact.name ?? null,
+          // `||` not `??` so an empty advName falls back to name rather than
+          // persisting "" into the node row (#3756).
+          name: contact.advName || contact.name || null,
           advType: contact.advType ?? null,
           latitude: atNullIsland ? null : (contact.latitude ?? null),
           longitude: atNullIsland ? null : (contact.longitude ?? null),
