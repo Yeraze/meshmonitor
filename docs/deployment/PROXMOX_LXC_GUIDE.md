@@ -647,9 +647,9 @@ If you prefer to run each step yourself:
 
 ## Additional Resources
 
-- **Main Documentation**: [Getting Started Guide](/getting-started)
-- **Configuration Guide**: [Production Deployment](/configuration/production)
-- **Docker Deployment**: [Deployment Guide](/deployment/DEPLOYMENT_GUIDE)
+- **Main Documentation**: [Getting Started Guide](https://meshmonitor.org/getting-started)
+- **Configuration Guide**: [Production Deployment](https://meshmonitor.org/configuration/production)
+- **Docker Deployment**: [Deployment Guide](https://github.com/Yeraze/meshmonitor/blob/main/docs/deployment/DEPLOYMENT_GUIDE.md)
 - **GitHub**: [MeshMonitor Repository](https://github.com/yeraze/meshmonitor)
 - **Issues**: [Report Problems](https://github.com/yeraze/meshmonitor/issues)
 
@@ -658,7 +658,7 @@ If you prefer to run each step yourself:
 If you encounter issues:
 
 1. Check this troubleshooting guide
-2. Review the [main documentation](/getting-started)
+2. Review the [main documentation](https://meshmonitor.org/getting-started)
 3. Search [existing issues](https://github.com/yeraze/meshmonitor/issues)
 4. Ask in [Discussions](https://github.com/yeraze/meshmonitor/discussions)
 5. Create a [new issue](https://github.com/yeraze/meshmonitor/issues/new) with:
