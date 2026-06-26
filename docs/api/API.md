@@ -86,9 +86,11 @@ Get historical position data for a specific node.
 - `nodeId`: Node identifier (string, e.g., "!a2e4ff4c")
 
 **Query Parameters:**
-- `hours` (optional): Hours of history to retrieve (default: 24)
+- `hours` (optional): Hours of history to retrieve (default: all history)
+- `before` (optional): Unix epoch milliseconds cursor. Returns only fixes strictly older than this timestamp. Each response is capped server-side (1500 telemetry rows ≈ 300 fixes); pass the oldest returned fix's timestamp as `before` to page backward through the complete history.
 
 **Example:** `/api/nodes/!a2e4ff4c/position-history?hours=48`
+**Paginated example:** `/api/nodes/!a2e4ff4c/position-history?before=1719360000000`
 
 **Response:**
 ```json

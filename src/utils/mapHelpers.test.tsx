@@ -393,10 +393,23 @@ describe('mapHelpers', () => {
       expect(triangles(els)).toHaveLength(0);
     });
 
-    it('caps the number of rendered points at maxArrows', () => {
+    it('renders a dot at EVERY fix without subsampling (#3791)', () => {
       const items = Array.from({ length: 100 }, (_, i) => ({ latitude: i, longitude: i, timestamp: i })) as any[];
       const els = generatePositionHistoryArrows(items, [], 10, 'km');
-      expect(dots(els).length).toBeLessThanOrEqual(10);
+      // Points are no longer capped — one dot per reported position.
+      expect(dots(els)).toHaveLength(100);
+    });
+
+    it('subsamples heading triangles to at most maxArrows while keeping all dots (#3791)', () => {
+      const items = Array.from(
+        { length: 100 },
+        (_, i) => ({ latitude: i, longitude: i, timestamp: i, groundTrack: 90 })
+      ) as any[];
+      const els = generatePositionHistoryArrows(items, [], 10, 'km');
+      // A dot at every fix...
+      expect(dots(els)).toHaveLength(100);
+      // ...but heading triangles stay capped to avoid clutter on dense trails.
+      expect(triangles(els).length).toBeLessThanOrEqual(10);
     });
 
     it('returns nothing for an empty history', () => {

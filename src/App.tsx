@@ -73,6 +73,7 @@ import Sidebar from './components/Sidebar';
 import { SearchModal } from './components/SearchModal/SearchModal.js';
 import { SettingsProvider, useSettings, useNotificationMuteSettings } from './contexts/SettingsContext';
 import { MapProvider, useMapContext } from './contexts/MapContext';
+import type { PositionHistoryItem } from './contexts/MapContext';
 import { DataProvider, useData } from './contexts/DataContext';
 import { MessagingProvider, useMessaging } from './contexts/MessagingContext';
 import { UIProvider, useUI } from './contexts/UIContext';
@@ -1527,21 +1528,57 @@ const location = useLocation();
       return;
     }
 
-    const fetchPositionHistory = async () => {
+    let cancelled = false;
+
+    // Progressively load the ENTIRE position history in bounded pages (#3791).
+    // The server caps each response at 1500 telemetry rows (~300 fixes), so we
+    // walk backwards in time using the oldest fix of each page as a `before`
+    // cursor, appending until a page comes back empty. State is updated after
+    // every page so the trail fills in progressively rather than all at once.
+    const fetchAllPositionHistory = async () => {
+      const accumulated: PositionHistoryItem[] = [];
+      let beforeCursor: number | undefined;
+      const MAX_PAGES = 50; // safety bound (~15k fixes) against a runaway loop
+
       try {
-        // Fetch all position history (no time limit) to show complete movement trail
-        const phQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
-        const response = await authFetch(`${baseUrl}/api/nodes/${selectedNodeId}/position-history${phQuery}`);
-        if (response.ok) {
-          const history = await response.json();
-          setPositionHistory(history);
+        for (let page = 0; page < MAX_PAGES; page++) {
+          const params = new URLSearchParams();
+          if (sourceId) params.set('sourceId', sourceId);
+          if (beforeCursor !== undefined) params.set('before', String(beforeCursor));
+          const qs = params.toString();
+          const response = await authFetch(
+            `${baseUrl}/api/nodes/${selectedNodeId}/position-history${qs ? `?${qs}` : ''}`
+          );
+          if (cancelled) return;
+          if (!response.ok) break;
+
+          const pageItems: PositionHistoryItem[] = await response.json();
+          if (cancelled) return;
+          if (pageItems.length === 0) break; // reached the start of history
+
+          // Server returns fixes oldest-first; prepend each older page so the
+          // accumulated array stays chronological as we page back in time.
+          accumulated.unshift(...pageItems);
+          setPositionHistory([...accumulated]);
+
+          // Next page: strictly older than the oldest fix just received. A
+          // boundary fix split by the row cap is always older than this, so it
+          // re-assembles on the next page without duplicating an emitted fix.
+          const oldest = pageItems[0].timestamp;
+          if (beforeCursor !== undefined && oldest >= beforeCursor) break; // no-progress guard
+          beforeCursor = oldest;
+
+          // Gentle pacing so we neither hammer the server nor block rendering.
+          await new Promise(resolve => setTimeout(resolve, 150));
+          if (cancelled) return;
         }
       } catch (error) {
-        logger.error('Error fetching position history:', error);
+        if (!cancelled) logger.error('Error fetching position history:', error);
       }
     };
 
-    fetchPositionHistory();
+    fetchAllPositionHistory();
+    return () => { cancelled = true; };
   }, [selectedNodeId, nodes, baseUrl, sourceId]);
 
   // Open popup for selected node

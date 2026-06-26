@@ -268,7 +268,8 @@ export class TelemetryRepository extends BaseRepository {
     nodeId: string,
     limit: number = 1500,
     sinceTimestamp?: number,
-    sourceId?: string
+    sourceId?: string,
+    beforeTimestamp?: number
   ): Promise<DbTelemetry[]> {
     const positionTypes = ['latitude', 'longitude', 'altitude', 'ground_speed', 'ground_track'];
     const { telemetry } = this.tables;
@@ -283,6 +284,13 @@ export class TelemetryRepository extends BaseRepository {
 
     if (sinceTimestamp !== undefined) {
       conditions.push(gte(telemetry.timestamp, sinceTimestamp));
+    }
+
+    // Cursor for backward pagination (#3791): fetch only rows strictly older
+    // than the caller's cursor so the entire history can be walked one bounded
+    // page at a time without re-reading earlier pages.
+    if (beforeTimestamp !== undefined) {
+      conditions.push(lt(telemetry.timestamp, beforeTimestamp));
     }
 
     const result = await this.db

@@ -1334,6 +1334,14 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
       : null;
     const cutoffTime = hoursParam ? Date.now() - hoursParam * 60 * 60 * 1000 : 0;
 
+    // Backward-pagination cursor (#3791). When supplied, only fixes strictly
+    // older than this timestamp are returned, letting the client walk the whole
+    // history one bounded 1500-row page at a time. Must be a positive integer.
+    const rawBefore = req.query.before ? parseInt(req.query.before as string) : null;
+    const beforeTimestamp = rawBefore !== null && !isNaN(rawBefore) && rawBefore > 0
+      ? rawBefore
+      : undefined;
+
     // Check privacy for position history — scope to caller's source so the
     // privacy setting reflects this source's node (same nodeNum may exist in
     // multiple sources with different privacy flags).
@@ -1350,7 +1358,7 @@ apiRouter.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res
     }
 
     // Get only position-related telemetry (lat/lon/alt/speed/track) for the node - much more efficient!
-    const positionTelemetry = await databaseService.getPositionTelemetryByNodeAsync(nodeId, 1500, cutoffTime);
+    const positionTelemetry = await databaseService.getPositionTelemetryByNodeAsync(nodeId, 1500, cutoffTime, beforeTimestamp);
 
     // Pivot the per-metric telemetry rows into per-fix position objects.
     // Per-fix receive metadata (SNR + hop info, issue #3492) stamped on the

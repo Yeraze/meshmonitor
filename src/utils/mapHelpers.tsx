@@ -394,11 +394,12 @@ const getCardinalDirection = (heading: number): string => {
 };
 
 /**
- * Generate position history arrow markers with limited count for performance
- * Places arrow at each position point, rotated to match groundTrack (heading)
+ * Generate position history markers. A dot is rendered at EVERY fix so every
+ * reported position is visible and hoverable (#3791); the decorative heading
+ * triangles are subsampled to at most `maxArrows` to keep dense trails legible.
  * @param historyItems Array of position history items with full data
  * @param colors Array of colors for each position
- * @param maxArrows Maximum number of arrows to generate
+ * @param maxArrows Maximum number of heading triangles to overlay (dots are not capped)
  * @param distanceUnit User's preferred distance unit ('km' or 'mi')
  * @returns Array of Marker components with clickable popups
  */
@@ -413,14 +414,12 @@ export const generatePositionHistoryArrows = (
 
   if (itemCount <= 0) return arrows;
 
-  // Calculate how many items to skip to stay under maxArrows
-  const step = Math.max(1, Math.ceil(itemCount / maxArrows));
+  // A dot is rendered at EVERY fix (#3791) so no reported position is dropped.
+  // Heading triangles, however, are subsampled to at most `maxArrows` so a
+  // dense or stationary trail doesn't become a wall of overlapping arrows.
+  const triangleStep = Math.max(1, Math.ceil(itemCount / maxArrows));
 
-  // Cap the number of rendered POINTS (not React elements — a fix may emit a
-  // dot plus an optional heading overlay).
-  let rendered = 0;
-  for (let i = 0; i < itemCount && rendered < maxArrows; i += step) {
-    rendered++;
+  for (let i = 0; i < itemCount; i++) {
     const item = historyItems[i];
     // Safely get color - default to blue if colors array is empty
     const color = colors.length > 0 ? colors[Math.min(i, colors.length - 1)] : '#3b82f6';
@@ -512,8 +511,9 @@ export const generatePositionHistoryArrows = (
     );
 
     // Overlay a decorative heading triangle on top when heading is known.
-    // Non-interactive so the dot underneath keeps the hover/click target.
-    if (angle !== null) {
+    // Subsampled to maxArrows so dense trails stay legible. Non-interactive so
+    // the dot underneath keeps the hover/click target.
+    if (angle !== null && i % triangleStep === 0) {
       const arrowIcon = L.divIcon({
         html: `<div style="transform: rotate(${angle}deg); font-size: 16px; font-weight: bold;">
           <span style="color: ${color}; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;">▲</span>
