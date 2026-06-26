@@ -138,8 +138,8 @@ describe('GET /:id/neighbor-info', () => {
   });
 
   it('enriches records with node names, positions, and bidirectionality', async () => {
-    const ni1 = makeNeighborRecord({ nodeNum: 111, neighborNodeNum: 222 });
-    const ni2 = makeNeighborRecord({ id: 2, nodeNum: 222, neighborNodeNum: 111 }); // bidirectional
+    const ni1 = makeNeighborRecord({ nodeNum: 111, neighborNodeNum: 222, snr: -5.5 });
+    const ni2 = makeNeighborRecord({ id: 2, nodeNum: 222, neighborNodeNum: 111, snr: 3.25 }); // bidirectional (reverse)
 
     mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni1, ni2]);
@@ -160,6 +160,11 @@ describe('GET /:id/neighbor-info', () => {
     expect(first.neighborNodeId).toBe('!000000de');
     expect(first.neighborName).toBe('Node 222');
     expect(first.bidirectional).toBe(true);
+    // Forward direction's own SNR is the kept record's snr; the reverse
+    // direction's SNR is backfilled so the map popup can show both (#3777).
+    expect(first.snr).toBe(-5.5);
+    expect(first.reverseSnr).toBe(3.25);
+    expect(typeof first.reverseTimestamp).toBe('number');
     expect(typeof first.nodeLatitude).toBe('number');
     expect(typeof first.nodeLongitude).toBe('number');
     expect(typeof first.neighborLatitude).toBe('number');

@@ -253,6 +253,15 @@ export async function buildSourceNeighborInfo(
   // both directions exist.
   const seenPairs = new Set<string>();
 
+  // Directed-key lookup so the kept canonical record can surface the OTHER
+  // direction's signal data in the map popup (issue #3777: clicking a link must
+  // expose BOTH directions). The dedup above drops the reverse row, so capture
+  // each directed observation here first. Keyed `${from}-${to}`.
+  const byDirected = new Map<string, typeof neighborInfo[number]>();
+  for (const ni of neighborInfo) {
+    byDirected.set(`${ni.nodeNum}-${ni.neighborNodeNum}`, ni);
+  }
+
   const enrichedNeighborInfo = neighborInfo
     .filter(ni =>
       visibleNodeNums.has(Number(ni.nodeNum)) &&
@@ -280,6 +289,11 @@ export async function buildSourceNeighborInfo(
       const isUdp = nTx === TransportMechanism.MULTICAST_UDP || nbTx === TransportMechanism.MULTICAST_UDP;
       const transportClass: 'rf' | 'udp' | 'mqtt' = isMqtt ? 'mqtt' : isUdp ? 'udp' : 'rf';
 
+      // The kept record's own snr/lastRxTime (spread from `...ni`) describe the
+      // forward direction (nodeNum → neighborNodeNum). The reverse direction was
+      // dropped by the dedup filter, so attach its signal data for the popup.
+      const reverse = byDirected.get(`${ni.neighborNodeNum}-${ni.nodeNum}`);
+
       return {
         ...ni,
         nodeId: node?.nodeId || `!${ni.nodeNum.toString(16).padStart(8, '0')}`,
@@ -287,6 +301,8 @@ export async function buildSourceNeighborInfo(
         neighborNodeId: neighbor?.nodeId || `!${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
         neighborName: neighbor?.longName || `Node !${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
         bidirectional: linkKeys.has(`${ni.neighborNodeNum}-${ni.nodeNum}`),
+        reverseSnr: reverse?.snr ?? null,
+        reverseTimestamp: reverse?.timestamp ?? null,
         transportClass,
         nodeLatitude: nodePos.latitude,
         nodeLongitude: nodePos.longitude,
