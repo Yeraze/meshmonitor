@@ -1109,7 +1109,7 @@ class MeshCoreManager extends EventEmitter {
         const updated: MeshCoreContact = {
           ...existing,
           publicKey,
-          advName: data.adv_name ?? existing.advName,
+          advName: data.adv_name || existing.advName,
           advType: data.adv_type ?? existing.advType,
           lastAdvert: data.last_advert ?? existing.lastAdvert,
           latitude: data.latitude ?? existing.latitude,
@@ -1470,7 +1470,7 @@ class MeshCoreManager extends EventEmitter {
       await databaseService.meshcore.upsertNode(
         {
           publicKey: contact.publicKey,
-          name: contact.advName ?? contact.name ?? null,
+          name: contact.advName || contact.name || null,
           advType: contact.advType ?? null,
           latitude: atNullIsland ? null : (contact.latitude ?? null),
           longitude: atNullIsland ? null : (contact.longitude ?? null),

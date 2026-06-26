@@ -284,4 +284,47 @@ describe('MeshCoreManager contact persistence (issue #3092)', () => {
       advType: MeshCoreDeviceType.REPEATER,
     });
   });
+
+  // Regression for issue #3756: zero-hop repeaters send adverts with an
+  // empty adv_name string. The ?? operator would pass "" through (since it
+  // is neither null nor undefined), overwriting the previously stored name
+  // with an empty value. The fix uses || so empty strings fall back to the
+  // existing value.
+  it('does not overwrite a known contact name with an empty adv_name (issue #3756)', async () => {
+    const manager = new MeshCoreManager('src-a');
+
+    // First advert carries the real name.
+    dispatchBridgeEvent(manager, {
+      event_type: 'contact_advertised',
+      data: {
+        public_key: REPEATER_PUBKEY,
+        adv_name: 'ZeroHopRepeater',
+        adv_type: MeshCoreDeviceType.REPEATER,
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    upsertNode.mockClear();
+
+    // Second advert (e.g. from zero-hop repeater) arrives with empty name.
+    dispatchBridgeEvent(manager, {
+      event_type: 'contact_advertised',
+      data: {
+        public_key: REPEATER_PUBKEY,
+        adv_name: '',
+        adv_type: MeshCoreDeviceType.REPEATER,
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // In-memory contact should still carry the original name.
+    expect(manager.getContact(REPEATER_PUBKEY)?.advName).toBe('ZeroHopRepeater');
+
+    // The DB write must also use the preserved name, not the empty string.
+    expect(upsertNode).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'ZeroHopRepeater' }),
+      'src-a',
+    );
+  });
 });
