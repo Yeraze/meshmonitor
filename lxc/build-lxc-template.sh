@@ -170,12 +170,12 @@ echo "Step 6: Cloning MeshMonitor repository into container..."
 #   - "latest" uses main so local/test builds always succeed even without
 #     a version argument.
 if [ "$VERSION" = "latest" ]; then
-    GIT_REF="lxc-template-git-clone"
+    GIT_REF="main"
 else
     GIT_REF="v${VERSION}"
 fi
 
-REPO_URL="https://github.com/BeerMan81/meshmonitor.git"
+REPO_URL="https://github.com/Yeraze/meshmonitor.git"
 
 # Read the cone directory list from lxc/sparse-cone.txt.
 # MAINTENANCE: if a new top-level runtime directory is added upstream,
