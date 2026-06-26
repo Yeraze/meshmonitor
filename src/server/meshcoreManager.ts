@@ -5209,16 +5209,18 @@ class MeshCoreManager extends EventEmitter {
     const dateStr = date.toLocaleDateString('en-US');
     const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
     const hopsStr = hops !== null ? String(hops) : '—';
-    // {ROUTE} expands the cached hop-hash chain into a readable
-    // arrow-separated list (e.g. "a3 → 7f → 02"). Empty / unknown
-    // route falls back to "direct" when hop count is 0 or "—" otherwise.
+    // {ROUTE} expands the cached hop-hash chain into a compact
+    // arrow-separated list (e.g. "a3→7f→02"). Arrows have no surrounding
+    // spaces to save airtime on length-limited MeshCore channels (#3776).
+    // Empty / unknown route falls back to "direct" when hop count is 0 or
+    // "—" otherwise.
     let routeStr: string;
     if (route && route.length > 0) {
       routeStr = route
         .split(',')
         .map(h => h.trim())
         .filter(Boolean)
-        .join(' → ');
+        .join('→');
     } else if (hops === 0) {
       routeStr = 'direct';
     } else {
