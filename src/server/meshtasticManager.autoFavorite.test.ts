@@ -19,8 +19,12 @@ describe('isAutoFavoriteEligible', () => {
     expect(isAutoFavoriteEligible(DeviceRole.ROUTER, { hopsAway: 0, role: DeviceRole.CLIENT, isFavorite: false })).toBe(false);
   });
 
-  it('returns true for 0-hop CLIENT when local is CLIENT_BASE (any role eligible)', () => {
-    expect(isAutoFavoriteEligible(DeviceRole.CLIENT_BASE, { hopsAway: 0, role: DeviceRole.CLIENT, isFavorite: false })).toBe(true);
+  it('returns false for 0-hop CLIENT when local is CLIENT_BASE (not a relay role)', () => {
+    expect(isAutoFavoriteEligible(DeviceRole.CLIENT_BASE, { hopsAway: 0, role: DeviceRole.CLIENT, isFavorite: false })).toBe(false);
+  });
+
+  it('returns false for 0-hop CLIENT_MUTE when local is CLIENT_BASE (CLIENT_MUTE never relays)', () => {
+    expect(isAutoFavoriteEligible(DeviceRole.CLIENT_BASE, { hopsAway: 0, role: DeviceRole.CLIENT_MUTE, isFavorite: false })).toBe(false);
   });
 
   it('returns true for 0-hop ROUTER when local is CLIENT_BASE', () => {
