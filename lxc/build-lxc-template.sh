@@ -304,8 +304,8 @@ cat > "$ROOTFS_DIR/etc/meshmonitor/meshmonitor.env.example" << 'EOF'
 # See .env.example in the project repo for full documentation on each option
 
 # ── Meshtastic Node ──────────────────────────────────────────────
-# Required: IP address of your Meshtastic node
-MESHTASTIC_NODE_IP=192.168.1.100
+# Configure your node connection via the MeshMonitor web UI.
+# Go to Settings -> Node Connection after first login.
 
 # Optional: TCP port for Meshtastic node (default: 4403)
 #MESHTASTIC_TCP_PORT=4403
