@@ -121,9 +121,6 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
 
   const getTargetDescription = () => {
     if (!status?.localNodeRole) return '';
-    if (status.localNodeRole === DeviceRole.CLIENT_BASE) {
-      return t('automation.auto_favorite.target_all', 'all 0-hop nodes');
-    }
     return t('automation.auto_favorite.target_routers', '0-hop Router, Router Late, and Client Base nodes');
   };
 
@@ -236,6 +233,23 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
                     version: status.firmwareVersion || 'unknown',
                     targets: getTargetDescription(),
                   })}
+              </div>
+            )}
+            {status.localNodeRole === DeviceRole.CLIENT_BASE && (
+              <div style={{
+                marginLeft: '1.75rem',
+                marginBottom: '1rem',
+                padding: '0.75rem 1rem',
+                background: 'var(--ctp-surface0)',
+                border: '1px solid var(--ctp-sapphire)',
+                borderLeft: '4px solid var(--ctp-sapphire)',
+                borderRadius: '6px',
+                color: 'var(--ctp-sapphire)',
+                fontSize: '13px',
+                lineHeight: '1.5',
+              }}>
+                {t('automation.auto_favorite.client_base_tip',
+                  'For maximum benefits, you should manually Favorite your local nearby CLIENT and CLIENT_MUTE nodes.')}
               </div>
             )}
           </>
