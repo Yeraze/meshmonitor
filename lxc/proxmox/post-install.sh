@@ -1,117 +1,63 @@
 #!/bin/bash
 #
-# MeshMonitor LXC Post-Installation Script
-# Run this inside the LXC container after deploying from template
+# MeshMonitor LXC Post-Installation Setup
+# Run once inside the container after first deploy:
 #
-# Usage: bash /opt/meshmonitor/post-install.sh
+#   bash /opt/meshmonitor/lxc/proxmox/post-install.sh
 #
 
-set -e
+CONTAINER_IP=$(hostname -I | awk '{print $1}')
 
-echo "========================================"
-echo "MeshMonitor LXC Post-Installation Setup"
-echo "========================================"
-echo ""
+# Copy the documented env example to meshmonitor.env if not already configured,
+# then uncomment and set ALLOWED_ORIGINS with the container's actual IP.
+# This gives the operator a fully documented env file with the one critical
+# setting already filled in — no blank file, no CORS errors on first access.
+ENV_FILE="/etc/meshmonitor/meshmonitor.env"
+ENV_EXAMPLE="/etc/meshmonitor/meshmonitor.env.example"
 
-# Check if running as root
-if [ "$EUID" -ne 0 ]; then
-    echo "ERROR: This script must be run as root"
-    echo "Run with: sudo bash $0"
-    exit 1
+if [ ! -s "$ENV_FILE" ] && [ -f "$ENV_EXAMPLE" ]; then
+    cp "$ENV_EXAMPLE" "$ENV_FILE"
+    chown meshmonitor:meshmonitor "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
 fi
 
-# Ensure data directory exists with correct permissions
-echo "Setting up data directory..."
-mkdir -p /data/apprise-config
-mkdir -p /data/scripts
-mkdir -p /data/logs
-chown -R meshmonitor:meshmonitor /data
-chmod 755 /data
-
-# Check if environment file exists
-if [ ! -f /etc/meshmonitor/meshmonitor.env ]; then
-    echo "Creating environment configuration file..."
-    cp /etc/meshmonitor/meshmonitor.env.example /etc/meshmonitor/meshmonitor.env
-    chown meshmonitor:meshmonitor /etc/meshmonitor/meshmonitor.env
-    chmod 600 /etc/meshmonitor/meshmonitor.env
-fi
-
-echo ""
-echo "Configuration Required:"
-echo "----------------------"
-
-# Prompt for Meshtastic node IP
-read -p "Enter your Meshtastic node IP address (e.g., 192.168.1.100): " NODE_IP
-
-if [ -n "$NODE_IP" ]; then
-    # Check if the IP is already set in the file
-    if grep -q "^MESHTASTIC_NODE_IP=" /etc/meshmonitor/meshmonitor.env; then
-        # Update existing value
-        sed -i "s/^MESHTASTIC_NODE_IP=.*/MESHTASTIC_NODE_IP=$NODE_IP/" /etc/meshmonitor/meshmonitor.env
-    else
-        # Add new value
-        echo "MESHTASTIC_NODE_IP=$NODE_IP" >> /etc/meshmonitor/meshmonitor.env
-    fi
-    echo "Meshtastic node IP configured: $NODE_IP"
+# Set ALLOWED_ORIGINS — uncomment if commented, update if already set
+if grep -q "^#*ALLOWED_ORIGINS=" "$ENV_FILE" 2>/dev/null; then
+    sed -i "s|^#*ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=http://${CONTAINER_IP}:3001|" "$ENV_FILE"
 else
-    echo "WARNING: No IP address provided. You must configure MESHTASTIC_NODE_IP manually."
-    echo "Edit /etc/meshmonitor/meshmonitor.env and set MESHTASTIC_NODE_IP"
+    echo "ALLOWED_ORIGINS=http://${CONTAINER_IP}:3001" >> "$ENV_FILE"
 fi
 
-echo ""
-echo "Reloading systemd and enabling services..."
-systemctl daemon-reload
-systemctl enable meshmonitor.service
-systemctl enable meshmonitor-apprise.service
+# Restart meshmonitor to pick up the new env file
+systemctl restart meshmonitor 2>/dev/null || true
 
-echo ""
-read -p "Start MeshMonitor services now? (y/n): " START_NOW
-
-if [ "$START_NOW" = "y" ] || [ "$START_NOW" = "Y" ]; then
-    echo "Starting services..."
-    systemctl start meshmonitor.service
-    systemctl start meshmonitor-apprise.service
-
-    # Wait a moment for services to start
-    sleep 3
-
-    echo ""
-    echo "Service Status:"
-    echo "---------------"
-    systemctl status meshmonitor.service --no-pager --lines=5
-    echo ""
-    systemctl status meshmonitor-apprise.service --no-pager --lines=5
+# Ensure /usr/local/bin is in PATH — missing from minimal Debian's default PATH.
+# Required for meshmonitor-update to be callable directly after self-install.
+if ! grep -q '/usr/local/bin' /root/.bashrc 2>/dev/null; then
+    echo 'export PATH=/usr/local/bin:$PATH' >> /root/.bashrc
 fi
 
-echo ""
 echo "========================================"
-echo "Installation Complete!"
+echo "MeshMonitor is running!"
 echo "========================================"
 echo ""
-echo "Access Information:"
-echo "  Web UI: http://$(hostname -I | awk '{print $1}'):8080"
-echo "  (Port 3001 is proxied to 8080 by default)"
+echo "  Web UI:  http://${CONTAINER_IP}:3001"
+echo "  Login:   admin / changeme"
+echo "           (change your password immediately)"
 echo ""
-echo "Configuration:"
-echo "  Edit: /etc/meshmonitor/meshmonitor.env"
-echo "  Example: /etc/meshmonitor/meshmonitor.env.example"
+echo "  Configure your Meshtastic node via the web UI."
+echo "  Go to Settings -> Node Connection."
 echo ""
 echo "Service Management:"
-echo "  Start:   systemctl start meshmonitor"
-echo "  Stop:    systemctl stop meshmonitor"
-echo "  Restart: systemctl restart meshmonitor"
 echo "  Status:  systemctl status meshmonitor"
 echo "  Logs:    journalctl -u meshmonitor -f"
+echo "  Restart: systemctl restart meshmonitor"
 echo ""
-echo "Data Directory:"
-echo "  Location: /data"
-echo "  Database: /data/meshmonitor.db"
-echo "  Backups:  /data/system-backups"
+echo "Updates:"
+echo "  First run:  bash /opt/meshmonitor/lxc/meshmonitor-update"
+echo "              (self-installs to /usr/local/bin)"
+echo "  After that: meshmonitor-update -h or "
+echo "              meshmonitor-update -s"
 echo ""
-echo "Updating:"
-echo "  - Use lxc/update.sh on the Proxmox host for an automated update"
-echo "  - See documentation for the manual update procedure"
-echo ""
-echo "Documentation:"
-echo "  https://github.com/Yeraze/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md"
+echo "Docs: https://github.com/Yeraze/meshmonitor/blob/main/docs/deployment/PROXMOX_LXC_GUIDE.md"
 echo "========================================"

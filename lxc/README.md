@@ -11,7 +11,9 @@ The LXC deployment option provides a lightweight alternative to Docker for Proxm
 ```
 lxc/
 ├── build-lxc-template.sh          # Main build script (requires root)
-├── update.sh                      # In-place update of an existing CT (run on Proxmox host)
+├── meshmonitor-update             # In-place updater (installed to /usr/local/bin in the template)
+├── sparse-cone.txt                # Sparse-checkout cone list for the git clone (see file for maintenance notes)
+├── update.sh                      # Host-side destroy-and-recreate updater (run on Proxmox host)
 ├── systemd/
 │   ├── meshmonitor.service        # Main application systemd unit
 │   └── meshmonitor-apprise.service # Apprise notification service unit
@@ -26,47 +28,58 @@ lxc/
 
 ### Prerequisites
 
-- Debian/Ubuntu Linux with root access
-- `debootstrap` package installed
-- Node.js 22 and npm
-- At least 2GB free disk space
+- Debian/Ubuntu Linux with root access (VM recommended — debootstrap requires full kernel namespace access)
+- `debootstrap`, `git`, `curl` packages installed
+- Node.js is **not** required on the build host — the script installs Node.js 24 via NodeSource inside the container rootfs
+- At least 2GB free disk space (template output is ~490MB)
 
 ### Build Process
 
 ```bash
-# From project root
-sudo ./lxc/build-lxc-template.sh 2.19.4
+# From the lxc/ directory
+sudo bash build-lxc-template.sh 4.12.0
+
+# Or without a version argument to build from main:
+sudo bash build-lxc-template.sh
 ```
 
 This will:
 1. Create a minimal Debian 12 (Bookworm) rootfs using debootstrap
-2. Install Node.js 22, Python 3, and system dependencies
-3. Build the MeshMonitor application (frontend + backend)
-4. Copy application files into the container filesystem
+2. Install Node.js 24 (via NodeSource), Python 3, sudo, and system dependencies
+3. Clone the MeshMonitor repo into the container using a partial+sparse git clone
+4. Build the application inside the container chroot (npm install, build, build:server)
 5. Install and configure systemd service units
 6. Create the meshmonitor user and set permissions
-7. Package everything as a `.tar.gz` template
+7. Bundle meshmonitor-update in `lxc/` — self-installs to `/usr/local/bin` on first operator run
+8. Package everything as a `.tar.gz` template
 
-Output: `lxc/build/meshmonitor-2.19.4-amd64.tar.gz`
+Output: `lxc/build/meshmonitor-<version>-amd64.tar.gz`
+
+### Sparse Cone
+
+`sparse-cone.txt` controls which top-level directories are materialized inside the
+container. See that file for the maintenance obligation — if you add a new top-level
+directory that is required at runtime, add it there.
 
 ## Template Contents
 
 The generated template includes:
 
 - **Operating System**: Debian 12 (Bookworm) minimal
-- **Runtime**: Node.js 22, Python 3
-- **Application**: Pre-built MeshMonitor in `/opt/meshmonitor`
+- **Runtime**: Node.js 24, Python 3
+- **Application**: MeshMonitor cloned from git in `/opt/meshmonitor` (git-native from first boot)
 - **Services**: systemd units for meshmonitor and apprise
 - **User**: meshmonitor (UID 1000)
 - **Data Directory**: `/data` for persistent storage
 - **Configuration**: `/etc/meshmonitor/meshmonitor.env`
+- **Updater**: `meshmonitor-update` at `/usr/local/bin/meshmonitor-update`
 
 ## Automated Builds
 
 Templates are automatically built via GitHub Actions when version tags are created:
 
 - Workflow: `.github/workflows/lxc-template-build.yml`
-- Trigger: `git tag v2.19.4 && git push --tags`
+- Trigger: `git tag v<version> && git push --tags`
 - Output: Published to GitHub Releases
 
 ## Deployment
@@ -79,26 +92,36 @@ See the [Proxmox LXC Deployment Guide](../docs/deployment/PROXMOX_LXC_GUIDE.md) 
 2. Upload to Proxmox: `scp meshmonitor-*.tar.gz root@proxmox:/var/lib/vz/template/cache/`
 3. Create LXC container from template via Proxmox web UI
 4. Configure `/etc/meshmonitor/meshmonitor.env` with your node IP
-5. Access web UI on port 8080
-
-## Testing
-
-Validate template structure before deployment:
-
-```bash
-./tests/test-lxc-template.sh lxc/build/meshmonitor-2.19.4-amd64.tar.gz
-```
+5. Access web UI on port **3001** (LXC has no port mapping — the app runs directly on 3001)
 
 ## Updating an Existing Container
 
-`lxc/update.sh` automates the destroy-and-recreate update flow on the Proxmox host:
+Templates built from this version are git-native from first boot. Two update paths are available:
+
+### In-place update (recommended — no downtime, no data migration)
+
+Run inside the container:
+
+```bash
+# First run — self-installs to /usr/local/bin and adds it to PATH:
+bash /opt/meshmonitor/lxc/meshmonitor-update
+
+# All subsequent runs — available directly from anywhere:
+meshmonitor-update
+```
+
+This performs a `git pull`, rebuilds, and restarts services in place. No template redownload needed.
+
+### Full template swap (alternative — use when major OS or dependency changes ship, or on LXCs with limited resources)
+
+`lxc/update.sh` automates the destroy-and-recreate flow on the Proxmox host:
 
 ```bash
 # Update CT 100 to the latest release (auto-detected from GitHub):
 ./lxc/update.sh --ctid 100
 
 # Or pin a specific version:
-./lxc/update.sh --ctid 100 --version 4.6.5
+./lxc/update.sh --ctid 100 --version 4.12.0
 ```
 
 What it does:
@@ -128,6 +151,7 @@ See `./lxc/update.sh --help` for the full flag list.
 
 **Debootstrap errors**:
 - Ensure you're running as root (`sudo`)
+- Build inside a VM, not an LXC container — debootstrap requires full kernel namespace access
 - Check internet connectivity
 - Verify `/etc/resolv.conf` is configured
 
@@ -137,20 +161,14 @@ See `./lxc/update.sh --help` for the full flag list.
 - Verify Debian version is Bookworm (12)
 
 **Build size issues**:
-- Expected template size: 300-500MB
-- Ensure sufficient disk space in `/tmp` and build directory
+- Expected template size: 450-500MB
+- Ensure sufficient disk space in the build directory
 
 ### Template Issues
 
-Use the validation script to diagnose problems:
-
-```bash
-./tests/test-lxc-template.sh lxc/build/meshmonitor-*.tar.gz
-```
-
 Common issues:
 - Missing systemd service files → Re-run build
-- Incorrect permissions → Check meshmonitor user creation
+- Incorrect permissions → Check meshmonitor user creation in Step 9
 - Missing dependencies → Verify debootstrap completed successfully
 
 ## Development
@@ -158,12 +176,9 @@ Common issues:
 To modify the build process:
 
 1. Edit `build-lxc-template.sh` for changes to the build workflow
-2. Edit systemd units in `systemd/` for service configuration
-3. Test locally before committing:
-   ```bash
-   sudo ./lxc/build-lxc-template.sh test
-   ./tests/test-lxc-template.sh lxc/build/meshmonitor-test-amd64.tar.gz
-   ```
+2. Edit `sparse-cone.txt` to add/remove top-level directories from the container clone
+3. Edit systemd units in `systemd/` for service configuration
+4. Test locally: `sudo bash lxc/build-lxc-template.sh`
 
 ## Support
 

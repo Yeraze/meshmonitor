@@ -1,0 +1,30 @@
+# lxc/sparse-cone.txt
+# ---------------------------------------------------------------------------
+# Sparse-checkout cone list for the MeshMonitor LXC template build.
+#
+# WHAT THIS FILE CONTROLS
+#   build-lxc-template.sh reads this file at build time and passes the listed
+#   directories to git sparse-checkout set. Only these directories, plus
+#   all root-level files (package.json, tsconfig*.json, vite.config.ts, etc.),
+#   which cone mode always includes automatically, are materialized inside
+#   /opt/meshmonitor in the container rootfs. Everything else (docs/, desktop/,
+#   .github/, etc.) is never fetched, keeping the template lean (~8MB .git vs
+#   ~51MB for a full clone).
+#
+# MAINTENANCE
+#   If you add a new top-level directory that is required at runtime, add it
+#   here or the LXC template will silently omit those files on the next build.
+#   After updating: rebuild the template and confirm meshmonitor-update works.
+#
+# FOR AI ASSISTANTS
+#   This is the single source of truth for LXC template directory inclusion.
+#   Update this file in the same commit whenever you add a runtime-required
+#   top-level directory. See CLAUDE.md "LXC Template Build" for the full rule.
+# ---------------------------------------------------------------------------
+
+src
+public
+docker
+protobufs
+scripts
+lxc

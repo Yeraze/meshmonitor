@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., 2.19.4 or latest)'
+        description: 'Version tag (e.g., 4.12.0 or latest)'
         required: false
         default: 'latest'
 
@@ -23,23 +23,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-        with:
-          submodules: recursive  # Needed for protobufs
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
-
-      - name: Build React frontend
-        run: npm run build
-
-      - name: Build Express backend
-        run: npm run build:server
+        # No submodules needed here — build-lxc-template.sh clones the repo
+        # directly into the container rootfs and handles submodules itself.
+        # No Node.js setup needed — the script installs Node.js 24 via
+        # NodeSource inside the container chroot, not on the CI runner.
 
       - name: Extract version from tag
         id: get_version
@@ -53,10 +40,10 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building LXC template version: $VERSION"
 
-      - name: Install debootstrap
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y debootstrap
+          sudo apt-get install -y debootstrap git curl
 
       - name: Build LXC template
         run: |
