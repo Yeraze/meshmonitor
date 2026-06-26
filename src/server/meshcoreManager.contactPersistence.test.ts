@@ -265,6 +265,42 @@ describe('MeshCoreManager contact persistence (issue #3092)', () => {
     expect(notifyNewMeshCoreNode).not.toHaveBeenCalled();
   });
 
+  it('preserves stored name when a subsequent advert arrives with empty adv_name (issue #3756)', async () => {
+    const manager = new MeshCoreManager('src-a');
+    // First advert establishes the name.
+    dispatchBridgeEvent(manager, {
+      event_type: 'contact_advertised',
+      data: {
+        public_key: REPEATER_PUBKEY,
+        adv_name: 'MyRepeater',
+        adv_type: MeshCoreDeviceType.REPEATER,
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    upsertNode.mockClear();
+
+    // Second advert (e.g. from a zero-hop repeater) arrives with empty name.
+    dispatchBridgeEvent(manager, {
+      event_type: 'contact_advertised',
+      data: {
+        public_key: REPEATER_PUBKEY,
+        adv_name: '',
+        adv_type: MeshCoreDeviceType.REPEATER,
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // In-memory contact must keep the previously stored name.
+    expect(manager.getContact(REPEATER_PUBKEY)?.advName).toBe('MyRepeater');
+    // DB persist must also use the preserved name, not the empty string.
+    expect(upsertNode).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'MyRepeater' }),
+      'src-a',
+    );
+  });
+
   it('exposes the in-memory contact via getContact for route-side backfill', () => {
     const manager = new MeshCoreManager('src-a');
     expect(manager.getContact(REPEATER_PUBKEY)).toBeUndefined();
