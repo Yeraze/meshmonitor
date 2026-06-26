@@ -41,6 +41,18 @@ describe('MeshCoreManager.handleUnexpectedDisconnect()', () => {
     expect(emitSpy).toHaveBeenCalledWith('disconnected');
   });
 
+  it('releases the dead native backend so later sends get a clean disconnected error', async () => {
+    vi.spyOn(manager as any, 'stopVirtualNodeServer').mockResolvedValue(undefined);
+    const backendDisconnect = vi.fn().mockResolvedValue(undefined);
+    (manager as any).nativeBackend = { disconnect: backendDisconnect };
+    (manager as any).shouldReconnect = false;
+
+    await (manager as any).handleUnexpectedDisconnect();
+
+    expect(backendDisconnect).toHaveBeenCalledTimes(1);
+    expect((manager as any).nativeBackend).toBeNull();
+  });
+
   it('hands off to the reconnect machinery when auto-reconnect is enabled', async () => {
     const beginReconnectSpy = vi.spyOn(manager as any, 'beginReconnect').mockReturnValue(undefined);
     const stopVnSpy = vi.spyOn(manager as any, 'stopVirtualNodeServer').mockResolvedValue(undefined);

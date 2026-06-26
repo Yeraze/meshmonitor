@@ -4486,10 +4486,25 @@ class MeshCoreManager extends EventEmitter {
     // Auto-reconnect disabled: surface the disconnect so the UI updates and the
     // VN server stops answering with a stale identity. Mirrors disconnect()'s
     // user-visible side effects without clearing the cached node/contacts.
+    // Set connectionState first so a re-emitted 'disconnected' from the backend
+    // teardown below short-circuits on the `!== 'connected'` guard above.
     this.connected = false;
     this.connectionState = 'disconnected';
     this.stopHeartbeat();
     await this.stopVirtualNodeServer();
+    // Release the dead backend. Without this `nativeBackend` keeps pointing at a
+    // closed connection, so sendBridgeCommand()'s `!nativeBackend` guard never
+    // trips and callers get a confusing write-to-closed error instead of a clean
+    // "disconnected" until /connect runs. Nulling it also makes the listener's
+    // stale-instance guard reject any late event from this backend.
+    if (this.nativeBackend) {
+      try {
+        await this.nativeBackend.disconnect();
+      } catch (err) {
+        logger.debug(`[MeshCore:${this.sourceId}] dead-backend cleanup threw: ${(err as Error).message}`);
+      }
+      this.nativeBackend = null;
+    }
     this.emit('disconnected');
     dataEventEmitter.emitMeshCoreStatusUpdated({ connected: false }, this.sourceId);
   }
