@@ -1097,7 +1097,14 @@ router.post('/:id/disconnect', requirePermission('sources', 'write'), async (req
       if (!existingMc?.isConnected()) {
         return res.json({ success: true, alreadyStopped: true });
       }
-      await meshcoreManagerRegistry.remove(source.id);
+      // Tear down the device link but KEEP the manager registered. Removing it
+      // from the registry leaves the source unaddressable: every /meshcore/*
+      // route is behind a guard that 404s ("No MeshCore manager for source")
+      // when the manager is absent, so the page's status/read polling errors
+      // out and the source can't be driven again without a restart. A plain
+      // disconnect() stops the link, VN server, heartbeat and schedulers while
+      // leaving the manager in place for a clean reconnect via /connect.
+      await existingMc.disconnect();
       return res.json({ success: true });
     }
     if (!sourceManagerRegistry.getManager(source.id)) {
