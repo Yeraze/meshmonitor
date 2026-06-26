@@ -121,9 +121,6 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
 
   const getTargetDescription = () => {
     if (!status?.localNodeRole) return '';
-    if (status.localNodeRole === DeviceRole.CLIENT_BASE) {
-      return t('automation.auto_favorite.target_all', 'all 0-hop nodes');
-    }
     return t('automation.auto_favorite.target_routers', '0-hop Router, Router Late, and Client Base nodes');
   };
 
@@ -166,7 +163,7 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
           {t('automation.auto_favorite.description',
-            'Automatically favorite eligible nodes for zero-cost hop and prioritized routing.')}{' '}
+            'Automatically favorite eligible nodes for zero-cost hop routing.')}{' '}
           <a
             href="https://meshtastic.org/blog/zero-cost-hops-favorite-routers/"
             target="_blank"
@@ -236,6 +233,23 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
                     version: status.firmwareVersion || 'unknown',
                     targets: getTargetDescription(),
                   })}
+              </div>
+            )}
+            {status.localNodeRole === DeviceRole.CLIENT_BASE && (
+              <div style={{
+                marginLeft: '1.75rem',
+                marginBottom: '1rem',
+                padding: '0.75rem 1rem',
+                background: 'var(--ctp-surface0)',
+                border: '1px solid var(--ctp-sapphire)',
+                borderLeft: '4px solid var(--ctp-sapphire)',
+                borderRadius: '6px',
+                color: 'var(--ctp-sapphire)',
+                fontSize: '13px',
+                lineHeight: '1.5',
+              }}>
+                {t('automation.auto_favorite.client_base_tip',
+                  'For maximum benefits, you should manually Favorite your local nearby CLIENT and CLIENT_MUTE nodes.')}
               </div>
             )}
           </>
