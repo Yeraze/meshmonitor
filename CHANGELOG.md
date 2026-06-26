@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.12.0] - 2026-06-26
+
 ### Added
 - **MeshCore source heartbeat / auto-reconnect** — MeshCore sources now expose a user-configurable **Heartbeat** interval (seconds, 0 = off) in the source form, mirroring Meshtastic. When set, the Companion node is probed periodically and the source reconnects automatically with exponential backoff on repeated failure. (#3705)
 
