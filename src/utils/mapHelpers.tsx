@@ -324,7 +324,7 @@ export const getPositionHistoryColor = (
  * @param start Starting position [lat, lng]
  * @param end Ending position [lat, lng]
  * @param heading Ground track in degrees (0 = North, clockwise)
- * @param speed Ground speed in m/s (affects control point distance)
+ * @param speed Ground speed in km/h (affects control point distance; see #3797)
  * @param segments Number of segments to generate (default 10 for position history)
  * @returns Array of [lat, lng] points forming the curved path
  */
