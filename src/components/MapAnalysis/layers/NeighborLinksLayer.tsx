@@ -35,8 +35,10 @@ interface NodeRecord extends MaybePositionedNode {
 }
 
 /**
- * Renders a dashed line for each neighbor edge between two positioned nodes
- * sharing the same source. Edge opacity is derived from SNR.
+ * Renders a dashed line for each neighbor edge between two positioned nodes.
+ * Endpoint positions prefer the edge's own source but fall back to any selected
+ * source that has the node positioned, so cross-source links render (#3792).
+ * Edge opacity is derived from SNR.
  */
 export default function NeighborLinksLayer() {
   const { config, setSelected } = useMapAnalysisCtx();
@@ -70,6 +72,30 @@ export default function NeighborLinksLayer() {
     return map;
   }, [nodes]);
 
+  // Cross-source fallback maps keyed by nodeNum alone (#3792). A neighbor edge
+  // carries the sourceId of the *reporting* node, but the *other* endpoint's
+  // position may only be recorded under a different selected source. Looking up
+  // both endpoints strictly by the edge's sourceId would miss those and
+  // silently drop the edge, turning the intended union of links into an
+  // intersection. We prefer the source-scoped position but fall back to any
+  // selected source that has a position for that nodeNum.
+  const positionByNode = useMemo(() => {
+    const map = new Map<number, [number, number]>();
+    for (const n of (nodes ?? []) as NodeRecord[]) {
+      const ll = resolveNodeLatLng(n);
+      if (ll && !map.has(Number(n.nodeNum))) map.set(Number(n.nodeNum), ll);
+    }
+    return map;
+  }, [nodes]);
+
+  const transportByNode = useMemo(() => {
+    const map = new Map<number, NodeTransportClass>();
+    for (const n of (nodes ?? []) as NodeRecord[]) {
+      if (!map.has(Number(n.nodeNum))) map.set(Number(n.nodeNum), classifyNodeTransport(n as any));
+    }
+    return map;
+  }, [nodes]);
+
   const ts = config.timeSlider;
   const inWindow = (t: number): boolean =>
     !ts.enabled ||
@@ -94,11 +120,13 @@ export default function NeighborLinksLayer() {
     for (const e of filtered) {
       const aKey = `${e.sourceId}:${Number(e.nodeNum)}`;
       const bKey = `${e.sourceId}:${Number(e.neighborNum)}`;
-      const a = positionByKey.get(aKey);
-      const b = positionByKey.get(bKey);
+      // Source-scoped position preferred; fall back to the node's position on
+      // any other selected source so cross-source edges aren't dropped (#3792).
+      const a = positionByKey.get(aKey) ?? positionByNode.get(Number(e.nodeNum));
+      const b = positionByKey.get(bKey) ?? positionByNode.get(Number(e.neighborNum));
       if (!a || !b) continue;
-      const aTx = transportByKey.get(aKey) ?? 'rf';
-      const bTx = transportByKey.get(bKey) ?? 'rf';
+      const aTx = transportByKey.get(aKey) ?? transportByNode.get(Number(e.nodeNum)) ?? 'rf';
+      const bTx = transportByKey.get(bKey) ?? transportByNode.get(Number(e.neighborNum)) ?? 'rf';
       const tc: NodeTransportClass = aTx === 'mqtt' || bTx === 'mqtt' ? 'mqtt' : aTx === 'udp' || bTx === 'udp' ? 'udp' : 'rf';
       out.push({
         key: String(e.id),
@@ -114,7 +142,7 @@ export default function NeighborLinksLayer() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, positionByKey, transportByKey, ts.enabled, ts.windowStartMs, ts.windowEndMs]);
+  }, [data, positionByKey, positionByNode, transportByKey, transportByNode, ts.enabled, ts.windowStartMs, ts.windowEndMs]);
 
   return (
     <>
