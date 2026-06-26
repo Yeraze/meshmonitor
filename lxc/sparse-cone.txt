@@ -15,6 +15,9 @@
 #   If you add a new top-level directory that is required at runtime, add it
 #   here or the LXC template will silently omit those files on the next build.
 #   After updating: rebuild the template and confirm meshmonitor-update works.
+#   Note: do NOT add protobufs — it is a git submodule (gitlink), not a
+#   regular directory. It is populated by git submodule update in Step 6
+#   of build-lxc-template.sh, independent of this cone list.
 #
 # FOR AI ASSISTANTS
 #   This is the single source of truth for LXC template directory inclusion.
@@ -25,6 +28,5 @@
 src
 public
 docker
-protobufs
 scripts
 lxc
