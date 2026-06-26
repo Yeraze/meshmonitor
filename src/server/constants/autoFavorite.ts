@@ -7,7 +7,7 @@ export const AUTO_FAVORITE_LOCAL_ROLES: Set<number> = new Set([
   DeviceRole.CLIENT_BASE,
 ]);
 
-/** Roles eligible as zero-cost relay favorites (for ROUTER/ROUTER_LATE local) */
+/** Roles eligible as zero-cost relay favorites (for all eligible local roles) */
 export const ZERO_HOP_RELAY_ROLES: Set<number> = new Set([
   DeviceRole.ROUTER,
   DeviceRole.ROUTER_LATE,
@@ -28,8 +28,7 @@ interface AutoFavoriteTarget {
  * - Target must be 0-hop (hopsAway === 0)
  * - Target must not have been received via MQTT
  * - Target must not already be favorited
- * - For ROUTER/ROUTER_LATE local: target must also be ROUTER/ROUTER_LATE/CLIENT_BASE
- * - For CLIENT_BASE local: any role is eligible
+ * - Target must be ROUTER, ROUTER_LATE, or CLIENT_BASE (relay-capable roles for all eligible locals)
  */
 export function isAutoFavoriteEligible(
   localRole: number | undefined | null,
@@ -47,10 +46,8 @@ export function isAutoFavoriteEligible(
   if (target.isFavorite) {
     return false;
   }
-  if (localRole === DeviceRole.ROUTER || localRole === DeviceRole.ROUTER_LATE) {
-    if (target.role == null || !ZERO_HOP_RELAY_ROLES.has(target.role)) {
-      return false;
-    }
+  if (target.role == null || !ZERO_HOP_RELAY_ROLES.has(target.role)) {
+    return false;
   }
   return true;
 }

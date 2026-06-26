@@ -31,6 +31,8 @@ interface UseUnreadCountsOptions {
   refetchInterval?: number;
   /** Optional source scope — when set, counts are filtered to this source */
   sourceId?: string | null;
+  /** When true, MQTT/bridge messages are excluded from unread counts */
+  excludeMqtt?: boolean;
 }
 
 /**
@@ -58,12 +60,17 @@ export function useUnreadCounts({
   enabled = true,
   refetchInterval = 10000,
   sourceId = null,
+  excludeMqtt = false,
 }: UseUnreadCountsOptions = {}) {
   return useQuery({
-    queryKey: ['unreadCounts', baseUrl, sourceId],
+    queryKey: ['unreadCounts', baseUrl, sourceId, excludeMqtt],
     queryFn: async (): Promise<UnreadCountsData> => {
-      const url = sourceId
-        ? `${baseUrl}/api/messages/unread-counts?sourceId=${encodeURIComponent(sourceId)}`
+      const params = new URLSearchParams();
+      if (sourceId) params.set('sourceId', sourceId);
+      if (excludeMqtt) params.set('excludeMqtt', '1');
+      const query = params.toString();
+      const url = query
+        ? `${baseUrl}/api/messages/unread-counts?${query}`
         : `${baseUrl}/api/messages/unread-counts`;
       const response = await fetch(url, {
         credentials: 'include',

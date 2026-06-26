@@ -2600,6 +2600,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
     const unreadSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
       ? req.query.sourceId
       : undefined;
+    const excludeMqtt = req.query.excludeMqtt === '1' || req.query.excludeMqtt === 'true';
     const unreadManager = resolveSourceManager(unreadSourceId);
     const localNodeInfo = unreadManager.getLocalNodeInfo();
 
@@ -2632,7 +2633,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
     // Get channel unread counts if user has channels permission
     // Only count incoming messages (exclude messages sent by our node)
     if (hasChannelsRead) {
-      const rawCounts = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId, unreadSourceId);
+      const rawCounts = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId, unreadSourceId, excludeMqtt);
 
       // MM-SEC-3: filter by per-channel read permission as well as mute prefs.
       // The bare `channel_0:read` gate above lets a viewer reach this handler
