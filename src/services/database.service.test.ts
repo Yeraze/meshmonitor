@@ -765,4 +765,40 @@ describe('DatabaseService.upsertNodeAsync — new node notification (#3796)', ()
 
     expect(mockNodesRepo.upsertNode).toHaveBeenCalledTimes(1);
   });
+
+  it('does NOT re-notify a node that was already complete before the upsert (reconnect/NodeDB re-dump)', async () => {
+    // The node already exists complete in the DB — e.g. the device reconnects
+    // and re-dumps its known NodeDB. isNodeComplete(existingNode) is true, so
+    // the incomplete->complete transition never happens and we must stay quiet.
+    vi.mocked(isNodeComplete).mockReturnValue(true);
+    getNodeSpy.mockReturnValue({
+      nodeNum: 0x5555eeee,
+      nodeId: '!5555eeee',
+      longName: 'Already Known',
+      shortName: 'AK',
+      hwModel: 4,
+    } as any);
+
+    await databaseService.upsertNodeAsync(
+      { nodeNum: 0x5555eeee, nodeId: '!5555eeee', longName: 'Already Known', shortName: 'AK', hwModel: 4 },
+      'src1'
+    );
+
+    await settle();
+    expect(mockNotifyNewNode).not.toHaveBeenCalled();
+  });
+
+  it('dedupes across sources — a node notified on src1 does not re-notify on src2 (nodeNum-keyed)', async () => {
+    // newNodeNotifiedSet is keyed by nodeNum only, so the same physical node
+    // seen on a second source in the same process run notifies just once.
+    vi.mocked(isNodeComplete).mockReturnValue(true);
+    const node = { nodeNum: 0x6666ffff, nodeId: '!6666ffff', longName: 'Multi Source', shortName: 'MS', hwModel: 7 };
+
+    await databaseService.upsertNodeAsync(node, 'src1');
+    await vi.waitFor(() => expect(mockNotifyNewNode).toHaveBeenCalledTimes(1));
+
+    await databaseService.upsertNodeAsync(node, 'src2');
+    await settle();
+    expect(mockNotifyNewNode).toHaveBeenCalledTimes(1);
+  });
 });
