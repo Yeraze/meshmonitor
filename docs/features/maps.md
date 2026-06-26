@@ -84,6 +84,21 @@ When viewing traceroute data:
    - SNR indicators at each hop
    - Failed routes shown in red
 
+#### Channel Routing
+
+For a traceroute to resolve every hop, each intermediate node must be able to
+decrypt the packet so it can append itself to the route. That depends on the
+channel's **PSK**, not its slot number. MeshMonitor therefore routes
+traceroutes over the lowest-numbered channel that the whole mesh can decrypt —
+one using the well-known default key (`AQ==`, what LongFast uses by default) or
+an unencrypted channel — rather than a hardcoded channel slot 0. If no
+channel is mesh-readable, it falls back to channel 0.
+
+The **Traceroute** and **Exchange Node Info** actions in the messages/node UI
+are split buttons with a `▾` channel-selection dropdown (shown when more than
+one channel exists, mirroring the **Exchange Position** control). Use it to
+override the default and send on a specific channel.
+
 ### Waypoints
 
 Waypoints — Meshtastic's `WAYPOINT_APP` pins — render directly on the per-source dashboard map and the Map Analysis canvas, using each waypoint's emoji as its icon. Users with `waypoints:write` can create, edit, and delete waypoints in place from the **Map Features** panel. The same panel has a **Show Waypoints** checkbox (default on) that toggles waypoint marker visibility per-user — persisted alongside the other map feature toggles. See the dedicated [Waypoints](/features/waypoints) page for the full workflow, permissions, and REST API.

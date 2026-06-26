@@ -67,7 +67,11 @@ Clear the box to restore the full map. The search term lives in the workspace st
 
 ### Node markers
 
-Renders every known node from the selected sources using the same icon set as the Dashboard map. Click a marker to populate the inspector panel; the standard Leaflet popup still opens too.
+Renders every known node from the selected sources using the same icon set as the Dashboard map. Click a marker to populate the inspector panel; it also opens the same rich node popup as the Unified map — a card showing name and short name, role, hops, hardware, battery, SNR, altitude, position, and last-heard.
+
+::: tip Multi-source node popups (New in 4.12)
+For a node reported by more than one source, the popup includes a **"Seen by N sources"** list with a row per source that links to that source's view — matching the Unified/Dashboard map. The page is also fully multi-source-aware: a node stays visible when **any** of its reporting sources is enabled in the source filter, not only its primary source.
+:::
 
 ::: tip Overlapping markers fan out (New in 4.10)
 When several nodes report the **same coordinates** — a shared site with multiple radios, or a cluster of nodes that inherited one position — they no longer stack into a single un-clickable marker. They **spiderfy** (fan out around the shared point) so each node is individually selectable.
