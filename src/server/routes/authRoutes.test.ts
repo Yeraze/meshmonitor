@@ -1083,4 +1083,89 @@ describe('Authentication Routes', () => {
       expect(response.status).toBe(400);
     });
   });
+
+  describe('Login Branding (CUSTOM_TITLE / CUSTOM_LOGO_URL)', () => {
+    let originalTitle: string | undefined;
+    let originalLogo: string | undefined;
+
+    beforeEach(() => {
+      originalTitle = process.env.CUSTOM_TITLE;
+      originalLogo = process.env.CUSTOM_LOGO_URL;
+    });
+
+    afterEach(async () => {
+      if (originalTitle !== undefined) process.env.CUSTOM_TITLE = originalTitle;
+      else delete process.env.CUSTOM_TITLE;
+      if (originalLogo !== undefined) process.env.CUSTOM_LOGO_URL = originalLogo;
+      else delete process.env.CUSTOM_LOGO_URL;
+
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+    });
+
+    it('returns null branding by default', async () => {
+      delete process.env.CUSTOM_TITLE;
+      delete process.env.CUSTOM_LOGO_URL;
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      const response = await request(app).get('/api/auth/status').expect(200);
+
+      expect(response.body.customTitle).toBeNull();
+      expect(response.body.customLogoUrl).toBeNull();
+    });
+
+    it('exposes CUSTOM_TITLE and CUSTOM_LOGO_URL when set', async () => {
+      process.env.CUSTOM_TITLE = 'My Organization Base';
+      process.env.CUSTOM_LOGO_URL = 'https://example.com/logo.png';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      const response = await request(app).get('/api/auth/status').expect(200);
+
+      expect(response.body.customTitle).toBe('My Organization Base');
+      expect(response.body.customLogoUrl).toBe('https://example.com/logo.png');
+    });
+
+    it('rejects an unsafe logo URL scheme', async () => {
+      process.env.CUSTOM_LOGO_URL = 'javascript:alert(1)';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      const response = await request(app).get('/api/auth/status').expect(200);
+
+      expect(response.body.customLogoUrl).toBeNull();
+    });
+
+    it('treats a whitespace-only CUSTOM_TITLE as unset', async () => {
+      process.env.CUSTOM_TITLE = '   ';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      const response = await request(app).get('/api/auth/status').expect(200);
+
+      expect(response.body.customTitle).toBeNull();
+    });
+
+    it('rejects an SVG data: URI logo (can embed scripts)', async () => {
+      process.env.CUSTOM_LOGO_URL = 'data:image/svg+xml,<svg onload="alert(1)"></svg>';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      const response = await request(app).get('/api/auth/status').expect(200);
+
+      expect(response.body.customLogoUrl).toBeNull();
+    });
+
+    it('accepts a raster data: URI logo', async () => {
+      const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+      process.env.CUSTOM_LOGO_URL = png;
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      const response = await request(app).get('/api/auth/status').expect(200);
+
+      expect(response.body.customLogoUrl).toBe(png);
+    });
+  });
 });

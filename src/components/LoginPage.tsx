@@ -30,6 +30,12 @@ const LoginPage: React.FC = () => {
   const localAuthDisabled = authStatus?.localAuthDisabled ?? false;
   const oidcEnabled = authStatus?.oidcEnabled ?? false;
 
+  // Optional login-page branding from CUSTOM_TITLE / CUSTOM_LOGO_URL env vars.
+  // The server already trims/validates these and sends null when unset, so we
+  // just fall back to the default MeshMonitor title and inline SVG here.
+  const customTitle = authStatus?.customTitle || 'MeshMonitor';
+  const customLogoUrl = authStatus?.customLogoUrl || null;
+
   const handleLocalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -114,30 +120,40 @@ const LoginPage: React.FC = () => {
   return (
     <div className="login-page">
       <div className="login-container">
-        {/* MeshMonitor Logo */}
+        {/* Logo — custom image when CUSTOM_LOGO_URL is set, otherwise the default SVG */}
         <div className="login-logo">
-          <svg
-            width="120"
-            height="120"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"
-              fill="currentColor"
+          {customLogoUrl ? (
+            <img
+              src={customLogoUrl}
+              alt={customTitle}
+              width="120"
+              height="120"
+              className="login-logo-image"
             />
-            <circle cx="7" cy="12" r="1.5" fill="currentColor" />
-            <circle cx="12" cy="7" r="1.5" fill="currentColor" />
-            <circle cx="17" cy="12" r="1.5" fill="currentColor" />
-            <circle cx="12" cy="17" r="1.5" fill="currentColor" />
-            <path
-              d="M7 12L12 7M12 7L17 12M17 12L12 17M12 17L7 12"
-              stroke="currentColor"
-              strokeWidth="1"
-            />
-          </svg>
-          <h1>MeshMonitor</h1>
+          ) : (
+            <svg
+              width="120"
+              height="120"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"
+                fill="currentColor"
+              />
+              <circle cx="7" cy="12" r="1.5" fill="currentColor" />
+              <circle cx="12" cy="7" r="1.5" fill="currentColor" />
+              <circle cx="17" cy="12" r="1.5" fill="currentColor" />
+              <circle cx="12" cy="17" r="1.5" fill="currentColor" />
+              <path
+                d="M7 12L12 7M12 7L17 12M17 12L12 17M12 17L7 12"
+                stroke="currentColor"
+                strokeWidth="1"
+              />
+            </svg>
+          )}
+          <h1>{customTitle}</h1>
         </div>
 
         {/* Login Form */}

@@ -40,6 +40,13 @@
   margin-bottom: 10px;
 }
 
+.login-logo-image {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  margin-bottom: 10px;
+}
+
 .login-logo h1 {
   font-size: 32px;
   font-weight: 700;
