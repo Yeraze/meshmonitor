@@ -204,7 +204,7 @@ const TYPE_UNITS: Record<string, string> = {
   latitude: '°',
   longitude: '°',
   altitude: 'm',
-  ground_speed: 'm/s',
+  ground_speed: 'km/h',
   ground_track: '°',
   estimated_latitude: '°',
   estimated_longitude: '°',

@@ -8,7 +8,7 @@ export interface PositionHistoryItem {
   longitude: number;
   timestamp: number;
   altitude?: number;
-  groundSpeed?: number;   // m/s
+  groundSpeed?: number;   // km/h (firmware emits ground_speed via TinyGPS++ .kmph(); see #3797)
   groundTrack?: number;   // degrees (0-360, 0=North)
   // Receive metadata of the packet this fix arrived in (#3492). Only present
   // for fixes received after migration 089. SNR is only meaningful when the

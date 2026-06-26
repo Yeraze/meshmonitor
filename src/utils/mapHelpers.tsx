@@ -443,8 +443,9 @@ export const generatePositionHistoryArrows = (
     const dateStr = date.toLocaleDateString();
     const timeStr = date.toLocaleTimeString();
 
-    // Format speed (convert from m/s to km/h, then to mph if needed)
-    // Meshtastic protobuf defines ground_speed as m/s (uint32)
+    // Format speed. ground_speed is km/h on the wire (firmware writes
+    // TinyGPS++ .kmph(), despite the proto saying m/s) — convertSpeed only
+    // applies the imperial km/h→mph factor, no m/s scaling. See #3797.
     let speedDisplay: string | null = null;
     let speedUnit = distanceUnit === 'mi' ? 'mph' : 'km/h';
     if (item.groundSpeed !== undefined) {

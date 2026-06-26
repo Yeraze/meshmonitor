@@ -6239,12 +6239,13 @@ class MeshtasticManager implements ISourceManager {
           }, this.sourceId);
         }
 
-        // Store ground speed if available (in m/s)
+        // Store ground speed if available. The firmware emits ground_speed in
+        // km/h (TinyGPS++ .kmph()), not m/s as the proto comment claims (#3797).
         const groundSpeed = position.groundSpeed ?? position.ground_speed;
         if (groundSpeed !== undefined && groundSpeed > 0) {
           await databaseService.telemetry.insertTelemetry({
             nodeId, nodeNum: fromNum, telemetryType: 'ground_speed',
-            timestamp, value: groundSpeed, unit: 'm/s', createdAt: now, packetTimestamp, packetId,
+            timestamp, value: groundSpeed, unit: 'km/h', createdAt: now, packetTimestamp, packetId,
             channel: channelIndex
           }, this.sourceId);
         }
@@ -8241,7 +8242,7 @@ class MeshtasticManager implements ISourceManager {
         if (positionTelemetryData.groundSpeed !== undefined && positionTelemetryData.groundSpeed > 0) {
           telemetryBatch.push({
             nodeId, nodeNum: nodeNumForTelemetry, telemetryType: 'ground_speed',
-            timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.groundSpeed, unit: 'm/s', createdAt: now,
+            timestamp: positionTelemetryData.timestamp, value: positionTelemetryData.groundSpeed, unit: 'km/h', createdAt: now,
             channel: positionTelemetryData.channel
           });
         }
