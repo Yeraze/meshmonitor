@@ -21,6 +21,7 @@ import { getTilesetById } from '../../config/tilesets';
 import type { CustomTileset, TilesetId } from '../../config/tilesets';
 import DashboardWaypoints from './DashboardWaypoints';
 import DashboardNodePopup, { type NodeSourceRef } from './DashboardNodePopup';
+import DashboardNeighborPopup from './DashboardNeighborPopup';
 import GeoJsonOverlay from '../GeoJsonOverlay';
 import { TilesetSelector } from '../TilesetSelector';
 import MapLegend from '../MapLegend';
@@ -595,12 +596,22 @@ export default function DashboardMap({
             ? { color: colorByTransport, weight: 2, opacity: 0.6 }
             : { color: colorByTransport, weight: 1, opacity: 0.6, dashArray: '5, 5' };
 
+          // Stable key by canonical node-pair (not array index) so the deduped
+          // line keeps its identity across polls.
+          const pairKey = link.nodeNum != null && link.neighborNodeNum != null
+            ? `${Math.min(Number(link.nodeNum), Number(link.neighborNodeNum))}-${Math.max(Number(link.nodeNum), Number(link.neighborNodeNum))}`
+            : `idx-${idx}`;
+
           return (
             <Polyline
-              key={`neighbor-link-${idx}`}
+              key={`neighbor-link-${pairKey}`}
               positions={positions}
               pathOptions={pathOptions}
-            />
+            >
+              <Popup>
+                <DashboardNeighborPopup link={link} />
+              </Popup>
+            </Polyline>
           );
         })}
       </MapContainer>

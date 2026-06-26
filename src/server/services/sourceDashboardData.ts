@@ -234,7 +234,9 @@ export async function buildSourceNeighborInfo(
     ...neighborInfo.map(ni => ni.nodeNum),
     ...neighborInfo.map(ni => ni.neighborNodeNum),
   ])];
-  const nodeMap = await databaseService.nodes.getNodesByNums(allNodeNums);
+  // Scope node lookup to this source so transportMechanism reflects how THIS
+  // source hears each node (not a different source's RF/MQTT classification).
+  const nodeMap = await databaseService.nodes.getNodesByNums(allNodeNums, source.id);
 
   // Same channel gate the nodes endpoint uses, so a neighbor-info link whose
   // endpoint nodes the user can't see doesn't leak their positions (#3092).
@@ -245,11 +247,35 @@ export async function buildSourceNeighborInfo(
   );
   const visibleNodeNums = new Set(visibleNodes.map(n => Number((n as any).nodeNum)));
 
+  // Deduplicate bidirectional links: if both A→B and B→A are present, keep only
+  // the canonical direction (smaller nodeNum first) to avoid two overlapping
+  // polylines on the map. The bidirectional flag on the kept record signals that
+  // both directions exist.
+  const seenPairs = new Set<string>();
+
+  // Directed-key lookup so the kept canonical record can surface the OTHER
+  // direction's signal data in the map popup (issue #3777: clicking a link must
+  // expose BOTH directions). The dedup above drops the reverse row, so capture
+  // each directed observation here first. Keyed `${from}-${to}`.
+  const byDirected = new Map<string, typeof neighborInfo[number]>();
+  for (const ni of neighborInfo) {
+    byDirected.set(`${ni.nodeNum}-${ni.neighborNodeNum}`, ni);
+  }
+
   const enrichedNeighborInfo = neighborInfo
     .filter(ni =>
       visibleNodeNums.has(Number(ni.nodeNum)) &&
       visibleNodeNums.has(Number(ni.neighborNodeNum)),
     )
+    .filter(ni => {
+      // Canonical pair key: always smaller nodeNum first.
+      const a = Math.min(ni.nodeNum, ni.neighborNodeNum);
+      const b = Math.max(ni.nodeNum, ni.neighborNodeNum);
+      const pairKey = `${a}-${b}`;
+      if (seenPairs.has(pairKey)) return false;
+      seenPairs.add(pairKey);
+      return true;
+    })
     .map(ni => {
       const node = nodeMap.get(ni.nodeNum) ?? null;
       const neighbor = nodeMap.get(ni.neighborNodeNum) ?? null;
@@ -263,6 +289,11 @@ export async function buildSourceNeighborInfo(
       const isUdp = nTx === TransportMechanism.MULTICAST_UDP || nbTx === TransportMechanism.MULTICAST_UDP;
       const transportClass: 'rf' | 'udp' | 'mqtt' = isMqtt ? 'mqtt' : isUdp ? 'udp' : 'rf';
 
+      // The kept record's own snr/lastRxTime (spread from `...ni`) describe the
+      // forward direction (nodeNum → neighborNodeNum). The reverse direction was
+      // dropped by the dedup filter, so attach its signal data for the popup.
+      const reverse = byDirected.get(`${ni.neighborNodeNum}-${ni.nodeNum}`);
+
       return {
         ...ni,
         nodeId: node?.nodeId || `!${ni.nodeNum.toString(16).padStart(8, '0')}`,
@@ -270,6 +301,8 @@ export async function buildSourceNeighborInfo(
         neighborNodeId: neighbor?.nodeId || `!${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
         neighborName: neighbor?.longName || `Node !${ni.neighborNodeNum.toString(16).padStart(8, '0')}`,
         bidirectional: linkKeys.has(`${ni.neighborNodeNum}-${ni.nodeNum}`),
+        reverseSnr: reverse?.snr ?? null,
+        reverseTimestamp: reverse?.timestamp ?? null,
         transportClass,
         nodeLatitude: nodePos.latitude,
         nodeLongitude: nodePos.longitude,

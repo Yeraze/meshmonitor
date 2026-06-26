@@ -410,6 +410,30 @@ function runNodesTests(getBackend: () => TestBackend) {
     expect(map.size).toBe(0);
   });
 
+  it('getNodesByNums - scopes to sourceId when provided (#3780)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // Insert the same nodeNum under two sources with different transportMechanism values.
+    await repo.upsertNode(makeNode(500, { sourceId: 'rf-source', transportMechanism: 1 }));
+    await repo.upsertNode(makeNode(500, { sourceId: 'mqtt-source', transportMechanism: 5 }));
+
+    const rfMap = await repo.getNodesByNums([500], 'rf-source');
+    expect(rfMap.size).toBe(1);
+    expect(rfMap.get(500)!.transportMechanism).toBe(1);
+
+    const mqttMap = await repo.getNodesByNums([500], 'mqtt-source');
+    expect(mqttMap.size).toBe(1);
+    expect(mqttMap.get(500)!.transportMechanism).toBe(5);
+
+    // Without sourceId, any matching row is returned (both sources present).
+    const unscoped = await repo.getNodesByNums([500]);
+    expect(unscoped.size).toBe(1); // at most one row per nodeNum in the result map
+  });
+
   // --- getLowBatteryMonitoredNodes ---
 
   it('getLowBatteryMonitoredNodes - returns only monitored nodes below threshold, excluding 101 and nulls', async () => {

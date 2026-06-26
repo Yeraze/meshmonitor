@@ -152,7 +152,7 @@ export class NodesRepository extends BaseRepository {
   /**
    * Get multiple nodes by nodeNum in a single query
    */
-  async getNodesByNums(nodeNums: number[]): Promise<Map<number, DbNode>> {
+  async getNodesByNums(nodeNums: number[], sourceId?: string): Promise<Map<number, DbNode>> {
     if (nodeNums.length === 0) return new Map();
     // Filter out-of-range values up front (issue #3186) — one bad entry would
     // otherwise fail the whole batch query against a PG `bigint` column.
@@ -164,10 +164,13 @@ export class NodesRepository extends BaseRepository {
     if (validNums.length === 0) return new Map();
 
     const { nodes } = this.tables;
+    const whereClause = sourceId
+      ? and(inArray(nodes.nodeNum, validNums), eq(nodes.sourceId, sourceId))
+      : inArray(nodes.nodeNum, validNums);
     const result = await this.db
       .select()
       .from(nodes)
-      .where(inArray(nodes.nodeNum, validNums));
+      .where(whereClause);
 
     const map = new Map<number, DbNode>();
     for (const row of result) {
@@ -370,6 +373,7 @@ export class NodesRepository extends BaseRepository {
           role: nodeData.role ?? existingNode.role,
           hopsAway: nodeData.hopsAway ?? existingNode.hopsAway,
           viaMqtt: nodeData.viaMqtt ?? existingNode.viaMqtt,
+          transportMechanism: nodeData.transportMechanism ?? existingNode.transportMechanism,
           isStoreForwardServer: nodeData.isStoreForwardServer ?? existingNode.isStoreForwardServer,
           macaddr: nameOrExisting(nodeData.macaddr, existingNode.macaddr),
           latitude: nodeData.latitude ?? existingNode.latitude,
@@ -425,6 +429,7 @@ export class NodesRepository extends BaseRepository {
         role: nodeData.role ?? null,
         hopsAway: nodeData.hopsAway ?? null,
         viaMqtt: nodeData.viaMqtt ?? null,
+        transportMechanism: nodeData.transportMechanism ?? null,
         isStoreForwardServer: nodeData.isStoreForwardServer ?? null,
         macaddr: nodeData.macaddr ?? null,
         latitude: nodeData.latitude ?? null,
@@ -484,6 +489,7 @@ export class NodesRepository extends BaseRepository {
         role: nodeData.role ?? null,
         hopsAway: nodeData.hopsAway ?? null,
         viaMqtt: nodeData.viaMqtt ?? null,
+        transportMechanism: nodeData.transportMechanism ?? null,
         isStoreForwardServer: nodeData.isStoreForwardServer ?? null,
         macaddr: blankToNull(nodeData.macaddr),
         latitude: nodeData.latitude ?? null,
@@ -1757,6 +1763,7 @@ export class NodesRepository extends BaseRepository {
       setIfProvided('role', nodeData.role);
       setIfProvided('hopsAway', nodeData.hopsAway);
       if (nodeData.viaMqtt !== undefined) updateSet.viaMqtt = nodeData.viaMqtt;
+      if (nodeData.transportMechanism !== undefined) updateSet.transportMechanism = nodeData.transportMechanism;
       setIfNonBlank('macaddr', nodeData.macaddr);
       setIfProvided('latitude', nodeData.latitude);
       setIfProvided('longitude', nodeData.longitude);
@@ -1808,6 +1815,7 @@ export class NodesRepository extends BaseRepository {
         role: nodeData.role || null,
         hopsAway: nodeData.hopsAway !== undefined ? nodeData.hopsAway : null,
         viaMqtt: nodeData.viaMqtt !== undefined ? !!nodeData.viaMqtt : null,
+        transportMechanism: nodeData.transportMechanism !== undefined ? nodeData.transportMechanism : null,
         macaddr: nodeData.macaddr || null,
         latitude: nodeData.latitude || null,
         longitude: nodeData.longitude || null,
