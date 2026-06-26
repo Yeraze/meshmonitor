@@ -551,6 +551,15 @@ class MeshCoreManager extends EventEmitter {
   private reconnectAttempts: number = 0;
   private nextReconnectAt: number | null = null;
   private shouldReconnect: boolean = false;
+  /**
+   * True while an *intentional* teardown is in progress (disconnect() or
+   * teardownTransportOnly()). Closing the native backend makes meshcore.js emit
+   * its own 'disconnected' event; this flag lets the manager's handler tell an
+   * operator/heartbeat-driven teardown apart from an unexpected socket drop so
+   * it doesn't double-tear-down or fight an in-flight reconnect. Reset in
+   * connect() once a fresh attempt begins.
+   */
+  private intentionalTeardown: boolean = false;
 
   // MeshCore region/scope (#3667). The device holds a SINGLE global flood
   // scope, asserted via the `set_flood_scope` bridge command before a send.
@@ -713,6 +722,10 @@ class MeshCoreManager extends EventEmitter {
 
     logger.info(`[MeshCore] Connecting via ${this.config.connectionType}...`);
     this.connectionState = 'connecting';
+    // A fresh attempt begins: clear any leftover teardown guard so the new
+    // backend's socket-drop events are treated as real (and so a late event
+    // from the previous backend, already nulled, stays suppressed).
+    this.intentionalTeardown = false;
 
     try {
       if (this.config.connectionType === ConnectionType.SERIAL && this.config.firmwareType === 'repeater') {
@@ -869,6 +882,11 @@ class MeshCoreManager extends EventEmitter {
   async disconnect(): Promise<void> {
     logger.info('[MeshCore] Disconnecting...');
 
+    // Mark this as an intentional teardown so the native backend's own
+    // 'disconnected' event (fired when we close the connection below) isn't
+    // mistaken for an unexpected link drop. Stays set until the next connect().
+    this.intentionalTeardown = true;
+
     // Clear reconnect intent first so a pending reconnect closure can't
     // stomp the in-progress teardown.
     this.shouldReconnect = false;
@@ -953,16 +971,21 @@ class MeshCoreManager extends EventEmitter {
             baudRate: this.config.baudRate || 115200,
           };
 
-    this.nativeBackend = new MeshCoreNativeBackend(this.sourceId, backendConfig);
+    const backend = new MeshCoreNativeBackend(this.sourceId, backendConfig);
+    this.nativeBackend = backend;
 
     // Native backend emits bridge-shaped push events; route them through
     // the manager's existing event handler.
-    this.nativeBackend.on('event', (evt: BridgeShapedEvent) => {
+    backend.on('event', (evt: BridgeShapedEvent) => {
       this.handleBridgeEvent(evt);
     });
 
-    this.nativeBackend.on('disconnected', () => {
-      logger.warn(`[MeshCore:${this.sourceId}] Native backend reported disconnect`);
+    // The underlying meshcore.js connection lost its socket/serial link. Capture
+    // the backend instance so a late event from a replaced/torn-down backend is
+    // ignored — only the current one drives recovery.
+    backend.on('disconnected', () => {
+      if (this.nativeBackend !== backend) return;
+      void this.handleUnexpectedDisconnect();
     });
 
     logger.info(`[MeshCore:${this.sourceId}] Starting native backend (meshcore.js)`);
@@ -4433,10 +4456,69 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
+   * React to a socket/serial-level drop the native backend reported on its own
+   * (meshcore.js 'disconnected'), as opposed to a teardown we initiated. Without
+   * this, a dropped link left the manager stuck `connected = true`: isConnected()
+   * kept returning true, so the Virtual Node server answered AppStart with a
+   * stale SelfInfo while real sends silently failed, and — when heartbeat/auto-
+   * reconnect is disabled (the default) — nothing ever recovered.
+   *
+   * When auto-reconnect is enabled (`shouldReconnect`), hand off to the existing
+   * backoff machinery. Otherwise just reflect reality: drop to disconnected and
+   * stop the VN server so it stops serving a phantom node. The next manual
+   * connect() brings everything back.
+   */
+  private async handleUnexpectedDisconnect(): Promise<void> {
+    // Our own disconnect()/teardownTransportOnly() closed the link — expected.
+    if (this.intentionalTeardown) return;
+    // Already past 'connected' (a teardown/reconnect is in flight) — nothing to do.
+    if (this.connectionState !== 'connected') return;
+
+    logger.warn(`[MeshCore:${this.sourceId}] Connection lost (native backend socket closed)`);
+
+    if (this.shouldReconnect) {
+      // Heartbeat-style auto-reconnect is enabled: drive the existing teardown +
+      // exponential-backoff path (which stops the VN server and reconnects).
+      this.beginReconnect();
+      return;
+    }
+
+    // Auto-reconnect disabled: surface the disconnect so the UI updates and the
+    // VN server stops answering with a stale identity. Mirrors disconnect()'s
+    // user-visible side effects without clearing the cached node/contacts.
+    // Set connectionState first so a re-emitted 'disconnected' from the backend
+    // teardown below short-circuits on the `!== 'connected'` guard above.
+    this.connected = false;
+    this.connectionState = 'disconnected';
+    this.stopHeartbeat();
+    await this.stopVirtualNodeServer();
+    // Release the dead backend. Without this `nativeBackend` keeps pointing at a
+    // closed connection, so sendBridgeCommand()'s `!nativeBackend` guard never
+    // trips and callers get a confusing write-to-closed error instead of a clean
+    // "disconnected" until /connect runs. Nulling it also makes the listener's
+    // stale-instance guard reject any late event from this backend.
+    if (this.nativeBackend) {
+      try {
+        await this.nativeBackend.disconnect();
+      } catch (err) {
+        logger.debug(`[MeshCore:${this.sourceId}] dead-backend cleanup threw: ${(err as Error).message}`);
+      }
+      this.nativeBackend = null;
+    }
+    this.emit('disconnected');
+    dataEventEmitter.emitMeshCoreStatusUpdated({ connected: false }, this.sourceId);
+  }
+
+  /**
    * Tear down the transport without clearing `shouldReconnect`. Mirrors the
    * relevant half of `disconnect()` but preserves reconnect intent.
    */
   private async teardownTransportOnly(): Promise<void> {
+    // This is a deliberate teardown (heartbeat-driven reconnect); suppress the
+    // native backend's own 'disconnected' event so it doesn't re-enter the
+    // unexpected-drop path. connect() clears the flag when the reconnect lands.
+    this.intentionalTeardown = true;
+
     // Stop the Virtual Node server first, same as disconnect() does. Without
     // this, the VN server keeps accepting app connections while isConnected()
     // is false, causing every AppStart to get BadState and the app to loop in

@@ -536,6 +536,16 @@ function DashboardInner() {
         };
       }
 
+      // Companion heartbeat / auto-reconnect (mirrors the Meshtastic setting).
+      // 0 = disabled; otherwise probe + reconnect with backoff. Only the native
+      // backend (companion) honours it; repeater ignores it.
+      const mcHeartbeat = parseInt(formHeartbeat, 10);
+      if (isNaN(mcHeartbeat) || mcHeartbeat < 0 || mcHeartbeat > 3600) {
+        setFormError(t('source.form.error_heartbeat_range'));
+        return;
+      }
+      if (mcHeartbeat > 0) cfg.heartbeatIntervalSeconds = mcHeartbeat;
+
       // Virtual Node server (opt-in): expose this MeshCore node to the MeshCore
       // mobile app over WiFi/TCP (#3535). Shares the formVn* state with the
       // Meshtastic form.
@@ -1459,6 +1469,22 @@ function DashboardInner() {
                     <option value="companion">{t('meshcore.device_type.companion', 'Companion')}</option>
                     <option value="repeater">{t('meshcore.device_type.repeater', 'Repeater')}</option>
                   </select>
+                </label>
+
+                <label className="dashboard-form-field">
+                  <span className="dashboard-form-label">{t('source.form.heartbeat')}</span>
+                  <input
+                    className="dashboard-form-input"
+                    type="number"
+                    min={0}
+                    max={3600}
+                    value={formHeartbeat}
+                    onChange={(e) => setFormHeartbeat(e.target.value)}
+                    placeholder="0"
+                  />
+                  <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                    {t('meshcore.form.heartbeat_help', 'Seconds between companion keepalive probes (0 = disabled). On repeated failure the source reconnects automatically with backoff. Applies to Companion devices only.')}
+                  </p>
                 </label>
 
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '8px 0 4px' }}>

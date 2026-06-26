@@ -55,7 +55,8 @@ Add MeshCore sources from the UI — they hot-connect immediately without a rest
 3. Pick **MeshCore** as the source type
 4. Choose the transport — **USB** (enter the serial port, e.g. `/dev/ttyACM0`) or **TCP** (enter the host and port; see [TCP Transport](#tcp-transport) below)
 5. Pick the **device type** — **Companion** for full-featured devices, **Repeater** for direct-serial repeaters (USB only)
-6. Save — the source connects immediately if **Auto-connect** is on
+6. *(Optional)* Set a **Heartbeat** interval in seconds (0 = off). When set, MeshMonitor periodically probes the Companion node and automatically reconnects with exponential backoff if the link drops — the same setting Meshtastic sources have. Applies to Companion devices only.
+7. Save — the source connects immediately if **Auto-connect** is on
 
 Sources you create from the UI are wired into the per-source MeshCore manager registry the same way Meshtastic TCP sources are, so create / update / delete / connect / disconnect all work without a process restart.
 

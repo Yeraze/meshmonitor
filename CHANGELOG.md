@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+- **MeshCore source heartbeat / auto-reconnect** — MeshCore sources now expose a user-configurable **Heartbeat** interval (seconds, 0 = off) in the source form, mirroring Meshtastic. When set, the Companion node is probed periodically and the source reconnects automatically with exponential backoff on repeated failure. (#3705)
+
+### Fixed
+- **MeshCore: source unusable after a manual disconnect** — Disconnecting a MeshCore source from the UI removed its manager from the registry, so every `/meshcore/*` route returned "No MeshCore manager for source" and the source could not be reconnected without a container restart. Disconnect now keeps the manager registered (tearing down only the device link), so reconnect works cleanly. (#3705)
+- **MeshCore: undetected socket drops** — A socket/serial-level link drop left the manager stuck "connected", so the Virtual Node server served a stale identity and real sends silently failed with no recovery. The manager now detects backend disconnects and either auto-reconnects or cleanly marks the source disconnected. (#3705)
+
 ## [4.11.3] - 2026-06-21
 
 ### Features
