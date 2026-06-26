@@ -1763,6 +1763,7 @@ export class NodesRepository extends BaseRepository {
       setIfProvided('role', nodeData.role);
       setIfProvided('hopsAway', nodeData.hopsAway);
       if (nodeData.viaMqtt !== undefined) updateSet.viaMqtt = nodeData.viaMqtt;
+      if (nodeData.transportMechanism !== undefined) updateSet.transportMechanism = nodeData.transportMechanism;
       setIfNonBlank('macaddr', nodeData.macaddr);
       setIfProvided('latitude', nodeData.latitude);
       setIfProvided('longitude', nodeData.longitude);
@@ -1814,6 +1815,7 @@ export class NodesRepository extends BaseRepository {
         role: nodeData.role || null,
         hopsAway: nodeData.hopsAway !== undefined ? nodeData.hopsAway : null,
         viaMqtt: nodeData.viaMqtt !== undefined ? !!nodeData.viaMqtt : null,
+        transportMechanism: nodeData.transportMechanism !== undefined ? nodeData.transportMechanism : null,
         macaddr: nodeData.macaddr || null,
         latitude: nodeData.latitude || null,
         longitude: nodeData.longitude || null,
