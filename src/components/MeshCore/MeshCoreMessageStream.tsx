@@ -16,6 +16,8 @@ interface MeshCoreMessageStreamProps {
   /** Stable key identifying the current conversation. When it changes, the
    *  stream scrolls to the bottom. */
   conversationKey?: string;
+  /** Maximum UTF-8 byte length for a message. Send is blocked when exceeded. */
+  maxBytes?: number;
 }
 
 function formatTime(ts: number): string {
@@ -60,6 +62,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   onSend,
   onNodeNameClick,
   conversationKey,
+  maxBytes = 130,
 }) => {
   const { t } = useTranslation();
   const [draft, setDraft] = useState('');
@@ -164,8 +167,11 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     return () => container.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
 
+  const byteLen = useMemo(() => new TextEncoder().encode(draft).length, [draft]);
+  const overLimit = byteLen > maxBytes;
+
   const handleSend = async () => {
-    if (!draft.trim() || sending) return;
+    if (!draft.trim() || sending || overLimit) return;
     setSending(true);
     const ok = await onSend(draft);
     setSending(false);
@@ -338,15 +344,31 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={t('meshcore.type_message', 'Type a message…')}
           disabled={disabled || sending}
-          maxLength={230}
         />
         <button
           onClick={() => void handleSend()}
-          disabled={disabled || sending || !draft.trim()}
+          disabled={disabled || sending || !draft.trim() || overLimit}
         >
           {sending ? t('meshcore.sending', 'Sending…') : t('meshcore.send', 'Send')}
         </button>
       </div>
+      {draft.length > 0 && (
+        <div
+          className="meshcore-byte-counter"
+          style={{
+            fontSize: '0.75rem',
+            textAlign: 'right',
+            paddingRight: '0.5rem',
+            color: overLimit
+              ? 'var(--ctp-red)'
+              : byteLen >= Math.floor(maxBytes * 0.9)
+              ? 'var(--ctp-yellow)'
+              : 'var(--ctp-subtext1)',
+          }}
+        >
+          {byteLen} / {maxBytes}
+        </div>
+      )}
     </div>
   );
 };

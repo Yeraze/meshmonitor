@@ -611,6 +611,13 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           }}
           onNodeNameClick={onNodeNameClick}
           conversationKey={`channel-${active.id}`}
+          maxBytes={
+            showScopeOverride && overrideScope !== null && overrideScope !== ''
+              ? 120
+              : resolvedScope
+              ? 120
+              : 130
+          }
         />
       </div>
     </div>
