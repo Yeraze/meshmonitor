@@ -108,6 +108,15 @@ export interface ConnectionStatus {
   localNode: MeshCoreNode | null;
 }
 
+/** A row in the global MeshCore saved-regions catalog (#3770). */
+export interface SavedRegion {
+  id: number;
+  name: string;
+  note: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface MeshCoreActions {
   connect: () => Promise<boolean>;
   disconnect: () => Promise<void>;
@@ -147,6 +156,12 @@ export interface MeshCoreActions {
   setDefaultScope: (scope: string) => Promise<string | null>;
   /** Discover region/scope names served by nearby repeaters (#3667 phase 3). */
   discoverRegions: () => Promise<{ regions: string[]; perRepeater: Array<{ publicKey: string; name: string; regions: string[] }>; noZeroHopRepeaters?: boolean } | null>;
+  /** Refresh the global saved-regions catalog (#3770). Returns the list, or null on error. */
+  fetchSavedRegions: () => Promise<SavedRegion[] | null>;
+  /** Save a region name to the global catalog (#3770). Returns the saved row, or null on error. */
+  addSavedRegion: (name: string, note?: string | null) => Promise<SavedRegion | null>;
+  /** Delete a saved region from the global catalog by id (#3770). Returns true on success. */
+  deleteSavedRegion: (id: number) => Promise<boolean>;
   /** Remove a contact from the device's contact list. Resolves `true` when
    *  the device ACKed the removal; `false` for any error. */
   removeContact: (publicKey: string) => Promise<boolean>;
@@ -820,6 +835,57 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const fetchSavedRegions = useCallback(async (): Promise<SavedRegion[] | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/saved-regions`);
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to load saved regions');
+        return null;
+      }
+      return Array.isArray(data.regions) ? (data.regions as SavedRegion[]) : [];
+    } catch (_err) {
+      setError('Failed to load saved regions');
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const addSavedRegion = useCallback(async (name: string, note?: string | null): Promise<SavedRegion | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/saved-regions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, note: note ?? null }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to save region');
+        return null;
+      }
+      return (data.region as SavedRegion) ?? null;
+    } catch (_err) {
+      setError('Failed to save region');
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const deleteSavedRegion = useCallback(async (id: number): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/saved-regions/${encodeURIComponent(String(id))}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (!data.success) {
+        setError(data.error || 'Failed to delete region');
+        return false;
+      }
+      return true;
+    } catch (_err) {
+      setError('Failed to delete region');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const loginRemote = useCallback(async (
     publicKey: string,
     password: string,
@@ -1482,6 +1548,9 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       getDefaultScope,
       setDefaultScope,
       discoverRegions,
+      fetchSavedRegions,
+      addSavedRegion,
+      deleteSavedRegion,
       shareContact,
       setContactOutPath,
       traceContactPath,

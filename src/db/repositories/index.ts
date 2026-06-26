@@ -53,6 +53,8 @@ export type {
   UpdateVariableInput,
   AutomationVariableValueRecord,
 } from './automationVariables.js';
+export { SavedRegionsRepository, normalizeRegionName } from './savedRegions.js';
+export type { SavedRegion } from './savedRegions.js';
 export { SourcesRepository } from './sources.js';
 export type { Source, CreateSourceInput } from './sources.js';
 export { AnalysisRepository } from './analysis.js';

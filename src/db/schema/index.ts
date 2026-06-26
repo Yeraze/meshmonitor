@@ -44,6 +44,9 @@ export * from './embedProfiles.js';
 export * from './automations.js';
 export * from './automationVariables.js';
 
+// MeshCore saved-regions catalog (global — no sourceId) (#3770)
+export * from './savedRegions.js';
+
 // Waypoints table
 export * from './waypoints.js';
 

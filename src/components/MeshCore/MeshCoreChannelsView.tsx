@@ -149,6 +149,9 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // Region names served by nearby repeaters (#3667 phase 3) for the datalist
   // suggestions on the override input.
   const [discoveredRegions, setDiscoveredRegions] = useState<string[]>([]);
+  // User-saved regions catalog (#3770) — also offered as scope-override
+  // suggestions so the operator can pick a known region without typing it.
+  const [savedRegions, setSavedRegions] = useState<string[]>([]);
   // Guard so region discovery — which emits active radio traffic — runs at most
   // once per mount, and only after the operator signals intent by opening the
   // scope-override control. We must NOT re-discover on every reconnect (#3704
@@ -300,6 +303,34 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     })();
     return () => { cancelled = true; };
   }, [status?.connected, actions]);
+
+  // Load the global saved-regions catalog (#3770) for the override suggestions.
+  // This is a cheap local DB read (no radio traffic), so it's safe to run on
+  // mount / source change regardless of connection state.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await actions.fetchSavedRegions();
+        if (!cancelled && rows) setSavedRegions(rows.map(r => r.name));
+      } catch {
+        /* non-fatal — suggestions are optional */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [actions, sourceId]);
+
+  // Union of saved + discovered regions, de-duplicated, for the override
+  // datalist. Saved regions come first (operator-curated), then any extra
+  // freshly-discovered ones.
+  const scopeSuggestions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const r of [...savedRegions, ...discoveredRegions]) {
+      if (r && !seen.has(r)) { seen.add(r); out.push(r); }
+    }
+    return out;
+  }, [savedRegions, discoveredRegions]);
 
   // Lazily discover regions for the suggestion datalist ONLY once the operator
   // opens the scope-override control (explicit intent), and at most once per
@@ -534,7 +565,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                   autoCorrect="off"
                 />
                 <datalist id="mc-scope-region-suggestions">
-                  {discoveredRegions.map(r => <option key={r} value={r} />)}
+                  {scopeSuggestions.map(r => <option key={r} value={r} />)}
                 </datalist>
                 <button
                   type="button"

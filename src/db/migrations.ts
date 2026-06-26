@@ -122,6 +122,7 @@ import { migration as channelDatabaseHashMigration, runMigration104Postgres as r
 import { migration as meshcoreMessageRouteMigration, runMigration105Postgres as runMeshcoreMessageRoutePostgres, runMigration105Mysql as runMeshcoreMessageRouteMysql } from '../server/migrations/105_add_meshcore_message_route.js';
 import { migration as meshcoreMessageScopeMigration, runMigration106Postgres as runMeshcoreMessageScopePostgres, runMigration106Mysql as runMeshcoreMessageScopeMysql } from '../server/migrations/106_add_meshcore_message_scope.js';
 import { migration as clearNullIslandMigration, runMigration107Postgres as runClearNullIslandPostgres, runMigration107Mysql as runClearNullIslandMysql } from '../server/migrations/107_clear_null_island_positions.js';
+import { migration as meshcoreSavedRegionsMigration, runMigration108Postgres as runMeshcoreSavedRegionsPostgres, runMigration108Mysql as runMeshcoreSavedRegionsMysql } from '../server/migrations/108_meshcore_saved_regions.js';
 
 // ============================================================================
 // Registry
@@ -1696,4 +1697,19 @@ registry.register({
   sqlite: (db) => clearNullIslandMigration.up(db),
   postgres: (client) => runClearNullIslandPostgres(client),
   mysql: (pool) => runClearNullIslandMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 108: MeshCore saved-regions catalog (#3770)
+// Global (no sourceId) user-maintained list of MeshCore region names used to
+// populate scope dropdowns (channel settings + per-message override).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 108,
+  name: 'meshcore_saved_regions',
+  settingsKey: 'migration_108_meshcore_saved_regions',
+  sqlite: (db) => meshcoreSavedRegionsMigration.up(db),
+  postgres: (client) => runMeshcoreSavedRegionsPostgres(client),
+  mysql: (pool) => runMeshcoreSavedRegionsMysql(pool),
 });

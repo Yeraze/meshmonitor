@@ -218,6 +218,15 @@ describe('MeshCore Routes', () => {
       getSetting: vi.fn(async () => null),
     };
 
+    // Saved-regions catalog mock (#3770). Tests override these per-case.
+    (DatabaseService as any).savedRegions = {
+      getAllAsync: vi.fn(async () => []),
+      addAsync: vi.fn(async (name: string, note?: string | null) => ({
+        id: 1, name: name.toLowerCase().replace(/^#/, ''), note: note ?? null, createdAt: 1, updatedAt: 1,
+      })),
+      deleteAsync: vi.fn(async () => undefined),
+    };
+
     // Add async method mocks
     (DatabaseService as any).findUserByIdAsync = async (id: number) => {
       return userModel.findById(id);
@@ -314,6 +323,67 @@ describe('MeshCore Routes', () => {
       expect(response.status).toBe(404);
       expect(response.body.success).toBe(false);
       expect(response.body.error).toMatch(/does-not-exist/);
+    });
+  });
+
+  describe('Saved regions catalog (#3770)', () => {
+    it('GET /saved-regions lists regions', async () => {
+      (DatabaseService as any).savedRegions.getAllAsync.mockResolvedValueOnce([
+        { id: 1, name: 'muenchen', note: null, createdAt: 1, updatedAt: 1 },
+      ]);
+      const response = await authenticatedAgent.get('/api/sources/test-source/meshcore/saved-regions');
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.regions).toHaveLength(1);
+      expect(response.body.regions[0].name).toBe('muenchen');
+    });
+
+    it('GET /saved-regions requires authentication', async () => {
+      const response = await request(app).get('/api/sources/test-source/meshcore/saved-regions');
+      expect(response.status).toBe(401);
+    });
+
+    it('POST /saved-regions adds a region', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/saved-regions')
+        .send({ name: '#Muenchen' });
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect((DatabaseService as any).savedRegions.addAsync).toHaveBeenCalledWith('#Muenchen', null);
+    });
+
+    it('POST /saved-regions rejects a missing name', async () => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/saved-regions')
+        .send({ note: 'no name' });
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('POST /saved-regions surfaces an invalid-name error as 400', async () => {
+      (DatabaseService as any).savedRegions.addAsync.mockRejectedValueOnce(
+        new Error('Invalid region name (letters, digits and hyphens only)'),
+      );
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/saved-regions')
+        .send({ name: '###' });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/Invalid region name/);
+    });
+
+    it('DELETE /saved-regions/:id deletes a region', async () => {
+      const response = await authenticatedAgent
+        .delete('/api/sources/test-source/meshcore/saved-regions/5');
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect((DatabaseService as any).savedRegions.deleteAsync).toHaveBeenCalledWith(5);
+    });
+
+    it('DELETE /saved-regions/:id rejects an invalid id', async () => {
+      const response = await authenticatedAgent
+        .delete('/api/sources/test-source/meshcore/saved-regions/abc');
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
     });
   });
 
