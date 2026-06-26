@@ -3,6 +3,7 @@ import { MeshMessage } from '../types/message';
 import { useUnreadCounts, useMarkAsRead } from '../hooks/useUnreadCounts';
 import { useAuth } from './AuthContext';
 import { useSource } from './SourceContext';
+import { useUI } from './UIContext';
 
 interface UnreadCounts {
   channels: { [channelId: number]: number };
@@ -45,6 +46,7 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
   // Scope unread counts to the current source so per-source tabs don't show
   // badges for messages other sources received but the current source did not.
   const { sourceId } = useSource();
+  const { showMqttMessages } = useUI();
 
   const [selectedDMNode, setSelectedDMNode] = useState<string>('');
   const [selectedChannel, setSelectedChannel] = useState<number>(-1);
@@ -55,11 +57,14 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
   const [isChannelScrolledToBottom, setIsChannelScrolledToBottom] = useState(true);
   const [isDMScrolledToBottom, setIsDMScrolledToBottom] = useState(true);
 
-  // Use TanStack Query hooks for unread counts - only enable when authenticated
+  // Use TanStack Query hooks for unread counts - only enable when authenticated.
+  // Exclude MQTT messages from the count when the user has opted to hide them,
+  // so the sidebar dot and channel badges don't light up for MQTT-only traffic.
   const { data: unreadCountsData, refetch: refetchUnreadCounts } = useUnreadCounts({
     baseUrl,
     enabled: isAuthenticated,
     sourceId,
+    excludeMqtt: !showMqttMessages,
   });
   const { mutateAsync: markAsReadMutation } = useMarkAsRead({ baseUrl });
 

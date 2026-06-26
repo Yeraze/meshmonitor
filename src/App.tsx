@@ -5415,8 +5415,8 @@ const AppWithToast = () => {
     <SettingsProvider baseUrl={initialBaseUrl}>
       <MapProvider>
         <DataProvider>
-          <MessagingProvider baseUrl={initialBaseUrl}>
-            <UIProvider>
+          <UIProvider>
+            <MessagingProvider baseUrl={initialBaseUrl}>
               <AutomationProvider baseUrl={initialBaseUrl}>
               <ToastProvider>
                 <DeviceNotificationToaster />
@@ -5425,8 +5425,8 @@ const AppWithToast = () => {
                 </SaveBarProvider>
               </ToastProvider>
               </AutomationProvider>
-            </UIProvider>
-          </MessagingProvider>
+            </MessagingProvider>
+          </UIProvider>
         </DataProvider>
       </MapProvider>
     </SettingsProvider>

@@ -832,7 +832,8 @@ export class NotificationsRepository extends BaseRepository {
   async getUnreadCountsByChannelAsync(
     userId: number | null,
     localNodeId?: string,
-    sourceId?: string
+    sourceId?: string,
+    excludeMqtt?: boolean
   ): Promise<{ [channelId: number]: number }> {
     const messages = this.tables.messages;
     const readMessages = this.tables.readMessages;
@@ -845,6 +846,10 @@ export class NotificationsRepository extends BaseRepository {
     ];
     if (localNodeId) {
       conditions.push(ne(messages.fromNodeId, localNodeId));
+    }
+    if (excludeMqtt) {
+      // Include rows where viaMqtt is NULL (pre-column records) or false/0
+      conditions.push(or(isNull(messages.viaMqtt as any), eq(messages.viaMqtt as any, false)));
     }
 
     try {
