@@ -51,6 +51,8 @@ vi.mock('../services/database.js', () => {
       setSetting: vi.fn().mockResolvedValue(undefined),
     },
     getAllTraceroutesForRecalculationAsync: vi.fn().mockResolvedValue([]),
+    // #3796: meshtasticManager routes node writes through upsertNodeAsync.
+    upsertNodeAsync: vi.fn().mockResolvedValue(undefined),
     sources: {
       getSource: vi.fn().mockResolvedValue(null),
     },

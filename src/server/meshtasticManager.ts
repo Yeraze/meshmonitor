@@ -4161,11 +4161,11 @@ class MeshtasticManager implements ISourceManager {
                     updateData.keySecurityIssueDetails = null;
                   }
 
-                  await databaseService.nodes.upsertNode(updateData, this.sourceId);
+                  await databaseService.upsertNodeAsync(updateData, this.sourceId);
                   logger.info(`💾 Saved local node public key to database for ${localNodeId}`);
                 }).catch(async (err) => {
                   // If low entropy check fails, still save the key
-                  await databaseService.nodes.upsertNode({
+                  await databaseService.upsertNodeAsync({
                     nodeNum: localNodeNum,
                     nodeId: localNodeId,
                     publicKey: publicKeyBase64,
@@ -4242,7 +4242,7 @@ class MeshtasticManager implements ISourceManager {
             const localNodeNum = this.localNodeInfo.nodeNum;
             const localNodeId = this.localNodeInfo.nodeId;
             try {
-              await databaseService.nodes.upsertNode({
+              await databaseService.upsertNodeAsync({
                 nodeNum: localNodeNum,
                 nodeId: localNodeId,
                 lastHeard: Date.now() / 1000,
@@ -4403,7 +4403,7 @@ class MeshtasticManager implements ISourceManager {
 
           // Upsert new node with merged metadata — new node's existing data takes priority,
           // falls back to old node's data for missing fields
-          await databaseService.nodes.upsertNode({
+          await databaseService.upsertNodeAsync({
             nodeNum: nodeNum,
             nodeId: nodeId,
             longName: newNode?.longName || oldNode?.longName || undefined,
@@ -4507,7 +4507,7 @@ class MeshtasticManager implements ISourceManager {
     // Clear any erroneous security flags on the local node — we can't have a key mismatch with ourselves
     if (existingNode?.keyMismatchDetected || existingNode?.keySecurityIssueDetails) {
       logger.info(`🔐 Clearing erroneous security flags on local node ${nodeId}`);
-      await databaseService.nodes.upsertNode({
+      await databaseService.upsertNodeAsync({
         nodeNum,
         nodeId,
         keyMismatchDetected: false,
@@ -4536,7 +4536,7 @@ class MeshtasticManager implements ISourceManager {
       // is stale (no inbound packets via processMeshPacket since startup) would have its
       // own NeighborInfo links silently dropped by the freshness filter in
       // sourceRoutes.ts / server.ts (#3025).
-      await databaseService.nodes.upsertNode({
+      await databaseService.upsertNodeAsync({
         nodeNum: nodeNum,
         nodeId: nodeId,
         rebootCount: myNodeInfo.rebootCount !== undefined ? myNodeInfo.rebootCount : undefined,
@@ -4571,7 +4571,7 @@ class MeshtasticManager implements ISourceManager {
         isLocked: false  // Not locked yet, waiting for complete info
       } as any;
 
-      await databaseService.nodes.upsertNode(nodeData, this.sourceId);
+      await databaseService.upsertNodeAsync(nodeData, this.sourceId);
       logger.debug(`📱 Stored basic local node info with rebootCount: ${myNodeInfo.rebootCount}, waiting for NodeInfo for names (${nodeId})`);
     }
     // Note: Local node's public key is extracted from security config when received
@@ -5034,7 +5034,7 @@ class MeshtasticManager implements ISourceManager {
           nodeId: this.localNodeInfo.nodeId,
           firmwareVersion: metadata.firmwareVersion
         };
-        await databaseService.nodes.upsertNode(nodeData, this.sourceId);
+        await databaseService.upsertNodeAsync(nodeData, this.sourceId);
         logger.debug(`📱 Saved firmware version to database for node ${this.localNodeInfo.nodeId}`);
       }
     } else {
@@ -5467,7 +5467,7 @@ class MeshtasticManager implements ISourceManager {
       if (meshPacket.rxRssi != null && meshPacket.rxRssi !== 0) {
         nodeData.rssi = meshPacket.rxRssi;
       }
-      await databaseService.nodes.upsertNode(nodeData, this.sourceId);
+      await databaseService.upsertNodeAsync(nodeData, this.sourceId);
 
       // Capture server-vs-node clock offset for time-offset telemetry
       if (meshPacket.rxTime && Number(meshPacket.rxTime) > 1600000000) {
@@ -5738,7 +5738,7 @@ class MeshtasticManager implements ISourceManager {
             createdAt: Date.now(),
             updatedAt: Date.now()
           };
-          await databaseService.nodes.upsertNode(basicNodeData, this.sourceId);
+          await databaseService.upsertNodeAsync(basicNodeData, this.sourceId);
           logger.debug(`📝 Created basic node entry for ${fromNodeId}`);
         }
 
@@ -5766,7 +5766,7 @@ class MeshtasticManager implements ISourceManager {
               createdAt: Date.now(),
               updatedAt: Date.now()
             };
-            await databaseService.nodes.upsertNode(broadcastNodeData, this.sourceId);
+            await databaseService.upsertNodeAsync(broadcastNodeData, this.sourceId);
             logger.debug(`📝 Created broadcast node entry (no lastHeard — pseudo-node)`);
           }
         }
@@ -6005,7 +6005,7 @@ class MeshtasticManager implements ISourceManager {
           logger.info(`📦 S&F heartbeat from ${fromNodeId}: period=${period}s, secondary=${secondary}`);
 
           // Mark this node as a Store & Forward server
-          await databaseService.nodes.upsertNode({
+          await databaseService.upsertNodeAsync({
             nodeNum: fromNum,
             nodeId: fromNodeId,
             isStoreForwardServer: true,
@@ -6282,7 +6282,7 @@ class MeshtasticManager implements ISourceManager {
           if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
             technicalData.rssi = meshPacket.rxRssi;
           }
-          await databaseService.nodes.upsertNode(technicalData, this.sourceId);
+          await databaseService.upsertNodeAsync(technicalData, this.sourceId);
         } else {
           const nodeData: any = {
             nodeNum: fromNum,
@@ -6310,7 +6310,7 @@ class MeshtasticManager implements ISourceManager {
           }
 
           // Save position to nodes table (current position)
-          await databaseService.nodes.upsertNode(nodeData, this.sourceId);
+          await databaseService.upsertNodeAsync(nodeData, this.sourceId);
 
           // Emit node update event to notify frontend via WebSocket. When a
           // user-set override is active for this node, strip the GPS coords
@@ -6358,7 +6358,7 @@ class MeshtasticManager implements ISourceManager {
   private async trackPKIEncryption(meshPacket: any, nodeNum: number): Promise<void> {
     if (meshPacket.pkiEncrypted || meshPacket.pki_encrypted) {
       const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-      await databaseService.nodes.upsertNode({
+      await databaseService.upsertNodeAsync({
         nodeNum,
         nodeId,
         lastPKIPacket: Date.now()
@@ -6587,7 +6587,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       logger.debug(`🔍 Saving node with role=${user.role}, hopsAway=${meshPacket.hopsAway}`);
-      await databaseService.nodes.upsertNode(nodeData, this.sourceId);
+      await databaseService.upsertNodeAsync(nodeData, this.sourceId);
       logger.debug(`👤 Updated user info: ${user.longName || nodeId}`);
 
       // Check if we should send auto-welcome message
@@ -6758,7 +6758,7 @@ class MeshtasticManager implements ISourceManager {
         );
       }
 
-      await databaseService.nodes.upsertNode(nodeData, this.sourceId);
+      await databaseService.upsertNodeAsync(nodeData, this.sourceId);
       logger.debug(`📊 Updated node telemetry and saved to telemetry table: ${nodeId}`);
     } catch (error) {
       logger.error('❌ Error processing telemetry message:', error);
@@ -6820,7 +6820,7 @@ class MeshtasticManager implements ISourceManager {
         }, this.sourceId);
       }
 
-      await databaseService.nodes.upsertNode(nodeData, this.sourceId);
+      await databaseService.upsertNodeAsync(nodeData, this.sourceId);
       logger.debug(`📡 Updated node with paxcounter data: ${nodeId}`);
     } catch (error) {
       logger.error('❌ Error processing paxcounter message:', error);
@@ -6868,7 +6868,7 @@ class MeshtasticManager implements ISourceManager {
       // Ensure from node exists in database (don't overwrite existing names)
       const existingFromNode = await databaseService.nodes.getNode(fromNum);
       if (!existingFromNode) {
-        await databaseService.nodes.upsertNode({
+        await databaseService.upsertNodeAsync({
           nodeNum: fromNum,
           nodeId: fromNodeId,
           longName: `Node ${fromNodeId}`,
@@ -6877,7 +6877,7 @@ class MeshtasticManager implements ISourceManager {
         }, this.sourceId);
       } else {
         // Just update lastHeard, don't touch the name
-        await databaseService.nodes.upsertNode({
+        await databaseService.upsertNodeAsync({
           nodeNum: fromNum,
           nodeId: fromNodeId,
           lastHeard: Date.now() / 1000
@@ -6887,7 +6887,7 @@ class MeshtasticManager implements ISourceManager {
       // Ensure to node exists in database (don't overwrite existing names)
       const existingToNode = await databaseService.nodes.getNode(toNum);
       if (!existingToNode) {
-        await databaseService.nodes.upsertNode({
+        await databaseService.upsertNodeAsync({
           nodeNum: toNum,
           nodeId: toNodeId,
           longName: `Node ${toNodeId}`,
@@ -6896,7 +6896,7 @@ class MeshtasticManager implements ISourceManager {
         }, this.sourceId);
       } else {
         // Just update lastHeard, don't touch the name
-        await databaseService.nodes.upsertNode({
+        await databaseService.upsertNodeAsync({
           nodeNum: toNum,
           nodeId: toNodeId,
           lastHeard: Date.now() / 1000
@@ -7004,7 +7004,7 @@ class MeshtasticManager implements ISourceManager {
         // Unknown hop — create a stub row with a placeholder name so future
         // lookups resolve. Real NodeInfo will overwrite the placeholder
         // fields and stamp a real lastHeard at that time.
-        await databaseService.nodes.upsertNode({
+        await databaseService.upsertNodeAsync({
           nodeNum: hopNum,
           nodeId: hopId,
           longName: `Node ${hopId}`,
@@ -7541,7 +7541,7 @@ class MeshtasticManager implements ISourceManager {
 
             logger.warn(`🔐 PKI error on request for node ${toNodeId}: ${errorDescription}`);
 
-            await databaseService.nodes.upsertNode({
+            await databaseService.upsertNodeAsync({
               nodeNum: toNum,
               nodeId: toNodeId,
               keyMismatchDetected: true,
@@ -7561,7 +7561,7 @@ class MeshtasticManager implements ISourceManager {
 
               logger.warn(`🔐 NO_CHANNEL on request detected for node ${toNodeId}: ${errorDescription}`);
 
-              await databaseService.nodes.upsertNode({
+              await databaseService.upsertNodeAsync({
                 nodeNum: toNum,
                 nodeId: toNodeId,
                 keyMismatchDetected: true,
@@ -7593,7 +7593,7 @@ class MeshtasticManager implements ISourceManager {
 
           logger.warn(`🔐 PKI error detected for node ${targetNodeId}: ${errorDescription}`);
 
-          await databaseService.nodes.upsertNode({
+          await databaseService.upsertNodeAsync({
             nodeNum: targetNodeNum,
             nodeId: targetNodeId,
             keyMismatchDetected: true,
@@ -7619,7 +7619,7 @@ class MeshtasticManager implements ISourceManager {
           // Flag the node with the key security issue (if not already flagged)
           const existingNode = await databaseService.nodes.getNode(targetNodeNum);
           if (!existingNode?.keyMismatchDetected) {
-            await databaseService.nodes.upsertNode({
+            await databaseService.upsertNodeAsync({
               nodeNum: targetNodeNum,
               nodeId: targetNodeId,
               keyMismatchDetected: true,
@@ -7757,7 +7757,7 @@ class MeshtasticManager implements ISourceManager {
 
       // Ensure sender node exists in database
       if (!senderNode) {
-        await databaseService.nodes.upsertNode({
+        await databaseService.upsertNodeAsync({
           nodeNum: fromNum,
           nodeId: fromNodeId,
           longName: `Node ${fromNodeId}`,
@@ -7809,7 +7809,7 @@ class MeshtasticManager implements ISourceManager {
         for (const vn of validNeighbors) {
           if (!existingNodes.has(vn.nodeNum)) {
             const neighborNodeId = `!${vn.nodeNum.toString(16).padStart(8, '0')}`;
-            await databaseService.nodes.upsertNode({
+            await databaseService.upsertNodeAsync({
               nodeNum: vn.nodeNum,
               nodeId: neighborNodeId,
               longName: `Node ${neighborNodeId}`,
@@ -8204,7 +8204,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // Upsert node first to ensure it exists before inserting telemetry
-      await databaseService.nodes.upsertNode(nodeData, this.sourceId);
+      await databaseService.upsertNodeAsync(nodeData, this.sourceId);
 
       // Emit WebSocket event for node update
       dataEventEmitter.emitNodeUpdate(Number(nodeInfo.num), nodeData, this.sourceId);
@@ -13710,7 +13710,7 @@ class MeshtasticManager implements ISourceManager {
         if (this.localNodeInfo) {
           const localNodeNum = this.localNodeInfo.nodeNum;
           const localNodeId = `!${localNodeNum.toString(16).padStart(8, '0')}`;
-          await databaseService.nodes.upsertNode({
+          await databaseService.upsertNodeAsync({
             nodeNum: localNodeNum,
             nodeId: localNodeId,
             latitude,

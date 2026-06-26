@@ -2304,30 +2304,8 @@ class DatabaseService {
           logger.error('Failed to upsert node:', err);
         });
 
-        // Send new node notification when a node becomes complete (has longName, shortName, hwModel)
-        // This defers the notification until we have meaningful info instead of just a raw node ID
-        const wasComplete = existingNode ? isNodeComplete(existingNode) : false;
-        if (nodeData.nodeNum !== 4294967295 && !wasComplete &&
-            !this.newNodeNotifiedSet.has(nodeData.nodeNum) && isNodeComplete(updatedNode)) {
-          this.newNodeNotifiedSet.add(nodeData.nodeNum);
-          const newNodeSourceId = (updatedNode as any).sourceId ?? (nodeData as any).sourceId ?? 'default';
-          import('../server/services/notificationService.js').then(async ({ notificationService }) => {
-            let sourceName = newNodeSourceId;
-            try {
-              const src = await this.sources.getSource(newNodeSourceId);
-              if (src?.name) sourceName = src.name;
-            } catch { /* fall back to id */ }
-            await notificationService.notifyNewNode(
-              updatedNode.nodeId!,
-              updatedNode.longName!,
-              updatedNode.shortName!,
-              updatedNode.hwModel ?? undefined,
-              updatedNode.hopsAway,
-              newNodeSourceId,
-              sourceName
-            );
-          }).catch(err => logger.error('Failed to send new node notification:', err));
-        }
+        // Send new node notification when a node becomes complete (#3796).
+        this.maybeNotifyNewNode(nodeData, existingNode, upsertSourceId);
       }
       return;
     }
@@ -2358,39 +2336,98 @@ class DatabaseService {
       logger.debug(`Re-applied ignore flag for node ${nodeData.nodeNum} (per-source blocklist)`);
     }
 
-    // Send new node notification when a node becomes complete (has longName, shortName, hwModel)
-    // This defers the notification until we have meaningful info instead of just a raw node ID
-    // For SQLite, build the merged node state to check completeness (COALESCE merges in SQL)
-    if (nodeData.nodeNum !== 4294967295 && !this.newNodeNotifiedSet.has(nodeData.nodeNum)) {
-      const wasComplete = existingNode ? isNodeComplete(existingNode) : false;
-      if (!wasComplete) {
-        const mergedNode = {
-          nodeId: nodeData.nodeId ?? existingNode?.nodeId,
-          longName: nodeData.longName ?? existingNode?.longName,
-          shortName: nodeData.shortName ?? existingNode?.shortName,
-          hwModel: nodeData.hwModel ?? existingNode?.hwModel,
-        };
-        if (isNodeComplete(mergedNode)) {
-          this.newNodeNotifiedSet.add(nodeData.nodeNum);
-          const newNodeSourceId = (nodeData as any).sourceId ?? (existingNode as any)?.sourceId ?? 'default';
-          import('../server/services/notificationService.js').then(async ({ notificationService }) => {
-            let sourceName = newNodeSourceId;
-            try {
-              const src = await this.sources.getSource(newNodeSourceId);
-              if (src?.name) sourceName = src.name;
-            } catch { /* fall back to id */ }
-            await notificationService.notifyNewNode(
-              mergedNode.nodeId!,
-              mergedNode.longName!,
-              mergedNode.shortName!,
-              mergedNode.hwModel ?? undefined,
-              nodeData.hopsAway ?? existingNode?.hopsAway,
-              newNodeSourceId,
-              sourceName
-            );
-          }).catch(err => logger.error('Failed to send new node notification:', err));
-        }
-      }
+    // Send new node notification when a node becomes complete (#3796).
+    this.maybeNotifyNewNode(nodeData, existingNode, upsertSourceIdSqlite);
+  }
+
+  /**
+   * Fire the "new node discovered" notification when an upsert moves a node
+   * from incomplete -> complete (has longName + shortName + hwModel) for the
+   * first time. Deduped per-process via newNodeNotifiedSet, and gated against
+   * the node's prior persisted state so a device re-dumping its known NodeDB on
+   * reconnect does NOT re-notify already-complete nodes. Fire-and-forget — it
+   * never blocks the caller.
+   *
+   * Shared by upsertNode() (the sync MQTT path) and upsertNodeAsync() (the
+   * direct Meshtastic path) so both behave identically (issue #3796).
+   */
+  private maybeNotifyNewNode(
+    // Minimal structural shape so both the local-DbNode wrapper path and the
+    // repo-DbNode upsertNodeAsync path can pass their node objects without a
+    // cast (the two DbNode definitions differ on unrelated fields).
+    nodeData: {
+      nodeNum?: number | null;
+      nodeId?: string | null;
+      longName?: string | null;
+      shortName?: string | null;
+      hwModel?: number | null;
+      hopsAway?: number | null;
+      sourceId?: string | null;
+    },
+    existingNode: DbNode | null | undefined,
+    sourceId?: string
+  ): void {
+    const nodeNum = nodeData.nodeNum;
+    if (nodeNum === undefined || nodeNum === null || nodeNum === 4294967295) return;
+    if (this.newNodeNotifiedSet.has(nodeNum)) return;
+
+    // Only notify on the incomplete -> complete transition, never for a node
+    // that was already complete before this upsert.
+    const wasComplete = existingNode ? isNodeComplete(existingNode) : false;
+    if (wasComplete) return;
+
+    const mergedNode = {
+      nodeId: nodeData.nodeId ?? existingNode?.nodeId,
+      longName: nodeData.longName ?? existingNode?.longName,
+      shortName: nodeData.shortName ?? existingNode?.shortName,
+      hwModel: nodeData.hwModel ?? existingNode?.hwModel,
+    };
+    if (!isNodeComplete(mergedNode)) return;
+
+    this.newNodeNotifiedSet.add(nodeNum);
+    const newNodeSourceId = sourceId ?? (nodeData as any).sourceId ?? (existingNode as any)?.sourceId ?? 'default';
+    import('../server/services/notificationService.js').then(async ({ notificationService }) => {
+      let sourceName = newNodeSourceId;
+      try {
+        const src = await this.sources.getSource(newNodeSourceId);
+        if (src?.name) sourceName = src.name;
+      } catch { /* fall back to id */ }
+      await notificationService.notifyNewNode(
+        mergedNode.nodeId!,
+        mergedNode.longName!,
+        mergedNode.shortName!,
+        mergedNode.hwModel ?? undefined,
+        (nodeData.hopsAway ?? existingNode?.hopsAway) ?? undefined,
+        newNodeSourceId,
+        sourceName
+      );
+    }).catch(err => logger.error('Failed to send new node notification:', err));
+  }
+
+  /**
+   * Async node upsert that ALSO fires the new-node notification. The direct
+   * Meshtastic path (meshtasticManager) previously called
+   * databaseService.nodes.upsertNode() directly, bypassing the notification
+   * logic that lived only in the sync upsertNode() wrapper — so "Newly Found
+   * Node" notifications never fired for directly-connected Meshtastic nodes
+   * (issue #3796). This wraps the same repository write and adds the shared
+   * completeness/dedup-gated notification check.
+   */
+  async upsertNodeAsync(nodeData: Parameters<NodesRepository['upsertNode']>[0], sourceId?: string): Promise<void> {
+    const nodeNum = nodeData.nodeNum;
+    const sid = sourceId ?? (nodeData as any).sourceId;
+
+    // Only pay for the pre-upsert read when this node could still need a
+    // notification (not yet notified, not the broadcast address). Once a node
+    // has been notified this short-circuits to a single Set lookup.
+    const needsCheck = nodeNum !== undefined && nodeNum !== null &&
+      nodeNum !== 4294967295 && !this.newNodeNotifiedSet.has(nodeNum);
+    const existingNode = needsCheck ? this.getNode(nodeNum!, sid) : null;
+
+    await this.nodes.upsertNode(nodeData, sid);
+
+    if (needsCheck) {
+      this.maybeNotifyNewNode(nodeData, existingNode, sid);
     }
   }
 

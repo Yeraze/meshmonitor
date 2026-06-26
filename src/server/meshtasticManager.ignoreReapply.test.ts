@@ -58,6 +58,9 @@ vi.mock('../services/database.js', () => {
       setSetting: vi.fn().mockResolvedValue(undefined),
     },
     sources: { getSource: vi.fn().mockResolvedValue(null) },
+    // #3796: meshtasticManager now routes node writes through upsertNodeAsync,
+    // which delegates to nodes.upsertNode (the fn this suite asserts on).
+    upsertNodeAsync: upsertNode,
     nodes: {
       getNode: vi.fn().mockResolvedValue(null),
       upsertNode,
