@@ -43,6 +43,7 @@ import {
   DeadDropRepository,
   AutomationsRepository,
   AutomationVariablesRepository,
+  SavedRegionsRepository,
 } from '../db/repositories/index.js';
 import type { EstimatedPosition, EstimatedPositionInput } from '../db/repositories/index.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
@@ -509,6 +510,7 @@ class DatabaseService {
   public deadDropRepo: DeadDropRepository | null = null;
   public automationsRepo: AutomationsRepository | null = null;
   public automationVariablesRepo: AutomationVariablesRepository | null = null;
+  public savedRegionsRepo: SavedRegionsRepository | null = null;
 
   /**
    * Typed repository accessors — throw if database not initialized.
@@ -572,6 +574,11 @@ class DatabaseService {
   get automationVariables(): AutomationVariablesRepository {
     if (!this.automationVariablesRepo) throw new Error('Database not initialized');
     return this.automationVariablesRepo;
+  }
+
+  get savedRegions(): SavedRegionsRepository {
+    if (!this.savedRegionsRepo) throw new Error('Database not initialized');
+    return this.savedRegionsRepo;
   }
 
   get auth(): AuthRepository {
@@ -911,6 +918,7 @@ class DatabaseService {
       this.deadDropRepo = new DeadDropRepository(drizzleDb, this.drizzleDbType);
       this.automationsRepo = new AutomationsRepository(drizzleDb, this.drizzleDbType);
       this.automationVariablesRepo = new AutomationVariablesRepository(drizzleDb, this.drizzleDbType);
+      this.savedRegionsRepo = new SavedRegionsRepository(drizzleDb, this.drizzleDbType);
 
       logger.info('[DatabaseService] Drizzle repositories initialized successfully');
 

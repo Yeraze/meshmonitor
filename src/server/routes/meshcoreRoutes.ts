@@ -672,6 +672,81 @@ router.post(
 );
 
 /**
+ * Saved regions catalog (#3770) — a GLOBAL, user-maintained list of MeshCore
+ * region names used to populate scope dropdowns (channel settings + per-message
+ * override) so users don't have to type/remember scopes. The catalog is not
+ * source-scoped (a scope is derived purely from a region name), but the routes
+ * live under the source-scoped meshcore router and reuse its auth wiring.
+ *
+ * GET    .../saved-regions      → list all saved regions
+ * POST   .../saved-regions      → { name, note? } add (idempotent)
+ * DELETE .../saved-regions/:id  → delete one
+ */
+router.get(
+  '/saved-regions',
+  requireAuth(),
+  requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
+  async (_req: Request, res: Response) => {
+    try {
+      const regions = await databaseService.savedRegions.getAllAsync();
+      res.json({ success: true, regions });
+    } catch (error) {
+      logger.error('[API] Error listing saved regions:', error);
+      res.status(500).json({ success: false, error: 'Failed to list saved regions' });
+    }
+  },
+);
+
+router.post(
+  '/saved-regions',
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const name = req.body?.name;
+      const note = req.body?.note;
+      if (typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ success: false, error: 'name is required' });
+      }
+      if (name.length > 64) {
+        return res.status(400).json({ success: false, error: 'name must be 64 characters or fewer' });
+      }
+      if (note !== undefined && note !== null && typeof note !== 'string') {
+        return res.status(400).json({ success: false, error: 'note must be a string' });
+      }
+      const region = await databaseService.savedRegions.addAsync(name, note ?? null);
+      res.json({ success: true, region });
+    } catch (error: any) {
+      // addAsync throws on an empty/invalid normalized name.
+      if (error?.message?.includes('Invalid region name')) {
+        return res.status(400).json({ success: false, error: error.message });
+      }
+      logger.error('[API] Error adding saved region:', error);
+      res.status(500).json({ success: false, error: 'Failed to add saved region' });
+    }
+  },
+);
+
+router.delete(
+  '/saved-regions/:regionId',
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.regionId);
+      if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ success: false, error: 'Invalid region id' });
+      }
+      await databaseService.savedRegions.deleteAsync(id);
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('[API] Error deleting saved region:', error);
+      res.status(500).json({ success: false, error: 'Failed to delete saved region' });
+    }
+  },
+);
+
+/**
  * POST /api/sources/:id/meshcore/contacts/:publicKey/trace-path
  *
  * Send a diagnostic trace along the contact's cached forwarding path,

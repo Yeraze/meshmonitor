@@ -115,6 +115,11 @@ import {
   automationVariableValuesSqlite, automationVariableValuesPostgres, automationVariableValuesMysql,
 } from './schema/automationVariables.js';
 
+// MeshCore saved-regions catalog (global — no sourceId) (#3770)
+import {
+  meshcoreSavedRegionsSqlite, meshcoreSavedRegionsPostgres, meshcoreSavedRegionsMysql,
+} from './schema/savedRegions.js';
+
 // Waypoints table
 import {
   waypointsSqlite, waypointsPostgres, waypointsMysql,
@@ -215,6 +220,9 @@ export interface ActiveSchema {
   automationVariables: any;
   automationVariableValues: any;
 
+  // MeshCore saved-regions catalog (global — no sourceId) (#3770)
+  meshcoreSavedRegions: any;
+
   // Waypoints
   waypoints: any;
 
@@ -288,6 +296,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     automationRuns: automationRunsSqlite,
     automationVariables: automationVariablesSqlite,
     automationVariableValues: automationVariableValuesSqlite,
+    meshcoreSavedRegions: meshcoreSavedRegionsSqlite,
     waypoints: waypointsSqlite,
     sources: sourcesSqlite,
     estimatedPositions: estimatedPositionsSqlite,
@@ -342,6 +351,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     automationRuns: automationRunsPostgres,
     automationVariables: automationVariablesPostgres,
     automationVariableValues: automationVariableValuesPostgres,
+    meshcoreSavedRegions: meshcoreSavedRegionsPostgres,
     waypoints: waypointsPostgres,
     sources: sourcesPostgres,
     estimatedPositions: estimatedPositionsPostgres,
@@ -396,6 +406,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     automationRuns: automationRunsMysql,
     automationVariables: automationVariablesMysql,
     automationVariableValues: automationVariableValuesMysql,
+    meshcoreSavedRegions: meshcoreSavedRegionsMysql,
     waypoints: waypointsMysql,
     sources: sourcesMysql,
     estimatedPositions: estimatedPositionsMysql,

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ConnectionStatus, MeshCoreActions } from './hooks/useMeshCore';
+import { ConnectionStatus, MeshCoreActions, SavedRegion } from './hooks/useMeshCore';
 import { useToast } from '../ToastContainer';
 
 // MeshCoreDeviceType.COMPANION — active discovery is companion-only.
@@ -26,7 +26,10 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   const [discovering, setDiscovering] = useState<'nearby' | 'repeaters' | 'sensors' | null>(null);
   // "Be discoverable" toggle — whether we answer inbound discovery requests.
   const [discoverable, setDiscoverableState] = useState(false);
-  const { getDiscoverable, setDiscoverable, getDefaultScope, setDefaultScope, discoverRegions } = actions;
+  const {
+    getDiscoverable, setDiscoverable, getDefaultScope, setDefaultScope, discoverRegions,
+    fetchSavedRegions, addSavedRegion, deleteSavedRegion,
+  } = actions;
 
   // Default region/scope (#3667). `defaultScope` is the persisted value;
   // `scopeInput` is the editable field (so we can show a dirty state).
@@ -36,6 +39,22 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   // Region discovery (#3667 phase 3) — names served by nearby repeaters.
   const [discoveredRegions, setDiscoveredRegions] = useState<string[] | null>(null);
   const [discoveringRegions, setDiscoveringRegions] = useState(false);
+  // Saved-regions catalog (#3770) — a user-maintained list of region names.
+  const [savedRegions, setSavedRegions] = useState<SavedRegion[]>([]);
+  const [newRegionInput, setNewRegionInput] = useState('');
+  const [savingRegion, setSavingRegion] = useState(false);
+
+  // Set of saved region names (lowercased) so discovered chips can show a
+  // "saved" affordance / disable re-saving.
+  const savedRegionNames = React.useMemo(
+    () => new Set(savedRegions.map((r) => r.name.toLowerCase())),
+    [savedRegions],
+  );
+
+  const refreshSavedRegions = useCallback(async () => {
+    const rows = await fetchSavedRegions();
+    if (rows) setSavedRegions(rows);
+  }, [fetchSavedRegions]);
 
   useEffect(() => {
     if (connected && isCompanion) {
@@ -43,6 +62,38 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
       void getDefaultScope().then((s) => { setDefaultScopeState(s); setScopeInput(s); });
     }
   }, [connected, isCompanion, getDiscoverable, getDefaultScope]);
+
+  // Load the saved-regions catalog (global; not gated on connection).
+  useEffect(() => {
+    void refreshSavedRegions();
+  }, [refreshSavedRegions]);
+
+  const handleSaveRegion = async (name: string) => {
+    const trimmed = name.trim().replace(/^#/, '');
+    if (!trimmed) return;
+    setSavingRegion(true);
+    try {
+      const saved = await addSavedRegion(trimmed);
+      if (!saved) {
+        showToast(t('meshcore.regions.save_failed', 'Failed to save region'), 'error');
+        return;
+      }
+      await refreshSavedRegions();
+      setNewRegionInput('');
+      showToast(t('meshcore.regions.saved', 'Region "{{name}}" saved', { name: saved.name }), 'success');
+    } finally {
+      setSavingRegion(false);
+    }
+  };
+
+  const handleDeleteRegion = async (region: SavedRegion) => {
+    const ok = await deleteSavedRegion(region.id);
+    if (!ok) {
+      showToast(t('meshcore.regions.delete_failed', 'Failed to delete region'), 'error');
+      return;
+    }
+    await refreshSavedRegions();
+  };
 
   const handleSaveScope = async () => {
     setSavingScope(true);
@@ -271,27 +322,107 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
             </p>
             {discoveredRegions && discoveredRegions.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
-                {discoveredRegions.map((region) => (
-                  <button
-                    key={region}
-                    type="button"
-                    onClick={() => setScopeInput(region)}
-                    title={t('meshcore.scope.use_region', 'Use "{{region}}" as the default scope', { region })}
-                    style={{
-                      padding: '0.2rem 0.6rem',
-                      borderRadius: 999,
-                      border: '1px solid var(--ctp-blue)',
-                      background: scopeInput.trim().replace(/^#/, '') === region ? 'var(--ctp-blue)' : 'transparent',
-                    }}
-                  >
-                    {region}
-                  </button>
-                ))}
+                {discoveredRegions.map((region) => {
+                  const isSaved = savedRegionNames.has(region.toLowerCase());
+                  return (
+                    <span
+                      key={region}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                        padding: '0.1rem 0.3rem', borderRadius: 999, border: '1px solid var(--ctp-blue)',
+                        background: scopeInput.trim().replace(/^#/, '') === region ? 'var(--ctp-blue)' : 'transparent',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setScopeInput(region)}
+                        title={t('meshcore.scope.use_region', 'Use "{{region}}" as the default scope', { region })}
+                        style={{ padding: '0.1rem 0.3rem', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                      >
+                        {region}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isSaved || savingRegion}
+                        onClick={() => void handleSaveRegion(region)}
+                        title={isSaved
+                          ? t('meshcore.regions.already_saved', 'Already in saved regions')
+                          : t('meshcore.regions.save_this', 'Save "{{region}}" to your regions list', { region })}
+                        style={{
+                          padding: '0.05rem 0.35rem', border: 'none', background: 'transparent',
+                          cursor: isSaved ? 'default' : 'pointer', opacity: isSaved ? 0.5 : 1,
+                        }}
+                      >
+                        {isSaved ? '✓' : '＋'}
+                      </button>
+                    </span>
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
       )}
+
+      <div className="form-section">
+        <h3>{t('meshcore.regions.title', 'Saved regions')}</h3>
+        <p className="hint">
+          {t('meshcore.regions.hint',
+            'A list of region/scope names you maintain. Save regions reported by repeaters or add your own, ' +
+            'then pick them when setting a channel scope or overriding the scope for a single message. ' +
+            'Letters, digits and hyphens only.')}
+        </p>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <input
+            type="text"
+            value={newRegionInput}
+            onChange={(e) => setNewRegionInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveRegion(newRegionInput); }}
+            placeholder={t('meshcore.regions.add_placeholder', 'e.g. muenchen')}
+            disabled={savingRegion}
+            maxLength={63}
+            spellCheck={false}
+            autoComplete="off"
+            style={{ flex: 1 }}
+          />
+          <button
+            type="button"
+            onClick={() => void handleSaveRegion(newRegionInput)}
+            disabled={savingRegion || !newRegionInput.trim()}
+          >
+            {savingRegion ? t('common.saving', 'Saving…') : t('meshcore.regions.add', 'Add')}
+          </button>
+        </div>
+        {savedRegions.length === 0 ? (
+          <p className="hint" style={{ fontSize: '0.8rem' }}>
+            {t('meshcore.regions.empty', 'No saved regions yet.')}
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+            {savedRegions.map((region) => (
+              <span
+                key={region.id}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                  padding: '0.2rem 0.5rem', borderRadius: 999,
+                  border: '1px solid var(--ctp-surface2)', background: 'var(--ctp-surface0)',
+                }}
+              >
+                <span>{region.name}</span>
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteRegion(region)}
+                  title={t('meshcore.regions.delete', 'Delete "{{name}}"', { name: region.name })}
+                  aria-label={t('meshcore.regions.delete', 'Delete "{{name}}"', { name: region.name })}
+                  style={{ padding: '0 0.2rem', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
 
       {status?.localNode && (
         <div className="form-section">

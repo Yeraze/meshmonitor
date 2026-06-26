@@ -34,7 +34,32 @@ vi.mock('../ToastContainer', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));
 
-const csrfFetchMock = vi.fn();
+// A single vi.fn mock. The saved-regions catalog fetch (#3770) fires on mount on
+// its own effect; we special-case it inside the implementation so it returns an
+// empty list WITHOUT consuming a queued once-value meant for the channel CRUD
+// calls. Channel calls fall through to a per-test FIFO queue populated by
+// `queueResponse(...)` (aliased to `mockResolvedValueOnce` so the existing tests
+// read naturally). Assertions on call URLs use `channelCalls`, which excludes
+// the saved-regions noise.
+let responseQueue: Response[] = [];
+let channelCalls: any[][] = [];
+const csrfFetchMock = vi.fn((url: string, ...rest: any[]) => {
+  if (typeof url === 'string' && url.includes('/saved-regions')) {
+    return Promise.resolve(
+      new Response(JSON.stringify({ success: true, regions: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+  }
+  channelCalls.push([url, ...rest]);
+  const next = responseQueue.shift();
+  return Promise.resolve(next ?? new Response('null', { status: 200, headers: { 'content-type': 'application/json' } }));
+});
+// Shim the queue-driving + reset API the existing tests call on the mock.
+(csrfFetchMock as any).mockResolvedValueOnce = (v: Response) => { responseQueue.push(v); return csrfFetchMock; };
+(csrfFetchMock as any).mockReset = () => { responseQueue = []; channelCalls = []; csrfFetchMock.mockClear(); return csrfFetchMock; };
+
 vi.mock('../../hooks/useCsrfFetch', () => ({
   useCsrfFetch: () => csrfFetchMock,
 }));
@@ -80,7 +105,7 @@ describe('MeshCoreChannelsConfigSection — list rendering', () => {
       expect(screen.getByText('# Channel 2')).toBeTruthy();
     });
 
-    const calledUrl = csrfFetchMock.mock.calls[0][0] as string;
+    const calledUrl = channelCalls[0][0] as string;
     expect(calledUrl).toContain('/api/channels/all?sourceId=src-a');
   });
 
@@ -161,7 +186,7 @@ describe('MeshCoreChannelsConfigSection — add channel', () => {
     });
 
     // Find the PUT call.
-    const putCall = csrfFetchMock.mock.calls.find(
+    const putCall = channelCalls.find(
       c => typeof c[1]?.method === 'string' && c[1].method === 'PUT',
     );
     expect(putCall).toBeDefined();
@@ -255,7 +280,7 @@ describe('MeshCoreChannelsConfigSection — hashtag channels', () => {
 
     let putCall: any;
     await waitFor(() => {
-      putCall = csrfFetchMock.mock.calls.find(
+      putCall = channelCalls.find(
         c => typeof c[1]?.method === 'string' && c[1].method === 'PUT',
       );
       expect(putCall).toBeDefined();
@@ -300,7 +325,7 @@ describe('MeshCoreChannelsConfigSection — hashtag channels', () => {
 
     let putCall: any;
     await waitFor(() => {
-      putCall = csrfFetchMock.mock.calls.find(
+      putCall = channelCalls.find(
         c => typeof c[1]?.method === 'string' && c[1].method === 'PUT',
       );
       expect(putCall).toBeDefined();
@@ -344,7 +369,7 @@ describe('MeshCoreChannelsConfigSection — delete + secret-visibility', () => {
       fireEvent.click(deleteButtons[1]);
     });
 
-    const deleteCall = csrfFetchMock.mock.calls.find(
+    const deleteCall = channelCalls.find(
       c => typeof c[1]?.method === 'string' && c[1].method === 'DELETE',
     );
     expect(deleteCall).toBeDefined();

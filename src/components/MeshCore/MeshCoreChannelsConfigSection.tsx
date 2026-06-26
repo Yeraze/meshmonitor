@@ -114,9 +114,33 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
   const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+  // Saved-regions catalog (#3770) — offered as scope-field suggestions so the
+  // operator can pick a known region instead of typing it.
+  const [savedRegions, setSavedRegions] = useState<string[]>([]);
   const { showToast } = useToast();
 
   const reload = useCallback(() => setReloadTick(v => v + 1), []);
+
+  // Load the global saved-regions catalog for the scope-field datalist (#3770).
+  // Cheap local DB read, independent of device connection.
+  useEffect(() => {
+    if (!sourceId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const url = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/saved-regions`;
+        const response = await csrfFetch(url);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled && data?.success && Array.isArray(data.regions)) {
+          setSavedRegions(data.regions.map((r: any) => String(r.name)).filter(Boolean));
+        }
+      } catch {
+        /* non-fatal — suggestions are optional */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [baseUrl, sourceId, csrfFetch]);
 
   useEffect(() => {
     if (!sourceId) return;
@@ -379,6 +403,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
                     onSecretChange={setEditSecretHex}
                     scope={editScope}
                     onScopeChange={setEditScope}
+                    regionSuggestions={savedRegions}
                     showSecret={showSecret}
                     onToggleShowSecret={() => setShowSecret(v => !v)}
                     onRegenerate={handleRegenerate}
@@ -417,6 +442,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
             onSecretChange={setEditSecretHex}
             scope={editScope}
             onScopeChange={setEditScope}
+            regionSuggestions={savedRegions}
             showSecret={showSecret}
             onToggleShowSecret={() => setShowSecret(v => !v)}
             onRegenerate={handleRegenerate}
@@ -454,6 +480,9 @@ interface ChannelEditorProps {
    *  inherit the source default scope / unscoped. */
   scope: string;
   onScopeChange: (v: string) => void;
+  /** Saved region names (#3770) offered as datalist suggestions on the scope
+   *  field so the operator can pick a known region instead of typing it. */
+  regionSuggestions: string[];
   showSecret: boolean;
   onToggleShowSecret: () => void;
   onRegenerate: () => void;
@@ -474,6 +503,7 @@ const ChannelEditor: React.FC<ChannelEditorProps> = ({
   onSecretChange,
   scope,
   onScopeChange,
+  regionSuggestions,
   showSecret,
   onToggleShowSecret,
   onRegenerate,
@@ -560,6 +590,7 @@ const ChannelEditor: React.FC<ChannelEditorProps> = ({
       <input
         id={`mc-ch-scope-${idx}`}
         type="text"
+        list={`mc-ch-scope-regions-${idx}`}
         value={scope}
         onChange={e => onScopeChange(e.target.value)}
         placeholder={t('meshcore.channels.scope_placeholder', 'e.g. muenchen — leave blank to inherit default')}
@@ -569,6 +600,11 @@ const ChannelEditor: React.FC<ChannelEditorProps> = ({
         maxLength={63}
         style={{ width: '100%' }}
       />
+      {regionSuggestions.length > 0 && (
+        <datalist id={`mc-ch-scope-regions-${idx}`}>
+          {regionSuggestions.map(r => <option key={r} value={r} />)}
+        </datalist>
+      )}
       <p className="hint" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
         {t(
           'meshcore.channels.scope_hint',

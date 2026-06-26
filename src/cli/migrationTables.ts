@@ -83,6 +83,8 @@ export const TABLE_ORDER = [
   'automation_runs',
   'automation_variables',
   'automation_variable_values',
+  // 3770: global MeshCore saved-regions catalog. No sourceId / no FK.
+  'meshcore_saved_regions',
 ];
 
 // Tables in the 4.0 schema that carry a `sourceId` column. When the source
