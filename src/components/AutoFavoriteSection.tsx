@@ -166,7 +166,7 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
           {t('automation.auto_favorite.description',
-            'Automatically favorite eligible nodes for zero-cost hop routing.')}{' '}
+            'Automatically favorite eligible nodes for zero-cost hop and prioritized routing.')}{' '}
           <a
             href="https://meshtastic.org/blog/zero-cost-hops-favorite-routers/"
             target="_blank"
