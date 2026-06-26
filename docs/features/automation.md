@@ -1936,18 +1936,27 @@ Navigate to **Settings > Automation** and find the **Auto Favorite** section.
 
 ### Eligibility Rules
 
-Which nodes are auto-favorited depends on your local node's role:
+Auto-favorite only runs at all when your **local node's role** is `Router`, `Router_Late`, or `Client_Base`. On any other local role (`Client`, `Client_Mute`, etc.) the feature stays inactive.
 
-| Local Node Role | Eligible Nodes |
-|----------------|----------------|
-| Client / Client_Mute | Direct neighbors only (hopsAway = 1) |
-| Router / Router_Client | All heard nodes (any hop count) |
-| Repeater | All heard nodes (any hop count) |
+When active, it only auto-favorites a **target node** that is a **0-hop neighbor** (`hopsAway = 0`) whose own role is a **relay role**:
 
-Nodes must also:
-- Have a valid `longName` (not unknown/unnamed)
-- Not be the local node itself
+| Target Node Role | Auto-Favorited? |
+|------------------|-----------------|
+| Router | Yes (relay role) |
+| Router_Late | Yes (relay role) |
+| Client_Base | Yes (relay role) |
+| Client | **Never** (does not relay) |
+| Client_Mute | **Never** (does not relay) |
+
+`Client` and `Client_Mute` nodes never relay traffic, so they are **never** auto-favorited regardless of your local node's role (issue #3774).
+
+Targets must also:
+- Be exactly 0 hops away (`hopsAway = 0`) — direct RF neighbors only
+- Not have been heard via MQTT
+- Not already be favorited
 - Not have `favoriteLocked = true` (manually managed)
+
+> **Tip:** On a `Client_Base` local node, nearby `Client` / `Client_Mute` devices are intentionally skipped by auto-favorite. If you want those pinned, favorite them **manually** by clicking the star.
 
 ### Permissions
 

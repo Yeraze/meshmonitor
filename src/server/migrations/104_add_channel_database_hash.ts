@@ -64,6 +64,15 @@ export const migration = {
  * RENAME it into place.  The new table starts with 0 tombstones.
  */
 async function rebuildChannelDatabasePostgres(client: import('pg').PoolClient): Promise<void> {
+  // Wrap the destructive rebuild in a single transaction. It DROPs the live
+  // channel_database and RENAMEs a fresh copy into place, and the outer
+  // migration runner opens no transaction of its own. PostgreSQL DDL is
+  // transactional, so an error/crash mid-rebuild rolls back to the original
+  // table intact instead of leaving the database with no channel_database
+  // (which would also make this migration's own idempotency check throw
+  // "relation does not exist" on the next startup).
+  await client.query('BEGIN');
+  try {
   // Clean up a leftover scratch table from any previous failed rebuild.
   await client.query(`DROP TABLE IF EXISTS channel_database_new`);
 
@@ -143,6 +152,13 @@ async function rebuildChannelDatabasePostgres(client: import('pg').PoolClient): 
             ON DELETE CASCADE
     `);
     logger.debug('Migration 104 (PostgreSQL): re-attached FK on channel_database_permissions');
+  }
+
+    await client.query('COMMIT');
+  } catch (err) {
+    // Roll back to the original channel_database; nothing is dropped.
+    await client.query('ROLLBACK');
+    throw err;
   }
 }
 

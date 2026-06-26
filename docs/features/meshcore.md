@@ -23,6 +23,7 @@ When a MeshCore source is connected, you get:
 - **Repeater neighbour list** — Query a repeater's neighbour table with SNR and last-heard timestamps, with results rendered on the map
 - **Path visualization** — Show route lines on the map colored by hop count, with Discover Path buttons for manual route establishment
 - **Auto-pathfinding** — Scheduled path discovery and neighbor collection across your entire mesh
+- **Region / scope tagging** — Stamp outgoing flood traffic with a named region so meshes that drop un-scoped packets (e.g. `region denyf *`) forward it; per-channel, per-source default, and per-message override
 - **Room server support** — Login, post, and auto-sync with MeshCore room servers (BBS-style message boards)
 - **@mention highlighting** — Messages mentioning your name are visually highlighted
 - **Delivery status** — Sent DMs show pending/confirmed/failed indicators
@@ -122,6 +123,10 @@ A map of every contact with valid coordinates, plus a styled row list aligned to
 
 The device's channels with the most recent message stream. Channel-message senders are now extracted from the `"Name: body"` prefix that MeshCore embeds in the text body, so the sender column and the message body are no longer collapsed into one string.
 
+**Unread indicators** — channels with messages newer than the last time you opened them show an unread dot and a **bold name** in the channel list. A header badge counts how many channels currently have unread messages, and an optional **"unread first"** sort toggle (persisted) floats those channels to the top. Opening a channel marks it read up to the newest visible message. MeshCore read state is tracked **client-side in `localStorage`, scoped by `sourceId`** — there's no server-side MeshCore read table, so read markers are per-browser rather than per-account.
+
+**Heard repeaters** — outgoing channel posts show a **📡 N** badge with an expandable list of the repeaters that re-flooded the message and the SNR each was heard at. This is populated best-effort by **self-echo correlation**: when a repeater re-floods your `GRP_TXT` packet, MeshMonitor hears it inbound and attributes the relay hashes to the most recent matching channel send within a ~30-second window. Channel sends carry no protocol ACK, so this is a heuristic, not a delivery receipt. Correlation runs on the raw inbound packet before the opt-in packet-monitor gate, so it works **regardless of whether the packet monitor is enabled**. Relay hashes are resolved to repeater names where known; otherwise the raw hash is shown.
+
 ### Direct Messages
 
 Per-contact DM view with a **contact-detail panel** that mirrors the Meshtastic NodeDetailsBlock. It surfaces:
@@ -133,6 +138,7 @@ Per-contact DM view with a **contact-detail panel** that mirrors the Meshtastic 
 - Position (if known)
 - Full public key
 - **Discover Path** button — triggers firmware CMD 52 to establish/refresh the route to a companion contact
+- **Define Path** editor — manually set the route to a contact when you already know the relay hops, instead of probing for it. Add hops in order and pick the per-hop **hash width** (1, 2, or 3 bytes) — the selector is pre-filled from the current path, and changing the width clears the hop list since the encoding differs. The hop count is capped at 63. Use this when Discover Path can't reach the contact but you know the topology.
 - **Delivery status** — sent DMs show pending / confirmed / failed indicators with timestamp tooltips
 
 Contact names in messages are **clickable** — clicking a name navigates directly to that contact's DM thread. Messages containing **@YourName** are visually highlighted.
@@ -140,6 +146,31 @@ Contact names in messages are **clickable** — clicking a name navigates direct
 The panel is collapsible with state persisted to localStorage.
 
 The **per-node remote-telemetry config** panel hangs off the contact-detail panel (see [Per-Node Remote Telemetry](#per-node-remote-telemetry) below).
+
+::: warning Repeaters have no DM composer
+MeshCore repeaters (`advType=2`) can't hold a conversation, so they no longer expose a message composer. The 💬 button is hidden on repeater rows, and selecting a repeater shows its node detail and telemetry/graphs instead of an (empty) conversation pane. The repeater stays listed in the contact sidebar — only the chat surface is dropped. The Meshtastic side does the same for nodes flagged unmessagable.
+:::
+
+### Message route line
+
+Received channel and DM messages show a route line beneath the body, derived from the packet's relay path:
+
+- **📍 direct** — heard with zero hops (direct RF).
+- **🛰 N hops · a3 → 7f → 02** — relayed; the chain lists each relay's hash in order.
+
+Room-server posts and messages with no recoverable path show no route line.
+
+### Send bar
+
+Below every MeshCore composer (channel and DM) a live **`<bytes>/<limit>`** counter shows how much of the packet budget the current draft uses. Counting is **UTF-8 byte-accurate**, not character-based, so emoji and CJK characters cost more than one byte each. Limits are per-context:
+
+| Context | Limit |
+|---|---|
+| Channel message | 130 bytes |
+| Channel message with a scope/region | 120 bytes |
+| Direct message | 150 bytes |
+
+The counter appears only once the draft is non-empty, turns **yellow at 90%** of the limit and **red when over**, and the **Send button is disabled while over the limit** (the backend rejects an over-budget send as well).
 
 ### Node Info
 
@@ -192,7 +223,70 @@ You configure this from the contact-detail panel in the Direct Messages view:
 
 The config requires `configuration:write` on the source. Read-only users see the panel with controls disabled and a banner explaining why.
 
+#### On-demand polling
+
+Alongside the scheduled config, the panel has two buttons to pull telemetry from a node right now instead of waiting for its interval:
+
+- **Poll Status** — requests battery / uptime / counters (repeater- and room-server-oriented).
+- **Poll Environment (LPP)** — requests a Cayenne-LPP environment reading (companion-oriented).
+
+Both transmit on the mesh, so they share the per-source **60-second mesh-TX gate** — if another scheduled or manual op fired too recently the request is refused with **HTTP 429 and a `Retry-After`**, surfaced as a throttle message on the button. Each button shows a pending state and reports how many telemetry rows were written. On-demand polling requires only **`nodes:read`** on the source (and returns 409 if the source isn't connected).
+
 The composite primary key on `meshcore_nodes` is `(sourceId, publicKey)`, so the same device advertising under two different sources is tracked independently.
+
+## Regions / Scopes
+
+Some MeshCore meshes restrict which flood traffic their repeaters forward. A repeater running `region denyf *` **drops any un-scoped flood packet** — so a message MeshMonitor sends without a scope simply never propagates past those repeaters. The Germany mesh is the most common example.
+
+A **scope** (also called a **region**) is just a named tag — e.g. `germany` or `muenchen` — that MeshMonitor stamps onto outgoing flood traffic. Repeaters configured to allow that region then forward it. The wire value is derived purely from the name (a hash of `#<name>`), so two operators only have to agree on the text of the region name to interoperate; there's no shared key to exchange.
+
+::: warning One global scope on the device
+The MeshCore companion firmware exposes only a **single, global flood scope**, not a per-channel one. MeshMonitor owns the per-channel/per-source scope mapping itself and asserts the right scope on the device immediately before each send, serializing those operations per source. If the scope can't be asserted, the send is aborted rather than leaked un-scoped.
+:::
+
+### Setting a scope
+
+There are three layers, resolved most-specific-first (**channel scope → source default scope → unscoped**):
+
+- **Per-channel Region / Scope** — each channel's settings has a **Region / Scope** field. Traffic on that channel is stamped with this scope.
+- **Per-source default scope** — the MeshCore **Settings** view has a default-scope section backed by the `meshcoreDefaultScope` setting. Channels without their own scope fall back to this, so you can scope a whole source with one value.
+- **Unscoped** — leave both blank and traffic goes out with no scope (the legacy behavior).
+
+Channel-settings and the per-message override both offer a region-picker **datalist** drawn from your saved + discovered regions (see below); free typing is still allowed. Region names are normalized (leading `#` stripped; letters, digits, and hyphens kept).
+
+### What gets scoped
+
+Originated flood traffic is scoped end-to-end. That covers channel messages, DM messages, **adverts**, **remote-admin login**, **remote telemetry requests**, and **remote CLI commands**. Operations that are never flood-forwarded — node discovery (zero-hop), local/config-only commands, and direct-routed traffic — are intentionally left alone.
+
+### Discover Regions
+
+In the default-scope section of MeshCore **Settings**, the **Discover Regions** button asks nearby repeaters which regions they serve:
+
+- It runs a **0-hop sweep first** and queries **only the repeaters (and room servers) that answer in direct RF range**, in arrival order — not every repeater you've ever heard.
+- If the first sweep finds nothing it **retries once**.
+- It distinguishes the two empty cases: **no nearby (0-hop) repeaters were found** vs. **repeaters answered but reported no regions**.
+
+Discovered region names render as chips you can click to fill the scope field, and each chip has a save (**＋**, **✓** once saved) button to add it to the catalog.
+
+::: tip Why 0-hop
+A repeater only answers a regions query over a direct route, so MeshMonitor installs a zero-hop path to each responder before asking. A benign `set_out_path` ack-timeout during this step is expected and logged at debug level — it doesn't mean the discovery failed.
+:::
+
+### Per-message scope override
+
+Next to the channel compose box is an optional one-off **scope/region override**. It applies to that single message and is **never persisted** to the channel — your next normal send re-asserts the channel/default scope. It defaults to the channel's resolved scope, offers the same discovered/saved-region datalist, and resets when you switch channels. Leave it blank/whitespace to send that one message explicitly unscoped.
+
+### Scope of received messages
+
+Received channel and DM messages show a scope line so you can tell how a message reached you. MeshMonitor recovers the scope by recomputing each of your known region names against the packet (the raw name can't be reversed out of the wire value):
+
+- **🌐 no scope** — the message was sent un-scoped.
+- **🔒 muenchen** — scoped to a region you know; the name is shown.
+- **🔒 #a3f2** — scoped, but to a region not in your known set; the raw code is shown as hex.
+
+### Saved regions catalog
+
+The MeshCore **Settings** view has a **Saved regions** section — a catalog of region names (with optional notes) you've saved, so you don't have to retype them. The catalog is **global** (shared across all MeshCore sources, not per-source). Saved regions feed the region-picker datalists on the channel scope field and on the per-message override (the override list is the de-duplicated union of saved + discovered regions). Add regions inline (or via the **＋** on a discovered-region chip) and delete them per-item.
 
 ## Remote Administration
 

@@ -46,6 +46,18 @@ Configuration changes directly modify your Meshtastic device settings. Always en
 - Typically derived from long name (e.g., "Base Station 1" → "BS01")
 - Avoid ambiguous abbreviations
 
+### Unmessagable Nodes
+
+**Description**: Nodes that advertise the `is_unmessagable` flag (and unlicensed nodes, `is_licensed = false`, where applicable) cannot receive direct messages — sensors, repeaters, and similar devices set this so DMs sent to them would silently go nowhere.
+
+**Effect in MeshMonitor**: For these nodes, MeshMonitor hides the direct-message UI entirely instead of offering a composer that can't deliver:
+- The 💬 DM button is hidden in the Nodes tab.
+- Selecting the node in the Messages tab shows its node detail and per-node telemetry in place of the conversation — the message log, send composer, and mesh-transmit actions are not shown.
+
+**Side Effects**:
+- The node remains fully listed and selectable in the node/contact lists, with all of its indicators, detail, and telemetry intact.
+- No messaging entry point is offered, avoiding the misleading "delivered" acknowledgements that occur when a relay acks a packet the target never received.
+
 ### Related Meshtastic Documentation
 
 - [Meshtastic Device Configuration](https://meshtastic.org/docs/configuration/radio/device/)

@@ -114,6 +114,7 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: 'Automation', link: '/features/automation' },
+            { text: 'Automation Engine', link: '/features/automation-engine' },
             { text: 'Geofence Triggers', link: '/features/geofence-triggers' },
             { text: 'Auto Heap Management', link: '/features/auto-heap-management' },
             { text: 'Push Notifications', link: '/features/notifications' }
