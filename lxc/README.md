@@ -50,7 +50,7 @@ This will:
 4. Build the application inside the container chroot (npm install, build, build:server)
 5. Install and configure systemd service units
 6. Create the meshmonitor user and set permissions
-7. Install meshmonitor-update to /usr/local/bin for in-place future updates
+7. Bundle meshmonitor-update in `lxc/` — self-installs to `/usr/local/bin` on first operator run
 8. Package everything as a `.tar.gz` template
 
 Output: `lxc/build/meshmonitor-<version>-amd64.tar.gz`
