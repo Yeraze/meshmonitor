@@ -351,6 +351,18 @@ function insertMessageWithSourceSql(backend: TestBackend, id: string, channel: n
   }
 }
 
+// SQL to insert a text message flagged as received via MQTT (viaMqtt = true).
+// Used to assert the excludeMqtt unread filter (#3787).
+function insertMqttMessageSql(backend: TestBackend, id: string, channel: number, timestamp: number): string {
+  if (backend.dbType === 'sqlite') {
+    return `INSERT INTO messages (id, fromNodeNum, toNodeNum, fromNodeId, toNodeId, text, channel, portnum, timestamp, createdAt, viaMqtt) VALUES ('${id}', 1, 2, '!node1', '!node2', 'test', ${channel}, 1, ${timestamp}, ${timestamp}, 1)`;
+  } else if (backend.dbType === 'postgres') {
+    return `INSERT INTO messages (id, "fromNodeNum", "toNodeNum", "fromNodeId", "toNodeId", text, channel, portnum, timestamp, "viaMqtt") VALUES ('${id}', 1, 2, '!node1', '!node2', 'test', ${channel}, 1, ${timestamp}, true)`;
+  } else {
+    return `INSERT INTO messages (id, fromNodeNum, toNodeNum, fromNodeId, toNodeId, \`text\`, channel, portnum, timestamp, viaMqtt) VALUES ('${id}', 1, 2, '!node1', '!node2', 'test', ${channel}, 1, ${timestamp}, true)`;
+  }
+}
+
 // SQL to insert a node (needed for foreign keys in messages for sqlite)
 function insertNodeSql(backend: TestBackend, nodeNum: number): string {
   const now = Date.now();
@@ -707,6 +719,28 @@ function runNotificationsTests(getBackend: () => TestBackend) {
   });
 
   // ============ markChannelMessagesAsRead ============
+
+  describe('getUnreadCountsByChannelAsync — excludeMqtt (#3787)', () => {
+    it('counts MQTT messages by default but excludes them when excludeMqtt is set', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'testuser'));
+      // Two RF (non-MQTT) text messages and one MQTT-bridged message on channel 0.
+      await backend.exec(insertMessageSql(backend, 'rf1', 0, 1, 1000));
+      await backend.exec(insertMessageSql(backend, 'rf2', 0, 1, 2000));
+      await backend.exec(insertMqttMessageSql(backend, 'mqtt1', 0, 3000));
+
+      // Default: all three unread messages counted.
+      const all = await repo.getUnreadCountsByChannelAsync(1, undefined, undefined, false);
+      expect(all[0]).toBe(3);
+
+      // excludeMqtt: the MQTT-bridged message is dropped from the count, so the
+      // sidebar dot and per-channel badge stay in sync with the hidden-MQTT view.
+      const rfOnly = await repo.getUnreadCountsByChannelAsync(1, undefined, undefined, true);
+      expect(rfOnly[0]).toBe(2);
+    });
+  });
 
   describe('markChannelMessagesAsRead', () => {
     it('marks channel messages as read for a user', async () => {
