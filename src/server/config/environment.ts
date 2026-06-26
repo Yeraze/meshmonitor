@@ -711,17 +711,19 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   const customLogoUrlRaw = process.env.CUSTOM_LOGO_URL?.trim();
   let customLogoUrl = { value: customLogoUrlRaw || undefined, wasProvided: !!customLogoUrlRaw };
   // Only allow safe URL schemes for the logo image. http(s), protocol-relative,
-  // data:image, and same-origin relative paths are accepted; anything else
-  // (e.g. javascript:) is rejected to avoid surfacing a hostile URL in markup.
+  // same-origin relative paths, and raster data:image URIs are accepted.
+  // data:image/svg+xml is intentionally rejected — SVG can embed <script>, and
+  // anything else (e.g. javascript:) is rejected to avoid surfacing a hostile
+  // URL in markup.
   if (customLogoUrl.value) {
     const v = customLogoUrl.value;
     const safe =
       /^https?:\/\//i.test(v) ||
       /^\/\//.test(v) ||
-      /^data:image\//i.test(v) ||
+      /^data:image\/(png|jpe?g|gif|webp|avif)[;,]/i.test(v) ||
       v.startsWith('/');
     if (!safe) {
-      logger.warn(`⚠️  Invalid CUSTOM_LOGO_URL value: "${v}". Expected an http(s), data:image, or relative URL. Ignoring.`);
+      logger.warn(`⚠️  Invalid CUSTOM_LOGO_URL value: "${v}". Expected an http(s), raster data:image (png/jpeg/gif/webp/avif — not svg), or relative URL. Ignoring.`);
       customLogoUrl = { value: undefined, wasProvided: false };
     }
   }

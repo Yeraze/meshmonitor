@@ -1136,5 +1136,36 @@ describe('Authentication Routes', () => {
 
       expect(response.body.customLogoUrl).toBeNull();
     });
+
+    it('treats a whitespace-only CUSTOM_TITLE as unset', async () => {
+      process.env.CUSTOM_TITLE = '   ';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      const response = await request(app).get('/api/auth/status').expect(200);
+
+      expect(response.body.customTitle).toBeNull();
+    });
+
+    it('rejects an SVG data: URI logo (can embed scripts)', async () => {
+      process.env.CUSTOM_LOGO_URL = 'data:image/svg+xml,<svg onload="alert(1)"></svg>';
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      const response = await request(app).get('/api/auth/status').expect(200);
+
+      expect(response.body.customLogoUrl).toBeNull();
+    });
+
+    it('accepts a raster data: URI logo', async () => {
+      const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+      process.env.CUSTOM_LOGO_URL = png;
+      const { resetEnvironmentConfig } = await import('../config/environment.js');
+      resetEnvironmentConfig();
+
+      const response = await request(app).get('/api/auth/status').expect(200);
+
+      expect(response.body.customLogoUrl).toBe(png);
+    });
   });
 });

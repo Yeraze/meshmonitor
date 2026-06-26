@@ -42,9 +42,12 @@ export interface AuthStatus {
   oidcEnabled: boolean;
   localAuthDisabled: boolean;
   anonymousDisabled: boolean;
-  /** Optional login-page branding from CUSTOM_TITLE / CUSTOM_LOGO_URL env vars. */
-  customTitle?: string | null;
-  customLogoUrl?: string | null;
+  /**
+   * Login-page branding from CUSTOM_TITLE / CUSTOM_LOGO_URL env vars.
+   * Always present in the /status response (null when unset).
+   */
+  customTitle: string | null;
+  customLogoUrl: string | null;
 }
 
 export interface LoginResult {

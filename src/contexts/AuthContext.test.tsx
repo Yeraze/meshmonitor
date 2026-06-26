@@ -69,6 +69,8 @@ const mockAuthStatus = {
   oidcEnabled: false,
   localAuthDisabled: false,
   anonymousDisabled: false,
+  customTitle: null,
+  customLogoUrl: null,
 };
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (

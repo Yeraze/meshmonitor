@@ -199,9 +199,9 @@ See the [Push Notifications guide](/features/notifications) for setup instructio
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `CUSTOM_TITLE` | Overrides the "MeshMonitor" heading on the login page | `MeshMonitor` |
-| `CUSTOM_LOGO_URL` | Overrides the login-page logo with your own image (http(s), `data:image`, or same-origin relative URL) | built-in SVG |
+| `CUSTOM_LOGO_URL` | Overrides the login-page logo with your own image (http(s), raster `data:image` — png/jpeg/gif/webp/avif, or same-origin relative URL) | built-in SVG |
 
-**Note**: Both are optional and apply only to the login page. When unset (or when `CUSTOM_LOGO_URL` uses an unsupported scheme such as `javascript:`), MeshMonitor falls back to the default title and logo.
+**Note**: Both are optional and apply only to the login page. When unset — or when `CUSTOM_LOGO_URL` uses an unsupported scheme such as `javascript:` or a `data:image/svg+xml` URI (rejected because SVG can embed scripts) — MeshMonitor falls back to the default title and logo. Relative paths are resolved against the server's own origin.
 
 ### System Management Variables
 
