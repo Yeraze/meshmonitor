@@ -28,6 +28,8 @@ vi.mock('../services/database.js', () => ({
     getSetting: mockGetSetting,
     setSetting: mockSetSetting,
     upsertNode: mockUpsertNode,
+    // #3796: node writes route through upsertNodeAsync -> nodes.upsertNode.
+    upsertNodeAsync: mockUpsertNode,
     getNode: mockGetNode,
     deleteNode: mockDeleteNode,
     suppressGhostNode: mockSuppressGhostNode,

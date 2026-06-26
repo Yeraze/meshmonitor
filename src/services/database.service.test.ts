@@ -6,7 +6,7 @@
  *
  * @vitest-environment node
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ─── Mock config before singleton construction ────────────────────────────────
 
@@ -215,9 +215,16 @@ vi.mock('../utils/themeValidation.js', () => ({
   OPTIONAL_THEME_COLORS: [],
 }));
 
+// notifyNewNode is reached via a dynamic import inside maybeNotifyNewNode (#3796).
+const mockNotifyNewNode = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+vi.mock('../server/services/notificationService.js', () => ({
+  notificationService: { notifyNewNode: mockNotifyNewNode },
+}));
+
 // ─── Import singleton AFTER all mocks ────────────────────────────────────────
 
 import databaseService from './database.js';
+import { isNodeComplete } from '../utils/nodeHelpers.js';
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -677,5 +684,121 @@ describe('DatabaseService — checkPermissionAsync', () => {
       // User 7: nothing
       expect(await databaseService.checkPermissionAsync(7, 'messages', 'read', 'src-A')).toBe(false);
     });
+  });
+});
+
+// ─── upsertNodeAsync new-node notification (#3796) ───────────────────────────
+//
+// Regression for the bug where directly-connected Meshtastic nodes never
+// triggered a "Newly Found Node" notification: meshtasticManager wrote nodes
+// via databaseService.nodes.upsertNode() (the repo) which bypassed the notify
+// logic. It now routes through databaseService.upsertNodeAsync(), which fires
+// notifyNewNode on the incomplete -> complete transition.
+describe('DatabaseService.upsertNodeAsync — new node notification (#3796)', () => {
+  let getNodeSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    mockNotifyNewNode.mockClear();
+    mockNodesRepo.upsertNode.mockClear();
+    // Default: nodes are incomplete unless a test opts in. No pre-existing node.
+    vi.mocked(isNodeComplete).mockReturnValue(false);
+    getNodeSpy = vi.spyOn(databaseService, 'getNode').mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    getNodeSpy.mockRestore();
+    vi.mocked(isNodeComplete).mockReturnValue(false);
+  });
+
+  // maybeNotifyNewNode fires via a dynamic import().then() — give those
+  // microtasks a chance to settle before asserting a NON-call.
+  const settle = async () => {
+    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
+  };
+
+  it('fires notifyNewNode when a directly-connected node first becomes complete', async () => {
+    vi.mocked(isNodeComplete).mockReturnValue(true);
+
+    await databaseService.upsertNodeAsync(
+      { nodeNum: 0x1111aaaa, nodeId: '!1111aaaa', longName: 'Rover One', shortName: 'RV1', hwModel: 31 },
+      'src1'
+    );
+
+    await vi.waitFor(() => expect(mockNotifyNewNode).toHaveBeenCalledTimes(1));
+    expect(mockNotifyNewNode).toHaveBeenCalledWith(
+      '!1111aaaa', 'Rover One', 'RV1', 31, undefined, 'src1', expect.any(String)
+    );
+  });
+
+  it('does NOT fire for an incomplete node (no NodeInfo received yet)', async () => {
+    vi.mocked(isNodeComplete).mockReturnValue(false);
+
+    await databaseService.upsertNodeAsync(
+      { nodeNum: 0x2222bbbb, nodeId: '!2222bbbb' },
+      'src1'
+    );
+
+    await settle();
+    expect(mockNotifyNewNode).not.toHaveBeenCalled();
+  });
+
+  it('dedupes — a second upsert of the same node does not re-notify', async () => {
+    vi.mocked(isNodeComplete).mockReturnValue(true);
+    const node = { nodeNum: 0x3333cccc, nodeId: '!3333cccc', longName: 'Rover Two', shortName: 'RV2', hwModel: 9 };
+
+    await databaseService.upsertNodeAsync(node, 'src1');
+    await vi.waitFor(() => expect(mockNotifyNewNode).toHaveBeenCalledTimes(1));
+
+    await databaseService.upsertNodeAsync(node, 'src1');
+    await settle();
+    expect(mockNotifyNewNode).toHaveBeenCalledTimes(1);
+  });
+
+  it('still persists the node through the repository', async () => {
+    vi.mocked(isNodeComplete).mockReturnValue(true);
+
+    await databaseService.upsertNodeAsync(
+      { nodeNum: 0x4444dddd, nodeId: '!4444dddd', longName: 'Rover Three', shortName: 'RV3', hwModel: 1 },
+      'src1'
+    );
+
+    expect(mockNodesRepo.upsertNode).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT re-notify a node that was already complete before the upsert (reconnect/NodeDB re-dump)', async () => {
+    // The node already exists complete in the DB — e.g. the device reconnects
+    // and re-dumps its known NodeDB. isNodeComplete(existingNode) is true, so
+    // the incomplete->complete transition never happens and we must stay quiet.
+    vi.mocked(isNodeComplete).mockReturnValue(true);
+    getNodeSpy.mockReturnValue({
+      nodeNum: 0x5555eeee,
+      nodeId: '!5555eeee',
+      longName: 'Already Known',
+      shortName: 'AK',
+      hwModel: 4,
+    } as any);
+
+    await databaseService.upsertNodeAsync(
+      { nodeNum: 0x5555eeee, nodeId: '!5555eeee', longName: 'Already Known', shortName: 'AK', hwModel: 4 },
+      'src1'
+    );
+
+    await settle();
+    expect(mockNotifyNewNode).not.toHaveBeenCalled();
+  });
+
+  it('dedupes across sources — a node notified on src1 does not re-notify on src2 (nodeNum-keyed)', async () => {
+    // newNodeNotifiedSet is keyed by nodeNum only, so the same physical node
+    // seen on a second source in the same process run notifies just once.
+    vi.mocked(isNodeComplete).mockReturnValue(true);
+    const node = { nodeNum: 0x6666ffff, nodeId: '!6666ffff', longName: 'Multi Source', shortName: 'MS', hwModel: 7 };
+
+    await databaseService.upsertNodeAsync(node, 'src1');
+    await vi.waitFor(() => expect(mockNotifyNewNode).toHaveBeenCalledTimes(1));
+
+    await databaseService.upsertNodeAsync(node, 'src2');
+    await settle();
+    expect(mockNotifyNewNode).toHaveBeenCalledTimes(1);
   });
 });

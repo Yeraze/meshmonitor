@@ -38,6 +38,8 @@ vi.mock('../services/database.js', () => ({
     getSetting: mockGetSetting,
     getNode: mockGetNode,
     upsertNode: mockUpsertNode,
+    // #3796: node writes route through upsertNodeAsync -> nodes.upsertNode.
+    upsertNodeAsync: mockUpsertNode,
     insertMessage: mockInsertMessage,
     insertTraceroute: mockInsertTraceroute,
     findUserByIdAsync: vi.fn(),
