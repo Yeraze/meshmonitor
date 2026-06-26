@@ -3914,9 +3914,9 @@ class DatabaseService {
   }
 
   /** @deprecated Use databaseService.telemetry.getPositionTelemetryByNode() instead */
-  async getPositionTelemetryByNodeAsync(nodeId: string, limit: number = 1500, sinceTimestamp?: number): Promise<DbTelemetry[]> {
+  async getPositionTelemetryByNodeAsync(nodeId: string, limit: number = 1500, sinceTimestamp?: number, beforeTimestamp?: number): Promise<DbTelemetry[]> {
     // Cast to local DbTelemetry type (they have compatible structure)
-    return this.telemetry.getPositionTelemetryByNode(nodeId, limit, sinceTimestamp) as unknown as Promise<DbTelemetry[]>;
+    return this.telemetry.getPositionTelemetryByNode(nodeId, limit, sinceTimestamp, undefined, beforeTimestamp) as unknown as Promise<DbTelemetry[]>;
   }
 
   /**

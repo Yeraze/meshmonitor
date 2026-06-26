@@ -333,6 +333,17 @@ describe('TelemetryRepository (expanded)', () => {
       const results = await repo.getPositionTelemetryByNode('!00000000');
       expect(results).toHaveLength(0);
     });
+
+    it('filters by beforeTimestamp cursor (strictly older), enabling backward pagination (#3791)', async () => {
+      // Add an older record outside the seeded NOW - HOUR batch.
+      await insertTelemetry(NODE1, NODE1_NUM, 'latitude', NOW - 10 * HOUR);
+
+      // beforeTimestamp is the 5th positional arg (after sourceId).
+      const results = await repo.getPositionTelemetryByNode(NODE1, 100, undefined, undefined, NOW - 2 * HOUR);
+      expect(results.length).toBeGreaterThan(0);
+      // Strictly older than the cursor — the NOW - HOUR rows are excluded.
+      expect(results.every(r => r.timestamp < NOW - 2 * HOUR)).toBe(true);
+    });
   });
 
   // -------------------------------------------------------------------------
