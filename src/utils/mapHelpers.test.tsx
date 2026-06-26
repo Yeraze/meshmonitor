@@ -315,17 +315,19 @@ describe('mapHelpers', () => {
   });
 
   describe('convertSpeed', () => {
-    it('should convert m/s to km/h for metric units', () => {
-      // 10 m/s = 36 km/h
-      const result = convertSpeed(10, 'km');
+    // ground_speed is already km/h on the wire (firmware writes TinyGPS++
+    // .kmph()), so metric is a pass-through and imperial applies only the
+    // km/h→mph factor. See #3797 — we previously multiplied by 3.6 as if m/s.
+    it('passes km/h through unchanged for metric units', () => {
+      const result = convertSpeed(36, 'km');
       expect(result.speed).toBe(36);
       expect(result.unit).toBe('km/h');
     });
 
-    it('should convert m/s to mph for imperial units', () => {
-      // 10 m/s = 36 km/h = 22.4 mph
-      const result = convertSpeed(10, 'mi');
-      expect(result.speed).toBeCloseTo(22.4, 1);
+    it('converts km/h to mph for imperial units', () => {
+      // 100 km/h = 62.1 mph
+      const result = convertSpeed(100, 'mi');
+      expect(result.speed).toBeCloseTo(62.1, 1);
       expect(result.unit).toBe('mph');
     });
 
@@ -335,29 +337,29 @@ describe('mapHelpers', () => {
       expect(result.unit).toBe('km/h');
     });
 
-    it('should handle high speeds without misinterpretation (regression)', () => {
-      // 80 m/s = 288 km/h — this is a valid high speed (e.g. vehicle on highway)
-      // Previously a heuristic would reinterpret speeds > 200 km/h as already in km/h
-      const result = convertSpeed(80, 'km');
-      expect(result.speed).toBe(288);
+    it('does not inflate the wire value (regression #3797)', () => {
+      // A wire ground_speed of 90 means 90 km/h, NOT 324 km/h (90 × 3.6) and
+      // NOT 0.9 m/s — it must display as the same number for metric.
+      const result = convertSpeed(90, 'km');
+      expect(result.speed).toBe(90);
+      expect(result.unit).toBe('km/h');
+    });
+
+    it('should handle a valid high speed (e.g. vehicle on highway)', () => {
+      const result = convertSpeed(120, 'km');
+      expect(result.speed).toBe(120);
       expect(result.unit).toBe('km/h');
     });
 
     it('should handle typical walking speed', () => {
-      // 1.4 m/s ≈ 5.0 km/h (walking)
-      const result = convertSpeed(1.4, 'km');
+      // ~5 km/h walking pace passes through.
+      const result = convertSpeed(5, 'km');
       expect(result.speed).toBeCloseTo(5.0, 1);
     });
 
-    it('should handle typical driving speed', () => {
-      // 27.8 m/s ≈ 100 km/h
-      const result = convertSpeed(27.8, 'km');
-      expect(result.speed).toBeCloseTo(100.1, 1);
-    });
-
     it('should produce consistent results between metric and imperial', () => {
-      const metric = convertSpeed(10, 'km');
-      const imperial = convertSpeed(10, 'mi');
+      const metric = convertSpeed(100, 'km');
+      const imperial = convertSpeed(100, 'mi');
       // mph = km/h * 0.621371
       expect(imperial.speed).toBeCloseTo(metric.speed * 0.621371, 0);
     });
