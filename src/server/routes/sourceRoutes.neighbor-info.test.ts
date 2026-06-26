@@ -150,7 +150,9 @@ describe('GET /:id/neighbor-info', () => {
     const res = await request(createApp()).get('/src-abc/neighbor-info');
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(2);
+    // Bidirectional pairs are deduplicated: only the canonical direction (smaller
+    // nodeNum first) is returned, with bidirectional=true on the kept record.
+    expect(res.body).toHaveLength(1);
 
     const first = res.body[0];
     expect(first.nodeId).toBe('!0000006f');

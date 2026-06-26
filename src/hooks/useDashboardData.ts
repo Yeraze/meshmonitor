@@ -334,6 +334,9 @@ export function mergeUnifiedSourceData(
   const recordsByKey = new Map<string, Array<{ node: any; source: NodeSourceRef | null }>>();
   const traceroutes: unknown[] = [];
   const neighborInfo: unknown[] = [];
+  // Tracks canonical (min,max) nodeNum pairs already added to neighborInfo so the
+  // same physical link reported by multiple sources renders as a single line.
+  const seenNeighborPairs = new Set<string>();
   let channels: unknown[] = [];
 
   for (const ps of perSource) {
@@ -369,7 +372,22 @@ export function mergeUnifiedSourceData(
       else recordsByKey.set(key, [entry]);
     }
     traceroutes.push(...ps.traceroutes);
-    neighborInfo.push(...ps.neighborInfo);
+    for (const link of ps.neighborInfo as any[]) {
+      if (link == null) continue;
+      // Deduplicate across sources: the same physical pair (A,B) reported by
+      // multiple sources should render as a single line. Server-side
+      // buildSourceNeighborInfo already collapses bidirectional A↔B pairs within
+      // one source; here we also collapse the same pair appearing in a second
+      // source's neighborInfo bundle.
+      const numA = Number(link.nodeNum ?? 0);
+      const numB = Number(link.neighborNodeNum ?? 0);
+      if (numA !== 0 || numB !== 0) {
+        const pairKey = `${Math.min(numA, numB)}-${Math.max(numA, numB)}`;
+        if (seenNeighborPairs.has(pairKey)) continue;
+        seenNeighborPairs.add(pairKey);
+      }
+      neighborInfo.push(link);
+    }
     if (channels.length === 0 && ps.channels.length > 0) {
       channels = ps.channels;
     }

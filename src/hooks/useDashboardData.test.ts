@@ -439,6 +439,59 @@ describe('mergeUnifiedSourceData', () => {
     expect([...classes].sort()).toEqual(['mqtt', 'rf']);
   });
 
+  it('deduplicates neighbor links across sources (#3777)', () => {
+    // When two sources both report A-B as neighbors, only one line should render.
+    const linkAB = { nodeNum: 100, neighborNodeNum: 200, transportClass: 'rf', timestamp: 1000 };
+    const linkABdupe = { nodeNum: 100, neighborNodeNum: 200, transportClass: 'mqtt', timestamp: 2000 };
+    const merged = mergeUnifiedSourceData([
+      {
+        sourceId: 's1', sourceName: 'LoRa', protocol: 'Meshtastic',
+        nodes: [], traceroutes: [], channels: [],
+        neighborInfo: [linkAB],
+      },
+      {
+        sourceId: 's2', sourceName: 'MQTT', protocol: 'Meshtastic',
+        nodes: [], traceroutes: [], channels: [],
+        neighborInfo: [linkABdupe],
+      },
+    ]);
+    // Only the first-seen link per canonical pair survives.
+    expect(merged.neighborInfo).toHaveLength(1);
+    expect((merged.neighborInfo[0] as any).nodeNum).toBe(100);
+  });
+
+  it('deduplicates reversed neighbor pairs across sources (#3777)', () => {
+    // Source 1 reports A→B; source 2 reports B→A. Canonical pair is the same.
+    const linkAB = { nodeNum: 100, neighborNodeNum: 200, transportClass: 'rf', timestamp: 1000 };
+    const linkBA = { nodeNum: 200, neighborNodeNum: 100, transportClass: 'rf', timestamp: 1000 };
+    const merged = mergeUnifiedSourceData([
+      {
+        sourceId: 's1', sourceName: 'S1', protocol: 'Meshtastic',
+        nodes: [], traceroutes: [], channels: [],
+        neighborInfo: [linkAB],
+      },
+      {
+        sourceId: 's2', sourceName: 'S2', protocol: 'Meshtastic',
+        nodes: [], traceroutes: [], channels: [],
+        neighborInfo: [linkBA],
+      },
+    ]);
+    expect(merged.neighborInfo).toHaveLength(1);
+  });
+
+  it('keeps distinct neighbor links with different pairs', () => {
+    const linkAB = { nodeNum: 100, neighborNodeNum: 200, transportClass: 'rf', timestamp: 1000 };
+    const linkAC = { nodeNum: 100, neighborNodeNum: 300, transportClass: 'rf', timestamp: 1000 };
+    const merged = mergeUnifiedSourceData([
+      {
+        sourceId: 's1', sourceName: 'S1', protocol: 'Meshtastic',
+        nodes: [], traceroutes: [], channels: [],
+        neighborInfo: [linkAB, linkAC],
+      },
+    ]);
+    expect(merged.neighborInfo).toHaveLength(2);
+  });
+
   it('keeps distinct MeshCore nodes (different publicKeys) separate', () => {
     const merged = mergeUnifiedSourceData([
       {

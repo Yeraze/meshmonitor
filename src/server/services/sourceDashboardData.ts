@@ -234,7 +234,9 @@ export async function buildSourceNeighborInfo(
     ...neighborInfo.map(ni => ni.nodeNum),
     ...neighborInfo.map(ni => ni.neighborNodeNum),
   ])];
-  const nodeMap = await databaseService.nodes.getNodesByNums(allNodeNums);
+  // Scope node lookup to this source so transportMechanism reflects how THIS
+  // source hears each node (not a different source's RF/MQTT classification).
+  const nodeMap = await databaseService.nodes.getNodesByNums(allNodeNums, source.id);
 
   // Same channel gate the nodes endpoint uses, so a neighbor-info link whose
   // endpoint nodes the user can't see doesn't leak their positions (#3092).
@@ -245,11 +247,26 @@ export async function buildSourceNeighborInfo(
   );
   const visibleNodeNums = new Set(visibleNodes.map(n => Number((n as any).nodeNum)));
 
+  // Deduplicate bidirectional links: if both A→B and B→A are present, keep only
+  // the canonical direction (smaller nodeNum first) to avoid two overlapping
+  // polylines on the map. The bidirectional flag on the kept record signals that
+  // both directions exist.
+  const seenPairs = new Set<string>();
+
   const enrichedNeighborInfo = neighborInfo
     .filter(ni =>
       visibleNodeNums.has(Number(ni.nodeNum)) &&
       visibleNodeNums.has(Number(ni.neighborNodeNum)),
     )
+    .filter(ni => {
+      // Canonical pair key: always smaller nodeNum first.
+      const a = Math.min(ni.nodeNum, ni.neighborNodeNum);
+      const b = Math.max(ni.nodeNum, ni.neighborNodeNum);
+      const pairKey = `${a}-${b}`;
+      if (seenPairs.has(pairKey)) return false;
+      seenPairs.add(pairKey);
+      return true;
+    })
     .map(ni => {
       const node = nodeMap.get(ni.nodeNum) ?? null;
       const neighbor = nodeMap.get(ni.neighborNodeNum) ?? null;
