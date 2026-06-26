@@ -31,9 +31,10 @@ const LoginPage: React.FC = () => {
   const oidcEnabled = authStatus?.oidcEnabled ?? false;
 
   // Optional login-page branding from CUSTOM_TITLE / CUSTOM_LOGO_URL env vars.
-  // Fall back to the default MeshMonitor title and inline SVG when unset.
-  const customTitle = authStatus?.customTitle?.trim() || 'MeshMonitor';
-  const customLogoUrl = authStatus?.customLogoUrl?.trim() || null;
+  // The server already trims/validates these and sends null when unset, so we
+  // just fall back to the default MeshMonitor title and inline SVG here.
+  const customTitle = authStatus?.customTitle || 'MeshMonitor';
+  const customLogoUrl = authStatus?.customLogoUrl || null;
 
   const handleLocalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
