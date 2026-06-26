@@ -43,8 +43,15 @@ function regenerateSession(req: Request): Promise<void> {
 // Get authentication status
 router.get('/status', async (req: Request, res: Response) => {
   try {
-    const localAuthDisabled = getEnvironmentConfig().disableLocalAuth;
-    const anonymousDisabled = getEnvironmentConfig().disableAnonymous;
+    const envConfig = getEnvironmentConfig();
+    const localAuthDisabled = envConfig.disableLocalAuth;
+    const anonymousDisabled = envConfig.disableAnonymous;
+
+    // Public branding config for the login page (safe to expose pre-auth).
+    const branding = {
+      customTitle: envConfig.customTitle ?? null,
+      customLogoUrl: envConfig.customLogoUrl ?? null,
+    };
 
     if (!req.session.userId) {
       // Check if the session cookie exists at all
@@ -76,6 +83,7 @@ router.get('/status', async (req: Request, res: Response) => {
         oidcEnabled: isOIDCEnabled(),
         localAuthDisabled,
         anonymousDisabled,
+        ...branding,
       });
     }
 
@@ -101,6 +109,7 @@ router.get('/status', async (req: Request, res: Response) => {
         oidcEnabled: isOIDCEnabled(),
         localAuthDisabled,
         anonymousDisabled,
+        ...branding,
       });
     }
 
@@ -117,6 +126,7 @@ router.get('/status', async (req: Request, res: Response) => {
       oidcEnabled: isOIDCEnabled(),
       localAuthDisabled,
       anonymousDisabled,
+      ...branding,
     });
   } catch (error) {
     logger.error('Error getting auth status:', error);

@@ -42,6 +42,9 @@ export interface AuthStatus {
   oidcEnabled: boolean;
   localAuthDisabled: boolean;
   anonymousDisabled: boolean;
+  /** Optional login-page branding from CUSTOM_TITLE / CUSTOM_LOGO_URL env vars. */
+  customTitle?: string | null;
+  customLogoUrl?: string | null;
 }
 
 export interface LoginResult {
@@ -123,6 +126,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         oidcEnabled: false,
         localAuthDisabled: false,
         anonymousDisabled: false,
+        customTitle: null,
+        customLogoUrl: null,
       });
     } finally {
       setLoading(false);

@@ -194,6 +194,15 @@ See the [Push Notifications guide](/features/notifications) for setup instructio
 
 **Note**: `LOG_LEVEL` controls log output independently of `NODE_ENV`. This lets you enable debug logging in production Docker deployments without changing rate limits, cookie warnings, or other `NODE_ENV`-dependent behavior.
 
+### Branding Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CUSTOM_TITLE` | Overrides the "MeshMonitor" heading on the login page | `MeshMonitor` |
+| `CUSTOM_LOGO_URL` | Overrides the login-page logo with your own image (http(s), `data:image`, or same-origin relative URL) | built-in SVG |
+
+**Note**: Both are optional and apply only to the login page. When unset (or when `CUSTOM_LOGO_URL` uses an unsupported scheme such as `javascript:`), MeshMonitor falls back to the default title and logo.
+
 ### System Management Variables
 
 | Variable | Description | Default |

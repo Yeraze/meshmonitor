@@ -311,6 +311,12 @@ export interface EnvironmentConfig {
   // Logging
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   logLevelProvided: boolean;
+
+  // Branding (login page customization)
+  customTitle: string | undefined;
+  customTitleProvided: boolean;
+  customLogoUrl: string | undefined;
+  customLogoUrlProvided: boolean;
 }
 
 /**
@@ -693,6 +699,33 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   const logLevelDefault: 'debug' | 'info' | 'warn' | 'error' = nodeEnv.value === 'development' ? 'debug' : 'info';
   const logLevel = parseEnum('LOG_LEVEL', process.env.LOG_LEVEL?.toLowerCase(), ['debug', 'info', 'warn', 'error'] as const, logLevelDefault);
 
+  // Branding (login page customization)
+  // CUSTOM_TITLE overrides the "MeshMonitor" heading on the login page.
+  // CUSTOM_LOGO_URL overrides the inline SVG logo with an external/relative image.
+  const customTitleRaw = process.env.CUSTOM_TITLE?.trim();
+  const customTitle = {
+    value: customTitleRaw || undefined,
+    wasProvided: !!customTitleRaw
+  };
+
+  const customLogoUrlRaw = process.env.CUSTOM_LOGO_URL?.trim();
+  let customLogoUrl = { value: customLogoUrlRaw || undefined, wasProvided: !!customLogoUrlRaw };
+  // Only allow safe URL schemes for the logo image. http(s), protocol-relative,
+  // data:image, and same-origin relative paths are accepted; anything else
+  // (e.g. javascript:) is rejected to avoid surfacing a hostile URL in markup.
+  if (customLogoUrl.value) {
+    const v = customLogoUrl.value;
+    const safe =
+      /^https?:\/\//i.test(v) ||
+      /^\/\//.test(v) ||
+      /^data:image\//i.test(v) ||
+      v.startsWith('/');
+    if (!safe) {
+      logger.warn(`⚠️  Invalid CUSTOM_LOGO_URL value: "${v}". Expected an http(s), data:image, or relative URL. Ignoring.`);
+      customLogoUrl = { value: undefined, wasProvided: false };
+    }
+  }
+
   // Log effective environment configuration at startup
   const src = (provided: boolean) => provided ? 'env' : 'default';
   logger.info('📋 Environment configuration:');
@@ -769,6 +802,11 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     logger.info('   --- Access Logging ---');
     logger.info(`   ACCESS_LOG_PATH: ${accessLogPath.value} (${src(accessLogPath.wasProvided)})`);
     logger.info(`   ACCESS_LOG_FORMAT: ${accessLogFormat.value} (${src(accessLogFormat.wasProvided)})`);
+  }
+  if (customTitle.wasProvided || customLogoUrl.wasProvided) {
+    logger.info('   --- Branding ---');
+    if (customTitle.wasProvided) logger.info(`   CUSTOM_TITLE: ${customTitle.value}`);
+    if (customLogoUrl.wasProvided) logger.info(`   CUSTOM_LOGO_URL: ${customLogoUrl.value}`);
   }
 
   return {
@@ -904,7 +942,13 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
 
     // Logging
     logLevel: logLevel.value,
-    logLevelProvided: logLevel.wasProvided
+    logLevelProvided: logLevel.wasProvided,
+
+    // Branding (login page customization)
+    customTitle: customTitle.value,
+    customTitleProvided: customTitle.wasProvided,
+    customLogoUrl: customLogoUrl.value,
+    customLogoUrlProvided: customLogoUrl.wasProvided
   };
 }
 
