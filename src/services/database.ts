@@ -8060,7 +8060,7 @@ class DatabaseService {
     return rows.map(row => row.id);
   }
 
-  getUnreadCountsByChannel(userId: number | null, localNodeId?: string, sourceId?: string): {[channelId: number]: number} {
+  getUnreadCountsByChannel(userId: number | null, localNodeId?: string, sourceId?: string, excludeMqtt?: boolean): {[channelId: number]: number} {
     // For PostgreSQL/MySQL, use async method via cache or return empty for sync call
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       // Sync method can't do async DB query - return empty and let caller use async version
@@ -8072,6 +8072,7 @@ class DatabaseService {
     // counts from other sources into this tab.
     const fromClause = localNodeId ? 'AND m.fromNodeId != ?' : '';
     const sourceClause = sourceId ? 'AND m.sourceId = ?' : '';
+    const mqttClause = excludeMqtt ? 'AND (m.viaMqtt IS NULL OR m.viaMqtt = 0)' : '';
     // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
     const stmt = this.db.prepare(`
       SELECT m.channel, COUNT(*) as count
@@ -8082,6 +8083,7 @@ class DatabaseService {
         AND m.portnum = 1
         ${fromClause}
         ${sourceClause}
+        ${mqttClause}
       GROUP BY m.channel
     `);
 
@@ -8134,13 +8136,13 @@ class DatabaseService {
    * Async version of getUnreadCountsByChannel for PostgreSQL/MySQL.
    * Delegates to NotificationsRepository for Drizzle-based execution on all backends.
    */
-  async getUnreadCountsByChannelAsync(userId: number | null, localNodeId?: string, sourceId?: string): Promise<{[channelId: number]: number}> {
+  async getUnreadCountsByChannelAsync(userId: number | null, localNodeId?: string, sourceId?: string, excludeMqtt?: boolean): Promise<{[channelId: number]: number}> {
     // For SQLite, use sync version (legacy compatibility)
     if (this.drizzleDbType !== 'postgres' && this.drizzleDbType !== 'mysql') {
-      return this.getUnreadCountsByChannel(userId, localNodeId, sourceId);
+      return this.getUnreadCountsByChannel(userId, localNodeId, sourceId, excludeMqtt);
     }
     if (!this.notificationsRepo) return {};
-    return this.notificationsRepo.getUnreadCountsByChannelAsync(userId, localNodeId, sourceId);
+    return this.notificationsRepo.getUnreadCountsByChannelAsync(userId, localNodeId, sourceId, excludeMqtt);
   }
 
   /**

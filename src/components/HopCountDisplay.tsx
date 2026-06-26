@@ -91,7 +91,7 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
     }
     return (
       <>
-        <span style={{ fontSize: '0.75em', marginLeft: '4px', opacity: 0.7 }} title={t('messages.signal_info')}>
+        <span style={{ fontSize: '0.75em', marginLeft: '4px', opacity: 0.85 }} title={t('messages.signal_info')}>
           ({parts.join(' / ')})
         </span>
         {StoreForwardIndicator}
@@ -103,7 +103,7 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
   return (
     <>
       <span
-        style={{ fontSize: '0.75em', marginLeft: '4px', opacity: isClickable ? 1 : 0.7, ...clickableStyle }}
+        style={{ fontSize: '0.75em', marginLeft: '4px', opacity: isClickable ? 1 : 0.85, ...clickableStyle }}
         onClick={isClickable ? onClick : undefined}
         title={isClickable ? t('messages.click_for_relay') : undefined}
       >

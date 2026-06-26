@@ -396,6 +396,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 emptyText={t('meshcore.no_messages', 'No messages with this contact yet')}
                 onSend={text => actions.sendMessage(text, selected)}
                 conversationKey={`dm-${selected}`}
+                maxBytes={150}
               />
             )}
             <div className="meshcore-detail-pane">

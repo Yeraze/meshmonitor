@@ -69,8 +69,12 @@ router.use((req, res, next) => {
 const VALIDATION = {
   /** MeshCore public keys are 64-character hex strings (32 bytes) */
   PUBLIC_KEY_LENGTH: 64,
-  /** Maximum message length (LoRa packet size limit) */
-  MAX_MESSAGE_LENGTH: 230,
+  /** Maximum message byte limits per context (UTF-8 byte count, not char count) */
+  MAX_MESSAGE_BYTES_CHANNEL: 130,
+  MAX_MESSAGE_BYTES_CHANNEL_SCOPED: 120,
+  MAX_MESSAGE_BYTES_DM: 150,
+  /** Legacy fallback — keep for safety ceiling in shared validation path */
+  MAX_MESSAGE_LENGTH: 150,
   /** Maximum device name length */
   MAX_NAME_LENGTH: 32,
   /** Maximum message history limit */
@@ -198,12 +202,14 @@ function parseHexPathChain(input: string, hashBytes: 1 | 2 | 3 = 1): Uint8Array 
   return out;
 }
 
-function isValidMessage(text: string | undefined): { valid: boolean; error?: string } {
+function isValidMessage(text: string | undefined, maxBytes?: number): { valid: boolean; error?: string } {
   if (!text || typeof text !== 'string') {
     return { valid: false, error: 'Message text required' };
   }
-  if (text.length > VALIDATION.MAX_MESSAGE_LENGTH) {
-    return { valid: false, error: `Message exceeds maximum length of ${VALIDATION.MAX_MESSAGE_LENGTH} characters` };
+  const limit = maxBytes ?? VALIDATION.MAX_MESSAGE_LENGTH;
+  const byteLen = Buffer.byteLength(text, 'utf8');
+  if (byteLen > limit) {
+    return { valid: false, error: `Message exceeds maximum size of ${limit} bytes (${byteLen} bytes encoded)` };
   }
   return { valid: true };
 }
@@ -1482,8 +1488,21 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
   try {
     const { text, toPublicKey, channelIdx, scope } = req.body;
 
-    // Validate message text
-    const textValidation = isValidMessage(text);
+    // Determine per-context byte limit before validating the message.
+    // DM (toPublicKey present) → 150 bytes.
+    // Channel with scope → 120 bytes. Channel without scope → 130 bytes.
+    let msgMaxBytes: number;
+    if (toPublicKey !== undefined && toPublicKey !== null && toPublicKey !== '') {
+      msgMaxBytes = VALIDATION.MAX_MESSAGE_BYTES_DM;
+    } else {
+      const hasScope = typeof scope === 'string' && scope.trim().length > 0;
+      msgMaxBytes = hasScope
+        ? VALIDATION.MAX_MESSAGE_BYTES_CHANNEL_SCOPED
+        : VALIDATION.MAX_MESSAGE_BYTES_CHANNEL;
+    }
+
+    // Validate message text using the context-appropriate byte limit.
+    const textValidation = isValidMessage(text, msgMaxBytes);
     if (!textValidation.valid) {
       return res.status(400).json({ success: false, error: textValidation.error });
     }

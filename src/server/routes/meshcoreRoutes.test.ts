@@ -458,7 +458,7 @@ describe('MeshCore Routes', () => {
         .post('/api/sources/test-source/meshcore/messages/send')
         .send({ text: longMessage });
       expect(response.status).toBe(400);
-      expect(response.body.error).toContain('maximum length');
+      expect(response.body.error).toContain('maximum size');
     });
 
     it('should reject invalid public key format', async () => {

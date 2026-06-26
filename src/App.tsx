@@ -529,6 +529,16 @@ const location = useLocation();
     unreadCountsData,
   } = useMessaging();
 
+  // The poll callback (processPollData) is memoized without unreadCountsData in
+  // its deps, so bridge the latest filtered counts through a ref. This lets the
+  // per-channel unread badges honor the "Show MQTT/Bridge Messages" toggle the
+  // same way the sidebar dot does (#3787) — the dedicated unread query already
+  // applies excludeMqtt, but the /poll aggregate does not.
+  const unreadCountsDataRef = useRef(unreadCountsData);
+  useEffect(() => {
+    unreadCountsDataRef.current = unreadCountsData;
+  }, [unreadCountsData]);
+
   // UI context
   const {
     activeTab,
@@ -2584,12 +2594,16 @@ const location = useLocation();
           channelGroups[msg.channel].push(msg);
         });
 
-        // Update unread counts from backend
+        // Update unread counts from the dedicated (filtered) unread query rather
+        // than the raw /poll aggregate, so the per-channel badges respect the
+        // "Show MQTT/Bridge Messages" toggle just like the sidebar dot (#3787).
+        // Fall back to the poll payload only until the first dedicated fetch lands.
         const currentSelected = selectedChannelRef.current;
         const newUnreadCounts: { [key: number]: number } = {};
 
-        if (data.unreadCounts?.channels) {
-          Object.entries(data.unreadCounts.channels).forEach(([channelId, count]) => {
+        const filteredChannelUnreads = unreadCountsDataRef.current?.channels ?? data.unreadCounts?.channels;
+        if (filteredChannelUnreads) {
+          Object.entries(filteredChannelUnreads).forEach(([channelId, count]) => {
             const chId = parseInt(channelId, 10);
             if (chId === currentSelected) {
               newUnreadCounts[chId] = 0;
@@ -5415,8 +5429,8 @@ const AppWithToast = () => {
     <SettingsProvider baseUrl={initialBaseUrl}>
       <MapProvider>
         <DataProvider>
-          <MessagingProvider baseUrl={initialBaseUrl}>
-            <UIProvider>
+          <UIProvider>
+            <MessagingProvider baseUrl={initialBaseUrl}>
               <AutomationProvider baseUrl={initialBaseUrl}>
               <ToastProvider>
                 <DeviceNotificationToaster />
@@ -5425,8 +5439,8 @@ const AppWithToast = () => {
                 </SaveBarProvider>
               </ToastProvider>
               </AutomationProvider>
-            </UIProvider>
-          </MessagingProvider>
+            </MessagingProvider>
+          </UIProvider>
         </DataProvider>
       </MapProvider>
     </SettingsProvider>

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { MeshCoreMessage } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { getMessageDateSeparator, shouldShowDateSeparator } from '../../utils/datetime';
+import { getUtf8ByteLength, formatByteCount } from '../../utils/text';
 import LinkPreview from '../LinkPreview';
 
 interface MeshCoreMessageStreamProps {
@@ -16,6 +17,8 @@ interface MeshCoreMessageStreamProps {
   /** Stable key identifying the current conversation. When it changes, the
    *  stream scrolls to the bottom. */
   conversationKey?: string;
+  /** Maximum UTF-8 byte length for a message. Send is blocked when exceeded. */
+  maxBytes?: number;
 }
 
 function formatTime(ts: number): string {
@@ -60,6 +63,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   onSend,
   onNodeNameClick,
   conversationKey,
+  maxBytes = 130,
 }) => {
   const { t } = useTranslation();
   const [draft, setDraft] = useState('');
@@ -164,8 +168,16 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     return () => container.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
 
+  // Reuse the shared composer byte-count helpers (same as the Meshtastic
+  // channel/DM composers) so counting + warning thresholds + display stay in
+  // one place. Only the per-context limit differs (channel 130 / scoped 120 /
+  // DM 150), passed in via maxBytes.
+  const byteLen = useMemo(() => getUtf8ByteLength(draft), [draft]);
+  const byteCounter = useMemo(() => formatByteCount(byteLen, maxBytes), [byteLen, maxBytes]);
+  const overLimit = byteLen > maxBytes;
+
   const handleSend = async () => {
-    if (!draft.trim() || sending) return;
+    if (!draft.trim() || sending || overLimit) return;
     setSending(true);
     const ok = await onSend(draft);
     setSending(false);
@@ -338,15 +350,19 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={t('meshcore.type_message', 'Type a message…')}
           disabled={disabled || sending}
-          maxLength={230}
         />
         <button
           onClick={() => void handleSend()}
-          disabled={disabled || sending || !draft.trim()}
+          disabled={disabled || sending || !draft.trim() || overLimit}
         >
           {sending ? t('meshcore.sending', 'Sending…') : t('meshcore.send', 'Send')}
         </button>
       </div>
+      {draft.length > 0 && (
+        <div className={`meshcore-byte-counter ${byteCounter.className}`}>
+          {byteCounter.text}
+        </div>
+      )}
     </div>
   );
 };
