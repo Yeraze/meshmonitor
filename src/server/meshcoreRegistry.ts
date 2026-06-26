@@ -22,6 +22,14 @@ interface MeshCoreSourceConfig {
   tcpPort?: number;
   deviceType?: 'companion' | 'repeater';
   autoConnect?: boolean;
+  /**
+   * Companion heartbeat / auto-reconnect interval in seconds (0 = disabled).
+   * Mirrors the Meshtastic source setting. When > 0 the manager periodically
+   * probes the node (cheap RTC read) and, on repeated failure, tears down and
+   * reconnects with exponential backoff. Only honoured for companion devices
+   * (the native backend); repeater/direct-serial ignores it.
+   */
+  heartbeatIntervalSeconds?: number;
   // Virtual Node server — expose this node to the MeshCore app over WiFi (#3535).
   virtualNode?: {
     enabled?: boolean;
@@ -67,6 +75,7 @@ export function meshcoreConfigFromSource(source: Source): MeshCoreConfig | null 
       baudRate: cfg.baudRate ?? 115200,
       firmwareType,
       virtualNode,
+      heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
     };
   }
 
@@ -77,6 +86,7 @@ export function meshcoreConfigFromSource(source: Source): MeshCoreConfig | null 
       tcpPort: cfg.tcpPort ?? 4403,
       firmwareType,
       virtualNode,
+      heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
     };
   }
 

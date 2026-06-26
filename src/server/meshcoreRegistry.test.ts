@@ -118,4 +118,25 @@ describe('meshcoreConfigFromSource', () => {
     );
     expect(cfg).toBeNull();
   });
+
+  it('passes heartbeatIntervalSeconds through on the SERIAL path', () => {
+    const cfg = meshcoreConfigFromSource(
+      fakeSource({ config: { transport: 'usb', port: '/dev/ttyACM0', deviceType: 'companion', heartbeatIntervalSeconds: 30 } }),
+    );
+    expect(cfg?.heartbeatIntervalSeconds).toBe(30);
+  });
+
+  it('passes heartbeatIntervalSeconds through on the TCP path', () => {
+    const cfg = meshcoreConfigFromSource(
+      fakeSource({ config: { transport: 'tcp', tcpHost: '10.0.0.5', deviceType: 'companion', heartbeatIntervalSeconds: 45 } }),
+    );
+    expect(cfg?.heartbeatIntervalSeconds).toBe(45);
+  });
+
+  it('leaves heartbeatIntervalSeconds undefined when not configured', () => {
+    const cfg = meshcoreConfigFromSource(
+      fakeSource({ config: { transport: 'usb', port: '/dev/ttyACM0', deviceType: 'companion' } }),
+    );
+    expect(cfg?.heartbeatIntervalSeconds).toBeUndefined();
+  });
 });
