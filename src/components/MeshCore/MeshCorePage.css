@@ -816,6 +816,19 @@
   cursor: not-allowed;
 }
 
+/* Byte counter below the MeshCore send bar. Reuses the shared .byte-counter
+   color states (warning/over) from the Meshtastic composer, but overrides the
+   absolute overlay layout to sit as a block under the input+button row (the
+   overlay would land on the Send button here). */
+.meshcore-byte-counter.byte-counter {
+  position: static;
+  display: block;
+  text-align: right;
+  padding: 2px 0.5rem 0 0;
+  background: none;
+  opacity: 1;
+}
+
 /* Contact detail pane (below the message stream in the DM view).
    No longer height-capped — the surrounding `.meshcore-main-pane` is the
    page-level scroll container, so this block flows naturally below the

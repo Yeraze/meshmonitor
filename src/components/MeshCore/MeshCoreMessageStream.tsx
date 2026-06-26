@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { MeshCoreMessage } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { getMessageDateSeparator, shouldShowDateSeparator } from '../../utils/datetime';
+import { getUtf8ByteLength, formatByteCount } from '../../utils/text';
 import LinkPreview from '../LinkPreview';
 
 interface MeshCoreMessageStreamProps {
@@ -167,7 +168,12 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     return () => container.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
 
-  const byteLen = useMemo(() => new TextEncoder().encode(draft).length, [draft]);
+  // Reuse the shared composer byte-count helpers (same as the Meshtastic
+  // channel/DM composers) so counting + warning thresholds + display stay in
+  // one place. Only the per-context limit differs (channel 130 / scoped 120 /
+  // DM 150), passed in via maxBytes.
+  const byteLen = useMemo(() => getUtf8ByteLength(draft), [draft]);
+  const byteCounter = useMemo(() => formatByteCount(byteLen, maxBytes), [byteLen, maxBytes]);
   const overLimit = byteLen > maxBytes;
 
   const handleSend = async () => {
@@ -353,20 +359,8 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
         </button>
       </div>
       {draft.length > 0 && (
-        <div
-          className="meshcore-byte-counter"
-          style={{
-            fontSize: '0.75rem',
-            textAlign: 'right',
-            paddingRight: '0.5rem',
-            color: overLimit
-              ? 'var(--ctp-red)'
-              : byteLen >= Math.floor(maxBytes * 0.9)
-              ? 'var(--ctp-yellow)'
-              : 'var(--ctp-subtext1)',
-          }}
-        >
-          {byteLen} / {maxBytes}
+        <div className={`meshcore-byte-counter ${byteCounter.className}`}>
+          {byteCounter.text}
         </div>
       )}
     </div>
