@@ -711,6 +711,19 @@ class MeshCoreManager extends EventEmitter {
         scopeCode: dbMsg.scopeCode ?? null,
         scopeName: dbMsg.scopeName ?? null,
       }));
+      // Enrich with heardBy so relay info survives server restarts (#3813).
+      if (this.messages.length > 0) {
+        const heardByMap = await databaseService.meshcore.getHeardRepeatersForMessages(
+          this.messages.map(m => m.id),
+          this.sourceId,
+        );
+        this.messages = this.messages.map(m => {
+          const heard = heardByMap[m.id];
+          return heard && heard.length > 0
+            ? { ...m, heardBy: heard.map(r => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr })) }
+            : m;
+        });
+      }
     } catch (loadErr) {
       logger.warn(`[MeshCore:${this.sourceId}] Failed to load messages from DB: ${(loadErr as Error).message}`);
       this.messages = [];
@@ -1420,6 +1433,13 @@ class MeshCoreManager extends EventEmitter {
       );
       const fullHeardBy = all.map((r) => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr }));
       dataEventEmitter.emitMeshCoreChannelHeard({ id: match.messageId, heardBy: fullHeardBy }, this.sourceId);
+
+      // Mirror heardBy into the in-memory pool so getRecentMessages() returns
+      // correct data after subsequent fetchMessages() calls (#3813).
+      const msgIdx = this.messages.findIndex(m => m.id === match.messageId);
+      if (msgIdx !== -1) {
+        this.messages[msgIdx] = { ...this.messages[msgIdx], heardBy: fullHeardBy };
+      }
 
       logger.debug(
         `[MeshCore:${this.sourceId}] Channel echo: msg=${match.messageId} +${heardBy.length} repeater(s), total=${fullHeardBy.length}`,
