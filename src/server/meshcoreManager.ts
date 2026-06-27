@@ -2362,6 +2362,8 @@ class MeshCoreManager extends EventEmitter {
           sourceId: this.sourceId,
           expectedAckCrc: ackCrc ?? undefined,
           estTimeout: estTimeout ?? undefined,
+          scopeCode: region === null ? 0 : 1,
+          scopeName: region,
         };
         this.addMessage(sentMessage);
         this.emit('message', sentMessage);
