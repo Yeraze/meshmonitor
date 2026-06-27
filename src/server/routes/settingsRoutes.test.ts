@@ -262,6 +262,71 @@ describe('settingsRoutes', () => {
       expect(res.body.error).toContain('Invalid regex');
     });
 
+    // #3806: RE2 (server) rejects lookaround/backreferences that the browser's
+    // native RegExp accepts. The handler must keep rejecting such patterns when
+    // auto-ack is being enabled, but must NOT freeze the whole settings POST
+    // when auto-ack is being disabled with a previously-persisted bad regex.
+    describe('autoAckRegex RE2 leniency (#3806)', () => {
+      it('rejects a lookaround pattern when enabling auto-ack', async () => {
+        const app = createApp(adminUser);
+
+        const res = await request(app)
+          .post('/api/settings')
+          .send({ autoAckEnabled: 'true', autoAckRegex: '^(?!bot)test' })
+          .expect(400);
+
+        expect(res.body.error).toMatch(/lookaround|backreference/i);
+        expect(databaseService.settings.setSettings).not.toHaveBeenCalled();
+      });
+
+      it('allows toggling auto-ack OFF with a previously-persisted bad regex', async () => {
+        const app = createApp(adminUser);
+        // Simulate an install that already persisted an RE2-incompatible pattern.
+        (databaseService as any).settings.getAllSettings.mockResolvedValue({
+          meshName: 'TestMesh',
+          autoAckEnabled: 'true',
+          autoAckRegex: '^(?!bot)test',
+        });
+
+        // Client re-POSTs the same (unchanged) bad regex while disabling.
+        await request(app)
+          .post('/api/settings')
+          .send({ autoAckEnabled: 'false', autoAckRegex: '^(?!bot)test' })
+          .expect(200);
+
+        expect(databaseService.settings.setSettings).toHaveBeenCalledWith(
+          expect.objectContaining({ autoAckEnabled: 'false', autoAckRegex: '^(?!bot)test' })
+        );
+      });
+
+      it('rejects newly changing the regex to a bad pattern even while disabled', async () => {
+        const app = createApp(adminUser);
+        (databaseService as any).settings.getAllSettings.mockResolvedValue({
+          meshName: 'TestMesh',
+          autoAckEnabled: 'false',
+          autoAckRegex: '^(test|ping)',
+        });
+
+        const res = await request(app)
+          .post('/api/settings')
+          .send({ autoAckEnabled: 'false', autoAckRegex: '^(?!bot)test' })
+          .expect(400);
+
+        expect(res.body.error).toMatch(/lookaround|backreference/i);
+      });
+
+      it('accepts a valid regex when enabling auto-ack', async () => {
+        const app = createApp(adminUser);
+
+        await request(app)
+          .post('/api/settings')
+          .send({ autoAckEnabled: 'true', autoAckRegex: '^(test|ping)' })
+          .expect(200);
+
+        expect(databaseService.settings.setSettings).toHaveBeenCalled();
+      });
+    });
+
     it('should return 400 for out-of-range inactiveNodeThresholdHours', async () => {
       const app = createApp(adminUser);
 

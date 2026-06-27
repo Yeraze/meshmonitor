@@ -2292,6 +2292,7 @@
   "automation.auto_ack.pattern_too_long": "Pattern too long (max 100 characters)",
   "automation.auto_ack.pattern_too_complex": "Pattern too complex or may cause performance issues",
   "automation.auto_ack.invalid_regex": "Invalid regex syntax",
+  "automation.auto_ack.unsupported_regex": "Lookaround (?=, ?!, ?<=, ?<!) and backreferences (\\1) are not supported. Use a simpler pattern.",
   "automation.auto_ack.active_channels": "Active Channels",
   "automation.auto_ack.active_channels_description": "Select which channels and direct messages should have auto-acknowledge enabled",
   "automation.auto_ack.direct_messages": "Direct Messages",
