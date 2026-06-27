@@ -158,9 +158,15 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(firstUnreadId) : firstUnreadId
         }"]`;
         const row = container.querySelector<HTMLElement>(selector);
-        if (row) {
+        if (row && typeof row.scrollIntoView === 'function') {
           // Align the unread boundary near the top of the viewport.
           row.scrollIntoView({ block: 'start' });
+          return;
+        }
+        if (row) {
+          // Environments without scrollIntoView (e.g. jsdom): approximate by
+          // offsetting the container so the unread row sits near the top.
+          container.scrollTop = row.offsetTop - container.offsetTop;
           return;
         }
       }
