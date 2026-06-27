@@ -135,4 +135,29 @@ describe('MeshCoreManager — new-node contact refresh (#3646)', () => {
 
     expect(bridgeCalls.filter(c => c.cmd === 'get_contacts')).toHaveLength(0);
   });
+
+  it('refreshes an already-known but NAMELESS contact so its name populates (#3820)', async () => {
+    const { manager, bridgeCalls } = makeCompanionManager();
+    // Discovery (NODE_DISCOVER_RESP) pre-creates a known-but-nameless stub: in
+    // this.contacts, but with no advName/advType. The repeater's later zero-hop
+    // advert then arrives as a pubkey-only push (no adv_name), and the firmware
+    // has already stored the real name on the device.
+    (manager as any).contacts.set(NEW_KEY, { publicKey: NEW_KEY });
+
+    dispatchBridgeEvent(manager, { event_type: 'contact_advertised', data: { public_key: NEW_KEY } });
+
+    // Debounced — nothing on the wire yet.
+    expect(bridgeCalls.filter(c => c.cmd === 'get_contacts')).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(1600);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The known stub is re-read from the device and its name now populates,
+    // rather than staying "Unknown" until an unrelated refresh (#3820).
+    expect(bridgeCalls.filter(c => c.cmd === 'get_contacts')).toHaveLength(1);
+    const contact = manager.getContact(NEW_KEY);
+    expect(contact?.advName).toBe('Repeater One');
+    expect(contact?.advType).toBe(2);
+  });
 });

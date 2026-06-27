@@ -1166,14 +1166,32 @@ class MeshCoreManager extends EventEmitter {
         dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
         if (!wasKnown) {
           void this.notifyNewNodeDiscovered(updated);
-          // A brand-new node whose advert didn't carry its name/type — the full
-          // record (name, type, position) lives on the device's contact list.
-          // Pull it via a debounced refreshContacts() so those fields populate
-          // immediately instead of only after a manual disconnect/reconnect
-          // (#3646). Coalesced with path-refreshes over the same window.
-          if (!updated.advName || updated.advType === undefined) {
-            this.schedulePathRefresh(publicKey);
-          }
+        }
+        // A node whose advert didn't carry its name/type — the full record
+        // (name, type, position) lives on the device's contact list. Pull it via
+        // a debounced refreshContacts() so those fields populate immediately
+        // instead of only after a manual disconnect/reconnect (#3646). Coalesced
+        // with path-refreshes over the same window.
+        //
+        // This fires for KNOWN contacts too, not just brand-new ones (#3820):
+        // discovery (NODE_DISCOVER_RESP) pre-creates a *nameless* device contact,
+        // so the repeater's later zero-hop advert arrives as a pubkey-only 0x80
+        // push (the firmware's existing-contact path) carrying no adv_name — even
+        // though the firmware has already stored the real name on the device. The
+        // old `!wasKnown` gate skipped the re-read for that already-known contact,
+        // leaving it "Unknown" until an unrelated refresh (e.g. opening the admin
+        // panel) happened to run. A get_contacts re-read pulls the stored name.
+        //
+        // Safe + zero-airtime: firmware drops nameless adverts (BaseChatMesh), so
+        // every contact_advertised event means the device just stored a real name;
+        // refreshContacts() is a local debounced get_contacts read, and once the
+        // name is pulled `updated.advName` is non-empty so this stops re-firing.
+        // NOTE: this relies on discovery storing lastAdvert≈0 so the repeater's
+        // next advert isn't replay-dropped firmware-side — if the native backend
+        // ever starts passing a non-zero lastAdvert for discovered contacts, the
+        // firmware replay guard would suppress that advert and reintroduce #3820.
+        if (!updated.advName || updated.advType === undefined) {
+          this.schedulePathRefresh(publicKey);
         }
         logger.info(`[MeshCore] ${event_type} for ${publicKey} (${data.adv_name ?? ''})`);
       }
