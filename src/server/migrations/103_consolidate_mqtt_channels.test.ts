@@ -132,6 +132,41 @@ describe('migration 103 — consolidate MQTT channels', () => {
     expect(m7.channel).toBe(0);
   });
 
+  it('handles permission collision — user with perms on both dup and keeper survives without UNIQUE violation', () => {
+    // Seed a fresh db with a user (id=99) who has permissions on BOTH keep (id=1) and dup (id=2).
+    // This is the scenario that caused the UNIQUE constraint crash in issue #3804.
+    const db2 = new Database(':memory:');
+    setupSchema(db2);
+    const now = 1700000000000;
+    db2.prepare(
+      `INSERT INTO channel_database (id, name, psk, psk_length, description, is_enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(1, 'Primary', '', 0, 'passive', 0, now, now);
+    db2.prepare(
+      `INSERT INTO channel_database (id, name, psk, psk_length, description, is_enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(2, 'Primary', '', 0, 'passive', 0, now, now);
+    // User 99 has permissions on BOTH id=1 (keep) and id=2 (dup) — the collision case.
+    db2.prepare(
+      `INSERT INTO channel_database_permissions (user_id, channel_database_id, can_read, granted_at) VALUES (?, ?, 1, ?)`,
+    ).run(99, 1, now);
+    db2.prepare(
+      `INSERT INTO channel_database_permissions (user_id, channel_database_id, can_read, granted_at) VALUES (?, ?, 1, ?)`,
+    ).run(99, 2, now);
+
+    // Must not throw UNIQUE constraint error.
+    expect(() => migration.up(db2)).not.toThrow();
+
+    // After migration: only one Primary row remains.
+    const primaries = db2.prepare(`SELECT id FROM channel_database WHERE lower(name) = 'primary'`).all();
+    expect(primaries).toEqual([{ id: 1 }]);
+
+    // User 99 retains their permission on the keeper (id=1).
+    const perms = db2.prepare(`SELECT channel_database_id FROM channel_database_permissions WHERE user_id = 99`).all() as Array<{ channel_database_id: number }>;
+    expect(perms).toHaveLength(1);
+    expect(perms[0].channel_database_id).toBe(1);
+  });
+
   it('is idempotent — a second run changes nothing', () => {
     migration.up(db); // run again
     const cdCount = db.prepare(`SELECT COUNT(*) AS c FROM channel_database`).get() as { c: number };
