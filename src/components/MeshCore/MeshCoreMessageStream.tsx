@@ -312,7 +312,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   {m.hopCount !== 0 && m.routePath ? ` · ${m.routePath.split(',').filter(Boolean).join(' → ')}` : ''}
                 </div>
               )}
-              {!outgoing && typeof m.scopeCode === 'number' && (
+              {(typeof m.scopeCode === 'number' || (m.scopeName != null && m.scopeName !== '')) && (
                 <div
                   className="mc-message-scope"
                   title={t('meshcore.scope_tooltip', 'The region/scope this message was sent with')}
@@ -321,7 +321,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                     ? t('meshcore.scope_unscoped', '🌐 no scope')
                     : m.scopeName
                       ? `🔒 ${m.scopeName}`
-                      : `🔒 #${m.scopeCode.toString(16).padStart(4, '0')}`}
+                      : `🔒 #${(m.scopeCode ?? 0).toString(16).padStart(4, '0')}`}
                 </div>
               )}
               {outgoing && m.heardBy && m.heardBy.length > 0 && expandedHeardBy.has(m.id) && (
