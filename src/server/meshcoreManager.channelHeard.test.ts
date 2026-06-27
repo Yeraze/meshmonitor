@@ -198,6 +198,38 @@ describe('MeshCoreManager — channel-heard correlation (integration)', () => {
     );
   });
 
+  it('updates the in-memory message pool with heardBy so getRecentMessages reflects relay info (#3813)', async () => {
+    recordHeardRepeater.mockImplementation(async (r: any) => ({
+      sourceId: r.sourceId,
+      messageId: r.messageId,
+      repeaterHash: r.repeaterHash,
+      repeaterName: r.repeaterName ?? null,
+      snr: r.snr ?? null,
+      heardAt: r.heardAt,
+      createdAt: r.heardAt,
+    }));
+    getHeardRepeatersForMessage.mockResolvedValue([
+      { repeaterHash: 'a3', repeaterName: 'Relay1', snr: 7 },
+    ]);
+
+    const m = new MeshCoreManager('src-a');
+    // Seed the in-memory pool with an outgoing message (no heardBy yet).
+    (m as any).messages = [
+      { id: 'sent-abc', fromPublicKey: 'mypk', text: 'hello', timestamp: 1000 },
+    ];
+    registerSend(m, 'sent-abc', 0);
+
+    dispatch(m, {
+      event_type: 'ota_packet',
+      data: { payload_type: GRP_TXT, path_hops: ['a3'], snr: 7 },
+    });
+    await flush();
+
+    const msgs = m.getRecentMessages(10);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].heardBy).toEqual([{ hash: 'a3', name: 'Relay1', snr: 7 }]);
+  });
+
   it('does not record anything when no pending channel send matches', async () => {
     const m = new MeshCoreManager('src-a');
     // No registerSend — nothing pending.
