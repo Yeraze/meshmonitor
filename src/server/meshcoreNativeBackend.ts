@@ -896,6 +896,58 @@ export class MeshCoreNativeBackend extends EventEmitter {
     return run;
   }
 
+  /**
+   * Serializes remote status requests (library `getStatus`) on THIS connection
+   * and dedupes concurrent requests for the same contact.
+   *
+   * The vendored meshcore.js `getStatus()` registers a `.once` listener on the
+   * SHARED, tag-less `StatusResponse` push event and only keeps the response
+   * whose `pubKeyPrefix` matches the request. When multiple `getStatus` calls
+   * are in flight on one connection, a single arriving `StatusResponse` fires
+   * EVERY pending once-listener: the matching one resolves, while all the others
+   * log `"onStatusResponsePush is not for this status request, ignoring..."`,
+   * get consumed by `.once`, and then hang until their own timeout. That is the
+   * self-amplifying log burst + spurious timeouts in #3815 — cannibalized
+   * requests pile up while new ones keep arriving from the repeater stats panel.
+   *
+   * Fix: only one status request may listen at a time. Distinct contacts chain
+   * through a per-instance promise (so the second waits for the first to settle),
+   * and concurrent requests for the SAME contact share the single in-flight
+   * promise instead of issuing a second request.
+   *
+   * Per-instance (per-source/per-connection) by construction — each source owns
+   * its own backend + physical connection, so this never serializes across
+   * sources. The lock always releases (the in-flight entry is cleared in a
+   * `finally`, and the chain advances regardless of how the op settled), so a
+   * reject/timeout in one request never wedges the queue.
+   */
+  private statusOpChain: Promise<unknown> = Promise.resolve();
+  private inFlightStatus = new Map<string, Promise<any>>();
+
+  private getStatusSerialized(connection: AnyConnection, publicKey: Uint8Array): Promise<any> {
+    const keyHex = bytesToHex(publicKey);
+
+    // In-flight dedupe: a concurrent request for the same contact shares the
+    // single outstanding StatusResponse request instead of issuing a second.
+    const existing = this.inFlightStatus.get(keyHex);
+    if (existing) return existing;
+
+    // Serialize distinct requests so only one StatusResponse listener is active
+    // at a time. Chain after whatever is queued, regardless of how it settled
+    // (using the same fn for both handlers means a prior rejection still
+    // releases the queue).
+    const issue = () => connection.getStatus(publicKey);
+    const tracked = this.statusOpChain.then(issue, issue).finally(() => {
+      this.inFlightStatus.delete(keyHex);
+    });
+    // Advance the chain to this op's completion. Swallow settlement here so the
+    // chain never carries an unhandled rejection — callers still receive
+    // `tracked` (and its rejection) directly.
+    this.statusOpChain = tracked.then(() => {}, () => {});
+    this.inFlightStatus.set(keyHex, tracked);
+    return tracked;
+  }
+
   private async dispatch(cmd: string, params: Record<string, unknown>): Promise<any> {
     if (!this.connection || !this.constants) {
       throw new Error('Native backend not connected');
@@ -1296,7 +1348,11 @@ export class MeshCoreNativeBackend extends EventEmitter {
       case 'get_status': {
         const publicKey = await this.resolvePublicKey(params.public_key as string);
         if (!publicKey) throw new Error('Status target not found');
-        const stats = await c.getStatus(publicKey);
+        // Serialize + dedupe on this connection: the library's getStatus listens
+        // on the shared, tag-less StatusResponse event with a `.once` handler, so
+        // overlapping requests cannibalize each other's response and spam the
+        // "ignoring..." log until they time out (#3815).
+        const stats = await this.getStatusSerialized(c, publicKey);
         return {
           bat_mv: stats?.batt_milli_volts,
           up_secs: stats?.total_up_time_secs,
