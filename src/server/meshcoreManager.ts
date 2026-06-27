@@ -2561,6 +2561,7 @@ class MeshCoreManager extends EventEmitter {
   async discoverNodes(
     filter: number,
     windowMs: number = 8000,
+    fetchNames: boolean = false,
   ): Promise<{ returned: number; newCount: number; seen: string[] }> {
     const empty = { returned: 0, newCount: 0, seen: [] as string[] };
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
@@ -2593,12 +2594,78 @@ class MeshCoreManager extends EventEmitter {
         seen: [...this.activeDiscovery.seen],
       };
       logger.info(`[MeshCore] Node discovery complete: ${result.returned} returned, ${result.newCount} new`);
+
+      // #3820: a NODE_DISCOVER_RESP carries no name, and the device's contact
+      // record stays nameless until the repeater adverts — which a zero-hop
+      // repeater may do only rarely (observed: >30 min). When the caller opts in
+      // (the user-facing "Discover" action), actively pull each discovered
+      // repeater/room-server's name now via an unauthenticated ANON_REQ OWNER, so
+      // names populate in seconds instead of waiting on an advert. Skipped for
+      // the internal region-discovery sweep, which has its own per-repeater pass.
+      if (fetchNames) {
+        for (const publicKey of result.seen) {
+          const contact = this.contacts.get(publicKey);
+          const isRepeaterish =
+            contact?.advType === MeshCoreDeviceType.REPEATER ||
+            contact?.advType === MeshCoreDeviceType.ROOM_SERVER;
+          if (isRepeaterish && !contact?.advName) {
+            await this.fetchOwnerName(publicKey);
+          }
+        }
+      }
+
       return result;
     } catch (error) {
       logger.error('[MeshCore] discoverNodes threw:', error);
       return empty;
     } finally {
       this.activeDiscovery = null;
+    }
+  }
+
+  /**
+   * Fetch a repeater/room-server's node name WITHOUT admin login (#3820), via an
+   * unauthenticated ANON_REQ OWNER (firmware simple_repeater `handleAnonOwnerReq`
+   * returns `node_name\nowner_info`). The firmware OWNER branch only answers a
+   * DIRECT-routed request, so — exactly like discoverRegions (#3743) — we install
+   * a zero-hop direct out_path first (the discovered node is a direct neighbour).
+   * On success the name is written onto the contact and broadcast. Best-effort:
+   * any failure (timeout, no reply, non-repeater) is swallowed with a debug log,
+   * since the passive advert path (refresh on advert) remains as a fallback.
+   */
+  async fetchOwnerName(publicKey: string): Promise<string | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
+    try {
+      // Install a zero-hop direct out_path so the ANON_REQ routes direct instead
+      // of flooding into the void (firmware drops flooded OWNER reqs). Best-effort
+      // and quick; the real success signal is the request_owner reply below.
+      const routed = await this.setContactOutPath(publicKey, new Uint8Array(0), 1, 3000);
+      if (!routed) {
+        logger.debug(`[MeshCore:${this.sourceId}] set_out_path ack not seen for ${publicKey.substring(0, 12)}… (route likely applied); proceeding`);
+      }
+      const resp = await this.sendBridgeCommand('request_owner', { public_key: publicKey }, 15_000);
+      if (!resp.success) {
+        logger.debug(`[MeshCore:${this.sourceId}] owner request to ${publicKey.substring(0, 12)}… returned an error: ${resp.error}`);
+        return null;
+      }
+      const name = typeof resp.data?.name === 'string' ? resp.data.name.trim() : '';
+      if (!name) return null;
+      const existing = this.contacts.get(publicKey) ?? { publicKey };
+      const updated: MeshCoreContact = {
+        ...existing,
+        publicKey,
+        advName: name,
+        lastSeen: Date.now(),
+      };
+      this.contacts.set(publicKey, updated);
+      void this.persistContact(updated);
+      this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+      dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+      logger.info(`[MeshCore:${this.sourceId}] Owner-name fetched for ${publicKey.substring(0, 16)}…: "${name}" (#3820)`);
+      return name;
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] owner-name fetch failed for ${publicKey.substring(0, 12)}…: ${(err as Error).message}`);
+      return null;
     }
   }
 

@@ -540,7 +540,9 @@ router.post(
         mode === 'repeaters' ? MeshCoreDiscoverFilter.REPEATERS
         : mode === 'sensors' ? MeshCoreDiscoverFilter.SENSORS
         : MeshCoreDiscoverFilter.NEARBY;
-      const { returned, newCount } = await managerFor(req).discoverNodes(filter);
+      // fetchNames=true: actively pull each discovered repeater/room-server's
+      // name via ANON_REQ OWNER so the result is named within seconds (#3820).
+      const { returned, newCount } = await managerFor(req).discoverNodes(filter, 8000, true);
       res.json({ success: true, returned, new: newCount });
     } catch (error) {
       logger.error('[API] Error discovering nodes:', error);

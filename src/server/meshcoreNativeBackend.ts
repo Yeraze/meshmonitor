@@ -1108,6 +1108,76 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { ok: true, clock, regions };
       }
 
+      case 'request_owner': {
+        // Ask a repeater/room-server for its node name via an UNAUTHENTICATED
+        // ANON_REQ OWNER (sub-type 0x02) — firmware simple_repeater
+        // `handleAnonOwnerReq` replies with PUSH_CODE_BINARY_RESPONSE (0x8C)
+        // carrying clock(4 LE) + "node_name\nowner_info" (NUL-terminated ASCII).
+        // Same tag-less transport as request_regions (above); the OWNER branch is
+        // likewise gated on `packet->isRouteDirect()`, so callers must install a
+        // direct out_path first (see meshcoreManager.fetchOwnerName). This is the
+        // no-admin path to a discovered repeater's name (#3820).
+        const publicKey = await this.resolvePublicKey(params.public_key as string);
+        if (!publicKey || publicKey.length !== 32) {
+          throw new Error('request_owner: repeater public key not found');
+        }
+        const timeoutMs = Number(params.timeout_ms) || 15_000;
+        const K = this.constants!;
+        // Frame: [57][pubkey:32][0x02 owner][0x00 reply_path_len → flood reply]
+        const frame = new Uint8Array(1 + 32 + 2);
+        frame[0] = 57; // CMD_SEND_ANON_REQ
+        frame.set(publicKey, 1);
+        frame[33] = 0x02; // ANON_REQ_TYPE_OWNER
+        frame[34] = 0x00; // reply_path_len = 0
+
+        // Serialize the Sent/Err ack AND the 0x8C reply window against other
+        // radio ops on this connection (mirrors request_regions; #3725/#3734).
+        const responseData: Uint8Array = await this.runExclusiveRadioOp(() => new Promise<Uint8Array>((resolve, reject) => {
+          let sentReceived = false;
+          let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+            cleanup();
+            reject(new Error('request_owner timed out'));
+          }, timeoutMs);
+          const onSent = (_r: any) => {
+            sentReceived = true;
+          };
+          const onResp = (r: any) => {
+            if (!sentReceived) return;
+            cleanup();
+            resolve((r?.responseData ?? new Uint8Array()) as Uint8Array);
+          };
+          const onErr = () => {
+            if (sentReceived) return;
+            cleanup();
+            reject(new Error('Device rejected owner request'));
+          };
+          function cleanup() {
+            if (timer) { clearTimeout(timer); timer = null; }
+            c.off(K.ResponseCodes.Sent, onSent);
+            c.off(K.PushCodes.BinaryResponse, onResp);
+            c.off(K.ResponseCodes.Err, onErr);
+          }
+          c.once(K.ResponseCodes.Sent, onSent);
+          c.on(K.PushCodes.BinaryResponse, onResp);
+          c.once(K.ResponseCodes.Err, onErr);
+          void c.sendToRadioFrame(frame);
+        }));
+
+        // Parse: clock(4 LE) + NUL-terminated "node_name\nowner_info" (ASCII).
+        // The companion strips the firmware's leading 4-byte sender_timestamp
+        // tag (same as regions), so the host payload begins at the clock.
+        const buf = Buffer.from(responseData);
+        const clock = buf.length >= 4 ? buf.readUInt32LE(0) : 0;
+        let end = buf.indexOf(0, 4);
+        if (end < 0) end = buf.length;
+        const ownerStr = buf.length > 4 ? buf.toString('utf8', 4, end) : '';
+        // First line is the node name; the rest is free-form owner_info. Keep
+        // only printable chars so a stray binary payload can't render garbage.
+        const name = ownerStr.split('\n')[0].trim();
+        const cleanName = /^[\x20-\x7e]+$/.test(name) ? name : '';
+        return { ok: true, clock, name: cleanName };
+      }
+
       case 'trace_path': {
         const pathBytes = params.path as Uint8Array | number[] | undefined;
         if (!pathBytes || (Array.isArray(pathBytes) ? pathBytes.length : pathBytes.byteLength) === 0) {
