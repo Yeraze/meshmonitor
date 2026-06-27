@@ -218,9 +218,20 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   const byteCounter = useMemo(() => formatByteCount(byteLen, maxBytes), [byteLen, maxBytes]);
   const overLimit = byteLen > maxBytes;
 
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const refocusRef = useRef(false);
+
+  useEffect(() => {
+    if (!sending && refocusRef.current) {
+      refocusRef.current = false;
+      if (!disabled) inputRef.current?.focus();
+    }
+  }, [sending, disabled]);
+
   const handleSend = async () => {
     if (!draft.trim() || sending || overLimit) return;
     setSending(true);
+    refocusRef.current = true;
     const ok = await onSend(draft);
     setSending(false);
     if (ok) setDraft('');
@@ -386,6 +397,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
       </div>
       <div className="meshcore-send-bar">
         <input
+          ref={inputRef}
           type="text"
           value={draft}
           onChange={e => setDraft(e.target.value)}

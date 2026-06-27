@@ -7,7 +7,7 @@
  * but not between messages sent on the same day.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -198,5 +198,38 @@ describe('MeshCoreMessageStream entry scroll (#3810)', () => {
     expect(scrollIntoViewSpy.mock.instances[0]).toBe(
       container.querySelector('[data-message-id="b"]'),
     );
+  });
+});
+
+describe('MeshCoreMessageStream focus restore (#3823)', () => {
+  it('returns focus to the input after a send resolves', async () => {
+    // Controllable send so we can observe the disabled→enabled transition.
+    let resolveSend: (ok: boolean) => void = () => {};
+    const onSend = vi.fn(() => new Promise<boolean>((r) => { resolveSend = r; }));
+
+    render(<MeshCoreMessageStream messages={[]} onSend={onSend} />);
+    const input = screen.getByPlaceholderText('Type a message…') as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: 'hello' } });
+    input.focus();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    // While sending, the input is disabled (so the browser drops focus).
+    expect(input).toBeDisabled();
+
+    // Resolve the send: input re-enables and focus is restored to it (#3823).
+    resolveSend(true);
+    await waitFor(() => expect(input).not.toBeDisabled());
+    await waitFor(() => expect(document.activeElement).toBe(input));
+  });
+
+  it('does NOT steal focus when no send was initiated', async () => {
+    render(<MeshCoreMessageStream messages={[]} onSend={async () => true} />);
+    const input = screen.getByPlaceholderText('Type a message…') as HTMLInputElement;
+    // A re-render unrelated to sending must not yank focus into the input.
+    fireEvent.change(input, { target: { value: 'x' } });
+    document.body.focus();
+    await waitFor(() => expect(input).not.toBeDisabled());
+    expect(document.activeElement).not.toBe(input);
   });
 });
