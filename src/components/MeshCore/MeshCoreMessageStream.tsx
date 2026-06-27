@@ -72,6 +72,11 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   // Message ids whose "heard repeaters" list (#3700) is expanded.
   const [expandedHeardBy, setExpandedHeardBy] = useState<Set<string>>(new Set());
   const listRef = useRef<HTMLDivElement>(null);
+  // Set to true when conversationKey changes so the next messages.length effect
+  // force-scrolls to the bottom even if the backlog arrived after the RAF fired
+  // (async per-channel fetch in MeshCoreChannelsView means scrollHeight may
+  // grow after the initial requestAnimationFrame, leaving the user mid-list).
+  const shouldScrollRef = useRef(true);
 
   const toggleHeardBy = useCallback((id: string) => {
     setExpandedHeardBy(prev => {
@@ -122,24 +127,31 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   }, [contacts]);
 
   // Scroll to bottom whenever the conversation changes.
-  const prevKeyRef = useRef(conversationKey);
   useEffect(() => {
     const container = listRef.current;
     if (!container) return;
-    prevKeyRef.current = conversationKey;
+    // Mark that the next messages.length effect must also force-scroll, to
+    // handle the case where the per-channel backlog arrives asynchronously
+    // after this RAF fires (the backlog fetch in MeshCoreChannelsView is async
+    // — by the time it completes, the old scrollTop is no longer near the new
+    // larger scrollHeight, so the isNearBottom guard would skip the scroll).
+    shouldScrollRef.current = true;
     requestAnimationFrame(() => {
       container.scrollTop = container.scrollHeight;
     });
   }, [conversationKey]);
 
-  // Auto-scroll on new messages only when the user is already near the bottom.
+  // Auto-scroll on new messages: always when a conversation-change is pending,
+  // otherwise only when the user is already near the bottom (so reading history
+  // doesn't get interrupted by incoming messages — behaviour from #3101).
   useEffect(() => {
     const container = listRef.current;
     if (!container) return;
     const isNearBottom =
       container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-    if (isNearBottom) {
+    if (isNearBottom || shouldScrollRef.current) {
       container.scrollTop = container.scrollHeight;
+      shouldScrollRef.current = false;
     }
   }, [messages.length]);
 
