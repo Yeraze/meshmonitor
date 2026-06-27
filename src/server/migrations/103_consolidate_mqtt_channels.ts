@@ -63,6 +63,13 @@ export const migration = {
       for (const dup of ids) {
         if (dup === keep) continue;
         db.prepare(`UPDATE messages SET channel = ? WHERE channel = ?`).run(OFFSET + keep, OFFSET + dup);
+        // Drop conflicting permission rows before reassigning — a user may already
+        // have a row on `keep`, which would cause a UNIQUE(user_id,channel_database_id) violation.
+        db.prepare(
+          `DELETE FROM channel_database_permissions
+           WHERE channel_database_id = ?
+           AND user_id IN (SELECT user_id FROM channel_database_permissions WHERE channel_database_id = ?)`,
+        ).run(dup, keep);
         db.prepare(`UPDATE channel_database_permissions SET channel_database_id = ? WHERE channel_database_id = ?`).run(keep, dup);
         db.prepare(`DELETE FROM channel_database WHERE id = ?`).run(dup);
         mergedDbRows++;
@@ -152,6 +159,11 @@ export async function runMigration103Postgres(client: import('pg').PoolClient): 
     for (const dup of ids) {
       if (dup === keep) continue;
       await client.query(`UPDATE messages SET channel = $1 WHERE channel = $2`, [OFFSET + keep, OFFSET + dup]);
+      // Drop conflicting permission rows before reassigning (same UNIQUE guard as SQLite).
+      await client.query(
+        `DELETE FROM channel_database_permissions WHERE "channelDatabaseId" = $1 AND "userId" IN (SELECT "userId" FROM channel_database_permissions WHERE "channelDatabaseId" = $2)`,
+        [dup, keep],
+      );
       await client.query(`UPDATE channel_database_permissions SET "channelDatabaseId" = $1 WHERE "channelDatabaseId" = $2`, [keep, dup]);
       await client.query(`DELETE FROM channel_database WHERE id = $1`, [dup]);
       mergedDbRows++;
@@ -232,6 +244,12 @@ export async function runMigration103Mysql(pool: import('mysql2/promise').Pool):
     for (const { id: dup } of idRows as Array<{ id: number }>) {
       if (dup === keep) continue;
       await pool.query(`UPDATE messages SET channel = ? WHERE channel = ?`, [OFFSET + keep, OFFSET + dup]);
+      // Drop conflicting permission rows before reassigning (same UNIQUE guard as SQLite).
+      // MySQL forbids a DELETE that directly sub-selects the same table, so wrap in a derived table.
+      await pool.query(
+        `DELETE FROM channel_database_permissions WHERE channelDatabaseId = ? AND userId IN (SELECT userId FROM (SELECT userId FROM channel_database_permissions WHERE channelDatabaseId = ?) AS tmp)`,
+        [dup, keep],
+      );
       await pool.query(`UPDATE channel_database_permissions SET channelDatabaseId = ? WHERE channelDatabaseId = ?`, [keep, dup]);
       await pool.query(`DELETE FROM channel_database WHERE id = ?`, [dup]);
       mergedDbRows++;
