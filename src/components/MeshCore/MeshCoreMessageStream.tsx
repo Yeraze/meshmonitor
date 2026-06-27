@@ -15,8 +15,13 @@ interface MeshCoreMessageStreamProps {
   onSend: (text: string) => Promise<boolean>;
   onNodeNameClick?: (publicKey: string) => void;
   /** Stable key identifying the current conversation. When it changes, the
-   *  stream scrolls to the bottom. */
+   *  stream re-runs its entry scroll (to the first-unread row, or the bottom). */
   conversationKey?: string;
+  /** Id of the oldest unread message for this conversation, snapshotted at
+   *  channel entry. When provided, the stream scrolls this row into view on
+   *  entry (aligned near the top so the unread boundary is visible) instead of
+   *  jumping to the bottom. Absent (e.g. the DM view) ⇒ scroll to bottom. (#3810) */
+  firstUnreadId?: string;
   /** Maximum UTF-8 byte length for a message. Send is blocked when exceeded. */
   maxBytes?: number;
 }
@@ -63,6 +68,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   onSend,
   onNodeNameClick,
   conversationKey,
+  firstUnreadId,
   maxBytes = 130,
 }) => {
   const { t } = useTranslation();
@@ -121,16 +127,46 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     };
   }, [contacts]);
 
-  // Scroll to bottom whenever the conversation changes.
-  const prevKeyRef = useRef(conversationKey);
+  // Entry scroll (#3810): on conversation entry, scroll to the first-unread row
+  // (aligned near the top so the unread boundary is visible) or, when there is
+  // none, to the bottom. A channel's backlog is fetched ASYNCHRONOUSLY, so
+  // `messages` is often empty when `conversationKey` first flips — scrolling
+  // then would fire against empty content and leave the viewport stranded in the
+  // middle once the backlog renders. So we defer the entry scroll until messages
+  // are actually present, and only run it once per conversationKey (re-arming
+  // when the key changes). `entryScrollRef` tracks which key we've handled.
+  const entryScrollRef = useRef<{ key: string | undefined; done: boolean }>({
+    key: conversationKey,
+    done: false,
+  });
   useEffect(() => {
     const container = listRef.current;
     if (!container) return;
-    prevKeyRef.current = conversationKey;
+    const state = entryScrollRef.current;
+    if (state.key !== conversationKey) {
+      // New conversation — re-arm the entry scroll.
+      state.key = conversationKey;
+      state.done = false;
+    }
+    if (state.done) return;
+    // Wait for the (possibly async) backlog before committing the entry scroll.
+    if (messages.length === 0) return;
+    state.done = true;
     requestAnimationFrame(() => {
+      if (firstUnreadId) {
+        const selector = `[data-message-id="${
+          typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(firstUnreadId) : firstUnreadId
+        }"]`;
+        const row = container.querySelector<HTMLElement>(selector);
+        if (row) {
+          // Align the unread boundary near the top of the viewport.
+          row.scrollIntoView({ block: 'start' });
+          return;
+        }
+      }
       container.scrollTop = container.scrollHeight;
     });
-  }, [conversationKey]);
+  }, [conversationKey, messages.length, firstUnreadId]);
 
   // Auto-scroll on new messages only when the user is already near the bottom.
   useEffect(() => {
@@ -254,7 +290,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   </span>
                 </div>
               )}
-              <div className={`mc-message-row ${outgoing ? 'outgoing' : ''}`}>
+              <div className={`mc-message-row ${outgoing ? 'outgoing' : ''}`} data-message-id={m.id}>
               <div className="mc-message-header">
                 {canClick ? (
                   <button

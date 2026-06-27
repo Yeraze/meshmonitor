@@ -132,6 +132,14 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // Per-channel last-read marker (idx → ms), persisted in localStorage scoped by
   // sourceId. Seeded from storage on mount/source change.
   const [lastRead, setLastRead] = useState<Record<number, number>>(() => loadLastRead(sourceId));
+  // Live mirror of `lastRead` so the channel-entry snapshot (#3810) can read the
+  // pre-read marker without re-subscribing to every marker change.
+  const lastReadRef = useRef(lastRead);
+  lastReadRef.current = lastRead;
+  // Pre-read marker snapshotted at channel entry, captured BEFORE the
+  // mark-on-view effect advances it. Used to locate the first-unread message so
+  // the stream can scroll there on entry (#3810).
+  const [entryReadTs, setEntryReadTs] = useState<number>(0);
   // Optional "channels with unread first" ordering (#3703), persisted globally.
   const [sortUnreadFirst, setSortUnreadFirst] = useState<boolean>(
     () => localStorage.getItem(SORT_UNREAD_FIRST_KEY) === 'true',
@@ -399,6 +407,22 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     return Array.from(byId.values()).sort((a, b) => a.timestamp - b.timestamp);
   }, [history, messages, activeFilter]);
 
+  // Snapshot the active channel's pre-read marker on channel entry, BEFORE the
+  // mark-on-view effect below advances it (effects run in declaration order, so
+  // this one wins). Depends only on `active.id` so a later backlog load / mark
+  // doesn't clobber the snapshot. This is the boundary used to find the first
+  // unread message for the entry scroll (#3810).
+  useEffect(() => {
+    setEntryReadTs(lastReadRef.current[active.id] ?? 0);
+  }, [active.id]);
+
+  // The oldest unread message for this channel (timestamp strictly newer than
+  // the entry-read snapshot). Passed to the stream so it scrolls there on entry;
+  // `undefined` (everything already read) ⇒ the stream falls back to bottom.
+  const firstUnreadId = useMemo(() => {
+    return filtered.find(m => m.timestamp > entryReadTs)?.id;
+  }, [filtered, entryReadTs]);
+
   // Mark the active channel read up to its newest visible message. Runs whenever
   // the active channel's content changes (channel switch, backlog load, or a
   // live message arriving while it's open), so an open channel never shows as
@@ -611,6 +635,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           }}
           onNodeNameClick={onNodeNameClick}
           conversationKey={`channel-${active.id}`}
+          firstUnreadId={firstUnreadId}
           maxBytes={
             showScopeOverride && overrideScope !== null && overrideScope !== ''
               ? 120
