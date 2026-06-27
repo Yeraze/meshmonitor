@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.12.1] - 2026-06-27
+
+### Fixed
+- **Startup crash upgrading to 4.12.0 (migration 103)** — On installs with MQTT channel permissions, migration 103 could fail with `UNIQUE constraint failed: channel_database_permissions.user_id, channel_database_permissions.channel_database_id` and crash the app on every start. When consolidating duplicate MQTT channels, the migration now deletes conflicting permission rows before reassigning them to the keeper channel (all three backends; MySQL uses a derived-table subselect). (#3804, #3805)
+
 ## [4.12.0] - 2026-06-26
 
 ### Added
