@@ -718,13 +718,13 @@
   font-weight: 500;
 }
 
-/* Message metadata (time/route/scope) uses overlay1 — one step darker than
-   overlay0 for better readability in both light and dark themes (#3769). */
-.mc-message-time { color: var(--ctp-overlay1); }
+/* Message metadata uses subtext0 — sufficient contrast on bright screens (iPad)
+   in both Catppuccin light and dark themes (#3769, #3811). */
+.mc-message-time { color: var(--ctp-subtext0); }
 .mc-message-text { color: var(--ctp-text); font-size: 0.9rem; word-wrap: break-word; }
 /* Hop count + relay route for received messages (#3742). */
-.mc-message-route { color: var(--ctp-overlay1); font-size: 0.72rem; margin-top: 0.15rem; font-family: var(--font-mono, monospace); }
-.mc-message-scope { color: var(--ctp-overlay1); font-size: 0.72rem; margin-top: 0.1rem; font-family: var(--font-mono, monospace); }
+.mc-message-route { color: var(--ctp-subtext0); font-size: 0.75rem; margin-top: 0.15rem; font-family: var(--font-mono, monospace); }
+.mc-message-scope { color: var(--ctp-subtext0); font-size: 0.75rem; margin-top: 0.1rem; font-family: var(--font-mono, monospace); }
 
 .mc-mention {
   color: var(--ctp-blue);
