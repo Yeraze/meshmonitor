@@ -13,6 +13,7 @@ import {
   AUTOACK_CELLS,
   matrixToSettings,
 } from '../utils/autoAckMatrix';
+import { hasRE2IncompatibleConstructs } from '../utils/autoAckRegex';
 
 interface AutoAcknowledgeSectionProps {
   enabled: boolean;
@@ -137,6 +138,13 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       return { valid: false, error: t('automation.auto_ack.pattern_too_complex') };
     }
 
+    // Reject lookaround/backreferences the server's RE2 engine can't compile
+    // (#3806). The browser's native RegExp below would happily accept them,
+    // letting a pattern be persisted that every subsequent save then 400s on.
+    if (hasRE2IncompatibleConstructs(pattern)) {
+      return { valid: false, error: t('automation.auto_ack.unsupported_regex') };
+    }
+
     // Try to compile
     try {
       new RegExp(pattern, 'i');
@@ -249,7 +257,18 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           showToast(t('automation.insufficient_permissions'), 'error');
           return;
         }
-        throw new Error(`Server returned ${response.status}`);
+        // Surface the server's specific error (e.g. an invalid regex) instead of
+        // the generic failure toast, so a stuck user understands what to fix
+        // rather than seeing an opaque "save failed" message (#3806).
+        let serverError = '';
+        try {
+          const body = await response.json();
+          if (body && typeof body.error === 'string') serverError = body.error;
+        } catch {
+          // Response had no JSON body — fall back to the generic message below.
+        }
+        showToast(serverError || t('automation.settings_save_failed'), 'error');
+        return;
       }
 
       // Only update parent state after successful API call (no localStorage)

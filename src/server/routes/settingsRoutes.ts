@@ -200,22 +200,45 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
       }
     }
 
-    // Validate autoAckRegex pattern
+    // Validate autoAckRegex pattern.
+    //
+    // The pattern is validated with RE2 (compileUserRegex), which — unlike the
+    // browser's native RegExp used by the client — rejects lookaround and
+    // backreferences (`(?=`, `(?<=`, `(?!`, `(?<!`, `\1`, …). Without the guard
+    // below, an install that previously persisted such a pattern would be
+    // permanently stuck: every save re-POSTs the stored regex and the whole
+    // request 400s, so the user can't even toggle auto-ack OFF (#3806).
+    //
+    // We therefore only hard-validate when the regex actually matters: when
+    // auto-acknowledge is being (or staying) enabled, or when the regex value
+    // is actually changing. Disabling auto-ack — or re-saving an unchanged bad
+    // pattern while it's disabled — is always allowed so the section unsticks.
     if ('autoAckRegex' in filteredSettings) {
       const pattern = filteredSettings.autoAckRegex;
 
-      if (pattern.length > 100) {
-        return res.status(400).json({ error: 'Regex pattern too long (max 100 characters)' });
-      }
+      const willBeEnabled =
+        'autoAckEnabled' in filteredSettings
+          ? filteredSettings.autoAckEnabled === 'true'
+          : currentSettings.autoAckEnabled === 'true';
+      const regexChanged = pattern !== (currentSettings.autoAckRegex ?? '');
 
-      if (/(\.\*){2,}|(\+.*\+)|(\*.*\*)|(\{[0-9]{3,}\})|(\{[0-9]+,\})/.test(pattern)) {
-        return res.status(400).json({ error: 'Regex pattern too complex or may cause performance issues' });
-      }
+      if (willBeEnabled || regexChanged) {
+        if (pattern.length > 100) {
+          return res.status(400).json({ error: 'Regex pattern too long (max 100 characters)' });
+        }
 
-      try {
-        compileUserRegex(pattern, 'i');
-      } catch (error) {
-        return res.status(400).json({ error: 'Invalid regex syntax' });
+        if (/(\.\*){2,}|(\+.*\+)|(\*.*\*)|(\{[0-9]{3,}\})|(\{[0-9]+,\})/.test(pattern)) {
+          return res.status(400).json({ error: 'Regex pattern too complex or may cause performance issues' });
+        }
+
+        try {
+          compileUserRegex(pattern, 'i');
+        } catch (error) {
+          return res.status(400).json({
+            error:
+              'Invalid regex syntax: lookaround and backreferences (e.g. (?=, (?!, (?<=, \\1) are not supported. Use a simpler pattern.',
+          });
+        }
       }
     }
 
