@@ -6,7 +6,7 @@
  * message and whenever consecutive messages cross a calendar-day boundary,
  * but not between messages sent on the same day.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 vi.mock('react-i18next', () => ({
@@ -107,5 +107,96 @@ describe('MeshCoreMessageStream scope row (#3814)', () => {
     const scope = container.querySelector('.mc-message-scope');
     expect(scope).toBeTruthy();
     expect(scope?.textContent).toContain('berlin');
+  });
+});
+
+describe('MeshCoreMessageStream entry scroll (#3810)', () => {
+  let scrollIntoViewSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    // Run rAF callbacks synchronously so the entry scroll commits during render.
+    vi.stubGlobal('requestAnimationFrame', (cb: (time: number) => void) => {
+      cb(0);
+      return 0;
+    });
+    scrollIntoViewSpy = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoViewSpy as unknown as typeof Element.prototype.scrollIntoView;
+    // jsdom reports scrollHeight 0; force a non-zero value so the bottom-scroll
+    // path is observable via scrollTop.
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get() { return 500; },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete (Element.prototype as Partial<typeof Element.prototype>).scrollIntoView;
+    delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+  });
+
+  const threeMessages = () => {
+    const now = Date.now();
+    return [
+      msg('a', now - 3000, 'first'),
+      msg('b', now - 2000, 'second'),
+      msg('c', now - 1000, 'third'),
+    ];
+  };
+
+  it('scrolls the first-unread row into view on entry', () => {
+    const { container } = render(
+      <MeshCoreMessageStream
+        messages={threeMessages()}
+        conversationKey="channel-0"
+        firstUnreadId="b"
+        onSend={async () => true}
+      />,
+    );
+    expect(scrollIntoViewSpy).toHaveBeenCalledTimes(1);
+    // The scrolled element must be the row for the first-unread message.
+    expect(scrollIntoViewSpy.mock.instances[0]).toBe(
+      container.querySelector('[data-message-id="b"]'),
+    );
+  });
+
+  it('scrolls to the bottom on entry when there is no unread anchor', () => {
+    const { container } = render(
+      <MeshCoreMessageStream
+        messages={threeMessages()}
+        conversationKey="channel-0"
+        onSend={async () => true}
+      />,
+    );
+    expect(scrollIntoViewSpy).not.toHaveBeenCalled();
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    expect(list.scrollTop).toBe(500);
+  });
+
+  it('runs the entry scroll once the async backlog populates (empty → non-empty)', () => {
+    const { container, rerender } = render(
+      <MeshCoreMessageStream
+        messages={[]}
+        conversationKey="channel-0"
+        firstUnreadId="b"
+        onSend={async () => true}
+      />,
+    );
+    // Empty on first render (conversationKey already flipped) — nothing to scroll.
+    expect(scrollIntoViewSpy).not.toHaveBeenCalled();
+
+    // Backlog arrives for the SAME conversationKey.
+    rerender(
+      <MeshCoreMessageStream
+        messages={threeMessages()}
+        conversationKey="channel-0"
+        firstUnreadId="b"
+        onSend={async () => true}
+      />,
+    );
+    expect(scrollIntoViewSpy).toHaveBeenCalledTimes(1);
+    expect(scrollIntoViewSpy.mock.instances[0]).toBe(
+      container.querySelector('[data-message-id="b"]'),
+    );
   });
 });
