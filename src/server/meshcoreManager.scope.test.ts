@@ -10,7 +10,7 @@
  * meshcoreManager.channels.test.ts does — no real backend or DB.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { MeshCoreManager, MeshCoreDeviceType } from './meshcoreManager.js';
+import { MeshCoreManager, MeshCoreDeviceType, type MeshCoreMessage } from './meshcoreManager.js';
 import databaseService from '../services/database.js';
 
 interface BridgeCall { cmd: string; params: Record<string, unknown>; }
@@ -513,5 +513,52 @@ describe('MeshCoreManager — Phase 3: region discovery (#3667)', () => {
     const result = await manager.discoverRegions();
     expect(result).toEqual({ regions: [], perRepeater: [], noZeroHopRepeaters: true });
     expect(bridgeCalls.some(c => c.cmd === 'request_regions')).toBe(false);
+  });
+});
+
+describe('MeshCoreManager — scope recorded on the sent message (#3814)', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  // Capture the message object the manager emits/persists for an originated send.
+  const captureSent = (manager: MeshCoreManager): MeshCoreMessage[] => {
+    const sent: MeshCoreMessage[] = [];
+    manager.on('message', (m: MeshCoreMessage) => sent.push(m));
+    return sent;
+  };
+
+  it('records the per-message override scope as scopeName on the sent message', async () => {
+    const { manager } = makeManager({ channelScopes: { 1: 'muenchen' } });
+    const sent = captureSent(manager);
+    await manager.sendMessage('hi', undefined, 1, 'augsburg');
+    expect(sent).toHaveLength(1);
+    expect(sent[0].scopeName).toBe('augsburg');
+  });
+
+  it('records the channel scope as scopeName on a normal channel send', async () => {
+    const { manager } = makeManager({ channelScopes: { 1: 'muenchen' } });
+    const sent = captureSent(manager);
+    await manager.sendMessage('hi', undefined, 1);
+    expect(sent[0].scopeName).toBe('muenchen');
+  });
+
+  it('records the source default scope as scopeName when the channel has none', async () => {
+    const { manager } = makeManager({ channelScopes: { 1: null }, defaultScope: 'berlin' });
+    const sent = captureSent(manager);
+    await manager.sendMessage('hi', undefined, 1);
+    expect(sent[0].scopeName).toBe('berlin');
+  });
+
+  it('leaves scopeName null on an unscoped send (no channel scope, no default)', async () => {
+    const { manager } = makeManager();
+    const sent = captureSent(manager);
+    await manager.sendMessage('hi', undefined, 1);
+    expect(sent[0].scopeName).toBeNull();
+  });
+
+  it('leaves scopeName null when an explicit empty override unscopes the send', async () => {
+    const { manager } = makeManager({ channelScopes: { 1: 'muenchen' } });
+    const sent = captureSent(manager);
+    await manager.sendMessage('hi', undefined, 1, '   ');
+    expect(sent[0].scopeName).toBeNull();
   });
 });

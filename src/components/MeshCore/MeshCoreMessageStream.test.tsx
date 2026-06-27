@@ -70,3 +70,42 @@ describe('MeshCoreMessageStream date separators', () => {
     expect(container.querySelectorAll('.mc-date-separator')).toHaveLength(0);
   });
 });
+
+describe('MeshCoreMessageStream scope row (#3814)', () => {
+  const SELF = 'abcdef0123456789';
+
+  function renderWithSelf(messages: MeshCoreMessage[]) {
+    return render(
+      <MeshCoreMessageStream
+        messages={messages}
+        selfPublicKey={SELF}
+        onSend={async () => true}
+      />,
+    );
+  }
+
+  it('renders the scope row on an outgoing message that used a scope', () => {
+    const { container } = renderWithSelf([
+      { id: 'a', fromPublicKey: SELF, text: 'hi', timestamp: Date.now(), scopeName: 'augsburg' },
+    ]);
+    const scope = container.querySelector('.mc-message-scope');
+    expect(scope).toBeTruthy();
+    expect(scope?.textContent).toContain('augsburg');
+  });
+
+  it('renders no scope row on an outgoing message with no scope', () => {
+    const { container } = renderWithSelf([
+      { id: 'a', fromPublicKey: SELF, text: 'hi', timestamp: Date.now(), scopeName: null },
+    ]);
+    expect(container.querySelector('.mc-message-scope')).toBeNull();
+  });
+
+  it('still renders the scope row on a received scoped message', () => {
+    const { container } = renderWithSelf([
+      { id: 'b', fromPublicKey: 'fedcba9876543210', text: 'hi', timestamp: Date.now(), scopeCode: 1234, scopeName: 'berlin' },
+    ]);
+    const scope = container.querySelector('.mc-message-scope');
+    expect(scope).toBeTruthy();
+    expect(scope?.textContent).toContain('berlin');
+  });
+});

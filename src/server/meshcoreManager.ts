@@ -2382,6 +2382,16 @@ class MeshCoreManager extends EventEmitter {
           sourceId: this.sourceId,
           expectedAckCrc: ackCrc ?? undefined,
           estTimeout: estTimeout ?? undefined,
+          // Record the region/scope this message was actually sent with (#3814)
+          // so the UI can display it on the sent message — useful for diagnosing
+          // why a scoped message may not have been received. `region` is the
+          // resolved region NAME (channel scope / source default / per-message
+          // override) or null when unscoped. We only set `scopeName`; the exact
+          // numeric transport code is a payload-dependent HMAC that can't be
+          // reconstructed post-send, and the UI gates the scope row on
+          // `scopeName` presence (no magic-number sentinel needed). A normal
+          // unscoped send leaves `scopeName` null, so it shows no scope row.
+          scopeName: region ?? null,
         };
         this.addMessage(sentMessage);
         this.emit('message', sentMessage);
