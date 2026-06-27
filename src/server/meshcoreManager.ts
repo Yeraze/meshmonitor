@@ -1166,14 +1166,32 @@ class MeshCoreManager extends EventEmitter {
         dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
         if (!wasKnown) {
           void this.notifyNewNodeDiscovered(updated);
-          // A brand-new node whose advert didn't carry its name/type — the full
-          // record (name, type, position) lives on the device's contact list.
-          // Pull it via a debounced refreshContacts() so those fields populate
-          // immediately instead of only after a manual disconnect/reconnect
-          // (#3646). Coalesced with path-refreshes over the same window.
-          if (!updated.advName || updated.advType === undefined) {
-            this.schedulePathRefresh(publicKey);
-          }
+        }
+        // A node whose advert didn't carry its name/type — the full record
+        // (name, type, position) lives on the device's contact list. Pull it via
+        // a debounced refreshContacts() so those fields populate immediately
+        // instead of only after a manual disconnect/reconnect (#3646). Coalesced
+        // with path-refreshes over the same window.
+        //
+        // This fires for KNOWN contacts too, not just brand-new ones (#3820):
+        // discovery (NODE_DISCOVER_RESP) pre-creates a *nameless* device contact,
+        // so the repeater's later zero-hop advert arrives as a pubkey-only 0x80
+        // push (the firmware's existing-contact path) carrying no adv_name — even
+        // though the firmware has already stored the real name on the device. The
+        // old `!wasKnown` gate skipped the re-read for that already-known contact,
+        // leaving it "Unknown" until an unrelated refresh (e.g. opening the admin
+        // panel) happened to run. A get_contacts re-read pulls the stored name.
+        //
+        // Safe + zero-airtime: firmware drops nameless adverts (BaseChatMesh), so
+        // every contact_advertised event means the device just stored a real name;
+        // refreshContacts() is a local debounced get_contacts read, and once the
+        // name is pulled `updated.advName` is non-empty so this stops re-firing.
+        // NOTE: this relies on discovery storing lastAdvert≈0 so the repeater's
+        // next advert isn't replay-dropped firmware-side — if the native backend
+        // ever starts passing a non-zero lastAdvert for discovered contacts, the
+        // firmware replay guard would suppress that advert and reintroduce #3820.
+        if (!updated.advName || updated.advType === undefined) {
+          this.schedulePathRefresh(publicKey);
         }
         logger.info(`[MeshCore] ${event_type} for ${publicKey} (${data.adv_name ?? ''})`);
       }
@@ -2543,6 +2561,7 @@ class MeshCoreManager extends EventEmitter {
   async discoverNodes(
     filter: number,
     windowMs: number = 8000,
+    fetchNames: boolean = false,
   ): Promise<{ returned: number; newCount: number; seen: string[] }> {
     const empty = { returned: 0, newCount: 0, seen: [] as string[] };
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
@@ -2575,12 +2594,78 @@ class MeshCoreManager extends EventEmitter {
         seen: [...this.activeDiscovery.seen],
       };
       logger.info(`[MeshCore] Node discovery complete: ${result.returned} returned, ${result.newCount} new`);
+
+      // #3820: a NODE_DISCOVER_RESP carries no name, and the device's contact
+      // record stays nameless until the repeater adverts — which a zero-hop
+      // repeater may do only rarely (observed: >30 min). When the caller opts in
+      // (the user-facing "Discover" action), actively pull each discovered
+      // repeater/room-server's name now via an unauthenticated ANON_REQ OWNER, so
+      // names populate in seconds instead of waiting on an advert. Skipped for
+      // the internal region-discovery sweep, which has its own per-repeater pass.
+      if (fetchNames) {
+        for (const publicKey of result.seen) {
+          const contact = this.contacts.get(publicKey);
+          const isRepeaterish =
+            contact?.advType === MeshCoreDeviceType.REPEATER ||
+            contact?.advType === MeshCoreDeviceType.ROOM_SERVER;
+          if (isRepeaterish && !contact?.advName) {
+            await this.fetchOwnerName(publicKey);
+          }
+        }
+      }
+
       return result;
     } catch (error) {
       logger.error('[MeshCore] discoverNodes threw:', error);
       return empty;
     } finally {
       this.activeDiscovery = null;
+    }
+  }
+
+  /**
+   * Fetch a repeater/room-server's node name WITHOUT admin login (#3820), via an
+   * unauthenticated ANON_REQ OWNER (firmware simple_repeater `handleAnonOwnerReq`
+   * returns `node_name\nowner_info`). The firmware OWNER branch only answers a
+   * DIRECT-routed request, so — exactly like discoverRegions (#3743) — we install
+   * a zero-hop direct out_path first (the discovered node is a direct neighbour).
+   * On success the name is written onto the contact and broadcast. Best-effort:
+   * any failure (timeout, no reply, non-repeater) is swallowed with a debug log,
+   * since the passive advert path (refresh on advert) remains as a fallback.
+   */
+  async fetchOwnerName(publicKey: string): Promise<string | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
+    try {
+      // Install a zero-hop direct out_path so the ANON_REQ routes direct instead
+      // of flooding into the void (firmware drops flooded OWNER reqs). Best-effort
+      // and quick; the real success signal is the request_owner reply below.
+      const routed = await this.setContactOutPath(publicKey, new Uint8Array(0), 1, 3000);
+      if (!routed) {
+        logger.debug(`[MeshCore:${this.sourceId}] set_out_path ack not seen for ${publicKey.substring(0, 12)}… (route likely applied); proceeding`);
+      }
+      const resp = await this.sendBridgeCommand('request_owner', { public_key: publicKey }, 15_000);
+      if (!resp.success) {
+        logger.debug(`[MeshCore:${this.sourceId}] owner request to ${publicKey.substring(0, 12)}… returned an error: ${resp.error}`);
+        return null;
+      }
+      const name = typeof resp.data?.name === 'string' ? resp.data.name.trim() : '';
+      if (!name) return null;
+      const existing = this.contacts.get(publicKey) ?? { publicKey };
+      const updated: MeshCoreContact = {
+        ...existing,
+        publicKey,
+        advName: name,
+        lastSeen: Date.now(),
+      };
+      this.contacts.set(publicKey, updated);
+      void this.persistContact(updated);
+      this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+      dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+      logger.info(`[MeshCore:${this.sourceId}] Owner-name fetched for ${publicKey.substring(0, 16)}…: "${name}" (#3820)`);
+      return name;
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] owner-name fetch failed for ${publicKey.substring(0, 12)}…: ${(err as Error).message}`);
+      return null;
     }
   }
 

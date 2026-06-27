@@ -1656,7 +1656,9 @@ describe('MeshCore Routes', () => {
         .send({ mode: 'repeaters' });
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ success: true, returned: 3, new: 2 });
-      expect(meshcoreManager.discoverNodes).toHaveBeenCalledWith(0x0c);
+      // fetchNames=true: the user-facing discover opts into ANON_REQ OWNER name
+      // resolution for discovered repeaters/room-servers (#3820).
+      expect(meshcoreManager.discoverNodes).toHaveBeenCalledWith(0x0c, 8000, true);
     });
 
     it('maps "nearby" to the all-types filter (0x1e)', async () => {
@@ -1664,7 +1666,7 @@ describe('MeshCore Routes', () => {
         .post('/api/sources/test-source/meshcore/discover')
         .send({ mode: 'nearby' });
       expect(response.status).toBe(200);
-      expect(meshcoreManager.discoverNodes).toHaveBeenCalledWith(0x1e);
+      expect(meshcoreManager.discoverNodes).toHaveBeenCalledWith(0x1e, 8000, true);
     });
 
     it('maps "sensors" to the sensor-only filter (0x10)', async () => {
@@ -1672,7 +1674,7 @@ describe('MeshCore Routes', () => {
         .post('/api/sources/test-source/meshcore/discover')
         .send({ mode: 'sensors' });
       expect(response.status).toBe(200);
-      expect(meshcoreManager.discoverNodes).toHaveBeenCalledWith(0x10);
+      expect(meshcoreManager.discoverNodes).toHaveBeenCalledWith(0x10, 8000, true);
     });
 
     it('returns 404 when the source has no registered manager', async () => {
