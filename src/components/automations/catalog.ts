@@ -6,7 +6,7 @@
  * `kind` maps to an input renderer in AutomationBuilder.
  */
 
-export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect';
+export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect';
 
 export interface FieldOpt { value: string; label: string; }
 export interface FieldGroup { label: string; options: FieldOpt[]; }
@@ -144,6 +144,7 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
 const EVENT_STRING: Record<string, FieldOpt[]> = {
   'trigger.message': [
     { value: 'text', label: 'Message text' }, { value: 'fromId', label: 'Sender node id' }, { value: 'toId', label: 'Recipient node id' },
+    { value: 'scopeName', label: 'MeshCore scope/region' },
   ],
   'trigger.telemetry': [{ value: 'telemetryType', label: 'Metric name' }],
   'trigger.system': [
@@ -294,6 +295,20 @@ export const ACTIONS: BlockDef[] = [
       { name: 'channels', label: 'On channels', kind: 'channelMulti', help: 'Channels to post to, unified by name + key across your sources (the correct local slot is resolved per source). Leave none to use the triggering channel.' },
       { name: 'to', label: 'DM to node #', kind: 'text', tokens: true, placeholder: 'blank = channel; {{ trigger.from }} replies to sender', advanced: true },
       { name: 'replyToTrigger', label: 'Reply to the triggering message', kind: 'checkbox', advanced: true },
+      {
+        name: 'scopeMode', label: 'MeshCore scope', kind: 'select', advanced: true,
+        options: [
+          { value: 'inherit', label: 'Inherit (channel / source default)' },
+          { value: 'trigger', label: "Match the triggering message's scope" },
+          { value: 'unscoped', label: 'Unscoped (flood, no region)' },
+          { value: 'named', label: 'A specific region…' },
+        ],
+        help: 'Region a MeshCore message floods to (controls propagation). MeshCore only — ignored by Meshtastic sources.',
+      },
+      {
+        name: 'scopeName', label: 'Region', kind: 'regionSelect', advanced: true, tokens: true,
+        placeholder: 'e.g. paris', help: 'Used when MeshCore scope is "A specific region".',
+      },
     ],
   },
   {

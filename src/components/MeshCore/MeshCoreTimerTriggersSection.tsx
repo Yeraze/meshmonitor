@@ -6,6 +6,7 @@ import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { MeshCoreTokenLegend } from './MeshCoreTokenLegend';
+import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 
 interface MeshCoreTimerTriggersSectionProps {
   baseUrl: string;
@@ -31,6 +32,9 @@ interface MeshCoreTimerTrigger {
   destination?: 'channel' | 'dm';
   channelIndex?: number;
   contactPublicKey?: string;
+  /** MeshCore scope/region for the sent message (#3833). */
+  scopeMode?: ScopeMode;
+  scopeName?: string;
   lastRun?: number;
   lastResult?: 'success' | 'error';
   lastError?: string;
@@ -67,6 +71,8 @@ const newTrigger = (): MeshCoreTimerTrigger => ({
   response: '',
   destination: 'channel',
   channelIndex: 0,
+  scopeMode: 'inherit',
+  scopeName: '',
 });
 
 const triggersEqual = (a: MeshCoreTimerTrigger[], b: MeshCoreTimerTrigger[]): boolean => {
@@ -508,6 +514,20 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
                     </select>
                   </label>
                 )}
+              </div>
+            )}
+
+            {(tr.responseType === 'text' || tr.responseType === 'script') && (
+              <div style={{ marginTop: '0.5rem' }}>
+                {/* MeshCore scope/region for the sent message (#3833). No trigger
+                    message here, so the "respond on trigger scope" option is omitted. */}
+                <ScopeSelectField
+                  baseUrl={baseUrl}
+                  sourceId={sourceId}
+                  idPrefix={`timer-${tr.id}`}
+                  value={{ scopeMode: tr.scopeMode, scopeName: tr.scopeName }}
+                  onChange={(v) => updateTrigger(tr.id, { scopeMode: v.scopeMode, scopeName: v.scopeName })}
+                />
               </div>
             )}
 

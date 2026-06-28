@@ -5,6 +5,7 @@ import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { MeshCoreTokenLegend } from './MeshCoreTokenLegend';
+import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 
 interface MeshCoreAutoResponderSectionProps {
   baseUrl: string;
@@ -33,6 +34,9 @@ interface MeshCoreAutoResponderTrigger {
   listenDMs: boolean;
   replyAsDM: boolean;
   cooldownSeconds: number;
+  /** MeshCore scope/region for the reply (#3833). */
+  scopeMode?: ScopeMode;
+  scopeName?: string;
 }
 
 interface ScriptMetadata {
@@ -75,6 +79,8 @@ const newTrigger = (): MeshCoreAutoResponderTrigger => ({
   listenDMs: true,
   replyAsDM: false,
   cooldownSeconds: 60,
+  scopeMode: 'inherit',
+  scopeName: '',
 });
 
 export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSectionProps> = ({ baseUrl, sourceId }) => {
@@ -462,6 +468,16 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
                   ))}
                 </div>
               </fieldset>
+
+              {/* MeshCore scope/region for the reply (#3833) */}
+              <ScopeSelectField
+                baseUrl={baseUrl}
+                sourceId={sourceId}
+                allowTrigger
+                idPrefix={`responder-${tr.id}`}
+                value={{ scopeMode: tr.scopeMode, scopeName: tr.scopeName }}
+                onChange={(v) => updateTrigger(tr.id, { scopeMode: v.scopeMode, scopeName: v.scopeName })}
+              />
             </div>
           );
         })}

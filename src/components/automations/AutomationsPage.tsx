@@ -153,6 +153,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
   const [sources, setSources] = useState<SourceOption[]>([]);
   const [channels, setChannels] = useState<UnifiedChannelOption[]>([]);
   const [scripts, setScripts] = useState<ScriptOption[]>([]);
+  const [regions, setRegions] = useState<string[]>([]);
 
   // Decide builder vs JSON from the existing config.
   const parsedInitial = (() => { try { return initial ? decompile(JSON.parse(initial.config)) : DEFAULT_FORM; } catch { return null; } })();
@@ -187,6 +188,9 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
     apiService.get<{ scripts: Array<{ filename: string; name?: string }> }>('/api/scripts')
       .then((r) => setScripts((r.scripts ?? []).map((s) => ({ value: s.filename, label: s.name || s.filename }))))
       .catch(() => setScripts([]));
+    apiService.get<{ regions: Array<{ name: string }> }>('/api/automations/regions')
+      .then((r) => setRegions((r.regions ?? []).map((x) => x.name)))
+      .catch(() => setRegions([]));
   }, []);
 
   const switchToJson = () => { setJsonText(JSON.stringify(compile(form), null, 2)); setMode('json'); };
@@ -241,7 +245,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
       </div>
 
       {mode === 'builder'
-        ? <AutomationBuilder form={form} variables={variables} sources={sources} channels={channels} scripts={scripts} onChange={setForm} />
+        ? <AutomationBuilder form={form} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} onChange={setForm} />
         : (
           <div className="ae-field">
             <label className="ae-field-label">Workflow graph (JSON)</label>

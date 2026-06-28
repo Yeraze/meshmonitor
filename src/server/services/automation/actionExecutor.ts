@@ -18,6 +18,9 @@ export interface ActionDeps {
     channel: number;
     destination?: number;
     replyId?: number;
+    /** MeshCore scope/region override (#3833). undefined = inherit channel/default;
+     *  '' = explicit unscoped; non-empty = that region. Ignored by Meshtastic. */
+    scopeOverride?: string | null;
   }): Promise<unknown>;
   sendTapback(a: {
     sourceId: string | null;
@@ -80,6 +83,19 @@ async function num(ctx: EngineEvalContext, raw: unknown): Promise<number | undef
 }
 
 /**
+ * True when the action's target source speaks MeshCore. Best-effort: when the
+ * data provider can't report a protocol (older callers / tests), returns false
+ * so behavior is unchanged. Used to skip Meshtastic-only actions (tapback,
+ * node favorite/ignore admin) on MeshCore sources as a recorded no-op instead
+ * of letting the deps throw — now that MeshCore messages also trigger the
+ * engine (#3833), a trigger.message automation can match MeshCore traffic.
+ */
+async function isMeshCoreSource(ctx: EngineEvalContext, sourceId: string | null): Promise<boolean> {
+  if (!sourceId) return false;
+  return (await ctx.data.getSourceProtocol?.(sourceId)) === 'meshcore';
+}
+
+/**
  * Execute an action node against the injected deps. Throws on unknown action
  * type or missing required data; the graph evaluator catches and records it.
  */
@@ -116,6 +132,34 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       const replyId = p.replyToTrigger ? (ctx.trigger.fields.packetId as number | undefined) : await num(ctx, p.replyId);
       const fallbackChannel = p.channel != null ? Number(p.channel) : triggerChannel;
 
+      // MeshCore scope/region (#3833). Translate the selected mode into the
+      // manager's `scopeOverride` contract: undefined = inherit (channel/default),
+      // '' = explicit unscoped, non-empty = a named region. Meshtastic ignores it.
+      // Only applied to channel/broadcast sends below — DMs keep inherit.
+      let scopeOverride: string | null | undefined;
+      switch (String(p.scopeMode ?? 'inherit')) {
+        case 'unscoped':
+          scopeOverride = '';
+          break;
+        case 'named': {
+          const n = (await interpolateAsync(String(p.scopeName ?? ''), ctx)).trim();
+          scopeOverride = n || undefined; // empty named → inherit
+          break;
+        }
+        case 'trigger': {
+          const tn = ctx.trigger.fields.scopeName;
+          if (typeof tn === 'string' && tn.length > 0) scopeOverride = tn;
+          else if (ctx.trigger.fields.scopeCode === 0) scopeOverride = ''; // trigger was explicitly unscoped
+          else scopeOverride = undefined; // Meshtastic / unknown → inherit
+          break;
+        }
+        default:
+          scopeOverride = undefined; // inherit
+      }
+      // Only forward the key when set, so the default (inherit) call shape — and
+      // thus the run-log resolvedParams and existing tests — is unchanged.
+      const scopeArg = scopeOverride !== undefined ? { scopeOverride } : {};
+
       // Target sources: explicit multi-select, else the legacy single source /
       // the triggering source.
       const sourceIds = Array.isArray(p.sourceIds) && p.sourceIds.length > 0
@@ -134,7 +178,12 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       for (const sid of sourceIds) {
         if (destination != null || channelSel.length === 0) {
           // DM, or no unified-channel selection → single send on the fallback channel.
-          results.push(await deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId }));
+          // A numeric-`to` DM keeps inherit scope: MeshCore reply scope only applies
+          // to flooded channel broadcasts, and MeshCore pubkey DMs don't route through
+          // this path anyway — so dropping the override on a DM is correct, not a leak.
+          // A channel-only fallback send (no `to`) still honors the scope override.
+          const fallbackScope = destination != null ? {} : scopeArg;
+          results.push(await deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...fallbackScope }));
           continue;
         }
         const proto = (await ctx.data.getSourceProtocol?.(sid)) ?? null;
@@ -143,7 +192,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           if (sel.protocol && proto && sel.protocol !== proto) continue; // wrong-protocol channel
           const match = srcChannels.find((c) => c.name.toLowerCase() === sel.name.toLowerCase() && c.role !== 0);
           if (!match) continue; // channel not present on this source
-          results.push(await deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId }));
+          results.push(await deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId, ...scopeArg }));
         }
       }
 
@@ -156,6 +205,12 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
     }
 
     case 'action.tapback': {
+      // MeshCore has no tapback / emoji-reaction concept. Skip as a recorded
+      // no-op rather than letting the deps throw, which would log a failed run
+      // for every MeshCore message a tapback automation happens to match.
+      if (await isMeshCoreSource(ctx, sourceId)) {
+        return { skipped: true, reason: 'tapback is not supported on MeshCore' };
+      }
       const emoji = String(p.emoji ?? '👍');
       // Default replyId is the triggering packet; route the way the trigger arrived.
       const replyId = p.replyId != null ? await num(ctx, p.replyId) : (ctx.trigger.fields.packetId as number | undefined);
@@ -170,6 +225,12 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       if (nodeNum == null) throw new Error('action.nodeManage: no target node');
       if (!['favorite', 'unfavorite', 'ignore', 'unignore', 'delete'].includes(op)) {
         throw new Error(`action.nodeManage: invalid op "${op}"`);
+      }
+      // favorite/ignore management rides a Meshtastic admin channel; MeshCore
+      // managers have no such senders. `delete` is DB-level and works for any
+      // source, so only gate the mesh-admin ops — skip (no-op) on MeshCore.
+      if (op !== 'delete' && await isMeshCoreSource(ctx, sourceId)) {
+        return { skipped: true, reason: `nodeManage:${op} is not supported on MeshCore` };
       }
       return deps.manageNode({ sourceId, nodeNum, op });
     }

@@ -4,6 +4,7 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 
 interface MeshCoreAutoAckSectionProps {
   baseUrl: string;
@@ -19,6 +20,9 @@ interface AutoAckSettings {
   useDM: boolean;
   cooldownSeconds: number;
   testMessages: string;
+  /** MeshCore scope/region for the ack reply (#3833). */
+  scopeMode: ScopeMode;
+  scopeName: string;
 }
 
 interface MeshCoreChannelRow {
@@ -39,6 +43,8 @@ const DEFAULTS: AutoAckSettings = {
   useDM: false,
   cooldownSeconds: 0,
   testMessages: DEFAULT_TEST_MESSAGES,
+  scopeMode: 'inherit',
+  scopeName: '',
 };
 
 const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -103,6 +109,8 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
           useDM: !!json.data.useDM,
           cooldownSeconds: typeof json.data.cooldownSeconds === 'number' ? json.data.cooldownSeconds : 0,
           testMessages: json.data.testMessages || DEFAULT_TEST_MESSAGES,
+          scopeMode: (json.data.scopeMode as ScopeMode) || 'inherit',
+          scopeName: json.data.scopeName || '',
         };
         setSettings(s);
         setInitial(s);
@@ -151,6 +159,8 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
       settings.useDM !== initial.useDM ||
       settings.cooldownSeconds !== initial.cooldownSeconds ||
       settings.testMessages !== initial.testMessages ||
+      settings.scopeMode !== initial.scopeMode ||
+      settings.scopeName !== initial.scopeName ||
       channelsChanged,
     );
   }, [settings, initial, loaded]);
@@ -177,6 +187,8 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
             useDM: settings.useDM,
             cooldownSeconds: settings.cooldownSeconds,
             testMessages: settings.testMessages,
+            scopeMode: settings.scopeMode,
+            scopeName: settings.scopeName,
           }),
         },
       );
@@ -394,6 +406,29 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
             <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
               {t('meshcore.automation.autoack.cooldown_help', 'seconds (0 = no cooldown)')}
             </span>
+          </div>
+        </div>
+
+        {/* MeshCore scope/region for the ack reply (#3833) */}
+        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+          <label>
+            {t('meshcore.automation.autoack.scope_label', 'Reply Scope')}
+            <span className="setting-description">
+              {t(
+                'meshcore.automation.autoack.scope_description',
+                'Region the acknowledgement floods to. "Respond on the triggering message\'s scope" replies in the same region the request arrived on.',
+              )}
+            </span>
+          </label>
+          <div style={{ marginTop: '0.5rem' }}>
+            <ScopeSelectField
+              baseUrl={baseUrl}
+              sourceId={sourceId}
+              allowTrigger
+              idPrefix="autoack"
+              value={{ scopeMode: settings.scopeMode, scopeName: settings.scopeName }}
+              onChange={(v) => setSettings((s) => ({ ...s, scopeMode: v.scopeMode ?? 'inherit', scopeName: v.scopeName ?? '' }))}
+            />
           </div>
         </div>
 
