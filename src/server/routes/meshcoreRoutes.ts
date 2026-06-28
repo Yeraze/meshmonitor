@@ -723,6 +723,11 @@ router.post(
         return res.status(400).json({ success: false, error: 'note must be a string' });
       }
       const region = await databaseService.savedRegions.addAsync(name, note ?? null);
+      // Refresh the scope cache on every manager so the new region name is
+      // available for resolving inbound messages immediately (#3829).
+      for (const mgr of meshcoreManagerRegistry.list()) {
+        mgr.notifySavedRegionsChanged();
+      }
       res.json({ success: true, region });
     } catch (error: any) {
       // addAsync throws on an empty/invalid normalized name.
@@ -746,6 +751,11 @@ router.delete(
         return res.status(400).json({ success: false, error: 'Invalid region id' });
       }
       await databaseService.savedRegions.deleteAsync(id);
+      // Refresh the scope cache on every manager so the deleted region is
+      // no longer matched against inbound messages (#3829).
+      for (const mgr of meshcoreManagerRegistry.list()) {
+        mgr.notifySavedRegionsChanged();
+      }
       res.json({ success: true });
     } catch (error) {
       logger.error('[API] Error deleting saved region:', error);

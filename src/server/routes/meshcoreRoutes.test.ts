@@ -71,6 +71,8 @@ const meshcoreManager = {
   // Mesh-TX throttle primitives read by the manual telemetry-poll route.
   getLastMeshTxAt: vi.fn().mockReturnValue(0),
   recordMeshTx: vi.fn(),
+  // Fire-and-forget scope-cache refresh invoked by the saved-regions routes (#3829).
+  notifySavedRegionsChanged: vi.fn(),
 };
 
 vi.mock('../meshcoreManager.js', () => ({
