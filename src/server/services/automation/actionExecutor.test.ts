@@ -18,7 +18,7 @@ function recorder() {
 }
 
 /** Context with a fake var resolver (var.* → a small fixed map). */
-function ctx(fields: Record<string, unknown>, sourceId: string | null = 'default'): EngineEvalContext {
+function ctx(fields: Record<string, unknown>, sourceId: string | null = 'default', protocol?: string): EngineEvalContext {
   const trigger: TriggerContext = {
     triggerType: 'trigger.message',
     sourceId,
@@ -29,7 +29,11 @@ function ctx(fields: Record<string, unknown>, sourceId: string | null = 'default
   const vars = {
     getValue: async (name: string) => (name === 'greeting' ? 'hi there' : null),
   } as unknown as VariableResolver;
-  const data = { getNode: async () => null, getTelemetry: async () => null };
+  // Only expose getSourceProtocol when a protocol is given, so legacy tests keep
+  // the original (no-protocol-info) data shape.
+  const data = protocol
+    ? { getNode: async () => null, getTelemetry: async () => null, getSourceProtocol: async () => protocol }
+    : { getNode: async () => null, getTelemetry: async () => null };
   return { trigger, vars, data, varCtx: { sourceId, nodeNum: trigger.subjectNodeNum }, now: 1000 };
 }
 
@@ -163,12 +167,35 @@ describe('executeAction', () => {
     expect(calls[0].args).toMatchObject({ channel: 3, destination: undefined, replyId: 99 });
   });
 
+  it('tapback: skips as a recorded no-op on a MeshCore source (#3833 follow-up)', async () => {
+    const { calls, deps } = recorder();
+    const result = await executeAction(
+      node('action.tapback', { emoji: '👍' }),
+      ctx({ from: 5, channel: 3, packetId: 99, isDM: false }, 'mc', 'meshcore'),
+      deps,
+    );
+    expect(result).toMatchObject({ skipped: true });
+    expect(calls).toHaveLength(0); // deps never invoked
+  });
+
   it('nodeManage: defaults to the subject node and validates op', async () => {
     const { calls, deps } = recorder();
     await executeAction(node('action.nodeManage', { op: 'favorite' }), ctx({ from: 222 }), deps);
     expect(calls[0]).toEqual({ fn: 'manageNode', args: { sourceId: 'default', nodeNum: 222, op: 'favorite' } });
 
     await expect(executeAction(node('action.nodeManage', { op: 'explode' }), ctx({ from: 1 }), deps)).rejects.toThrow(/invalid op/);
+  });
+
+  it('nodeManage: skips favorite/ignore on MeshCore but still allows delete (#3833 follow-up)', async () => {
+    const { calls, deps } = recorder();
+    // favorite is a Meshtastic-admin op → skipped no-op on MeshCore.
+    const fav = await executeAction(node('action.nodeManage', { op: 'favorite' }), ctx({ from: 7 }, 'mc', 'meshcore'), deps);
+    expect(fav).toMatchObject({ skipped: true });
+    expect(calls).toHaveLength(0);
+
+    // delete is DB-level → runs on any source, MeshCore included.
+    await executeAction(node('action.nodeManage', { op: 'delete' }), ctx({ from: 7 }, 'mc', 'meshcore'), deps);
+    expect(calls).toEqual([{ fn: 'manageNode', args: { sourceId: 'mc', nodeNum: 7, op: 'delete' } }]);
   });
 
   it('notify: interpolates title/body and passes type', async () => {

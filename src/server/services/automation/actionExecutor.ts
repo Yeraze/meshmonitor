@@ -83,6 +83,19 @@ async function num(ctx: EngineEvalContext, raw: unknown): Promise<number | undef
 }
 
 /**
+ * True when the action's target source speaks MeshCore. Best-effort: when the
+ * data provider can't report a protocol (older callers / tests), returns false
+ * so behavior is unchanged. Used to skip Meshtastic-only actions (tapback,
+ * node favorite/ignore admin) on MeshCore sources as a recorded no-op instead
+ * of letting the deps throw — now that MeshCore messages also trigger the
+ * engine (#3833), a trigger.message automation can match MeshCore traffic.
+ */
+async function isMeshCoreSource(ctx: EngineEvalContext, sourceId: string | null): Promise<boolean> {
+  if (!sourceId) return false;
+  return (await ctx.data.getSourceProtocol?.(sourceId)) === 'meshcore';
+}
+
+/**
  * Execute an action node against the injected deps. Throws on unknown action
  * type or missing required data; the graph evaluator catches and records it.
  */
@@ -192,6 +205,12 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
     }
 
     case 'action.tapback': {
+      // MeshCore has no tapback / emoji-reaction concept. Skip as a recorded
+      // no-op rather than letting the deps throw, which would log a failed run
+      // for every MeshCore message a tapback automation happens to match.
+      if (await isMeshCoreSource(ctx, sourceId)) {
+        return { skipped: true, reason: 'tapback is not supported on MeshCore' };
+      }
       const emoji = String(p.emoji ?? '👍');
       // Default replyId is the triggering packet; route the way the trigger arrived.
       const replyId = p.replyId != null ? await num(ctx, p.replyId) : (ctx.trigger.fields.packetId as number | undefined);
@@ -206,6 +225,12 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       if (nodeNum == null) throw new Error('action.nodeManage: no target node');
       if (!['favorite', 'unfavorite', 'ignore', 'unignore', 'delete'].includes(op)) {
         throw new Error(`action.nodeManage: invalid op "${op}"`);
+      }
+      // favorite/ignore management rides a Meshtastic admin channel; MeshCore
+      // managers have no such senders. `delete` is DB-level and works for any
+      // source, so only gate the mesh-admin ops — skip (no-op) on MeshCore.
+      if (op !== 'delete' && await isMeshCoreSource(ctx, sourceId)) {
+        return { skipped: true, reason: `nodeManage:${op} is not supported on MeshCore` };
       }
       return deps.manageNode({ sourceId, nodeNum, op });
     }
