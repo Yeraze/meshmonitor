@@ -12,7 +12,7 @@ const insertMessage = vi.fn().mockResolvedValue(undefined);
 const getSettingForSource = vi.fn().mockResolvedValue(undefined);
 const getAllSavedRegions = vi.fn().mockResolvedValue([]);
 
-vi.mock('./services/database.js', () => ({
+vi.mock('../services/database.js', () => ({
   default: {
     meshcore: { insertMessage: (...a: unknown[]) => insertMessage(...a) },
     settings: { getSettingForSource: (...a: unknown[]) => getSettingForSource(...a) },
