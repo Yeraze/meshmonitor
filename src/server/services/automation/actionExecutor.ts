@@ -165,8 +165,10 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       for (const sid of sourceIds) {
         if (destination != null || channelSel.length === 0) {
           // DM, or no unified-channel selection → single send on the fallback channel.
-          // DMs keep inherit scope (MeshCore DM-by-pubkey isn't reachable here anyway);
-          // a channel-only fallback send still honors the scope override.
+          // A numeric-`to` DM keeps inherit scope: MeshCore reply scope only applies
+          // to flooded channel broadcasts, and MeshCore pubkey DMs don't route through
+          // this path anyway — so dropping the override on a DM is correct, not a leak.
+          // A channel-only fallback send (no `to`) still honors the scope override.
           const fallbackScope = destination != null ? {} : scopeArg;
           results.push(await deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...fallbackScope }));
           continue;

@@ -161,6 +161,25 @@ describe('AutomationEngineService', () => {
     expect(calls[0].args.scopeOverride).toBe('paris');
   });
 
+  it('replies UNSCOPED when trigger-scope mode meets an explicitly-unscoped MeshCore trigger (#3833)', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('mc-ping', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
+        { id: 's', type: 'action.sendMessage', params: { text: 'pong', scopeMode: 'trigger' } },
+      ],
+      edges: [{ from: 't', to: 's' }],
+    });
+    const engine = engineWith(deps);
+    await engine.load();
+
+    // scopeCode 0 = arrived explicitly unscoped, scopeName absent → reply unscoped ('').
+    const fired = await engine.onMeshCoreMessage(mcMessage({ text: 'ping', scopeCode: 0 }), 'default');
+    expect(fired).toBe(1);
+    expect(calls[0].args.scopeOverride).toBe('');
+  });
+
   it('does not fire a MeshCore message automation when the text filter misses', async () => {
     const { calls, deps } = recorder();
     await createEnabled('mc-ping', {
