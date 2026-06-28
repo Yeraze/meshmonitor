@@ -334,6 +334,28 @@ describe('DELETE /channels/:id', () => {
     expect(res.body.messagesDeleted).toBe(5);
     expect(mockDb.channels.deleteChannel).toHaveBeenCalledWith(3, 'src-1');
   });
+
+  it('MeshCore happy-path: deletes a channel via device manager and returns success', async () => {
+    // Set up a MeshCore source
+    mockDb.sources.getSource.mockResolvedValue({ type: 'meshcore' });
+    mockMeshcoreRegistry.get.mockReturnValue(mockMeshcoreManager);
+    mockMeshcoreManager.deleteChannel.mockResolvedValue(undefined);
+
+    // Delete channel 2 (not primary, which is allowed for MeshCore)
+    const res = await request(app).delete('/channels/2').send({ sourceId: 'meshcore-1' });
+
+    // Verify success response
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.message).toContain('Channel 2 deleted');
+    expect(res.body.sourceId).toBe('meshcore-1');
+
+    // Verify the device manager was called to delete on the device
+    expect(mockMeshcoreManager.deleteChannel).toHaveBeenCalledWith(2);
+    
+    // Verify the manager registry was queried for the correct source
+    expect(mockMeshcoreRegistry.get).toHaveBeenCalledWith('meshcore-1');
+  });
 });
 
 describe('POST /channels/:slotId/import', () => {
@@ -399,6 +421,48 @@ describe('POST /channels/reorder', () => {
       { from: 1, to: 0 },
       { from: 0, to: 1 },
     ]));
+  });
+
+  it('happy-path: executes full reorder with device persistence and message migration', async () => {
+    // Test the complete happy-path flow: reorder channels, persist to device, and migrate messages.
+    // The route handles pacing delays internally (2000ms before, 1000ms between each slot, 1500ms before commit),
+    // so this test verifies the core logic without relying on timer controls.
+    mockManager.sourceId = 'src-reorder-full';
+    mockDb.channels.getAllChannels.mockResolvedValue([
+      { id: 0, name: 'Primary', role: 1, psk: 'AQ==', uplinkEnabled: true, downlinkEnabled: true },
+      { id: 1, name: 'Channel A', role: 2, psk: 'BB==', uplinkEnabled: true, downlinkEnabled: true },
+      { id: 2, name: 'Channel B', role: 2, psk: 'CC==', uplinkEnabled: true, downlinkEnabled: false },
+      { id: 3, role: 0 }, // disabled slot
+    ]);
+    
+    // Reorder: move slot 1 → 2, slot 2 → 1, rest identity
+    const res = await request(app)
+      .post('/channels/reorder')
+      .send({ newOrder: [0, 2, 1, 3, 4, 5, 6, 7], sourceId: 'src-reorder-full' });
+    
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.requiresReboot).toBe(true);
+    
+    // Verify the device-interaction bookends
+    expect(mockManager.beginEditSettings).toHaveBeenCalledTimes(1);
+    expect(mockManager.commitEditSettings).toHaveBeenCalledTimes(1);
+    
+    // Verify setChannelConfig was called for affected slots
+    expect(mockManager.setChannelConfig).toHaveBeenCalled();
+    const setCalls = mockManager.setChannelConfig.mock.calls;
+    // Slot 0 is identity so it's not called; slots 1 and 2 should be updated
+    expect(setCalls.some(call => call[0] === 1 && call[1]?.name === 'Channel B')).toBe(true);
+    expect(setCalls.some(call => call[0] === 2 && call[1]?.name === 'Channel A')).toBe(true);
+    
+    // Verify message and permission migration
+    expect(mockDb.messages.migrateMessagesForChannelMoves).toHaveBeenCalledTimes(1);
+    const [moves] = mockDb.messages.migrateMessagesForChannelMoves.mock.calls[0];
+    expect(moves).toEqual(expect.arrayContaining([
+      { from: 1, to: 2 },
+      { from: 2, to: 1 },
+    ]));
+    expect(mockDb.auth.migratePermissionsForChannelMoves).toHaveBeenCalledTimes(1);
   });
 });
 
