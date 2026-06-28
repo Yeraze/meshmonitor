@@ -354,6 +354,10 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
 
   private handleDeviceQuery(clientId: string): void {
     const localNode = this.options.manager.getLocalNode();
+    // Intentionally does NOT gate on isConnected()/localNode (unlike
+    // handleAppStart, which replies BadState): the app sends DeviceQuery
+    // *before* AppStart, so we must reply even with a cold manager — display
+    // fields just fall back to safe defaults below.
     // The DeviceInfo version byte is the *companion protocol* version the app
     // must use to talk to us — NOT the proxied node's firmware version. We only
     // implement v1 frames, so this MUST always be SUPPORTED_COMPANION_PROTOCOL_VERSION.
