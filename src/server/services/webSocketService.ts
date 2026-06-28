@@ -304,6 +304,9 @@ export function initializeWebSocket(
         }
         const dur = Math.min(Math.max(Number(raw?.durationMs) || MAX_TRACE_MS, 1000), MAX_TRACE_MS);
         const expiry = Date.now() + dur;
+        // We don't verify the id exists in the DB: arming a non-existent/disabled
+        // rule is harmless (it simply never emits) and self-expires, so a lookup
+        // would add a query per arm for no safety benefit.
         socket.join(`automation-trace:${automationId}`);
         automationTraceBus.arm(automationId, socket.id, expiry);
         socket.emit('automation-trace:started', { automationId, expiresAt: expiry });

@@ -36,7 +36,10 @@ class AutomationTraceBus {
     this.sink = sink;
   }
 
-  /** Arm a rule for tracing on behalf of a socket, until `expiry` (epoch ms). */
+  /** Arm a rule for tracing on behalf of a socket, until `expiry` (epoch ms).
+   *  When multiple tabs trace the same rule the session lives until the latest
+   *  requested expiry (`Math.max`) — "at least one listener still wants it". The
+   *  WS layer caps each request at MAX_TRACE_MS, so this can't run unbounded. */
   arm(automationId: string, socketId: string, expiry: number): void {
     const entry = this.registry.get(automationId);
     if (entry) {
@@ -55,7 +58,9 @@ class AutomationTraceBus {
     if (entry.sockets.size === 0) this.registry.delete(automationId);
   }
 
-  /** Drop a disconnected socket from every rule it was tracing. */
+  /** Drop a disconnected socket from every rule it was tracing.
+   *  Deleting the current key mid-iteration is safe: Map iteration is spec'd to
+   *  tolerate deletion of already-visited/current entries (no skip). */
   disarmSocket(socketId: string): void {
     for (const [id, entry] of this.registry) {
       entry.sockets.delete(socketId);

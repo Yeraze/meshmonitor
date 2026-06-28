@@ -69,7 +69,10 @@ export default function LiveTracePanel({ automationId, automationName, enabled, 
   const [remaining, setRemaining] = useState<number>(TRACE_DURATION_MS);
   const expiresAtRef = useRef<number>(0);
 
-  // Arm the trace + subscribe while mounted. Re-runs if the socket (re)connects.
+  // Arm the trace + subscribe while mounted. Re-runs if the socket (re)connects:
+  // cleanup stops on the old socket (a no-op once it's gone) and we re-arm on the
+  // new one, which re-fires `automation-trace:started` and resets the countdown —
+  // intended, since a reconnect starts a fresh 5-minute server-side session.
   useEffect(() => {
     if (!socket) {
       setStatus('connecting');

@@ -532,6 +532,34 @@ describe('AutomationEngineService', () => {
     expect(got.find((g) => g.outcome === 'cooldown').reason).toMatch(/cooldown active/);
   });
 
+  it('emits geofence traces: baseline (prefiltered) then enter (fired)', async () => {
+    const got: any[] = [];
+    automationTraceBus.setSink((_id, payload) => got.push(payload));
+    const { deps } = recorder();
+    const a = await createEnabled('geo-enter', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.geofence', params: { event: 'enter', lat: 0, lon: 0, radiusKm: 5 } },
+        { id: 'n', type: 'action.notify', params: { body: 'entered' } },
+      ],
+      edges: [{ from: 't', to: 'n' }],
+    });
+    const pos = { lat: 1, lon: 0 }; // outside
+    const geoData = { getNode: async () => ({ nodeNum: 5, latitude: pos.lat, longitude: pos.lon }), getTelemetry: async () => null };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: geoData, now: () => clock });
+    await engine.load();
+    automationTraceBus.arm(a.id, 'sock1', FAR_FUTURE);
+
+    await engine.checkGeofences(5, 'default'); // baseline (outside)
+    pos.lat = 0.01;                            // move inside
+    await engine.checkGeofences(5, 'default'); // enter → fires
+
+    const outcomes = got.map((g) => g.outcome);
+    expect(outcomes).toEqual(['prefiltered', 'fired']);
+    expect(got[0].reason).toMatch(/baseline only/);
+    expect(got[1]).toMatchObject({ status: 'completed' });
+  });
+
   it('emits NOTHING when the rule is not being traced (hot-path no-op)', async () => {
     const got: any[] = [];
     automationTraceBus.setSink((_id, payload) => got.push(payload));
