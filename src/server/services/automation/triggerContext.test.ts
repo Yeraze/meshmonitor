@@ -1,16 +1,29 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildMessageContext,
+  buildMeshCoreMessageContext,
   buildNodeContext,
   buildTelemetryContext,
   buildSystemContext,
   buildScheduleContext,
   deriveHops,
   messageMatchesFilter,
+  meshCoreMessageMatchesFilter,
   resolveTriggerPath,
   BROADCAST_ADDR,
 } from './triggerContext.js';
 import type { DbMessage } from '../../../services/database.js';
+import type { MeshCoreMessage } from '../../meshcoreManager.js';
+
+function mcMsg(overrides: Partial<MeshCoreMessage> = {}): MeshCoreMessage {
+  return {
+    id: 'm1',
+    fromPublicKey: 'aabbccddeeff',
+    text: 'hello',
+    timestamp: 1000,
+    ...overrides,
+  } as MeshCoreMessage;
+}
 
 function msg(overrides: Partial<DbMessage> = {}): DbMessage {
   return {
@@ -122,6 +135,70 @@ describe('messageMatchesFilter', () => {
   });
   it('an empty channelName does not constrain', () => {
     expect(messageMatchesFilter(msg(), { channelName: '' }, null)).toBe(true);
+  });
+});
+
+describe('buildMeshCoreMessageContext (#3833)', () => {
+  it('maps a channel message: synthetic from, channel index, broadcast, scope', () => {
+    const ctx = buildMeshCoreMessageContext(
+      mcMsg({ fromPublicKey: 'channel-3', fromName: 'Alice', text: 'hi', scopeCode: 7, scopeName: 'paris', hopCount: 2 }),
+      'default',
+      555,
+    );
+    expect(ctx.triggerType).toBe('trigger.message');
+    expect(ctx.subjectNodeNum).toBeNull();
+    expect(ctx.fields.channel).toBe(3);
+    expect(ctx.fields.isBroadcast).toBe(true);
+    expect(ctx.fields.isDM).toBe(false);
+    expect(ctx.fields.fromName).toBe('Alice');
+    expect(ctx.fields.protocol).toBe('meshcore');
+    expect(ctx.fields.scopeCode).toBe(7);
+    expect(ctx.fields.scopeName).toBe('paris');
+    expect(ctx.fields.scoped).toBe(true);
+    expect(ctx.fields.hops).toBe(2);
+  });
+
+  it('maps a DM: recipient pubkey present, no channel, isDM', () => {
+    const ctx = buildMeshCoreMessageContext(
+      mcMsg({ fromPublicKey: 'aabbcc', toPublicKey: 'localkey', scopeCode: 0 }),
+      'default',
+      1,
+    );
+    expect(ctx.fields.channel).toBeUndefined();
+    expect(ctx.fields.isDM).toBe(true);
+    expect(ctx.fields.isBroadcast).toBe(false);
+    expect(ctx.fields.from).toBe('aabbcc');
+    // scopeCode 0 = explicitly unscoped → not "scoped"
+    expect(ctx.fields.scoped).toBe(false);
+  });
+
+  it('a room post is neither DM nor broadcast and has no channel', () => {
+    const ctx = buildMeshCoreMessageContext(
+      mcMsg({ fromPublicKey: 'authorkey', toPublicKey: 'roomkey', messageType: 'room_post' }),
+      'default',
+      1,
+    );
+    expect(ctx.fields.channel).toBeUndefined();
+    expect(ctx.fields.isDM).toBe(false);
+    expect(ctx.fields.isBroadcast).toBe(false);
+  });
+});
+
+describe('meshCoreMessageMatchesFilter (#3833)', () => {
+  it('matches text/regex/channel for MeshCore messages', () => {
+    expect(meshCoreMessageMatchesFilter(mcMsg({ text: 'PING me' }), { textContains: 'ping' })).toBe(true);
+    expect(meshCoreMessageMatchesFilter(mcMsg({ text: 'nope' }), { regex: '^(test|ping)' })).toBe(false);
+    expect(meshCoreMessageMatchesFilter(mcMsg({ fromPublicKey: 'channel-2' }), { channel: 2 })).toBe(true);
+    expect(meshCoreMessageMatchesFilter(mcMsg({ fromPublicKey: 'channel-2' }), { channel: 5 })).toBe(false);
+  });
+  it('matches channel name case-insensitively against the resolved name', () => {
+    expect(meshCoreMessageMatchesFilter(mcMsg({ fromPublicKey: 'channel-1' }), { channelName: 'gauntlet' }, 'Gauntlet')).toBe(true);
+    expect(meshCoreMessageMatchesFilter(mcMsg({ fromPublicKey: 'channel-1' }), { channelName: 'gauntlet' }, 'Primary')).toBe(false);
+  });
+  it('Meshtastic-only params force a non-match (no pubkey↔nodeNum coercion)', () => {
+    expect(meshCoreMessageMatchesFilter(mcMsg(), { from: 111 })).toBe(false);
+    expect(meshCoreMessageMatchesFilter(mcMsg(), { to: 222 })).toBe(false);
+    expect(meshCoreMessageMatchesFilter(mcMsg(), { portnum: 1 })).toBe(false);
   });
 });
 

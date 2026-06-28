@@ -82,6 +82,23 @@ router.get('/channels', canRead, async (_req: Request, res: Response) => {
   }
 });
 
+// ─── MeshCore regions (for the Send-a-message scope picker) ──────────────────
+
+/**
+ * Global saved-region catalog (#3833). The Automations UI is source-less, so it
+ * uses the global catalog (regions are source-independent — a scope is just a
+ * transport code derived from a name). Returns names only for the dropdown.
+ */
+router.get('/regions', canRead, async (_req: Request, res: Response) => {
+  try {
+    const regions = await databaseService.savedRegions.getAllAsync();
+    res.json({ regions: regions.map((r) => ({ name: r.name })) });
+  } catch (error) {
+    logger.error('Error listing automation regions:', error);
+    res.status(500).json({ error: 'Failed to list regions' });
+  }
+});
+
 // ─── variables ───────────────────────────────────────────────────────────────
 
 router.get('/variables', canRead, async (_req: Request, res: Response) => {

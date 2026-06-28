@@ -59,6 +59,87 @@ describe('executeAction', () => {
     expect(calls[0].args).toMatchObject({ destination: 777, replyId: 42, channel: 0 });
   });
 
+  // ── MeshCore scope/region (#3833) ──────────────────────────────────────────
+  it('sendMessage: inherit scope omits scopeOverride (default call shape unchanged)', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', channel: 1 }),
+      ctx({ from: 5, channel: 1, isDM: false }),
+      deps,
+    );
+    expect('scopeOverride' in calls[0].args).toBe(false);
+  });
+
+  it('sendMessage: unscoped scope passes empty-string override', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', channel: 1, scopeMode: 'unscoped' }),
+      ctx({ from: 5, channel: 1, isDM: false }),
+      deps,
+    );
+    expect(calls[0].args.scopeOverride).toBe('');
+  });
+
+  it('sendMessage: named scope passes the interpolated region name', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', channel: 1, scopeMode: 'named', scopeName: ' paris ' }),
+      ctx({ from: 5, channel: 1, isDM: false }),
+      deps,
+    );
+    expect(calls[0].args.scopeOverride).toBe('paris');
+  });
+
+  it('sendMessage: empty named scope falls back to inherit (no override)', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', channel: 1, scopeMode: 'named', scopeName: '   ' }),
+      ctx({ from: 5, channel: 1, isDM: false }),
+      deps,
+    );
+    expect('scopeOverride' in calls[0].args).toBe(false);
+  });
+
+  it('sendMessage: trigger scope uses the triggering message scopeName', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', channel: 1, scopeMode: 'trigger' }),
+      ctx({ from: 5, channel: 1, isDM: false, scopeName: 'lyon', scopeCode: 123 }),
+      deps,
+    );
+    expect(calls[0].args.scopeOverride).toBe('lyon');
+  });
+
+  it('sendMessage: trigger scope on an explicitly-unscoped trigger sends unscoped', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', channel: 1, scopeMode: 'trigger' }),
+      ctx({ from: 5, channel: 1, isDM: false, scopeName: undefined, scopeCode: 0 }),
+      deps,
+    );
+    expect(calls[0].args.scopeOverride).toBe('');
+  });
+
+  it('sendMessage: trigger scope on a Meshtastic trigger (no scope) inherits', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', channel: 1, scopeMode: 'trigger' }),
+      ctx({ from: 5, channel: 1, isDM: false }),
+      deps,
+    );
+    expect('scopeOverride' in calls[0].args).toBe(false);
+  });
+
+  it('sendMessage: DM send never carries a scope override', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', to: '{{ trigger.from }}', channel: 0, scopeMode: 'unscoped' }),
+      ctx({ from: 777, channel: 0, isDM: true }),
+      deps,
+    );
+    expect('scopeOverride' in calls[0].args).toBe(false);
+  });
+
   it('tapback: defaults replyId to the trigger packet and routes DM→DM', async () => {
     const { calls, deps } = recorder();
     await executeAction(

@@ -188,7 +188,23 @@ export enum ConnectionType {
  * land without dragging the script-runner sandbox into the MeshCore
  * surface.
  */
-export interface MeshCoreAutoResponderTrigger {
+/** Scope/region selection shared by every MeshCore automation that sends a
+ *  message (auto-responder, auto-ack, auto-announce, timer triggers) — #3833. */
+export type MeshCoreAutomationScopeMode = 'inherit' | 'trigger' | 'unscoped' | 'named';
+export interface MeshCoreAutomationScopeConfig {
+  /**
+   * Region a sent message floods to (the only per-message propagation lever in
+   * MeshCore — repeaters only forward a scoped flood for regions they carry).
+   * `inherit` (default) = channel scope → source default; `trigger` = the
+   * triggering message's own scope; `unscoped` = flood with no region;
+   * `named` = the region in `scopeName`.
+   */
+  scopeMode?: MeshCoreAutomationScopeMode;
+  /** Region name when `scopeMode === 'named'`. */
+  scopeName?: string;
+}
+
+export interface MeshCoreAutoResponderTrigger extends MeshCoreAutomationScopeConfig {
   id: string;
   name: string;
   enabled: boolean;
@@ -222,7 +238,7 @@ export interface MeshCoreAutoResponderTrigger {
  * row; the runner reads the row by id at fire time so a freshly-saved
  * template applies on the next tick.
  */
-export interface MeshCoreTimerTrigger {
+export interface MeshCoreTimerTrigger extends MeshCoreAutomationScopeConfig {
   id: string;
   name: string;
   enabled: boolean;
@@ -2275,6 +2291,35 @@ class MeshCoreManager extends EventEmitter {
    * (#3704 review item 2). The send route still rejects non-string types and
    * over-length input up front, so only stray punctuation reaches this strip.
    */
+  /**
+   * Translate an automation's scope selection (#3833) into the `scopeOverride`
+   * value `sendMessage` expects: `undefined` = inherit (channel/source default),
+   * `''` = explicit unscoped, a non-empty string = a named region.
+   *
+   * `trigger` mode replies on the triggering message's own scope — its resolved
+   * `scopeName` when known, `''` when the trigger was explicitly unscoped
+   * (`scopeCode === 0`), else inherit (unknown / no trigger message available).
+   */
+  private static resolveAutomationScopeOverride(
+    cfg: MeshCoreAutomationScopeConfig | undefined,
+    triggerMsg?: MeshCoreMessage,
+  ): string | null | undefined {
+    switch (cfg?.scopeMode) {
+      case 'unscoped':
+        return '';
+      case 'named':
+        return (cfg.scopeName ?? '').trim() || undefined; // empty named → inherit
+      case 'trigger': {
+        const name = (triggerMsg?.scopeName ?? '').trim();
+        if (name) return name;
+        if (triggerMsg?.scopeCode === 0) return ''; // trigger arrived explicitly unscoped
+        return undefined; // unknown scope / no trigger → inherit
+      }
+      default:
+        return undefined; // inherit
+    }
+  }
+
   private static normalizeScopeOverride(scope: string | null | undefined): string | null | undefined {
     if (scope === undefined || scope === null) return undefined;
     const stripped = scope.trim().replace(/^#/, '');
@@ -4947,11 +4992,19 @@ class MeshCoreManager extends EventEmitter {
       return { sent: 0, total: 0 };
     }
 
+    // Scope/region for the announcement (#3833). No trigger message, so 'trigger'
+    // mode degrades to inherit. `undefined` (inherit) preserves prior behavior
+    // where the per-channel / source-default scope already applied.
+    const scopeOverride = MeshCoreManager.resolveAutomationScopeOverride({
+      scopeMode: (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceScopeMode')) as MeshCoreAutomationScopeMode | undefined,
+      scopeName: (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceScopeName')) ?? undefined,
+    });
+
     const rendered = await replaceMeshCoreAnnounceTokens(message, this);
     let sent = 0;
     for (const idx of channelIndexes) {
       try {
-        const ok = await this.sendMessage(rendered, undefined, idx);
+        const ok = await this.sendMessage(rendered, undefined, idx, scopeOverride);
         if (ok) sent += 1;
       } catch (err) {
         logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: send to channel ${idx} threw: ${(err as Error).message}`);
@@ -5086,12 +5139,15 @@ class MeshCoreManager extends EventEmitter {
     // Pre-build the dispatch closure so the script + text paths route
     // through identical destination logic. Returns false when the
     // trigger has no destination — the caller surfaces that reason.
+    // Scope/region for the timer message (#3833). No trigger message, so
+    // 'trigger' mode degrades to inherit (channel/source default).
+    const scopeOverride = MeshCoreManager.resolveAutomationScopeOverride(trigger);
     const dispatch = async (text: string): Promise<boolean> => {
       if (trigger.destination === 'dm' && trigger.contactPublicKey) {
-        return this.sendMessage(text, trigger.contactPublicKey);
+        return this.sendMessage(text, trigger.contactPublicKey, undefined, scopeOverride);
       }
       if (typeof trigger.channelIndex === 'number') {
-        return this.sendMessage(text, undefined, trigger.channelIndex);
+        return this.sendMessage(text, undefined, trigger.channelIndex, scopeOverride);
       }
       return false;
     };
@@ -5351,13 +5407,15 @@ class MeshCoreManager extends EventEmitter {
         // response should go (DM to sender vs channel) so the script
         // path and text path can share it.
         const senderContact = this.resolveContactByPrefix(message.fromPublicKey);
+        // Scope/region for the reply (#3833): inherit / trigger / unscoped / named.
+        const scopeOverride = MeshCoreManager.resolveAutomationScopeOverride(trigger, message);
         const dispatch = async (text: string): Promise<boolean> => {
           if (trigger.replyAsDM || isDM) {
             const targetKey = senderContact?.publicKey || message.fromPublicKey;
-            return this.sendMessage(text, targetKey);
+            return this.sendMessage(text, targetKey, undefined, scopeOverride);
           }
           if (typeof channelIdx === 'number') {
-            return this.sendMessage(text, undefined, channelIdx);
+            return this.sendMessage(text, undefined, channelIdx, scopeOverride);
           }
           return false;
         };
@@ -5528,6 +5586,11 @@ class MeshCoreManager extends EventEmitter {
 
       const useDM = (await settings.getSettingForSource(sourceId, 'meshcoreAutoAckUseDM')) === 'true';
       const template = (await settings.getSettingForSource(sourceId, 'meshcoreAutoAckMessage')) || MeshCoreManager.AUTO_ACK_DEFAULT_MESSAGE;
+      // Scope/region for the ack reply (#3833): inherit / trigger / unscoped / named.
+      const scopeOverride = MeshCoreManager.resolveAutomationScopeOverride({
+        scopeMode: (await settings.getSettingForSource(sourceId, 'meshcoreAutoAckScopeMode')) as MeshCoreAutomationScopeMode | undefined,
+        scopeName: (await settings.getSettingForSource(sourceId, 'meshcoreAutoAckScopeName')) ?? undefined,
+      }, message);
 
       // Resolve sender's display name from contacts when available
       let senderName = message.fromName;
@@ -5562,10 +5625,10 @@ class MeshCoreManager extends EventEmitter {
           return;
         }
         logger.info(`[MeshCore:${sourceId}] Auto-ack DM → ${contact.advName ?? contact.publicKey.substring(0, 8)}: "${replyText}"`);
-        await this.sendMessage(replyText, contact.publicKey);
+        await this.sendMessage(replyText, contact.publicKey, undefined, scopeOverride);
       } else {
         logger.info(`[MeshCore:${sourceId}] Auto-ack channel ${channelIdx} → "${replyText}"`);
-        await this.sendMessage(replyText, undefined, channelIdx);
+        await this.sendMessage(replyText, undefined, channelIdx, scopeOverride);
       }
     } catch (err) {
       logger.error(`[MeshCore:${this.sourceId}] Auto-ack handler threw: ${(err as Error).message}`);

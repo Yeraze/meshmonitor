@@ -10,6 +10,7 @@ import { logger } from '../../../utils/logger.js';
 import databaseService from '../../../services/database.js';
 import { dataEventEmitter, type DataEvent } from '../dataEventEmitter.js';
 import type { DbMessage, DbTelemetry } from '../../../services/database.js';
+import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import { AutomationEngineService } from './automationEngineService.js';
 import { VariableResolver } from './variableResolver.js';
 import { createMeshActionDeps } from './meshActionDeps.js';
@@ -98,6 +99,11 @@ async function handleEvent(event: DataEvent): Promise<void> {
   switch (event.type) {
     case 'message:new':
       await e.onMessage(event.data as DbMessage, sourceId);
+      break;
+
+    case 'meshcore:message':
+      // MeshCore received messages were previously ignored by the engine (#3833).
+      await e.onMeshCoreMessage(event.data as MeshCoreMessage, sourceId);
       break;
 
     case 'node:updated': {

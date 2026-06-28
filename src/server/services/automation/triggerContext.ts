@@ -7,6 +7,7 @@
  * full DbNode happens in the engine; here we expose what the payload carries.
  */
 import type { DbMessage } from '../../../services/database.js';
+import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { TriggerType } from '../../../types/automation.js';
 import { compileUserRegex } from '../../../utils/safeRegex.js';
 
@@ -65,6 +66,73 @@ export function buildMessageContext(msg: DbMessage, sourceId: string | null, tim
     triggerType: 'trigger.message',
     sourceId,
     subjectNodeNum: Number(msg.fromNodeNum),
+    timestamp,
+    fields,
+  };
+}
+
+/**
+ * A received MeshCore channel message carries no sender pubkey on the wire, so
+ * the manager stores the channel slot in `fromPublicKey` as `channel-<idx>`
+ * (see `MeshCoreManager.channelPublicKey`). Parse that back to the slot index;
+ * returns undefined for DMs/room posts (a real/author pubkey, not a channel).
+ */
+function parseMeshCoreChannelIdx(fromPublicKey: string | undefined): number | undefined {
+  const m = /^channel-(\d+)$/.exec(fromPublicKey ?? '');
+  return m ? Number(m[1]) : undefined;
+}
+
+/**
+ * Build the trigger context for a MeshCore `meshcore:message` event (#3833).
+ *
+ * MeshCore identity is a public-key string — there is no Meshtastic `nodeNum`,
+ * `portnum`, or numeric packet id — so this is a parallel builder to
+ * {@link buildMessageContext} rather than a coercion into `DbMessage` (which
+ * would corrupt the `Number()`-based matcher). `triggerType` stays
+ * `'trigger.message'` so the SAME message automations fire on both protocols.
+ */
+export function buildMeshCoreMessageContext(
+  msg: MeshCoreMessage,
+  sourceId: string | null,
+  timestamp: number,
+): TriggerContext {
+  const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
+  const isChannel = channelIdx !== undefined;
+  const isRoom = msg.messageType === 'room_post';
+  // DM = addressed to us (recipient pubkey set) and not a channel/room post.
+  const isDM = !isChannel && !isRoom && msg.toPublicKey != null;
+  const scopeCode = msg.scopeCode ?? undefined;
+  const fields: Record<string, unknown> = {
+    // MeshCore senders are pubkey strings; channel messages have no per-sender
+    // pubkey, so `from` is the synthetic `channel-<idx>` key. `fromName` carries
+    // the display name a channel sender prefixed onto the body, when present.
+    from: msg.fromPublicKey,
+    fromId: msg.fromPublicKey,
+    fromName: msg.fromName,
+    to: msg.toPublicKey,
+    toId: msg.toPublicKey,
+    text: msg.text,
+    channel: channelIdx,
+    isDM,
+    isBroadcast: isChannel,
+    hops: msg.hopCount ?? undefined,
+    snr: msg.snr,
+    rssi: msg.rssi,
+    // MeshCore scope/region (#3833). `scopeCode` 0 = explicitly unscoped, null/
+    // absent = no scope info; `scopeName` = resolved region name (null when
+    // unscoped or scoped-but-unknown). Powers the "respond on trigger scope" mode.
+    scopeCode,
+    scopeName: msg.scopeName ?? undefined,
+    scoped: scopeCode != null && scopeCode !== 0,
+    protocol: 'meshcore',
+    sourceId,
+    timestamp,
+  };
+  return {
+    triggerType: 'trigger.message',
+    sourceId,
+    // No Meshtastic-style numeric node → no node.* hydration for MeshCore messages.
+    subjectNodeNum: null,
     timestamp,
     fields,
   };
@@ -195,6 +263,43 @@ export function messageMatchesFilter(msg: DbMessage, params: Record<string, unkn
       re = compileUserRegex(params.regex);
     } catch {
       return false; // an invalid/unsupported regex never matches
+    }
+    if (!re.test(text)) return false;
+  }
+  return true;
+}
+
+/**
+ * Pre-filter for MeshCore `trigger.message` events — the MeshCore analogue of
+ * {@link messageMatchesFilter}. Honors only cross-protocol params (text/regex/
+ * channel/channelName). Meshtastic-only params (`from`/`to`/`portnum`) express
+ * node-number intent that can't match a MeshCore pubkey sender, so their
+ * presence forces a non-match (a "from node #N" rule never fires on MeshCore).
+ *
+ * @param channelName Pre-resolved name of the message's channel slot for its
+ *   source (same contract as {@link messageMatchesFilter}).
+ */
+export function meshCoreMessageMatchesFilter(
+  msg: MeshCoreMessage,
+  params: Record<string, unknown> = {},
+  channelName?: string | null,
+): boolean {
+  if (params.portnum != null || params.from != null || params.to != null) return false;
+  const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
+  if (params.channel != null && Number(channelIdx) !== Number(params.channel)) return false;
+  if (typeof params.channelName === 'string' && params.channelName.length > 0) {
+    if (!channelName || channelName.toLowerCase() !== params.channelName.toLowerCase()) return false;
+  }
+  const text = msg.text ?? '';
+  if (typeof params.textContains === 'string' && params.textContains.length > 0) {
+    if (!text.toLowerCase().includes(params.textContains.toLowerCase())) return false;
+  }
+  if (typeof params.regex === 'string' && params.regex.length > 0) {
+    let re: RegExp;
+    try {
+      re = compileUserRegex(params.regex);
+    } catch {
+      return false;
     }
     if (!re.test(text)) return false;
   }

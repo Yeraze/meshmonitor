@@ -23,15 +23,18 @@ import {
 import { VariableResolver } from './variableResolver.js';
 import {
   buildMessageContext,
+  buildMeshCoreMessageContext,
   buildNodeContext,
   buildTelemetryContext,
   buildSystemContext,
   buildGeofenceContext,
   buildScheduleContext,
   messageMatchesFilter,
+  meshCoreMessageMatchesFilter,
   type TriggerContext,
   type SystemEvent,
 } from './triggerContext.js';
+import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import { scheduleCron, validateCron } from '../../utils/cronScheduler.js';
 import { haversineKm, geofenceFires, pointInShape, geofenceCenter, normalizeGeofenceParams, type GeofenceMode } from './geo.js';
 import { evaluateGraph, type EvaluatorHooks } from './graphEvaluator.js';
@@ -282,6 +285,27 @@ export class AutomationEngineService {
       channelName = await this.data.getChannelName(sourceId, Number(msg.channel));
     }
     return this.runTrigger(ctx, (a) => messageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName));
+  }
+
+  /**
+   * MeshCore message entry point (#3833). Mirrors {@link onMessage} but builds a
+   * MeshCore-shaped trigger context and uses the MeshCore matcher, so the same
+   * `trigger.message` automations fire on MeshCore received messages (which the
+   * engine previously ignored entirely).
+   */
+  async onMeshCoreMessage(msg: MeshCoreMessage, sourceId: string | null): Promise<number> {
+    const ctx = buildMeshCoreMessageContext(msg, sourceId, this.now());
+    let channelName: string | null | undefined;
+    const usesChannelName = (this.index.get('trigger.message') ?? []).some((a) => {
+      const p = a.triggerNode.params as Record<string, unknown> | undefined;
+      return typeof p?.channelName === 'string' && p.channelName.length > 0;
+    });
+    // A received channel message stores its slot index in `from` as `channel-<idx>`.
+    const channelIdx = ctx.fields.channel;
+    if (usesChannelName && this.data.getChannelName && typeof channelIdx === 'number') {
+      channelName = await this.data.getChannelName(sourceId, channelIdx);
+    }
+    return this.runTrigger(ctx, (a) => meshCoreMessageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName));
   }
 
   async onNode(

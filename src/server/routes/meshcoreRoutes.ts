@@ -2901,6 +2901,8 @@ router.get(
       const useDM = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckUseDM');
       const cooldownSeconds = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckCooldownSeconds');
       const testMessages = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckTestMessages');
+      const scopeMode = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckScopeMode');
+      const scopeName = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckScopeName');
 
       res.json({
         success: true,
@@ -2918,6 +2920,9 @@ router.get(
           useDM: useDM === 'true',
           cooldownSeconds: parseInt(cooldownSeconds || '0', 10) || 0,
           testMessages: testMessages || 'test\nTest message\nping\nPING\nHello world\nTESTING 123',
+          // MeshCore scope/region for the ack reply (#3833).
+          scopeMode: (scopeMode as 'inherit' | 'trigger' | 'unscoped' | 'named') || 'inherit',
+          scopeName: scopeName || '',
         },
       });
     } catch (error) {
@@ -2944,6 +2949,8 @@ router.post(
         useDM,
         cooldownSeconds,
         testMessages,
+        scopeMode,
+        scopeName,
       } = req.body as {
         enabled?: boolean;
         regex?: string;
@@ -2953,6 +2960,8 @@ router.post(
         useDM?: boolean;
         cooldownSeconds?: number;
         testMessages?: string;
+        scopeMode?: 'inherit' | 'trigger' | 'unscoped' | 'named';
+        scopeName?: string;
       };
 
       if (enabled !== undefined) {
@@ -2992,6 +3001,13 @@ router.post(
       if (testMessages !== undefined) {
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAckTestMessages', testMessages);
       }
+      if (scopeMode !== undefined) {
+        const mode = ['inherit', 'trigger', 'unscoped', 'named'].includes(String(scopeMode)) ? String(scopeMode) : 'inherit';
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAckScopeMode', mode);
+      }
+      if (scopeName !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAckScopeName', String(scopeName).trim());
+      }
 
       res.json({ success: true });
     } catch (error) {
@@ -3027,6 +3043,8 @@ router.get(
       const advertEnabled = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceAdvertEnabled');
       const advertDelaySeconds = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceAdvertDelaySeconds');
       const lastRunAt = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceLastRunAt');
+      const scopeMode = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceScopeMode');
+      const scopeName = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceScopeName');
 
       res.json({
         success: true,
@@ -3046,6 +3064,10 @@ router.get(
           advertEnabled: advertEnabled === 'true',
           advertDelaySeconds: parseInt(advertDelaySeconds || '30', 10) || 30,
           lastRunAt: lastRunAt ? parseInt(lastRunAt, 10) || null : null,
+          // MeshCore scope/region for the announcement (#3833). No trigger here,
+          // so only inherit / unscoped / named are meaningful.
+          scopeMode: (scopeMode as 'inherit' | 'unscoped' | 'named') || 'inherit',
+          scopeName: scopeName || '',
         },
       });
     } catch (error) {
@@ -3073,6 +3095,8 @@ router.post(
         schedule,
         advertEnabled,
         advertDelaySeconds,
+        scopeMode,
+        scopeName,
       } = req.body as {
         enabled?: boolean;
         intervalHours?: number;
@@ -3083,6 +3107,8 @@ router.post(
         schedule?: string;
         advertEnabled?: boolean;
         advertDelaySeconds?: number;
+        scopeMode?: 'inherit' | 'unscoped' | 'named';
+        scopeName?: string;
       };
 
       if (enabled !== undefined) {
@@ -3116,6 +3142,13 @@ router.post(
       if (advertDelaySeconds !== undefined) {
         const clamped = Math.max(0, Math.min(600, Math.floor(advertDelaySeconds) || 30));
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceAdvertDelaySeconds', String(clamped));
+      }
+      if (scopeMode !== undefined) {
+        const mode = ['inherit', 'unscoped', 'named'].includes(String(scopeMode)) ? String(scopeMode) : 'inherit';
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceScopeMode', mode);
+      }
+      if (scopeName !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceScopeName', String(scopeName).trim());
       }
 
       // Re-arm the scheduler so the new settings take effect immediately.

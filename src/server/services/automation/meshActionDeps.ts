@@ -50,24 +50,27 @@ async function sendTextVia(
   destination?: number,
   replyId?: number,
   emoji = 0,
+  scopeOverride?: string | null,
 ): Promise<unknown> {
   if (!sourceId) throw new Error('automation action requires a target source');
   const raw = sourceManagerRegistry.getManager(sourceId) as unknown as
     (Partial<MeshSendManager> & Partial<MeshCoreSendManager>) | undefined;
   if (raw && typeof raw.sendTextMessage === 'function') {
+    // Meshtastic has no scope/region concept — scopeOverride is dropped.
     return raw.sendTextMessage(text, channel, destination, replyId, emoji);
   }
   if (raw && typeof raw.sendMessage === 'function') {
     // MeshCore: channel send only (DM-by-nodeNum / tapbacks not supported here).
-    return raw.sendMessage(text, undefined, channel);
+    // `scopeOverride` (#3833) controls which region the message floods to.
+    return raw.sendMessage(text, undefined, channel, scopeOverride);
   }
   throw new Error(`source "${sourceId}" cannot send messages`);
 }
 
 export function createMeshActionDeps(): ActionDeps {
   return {
-    async sendMessage({ sourceId, text, channel, destination, replyId }) {
-      return sendTextVia(sourceId, text, channel ?? 0, destination, replyId, 0);
+    async sendMessage({ sourceId, text, channel, destination, replyId, scopeOverride }) {
+      return sendTextVia(sourceId, text, channel ?? 0, destination, replyId, 0, scopeOverride);
     },
 
     async sendTapback({ sourceId, emoji, channel, destination, replyId }) {

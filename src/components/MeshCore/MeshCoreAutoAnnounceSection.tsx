@@ -5,6 +5,7 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 import { MESHCORE_AUTOMATION_TOKENS } from './meshcoreAutomationTokens';
 
 interface MeshCoreAutoAnnounceSectionProps {
@@ -22,6 +23,9 @@ interface AutoAnnounceSettings {
   schedule: string;
   advertEnabled: boolean;
   advertDelaySeconds: number;
+  /** MeshCore scope/region for the announcement (#3833). No trigger, so no 'trigger' mode. */
+  scopeMode: ScopeMode;
+  scopeName: string;
 }
 
 interface MeshCoreChannelRow {
@@ -42,6 +46,8 @@ const DEFAULTS: AutoAnnounceSettings = {
   schedule: DEFAULT_SCHEDULE,
   advertEnabled: false,
   advertDelaySeconds: 30,
+  scopeMode: 'inherit',
+  scopeName: '',
 };
 
 const TOKENS = MESHCORE_AUTOMATION_TOKENS;
@@ -91,6 +97,8 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
           schedule: json.data.schedule || DEFAULT_SCHEDULE,
           advertEnabled: !!json.data.advertEnabled,
           advertDelaySeconds: typeof json.data.advertDelaySeconds === 'number' ? json.data.advertDelaySeconds : 30,
+          scopeMode: (json.data.scopeMode as ScopeMode) || 'inherit',
+          scopeName: json.data.scopeName || '',
         };
         setSettings(s);
         setInitial(s);
@@ -160,7 +168,9 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
       settings.useSchedule !== initial.useSchedule ||
       settings.schedule !== initial.schedule ||
       settings.advertEnabled !== initial.advertEnabled ||
-      settings.advertDelaySeconds !== initial.advertDelaySeconds,
+      settings.advertDelaySeconds !== initial.advertDelaySeconds ||
+      settings.scopeMode !== initial.scopeMode ||
+      settings.scopeName !== initial.scopeName,
     );
   }, [settings, initial, loaded]);
 
@@ -196,6 +206,8 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
             schedule: settings.schedule,
             advertEnabled: settings.advertEnabled,
             advertDelaySeconds: settings.advertDelaySeconds,
+            scopeMode: settings.scopeMode,
+            scopeName: settings.scopeName,
           }),
         },
       );
@@ -455,6 +467,28 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
                 </label>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* MeshCore scope/region for the announcement (#3833) */}
+        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+          <label>
+            {t('meshcore.automation.announce.scope_label', 'Scope')}
+            <span className="setting-description">
+              {t(
+                'meshcore.automation.announce.scope_description',
+                'Region the announcement floods to. Inherit uses each channel\'s configured scope or the source default.',
+              )}
+            </span>
+          </label>
+          <div style={{ marginTop: '0.5rem' }}>
+            <ScopeSelectField
+              baseUrl={baseUrl}
+              sourceId={sourceId}
+              idPrefix="announce"
+              value={{ scopeMode: settings.scopeMode, scopeName: settings.scopeName }}
+              onChange={(v) => setSettings((s) => ({ ...s, scopeMode: v.scopeMode ?? 'inherit', scopeName: v.scopeName ?? '' }))}
+            />
           </div>
         </div>
 

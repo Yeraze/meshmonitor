@@ -39,6 +39,7 @@ interface Props {
   sources: SourceOption[];
   channels: UnifiedChannelOption[];
   scripts: ScriptOption[];
+  regions: string[];
   onChange: (form: WorkflowForm) => void;
 }
 
@@ -59,8 +60,8 @@ function defaultParams(type: string, triggerType: string): Record<string, unknow
   return params;
 }
 
-function FieldInput({ field, value, onChange, variables, sources, channels, scripts, triggerType }: {
-  field: FieldDef; value: unknown; onChange: (v: unknown) => void; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; triggerType: string;
+function FieldInput({ field, value, onChange, variables, sources, channels, scripts, regions, triggerType }: {
+  field: FieldDef; value: unknown; onChange: (v: unknown) => void; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[]; triggerType: string;
 }) {
   let control;
   const varNames = variables.map((v) => v.name);
@@ -131,6 +132,20 @@ function FieldInput({ field, value, onChange, variables, sources, channels, scri
         </select>
       );
       break;
+    case 'regionSelect':
+      // Editable combobox: pick a saved region or type any region name (incl. a
+      // {{ trigger.scopeName }} token). Not a hard <select> so users can target
+      // a region not yet in the saved catalog — the manager accepts any name.
+      control = (
+        <>
+          <input className="ae-input" list="ae-regions" value={(value ?? '') as string}
+            placeholder={field.placeholder} onChange={(e) => onChange(e.target.value)} />
+          <datalist id="ae-regions">
+            {regions.map((r) => <option key={r} value={r} />)}
+          </datalist>
+        </>
+      );
+      break;
     case 'sendSourceMulti': {
       const sel = Array.isArray(value) ? (value as string[]) : [];
       const sendable = sources.filter(isSendableSource);
@@ -190,8 +205,8 @@ function FieldInput({ field, value, onChange, variables, sources, channels, scri
   );
 }
 
-function BlockFields({ block, triggerType, variables, sources, channels, scripts, onParams }: {
-  block: FormBlock; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; onParams: (p: Record<string, unknown>) => void;
+function BlockFields({ block, triggerType, variables, sources, channels, scripts, regions, onParams }: {
+  block: FormBlock; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[]; onParams: (p: Record<string, unknown>) => void;
 }) {
   const def = BLOCK_BY_TYPE[block.type];
   if (!def) return null;
@@ -199,15 +214,15 @@ function BlockFields({ block, triggerType, variables, sources, channels, scripts
     <>
       {def.fields.map((f) => {
         const field = f.kind === 'fieldselect' ? { ...f, groups: fieldsFor(block.type, triggerType) } : f;
-        return <FieldInput key={f.name} field={field} value={block.params[f.name]} variables={variables} sources={sources} channels={channels} scripts={scripts} triggerType={triggerType}
+        return <FieldInput key={f.name} field={field} value={block.params[f.name]} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} triggerType={triggerType}
           onChange={(v) => onParams({ ...block.params, [f.name]: v })} />;
       })}
     </>
   );
 }
 
-function BlockListEditor({ blocks, options, triggerType, variables, sources, channels, scripts, onChange, addLabel }: {
-  blocks: FormBlock[]; options: BlockDef[]; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[];
+function BlockListEditor({ blocks, options, triggerType, variables, sources, channels, scripts, regions, onChange, addLabel }: {
+  blocks: FormBlock[]; options: BlockDef[]; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[];
   onChange: (b: FormBlock[]) => void; addLabel: string;
 }) {
   const update = (i: number, b: FormBlock) => { const l = [...blocks]; l[i] = b; onChange(l); };
@@ -222,7 +237,7 @@ function BlockListEditor({ blocks, options, triggerType, variables, sources, cha
             </select>
             <button className="ae-btn ae-btn--ghost" onClick={() => onChange(blocks.filter((_, j) => j !== i))}>✕</button>
           </div>
-          <BlockFields block={b} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} onParams={(p) => update(i, { ...b, params: p })} />
+          <BlockFields block={b} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} onParams={(p) => update(i, { ...b, params: p })} />
         </div>
       ))}
       <button className="ae-btn" onClick={() => onChange([...blocks, { type: options[0].type, params: defaultParams(options[0].type, triggerType) }])}>{addLabel}</button>
@@ -230,7 +245,7 @@ function BlockListEditor({ blocks, options, triggerType, variables, sources, cha
   );
 }
 
-export default function AutomationBuilder({ form, variables, sources, channels, scripts, onChange }: Props) {
+export default function AutomationBuilder({ form, variables, sources, channels, scripts, regions, onChange }: Props) {
   const triggerType = form.trigger.type;
   const [showHelp, setShowHelp] = useState(false);
   const setTrigger = (type: string) => onChange({ ...form, trigger: { type, params: defaultParams(type, type) } });
@@ -259,7 +274,7 @@ export default function AutomationBuilder({ form, variables, sources, channels, 
             </select>
             <div className="ae-help-text">{BLOCK_BY_TYPE[triggerType]?.description}</div>
           </div>
-          <BlockFields block={form.trigger} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} onParams={setTriggerParams} />
+          <BlockFields block={form.trigger} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} onParams={setTriggerParams} />
         </div>
       </div>
 
@@ -273,10 +288,10 @@ export default function AutomationBuilder({ form, variables, sources, channels, 
           <div className="ae-section-body">
             <div className="ae-field-label" style={{ marginBottom: '0.4rem' }}>IF — all of these are true (optional)</div>
             {rule.conditions.length === 0 && <div className="ae-muted" style={{ marginBottom: '0.5rem' }}>No conditions — runs every time the trigger fires.</div>}
-            <BlockListEditor blocks={rule.conditions} options={CONDITIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts}
+            <BlockListEditor blocks={rule.conditions} options={CONDITIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions}
               onChange={(c) => updateRule(i, { ...rule, conditions: c })} addLabel="+ Add condition" />
             <div className="ae-field-label" style={{ margin: '0.9rem 0 0.4rem' }}>THEN — do this</div>
-            <BlockListEditor blocks={rule.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts}
+            <BlockListEditor blocks={rule.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions}
               onChange={(a) => updateRule(i, { ...rule, actions: a })} addLabel="+ Add action" />
           </div>
         </div>
@@ -305,7 +320,7 @@ export default function AutomationBuilder({ form, variables, sources, channels, 
               <div className="ae-help-text">“Matched” means a rule’s IF conditions passed.</div>
             </div>
             <div className="ae-field-label" style={{ margin: '0.6rem 0 0.4rem' }}>THEN — do this</div>
-            <BlockListEditor blocks={form.combine.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts}
+            <BlockListEditor blocks={form.combine.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions}
               onChange={(a) => setCombine({ ...form.combine!, actions: a })} addLabel="+ Add action" />
           </div>
         </div>

@@ -18,6 +18,9 @@ export interface ActionDeps {
     channel: number;
     destination?: number;
     replyId?: number;
+    /** MeshCore scope/region override (#3833). undefined = inherit channel/default;
+     *  '' = explicit unscoped; non-empty = that region. Ignored by Meshtastic. */
+    scopeOverride?: string | null;
   }): Promise<unknown>;
   sendTapback(a: {
     sourceId: string | null;
@@ -116,6 +119,34 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       const replyId = p.replyToTrigger ? (ctx.trigger.fields.packetId as number | undefined) : await num(ctx, p.replyId);
       const fallbackChannel = p.channel != null ? Number(p.channel) : triggerChannel;
 
+      // MeshCore scope/region (#3833). Translate the selected mode into the
+      // manager's `scopeOverride` contract: undefined = inherit (channel/default),
+      // '' = explicit unscoped, non-empty = a named region. Meshtastic ignores it.
+      // Only applied to channel/broadcast sends below — DMs keep inherit.
+      let scopeOverride: string | null | undefined;
+      switch (String(p.scopeMode ?? 'inherit')) {
+        case 'unscoped':
+          scopeOverride = '';
+          break;
+        case 'named': {
+          const n = (await interpolateAsync(String(p.scopeName ?? ''), ctx)).trim();
+          scopeOverride = n || undefined; // empty named → inherit
+          break;
+        }
+        case 'trigger': {
+          const tn = ctx.trigger.fields.scopeName;
+          if (typeof tn === 'string' && tn.length > 0) scopeOverride = tn;
+          else if (ctx.trigger.fields.scopeCode === 0) scopeOverride = ''; // trigger was explicitly unscoped
+          else scopeOverride = undefined; // Meshtastic / unknown → inherit
+          break;
+        }
+        default:
+          scopeOverride = undefined; // inherit
+      }
+      // Only forward the key when set, so the default (inherit) call shape — and
+      // thus the run-log resolvedParams and existing tests — is unchanged.
+      const scopeArg = scopeOverride !== undefined ? { scopeOverride } : {};
+
       // Target sources: explicit multi-select, else the legacy single source /
       // the triggering source.
       const sourceIds = Array.isArray(p.sourceIds) && p.sourceIds.length > 0
@@ -134,7 +165,10 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       for (const sid of sourceIds) {
         if (destination != null || channelSel.length === 0) {
           // DM, or no unified-channel selection → single send on the fallback channel.
-          results.push(await deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId }));
+          // DMs keep inherit scope (MeshCore DM-by-pubkey isn't reachable here anyway);
+          // a channel-only fallback send still honors the scope override.
+          const fallbackScope = destination != null ? {} : scopeArg;
+          results.push(await deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...fallbackScope }));
           continue;
         }
         const proto = (await ctx.data.getSourceProtocol?.(sid)) ?? null;
@@ -143,7 +177,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           if (sel.protocol && proto && sel.protocol !== proto) continue; // wrong-protocol channel
           const match = srcChannels.find((c) => c.name.toLowerCase() === sel.name.toLowerCase() && c.role !== 0);
           if (!match) continue; // channel not present on this source
-          results.push(await deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId }));
+          results.push(await deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId, ...scopeArg }));
         }
       }
 
