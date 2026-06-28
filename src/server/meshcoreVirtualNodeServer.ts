@@ -354,8 +354,24 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
 
   private handleDeviceQuery(clientId: string): void {
     const localNode = this.options.manager.getLocalNode();
+    // Intentionally does NOT gate on isConnected()/localNode (unlike
+    // handleAppStart, which replies BadState): the app sends DeviceQuery
+    // *before* AppStart, so we must reply even with a cold manager — display
+    // fields just fall back to safe defaults below.
+    // The DeviceInfo version byte is the *companion protocol* version the app
+    // must use to talk to us — NOT the proxied node's firmware version. We only
+    // implement v1 frames, so this MUST always be SUPPORTED_COMPANION_PROTOCOL_VERSION.
+    //
+    // Leaking the real node's `firmwareVer` here (once the manager's background
+    // deviceQuery() has cached it) makes the meshcore-flutter app abort the
+    // handshake: it sends DeviceQuery *before* AppStart, and on seeing a version
+    // it can't reconcile with our v1 wire format it never sends AppStart and
+    // drops the socket after ~5s. Before the cache is warm we fell back to v1
+    // and the app connected — which is exactly the "works once after restart,
+    // then never again" symptom (issue #3705). Build date / model are display
+    // strings and stay real so the app shows a faithful identity.
     this.send(clientId, encodeDeviceInfo({
-      firmwareVer: localNode?.firmwareVer ?? SUPPORTED_COMPANION_PROTOCOL_VERSION,
+      firmwareVer: SUPPORTED_COMPANION_PROTOCOL_VERSION,
       firmwareBuildDate: localNode?.firmwareBuild ?? '',
       manufacturerModel: localNode?.model || 'MeshMonitor Virtual Node',
     }));
