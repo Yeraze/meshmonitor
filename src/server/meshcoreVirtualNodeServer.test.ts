@@ -9,6 +9,7 @@ import {
   PushCodes,
   FRAME_APP_TO_NODE,
   FRAME_NODE_TO_APP,
+  SUPPORTED_COMPANION_PROTOCOL_VERSION,
 } from './meshcoreCompanionCodec.js';
 import type { MeshCoreNode, MeshCoreContact, MeshCoreMessage } from './meshcoreManager.js';
 
@@ -175,9 +176,34 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
     expect(epoch).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 1);
   });
 
-  it('replies to DeviceQuery with DeviceInfo', async () => {
+  it('replies to DeviceQuery with DeviceInfo advertising the supported protocol version', async () => {
     const payload = await client.request([CommandCodes.DeviceQuery, 1]);
     expect(payload[0]).toBe(ResponseCodes.DeviceInfo);
+    // Byte 1 is the companion protocol version the app must use to talk to us.
+    expect(payload.readInt8(1)).toBe(SUPPORTED_COMPANION_PROTOCOL_VERSION);
+  });
+
+  it('pins DeviceInfo protocol version to v1 even when the real node reports a higher firmwareVer (regression #3705)', async () => {
+    // Once the manager's background deviceQuery() caches the real node's
+    // firmware-version byte, that value must NOT leak into the VN's DeviceInfo
+    // version field — the VN only speaks v1 frames, and the meshcore-flutter app
+    // aborts the handshake (never sending AppStart) when it sees a version it
+    // can't reconcile. Stand up a fresh server whose local node reports fw ver 7.
+    const realNode: MeshCoreNode = { ...LOCAL_NODE, firmwareVer: 7, firmwareBuild: '25-Jun-2026', model: 'Heltec V3' };
+    const realManager = new FakeManager(realNode);
+    const realServer = new MeshCoreVirtualNodeServer({ port: 0, manager: realManager, databaseService: CHANNELS_DB });
+    await realServer.start();
+    const realClient = new TestClient();
+    await realClient.connect(realServer.getListeningPort()!);
+    try {
+      const payload = await realClient.request([CommandCodes.DeviceQuery, 1]);
+      expect(payload[0]).toBe(ResponseCodes.DeviceInfo);
+      expect(payload.readInt8(1)).toBe(SUPPORTED_COMPANION_PROTOCOL_VERSION);
+      expect(payload.readInt8(1)).not.toBe(7);
+    } finally {
+      realClient.close();
+      await realServer.stop();
+    }
   });
 
   it('replies to GetContacts with ContactsStart(N), Contact frames, then EndOfContacts', async () => {
