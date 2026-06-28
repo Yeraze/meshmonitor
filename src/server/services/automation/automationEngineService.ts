@@ -31,6 +31,8 @@ import {
   buildScheduleContext,
   messageMatchesFilter,
   meshCoreMessageMatchesFilter,
+  describeMessageFilterMiss,
+  describeMeshCoreFilterMiss,
   type TriggerContext,
   type SystemEvent,
 } from './triggerContext.js';
@@ -38,6 +40,7 @@ import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import { scheduleCron, validateCron } from '../../utils/cronScheduler.js';
 import { haversineKm, geofenceFires, pointInShape, geofenceCenter, normalizeGeofenceParams, type GeofenceMode } from './geo.js';
 import { evaluateGraph, type EvaluatorHooks } from './graphEvaluator.js';
+import { automationTraceBus } from './automationTraceBus.js';
 import { evaluateCondition } from './conditionEvaluator.js';
 import { executeAction, type ActionDeps } from './actionExecutor.js';
 import {
@@ -54,6 +57,26 @@ interface LoadedAutomation {
   triggerNode: AutomationNode;
   triggerType: TriggerType;
   cooldownSeconds: number;
+}
+
+/** Compact result of evaluating one automation — persisted run-log shape is unchanged;
+ *  this is the subset the live trace ("view logs") streams to the browser. */
+interface FireResult {
+  status: 'completed' | 'failed';
+  conditionResults: Record<string, boolean>;
+  actions: Array<{ nodeId: string; ok: boolean; error?: string }>;
+  // Looser than EvaluationStep[] so the synthetic engine-error step (outcome
+  // 'engine:error', not a StepOutcome) fits; the UI handles unknown outcomes.
+  steps: Array<{ nodeId: string; type: string; outcome: string; error?: string }>;
+}
+
+/** Shallow copy of a trigger's fields with long text truncated, for trace payloads. */
+function compactEventFields(fields: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields)) {
+    out[k] = typeof v === 'string' && v.length > 200 ? `${v.slice(0, 200)}…` : v;
+  }
+  return out;
 }
 
 /** Pluggable cron backing for `trigger.schedule` — real croner in prod, a fake in tests. */
@@ -222,24 +245,60 @@ export class AutomationEngineService {
   /**
    * Run a single trigger context against the automations registered for its type.
    * Returns the number of automations that fired (passed pre-filter + cooldown).
+   *
+   * `describeMiss` is the live-trace ("view logs") explainer: called ONLY when a
+   * rule is being traced AND its pre-filter rejected the event, to report why.
    */
-  private async runTrigger(ctx: TriggerContext, prefilter?: (a: LoadedAutomation) => boolean): Promise<number> {
+  private async runTrigger(
+    ctx: TriggerContext,
+    prefilter?: (a: LoadedAutomation) => boolean,
+    describeMiss?: (a: LoadedAutomation) => string | undefined,
+  ): Promise<number> {
     const entries = this.index.get(ctx.triggerType);
     if (!entries || entries.length === 0) return 0;
     const now = this.now();
+    const tracingAny = automationTraceBus.activeCount() > 0;
     let fired = 0;
     for (const a of entries) {
-      if (prefilter && !prefilter(a)) continue;
-      if (!this.cooledDown(a, now)) continue;
+      const traced = tracingAny && automationTraceBus.isTracing(a.id, now);
+      if (prefilter && !prefilter(a)) {
+        if (traced) this.emitTrace(a, ctx, now, { outcome: 'prefiltered', reason: describeMiss?.(a) ?? 'did not match the trigger filter' });
+        continue;
+      }
+      if (!this.cooledDown(a, now)) {
+        if (traced) {
+          const remainingMs = Math.max(0, a.cooldownSeconds * 1000 - (now - (this.lastFired.get(a.id) ?? 0)));
+          this.emitTrace(a, ctx, now, { outcome: 'cooldown', reason: `cooldown active — ${Math.ceil(remainingMs / 1000)}s remaining` });
+        }
+        continue;
+      }
       this.lastFired.set(a.id, now);
       fired++;
-      await this.fireAutomation(a, ctx, now);
+      const fr = await this.fireAutomation(a, ctx, now);
+      if (traced) this.emitTrace(a, ctx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
     }
     return fired;
   }
 
-  /** Evaluate one automation's graph against a trigger context and write a run-log row. */
-  private async fireAutomation(a: LoadedAutomation, ctx: TriggerContext, now: number): Promise<void> {
+  /** Emit one live-trace verdict for a rule to any browser tracing it (#view-logs). */
+  private emitTrace(a: LoadedAutomation, ctx: TriggerContext, now: number, verdict: Record<string, unknown>): void {
+    automationTraceBus.emit(a.id, {
+      ts: now,
+      automationId: a.id,
+      automationName: a.name,
+      triggerType: ctx.triggerType,
+      sourceId: ctx.sourceId,
+      event: compactEventFields(ctx.fields),
+      ...verdict,
+    }, now);
+  }
+
+  /**
+   * Evaluate one automation's graph against a trigger context and write a run-log
+   * row. Returns a compact result the live trace reuses (the persisted run-log
+   * shape is unchanged).
+   */
+  private async fireAutomation(a: LoadedAutomation, ctx: TriggerContext, now: number): Promise<FireResult> {
     const evalCtx: EngineEvalContext = {
       trigger: ctx,
       vars: this.vars,
@@ -257,6 +316,12 @@ export class AutomationEngineService {
         triggerEvent: JSON.stringify(ctx.fields),
         log: JSON.stringify(result.steps),
       });
+      return {
+        status: anyFailed ? 'failed' : 'completed',
+        conditionResults: result.conditionResults,
+        actions: result.actions.map((x) => ({ nodeId: x.nodeId, ok: x.ok, error: x.error })),
+        steps: result.steps,
+      };
     } catch (e: any) {
       logger.error(`[AutomationEngine] automation "${a.name}" threw: ${e?.message}`);
       await this.automationsRepo.createRun({
@@ -266,6 +331,12 @@ export class AutomationEngineService {
         triggerEvent: JSON.stringify(ctx.fields),
         log: JSON.stringify([{ outcome: 'engine:error', error: e?.message }]),
       });
+      return {
+        status: 'failed',
+        conditionResults: {},
+        actions: [],
+        steps: [{ nodeId: a.id, type: 'engine', outcome: 'engine:error', error: e?.message }],
+      };
     }
   }
 
@@ -284,7 +355,11 @@ export class AutomationEngineService {
     if (usesChannelName && this.data.getChannelName) {
       channelName = await this.data.getChannelName(sourceId, Number(msg.channel));
     }
-    return this.runTrigger(ctx, (a) => messageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName));
+    return this.runTrigger(
+      ctx,
+      (a) => messageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName),
+      (a) => describeMessageFilterMiss(msg, a.triggerNode.params ?? {}, channelName),
+    );
   }
 
   /**
@@ -305,7 +380,11 @@ export class AutomationEngineService {
     if (usesChannelName && this.data.getChannelName && typeof channelIdx === 'number') {
       channelName = await this.data.getChannelName(sourceId, channelIdx);
     }
-    return this.runTrigger(ctx, (a) => meshCoreMessageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName));
+    return this.runTrigger(
+      ctx,
+      (a) => meshCoreMessageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName),
+      (a) => describeMeshCoreFilterMiss(msg, a.triggerNode.params ?? {}, channelName),
+    );
   }
 
   async onNode(
@@ -325,10 +404,17 @@ export class AutomationEngineService {
     sourceId: string | null,
   ): Promise<number> {
     const ctx = buildTelemetryContext(nodeNum, telemetryType, value, unit, sourceId, this.now());
-    return this.runTrigger(ctx, (a) => {
-      const want = (a.triggerNode.params as any)?.telemetryType;
-      return want == null || want === telemetryType;
-    });
+    return this.runTrigger(
+      ctx,
+      (a) => {
+        const want = (a.triggerNode.params as any)?.telemetryType;
+        return want == null || want === telemetryType;
+      },
+      (a) => {
+        const want = (a.triggerNode.params as any)?.telemetryType;
+        return `telemetry "${telemetryType}" ≠ rule metric "${want}"`;
+      },
+    );
   }
 
   async onSystem(
@@ -341,10 +427,17 @@ export class AutomationEngineService {
     const ctx = buildSystemContext(event, sourceId, nodeNum, reason, this.now(), extra);
     // Pre-filter on the configured `event` param so a "system start" automation
     // doesn't also fire on "source online" etc. An unset event matches any.
-    return this.runTrigger(ctx, (a) => {
-      const want = (a.triggerNode.params as any)?.event;
-      return want == null || want === '' || want === event;
-    });
+    return this.runTrigger(
+      ctx,
+      (a) => {
+        const want = (a.triggerNode.params as any)?.event;
+        return want == null || want === '' || want === event;
+      },
+      (a) => {
+        const want = (a.triggerNode.params as any)?.event;
+        return `system event "${event}" ≠ rule event "${want}"`;
+      },
+    );
   }
 
   /**
@@ -375,11 +468,24 @@ export class AutomationEngineService {
       const prev = this.geofenceState.get(key);
       this.geofenceState.set(key, inside);
 
-      if (!geofenceFires(prev, inside, mode)) continue;
-      if (!this.cooledDown(a, now)) continue;
+      const traced = automationTraceBus.activeCount() > 0 && automationTraceBus.isTracing(a.id, now);
+      const geoCtx = buildGeofenceContext(nodeNum, mode, node.latitude, node.longitude, distanceKm, sourceId, now);
+
+      if (!geofenceFires(prev, inside, mode)) {
+        if (traced) this.emitTrace(a, geoCtx, now, { outcome: 'prefiltered', reason: prev === undefined ? 'first sighting — baseline only' : `no ${mode} transition (node ${inside ? 'inside' : 'outside'})` });
+        continue;
+      }
+      if (!this.cooledDown(a, now)) {
+        if (traced) {
+          const remainingMs = Math.max(0, a.cooldownSeconds * 1000 - (now - (this.lastFired.get(a.id) ?? 0)));
+          this.emitTrace(a, geoCtx, now, { outcome: 'cooldown', reason: `cooldown active — ${Math.ceil(remainingMs / 1000)}s remaining` });
+        }
+        continue;
+      }
       this.lastFired.set(a.id, now);
       fired++;
-      await this.fireAutomation(a, buildGeofenceContext(nodeNum, mode, node.latitude, node.longitude, distanceKm, sourceId, now), now);
+      const fr = await this.fireAutomation(a, geoCtx, now);
+      if (traced) this.emitTrace(a, geoCtx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
     }
     return fired;
   }

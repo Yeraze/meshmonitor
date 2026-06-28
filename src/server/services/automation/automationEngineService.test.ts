@@ -10,6 +10,9 @@ import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { AutomationGraph } from '../../../types/automation.js';
 import * as schema from '../../../db/schema/index.js';
 import { createTestDb } from '../../test-helpers/testDb.js';
+import { automationTraceBus } from './automationTraceBus.js';
+
+const FAR_FUTURE = 9_000_000_000_000;
 
 function recorder() {
   const calls: Array<{ fn: string; args: any }> = [];
@@ -68,7 +71,7 @@ describe('AutomationEngineService', () => {
     resolver = new VariableResolver(varsRepo);
     clock = 1_000_000;
   });
-  afterEach(() => db.close());
+  afterEach(() => { db.close(); automationTraceBus.reset(); automationTraceBus.setSink(null); });
 
   const data = { getNode: async () => null, getTelemetry: async () => null };
   const engineWith = (deps: ActionDeps) =>
@@ -459,5 +462,92 @@ describe('AutomationEngineService', () => {
     clock += 31_000;
     expect(await engine.onSchedule(a.id)).toBe(1); // past cooldown
     expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(2);
+  });
+
+  // ── Live trace ("view logs") emit instrumentation ──────────────────────────
+  it('emits a FIRED trace (with steps) for a traced rule that matches', async () => {
+    const got: any[] = [];
+    automationTraceBus.setSink((_id, payload) => got.push(payload));
+    const a = await createEnabled('ping', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
+        { id: 'tap', type: 'action.tapback', params: { emoji: '👍' } },
+      ],
+      edges: [{ from: 't', to: 'tap' }],
+    });
+    const engine = engineWith(recorder().deps);
+    await engine.load();
+    automationTraceBus.arm(a.id, 'sock1', FAR_FUTURE);
+
+    await engine.onMessage(message({ text: 'ping me' }), 'default');
+    expect(got).toHaveLength(1);
+    expect(got[0]).toMatchObject({ automationId: a.id, outcome: 'fired', status: 'completed' });
+    expect(Array.isArray(got[0].steps)).toBe(true);
+    expect(got[0].steps.length).toBeGreaterThan(0);
+  });
+
+  it('emits a PREFILTERED trace with a human reason when the filter misses', async () => {
+    const got: any[] = [];
+    automationTraceBus.setSink((_id, payload) => got.push(payload));
+    const a = await createEnabled('ping', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
+        { id: 'tap', type: 'action.tapback', params: { emoji: '👍' } },
+      ],
+      edges: [{ from: 't', to: 'tap' }],
+    });
+    const engine = engineWith(recorder().deps);
+    await engine.load();
+    automationTraceBus.arm(a.id, 'sock1', FAR_FUTURE);
+
+    await engine.onMessage(message({ text: 'hello' }), 'default');
+    expect(got).toHaveLength(1);
+    expect(got[0]).toMatchObject({ automationId: a.id, outcome: 'prefiltered' });
+    expect(got[0].reason).toBe('text does not contain "ping"');
+  });
+
+  it('emits a COOLDOWN trace while a traced rule is cooling down', async () => {
+    const got: any[] = [];
+    automationTraceBus.setSink((_id, payload) => got.push(payload));
+    const a = await createEnabled('ping', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping', cooldownSeconds: 60 } },
+        { id: 'tap', type: 'action.tapback', params: { emoji: '👍' } },
+      ],
+      edges: [{ from: 't', to: 'tap' }],
+    });
+    const engine = engineWith(recorder().deps);
+    await engine.load();
+    automationTraceBus.arm(a.id, 'sock1', FAR_FUTURE);
+
+    await engine.onMessage(message({ text: 'ping' }), 'default'); // fires (t0)
+    clock += 30_000;
+    await engine.onMessage(message({ text: 'ping' }), 'default'); // within cooldown
+    const outcomes = got.map((g) => g.outcome);
+    expect(outcomes).toContain('fired');
+    expect(outcomes).toContain('cooldown');
+    expect(got.find((g) => g.outcome === 'cooldown').reason).toMatch(/cooldown active/);
+  });
+
+  it('emits NOTHING when the rule is not being traced (hot-path no-op)', async () => {
+    const got: any[] = [];
+    automationTraceBus.setSink((_id, payload) => got.push(payload));
+    await createEnabled('ping', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
+        { id: 'tap', type: 'action.tapback', params: { emoji: '👍' } },
+      ],
+      edges: [{ from: 't', to: 'tap' }],
+    });
+    const engine = engineWith(recorder().deps);
+    await engine.load();
+    // No arm() → nothing traced.
+    await engine.onMessage(message({ text: 'ping' }), 'default');
+    await engine.onMessage(message({ text: 'hello' }), 'default');
+    expect(got).toHaveLength(0);
   });
 });

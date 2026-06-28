@@ -12,6 +12,7 @@ import { appBasename } from '../../init';
 import apiService from '../../services/api';
 import AutomationBuilder, { type VariableOption, type SourceOption, type UnifiedChannelOption, type ScriptOption } from './AutomationBuilder';
 import AutomationTester from './AutomationTester';
+import LiveTracePanel from './LiveTracePanel';
 import { compile, decompile, type WorkflowForm } from './compile';
 import './AutomationsPage.css';
 
@@ -89,6 +90,7 @@ function AutomationsList() {
   const [items, setItems] = useState<Automation[]>([]);
   const [editing, setEditing] = useState<Automation | 'new' | null>(null);
   const [runsFor, setRunsFor] = useState<Automation | null>(null);
+  const [traceFor, setTraceFor] = useState<Automation | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -107,6 +109,12 @@ function AutomationsList() {
 
   if (editing) return <AutomationEditor automation={editing} onClose={() => { setEditing(null); load(); }} />;
   if (runsFor) return <RunLog automation={runsFor} onClose={() => setRunsFor(null)} />;
+  if (traceFor) return (
+    <div>
+      <button className="ae-btn ae-btn--ghost" onClick={() => setTraceFor(null)} style={{ marginBottom: '0.75rem' }}>← Back</button>
+      <LiveTracePanel automationId={traceFor.id} automationName={traceFor.name} enabled={traceFor.enabled} onClose={() => setTraceFor(null)} />
+    </div>
+  );
 
   return (
     <div>
@@ -126,6 +134,7 @@ function AutomationsList() {
               <label className="ae-switch"><input type="checkbox" checked={a.enabled} onChange={() => toggle(a)} /> Enabled</label>
               <button className="ae-btn" onClick={() => setEditing(a)}>Edit</button>
               <button className="ae-btn" onClick={() => setRunsFor(a)}>Runs</button>
+              <button className="ae-btn" onClick={() => setTraceFor(a)} title="Live debug trace of this rule">Trace</button>
               <button className="ae-btn" onClick={() => exportOne(a)}>Export</button>
               <button className="ae-btn ae-btn--danger" onClick={() => remove(a)}>Delete</button>
             </div>

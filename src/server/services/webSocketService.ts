@@ -16,6 +16,7 @@ import { getEnvironmentConfig } from '../config/environment.js';
 import type { DbMessage } from '../../services/database.js';
 import databaseService from '../../services/database.js';
 import { canonicalMessageTime, messageReceivedAt } from '../utils/messageTime.js';
+import { automationTraceBus, MAX_TRACE_MS } from './automation/automationTraceBus.js';
 
 /**
  * Transform a DbMessage to the format expected by the client (MeshMessage)
@@ -279,9 +280,52 @@ export function initializeWebSocket(
       }
     });
 
+    // ── Automation Engine live-trace ("view logs") ─────────────────────────
+    // Opt-in, per-rule, time-bounded debug stream. Gated on automations:read.
+    socket.on('automation-trace:start', async (raw: { automationId?: string; durationMs?: number }) => {
+      const automationId = typeof raw?.automationId === 'string' ? raw.automationId : '';
+      if (!automationId) {
+        socket.emit('automation-trace:error', { error: 'bad-request' });
+        return;
+      }
+      const sockUserId = (socket as any).userId as number | undefined;
+      const sockIsAdmin = (socket as any).isAdmin as boolean | undefined;
+      try {
+        if (!sockIsAdmin) {
+          if (sockUserId === undefined) {
+            socket.emit('automation-trace:error', { automationId, error: 'unauthorized' });
+            return;
+          }
+          const allowed = await databaseService.checkPermissionAsync(sockUserId, 'automations', 'read');
+          if (!allowed) {
+            socket.emit('automation-trace:error', { automationId, error: 'forbidden' });
+            return;
+          }
+        }
+        const dur = Math.min(Math.max(Number(raw?.durationMs) || MAX_TRACE_MS, 1000), MAX_TRACE_MS);
+        const expiry = Date.now() + dur;
+        socket.join(`automation-trace:${automationId}`);
+        automationTraceBus.arm(automationId, socket.id, expiry);
+        socket.emit('automation-trace:started', { automationId, expiresAt: expiry });
+        logger.debug(`[WebSocket] Socket ${socket.id} started trace for automation ${automationId}`);
+      } catch (err) {
+        logger.error('[WebSocket] automation-trace:start failed:', err);
+        socket.emit('automation-trace:error', { automationId, error: 'internal' });
+      }
+    });
+
+    socket.on('automation-trace:stop', (raw: { automationId?: string }) => {
+      const automationId = typeof raw?.automationId === 'string' ? raw.automationId : '';
+      if (!automationId) return;
+      socket.leave(`automation-trace:${automationId}`);
+      automationTraceBus.disarm(automationId, socket.id);
+      logger.debug(`[WebSocket] Socket ${socket.id} stopped trace for automation ${automationId}`);
+    });
+
     // Handle disconnect
     socket.on('disconnect', (reason) => {
       dataEventEmitter.off('data', handler);
+      automationTraceBus.disarmSocket(socket.id);
       logger.info(`[WebSocket] Client disconnected: ${socket.id} (reason: ${reason})`);
     });
 
@@ -294,6 +338,12 @@ export function initializeWebSocket(
   // Handle server-level errors
   io.engine.on('connection_error', (err: any) => {
     logger.warn(`[WebSocket] Connection error: ${err.code} - ${err.message}`);
+  });
+
+  // Deliver Automation Engine live-trace payloads to the per-rule room. The
+  // engine calls automationTraceBus.emit(); this sink fans it out over socket.io.
+  automationTraceBus.setSink((automationId, payload) => {
+    io?.to(`automation-trace:${automationId}`).emit('automation:trace', payload);
   });
 
   return io;

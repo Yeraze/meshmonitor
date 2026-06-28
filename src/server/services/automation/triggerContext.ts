@@ -307,6 +307,67 @@ export function meshCoreMessageMatchesFilter(
 }
 
 /**
+ * Live-trace ("view logs") helper — explains WHY a Meshtastic message did not
+ * match a rule's trigger filter. Mirrors {@link messageMatchesFilter}'s checks
+ * but returns the first failing constraint as a human string (or undefined when
+ * it actually matches). Trace-only: invoked solely on a miss while a rule is
+ * being traced, so the hot matcher stays untouched.
+ */
+export function describeMessageFilterMiss(
+  msg: DbMessage,
+  params: Record<string, unknown> = {},
+  channelName?: string | null,
+): string | undefined {
+  if (params.portnum != null && Number(msg.portnum) !== Number(params.portnum)) return `portnum ${msg.portnum} ≠ ${params.portnum}`;
+  if (params.from != null && Number(msg.fromNodeNum) !== Number(params.from)) return `sender #${msg.fromNodeNum} ≠ from #${params.from}`;
+  if (params.to != null && Number(msg.toNodeNum) !== Number(params.to)) return `recipient #${msg.toNodeNum} ≠ to #${params.to}`;
+  if (params.channel != null && Number(msg.channel) !== Number(params.channel)) return `channel ${msg.channel} ≠ ${params.channel}`;
+  if (typeof params.channelName === 'string' && params.channelName.length > 0) {
+    if (!channelName || channelName.toLowerCase() !== params.channelName.toLowerCase()) return `channel name "${channelName ?? '(unresolved)'}" ≠ "${params.channelName}"`;
+  }
+  const text = msg.text ?? '';
+  if (typeof params.textContains === 'string' && params.textContains.length > 0) {
+    if (!text.toLowerCase().includes(params.textContains.toLowerCase())) return `text does not contain "${params.textContains}"`;
+  }
+  if (typeof params.regex === 'string' && params.regex.length > 0) {
+    try {
+      if (!compileUserRegex(params.regex).test(text)) return `text does not match /${params.regex}/`;
+    } catch {
+      return `invalid regex /${params.regex}/`;
+    }
+  }
+  return undefined; // actually matched (caller shouldn't have asked)
+}
+
+/** Live-trace miss explainer for MeshCore messages — mirror of {@link meshCoreMessageMatchesFilter}. */
+export function describeMeshCoreFilterMiss(
+  msg: MeshCoreMessage,
+  params: Record<string, unknown> = {},
+  channelName?: string | null,
+): string | undefined {
+  if (params.portnum != null || params.from != null || params.to != null) {
+    return 'rule uses Meshtastic-only filters (from/to/portnum) — never matches MeshCore';
+  }
+  const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
+  if (params.channel != null && Number(channelIdx) !== Number(params.channel)) return `channel ${channelIdx ?? '(DM)'} ≠ ${params.channel}`;
+  if (typeof params.channelName === 'string' && params.channelName.length > 0) {
+    if (!channelName || channelName.toLowerCase() !== params.channelName.toLowerCase()) return `channel name "${channelName ?? '(unresolved)'}" ≠ "${params.channelName}"`;
+  }
+  const text = msg.text ?? '';
+  if (typeof params.textContains === 'string' && params.textContains.length > 0) {
+    if (!text.toLowerCase().includes(params.textContains.toLowerCase())) return `text does not contain "${params.textContains}"`;
+  }
+  if (typeof params.regex === 'string' && params.regex.length > 0) {
+    try {
+      if (!compileUserRegex(params.regex).test(text)) return `text does not match /${params.regex}/`;
+    } catch {
+      return `invalid regex /${params.regex}/`;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Resolve a `{{ trigger.* }}` / system path against a context. Returns undefined
  * for unknown paths (interpolation renders those empty).
  */
