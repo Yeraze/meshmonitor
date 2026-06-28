@@ -2712,9 +2712,10 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
-   * Rebuild the {@link knownScopes} cache from this source's per-channel scopes
-   * plus the default scope (#3742 Phase 2). Best-effort: a failure leaves the
-   * previous cache in place and never breaks the message stream.
+   * Rebuild the {@link knownScopes} cache from this source's per-channel scopes,
+   * the default scope, and the global saved-regions catalog (#3742 Phase 2,
+   * #3829). Best-effort: a failure leaves the previous cache in place and never
+   * breaks the message stream.
    */
   private async refreshKnownScopes(): Promise<void> {
     try {
@@ -2726,10 +2727,27 @@ class MeshCoreManager extends EventEmitter {
       }
       const def = (await this.getDefaultScope()).trim();
       if (def) names.add(def);
+      // Include the global saved-regions catalog so users who add a region there
+      // see it resolved in inbound messages even if it isn't the default scope
+      // or a per-channel scope (#3829).
+      const savedRegions = await databaseService.savedRegions.getAllAsync();
+      for (const region of savedRegions) {
+        const s = (region.name ?? '').trim();
+        if (s) names.add(s);
+      }
       this.knownScopes = names;
     } catch (err) {
       logger.debug(`[MeshCore:${this.sourceId}] refreshKnownScopes failed: ${(err as Error).message}`);
     }
+  }
+
+  /**
+   * Trigger a scope-cache rebuild on this manager. Call whenever the global
+   * saved-regions catalog changes, since those names feed into scope resolution
+   * for inbound messages (#3829).
+   */
+  notifySavedRegionsChanged(): void {
+    void this.refreshKnownScopes();
   }
 
   /**
