@@ -131,6 +131,8 @@ export function createMeshActionDeps(): ActionDeps {
       if (raw && typeof raw.requestRemoteTelemetry === 'function') {
         const key = String(target);
         switch (op) {
+          // MeshCore telemetry has no per-type selection (the contact returns its
+          // available LPP records), so `telemetryType` only applies to Meshtastic.
           case 'telemetry': return raw.requestRemoteTelemetry!(key);
           case 'traceroute': return raw.traceContactPath!(key);
           case 'neighbors': return raw.requestNeighbors!(key || undefined);
