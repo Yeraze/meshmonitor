@@ -102,6 +102,10 @@ export type CollapseMode = (typeof COLLAPSE_MODES)[number];
 export const NUMERIC_OPS = ['>', '<', '>=', '<=', '==', '!='] as const;
 export type NumericOp = (typeof NUMERIC_OPS)[number];
 
+/** Node operations an `action.requestData` can ask for (#3835). */
+export const REQUEST_OPS = ['telemetry', 'position', 'traceroute', 'nodeinfo', 'neighbors', 'advert'] as const;
+export type RequestOp = (typeof REQUEST_OPS)[number];
+
 // ─── Variable types (canonical home; repository re-exports these) ─────────────
 
 export const VARIABLE_TYPES = ['string', 'integer', 'float', 'boolean', 'flag', 'json'] as const;
@@ -322,6 +326,11 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
         case 'action.runScript':
           if (typeof p.scriptPath !== 'string' || p.scriptPath.length === 0) {
             errors.push(`action.runScript "${n.id}" requires params.scriptPath`);
+          }
+          break;
+        case 'action.requestData':
+          if (p.op != null && !REQUEST_OPS.includes(p.op as RequestOp)) {
+            errors.push(`action.requestData "${n.id}" requires a valid params.op`);
           }
           break;
         default:

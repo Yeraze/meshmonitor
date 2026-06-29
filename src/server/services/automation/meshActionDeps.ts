@@ -114,6 +114,9 @@ export function createMeshActionDeps(): ActionDeps {
       // Meshtastic: target is a node number.
       if (raw && typeof raw.sendTelemetryRequest === 'function') {
         const dest = Number(target);
+        if (op !== 'advert' && !Number.isFinite(dest)) {
+          throw new Error(`action.requestData: invalid Meshtastic target "${target}" — expected a node number`);
+        }
         switch (op) {
           case 'telemetry': return raw.sendTelemetryRequest!(dest, channel, telemetryType);
           case 'position': return raw.sendPositionRequest!(dest, channel);

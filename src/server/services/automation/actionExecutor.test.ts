@@ -248,6 +248,27 @@ describe('executeAction', () => {
     expect(calls[0].args).toMatchObject({ op: 'telemetry', target: 'aabbccddeeff' });
   });
 
+  it('requestData: source-less (schedule) trigger fans out to the selected sources (#3835)', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.requestData', { op: 'telemetry', telemetryType: 'environment', to: '999', channel: 2, sourceIds: ['radioA', 'radioB'] }),
+      ctx({}, null), // schedule-style: no trigger source
+      deps,
+    );
+    expect(calls.map((c) => c.args.sourceId)).toEqual(['radioA', 'radioB']);
+    expect(calls[0].args).toMatchObject({ op: 'telemetry', target: '999', channel: 2, telemetryType: 'environment' });
+  });
+
+  it('requestData: telemetryType is dropped for non-telemetry ops', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.requestData', { op: 'traceroute', telemetryType: 'environment', to: '5' }),
+      ctx({ from: 5, channel: 0 }),
+      deps,
+    );
+    expect(calls[0].args.telemetryType).toBeUndefined();
+  });
+
   it('notify: interpolates title/body and passes type', async () => {
     const { calls, deps } = recorder();
     await executeAction(

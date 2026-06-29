@@ -121,4 +121,13 @@ describe('createMeshActionDeps requestData — node operations (#3835)', () => {
     await expect(deps.requestData({ sourceId: 'mc', op: 'position', target: 'aabbcc', channel: 0 }))
       .rejects.toThrow(/not supported on MeshCore/);
   });
+
+  it('rejects a non-numeric Meshtastic target instead of sending NaN', async () => {
+    const m = meshtasticManager();
+    getManager.mockReturnValue(m);
+    const deps = createMeshActionDeps();
+    await expect(deps.requestData({ sourceId: 'mt', op: 'telemetry', target: 'not-a-node', channel: 0 }))
+      .rejects.toThrow(/invalid Meshtastic target/);
+    expect(m.sendTelemetryRequest).not.toHaveBeenCalled();
+  });
 });

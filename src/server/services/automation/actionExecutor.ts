@@ -282,7 +282,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           }
           if (!target) throw new Error(`action.requestData: no target node for "${op}"`);
         }
-        results.push(await deps.requestData({ sourceId: sid, op, target, channel, telemetryType }));
+        results.push(await deps.requestData({ sourceId: sid, op, target, channel, telemetryType: op === 'telemetry' ? telemetryType : undefined }));
       }
       return results.length === 1 ? results[0] : results;
     }
