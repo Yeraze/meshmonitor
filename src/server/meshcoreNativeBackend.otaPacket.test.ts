@@ -271,6 +271,36 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
     expect(msg.data.path_hops).toBeUndefined();
   });
 
+  it('keeps each of two concurrent text packets buffered (FIFO, no single-slot clobber)', async () => {
+    // Real-world bug: on a busy mesh a second text packet's LogRxData arrived
+    // before the first packet's recv consumed its buffer. With a single slot the
+    // second LogRxData clobbered the first, so the first message lost its
+    // route/SNR and — most visibly — its scope/region (raw_hex). The FIFO keeps
+    // both, matched to their recvs by hop count.
+    const { conn, events } = await connectedBackend();
+    // Packet A: GRP_TXT FLOOD, 2-byte hashes, 2 hops (packed 0x42).
+    const rawA = Uint8Array.from([0x05, 0x01, 0x42, 0xde, 0xad, 0xbe, 0xef]);
+    // Packet B: GRP_TXT FLOOD, 1-byte hash, 1 hop (packed 0x01).
+    const rawB = Uint8Array.from([0x05, 0x01, 0x01, 0xaa]);
+    // Both LogRxData pushes land BEFORE either recv (the clobber window).
+    conn.emit(PushCodes.LogRxData, { lastSnr: 3.25, lastRssi: -55, raw: rawA });
+    conn.emit(PushCodes.LogRxData, { lastSnr: 7.0, lastRssi: -38, raw: rawB });
+    // Recvs arrive in order; each must pick up its OWN buffered packet by hops.
+    conn.emit(ResponseCodes.ChannelMsgRecv, { channelIdx: 0, text: 'Alice: first', senderTimestamp: 3000, pathLen: 2 });
+    conn.emit(ResponseCodes.ChannelMsgRecv, { channelIdx: 0, text: 'Bob: second', senderTimestamp: 3100, pathLen: 1 });
+
+    const msgs = events.filter((e) => e.event_type === 'channel_message');
+    expect(msgs).toHaveLength(2);
+    // First message keeps packet A's path + SNR + raw bytes (not clobbered).
+    expect(msgs[0].data.path_hops).toEqual(['dead', 'beef']);
+    expect(msgs[0].data.snr).toBe(3.25);
+    expect(msgs[0].data.raw_hex).toBe('050142deadbeef');
+    // Second message keeps packet B's.
+    expect(msgs[1].data.path_hops).toEqual(['aa']);
+    expect(msgs[1].data.snr).toBe(7.0);
+    expect(msgs[1].data.raw_hex).toBe('050101aa');
+  });
+
   it('does NOT attach a stale buffered path (older than the freshness window)', async () => {
     vi.useFakeTimers();
     try {

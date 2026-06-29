@@ -210,16 +210,25 @@ export class MeshCoreNativeBackend extends EventEmitter {
   private commandSeq: number = 0;
   private drainInFlight: boolean = false;
   /**
-   * Most recent LogRxData-derived TXT_MSG packet metadata. The firmware
-   * emits LogRxData immediately before dispatching the txt-msg-specific
-   * recv event (ContactMsgRecv / ChannelMsgRecv) for the same packet, so
-   * we buffer the parsed path here and consume it on the next message
-   * recv to give the bridge event the real relay-hash chain rather than
-   * just the packed pathLen byte. The RX SNR is carried alongside the path
-   * (it only appears on LogRxData, not on the txt-msg recv event) so the
-   * message event — and {SNR} in auto-ack/auto-responder templates — has it.
+   * Recent LogRxData-derived TXT_MSG/GRP_TXT packet metadata, oldest-first. The
+   * firmware emits LogRxData immediately before dispatching the txt-msg-specific
+   * recv event (ContactMsgRecv / ChannelMsgRecv) for the same packet, so we
+   * buffer the parsed path here and consume it on the next message recv to give
+   * the bridge event the real relay-hash chain (and the raw OTA bytes for scope
+   * resolution) rather than just the packed pathLen byte. The RX SNR is carried
+   * alongside the path (it only appears on LogRxData, not on the txt-msg recv
+   * event) so the message event — and {SNR}/{ROUTE} in auto-ack/auto-responder
+   * templates, plus the MeshCore scope/region badge — has it.
+   *
+   * This is a small FIFO, NOT a single slot. On a busy mesh several text packets
+   * can be in flight; with a single slot a second packet's LogRxData clobbered
+   * the first's buffer before its recv consumed it, so the first message lost
+   * its route/SNR and — most visibly — its scope badge (received-message scope
+   * intermittently blank on busy meshes, even though the raw bytes were
+   * captured). {@link consumePendingPath} matches by hop count and takes the
+   * oldest unconsumed entry, so concurrent packets no longer evict each other.
    */
-  private pendingTxtMsgPath: { hops: string[]; rawPathLen: number; snr?: number; rawHex?: string; bufferedAt: number } | null = null;
+  private pendingTxtMsgPaths: Array<{ hops: string[]; rawPathLen: number; snr?: number; rawHex?: string; bufferedAt: number }> = [];
 
   /**
    * Maximum age (ms) of a buffered LogRxData path before we treat it as stale
@@ -234,6 +243,13 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * a core guard against the intermittent mis-correlation in issue #3589.
    */
   private static readonly PENDING_PATH_MAX_AGE_MS = 500;
+  /**
+   * Cap on buffered LogRxData entries. The FIFO only holds text-packet metadata
+   * for the sub-millisecond gap until the matching recv consumes it (pruned by
+   * age on every push/consume), so this is just a backstop against unbounded
+   * growth if a burst of LogRxData arrives with no following recv events.
+   */
+  private static readonly PENDING_PATH_MAX_ENTRIES = 8;
   /** Constructor reference for the meshcore.js Packet parser, populated when the module loads. */
   private PacketCtor: MeshCoreJsModule['Packet'] | null = null;
   /**
@@ -380,29 +396,38 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * absent, stale, or for a different packet.
    */
   private consumePendingPath(msgPathLen: unknown): { hops: string[]; snr?: number; rawHex?: string } | undefined {
-    const buffered = this.pendingTxtMsgPath;
-    // Consume-once: clear regardless of whether we end up attaching it.
-    this.pendingTxtMsgPath = null;
-    if (!buffered) return undefined;
+    const now = Date.now();
+    // Drop stale entries first — a buffer whose matching recv never arrived
+    // would mis-correlate route/SNR/scope if attached to a later message
+    // (issue #3589 guard).
+    this.pendingTxtMsgPaths = this.pendingTxtMsgPaths.filter(
+      (e) => now - e.bufferedAt <= MeshCoreNativeBackend.PENDING_PATH_MAX_AGE_MS,
+    );
+    if (this.pendingTxtMsgPaths.length === 0) return undefined;
 
-    if (Date.now() - buffered.bufferedAt > MeshCoreNativeBackend.PENDING_PATH_MAX_AGE_MS) {
-      // Stale buffer — its matching recv never arrived. Don't mis-attach.
-      return undefined;
-    }
-    if (typeof msgPathLen === 'number' && typeof buffered.rawPathLen === 'number') {
-      // Normalize both sides to a plain hop count before comparing. The recv
-      // event's pathLen is already a plain count (0xFF == sent-direct == 0
-      // hops); the buffered rawPathLen is the packed OTA byte.
-      const msgHopCount = msgPathLen === 0xff ? 0 : msgPathLen & 0x3f;
-      const bufferedHopCount =
-        buffered.rawPathLen === 0xff
-          ? 0
-          : (this.PacketCtor?.extractPathHashCount(buffered.rawPathLen) ?? (buffered.rawPathLen & 0x3f));
-      if (msgHopCount !== bufferedHopCount) {
-        // Buffer is from a different packet (hop counts differ).
-        return undefined;
-      }
-    }
+    // Normalize the recv event's pathLen to a plain hop count (0xFF == sent
+    // direct == 0 hops). The buffered rawPathLen is the packed OTA byte.
+    const msgHopCount =
+      typeof msgPathLen === 'number' ? (msgPathLen === 0xff ? 0 : msgPathLen & 0x3f) : null;
+    const bufferedHopCount = (rawPathLen: number): number =>
+      rawPathLen === 0xff
+        ? 0
+        : (this.PacketCtor?.extractPathHashCount(rawPathLen) ?? (rawPathLen & 0x3f));
+
+    // Take the OLDEST unconsumed entry whose hop count matches. LogRxData is
+    // emitted just before its own recv, so across concurrent packets the oldest
+    // hop-matching buffer is this recv's packet. When the recv carries no usable
+    // pathLen, fall back to the oldest entry outright (prior single-slot
+    // behavior generalized to the FIFO).
+    const idx = this.pendingTxtMsgPaths.findIndex(
+      (e) =>
+        msgHopCount === null ||
+        typeof e.rawPathLen !== 'number' ||
+        bufferedHopCount(e.rawPathLen) === msgHopCount,
+    );
+    if (idx === -1) return undefined;
+
+    const [buffered] = this.pendingTxtMsgPaths.splice(idx, 1); // consume-once
     return { hops: buffered.hops, snr: buffered.snr, rawHex: buffered.rawHex };
   }
 
@@ -452,12 +477,17 @@ export class MeshCoreNativeBackend extends EventEmitter {
           // arrived (issue #3589 mis-correlation guard).
           if (pkt.payload_type === TXT_MSG || pkt.payload_type === GRP_TXT) {
             // Buffer raw_hex too so the message handler can resolve the scope/
-            // region the packet was sent under (#3742 Phase 2). Same correlation
-            // limitation as the Phase 1 route/SNR: if LogRxData arrives AFTER its
-            // text-msg recv event (rare ordering on a busy link), the buffer is
-            // missed and scope resolves to null — acceptable and inherent to the
-            // adjacency-buffer design.
-            this.pendingTxtMsgPath = { hops, rawPathLen: pkt.pathLen, snr, rawHex: bytesToHex(raw), bufferedAt: Date.now() };
+            // region the packet was sent under (#3742 Phase 2). Push onto the
+            // FIFO (consumed by the matching recv) rather than overwriting a
+            // single slot, so concurrent text packets on a busy mesh don't evict
+            // each other's route/SNR/scope. Remaining limitation: if LogRxData
+            // arrives AFTER its own recv (rare ordering), that packet's buffer is
+            // still missed — inherent to the adjacency-buffer design.
+            this.pendingTxtMsgPaths.push({ hops, rawPathLen: pkt.pathLen, snr, rawHex: bytesToHex(raw), bufferedAt: Date.now() });
+            // Backstop against unbounded growth (recv-less LogRxData bursts).
+            if (this.pendingTxtMsgPaths.length > MeshCoreNativeBackend.PENDING_PATH_MAX_ENTRIES) {
+              this.pendingTxtMsgPaths.shift();
+            }
           }
           this.emitBridgeEvent('ota_packet', {
             payload_type: pkt.payload_type,
