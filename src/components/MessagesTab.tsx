@@ -1343,20 +1343,33 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             )}
 
             {/* Not in device DB warning - node exists in MeshMonitor but not on the radio */}
-            {selectedNodeNum !== undefined && deviceNodeNums.size > 0 && !deviceNodeNums.has(selectedNodeNum) && (
-              <div
-                style={{
-                  backgroundColor: 'var(--ctp-peach, #fab387)',
-                  color: 'var(--ctp-base, #1e1e2e)',
-                  padding: '10px 12px',
-                  marginBottom: '10px',
-                  borderRadius: '4px',
-                  textAlign: 'center',
-                }}
-              >
-                {t('messages.not_in_device_db', 'This node is not in your radio\'s database. Direct messages will fail until the node exchanges keys with your radio. Use "Exchange Node Info" to request key exchange.')}
-              </div>
-            )}
+            {selectedNodeNum !== undefined && deviceNodeNums.size > 0 && !deviceNodeNums.has(selectedNodeNum) && (() => {
+              /*
+                When MeshMonitor knows the node's public key (and there's no active key
+                mismatch), it pre-populates the radio's NodeDB via add_contact immediately
+                before sending a PKI DM (PR #3227), so the DM will still succeed. This is a
+                mitigatable warning: show a reassuring message in a softer yellow box. When
+                the key is unknown — or a key mismatch is active so the stored key can't be
+                trusted — the DM truly will fail, so keep the stronger orange warning.
+              */
+              const isMitigatable = !!(selectedNode?.user?.publicKey && !selectedNode?.keyMismatchDetected);
+              return (
+                <div
+                  style={{
+                    backgroundColor: isMitigatable ? 'var(--ctp-yellow, #f9e2af)' : 'var(--ctp-peach, #fab387)',
+                    color: 'var(--ctp-base, #1e1e2e)',
+                    padding: '10px 12px',
+                    marginBottom: '10px',
+                    borderRadius: '4px',
+                    textAlign: 'center',
+                  }}
+                >
+                  {isMitigatable
+                    ? t('messages.not_in_device_db_key_known', 'This node is not in the connected device\'s database. MeshMonitor will attempt to restore the saved key when you send a direct message.')
+                    : t('messages.not_in_device_db', 'This node is not in your radio\'s database. Direct messages will fail until the node exchanges keys with your radio. Use "Exchange Node Info" to request key exchange.')}
+                </div>
+              );
+            })()}
 
             {/* Messages Container — hidden for unmessageable nodes and MQTT-bridge mirror */}
             <div

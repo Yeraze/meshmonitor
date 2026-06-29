@@ -12691,6 +12691,10 @@ class MeshtasticManager implements ISourceManager {
     );
     const adminPacket = protobufService.createAdminPacket(addContactMsg, localNodeNum, localNodeNum);
     await this.transport.send(adminPacket);
+    // The contact (incl. public key) is now in the radio's NodeDB, so messaging is
+    // restored. Track it locally so the UI's "not in device DB" warning clears on the
+    // next poll without waiting for the radio to independently re-report the node.
+    this.deviceNodeNums.add(targetNode.nodeNum);
     logger.debug(`📇 Pushed contact for !${targetNode.nodeNum.toString(16).padStart(8, '0')} to radio NodeDB before PKI DM`);
   }
 
