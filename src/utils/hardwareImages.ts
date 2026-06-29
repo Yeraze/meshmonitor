@@ -121,6 +121,18 @@ const HARDWARE_IMAGES: Record<number, string | null> = {
   113: null,
   114: null,
   115: null,
+  // Newer models (protobufs v2.7.26). No device image is catalogued in the
+  // web-flasher yet, so these resolve to no image — add a filename here once
+  // one lands under web-flasher public/img/devices.
+  132: null, // HELTEC_V4_R8
+  133: null, // HELTEC_MESH_NODE_T1
+  134: null, // STATION_G3
+  135: null, // T_IMPULSE_PLUS
+  136: null, // T_ECHO_CARD
+  137: null, // SEEED_WIO_TRACKER_L2
+  138: null, // CROWPANEL_P4
+  139: null, // HELTEC_MESH_TOWER_V2
+  140: null, // MESHNOLOGY_W10
 };
 
 const BASE_IMAGE_URL = 'https://raw.githubusercontent.com/meshtastic/web-flasher/main/public/img/devices/';
