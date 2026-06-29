@@ -199,9 +199,18 @@ export class AutomationEngineService {
     const a = (this.index.get('trigger.schedule') ?? []).find((x) => x.id === automationId);
     if (!a) return 0;
     const now = this.now();
-    if (!this.cooledDown(a, now)) return 0;
+    const ctx = buildScheduleContext(null, now);
+    const traced = automationTraceBus.activeCount() > 0 && automationTraceBus.isTracing(a.id, now);
+    if (!this.cooledDown(a, now)) {
+      if (traced) {
+        const remainingMs = Math.max(0, a.cooldownSeconds * 1000 - (now - (this.lastFired.get(a.id) ?? 0)));
+        this.emitTrace(a, ctx, now, { outcome: 'cooldown', reason: `cooldown active — ${Math.ceil(remainingMs / 1000)}s remaining` });
+      }
+      return 0;
+    }
     this.lastFired.set(a.id, now);
-    await this.fireAutomation(a, buildScheduleContext(null, now), now);
+    const fr = await this.fireAutomation(a, ctx, now);
+    if (traced) this.emitTrace(a, ctx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
     return 1;
   }
 
