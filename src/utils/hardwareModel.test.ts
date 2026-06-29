@@ -6,7 +6,10 @@ describe('getHardwareModelName — protobufs v2.7.26 models', () => {
     expect(getHardwareModelName(132)).toBe('HELTEC_V4_R8');
     expect(getHardwareModelName(133)).toBe('HELTEC_MESH_NODE_T1');
     expect(getHardwareModelName(134)).toBe('STATION_G3');
+    expect(getHardwareModelName(135)).toBe('T_IMPULSE_PLUS');
+    expect(getHardwareModelName(136)).toBe('T_ECHO_CARD');
     expect(getHardwareModelName(137)).toBe('SEEED_WIO_TRACKER_L2');
+    expect(getHardwareModelName(138)).toBe('CROWPANEL_P4');
     expect(getHardwareModelName(139)).toBe('HELTEC_MESH_TOWER_V2');
     expect(getHardwareModelName(140)).toBe('MESHNOLOGY_W10');
   });

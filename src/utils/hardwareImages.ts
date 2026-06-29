@@ -123,7 +123,9 @@ const HARDWARE_IMAGES: Record<number, string | null> = {
   115: null,
   // Newer models (protobufs v2.7.26). No device image is catalogued in the
   // web-flasher yet, so these resolve to no image — add a filename here once
-  // one lands under web-flasher public/img/devices.
+  // one lands under web-flasher public/img/devices. (Note: models 116–131 are
+  // likewise imageless and intentionally absent — a missing key resolves to
+  // null the same as an explicit null, so there is no behavioral difference.)
   132: null, // HELTEC_V4_R8
   133: null, // HELTEC_MESH_NODE_T1
   134: null, // STATION_G3
