@@ -327,6 +327,38 @@ export const ACTIONS: BlockDef[] = [
     ],
   },
   {
+    type: 'action.requestData',
+    label: 'Request data from a node',
+    description: 'Ask a node for telemetry, position, a traceroute, etc. (e.g. poll a remote sensor on a schedule).',
+    fields: [
+      {
+        name: 'op', label: 'Request', kind: 'select',
+        options: [
+          { value: 'telemetry', label: 'Telemetry' },
+          { value: 'position', label: 'Position (Meshtastic)' },
+          { value: 'traceroute', label: 'Traceroute / path' },
+          { value: 'nodeinfo', label: 'Node info exchange (Meshtastic)' },
+          { value: 'neighbors', label: 'Neighbor info' },
+          { value: 'advert', label: 'Announce self (advert)' },
+        ],
+        help: 'Requests data from / about the target node. Ops a protocol can’t do are skipped.',
+      },
+      {
+        name: 'telemetryType', label: 'Telemetry type', kind: 'select',
+        options: [
+          { value: 'device', label: 'Device' },
+          { value: 'environment', label: 'Environment' },
+          { value: 'airQuality', label: 'Air quality' },
+          { value: 'power', label: 'Power' },
+        ],
+        help: 'Used when Request = Telemetry (Meshtastic). e.g. "Environment" for a remote weather sensor (#3835).',
+      },
+      { name: 'sourceIds', label: 'Via sources', kind: 'sendSourceMulti', help: 'Which radio(s) to send the request through. Leave none to use the triggering source — but a source IS required for source-less triggers (Schedule / System).' },
+      { name: 'to', label: 'Target node', kind: 'text', tokens: true, advanced: true, placeholder: 'blank = triggering node; {{ trigger.from }}', help: 'Node # (Meshtastic) or contact public key (MeshCore). Leave blank to target the triggering node. Not used for "Announce self".' },
+      { name: 'channel', label: 'Channel #', kind: 'number', advanced: true, placeholder: 'blank = triggering channel', help: 'Meshtastic: which channel to send the request on — e.g. a private sensor channel. Ignored by MeshCore.' },
+    ],
+  },
+  {
     type: 'action.notify',
     label: 'Send a notification',
     description: 'Send an external notification (Apprise).',

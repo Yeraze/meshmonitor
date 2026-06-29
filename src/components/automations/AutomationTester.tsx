@@ -276,6 +276,12 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
     );
   } else if (a.type === 'action.nodeManage') {
     headline = `Manage node → ${String(p.op ?? '')} ${p.nodeNum ?? ''}`.trim();
+  } else if (a.type === 'action.requestData') {
+    const op = String(p.op ?? '');
+    const tt = op === 'telemetry' && p.telemetryType ? ` (${String(p.telemetryType)})` : '';
+    // advert announces broadly (and MeshCore adverts carry no channel) — omit the target/channel.
+    const tgt = op === 'advert' ? '' : ` → ${p.target ? `node ${p.target}` : '(triggering node)'} on ch ${p.channel ?? 0}`;
+    headline = `Request ${op}${tt}${tgt}`;
   }
   return (
     <div className={`ae-test-action ${a.ok ? '' : 'is-err'}`}>
