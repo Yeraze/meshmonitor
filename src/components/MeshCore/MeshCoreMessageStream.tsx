@@ -21,11 +21,6 @@ interface MeshCoreMessageStreamProps {
   /** Stable key identifying the current conversation. When it changes, the
    *  stream re-runs its entry scroll (to the first-unread row, or the bottom). */
   conversationKey?: string;
-  /** Id of the oldest unread message for this conversation, snapshotted at
-   *  channel entry. When provided, the stream scrolls this row into view on
-   *  entry (aligned near the top so the unread boundary is visible) instead of
-   *  jumping to the bottom. Absent (e.g. the DM view) ⇒ scroll to bottom. (#3810) */
-  firstUnreadId?: string;
   /** Maximum UTF-8 byte length for a message. Send is blocked when exceeded. */
   maxBytes?: number;
 }
@@ -73,7 +68,6 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   onNodeNameClick,
   onReply,
   conversationKey,
-  firstUnreadId,
   maxBytes = 130,
 }) => {
   const { t } = useTranslation();
@@ -132,14 +126,12 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     };
   }, [contacts]);
 
-  // Entry scroll (#3810): on conversation entry, scroll to the first-unread row
-  // (aligned near the top so the unread boundary is visible) or, when there is
-  // none, to the bottom. A channel's backlog is fetched ASYNCHRONOUSLY, so
-  // `messages` is often empty when `conversationKey` first flips — scrolling
-  // then would fire against empty content and leave the viewport stranded in the
-  // middle once the backlog renders. So we defer the entry scroll until messages
-  // are actually present, and only run it once per conversationKey (re-arming
-  // when the key changes). `entryScrollRef` tracks which key we've handled.
+  // Entry scroll: on conversation entry, land at the BOTTOM (newest messages).
+  // A channel's backlog is fetched ASYNCHRONOUSLY, so `messages` is often empty
+  // when `conversationKey` first flips — scrolling then would fire against empty
+  // content and leave the viewport stranded. So we defer until messages are
+  // present, and only run it once per conversationKey (re-arming when the key
+  // changes). `entryScrollRef` tracks which key we've handled.
   const entryScrollRef = useRef<{ key: string | undefined; done: boolean }>({
     key: conversationKey,
     done: false,
@@ -158,26 +150,9 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     if (messages.length === 0) return;
     state.done = true;
     requestAnimationFrame(() => {
-      if (firstUnreadId) {
-        const selector = `[data-message-id="${
-          typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(firstUnreadId) : firstUnreadId
-        }"]`;
-        const row = container.querySelector<HTMLElement>(selector);
-        if (row && typeof row.scrollIntoView === 'function') {
-          // Align the unread boundary near the top of the viewport.
-          row.scrollIntoView({ block: 'start' });
-          return;
-        }
-        if (row) {
-          // Environments without scrollIntoView (e.g. jsdom): approximate by
-          // offsetting the container so the unread row sits near the top.
-          container.scrollTop = row.offsetTop - container.offsetTop;
-          return;
-        }
-      }
       container.scrollTop = container.scrollHeight;
     });
-  }, [conversationKey, messages.length, firstUnreadId]);
+  }, [conversationKey, messages.length]);
 
   // Auto-scroll on new messages only when the user is already near the bottom.
   useEffect(() => {
@@ -400,16 +375,17 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   {m.hopCount !== 0 && m.routePath ? ` · ${m.routePath.split(',').filter(Boolean).join(' → ')}` : ''}
                 </div>
               )}
-              {(typeof m.scopeCode === 'number' || (m.scopeName != null && m.scopeName !== '')) && (
+              {/* Only render the scope row when the message actually carried a
+                  scope/region — an unscoped message (scopeCode 0) or one with no
+                  scope info shows nothing rather than a "no scope" badge (#3851 follow-up). */}
+              {((m.scopeName != null && m.scopeName !== '') || (typeof m.scopeCode === 'number' && m.scopeCode !== 0)) && (
                 <div
                   className="mc-message-scope"
                   title={t('meshcore.scope_tooltip', 'The region/scope this message was sent with')}
                 >
-                  {m.scopeCode === 0
-                    ? t('meshcore.scope_unscoped', '🌐 no scope')
-                    : m.scopeName
-                      ? `🔒 ${m.scopeName}`
-                      : `🔒 #${(m.scopeCode ?? 0).toString(16).padStart(4, '0')}`}
+                  {m.scopeName
+                    ? `🔒 ${m.scopeName}`
+                    : `🔒 #${(m.scopeCode ?? 0).toString(16).padStart(4, '0')}`}
                 </div>
               )}
               {outgoing && m.heardBy && m.heardBy.length > 0 && expandedHeardBy.has(m.id) && (
