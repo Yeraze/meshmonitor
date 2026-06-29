@@ -11,6 +11,7 @@ function recorder() {
     sendMessage: async (a) => { calls.push({ fn: 'sendMessage', args: a }); return 1; },
     sendTapback: async (a) => { calls.push({ fn: 'sendTapback', args: a }); return 2; },
     manageNode: async (a) => { calls.push({ fn: 'manageNode', args: a }); return 3; },
+    requestData: async (a) => { calls.push({ fn: 'requestData', args: a }); return 5; },
     notify: async (a) => { calls.push({ fn: 'notify', args: a }); return 4; },
     runScript: async (a) => { calls.push({ fn: 'runScript', args: a }); return { success: true, stdout: '', returnValue: { ok: 1 } }; },
   };
@@ -196,6 +197,55 @@ describe('executeAction', () => {
     // delete is DB-level → runs on any source, MeshCore included.
     await executeAction(node('action.nodeManage', { op: 'delete' }), ctx({ from: 7 }, 'mc', 'meshcore'), deps);
     expect(calls).toEqual([{ fn: 'manageNode', args: { sourceId: 'mc', nodeNum: 7, op: 'delete' } }]);
+  });
+
+  // ── requestData (#3835) ────────────────────────────────────────────────────
+  it('requestData: telemetry passes op/target/channel/telemetryType (the #3835 case)', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.requestData', { op: 'telemetry', telemetryType: 'environment', to: '12345', channel: 3 }),
+      ctx({ from: 5, channel: 0 }),
+      deps,
+    );
+    expect(calls[0]).toEqual({
+      fn: 'requestData',
+      args: { sourceId: 'default', op: 'telemetry', target: '12345', channel: 3, telemetryType: 'environment' },
+    });
+  });
+
+  it('requestData: blank target falls back to the subject node, blank channel to trigger channel', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.requestData', { op: 'traceroute' }),
+      ctx({ from: 777, channel: 4 }),
+      deps,
+    );
+    expect(calls[0].args).toMatchObject({ op: 'traceroute', target: '777', channel: 4, telemetryType: undefined });
+  });
+
+  it('requestData: advert needs no target', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(node('action.requestData', { op: 'advert', channel: 1 }), ctx({ from: 9 }), deps);
+    expect(calls[0].args).toMatchObject({ op: 'advert', target: '', channel: 1 });
+  });
+
+  it('requestData: position/nodeinfo are skipped on MeshCore (no-op)', async () => {
+    const { calls, deps } = recorder();
+    const pos = await executeAction(node('action.requestData', { op: 'position', to: 'abc' }), ctx({ from: 1 }, 'mc', 'meshcore'), deps);
+    expect(pos).toMatchObject({ skipped: true });
+    const ni = await executeAction(node('action.requestData', { op: 'nodeinfo', to: 'abc' }), ctx({ from: 1 }, 'mc', 'meshcore'), deps);
+    expect(ni).toMatchObject({ skipped: true });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('requestData: on MeshCore, blank target falls back to the trigger pubkey', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.requestData', { op: 'telemetry' }),
+      ctx({ from: 'aabbccddeeff', channel: 0 }, 'mc', 'meshcore'),
+      deps,
+    );
+    expect(calls[0].args).toMatchObject({ op: 'telemetry', target: 'aabbccddeeff' });
   });
 
   it('notify: interpolates title/body and passes type', async () => {

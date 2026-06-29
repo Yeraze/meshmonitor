@@ -114,6 +114,7 @@ function recordingDeps(): ActionDeps {
     async sendMessage(a) { return { action: 'sendMessage', ...a }; },
     async sendTapback(a) { return { action: 'tapback', ...a }; },
     async manageNode(a) { return { action: 'nodeManage', ...a }; },
+    async requestData(a) { return { action: 'requestData', ...a }; },
     async notify(a) { return { action: 'notify', ...a }; },
     // Dry-run must never spawn a process — report success without executing.
     async runScript() { return { success: true, stdout: '' }; },

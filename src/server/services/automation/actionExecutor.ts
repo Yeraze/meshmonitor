@@ -11,6 +11,10 @@ import { type EngineEvalContext, interpolateAsync, resolveOperand } from './engi
 
 export type NodeManageOp = 'favorite' | 'unfavorite' | 'ignore' | 'unignore' | 'delete';
 
+/** Safe request/operation a `action.requestData` can ask a node/mesh to perform (#3835). */
+export type NodeRequestOp = 'telemetry' | 'position' | 'traceroute' | 'nodeinfo' | 'neighbors' | 'advert';
+export type TelemetryKind = 'device' | 'environment' | 'airQuality' | 'power';
+
 export interface ActionDeps {
   sendMessage(a: {
     sourceId: string | null;
@@ -30,6 +34,15 @@ export interface ActionDeps {
     replyId?: number;
   }): Promise<unknown>;
   manageNode(a: { sourceId: string | null; nodeNum: number; op: NodeManageOp }): Promise<unknown>;
+  /** Ask a node/mesh for data or to announce (#3835). `target` is raw — a node # for
+   *  Meshtastic, a public key for MeshCore; '' for `advert` (no target). */
+  requestData(a: {
+    sourceId: string | null;
+    op: NodeRequestOp;
+    target: string;
+    channel: number;
+    telemetryType?: TelemetryKind;
+  }): Promise<unknown>;
   notify(a: { sourceId: string | null; title: string; body: string; type?: string; urls?: string[] }): Promise<unknown>;
   /** Run a user script file (in $DATA_DIR/scripts) with the given env. Never throws — returns the outcome. */
   runScript(a: { scriptPath: string; env: Record<string, string>; timeoutMs?: number }):
@@ -233,6 +246,45 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
         return { skipped: true, reason: `nodeManage:${op} is not supported on MeshCore` };
       }
       return deps.manageNode({ sourceId, nodeNum, op });
+    }
+
+    case 'action.requestData': {
+      // Ask a node/mesh for data or to announce (#3835): telemetry / position /
+      // traceroute / nodeinfo / neighbors / advert. Protocol-aware — ops a
+      // protocol can't do are recorded no-ops (like tapback/nodeManage).
+      const op = String(p.op ?? 'telemetry') as NodeRequestOp;
+      const telemetryType = ['device', 'environment', 'airQuality', 'power'].includes(String(p.telemetryType))
+        ? (String(p.telemetryType) as TelemetryKind) : undefined;
+      const channel = (await num(ctx, p.channel)) ?? triggerChannel;
+
+      // Target source(s): explicit multi-select else the trigger source — lets a
+      // source-less schedule/system trigger pick which radio to send via.
+      const sourceIds = Array.isArray(p.sourceIds) && p.sourceIds.length > 0
+        ? (p.sourceIds as unknown[]).map(String)
+        : [sourceId];
+
+      const results: unknown[] = [];
+      for (const sid of sourceIds) {
+        const meshcore = await isMeshCoreSource(ctx, sid);
+        // MeshCore has no position / nodeinfo-exchange request → skip as a no-op.
+        if (meshcore && (op === 'position' || op === 'nodeinfo')) {
+          results.push({ skipped: true, reason: `${op} request is not supported on MeshCore` });
+          continue;
+        }
+        let target = '';
+        if (op !== 'advert') {
+          target = (await interpolateAsync(String(p.to ?? ''), ctx)).trim();
+          if (!target) {
+            // Fall back to the triggering node: pubkey for MeshCore, node # for Meshtastic.
+            target = meshcore
+              ? String(ctx.trigger.fields.from ?? '').trim()
+              : (ctx.trigger.subjectNodeNum != null ? String(ctx.trigger.subjectNodeNum) : '');
+          }
+          if (!target) throw new Error(`action.requestData: no target node for "${op}"`);
+        }
+        results.push(await deps.requestData({ sourceId: sid, op, target, channel, telemetryType }));
+      }
+      return results.length === 1 ? results[0] : results;
     }
 
     case 'action.notify': {

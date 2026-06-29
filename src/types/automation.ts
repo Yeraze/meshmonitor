@@ -38,6 +38,7 @@ export type ActionType =
   | 'action.sendMessage'
   | 'action.tapback'
   | 'action.nodeManage'
+  | 'action.requestData'
   | 'action.notify'
   | 'action.runScript';
 
@@ -74,6 +75,7 @@ export const ACTION_TYPES: readonly ActionType[] = [
   'action.sendMessage',
   'action.tapback',
   'action.nodeManage',
+  'action.requestData',
   'action.notify',
   'action.runScript',
 ];

@@ -276,6 +276,11 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
     );
   } else if (a.type === 'action.nodeManage') {
     headline = `Manage node → ${String(p.op ?? '')} ${p.nodeNum ?? ''}`.trim();
+  } else if (a.type === 'action.requestData') {
+    const op = String(p.op ?? '');
+    const tt = op === 'telemetry' && p.telemetryType ? ` (${String(p.telemetryType)})` : '';
+    const tgt = op === 'advert' ? '' : ` → ${p.target ? `node ${p.target}` : '(triggering node)'}`;
+    headline = `Request ${op}${tt}${tgt} on ch ${p.channel ?? 0}`;
   }
   return (
     <div className={`ae-test-action ${a.ok ? '' : 'is-err'}`}>

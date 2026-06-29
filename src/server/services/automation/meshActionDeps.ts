@@ -22,11 +22,23 @@ interface MeshSendManager {
   sendRemoveFavoriteNode(nodeNum: number, destinationNodeNum?: number): Promise<void>;
   sendIgnoredNode(nodeNum: number, destinationNodeNum?: number): Promise<void>;
   sendRemoveIgnoredNode(nodeNum: number, destinationNodeNum?: number): Promise<void>;
+  // Request/operation senders (#3835).
+  sendTelemetryRequest(destination: number, channel?: number, telemetryType?: 'device' | 'environment' | 'airQuality' | 'power'): Promise<unknown>;
+  sendPositionRequest(destination: number, channel?: number): Promise<unknown>;
+  sendTraceroute(destination: number, channel?: number): Promise<unknown>;
+  sendNodeInfoRequest(destination: number, channel?: number): Promise<unknown>;
+  sendNeighborInfoRequest(destination: number, channel?: number): Promise<unknown>;
+  broadcastNodeInfoToChannel(channel: number): Promise<unknown>;
 }
 
 /** MeshCore companion managers send via a different method signature. */
 interface MeshCoreSendManager {
   sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null): Promise<boolean>;
+  // Request/operation senders (#3835).
+  requestRemoteTelemetry(publicKey: string, timeoutSecs?: number): Promise<unknown>;
+  traceContactPath(publicKey: string): Promise<unknown>;
+  requestNeighbors(publicKey?: string): Promise<unknown>;
+  sendAdvert(): Promise<unknown>;
 }
 
 function mgr(sourceId: string | null): MeshSendManager {
@@ -93,6 +105,37 @@ export function createMeshActionDeps(): ActionDeps {
         default:
           throw new Error(`unsupported node op "${op}"`);
       }
+    },
+
+    async requestData({ sourceId, op, target, channel, telemetryType }) {
+      if (!sourceId) throw new Error('automation action requires a target source');
+      const raw = sourceManagerRegistry.getManager(sourceId) as unknown as
+        (Partial<MeshSendManager> & Partial<MeshCoreSendManager>) | undefined;
+      // Meshtastic: target is a node number.
+      if (raw && typeof raw.sendTelemetryRequest === 'function') {
+        const dest = Number(target);
+        switch (op) {
+          case 'telemetry': return raw.sendTelemetryRequest!(dest, channel, telemetryType);
+          case 'position': return raw.sendPositionRequest!(dest, channel);
+          case 'traceroute': return raw.sendTraceroute!(dest, channel);
+          case 'nodeinfo': return raw.sendNodeInfoRequest!(dest, channel);
+          case 'neighbors': return raw.sendNeighborInfoRequest!(dest, channel);
+          case 'advert': return raw.broadcastNodeInfoToChannel!(channel);
+          default: throw new Error(`unsupported request op "${op}"`);
+        }
+      }
+      // MeshCore: target is a contact public key.
+      if (raw && typeof raw.requestRemoteTelemetry === 'function') {
+        const key = String(target);
+        switch (op) {
+          case 'telemetry': return raw.requestRemoteTelemetry!(key);
+          case 'traceroute': return raw.traceContactPath!(key);
+          case 'neighbors': return raw.requestNeighbors!(key || undefined);
+          case 'advert': return raw.sendAdvert!();
+          default: throw new Error(`request op "${op}" not supported on MeshCore`);
+        }
+      }
+      throw new Error(`source "${sourceId}" cannot perform node requests`);
     },
 
     async notify({ sourceId, title, body, type, urls }) {
