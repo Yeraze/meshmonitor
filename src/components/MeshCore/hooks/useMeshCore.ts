@@ -377,12 +377,25 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     // snapshot poll reconciles from the DB.
     setNodes(prev => {
       const favByKey = new Map(prev.map(n => [n.publicKey, n.isFavorite]));
+      // Likewise carry forward the last-known name. A re-discovered node
+      // returns from the device with an empty adv_name (discovery responses
+      // carry only key+type; the name follows via a later advert), so
+      // contactToNode() resolves it to "Unknown" and would clobber the good
+      // name live until a page reload re-reads it from the DB. Keep the prior
+      // real name in that gap.
+      const nameByKey = new Map(
+        prev.filter(n => n.name && n.name !== 'Unknown').map(n => [n.publicKey, n.name]),
+      );
       const merged: MeshCoreNode[] = [];
       if (localNodeRef.current) merged.push(localNodeRef.current);
       for (const c of contactsRef.current.values()) {
         const node = contactToNode(c);
         const fav = favByKey.get(c.publicKey);
         if (fav !== undefined) node.isFavorite = fav;
+        if (node.name === 'Unknown') {
+          const prevName = nameByKey.get(c.publicKey);
+          if (prevName) node.name = prevName;
+        }
         merged.push(node);
       }
       return merged;
