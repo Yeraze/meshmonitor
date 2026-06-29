@@ -156,6 +156,11 @@ Sends text to a channel or as a DM, with full `{{ }}` token interpolation in the
 - **DM to node #** — send as a direct message instead of to a channel. `{{ trigger.from }}` replies
   to the sender.
 - **Reply to the triggering message** — thread the reply to the message that fired the automation.
+- **MeshCore scope** *(advanced; MeshCore sources only — ignored by Meshtastic)* — which region a
+  MeshCore message floods to: **Inherit (channel / source default)**, **Match the triggering
+  message's scope** (reply on the same region it arrived on), **Unscoped (flood, no region)**, or
+  **A specific region…** — the latter reveals a **Region** picker (token-aware). See
+  [Regions / Scopes](/features/meshcore#regions-scopes).
 
 The overall send is a **source × channel matrix**: each selected source posts to the matching local
 slot of each selected channel.
@@ -164,6 +169,21 @@ slot of each selected channel.
 
 Runs an admin/management operation on the subject node: **Favorite / Unfavorite**, **Ignore /
 Unignore**, or **Delete**.
+
+### Request data from a node
+
+Asks a node to report data — the automation equivalent of the manual request buttons. Works on
+**both Meshtastic and MeshCore** sources.
+
+- **Request** — what to ask for: **Telemetry**, **Position (Meshtastic)**, **Traceroute / path**,
+  **Node info exchange (Meshtastic)**, **Neighbor info**, or **Announce self (advert)**.
+- **Telemetry type** — which metric set to ask for, when the request is **Telemetry**.
+- **Via sources** — which radio(s) to send the request through. Leave empty to use the triggering
+  source — but a source **is required** for source-less triggers (Schedule / System).
+- **Target node** — node # (Meshtastic) or contact public key (MeshCore). Leave blank to target the
+  triggering node. Not used for **Announce self**.
+- **Channel #** *(advanced; Meshtastic only)* — which channel to send the request on (e.g. a private
+  sensor channel); ignored by MeshCore.
 
 ### Send a notification (Apprise)
 
@@ -298,3 +318,19 @@ the trigger but no action fires, the panel explains that every condition went fa
 which inputs/facts to change.
 
 </div>
+
+## Live trace ("view logs")
+
+Where the dry-run Test panel exercises a rule against a **synthetic** event, the **live trace**
+watches **real events** flowing through a rule without sending anything itself. Each rule in the
+Automations list has a **Trace** button that opens a live debug view of just that rule; once armed,
+every event that reaches the rule is streamed to the panel in real time (over the dashboard socket),
+showing **why it did or didn't run**:
+
+- **fired** — the trigger matched and the action steps ran; the per-step trace is shown.
+- **prefiltered** — the event was filtered out before the conditions ran (e.g. wrong source/channel),
+  with the reason.
+- **cooldown** — the rule matched but was suppressed by its cooldown window.
+
+The panel keeps the most recent entries in a rolling buffer and **auto-stops after 5 minutes** (and
+on close or disconnect), so a trace never runs unbounded.

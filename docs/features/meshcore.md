@@ -125,6 +125,8 @@ The device's channels with the most recent message stream. Channel-message sende
 
 **Unread indicators** — channels with messages newer than the last time you opened them show an unread dot and a **bold name** in the channel list. A header badge counts how many channels currently have unread messages, and an optional **"unread first"** sort toggle (persisted) floats those channels to the top. Opening a channel marks it read up to the newest visible message. MeshCore read state is tracked **client-side in `localStorage`, scoped by `sourceId`** — there's no server-side MeshCore read table, so read markers are per-browser rather than per-account.
 
+**Reply** — received channel messages carry a **Reply** button. Clicking it prefills the composer with the sender's MeshCore mention (`@[Sender]: `) and sends the reply **on the scope the original message arrived on**, so a threaded answer stays in the same region. The button appears only on incoming channel messages — not on your own messages, and not in 1:1 DMs.
+
 **Heard repeaters** — outgoing channel posts show a **📡 N** badge with an expandable list of the repeaters that re-flooded the message and the SNR each was heard at. This is populated best-effort by **self-echo correlation**: when a repeater re-floods your `GRP_TXT` packet, MeshMonitor hears it inbound and attributes the relay hashes to the most recent matching channel send within a ~30-second window. Channel sends carry no protocol ACK, so this is a heuristic, not a delivery receipt. Correlation runs on the raw inbound packet before the opt-in packet-monitor gate, so it works **regardless of whether the packet monitor is enabled**. Relay hashes are resolved to repeater names where known; otherwise the raw hash is shown.
 
 ### Direct Messages
@@ -276,13 +278,14 @@ A repeater only answers a regions query over a direct route, so MeshMonitor inst
 
 Next to the channel compose box is an optional one-off **scope/region override**. It applies to that single message and is **never persisted** to the channel — your next normal send re-asserts the channel/default scope. It defaults to the channel's resolved scope, offers the same discovered/saved-region datalist, and resets when you switch channels. Leave it blank/whitespace to send that one message explicitly unscoped.
 
-### Scope of received messages
+### Scope of sent and received messages
 
-Received channel and DM messages show a scope line so you can tell how a message reached you. MeshMonitor recovers the scope by recomputing each of your known region names against the packet (the raw name can't be reversed out of the wire value):
+Channel and DM messages show a scope line so you can tell which region a message used — on **both** received messages (how it reached you) and your **own sent** messages (which scope it went out on). MeshMonitor recovers the scope by recomputing each of your known region names against the packet (the raw name can't be reversed out of the wire value):
 
-- **🌐 no scope** — the message was sent un-scoped.
 - **🔒 muenchen** — scoped to a region you know; the name is shown.
 - **🔒 #a3f2** — scoped, but to a region not in your known set; the raw code is shown as hex.
+
+Un-scoped messages show **no scope line at all** — the absence of a badge is itself the signal that the message flooded without a region.
 
 ### Saved regions catalog
 
@@ -405,6 +408,7 @@ Auto-Responder matches incoming messages against operator-defined patterns and r
 
 - **Per-trigger pattern** — match incoming text via a regular expression, with per-channel filtering, DM listening, and a per-sender cooldown to avoid loops.
 - **Two actions** — reply with a **text response** (same token expansion as Auto-Announce) or **run a script** (with token-expanded script args). Script execution reuses the shared script runner, with `MESHCORE_*` environment variables injected so a script can branch on which stack invoked it.
+- **Reply scope/region** — choose which region the reply floods to: **Inherit** the channel/source default, **Match the triggering message's scope** (answer back on the same region it arrived on), send **Unscoped**, or pick **a specific region**. This mirrors the MeshCore scope control in the [Automation Engine](/features/automation-engine#actions).
 
 ## Timer Triggers
 

@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.12.2] - 2026-06-29
+
+### Added
+- **Scope/region control for MeshCore automations** — Both the legacy Automations tab and the Automation Engine can now target a specific MeshCore scope/region when sending, or **respond on the trigger message's scope**, so an automated reply stays on the region it arrived on. (#3833, #3834)
+- **"Request from a node" Automation Engine action** — A single action can request telemetry, position, traceroute, node info, neighbor info, or an advert from a node, on both Meshtastic and MeshCore sources. (#3835, #3838)
+- **Automation Engine live trace** — Each rule now has a live "view logs" trace that streams its evaluation and firing in real time, making it far easier to see why a rule did (or didn't) run. (#3836)
+- **MeshCore Reply button on channel messages** — Received channel messages now have a Reply button that prefills the `@[Sender]:` mention and sends the reply on the originating message's scope. (#3851, #3855)
+- **MeshCore scope/region shown on sent messages** — Outgoing MeshCore messages now display the scope/region badge they were sent on, matching the existing badge on received messages. (#3814, #3818)
+- **Hardware models 132–140** — Bundled Meshtastic protobufs updated to v2.7.26, adding names for hardware models 132–140 so newer devices display correctly. (#3849)
+
+### Fixed
+- **MeshCore: re-discovered node showed "Unknown" until reload** — After deleting a contact and running Discover Repeaters, the node reappeared nameless until a manual page refresh (the discovery response carries no name, while the persisted node row still held it). The name is now backfilled from the persisted node row before the live update, the channel view reliably opens at the bottom (newest) on entry, and unscoped messages no longer render an empty scope badge. (#3810, #3817, #3858)
+- **MeshCore: discovering an existing repeater wiped its name** — An active discovery re-added contacts already on the device with an empty name, erasing it; existing contacts are now left untouched. (#3858)
+- **MeshCore: received-message scope/region (and `{ROUTE}`/`{SNR}`) blank on busy meshes** — The raw OTA bytes that carry a received message's relay path, SNR, and scope are handed from the `LogRxData` push to the message-receive event through an in-memory buffer that was a **single slot**. When two text packets were in flight, the second packet's `LogRxData` clobbered the first's buffer before its receive consumed it, so the first message lost its route/SNR and showed **no scope badge** — even though MeshMonitor had captured the bytes. The buffer is now a small **FIFO** matched to each receive by hop count, so concurrent packets no longer evict each other.
+- **MeshCore: discovered repeater names populate without admin login** — Discovered repeaters are named via an ANON_REQ OWNER request, so names appear without logging into the repeater. (#3820, #3825)
+- **MeshCore: remote status response cross-talk** — Remote status requests are now serialized, so overlapping requests no longer attach the wrong node's response. (#3815, #3821)
+- **MeshCore: virtual-node DeviceInfo handshake** — The virtual node's DeviceInfo is pinned to companion protocol v1, fixing the companion app's "works once after restart" handshake abort. (#3705, #3828)
+- **MeshCore: saved regions missing from scope resolution** — The saved-regions catalog is now included when resolving a scope name. (#3829, #3830)
+- **Messages: request actions restored for unmessageable nodes** — Traceroute / telemetry / node-info actions stay available for nodes you can't DM. (#3831, #3832)
+- **Messages: softened the "not in device DB" warning** when the key is actually known. (#3853, #3856)
+- **Remote Node Status: "Errors" relabeled to "Error Events"** for clarity. (#3824)
+- **Settings: auto-acknowledge save no longer sticks** when the stored regex is RE2-incompatible. (#3806, #3819)
+- **MeshCore: message metadata readability on bright screens** improved. (#3811, #3812)
+- **MeshCore: heardBy relay info persists** in the memory pool after a channel echo. (#3813, #3816)
+
+### Dependencies
+- Routine dependency updates: recharts 3.9.0, lucide-react 1.22.0, aedes 1.1.0, vite 8.1.0, puppeteer 25.2.1, @types/node 26.0.1, `actions/cache` v6, plus grouped production and development dependency bumps. (#3632, #3839–#3848)
+
 ## [4.12.1] - 2026-06-27
 
 ### Fixed
