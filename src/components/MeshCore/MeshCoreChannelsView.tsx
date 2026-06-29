@@ -211,7 +211,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // the answer floods to the same region. The override widget is revealed so
   // the operator can see/edit the scope before sending.
   const handleReply = useCallback((m: MeshCoreMessage) => {
-    if (typeof m.scopeName === 'string' && m.scopeName.trim()) {
+    if (m.scopeName?.trim()) {
       setOverrideScope(m.scopeName);
       setShowScopeOverride(true);
     } else if (m.scopeCode === 0) {

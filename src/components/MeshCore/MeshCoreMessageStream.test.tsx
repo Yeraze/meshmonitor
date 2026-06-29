@@ -135,6 +135,16 @@ describe('MeshCoreMessageStream reply (#3851)', () => {
     render(<MeshCoreMessageStream messages={[{ id: 'o', fromPublicKey: SELF, text: 'mine', timestamp: Date.now() }]} selfPublicKey={SELF} onSend={async () => true} onReply={() => {}} />);
     expect(screen.queryByRole('button', { name: 'Reply' })).toBeNull();
   });
+
+  it('leaves the composer empty (no broken mention) when an anonymous channel message has no name', () => {
+    const onReply = vi.fn();
+    // Channel message with no parsed fromName and no resolvable contact.
+    render(<MeshCoreMessageStream messages={[channelMsg({ fromName: undefined })]} selfPublicKey={SELF} onSend={async () => true} onReply={onReply} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
+    // No name to mention → empty draft, but the reply (scope) still propagates.
+    expect((screen.getByPlaceholderText('Type a message…') as HTMLInputElement).value).toBe('');
+    expect(onReply).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('MeshCoreMessageStream entry scroll (#3810)', () => {

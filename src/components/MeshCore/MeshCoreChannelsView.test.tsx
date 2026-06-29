@@ -71,6 +71,7 @@ function makeActions(overrides: Partial<MeshCoreActions> = {}): MeshCoreActions 
     // component swallows failures, but mocking them avoids unhandled rejections.
     getDefaultScope: vi.fn().mockResolvedValue(''),
     discoverRegions: vi.fn().mockResolvedValue({ regions: [] }),
+    fetchSavedRegions: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
@@ -619,5 +620,19 @@ describe('MeshCoreChannelsView — reply uses the originating scope (#3851)', ()
     fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
     const scopeInput = (await screen.findByLabelText('Send scope')) as HTMLInputElement;
     expect(scopeInput.value).toBe('');
+  });
+
+  it('leaves the scope at the default for a scoped-but-unknown message (HMAC code, no name)', async () => {
+    const unknown: MeshCoreMessage[] = [
+      { id: 'r0x', fromPublicKey: 'channel-0', fromName: 'Dee', text: 'mystery scope', timestamp: 1000, scopeCode: 4242 },
+    ];
+    render(
+      <MeshCoreChannelsView messages={unknown} contacts={contacts} status={makeStatus()} actions={makeActions()} baseUrl="" sourceId="src-a" />,
+    );
+    await waitFor(() => screen.getByText('mystery scope'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
+    // Region name isn't recoverable from the code → scope override stays hidden
+    // (the reply falls back to the channel/source default).
+    expect(screen.queryByLabelText('Send scope')).toBeNull();
   });
 });
