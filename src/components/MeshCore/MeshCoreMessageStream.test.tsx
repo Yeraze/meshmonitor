@@ -100,6 +100,14 @@ describe('MeshCoreMessageStream scope row (#3814)', () => {
     expect(container.querySelector('.mc-message-scope')).toBeNull();
   });
 
+  it('renders no scope row for an unscoped message (scopeCode 0)', () => {
+    // Unscoped messages used to show a "🌐 no scope" badge — now they show nothing.
+    const { container } = renderWithSelf([
+      { id: 'u', fromPublicKey: 'fedcba9876543210', text: 'hi', timestamp: Date.now(), scopeCode: 0, scopeName: null },
+    ]);
+    expect(container.querySelector('.mc-message-scope')).toBeNull();
+  });
+
   it('still renders the scope row on a received scoped message', () => {
     const { container } = renderWithSelf([
       { id: 'b', fromPublicKey: 'fedcba9876543210', text: 'hi', timestamp: Date.now(), scopeCode: 1234, scopeName: 'berlin' },
@@ -181,23 +189,7 @@ describe('MeshCoreMessageStream entry scroll (#3810)', () => {
     ];
   };
 
-  it('scrolls the first-unread row into view on entry', () => {
-    const { container } = render(
-      <MeshCoreMessageStream
-        messages={threeMessages()}
-        conversationKey="channel-0"
-        firstUnreadId="b"
-        onSend={async () => true}
-      />,
-    );
-    expect(scrollIntoViewSpy).toHaveBeenCalledTimes(1);
-    // The scrolled element must be the row for the first-unread message.
-    expect(scrollIntoViewSpy.mock.instances[0]).toBe(
-      container.querySelector('[data-message-id="b"]'),
-    );
-  });
-
-  it('scrolls to the bottom on entry when there is no unread anchor', () => {
+  it('lands at the bottom (newest) on entry', () => {
     const { container } = render(
       <MeshCoreMessageStream
         messages={threeMessages()}
@@ -207,7 +199,7 @@ describe('MeshCoreMessageStream entry scroll (#3810)', () => {
     );
     expect(scrollIntoViewSpy).not.toHaveBeenCalled();
     const list = container.querySelector('.meshcore-message-list') as HTMLElement;
-    expect(list.scrollTop).toBe(500);
+    expect(list.scrollTop).toBe(500); // == forced scrollHeight → bottom
   });
 
   it('runs the entry scroll once the async backlog populates (empty → non-empty)', () => {
@@ -215,26 +207,23 @@ describe('MeshCoreMessageStream entry scroll (#3810)', () => {
       <MeshCoreMessageStream
         messages={[]}
         conversationKey="channel-0"
-        firstUnreadId="b"
         onSend={async () => true}
       />,
     );
     // Empty on first render (conversationKey already flipped) — nothing to scroll.
-    expect(scrollIntoViewSpy).not.toHaveBeenCalled();
+    let list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    expect(list.scrollTop).toBe(0);
 
-    // Backlog arrives for the SAME conversationKey.
+    // Backlog arrives for the SAME conversationKey → scroll to the bottom.
     rerender(
       <MeshCoreMessageStream
         messages={threeMessages()}
         conversationKey="channel-0"
-        firstUnreadId="b"
         onSend={async () => true}
       />,
     );
-    expect(scrollIntoViewSpy).toHaveBeenCalledTimes(1);
-    expect(scrollIntoViewSpy.mock.instances[0]).toBe(
-      container.querySelector('[data-message-id="b"]'),
-    );
+    list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    expect(list.scrollTop).toBe(500);
   });
 });
 

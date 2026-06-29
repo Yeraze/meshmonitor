@@ -1321,8 +1321,41 @@ class MeshCoreManager extends EventEmitter {
         };
         this.contacts.set(publicKey, updated);
         void this.persistContact(updated);
-        this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
-        dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+
+        const emitContact = (contact: MeshCoreContact) => {
+          this.emit('contacts_updated', { sourceId: this.sourceId, contact });
+          dataEventEmitter.emitMeshCoreContactUpdated(contact, this.sourceId);
+        };
+        if (updated.advName || updated.name) {
+          emitContact(updated);
+        } else {
+          // A re-discovered node (delete → "Discover Repeaters") comes back
+          // with no name — discovery responses carry only key+type. But the
+          // persisted meshcore_nodes row survives a contact delete, so the
+          // server still knows the name. Backfill it from the DB before the
+          // first emit, otherwise the UI shows "Unknown" until a later passive
+          // advert (or a manual page reload re-reading the snapshot) supplies
+          // it. (#3858 follow-up)
+          void (async () => {
+            let toEmit = updated;
+            try {
+              const dbNode = await databaseService.meshcore.getNodeByPublicKeyAndSource(
+                publicKey,
+                this.sourceId,
+              );
+              if (dbNode?.name) {
+                toEmit = { ...updated, advName: dbNode.name };
+                this.contacts.set(publicKey, toEmit);
+              }
+            } catch (err) {
+              logger.warn(
+                `[MeshCore:${this.sourceId}] discover name backfill failed for ` +
+                `${publicKey.substring(0, 16)}…: ${(err as Error).message}`,
+              );
+            }
+            emitContact(toEmit);
+          })();
+        }
 
         // A discovery response carries only key+type — name and position aren't
         // included. For a newly-seen node, pull the full contact record

@@ -30,9 +30,14 @@ const BinaryRequestTypes = { GetTelemetryData: 0x03 };
 const AdvType = { None: 0, Chat: 1, Repeater: 2, Room: 3 };
 const TxtTypes = { Plain: 0, CliData: 1, SignedPlain: 2 };
 
+/** Flush pending microtasks + setImmediate so async fire-and-forget work runs. */
+const flushAsync = () => new Promise<void>((r) => setImmediate(r));
+
 class MockConnection extends EventEmitter {
   sentFrames: Uint8Array[] = [];
   addOrUpdateContact = vi.fn().mockResolvedValue(undefined);
+  /** Device contact list — discovery skips auto-adding a key already present. */
+  getContacts = vi.fn<[], Promise<any[]>>().mockResolvedValue([]);
   /** Reply bytes a `request_regions` (CMD 57) frame should produce. */
   regionsResponseData: Uint8Array | null = null;
   async connect() { /* no-op */ }
@@ -159,12 +164,36 @@ describe('MeshCoreNativeBackend — node discovery', () => {
     );
 
     // Auto-added on the device with the full key, type, empty name, flood path.
+    // The add is async (it first checks getContacts), so flush before asserting.
+    await flushAsync();
     expect(conn.addOrUpdateContact).toHaveBeenCalledTimes(1);
     const [keyArg, typeArg, flagsArg, outPathLenArg] = conn.addOrUpdateContact.mock.calls[0];
     expect(Array.from(keyArg as Uint8Array)).toEqual(Array.from(pubkey));
     expect(typeArg).toBe(AdvType.Repeater);
     expect(flagsArg).toBe(0);
     expect(outPathLenArg).toBe(0xff);
+  });
+
+  it('does NOT re-add (clobber) a node already in the device contact list (#3853-class)', async () => {
+    const { backend, conn, events } = await connectedBackend();
+    const tag = 0xbeefface;
+    await backend.sendCommand('discover_nodes', { filter: 0x02, tag });
+
+    const pubkey = Uint8Array.from(Array.from({ length: 32 }, (_, i) => i + 1));
+    // Device already knows this contact (with a name) — re-adding with an empty
+    // name would wipe it. getContacts reports it as existing.
+    conn.getContacts.mockResolvedValue([{ publicKey: pubkey, advName: 'Yeraze Repeater' }]);
+
+    conn.emit('rx', buildDiscoverResp({
+      snrX4: 20, rssi: -40 & 0xff, pathLen: 0xff,
+      nodeType: AdvType.Repeater, responderSnrX4: 12, tag, pubkey,
+    }));
+
+    // Still surfaced to the UI as discovered…
+    expect(events.find((e) => e.event_type === 'node_discovered')).toBeDefined();
+    // …but the device contact (and its name) is left untouched.
+    await flushAsync();
+    expect(conn.addOrUpdateContact).not.toHaveBeenCalled();
   });
 
   it('ignores responses whose tag does not match the pending request', async () => {

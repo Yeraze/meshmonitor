@@ -11,12 +11,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 const upsertNode = vi.fn().mockResolvedValue(undefined);
+const getNodeByPublicKeyAndSource = vi.fn().mockResolvedValue(null);
 const emitMeshCoreContactUpdated = vi.fn();
 
 vi.mock('../services/database.js', () => ({
   default: {
     meshcore: {
       upsertNode: (...args: unknown[]) => upsertNode(...args),
+      getNodeByPublicKeyAndSource: (...args: unknown[]) => getNodeByPublicKeyAndSource(...args),
     },
   },
 }));
@@ -79,6 +81,8 @@ function makeCompanionManager(): {
 describe('MeshCoreManager — new-node contact refresh (#3646)', () => {
   beforeEach(() => {
     upsertNode.mockClear();
+    getNodeByPublicKeyAndSource.mockClear();
+    getNodeByPublicKeyAndSource.mockResolvedValue(null);
     emitMeshCoreContactUpdated.mockClear();
     vi.useFakeTimers();
   });
@@ -159,5 +163,66 @@ describe('MeshCoreManager — new-node contact refresh (#3646)', () => {
     const contact = manager.getContact(NEW_KEY);
     expect(contact?.advName).toBe('Repeater One');
     expect(contact?.advType).toBe(2);
+  });
+});
+
+describe('MeshCoreManager — re-discovered node name backfill (#3858)', () => {
+  beforeEach(() => {
+    upsertNode.mockClear();
+    getNodeByPublicKeyAndSource.mockClear();
+    getNodeByPublicKeyAndSource.mockResolvedValue(null);
+    emitMeshCoreContactUpdated.mockClear();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    // Discovery schedules a debounced path-refresh; drop it so the timer
+    // doesn't leak into the next test.
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it('backfills a re-discovered nameless node\'s name from the surviving DB row', async () => {
+    const { manager } = makeCompanionManager();
+    // User deleted "Yeraze Repeater" (gone from this.contacts) then hit
+    // "Discover Repeaters". The discovery response carries only key+type, but
+    // the persisted meshcore_nodes row survived the delete with the real name.
+    getNodeByPublicKeyAndSource.mockResolvedValue({ publicKey: NEW_KEY, name: 'Yeraze Repeater' });
+
+    dispatchBridgeEvent(manager, {
+      event_type: 'node_discovered',
+      data: { public_key: NEW_KEY, adv_type: 2, snr: 5 },
+    });
+
+    // Let the async DB backfill resolve.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(getNodeByPublicKeyAndSource).toHaveBeenCalledWith(NEW_KEY, 'src-a');
+    // The contact-updated push the UI receives carries the recovered name,
+    // not "Unknown" — no page reload required.
+    const emitted = emitMeshCoreContactUpdated.mock.calls.map((c) => c[0] as { publicKey: string; advName?: string });
+    expect(emitted.some((ct) => ct.publicKey === NEW_KEY && ct.advName === 'Yeraze Repeater')).toBe(true);
+    expect(manager.getContact(NEW_KEY)?.advName).toBe('Yeraze Repeater');
+  });
+
+  it('emits the discovered node as-is when no DB row exists (genuinely new)', async () => {
+    const { manager } = makeCompanionManager();
+    getNodeByPublicKeyAndSource.mockResolvedValue(null);
+
+    dispatchBridgeEvent(manager, {
+      event_type: 'node_discovered',
+      data: { public_key: NEW_KEY, adv_type: 2, snr: 5 },
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Still emitted (so the UI shows the node), just without a name to backfill.
+    const emitted = emitMeshCoreContactUpdated.mock.calls.map((c) => c[0] as { publicKey: string; advName?: string });
+    expect(emitted.some((ct) => ct.publicKey === NEW_KEY)).toBe(true);
+    expect(manager.getContact(NEW_KEY)?.advName).toBeUndefined();
   });
 });

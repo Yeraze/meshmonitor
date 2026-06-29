@@ -674,21 +674,31 @@ export class MeshCoreNativeBackend extends EventEmitter {
         const publicKeyBytes = keyBytes.slice(0, 32);
         const publicKey = bytesToHex(publicKeyBytes);
 
-        // Auto-add to the DEVICE contact store so the node is actually
-        // message-able and survives the next refreshContacts() (a
-        // MeshMonitor-only mirror would be clobbered by the device's list).
-        // We have no name/position/path from a discovery response, so use
-        // empty name + flood path (outPathLen 0xFF) and let the device
-        // learn the route. addOrUpdateContact is idempotent (Ok/Err only),
-        // so re-discovering an existing contact is harmless. Best-effort:
-        // a device-side failure must not break response parsing.
+        // Auto-add a GENUINELY NEW node to the DEVICE contact store so it's
+        // actually message-able and survives the next refreshContacts() (a
+        // MeshMonitor-only mirror would be clobbered by the device's list). A
+        // discovery response carries no name/position/path, so a new contact is
+        // added with an empty name + flood path (outPathLen 0xFF) and the device
+        // learns the route later.
+        //
+        // CRITICAL: we must NOT re-add an EXISTING contact. addOrUpdateContact
+        // overwrites ALL of a contact's fields, so re-adding a known node with an
+        // empty name wipes its stored name on the device — and a later
+        // refreshContacts() mirrors the nameless entry into MeshMonitor (bug:
+        // "Discover Repeaters erased the node name"). An existing contact is
+        // already message-able and survives a refresh, so we simply skip it.
+        // Best-effort + async so rx parsing isn't blocked.
         const c = this.connection;
         if (c) {
-          void c
-            .addOrUpdateContact(publicKeyBytes, nodeType, 0, 0xff, new Uint8Array(64), '', 0, 0, 0)
-            .catch((err: Error) =>
-              logger.warn(`[MeshCore:native] discover auto-add failed for ${publicKey.substring(0, 16)}…: ${err.message}`),
-            );
+          void (async () => {
+            try {
+              const existing: any[] = await c.getContacts();
+              if (existing.some((ct) => bytesToHex(ct.publicKey) === publicKey)) return;
+              await c.addOrUpdateContact(publicKeyBytes, nodeType, 0, 0xff, new Uint8Array(64), '', 0, 0, 0);
+            } catch (err) {
+              logger.warn(`[MeshCore:native] discover auto-add failed for ${publicKey.substring(0, 16)}…: ${(err as Error).message}`);
+            }
+          })();
         }
 
         this.emitBridgeEvent('node_discovered', {
