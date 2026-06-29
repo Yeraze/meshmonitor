@@ -9,6 +9,8 @@ import {
   deriveHops,
   messageMatchesFilter,
   meshCoreMessageMatchesFilter,
+  describeMessageFilterMiss,
+  describeMeshCoreFilterMiss,
   resolveTriggerPath,
   BROADCAST_ADDR,
 } from './triggerContext.js';
@@ -199,6 +201,30 @@ describe('meshCoreMessageMatchesFilter (#3833)', () => {
     expect(meshCoreMessageMatchesFilter(mcMsg(), { from: 111 })).toBe(false);
     expect(meshCoreMessageMatchesFilter(mcMsg(), { to: 222 })).toBe(false);
     expect(meshCoreMessageMatchesFilter(mcMsg(), { portnum: 1 })).toBe(false);
+  });
+});
+
+describe('describeMessageFilterMiss (live-trace reasons)', () => {
+  it('returns the first failing constraint as a human reason', () => {
+    expect(describeMessageFilterMiss(msg({ text: 'hello' }), { textContains: 'ping' })).toBe('text does not contain "ping"');
+    expect(describeMessageFilterMiss(msg(), { from: 999 })).toBe('sender #111 ≠ from #999');
+    expect(describeMessageFilterMiss(msg(), { channel: 2 })).toBe('channel 0 ≠ 2');
+    expect(describeMessageFilterMiss(msg({ text: 'nope' }), { regex: '^(test|ping)' })).toBe('text does not match /^(test|ping)/');
+    expect(describeMessageFilterMiss(msg(), { channelName: 'gauntlet' }, 'Primary')).toBe('channel name "Primary" ≠ "gauntlet"');
+  });
+  it('returns undefined when the message actually matches', () => {
+    expect(describeMessageFilterMiss(msg({ text: 'ping' }), { textContains: 'ping' })).toBeUndefined();
+  });
+});
+
+describe('describeMeshCoreFilterMiss (live-trace reasons)', () => {
+  it('explains Meshtastic-only filters never matching MeshCore', () => {
+    expect(describeMeshCoreFilterMiss(mcMsg(), { from: 5 })).toMatch(/Meshtastic-only/);
+  });
+  it('explains channel and text misses', () => {
+    expect(describeMeshCoreFilterMiss(mcMsg({ fromPublicKey: 'channel-2' }), { channel: 5 })).toBe('channel 2 ≠ 5');
+    expect(describeMeshCoreFilterMiss(mcMsg({ text: 'hi' }), { textContains: 'ping' })).toBe('text does not contain "ping"');
+    expect(describeMeshCoreFilterMiss(mcMsg({ text: 'ping' }), { textContains: 'ping' })).toBeUndefined();
   });
 });
 

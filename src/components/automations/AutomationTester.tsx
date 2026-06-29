@@ -11,6 +11,7 @@ import { useState, type ReactNode } from 'react';
 import apiService from '../../services/api';
 import type { VariableOption, SourceOption } from './AutomationBuilder';
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
+import { OUTCOME_META } from './outcomeMeta';
 
 export interface SimResult {
   matched: boolean;
@@ -252,17 +253,6 @@ function renderEventInputs(kind: string, ev: EventState, set: (k: string, v: str
       return <div className="ae-muted">No event input needed — this trigger has no payload.</div>;
   }
 }
-
-const OUTCOME_META: Record<string, { icon: string; cls: string; label: string }> = {
-  'condition:true': { icon: '✓', cls: 'ok', label: 'condition true' },
-  'condition:false': { icon: '✗', cls: 'no', label: 'condition false' },
-  'action:ok': { icon: '➜', cls: 'ok', label: 'action ran' },
-  'action:error': { icon: '⚠', cls: 'err', label: 'action error' },
-  'setVar:ok': { icon: '✎', cls: 'ok', label: 'variable set' },
-  'setVar:error': { icon: '⚠', cls: 'err', label: 'variable error' },
-  'activated': { icon: '•', cls: 'muted', label: 'activated' },
-  'guard:maxActions': { icon: '⛔', cls: 'err', label: 'action cap hit' },
-};
 
 /** Human-readable "what would be sent" for one simulated action. */
 function ActionView({ a }: { a: SimResult['actions'][number] }) {

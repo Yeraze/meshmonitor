@@ -177,3 +177,14 @@
 /* Test panel — "no actions ran" guidance note */
 .ae-test-note { background: var(--ctp-surface0); border-left: 3px solid var(--ctp-yellow); padding: 0.4rem 0.6rem; border-radius: var(--radius-sm, 6px); font-size: 0.82rem; color: var(--ctp-subtext1); line-height: 1.45; }
 .ae-test-note code { background: var(--ctp-mantle); padding: 0 0.25rem; border-radius: 3px; }
+
+/* Live trace panel ("view logs" for one rule) */
+.ae-trace-panel { display: flex; flex-direction: column; gap: 0.6rem; }
+.ae-trace-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+.ae-trace-feed { display: flex; flex-direction: column; gap: 0.4rem; max-height: 60vh; overflow-y: auto; }
+.ae-trace-entry { border: 1px solid var(--ctp-surface1); border-radius: var(--radius-sm, 6px); background: var(--ctp-base); padding: 0.4rem 0.55rem; }
+.ae-trace-entry-head { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+.ae-trace-entry-summary { font-family: var(--font-mono, monospace); font-size: 0.8rem; color: var(--ctp-text); word-break: break-word; }
+.ae-trace-reason { font-size: 0.8rem; margin-top: 0.2rem; padding-left: 0.4rem; }
+.ae-trace-steps-wrap { margin-top: 0.35rem; }
+.ae-trace-steps-wrap > summary { cursor: pointer; font-size: 0.78rem; }
