@@ -24,6 +24,7 @@ import {
 import { formatTracerouteRoute } from '../utils/traceroute';
 import { getMessageSortTime } from '../utils/messageSort';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
+import { isDeviceDbWarningMitigatable } from '../utils/deviceDbWarning';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
 import { calculateDistance, formatDistance, getDistanceToNode } from '../utils/distance';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
@@ -1342,11 +1343,20 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               </div>
             )}
 
-            {/* Not in device DB warning - node exists in MeshMonitor but not on the radio */}
+            {/*
+              Not in device DB warning - node exists in MeshMonitor but not on the radio.
+              When the key is known and there's no active mismatch, MeshMonitor will
+              pre-populate the radio's NodeDB via add_contact before the PKI DM (PR #3227),
+              so the DM still succeeds — a mitigatable warning shown in a softer yellow box.
+              Otherwise the DM truly will fail, so keep the stronger orange warning.
+              See isDeviceDbWarningMitigatable for the predicate (mirrors the backend gate).
+            */}
             {selectedNodeNum !== undefined && deviceNodeNums.size > 0 && !deviceNodeNums.has(selectedNodeNum) && (
               <div
                 style={{
-                  backgroundColor: 'var(--ctp-peach, #fab387)',
+                  backgroundColor: isDeviceDbWarningMitigatable(selectedNode)
+                    ? 'var(--ctp-yellow, #f9e2af)'
+                    : 'var(--ctp-peach, #fab387)',
                   color: 'var(--ctp-base, #1e1e2e)',
                   padding: '10px 12px',
                   marginBottom: '10px',
@@ -1354,7 +1364,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   textAlign: 'center',
                 }}
               >
-                {t('messages.not_in_device_db', 'This node is not in your radio\'s database. Direct messages will fail until the node exchanges keys with your radio. Use "Exchange Node Info" to request key exchange.')}
+                {isDeviceDbWarningMitigatable(selectedNode)
+                  ? t('messages.not_in_device_db_key_known', 'This node is not in the connected device\'s database. MeshMonitor will attempt to restore the saved key when you send a direct message.')
+                  : t('messages.not_in_device_db', 'This node is not in your radio\'s database. Direct messages will fail until the node exchanges keys with your radio. Use "Exchange Node Info" to request key exchange.')}
               </div>
             )}
 

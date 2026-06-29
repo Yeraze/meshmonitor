@@ -8509,7 +8509,10 @@ class MeshtasticManager implements ISourceManager {
             try {
               await this.pushContactToRadio(targetNode);
             } catch {
-              // Non-fatal — radio may already have the contact
+              // Non-fatal — radio may already have the contact, or the send failed
+              // transiently. On failure deviceNodeNums is left untouched (the add only
+              // runs after a successful send), so the UI's "not in device DB" warning
+              // correctly lingers until a later push or NodeInfo confirms the contact.
             }
           } else if (targetNode?.publicKey && targetNode.keyMismatchDetected) {
             logger.info(`🔐 DM to !${destination.toString(16).padStart(8, '0')} — skipping PKI (key mismatch active; firmware may lack key after purge), falling back to channel encryption`);
@@ -12691,6 +12694,10 @@ class MeshtasticManager implements ISourceManager {
     );
     const adminPacket = protobufService.createAdminPacket(addContactMsg, localNodeNum, localNodeNum);
     await this.transport.send(adminPacket);
+    // The contact (incl. public key) is now in the radio's NodeDB, so messaging is
+    // restored. Track it locally so the UI's "not in device DB" warning clears on the
+    // next poll without waiting for the radio to independently re-report the node.
+    this.deviceNodeNums.add(targetNode.nodeNum);
     logger.debug(`📇 Pushed contact for !${targetNode.nodeNum.toString(16).padStart(8, '0')} to radio NodeDB before PKI DM`);
   }
 
