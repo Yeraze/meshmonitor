@@ -552,6 +552,29 @@ describe('AutomationEngineService', () => {
     expect(got[0]).toMatchObject({ automationId: a.id, outcome: 'fired', triggerType: 'trigger.schedule' });
   });
 
+  it('emits a COOLDOWN trace for a throttled schedule rule', async () => {
+    const got: any[] = [];
+    automationTraceBus.setSink((_id, payload) => got.push(payload));
+    const a = await createEnabled('cron', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.schedule', params: { cron: '* * * * *', cooldownSeconds: 60 } },
+        { id: 'n', type: 'action.notify', params: { body: 'tick' } },
+      ],
+      edges: [{ from: 't', to: 'n' }],
+    });
+    const engine = engineWith(recorder().deps);
+    await engine.load();
+    automationTraceBus.arm(a.id, 'sock1', FAR_FUTURE);
+
+    await engine.onSchedule(a.id); // fires (t0)
+    clock += 30_000;
+    await engine.onSchedule(a.id); // within cooldown
+    const outcomes = got.map((g) => g.outcome);
+    expect(outcomes).toEqual(['fired', 'cooldown']);
+    expect(got[1].reason).toMatch(/cooldown active/);
+  });
+
   it('emits geofence traces: baseline (prefiltered) then enter (fired)', async () => {
     const got: any[] = [];
     automationTraceBus.setSink((_id, payload) => got.push(payload));
