@@ -721,6 +721,9 @@
 /* Message metadata uses subtext0 — sufficient contrast on bright screens (iPad)
    in both Catppuccin light and dark themes (#3769, #3811). */
 .mc-message-time { color: var(--ctp-subtext0); }
+/* Right-side metadata group (timestamp + reply). Keeps the Reply button a
+   sibling of the time span — not nested inside it — for cleaner semantics. */
+.mc-message-meta { display: inline-flex; align-items: center; gap: 0.25rem; }
 /* Reply affordance on received channel messages (#3851). Subtle until hovered;
    always tappable on touch devices. */
 .mc-message-reply {

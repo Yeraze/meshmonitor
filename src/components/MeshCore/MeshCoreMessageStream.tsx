@@ -344,7 +344,8 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                     {fromLabel}
                   </span>
                 )}
-                <span className="mc-message-time">
+                <span className="mc-message-meta">
+                  <span className="mc-message-time">
                   {formatTime(m.timestamp)}
                   {outgoing && m.deliveryStatus && (
                     <span
@@ -376,6 +377,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                       {' 📡 '}{m.heardBy.length}
                     </button>
                   )}
+                  </span>
                   {onReply && isChannel && !outgoing && (
                     <button
                       type="button"
@@ -384,7 +386,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                       aria-label={t('meshcore.reply', 'Reply')}
                       onClick={() => handleReply(m)}
                     >
-                      {' ↩'}
+                      ↩
                     </button>
                   )}
                 </span>
