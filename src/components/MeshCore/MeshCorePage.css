@@ -721,6 +721,21 @@
 /* Message metadata uses subtext0 — sufficient contrast on bright screens (iPad)
    in both Catppuccin light and dark themes (#3769, #3811). */
 .mc-message-time { color: var(--ctp-subtext0); }
+/* Reply affordance on received channel messages (#3851). Subtle until hovered;
+   always tappable on touch devices. */
+.mc-message-reply {
+  background: none;
+  border: none;
+  color: var(--ctp-subtext0);
+  cursor: pointer;
+  padding: 0 0.15rem;
+  font-size: 0.8rem;
+  opacity: 0.55;
+  transition: opacity 0.15s, color 0.15s;
+}
+.mc-message-row:hover .mc-message-reply { opacity: 1; }
+.mc-message-reply:hover { color: var(--ctp-mauve); opacity: 1; }
+@media (hover: none) { .mc-message-reply { opacity: 1; } }
 .mc-message-text { color: var(--ctp-text); font-size: 0.9rem; word-wrap: break-word; }
 /* Hop count + relay route for received messages (#3742). */
 .mc-message-route { color: var(--ctp-subtext0); font-size: 0.75rem; margin-top: 0.15rem; font-family: var(--font-mono, monospace); }

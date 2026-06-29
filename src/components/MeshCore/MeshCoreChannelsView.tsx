@@ -206,6 +206,23 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     if (isMobileViewport()) setMobileShowContent(true);
   }, []);
 
+  // Reply to a channel message (#3851): the stream prefills the `@[Sender]:`
+  // mention; here we set the send scope to the originating message's scope so
+  // the answer floods to the same region. The override widget is revealed so
+  // the operator can see/edit the scope before sending.
+  const handleReply = useCallback((m: MeshCoreMessage) => {
+    if (typeof m.scopeName === 'string' && m.scopeName.trim()) {
+      setOverrideScope(m.scopeName);
+      setShowScopeOverride(true);
+    } else if (m.scopeCode === 0) {
+      setOverrideScope(''); // arrived explicitly unscoped → reply unscoped
+      setShowScopeOverride(true);
+    }
+    // else: scoped-but-unknown (scopeCode > 0, no resolvable name) or no scope
+    // info — the region name isn't recoverable from the HMAC transport code, so
+    // we can't replicate it; leave the scope as-is (channel / source default).
+  }, []);
+
   // Fetch the synced channel list for this source. We use /api/channels/all
   // (rather than /api/channels) so MeshCore rows with idx > 7 aren't dropped
   // by the legacy Meshtastic-shaped 0-7 filter on the basic endpoint. The
@@ -634,6 +651,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
             return ok;
           }}
           onNodeNameClick={onNodeNameClick}
+          onReply={handleReply}
           conversationKey={`channel-${active.id}`}
           firstUnreadId={firstUnreadId}
           maxBytes={
