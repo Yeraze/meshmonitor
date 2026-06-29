@@ -8509,7 +8509,10 @@ class MeshtasticManager implements ISourceManager {
             try {
               await this.pushContactToRadio(targetNode);
             } catch {
-              // Non-fatal — radio may already have the contact
+              // Non-fatal — radio may already have the contact, or the send failed
+              // transiently. On failure deviceNodeNums is left untouched (the add only
+              // runs after a successful send), so the UI's "not in device DB" warning
+              // correctly lingers until a later push or NodeInfo confirms the contact.
             }
           } else if (targetNode?.publicKey && targetNode.keyMismatchDetected) {
             logger.info(`🔐 DM to !${destination.toString(16).padStart(8, '0')} — skipping PKI (key mismatch active; firmware may lack key after purge), falling back to channel encryption`);
