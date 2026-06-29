@@ -71,6 +71,7 @@ function makeActions(overrides: Partial<MeshCoreActions> = {}): MeshCoreActions 
     // component swallows failures, but mocking them avoids unhandled rejections.
     getDefaultScope: vi.fn().mockResolvedValue(''),
     discoverRegions: vi.fn().mockResolvedValue({ regions: [] }),
+    fetchSavedRegions: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
@@ -580,5 +581,58 @@ describe('MeshCoreChannelsView — unread indicator (#3703)', () => {
       expect(reordered[0]).toBe('# Town');
     });
     expect(localStorage.getItem('meshmonitor-meshcore-channel-sort-unread-first')).toBe('true');
+  });
+});
+
+describe('MeshCoreChannelsView — reply uses the originating scope (#3851)', () => {
+  beforeEach(() => {
+    csrfFetchMock.mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/messages/channel/')) {
+        return Promise.resolve(jsonResponse({ success: true, data: [] }));
+      }
+      return Promise.resolve(jsonResponse([{ id: 0, name: 'Public' }]));
+    });
+  });
+
+  it('replying to a scoped channel message sets the send scope to its region', async () => {
+    const scoped: MeshCoreMessage[] = [
+      { id: 'r0s', fromPublicKey: 'channel-0', fromName: 'Bob', text: 'scoped hi', timestamp: 1000, scopeName: 'augsburg', scopeCode: 99 },
+    ];
+    render(
+      <MeshCoreChannelsView messages={scoped} contacts={contacts} status={makeStatus()} actions={makeActions()} baseUrl="" sourceId="src-a" />,
+    );
+    await waitFor(() => screen.getByText('scoped hi'));
+    // The send-scope widget is hidden until a reply (or manual toggle).
+    expect(screen.queryByLabelText('Send scope')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
+    const scopeInput = (await screen.findByLabelText('Send scope')) as HTMLInputElement;
+    expect(scopeInput.value).toBe('augsburg');
+  });
+
+  it('replying to an unscoped (scopeCode 0) message sends unscoped (empty scope)', async () => {
+    const unscoped: MeshCoreMessage[] = [
+      { id: 'r0u', fromPublicKey: 'channel-0', fromName: 'Cara', text: 'plain hi', timestamp: 1000, scopeCode: 0 },
+    ];
+    render(
+      <MeshCoreChannelsView messages={unscoped} contacts={contacts} status={makeStatus()} actions={makeActions()} baseUrl="" sourceId="src-a" />,
+    );
+    await waitFor(() => screen.getByText('plain hi'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
+    const scopeInput = (await screen.findByLabelText('Send scope')) as HTMLInputElement;
+    expect(scopeInput.value).toBe('');
+  });
+
+  it('leaves the scope at the default for a scoped-but-unknown message (HMAC code, no name)', async () => {
+    const unknown: MeshCoreMessage[] = [
+      { id: 'r0x', fromPublicKey: 'channel-0', fromName: 'Dee', text: 'mystery scope', timestamp: 1000, scopeCode: 4242 },
+    ];
+    render(
+      <MeshCoreChannelsView messages={unknown} contacts={contacts} status={makeStatus()} actions={makeActions()} baseUrl="" sourceId="src-a" />,
+    );
+    await waitFor(() => screen.getByText('mystery scope'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
+    // Region name isn't recoverable from the code → scope override stays hidden
+    // (the reply falls back to the channel/source default).
+    expect(screen.queryByLabelText('Send scope')).toBeNull();
   });
 });

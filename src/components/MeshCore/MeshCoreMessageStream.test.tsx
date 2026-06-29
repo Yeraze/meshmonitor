@@ -110,6 +110,43 @@ describe('MeshCoreMessageStream scope row (#3814)', () => {
   });
 });
 
+describe('MeshCoreMessageStream reply (#3851)', () => {
+  const SELF = 'abcdef0123456789';
+  const channelMsg = (over: Partial<MeshCoreMessage> = {}): MeshCoreMessage => ({
+    id: 'm1', fromPublicKey: 'channel-2', fromName: 'Alice', text: 'hello', timestamp: Date.now(), ...over,
+  });
+
+  it('shows a Reply button on a received channel message and prefills the @[Sender]: mention', () => {
+    const onReply = vi.fn();
+    render(<MeshCoreMessageStream messages={[channelMsg()]} selfPublicKey={SELF} onSend={async () => true} onReply={onReply} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
+    expect(onReply).toHaveBeenCalledTimes(1);
+    expect(onReply.mock.calls[0][0].id).toBe('m1');
+    const input = screen.getByPlaceholderText('Type a message…') as HTMLInputElement;
+    expect(input.value).toBe('@[Alice]: ');
+  });
+
+  it('hides the Reply button when onReply is omitted (DM view)', () => {
+    render(<MeshCoreMessageStream messages={[channelMsg()]} selfPublicKey={SELF} onSend={async () => true} />);
+    expect(screen.queryByRole('button', { name: 'Reply' })).toBeNull();
+  });
+
+  it('hides the Reply button on outgoing messages', () => {
+    render(<MeshCoreMessageStream messages={[{ id: 'o', fromPublicKey: SELF, text: 'mine', timestamp: Date.now() }]} selfPublicKey={SELF} onSend={async () => true} onReply={() => {}} />);
+    expect(screen.queryByRole('button', { name: 'Reply' })).toBeNull();
+  });
+
+  it('leaves the composer empty (no broken mention) when an anonymous channel message has no name', () => {
+    const onReply = vi.fn();
+    // Channel message with no parsed fromName and no resolvable contact.
+    render(<MeshCoreMessageStream messages={[channelMsg({ fromName: undefined })]} selfPublicKey={SELF} onSend={async () => true} onReply={onReply} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
+    // No name to mention → empty draft, but the reply (scope) still propagates.
+    expect((screen.getByPlaceholderText('Type a message…') as HTMLInputElement).value).toBe('');
+    expect(onReply).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('MeshCoreMessageStream entry scroll (#3810)', () => {
   let scrollIntoViewSpy: ReturnType<typeof vi.fn>;
 

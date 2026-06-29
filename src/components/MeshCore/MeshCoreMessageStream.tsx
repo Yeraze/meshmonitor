@@ -14,6 +14,10 @@ interface MeshCoreMessageStreamProps {
   disabled?: boolean;
   onSend: (text: string) => Promise<boolean>;
   onNodeNameClick?: (publicKey: string) => void;
+  /** When provided, received channel messages show a Reply button (#3851). The
+   *  stream prefills the composer with the `@[Sender]:` mention + focuses it;
+   *  the parent uses this callback to send the reply on the message's scope. */
+  onReply?: (message: MeshCoreMessage) => void;
   /** Stable key identifying the current conversation. When it changes, the
    *  stream re-runs its entry scroll (to the first-unread row, or the bottom). */
   conversationKey?: string;
@@ -67,6 +71,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   disabled,
   onSend,
   onNodeNameClick,
+  onReply,
   conversationKey,
   firstUnreadId,
   maxBytes = 130,
@@ -244,6 +249,23 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     }
   };
 
+  // Reply to a channel message (#3851): prefill the composer with the MeshCore
+  // `@[Sender]:` mention, focus it (caret at end), and let the parent send on
+  // the originating message's scope via onReply.
+  const handleReply = useCallback((m: MeshCoreMessage) => {
+    const name = (m.fromName ?? nameForKey(m.fromPublicKey) ?? '').trim();
+    setDraft(name ? `@[${name}]: ` : '');
+    onReply?.(m);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        const end = el.value.length;
+        el.setSelectionRange(end, end);
+      }
+    });
+  }, [nameForKey, onReply]);
+
   return (
     <div className="meshcore-message-stream">
       <div className="meshcore-message-list" ref={listRef} style={{ position: 'relative' }}>
@@ -322,7 +344,8 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                     {fromLabel}
                   </span>
                 )}
-                <span className="mc-message-time">
+                <span className="mc-message-meta">
+                  <span className="mc-message-time">
                   {formatTime(m.timestamp)}
                   {outgoing && m.deliveryStatus && (
                     <span
@@ -352,6 +375,18 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                       onClick={() => toggleHeardBy(m.id)}
                     >
                       {' 📡 '}{m.heardBy.length}
+                    </button>
+                  )}
+                  </span>
+                  {onReply && isChannel && !outgoing && (
+                    <button
+                      type="button"
+                      className="mc-message-reply"
+                      title={t('meshcore.reply', 'Reply (mentions sender, replies on this scope)')}
+                      aria-label={t('meshcore.reply', 'Reply')}
+                      onClick={() => handleReply(m)}
+                    >
+                      ↩
                     </button>
                   )}
                 </span>
