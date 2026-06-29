@@ -145,7 +145,7 @@
     "workbox-window": "^7.4.0"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-arm-gnueabihf": "^4.61.1",
+    "@rollup/rollup-linux-arm-gnueabihf": "^4.62.2",
     "@rollup/rollup-linux-arm64-musl": "^4.62.2",
     "@serialport/parser-readline": "^13.0.0",
     "serialport": "^13.0.0"
