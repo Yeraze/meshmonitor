@@ -92,13 +92,7 @@ export function checkLowEntropyKey(publicKey: string, format: 'hex' | 'base64' =
     const keyHash = hash.digest('hex');
 
     // Check against known bad key hashes
-    const isLowEntropy = LOW_ENTROPY_HASHES.includes(keyHash);
-
-    if (isLowEntropy) {
-      logger.warn(`🔐 Low-entropy public key detected! Hash: ${keyHash}`);
-    }
-
-    return isLowEntropy;
+    return LOW_ENTROPY_HASHES.includes(keyHash);
   } catch (error) {
     logger.error('Error checking low-entropy key:', error);
     return false;
@@ -146,9 +140,6 @@ export function detectDuplicateKeys(
   for (const [keyHash, nodeNums] of keyMap.entries()) {
     if (nodeNums.length > 1) {
       duplicates.set(keyHash, nodeNums);
-      logger.warn(
-        `🔐 Duplicate public key detected! Nodes ${nodeNums.join(', ')} share key hash: ${keyHash.substring(0, 16)}...`
-      );
     }
   }
 

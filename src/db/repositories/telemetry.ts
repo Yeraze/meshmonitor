@@ -38,7 +38,7 @@ function sanitizeTelemetryTimestamp<T extends DbTelemetry>(row: T): T {
     if (row.packetTimestamp == null && Number.isFinite(ts)) {
       row.packetTimestamp = ts;
     }
-    logger.warn(
+    logger.debug(
       `Telemetry timestamp in the future for ${row.nodeId} (${row.telemetryType}): ` +
       `claimed=${ts}, using receipt=${receipt}`
     );
