@@ -33,6 +33,7 @@ import { waypointService } from './services/waypointService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
 import { MessageQueueService } from './messageQueueService.js';
 import { resolveAutoWelcomeDelaySeconds } from './autoWelcomeDelay.js';
+import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
@@ -9396,6 +9397,22 @@ class MeshtasticManager implements ISourceManager {
       // sent as DMs are unreliable on Meshtastic, so tapbacks always go back the
       // way the trigger arrived (see resolveAutoAckReplyRouting for reply routing).
 
+      // Pre-send delay (#3876): optionally wait before queuing the ack so a
+      // repeater can finish its own TX (a zero-hop reply sent too early is
+      // dropped). This handler is awaited in the packet path, so we DEFER the
+      // enqueue via setTimeout rather than blocking — matching the
+      // autoWelcomeDelay pattern. 0 = enqueue immediately (default).
+      const preSendDelaySeconds = resolveAutoAckPreSendDelaySeconds(
+        await settings.getSettingForSource(sourceId, 'autoAckPreSendDelaySeconds'),
+      );
+      const dispatchAck = (enqueue: () => void): void => {
+        if (preSendDelaySeconds > 0) {
+          setTimeout(enqueue, preSendDelaySeconds * 1000);
+        } else {
+          enqueue();
+        }
+      };
+
       // --- Tapback (hop-count emoji reaction) ---
       // Delivered the same way the trigger arrived: DM→DM, channel→channel.
       // Note: packetId can be 0 (valid unsigned integer), so check explicitly.
@@ -9409,8 +9426,9 @@ class MeshtasticManager implements ISourceManager {
 
         logger.debug(`🤖 Auto-acknowledging with tapback ${hopEmoji} (${hopsTraveled} hops) to ${tapbackTarget}`);
 
-        // Route tapback through message queue for rate limiting
-        this.messageQueue.enqueue(
+        // Route tapback through message queue for rate limiting (after the
+        // optional pre-send delay).
+        dispatchAck(() => this.messageQueue.enqueue(
           hopEmoji,
           isDirectMessage ? fromNum : 0, // destination: node number for DM, 0 for channel
           packetId, // replyId - react to the original message
@@ -9423,7 +9441,7 @@ class MeshtasticManager implements ISourceManager {
           isDirectMessage ? undefined : channelIndex, // channel
           1, // maxAttempts - tapbacks are best-effort, don't retry
           1 // emoji flag = 1 for tapback/reaction
-        );
+        ));
       }
 
       // --- Message reply ---
@@ -9460,8 +9478,9 @@ class MeshtasticManager implements ISourceManager {
 
         logger.debug(`🤖 Auto-acknowledging message from ${message.fromNodeId}: "${messageText}" with "${ackText}"${replyViaDm ? ' (via DM)' : ''}`);
 
-        // Use message queue to send auto-acknowledge with rate limiting and retry logic
-        this.messageQueue.enqueue(
+        // Use message queue to send auto-acknowledge with rate limiting and
+        // retry logic (after the optional pre-send delay).
+        dispatchAck(() => this.messageQueue.enqueue(
           ackText,
           replyDest, // destination: node number for DM, 0 for channel
           replyId, // replyId
@@ -9472,7 +9491,7 @@ class MeshtasticManager implements ISourceManager {
             logger.warn(`❌ Auto-acknowledge message failed to ${replyTarget}: ${reason}`);
           },
           replyChannel // channel: undefined for DM, channel number for channel
-        );
+        ));
       }
 
       // Record cooldown timestamp after successful response

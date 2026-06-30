@@ -23,6 +23,8 @@ interface AutomationContextType {
   setAutoAckMatrix: React.Dispatch<React.SetStateAction<AutoAckMatrix>>;
   autoAckCooldownSeconds: number;
   setAutoAckCooldownSeconds: React.Dispatch<React.SetStateAction<number>>;
+  autoAckPreSendDelaySeconds: number;
+  setAutoAckPreSendDelaySeconds: React.Dispatch<React.SetStateAction<number>>;
   autoAckTestMessages: string;
   setAutoAckTestMessages: React.Dispatch<React.SetStateAction<string>>;
   autoAnnounceEnabled: boolean;
@@ -111,6 +113,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoAckIgnoredNodes, setAutoAckIgnoredNodes] = useState<string>('');
   const [autoAckMatrix, setAutoAckMatrix] = useState<AutoAckMatrix>(DEFAULT_AUTOACK_MATRIX);
   const [autoAckCooldownSeconds, setAutoAckCooldownSeconds] = useState<number>(60);
+  const [autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds] = useState<number>(0);
   const [autoAckTestMessages, setAutoAckTestMessages] = useState<string>('');
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
   const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(6);
@@ -194,6 +197,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         if (s.autoAckIgnoredNodes !== undefined) setAutoAckIgnoredNodes(s.autoAckIgnoredNodes);
         setAutoAckMatrix(settingsToMatrix(s));
         if (s.autoAckCooldownSeconds !== undefined) setAutoAckCooldownSeconds(num('autoAckCooldownSeconds', 60));
+        if (s.autoAckPreSendDelaySeconds !== undefined) setAutoAckPreSendDelaySeconds(num('autoAckPreSendDelaySeconds', 0));
         if (s.autoAckTestMessages !== undefined) setAutoAckTestMessages(s.autoAckTestMessages);
 
         if (s.autoAnnounceEnabled !== undefined) setAutoAnnounceEnabled(bool('autoAnnounceEnabled'));
@@ -253,6 +257,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         autoAckIgnoredNodes, setAutoAckIgnoredNodes,
         autoAckMatrix, setAutoAckMatrix,
         autoAckCooldownSeconds, setAutoAckCooldownSeconds,
+        autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds,
         autoAckTestMessages, setAutoAckTestMessages,
         autoAnnounceEnabled, setAutoAnnounceEnabled,
         autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,

@@ -14,6 +14,7 @@ import { isNullIsland } from '../utils/nullIsland.js';
 import databaseService from '../services/database.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { compileAutoAckRegex } from './utils/autoAckRegex.js';
+import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
 import { scheduleCron, validateCron, type CronJob } from './utils/cronScheduler.js';
 import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js';
 import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
@@ -5700,6 +5701,17 @@ class MeshCoreManager extends EventEmitter {
         message.scopeName,
         message.scopeCode,
       );
+
+      // Pre-send delay (#3876): give a repeater time to finish its own TX
+      // before we reply, so a zero-hop ack isn't dropped. 0 = immediate
+      // (default). Safe to await — this handler is invoked fire-and-forget.
+      const preSendDelaySeconds = resolveAutoAckPreSendDelaySeconds(
+        await settings.getSettingForSource(sourceId, 'meshcoreAutoAckPreSendDelaySeconds'),
+      );
+      if (preSendDelaySeconds > 0) {
+        logger.debug(`[MeshCore:${sourceId}] Auto-ack: waiting ${preSendDelaySeconds}s before reply`);
+        await new Promise((resolve) => setTimeout(resolve, preSendDelaySeconds * 1000));
+      }
 
       // Decide destination:
       //  - DM trigger or "always DM" → send as DM (need contact pubkey)

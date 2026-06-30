@@ -2947,6 +2947,7 @@ router.get(
       const directMessages = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckDirectMessages');
       const useDM = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckUseDM');
       const cooldownSeconds = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckCooldownSeconds');
+      const preSendDelaySeconds = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckPreSendDelaySeconds');
       const testMessages = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckTestMessages');
       const scopeMode = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckScopeMode');
       const scopeName = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckScopeName');
@@ -2966,6 +2967,7 @@ router.get(
           directMessages: directMessages === 'true',
           useDM: useDM === 'true',
           cooldownSeconds: parseInt(cooldownSeconds || '0', 10) || 0,
+          preSendDelaySeconds: parseInt(preSendDelaySeconds || '0', 10) || 0,
           testMessages: testMessages || 'test\nTest message\nping\nPING\nHello world\nTESTING 123',
           // MeshCore scope/region for the ack reply (#3833).
           scopeMode: (scopeMode as 'inherit' | 'trigger' | 'unscoped' | 'named') || 'inherit',
@@ -2995,6 +2997,7 @@ router.post(
         directMessages,
         useDM,
         cooldownSeconds,
+        preSendDelaySeconds,
         testMessages,
         scopeMode,
         scopeName,
@@ -3006,6 +3009,7 @@ router.post(
         directMessages?: boolean;
         useDM?: boolean;
         cooldownSeconds?: number;
+        preSendDelaySeconds?: number;
         testMessages?: string;
         scopeMode?: 'inherit' | 'trigger' | 'unscoped' | 'named';
         scopeName?: string;
@@ -3044,6 +3048,12 @@ router.post(
       if (cooldownSeconds !== undefined) {
         const clamped = Math.max(0, Math.min(3600, cooldownSeconds));
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAckCooldownSeconds', String(clamped));
+      }
+      if (preSendDelaySeconds !== undefined) {
+        // Pre-send delay caps at 120s (#3876) — long enough to let a repeater
+        // settle, short enough that an ack stays prompt.
+        const clamped = Math.max(0, Math.min(120, preSendDelaySeconds));
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAckPreSendDelaySeconds', String(clamped));
       }
       if (testMessages !== undefined) {
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAckTestMessages', testMessages);

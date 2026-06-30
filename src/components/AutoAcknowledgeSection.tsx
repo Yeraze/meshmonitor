@@ -36,6 +36,8 @@ interface AutoAcknowledgeSectionProps {
   onMatrixChange: (m: AutoAckMatrix) => void;
   cooldownSeconds: number;
   onCooldownSecondsChange: (value: number) => void;
+  preSendDelaySeconds: number;
+  onPreSendDelaySecondsChange: (value: number) => void;
   testMessages: string;
   onTestMessagesChange: (messages: string) => void;
 }
@@ -64,6 +66,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onMatrixChange,
   cooldownSeconds,
   onCooldownSecondsChange,
+  preSendDelaySeconds,
+  onPreSendDelaySecondsChange,
   testMessages: testMessagesProp,
   onTestMessagesChange,
 }) => {
@@ -81,6 +85,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [localIgnoredNodes, setLocalIgnoredNodes] = useState(ignoredNodes || '');
   const [localMatrix, setLocalMatrix] = useState<AutoAckMatrix>(matrix);
   const [localCooldownSeconds, setLocalCooldownSeconds] = useState(cooldownSeconds);
+  const [localPreSendDelaySeconds, setLocalPreSendDelaySeconds] = useState(preSendDelaySeconds);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [testMessages, setTestMessages] = useState(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
@@ -98,19 +103,21 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalIgnoredNodes(ignoredNodes || '');
     setLocalMatrix(matrix);
     setLocalCooldownSeconds(cooldownSeconds);
+    setLocalPreSendDelaySeconds(preSendDelaySeconds);
     if (testMessagesProp) {
       setTestMessages(testMessagesProp);
     }
-  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, testMessagesProp]);
 
   // Check if any settings have changed
   useEffect(() => {
     const channelsChanged = JSON.stringify(localEnabledChannels.sort()) !== JSON.stringify(enabledChannels.sort());
     const cooldownChanged = localCooldownSeconds !== cooldownSeconds;
+    const preSendDelayChanged = localPreSendDelaySeconds !== preSendDelaySeconds;
     const matrixChanged = JSON.stringify(localMatrix) !== JSON.stringify(matrix);
-    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || matrixChanged || cooldownChanged || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
+    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || matrixChanged || cooldownChanged || preSendDelayChanged || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
     setHasChanges(changed);
-  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, testMessages, enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, testMessagesProp]);
+  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, testMessages, enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, testMessagesProp]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -123,8 +130,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalIgnoredNodes(ignoredNodes || '');
     setLocalMatrix(matrix);
     setLocalCooldownSeconds(cooldownSeconds);
+    setLocalPreSendDelaySeconds(preSendDelaySeconds);
     setTestMessages(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
-  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, testMessagesProp]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -248,6 +256,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           autoAckIgnoredNodes: localIgnoredNodes,
           ...matrixToSettings(localMatrix),
           autoAckCooldownSeconds: String(localCooldownSeconds),
+          autoAckPreSendDelaySeconds: String(localPreSendDelaySeconds),
           autoAckTestMessages: testMessages
         })
       });
@@ -281,6 +290,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onIgnoredNodesChange(localIgnoredNodes);
       onMatrixChange(localMatrix);
       onCooldownSecondsChange(localCooldownSeconds);
+      onPreSendDelaySecondsChange(localPreSendDelaySeconds);
       onTestMessagesChange(testMessages);
 
       setHasChanges(false);
@@ -291,7 +301,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, testMessages, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onMatrixChange, onCooldownSecondsChange, onTestMessagesChange]);
+  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, testMessages, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onMatrixChange, onCooldownSecondsChange, onPreSendDelaySecondsChange, onTestMessagesChange]);
 
   // Register with SaveBar
   useSaveBar({
@@ -461,6 +471,30 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               />
               <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
                 {t('automation.auto_ack.cooldown_help')}
+              </span>
+            </div>
+          </div>
+
+          {/* Pre-send delay (#3876) — wait before replying so a repeater can finish its TX. */}
+          <div style={{ marginTop: '1rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+              {t('automation.auto_ack.presend_delay_label', 'Pre-Send Delay')}
+            </label>
+            <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+              {t('automation.auto_ack.presend_delay_description', 'Wait this many seconds before sending the acknowledgement. Gives a repeater time to finish its own transmission so a zero-hop ack is not dropped. 0 sends immediately.')}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="number"
+                value={localPreSendDelaySeconds}
+                onChange={(e) => setLocalPreSendDelaySeconds(Math.max(0, Math.min(120, parseInt(e.target.value) || 0)))}
+                min={0}
+                max={120}
+                disabled={!localEnabled}
+                style={{ width: '80px', padding: '2px 4px' }}
+              />
+              <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+                {t('automation.auto_ack.presend_delay_help', 'seconds (0 = send immediately, max 120)')}
               </span>
             </div>
           </div>

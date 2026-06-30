@@ -40,9 +40,15 @@ export type ActionType =
   | 'action.nodeManage'
   | 'action.requestData'
   | 'action.notify'
-  | 'action.runScript';
+  | 'action.runScript'
+  | 'action.delay';
 
-// flow.delay is intentionally absent — deferred to Phase 1b (stateful waits).
+// `action.delay` is a BOUNDED, in-process pause (caps at AUTOMATION_DELAY_MAX_SECONDS)
+// that blocks only its own run — it serializes naturally with the sequential,
+// awaited action executor. A DURABLE wait that survives a restart (the original
+// "flow.delay" Phase-1b idea) is still deferred; this is deliberately not that.
+export const AUTOMATION_DELAY_MAX_SECONDS = 300;
+
 export type FlowType = 'flow.fanout' | 'flow.collapse' | 'flow.setVar';
 
 export type AutomationNodeType = TriggerType | ConditionType | ActionType | FlowType;
@@ -78,6 +84,7 @@ export const ACTION_TYPES: readonly ActionType[] = [
   'action.requestData',
   'action.notify',
   'action.runScript',
+  'action.delay',
 ];
 
 export const FLOW_TYPES: readonly FlowType[] = ['flow.fanout', 'flow.collapse', 'flow.setVar'];
@@ -333,6 +340,13 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
             errors.push(`action.requestData "${n.id}" requires a valid params.op`);
           }
           break;
+        case 'action.delay': {
+          const secs = Number(p.seconds);
+          if (!Number.isFinite(secs) || secs < 0 || secs > AUTOMATION_DELAY_MAX_SECONDS) {
+            errors.push(`action.delay "${n.id}" requires params.seconds ∈ [0, ${AUTOMATION_DELAY_MAX_SECONDS}]`);
+          }
+          break;
+        }
         default:
           break;
       }
