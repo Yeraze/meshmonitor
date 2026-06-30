@@ -7203,7 +7203,15 @@ class MeshtasticManager implements ISourceManager {
       // Traceroute responses are direct messages, not channel messages
       const isDirectMessage = toNum !== 4294967295;
       const channelIndex = isDirectMessage ? -1 : (meshPacket.channel !== undefined ? meshPacket.channel : 0);
-      const timestamp = meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now();
+      // A node with a wrong/ahead RTC reports an `rxTime` in the future. We just
+      // received the packet, so the traceroute can't have happened later than
+      // now — cap the device time at `Date.now()` so "last traced" never renders
+      // a negative "X minutes ago" (#2768). A legitimately slightly-past rxTime
+      // still passes through. (lastHeard/telemetry already use server time for
+      // the same reason — see replayGuard.ts.)
+      const timestamp = meshPacket.rxTime
+        ? Math.min(Number(meshPacket.rxTime) * 1000, Date.now())
+        : Date.now();
 
       // Save as a special message in the database
       // Use meshPacket.id for deduplication (same as text messages)
