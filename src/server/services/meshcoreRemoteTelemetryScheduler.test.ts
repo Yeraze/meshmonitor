@@ -580,6 +580,88 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
     expect(upsertNode).not.toHaveBeenCalled();
   });
 
+  it('persists GPS position to meshcore_nodes when LPP response includes type 136', async () => {
+    const now = 10_000_000;
+    const manager = makeFakeManager({
+      recordsToReturn: [
+        { channel: 0, type: 136, value: { latitude: 48.8566, longitude: 2.3522, altitude: 35 } },
+        { channel: 1, type: 103, value: 22.0 },
+      ],
+    });
+    const upsertNode = vi.fn().mockResolvedValue(undefined);
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database: {
+        meshcore: {
+          getTelemetryEnabledNodes: vi.fn().mockResolvedValue([
+            makeNode({ publicKey: 'companion-b', telemetryEnabled: true, advType: 1, lastTelemetryRequestAt: null }),
+          ]),
+          markTelemetryRequested: vi.fn(),
+          upsertNode,
+        },
+        telemetry: { insertTelemetryBatch: vi.fn().mockResolvedValue(4) },
+      },
+      now: () => now,
+    });
+    await scheduler.tickOneManager(manager);
+    expect(upsertNode).toHaveBeenCalledWith(
+      expect.objectContaining({ publicKey: 'companion-b', latitude: 48.8566, longitude: 2.3522 }),
+      'src-a',
+    );
+  });
+
+  it('does not persist GPS position when LPP type 136 value is Null Island (0,0)', async () => {
+    const now = 10_000_000;
+    const manager = makeFakeManager({
+      recordsToReturn: [
+        { channel: 0, type: 136, value: { latitude: 0, longitude: 0, altitude: 0 } },
+      ],
+    });
+    const upsertNode = vi.fn().mockResolvedValue(undefined);
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database: {
+        meshcore: {
+          getTelemetryEnabledNodes: vi.fn().mockResolvedValue([
+            makeNode({ publicKey: 'companion-c', telemetryEnabled: true, advType: 1, lastTelemetryRequestAt: null }),
+          ]),
+          markTelemetryRequested: vi.fn(),
+          upsertNode,
+        },
+        telemetry: { insertTelemetryBatch: vi.fn().mockResolvedValue(3) },
+      },
+      now: () => now,
+    });
+    await scheduler.tickOneManager(manager);
+    expect(upsertNode).not.toHaveBeenCalled();
+  });
+
+  it('does not persist GPS position when LPP type 136 value lacks lat/lon fields', async () => {
+    const now = 10_000_000;
+    const manager = makeFakeManager({
+      recordsToReturn: [
+        { channel: 0, type: 136, value: { altitude: 35 } }, // lat/lon missing
+      ],
+    });
+    const upsertNode = vi.fn().mockResolvedValue(undefined);
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database: {
+        meshcore: {
+          getTelemetryEnabledNodes: vi.fn().mockResolvedValue([
+            makeNode({ publicKey: 'companion-d', telemetryEnabled: true, advType: 1, lastTelemetryRequestAt: null }),
+          ]),
+          markTelemetryRequested: vi.fn(),
+          upsertNode,
+        },
+        telemetry: { insertTelemetryBatch: vi.fn().mockResolvedValue(1) },
+      },
+      now: () => now,
+    });
+    await scheduler.tickOneManager(manager);
+    expect(upsertNode).not.toHaveBeenCalled();
+  });
+
   it('does not insert when both status and LPP are empty on a Repeater', async () => {
     const now = 10_000_000;
     const manager = makeFakeManager({ statusToReturn: null, recordsToReturn: [] });
