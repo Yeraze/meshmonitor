@@ -35,6 +35,7 @@ export * from './meshcoreNodes.js';
 export * from './meshcoreMessages.js';
 export * from './meshcoreNeighbors.js';
 export * from './meshcorePacketLog.js';
+export * from './meshcorePositionHistory.js';
 export * from './meshcoreHeardRepeaters.js';
 
 // Embed Profiles table

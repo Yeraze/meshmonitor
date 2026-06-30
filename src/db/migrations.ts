@@ -124,6 +124,7 @@ import { migration as meshcoreMessageScopeMigration, runMigration106Postgres as 
 import { migration as clearNullIslandMigration, runMigration107Postgres as runClearNullIslandPostgres, runMigration107Mysql as runClearNullIslandMysql } from '../server/migrations/107_clear_null_island_positions.js';
 import { migration as meshcoreSavedRegionsMigration, runMigration108Postgres as runMeshcoreSavedRegionsPostgres, runMigration108Mysql as runMeshcoreSavedRegionsMysql } from '../server/migrations/108_meshcore_saved_regions.js';
 import { migration as clampFutureTracerouteMigration, runMigration109Postgres as runClampFutureTraceroutePostgres, runMigration109Mysql as runClampFutureTracerouteMysql } from '../server/migrations/109_clamp_future_traceroute_timestamps.js';
+import { migration as meshcorePositionHistoryMigration, runMigration110Postgres as runMeshcorePositionHistoryPostgres, runMigration110Mysql as runMeshcorePositionHistoryMysql } from '../server/migrations/110_add_meshcore_position_history.js';
 
 // ============================================================================
 // Registry
@@ -1729,4 +1730,21 @@ registry.register({
   sqlite: (db) => clampFutureTracerouteMigration.up(db),
   postgres: (client) => runClampFutureTraceroutePostgres(client),
   mysql: (pool) => runClampFutureTracerouteMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 110: MeshCore position-history table (#3852)
+// One row per distinct GPS fix per MeshCore node (from adverts + the
+// Cayenne-LPP telemetry poll). Backs the MeshCore map's movement-trail
+// overlay; swept on a rolling retention window by
+// meshcorePositionHistoryService.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 110,
+  name: 'add_meshcore_position_history',
+  settingsKey: 'migration_110_add_meshcore_position_history',
+  sqlite: (db) => meshcorePositionHistoryMigration.up(db),
+  postgres: (client) => runMeshcorePositionHistoryPostgres(client),
+  mysql: (pool) => runMeshcorePositionHistoryMysql(pool),
 });

@@ -98,7 +98,7 @@ For per-source permission tests, mock `getUserPermissionSetAsync(userId, sourceI
 ### Migration Registry
 Migrations use a centralized registry in `src/db/migrations.ts`. Each migration has functions for all three backends.
 
-**Current migration count:** 109 (latest: `109_clamp_future_traceroute_timestamps`).
+**Current migration count:** 110 (latest: `110_add_meshcore_position_history`).
 
 For the full "adding a migration" recipe see [Migration recipe](#migration-recipe) below.
 

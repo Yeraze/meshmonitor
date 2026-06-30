@@ -34,6 +34,7 @@ export const TABLE_ORDER = [
   'meshcore_messages',
   'meshcore_neighbor_info',
   'meshcore_packet_log',
+  'meshcore_position_history',
   'meshcore_heard_repeaters',
   // Auth tables (must come before channel_database — channel_database
   // FKs to users for createdBy and channel_database_permissions FKs to users
