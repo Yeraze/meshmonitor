@@ -30,6 +30,7 @@ import type {
 } from '../meshcoreManager.js';
 import type { MeshCoreManagerRegistry } from '../meshcoreRegistry.js';
 import { MC_TELEMETRY_PREFIX, nodeNumFromPubkey } from './meshcoreTelemetryPoller.js';
+import { isNullIsland } from '../../utils/nullIsland.js';
 
 /**
  * `adv_type` values for MeshCore contacts. Matches the `MeshCoreDeviceType`
@@ -41,6 +42,9 @@ import { MC_TELEMETRY_PREFIX, nodeNumFromPubkey } from './meshcoreTelemetryPolle
  * advTypes use path #3 only.
  */
 const REPEATER_ADV_TYPES = new Set<number>([2, 3]);
+
+/** Cayenne-LPP type id for GPS/GNSS position records (lat/lon/alt object). */
+const LPP_GPS_TYPE = 136;
 
 /** Database surface the scheduler depends on (kept thin for testability). */
 export interface RemoteTelemetrySchedulerDatabase {
@@ -485,6 +489,36 @@ export class MeshCoreRemoteTelemetryScheduler {
         if (lppRows.length > 0) {
           rows.push(...lppRows);
           sources.push(`lpp:${lppRows.length}`);
+        }
+
+        // Persist GPS position (Cayenne-LPP type 136) to meshcore_nodes so that
+        // Contact Details always reflects the latest GNSS fix from a telemetry poll,
+        // not just the position carried in the last advert. Mirror of the batteryMv
+        // persistence above. Issue: https://github.com/Yeraze/meshmonitor/issues/3861
+        const gpsRecord = records.find(
+          (r) =>
+            r.type === LPP_GPS_TYPE &&
+            typeof r.value === 'object' &&
+            r.value !== null &&
+            !Array.isArray(r.value),
+        );
+        if (gpsRecord) {
+          const gpsVal = gpsRecord.value as Record<string, number>;
+          const lat = typeof gpsVal.latitude === 'number' ? gpsVal.latitude : null;
+          const lon = typeof gpsVal.longitude === 'number' ? gpsVal.longitude : null;
+          if (lat !== null && lon !== null && !isNullIsland(lat, lon)) {
+            try {
+              await this.database.meshcore.upsertNode(
+                { publicKey: target.publicKey, latitude: lat, longitude: lon },
+                manager.sourceId,
+              );
+            } catch (err) {
+              logger.warn(
+                `[MeshCoreRemoteTelem:${manager.sourceId}] Failed to persist GPS position for ${keyShort}…:`,
+                err,
+              );
+            }
+          }
         }
       }
     }
