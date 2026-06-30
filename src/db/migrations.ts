@@ -123,6 +123,7 @@ import { migration as meshcoreMessageRouteMigration, runMigration105Postgres as 
 import { migration as meshcoreMessageScopeMigration, runMigration106Postgres as runMeshcoreMessageScopePostgres, runMigration106Mysql as runMeshcoreMessageScopeMysql } from '../server/migrations/106_add_meshcore_message_scope.js';
 import { migration as clearNullIslandMigration, runMigration107Postgres as runClearNullIslandPostgres, runMigration107Mysql as runClearNullIslandMysql } from '../server/migrations/107_clear_null_island_positions.js';
 import { migration as meshcoreSavedRegionsMigration, runMigration108Postgres as runMeshcoreSavedRegionsPostgres, runMigration108Mysql as runMeshcoreSavedRegionsMysql } from '../server/migrations/108_meshcore_saved_regions.js';
+import { migration as clampFutureTracerouteMigration, runMigration109Postgres as runClampFutureTraceroutePostgres, runMigration109Mysql as runClampFutureTracerouteMysql } from '../server/migrations/109_clamp_future_traceroute_timestamps.js';
 
 // ============================================================================
 // Registry
@@ -1712,4 +1713,20 @@ registry.register({
   sqlite: (db) => meshcoreSavedRegionsMigration.up(db),
   postgres: (client) => runMeshcoreSavedRegionsPostgres(client),
   mysql: (pool) => runMeshcoreSavedRegionsMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 109: clamp future-dated traceroute timestamps (#2768)
+// Repairs traceroute rows whose `timestamp` (from a node's ahead device clock)
+// is later than their `createdAt` server time, which rendered as a negative
+// "last traced" age. One-shot; the ingest path now caps device time at now.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 109,
+  name: 'clamp_future_traceroute_timestamps',
+  settingsKey: 'migration_109_clamp_future_traceroute_timestamps',
+  sqlite: (db) => clampFutureTracerouteMigration.up(db),
+  postgres: (client) => runClampFutureTraceroutePostgres(client),
+  mysql: (pool) => runClampFutureTracerouteMysql(pool),
 });

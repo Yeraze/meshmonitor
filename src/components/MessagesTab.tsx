@@ -1687,7 +1687,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 (() => {
                   const recentTrace = getRecentTraceroute(selectedDMNode);
                   if (recentTrace) {
-                    const age = Math.floor((Date.now() - recentTrace.timestamp) / (1000 * 60));
+                    // Clamp at 0: a node with a wrong/ahead clock can stamp a
+                    // traceroute in the future, which would otherwise render as a
+                    // negative "-1676m ago" (#2768). The data write-path now caps
+                    // this at server time too; this guards any pre-fix rows.
+                    const age = Math.max(0, Math.floor((Date.now() - recentTrace.timestamp) / (1000 * 60)));
                     const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
 
                     // Check if traceroute failed (both directions have no valid data)
@@ -1758,7 +1762,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
               // Get most recent timestamp (normalize: old data in seconds, new in ms)
               const mostRecent = Math.max(...nodeNeighbors.map(n => n.timestamp < 10_000_000_000 ? n.timestamp * 1000 : n.timestamp));
-              const age = Math.floor((Date.now() - mostRecent) / (1000 * 60));
+              // Clamp at 0 so a future device-clock timestamp can't render a
+              // negative "-1676m ago" (same guard as the traceroute age, #2768).
+              const age = Math.max(0, Math.floor((Date.now() - mostRecent) / (1000 * 60)));
               const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
 
               const handlePurgeNeighbors = async () => {
