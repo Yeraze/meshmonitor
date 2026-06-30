@@ -367,6 +367,19 @@ export interface MeshCoreContact {
   outPath?: string | null;
 }
 
+/**
+ * Result of a MeshCore send. `ok` mirrors the legacy boolean return of
+ * `sendMessage`; for a DM the firmware also assigns an `expectedAckCrc` (the
+ * value a later SendConfirmed push will carry) and an `estTimeout` hint, both
+ * surfaced via {@link MeshCoreManager.sendMessageWithResult} for the Virtual
+ * Node ack bridge (#3869). Channel sends are unacked, so these are undefined.
+ */
+export interface MeshCoreSendResult {
+  ok: boolean;
+  expectedAckCrc?: number;
+  estTimeout?: number;
+}
+
 export interface MeshCoreMessage {
   id: string;
   fromPublicKey: string;
@@ -400,6 +413,10 @@ export interface MeshCoreMessage {
   /** Hop count for a received message (from path_len); null = direct / unknown.
    *  Room messages carry no path, so this stays null for them. (#3742) */
   hopCount?: number | null;
+  /** Raw packed `path_len` byte as reported by the device for a received message
+   *  (0xff = direct). Preserved verbatim so the Virtual Node bridge can forward
+   *  the real hop count to a companion instead of always "direct" (#3871). */
+  pathLen?: number | null;
   /** Relay-hash chain the message traveled, comma-separated (e.g. "a3,7f,02");
    *  null when no path was reported. (#3742) */
   routePath?: string | null;
@@ -1076,6 +1093,9 @@ class MeshCoreManager extends EventEmitter {
         snr: data.snr,
         sourceId: this.sourceId,
         hopCount,
+        // Raw packed path_len byte (0xff = direct) so the Virtual Node bridge
+        // can forward the real hop count to a companion instead of "direct" (#3871).
+        pathLen: data.path_len ?? null,
         routePath: observedRoute,
         scopeCode: scope.scopeCode,
         scopeName: scope.scopeName,
@@ -1109,6 +1129,9 @@ class MeshCoreManager extends EventEmitter {
         snr: data.snr,
         sourceId: this.sourceId,
         hopCount,
+        // Raw packed path_len byte (0xff = direct) so the Virtual Node bridge
+        // can forward the real hop count to a companion instead of "direct" (#3871).
+        pathLen: data.path_len ?? null,
         routePath: route,
         scopeCode: scope.scopeCode,
         scopeName: scope.scopeName,
@@ -1499,6 +1522,14 @@ class MeshCoreManager extends EventEmitter {
         this.sourceId,
       );
       const fullHeardBy = all.map((r) => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr }));
+      // This relay count is surfaced to MeshMonitor's own UI only. It is NOT
+      // forwarded to a Virtual Node companion, by protocol necessity (#3871):
+      // a channel send is an unacked fire-and-forget flood, so the companion
+      // already got `Ok(0)` and closed the send; the count is a MeshMonitor-
+      // derived metric that accrues asynchronously (here, up to HEARD_WINDOW_MS
+      // later) and the companion protocol has no push frame or message handle to
+      // annotate an already-sent channel message with it. The DM ack path
+      // (SendConfirmed 0x82) IS bridged because DMs have real delivery semantics.
       dataEventEmitter.emitMeshCoreChannelHeard({ id: match.messageId, heardBy: fullHeardBy }, this.sourceId);
 
       // Mirror heardBy into the in-memory pool so getRecentMessages() returns
@@ -2284,14 +2315,25 @@ class MeshCoreManager extends EventEmitter {
    * when only channel 0 was supported (issue follow-up to MeshCore channels plan).
    */
   async sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null): Promise<boolean> {
+    return (await this.sendMessageWithResult(text, toPublicKey, channelIdx, scopeOverride)).ok;
+  }
+
+  /**
+   * Like {@link sendMessage}, but returns the firmware-assigned `expectedAckCrc`
+   * and `estTimeout` alongside the boolean. The Virtual Node bridge uses these
+   * to tell a connected companion which CRC to expect in its `Sent` response and
+   * to forward the later `SendConfirmed` push when the DM is acked (#3869).
+   * `sendMessage` delegates here and discards the extra fields.
+   */
+  async sendMessageWithResult(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null): Promise<MeshCoreSendResult> {
     if (!this.connected) {
       logger.error('[MeshCore] Not connected');
-      return false;
+      return { ok: false };
     }
 
     if (this.deviceType === MeshCoreDeviceType.REPEATER) {
       logger.warn('[MeshCore] Repeaters cannot send messages');
-      return false;
+      return { ok: false };
     }
 
     // Serialise the scope-assert→send pair per source (#3667). The device's
@@ -2430,7 +2472,7 @@ class MeshCoreManager extends EventEmitter {
     }
   }
 
-  private async performScopedSend(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null): Promise<boolean> {
+  private async performScopedSend(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null): Promise<MeshCoreSendResult> {
     try {
       const isChannelSend = !toPublicKey && channelIdx !== undefined;
 
@@ -2502,14 +2544,14 @@ class MeshCoreManager extends EventEmitter {
           this.registerPendingChannelSend(msgId, channelIdx!);
         }
 
-        return true;
+        return { ok: true, expectedAckCrc: ackCrc ?? undefined, estTimeout: estTimeout ?? undefined };
       } else {
         logger.error('[MeshCore] Send failed:', response.error);
-        return false;
+        return { ok: false };
       }
     } catch (error) {
       logger.error('[MeshCore] Failed to send message:', error);
-      return false;
+      return { ok: false };
     }
   }
 

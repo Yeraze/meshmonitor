@@ -22,6 +22,7 @@ import {
   encodeContactMsgRecv,
   encodeChannelMsgRecv,
   encodeSent,
+  encodeSendConfirmed,
   encodeNoMoreMessages,
   packTelemetryMode,
   pubKeyHexToBytes,
@@ -200,6 +201,14 @@ describe('meshcoreCompanionCodec — encoders round-trip through meshcore.js dec
     expect(decoded.result).toBe(0);
     expect(decoded.expectedAckCrc).toBe(0xdeadbeef);
     expect(decoded.estTimeout).toBe(8000);
+  });
+
+  it('SendConfirmed(0x82) decodes ackCode and roundTrip (#3869)', async () => {
+    // Round-trips through meshcore.js's own onSendConfirmedPush decoder, proving
+    // the byte layout matches what a real companion app expects.
+    const decoded = await decodeWithMeshcore(0x82, encodeSendConfirmed(0xdeadbeef, 1500));
+    expect(decoded.ackCode).toBe(0xdeadbeef);
+    expect(decoded.roundTrip).toBe(1500);
   });
 
   it('ChannelMsgRecv decodes channel index and text', async () => {
