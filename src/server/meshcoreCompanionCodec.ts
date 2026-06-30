@@ -447,6 +447,22 @@ export function encodeSent(result: number, expectedAckCrc = 0, estTimeout = 0): 
   return b;
 }
 
+/**
+ * Encode a SendConfirmed(0x82) push — the node telling the app that a DM it
+ * sent was delivered (the mesh ACK matched). `ackCode` is the same CRC the app
+ * received in the preceding `Sent(6)` response (`expectedAckCrc`), which is how
+ * the app correlates this push to its pending message; `roundTripMs` is the
+ * measured delivery time. Layout mirrors meshcore.js's decode of this push
+ * (`connection.js onSendConfirmedPush`): `[0x82][ackCode:u32LE][roundTrip:u32LE]`.
+ */
+export function encodeSendConfirmed(ackCode: number, roundTripMs = 0): Buffer {
+  const b = Buffer.alloc(1 + 4 + 4);
+  b[0] = PushCodes.SendConfirmed;
+  b.writeUInt32LE(ackCode >>> 0, 1);
+  b.writeUInt32LE(roundTripMs >>> 0, 5);
+  return b;
+}
+
 /** Encode a NoMoreMessages(10) response — mailbox drained. */
 export function encodeNoMoreMessages(): Buffer {
   return Buffer.from([ResponseCodes.NoMoreMessages]);

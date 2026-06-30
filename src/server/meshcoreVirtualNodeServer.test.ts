@@ -57,13 +57,18 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
     this.contacts = contacts;
   }
   sendMessageMock = vi.fn().mockResolvedValue(true);
+  sendMessageWithResultMock = vi.fn().mockResolvedValue({ ok: true });
   isConnected() { return this.localNode !== null; }
   getLocalNode() { return this.localNode; }
   getContacts() { return this.contacts; }
   sendMessage(text: string, toPublicKey?: string, channelIdx?: number) {
     return this.sendMessageMock(text, toPublicKey, channelIdx) as Promise<boolean>;
   }
+  sendMessageWithResult(text: string, toPublicKey?: string, channelIdx?: number) {
+    return this.sendMessageWithResultMock(text, toPublicKey, channelIdx) as Promise<{ ok: boolean; expectedAckCrc?: number; estTimeout?: number }>;
+  }
   emitMessage(msg: MeshCoreMessage) { this.emit('message', msg); }
+  emitSendConfirmed(data: { ackCode: number; roundTripMs: number }) { this.emit('send_confirmed', data); }
 }
 
 const CHANNELS_DB = {
@@ -321,13 +326,17 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
     expect(manager.sendMessageMock).toHaveBeenCalledWith('hi chan', undefined, 1);
   });
 
-  it('forwards SendTxtMsg as a DM after resolving the contact prefix, replies Sent', async () => {
+  it('forwards SendTxtMsg as a DM after resolving the contact prefix, replies Sent with the real ack CRC (#3869)', async () => {
+    manager.sendMessageWithResultMock.mockResolvedValueOnce({ ok: true, expectedAckCrc: 0xdeadbeef, estTimeout: 9000 });
     const prefix = Buffer.from('b1'.repeat(6), 'hex'); // first 6 bytes of the sample contact
     // [code=2][txtType=0][attempt=0][senderTimestamp:u32=0][prefix:6][text]
     const frame = [CommandCodes.SendTxtMsg, 0, 0, 0, 0, 0, 0, ...prefix, ...Buffer.from('hi dm', 'utf8')];
     const payload = await client.request(frame);
     expect(payload[0]).toBe(ResponseCodes.Sent);
-    expect(manager.sendMessageMock).toHaveBeenCalledWith('hi dm', 'b1'.repeat(32), undefined);
+    // The Sent response must carry the firmware's real ack CRC so the app can
+    // correlate the later SendConfirmed push (not the old hardcoded 0).
+    expect(Buffer.from(payload).readUInt32LE(2)).toBe(0xdeadbeef);
+    expect(manager.sendMessageWithResultMock).toHaveBeenCalledWith('hi dm', 'b1'.repeat(32), undefined);
   });
 
   it('replies Err(NotFound) for a DM to an unknown contact prefix', async () => {
@@ -348,6 +357,46 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
 
   it('counts connected clients', () => {
     expect(server.getClientCount()).toBe(1);
+  });
+
+  it('pushes SendConfirmed(0x82) to the originating client when its DM is acked (#3869)', async () => {
+    manager.sendMessageWithResultMock.mockResolvedValueOnce({ ok: true, expectedAckCrc: 0x1234, estTimeout: 9000 });
+    const prefix = Buffer.from('b1'.repeat(6), 'hex');
+    const frame = [CommandCodes.SendTxtMsg, 0, 0, 0, 0, 0, 0, ...prefix, ...Buffer.from('hi dm', 'utf8')];
+    expect((await client.request(frame))[0]).toBe(ResponseCodes.Sent);
+
+    // The mesh acks the DM → the server pushes an unsolicited SendConfirmed.
+    const pushP = client.expectFrames(1);
+    manager.emitSendConfirmed({ ackCode: 0x1234, roundTripMs: 1500 });
+    const [push] = await pushP;
+    expect(push[0]).toBe(0x82); // PushCodes.SendConfirmed
+    expect(Buffer.from(push).readUInt32LE(1)).toBe(0x1234); // ack CRC matches the Sent response
+    expect(Buffer.from(push).readUInt32LE(5)).toBe(1500); // round-trip ms
+  });
+
+  it('ignores a send_confirmed whose CRC no connected client is awaiting (#3869)', async () => {
+    let pushed = false;
+    void client.expectFrames(1).then(() => { pushed = true; });
+    manager.emitSendConfirmed({ ackCode: 0x9999, roundTripMs: 10 }); // never sent by this client
+    await new Promise((r) => setTimeout(r, 40));
+    expect(pushed).toBe(false);
+  });
+
+  it('forwards the real hop count (pathLen) on an incoming channel message instead of "direct" (#3871)', () => {
+    const frame = (server as unknown as { encodeIncomingMessage(m: MeshCoreMessage): Buffer }).encodeIncomingMessage({
+      id: 'm1', fromPublicKey: 'channel-2', fromName: 'Alice', text: 'hi', timestamp: Date.now(), pathLen: 3,
+    } as MeshCoreMessage);
+    // ChannelMsgRecv frame: [code][channelIdx][pathLen][txtType][ts:4][text]
+    expect(frame[0]).toBe(ResponseCodes.ChannelMsgRecv);
+    expect(frame[1]).toBe(2); // channelIdx
+    expect(frame[2]).toBe(3); // real pathLen (was hardcoded 0xff before #3871)
+  });
+
+  it('falls back to 0xff (direct) when an incoming message has no pathLen (#3871)', () => {
+    const frame = (server as unknown as { encodeIncomingMessage(m: MeshCoreMessage): Buffer }).encodeIncomingMessage({
+      id: 'm2', fromPublicKey: 'channel-0', text: 'x', timestamp: Date.now(),
+    } as MeshCoreMessage);
+    expect(frame[2]).toBe(0xff);
   });
 });
 

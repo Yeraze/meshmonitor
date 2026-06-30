@@ -22,6 +22,7 @@ import {
   encodeChannelMsgRecv,
   encodeMsgWaitingPush,
   encodeSent,
+  encodeSendConfirmed,
   encodeNoMoreMessages,
   encodeOk,
   encodeErr,
@@ -48,9 +49,22 @@ export interface MeshCoreVirtualNodeManager {
   getContacts(): MeshCoreContact[];
   /** Send a text message to the real node: channel (by index) or DM (full key). */
   sendMessage(text: string, toPublicKey?: string, channelIdx?: number): Promise<boolean>;
+  /**
+   * Send a DM and return the firmware-assigned `expectedAckCrc`/`estTimeout` so
+   * the bridge can put the real CRC in the `Sent` response and later correlate
+   * the `send_confirmed` push to it (#3869).
+   */
+  sendMessageWithResult(
+    text: string,
+    toPublicKey?: string,
+    channelIdx?: number,
+  ): Promise<{ ok: boolean; expectedAckCrc?: number; estTimeout?: number }>;
   /** EventEmitter surface — the manager emits 'message' with a MeshCoreMessage. */
   on(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
   off(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
+  /** The manager emits 'send_confirmed' when a sent DM is acked (#3869). */
+  on(event: 'send_confirmed', listener: (data: { ackCode: number; roundTripMs: number }) => void): unknown;
+  off(event: 'send_confirmed', listener: (data: { ackCode: number; roundTripMs: number }) => void): unknown;
 }
 
 /** Reverse map of command codes → names, for human-readable command logging. */
@@ -126,6 +140,16 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
   private nextClientId = 1;
   private cleanupTimer: NodeJS.Timeout | null = null;
   private readonly onManagerMessage = (msg: MeshCoreMessage) => this.handleIncomingMessage(msg);
+  private readonly onManagerSendConfirmed = (data: { ackCode: number; roundTripMs: number }) =>
+    this.handleSendConfirmed(data);
+  /**
+   * Pending DM acks: `expectedAckCrc` → clientId of the companion that sent it.
+   * Populated when a client sends a DM, consumed when the matching
+   * `send_confirmed` arrives so we push the SendConfirmed(0x82) to that client
+   * only (#3869). The manager's `send_confirmed` is source-global, so without
+   * this map a second companion would see another's confirmation.
+   */
+  private readonly pendingAcks = new Map<number, string>();
 
   private readonly MAX_FRAME_BYTES = 4096;
   private readonly CLIENT_TIMEOUT_MS = 300000; // 5 min inactivity
@@ -162,6 +186,8 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
         this.cleanupTimer = setInterval(() => this.cleanupInactiveClients(), this.CLEANUP_INTERVAL_MS);
         // Relay live incoming mesh messages to connected app clients.
         this.options.manager.on('message', this.onManagerMessage);
+        // Forward DM delivery acks back to the originating companion (#3869).
+        this.options.manager.on('send_confirmed', this.onManagerSendConfirmed);
         this.emit('listening');
         resolve();
       });
@@ -177,6 +203,8 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     }
 
     this.options.manager.off('message', this.onManagerMessage);
+    this.options.manager.off('send_confirmed', this.onManagerSendConfirmed);
+    this.pendingAcks.clear();
 
     for (const client of this.clients.values()) {
       client.socket.destroy();
@@ -247,6 +275,11 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     const client = this.clients.get(clientId);
     if (!client) return;
     this.clients.delete(clientId);
+    // Drop any unconfirmed DM acks this client was awaiting so the map doesn't
+    // leak entries for acks that will never be claimed (#3869).
+    for (const [crc, owner] of this.pendingAcks) {
+      if (owner === clientId) this.pendingAcks.delete(crc);
+    }
     logger.info(`📱 [MeshCore VN ${this.sourceId}] client disconnected: ${clientId} (${this.clients.size} remaining)`);
 
     databaseService.auditLogAsync(
@@ -477,10 +510,20 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       return;
     }
     try {
-      const ok = await this.options.manager.sendMessage(text, fullKey);
-      if (ok) {
+      const result = await this.options.manager.sendMessageWithResult(text, fullKey);
+      if (result.ok) {
         logger.info(`[MeshCore VN ${this.sourceId}] ▶ forwarded DM from ${clientId} to ${prefixHex}… (${text.length} chars)`);
-        this.send(clientId, encodeSent(0, 0, this.SEND_EST_TIMEOUT_MS));
+        // Carry the firmware's real ack CRC in the Sent response and remember it
+        // so the matching send_confirmed pushes a SendConfirmed(0x82) to THIS
+        // client — otherwise the app waits for an ack it never gets, retransmits,
+        // and marks the DM Failed despite delivery (#3869).
+        if (result.expectedAckCrc !== undefined) {
+          this.pendingAcks.set(result.expectedAckCrc >>> 0, clientId);
+        }
+        this.send(
+          clientId,
+          encodeSent(0, result.expectedAckCrc ?? 0, result.estTimeout ?? this.SEND_EST_TIMEOUT_MS),
+        );
       } else {
         logger.warn(`[MeshCore VN ${this.sourceId}] DM from ${clientId} failed at the node`);
         this.send(clientId, encodeErr(ErrorCodes.BadState));
@@ -489,6 +532,26 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       logger.error(`[MeshCore VN ${this.sourceId}] DM from ${clientId} threw: ${(err as Error).message}`);
       this.send(clientId, encodeErr(ErrorCodes.BadState));
     }
+  }
+
+  /**
+   * A DM this node sent was acked by the mesh. Push a SendConfirmed(0x82) to the
+   * companion that originated it (matched by ack CRC) so the app marks the
+   * message delivered instead of retrying to failure (#3869). The manager's
+   * `send_confirmed` is source-global, so we act only on a CRC we recorded for a
+   * client send; an unknown CRC (e.g. a DM MeshMonitor itself sent, or one whose
+   * client has disconnected) is ignored.
+   */
+  private handleSendConfirmed(data: { ackCode: number; roundTripMs: number }): void {
+    const key = data.ackCode >>> 0;
+    const clientId = this.pendingAcks.get(key);
+    if (clientId === undefined) return;
+    this.pendingAcks.delete(key);
+    if (!this.clients.has(clientId)) return; // originating client has gone away
+    this.send(clientId, encodeSendConfirmed(data.ackCode, data.roundTripMs));
+    logger.info(
+      `[MeshCore VN ${this.sourceId}] ◀ ack confirmed to ${clientId} (crc=${key}, rtt=${data.roundTripMs}ms)`,
+    );
   }
 
   /** Resolve a (≥6-byte) public-key prefix to a full contact key, or null. */
@@ -529,6 +592,11 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
   /** Map a stored MeshCoreMessage to the right recv frame (channel vs direct). */
   private encodeIncomingMessage(msg: MeshCoreMessage): Buffer {
     const senderTimestamp = toEpochSeconds(msg.timestamp);
+    // Forward the real packed path_len byte (0xff = direct) so the companion
+    // shows the actual hop count instead of always "direct" (#3871). The value
+    // is the raw byte the device reported; the app decodes the hop count the
+    // same way MeshMonitor does. Falls back to 0xff (direct) when unknown.
+    const wirePathLen = msg.pathLen ?? 0xff;
     // The `channel-N` marker lands in toPublicKey for messages we sent and in
     // fromPublicKey for messages we received — check both.
     const channelMatch =
@@ -539,7 +607,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       const text = msg.fromName ? `${msg.fromName}: ${msg.text}` : msg.text;
       return encodeChannelMsgRecv({
         channelIdx: Number(channelMatch[1]),
-        pathLen: 0xff, // delivered direct (we don't track the relay path here)
+        pathLen: wirePathLen,
         txtType: 0,
         senderTimestamp,
         text,
@@ -547,7 +615,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     }
     return encodeContactMsgRecv({
       pubKeyPrefix: hexToBytes(msg.fromPublicKey).subarray(0, 6),
-      pathLen: 0xff,
+      pathLen: wirePathLen,
       txtType: 0,
       senderTimestamp,
       text: msg.text,

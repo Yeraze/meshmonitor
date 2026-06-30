@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 - **MeshCore auto-acknowledge `{SCOPE}` token** — Auto-acknowledge message templates can now include `{SCOPE}` to surface the region/scope the triggering message arrived on (e.g. `EU`, `Berlin`). Resolves to `(unscoped)` for explicitly unscoped messages and `—` when no scope information is available. (#3865)
 
+### Fixed
+- **MeshCore Virtual Node: DM marked Failed despite delivery (no ACK returned)** — A direct message sent through a MeshCore companion connected via the Virtual Node was delivered, but its delivery ACK was never forwarded to the companion, so the companion retransmitted three times and finally marked it **Failed**. The Virtual Node bridge now puts the firmware's real ack CRC in the `Sent` response and forwards the matching `SendConfirmed` push to the originating companion, so the message is correctly marked delivered. (#3869)
+- **MeshCore Virtual Node: incoming messages always shown as "direct"** — Received channel and direct messages were forwarded to a Virtual Node companion with a hardcoded "direct" path length, hiding the real hop count. The actual `path_len` is now forwarded so the companion shows the correct number of hops. *(The related "heard by N repeaters" count for **outgoing** channel messages remains MeshMonitor-UI-only — a channel send is an unacked flood and the companion protocol has no frame to carry a post-send relay tally; see #3871.)* (#3871)
+
 ## [4.12.2] - 2026-06-29
 
 ### Added
