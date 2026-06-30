@@ -373,10 +373,14 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
             success: boolean;
             data: { latitude: number; longitude: number }[];
           }>(`/api/sources/${sourceId}/meshcore/nodes/${publicKey}/position-history?since=${since}`);
-          if (resp.success && Array.isArray(resp.data) && resp.data.length >= 2) {
-            next.set(publicKey, resp.data
+          if (resp.success && Array.isArray(resp.data)) {
+            // Drop Null Island fixes first, then keep only trails with enough
+            // real points to draw a segment (a 2-point response that's all
+            // Null Island would otherwise store a degenerate 1-point trail).
+            const pts = resp.data
               .filter(p => !isNullIsland(p.latitude, p.longitude))
-              .map(p => [p.latitude, p.longitude] as [number, number]));
+              .map(p => [p.latitude, p.longitude] as [number, number]);
+            if (pts.length >= 2) next.set(publicKey, pts);
           }
         } catch {
           // best-effort: a failed trail fetch shouldn't break the map

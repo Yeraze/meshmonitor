@@ -19,6 +19,9 @@ import { logger } from '../../utils/logger.js';
 const LABEL = 'Migration 110';
 const TABLE = 'meshcore_position_history';
 const IDX = 'meshcore_position_history_node_idx';
+// Timestamp-only index for the age-based retention sweep, which filters on
+// `timestamp` alone and can't use the leading column of the composite index.
+const TS_IDX = 'meshcore_position_history_ts_idx';
 
 // ============ SQLite ============
 
@@ -39,6 +42,7 @@ export const migration = {
       )
     `);
     db.exec(`CREATE INDEX IF NOT EXISTS ${IDX} ON ${TABLE}(sourceId, publicKey, timestamp)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS ${TS_IDX} ON ${TABLE}(timestamp)`);
 
     logger.info(`${LABEL} complete (SQLite)`);
   },
@@ -67,6 +71,7 @@ export async function runMigration110Postgres(client: import('pg').PoolClient): 
     )
   `);
   await client.query(`CREATE INDEX IF NOT EXISTS ${IDX} ON ${TABLE}("sourceId", "publicKey", timestamp)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS ${TS_IDX} ON ${TABLE}(timestamp)`);
 
   logger.info(`${LABEL} complete (PostgreSQL)`);
 }
@@ -94,7 +99,8 @@ export async function runMigration110Mysql(pool: import('mysql2/promise').Pool):
           altitude DOUBLE,
           timestamp BIGINT NOT NULL,
           createdAt BIGINT NOT NULL,
-          INDEX ${IDX} (sourceId, publicKey, timestamp)
+          INDEX ${IDX} (sourceId, publicKey, timestamp),
+          INDEX ${TS_IDX} (timestamp)
         )
       `);
     } else {

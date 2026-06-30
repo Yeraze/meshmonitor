@@ -398,10 +398,13 @@ router.get(
       }
       const sinceRaw = req.query.since;
       const since = typeof sinceRaw === 'string' ? parseInt(sinceRaw, 10) : NaN;
+      // Only a finite, non-negative cutoff is a real window; a negative value
+      // would be a no-op cutoff that silently returns the entire history.
+      const sinceArg = Number.isFinite(since) && since >= 0 ? since : undefined;
       const points = await meshcorePositionHistoryService.getPositionHistory(
         sourceId,
         publicKey,
-        Number.isFinite(since) ? since : undefined,
+        sinceArg,
       );
       res.json({
         success: true,

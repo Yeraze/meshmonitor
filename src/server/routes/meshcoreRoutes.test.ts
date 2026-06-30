@@ -168,6 +168,13 @@ const mockPacketService = vi.hoisted(() => ({
 }));
 vi.mock('../services/meshcorePacketLogService.js', () => ({ default: mockPacketService }));
 
+// Mock the MeshCore position-history service so the trail route doesn't hit the
+// (fully-mocked) database and we can assert what `since` it was called with.
+const mockPositionHistoryService = vi.hoisted(() => ({
+  getPositionHistory: vi.fn(),
+}));
+vi.mock('../services/meshcorePositionHistoryService.js', () => ({ default: mockPositionHistoryService }));
+
 import DatabaseService from '../../services/database.js';
 
 import meshcoreRoutes from './meshcoreRoutes.js';
@@ -325,6 +332,42 @@ describe('MeshCore Routes', () => {
       expect(response.status).toBe(404);
       expect(response.body.success).toBe(false);
       expect(response.body.error).toMatch(/does-not-exist/);
+    });
+  });
+
+  describe('GET /nodes/:publicKey/position-history (#3852)', () => {
+    const VALID_KEY = 'a'.repeat(64);
+
+    it('rejects an invalid public key with 400', async () => {
+      const response = await authenticatedAgent.get(
+        '/api/sources/test-source/meshcore/nodes/not-a-key/position-history',
+      );
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(mockPositionHistoryService.getPositionHistory).not.toHaveBeenCalled();
+    });
+
+    it('returns mapped points and forwards a valid `since`', async () => {
+      mockPositionHistoryService.getPositionHistory.mockResolvedValueOnce([
+        { timestamp: 1000, latitude: 40, longitude: -75, altitude: 12 },
+        { timestamp: 2000, latitude: 41, longitude: -76, altitude: null },
+      ]);
+      const response = await authenticatedAgent.get(
+        `/api/sources/test-source/meshcore/nodes/${VALID_KEY}/position-history?since=1500`,
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.count).toBe(2);
+      expect(response.body.data[0]).toEqual({ timestamp: 1000, latitude: 40, longitude: -75, altitude: 12 });
+      expect(mockPositionHistoryService.getPositionHistory).toHaveBeenCalledWith('test-source', VALID_KEY, 1500);
+    });
+
+    it('treats a negative `since` as no window (undefined)', async () => {
+      mockPositionHistoryService.getPositionHistory.mockResolvedValueOnce([]);
+      await authenticatedAgent.get(
+        `/api/sources/test-source/meshcore/nodes/${VALID_KEY}/position-history?since=-1`,
+      );
+      expect(mockPositionHistoryService.getPositionHistory).toHaveBeenCalledWith('test-source', VALID_KEY, undefined);
     });
   });
 
