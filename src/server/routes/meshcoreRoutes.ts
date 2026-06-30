@@ -24,6 +24,7 @@ import { validateAutoAckRegex } from '../utils/autoAckRegex.js';
 import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiters.js';
 import { getMeshCoreCredentialStore } from '../services/meshcoreCredentialStore.js';
 import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
+import meshcorePositionHistoryService from '../services/meshcorePositionHistoryService.js';
 
 /**
  * Resolve the manager for a request. Mounted only under
@@ -375,6 +376,52 @@ router.get('/nodes', optionalAuth(), requirePermission('nodes', 'read', { source
     res.status(500).json({ success: false, error: 'Failed to get nodes' });
   }
 });
+
+/**
+ * GET /api/sources/:id/meshcore/nodes/:publicKey/position-history
+ *
+ * Movement-trail points for one MeshCore node, oldest-first (#3852). Each
+ * point is a distinct GPS fix recorded from contact adverts or the
+ * Cayenne-LPP telemetry poll. `?since=<ms>` bounds the window (the map sends
+ * the user-selected trail length); omit for the full retained window.
+ */
+router.get(
+  '/nodes/:publicKey/position-history',
+  optionalAuth(),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = req.params.id;
+      const publicKey = req.params.publicKey;
+      if (!isValidPublicKey(publicKey)) {
+        return res.status(400).json({ success: false, error: 'Invalid public key' });
+      }
+      const sinceRaw = req.query.since;
+      const since = typeof sinceRaw === 'string' ? parseInt(sinceRaw, 10) : NaN;
+      // Only a finite, non-negative cutoff is a real window; a negative value
+      // would be a no-op cutoff that silently returns the entire history.
+      const sinceArg = Number.isFinite(since) && since >= 0 ? since : undefined;
+      const points = await meshcorePositionHistoryService.getPositionHistory(
+        sourceId,
+        publicKey,
+        sinceArg,
+      );
+      res.json({
+        success: true,
+        count: points.length,
+        data: points.map((p) => ({
+          timestamp: p.timestamp,
+          latitude: p.latitude,
+          longitude: p.longitude,
+          altitude: p.altitude ?? null,
+        })),
+      });
+    } catch (error) {
+      logger.error('[API] Error getting MeshCore position history:', error);
+      res.status(500).json({ success: false, error: 'Failed to get position history' });
+    }
+  },
+);
 
 /**
  * GET /api/meshcore/contacts

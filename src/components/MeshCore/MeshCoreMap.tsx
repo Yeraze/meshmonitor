@@ -17,6 +17,7 @@ import { useSource } from '../../contexts/SourceContext';
 import { getTilesetById, type TilesetId } from '../../config/tilesets';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { isNullIsland } from '../../utils/nullIsland';
+import { getPositionHistoryColor } from '../../utils/mapHelpers';
 import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import GeoJsonOverlay from '../GeoJsonOverlay';
@@ -193,6 +194,60 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
     localStorage.setItem('meshmonitor-showLegend', String(showLegend));
   }, [showLegend]);
 
+  // Position-history trail overlay (#3852) — the MeshCore analogue of the
+  // Meshtastic node-motion trail. Toggle + window length are per-browser
+  // (localStorage), matching the other MeshCore map toggles. The window length
+  // is clamped to the backend's rolling retention (7 days); points older than
+  // that are swept server-side and simply won't be returned.
+  const [showPositionHistory, setShowPositionHistory] = useState(
+    () => localStorage.getItem('meshmonitor-meshcore-showPositionHistory') === 'true',
+  );
+  const [positionHistoryHours, setPositionHistoryHours] = useState<number>(() => {
+    const raw = localStorage.getItem('meshmonitor-meshcore-positionHistoryHours');
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 168) : 24;
+  });
+  useEffect(() => {
+    localStorage.setItem('meshmonitor-meshcore-showPositionHistory', String(showPositionHistory));
+  }, [showPositionHistory]);
+  useEffect(() => {
+    localStorage.setItem('meshmonitor-meshcore-positionHistoryHours', String(positionHistoryHours));
+  }, [positionHistoryHours]);
+  // publicKey -> ordered (oldest→newest) [lat, lng] trail points.
+  const [positionHistory, setPositionHistory] = useState<Map<string, [number, number][]>>(new Map());
+
+  // Server-side rolling retention window (days) for stored trail points. This
+  // is a global setting (`meshcore_position_history_retention_days`, default 7)
+  // — points older than this are swept server-side. Loaded once; saved via the
+  // shared /api/settings endpoint (requires settings:write, like the packet
+  // monitor's max-age control).
+  const [retentionDays, setRetentionDays] = useState(7);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const settings = await api.get<Record<string, string>>('/api/settings');
+        const raw = settings?.meshcore_position_history_retention_days;
+        const n = raw ? parseInt(raw, 10) : NaN;
+        if (!cancelled && Number.isFinite(n) && n > 0) setRetentionDays(n);
+      } catch {
+        // best-effort: fall back to the default display value
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  const saveRetentionDays = (days: number) => {
+    const clamped = Math.max(1, Math.min(365, Math.round(days)));
+    setRetentionDays(clamped);
+    api.getBaseUrl().then(baseUrl => {
+      csrfFetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meshcore_position_history_retention_days: String(clamped) }),
+      }).catch(err => console.error('Failed to save position-history retention:', err));
+    }).catch(err => console.error('Failed to get base URL:', err));
+  };
+
   // GeoJSON overlay layers (global, file-based) — fetched and toggled here so
   // the MeshCore map matches the NodesTab and Dashboard maps. Layer visibility
   // is global and shared with those maps' controls.
@@ -296,6 +351,64 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
     return () => { cancelled = true; };
   }, [sourceId]);
 
+  // Fetch movement trails for the currently-positioned, visible nodes whenever
+  // the overlay is on (or its window changes). One request per node against
+  // `/nodes/:publicKey/position-history?since=`; cheap because the set of
+  // positioned nodes is small and the backend dedupes stationary fixes. When
+  // the overlay is off we drop the cache so re-enabling refetches fresh.
+  const historyKeysSig = visibleContacts.map(c => c.publicKey).join('|');
+  useEffect(() => {
+    if (!showPositionHistory || !sourceId) {
+      setPositionHistory(new Map());
+      return;
+    }
+    let cancelled = false;
+    const keys = historyKeysSig ? historyKeysSig.split('|') : [];
+    const since = Date.now() - positionHistoryHours * 60 * 60 * 1000;
+    (async () => {
+      const next = new Map<string, [number, number][]>();
+      await Promise.all(keys.map(async (publicKey) => {
+        try {
+          const resp = await api.get<{
+            success: boolean;
+            data: { latitude: number; longitude: number }[];
+          }>(`/api/sources/${sourceId}/meshcore/nodes/${publicKey}/position-history?since=${since}`);
+          if (resp.success && Array.isArray(resp.data)) {
+            // Drop Null Island fixes first, then keep only trails with enough
+            // real points to draw a segment (a 2-point response that's all
+            // Null Island would otherwise store a degenerate 1-point trail).
+            const pts = resp.data
+              .filter(p => !isNullIsland(p.latitude, p.longitude))
+              .map(p => [p.latitude, p.longitude] as [number, number]);
+            if (pts.length >= 2) next.set(publicKey, pts);
+          }
+        } catch {
+          // best-effort: a failed trail fetch shouldn't break the map
+        }
+      }));
+      if (!cancelled) setPositionHistory(next);
+    })();
+    return () => { cancelled = true; };
+  }, [showPositionHistory, positionHistoryHours, sourceId, historyKeysSig]);
+
+  // Per-node trail segments, colored oldest→newest like the Meshtastic trail.
+  const historySegments = useMemo(() => {
+    if (!showPositionHistory) return [];
+    const segs: { key: string; positions: [number, number][]; color: string }[] = [];
+    for (const [publicKey, points] of positionHistory) {
+      if (points.length < 2) continue;
+      const segCount = points.length - 1;
+      for (let i = 0; i < segCount; i++) {
+        segs.push({
+          key: `hist-${publicKey}-${i}`,
+          positions: [points[i], points[i + 1]],
+          color: getPositionHistoryColor(i, segCount),
+        });
+      }
+    }
+    return segs;
+  }, [showPositionHistory, positionHistory]);
+
   const neighborSegments = useMemo(() => {
     if (!showNeighbors || !neighborEdges?.length) return [];
     const posByKey = new Map<string, [number, number]>();
@@ -398,6 +511,14 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
           );
         })}
 
+        {historySegments.map(s => (
+          <Polyline
+            key={s.key}
+            positions={s.positions}
+            pathOptions={{ color: s.color, weight: 3, opacity: 0.8 }}
+          />
+        ))}
+
         {pathSegments.map(s => (
           <Polyline
             key={`path-${s.key}`}
@@ -455,6 +576,44 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
             />
             <span>Show Neighbors</span>
           </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showPositionHistory}
+              onChange={(e) => setShowPositionHistory(e.target.checked)}
+            />
+            <span>Show Position History</span>
+          </label>
+          {showPositionHistory && (
+            <div className="map-control-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '2px' }}>
+              <span style={{ fontSize: '0.85em' }}>
+                History: {positionHistoryHours < 24
+                  ? `${positionHistoryHours}h`
+                  : `${(positionHistoryHours / 24).toFixed(positionHistoryHours % 24 === 0 ? 0 : 1)}d`}
+              </span>
+              <input
+                type="range"
+                min={1}
+                max={168}
+                step={1}
+                value={positionHistoryHours}
+                onChange={(e) => setPositionHistoryHours(parseInt(e.target.value, 10))}
+                aria-label="Position history length (hours)"
+              />
+              <span style={{ fontSize: '0.85em', marginTop: '4px' }}>Keep history (days)</span>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                step={1}
+                value={retentionDays}
+                onChange={(e) => setRetentionDays(parseInt(e.target.value, 10) || 1)}
+                onBlur={(e) => saveRetentionDays(parseInt(e.target.value, 10) || 7)}
+                aria-label="Position history retention (days)"
+                style={{ width: '4rem' }}
+              />
+            </div>
+          )}
           <label className="map-control-item">
             <input
               type="checkbox"

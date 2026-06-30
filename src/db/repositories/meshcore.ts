@@ -132,6 +132,26 @@ export interface DbMeshCorePacket {
 }
 
 /**
+ * MeshCore position-history row (#3852). One per distinct GPS fix observed for
+ * a node (from contact adverts or the Cayenne-LPP telemetry poll). Backs the
+ * MeshCore map's movement-trail overlay. See
+ * `src/db/schema/meshcorePositionHistory.ts`.
+ */
+export interface DbMeshCorePositionHistory {
+  id?: number;
+  /** Owning source id; required on writes. */
+  sourceId: string;
+  /** 64-char hex public key of the node this fix belongs to. */
+  publicKey: string;
+  latitude: number;
+  longitude: number;
+  altitude?: number | null;
+  /** Fix time (ms epoch). */
+  timestamp: number;
+  createdAt: number;
+}
+
+/**
  * MeshCore "heard repeater" row (#3700). One per (outgoing channel message,
  * repeater relay-hash) inferred by self-echo correlation. See
  * `src/db/schema/meshcoreHeardRepeaters.ts`.
@@ -283,6 +303,15 @@ export class MeshCoreRepository extends BaseRepository {
     const now = this.now();
     const { meshcoreNodes } = this.tables;
     const existing = await this.getNodeByPublicKeyAndSource(node.publicKey, sourceId);
+
+    // Record a position-history point whenever this update carries a valid GPS
+    // fix that differs from the stored position (or is this node's first fix).
+    // This is the single choke point both ingest paths pass through — contact
+    // adverts (persistContact) and the Cayenne-LPP telemetry poll — so the
+    // movement trail (#3852) captures every distinct fix without each call
+    // site having to remember to log it. Stationary re-reports (identical
+    // lat/lon) are deduped here so the trail doesn't accumulate noise.
+    await this.recordPositionHistoryIfMoved(node, existing ?? null, sourceId, now);
 
     if (existing) {
       // Merge, don't clobber (#3504). Callers (persistContact, the telemetry
@@ -1310,5 +1339,125 @@ export class MeshCoreRepository extends BaseRepository {
       await this.db.delete(meshcorePacketLog);
     }
     return count;
+  }
+
+  // ============ Position History (#3852) ============
+
+  /**
+   * Two coordinates are "the same fix" when they agree within ~1e-6° (≈0.1 m).
+   * Below this, the difference is GPS jitter, not movement, so we don't record
+   * a new trail point. Above it, the node moved enough to be worth a point.
+   */
+  private static readonly POSITION_EPSILON = 1e-6;
+
+  /**
+   * Insert a position-history point if `node` carries a valid GPS fix that
+   * moved relative to `existing`. Best-effort and side-effect-only: a failure
+   * here must never break a node upsert, so errors are swallowed (the row that
+   * matters — the node's current position — is written by the caller).
+   */
+  private async recordPositionHistoryIfMoved(
+    node: Partial<DbMeshCoreNode> & { publicKey: string },
+    existing: DbMeshCoreNode | null,
+    sourceId: string,
+    now: number,
+  ): Promise<void> {
+    const lat = node.latitude;
+    const lon = node.longitude;
+    // Only a complete, finite, non-null-island fix is a real position.
+    if (typeof lat !== 'number' || typeof lon !== 'number' || !isFinite(lat) || !isFinite(lon)) {
+      return;
+    }
+    if (lat === 0 && lon === 0) return;
+
+    // Dedup against the stored position: skip when the node hasn't moved.
+    if (
+      existing &&
+      typeof existing.latitude === 'number' &&
+      typeof existing.longitude === 'number' &&
+      Math.abs(existing.latitude - lat) < MeshCoreRepository.POSITION_EPSILON &&
+      Math.abs(existing.longitude - lon) < MeshCoreRepository.POSITION_EPSILON
+    ) {
+      return;
+    }
+
+    try {
+      // Prefer the node's reported lastHeard as the fix time; fall back to now.
+      const timestamp = typeof node.lastHeard === 'number' && node.lastHeard > 0 ? node.lastHeard : now;
+      await this.insertPositionHistory({
+        sourceId,
+        publicKey: node.publicKey,
+        latitude: lat,
+        longitude: lon,
+        altitude: typeof node.altitude === 'number' ? node.altitude : null,
+        timestamp,
+        createdAt: now,
+      });
+    } catch {
+      // Never let trail logging break a node upsert.
+    }
+  }
+
+  /**
+   * Insert one position-history row. `sourceId` is required so every row is
+   * stamped with its owning source.
+   */
+  async insertPositionHistory(point: DbMeshCorePositionHistory): Promise<void> {
+    if (!point.sourceId) {
+      throw new Error('MeshCoreRepository.insertPositionHistory requires a sourceId');
+    }
+    const { meshcorePositionHistory } = this.tables;
+    await this.db.insert(meshcorePositionHistory).values(point);
+  }
+
+  /**
+   * Position-history points for one node, oldest-first (for trail rendering).
+   * `since` (ms) bounds the window; omit for all retained points.
+   */
+  async getPositionHistory(
+    sourceId: string,
+    publicKey: string,
+    since?: number,
+  ): Promise<DbMeshCorePositionHistory[]> {
+    const { meshcorePositionHistory } = this.tables;
+    const conditions: SQL[] = [
+      eq(meshcorePositionHistory.sourceId, sourceId),
+      eq(meshcorePositionHistory.publicKey, publicKey),
+    ];
+    if (typeof since === 'number') {
+      conditions.push(gte(meshcorePositionHistory.timestamp, since));
+    }
+    const result = await this.db
+      .select()
+      .from(meshcorePositionHistory)
+      .where(and(...conditions))
+      .orderBy(meshcorePositionHistory.timestamp);
+    return this.normalizeBigInts(result) as unknown as DbMeshCorePositionHistory[];
+  }
+
+  /**
+   * Delete position-history rows older than a timestamp (ms). Returns the
+   * number of rows removed. Used by the retention sweep.
+   */
+  async deletePositionHistoryOlderThan(timestamp: number, sourceId?: string): Promise<number> {
+    const { meshcorePositionHistory } = this.tables;
+    const conditions: SQL[] = [lt(meshcorePositionHistory.timestamp, timestamp)];
+    if (sourceId) {
+      conditions.push(eq(meshcorePositionHistory.sourceId, sourceId));
+    }
+    const result = await this.db.delete(meshcorePositionHistory).where(and(...conditions));
+    return this.getAffectedRows(result);
+  }
+
+  /**
+   * Delete all position-history rows, optionally scoped to one source.
+   * Returns the number of rows removed.
+   */
+  async deleteAllPositionHistory(sourceId?: string): Promise<number> {
+    const { meshcorePositionHistory } = this.tables;
+    const result = sourceId
+      ? await this.db.delete(meshcorePositionHistory).where(eq(meshcorePositionHistory.sourceId, sourceId))
+      : await this.db.delete(meshcorePositionHistory);
+    return this.getAffectedRows(result);
   }
 }

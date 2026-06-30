@@ -99,6 +99,9 @@ import {
   meshcorePacketLogSqlite, meshcorePacketLogPostgres, meshcorePacketLogMysql,
 } from './schema/meshcorePacketLog.js';
 import {
+  meshcorePositionHistorySqlite, meshcorePositionHistoryPostgres, meshcorePositionHistoryMysql,
+} from './schema/meshcorePositionHistory.js';
+import {
   meshcoreHeardRepeatersSqlite, meshcoreHeardRepeatersPostgres, meshcoreHeardRepeatersMysql,
 } from './schema/meshcoreHeardRepeaters.js';
 
@@ -209,6 +212,7 @@ export interface ActiveSchema {
   meshcoreMessages: any;
   meshcoreNeighbors: any;
   meshcorePacketLog: any;
+  meshcorePositionHistory: any;
   meshcoreHeardRepeaters: any;
 
   // Embed Profiles
@@ -290,6 +294,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreMessages: meshcoreMessagesSqlite,
     meshcoreNeighbors: meshcoreNeighborsSqlite,
     meshcorePacketLog: meshcorePacketLogSqlite,
+    meshcorePositionHistory: meshcorePositionHistorySqlite,
     meshcoreHeardRepeaters: meshcoreHeardRepeatersSqlite,
     embedProfiles: embedProfilesSqlite,
     automations: automationsSqlite,
@@ -345,6 +350,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreMessages: meshcoreMessagesPostgres,
     meshcoreNeighbors: meshcoreNeighborsPostgres,
     meshcorePacketLog: meshcorePacketLogPostgres,
+    meshcorePositionHistory: meshcorePositionHistoryPostgres,
     meshcoreHeardRepeaters: meshcoreHeardRepeatersPostgres,
     embedProfiles: embedProfilesPostgres,
     automations: automationsPostgres,
@@ -400,6 +406,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreMessages: meshcoreMessagesMysql,
     meshcoreNeighbors: meshcoreNeighborsMysql,
     meshcorePacketLog: meshcorePacketLogMysql,
+    meshcorePositionHistory: meshcorePositionHistoryMysql,
     meshcoreHeardRepeaters: meshcoreHeardRepeatersMysql,
     embedProfiles: embedProfilesMysql,
     automations: automationsMysql,
