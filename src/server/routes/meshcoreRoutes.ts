@@ -25,6 +25,7 @@ import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiter
 import { getMeshCoreCredentialStore } from '../services/meshcoreCredentialStore.js';
 import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
 import meshcorePositionHistoryService from '../services/meshcorePositionHistoryService.js';
+import { resolveAutoAckPreSendDelaySeconds } from '../autoAckDelay.js';
 
 /**
  * Resolve the manager for a request. Mounted only under
@@ -2967,7 +2968,9 @@ router.get(
           directMessages: directMessages === 'true',
           useDM: useDM === 'true',
           cooldownSeconds: parseInt(cooldownSeconds || '0', 10) || 0,
-          preSendDelaySeconds: parseInt(preSendDelaySeconds || '0', 10) || 0,
+          // Defense-in-depth: clamp on read too (default 0, cap 120s) so a
+          // value written directly to the DB can't escape the UI's bounds.
+          preSendDelaySeconds: resolveAutoAckPreSendDelaySeconds(preSendDelaySeconds),
           testMessages: testMessages || 'test\nTest message\nping\nPING\nHello world\nTESTING 123',
           // MeshCore scope/region for the ack reply (#3833).
           scopeMode: (scopeMode as 'inherit' | 'trigger' | 'unscoped' | 'named') || 'inherit',

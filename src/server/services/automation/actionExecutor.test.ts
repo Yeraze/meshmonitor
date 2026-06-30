@@ -453,6 +453,16 @@ describe('executeAction', () => {
     expect(slept).toEqual([]);
   });
 
+  it('delay: non-numeric / non-finite seconds is treated as 0 (never sleeps)', async () => {
+    const { deps } = recorder();
+    const slept: number[] = [];
+    const sleep = async (ms: number) => { slept.push(ms); };
+    expect(await executeAction(node('action.delay', { seconds: 'garbage' }), ctx({}), { ...deps, sleep })).toEqual({ delayedSeconds: 0 });
+    expect(await executeAction(node('action.delay', { seconds: NaN }), ctx({}), { ...deps, sleep })).toEqual({ delayedSeconds: 0 });
+    expect(await executeAction(node('action.delay', { seconds: {} }), ctx({}), { ...deps, sleep })).toEqual({ delayedSeconds: 0 });
+    expect(slept).toEqual([]);
+  });
+
   it('delay: clamps to the 300s cap and floors fractional seconds', async () => {
     const { deps } = recorder();
     const slept: number[] = [];
