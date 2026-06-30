@@ -65,7 +65,7 @@ describe('MeshCoreSubToolbar', () => {
     // Other tabs still visible.
     expect(screen.getByText('Nodes')).toBeDefined();
     expect(screen.getByText('Channels')).toBeDefined();
-    expect(screen.getByText('Direct Messages')).toBeDefined();
+    expect(screen.getByText('Node Details')).toBeDefined();
     expect(screen.getByText('Settings')).toBeDefined();
   });
 });
