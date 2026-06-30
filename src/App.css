@@ -2813,7 +2813,7 @@ body {
   border: 1px solid var(--ctp-surface1);
   border-radius: var(--radius-lg);
   position: sticky;
-  top: 0;
+  top: var(--header-height);
   z-index: 10;
 }
 
