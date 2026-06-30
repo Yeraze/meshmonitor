@@ -437,7 +437,7 @@ describe('MeshCoreDirectMessagesView — repeaters are not messageable (#3755)',
     lastSeen: Date.now(),
   };
 
-  it('keeps the repeater listed in the contact sidebar (still browsable)', () => {
+  it('filters repeaters out of the DM contact sidebar (#3809/#3867)', () => {
     render(
       <MeshCoreDirectMessagesView
         messages={messages}
@@ -446,26 +446,9 @@ describe('MeshCoreDirectMessagesView — repeaters are not messageable (#3755)',
         actions={makeActions()}
       />,
     );
-    // Repeaters are NOT filtered out of the list — only their messaging is removed.
+    // Companions appear in the DM list; repeaters are excluded entirely.
     expect(screen.getByText('Remote Bob')).toBeTruthy();
-    expect(screen.getByText('Repeater Rita')).toBeTruthy();
-  });
-
-  it('hides the message composer and shows a notice when a repeater is selected', () => {
-    render(
-      <MeshCoreDirectMessagesView
-        messages={messages}
-        contacts={[realContact, repeaterContact]}
-        status={makeStatus()}
-        actions={makeActions()}
-      />,
-    );
-    fireEvent.click(screen.getByText('Repeater Rita'));
-
-    // No compose input for a repeater — the messaging feature is gone, not just disabled.
-    expect(screen.queryByPlaceholderText('Type a message…')).toBeNull();
-    // Replaced by an explanatory notice.
-    expect(screen.getByText(/Repeaters cannot receive direct messages/i)).toBeTruthy();
+    expect(screen.queryByText('Repeater Rita')).toBeNull();
   });
 
   it('still renders the message composer for a normal (companion) contact', () => {
@@ -483,22 +466,30 @@ describe('MeshCoreDirectMessagesView — repeaters are not messageable (#3755)',
     expect(screen.queryByText(/Repeaters cannot receive direct messages/i)).toBeNull();
   });
 
-  it('still renders node details (telemetry) for a selected repeater', async () => {
+  it('also filters repeaters surfaced via message history (#3809/#3867)', () => {
+    // A repeater key that appeared in a DM message (edge case from before the fix)
+    // should still be excluded from the sidebar.
+    const repeaterMsg = {
+      id: 'msg-1',
+      fromPublicKey: REAL_PK_2, // repeater's key
+      toPublicKey: 'self'.padEnd(64, '0'),
+      text: 'ghost message',
+      timestamp: Date.now(),
+      messageType: 'private' as const,
+    };
+
     render(
       <MeshCoreDirectMessagesView
-        messages={messages}
+        messages={[repeaterMsg as any]}
         contacts={[realContact, repeaterContact]}
         status={makeStatus()}
         actions={makeActions()}
-        baseUrl=""
-        sourceId="src-a"
       />,
     );
-    fireEvent.click(screen.getByText('Repeater Rita'));
 
-    // The detail/telemetry side still mounts even though messaging is removed.
-    await waitFor(() => {
-      expect(screen.getByText('Telemetry Retrieval')).toBeTruthy();
-    });
+    // The repeater key came in via message history but the safety filter removes it.
+    expect(screen.queryByText('Repeater Rita')).toBeNull();
+    // Normal contact still present.
+    expect(screen.getByText('Remote Bob')).toBeTruthy();
   });
 });

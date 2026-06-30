@@ -182,8 +182,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     }
     // Always include all contacts so the user can start a new DM.
     // Exclude room servers (advType=3) — they belong in the Rooms view.
+    // Exclude repeaters (advType=2) — they cannot receive DMs; use the Node List to access their telemetry/admin panels.
     for (const c of contacts) {
-      if (c.publicKey && !isChannelPseudoKey(c.publicKey) && c.advType !== 3) peers.add(c.publicKey);
+      if (c.publicKey && !isChannelPseudoKey(c.publicKey) && c.advType !== 3 && c.advType !== 2) peers.add(c.publicKey);
     }
     // Drop the local node — DMing yourself is meaningless and the local node
     // sometimes appears in the contacts list as a side-effect of seeding.
@@ -197,7 +198,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
       return c?.advName || c?.name || key;
     };
     const dir = sortDirection === 'asc' ? 1 : -1;
-    return Array.from(peers).sort((a, b) => {
+    return Array.from(peers)
+      .filter(key => contactsByKey.get(key)?.advType !== 2)
+      .sort((a, b) => {
       // Favorites pin to the top regardless of sort field/direction, matching
       // the Meshtastic DM list and the MeshCore node list (issue #3620).
       const aFav = favoriteByKey.get(a) ?? false;
