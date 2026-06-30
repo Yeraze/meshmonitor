@@ -630,7 +630,10 @@ const UsersTab: React.FC = () => {
   const labelMap: Record<string, string> = {
     dashboard: 'Source Status',
     nodes: 'Node Map & List',
-    messages: t('nav.messages'),
+    // The `messages` permission gates both the Node Details view and direct
+    // messaging, so label it to reflect its full impact (issue #3867). Reuses the
+    // translated "Node Details" tab label and appends the DM scope.
+    messages: `${t('nav.messages')} & DM`,
     settings: t('nav.settings'),
     configuration: t('nav.configuration'),
     info: t('nav.info'),
@@ -650,7 +653,7 @@ const UsersTab: React.FC = () => {
     dashboard: 'Controls visibility of source cards on the main dashboard. Does NOT include node or message access — grant those separately.',
     nodes: 'Read: view node list, neighbor info, and map markers. Write: edit node names/notes.',
     nodes_private: 'Read: view detailed position history for individual nodes.',
-    messages: 'Read: view messages and channel list. Write: send messages.',
+    messages: 'Read: view node details, messages, and channel list. Write: send direct messages.',
     settings: 'Read: view global settings. Write: change settings, map styles, GeoJSON layers.',
     configuration: 'Read: view device configuration. Write: change device radio/module settings.',
     info: 'Read: view device info and statistics.',

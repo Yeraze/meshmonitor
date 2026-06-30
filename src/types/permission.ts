@@ -106,7 +106,7 @@ export const RESOURCES: readonly ResourceDefinition[] = [
   { id: 'channel_5', name: 'Channel 5', description: 'View and send messages to channel 5' },
   { id: 'channel_6', name: 'Channel 6', description: 'View and send messages to channel 6' },
   { id: 'channel_7', name: 'Channel 7', description: 'View and send messages to channel 7' },
-  { id: 'messages', name: 'Direct Messages', description: 'Send and receive direct messages' },
+  { id: 'messages', name: 'Node Details & DM', description: 'View node details and send/receive direct messages' },
   { id: 'settings', name: 'Settings', description: 'Application settings' },
   { id: 'configuration', name: 'Configuration', description: 'Device configuration' },
   { id: 'info', name: 'Info', description: 'Telemetry and network information' },

@@ -28,7 +28,7 @@ const ITEMS: Item[] = [
   { id: 'nodes', labelKey: 'meshcore.nav.nodes', fallback: 'Nodes' },
   { id: 'channels', labelKey: 'meshcore.nav.channels', fallback: 'Channels' },
   { id: 'rooms', labelKey: 'meshcore.nav.rooms', fallback: 'Rooms' },
-  { id: 'dms', labelKey: 'meshcore.nav.dms', fallback: 'Direct Messages' },
+  { id: 'dms', labelKey: 'meshcore.nav.dms', fallback: 'Node Details' },
   { id: 'telemetry', labelKey: 'meshcore.nav.telemetry', fallback: 'Telemetry' },
   { id: 'packets', labelKey: 'meshcore.nav.packets', fallback: 'Packet Monitor' },
   { id: 'info', labelKey: 'meshcore.nav.info', fallback: 'Node Info' },

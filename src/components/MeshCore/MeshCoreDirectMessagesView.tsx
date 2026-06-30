@@ -273,7 +273,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
           </button>
           {!isCollapsed && (
             <>
-              <span>{t('meshcore.nav.dms', 'Direct Messages')}</span>
+              <span>{t('meshcore.nav.dms', 'Node Details')}</span>
               <span className="pane-count">{dmPeers.length}</span>
               <div className="sort-controls meshcore-sort-controls">
                 <select
