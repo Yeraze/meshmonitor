@@ -5511,6 +5511,8 @@ class MeshCoreManager extends EventEmitter {
     timestamp: number,
     hops: number | null,
     route: string | null,
+    scopeName?: string | null,
+    scopeCode?: number | null,
   ): string {
     const date = new Date(timestamp);
     const longName = senderName || `${senderPubKey.substring(0, 8)}…`;
@@ -5537,6 +5539,16 @@ class MeshCoreManager extends EventEmitter {
     } else {
       routeStr = '—';
     }
+    // {SCOPE} resolves to the region name when known, "(unscoped)" when the
+    // message was explicitly unscoped (scopeCode === 0), or "—" otherwise (#3865).
+    let scopeStr: string;
+    if (scopeName && scopeName.length > 0) {
+      scopeStr = scopeName;
+    } else if (scopeCode === 0) {
+      scopeStr = '(unscoped)';
+    } else {
+      scopeStr = '—';
+    }
 
     return template
       .replace(/\{NODE_ID\}/g, nodeId)
@@ -5549,6 +5561,7 @@ class MeshCoreManager extends EventEmitter {
       .replace(/\{HOPS\}/g, hopsStr)
       .replace(/\{NUMBER_HOPS\}/g, hopsStr)
       .replace(/\{ROUTE\}/g, routeStr)
+      .replace(/\{SCOPE\}/g, scopeStr)
       .replace(/\{VERSION\}/g, '4.8.0');
   }
 
@@ -5642,6 +5655,8 @@ class MeshCoreManager extends EventEmitter {
         message.timestamp,
         hops,
         route,
+        message.scopeName,
+        message.scopeCode,
       );
 
       // Decide destination:

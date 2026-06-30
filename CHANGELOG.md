@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+- **MeshCore auto-acknowledge `{SCOPE}` token** — Auto-acknowledge message templates can now include `{SCOPE}` to surface the region/scope the triggering message arrived on (e.g. `EU`, `Berlin`). Resolves to `(unscoped)` for explicitly unscoped messages and `—` when no scope information is available. (#3865)
+
 ## [4.12.2] - 2026-06-29
 
 ### Added
