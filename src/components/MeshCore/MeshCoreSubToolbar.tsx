@@ -28,6 +28,8 @@ const ITEMS: Item[] = [
   { id: 'nodes', labelKey: 'meshcore.nav.nodes', fallback: 'Nodes' },
   { id: 'channels', labelKey: 'meshcore.nav.channels', fallback: 'Channels' },
   { id: 'rooms', labelKey: 'meshcore.nav.rooms', fallback: 'Rooms' },
+  // id/key remain 'dms' for backward-compat; the visible label was renamed to
+  // 'Node Details' to reflect the view's full scope (#3867).
   { id: 'dms', labelKey: 'meshcore.nav.dms', fallback: 'Node Details' },
   { id: 'telemetry', labelKey: 'meshcore.nav.telemetry', fallback: 'Telemetry' },
   { id: 'packets', labelKey: 'meshcore.nav.packets', fallback: 'Packet Monitor' },
