@@ -615,6 +615,17 @@ class MeshCoreManager extends EventEmitter {
   private localNode: MeshCoreNode | null = null;
   private contacts: Map<string, MeshCoreContact> = new Map();
   /**
+   * Recently-removed contacts (lowercased publicKey → tombstone-expiry ms).
+   * When a contact still lives on the companion's saved-contact list, an
+   * advert-triggered or reconnect `get_contacts` re-sync would otherwise
+   * re-insert the row we just deleted, so a "Remove" appears to do nothing
+   * (#3878). While a key is tombstoned we skip re-adding it on sync; the entry
+   * self-expires after TOMBSTONE_TTL_MS so a genuinely re-added contact can
+   * come back, and is cleared immediately if the user re-adds it.
+   */
+  private removedContacts: Map<string, number> = new Map();
+  private static readonly TOMBSTONE_TTL_MS = 60 * 60 * 1000; // 1 hour
+  /**
    * Collector for an in-flight `discoverNodes()` burst. NODE_DISCOVER_RESP
    * pushes arrive asynchronously over a few seconds; `node_discovered` bridge
    * events feed this so the awaiting call can report how many unique nodes
@@ -1176,6 +1187,10 @@ class MeshCoreManager extends EventEmitter {
     } else if (event_type === 'contact_advertised' || event_type === 'contact_added') {
       const publicKey: string = data.public_key;
       if (publicKey) {
+        // A live advert means this node is genuinely back — lift any removal
+        // tombstone so it syncs normally again (#3878). The reporter's gone
+        // room server never adverts, so it stays suppressed.
+        this.clearContactTombstone(publicKey);
         // Captured before the set below: a contact we didn't already know about
         // is a genuine new-node discovery. Bulk contact-list sync populates
         // this.contacts directly (not via this event), so a first connect
@@ -1609,6 +1624,13 @@ class MeshCoreManager extends EventEmitter {
    */
   private async persistContact(contact: MeshCoreContact): Promise<void> {
     try {
+      // Don't resurrect a just-removed contact (#3878). persistContact is called
+      // from many event handlers (bulk sync, advert pushes, path updates), so
+      // guarding here — not only in refreshContacts — closes every re-insert path.
+      if (this.isContactTombstoned(contact.publicKey)) {
+        this.contacts.delete(contact.publicKey);
+        return;
+      }
       // Drop "Null Island" (0,0) fixes — the GPS default before a lock — so a
       // bogus position never lands in the node row (issue #3763).
       const atNullIsland = isNullIsland(contact.latitude, contact.longitude);
@@ -2222,6 +2244,11 @@ class MeshCoreManager extends EventEmitter {
         this.contacts.clear();
         const nowMs = Date.now();
         for (const c of response.data) {
+          // Skip contacts the user just removed that still linger on the
+          // companion's saved-contact list — re-adding them here is exactly
+          // what resurrected deleted rows before (#3878). The tombstone expires
+          // (or is cleared by a live advert), so a genuine re-add still syncs.
+          if (this.isContactTombstoned(c.public_key)) continue;
           // Preserve the real Last Heard across reconnect (#3645). The companion
           // reports each contact's last advert time (epoch seconds) — use it for
           // lastSeen instead of the reconnect wall-clock, which previously reset
@@ -3184,6 +3211,9 @@ class MeshCoreManager extends EventEmitter {
         return false;
       }
       this.contacts.delete(publicKey);
+      // Tombstone before the DB delete so an advert-triggered refresh that races
+      // in can't re-persist the row we're removing (#3878).
+      this.tombstoneContact(publicKey);
       try {
         await databaseService.meshcore.deleteNode(publicKey, this.sourceId);
       } catch (err) {
@@ -3199,6 +3229,34 @@ class MeshCoreManager extends EventEmitter {
     }
   }
 
+  /** Tombstone a removed contact so `get_contacts` re-sync won't resurrect it (#3878). */
+  private tombstoneContact(publicKey: string): void {
+    if (!publicKey) return;
+    this.removedContacts.set(publicKey.toLowerCase(), Date.now() + MeshCoreManager.TOMBSTONE_TTL_MS);
+  }
+
+  /** True while `publicKey` is under an unexpired removal tombstone. Prunes on read. */
+  private isContactTombstoned(publicKey: string): boolean {
+    const key = publicKey.toLowerCase();
+    const expiry = this.removedContacts.get(key);
+    if (expiry === undefined) return false;
+    if (Date.now() >= expiry) {
+      this.removedContacts.delete(key);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Clear a removal tombstone — the contact is genuinely back (a live advert
+   * from that key, or an explicit user re-add), so it should sync normally.
+   */
+  private clearContactTombstone(publicKey: string): void {
+    if (this.removedContacts.delete(publicKey.toLowerCase())) {
+      logger.debug(`[MeshCore:${this.sourceId}] Cleared removal tombstone for ${publicKey.substring(0, 16)}…`);
+    }
+  }
+
   /**
    * Forget a contact locally: delete its meshcore_nodes row and in-memory entry
    * and fire a contact-updated push — WITHOUT the device round-trip that
@@ -3209,17 +3267,25 @@ class MeshCoreManager extends EventEmitter {
    * and regardless of device type.
    */
   async forgetLocalContact(publicKey: string): Promise<boolean> {
-    this.contacts.delete(publicKey);
+    const hadInMemory = this.contacts.delete(publicKey);
+    // Tombstone regardless of the DB outcome: the contact still lives on the
+    // companion's saved-contact list, so without this the next advert-triggered
+    // or reconnect `get_contacts` re-sync re-inserts the row and the "Remove"
+    // appears to do nothing (#3878).
+    this.tombstoneContact(publicKey);
+    let deletedRow: boolean;
     try {
-      await databaseService.meshcore.deleteNode(publicKey, this.sourceId);
+      deletedRow = await databaseService.meshcore.deleteNode(publicKey, this.sourceId);
     } catch (err) {
       logger.warn(`[MeshCore:${this.sourceId}] forgetLocalContact deleteNode failed: ${(err as Error).message}`);
       return false;
     }
     this.emit('contact_removed', { sourceId: this.sourceId, publicKey });
     dataEventEmitter.emitMeshCoreContactUpdated({ publicKey, removed: true } as any, this.sourceId);
-    logger.info(`[MeshCore:${this.sourceId}] Forgot local contact ${publicKey.substring(0, 16)}…`);
-    return true;
+    logger.info(`[MeshCore:${this.sourceId}] Forgot local contact ${publicKey.substring(0, 16)}… (row=${deletedRow}, mem=${hadInMemory})`);
+    // Success when we removed a stored row or an in-memory entry. A key that
+    // matched neither is a genuine no-op the caller should surface as failure.
+    return deletedRow || hadInMemory;
   }
 
   /**

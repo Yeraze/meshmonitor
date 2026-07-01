@@ -730,10 +730,14 @@ export class MeshCoreRepository extends BaseRepository {
       throw new Error('MeshCoreRepository.deleteNode requires a sourceId');
     }
     const { meshcoreNodes } = this.tables;
-    await this.db
+    // Report whether a row was actually removed. Returning `true`
+    // unconditionally (the old behavior) made a no-op delete — e.g. a
+    // publicKey that doesn't match any stored row — look successful, so the
+    // UI reported "removed" while the orphan stayed (#3878).
+    const result = await this.db
       .delete(meshcoreNodes)
       .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
-    return true;
+    return this.getAffectedRows(result) > 0;
   }
 
   /**

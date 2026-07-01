@@ -205,6 +205,24 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     await expect(repo.upsertNode({ publicKey: 'pk-1' }, '')).rejects.toThrow(/requires a sourceId/);
   });
 
+  it('deleteNode reports whether a row was actually removed (#3878)', async () => {
+    await repo.upsertNode({ publicKey: 'pk-del', name: 'Doomed' }, 'src-a');
+
+    // No match (wrong source) → false, and the row survives.
+    expect(await repo.deleteNode('pk-del', 'src-other')).toBe(false);
+    expect(await repo.getNodeByPublicKeyAndSource('pk-del', 'src-a')).not.toBeNull();
+
+    // Unknown key → false.
+    expect(await repo.deleteNode('pk-missing', 'src-a')).toBe(false);
+
+    // Real match → true, and the row is gone.
+    expect(await repo.deleteNode('pk-del', 'src-a')).toBe(true);
+    expect(await repo.getNodeByPublicKeyAndSource('pk-del', 'src-a')).toBeNull();
+
+    // Deleting again (already gone) → false.
+    expect(await repo.deleteNode('pk-del', 'src-a')).toBe(false);
+  });
+
   it('insertMessage stamps sourceId', async () => {
     await repo.insertMessage(
       {
