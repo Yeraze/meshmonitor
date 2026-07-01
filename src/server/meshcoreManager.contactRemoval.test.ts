@@ -30,9 +30,10 @@ vi.mock('./services/notificationService.js', () => ({
   notificationService: { notifyNewMeshCoreNode: vi.fn().mockResolvedValue(undefined) },
 }));
 
+const emitMeshCoreContactUpdated = vi.fn();
 vi.mock('./services/dataEventEmitter.js', () => ({
   dataEventEmitter: {
-    emitMeshCoreContactUpdated: vi.fn(),
+    emitMeshCoreContactUpdated: (...args: unknown[]) => emitMeshCoreContactUpdated(...args),
     emitMeshCoreMessage: vi.fn(),
     emitMeshCoreSelfInfoUpdated: vi.fn(),
   },
@@ -63,6 +64,7 @@ describe('MeshCore contact removal + resurrection guard (#3878)', () => {
     upsertNode.mockClear();
     deleteNode.mockClear();
     deleteNode.mockResolvedValue(true);
+    emitMeshCoreContactUpdated.mockClear();
   });
 
   it('forgetLocalContact tombstones the key so a re-sync cannot resurrect it', async () => {
@@ -95,11 +97,14 @@ describe('MeshCore contact removal + resurrection guard (#3878)', () => {
     );
   });
 
-  it('forgetLocalContact returns false for a key that matched neither a row nor memory', async () => {
+  it('forgetLocalContact returns false and emits nothing for a key that matched neither a row nor memory', async () => {
     const manager = new MeshCoreManager('src-a');
     deleteNode.mockResolvedValue(false); // no stored row
     const ok = await manager.forgetLocalContact('deadbeef'.repeat(8));
     expect(ok).toBe(false);
+    // A genuine no-op must not fire the removed-contact push — the UI would
+    // otherwise flicker (node vanishes then reappears on the next poll).
+    expect(emitMeshCoreContactUpdated).not.toHaveBeenCalled();
   });
 
   it('forgetLocalContact returns true when only an in-memory contact existed', async () => {

@@ -1627,6 +1627,11 @@ class MeshCoreManager extends EventEmitter {
       // Don't resurrect a just-removed contact (#3878). persistContact is called
       // from many event handlers (bulk sync, advert pushes, path updates), so
       // guarding here — not only in refreshContacts — closes every re-insert path.
+      // The `this.contacts.delete` here is a deliberate belt-and-braces cleanup,
+      // not just a DB guard: a caller can race a stale in-memory entry back in
+      // between removal and this persist (e.g. a debounced refreshContacts()
+      // queued just before the tombstone was set), so we scrub the map too
+      // rather than only skipping the DB write.
       if (this.isContactTombstoned(contact.publicKey)) {
         this.contacts.delete(contact.publicKey);
         return;
@@ -3280,12 +3285,17 @@ class MeshCoreManager extends EventEmitter {
       logger.warn(`[MeshCore:${this.sourceId}] forgetLocalContact deleteNode failed: ${(err as Error).message}`);
       return false;
     }
-    this.emit('contact_removed', { sourceId: this.sourceId, publicKey });
-    dataEventEmitter.emitMeshCoreContactUpdated({ publicKey, removed: true } as any, this.sourceId);
-    logger.info(`[MeshCore:${this.sourceId}] Forgot local contact ${publicKey.substring(0, 16)}… (row=${deletedRow}, mem=${hadInMemory})`);
     // Success when we removed a stored row or an in-memory entry. A key that
-    // matched neither is a genuine no-op the caller should surface as failure.
-    return deletedRow || hadInMemory;
+    // matched neither is a genuine no-op — don't fire the removed-contact event
+    // in that case, or the UI would flicker (node briefly vanishes on the
+    // WebSocket push, then reappears once the next poll finds it unchanged).
+    const removed = deletedRow || hadInMemory;
+    if (removed) {
+      this.emit('contact_removed', { sourceId: this.sourceId, publicKey });
+      dataEventEmitter.emitMeshCoreContactUpdated({ publicKey, removed: true } as any, this.sourceId);
+    }
+    logger.info(`[MeshCore:${this.sourceId}] Forgot local contact ${publicKey.substring(0, 16)}… (row=${deletedRow}, mem=${hadInMemory})`);
+    return removed;
   }
 
   /**
