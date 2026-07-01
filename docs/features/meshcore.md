@@ -12,7 +12,7 @@ A single MeshMonitor deployment can run multiple MeshCore sources alongside mult
 
 When a MeshCore source is connected, you get:
 
-- **Per-source MeshCore page** — Nodes, Channels, Direct Messages, Configuration, and a Node Info page in a single multi-pane layout
+- **Per-source MeshCore page** — Nodes, Channels, Node Details, Configuration, and a Node Info page in a single multi-pane layout
 - **Dashboard integration** — MeshCore sources appear as styled cards in the dashboard sidebar with their own logo, status, and node count
 - **Unified map** — MeshCore contacts with GPS appear on the dashboard map alongside Meshtastic nodes
 - **Local-node telemetry** — Battery, radio stats, packet rates, and duty-cycle graphs from the connected companion
@@ -22,6 +22,7 @@ When a MeshCore source is connected, you get:
 - **Contact management** — Remove contacts from the device, export as `meshcore://` URLs for sharing, import from pasted URLs or hex blobs
 - **Repeater neighbour list** — Query a repeater's neighbour table with SNR and last-heard timestamps, with results rendered on the map
 - **Path visualization** — Show route lines on the map colored by hop count, with Discover Path buttons for manual route establishment
+- **Position history** — Per-node movement trails on the map, with a configurable retention window
 - **Auto-pathfinding** — Scheduled path discovery and neighbor collection across your entire mesh
 - **Region / scope tagging** — Stamp outgoing flood traffic with a named region so meshes that drop un-scoped packets (e.g. `region denyf *`) forward it; per-channel, per-source default, and per-message override
 - **Room server support** — Login, post, and auto-sync with MeshCore room servers (BBS-style message boards)
@@ -129,9 +130,9 @@ The device's channels with the most recent message stream. Channel-message sende
 
 **Heard repeaters** — outgoing channel posts show a **📡 N** badge with an expandable list of the repeaters that re-flooded the message and the SNR each was heard at. This is populated best-effort by **self-echo correlation**: when a repeater re-floods your `GRP_TXT` packet, MeshMonitor hears it inbound and attributes the relay hashes to the most recent matching channel send within a ~30-second window. Channel sends carry no protocol ACK, so this is a heuristic, not a delivery receipt. Correlation runs on the raw inbound packet before the opt-in packet-monitor gate, so it works **regardless of whether the packet monitor is enabled**. Relay hashes are resolved to repeater names where known; otherwise the raw hash is shown.
 
-### Direct Messages
+### Node Details
 
-Per-contact DM view with a **contact-detail panel** that mirrors the Meshtastic NodeDetailsBlock. It surfaces:
+Per-contact DM view (renamed from "Direct Messages" to reflect that it also surfaces node details, not just DMs) with a **contact-detail panel** that mirrors the Meshtastic NodeDetailsBlock. It surfaces:
 
 - Contact name and type (companion / repeater / room server)
 - Hops away (`pathLen`)
@@ -215,7 +216,7 @@ Each row in `meshcore_nodes` can opt in to periodic `req_telemetry_sync` request
 
 A global 60-second minimum spacing between any two scheduled mesh ops on the same source is enforced through `MeshCoreManager.lastMeshTxAt`, so future scheduled operations on the same manager (auto-traceroute, periodic adverts, etc.) coordinate against a single field instead of each owning their own throttle.
 
-You configure this from the contact-detail panel in the Direct Messages view:
+You configure this from the contact-detail panel in the Node Details view:
 
 1. Open the DM with the target contact
 2. Open the contact-detail panel
@@ -359,6 +360,16 @@ The MeshCore map can render **route lines** between your local node and each con
 - **Red** — 4+ hops
 
 Toggle path visibility from the map toolbar. Paths are populated by the **Discover Path** button in the contact-detail panel (sends firmware CMD 52) or automatically by the [Auto-Pathfinding](#auto-pathfinding) scheduler. When the firmware responds with path discovery results (push code 0x8D), the route is stored and rendered immediately.
+
+## Position History
+
+The MeshCore map can render a per-node movement trail, mirroring the Meshtastic Position History feature:
+
+- **Show Position History** toggle and a **history length slider** (1h–7d, default 24h) in the map toolbar, persisted per-browser.
+- Trails render as a gradient polyline per node, oldest fix to newest.
+- **Keep history (days)** — a retention control (default **7 days**) wired to the shared `/api/settings` endpoint; a scheduled hourly sweep prunes fixes older than the configured window.
+
+Points come entirely from existing MeshCore GPS sources — contact adverts and the [remote telemetry](#per-node-remote-telemetry) poll — recording only fixes that actually moved (sub-epsilon jitter and Null Island are dropped), so stationary nodes don't accumulate noise. No firmware changes are involved.
 
 ## Neighbor Discovery
 

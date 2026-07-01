@@ -101,6 +101,14 @@ When enabled, auto-ack responses are sent as direct messages (DMs) to the sender
 
 **Use case**: Avoid cluttering shared channels with automated responses. For example, if someone sends "ping" on a busy group channel, the auto-ack reply goes only to them instead of the entire channel.
 
+### Pre-Send Delay
+
+**Description**: An optional pause (in seconds) before the auto-acknowledge response is sent, applied on both Meshtastic and MeshCore sources.
+
+**Default**: `0` (immediate) — **Maximum**: `120` seconds
+
+**When to use it**: Give a repeater time to finish transmitting the triggering message before your reply goes out, instead of racing it. For anything more elaborate than a single fixed delay — e.g. a delay followed by other actions — use the Automation Engine's [Pause action](/features/automation-engine#pause) instead.
+
 ### Skip Incomplete Nodes {#skip-incomplete-nodes-ack}
 
 **Description**: When enabled, Auto Acknowledge will not respond to messages from incomplete nodes.
