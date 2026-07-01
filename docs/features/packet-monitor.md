@@ -100,7 +100,7 @@ Once a user has access to the Packet Monitor, the packets they see are filtered 
 |-------------|-------------------|
 | Encrypted packets | None — always visible (content is unreadable) |
 | Decrypted channel packets | `channel_N:read` for the packet's channel (0-7) |
-| Direct Messages (TEXT_MESSAGE_APP to a specific node) | `messages:read` (Direct Messages: Read) |
+| Direct Messages (TEXT_MESSAGE_APP to a specific node) | `messages:read` (Node Details & DM: Read) |
 | Other decrypted packets (POSITION, TELEMETRY, etc.) | `channel_N:read` for the packet's channel |
 | Packets with no channel info | Always visible |
 

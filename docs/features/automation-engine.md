@@ -221,6 +221,15 @@ Writes a **dynamic** [variable](#variables): **Set to value**, **Increment by**,
 A no-op action. Use it so a rule contributes only its true/false outcome to a FINALLY combine step
 without performing any action of its own.
 
+### Pause
+
+Waits a number of seconds (0–300) before the next action in the branch runs — a bounded, in-process
+delay that serializes naturally with the sequential action executor, so later actions in the same
+branch wait for it. Use it to space out a sequence, e.g. `Message trigger → Pause → Send a message`
+to let a repeater finish transmitting before replying. The pause only lasts for this run and is not
+durable across a restart; the dry-run [simulator](#testing-dry-run) resolves it instantly instead of
+actually waiting.
+
 ## Variables
 
 Variables are a separate, first-class management area under the Automations tab. A variable is
