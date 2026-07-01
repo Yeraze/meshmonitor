@@ -412,6 +412,14 @@ export const ACTIONS: BlockDef[] = [
       { name: 'timeoutSeconds', label: 'Timeout (seconds)', kind: 'number', advanced: true, placeholder: '30' },
     ],
   },
+  {
+    type: 'action.delay',
+    label: 'Pause',
+    description: 'Wait a number of seconds before the next action runs. Use it to space out a sequence — e.g. let a repeater finish transmitting before you reply. Pauses only this run (max 300s); it is not durable across a restart.',
+    fields: [
+      { name: 'seconds', label: 'Seconds', kind: 'number', placeholder: '5', help: 'How long to wait before the next action (0–300).' },
+    ],
+  },
 ];
 
 export const BLOCK_BY_TYPE: Record<string, BlockDef> = Object.fromEntries(

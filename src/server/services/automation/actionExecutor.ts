@@ -6,7 +6,7 @@
  * logic (DM vs channel, target source/node resolution, tapback replyId) is
  * unit-tested without a live node. The real deps wiring lives in meshActionDeps.ts.
  */
-import type { AutomationNode } from '../../../types/automation.js';
+import { type AutomationNode, AUTOMATION_DELAY_MAX_SECONDS } from '../../../types/automation.js';
 import { type EngineEvalContext, interpolateAsync, resolveOperand } from './engineContext.js';
 
 export type NodeManageOp = 'favorite' | 'unfavorite' | 'ignore' | 'unignore' | 'delete';
@@ -47,6 +47,8 @@ export interface ActionDeps {
   /** Run a user script file (in $DATA_DIR/scripts) with the given env. Never throws — returns the outcome. */
   runScript(a: { scriptPath: string; env: Record<string, string>; timeoutMs?: number }):
     Promise<{ success: boolean; returnValue?: unknown; stdout: string; error?: string }>;
+  /** Pause for `ms` (action.delay). Optional/injectable so tests don't wait in real time. */
+  sleep?(ms: number): Promise<void>;
 }
 
 /**
@@ -121,6 +123,19 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
   switch (node.type) {
     case 'action.nothing':
       return undefined; // no-op — used so a rule can contribute only its IF result to a FINALLY step
+
+    case 'action.delay': {
+      // Bounded, in-process pause that serializes with the sequential executor:
+      // later actions in the chain wait for it. Clamped to [0, MAX]; not durable
+      // across a restart (the run is in-memory).
+      const raw = Number((p as Record<string, unknown>).seconds);
+      const seconds = Number.isFinite(raw) ? Math.max(0, Math.min(AUTOMATION_DELAY_MAX_SECONDS, Math.floor(raw))) : 0;
+      if (seconds > 0) {
+        const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+        await sleep(seconds * 1000);
+      }
+      return { delayedSeconds: seconds };
+    }
 
     case 'action.runScript': {
       const scriptPath = String(p.scriptPath ?? '');

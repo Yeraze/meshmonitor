@@ -225,6 +225,8 @@ describe('MeshCore Routes', () => {
 
     (DatabaseService as any).settings = {
       getSetting: vi.fn(async () => null),
+      getSettingForSource: vi.fn(async () => null),
+      setSourceSetting: vi.fn(async () => undefined),
     };
 
     // Saved-regions catalog mock (#3770). Tests override these per-case.
@@ -289,7 +291,7 @@ describe('MeshCore Routes', () => {
       authProvider: 'local'
     });
 
-    for (const resource of ['connection', 'nodes', 'messages', 'configuration', 'remote_admin', 'packetmonitor'] as const) {
+    for (const resource of ['connection', 'nodes', 'messages', 'configuration', 'remote_admin', 'packetmonitor', 'automation'] as const) {
       await permissionModel.grant({
         userId: user.id,
         resource,
@@ -368,6 +370,28 @@ describe('MeshCore Routes', () => {
         `/api/sources/test-source/meshcore/nodes/${VALID_KEY}/position-history?since=-1`,
       );
       expect(mockPositionHistoryService.getPositionHistory).toHaveBeenCalledWith('test-source', VALID_KEY, undefined);
+    });
+  });
+
+  describe('Auto-ack pre-send delay (#3876)', () => {
+    it('GET /automation/autoack returns the stored pre-send delay', async () => {
+      (DatabaseService as any).settings.getSettingForSource = vi.fn(async (_s: string, key: string) =>
+        key === 'meshcoreAutoAckPreSendDelaySeconds' ? '15' : null,
+      );
+      const response = await authenticatedAgent.get('/api/sources/test-source/meshcore/automation/autoack');
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.preSendDelaySeconds).toBe(15);
+    });
+
+    it('POST /automation/autoack clamps the pre-send delay to 120s', async () => {
+      const setSpy = vi.fn(async () => undefined);
+      (DatabaseService as any).settings.setSourceSetting = setSpy;
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/automation/autoack')
+        .send({ preSendDelaySeconds: 9999 });
+      expect(response.status).toBe(200);
+      expect(setSpy).toHaveBeenCalledWith('test-source', 'meshcoreAutoAckPreSendDelaySeconds', '120');
     });
   });
 

@@ -19,6 +19,8 @@ interface AutoAckSettings {
   directMessages: boolean;
   useDM: boolean;
   cooldownSeconds: number;
+  /** Pre-send delay (seconds) before the ack reply is sent (#3876). */
+  preSendDelaySeconds: number;
   testMessages: string;
   /** MeshCore scope/region for the ack reply (#3833). */
   scopeMode: ScopeMode;
@@ -42,6 +44,7 @@ const DEFAULTS: AutoAckSettings = {
   directMessages: true,
   useDM: false,
   cooldownSeconds: 0,
+  preSendDelaySeconds: 0,
   testMessages: DEFAULT_TEST_MESSAGES,
   scopeMode: 'inherit',
   scopeName: '',
@@ -108,6 +111,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
           directMessages: !!json.data.directMessages,
           useDM: !!json.data.useDM,
           cooldownSeconds: typeof json.data.cooldownSeconds === 'number' ? json.data.cooldownSeconds : 0,
+          preSendDelaySeconds: typeof json.data.preSendDelaySeconds === 'number' ? json.data.preSendDelaySeconds : 0,
           testMessages: json.data.testMessages || DEFAULT_TEST_MESSAGES,
           scopeMode: (json.data.scopeMode as ScopeMode) || 'inherit',
           scopeName: json.data.scopeName || '',
@@ -158,6 +162,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
       settings.directMessages !== initial.directMessages ||
       settings.useDM !== initial.useDM ||
       settings.cooldownSeconds !== initial.cooldownSeconds ||
+      settings.preSendDelaySeconds !== initial.preSendDelaySeconds ||
       settings.testMessages !== initial.testMessages ||
       settings.scopeMode !== initial.scopeMode ||
       settings.scopeName !== initial.scopeName ||
@@ -186,6 +191,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
             directMessages: settings.directMessages,
             useDM: settings.useDM,
             cooldownSeconds: settings.cooldownSeconds,
+            preSendDelaySeconds: settings.preSendDelaySeconds,
             testMessages: settings.testMessages,
             scopeMode: settings.scopeMode,
             scopeName: settings.scopeName,
@@ -405,6 +411,33 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
             />
             <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
               {t('meshcore.automation.autoack.cooldown_help', 'seconds (0 = no cooldown)')}
+            </span>
+          </div>
+        </div>
+
+        {/* Pre-send delay (#3876) — wait before replying so a repeater can finish its TX. */}
+        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+          <label>
+            {t('meshcore.automation.autoack.presend_delay_label', 'Pre-Send Delay')}
+            <span className="setting-description">
+              {t(
+                'meshcore.automation.autoack.presend_delay_description',
+                'Wait this many seconds before sending the reply. Gives a repeater time to finish its own transmission so a zero-hop ack is not dropped. 0 sends immediately.',
+              )}
+            </span>
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <input
+              type="number"
+              value={settings.preSendDelaySeconds}
+              onChange={(e) => update('preSendDelaySeconds', Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)))}
+              min={0}
+              max={120}
+              disabled={disabled || !canWrite}
+              style={{ width: '100px', padding: '2px 4px' }}
+            />
+            <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+              {t('meshcore.automation.autoack.presend_delay_help', 'seconds (0 = send immediately, max 120)')}
             </span>
           </div>
         </div>

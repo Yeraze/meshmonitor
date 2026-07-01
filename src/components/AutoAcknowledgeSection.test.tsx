@@ -65,6 +65,9 @@ describe.skip('AutoAcknowledgeSection Component', () => {
     enabledChannels: [0, 1],
     matrix: DEFAULT_AUTOACK_MATRIX,
     baseUrl: '',
+    cooldownSeconds: 60,
+    preSendDelaySeconds: 0,
+    testMessages: '',
     ...mockCallbacks
   } as any;
 
@@ -776,6 +779,7 @@ describe('AutoAcknowledgeSection — response matrix', () => {
     onIgnoredNodesChange: vi.fn(),
     onMatrixChange: vi.fn(),
     onCooldownSecondsChange: vi.fn(),
+    onPreSendDelaySecondsChange: vi.fn(),
     onTestMessagesChange: vi.fn(),
   };
 

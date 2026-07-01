@@ -435,4 +435,40 @@ describe('executeAction', () => {
     const { deps } = recorder();
     await expect(executeAction(node('action.runScript', {}), ctx({}), deps)).rejects.toThrow(/no scriptPath/);
   });
+
+  it('delay: waits the requested seconds via the injected sleep', async () => {
+    const { deps } = recorder();
+    const slept: number[] = [];
+    const out = await executeAction(node('action.delay', { seconds: 5 }), ctx({}), { ...deps, sleep: async (ms) => { slept.push(ms); } });
+    expect(slept).toEqual([5000]);
+    expect(out).toEqual({ delayedSeconds: 5 });
+  });
+
+  it('delay: zero / missing seconds never sleeps', async () => {
+    const { deps } = recorder();
+    const slept: number[] = [];
+    const sleep = async (ms: number) => { slept.push(ms); };
+    expect(await executeAction(node('action.delay', { seconds: 0 }), ctx({}), { ...deps, sleep })).toEqual({ delayedSeconds: 0 });
+    expect(await executeAction(node('action.delay', {}), ctx({}), { ...deps, sleep })).toEqual({ delayedSeconds: 0 });
+    expect(slept).toEqual([]);
+  });
+
+  it('delay: non-numeric / non-finite seconds is treated as 0 (never sleeps)', async () => {
+    const { deps } = recorder();
+    const slept: number[] = [];
+    const sleep = async (ms: number) => { slept.push(ms); };
+    expect(await executeAction(node('action.delay', { seconds: 'garbage' }), ctx({}), { ...deps, sleep })).toEqual({ delayedSeconds: 0 });
+    expect(await executeAction(node('action.delay', { seconds: NaN }), ctx({}), { ...deps, sleep })).toEqual({ delayedSeconds: 0 });
+    expect(await executeAction(node('action.delay', { seconds: {} }), ctx({}), { ...deps, sleep })).toEqual({ delayedSeconds: 0 });
+    expect(slept).toEqual([]);
+  });
+
+  it('delay: clamps to the 300s cap and floors fractional seconds', async () => {
+    const { deps } = recorder();
+    const slept: number[] = [];
+    const sleep = async (ms: number) => { slept.push(ms); };
+    await executeAction(node('action.delay', { seconds: 9999 }), ctx({}), { ...deps, sleep });
+    await executeAction(node('action.delay', { seconds: 2.9 }), ctx({}), { ...deps, sleep });
+    expect(slept).toEqual([300_000, 2_000]);
+  });
 });

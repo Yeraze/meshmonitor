@@ -118,6 +118,8 @@ function recordingDeps(): ActionDeps {
     async notify(a) { return { action: 'notify', ...a }; },
     // Dry-run must never spawn a process — report success without executing.
     async runScript() { return { success: true, stdout: '' }; },
+    // Dry-run must never actually wait — resolve the pause instantly.
+    async sleep() { /* no real wait in the simulator */ },
   };
 }
 

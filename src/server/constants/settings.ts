@@ -36,6 +36,8 @@ export const VALID_SETTINGS_KEYS = [
   'autoAckMultihopReplyEnabled',
   'autoAckTestMessages',
   'autoAckCooldownSeconds',
+  // Pre-send delay (seconds) before a Meshtastic auto-ack reply is sent (#3876).
+  'autoAckPreSendDelaySeconds',
   // Auto-ack 2x2 matrix (discussion #3564): {Channel,Direct} × {ZeroHop,MultiHop},
   // each cell with Reply / Tapback / Respond-via-DM. These supersede the legacy
   // hop-only keys above (autoAckDirect*/autoAckMultihop*/autoAckUseDM/
@@ -219,6 +221,7 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreAutoAckDirectMessages',
   'meshcoreAutoAckUseDM',
   'meshcoreAutoAckCooldownSeconds',
+  'meshcoreAutoAckPreSendDelaySeconds',
   'meshcoreAutoAckTestMessages',
   // MeshCore auto-announce
   'meshcoreAutoAnnounceEnabled',
@@ -266,6 +269,7 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // Auto-ack
   'autoAckChannels',
   'autoAckCooldownSeconds',
+  'autoAckPreSendDelaySeconds',
   'autoAckDirectEnabled',
   'autoAckDirectMessages',
   'autoAckDirectReplyEnabled',
@@ -360,6 +364,7 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreAutoAckDirectMessages',
   'meshcoreAutoAckUseDM',
   'meshcoreAutoAckCooldownSeconds',
+  'meshcoreAutoAckPreSendDelaySeconds',
   'meshcoreAutoAckTestMessages',
   // MeshCore auto-announce
   'meshcoreAutoAnnounceEnabled',
