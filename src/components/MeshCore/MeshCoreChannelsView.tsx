@@ -311,19 +311,26 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // Load the source default scope when (re)connected so the override control can
   // show the baseline. This is a cheap local DB read (no radio traffic), so it's
   // safe to re-run on reconnect.
+  //
+  // Depend on the specific action function, not the whole `actions` object —
+  // `useMeshCore` returns a fresh `actions` object literal on every render, so
+  // depending on `actions` re-fires this effect (and re-hits the network) on
+  // every status/message/node update from the mesh, even with zero user
+  // interaction (#3880).
+  const { getDefaultScope, fetchSavedRegions, discoverRegions } = actions;
   useEffect(() => {
     if (!status?.connected) return;
     let cancelled = false;
     (async () => {
       try {
-        const def = await actions.getDefaultScope();
+        const def = await getDefaultScope();
         if (!cancelled) setDefaultScope(def ?? '');
       } catch {
         /* non-fatal — the override still works without a baseline */
       }
     })();
     return () => { cancelled = true; };
-  }, [status?.connected, actions]);
+  }, [status?.connected, getDefaultScope]);
 
   // Load the global saved-regions catalog (#3770) for the override suggestions.
   // This is a cheap local DB read (no radio traffic), so it's safe to run on
@@ -332,14 +339,14 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     let cancelled = false;
     (async () => {
       try {
-        const rows = await actions.fetchSavedRegions();
+        const rows = await fetchSavedRegions();
         if (!cancelled && rows) setSavedRegions(rows.map(r => r.name));
       } catch {
         /* non-fatal — suggestions are optional */
       }
     })();
     return () => { cancelled = true; };
-  }, [actions, sourceId]);
+  }, [fetchSavedRegions, sourceId]);
 
   // Union of saved + discovered regions, de-duplicated, for the override
   // datalist. Saved regions come first (operator-curated), then any extra
@@ -364,7 +371,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     let cancelled = false;
     (async () => {
       try {
-        const res = await actions.discoverRegions();
+        const res = await discoverRegions();
         if (!cancelled && res?.regions) setDiscoveredRegions(res.regions);
       } catch {
         regionsDiscoveredRef.current = false; // allow a retry on next open
@@ -372,7 +379,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       }
     })();
     return () => { cancelled = true; };
-  }, [showScopeOverride, status?.connected, actions]);
+  }, [showScopeOverride, status?.connected, discoverRegions]);
 
   // Reset the one-off override when switching channels so it never leaks across
   // channels, and collapse the control back to its unobtrusive default.
