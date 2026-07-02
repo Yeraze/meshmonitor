@@ -110,19 +110,20 @@ describe('MeshCoreManager.getAllNodes (node-list-collapses-to-1 regression)', ()
     expect(matches[0].batteryMv).toBe(4010); // DB-only field preserved through the merge
   });
 
-  it('lists the live local node first and does not duplicate its persisted row', async () => {
+  it('lists the live local node first, merges its persisted batteryMv, and does not duplicate its row (#3884)', async () => {
     getNodesBySource.mockResolvedValue([
-      { publicKey: KEY_LOCAL, name: 'Me (stale)', advType: MeshCoreDeviceType.COMPANION, isLocalNode: true },
+      { publicKey: KEY_LOCAL, name: 'Me (stale)', advType: MeshCoreDeviceType.COMPANION, isLocalNode: true, batteryMv: 3900 },
       { publicKey: KEY_B, name: 'Node B', advType: MeshCoreDeviceType.REPEATER, isLocalNode: false },
     ]);
 
     const m = new MeshCoreManager('src-a');
-    // @ts-expect-error - seed the live local node directly
+    // @ts-expect-error - seed the live local node directly, as `get_self_info`
+    // would (no battery field — that only ever lands via the telemetry poller).
     m.localNode = { publicKey: KEY_LOCAL, name: 'Me (live)', advType: MeshCoreDeviceType.COMPANION };
 
     const nodes = await m.getAllNodes();
 
-    expect(nodes[0]).toMatchObject({ publicKey: KEY_LOCAL, name: 'Me (live)' });
+    expect(nodes[0]).toMatchObject({ publicKey: KEY_LOCAL, name: 'Me (live)', batteryMv: 3900 });
     expect(nodes.filter((n) => n.publicKey === KEY_LOCAL)).toHaveLength(1);
   });
 

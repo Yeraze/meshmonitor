@@ -38,6 +38,12 @@ class LowBatteryNotificationService {
   private readonly DEFAULT_THRESHOLD_PERCENT = 20; // Used when a user has no explicit threshold
   private readonly DEFAULT_VOLTAGE_THRESHOLD_MV = 3300; // MeshCore: alert below ~3.3V when no explicit threshold
   private readonly DEFAULT_NOTIFICATION_COOLDOWN_HOURS = 24; // Don't notify about same node more than once per 24 hours
+  // One-shot-per-process diagnostic so the MeshCore voltage check's actual
+  // state (monitored ids vs. what's in the DB vs. what matched) is visible
+  // in default (non-debug) logs at least once per run — see #3884, where
+  // three prior fixes each landed without any log evidence they actually
+  // took effect for the reporter's setup.
+  private readonly loggedMeshCoreDiagnostic = new Set<string>();
 
   /**
    * Start the low-battery monitoring service
@@ -267,6 +273,15 @@ class LowBatteryNotificationService {
         valueLabel: `${node.batteryMv}mV`,
         thresholdLabel: `${voltageThreshold}mV`,
       });
+    }
+
+    if (!this.loggedMeshCoreDiagnostic.has(sourceId)) {
+      this.loggedMeshCoreDiagnostic.add(sourceId);
+      const meshCoreMonitoredCount = monitoredNodeIds.filter(id => id.startsWith(`mc:${sourceId}:`)).length;
+      logger.info(
+        `🔋 [MeshCore low-battery] source=${sourceId}: threshold=${voltageThreshold}mV, ${meshCoreMonitoredCount} monitored node id(s) for this source, ` +
+        `${lowNodes.length} node(s) in meshcore_nodes currently below threshold, ${alerts.length} matched a monitored id (0 here usually means batteryMv was never persisted — check the MeshCorePoller logs)`
+      );
     }
     return alerts;
   }

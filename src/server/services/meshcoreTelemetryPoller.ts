@@ -114,6 +114,13 @@ export class MeshCoreTelemetryPoller {
   private running = false;
   private readonly prevSamples = new Map<string, PrevSample>();
   private readonly lastSnapshots = new Map<string, MeshCorePollSnapshot>();
+  // One-shot diagnostic flags (per source) so the battery-reporting state is
+  // visible in default (non-debug) logs exactly once, instead of either
+  // staying completely silent (issue #3884 — three prior "fixes" landed
+  // blind because nothing logged whether the device ever reports a voltage)
+  // or spamming a line every poll cycle forever.
+  private readonly loggedZeroBattery = new Set<string>();
+  private readonly loggedMissingBattery = new Set<string>();
   // One-shot-per-source confirmation that the companion's battery reading was
   // written to `meshcore_nodes` — the row low-battery notifications actually
   // read, which is a DIFFERENT table from the telemetry-history rows that feed
@@ -160,6 +167,8 @@ export class MeshCoreTelemetryPoller {
   clearSource(sourceId: string): void {
     this.prevSamples.delete(sourceId);
     this.lastSnapshots.delete(sourceId);
+    this.loggedZeroBattery.delete(sourceId);
+    this.loggedMissingBattery.delete(sourceId);
     this.loggedBatteryPersisted.delete(sourceId);
   }
 
@@ -252,10 +261,13 @@ export class MeshCoreTelemetryPoller {
         // low-battery notifications. Without this, batteryMv stays NULL in the
         // table and the notification service never fires for companion nodes.
         // Mirrors what meshcoreRemoteTelemetryScheduler does for repeaters.
+        // isLocalNode:true so this row is recognized as the local/companion
+        // node (getAllNodes() and the repository's getLocalNode() both key
+        // off this flag).
         if (core.batteryMv > 0) {
           const persistedMv = core.batteryMv;
           this.database.meshcore.upsertNode(
-            { publicKey: nodeId, batteryMv: persistedMv },
+            { publicKey: nodeId, batteryMv: persistedMv, isLocalNode: true },
             manager.sourceId,
           ).then(() => {
             // Positive, one-shot confirmation that the notification
@@ -277,7 +289,17 @@ export class MeshCoreTelemetryPoller {
               err,
             );
           });
+        } else if (!this.loggedZeroBattery.has(manager.sourceId)) {
+          this.loggedZeroBattery.add(manager.sourceId);
+          logger.info(
+            `[MeshCorePoller:${manager.sourceId}] get_stats(core) reported batteryMv=${core.batteryMv} — not persisting (need a value > 0). Low-battery notifications for this companion will never fire until a positive voltage reading is observed.`,
+          );
         }
+      } else if (!this.loggedMissingBattery.has(manager.sourceId)) {
+        this.loggedMissingBattery.add(manager.sourceId);
+        logger.info(
+          `[MeshCorePoller:${manager.sourceId}] get_stats(core) response had no battery_mv field — this companion connection/firmware may not be reporting battery voltage.`,
+        );
       }
       if (core.uptimeSecs !== undefined) {
         push(`${MC_TELEMETRY_PREFIX}uptime_secs`, core.uptimeSecs, 's');

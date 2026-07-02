@@ -371,6 +371,7 @@ describe('MeshCoreTelemetryPoller.pollOnce', () => {
     expect(upsertedNodes[0].sourceId).toBe('src-batt');
     expect(upsertedNodes[0].node.publicKey).toBe(FULL_PUBKEY);
     expect(upsertedNodes[0].node.batteryMv).toBe(3800);
+    expect(upsertedNodes[0].node.isLocalNode).toBe(true);
   });
 
   it('does not upsert batteryMv when battery is zero or absent', async () => {
