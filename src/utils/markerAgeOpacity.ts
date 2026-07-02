@@ -21,6 +21,11 @@ export const MIN_MARKER_OPACITY = 0.25;
  *
  * Returns `1` when `valueMs` is missing (no timestamp → no fade) or when the
  * fresh/stale boundaries are degenerate.
+ *
+ * @param freshMs   Timestamp treated as fully opaque (1.0).
+ * @param staleMs   Timestamp treated as fully faded (`minOpacity`).
+ * @param valueMs   The node's timestamp; null/undefined/non-finite → no fade.
+ * @param minOpacity Floor opacity for the oldest markers (default {@link MIN_MARKER_OPACITY}).
  */
 export function markerAgeOpacity(
   freshMs: number,

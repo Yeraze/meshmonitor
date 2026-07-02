@@ -243,6 +243,10 @@ export default function NodeMarkersLayer() {
             pinStyle: mapPinStyle,
           }),
         );
+        // A missing lastHeard sits at the floor here (treated as "oldest
+        // visible"), intentionally diverging from DashboardMap where a missing
+        // timestamp stays fully opaque — that surface age-gates upstream, this
+        // one fades every marker across the raw slider window instead.
         const markerOpacity = !fadeByAge
           ? 1
           : n.lastHeard != null

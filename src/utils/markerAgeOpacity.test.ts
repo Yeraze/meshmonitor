@@ -37,6 +37,9 @@ describe('markerAgeOpacity', () => {
     expect(markerAgeOpacity(fresh, stale, null)).toBe(1);
     expect(markerAgeOpacity(fresh, stale, undefined)).toBe(1);
     expect(markerAgeOpacity(fresh, stale, NaN)).toBe(1);
+    // ±Infinity are non-finite → treated as "no timestamp", not clamped.
+    expect(markerAgeOpacity(fresh, stale, Infinity)).toBe(1);
+    expect(markerAgeOpacity(fresh, stale, -Infinity)).toBe(1);
   });
 
   it('returns 1 for a degenerate window (fresh <= stale)', () => {

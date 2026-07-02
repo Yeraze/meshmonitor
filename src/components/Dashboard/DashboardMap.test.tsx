@@ -237,7 +237,10 @@ describe('DashboardMap', () => {
     expect(fresh).toBeGreaterThan(0.99);
     expect(favorite).toBe(1);
     expect(staleOpacity).toBeGreaterThan(0.25);
-    expect(staleOpacity).toBeLessThan(fresh);
+    // Strictly and clearly dimmer than fresh — guards against an inverted fade
+    // (newer = more transparent) slipping through, which `< fresh` alone would
+    // miss for a node heard just inside a wide window.
+    expect(staleOpacity).toBeLessThan(0.7);
   });
 
   it('forwards the configured map pin style to createNodeIcon (issue #3364)', () => {

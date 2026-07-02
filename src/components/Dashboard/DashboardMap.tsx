@@ -293,7 +293,10 @@ export default function DashboardMap({
   // Build array of nodes that have valid positions, with their resolved lat/lng.
   // Mirrors NodesTab's processedNodes pipeline (App.tsx): ignored hidden, age cutoff
   // bypassed by favorites, transport-class filter from the Map Features panel.
-  const cutoffTime = Date.now() / 1000 - effectiveMaxAge * 60 * 60;
+  // Single "now" for this render so every marker's age fade (#3886) shares one
+  // reference instead of drifting per-node inside the marker map loop below.
+  const nowMs = Date.now();
+  const cutoffTime = nowMs / 1000 - effectiveMaxAge * 60 * 60;
   const nodesWithPosition = nodes
     .filter((n) => !n.isIgnored)
     .filter((n) => !n.hideFromMap) // #3549: per-node "Hide from Map" suppresses the marker only
@@ -489,11 +492,15 @@ export default function DashboardMap({
           // #3886: fade markers by recency instead of a flat opacity — full when
           // freshly heard, fading toward a floor as lastHeard nears the age
           // cutoff (cutoffTime, seconds). Favorites bypass the age gate above so
-          // they stay fully opaque regardless of age.
+          // they stay fully opaque regardless of age. NOTE: here a missing
+          // lastHeard yields full opacity ("assume fresh"), which differs on
+          // purpose from Map Analysis where a missing timestamp sits at the
+          // floor — the Dashboard already age-gates upstream, so anything that
+          // reaches this loop is presumed current.
           const ageOpacity = node.isFavorite
             ? 1
             : markerAgeOpacity(
-                Date.now(),
+                nowMs,
                 cutoffTime * 1000,
                 node.lastHeard != null ? node.lastHeard * 1000 : null,
               );
