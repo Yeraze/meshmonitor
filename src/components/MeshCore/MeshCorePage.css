@@ -1815,6 +1815,30 @@
   color: var(--ctp-text);
 }
 
+.mc-scope-override-unscoped {
+  flex: 0 0 auto;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  color: var(--ctp-subtext0);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm, 4px);
+  white-space: nowrap;
+}
+
+.mc-scope-override-unscoped:hover {
+  color: var(--ctp-text);
+  border-color: var(--ctp-overlay0);
+}
+
+/* Active = this send will go out explicitly unscoped (overrideScope === ''). */
+.mc-scope-override-unscoped.active {
+  background: var(--ctp-blue);
+  border-color: var(--ctp-blue);
+  color: var(--ctp-base);
+}
+
 .mc-scope-override-clear {
   background: none;
   border: none;

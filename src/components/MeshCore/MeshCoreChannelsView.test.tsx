@@ -636,3 +636,81 @@ describe('MeshCoreChannelsView — reply uses the originating scope (#3851)', ()
     expect(screen.queryByLabelText('Send scope')).toBeNull();
   });
 });
+
+// Issue #3888: an explicit "Unscoped" affordance when composing so users can
+// reliably send a channel message with no region scope, without the old
+// type-a-char-then-delete trick. `overrideScope === ''` = explicit unscoped;
+// `null` (untouched) = fall back to the channel/source default scope.
+describe('MeshCoreChannelsView — explicit Unscoped send (#3888)', () => {
+  beforeEach(() => {
+    csrfFetchMock.mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/messages/channel/')) {
+        return Promise.resolve(jsonResponse({ success: true, data: [] }));
+      }
+      return Promise.resolve(jsonResponse([{ id: 0, name: 'Public' }]));
+    });
+  });
+
+  it('sends explicitly unscoped (scope = "") when the Unscoped button is clicked', async () => {
+    const actions = makeActions();
+    render(
+      <MeshCoreChannelsView messages={[]} contacts={contacts} status={makeStatus()} actions={actions} baseUrl="" sourceId="src-a" />,
+    );
+    await waitFor(() => screen.getByText('# Public'));
+
+    // Open the scope-override control (collapsed by default).
+    fireEvent.click(screen.getByText('Scope: unscoped'));
+    // Click the discoverable "Unscoped" affordance.
+    const unscopedBtn = await screen.findByRole('button', { name: 'Unscoped' });
+    fireEvent.click(unscopedBtn);
+    // Active state disambiguates '' (unscoped) from null (default) — both leave
+    // the free-text input empty.
+    expect(unscopedBtn.getAttribute('aria-pressed')).toBe('true');
+    expect(unscopedBtn.classList.contains('active')).toBe(true);
+
+    const input = screen.getByPlaceholderText('Type a message…') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'no scope please' } });
+    await act(async () => {
+      fireEvent.click(screen.getByText('Send'));
+    });
+
+    // The empty-string scope arg is passed through — the backend treats '' as
+    // explicit unscoped (distinct from omitting the arg).
+    expect(actions.sendMessage).toHaveBeenCalledWith('no scope please', undefined, 0, '');
+  });
+
+  it('sends with NO scope override (default scope) when the control is opened but untouched', async () => {
+    const actions = makeActions();
+    render(
+      <MeshCoreChannelsView messages={[]} contacts={contacts} status={makeStatus()} actions={actions} baseUrl="" sourceId="src-a" />,
+    );
+    await waitFor(() => screen.getByText('# Public'));
+
+    // Open the control but do NOT click Unscoped — overrideScope stays null.
+    fireEvent.click(screen.getByText('Scope: unscoped'));
+
+    const input = screen.getByPlaceholderText('Type a message…') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'use default' } });
+    await act(async () => {
+      fireEvent.click(screen.getByText('Send'));
+    });
+
+    // No 4th arg → backend resolves the channel/source default scope.
+    expect(actions.sendMessage).toHaveBeenCalledWith('use default', undefined, 0);
+  });
+
+  it('marks the Unscoped button active after replying to an unscoped message', async () => {
+    const unscoped: MeshCoreMessage[] = [
+      { id: 'r0u', fromPublicKey: 'channel-0', fromName: 'Cara', text: 'plain hi', timestamp: 1000, scopeCode: 0 },
+    ];
+    render(
+      <MeshCoreChannelsView messages={unscoped} contacts={contacts} status={makeStatus()} actions={makeActions()} baseUrl="" sourceId="src-a" />,
+    );
+    await waitFor(() => screen.getByText('plain hi'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
+
+    // handleReply set overrideScope to '' — the Unscoped button reflects it.
+    const unscopedBtn = await screen.findByRole('button', { name: 'Unscoped' });
+    expect(unscopedBtn.getAttribute('aria-pressed')).toBe('true');
+  });
+});

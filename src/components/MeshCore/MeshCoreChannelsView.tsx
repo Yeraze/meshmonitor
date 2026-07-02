@@ -583,6 +583,15 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                 </datalist>
                 <button
                   type="button"
+                  className={`mc-scope-override-unscoped${overrideScope === '' ? ' active' : ''}`}
+                  onClick={() => setOverrideScope('')}
+                  aria-pressed={overrideScope === ''}
+                  title={t('meshcore.scope.override_unscoped_title', 'Send this message with no region scope (flood)')}
+                >
+                  {t('meshcore.scope.unscoped', 'Unscoped')}
+                </button>
+                <button
+                  type="button"
                   className="mc-scope-override-clear"
                   onClick={() => { setOverrideScope(null); setShowScopeOverride(false); }}
                   title={t('meshcore.scope.override_clear', 'Use channel scope')}
