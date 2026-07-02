@@ -131,7 +131,9 @@ export interface SettingsCallbacks {
   setAutomationAirtimeCutoffSource?: (source: string, sourceId?: string | null) => void;
   handleAutoWelcomeEnabled?: () => number;
   invalidateHtmlCache?: () => void;
-  restartAutoDeleteByDistanceService?: (intervalHours: number, sourceId?: string | null) => void;
+  // Per-source (#3901): the scheduler reads the source's own interval, so no
+  // intervalHours arg. A null sourceId is a no-op (no global scheduler).
+  restartAutoDeleteByDistanceService?: (sourceId?: string | null) => void;
   stopAutoDeleteByDistanceService?: (sourceId?: string | null) => void;
 }
 
@@ -661,6 +663,28 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
         callbacks.setAutomationAirtimeCutoffSource?.(filteredSettings.automationAirtimeCutoffSource, sourceId);
       }
 
+      // Auto-delete-by-distance is per-source (#3901): restart this source's
+      // own scheduler so a settings change takes effect without waiting for the
+      // source to reconnect. The scheduler reads enabled/interval itself.
+      const distanceDeleteKeys = [
+        'autoDeleteByDistanceEnabled',
+        'autoDeleteByDistanceIntervalHours',
+        'autoDeleteByDistanceThresholdKm',
+        'autoDeleteByDistanceLat',
+        'autoDeleteByDistanceLon',
+        'autoDeleteByDistanceAction',
+      ];
+      if (distanceDeleteKeys.some((key) => key in filteredSettings)) {
+        const enabled = await databaseService.settings.getSettingForSource(sourceId, 'autoDeleteByDistanceEnabled');
+        if (enabled === 'true') {
+          callbacks.restartAutoDeleteByDistanceService?.(sourceId);
+          logger.info(`✅ Auto-delete-by-distance scheduler restarted (source: ${sourceId})`);
+        } else {
+          callbacks.stopAutoDeleteByDistanceService?.(sourceId);
+          logger.info(`⏹️ Auto-delete-by-distance scheduler stopped (source: ${sourceId})`);
+        }
+      }
+
       return res.json({ success: true });
     }
 
@@ -864,36 +888,9 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
       callbacks.restartGeofenceEngine?.(null);
     }
 
-    const distanceDeleteSettings = [
-      'autoDeleteByDistanceEnabled',
-      'autoDeleteByDistanceIntervalHours',
-      'autoDeleteByDistanceThresholdKm',
-      'autoDeleteByDistanceLat',
-      'autoDeleteByDistanceLon',
-    ];
-    const distanceDeleteSettingsChanged = distanceDeleteSettings.some((key) => key in filteredSettings);
-    if (distanceDeleteSettingsChanged) {
-      const dbDistEnabled = await databaseService.settings.getSetting('autoDeleteByDistanceEnabled');
-      const enabled =
-        filteredSettings.autoDeleteByDistanceEnabled === 'true' ||
-        (filteredSettings.autoDeleteByDistanceEnabled === undefined &&
-          dbDistEnabled === 'true');
-
-      if (enabled) {
-        const dbDistInterval = await databaseService.settings.getSetting('autoDeleteByDistanceIntervalHours');
-        const intervalHours = parseInt(
-          filteredSettings.autoDeleteByDistanceIntervalHours ||
-            dbDistInterval ||
-            '24',
-          10
-        );
-        callbacks.restartAutoDeleteByDistanceService?.(intervalHours, sourceId);
-        logger.info(`✅ Auto-delete-by-distance service restarted (source: ${sourceId ?? 'default'}, interval: ${intervalHours}h)`);
-      } else {
-        callbacks.stopAutoDeleteByDistanceService?.(sourceId);
-        logger.info(`⏹️ Auto-delete-by-distance service stopped (source: ${sourceId ?? 'default'})`);
-      }
-    }
+    // Auto-delete-by-distance is per-source only (#3901). A global (null-source)
+    // save persists the keys but drives no scheduler — every source owns its own
+    // via its manager lifecycle + the per-source branch above.
 
     // Audit log with before/after values.
     // Allowlist check is explicit here so static analyzers can see that

@@ -13,39 +13,21 @@ interface ProcessedNodeInfo {
   action: DistanceAction;
 }
 
+/**
+ * Core auto-delete-by-distance logic (issue #3901).
+ *
+ * This service holds NO scheduling state — the periodic timers live on the
+ * per-source {@link DistanceDeleteScheduler} owned by each source manager, so
+ * every scheduled run is scoped to a single source. `runDeleteCycle(sourceId)`
+ * and `runNow(sourceId)` are the only entry points; the old global
+ * `start()`/`stop()` all-sources singleton was removed.
+ */
 class AutoDeleteByDistanceService {
-  private checkInterval: NodeJS.Timeout | null = null;
   private lastRunAt: number | null = null;
-  private isRunning = false;
-
-  /**
-   * Start the auto-delete-by-distance service
-   */
-  public start(intervalHours: number): void {
-    this.stop();
-
-    logger.info(`🗑️ Starting auto-delete-by-distance service (interval: ${intervalHours} hours)`);
-
-    // Run initial check after 2 minutes
-    setTimeout(() => {
-      this.runDeleteCycle();
-    }, 120_000);
-
-    this.checkInterval = setInterval(() => {
-      this.runDeleteCycle();
-    }, intervalHours * 60 * 60 * 1000);
-  }
-
-  /**
-   * Stop the service (does not abort in-progress runs)
-   */
-  public stop(): void {
-    if (this.checkInterval) {
-      clearInterval(this.checkInterval);
-      this.checkInterval = null;
-      logger.info('⏹️ Auto-delete-by-distance service stopped');
-    }
-  }
+  // Per-source re-entrancy guard: a source's cycle skips only if that SAME
+  // source already has one in flight, so concurrent per-source schedulers
+  // don't spuriously block each other (a global boolean used to).
+  private readonly runningSources = new Set<string>();
 
   /**
    * Run now (manual trigger from API)
@@ -59,7 +41,7 @@ class AutoDeleteByDistanceService {
    */
   public getStatus(): { running: boolean; lastRunAt?: number } {
     return {
-      running: this.checkInterval !== null,
+      running: this.runningSources.size > 0,
       lastRunAt: this.lastRunAt ?? undefined,
     };
   }
@@ -68,16 +50,18 @@ class AutoDeleteByDistanceService {
    * Core deletion logic
    */
   public async runDeleteCycle(sourceId?: string): Promise<{ deletedCount: number }> {
-    if (this.isRunning) {
-      logger.debug('⏭️ Auto-delete-by-distance: skipping, already running');
+    const runKey = sourceId ?? 'default';
+    if (this.runningSources.has(runKey)) {
+      logger.debug(`⏭️ Auto-delete-by-distance: skipping source ${runKey}, already running`);
       return { deletedCount: 0 };
     }
 
-    this.isRunning = true;
+    this.runningSources.add(runKey);
     const processedNodes: ProcessedNodeInfo[] = [];
 
     try {
-      // Read settings (per-source with global fallback)
+      // Read settings scoped to this source (no global fallback — an unset
+      // per-source key reads empty and the cycle no-ops on missing coords).
       const homeLat = parseFloat(await databaseService.settings.getSettingForSource(sourceId, 'autoDeleteByDistanceLat') || '');
       const homeLon = parseFloat(await databaseService.settings.getSettingForSource(sourceId, 'autoDeleteByDistanceLon') || '');
       const thresholdKm = parseFloat(await databaseService.settings.getSettingForSource(sourceId, 'autoDeleteByDistanceThresholdKm') || '100');
@@ -193,7 +177,7 @@ class AutoDeleteByDistanceService {
       logger.error('❌ Auto-delete-by-distance: error during run:', error);
       return { deletedCount: 0 };
     } finally {
-      this.isRunning = false;
+      this.runningSources.delete(runKey);
     }
   }
 

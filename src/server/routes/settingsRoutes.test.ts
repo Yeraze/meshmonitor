@@ -7,6 +7,7 @@ import express, { Express } from 'express';
 import session from 'express-session';
 import request from 'supertest';
 import settingsRoutes, {
+  setSettingsCallbacks,
   validateTileUrl,
   validateCustomTilesets,
   validateAppriseProbeUrl,
@@ -21,6 +22,8 @@ vi.mock('../../services/database.js', () => ({
       setSettings: vi.fn(),
       getSetting: vi.fn(),
       deleteAllSettings: vi.fn(),
+      setSourceSettings: vi.fn(),
+      getSettingForSource: vi.fn(),
     },
     auditLogAsync: vi.fn(),
     drizzleDbType: 'sqlite',
@@ -90,6 +93,8 @@ describe('settingsRoutes', () => {
     mockDb.settings.setSettings.mockResolvedValue(undefined);
     mockDb.settings.getSetting.mockResolvedValue(null);
     mockDb.settings.deleteAllSettings.mockResolvedValue(undefined);
+    mockDb.settings.setSourceSettings.mockResolvedValue(undefined);
+    mockDb.settings.getSettingForSource.mockResolvedValue(null);
     mockDb.auditLogAsync.mockResolvedValue(undefined);
   });
 
@@ -491,6 +496,71 @@ describe('settingsRoutes', () => {
         .expect(400);
 
       expect(res.body.error).toContain('responseType');
+    });
+  });
+
+  // Issue #3901: saving auto-delete-by-distance settings on a specific source's
+  // panel (e.g. the MQTT broker) must restart THAT source's per-source scheduler
+  // — not fall through to a global singleton. Regression: previously the
+  // per-source save branch never restarted any distance scheduler at all.
+  describe('POST /api/settings — per-source auto-delete-by-distance (#3901)', () => {
+    const restartSpy = vi.fn();
+    const stopSpy = vi.fn();
+
+    beforeEach(() => {
+      setSettingsCallbacks({
+        restartAutoDeleteByDistanceService: restartSpy,
+        stopAutoDeleteByDistanceService: stopSpy,
+      });
+      restartSpy.mockClear();
+      stopSpy.mockClear();
+    });
+
+    afterAll(() => {
+      setSettingsCallbacks({});
+    });
+
+    it('restarts the per-source scheduler with the sourceId when enabled distance settings are saved', async () => {
+      (databaseService as any).settings.getSettingForSource.mockResolvedValue('true');
+      const app = createApp(adminUser);
+
+      const res = await request(app)
+        .post('/api/settings?sourceId=mqtt-broker-1')
+        .send({ autoDeleteByDistanceEnabled: 'true', autoDeleteByDistanceThresholdKm: '50' });
+
+      expect(res.status).toBe(200);
+      // Stored under the source prefix, and the source's own scheduler restarted.
+      expect((databaseService as any).settings.setSourceSettings).toHaveBeenCalledWith(
+        'mqtt-broker-1',
+        expect.objectContaining({ autoDeleteByDistanceEnabled: 'true' }),
+      );
+      expect(restartSpy).toHaveBeenCalledWith('mqtt-broker-1');
+      expect(stopSpy).not.toHaveBeenCalled();
+    });
+
+    it('stops the per-source scheduler when distance settings are saved with the feature disabled', async () => {
+      (databaseService as any).settings.getSettingForSource.mockResolvedValue('false');
+      const app = createApp(adminUser);
+
+      const res = await request(app)
+        .post('/api/settings?sourceId=mqtt-broker-1')
+        .send({ autoDeleteByDistanceEnabled: 'false' });
+
+      expect(res.status).toBe(200);
+      expect(stopSpy).toHaveBeenCalledWith('mqtt-broker-1');
+      expect(restartSpy).not.toHaveBeenCalled();
+    });
+
+    it('leaves the scheduler untouched when the payload has no distance keys', async () => {
+      const app = createApp(adminUser);
+
+      const res = await request(app)
+        .post('/api/settings?sourceId=mqtt-broker-1')
+        .send({ meshName: 'Somewhere' });
+
+      expect(res.status).toBe(200);
+      expect(restartSpy).not.toHaveBeenCalled();
+      expect(stopSpy).not.toHaveBeenCalled();
     });
   });
 
