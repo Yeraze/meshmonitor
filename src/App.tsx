@@ -22,6 +22,8 @@ import MessagesTab from './components/MessagesTab';
 import ChannelsTab from './components/ChannelsTab';
 import PacketMonitorPanel from './components/PacketMonitorPanel';
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection';
+import { AutomationTokenReference } from './components/AutomationTokenReference';
+import { buildMeshtasticTokenGroups } from './components/meshtasticAutomationTokens';
 import AutoTracerouteSection from './components/AutoTracerouteSection';
 import AutoLocalStatsSection from './components/AutoLocalStatsSection';
 import AutoAnnounceSection from './components/AutoAnnounceSection';
@@ -81,7 +83,7 @@ import { AutomationProvider, useAutomation } from './contexts/AutomationContext'
 import { useAuth } from './contexts/AuthContext';
 import { useCsrf } from './contexts/CsrfContext';
 import { useSource } from './contexts/SourceContext';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useWebSocketConnected } from './contexts/WebSocketContext';
 import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
@@ -5140,6 +5142,28 @@ const location = useLocation();
               ]}
             />
             <div className="settings-content">
+              <AutomationTokenReference
+                title={t('automation.tokens.title', 'Available message tokens')}
+                intro={t(
+                  'automation.tokens.intro',
+                  'These placeholders are substituted in the message templates below. Reply tokens only expand when responding to a received message.',
+                )}
+                groups={buildMeshtasticTokenGroups({
+                  replyTitle: t('automation.tokens.reply_title', 'When replying (Auto-Acknowledge, Auto-Responder)'),
+                  replyNote: t('automation.tokens.reply_note', 'Resolved from the message that triggered the reply.'),
+                  globalTitle: t('automation.tokens.global_title', 'Available everywhere'),
+                  globalNote: t('automation.tokens.global_note', 'Also work in Auto-Announce and Auto-Welcome.'),
+                })}
+                footer={
+                  <>
+                    💡 {t('automation.tokens.engine_tip', 'Want maximum flexibility? Try the')}{' '}
+                    <Link to="/automations" style={{ color: 'var(--ctp-mauve)', fontWeight: 'bold' }}>
+                      {t('automation.engine_link', 'Automation Engine')}
+                    </Link>{' '}
+                    {t('automation.tokens.engine_tip2', '— build global “when this happens, do that” workflows across every source.')}
+                  </>
+                }
+              />
               <div id="airtime-cutoff">
                 <AirtimeCutoffSection baseUrl={baseUrl} />
               </div>

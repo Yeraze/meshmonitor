@@ -5,7 +5,6 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
-import { MeshCoreTokenLegend } from './MeshCoreTokenLegend';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 
 interface MeshCoreTimerTriggersSectionProps {
@@ -420,7 +419,6 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
               {tr.responseType === 'text' && (
                 <label style={{ fontSize: '0.85rem' }}>
                   {t('meshcore.automation.timers.response_message', 'Message (token expansion supported)')}
-                  <MeshCoreTokenLegend />
                   <textarea
                     value={tr.response || ''}
                     onChange={(e) => updateTrigger(tr.id, { response: e.target.value })}
@@ -452,7 +450,6 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
                   </label>
                   <label style={{ fontSize: '0.85rem' }}>
                     {t('meshcore.automation.timers.script_args', 'Script args (token expansion)')}
-                    <MeshCoreTokenLegend />
                     <input
                       type="text"
                       value={tr.scriptArgs || ''}

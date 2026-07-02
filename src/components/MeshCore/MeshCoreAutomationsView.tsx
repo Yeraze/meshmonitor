@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useSaveBar } from '../../hooks/useSaveBar';
@@ -7,6 +8,8 @@ import { MeshCoreAutoAckSection } from './MeshCoreAutoAckSection';
 import { MeshCoreAutoAnnounceSection } from './MeshCoreAutoAnnounceSection';
 import { MeshCoreAutoResponderSection } from './MeshCoreAutoResponderSection';
 import { MeshCoreTimerTriggersSection } from './MeshCoreTimerTriggersSection';
+import { AutomationTokenReference } from '../AutomationTokenReference';
+import { buildMeshCoreTokenGroups } from './meshcoreAutomationTokens';
 
 interface MeshCoreAutomationsViewProps {
   baseUrl: string;
@@ -142,6 +145,30 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
       <h1 style={{ marginBottom: '1.5rem' }}>
         {t('meshcore.automation.title', 'Automations')}
       </h1>
+
+      {/* Single source-of-truth token reference for the whole page. */}
+      <AutomationTokenReference
+        title={t('meshcore.automation.tokens.title', 'Available message tokens')}
+        intro={t(
+          'meshcore.automation.tokens.intro',
+          'These placeholders are substituted in the message templates below. Reply tokens only expand when responding to a received message.',
+        )}
+        groups={buildMeshCoreTokenGroups({
+          replyTitle: t('meshcore.automation.tokens.reply_title', 'When replying (Auto-Acknowledge, Auto-Responder)'),
+          replyNote: t('meshcore.automation.tokens.reply_note', 'Resolved from the message that triggered the reply.'),
+          globalTitle: t('meshcore.automation.tokens.global_title', 'Available everywhere'),
+          globalNote: t('meshcore.automation.tokens.global_note', 'Also work in Auto-Announce and Timer Triggers.'),
+        })}
+        footer={
+          <>
+            💡 {t('meshcore.automation.tokens.engine_tip', 'Want maximum flexibility? Try the')}{' '}
+            <Link to="/automations" style={{ color: 'var(--ctp-mauve)', fontWeight: 'bold' }}>
+              {t('automation.engine_link', 'Automation Engine')}
+            </Link>{' '}
+            {t('meshcore.automation.tokens.engine_tip2', '— build global “when this happens, do that” workflows across every source.')}
+          </>
+        }
+      />
 
       {/* Auto-Pathfinding Section */}
       <div className="automation-section-header" style={{

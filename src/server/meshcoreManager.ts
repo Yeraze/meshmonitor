@@ -1117,7 +1117,7 @@ class MeshCoreManager extends EventEmitter {
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix}: ${data.text}`);
       void this.checkAutoAcknowledge(message, true, undefined, hopCount, ackRoute);
-      void this.checkAutoResponder(message, true, undefined);
+      void this.checkAutoResponder(message, true, undefined, hopCount, ackRoute);
     } else if (event_type === 'channel_message') {
       // MeshCore channel packets have no sender field on the wire — the sender's
       // device prefixes "Name: " onto the text body. Split it out so the UI can
@@ -1153,7 +1153,7 @@ class MeshCoreManager extends EventEmitter {
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.info(`[MeshCore] Channel ${data.channel_idx} message: ${data.text}`);
       void this.checkAutoAcknowledge(message, false, data.channel_idx, hopCount, route);
-      void this.checkAutoResponder(message, false, data.channel_idx);
+      void this.checkAutoResponder(message, false, data.channel_idx, hopCount, route);
     } else if (event_type === 'room_message') {
       // Room server post (TXT_TYPE_SIGNED_PLAIN). The room's pubkey prefix
       // identifies which room, and the author prefix identifies the poster.
@@ -5507,6 +5507,8 @@ class MeshCoreManager extends EventEmitter {
     message: MeshCoreMessage,
     isDM: boolean,
     channelIdx: number | undefined,
+    hops: number | null = null,
+    route: string | null = null,
   ): Promise<void> {
     try {
       const enabledRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoResponderEnabled');
@@ -5582,7 +5584,22 @@ class MeshCoreManager extends EventEmitter {
           continue;
         }
 
-        const body = await replaceMeshCoreAnnounceTokens(trigger.response || '', this);
+        // Expand both global tokens (version/counts) AND the reply-context
+        // tokens (sender/hops/route/snr) so an auto-responder template behaves
+        // like an auto-ack template (#3892). senderName comes from the message
+        // or the resolved contact.
+        const senderName = message.fromName || senderContact?.advName || senderContact?.name || undefined;
+        const body = await this.renderReplyTemplate(
+          trigger.response || '',
+          message.fromPublicKey,
+          senderName,
+          message.snr,
+          message.timestamp,
+          hops,
+          route,
+          message.scopeName,
+          message.scopeCode,
+        );
         if (!body.trim()) continue;
 
         try {
@@ -5680,8 +5697,42 @@ class MeshCoreManager extends EventEmitter {
       .replace(/\{HOPS\}/g, hopsStr)
       .replace(/\{NUMBER_HOPS\}/g, hopsStr)
       .replace(/\{ROUTE\}/g, routeStr)
-      .replace(/\{SCOPE\}/g, scopeStr)
-      .replace(/\{VERSION\}/g, '4.8.0');
+      .replace(/\{SCOPE\}/g, scopeStr);
+  }
+
+  /**
+   * Render a reply template (Auto-Acknowledge, Auto-Responder). Runs the
+   * per-message reply tokens first — {NODE_ID}/{NODE_NAME}/{LONG_NAME}/
+   * {SHORT_NAME} resolve to the SENDER, plus {SNR}/{HOPS}/{ROUTE}/{SCOPE}/
+   * {DATE}/{TIME} from the triggering packet — then the global tokens
+   * ({VERSION}/{DURATION}/{CONTACTCOUNT}/…) fill in anything left. Both reply
+   * surfaces share this path so they accept the SAME placeholders (#3892).
+   * Order matters: reply tokens claim {NODE_ID}/{NODE_NAME} before the global
+   * pass, so a reply cites the sender rather than the local node.
+   */
+  private async renderReplyTemplate(
+    template: string,
+    senderPubKey: string,
+    senderName: string | undefined,
+    snr: number | undefined,
+    timestamp: number,
+    hops: number | null,
+    route: string | null,
+    scopeName?: string | null,
+    scopeCode?: number | null,
+  ): Promise<string> {
+    const withReply = this.replaceAutoAckTokens(
+      template,
+      senderPubKey,
+      senderName,
+      snr,
+      timestamp,
+      hops,
+      route,
+      scopeName,
+      scopeCode,
+    );
+    return replaceMeshCoreAnnounceTokens(withReply, this);
   }
 
   /**
@@ -5766,7 +5817,7 @@ class MeshCoreManager extends EventEmitter {
         senderName = contact?.advName ?? contact?.name ?? undefined;
       }
 
-      const replyText = this.replaceAutoAckTokens(
+      const replyText = await this.renderReplyTemplate(
         template,
         message.fromPublicKey,
         senderName,

@@ -497,8 +497,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
           <label htmlFor="meshcoreAnnounceMessage">
             {t('meshcore.automation.announce.message_label', 'Message template')}
             <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
-              {t('meshcore.automation.announce.available_tokens', 'Available tokens:')}{' '}
-              {TOKENS.join(', ')}
+              {t('meshcore.automation.announce.tokens_hint', 'Insert a token below, or see the reference at the top of this page.')}
             </span>
           </label>
           <textarea
