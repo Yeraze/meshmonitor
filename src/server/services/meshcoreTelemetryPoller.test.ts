@@ -26,6 +26,7 @@ import type {
   MeshCoreDeviceInfo,
 } from '../meshcoreManager.js';
 import type { MeshCoreManagerRegistry } from '../meshcoreRegistry.js';
+import { logger } from '../../utils/logger.js';
 
 // ============================================================================
 // Test doubles
@@ -394,5 +395,32 @@ describe('MeshCoreTelemetryPoller.pollOnce', () => {
 
     expect(u1).toHaveLength(0);
     expect(u2).toHaveLength(0);
+  });
+
+  it('surfaces a failed batteryMv persist at error level instead of swallowing it (#3884)', async () => {
+    const manager = makeManager({
+      sourceId: 'src-fail',
+      publicKey: FULL_PUBKEY,
+      core: { batteryMv: 3800, uptimeSecs: 100, errors: 0, queueLen: 0 },
+      radio: null, packets: null, deviceTime: null, deviceInfo: null,
+    });
+    // A DB whose node upsert rejects — the exact failure that would leave
+    // meshcore_nodes empty (so low-battery notifications never fire) while the
+    // telemetry graph still shows a voltage. It must not be swallowed.
+    const db: PollerDatabase = {
+      telemetry: { insertTelemetryBatch: async (rows) => rows.length },
+      meshcore: { upsertNode: async () => { throw new Error('constraint failed'); } },
+    };
+    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
+    try {
+      await new MeshCoreTelemetryPoller({ registry: makeRegistry(manager), database: db }).pollOnce();
+      // Let the fire-and-forget upsert's rejection handler run.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(errorSpy).toHaveBeenCalled();
+      const logged = errorSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('FAILED to persist companion batteryMv');
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });

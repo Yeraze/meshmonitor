@@ -709,6 +709,30 @@ function runNotificationsTests(getBackend: () => TestBackend) {
       expect(users.find((u) => u.userId === 3)).toBeUndefined();
     });
 
+    // Regression for #3884: the reporter uses Apprise ONLY (no web push). The
+    // entry query gates on `or(notifyOnMessage[=enableWebPush], appriseEnabled)`,
+    // so an Apprise-only user with low battery enabled must still be returned —
+    // the previous test only covered a web-push user, leaving this path unproven.
+    it('includes an Apprise-only user (no web push) with low-battery enabled (#3884)', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'apprise_user'));
+      await repo.saveUserPreferences(1, makeDefaultPrefs({
+        enableWebPush: false,       // no web push subscription/channel
+        enableApprise: true,        // ...but Apprise is active
+        notifyOnLowBattery: true,
+        lowBatteryVoltageThreshold: 4100,
+        monitoredNodes: ['mc:src-a:deadbeefcafe'],
+      }));
+
+      const users = await repo.getUsersWithLowBatteryNotifications();
+      const user = users.find((u) => u.userId === 1);
+      expect(user).toBeDefined();
+      expect(user!.lowBatteryVoltageThreshold).toBe(4100);
+      expect(JSON.parse(user!.monitoredNodes || '[]')).toEqual(['mc:src-a:deadbeefcafe']);
+    });
+
     it('returns empty array when no users have low-battery notifications enabled', async () => {
       const backend = getBackend();
       if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
