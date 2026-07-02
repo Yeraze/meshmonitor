@@ -55,6 +55,11 @@ describe('renderResponderText — reply tokens (#3892)', () => {
     expect(await render('Hi {NODE_NAME}', { senderName: 'Tester' })).toBe('Hi Tester');
   });
 
+  it('resolves {NODE_ID} to the sender’s prefixed ID, not the local node', async () => {
+    // nodeId = '!' + first 8 hex chars of the sender pubkey (deadbeef…).
+    expect(await render('from {NODE_ID}', { senderName: 'Tester' })).toBe('from !deadbeef');
+  });
+
   it('leaves unknown tokens untouched', async () => {
     expect(await render('{NOPE}')).toBe('{NOPE}');
   });
