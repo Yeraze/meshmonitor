@@ -176,9 +176,15 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
         }
         case 'trigger': {
           const tn = ctx.trigger.fields.scopeName;
+          const tc = ctx.trigger.fields.scopeCode;
+          // `scopeCode` is only present in fields at all for a MeshCore message
+          // trigger (buildMeshCoreMessageContext) — a schedule/telemetry/Meshtastic
+          // trigger has no such key, and must inherit rather than be forced unscoped.
+          const hasTriggerScope = 'scopeCode' in ctx.trigger.fields;
           if (typeof tn === 'string' && tn.length > 0) scopeOverride = tn;
-          else if (ctx.trigger.fields.scopeCode === 0) scopeOverride = ''; // trigger was explicitly unscoped
-          else scopeOverride = undefined; // Meshtastic / unknown → inherit
+          else if (!hasTriggerScope) scopeOverride = undefined; // no MeshCore message trigger → inherit
+          else if (typeof tc === 'number' && tc > 0) scopeOverride = undefined; // known-but-unmapped scope → inherit
+          else scopeOverride = ''; // scopeCode 0 (unscoped) or unresolvable (#3887) → reply unscoped
           break;
         }
         default:
