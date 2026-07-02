@@ -4559,7 +4559,12 @@ class MeshCoreManager extends EventEmitter {
     try {
       const dbNodes = await databaseService.meshcore.getNodesBySource(this.sourceId);
       for (const n of dbNodes) {
-        if (n.isLocalNode) continue; // local node is appended live below
+        // The local node's row is intentionally NOT skipped here (even though
+        // it's re-added "live" below) — it needs to land in `byKey` so the
+        // merge below can pull its DB-only fields (batteryMv, uptimeSecs)
+        // forward. It's deduped via the `byKey.delete()` call after the
+        // merge, not by exclusion here. Excluding it here previously made
+        // the merge a no-op once isLocalNode started being persisted (#3884).
         byKey.set(n.publicKey, {
           publicKey: n.publicKey,
           name: n.name || 'Unknown',
