@@ -114,6 +114,12 @@ export class MeshCoreTelemetryPoller {
   private running = false;
   private readonly prevSamples = new Map<string, PrevSample>();
   private readonly lastSnapshots = new Map<string, MeshCorePollSnapshot>();
+  // One-shot-per-source confirmation that the companion's battery reading was
+  // written to `meshcore_nodes` — the row low-battery notifications actually
+  // read, which is a DIFFERENT table from the telemetry-history rows that feed
+  // the battery graph. Lets an operator confirm from default logs that the
+  // notification source-of-truth is populated, not just the graph (#3884).
+  private readonly loggedBatteryPersisted = new Set<string>();
 
   constructor(opts: MeshCoreTelemetryPollerOptions) {
     this.registry = opts.registry;
@@ -154,6 +160,7 @@ export class MeshCoreTelemetryPoller {
   clearSource(sourceId: string): void {
     this.prevSamples.delete(sourceId);
     this.lastSnapshots.delete(sourceId);
+    this.loggedBatteryPersisted.delete(sourceId);
   }
 
   /**
@@ -246,11 +253,29 @@ export class MeshCoreTelemetryPoller {
         // table and the notification service never fires for companion nodes.
         // Mirrors what meshcoreRemoteTelemetryScheduler does for repeaters.
         if (core.batteryMv > 0) {
+          const persistedMv = core.batteryMv;
           this.database.meshcore.upsertNode(
-            { publicKey: nodeId, batteryMv: core.batteryMv },
+            { publicKey: nodeId, batteryMv: persistedMv },
             manager.sourceId,
-          ).catch((err) => {
-            logger.warn(`[MeshCorePoller:${manager.sourceId}] Failed to persist batteryMv:`, err);
+          ).then(() => {
+            // Positive, one-shot confirmation that the notification
+            // source-of-truth row is populated — distinct from the telemetry
+            // rows above that only feed the graph (#3884).
+            if (!this.loggedBatteryPersisted.has(manager.sourceId)) {
+              this.loggedBatteryPersisted.add(manager.sourceId);
+              logger.info(
+                `[MeshCorePoller:${manager.sourceId}] Persisted companion batteryMv=${persistedMv} to meshcore_nodes (node ${nodeId.substring(0, 12)}…) — this is the row low-battery notifications read.`,
+              );
+            }
+          }).catch((err) => {
+            // Elevated from warn: a silently-swallowed upsert here is the exact
+            // failure mode that leaves the battery graph populated (telemetry
+            // table) while notifications never fire (meshcore_nodes empty) —
+            // #3884. Make it impossible to miss in default logs.
+            logger.error(
+              `[MeshCorePoller:${manager.sourceId}] FAILED to persist companion batteryMv to meshcore_nodes — low-battery notifications cannot fire until this succeeds:`,
+              err,
+            );
           });
         }
       }
