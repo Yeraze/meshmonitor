@@ -4605,7 +4605,14 @@ class MeshCoreManager extends EventEmitter {
 
     const nodes: MeshCoreNode[] = [];
     if (this.localNode) {
-      nodes.push(this.localNode);
+      // this.localNode comes from `get_self_info` (name/radio config only —
+      // no battery/uptime), so merge it over the persisted DB row rather than
+      // replacing it outright. Without this, the local node's batteryMv from
+      // the telemetry poller was silently dropped every time it was
+      // overlaid, leaving the companion's own battery permanently blank in
+      // the UI even though it was correctly persisted (#3884).
+      const persisted = byKey.get(this.localNode.publicKey);
+      nodes.push(persisted ? { ...persisted, ...this.localNode } : this.localNode);
       byKey.delete(this.localNode.publicKey);
     }
     nodes.push(...byKey.values());
