@@ -11,6 +11,13 @@ import { MeshCoreNodeTelemetryConfig } from './MeshCoreNodeTelemetryConfig';
 import TelemetryGraphs from '../TelemetryGraphs';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSettings } from '../../contexts/SettingsContext';
+import {
+  markDmRead,
+  loadDmLastRead,
+  subscribeUnreadChanged,
+  computeUnreadDmPeers,
+  canonicalizePeerKey,
+} from './meshcoreUnreadStore';
 
 interface MeshCoreDirectMessagesViewProps {
   messages: MeshCoreMessage[];
@@ -235,6 +242,35 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     });
   }, [messages, selected, selfKey]);
 
+  // Unread-marker re-read trigger (localStorage isn't reactive) (#3891).
+  const [unreadTick, setUnreadTick] = useState(0);
+  useEffect(() => subscribeUnreadChanged(() => setUnreadTick((n) => n + 1)), []);
+
+  // Mark the open conversation read up to its newest message. Re-runs when a
+  // new message arrives for the selected peer (filtered changes), so a
+  // conversation you're actively viewing never lingers as unread. markDmRead is
+  // a no-op when the marker is already current, so this stays cheap.
+  useEffect(() => {
+    if (!sourceId || !selected) return;
+    const peer = canonicalizePeerKey(selected, contacts);
+    const latest = filtered.reduce((mx, m) => Math.max(mx, m.timestamp), 0);
+    markDmRead(sourceId, peer, latest || Date.now());
+  }, [sourceId, selected, contacts, filtered]);
+
+  // Peers with unread incoming DMs — drives the per-row red-dot in the contact
+  // list. The currently-open peer is never flagged.
+  const unreadPeers = useMemo(() => {
+    void unreadTick;
+    if (!sourceId) return new Set<string>();
+    return computeUnreadDmPeers({
+      messages,
+      contacts,
+      selfKey,
+      dmLastRead: loadDmLastRead(sourceId),
+      activePeerKey: selected,
+    });
+  }, [sourceId, messages, contacts, selfKey, selected, unreadTick]);
+
   const handleSelectContact = (key: string) => {
     setSelected(key);
     if (isMobileViewport()) setMobileShowContent(true);
@@ -336,6 +372,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               const name = c?.advName || c?.name || `${key.substring(0, 8)}…`;
               const isFavorite = favoriteByKey.get(key) ?? false;
               const roleIcon = meshcoreRoleIcon(c?.advType);
+              const hasUnread = unreadPeers.has(key);
               return (
                 <button
                   key={key}
@@ -343,6 +380,13 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   onClick={() => handleSelectContact(key)}
                 >
                   <div className="mc-node-row-name">
+                    {hasUnread && (
+                      <span
+                        className="meshcore-dm-unread-dot"
+                        aria-label={t('meshcore.dms.unread', 'Unread messages')}
+                        title={t('meshcore.dms.unread', 'Unread messages')}
+                      />
+                    )}
                     {roleIcon && (
                       <span
                         className="mc-node-role-icon"

@@ -15,6 +15,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMeshCore, ConnectionStatus } from './hooks/useMeshCore';
+import { useMeshCoreUnread } from './hooks/useMeshCoreUnread';
 import { MeshCoreStatusBar } from './MeshCoreStatusBar';
 import { MeshCoreSubToolbar, MeshCoreView } from './MeshCoreSubToolbar';
 import { MeshCoreNodesView } from './MeshCoreNodesView';
@@ -66,6 +67,16 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
   const [pendingDmContact, setPendingDmContact] = useState<string | null>(null);
 
+  // Unread red-dots for the Channels + Node Details (DMs) sidebar icons (#3891).
+  const unread = useMeshCoreUnread({
+    baseUrl,
+    sourceId,
+    messages,
+    contacts,
+    selfKey: status?.localNode?.publicKey,
+    enabled: enabled !== false,
+  });
+
   const navigateToDm = useCallback((publicKey: string) => {
     setPendingDmContact(publicKey);
     setView('dms');
@@ -105,6 +116,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
           expanded={toolbarExpanded}
           onToggleExpanded={() => setToolbarExpanded(v => !v)}
           showInfo
+          unread={{ channels: unread.channels, dms: unread.dms }}
         />
         <div className="meshcore-content">
           {view === 'nodes' && (
