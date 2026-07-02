@@ -21,8 +21,8 @@ export const MESHCORE_GLOBAL_TOKENS: AutomationTokenInfo[] = [
   { token: '{COMPANIONCOUNT}', description: 'Number of companion contacts' },
   { token: '{REPEATERCOUNT}', description: 'Number of repeater contacts' },
   { token: '{ROOMCOUNT}', description: 'Number of room-server contacts' },
-  { token: '{NODE_NAME}', description: 'This node’s name (sender’s name in reply features)' },
-  { token: '{NODE_ID}', description: 'This node’s ID (sender’s ID in reply features)' },
+  { token: '{NODE_NAME}', description: 'Sender’s name in replies; this node’s name in Auto-Announce / Timer Triggers' },
+  { token: '{NODE_ID}', description: 'Sender’s ID in replies; this node’s ID in Auto-Announce / Timer Triggers' },
 ];
 
 /**

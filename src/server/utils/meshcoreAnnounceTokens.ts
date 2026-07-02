@@ -6,11 +6,15 @@
  * resolved against a MeshCoreManager: contact counts come from the
  * manager's in-memory cache, uptime/version come from process state.
  *
- * The set intentionally stays narrow — `{VERSION}`, `{DURATION}`,
+ * This is only the GLOBAL token set — `{VERSION}`, `{DURATION}`,
  * `{CONTACTCOUNT}`, `{COMPANIONCOUNT}`, `{REPEATERCOUNT}`,
- * `{ROOMCOUNT}`, `{NODE_NAME}`, `{NODE_ID}`. Adding more is cheap, but
- * shapes the contract every consumer (announce, timer-trigger text,
- * future auto-responder text) inherits.
+ * `{ROOMCOUNT}`, `{NODE_NAME}`, `{NODE_ID}` — shared by every consumer
+ * (announce, timer-trigger text, and the auto-responder). The narrowness
+ * is NOT a global design constraint on MeshCore tokens: reply surfaces
+ * (auto-ack, auto-responder) layer `MeshCoreManager.replaceAutoAckTokens`
+ * on top for the per-message reply set ({HOPS}/{ROUTE}/{SNR}/sender/…) via
+ * `renderReplyTemplate`. Here `{NODE_NAME}`/`{NODE_ID}` resolve to the
+ * LOCAL node; in reply contexts the reply pass shadows them with the sender.
  */
 import { promises as fs } from 'fs';
 import path from 'path';
