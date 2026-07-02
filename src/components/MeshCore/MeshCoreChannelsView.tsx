@@ -21,6 +21,7 @@ import { MeshCoreMessage, MeshCoreActions, ConnectionStatus } from './hooks/useM
 import { MeshCoreContact, formatMeshCoreChannelName } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
+import { loadChannelLastRead, markChannelRead as persistChannelRead } from './meshcoreUnreadStore';
 
 const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = (): boolean =>
@@ -81,22 +82,10 @@ function buildChannelFilter(channelIdx: number): (m: MeshCoreMessage) => boolean
 // request: surface channels with new messages without opening each one.
 // ---------------------------------------------------------------------------
 
-const lastReadStorageKey = (sourceId: string) =>
-  `meshmonitor-meshcore-channel-lastread-${sourceId}`;
+// Per-channel last-read markers live in the shared unread store
+// (meshcoreUnreadStore) so the sidebar red-dot (#3891) and this view's list
+// badges read/write the same source of truth and stay in sync.
 const SORT_UNREAD_FIRST_KEY = 'meshmonitor-meshcore-channel-sort-unread-first';
-
-/** Read the persisted per-channel last-read map for a source (idx → ms). */
-function loadLastRead(sourceId: string): Record<number, number> {
-  if (!sourceId) return {};
-  try {
-    const raw = localStorage.getItem(lastReadStorageKey(sourceId));
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? (parsed as Record<number, number>) : {};
-  } catch {
-    return {};
-  }
-}
 
 export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   messages,
@@ -131,7 +120,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const [latestTimestamps, setLatestTimestamps] = useState<Record<number, number>>({});
   // Per-channel last-read marker (idx → ms), persisted in localStorage scoped by
   // sourceId. Seeded from storage on mount/source change.
-  const [lastRead, setLastRead] = useState<Record<number, number>>(() => loadLastRead(sourceId));
+  const [lastRead, setLastRead] = useState<Record<number, number>>(() => loadChannelLastRead(sourceId));
   // Live mirror of `lastRead` so the channel-entry snapshot (#3810) can read the
   // pre-read marker without re-subscribing to every marker change.
   const lastReadRef = useRef(lastRead);
@@ -172,7 +161,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
 
   // Re-seed the last-read map when the source changes (the map is per-source).
   useEffect(() => {
-    setLastRead(loadLastRead(sourceId));
+    setLastRead(loadChannelLastRead(sourceId));
   }, [sourceId]);
 
   // Persist the sort preference whenever it changes.
@@ -185,15 +174,12 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // still clears any stale unread state.
   const markChannelRead = useCallback((idx: number, ts: number = Date.now()) => {
     if (!sourceId) return;
+    // Persist through the shared store (writes localStorage + notifies the
+    // sidebar dot). Keep the local React state in sync for this view's badges.
+    persistChannelRead(sourceId, idx, ts);
     setLastRead(prev => {
       if ((prev[idx] ?? 0) >= ts) return prev;
-      const next = { ...prev, [idx]: ts };
-      try {
-        localStorage.setItem(lastReadStorageKey(sourceId), JSON.stringify(next));
-      } catch {
-        /* storage full / disabled — unread state is best-effort */
-      }
-      return next;
+      return { ...prev, [idx]: ts };
     });
   }, [sourceId]);
 
@@ -595,6 +581,15 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                 <datalist id="mc-scope-region-suggestions">
                   {scopeSuggestions.map(r => <option key={r} value={r} />)}
                 </datalist>
+                <button
+                  type="button"
+                  className={`mc-scope-override-unscoped${overrideScope === '' ? ' active' : ''}`}
+                  onClick={() => setOverrideScope('')}
+                  aria-pressed={overrideScope === ''}
+                  title={t('meshcore.scope.override_unscoped_title', 'Send this message with no region scope (flood)')}
+                >
+                  {t('meshcore.scope.unscoped', 'Unscoped')}
+                </button>
                 <button
                   type="button"
                   className="mc-scope-override-clear"

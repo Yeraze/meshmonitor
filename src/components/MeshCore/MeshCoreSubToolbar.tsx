@@ -16,6 +16,8 @@ interface MeshCoreSubToolbarProps {
   onToggleExpanded: () => void;
   /** When false, the Info entry is suppressed (no source context — it would have no data). */
   showInfo?: boolean;
+  /** Per-view unread indicator flags — renders a red dot on the icon (#3891). */
+  unread?: Partial<Record<MeshCoreView, boolean>>;
 }
 
 interface Item {
@@ -80,6 +82,7 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
   expanded,
   onToggleExpanded,
   showInfo = true,
+  unread = {},
 }) => {
   const { t } = useTranslation();
   const { authStatus, hasPermission } = useAuth();
@@ -116,7 +119,10 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
             onClick={() => onSelect(item.id)}
             title={!expanded ? label : undefined}
           >
-            <span className="icon">{renderIcon(item.id)}</span>
+            <span className="icon">
+              {renderIcon(item.id)}
+              {unread[item.id] && <span className="meshcore-nav-unread-dot" aria-hidden="true" />}
+            </span>
             <span className="label">{label}</span>
           </button>
         );

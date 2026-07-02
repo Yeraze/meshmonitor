@@ -502,3 +502,122 @@ describe('MeshCoreDirectMessagesView — repeaters are not messageable (#3755)',
     });
   });
 });
+
+// Issue #3890: a node-type (advType) filter on the Node Details contact list so
+// users with many repeaters/sensors can narrow to just their companions.
+describe('MeshCoreDirectMessagesView — node-type filter (#3890)', () => {
+  const mixed: MeshCoreContact[] = [
+    { publicKey: 'a'.repeat(64), advName: 'Companion Carl', advType: 1, lastSeen: 4000 },
+    { publicKey: 'b'.repeat(64), advName: 'Repeater Rita', advType: 2, lastSeen: 3000 },
+    { publicKey: 'c'.repeat(64), advName: 'Sensor Sam', advType: 4, lastSeen: 2000 },
+    { publicKey: 'd'.repeat(64), advName: 'Companion Cora', advType: 1, lastSeen: 1000 },
+  ];
+
+  const listedNames = (): string[] =>
+    Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-display-name'))
+      .map((el) => el.textContent || '');
+
+  it('shows every advType by default (filter = All types)', () => {
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={mixed}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+    const names = listedNames();
+    expect(names).toContain('Companion Carl');
+    expect(names).toContain('Repeater Rita');
+    expect(names).toContain('Sensor Sam');
+    expect(names).toContain('Companion Cora');
+  });
+
+  it('shows only companions when the Companion filter is selected', () => {
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={mixed}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+    const filter = screen.getByTitle('Filter by node type') as HTMLSelectElement;
+    fireEvent.change(filter, { target: { value: '1' } });
+
+    const names = listedNames();
+    expect(names).toContain('Companion Carl');
+    expect(names).toContain('Companion Cora');
+    expect(names).not.toContain('Repeater Rita');
+    expect(names).not.toContain('Sensor Sam');
+  });
+
+  it('shows only repeaters when the Repeater filter is selected', () => {
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={mixed}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+    const filter = screen.getByTitle('Filter by node type') as HTMLSelectElement;
+    fireEvent.change(filter, { target: { value: '2' } });
+
+    expect(listedNames()).toEqual(['Repeater Rita']);
+  });
+
+  it('combines the type filter with the search box', () => {
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={mixed}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+    // Companions only…
+    fireEvent.change(screen.getByTitle('Filter by node type'), { target: { value: '1' } });
+    // …then narrow further to "Carl".
+    fireEvent.change(screen.getByPlaceholderText('Search contacts…'), { target: { value: 'Carl' } });
+
+    expect(listedNames()).toEqual(['Companion Carl']);
+  });
+
+  it('shows a type-specific empty state when no contact matches the filter', () => {
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={[mixed[0], mixed[3]]} // companions only — no repeaters
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+    fireEvent.change(screen.getByTitle('Filter by node type'), { target: { value: '2' } });
+
+    expect(screen.getByText('No contacts of this type')).toBeTruthy();
+  });
+});
+
+describe('MeshCoreDirectMessagesView — DM unread marking (#3891)', () => {
+  it('writes a per-source DM read-marker when a contact is opened', async () => {
+    localStorage.removeItem('meshmonitor-meshcore-dm-lastread-src-a');
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={[realContact]}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+    fireEvent.click(screen.getByText('Remote Bob'));
+
+    await waitFor(() => {
+      const raw = localStorage.getItem('meshmonitor-meshcore-dm-lastread-src-a');
+      expect(raw).toBeTruthy();
+      expect(JSON.parse(raw as string)[REAL_PK]).toBeGreaterThan(0);
+    });
+  });
+});
