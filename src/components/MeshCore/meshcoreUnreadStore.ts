@@ -157,20 +157,31 @@ export function computeUnreadDmPeers(params: {
   // Without knowing our own key we can't tell received from sent, so we can't
   // reliably attribute "unread" — report nothing rather than false positives.
   if (!selfKey) return new Set<string>();
+  // Memoize canonicalization per raw key: a conversation has many messages from
+  // the same sender prefix, so this collapses the per-message O(contacts) scan
+  // to one scan per distinct key.
+  const canonCache = new Map<string, string>();
+  const canon = (key: string): string => {
+    const hit = canonCache.get(key);
+    if (hit !== undefined) return hit;
+    const resolved = canonicalizePeerKey(key, contacts);
+    canonCache.set(key, resolved);
+    return resolved;
+  };
   const latestIncoming = new Map<string, number>();
   for (const m of messages) {
     if (!m.toPublicKey) continue;
     if (m.messageType === 'room_post') continue;
     if (isChannelPseudoKey(m.fromPublicKey) || isChannelPseudoKey(m.toPublicKey)) continue;
     // Only received messages count as unread — sender is NOT us, recipient IS us.
-    if (selfKey && peerKeysMatch(m.fromPublicKey, selfKey)) continue;
-    if (selfKey && !peerKeysMatch(m.toPublicKey, selfKey)) continue;
-    const peer = canonicalizePeerKey(m.fromPublicKey, contacts);
-    if (selfKey && peerKeysMatch(peer, selfKey)) continue;
+    if (peerKeysMatch(m.fromPublicKey, selfKey)) continue;
+    if (!peerKeysMatch(m.toPublicKey, selfKey)) continue;
+    const peer = canon(m.fromPublicKey);
+    if (peerKeysMatch(peer, selfKey)) continue;
     const prev = latestIncoming.get(peer) ?? 0;
     if (m.timestamp > prev) latestIncoming.set(peer, m.timestamp);
   }
-  const activeCanonical = activePeerKey ? canonicalizePeerKey(activePeerKey, contacts) : null;
+  const activeCanonical = activePeerKey ? canon(activePeerKey) : null;
   const unread = new Set<string>();
   for (const [peer, ts] of latestIncoming) {
     if (activeCanonical && peerKeysMatch(peer, activeCanonical)) continue;

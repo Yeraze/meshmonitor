@@ -74,7 +74,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
     messages,
     contacts,
     selfKey: status?.localNode?.publicKey,
-    enabled: enabled !== false,
+    enabled: enabled ?? true,
   });
 
   const navigateToDm = useCallback((publicKey: string) => {

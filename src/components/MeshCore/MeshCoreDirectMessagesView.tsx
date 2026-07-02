@@ -17,6 +17,7 @@ import {
   subscribeUnreadChanged,
   computeUnreadDmPeers,
   canonicalizePeerKey,
+  isChannelPseudoKey,
 } from './meshcoreUnreadStore';
 
 interface MeshCoreDirectMessagesViewProps {
@@ -149,15 +150,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     return a.startsWith(b) || b.startsWith(a);
   };
 
-  // Phase 2 of the MeshCore channels feature tags every locally-sent channel
-  // message with `toPublicKey = 'channel-${idx}'` so the per-channel filter in
-  // MeshCoreChannelsView can group sent messages back into the right tab.
-  // Those synthetic keys are NOT real DM peers and must not surface in the
-  // DM sidebar / conversation list — filter them out everywhere the DM view
-  // looks at toPublicKey / fromPublicKey.
-  const isChannelPseudoKey = (k: string | null | undefined): boolean =>
-    typeof k === 'string' && k.startsWith('channel-');
-
+  // Channel messages carry synthetic `channel-${idx}` keys (see the shared
+  // `isChannelPseudoKey` in meshcoreUnreadStore) — they are NOT real DM peers
+  // and are filtered out everywhere this view looks at to/fromPublicKey.
   const dmPeers = useMemo(() => {
     const peers = new Set<string>();
     const lastMessageAt = new Map<string, number>();

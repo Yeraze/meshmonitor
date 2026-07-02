@@ -127,7 +127,7 @@ export function useMeshCoreUnread({
   }, [channelLatest, messages]);
 
   const channels = useMemo(() => {
-    void readTick;
+    void readTick; // cache-bust: re-read localStorage markers when a marker changes
     if (!sourceId) return false;
     const lastRead = loadChannelLastRead(sourceId);
     return Object.entries(channelLatestEffective).some(
@@ -136,7 +136,7 @@ export function useMeshCoreUnread({
   }, [sourceId, channelLatestEffective, readTick]);
 
   const dms = useMemo(() => {
-    void readTick;
+    void readTick; // cache-bust: re-read localStorage markers when a marker changes
     if (!sourceId) return false;
     const dmLastRead = loadDmLastRead(sourceId);
     return computeUnreadDmPeers({ messages, contacts, selfKey, dmLastRead }).size > 0;

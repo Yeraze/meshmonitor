@@ -502,3 +502,26 @@ describe('MeshCoreDirectMessagesView — repeaters are not messageable (#3755)',
     });
   });
 });
+
+describe('MeshCoreDirectMessagesView — DM unread marking (#3891)', () => {
+  it('writes a per-source DM read-marker when a contact is opened', async () => {
+    localStorage.removeItem('meshmonitor-meshcore-dm-lastread-src-a');
+    render(
+      <MeshCoreDirectMessagesView
+        messages={[]}
+        contacts={[realContact]}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+    fireEvent.click(screen.getByText('Remote Bob'));
+
+    await waitFor(() => {
+      const raw = localStorage.getItem('meshmonitor-meshcore-dm-lastread-src-a');
+      expect(raw).toBeTruthy();
+      expect(JSON.parse(raw as string)[REAL_PK]).toBeGreaterThan(0);
+    });
+  });
+});
