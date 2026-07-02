@@ -16,6 +16,7 @@ import 'leaflet/dist/leaflet.css';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Rectangle, useMap } from 'react-leaflet';
 import L, { type Marker as LeafletMarker } from 'leaflet';
 import { createNodeIcon } from '../../utils/mapIcons';
+import { markerAgeOpacity } from '../../utils/markerAgeOpacity';
 import { SpiderfierController, type SpiderfierControllerRef } from '../SpiderfierController';
 import { getTilesetById } from '../../config/tilesets';
 import type { CustomTileset, TilesetId } from '../../config/tilesets';
@@ -485,6 +486,17 @@ export default function DashboardMap({
               pinStyle: mapPinStyle,
             }),
           );
+          // #3886: fade markers by recency instead of a flat opacity — full when
+          // freshly heard, fading toward a floor as lastHeard nears the age
+          // cutoff (cutoffTime, seconds). Favorites bypass the age gate above so
+          // they stay fully opaque regardless of age.
+          const ageOpacity = node.isFavorite
+            ? 1
+            : markerAgeOpacity(
+                Date.now(),
+                cutoffTime * 1000,
+                node.lastHeard != null ? node.lastHeard * 1000 : null,
+              );
 
           return (
             <Marker
@@ -492,6 +504,7 @@ export default function DashboardMap({
               ref={getMarkerRef(markerKey)}
               position={stablePosition(markerKey, pos.lat, pos.lng)}
               icon={icon}
+              opacity={ageOpacity}
             >
               <Popup>
                 <DashboardNodePopup node={node} pos={pos} onSourceSelect={onNodeSourceSelect} />

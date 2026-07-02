@@ -14,6 +14,7 @@ import { resolveNodeLatLng, type MaybePositionedNode } from '../nodePositionUtil
 import { nodeMatchesSearch } from '../nodeSearch';
 import { createNodeIcon } from '../../../utils/mapIcons';
 import { getNodeTypeCategory } from '../../../utils/nodeTypeCategory';
+import { markerAgeOpacity, MIN_MARKER_OPACITY } from '../../../utils/markerAgeOpacity';
 import DashboardNodePopup, { type NodeSourceRef } from '../../Dashboard/DashboardNodePopup';
 import '../../../styles/nodes.css'; // `.node-popup-*` classes used by DashboardNodePopup
 
@@ -27,6 +28,8 @@ interface NodeRecord extends MaybePositionedNode {
   user?: { role?: string | number | null } | null;
   isMeshCore?: boolean;
   advType?: number | null;
+  /** Unix seconds of last reception; drives time-slider opacity fade (#3886). */
+  lastHeard?: number | null;
   /** Every configured source that reported this node (unified merge, #2805). */
   sources?: NodeSourceRef[];
 }
@@ -193,6 +196,16 @@ export default function NodeMarkersLayer() {
     }
   }, [renderedKeysSig, removeMarker]);
 
+  // #3886: when the time slider is on, fade markers by recency across its
+  // window — fully opaque at the window's newest edge, fading toward a floor as
+  // lastHeard approaches the oldest edge. Markers with no timestamp sit at the
+  // floor. When the slider is off, every marker is fully opaque (unchanged).
+  const ts = config.timeSlider;
+  const fadeByAge =
+    ts.enabled && ts.windowStartMs != null && ts.windowEndMs != null;
+  const windowStartMs = ts.windowStartMs ?? 0;
+  const windowEndMs = ts.windowEndMs ?? 0;
+
   return (
     <>
       {filteredNodes.map(({ node: n, latLng }) => {
@@ -230,12 +243,18 @@ export default function NodeMarkersLayer() {
             pinStyle: mapPinStyle,
           }),
         );
+        const markerOpacity = !fadeByAge
+          ? 1
+          : n.lastHeard != null
+            ? markerAgeOpacity(windowEndMs, windowStartMs, n.lastHeard * 1000)
+            : MIN_MARKER_OPACITY;
         return (
           <Marker
             key={markerKey}
             ref={getMarkerRef(markerKey)}
             position={stablePosition(markerKey, lat, lon)}
             icon={icon}
+            opacity={markerOpacity}
             eventHandlers={{
               click: () =>
                 setSelected({
