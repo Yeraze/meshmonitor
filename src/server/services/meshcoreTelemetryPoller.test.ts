@@ -423,4 +423,29 @@ describe('MeshCoreTelemetryPoller.pollOnce', () => {
       errorSpy.mockRestore();
     }
   });
+
+  it('logs the meshcore_nodes persist confirmation only once across polls (#3884)', async () => {
+    const manager = makeManager({
+      sourceId: 'src-once',
+      publicKey: FULL_PUBKEY,
+      core: { batteryMv: 3800, uptimeSecs: 100, errors: 0, queueLen: 0 },
+      radio: null, packets: null, deviceTime: null, deviceInfo: null,
+    });
+    const { db } = makeDatabase();
+    // Same poller instance across both polls so the one-shot guard is exercised.
+    const poller = new MeshCoreTelemetryPoller({ registry: makeRegistry(manager), database: db });
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+    try {
+      await poller.pollOnce();
+      await new Promise((r) => setTimeout(r, 0));
+      await poller.pollOnce();
+      await new Promise((r) => setTimeout(r, 0));
+      const persistLogs = infoSpy.mock.calls
+        .map((c) => String(c[0]))
+        .filter((m) => m.includes('Persisted companion batteryMv'));
+      expect(persistLogs).toHaveLength(1);
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
 });
