@@ -19,6 +19,7 @@ import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import type { Source } from '../db/repositories/sources.js';
 import { loadAllNodesAsDeviceInfo } from './utils/dbNodeMapper.js';
 import type { DeviceInfo } from './meshtasticManager.js';
+import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { logger } from '../utils/logger.js';
 
 export interface MqttBrokerSourceConfig {
@@ -77,6 +78,7 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
   private packetsIngested = 0;
   private packetsDropped = 0;
   private readonly filter: MqttPacketFilter;
+  private readonly distanceDeleteScheduler: DistanceDeleteScheduler;
 
   constructor(sourceId: string, sourceName: string, config: MqttBrokerSourceConfig) {
     super();
@@ -84,6 +86,17 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
     this.sourceName = sourceName;
     this.config = config;
     this.filter = new MqttPacketFilter({});
+    this.distanceDeleteScheduler = new DistanceDeleteScheduler(sourceId);
+  }
+
+  /** Start this source's per-source auto-delete-by-distance scheduler (#3901). */
+  async startDistanceDeleteScheduler(): Promise<void> {
+    await this.distanceDeleteScheduler.start();
+  }
+
+  /** Stop this source's per-source auto-delete-by-distance scheduler (#3901). */
+  stopDistanceDeleteScheduler(): void {
+    this.distanceDeleteScheduler.stop();
   }
 
   async start(): Promise<void> {
@@ -111,10 +124,17 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
     logger.info(
       `MQTT broker source ${this.sourceId} listening on ${this.config.listener.host ?? '0.0.0.0'}:${this.config.listener.port}`,
     );
+
+    // Per-source auto-delete-by-distance (#3901) — scoped to this broker's
+    // own nodes/settings, not the old global all-sources singleton. Background
+    // concern: a settings-read hiccup must not stop the broker from listening.
+    this.distanceDeleteScheduler.start().catch((err) =>
+      logger.error(`Failed to start distance-delete scheduler for source ${this.sourceId}:`, err));
   }
 
   async stop(): Promise<void> {
     if (!this.broker) return;
+    this.distanceDeleteScheduler.stop();
     await this.broker.stop();
     this.broker = null;
   }

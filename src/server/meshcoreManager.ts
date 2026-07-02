@@ -26,6 +26,7 @@ import {
 } from './meshcoreVirtualNodeServer.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { notificationService } from './services/notificationService.js';
+import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import type { DbMeshCorePacket } from '../db/repositories/meshcore.js';
 
 // Dynamic imports for optional serialport dependency
@@ -711,13 +712,26 @@ class MeshCoreManager extends EventEmitter {
   // doesn't burn airtime if they spam the trigger phrase.
   private autoAckCooldowns: Map<string, number> = new Map();
 
+  private readonly distanceDeleteScheduler: DistanceDeleteScheduler;
+
   constructor(sourceId: string) {
     super();
     if (!sourceId) {
       throw new Error('MeshCoreManager requires a sourceId');
     }
     this.sourceId = sourceId;
+    this.distanceDeleteScheduler = new DistanceDeleteScheduler(sourceId);
     logger.info(`[MeshCore:${sourceId}] Manager initialized`);
+  }
+
+  /** Start this source's per-source auto-delete-by-distance scheduler (#3901). */
+  async startDistanceDeleteScheduler(): Promise<void> {
+    await this.distanceDeleteScheduler.start();
+  }
+
+  /** Stop this source's per-source auto-delete-by-distance scheduler (#3901). */
+  stopDistanceDeleteScheduler(): void {
+    this.distanceDeleteScheduler.stop();
   }
 
   /**
@@ -833,6 +847,10 @@ class MeshCoreManager extends EventEmitter {
       this.reconnectAttempts = 0;
       this.nextReconnectAt = null;
       this.emit('connected', this.localNode);
+      // Per-source auto-delete-by-distance (#3901) — scoped to this source's
+      // own nodes/settings; only runs while connected.
+      this.distanceDeleteScheduler.start().catch((err) =>
+        logger.error(`[MeshCore:${this.sourceId}] Failed to start distance-delete scheduler:`, err));
       dataEventEmitter.emitMeshCoreStatusUpdated({ connected: true, node: this.localNode }, this.sourceId);
       if (this.localNode) {
         dataEventEmitter.emitMeshCoreLocalNodeUpdated(this.localNode, this.sourceId);
@@ -956,6 +974,9 @@ class MeshCoreManager extends EventEmitter {
     // Stop heartbeat before tearing down the transport so a stray probe
     // doesn't fire mid-teardown.
     this.stopHeartbeat();
+
+    // Stop the per-source auto-delete-by-distance scheduler (#3901).
+    this.distanceDeleteScheduler.stop();
 
     // Cancel any pending path-refresh — refreshContacts() against a torn-
     // down connection would just log an error.

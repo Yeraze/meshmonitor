@@ -48,6 +48,7 @@ import {
   type PublisherStatus,
 } from './mqttBridgePublisherPool.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
+import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 
 /**
  * Direction the bridge is permitted to operate in against the upstream
@@ -274,6 +275,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
    * separate pool entry — see MQTT 3.1.1 §3.1.4 duplicate-clientId rule.
    */
   private brokerGatewayNum: number | null = null;
+  private readonly distanceDeleteScheduler: DistanceDeleteScheduler;
 
   constructor(sourceId: string, sourceName: string, config: MqttBridgeSourceConfig) {
     super();
@@ -282,6 +284,17 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     this.config = config;
     this.downlinkFilter = new MqttPacketFilter(config.downlinkFilters);
     this.uplinkFilter = new MqttPacketFilter(config.uplinkFilters);
+    this.distanceDeleteScheduler = new DistanceDeleteScheduler(sourceId);
+  }
+
+  /** Start this source's per-source auto-delete-by-distance scheduler (#3901). */
+  async startDistanceDeleteScheduler(): Promise<void> {
+    await this.distanceDeleteScheduler.start();
+  }
+
+  /** Stop this source's per-source auto-delete-by-distance scheduler (#3901). */
+  stopDistanceDeleteScheduler(): void {
+    this.distanceDeleteScheduler.stop();
   }
 
   /** Resolves the configured forwarding mode, defaulting to `'per_gateway'`. */
@@ -293,6 +306,12 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     this.attachParentBroker();
     await bootstrapMqttChannelDatabase(this.sourceId);
     await this.seedDownlinkMembership();
+
+    // Per-source auto-delete-by-distance (#3901). Started up front so the
+    // publish_only early-return below doesn't skip it. Background concern —
+    // a settings-read hiccup must not stop the bridge from coming up.
+    this.distanceDeleteScheduler.start().catch((err) =>
+      logger.error(`Failed to start distance-delete scheduler for source ${this.sourceId}:`, err));
 
     const mode = this.getMode();
     const forwardingMode = this.getForwardingMode();
@@ -370,6 +389,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
   }
 
   async stop(): Promise<void> {
+    this.distanceDeleteScheduler.stop();
     this.detachParentBroker();
     if (this.publisherPool) {
       await this.publisherPool.close();
