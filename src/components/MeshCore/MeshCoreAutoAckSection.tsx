@@ -470,8 +470,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
           <label htmlFor="meshcoreAutoAckMessage">
             {t('meshcore.automation.autoack.message_label', 'Acknowledgement Message')}
             <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
-              {t('meshcore.automation.autoack.available_tokens', 'Available tokens:')}{' '}
-              {'{NODE_ID}'}, {'{NODE_NAME}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{DATE}'}, {'{TIME}'}, {'{SNR}'}, {'{HOPS}'}, {'{ROUTE}'}, {'{VERSION}'}
+              {t('meshcore.automation.autoack.tokens_hint', 'Supports message tokens — see the reference at the top of this page.')}
             </span>
           </label>
           <textarea

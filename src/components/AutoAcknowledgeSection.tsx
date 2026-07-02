@@ -597,7 +597,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           <label htmlFor="autoAckMessage" style={{ display: 'block', marginBottom: '0.5rem' }}>
             {t('automation.auto_ack.message_multihop')}
             <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
-              {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{NUMBER_HOPS}'}, {'{HOPS}'}, {'{RABBIT_HOPS}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{TOTALNODES}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{SNR}'}, {'{RSSI}'}, {'{TRANSPORT}'}, {'{LAST_HOP}'}
+              {t('automation.auto_ack.tokens_hint', 'Supports message tokens — see the reference at the top of this page.')}
             </span>
           </label>
           <textarea
@@ -638,7 +638,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           <label htmlFor="autoAckMessageDirect" style={{ display: 'block', marginBottom: '0.5rem' }}>
             {t('automation.auto_ack.message_direct')}
             <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
-              {t('automation.auto_ack.available_tokens')} {'{NODE_ID}'}, {'{SNR}'}, {'{RSSI}'}, {'{DATE}'}, {'{TIME}'}, {'{VERSION}'}, {'{DURATION}'}, {'{FEATURES}'}, {'{NODECOUNT}'}, {'{DIRECTCOUNT}'}, {'{TOTALNODES}'}, {'{LONG_NAME}'}, {'{SHORT_NAME}'}, {'{TRANSPORT}'}
+              {t('automation.auto_ack.tokens_hint', 'Supports message tokens — see the reference at the top of this page.')}
             </span>
           </label>
           <textarea
