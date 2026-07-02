@@ -135,6 +135,29 @@ describe('executeAction', () => {
     expect('scopeOverride' in calls[0].args).toBe(false);
   });
 
+  it('sendMessage: trigger scope on a MeshCore trigger whose scope could not be resolved sends unscoped (#3887)', async () => {
+    // scopeCode/scopeName both null (not absent): a real MeshCore message
+    // trigger where raw-packet scope resolution failed (LogRxData correlation
+    // miss) — must be treated as unscoped, not silently fall back to inherit.
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', channel: 1, scopeMode: 'trigger' }),
+      ctx({ from: 5, channel: 1, isDM: false, scopeName: null, scopeCode: null }),
+      deps,
+    );
+    expect(calls[0].args.scopeOverride).toBe('');
+  });
+
+  it('sendMessage: trigger scope on a known-but-unmapped scope code inherits', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'hi', channel: 1, scopeMode: 'trigger' }),
+      ctx({ from: 5, channel: 1, isDM: false, scopeName: null, scopeCode: 456 }),
+      deps,
+    );
+    expect('scopeOverride' in calls[0].args).toBe(false);
+  });
+
   it('sendMessage: DM send never carries a scope override', async () => {
     const { calls, deps } = recorder();
     await executeAction(

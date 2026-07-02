@@ -2405,8 +2405,19 @@ class MeshCoreManager extends EventEmitter {
    * `''` = explicit unscoped, a non-empty string = a named region.
    *
    * `trigger` mode replies on the triggering message's own scope — its resolved
-   * `scopeName` when known, `''` when the trigger was explicitly unscoped
-   * (`scopeCode === 0`), else inherit (unknown / no trigger message available).
+   * `scopeName` when known; `''` when the trigger's scope resolved to unscoped
+   * (`scopeCode === 0`) OR when scope resolution simply couldn't tell
+   * (`scopeCode == null`, #3887); inherit only when the trigger's `scopeCode`
+   * resolved to a real transport code with no matching known region (an
+   * unrecognised scope, not an unresolvable one).
+   *
+   * The `scopeCode == null` case is common in practice: `scopeCode`/`scopeName`
+   * are only recoverable when the raw OTA packet bytes were correlated from a
+   * preceding LogRxData event (best-effort, see meshcoreNativeBackend.ts), so a
+   * genuinely unscoped message often can't be distinguished from "unknown" —
+   * treating both as unscoped matches the dominant real-world case (a mesh with
+   * no scopes configured at all) rather than silently falling back to the
+   * channel default, which the far side's own unscoped repeater won't forward.
    */
   private static resolveAutomationScopeOverride(
     cfg: MeshCoreAutomationScopeConfig | undefined,
@@ -2418,10 +2429,11 @@ class MeshCoreManager extends EventEmitter {
       case 'named':
         return (cfg.scopeName ?? '').trim() || undefined; // empty named → inherit
       case 'trigger': {
-        const name = (triggerMsg?.scopeName ?? '').trim();
+        if (!triggerMsg) return undefined; // no trigger message → inherit
+        const name = (triggerMsg.scopeName ?? '').trim();
         if (name) return name;
-        if (triggerMsg?.scopeCode === 0) return ''; // trigger arrived explicitly unscoped
-        return undefined; // unknown scope / no trigger → inherit
+        if (triggerMsg.scopeCode != null && triggerMsg.scopeCode > 0) return undefined; // known-but-unmapped scope → inherit
+        return ''; // scopeCode === 0 (confirmed unscoped) or null (unresolvable) → reply unscoped
       }
       default:
         return undefined; // inherit
