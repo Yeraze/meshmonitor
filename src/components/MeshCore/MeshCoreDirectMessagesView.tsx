@@ -52,6 +52,12 @@ function isRealNodeKey(key: string): boolean {
 
 type DmSortField = 'name' | 'lastMessage';
 type DmSortDirection = 'asc' | 'desc';
+// Node-type (advType) filter for the contact list (issue #3890). 'all' = no
+// filter; otherwise a MeshCore advert type: 1=Companion, 2=Repeater, 4=Sensor.
+// Room Server (3) is intentionally omitted — those peers are already excluded
+// from this list (they live in the Rooms view), so they can never match here.
+type DmTypeFilter = 'all' | 1 | 2 | 4;
+const DM_TYPE_FILTER_OPTIONS: readonly (1 | 2 | 4)[] = [1, 2, 4];
 
 const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = (): boolean =>
@@ -80,6 +86,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<DmSortField>('lastMessage');
   const [sortDirection, setSortDirection] = useState<DmSortDirection>('desc');
+  const [typeFilter, setTypeFilter] = useState<DmTypeFilter>('all');
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [mobileShowContent, setMobileShowContent] = useState(false);
 
@@ -215,14 +222,21 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   }, [messages, contacts, selfKey, canonicalize, contactsByKey, favoriteByKey, sortField, sortDirection]);
 
   const filteredPeers = useMemo(() => {
-    if (!searchQuery.trim()) return dmPeers;
+    let peers = dmPeers;
+    // Node-type filter (#3890). A peer that only exists via a message thread
+    // (no matching contact) has no advType and is hidden by any specific-type
+    // filter — expected, since the filter targets known node roles.
+    if (typeFilter !== 'all') {
+      peers = peers.filter(key => contactsByKey.get(key)?.advType === typeFilter);
+    }
+    if (!searchQuery.trim()) return peers;
     const q = searchQuery.toLowerCase();
-    return dmPeers.filter(key => {
+    return peers.filter(key => {
       const c = contactsByKey.get(key);
       const name = c?.advName || c?.name || '';
       return name.toLowerCase().includes(q) || key.toLowerCase().includes(q);
     });
-  }, [dmPeers, searchQuery, contactsByKey]);
+  }, [dmPeers, searchQuery, contactsByKey, typeFilter]);
 
   const filtered = useMemo(() => {
     if (!selected) return [];
@@ -308,6 +322,23 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               <span className="pane-count">{dmPeers.length}</span>
               <div className="sort-controls meshcore-sort-controls">
                 <select
+                  aria-label={t('meshcore.filter_by_type', 'Filter by node type')}
+                  title={t('meshcore.filter_by_type', 'Filter by node type')}
+                  value={typeFilter === 'all' ? 'all' : String(typeFilter)}
+                  onChange={(e) =>
+                    setTypeFilter(e.target.value === 'all'
+                      ? 'all'
+                      : (Number(e.target.value) as DmTypeFilter))}
+                  className="sort-dropdown"
+                >
+                  <option value="all">{t('meshcore.filter_all_types', 'All types')}</option>
+                  {DM_TYPE_FILTER_OPTIONS.map((adv) => (
+                    <option key={adv} value={String(adv)}>
+                      {`${meshcoreRoleIcon(adv)} ${t(meshcoreRoleLabelKey(adv), meshcoreRoleLabel(adv))}`}
+                    </option>
+                  ))}
+                </select>
+                <select
                   aria-label={t('meshcore.sort_by', 'Sort by')}
                   title={t('meshcore.sort_by', 'Sort by')}
                   value={sortField}
@@ -360,7 +391,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               <div className="meshcore-empty-state">
                 {searchQuery
                   ? t('meshcore.no_search_results', 'No contacts match your search')
-                  : t('meshcore.no_contacts', 'No contacts yet')}
+                  : typeFilter !== 'all'
+                    ? t('meshcore.no_type_results', 'No contacts of this type')
+                    : t('meshcore.no_contacts', 'No contacts yet')}
               </div>
             ) : filteredPeers.map(key => {
               const c = contactsByKey.get(key);
