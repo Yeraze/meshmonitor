@@ -47,6 +47,33 @@ describe('MeshCoreSubToolbar', () => {
     iconStyle = 'icon'; // reset for other tests
   });
 
+  it('renders an unread red-dot only on the flagged nav items (#3891)', () => {
+    authPermission = () => true;
+    iconStyle = 'icon';
+    const { container } = render(
+      <MeshCoreSubToolbar
+        view="nodes"
+        onSelect={() => {}}
+        expanded
+        onToggleExpanded={() => {}}
+        unread={{ channels: true, dms: false }}
+      />,
+    );
+    const dots = container.querySelectorAll('.meshcore-nav-unread-dot');
+    expect(dots.length).toBe(1);
+    const channelsItem = Array.from(container.querySelectorAll('.meshcore-sub-toolbar-item'))
+      .find((el) => el.textContent?.includes('Channels'));
+    expect(channelsItem?.querySelector('.meshcore-nav-unread-dot')).not.toBeNull();
+  });
+
+  it('renders no unread dots when none are flagged', () => {
+    authPermission = () => true;
+    const { container } = render(
+      <MeshCoreSubToolbar view="nodes" onSelect={() => {}} expanded onToggleExpanded={() => {}} />,
+    );
+    expect(container.querySelectorAll('.meshcore-nav-unread-dot').length).toBe(0);
+  });
+
   it('renders the Configuration tab when configuration:read is granted', () => {
     authPermission = () => true;
     render(

@@ -169,6 +169,33 @@
   justify-content: center;
   font-size: 1.1rem;
   flex-shrink: 0;
+  position: relative;
+}
+
+/* Unread red-dot indicator overlaid on the nav icon (#3891). Anchored to the
+   icon's top-right so it stays put whether the toolbar is collapsed or
+   expanded. */
+.meshcore-nav-unread-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  background: var(--ctp-red);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--ctp-mantle);
+  pointer-events: none;
+}
+
+/* Per-contact unread red-dot in the Node Details (DM) contact list (#3891). */
+.meshcore-dm-unread-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--ctp-red);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  margin-right: 2px;
 }
 
 .meshcore-sub-toolbar.collapsed .meshcore-sub-toolbar-item .label {
