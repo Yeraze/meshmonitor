@@ -555,7 +555,7 @@ function DashboardInner() {
           setFormError(t('source.form.error_vn_port_range'));
           return;
         }
-        cfg.virtualNode = { enabled: true, port: vnPort, allowAdminCommands: false };
+        cfg.virtualNode = { enabled: true, port: vnPort, allowAdminCommands: formVnAllowAdmin };
       }
     } else {
       if (!formHost.trim()) { setFormError(t('source.form.error_host_required')); return; }
@@ -1510,21 +1510,34 @@ function DashboardInner() {
                     {t('meshcore.form.enable_virtual_node', 'Expose this node to the MeshCore app over WiFi')}
                   </label>
                   {formVnEnabled && (
-                    <label className="dashboard-form-field" style={{ marginTop: 8 }}>
-                      <span className="dashboard-form-label">{t('source.form.virtual_node_port')}</span>
-                      <input
-                        className="dashboard-form-input"
-                        type="number"
-                        min={1}
-                        max={65535}
-                        value={formVnPort}
-                        onChange={(e) => setFormVnPort(e.target.value)}
-                        placeholder="5000"
-                      />
+                    <>
+                      <label className="dashboard-form-field" style={{ marginTop: 8 }}>
+                        <span className="dashboard-form-label">{t('source.form.virtual_node_port')}</span>
+                        <input
+                          className="dashboard-form-input"
+                          type="number"
+                          min={1}
+                          max={65535}
+                          value={formVnPort}
+                          onChange={(e) => setFormVnPort(e.target.value)}
+                          placeholder="5000"
+                        />
+                        <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                          {t('meshcore.form.virtual_node_help', 'TCP port the MeshCore mobile app connects to. Point the app at this host and port over WiFi.')}
+                        </p>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 8 }}>
+                        <input
+                          type="checkbox"
+                          checked={formVnAllowAdmin}
+                          onChange={(e) => setFormVnAllowAdmin(e.target.checked)}
+                        />
+                        {t('meshcore.form.allow_admin_commands', 'Allow admin commands')}
+                      </label>
                       <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
-                        {t('meshcore.form.virtual_node_help', 'TCP port the MeshCore mobile app connects to. Point the app at this host and port over WiFi.')}
+                        {t('meshcore.form.allow_admin_help', 'Third-party clients connected to the virtual node can send config/admin commands to your MeshCore node. Leave off unless you trust the clients.')}
                       </p>
-                    </label>
+                    </>
                   )}
                 </fieldset>
               </>

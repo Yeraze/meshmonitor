@@ -4612,6 +4612,8 @@
   "source.form.virtual_node_port": "Virtual Node Port",
   "source.form.allow_admin_commands": "Allow admin commands",
   "source.form.allow_admin_help": "Third-party clients connected to the virtual node can send admin commands to your Meshtastic node. Leave off unless you trust the clients.",
+  "meshcore.form.allow_admin_commands": "Allow admin commands",
+  "meshcore.form.allow_admin_help": "Third-party clients connected to the virtual node can send config/admin commands to your MeshCore node. Leave off unless you trust the clients.",
   "source.form.error_name_required": "Name is required",
   "source.form.error_host_required": "Host is required",
   "source.form.error_port_range": "Port must be 1–65535",
