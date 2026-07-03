@@ -301,7 +301,11 @@ export function parseSetChannel(payload: Buffer): SetChannelCmd {
   return { idx, name, secretHex };
 }
 
-/** Unpack the SetOtherParams/SelfInfo telemetry byte — inverse of {@link packTelemetryMode}. */
+/**
+ * Unpack the SetOtherParams/SelfInfo telemetry byte — inverse of
+ * {@link packTelemetryMode}. Only bits 0–5 are defined (three 2-bit sections);
+ * bits 6–7 are reserved and ignored.
+ */
 export function unpackTelemetryMode(byte: number): { base: number; loc: number; env: number } {
   return { base: byte & 0b11, loc: (byte >> 2) & 0b11, env: (byte >> 4) & 0b11 };
 }
