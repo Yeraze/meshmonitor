@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.12.4] - 2026-07-03
+
+### Added
+- **MeshCore Virtual Node: configure the physical node from a companion app** — Config/admin commands sent from a companion app connected to a MeshCore Virtual Node are now forwarded to the real node (gated on the source's **Allow admin commands** setting), instead of being silently dropped with an `unhandled frame: code=142`. Covers node rename, radio params, TX power, advertised position, channel setup, and the "other params" bundle (telemetry-visibility modes, advert location policy, manual-add-contacts). When the flag is off, the app now receives an explicit rejection rather than a hang. Also adds the previously-missing **Allow admin commands** checkbox to the MeshCore Edit Source dialog (it was absent and hardcoded off, so the setting could never be enabled from the web UI). (#3904, #3905, #3906, #3907, #3910)
+- **Map: fade node markers by age instead of a hard cutoff** — On both the Dashboard map and Map Analysis, node markers now fade smoothly toward transparent as they age instead of popping in/out at the max-age threshold (Dashboard) or ignoring the time slider entirely (Map Analysis). Favorites stay fully opaque. (#3886, #3903)
+- **MeshCore: node-type filter on the Node Details contact list** — A compact "Filter by node type" dropdown next to the search/sort controls lets users with many repeaters/sensors narrow the list to just their companions (or any node type). (#3890, #3897)
+- **MeshCore: explicit "Unscoped" button when composing a channel message** — The channel "Send scope" control gains a discoverable one-click **Unscoped** option to send a channel message with no region scope. (#3888, #3898)
+- **MeshCore: unread red-dot indicators on Channels + Node Details** — The MeshCore sub-toolbar now shows the unread red-dot on its Channels and Node Details icons (matching Meshtastic), and gains unread tracking for direct messages, which it previously lacked entirely. (#3891, #3895)
+- **Automation: consolidated token reference block + MeshCore Auto-Responder token parity** — Each source's expansion tokens are consolidated into a single grouped reference block near the top of the Automation page (instead of drifting per-field legends), and MeshCore Auto-Responder can now expand reply-context tokens like `{HOPS}`/`{ROUTE}` that it previously couldn't. (#3892, #3894)
+
+### Fixed
+- **MeshCore: local companion node showed blank battery** — `getAllNodes()` pushed the live in-memory `get_self_info` node (which has no battery field) over the DB-persisted row instead of merging onto it, so the Node Info panel and dashboard saw the companion's own `batteryMv`/`uptimeSecs` as blank even though the telemetry poller was persisting them. The persisted row is now merged as a base, and the poller stamps `isLocalNode: true` so the flag reflects reality. Adds low-battery diagnostics. (#3884, #3896)
+- **MeshCore: "Notify on Low Battery" never fired for Apprise-only / companion setups** — Closes two concrete gaps found by tracing the low-battery scan-and-deliver pipeline end-to-end, including making companion battery persistence observable and covering the Apprise-only delivery path. (#3884, #3899)
+- **Auto-delete-by-distance was not truly per-source** — Only meshtastic_tcp sources ran a per-source scheduler; mqtt_broker, mqtt_bridge, and meshcore fell through to a global singleton that scanned nodes across all sources with the global threshold/home coordinate. Auto-delete-by-distance is now genuinely per-source for every source type. (#3901, #3902)
+- **MeshCore Auto-Acknowledge: unresolvable trigger scope replied with the channel default instead of unscoped** — When a triggering message's scope couldn't be recovered at all (raw OTA bytes not correlated), "trigger" Reply Scope mode fell back to the channel default, so a genuinely-unscoped message from a peer repeater got a scoped reply back that the peer wouldn't forward. An unresolvable scope is now treated the same as a confirmed-unscoped trigger (reply unscoped); the same fix is mirrored in the Automation Engine's "match the triggering message's scope" mode. (#3887, #3889)
+
 ## [4.12.3] - 2026-07-01
 
 ### Added
