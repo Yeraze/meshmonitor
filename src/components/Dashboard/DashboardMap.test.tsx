@@ -12,7 +12,9 @@ import DashboardMap from './DashboardMap';
 vi.mock('react-leaflet', () => ({
   MapContainer: ({ children }: any) => <div data-testid="map-container">{children}</div>,
   TileLayer: () => <div data-testid="tile-layer" />,
-  Marker: ({ children }: any) => <div data-testid="map-marker">{children}</div>,
+  Marker: ({ children, opacity }: any) => (
+    <div data-testid="map-marker" data-opacity={opacity}>{children}</div>
+  ),
   Popup: ({ children }: any) => <div data-testid="map-popup">{children}</div>,
   Polyline: () => <div data-testid="map-polyline" />,
   Rectangle: () => <div data-testid="map-rectangle" />,
@@ -214,6 +216,31 @@ describe('DashboardMap', () => {
     );
     const markers = screen.getAllByTestId('map-marker');
     expect(markers.length).toBe(1);
+  });
+
+  it('fades markers by recency and keeps favorites fully opaque (#3886)', () => {
+    render(
+      <DashboardMap
+        {...defaultProps}
+        // 72h window so the 48h-old stale node survives the cutoff and can fade.
+        maxNodeAgeHours={72}
+        nodes={[nodeWithPosition, staleNodeWithPosition, staleFavoriteNodeWithPosition]}
+      />,
+    );
+    const opacities = screen
+      .getAllByTestId('map-marker')
+      .map((m) => Number(m.getAttribute('data-opacity')));
+    expect(opacities).toHaveLength(3);
+    const [fresh, staleOpacity, favorite] = opacities;
+    // Freshly heard node is ~fully opaque; the 48h-old node is clearly faded
+    // but above the floor; the stale favorite bypasses the age fade entirely.
+    expect(fresh).toBeGreaterThan(0.99);
+    expect(favorite).toBe(1);
+    expect(staleOpacity).toBeGreaterThan(0.25);
+    // Strictly and clearly dimmer than fresh — guards against an inverted fade
+    // (newer = more transparent) slipping through, which `< fresh` alone would
+    // miss for a node heard just inside a wide window.
+    expect(staleOpacity).toBeLessThan(0.7);
   });
 
   it('forwards the configured map pin style to createNodeIcon (issue #3364)', () => {
