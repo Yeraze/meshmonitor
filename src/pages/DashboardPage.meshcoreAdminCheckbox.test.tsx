@@ -210,4 +210,38 @@ describe('MeshCore virtual node "Allow admin commands" checkbox', () => {
     const body = JSON.parse(call[1].body as string);
     expect(body.config.virtualNode.allowAdminCommands).toBe(false);
   });
+
+  it('persists allowAdminCommands: true when the user checks it and saves', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...meshcoreSource }),
+    }) as any;
+
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'edit-MC Source' }));
+
+    const checkbox = await screen.findByRole('checkbox', {
+      name: 'meshcore.form.allow_admin_commands',
+    });
+    // Source starts with allowAdminCommands: true — toggle off then back on
+    // so this test exercises the "checked -> save true" write path
+    // independently of test 2's "checked -> save false" path.
+    fireEvent.click(checkbox);
+    fireEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: /^common\.save$/i }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/sources/src-mc',
+        expect.objectContaining({ method: 'PUT' }),
+      );
+    });
+
+    const call = (global.fetch as any).mock.calls.find(([url]: [string]) => url === '/api/sources/src-mc');
+    const body = JSON.parse(call[1].body as string);
+    expect(body.config.virtualNode.allowAdminCommands).toBe(true);
+  });
 });
