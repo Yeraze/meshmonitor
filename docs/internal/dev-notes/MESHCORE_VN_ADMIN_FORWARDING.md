@@ -30,6 +30,7 @@ a shared serial link). This mirrors how the VN already handles sends
 | `SetTxPower` (12)     | `[12][power:u8]`                            | `setTxPower(power)`           | dBm |
 | `SetAdvertLatLon` (14)| `[14][lat:i32LE][lon:i32LE]`                | `setCoords(lat,lon)`          | fixed ×1e6 → **decimal degrees** |
 | `SetChannel` (32)     | `[32][idx:u8][name:cstring(32)][secret:16]` | `setChannel(idx,name,secretHex)` | secret bytes → hex; **no scope** passed (leaves DB scope untouched) |
+| `SetOtherParams` (38) | `[38][manualAddContacts:u8][telemetryMode:u8 packed][advLocPolicy:u8]` | `setOtherParams({…})` | telemetry byte unpacked to three 2-bit sections; forwarded atomically in one frame |
 
 Parsers live in `meshcoreCompanionCodec.ts` (`parseSetAdvertName` … `parseSetChannel`,
 plus `fixedToDegrees` / `wireFreqToMhz` / `wireBwToKhz`), unit-tested by feeding
@@ -50,13 +51,25 @@ Because the manager setters already await the node's ack, the VN's `Ok`
 truthfully reflects the node applying the change. All forwarding goes through the
 manager's single serialized command path, so there's no new serial contention.
 
+## SetOtherParams (38) — atomic path
+
+`SetOtherParams` bundles `manualAddContacts`, three 2-bit telemetry-visibility
+sections, and `advLocPolicy`. Rather than fan it out across the manager's
+piecemeal string-based setters (`setTelemetryModeBase` etc., each a separate
+non-atomic read-modify-write frame — and none for `manualAddContacts`), it gets
+a dedicated single-frame path:
+
+`parseSetOtherParams` → `MeshCoreManager.setOtherParams({…})` →
+native-backend `set_other_params` → `meshcore.js connection.setOtherParams(opts)`.
+
+Telemetry modes stay as **raw 2-bit integers** end to end — the backend's
+`telemetryModeStringToNumber` accepts numeric values directly, so there's no
+lossy wire-int ↔ manager-string round-trip (the two vocabularies also disagree:
+meshcore.js `TelemetryMode.AlwaysOn = 1` vs MeshMonitor `'always' → 2`). One
+frame, one node ack, no mapping ambiguity.
+
 ## Deliberately out of scope (follow-ups)
 
-- **`SetOtherParams` (38)** — a grab-bag (`manualAddContacts` + packed telemetry
-  modes + advLocPolicy). It needs a wire-int ↔ manager-string telemetry-mode
-  mapping, a `manualAddContacts` path the manager doesn't expose, and would fan
-  out into several non-atomic calls. Not one of the commands the issue named;
-  deferred to keep this change correct and reviewable.
 - **Destructive / identity / contact commands** — `Reboot`(19),
   `ExportPrivateKey`(23)/`ImportPrivateKey`(24), `AddUpdateContact`(9)/
   `RemoveContact`(15), `SendSelfAdvert`(7). Still `Err(UnsupportedCmd)`; each

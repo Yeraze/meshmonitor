@@ -107,4 +107,34 @@ describe('MeshCoreManager telemetry mode setters', () => {
       });
     });
   }
+
+  describe('setOtherParams (#3904 — atomic multi-field forward)', () => {
+    const PARAMS = {
+      manualAddContacts: 1,
+      telemetryModeBase: 2,
+      telemetryModeLoc: 1,
+      telemetryModeEnv: 0,
+      advLocPolicy: 1,
+    };
+
+    it('sends set_other_params with all fields in a single bridge call', async () => {
+      const ok = await manager.setOtherParams(PARAMS);
+      expect(ok).toBe(true);
+      expect(manager.bridgeCalls).toEqual([{ cmd: 'set_other_params', params: PARAMS }]);
+    });
+
+    it('returns false without calling the bridge on repeater devices', async () => {
+      const repeater = makeManager({ deviceType: MeshCoreDeviceType.REPEATER });
+      const ok = await repeater.setOtherParams(PARAMS);
+      expect(ok).toBe(false);
+      expect(repeater.bridgeCalls).toHaveLength(0);
+    });
+
+    it('returns false when the bridge call fails', async () => {
+      const failing = makeManager({ deviceType: MeshCoreDeviceType.COMPANION, bridgeFail: true });
+      const ok = await failing.setOtherParams(PARAMS);
+      expect(ok).toBe(false);
+      expect(failing.bridgeCalls).toHaveLength(1);
+    });
+  });
 });

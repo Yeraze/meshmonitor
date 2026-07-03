@@ -54,6 +54,7 @@ class MockConnection extends EventEmitter {
   public setTelemetryModeBaseCalls: number[] = [];
   public setTelemetryModeLocCalls: number[] = [];
   public setTelemetryModeEnvCalls: number[] = [];
+  public setOtherParamsCalls: Array<Record<string, number>> = [];
   public statsRequests: number[] = [];
   public binaryRequests: Array<{ key: Uint8Array; req: number[] }> = [];
   public syncNextMessageQueue: any[] = [];
@@ -143,6 +144,10 @@ class MockConnection extends EventEmitter {
 
   async setAdvertLocPolicy(policy: number) {
     this.setAdvertLocPolicyCalls.push(policy);
+  }
+
+  async setOtherParams(opts: Record<string, number>) {
+    this.setOtherParamsCalls.push(opts);
   }
 
   async setTelemetryModeBase(mode: number) {
@@ -706,6 +711,28 @@ describe('MeshCoreNativeBackend', () => {
     const envResp = await backend.sendCommand('set_telemetry_mode_env', { mode: 'never' });
     expect(envResp.success).toBe(true);
     expect(conn.setTelemetryModeEnvCalls).toEqual([0]);
+  });
+
+  it('set_other_params forwards all fields atomically in one SetOtherParams frame (#3904)', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+
+    // Raw 2-bit telemetry values pass straight through (no string conversion).
+    const resp = await backend.sendCommand('set_other_params', {
+      manualAddContacts: 1,
+      telemetryModeBase: 2,
+      telemetryModeLoc: 1,
+      telemetryModeEnv: 0,
+      advLocPolicy: 1,
+    });
+    expect(resp.success).toBe(true);
+    expect(conn.setOtherParamsCalls).toEqual([
+      { manualAddContacts: 1, telemetryModeBase: 2, telemetryModeLoc: 1, telemetryModeEnv: 0, advLocPolicy: 1 },
+    ]);
   });
 
   // Regression: issue #3352 — MeshCore's wire protocol expects fixed-point

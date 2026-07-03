@@ -4332,6 +4332,35 @@ class MeshCoreManager extends EventEmitter {
     return this.setTelemetryMode('env', mode);
   }
 
+  /**
+   * Set all "other params" atomically in a single SetOtherParams frame
+   * (companion only) — manual-add-contacts, the three telemetry-visibility
+   * sections, and the advert location policy. Telemetry modes are the raw 2-bit
+   * values (0=off, 1=always, 2=on-request); the backend's converter accepts
+   * these numeric values directly. Used by the Virtual Node to forward an app's
+   * SetOtherParams(38) in one round-trip instead of several piecemeal patches
+   * (issue #3904).
+   */
+  async setOtherParams(params: {
+    manualAddContacts: number;
+    telemetryModeBase: number;
+    telemetryModeLoc: number;
+    telemetryModeEnv: number;
+    advLocPolicy: number;
+  }): Promise<boolean> {
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      logger.warn('[MeshCore] set_other_params not supported on repeater');
+      return false;
+    }
+    try {
+      const response = await this.sendBridgeCommand('set_other_params', params);
+      return response.success;
+    } catch (error) {
+      logger.error('[MeshCore] Failed to set other params:', error);
+      return false;
+    }
+  }
+
   // ============ Mesh-op throttle primitive ============
 
   /**
