@@ -228,6 +228,11 @@ export function decodeCommand(payload: Buffer): ParsedCommand {
 // buffer so the dispatcher can reply Err(IllegalArg). Radio/position fields are
 // returned in the SAME units MeshCoreManager expects (MHz, kHz, decimal
 // degrees), not raw wire units.
+//
+// Parsers only DECODE + length-check. Range/semantic validation (e.g. LoRa freq
+// 100–1000 MHz, tx power 1–22 dBm) lives in the MeshCoreManager setters
+// (validateRadioParams, setTxPower, …); a corrupt in-range-typed value that the
+// node rejects surfaces to the app as Err(BadState), not a crash here.
 
 export interface SetAdvertNameCmd { name: string; }
 export interface SetRadioParamsCmd { freq: number; bw: number; sf: number; cr: number; }
@@ -235,7 +240,13 @@ export interface SetTxPowerCmd { power: number; }
 export interface SetAdvertLatLonCmd { lat: number; lon: number; }
 export interface SetChannelCmd { idx: number; name: string; secretHex: string; }
 
-/** SetAdvertName(8): `[code][name: UTF-8, rest of frame]`. */
+/**
+ * SetAdvertName(8): `[code][name: UTF-8, rest of frame]`.
+ *
+ * No minimum-length guard: a bare `[code]` frame (no name bytes) is intentionally
+ * accepted and yields `{ name: '' }` — "clear the advertised name" — rather than
+ * throwing. The MeshCoreManager.setName setter sanitizes the value downstream.
+ */
 export function parseSetAdvertName(payload: Buffer): SetAdvertNameCmd {
   return { name: payload.subarray(1).toString('utf8') };
 }

@@ -3,7 +3,6 @@ import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 import databaseService from '../services/database.js';
 import type { MeshCoreNode, TelemetryMode, MeshCoreContact, MeshCoreMessage } from './meshcoreManager.js';
-import databaseServiceDefault from '../services/database.js';
 import {
   CommandCodes,
   ErrorCodes,
@@ -172,7 +171,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     super();
     this.options = options;
     this.allowAdminCommands = options.allowAdminCommands ?? false;
-    this.db = options.databaseService ?? (databaseServiceDefault as unknown as ChannelsDb);
+    this.db = options.databaseService ?? (databaseService as unknown as ChannelsDb);
   }
 
   get sourceId(): string {
@@ -446,7 +445,10 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     }
     let applied: Promise<boolean | void>;
     try {
-      // Payload parsing happens inside apply(); a malformed frame throws here.
+      // Payload parsing happens synchronously inside apply() before the manager
+      // promise is returned, so a malformed frame throws HERE (→ IllegalArg).
+      // Invariant: the parseSet* helpers must stay synchronous, or a parse error
+      // would escape this catch and be mis-reported as BadState below.
       applied = apply();
     } catch (parseErr) {
       logger.warn(`[MeshCore VN ${this.sourceId}] ${name} bad payload from ${clientId}: ${(parseErr as Error).message}`);

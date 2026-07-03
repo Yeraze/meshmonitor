@@ -323,6 +323,11 @@ describe('config-command parsers (#3904)', () => {
     expect(parseSetAdvertName(bytes)).toEqual({ name: 'Node XYZ' });
   });
 
+  it('accepts a bare SetAdvertName (no name bytes) as an empty "clear name"', () => {
+    // Intentionally lenient — a name-less frame yields '' rather than throwing.
+    expect(parseSetAdvertName(Buffer.from([CommandCodes.SetAdvertName]))).toEqual({ name: '' });
+  });
+
   it('parses SetRadioParams into manager units (MHz / kHz)', async () => {
     // meshcore.js writes freq/bw as raw u32 wire units (kHz / Hz).
     const bytes = await buildCommandBytes((c) => c.sendCommandSetRadioParams(917375, 250000, 11, 5));
@@ -361,6 +366,8 @@ describe('config-command parsers (#3904)', () => {
   });
 
   it('throws on short/garbage payloads so the dispatcher can reply Err', () => {
+    // parseSetAdvertName is intentionally absent here — it has no min-length
+    // guard (an empty name is valid; see the "clear name" test above).
     expect(() => parseSetRadioParams(Buffer.from([CommandCodes.SetRadioParams, 1, 2]))).toThrow();
     expect(() => parseSetTxPower(Buffer.from([CommandCodes.SetTxPower]))).toThrow();
     expect(() => parseSetAdvertLatLon(Buffer.from([CommandCodes.SetAdvertLatLon, 0, 0]))).toThrow();
