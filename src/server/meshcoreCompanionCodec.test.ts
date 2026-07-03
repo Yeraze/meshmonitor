@@ -28,6 +28,14 @@ import {
   pubKeyHexToBytes,
   hexToBytes,
   degreesToFixed,
+  fixedToDegrees,
+  wireFreqToMhz,
+  wireBwToKhz,
+  parseSetAdvertName,
+  parseSetRadioParams,
+  parseSetTxPower,
+  parseSetAdvertLatLon,
+  parseSetChannel,
   toEpochSeconds,
   type SelfInfoWire,
 } from './meshcoreCompanionCodec.js';
@@ -274,5 +282,95 @@ describe('meshcoreCompanionCodec — framing + command decode', () => {
     const parsed = decodeCommand(Buffer.from([CommandCodes.DeviceQuery, 1]));
     expect(parsed.code).toBe(CommandCodes.DeviceQuery);
     expect(parsed.appTargetVer).toBe(1);
+  });
+});
+
+// ─────────────── config-command parsers (issue #3904) ───────────────
+// These parse the app→node config frames the meshcore-flutter app sends so the
+// Virtual Node can forward them to the physical node. Strongest guarantee: feed
+// meshcore.js's OWN command builders through our parser and assert we read back
+// what the app put in. meshcore.js builders hand `sendToRadioFrame` the raw
+// payload (command-code byte first) — exactly what our parsers accept.
+async function buildCommandBytes(
+  fn: (conn: any) => Promise<void>,
+): Promise<Buffer> {
+  const conn: any = new (Connection as any)();
+  let captured: Buffer | null = null;
+  conn.sendToRadioFrame = (bytes: Uint8Array) => {
+    captured = Buffer.from(bytes);
+    return Promise.resolve();
+  };
+  await fn(conn);
+  if (!captured) throw new Error('no frame captured');
+  return captured;
+}
+
+describe('config-command parsers (#3904)', () => {
+  it('fixedToDegrees inverts degreesToFixed', () => {
+    expect(fixedToDegrees(degreesToFixed(29.7604))).toBeCloseTo(29.7604, 6);
+    expect(fixedToDegrees(degreesToFixed(-95.3698))).toBeCloseTo(-95.3698, 6);
+    expect(fixedToDegrees(0)).toBe(0);
+  });
+
+  it('wire freq/bw converters invert the encode-side helpers', () => {
+    expect(wireFreqToMhz(917375)).toBeCloseTo(917.375, 6); // kHz → MHz
+    expect(wireBwToKhz(250000)).toBeCloseTo(250, 6); // Hz → kHz
+  });
+
+  it('parses SetAdvertName from meshcore.js builder output', async () => {
+    const bytes = await buildCommandBytes((c) => c.sendCommandSetAdvertName('Node XYZ'));
+    expect(bytes[0]).toBe(CommandCodes.SetAdvertName);
+    expect(parseSetAdvertName(bytes)).toEqual({ name: 'Node XYZ' });
+  });
+
+  it('accepts a bare SetAdvertName (no name bytes) as an empty "clear name"', () => {
+    // Intentionally lenient — a name-less frame yields '' rather than throwing.
+    expect(parseSetAdvertName(Buffer.from([CommandCodes.SetAdvertName]))).toEqual({ name: '' });
+  });
+
+  it('parses SetRadioParams into manager units (MHz / kHz)', async () => {
+    // meshcore.js writes freq/bw as raw u32 wire units (kHz / Hz).
+    const bytes = await buildCommandBytes((c) => c.sendCommandSetRadioParams(917375, 250000, 11, 5));
+    expect(bytes[0]).toBe(CommandCodes.SetRadioParams);
+    const p = parseSetRadioParams(bytes);
+    expect(p.freq).toBeCloseTo(917.375, 6);
+    expect(p.bw).toBeCloseTo(250, 6);
+    expect(p.sf).toBe(11);
+    expect(p.cr).toBe(5);
+  });
+
+  it('parses SetTxPower', async () => {
+    const bytes = await buildCommandBytes((c) => c.sendCommandSetTxPower(22));
+    expect(bytes[0]).toBe(CommandCodes.SetTxPower);
+    expect(parseSetTxPower(bytes)).toEqual({ power: 22 });
+  });
+
+  it('parses SetAdvertLatLon back to decimal degrees', async () => {
+    const bytes = await buildCommandBytes((c) =>
+      c.sendCommandSetAdvertLatLon(degreesToFixed(29.7604), degreesToFixed(-95.3698)),
+    );
+    expect(bytes[0]).toBe(CommandCodes.SetAdvertLatLon);
+    const p = parseSetAdvertLatLon(bytes);
+    expect(p.lat).toBeCloseTo(29.7604, 6);
+    expect(p.lon).toBeCloseTo(-95.3698, 6);
+  });
+
+  it('parses SetChannel (idx, name, 16-byte secret → hex)', async () => {
+    const secret = new Uint8Array(16).map((_, i) => i + 1);
+    const bytes = await buildCommandBytes((c) => c.sendCommandSetChannel(2, 'gauntlet', secret));
+    expect(bytes[0]).toBe(CommandCodes.SetChannel);
+    const p = parseSetChannel(bytes);
+    expect(p.idx).toBe(2);
+    expect(p.name).toBe('gauntlet');
+    expect(p.secretHex).toBe('0102030405060708090a0b0c0d0e0f10');
+  });
+
+  it('throws on short/garbage payloads so the dispatcher can reply Err', () => {
+    // parseSetAdvertName is intentionally absent here — it has no min-length
+    // guard (an empty name is valid; see the "clear name" test above).
+    expect(() => parseSetRadioParams(Buffer.from([CommandCodes.SetRadioParams, 1, 2]))).toThrow();
+    expect(() => parseSetTxPower(Buffer.from([CommandCodes.SetTxPower]))).toThrow();
+    expect(() => parseSetAdvertLatLon(Buffer.from([CommandCodes.SetAdvertLatLon, 0, 0]))).toThrow();
+    expect(() => parseSetChannel(Buffer.from([CommandCodes.SetChannel, 0]))).toThrow();
   });
 });

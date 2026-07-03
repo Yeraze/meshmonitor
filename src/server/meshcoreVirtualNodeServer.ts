@@ -3,7 +3,6 @@ import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 import databaseService from '../services/database.js';
 import type { MeshCoreNode, TelemetryMode, MeshCoreContact, MeshCoreMessage } from './meshcoreManager.js';
-import databaseServiceDefault from '../services/database.js';
 import {
   CommandCodes,
   ErrorCodes,
@@ -33,6 +32,11 @@ import {
   toEpochSeconds,
   mhzToWireFreq,
   khzToWireBw,
+  parseSetAdvertName,
+  parseSetRadioParams,
+  parseSetTxPower,
+  parseSetAdvertLatLon,
+  parseSetChannel,
   type ParsedCommand,
 } from './meshcoreCompanionCodec.js';
 
@@ -59,6 +63,14 @@ export interface MeshCoreVirtualNodeManager {
     toPublicKey?: string,
     channelIdx?: number,
   ): Promise<{ ok: boolean; expectedAckCrc?: number; estTimeout?: number }>;
+  // Config mutations forwarded to the real node when `allowAdminCommands` is on
+  // (issue #3904). Units match the manager's own methods: freq MHz, bw kHz,
+  // lat/lon decimal degrees. Return false / throw on failure.
+  setName(name: string): Promise<boolean>;
+  setRadio(freq: number, bw: number, sf: number, cr: number): Promise<boolean>;
+  setTxPower(power: number): Promise<boolean>;
+  setCoords(lat: number, lon: number): Promise<boolean>;
+  setChannel(idx: number, name: string, secretHex: string, scope?: string | null): Promise<void>;
   /** EventEmitter surface — the manager emits 'message' with a MeshCoreMessage. */
   on(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
   off(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
@@ -159,7 +171,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     super();
     this.options = options;
     this.allowAdminCommands = options.allowAdminCommands ?? false;
-    this.db = options.databaseService ?? (databaseServiceDefault as unknown as ChannelsDb);
+    this.db = options.databaseService ?? (databaseService as unknown as ChannelsDb);
   }
 
   get sourceId(): string {
@@ -360,6 +372,41 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
           // treating an Err as a fatal handshake failure). Phase 3 forwards it.
           this.send(clientId, encodeOk());
           break;
+        // Config-mutating commands (issue #3904): forwarded to the real node
+        // only when `allowAdminCommands` is enabled; otherwise the app gets an
+        // explicit Err (UnsupportedCmd) instead of a silent hang.
+        case CommandCodes.SetAdvertName:
+          void this.handleConfigCommand(clientId, command, () => {
+            const { name } = parseSetAdvertName(command.payload);
+            return this.options.manager.setName(name);
+          });
+          break;
+        case CommandCodes.SetRadioParams:
+          void this.handleConfigCommand(clientId, command, () => {
+            const { freq, bw, sf, cr } = parseSetRadioParams(command.payload);
+            return this.options.manager.setRadio(freq, bw, sf, cr);
+          });
+          break;
+        case CommandCodes.SetTxPower:
+          void this.handleConfigCommand(clientId, command, () => {
+            const { power } = parseSetTxPower(command.payload);
+            return this.options.manager.setTxPower(power);
+          });
+          break;
+        case CommandCodes.SetAdvertLatLon:
+          void this.handleConfigCommand(clientId, command, () => {
+            const { lat, lon } = parseSetAdvertLatLon(command.payload);
+            return this.options.manager.setCoords(lat, lon);
+          });
+          break;
+        case CommandCodes.SetChannel:
+          void this.handleConfigCommand(clientId, command, () => {
+            const { idx, name, secretHex } = parseSetChannel(command.payload);
+            // No scope in the wire frame — pass undefined so the DB scope the
+            // user set in MeshMonitor is left untouched (see MESHCORE scope trap).
+            return this.options.manager.setChannel(idx, name, secretHex);
+          });
+          break;
         default:
           logger.debug(`[MeshCore VN ${this.sourceId}] unsupported command ${command.code} from ${clientId}`);
           this.send(clientId, encodeErr(ErrorCodes.UnsupportedCmd));
@@ -367,6 +414,59 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       }
     } catch (error) {
       logger.error(`[MeshCore VN ${this.sourceId}] error handling command ${command.code} from ${clientId}:`, error);
+    }
+  }
+
+  /**
+   * Shared path for config-mutating commands (issue #3904). Gates on
+   * `allowAdminCommands`, runs `apply()` (which parses the payload and calls the
+   * matching MeshCoreManager method against the real node), and translates the
+   * outcome into a companion response:
+   *   - admin disabled          → Err(UnsupportedCmd) (explicit, not a silent hang)
+   *   - parse failure (throws)  → Err(IllegalArg)
+   *   - manager returns false    → Err(BadState)
+   *   - manager throws           → Err(BadState)
+   *   - success                  → Ok
+   * `apply` returns boolean (most setters) or void (setChannel) — void resolves
+   * are treated as success.
+   */
+  private async handleConfigCommand(
+    clientId: string,
+    command: ParsedCommand,
+    apply: () => Promise<boolean | void>,
+  ): Promise<void> {
+    const name = COMMAND_NAMES[command.code] ?? String(command.code);
+    if (!this.allowAdminCommands) {
+      logger.debug(
+        `[MeshCore VN ${this.sourceId}] ${name} blocked from ${clientId} (allowAdminCommands off)`,
+      );
+      this.send(clientId, encodeErr(ErrorCodes.UnsupportedCmd));
+      return;
+    }
+    let applied: Promise<boolean | void>;
+    try {
+      // Payload parsing happens synchronously inside apply() before the manager
+      // promise is returned, so a malformed frame throws HERE (→ IllegalArg).
+      // Invariant: the parseSet* helpers must stay synchronous, or a parse error
+      // would escape this catch and be mis-reported as BadState below.
+      applied = apply();
+    } catch (parseErr) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] ${name} bad payload from ${clientId}: ${(parseErr as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.IllegalArg));
+      return;
+    }
+    try {
+      const ok = await applied;
+      if (ok === false) {
+        logger.warn(`[MeshCore VN ${this.sourceId}] ${name} from ${clientId} not applied by node`);
+        this.send(clientId, encodeErr(ErrorCodes.BadState));
+        return;
+      }
+      logger.info(`[MeshCore VN ${this.sourceId}] ${name} from ${clientId} forwarded to node`);
+      this.send(clientId, encodeOk());
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] ${name} from ${clientId} failed: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.BadState));
     }
   }
 
