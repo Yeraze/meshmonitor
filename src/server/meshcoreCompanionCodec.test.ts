@@ -36,6 +36,8 @@ import {
   parseSetTxPower,
   parseSetAdvertLatLon,
   parseSetChannel,
+  parseSetOtherParams,
+  unpackTelemetryMode,
   toEpochSeconds,
   type SelfInfoWire,
 } from './meshcoreCompanionCodec.js';
@@ -365,10 +367,29 @@ describe('config-command parsers (#3904)', () => {
     expect(p.secretHex).toBe('0102030405060708090a0b0c0d0e0f10');
   });
 
+  it('unpackTelemetryMode inverts packTelemetryMode', () => {
+    expect(unpackTelemetryMode(packTelemetryMode(1, 2, 1))).toEqual({ base: 1, loc: 2, env: 1 });
+    expect(unpackTelemetryMode(packTelemetryMode(0, 0, 0))).toEqual({ base: 0, loc: 0, env: 0 });
+    expect(unpackTelemetryMode(packTelemetryMode(2, 1, 2))).toEqual({ base: 2, loc: 1, env: 2 });
+  });
+
+  it('parses SetOtherParams from meshcore.js builder output', async () => {
+    const bytes = await buildCommandBytes((c) => c.sendCommandSetOtherParams(1, 2, 1, 2, 1));
+    expect(bytes[0]).toBe(CommandCodes.SetOtherParams);
+    expect(parseSetOtherParams(bytes)).toEqual({
+      manualAddContacts: 1,
+      telemetryModeBase: 2,
+      telemetryModeLoc: 1,
+      telemetryModeEnv: 2,
+      advLocPolicy: 1,
+    });
+  });
+
   it('throws on short/garbage payloads so the dispatcher can reply Err', () => {
     // parseSetAdvertName is intentionally absent here — it has no min-length
     // guard (an empty name is valid; see the "clear name" test above).
     expect(() => parseSetRadioParams(Buffer.from([CommandCodes.SetRadioParams, 1, 2]))).toThrow();
+    expect(() => parseSetOtherParams(Buffer.from([CommandCodes.SetOtherParams, 1, 2]))).toThrow();
     expect(() => parseSetTxPower(Buffer.from([CommandCodes.SetTxPower]))).toThrow();
     expect(() => parseSetAdvertLatLon(Buffer.from([CommandCodes.SetAdvertLatLon, 0, 0]))).toThrow();
     expect(() => parseSetChannel(Buffer.from([CommandCodes.SetChannel, 0]))).toThrow();

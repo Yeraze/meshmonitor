@@ -1558,6 +1558,32 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { ok: true };
       }
 
+      case 'set_other_params': {
+        // Atomic multi-field SetOtherParams (issue #3904). telemetryMode* accept
+        // the raw 2-bit values (numeric pass-through) as well as strings.
+        const manualAddContacts = Number(params.manualAddContacts) ? 1 : 0;
+        const telemetryModeBase = telemetryModeStringToNumber(params.telemetryModeBase ?? 0);
+        const telemetryModeLoc = telemetryModeStringToNumber(params.telemetryModeLoc ?? 0);
+        const telemetryModeEnv = telemetryModeStringToNumber(params.telemetryModeEnv ?? 0);
+        const advLocPolicy = Number(params.advLocPolicy ?? 0) & 0xff;
+        await c.setOtherParams({
+          manualAddContacts,
+          telemetryModeBase,
+          telemetryModeLoc,
+          telemetryModeEnv,
+          advLocPolicy,
+        });
+        if (this.cachedSelfInfo) {
+          const s = this.cachedSelfInfo as any;
+          s.manualAddContacts = manualAddContacts;
+          s.telemetryModeBase = telemetryModeBase;
+          s.telemetryModeLoc = telemetryModeLoc;
+          s.telemetryModeEnv = telemetryModeEnv;
+          s.advLocPolicy = advLocPolicy;
+        }
+        return { ok: true };
+      }
+
       case 'get_stats': {
         const type = String(params.type ?? 'core');
         const typeCode =

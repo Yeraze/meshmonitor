@@ -66,6 +66,7 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   setTxPowerMock = vi.fn().mockResolvedValue(true);
   setCoordsMock = vi.fn().mockResolvedValue(true);
   setChannelMock = vi.fn().mockResolvedValue(undefined);
+  setOtherParamsMock = vi.fn().mockResolvedValue(true);
   isConnected() { return this.localNode !== null; }
   getLocalNode() { return this.localNode; }
   getContacts() { return this.contacts; }
@@ -83,6 +84,15 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   setCoords(lat: number, lon: number) { return this.setCoordsMock(lat, lon) as Promise<boolean>; }
   setChannel(idx: number, name: string, secretHex: string, scope?: string | null) {
     return this.setChannelMock(idx, name, secretHex, scope) as Promise<void>;
+  }
+  setOtherParams(params: {
+    manualAddContacts: number;
+    telemetryModeBase: number;
+    telemetryModeLoc: number;
+    telemetryModeEnv: number;
+    advLocPolicy: number;
+  }) {
+    return this.setOtherParamsMock(params) as Promise<boolean>;
   }
   emitMessage(msg: MeshCoreMessage) { this.emit('message', msg); }
   emitSendConfirmed(data: { ackCode: number; roundTripMs: number }) { this.emit('send_confirmed', data); }
@@ -467,6 +477,10 @@ function setChannelFrame(idx: number, name: string, secret: Buffer): number[] {
   return toNums(b);
 }
 const nameFrame = (name: string): number[] => [CommandCodes.SetAdvertName, ...Buffer.from(name, 'utf8')];
+function otherParamsFrame(manualAdd: number, base: number, loc: number, env: number, advLoc: number): number[] {
+  const packed = (base & 0b11) | ((loc & 0b11) << 2) | ((env & 0b11) << 4);
+  return [CommandCodes.SetOtherParams, manualAdd, packed, advLoc];
+}
 
 describe('MeshCoreVirtualNodeServer — config-command forwarding (#3904)', () => {
   let server: MeshCoreVirtualNodeServer;
@@ -526,6 +540,19 @@ describe('MeshCoreVirtualNodeServer — config-command forwarding (#3904)', () =
     const res = await client.request(setChannelFrame(1, 'gauntlet', secret));
     expect(res[0]).toBe(ResponseCodes.Ok);
     expect(manager.setChannelMock).toHaveBeenCalledWith(1, 'gauntlet', '000102030405060708090a0b0c0d0e0f', undefined);
+  });
+
+  it('forwards SetOtherParams (unpacked telemetry modes) and replies Ok', async () => {
+    await startWith(true);
+    const res = await client.request(otherParamsFrame(1, 2, 1, 2, 1));
+    expect(res[0]).toBe(ResponseCodes.Ok);
+    expect(manager.setOtherParamsMock).toHaveBeenCalledWith({
+      manualAddContacts: 1,
+      telemetryModeBase: 2,
+      telemetryModeLoc: 1,
+      telemetryModeEnv: 2,
+      advLocPolicy: 1,
+    });
   });
 
   it('blocks config commands with Err(UnsupportedCmd) when allowAdminCommands is off, without touching the node', async () => {

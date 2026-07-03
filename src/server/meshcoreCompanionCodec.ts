@@ -239,6 +239,16 @@ export interface SetRadioParamsCmd { freq: number; bw: number; sf: number; cr: n
 export interface SetTxPowerCmd { power: number; }
 export interface SetAdvertLatLonCmd { lat: number; lon: number; }
 export interface SetChannelCmd { idx: number; name: string; secretHex: string; }
+export interface SetOtherParamsCmd {
+  /** Add contacts only on explicit request (1) vs automatically (0). */
+  manualAddContacts: number;
+  /** Per-section telemetry visibility (2-bit each): 0=off, 1=always, 2=on-request. */
+  telemetryModeBase: number;
+  telemetryModeLoc: number;
+  telemetryModeEnv: number;
+  /** Include location in adverts (0/1). */
+  advLocPolicy: number;
+}
 
 /**
  * SetAdvertName(8): `[code][name: UTF-8, rest of frame]`.
@@ -289,6 +299,27 @@ export function parseSetChannel(payload: Buffer): SetChannelCmd {
   const name = nameBuf.subarray(0, nul === -1 ? 32 : nul).toString('utf8');
   const secretHex = payload.subarray(34, 50).toString('hex');
   return { idx, name, secretHex };
+}
+
+/** Unpack the SetOtherParams/SelfInfo telemetry byte — inverse of {@link packTelemetryMode}. */
+export function unpackTelemetryMode(byte: number): { base: number; loc: number; env: number } {
+  return { base: byte & 0b11, loc: (byte >> 2) & 0b11, env: (byte >> 4) & 0b11 };
+}
+
+/**
+ * SetOtherParams(38): `[code][manualAddContacts:u8][telemetryMode:u8 packed][advLocPolicy:u8]`.
+ * The telemetry byte packs three 2-bit sections (base|loc<<2|env<<4).
+ */
+export function parseSetOtherParams(payload: Buffer): SetOtherParamsCmd {
+  if (payload.length < 4) throw new Error('SetOtherParams: short payload');
+  const { base, loc, env } = unpackTelemetryMode(payload[2]);
+  return {
+    manualAddContacts: payload[1],
+    telemetryModeBase: base,
+    telemetryModeLoc: loc,
+    telemetryModeEnv: env,
+    advLocPolicy: payload[3],
+  };
 }
 
 // ───────────────────────── response encoders ─────────────────────────

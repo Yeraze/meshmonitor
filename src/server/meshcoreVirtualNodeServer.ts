@@ -37,6 +37,7 @@ import {
   parseSetTxPower,
   parseSetAdvertLatLon,
   parseSetChannel,
+  parseSetOtherParams,
   type ParsedCommand,
 } from './meshcoreCompanionCodec.js';
 
@@ -71,6 +72,13 @@ export interface MeshCoreVirtualNodeManager {
   setTxPower(power: number): Promise<boolean>;
   setCoords(lat: number, lon: number): Promise<boolean>;
   setChannel(idx: number, name: string, secretHex: string, scope?: string | null): Promise<void>;
+  setOtherParams(params: {
+    manualAddContacts: number;
+    telemetryModeBase: number;
+    telemetryModeLoc: number;
+    telemetryModeEnv: number;
+    advLocPolicy: number;
+  }): Promise<boolean>;
   /** EventEmitter surface — the manager emits 'message' with a MeshCoreMessage. */
   on(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
   off(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
@@ -406,6 +414,11 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
             // user set in MeshMonitor is left untouched (see MESHCORE scope trap).
             return this.options.manager.setChannel(idx, name, secretHex);
           });
+          break;
+        case CommandCodes.SetOtherParams:
+          void this.handleConfigCommand(clientId, command, () =>
+            this.options.manager.setOtherParams(parseSetOtherParams(command.payload)),
+          );
           break;
         default:
           logger.debug(`[MeshCore VN ${this.sourceId}] unsupported command ${command.code} from ${clientId}`);
