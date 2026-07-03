@@ -1801,6 +1801,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
       latitude: fixedToDegrees(info.advLat),
       longitude: fixedToDegrees(info.advLon),
       adv_loc_policy: info.advLocPolicy,
+      manual_add_contacts: (info as any).manualAddContacts,
       telemetry_mode_base: (info as any).telemetryModeBase,
       telemetry_mode_loc: (info as any).telemetryModeLoc,
       telemetry_mode_env: (info as any).telemetryModeEnv,

@@ -87,7 +87,7 @@ class MockConnection extends EventEmitter {
     publicKey: Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
     advLat: 40_000_000,
     advLon: -75_000_000,
-    manualAddContacts: 0,
+    manualAddContacts: 1,
     // Wire-format units: freq in kHz, bw in Hz. 915525 kHz == 915.525 MHz, 62500 Hz == 62.5 kHz.
     radioFreq: 915525,
     radioBw: 62500,
@@ -308,6 +308,9 @@ describe('MeshCoreNativeBackend', () => {
     expect(resp.data?.radio_bw).toBe(62.5);
     expect(resp.data?.latitude).toBeCloseTo(40, 4);
     expect(resp.data?.longitude).toBeCloseTo(-75, 4);
+    // #3904 follow-up: manual_add_contacts must be surfaced (was dropped),
+    // so the Virtual Node can report the real value in SelfInfo.
+    expect(resp.data?.manual_add_contacts).toBe(1);
 
     await backend.disconnect();
     expect(backend.isConnected()).toBe(false);

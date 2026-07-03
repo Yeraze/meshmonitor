@@ -329,6 +329,8 @@ export interface MeshCoreNode {
   latitude?: number;
   longitude?: number;
   advLocPolicy?: number;
+  /** Add contacts only on explicit request (1) vs automatically (0). From SelfInfo. */
+  manualAddContacts?: number;
   /**
    * Server-side favorite flag (migration 094). Stored locally only — never
    * pushed to the device. Favorited nodes pin to the top of the node list.
@@ -2180,6 +2182,7 @@ class MeshCoreManager extends EventEmitter {
             latitude: info.latitude,
             longitude: info.longitude,
             advLocPolicy: info.adv_loc_policy,
+            manualAddContacts: info.manual_add_contacts,
             telemetryModeBase: parseTelemetryMode(info.telemetry_mode_base),
             telemetryModeLoc: parseTelemetryMode(info.telemetry_mode_loc),
             telemetryModeEnv: parseTelemetryMode(info.telemetry_mode_env),

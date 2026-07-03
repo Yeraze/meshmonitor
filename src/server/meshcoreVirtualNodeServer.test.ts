@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'events';
 import { Socket } from 'net';
-import { Constants } from '@liamcottle/meshcore.js';
+import { Connection, Constants } from '@liamcottle/meshcore.js';
 import { MeshCoreVirtualNodeServer, type MeshCoreVirtualNodeManager } from './meshcoreVirtualNodeServer.js';
 import {
   CommandCodes,
@@ -32,6 +32,7 @@ const LOCAL_NODE: MeshCoreNode = {
   radioCr: 5,
   latitude: 29.7604,
   longitude: -95.3698,
+  manualAddContacts: 1,
 };
 
 const SAMPLE_CONTACTS: MeshCoreContact[] = [
@@ -197,6 +198,19 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
     expect(payload[0]).toBe(ResponseCodes.SelfInfo);
     // name is the remainder of the frame after the fixed SelfInfo fields
     expect(payload.subarray(-LOCAL_NODE.name.length).toString('utf8')).toBe('Phase0 Node');
+  });
+
+  it('reports the real manualAddContacts in SelfInfo instead of hardcoding 0 (#3904 follow-up)', async () => {
+    // LOCAL_NODE.manualAddContacts = 1; decode the SelfInfo via meshcore.js's own
+    // parser and assert the field round-trips rather than being pinned to 0.
+    const payload = await client.request([CommandCodes.AppStart, 1, 0, 0, 0, 0, 0, 0]);
+    expect(payload[0]).toBe(ResponseCodes.SelfInfo);
+    const decoded = await new Promise<any>((resolve) => {
+      const conn: any = new (Connection as any)();
+      conn.once(ResponseCodes.SelfInfo, (event: any) => resolve(event));
+      conn.onFrameReceived(new Uint8Array(payload));
+    });
+    expect(decoded.manualAddContacts).toBe(1);
   });
 
   it('replies to GetDeviceTime with a plausible CurrTime', async () => {
