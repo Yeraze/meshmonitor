@@ -751,7 +751,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
         this.telemetryModeToWire(node.telemetryModeLoc),
         this.telemetryModeToWire(node.telemetryModeEnv),
       ),
-      manualAddContacts: 0,
+      manualAddContacts: node.manualAddContacts ?? 0,
       radioFreq: mhzToWireFreq(node.radioFreq),
       radioBw: khzToWireBw(node.radioBw),
       radioSf: node.radioSf ?? 0,
