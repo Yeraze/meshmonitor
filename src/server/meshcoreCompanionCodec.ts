@@ -220,6 +220,66 @@ export function decodeCommand(payload: Buffer): ParsedCommand {
   return cmd;
 }
 
+// ─────────────────────── config-command parsers ───────────────────────
+// Parse the app→node config frames the meshcore-flutter app sends so the
+// Virtual Node can forward them to the physical node (issue #3904). Each takes
+// the raw command payload (leading code byte at offset 0, fields little-endian,
+// mirroring meshcore.js's `sendCommandSet*` builders) and throws on a short
+// buffer so the dispatcher can reply Err(IllegalArg). Radio/position fields are
+// returned in the SAME units MeshCoreManager expects (MHz, kHz, decimal
+// degrees), not raw wire units.
+
+export interface SetAdvertNameCmd { name: string; }
+export interface SetRadioParamsCmd { freq: number; bw: number; sf: number; cr: number; }
+export interface SetTxPowerCmd { power: number; }
+export interface SetAdvertLatLonCmd { lat: number; lon: number; }
+export interface SetChannelCmd { idx: number; name: string; secretHex: string; }
+
+/** SetAdvertName(8): `[code][name: UTF-8, rest of frame]`. */
+export function parseSetAdvertName(payload: Buffer): SetAdvertNameCmd {
+  return { name: payload.subarray(1).toString('utf8') };
+}
+
+/**
+ * SetRadioParams(11): `[code][freq:u32LE][bw:u32LE][sf:u8][cr:u8]`.
+ * Wire freq is kHz and bw is Hz; returned in MHz / kHz for MeshCoreManager.setRadio.
+ */
+export function parseSetRadioParams(payload: Buffer): SetRadioParamsCmd {
+  if (payload.length < 11) throw new Error('SetRadioParams: short payload');
+  return {
+    freq: wireFreqToMhz(payload.readUInt32LE(1)),
+    bw: wireBwToKhz(payload.readUInt32LE(5)),
+    sf: payload[9],
+    cr: payload[10],
+  };
+}
+
+/** SetTxPower(12): `[code][power:u8]` (dBm). */
+export function parseSetTxPower(payload: Buffer): SetTxPowerCmd {
+  if (payload.length < 2) throw new Error('SetTxPower: short payload');
+  return { power: payload[1] };
+}
+
+/** SetAdvertLatLon(14): `[code][lat:i32LE][lon:i32LE]` fixed-point → decimal degrees. */
+export function parseSetAdvertLatLon(payload: Buffer): SetAdvertLatLonCmd {
+  if (payload.length < 9) throw new Error('SetAdvertLatLon: short payload');
+  return {
+    lat: fixedToDegrees(payload.readInt32LE(1)),
+    lon: fixedToDegrees(payload.readInt32LE(5)),
+  };
+}
+
+/** SetChannel(32): `[code][idx:u8][name:cstring(32)][secret:16]`; secret returned as hex. */
+export function parseSetChannel(payload: Buffer): SetChannelCmd {
+  if (payload.length < 1 + 1 + 32 + 16) throw new Error('SetChannel: short payload');
+  const idx = payload[1];
+  const nameBuf = payload.subarray(2, 34);
+  const nul = nameBuf.indexOf(0);
+  const name = nameBuf.subarray(0, nul === -1 ? 32 : nul).toString('utf8');
+  const secretHex = payload.subarray(34, 50).toString('hex');
+  return { idx, name, secretHex };
+}
+
 // ───────────────────────── response encoders ─────────────────────────
 // Each returns a payload (response code byte first), NOT yet framed. Wrap with
 // frameNodeToApp() before writing to the socket.
@@ -532,6 +592,11 @@ export function degreesToFixed(deg: number | undefined | null): number {
   return Math.round(deg * 1e6) | 0;
 }
 
+/** Convert MeshCore fixed-point (degrees×1e6, int32) back to decimal degrees. */
+export function fixedToDegrees(fixed: number): number {
+  return fixed / 1e6;
+}
+
 /** Convert MHz to wire frequency units (kHz). */
 export function mhzToWireFreq(mhz: number | undefined | null): number {
   return typeof mhz === 'number' && Number.isFinite(mhz) ? Math.round(mhz * 1000) : 0;
@@ -540,4 +605,14 @@ export function mhzToWireFreq(mhz: number | undefined | null): number {
 /** Convert kHz to wire bandwidth units (Hz). */
 export function khzToWireBw(khz: number | undefined | null): number {
   return typeof khz === 'number' && Number.isFinite(khz) ? Math.round(khz * 1000) : 0;
+}
+
+/** Convert wire frequency units (kHz) to MHz — inverse of {@link mhzToWireFreq}. */
+export function wireFreqToMhz(khz: number): number {
+  return khz / 1000;
+}
+
+/** Convert wire bandwidth units (Hz) to kHz — inverse of {@link khzToWireBw}. */
+export function wireBwToKhz(hz: number): number {
+  return hz / 1000;
 }

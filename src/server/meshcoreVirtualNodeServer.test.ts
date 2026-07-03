@@ -6,10 +6,12 @@ import { MeshCoreVirtualNodeServer, type MeshCoreVirtualNodeManager } from './me
 import {
   CommandCodes,
   ResponseCodes,
+  ErrorCodes,
   PushCodes,
   FRAME_APP_TO_NODE,
   FRAME_NODE_TO_APP,
   SUPPORTED_COMPANION_PROTOCOL_VERSION,
+  degreesToFixed,
 } from './meshcoreCompanionCodec.js';
 import type { MeshCoreNode, MeshCoreContact, MeshCoreMessage } from './meshcoreManager.js';
 
@@ -58,6 +60,12 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   }
   sendMessageMock = vi.fn().mockResolvedValue(true);
   sendMessageWithResultMock = vi.fn().mockResolvedValue({ ok: true });
+  // Config-mutation mocks (issue #3904).
+  setNameMock = vi.fn().mockResolvedValue(true);
+  setRadioMock = vi.fn().mockResolvedValue(true);
+  setTxPowerMock = vi.fn().mockResolvedValue(true);
+  setCoordsMock = vi.fn().mockResolvedValue(true);
+  setChannelMock = vi.fn().mockResolvedValue(undefined);
   isConnected() { return this.localNode !== null; }
   getLocalNode() { return this.localNode; }
   getContacts() { return this.contacts; }
@@ -66,6 +74,15 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   }
   sendMessageWithResult(text: string, toPublicKey?: string, channelIdx?: number) {
     return this.sendMessageWithResultMock(text, toPublicKey, channelIdx) as Promise<{ ok: boolean; expectedAckCrc?: number; estTimeout?: number }>;
+  }
+  setName(name: string) { return this.setNameMock(name) as Promise<boolean>; }
+  setRadio(freq: number, bw: number, sf: number, cr: number) {
+    return this.setRadioMock(freq, bw, sf, cr) as Promise<boolean>;
+  }
+  setTxPower(power: number) { return this.setTxPowerMock(power) as Promise<boolean>; }
+  setCoords(lat: number, lon: number) { return this.setCoordsMock(lat, lon) as Promise<boolean>; }
+  setChannel(idx: number, name: string, secretHex: string, scope?: string | null) {
+    return this.setChannelMock(idx, name, secretHex, scope) as Promise<void>;
   }
   emitMessage(msg: MeshCoreMessage) { this.emit('message', msg); }
   emitSendConfirmed(data: { ackCode: number; roundTripMs: number }) { this.emit('send_confirmed', data); }
@@ -416,5 +433,130 @@ describe('MeshCoreVirtualNodeServer — local node not ready', () => {
 
     client.close();
     await server.stop();
+  });
+});
+
+// ─────────────── config-command forwarding (issue #3904) ───────────────
+// The VN forwards config-mutating companion commands to the real node via the
+// manager's typed setters, gated on allowAdminCommands. Before this, every such
+// command fell through to Err(UnsupportedCmd) unconditionally.
+const toNums = (b: Buffer): number[] => Array.from(b);
+
+function radioParamsFrame(freqKhz: number, bwHz: number, sf: number, cr: number): number[] {
+  const b = Buffer.alloc(11);
+  b[0] = CommandCodes.SetRadioParams;
+  b.writeUInt32LE(freqKhz, 1);
+  b.writeUInt32LE(bwHz, 5);
+  b[9] = sf;
+  b[10] = cr;
+  return toNums(b);
+}
+function latLonFrame(latDeg: number, lonDeg: number): number[] {
+  const b = Buffer.alloc(9);
+  b[0] = CommandCodes.SetAdvertLatLon;
+  b.writeInt32LE(degreesToFixed(latDeg), 1);
+  b.writeInt32LE(degreesToFixed(lonDeg), 5);
+  return toNums(b);
+}
+function setChannelFrame(idx: number, name: string, secret: Buffer): number[] {
+  const b = Buffer.alloc(50);
+  b[0] = CommandCodes.SetChannel;
+  b[1] = idx;
+  b.write(name, 2, 31, 'utf8'); // cstring(32), leave final byte null
+  secret.copy(b, 34, 0, 16);
+  return toNums(b);
+}
+const nameFrame = (name: string): number[] => [CommandCodes.SetAdvertName, ...Buffer.from(name, 'utf8')];
+
+describe('MeshCoreVirtualNodeServer — config-command forwarding (#3904)', () => {
+  let server: MeshCoreVirtualNodeServer;
+  let client: TestClient;
+  let manager: FakeManager;
+
+  async function startWith(allowAdminCommands: boolean): Promise<void> {
+    manager = new FakeManager();
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager, allowAdminCommands, databaseService: CHANNELS_DB });
+    await server.start();
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+  }
+
+  afterEach(async () => {
+    client?.close();
+    await server?.stop();
+  });
+
+  it('forwards SetAdvertName to manager.setName and replies Ok', async () => {
+    await startWith(true);
+    const res = await client.request(nameFrame('Rover'));
+    expect(res[0]).toBe(ResponseCodes.Ok);
+    expect(manager.setNameMock).toHaveBeenCalledWith('Rover');
+  });
+
+  it('forwards SetRadioParams in manager units (MHz / kHz) and replies Ok', async () => {
+    await startWith(true);
+    const res = await client.request(radioParamsFrame(917375, 250000, 11, 5));
+    expect(res[0]).toBe(ResponseCodes.Ok);
+    const [freq, bw, sf, cr] = manager.setRadioMock.mock.calls[0];
+    expect(freq).toBeCloseTo(917.375, 6);
+    expect(bw).toBeCloseTo(250, 6);
+    expect(sf).toBe(11);
+    expect(cr).toBe(5);
+  });
+
+  it('forwards SetTxPower and replies Ok', async () => {
+    await startWith(true);
+    const res = await client.request([CommandCodes.SetTxPower, 20]);
+    expect(res[0]).toBe(ResponseCodes.Ok);
+    expect(manager.setTxPowerMock).toHaveBeenCalledWith(20);
+  });
+
+  it('forwards SetAdvertLatLon as decimal degrees and replies Ok', async () => {
+    await startWith(true);
+    const res = await client.request(latLonFrame(29.7604, -95.3698));
+    expect(res[0]).toBe(ResponseCodes.Ok);
+    const [lat, lon] = manager.setCoordsMock.mock.calls[0];
+    expect(lat).toBeCloseTo(29.7604, 5);
+    expect(lon).toBeCloseTo(-95.3698, 5);
+  });
+
+  it('forwards SetChannel (idx, name, hex secret, no scope) and replies Ok', async () => {
+    await startWith(true);
+    const secret = Buffer.from('000102030405060708090a0b0c0d0e0f', 'hex');
+    const res = await client.request(setChannelFrame(1, 'gauntlet', secret));
+    expect(res[0]).toBe(ResponseCodes.Ok);
+    expect(manager.setChannelMock).toHaveBeenCalledWith(1, 'gauntlet', '000102030405060708090a0b0c0d0e0f', undefined);
+  });
+
+  it('blocks config commands with Err(UnsupportedCmd) when allowAdminCommands is off, without touching the node', async () => {
+    await startWith(false);
+    const res = await client.request(nameFrame('Rover'));
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.UnsupportedCmd);
+    expect(manager.setNameMock).not.toHaveBeenCalled();
+  });
+
+  it('replies Err(BadState) when the node rejects the change (manager returns false)', async () => {
+    await startWith(true);
+    manager.setTxPowerMock.mockResolvedValueOnce(false);
+    const res = await client.request([CommandCodes.SetTxPower, 20]);
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.BadState);
+  });
+
+  it('replies Err(BadState) when the manager throws', async () => {
+    await startWith(true);
+    manager.setRadioMock.mockRejectedValueOnce(new Error('invalid radio'));
+    const res = await client.request(radioParamsFrame(917375, 250000, 11, 5));
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.BadState);
+  });
+
+  it('replies Err(IllegalArg) on a malformed config payload, without calling the manager', async () => {
+    await startWith(true);
+    const res = await client.request([CommandCodes.SetRadioParams, 1, 2]); // too short
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.IllegalArg);
+    expect(manager.setRadioMock).not.toHaveBeenCalled();
   });
 });
