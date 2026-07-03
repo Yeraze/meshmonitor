@@ -157,6 +157,29 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     expect(row.positionSource).toBe('contact');
   });
 
+  it('upsertNode does not let an altitude-only contact write clobber a telemetry-sourced altitude (#3908)', async () => {
+    // Telemetry poll records a fix including altitude.
+    await repo.upsertNode(
+      { publicKey: 'pk-1', latitude: 10, longitude: 20, altitude: 100, positionSource: 'telemetry' },
+      'src-a',
+    );
+    // A later write carries only altitude (no lat/lon) and isn't tagged
+    // 'telemetry' — this must not overwrite the telemetry-sourced altitude,
+    // matching the precedence rule applied to lat/lon.
+    await repo.upsertNode(
+      { publicKey: 'pk-1', altitude: 5 },
+      'src-a',
+    );
+
+    const row = db.prepare(
+      `SELECT latitude, longitude, altitude, positionSource FROM meshcore_nodes WHERE publicKey = 'pk-1'`,
+    ).get() as { latitude: number; longitude: number; altitude: number; positionSource: string };
+    expect(row.latitude).toBeCloseTo(10);
+    expect(row.longitude).toBeCloseTo(20);
+    expect(row.altitude).toBeCloseTo(100);
+    expect(row.positionSource).toBe('telemetry');
+  });
+
   it('upsertNode writes a falsy-but-valid value like batteryMv: 0 (not skipped as "absent")', async () => {
     // Guards the merge guard's `!== null && !== undefined` test against a
     // future change to a truthiness check (`!v`), which would wrongly drop 0.

@@ -323,7 +323,7 @@ export class MeshCoreRepository extends BaseRepository {
     if (
       existing?.positionSource === 'telemetry' &&
       node.positionSource !== 'telemetry' &&
-      (node.latitude !== undefined || node.longitude !== undefined)
+      (node.latitude !== undefined || node.longitude !== undefined || node.altitude !== undefined)
     ) {
       const { latitude: _lat, longitude: _lon, altitude: _alt, positionSource: _src, ...rest } = node;
       effectiveNode = rest as typeof node;

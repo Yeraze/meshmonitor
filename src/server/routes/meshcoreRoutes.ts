@@ -26,6 +26,7 @@ import { getMeshCoreCredentialStore } from '../services/meshcoreCredentialStore.
 import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
 import meshcorePositionHistoryService from '../services/meshcorePositionHistoryService.js';
 import { resolveAutoAckPreSendDelaySeconds } from '../autoAckDelay.js';
+import { isNullIsland } from '../../utils/nullIsland.js';
 
 /**
  * Resolve the manager for a request. Mounted only under
@@ -2735,8 +2736,12 @@ router.patch(
               latitude: contact.latitude ?? null,
               longitude: contact.longitude ?? null,
               // Tag as the static/advert-cached position (#3908) so it never
-              // clobbers an established telemetry GNSS fix — mirrors persistContact.
-              positionSource: (typeof contact.latitude === 'number' && typeof contact.longitude === 'number')
+              // clobbers an established telemetry GNSS fix — mirrors persistContact,
+              // including the Null Island (0,0) guard so an uninitialized GPS
+              // default is never tagged as a real 'contact' position.
+              positionSource: (typeof contact.latitude === 'number'
+                && typeof contact.longitude === 'number'
+                && !isNullIsland(contact.latitude, contact.longitude))
                 ? 'contact'
                 : undefined,
               lastHeard: contact.lastSeen ?? null,
@@ -2814,8 +2819,12 @@ router.post(
               latitude: contact.latitude ?? null,
               longitude: contact.longitude ?? null,
               // Tag as the static/advert-cached position (#3908) so it never
-              // clobbers an established telemetry GNSS fix — mirrors persistContact.
-              positionSource: (typeof contact.latitude === 'number' && typeof contact.longitude === 'number')
+              // clobbers an established telemetry GNSS fix — mirrors persistContact,
+              // including the Null Island (0,0) guard so an uninitialized GPS
+              // default is never tagged as a real 'contact' position.
+              positionSource: (typeof contact.latitude === 'number'
+                && typeof contact.longitude === 'number'
+                && !isNullIsland(contact.latitude, contact.longitude))
                 ? 'contact'
                 : undefined,
               lastHeard: contact.lastSeen ?? null,
