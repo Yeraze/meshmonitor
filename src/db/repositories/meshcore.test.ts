@@ -99,6 +99,64 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     expect(row.advType).toBe(1); // a provided value still updates
   });
 
+  it('upsertNode does not let a static contact position clobber an established telemetry fix (#3908)', async () => {
+    // Telemetry poll records the node's true GNSS fix first.
+    await repo.upsertNode(
+      { publicKey: 'pk-1', latitude: 10, longitude: 20, positionSource: 'telemetry' },
+      'src-a',
+    );
+    // A later contact advert re-asserts the static/advert-cached position —
+    // this must NOT overwrite the telemetry fix, and must not log a spurious
+    // position-history point for it.
+    await repo.upsertNode(
+      { publicKey: 'pk-1', latitude: 45, longitude: 90, positionSource: 'contact' },
+      'src-a',
+    );
+
+    const row = db.prepare(
+      `SELECT latitude, longitude, positionSource FROM meshcore_nodes WHERE publicKey = 'pk-1'`,
+    ).get() as { latitude: number; longitude: number; positionSource: string };
+    expect(row.latitude).toBeCloseTo(10);
+    expect(row.longitude).toBeCloseTo(20);
+    expect(row.positionSource).toBe('telemetry');
+
+    const history = db.prepare(
+      `SELECT COUNT(*) AS n FROM meshcore_position_history WHERE publicKey = 'pk-1'`,
+    ).get() as { n: number };
+    expect(history.n).toBe(1); // only the telemetry fix, not the clobbering contact write
+  });
+
+  it('upsertNode lets a fresh telemetry fix replace an established one (#3908)', async () => {
+    await repo.upsertNode(
+      { publicKey: 'pk-1', latitude: 10, longitude: 20, positionSource: 'telemetry' },
+      'src-a',
+    );
+    await repo.upsertNode(
+      { publicKey: 'pk-1', latitude: 11, longitude: 21, positionSource: 'telemetry' },
+      'src-a',
+    );
+
+    const row = db.prepare(
+      `SELECT latitude, longitude FROM meshcore_nodes WHERE publicKey = 'pk-1'`,
+    ).get() as { latitude: number; longitude: number };
+    expect(row.latitude).toBeCloseTo(11);
+    expect(row.longitude).toBeCloseTo(21);
+  });
+
+  it('upsertNode still applies the contact position as a fallback when no telemetry fix exists yet (#3908)', async () => {
+    await repo.upsertNode(
+      { publicKey: 'pk-1', latitude: 45, longitude: 90, positionSource: 'contact' },
+      'src-a',
+    );
+
+    const row = db.prepare(
+      `SELECT latitude, longitude, positionSource FROM meshcore_nodes WHERE publicKey = 'pk-1'`,
+    ).get() as { latitude: number; longitude: number; positionSource: string };
+    expect(row.latitude).toBeCloseTo(45);
+    expect(row.longitude).toBeCloseTo(90);
+    expect(row.positionSource).toBe('contact');
+  });
+
   it('upsertNode writes a falsy-but-valid value like batteryMv: 0 (not skipped as "absent")', async () => {
     // Guards the merge guard's `!== null && !== undefined` test against a
     // future change to a truthiness check (`!v`), which would wrongly drop 0.
@@ -154,6 +212,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastRoomSyncAt INTEGER,
         lastRoomPostAt INTEGER,
         roomCredential TEXT,
+        positionSource TEXT,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
         PRIMARY KEY (publicKey, sourceId)
@@ -400,6 +459,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastRoomSyncAt INTEGER,
         lastRoomPostAt INTEGER,
         roomCredential TEXT,
+        positionSource TEXT,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
         PRIMARY KEY (publicKey, sourceId)
@@ -525,6 +585,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastRoomSyncAt INTEGER,
         lastRoomPostAt INTEGER,
         roomCredential TEXT,
+        positionSource TEXT,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
         PRIMARY KEY (sourceId, publicKey)
@@ -594,6 +655,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         lastRoomSyncAt INTEGER,
         lastRoomPostAt INTEGER,
         roomCredential TEXT,
+        positionSource TEXT,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
         PRIMARY KEY (sourceId, publicKey)

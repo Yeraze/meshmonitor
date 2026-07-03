@@ -605,7 +605,14 @@ describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
     });
     await scheduler.tickOneManager(manager);
     expect(upsertNode).toHaveBeenCalledWith(
-      expect.objectContaining({ publicKey: 'companion-b', latitude: 48.8566, longitude: 2.3522 }),
+      expect.objectContaining({
+        publicKey: 'companion-b',
+        latitude: 48.8566,
+        longitude: 2.3522,
+        // Tagged telemetry-sourced (#3908) so this fix takes precedence over
+        // the static contact/advert position on subsequent writes.
+        positionSource: 'telemetry',
+      }),
       'src-a',
     );
   });

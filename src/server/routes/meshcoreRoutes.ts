@@ -2734,6 +2734,11 @@ router.patch(
               advType: contact.advType ?? null,
               latitude: contact.latitude ?? null,
               longitude: contact.longitude ?? null,
+              // Tag as the static/advert-cached position (#3908) so it never
+              // clobbers an established telemetry GNSS fix — mirrors persistContact.
+              positionSource: (typeof contact.latitude === 'number' && typeof contact.longitude === 'number')
+                ? 'contact'
+                : undefined,
               lastHeard: contact.lastSeen ?? null,
             },
             sourceId,
@@ -2808,6 +2813,11 @@ router.post(
               advType: contact.advType ?? null,
               latitude: contact.latitude ?? null,
               longitude: contact.longitude ?? null,
+              // Tag as the static/advert-cached position (#3908) so it never
+              // clobbers an established telemetry GNSS fix — mirrors persistContact.
+              positionSource: (typeof contact.latitude === 'number' && typeof contact.longitude === 'number')
+                ? 'contact'
+                : undefined,
               lastHeard: contact.lastSeen ?? null,
             },
             sourceId,

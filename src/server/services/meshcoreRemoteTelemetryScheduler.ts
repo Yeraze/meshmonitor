@@ -509,7 +509,15 @@ export class MeshCoreRemoteTelemetryScheduler {
           if (lat !== null && lon !== null && !isNullIsland(lat, lon)) {
             try {
               await this.database.meshcore.upsertNode(
-                { publicKey: target.publicKey, latitude: lat, longitude: lon },
+                {
+                  publicKey: target.publicKey,
+                  latitude: lat,
+                  longitude: lon,
+                  // Tag as telemetry-sourced (#3908) so this GNSS fix takes
+                  // precedence over the static contact/advert position on
+                  // subsequent writes, instead of being clobbered by it.
+                  positionSource: 'telemetry',
+                },
                 manager.sourceId,
               );
             } catch (err) {

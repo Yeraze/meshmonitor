@@ -1660,6 +1660,9 @@ class MeshCoreManager extends EventEmitter {
       // Drop "Null Island" (0,0) fixes — the GPS default before a lock — so a
       // bogus position never lands in the node row (issue #3763).
       const atNullIsland = isNullIsland(contact.latitude, contact.longitude);
+      const hasContactPosition = !atNullIsland
+        && typeof contact.latitude === 'number'
+        && typeof contact.longitude === 'number';
       await databaseService.meshcore.upsertNode(
         {
           publicKey: contact.publicKey,
@@ -1669,6 +1672,11 @@ class MeshCoreManager extends EventEmitter {
           advType: contact.advType ?? null,
           latitude: atNullIsland ? null : (contact.latitude ?? null),
           longitude: atNullIsland ? null : (contact.longitude ?? null),
+          // Tag this as the static/advert-cached position (#3908) so
+          // upsertNode won't let it clobber an established telemetry GNSS
+          // fix. Only tagged when we're actually writing a real coordinate —
+          // otherwise omitted so the merge preserves whatever is stored.
+          positionSource: hasContactPosition ? 'contact' : undefined,
           rssi: contact.rssi ?? null,
           snr: contact.snr ?? null,
           lastHeard: contact.lastSeen ?? null,

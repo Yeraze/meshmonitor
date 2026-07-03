@@ -125,6 +125,7 @@ import { migration as clearNullIslandMigration, runMigration107Postgres as runCl
 import { migration as meshcoreSavedRegionsMigration, runMigration108Postgres as runMeshcoreSavedRegionsPostgres, runMigration108Mysql as runMeshcoreSavedRegionsMysql } from '../server/migrations/108_meshcore_saved_regions.js';
 import { migration as clampFutureTracerouteMigration, runMigration109Postgres as runClampFutureTraceroutePostgres, runMigration109Mysql as runClampFutureTracerouteMysql } from '../server/migrations/109_clamp_future_traceroute_timestamps.js';
 import { migration as meshcorePositionHistoryMigration, runMigration110Postgres as runMeshcorePositionHistoryPostgres, runMigration110Mysql as runMeshcorePositionHistoryMysql } from '../server/migrations/110_add_meshcore_position_history.js';
+import { migration as meshcoreNodePositionSourceMigration, runMigration111Postgres as runMeshcoreNodePositionSourcePostgres, runMigration111Mysql as runMeshcoreNodePositionSourceMysql } from '../server/migrations/111_meshcore_node_position_source.js';
 
 // ============================================================================
 // Registry
@@ -1747,4 +1748,20 @@ registry.register({
   sqlite: (db) => meshcorePositionHistoryMigration.up(db),
   postgres: (client) => runMeshcorePositionHistoryPostgres(client),
   mysql: (pool) => runMeshcorePositionHistoryMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 111: `positionSource` marker on `meshcore_nodes` (#3908)
+// Lets upsertNode distinguish a telemetry-derived GNSS fix from the static
+// contact/advert position so the latter never clobbers an established
+// telemetry fix (or the position-history trail it feeds).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 111,
+  name: 'meshcore_node_position_source',
+  settingsKey: 'migration_111_meshcore_node_position_source',
+  sqlite: (db) => meshcoreNodePositionSourceMigration.up(db),
+  postgres: (client) => runMeshcoreNodePositionSourcePostgres(client),
+  mysql: (pool) => runMeshcoreNodePositionSourceMysql(pool),
 });
