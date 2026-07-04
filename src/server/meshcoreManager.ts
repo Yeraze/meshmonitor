@@ -848,6 +848,13 @@ class MeshCoreManager extends EventEmitter {
       this.heartbeatConsecutiveFailures = 0;
       this.reconnectAttempts = 0;
       this.nextReconnectAt = null;
+      // A prior failed attempt (see the catch block below) may have armed
+      // shouldReconnect to drive its own retry loop. Reset it here so a
+      // successful connect falls back to the heartbeat feature's own opt-in
+      // gating for *post-connect* drops, rather than leaving unexpected-
+      // disconnect auto-reconnect silently enabled when heartbeat isn't
+      // configured for this source.
+      this.shouldReconnect = false;
       this.emit('connected', this.localNode);
       // Per-source auto-delete-by-distance (#3901) — scoped to this source's
       // own nodes/settings; only runs while connected.
@@ -909,6 +916,17 @@ class MeshCoreManager extends EventEmitter {
             : String(error);
       logger.error(`[MeshCore] Connection failed: ${detail}`);
       await this.disconnect();
+      // Retry the initial connection attempt with exponential backoff instead
+      // of leaving the source stuck disconnected until a manual Connect click
+      // (#3918). Unlike Meshtastic TCP — whose transport retries forever by
+      // default — MeshCore had no retry path for a failed *first* attempt;
+      // the existing reconnect machinery only covered a drop after a
+      // successful connect, and only when the opt-in heartbeat feature was
+      // configured. disconnect() above reset shouldReconnect to false, so
+      // re-arm it here to drive scheduleNextReconnect/attemptReconnect.
+      this.shouldReconnect = true;
+      this.connectionState = 'reconnecting';
+      this.scheduleNextReconnect();
       return false;
     }
   }

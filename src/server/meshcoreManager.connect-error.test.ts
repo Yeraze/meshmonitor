@@ -26,6 +26,10 @@ function makeConfiguredManager(rejectWith: unknown): MeshCoreManager {
   (m as any).startNativeBackend = vi.fn().mockRejectedValue(rejectWith);
   // disconnect() is awaited in the catch; stub it so we don't touch real state.
   (m as any).disconnect = vi.fn().mockResolvedValue(undefined);
+  // The catch handler now schedules a retry (#3918); stub it out here so
+  // these log-message tests don't leak a real setTimeout that would keep
+  // retrying (and rejecting) after the test finishes.
+  (m as any).scheduleNextReconnect = vi.fn();
   return m;
 }
 
