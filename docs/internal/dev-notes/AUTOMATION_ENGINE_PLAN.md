@@ -153,6 +153,7 @@ Both tables follow the 3-backend Drizzle pattern (`src/db/schema/settings.ts` ex
    - **Loop guard:** max action count per run + max graph-step count; an action that re-triggers its own workflow must not recurse infinitely (track originating run id / depth).
    - **Cooldown / rate-limit** per automation (carry over the existing `autoAckCooldownSeconds` concept) to prevent mesh spam.
    - **Airtime awareness:** respect existing `automationAirtimeCutoff*` settings before send actions.
+   - **Self-origin guard (#3914):** the engine drops every event that originated from our OWN node — a message whose `fromNodeNum` (Meshtastic) / `fromPublicKey` (MeshCore) is the source's local node, and telemetry / node-updates for the local node. This is what stops an `action.sendMessage` reply (which re-enters the bus via `emitNewMessage`/`emitMeshCoreMessage`) from re-triggering its own rule in an infinite mesh loop, and stops our own periodic telemetry/node-info from spuriously firing rules. Identity is resolved per-source/protocol via optional `NodeDataProvider.getLocalNodeNum`/`getSelfPublicKey` accessors (real impls read the live manager registries; absent in a unit test → nothing is dropped). Mirrors the legacy MeshCore auto-responder's `checkAutoResponder` self-reply guard. (Geofence checks are intentionally NOT self-excluded — "when my own tracker enters a region" is a valid automation and carries no loop risk.)
    - Action failures are caught, logged to the run, and do not crash the engine.
 5. **Variable interpolation:** `{{ ... }}` templating in action params, resolving from `state.vars`, the trigger payload (`{{ trigger.from }}`, `{{ trigger.text }}`), and system vars (`{{ CURRENT_SOURCE_NODE_ID }}`, `{{ NOW }}`). Import strips/normalizes personal node ids via these system vars so shared workflows are portable.
 
@@ -174,6 +175,7 @@ Both tables follow the 3-backend Drizzle pattern (`src/db/schema/settings.ts` ex
 - `condition.timeRange` — within a time-of-day / day-of-week window.
 - `condition.variable` — compare a user-defined variable (§5.2) against a literal or another value; "is flag set?". Powers thresholds and the flag anti-spam gate.
 - `condition.logical` — AND/OR/NOT wrapper (Collapse covers most of this at the graph level).
+- `condition.meshcoreScope` — **(#3914)** match a MeshCore message by its region **scope**. `mode ∈ {named, unscoped, scoped}`; `named` takes a comma-separated `regions` list and an optional `includeUnscoped` toggle, so "region `de` **OR** unscoped" is a single block. Reads the inbound `scopeCode`/`scopeName` fields exposed by `buildMeshCoreMessageContext`; Meshtastic messages carry no scope and therefore never match. Serves the "nudge newbies who post unscoped or on a very broad region" use case.
 
 **Flow:**
 - `flow.fanout` — split to multiple branches.

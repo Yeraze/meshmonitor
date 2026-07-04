@@ -199,6 +199,63 @@ describe('AutomationEngineService', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('self-origin (#3914): ignores a Meshtastic message from our own local node', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('ping', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
+        { id: 'tap', type: 'action.tapback', params: { emoji: '👍' } },
+      ],
+      edges: [{ from: 't', to: 'tap' }],
+    });
+    const selfData = { ...data, getLocalNodeNum: async () => 111 };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: selfData, now: () => clock });
+    await engine.load();
+    // From our own node (111) → dropped before it can loop.
+    expect(await engine.onMessage(message({ fromNodeNum: 111, text: 'ping' }), 'default')).toBe(0);
+    expect(calls).toHaveLength(0);
+    // From a different node → fires normally.
+    expect(await engine.onMessage(message({ fromNodeNum: 222, text: 'ping' }), 'default')).toBe(1);
+  });
+
+  it('self-origin (#3914): ignores a MeshCore message from our own public key (case-insensitive)', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('mc-ping', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
+        { id: 's', type: 'action.sendMessage', params: { text: 'pong' } },
+      ],
+      edges: [{ from: 't', to: 's' }],
+    });
+    const selfData = { ...data, getSelfPublicKey: async () => 'ABCD' };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: selfData, now: () => clock });
+    await engine.load();
+    // Our own send (key differs only in case) → dropped.
+    expect(await engine.onMeshCoreMessage(mcMessage({ fromPublicKey: 'abcd', text: 'ping' }), 'default')).toBe(0);
+    expect(calls).toHaveLength(0);
+    // A different sender → fires.
+    expect(await engine.onMeshCoreMessage(mcMessage({ fromPublicKey: 'channel-0', text: 'ping' }), 'default')).toBe(1);
+  });
+
+  it('self-origin (#3914): ignores our own node telemetry', async () => {
+    const { deps } = recorder();
+    await createEnabled('batt', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.telemetry', params: {} },
+        { id: 'n', type: 'action.notify', params: { title: 'low', body: 'batt' } },
+      ],
+      edges: [{ from: 't', to: 'n' }],
+    });
+    const selfData = { ...data, getLocalNodeNum: async () => 111 };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: selfData, now: () => clock });
+    await engine.load();
+    expect(await engine.onTelemetry(111, 'batteryLevel', 50, '%', 'default')).toBe(0); // our own → dropped
+    expect(await engine.onTelemetry(222, 'batteryLevel', 50, '%', 'default')).toBe(1); // another node → fires
+  });
+
   it('enforces the per-automation cooldown', async () => {
     const { calls, deps } = recorder();
     await createEnabled('ping', {

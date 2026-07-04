@@ -159,6 +159,38 @@ describe('evaluateCondition', () => {
     expect(await evaluateCondition(node('condition.timeRange', { start: '22:00', end: '06:00' }), ctx({}, { now: lateNight }))).toBe(true);
   });
 
+  it('meshcoreScope: unscoped / scoped modes key off scopeCode', async () => {
+    const unscoped = node('condition.meshcoreScope', { mode: 'unscoped' });
+    expect(await evaluateCondition(unscoped, ctx({ scopeCode: 0 }))).toBe(true);
+    expect(await evaluateCondition(unscoped, ctx({ scopeCode: 42, scopeName: 'de' }))).toBe(false);
+    // Meshtastic message (no scopeCode field) → never matches.
+    expect(await evaluateCondition(unscoped, ctx({}))).toBe(false);
+
+    const scoped = node('condition.meshcoreScope', { mode: 'scoped' });
+    expect(await evaluateCondition(scoped, ctx({ scopeCode: 42, scopeName: 'de' }))).toBe(true);
+    expect(await evaluateCondition(scoped, ctx({ scopeCode: 0 }))).toBe(false);
+    expect(await evaluateCondition(scoped, ctx({}))).toBe(false);
+  });
+
+  it('meshcoreScope: named matches listed regions (case-insensitive, comma list)', async () => {
+    const n = node('condition.meshcoreScope', { mode: 'named', regions: 'de, eu' });
+    expect(await evaluateCondition(n, ctx({ scopeCode: 42, scopeName: 'DE' }))).toBe(true);
+    expect(await evaluateCondition(n, ctx({ scopeCode: 7, scopeName: 'eu' }))).toBe(true);
+    expect(await evaluateCondition(n, ctx({ scopeCode: 7, scopeName: 'fr' }))).toBe(false);
+    // scoped but region unresolved (no scopeName) → cannot match a name.
+    expect(await evaluateCondition(n, ctx({ scopeCode: 7 }))).toBe(false);
+    // unscoped is NOT matched by named alone.
+    expect(await evaluateCondition(n, ctx({ scopeCode: 0 }))).toBe(false);
+  });
+
+  it('meshcoreScope: named + includeUnscoped matches "region OR unscoped" (the #3914 case)', async () => {
+    const n = node('condition.meshcoreScope', { mode: 'named', regions: 'de', includeUnscoped: true });
+    expect(await evaluateCondition(n, ctx({ scopeCode: 42, scopeName: 'de' }))).toBe(true); // the region
+    expect(await evaluateCondition(n, ctx({ scopeCode: 0 }))).toBe(true);                    // OR unscoped
+    expect(await evaluateCondition(n, ctx({ scopeCode: 7, scopeName: 'fr' }))).toBe(false);  // other region
+    expect(await evaluateCondition(n, ctx({}))).toBe(false);                                 // Meshtastic
+  });
+
   it('logical: AND / OR / NOT over sub-conditions', async () => {
     const t = { type: 'condition.numeric', params: { field: 'v', op: '==', value: 1 } };
     const f = { type: 'condition.numeric', params: { field: 'v', op: '==', value: 9 } };

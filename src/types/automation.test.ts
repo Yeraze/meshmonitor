@@ -54,6 +54,28 @@ describe('validateAutomationGraph', () => {
     expect(validateAutomationGraph(g).valid).toBe(true);
   });
 
+  it('condition.meshcoreScope: accepts valid modes, rejects an empty named block (#3914)', () => {
+    const withCond = (params: Record<string, unknown>): AutomationGraph => ({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: {} },
+        { id: 'c', type: 'condition.meshcoreScope', params },
+        { id: 'a', type: 'action.sendMessage', params: { text: 'hi' } },
+      ],
+      edges: [{ from: 't', to: 'c' }, { from: 'c', to: 'a' }],
+    });
+    expect(validateAutomationGraph(withCond({ mode: 'unscoped' })).valid).toBe(true);
+    expect(validateAutomationGraph(withCond({ mode: 'scoped' })).valid).toBe(true);
+    expect(validateAutomationGraph(withCond({ mode: 'named', regions: 'de' })).valid).toBe(true);
+    expect(validateAutomationGraph(withCond({ mode: 'named', includeUnscoped: true })).valid).toBe(true);
+    // named with neither regions nor includeUnscoped → error
+    const empty = validateAutomationGraph(withCond({ mode: 'named' }));
+    expect(empty.valid).toBe(false);
+    expect(empty.errors.join(' ')).toMatch(/requires params\.regions or params\.includeUnscoped/);
+    // unknown mode → error
+    expect(validateAutomationGraph(withCond({ mode: 'bogus' })).valid).toBe(false);
+  });
+
   it('rejects non-object config', () => {
     expect(validateAutomationGraph(null).valid).toBe(false);
     expect(validateAutomationGraph(42).errors[0]).toMatch(/must be an object/);

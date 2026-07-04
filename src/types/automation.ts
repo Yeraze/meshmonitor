@@ -31,7 +31,8 @@ export type ConditionType =
   | 'condition.distance'
   | 'condition.timeRange'
   | 'condition.variable'
-  | 'condition.logical';
+  | 'condition.logical'
+  | 'condition.meshcoreScope';
 
 export type ActionType =
   | 'action.nothing'
@@ -74,6 +75,7 @@ export const CONDITION_TYPES: readonly ConditionType[] = [
   'condition.timeRange',
   'condition.variable',
   'condition.logical',
+  'condition.meshcoreScope',
 ];
 
 export const ACTION_TYPES: readonly ActionType[] = [
@@ -112,6 +114,19 @@ export type NumericOp = (typeof NUMERIC_OPS)[number];
 /** Node operations an `action.requestData` can ask for (#3835). */
 export const REQUEST_OPS = ['telemetry', 'position', 'traceroute', 'nodeinfo', 'neighbors', 'advert'] as const;
 export type RequestOp = (typeof REQUEST_OPS)[number];
+
+/**
+ * Match modes for `condition.meshcoreScope` (#3914). A MeshCore text message
+ * carries a region "scope" (`scopeCode` 0 = unscoped, >0 = a region; `scopeName`
+ * = the resolved region). This condition matches:
+ *  - `named`    — the message's region is one of the listed names (with an
+ *                 optional `includeUnscoped` toggle → "region de OR unscoped");
+ *  - `unscoped` — the message was sent with no region (`scopeCode === 0`);
+ *  - `scoped`   — the message carries any region (`scopeCode > 0`).
+ * Meshtastic messages carry no scope and therefore never match.
+ */
+export const MESHCORE_SCOPE_MODES = ['named', 'unscoped', 'scoped'] as const;
+export type MeshCoreScopeMode = (typeof MESHCORE_SCOPE_MODES)[number];
 
 // ─── Variable types (canonical home; repository re-exports these) ─────────────
 
@@ -330,6 +345,18 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
             errors.push(`${n.type} "${n.id}" requires params.variable`);
           }
           break;
+        case 'condition.meshcoreScope': {
+          const mode = p.mode == null ? 'named' : p.mode;
+          if (!MESHCORE_SCOPE_MODES.includes(mode as MeshCoreScopeMode)) {
+            errors.push(`condition.meshcoreScope "${n.id}" requires params.mode ∈ {named,unscoped,scoped}`);
+          } else if (mode === 'named') {
+            const hasRegions = typeof p.regions === 'string' && p.regions.trim().length > 0;
+            if (!hasRegions && p.includeUnscoped !== true) {
+              errors.push(`condition.meshcoreScope "${n.id}" (named) requires params.regions or params.includeUnscoped`);
+            }
+          }
+          break;
+        }
         case 'action.runScript':
           if (typeof p.scriptPath !== 'string' || p.scriptPath.length === 0) {
             errors.push(`action.runScript "${n.id}" requires params.scriptPath`);

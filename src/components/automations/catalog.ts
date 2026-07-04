@@ -237,6 +237,30 @@ export const CONDITIONS: BlockDef[] = [
     ],
   },
   {
+    type: 'condition.meshcoreScope',
+    label: 'MeshCore message scope',
+    description: 'Match a MeshCore message by its region scope — a specific region, unscoped (no region), or any scoped message. Meshtastic messages never match. Handy for nudging users who post unscoped or on a very broad region.',
+    fields: [
+      {
+        name: 'mode', label: 'Match', kind: 'select',
+        options: [
+          { value: 'named', label: 'A specific region…' },
+          { value: 'unscoped', label: 'Unscoped (no region)' },
+          { value: 'scoped', label: 'Any scoped message' },
+        ],
+      },
+      {
+        name: 'regions', label: 'Region(s)', kind: 'regionSelect',
+        placeholder: 'e.g. de, eu',
+        help: 'Comma-separated region names to match (used when Match = a specific region). Case-insensitive.',
+      },
+      {
+        name: 'includeUnscoped', label: 'Also match unscoped', kind: 'checkbox',
+        help: 'When matching specific region(s), ALSO match messages sent with no region — e.g. “region de OR unscoped”.',
+      },
+    ],
+  },
+  {
     type: 'condition.sourceFilter',
     label: 'Source is one of…',
     description: 'Only continue for the selected source connection(s).',
