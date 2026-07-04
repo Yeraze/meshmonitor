@@ -6,11 +6,52 @@ vi.mock('../../sourceManagerRegistry.js', () => ({
   sourceManagerRegistry: { getManager: (id: string) => getManager(id) },
 }));
 // The deps module also imports these at load time; stub to harmless objects.
-vi.mock('../../../services/database.js', () => ({ default: {} }));
+const getSource = vi.fn();
+vi.mock('../../../services/database.js', () => ({ default: { sources: { getSource: (id: string) => getSource(id) } } }));
 vi.mock('../appriseNotificationService.js', () => ({ appriseNotificationService: {} }));
 vi.mock('../../utils/scriptRunner.js', () => ({ runScript: vi.fn() }));
 
 import { createMeshActionDeps } from './meshActionDeps.js';
+
+describe('createMeshActionDeps sendMessage — unusable source diagnostics (#3915)', () => {
+  beforeEach(() => { getManager.mockReset(); getSource.mockReset(); });
+
+  it('reports a deleted/recreated source when no manager is registered and the id is unknown', async () => {
+    getManager.mockReturnValue(undefined);
+    getSource.mockResolvedValue(null);
+    const deps = createMeshActionDeps();
+
+    await expect(deps.sendMessage({ sourceId: 'gone', text: 'hi', channel: 0 }))
+      .rejects.toThrow(/no longer exists.*re-select the source/);
+  });
+
+  it('reports a disabled source by name when the id still exists but is disabled', async () => {
+    getManager.mockReturnValue(undefined);
+    getSource.mockResolvedValue({ id: 'disabled-src', name: 'Basement Node', enabled: false });
+    const deps = createMeshActionDeps();
+
+    await expect(deps.sendMessage({ sourceId: 'disabled-src', text: 'hi', channel: 0 }))
+      .rejects.toThrow(/Basement Node.*is disabled/);
+  });
+
+  it('reports a not-currently-connected source when enabled but no live manager exists', async () => {
+    getManager.mockReturnValue(undefined);
+    getSource.mockResolvedValue({ id: 'flaky-src', name: 'Attic Repeater', enabled: true });
+    const deps = createMeshActionDeps();
+
+    await expect(deps.sendMessage({ sourceId: 'flaky-src', text: 'hi', channel: 0 }))
+      .rejects.toThrow(/Attic Repeater.*not currently connected/);
+  });
+
+  it('reports wrong-protocol-for-messaging when a manager is live but lacks send capability (e.g. MQTT)', async () => {
+    getManager.mockReturnValue({}); // live manager, but no sendTextMessage/sendMessage
+    const deps = createMeshActionDeps();
+
+    await expect(deps.sendMessage({ sourceId: 'mqtt-src', text: 'hi', channel: 0 }))
+      .rejects.toThrow(/not a Meshtastic or MeshCore manager/);
+    expect(getSource).not.toHaveBeenCalled();
+  });
+});
 
 describe('createMeshActionDeps sendMessage — MeshCore scope (#3833)', () => {
   beforeEach(() => getManager.mockReset());

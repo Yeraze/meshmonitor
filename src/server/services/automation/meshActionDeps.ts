@@ -41,11 +41,37 @@ interface MeshCoreSendManager {
   sendAdvert(): Promise<unknown>;
 }
 
-function mgr(sourceId: string | null): MeshSendManager {
+/**
+ * Build an actionable error for a sourceId with no live, capable manager
+ * registered — distinguishing "never existed / deleted" from "disabled" from
+ * "exists but not currently connected" from "wrong protocol for this action".
+ * A bare "cannot send messages" gave users nothing to act on when their
+ * source list had drifted from a saved automation, e.g. after deleting and
+ * recreating a source under a new id (#3915).
+ */
+async function describeUnusableSource(sourceId: string, raw: unknown, capability: string): Promise<string> {
+  if (raw) {
+    return `source "${sourceId}" cannot ${capability} (not a Meshtastic or MeshCore manager)`;
+  }
+  try {
+    const source = await databaseService.sources.getSource(sourceId);
+    if (!source) {
+      return `source "${sourceId}" no longer exists — it may have been deleted or recreated; re-select the source in this automation`;
+    }
+    if (!source.enabled) {
+      return `source "${source.name}" (${sourceId}) is disabled — enable it in Settings > Sources for this automation to ${capability}`;
+    }
+    return `source "${source.name}" (${sourceId}) is not currently connected — check its status in Settings > Sources`;
+  } catch {
+    return `source "${sourceId}" cannot ${capability}`;
+  }
+}
+
+async function mgr(sourceId: string | null): Promise<MeshSendManager> {
   if (!sourceId) throw new Error('automation action requires a target source');
   const m = sourceManagerRegistry.getManager(sourceId) as unknown as MeshSendManager | undefined;
   if (!m || typeof m.sendTextMessage !== 'function') {
-    throw new Error(`source "${sourceId}" cannot send messages (not a Meshtastic manager)`);
+    throw new Error(await describeUnusableSource(sourceId, m, 'send messages'));
   }
   return m;
 }
@@ -76,7 +102,7 @@ async function sendTextVia(
     // `scopeOverride` (#3833) controls which region the message floods to.
     return raw.sendMessage(text, undefined, channel, scopeOverride);
   }
-  throw new Error(`source "${sourceId}" cannot send messages`);
+  throw new Error(await describeUnusableSource(sourceId, raw, 'send messages'));
 }
 
 export function createMeshActionDeps(): ActionDeps {
@@ -87,11 +113,11 @@ export function createMeshActionDeps(): ActionDeps {
 
     async sendTapback({ sourceId, emoji, channel, destination, replyId }) {
       // emoji flag = 1 marks a tapback/reaction; route the way the trigger arrived.
-      return mgr(sourceId).sendTextMessage(emoji, channel ?? 0, destination, replyId, 1);
+      return (await mgr(sourceId)).sendTextMessage(emoji, channel ?? 0, destination, replyId, 1);
     },
 
     async manageNode({ sourceId, nodeNum, op }) {
-      const m = mgr(sourceId);
+      const m = await mgr(sourceId);
       switch (op) {
         case 'favorite': return m.sendFavoriteNode(nodeNum);
         case 'unfavorite': return m.sendRemoveFavoriteNode(nodeNum);
@@ -140,7 +166,7 @@ export function createMeshActionDeps(): ActionDeps {
           default: throw new Error(`request op "${op}" not supported on MeshCore`);
         }
       }
-      throw new Error(`source "${sourceId}" cannot perform node requests`);
+      throw new Error(await describeUnusableSource(sourceId, raw, 'perform node requests'));
     },
 
     async notify({ sourceId, title, body, type, urls }) {
