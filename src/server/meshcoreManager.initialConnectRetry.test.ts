@@ -65,6 +65,7 @@ describe('MeshCoreManager.connect() initial-failure retry', () => {
     (m as any).startAutoPathfinding = vi.fn().mockResolvedValue(undefined);
     (m as any).startAutoAnnounce = vi.fn().mockResolvedValue(undefined);
     (m as any).startTimerTriggers = vi.fn().mockResolvedValue(undefined);
+    (m as any).distanceDeleteScheduler = { start: vi.fn().mockResolvedValue(undefined), stop: vi.fn() };
 
     const ok = await m.connect(TEST_CONFIG);
 
@@ -87,6 +88,7 @@ describe('MeshCoreManager.connect() initial-failure retry', () => {
     (m as any).startAutoPathfinding = vi.fn().mockResolvedValue(undefined);
     (m as any).startAutoAnnounce = vi.fn().mockResolvedValue(undefined);
     (m as any).startTimerTriggers = vi.fn().mockResolvedValue(undefined);
+    (m as any).distanceDeleteScheduler = { start: vi.fn().mockResolvedValue(undefined), stop: vi.fn() };
     // Skip the real backoff delay — assert the scheduling call happened and
     // drive the retry manually via attemptReconnect().
     const scheduleSpy = vi.spyOn(m as any, 'scheduleNextReconnect').mockReturnValue(undefined);
