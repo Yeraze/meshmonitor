@@ -32,6 +32,14 @@ export interface DbMeshCoreNode {
   latitude?: number | null;
   longitude?: number | null;
   altitude?: number | null;
+  /**
+   * Which ingest path last wrote latitude/longitude — 'contact' (static
+   * advert-cached position) or 'telemetry' (Cayenne-LPP GNSS fix). Lets
+   * `upsertNode` give an established telemetry fix precedence over the
+   * static contact position (migration 111, issue #3908). NULL/undefined
+   * means unknown (pre-migration row, or a caller not touching position).
+   */
+  positionSource?: 'contact' | 'telemetry' | null;
   batteryMv?: number | null;
   uptimeSecs?: number | null;
   rssi?: number | null;
@@ -304,6 +312,23 @@ export class MeshCoreRepository extends BaseRepository {
     const { meshcoreNodes } = this.tables;
     const existing = await this.getNodeByPublicKeyAndSource(node.publicKey, sourceId);
 
+    // A telemetry-derived GNSS fix (Cayenne-LPP poll) always wins over the
+    // static contact/advert position once one has been recorded — otherwise
+    // the far more frequent advert-driven writes (persistContact fires on
+    // every contact event, not just position changes) repeatedly clobber it
+    // (#3908). Drop the incoming latitude/longitude/altitude/positionSource
+    // so the merge below preserves the stored telemetry fix untouched; only
+    // an incoming write explicitly tagged 'telemetry' may replace it.
+    let effectiveNode = node;
+    if (
+      existing?.positionSource === 'telemetry' &&
+      node.positionSource !== 'telemetry' &&
+      (node.latitude !== undefined || node.longitude !== undefined || node.altitude !== undefined)
+    ) {
+      const { latitude: _lat, longitude: _lon, altitude: _alt, positionSource: _src, ...rest } = node;
+      effectiveNode = rest as typeof node;
+    }
+
     // Record a position-history point whenever this update carries a valid GPS
     // fix that differs from the stored position (or is this node's first fix).
     // This is the single choke point both ingest paths pass through — contact
@@ -311,7 +336,7 @@ export class MeshCoreRepository extends BaseRepository {
     // movement trail (#3852) captures every distinct fix without each call
     // site having to remember to log it. Stationary re-reports (identical
     // lat/lon) are deduped here so the trail doesn't accumulate noise.
-    await this.recordPositionHistoryIfMoved(node, existing ?? null, sourceId, now);
+    await this.recordPositionHistoryIfMoved(effectiveNode, existing ?? null, sourceId, now);
 
     if (existing) {
       // Merge, don't clobber (#3504). Callers (persistContact, the telemetry
@@ -326,7 +351,7 @@ export class MeshCoreRepository extends BaseRepository {
       // there means the route was reset (CMD_RESET_PATH), not "unobserved"
       // (see CLEARABLE_VIA_NULL at module scope).
       const updateSet: Record<string, unknown> = { sourceId, updatedAt: now };
-      for (const [k, v] of Object.entries(node)) {
+      for (const [k, v] of Object.entries(effectiveNode)) {
         if (v !== null && v !== undefined) {
           updateSet[k] = v;
         } else if (v === null && CLEARABLE_VIA_NULL.has(k)) {

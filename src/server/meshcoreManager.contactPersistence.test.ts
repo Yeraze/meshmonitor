@@ -99,6 +99,52 @@ describe('MeshCoreManager contact persistence (issue #3092)', () => {
     );
   });
 
+  it('tags a real position as contact-sourced so it never clobbers a telemetry fix (issue #3908)', async () => {
+    const manager = new MeshCoreManager('src-a');
+    dispatchBridgeEvent(manager, {
+      event_type: 'contact_advertised',
+      data: {
+        public_key: REPEATER_PUBKEY,
+        adv_name: 'MyRepeater',
+        adv_type: MeshCoreDeviceType.REPEATER,
+        latitude: 51.5,
+        longitude: -0.1,
+        last_advert: 1_700_000_000,
+      },
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(upsertNode).toHaveBeenCalledWith(
+      expect.objectContaining({ positionSource: 'contact' }),
+      'src-a',
+    );
+  });
+
+  it('omits positionSource for a Null Island (0,0) contact — no real position to tag (issue #3908)', async () => {
+    const manager = new MeshCoreManager('src-a');
+    dispatchBridgeEvent(manager, {
+      event_type: 'contact_advertised',
+      data: {
+        public_key: REPEATER_PUBKEY,
+        adv_name: 'MyRepeater',
+        adv_type: MeshCoreDeviceType.REPEATER,
+        latitude: 0,
+        longitude: 0,
+        last_advert: 1_700_000_000,
+      },
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(upsertNode).toHaveBeenCalledWith(
+      expect.objectContaining({ positionSource: undefined }),
+      'src-a',
+    );
+  });
+
   it('stores null lat/lon for a Null Island (0,0) contact (issue #3763)', async () => {
     const manager = new MeshCoreManager('src-a');
     dispatchBridgeEvent(manager, {

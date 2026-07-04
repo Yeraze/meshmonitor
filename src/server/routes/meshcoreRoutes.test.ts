@@ -1337,6 +1337,46 @@ describe('MeshCore Routes', () => {
       expect(upsertOrder).toBeLessThan(setCfgOrder);
     });
 
+    it('tags a real backfilled position as contact-sourced (issue #3908)', async () => {
+      meshcoreManager.getContact.mockReturnValueOnce({
+        publicKey: REPEATER_PUBKEY,
+        advName: 'MyRepeater',
+        advType: 2,
+        latitude: 51.0,
+        longitude: 0.5,
+        lastSeen: 1_700_000_000_000,
+      });
+
+      await authenticatedAgent
+        .patch(`/api/sources/test-source/meshcore/nodes/${REPEATER_PUBKEY}/telemetry-config`)
+        .send({ enabled: true });
+
+      expect(upsertNode).toHaveBeenCalledWith(
+        expect.objectContaining({ positionSource: 'contact' }),
+        'test-source',
+      );
+    });
+
+    it('does not tag a Null Island (0,0) backfilled position as contact-sourced (issue #3908)', async () => {
+      meshcoreManager.getContact.mockReturnValueOnce({
+        publicKey: REPEATER_PUBKEY,
+        advName: 'MyRepeater',
+        advType: 2,
+        latitude: 0,
+        longitude: 0,
+        lastSeen: 1_700_000_000_000,
+      });
+
+      await authenticatedAgent
+        .patch(`/api/sources/test-source/meshcore/nodes/${REPEATER_PUBKEY}/telemetry-config`)
+        .send({ enabled: true });
+
+      expect(upsertNode).toHaveBeenCalledWith(
+        expect.objectContaining({ positionSource: undefined }),
+        'test-source',
+      );
+    });
+
     it('skips the backfill upsert when the contact is not yet in memory', async () => {
       // User enables telemetry-retrieval on a publicKey we haven't
       // received an advert for yet. The route must still create the

@@ -39,6 +39,11 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   latitude: real('latitude'),
   longitude: real('longitude'),
   altitude: real('altitude'),
+  // Which ingest path last wrote latitude/longitude: 'contact' (static/advert
+  // position) or 'telemetry' (Cayenne-LPP GNSS fix). Lets upsertNode give a
+  // telemetry fix precedence over the static contact position once
+  // established (migration 111, issue #3908). NULL means unknown/pre-migration.
+  positionSource: text('positionSource'),
 
   // Telemetry
   batteryMv: integer('batteryMv'),   // Battery voltage in millivolts
@@ -116,6 +121,7 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   latitude: pgDoublePrecision('latitude'),
   longitude: pgDoublePrecision('longitude'),
   altitude: pgDoublePrecision('altitude'),
+  positionSource: pgText('positionSource'),
 
   batteryMv: pgInteger('batteryMv'),
   uptimeSecs: pgBigint('uptimeSecs', { mode: 'number' }),
@@ -171,6 +177,7 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   latitude: myDouble('latitude'),
   longitude: myDouble('longitude'),
   altitude: myDouble('altitude'),
+  positionSource: myVarchar('positionSource', { length: 16 }),
 
   batteryMv: myInt('batteryMv'),
   uptimeSecs: myBigint('uptimeSecs', { mode: 'number' }),
