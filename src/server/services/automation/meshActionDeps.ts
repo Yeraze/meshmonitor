@@ -12,6 +12,7 @@
  */
 import databaseService from '../../../services/database.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
+import { meshcoreManagerRegistry } from '../../meshcoreRegistry.js';
 import { appriseNotificationService } from '../appriseNotificationService.js';
 import { runScript as runUserScript } from '../../utils/scriptRunner.js';
 import type { ActionDeps } from './actionExecutor.js';
@@ -41,9 +42,21 @@ interface MeshCoreSendManager {
   sendAdvert(): Promise<unknown>;
 }
 
+/**
+ * Resolve the live manager for a source across BOTH registries (#3915).
+ * Meshtastic managers live in `sourceManagerRegistry`; MeshCore managers live
+ * in the separate `meshcoreManagerRegistry`. Automation actions must consult
+ * both — otherwise every action targeting a MeshCore source fails with
+ * "cannot send messages", because a MeshCore manager is never present in
+ * `sourceManagerRegistry` no matter how healthy/connected the source is.
+ */
+function resolveManager(sourceId: string): unknown | undefined {
+  return sourceManagerRegistry.getManager(sourceId) ?? meshcoreManagerRegistry.get(sourceId);
+}
+
 function mgr(sourceId: string | null): MeshSendManager {
   if (!sourceId) throw new Error('automation action requires a target source');
-  const m = sourceManagerRegistry.getManager(sourceId) as unknown as MeshSendManager | undefined;
+  const m = resolveManager(sourceId) as MeshSendManager | undefined;
   if (!m || typeof m.sendTextMessage !== 'function') {
     throw new Error(`source "${sourceId}" cannot send messages (not a Meshtastic manager)`);
   }
@@ -65,7 +78,7 @@ async function sendTextVia(
   scopeOverride?: string | null,
 ): Promise<unknown> {
   if (!sourceId) throw new Error('automation action requires a target source');
-  const raw = sourceManagerRegistry.getManager(sourceId) as unknown as
+  const raw = resolveManager(sourceId) as
     (Partial<MeshSendManager> & Partial<MeshCoreSendManager>) | undefined;
   if (raw && typeof raw.sendTextMessage === 'function') {
     // Meshtastic has no scope/region concept — scopeOverride is dropped.
@@ -74,7 +87,14 @@ async function sendTextVia(
   if (raw && typeof raw.sendMessage === 'function') {
     // MeshCore: channel send only (DM-by-nodeNum / tapbacks not supported here).
     // `scopeOverride` (#3833) controls which region the message floods to.
-    return raw.sendMessage(text, undefined, channel, scopeOverride);
+    // `sendMessage` resolves `false` (not throw) when the node is disconnected
+    // or the send fails — surface that as a thrown error so the run-log records
+    // a failed step instead of a silent success.
+    const ok = await raw.sendMessage(text, undefined, channel, scopeOverride);
+    if (ok === false) {
+      throw new Error(`source "${sourceId}" failed to send the MeshCore message (node not connected or send rejected)`);
+    }
+    return ok;
   }
   throw new Error(`source "${sourceId}" cannot send messages`);
 }
@@ -109,7 +129,7 @@ export function createMeshActionDeps(): ActionDeps {
 
     async requestData({ sourceId, op, target, channel, telemetryType }) {
       if (!sourceId) throw new Error('automation action requires a target source');
-      const raw = sourceManagerRegistry.getManager(sourceId) as unknown as
+      const raw = resolveManager(sourceId) as
         (Partial<MeshSendManager> & Partial<MeshCoreSendManager>) | undefined;
       // Meshtastic: target is a node number.
       if (raw && typeof raw.sendTelemetryRequest === 'function') {
