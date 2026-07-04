@@ -95,8 +95,7 @@ describe('MeshCoreManager.connect() initial-failure retry', () => {
     expect(firstAttempt).toBe(false);
     expect(scheduleSpy).toHaveBeenCalledTimes(1);
 
-    const secondAttempt = await (m as any).attemptReconnect();
-    void secondAttempt;
+    await (m as any).attemptReconnect();
 
     expect((m as any).connected).toBe(true);
     expect((m as any).shouldReconnect).toBe(false);
