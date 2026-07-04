@@ -232,6 +232,16 @@ export default function DashboardMap({
     localStorage.setItem('meshmonitor-showLegend', String(showLegend));
   }, [showLegend]);
 
+  // Collapse the Features panel — shares the NodesTab map's localStorage key
+  // so the preference is unified across every map surface (issue #3912: on
+  // mobile the panel's full checkbox list has no way to be dismissed).
+  const [isMapControlsCollapsed, setIsMapControlsCollapsed] = useState(
+    () => localStorage.getItem('isMapControlsCollapsed') === 'true',
+  );
+  useEffect(() => {
+    localStorage.setItem('isMapControlsCollapsed', String(isMapControlsCollapsed));
+  }, [isMapControlsCollapsed]);
+
   const {
     showPaths,
     setShowPaths,
@@ -645,9 +655,20 @@ export default function DashboardMap({
 
       {/* Map Features control panel — mirrors NodesTab's "Features" panel but
           trimmed to the toggles meaningful on a cross-source map. */}
-      <div className="map-controls dashboard-map-controls">
+      <div className={`map-controls dashboard-map-controls ${isMapControlsCollapsed ? 'collapsed' : ''}`}>
         <div className="map-controls-body">
-          <div className="map-controls-title">Features</div>
+          <div className="map-controls-header">
+            <div className="map-controls-title">Features</div>
+            <button
+              className="map-controls-collapse-btn"
+              onClick={() => setIsMapControlsCollapsed(!isMapControlsCollapsed)}
+              title={isMapControlsCollapsed ? 'Expand controls' : 'Collapse controls'}
+            >
+              {isMapControlsCollapsed ? '▼' : '▲'}
+            </button>
+          </div>
+          {!isMapControlsCollapsed && (
+          <>
           {/* Map Features age slider (#3322): hides node markers, traceroutes,
               and route segments older than the chosen age. Ranges 1h–maxNodeAge. */}
           {(() => {
@@ -782,6 +803,8 @@ export default function DashboardMap({
               </span>
             </label>
           ))}
+          </>
+          )}
         </div>
       </div>
 

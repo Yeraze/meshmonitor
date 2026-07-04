@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import DashboardMap from './DashboardMap';
 
 // ---------------------------------------------------------------------------
@@ -194,6 +194,29 @@ const defaultProps = {
 describe('DashboardMap', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  // --- Features panel collapse (#3912) ---------------------------------------
+
+  it('shows the Features panel toggles by default', () => {
+    render(<DashboardMap {...defaultProps} />);
+    expect(screen.getByText('Show Traceroute')).toBeInTheDocument();
+  });
+
+  it('hides the Features panel toggles when the collapse button is clicked', () => {
+    render(<DashboardMap {...defaultProps} />);
+    fireEvent.click(screen.getByTitle('Collapse controls'));
+    expect(screen.queryByText('Show Traceroute')).not.toBeInTheDocument();
+    expect(screen.getByText('Features')).toBeInTheDocument();
+  });
+
+  it('restores a collapsed Features panel from localStorage (shared with the NodesTab map)', () => {
+    localStorage.setItem('isMapControlsCollapsed', 'true');
+    render(<DashboardMap {...defaultProps} />);
+    expect(screen.queryByText('Show Traceroute')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTitle('Expand controls'));
+    expect(screen.getByText('Show Traceroute')).toBeInTheDocument();
   });
 
   it('renders the map container', () => {
