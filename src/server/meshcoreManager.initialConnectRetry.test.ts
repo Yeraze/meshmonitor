@@ -100,4 +100,27 @@ describe('MeshCoreManager.connect() initial-failure retry', () => {
     expect((m as any).connected).toBe(true);
     expect((m as any).shouldReconnect).toBe(false);
   });
+
+  it('does not double-schedule a reconnect when attemptReconnect() drives a failing connect() (regression)', async () => {
+    // Exercises the REAL scheduleNextReconnect() (not stubbed) to catch the
+    // double-call bug flagged in review: connect()'s catch block schedules a
+    // retry, and attemptReconnect()'s own `!ok` branch used to schedule a
+    // second one on top of it — doubling reconnectAttempts (and the backoff
+    // growth it drives) and leaking the first timer.
+    vi.useFakeTimers();
+    try {
+      const m = new MeshCoreManager('test-source');
+      (m as any).startNativeBackend = vi.fn().mockRejectedValue(new Error('still not ready'));
+      (m as any).disconnect = vi.fn().mockResolvedValue(undefined);
+      (m as any).shouldReconnect = true;
+      (m as any).config = TEST_CONFIG;
+
+      await (m as any).attemptReconnect();
+
+      expect((m as any).reconnectAttempts).toBe(1);
+      expect(vi.getTimerCount()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

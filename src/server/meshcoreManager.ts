@@ -4977,6 +4977,12 @@ class MeshCoreManager extends EventEmitter {
   }
 
   private scheduleNextReconnect(): void {
+    // Idempotent: a retry may already be scheduled by an earlier step in the
+    // same failure path — e.g. connect()'s catch block schedules one before
+    // returning to attemptReconnect(), which would otherwise schedule a
+    // second one on top of it, doubling reconnectAttempts (and the backoff
+    // growth it drives) and leaking the first timer (#3918 follow-up).
+    if (this.reconnectTimer) return;
     if (!this.shouldReconnect) {
       this.connectionState = 'failed';
       return;
