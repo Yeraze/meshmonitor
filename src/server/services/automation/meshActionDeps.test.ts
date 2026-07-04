@@ -51,6 +51,15 @@ describe('createMeshActionDeps sendMessage — unusable source diagnostics (#391
       .rejects.toThrow(/not a Meshtastic or MeshCore manager/);
     expect(getSource).not.toHaveBeenCalled();
   });
+
+  it('falls back to the generic message when the source lookup itself throws', async () => {
+    getManager.mockReturnValue(undefined);
+    getSource.mockRejectedValue(new Error('db unavailable'));
+    const deps = createMeshActionDeps();
+
+    await expect(deps.sendMessage({ sourceId: 'db-down-src', text: 'hi', channel: 0 }))
+      .rejects.toThrow('source "db-down-src" cannot send messages');
+  });
 });
 
 describe('createMeshActionDeps sendMessage — MeshCore scope (#3833)', () => {

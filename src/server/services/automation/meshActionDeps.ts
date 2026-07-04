@@ -14,6 +14,7 @@ import databaseService from '../../../services/database.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { appriseNotificationService } from '../appriseNotificationService.js';
 import { runScript as runUserScript } from '../../utils/scriptRunner.js';
+import { logger } from '../../../utils/logger.js';
 import type { ActionDeps } from './actionExecutor.js';
 
 interface MeshSendManager {
@@ -59,10 +60,11 @@ async function describeUnusableSource(sourceId: string, raw: unknown, capability
       return `source "${sourceId}" no longer exists — it may have been deleted or recreated; re-select the source in this automation`;
     }
     if (!source.enabled) {
-      return `source "${source.name}" (${sourceId}) is disabled — enable it in Settings > Sources for this automation to ${capability}`;
+      return `source "${source.name}" (${sourceId}) is disabled — enable it in Settings > Sources, then this automation can ${capability}`;
     }
     return `source "${source.name}" (${sourceId}) is not currently connected — check its status in Settings > Sources`;
-  } catch {
+  } catch (err) {
+    logger.debug(`[Automation] describeUnusableSource: lookup failed for source "${sourceId}":`, err);
     return `source "${sourceId}" cannot ${capability}`;
   }
 }
