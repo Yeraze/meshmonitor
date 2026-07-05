@@ -27,6 +27,7 @@ import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
 import meshcorePositionHistoryService from '../services/meshcorePositionHistoryService.js';
 import { resolveAutoAckPreSendDelaySeconds } from '../autoAckDelay.js';
 import { isNullIsland } from '../../utils/nullIsland.js';
+import { decodeMeshCorePacket } from '../../utils/meshcorePacketDecode.js';
 
 /**
  * Resolve the manager for a request. Mounted only under
@@ -3594,6 +3595,12 @@ router.get(
  * same payload_type / route_type / since filters as the list endpoint. Streams
  * one JSON object per line as an attachment download — the MeshCore analogue of
  * the Meshtastic packet-monitor export (issue #3391).
+ *
+ * Each line is the raw DB row plus a `decoded` field carrying the decoded
+ * unencrypted on-wire data (ADVERT name/lat/lon/pubkey/flags, ACK codes, and
+ * the plaintext dest/src hash prefix of encrypted messages), matching the
+ * Packet Monitor's decode modal (issue #3937). Encrypted message bodies stay
+ * undecoded by design.
  */
 router.get(
   '/packets/export',
@@ -3630,7 +3637,16 @@ router.get(
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
       for (const packet of packets) {
-        res.write(JSON.stringify(packet) + '\n');
+        // Attach a decoded view of the (unencrypted) on-wire fields alongside
+        // the raw DB row so exports carry the same information the Packet
+        // Monitor's "click to decode" modal shows — full ADVERT decode
+        // (name, lat/lon, pubkey, flags), ACK codes, and the plaintext
+        // dest/src hash prefix of encrypted message payloads. Encrypted
+        // message bodies remain undecoded by design. `rawHex` is preserved so
+        // nothing is lost for callers doing their own analysis. Decoding never
+        // throws — failures surface as null / a `.errors` array (issue #3937).
+        const decoded = decodeMeshCorePacket(packet.rawHex);
+        res.write(JSON.stringify({ ...packet, decoded }) + '\n');
       }
       res.end();
       logger.debug(`[API] Exported ${packets.length} MeshCore packets to ${filename}`);
