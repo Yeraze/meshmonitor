@@ -4,6 +4,7 @@ import {
   MeshCoreMessage, MeshCoreActions, ConnectionStatus, MeshCoreNode,
 } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
+import { getMeshCoreMessageContentMatchKeys } from '../../utils/messageContentFilter';
 import { meshcoreRoleIcon, meshcoreRoleLabelKey, meshcoreRoleLabel } from './meshcoreRole';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
@@ -221,6 +222,20 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     });
   }, [messages, contacts, selfKey, canonicalize, contactsByKey, favoriteByKey, sortField, sortDirection]);
 
+  // Issue #3922 (MeshCore): let the conversation filter match on message
+  // *content*, not just the contact's name / public key. Precompute the set of
+  // (canonicalized) peer keys whose DM history contains the current search term
+  // so the peer filter can do an O(1) membership check instead of rescanning
+  // messages per peer.
+  const messageContentMatchKeys = useMemo(
+    () =>
+      getMeshCoreMessageContentMatchKeys(messages, searchQuery, {
+        canonicalize,
+        isChannelKey: isChannelPseudoKey,
+      }),
+    [messages, searchQuery, canonicalize],
+  );
+
   const filteredPeers = useMemo(() => {
     let peers = dmPeers;
     // Node-type filter (#3890). A peer that only exists via a message thread
@@ -234,9 +249,14 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     return peers.filter(key => {
       const c = contactsByKey.get(key);
       const name = c?.advName || c?.name || '';
-      return name.toLowerCase().includes(q) || key.toLowerCase().includes(q);
+      return (
+        name.toLowerCase().includes(q) ||
+        key.toLowerCase().includes(q) ||
+        // Issue #3922: also match conversations by message content.
+        messageContentMatchKeys.has(key)
+      );
     });
-  }, [dmPeers, searchQuery, contactsByKey, typeFilter]);
+  }, [dmPeers, searchQuery, contactsByKey, typeFilter, messageContentMatchKeys]);
 
   const filtered = useMemo(() => {
     if (!selected) return [];
@@ -372,7 +392,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder={t('meshcore.search_contacts', 'Search contacts…')}
+              placeholder={t('meshcore.search_contacts', 'Search contacts or messages…')}
               className="meshcore-search-input"
             />
             {searchQuery && (

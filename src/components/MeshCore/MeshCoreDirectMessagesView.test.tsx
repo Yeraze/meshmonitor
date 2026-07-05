@@ -579,9 +579,35 @@ describe('MeshCoreDirectMessagesView — node-type filter (#3890)', () => {
     // Companions only…
     fireEvent.change(screen.getByTitle('Filter by node type'), { target: { value: '1' } });
     // …then narrow further to "Carl".
-    fireEvent.change(screen.getByPlaceholderText('Search contacts…'), { target: { value: 'Carl' } });
+    fireEvent.change(screen.getByPlaceholderText('Search contacts or messages…'), { target: { value: 'Carl' } });
 
     expect(listedNames()).toEqual(['Companion Carl']);
+  });
+
+  it('matches a conversation by message content, not just the contact name (#3922)', () => {
+    const self = 'self'.padEnd(64, '0');
+    const dmMessages: MeshCoreMessage[] = [
+      // DM from self to Carl whose body mentions "pizza" — Carl's name has no
+      // "pizza", so only content matching should surface him.
+      { id: 'm1', fromPublicKey: self, toPublicKey: 'a'.repeat(64), text: 'pizza tonight?', timestamp: 5000, messageType: 'text' },
+      // Unrelated DM to Rita — should stay hidden for a "pizza" search.
+      { id: 'm2', fromPublicKey: self, toPublicKey: 'b'.repeat(64), text: 'traceroute please', timestamp: 4000, messageType: 'text' },
+    ];
+    render(
+      <MeshCoreDirectMessagesView
+        messages={dmMessages}
+        contacts={mixed}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText('Search contacts or messages…'), { target: { value: 'pizza' } });
+
+    const names = listedNames();
+    expect(names).toContain('Companion Carl');
+    expect(names).not.toContain('Repeater Rita');
+    expect(names).not.toContain('Sensor Sam');
+    expect(names).not.toContain('Companion Cora');
   });
 
   it('shows a type-specific empty state when no contact matches the filter', () => {
