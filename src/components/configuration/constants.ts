@@ -276,7 +276,9 @@ export function isPresetLegalForRegion(
   }
   const spanMHz = info.end - info.start;
   const bandwidthMHz = getPresetBandwidthKHz(preset, !!info.wideLora) / 1000;
-  return spanMHz >= bandwidthMHz;
+  // Small epsilon so IEEE-754 subtraction (e.g. 869.2 - 868.7) doesn't
+  // mis-exclude a preset whose bandwidth lands exactly on the region span.
+  return spanMHz >= bandwidthMHz - 1e-9;
 }
 
 /**
