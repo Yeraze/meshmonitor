@@ -75,3 +75,32 @@ export function getEffectiveHops(
       return node.hopsAway ?? 999;
   }
 }
+
+/**
+ * Metadata for the map node-circle hover tooltip's hop/SNR line.
+ *
+ * SNR is only meaningful (and only shown) when the node was heard directly
+ * (0 effective hops) and an SNR value is known. This mirrors the Nodes list
+ * card view and the position-history point tooltip (issue #3590 / #3925).
+ */
+export interface MapHoverTooltipMeta {
+  /** Effective hop count, or null when unknown (>= 999). */
+  hops: number | null;
+  /** Whether to render the direct-heard SNR value. */
+  showSnr: boolean;
+  /** The SNR value to render (dB), or null when it should not be shown. */
+  snr: number | null;
+}
+
+/**
+ * Compute what the map node-circle hover tooltip should display for the
+ * hop/SNR line, given the effective hop count and the node's SNR.
+ */
+export function getMapHoverTooltipMeta(
+  effectiveHops: number,
+  snr: number | null | undefined
+): MapHoverTooltipMeta {
+  const hops = effectiveHops < 999 ? effectiveHops : null;
+  const showSnr = effectiveHops === 0 && snr != null;
+  return { hops, showSnr, snr: showSnr ? snr! : null };
+}
