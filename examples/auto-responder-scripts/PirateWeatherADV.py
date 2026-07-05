@@ -24,24 +24,41 @@ TWO SEPARATE TRIGGERS:
       Sat: Cloudy. Hi 44°F/7°C Lo 36°F/2°C 💧50%
       Sun: Clear. Hi 50°F/10°C Lo 38°F/3°C 💧10%
 
+  The forecast always covers a full 7-day lookahead from today. The API is
+  queried for 8 daily periods so that today (index 0) plus 7 future days are
+  always available regardless of the day of the week.
+
 GPS MODE (no location typed):
   Both triggers fall back to GPS coordinates in this order:
-    1. FROM_LAT / FROM_LON  — GPS sent by the requesting node
+    1. FROM_LAT / FROM_LON   — GPS sent by the requesting node
     2. LOCAL_LAT / LOCAL_LON — local node GPS (also accepts MM_LAT / MM_LON)
-  GPS mode output uses emoji format with a reverse-geocoded city name.
-  GPS mode example output:
+  If no GPS data is available the script returns a helpful error message.
+  GPS mode output uses emoji format with a reverse-geocoded city name:
     📍 Peterborough, CA
     🌡️ 40°F / 4°C (feels like 32°F / 0°C)
     📊 Forecast: Misty
     ↕️ High: 47°F / 8°C  Low: 38°F / 3°C
     💧 Humidity: 96%  💨 Wind: 9 mph
 
-INPUT FORMATS (spaces after commas are fine, all produce identical results):
-  weather peterborough,ontario,canada
-  weather peterborough, ontario, canada
-  w peterborough, ontario, canada
-  forecast peterborough, ontario, canada
-  f peterborough, ontario, canada
+INPUT FORMATS:
+  Spaces after commas are normalised — all of these produce identical results:
+    weather peterborough,ontario,canada
+    weather peterborough, ontario, canada
+    w peterborough, ontario, canada
+    forecast peterborough, ontario, canada
+    f peterborough, ontario, canada
+
+  Location label formatting:
+  - Comma-separated parts that are 1–3 letters are treated as abbreviations
+    and always uppercased regardless of how they were typed:
+      "london,on,canada"  → "London, ON, Canada"
+      "london,uk"         → "London, UK"
+      "new york,ny,usa"   → "New York, NY, USA"
+  - Multi-word parts are title-cased preserving apostrophes:
+      "st. john's,nl,canada" → "St. John's, NL, Canada"
+  - Malformed input (empty parts, trailing commas) is silently filtered.
+    If the location reduces to nothing after filtering, the script falls
+    back to GPS mode rather than returning an error.
 
 MODE DETECTION ORDER (how the script decides weather vs forecast):
   1. TRIGGER env var  — MeshMonitor sets this to the matched trigger pattern.
@@ -49,10 +66,20 @@ MODE DETECTION ORDER (how the script decides weather vs forecast):
   2. MESSAGE env var  — Full original message typed by the user. Fallback if
                         TRIGGER alone doesn't identify the mode.
   3. PARAM_mode       — Explicit override env var ('forecast' or 'weather').
-                        Useful for Timed Events.
-  4. Leading keyword  — Keyword at the start of CLI arg or PARAM_location
+                        Can override TRIGGER — use with care.
+  4. Leading keyword  — Keyword at the start of the CLI arg or PARAM_location
                         (e.g. "forecast peterborough,ontario,canada").
   5. Default          — 'weather' if none of the above match.
+
+TIMEOUTS:
+  Individual HTTP timeouts are set via named constants (see Configuration
+  section below). Defaults: geocode=5s, API=8s, reverse geocode=5s.
+  Worst-case total: 18s — well inside MeshMonitor's 30s hard kill limit.
+  Adjust TIMEOUT_* constants in the Configuration section for your connection.
+
+SECURITY:
+  The Pirate Weather API key is automatically redacted from any error message
+  before it is broadcast on the mesh channel, protecting it from exposure.
 
 All weather data is sourced exclusively from Pirate Weather (pirateweather.net).
 Location names are resolved via OpenStreetMap Nominatim (free, no API key needed).
@@ -86,11 +113,11 @@ MeshMonitor Auto Responder Configuration:
     Response type:  Script
     Script path:    /data/scripts/PirateWeatherADV.py
 
-  The comma-separated patterns in each trigger field allow one entry to handle
-  both the bare keyword (GPS mode) and the keyword + location variants.
-  MeshMonitor sets the TRIGGER env var to the matched pattern, which the script
-  uses to reliably determine weather vs forecast mode regardless of whether
-  PARAM_location contains the keyword.
+  The comma-separated patterns in each trigger field handle both the bare
+  keyword (GPS mode) and the keyword + location variants in a single entry.
+  MeshMonitor sets the TRIGGER env var to the matched pattern, which the
+  script uses to reliably determine weather vs forecast mode even when
+  PARAM_location no longer contains the keyword (MeshMonitor strips it).
 
 Local testing:
   Current conditions by location:
@@ -99,7 +126,7 @@ Local testing:
     TEST_MODE=true PARAM_location="forecast peterborough,ontario,canada" PIRATE_WEATHER_API_KEY=your_key python3 PirateWeatherADV.py
   GPS mode — current conditions:
     TEST_MODE=true FROM_LAT=43.55 FROM_LON=-78.49 PIRATE_WEATHER_API_KEY=your_key python3 PirateWeatherADV.py
-  GPS mode — forecast (simulate forecast trigger):
+  GPS mode — forecast (simulate TRIGGER env var from MeshMonitor):
     TEST_MODE=true TRIGGER=forecast FROM_LAT=43.55 FROM_LON=-78.49 PIRATE_WEATHER_API_KEY=your_key python3 PirateWeatherADV.py
   CLI argument — current conditions (Timed Events):
     TEST_MODE=true PIRATE_WEATHER_API_KEY=your_key python3 PirateWeatherADV.py peterborough,ontario,canada
@@ -245,18 +272,28 @@ def _fmt_label(location: str) -> str:
     """
     Build a clean display label from a raw location string.
     Splits on commas, capitalises each part carefully so:
-      - Abbreviations (ON, NY, CA) are preserved in upper case
+      - Short (1-3 letter) alpha tokens are uppercased as abbreviations,
+        regardless of input case (on -> ON, ny -> NY, CA -> CA)
       - Apostrophes (St. John's) are not mangled by str.title()
       - Empty parts from double/trailing commas are skipped
     """
     def _fmt_part(part: str) -> str:
         words = part.strip().split()
+        if not words:
+            return ''
+        # If this comma-separated part is a single short token (1-3 alpha chars),
+        # treat it as an abbreviation and uppercase it regardless of input case.
+        # e.g. "on" → "ON", "uk" → "UK", "usa" → "USA", "CA" → "CA".
+        # Multi-word parts (e.g. "new york", "st. john's") are title-cased
+        # word by word to preserve apostrophes and avoid mangling.
+        if len(words) == 1 and len(words[0]) <= 3 and words[0].replace('.', '').isalpha():
+            return words[0].upper()
         out = []
         for w in words:
             if not w:
                 continue
             if w.isupper() and len(w) <= 3:
-                out.append(w)
+                out.append(w)           # preserve already-uppercase abbreviation
             else:
                 out.append(w[0].upper() + w[1:])
         return ' '.join(out)
@@ -285,6 +322,8 @@ def resolve_input() -> Tuple[Optional[Tuple[float, float]], Optional[str], str, 
     Resolution order for location:
       1. CLI arguments (e.g. Timed Events)
       2. PARAM_location env var (trigger pipeline)
+      If the location string normalises to nothing (e.g. just commas),
+      resolution falls through to GPS coordinates below instead of erroring.
 
     Resolution order for coordinates when no location string given:
       3. FROM_LAT / FROM_LON  — requesting node GPS
@@ -361,12 +400,18 @@ def resolve_input() -> Tuple[Optional[Tuple[float, float]], Optional[str], str, 
         # Normalise: strip spaces around commas, filter empty parts
         parts = [p.strip() for p in location.split(',') if p.strip()]
         location_normalised = ','.join(parts)
-        coords = geocode_location(location_normalised)
-        label  = _fmt_label(location)
-        if coords:
-            return (coords, label, output_mode, 'location')
+
+        # Guard: if normalisation left nothing (e.g. input was just commas),
+        # fall through to GPS mode rather than calling geocode with empty string
+        if not location_normalised:
+            location = ''
         else:
-            return (None, label, output_mode, 'location')
+            coords = geocode_location(location_normalised)
+            label  = _fmt_label(location)
+            if coords:
+                return (coords, label, output_mode, 'location')
+            else:
+                return (None, label, output_mode, 'location')
 
     # No location string — fall back to GPS coordinates
     from_lat = os.environ.get('FROM_LAT', '').strip()
@@ -672,7 +717,11 @@ def main():
                 print(f'\n--- WEATHER MSG ---\n{msg}\n--- END TEST ---\n', file=sys.stderr)
 
     except Exception as e:
-        emit([f'Error: {str(e)}'])
+        # Sanitise API key from exception message before broadcasting on mesh
+        err_msg = str(e)
+        if PIRATE_WEATHER_API_KEY:
+            err_msg = err_msg.replace(PIRATE_WEATHER_API_KEY, '***')
+        emit([f'Error: {err_msg}'])
         if TEST_MODE:
             import traceback
             traceback.print_exc(file=sys.stderr)
