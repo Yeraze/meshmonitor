@@ -367,7 +367,7 @@
   "messages.nodes_header": "Nodes",
   "messages.mark_all_read_title": "Mark all direct messages as read",
   "messages.mark_all_read_button": "Mark All Read",
-  "messages.filter_placeholder": "Filter nodes...",
+  "messages.filter_placeholder": "Filter nodes or messages...",
   "messages.filter_conversations_title": "Filter conversations",
   "messages.all_conversations": "All Conversations",
   "messages.unread_only": "Unread Only",

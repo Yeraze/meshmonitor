@@ -28,6 +28,7 @@ import { isDeviceDbWarningMitigatable } from '../utils/deviceDbWarning';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
 import { calculateDistance, formatDistance, getDistanceToNode } from '../utils/distance';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
+import { getMessageContentMatchNodeIds } from '../utils/messageContentFilter';
 import { isNodeComplete, isInfrastructureNode, hasValidPosition, parseNodeId } from '../utils/nodeHelpers';
 import { getEffectiveHops } from '../utils/nodeHops';
 import { scrollInputIntoView } from '../utils/scrollInputIntoView';
@@ -524,6 +525,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     [messages]
   );
 
+  // Issue #3922: let the conversation filter match on message *content*, not
+  // just the partner's name/id. Precompute the set of node IDs whose DM
+  // history contains the current filter term so both node-list renderers can
+  // do an O(1) membership check instead of rescanning messages per node.
+  const messageContentMatchNodeIds = useMemo(
+    () => getMessageContentMatchNodeIds(messages, messagesNodeFilter),
+    [messages, messagesNodeFilter]
+  );
+
   // Handle relay node click - opens modal to show potential relay nodes
   const handleRelayClick = useCallback(
     async (msg: MeshMessage) => {
@@ -747,7 +757,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     return (
       node.user?.longName?.toLowerCase().includes(searchTerm) ||
       node.user?.shortName?.toLowerCase().includes(searchTerm) ||
-      node.user?.id?.toLowerCase().includes(searchTerm)
+      node.user?.id?.toLowerCase().includes(searchTerm) ||
+      // Issue #3922: also match conversations by message content.
+      (node.user?.id ? messageContentMatchNodeIds.has(node.user.id) : false)
     );
   });
 
@@ -1029,7 +1041,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 return (
                   node.user?.longName?.toLowerCase().includes(searchTerm) ||
                   node.user?.shortName?.toLowerCase().includes(searchTerm) ||
-                  node.user?.id?.toLowerCase().includes(searchTerm)
+                  node.user?.id?.toLowerCase().includes(searchTerm) ||
+                  // Issue #3922: also match conversations by message content.
+                  (node.user?.id ? messageContentMatchNodeIds.has(node.user.id) : false)
                 );
               })
               .map(node => {
