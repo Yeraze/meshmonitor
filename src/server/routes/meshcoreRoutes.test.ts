@@ -2322,7 +2322,17 @@ describe('MeshCore Routes', () => {
   });
 
   describe('GET /api/sources/test-source/meshcore/packets/export', () => {
+    // A fully-formed ADVERT OTA packet (FLOOD + ADVERT, direct path) carrying
+    // pubkey 01..20, ts 1700000000, a 64-byte signature, LATLON+NAME flags,
+    // lat 37.5 / lon -122.25, and name "Repeater-1". See
+    // meshcorePacketDecode.test.ts for the byte layout (issue #3937).
+    const advertHex =
+      '11ff0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2000f15365' +
+      '808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5' +
+      'a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf9260343c02f09cb6f852' +
+      '657065617465722d3100';
     const samplePackets = [
+      { id: 3, sourceId: 'test-source', timestamp: 1700000003000, payloadType: 4, routeType: 1, rawHex: advertHex },
       { id: 2, sourceId: 'test-source', timestamp: 1700000002000, payloadType: 1, routeType: 0, rawHex: 'beef' },
       { id: 1, sourceId: 'test-source', timestamp: 1700000001000, payloadType: 2, routeType: 1, rawHex: 'cafe' },
     ];
@@ -2340,14 +2350,45 @@ describe('MeshCore Routes', () => {
       expect(response.headers['content-disposition']).toMatch(/attachment; filename="meshcore-packet-monitor-.*\.jsonl"/);
 
       const lines = response.text.trim().split('\n');
-      expect(lines).toHaveLength(2);
-      expect(JSON.parse(lines[0])).toMatchObject({ id: 2, payloadType: 1 });
-      expect(JSON.parse(lines[1])).toMatchObject({ id: 1, payloadType: 2 });
+      expect(lines).toHaveLength(3);
+      expect(JSON.parse(lines[0])).toMatchObject({ id: 3, payloadType: 4 });
+      expect(JSON.parse(lines[1])).toMatchObject({ id: 2, payloadType: 1 });
+      expect(JSON.parse(lines[2])).toMatchObject({ id: 1, payloadType: 2 });
 
       // Exports up to the retention cap, scoped to this source, offset 0.
       expect(mockPacketService.getPackets).toHaveBeenCalledWith(
         expect.objectContaining({ sourceId: 'test-source', offset: 0, limit: 1000 }),
       );
+    });
+
+    it('attaches a decoded ADVERT (name/lat/lon/pubkey) while preserving rawHex (#3937)', async () => {
+      const response = await authenticatedAgent.get('/api/sources/test-source/meshcore/packets/export');
+
+      expect(response.status).toBe(200);
+      const advertLine = JSON.parse(response.text.trim().split('\n')[0]);
+
+      // Raw row is preserved so nothing is lost for callers doing their own analysis.
+      expect(advertLine.rawHex).toBe(advertHex);
+
+      // The unencrypted ADVERT payload is decoded into the exported line.
+      expect(advertLine.decoded).toBeDefined();
+      expect(advertLine.decoded.header.payloadTypeName).toBe('ADVERT');
+      const advert = advertLine.decoded.payload.advert;
+      expect(advert.name).toBe('Repeater-1');
+      expect(advert.latitude).toBeCloseTo(37.5, 5);
+      expect(advert.longitude).toBeCloseTo(-122.25, 5);
+      expect(advert.publicKey).toBe('0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20');
+      expect(advertLine.decoded.errors).toEqual([]);
+    });
+
+    it('attaches decoded structure even when rawHex is short/undecodable payload (#3937)', async () => {
+      const response = await authenticatedAgent.get('/api/sources/test-source/meshcore/packets/export');
+
+      // Encrypted/short rows still get a `decoded` header block; the encrypted
+      // body simply is not decoded (no advert), by design.
+      const line = JSON.parse(response.text.trim().split('\n')[2]);
+      expect(line.decoded).toBeDefined();
+      expect(line.decoded.payload.advert).toBeUndefined();
     });
 
     it('passes filters through and marks the filename as filtered', async () => {
