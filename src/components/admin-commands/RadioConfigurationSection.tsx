@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, isAmateurRadioRegion } from '../configuration/constants';
+import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, isAmateurRadioRegion, getLegalPresetOptions } from '../configuration/constants';
 import type { Channel } from '../../types/device';
 
 interface RadioConfigurationSectionProps {
@@ -95,6 +95,12 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
 }) => {
   const { t } = useTranslation();
 
+  // Filter the modem-preset picker to presets legal for the selected region,
+  // mirroring the official mobile apps (issue #3924, Part 1). The currently
+  // selected preset is always retained so the picker reflects the device state.
+  const legalPresetOptions = getLegalPresetOptions(region, modemPreset);
+  const hasFilteredPresets = legalPresetOptions.length < MODEM_PRESET_OPTIONS.length;
+
   return (
     <CollapsibleSection
       id="radio-config"
@@ -131,12 +137,17 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
               className="setting-input"
               style={{ width: '300px' }}
             >
-              {MODEM_PRESET_OPTIONS.map(preset => (
+              {legalPresetOptions.map(preset => (
                 <option key={preset.value} value={preset.value}>
                   {preset.name} - {preset.description} ({preset.params})
                 </option>
               ))}
             </select>
+            {hasFilteredPresets && (
+              <span className="setting-description" style={{ marginTop: '0.4rem', display: 'block' }}>
+                {t('lora_config.preset_filtered_note')}
+              </span>
+            )}
           </div>
         ) : (
           <>

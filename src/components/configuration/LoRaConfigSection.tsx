@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, FEM_LNA_MODE_OPTIONS, isAmateurRadioRegion } from './constants';
+import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, FEM_LNA_MODE_OPTIONS, isAmateurRadioRegion, getLegalPresetOptions } from './constants';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface LoRaConfigSectionProps {
@@ -86,6 +86,15 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const [isPresetDropdownOpen, setIsPresetDropdownOpen] = useState(false);
+
+  // Filter the modem-preset picker to presets legal for the selected region,
+  // mirroring the official mobile apps (issue #3924, Part 1). The currently
+  // selected preset is always retained so the picker reflects the device state.
+  const legalPresetOptions = useMemo(
+    () => getLegalPresetOptions(region, modemPreset),
+    [region, modemPreset]
+  );
+  const hasFilteredPresets = legalPresetOptions.length < MODEM_PRESET_OPTIONS.length;
 
   // Track initial values for change detection
   const initialValuesRef = useRef({
@@ -252,7 +261,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
                   boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
                 }}
               >
-                {MODEM_PRESET_OPTIONS.map(option => (
+                {legalPresetOptions.map(option => (
                   <div
                     key={option.value}
                     onClick={() => {
@@ -291,6 +300,11 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
               </div>
             )}
           </div>
+          {hasFilteredPresets && (
+            <span className="setting-description" style={{ marginTop: '0.4rem', display: 'block' }}>
+              {t('lora_config.preset_filtered_note')}
+            </span>
+          )}
         </div>
       )}
       {!usePreset && (
