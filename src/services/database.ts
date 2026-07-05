@@ -105,6 +105,7 @@ export interface DbNode {
   altitudeOverride?: number; // Override altitude
   positionOverrideIsPrivate?: boolean; // Override privacy (false = public, true = private)
   hideFromMap?: boolean; // #3549: suppress this node's marker on maps only
+  notes?: string; // #3921: free-text per-node MeshMonitor-local annotation
   isUnmessagable?: boolean; // #3684: User.is_unmessagable — node won't receive DMs
   isLicensed?: boolean; // #3684: User.is_licensed — amateur-radio licensed operator
   // Remote admin discovery (Migration 055)
@@ -380,6 +381,7 @@ class DatabaseService {
       altitudeOverride: node.altitudeOverride ?? undefined,
       positionOverrideIsPrivate: node.positionOverrideIsPrivate ?? undefined,
       hideFromMap: node.hideFromMap ?? undefined,
+      notes: node.notes ?? undefined,
       hasRemoteAdmin: node.hasRemoteAdmin ?? undefined,
       lastRemoteAdminCheck: node.lastRemoteAdminCheck ?? undefined,
       remoteAdminMetadata: node.remoteAdminMetadata ?? undefined,
@@ -1010,6 +1012,7 @@ class DatabaseService {
             altitudeOverride: node.altitudeOverride ?? undefined,
             positionOverrideIsPrivate: node.positionOverrideIsPrivate ?? undefined,
             hideFromMap: node.hideFromMap ?? undefined,
+            notes: node.notes ?? undefined,
             hasRemoteAdmin: node.hasRemoteAdmin ?? undefined,
             lastRemoteAdminCheck: node.lastRemoteAdminCheck ?? undefined,
             remoteAdminMetadata: node.remoteAdminMetadata ?? undefined,
@@ -1291,6 +1294,7 @@ class DatabaseService {
         altitudeOverride REAL,
         positionOverrideIsPrivate INTEGER DEFAULT 0,
         hideFromMap INTEGER DEFAULT 0,
+        notes TEXT,
         hasRemoteAdmin INTEGER DEFAULT 0,
         lastRemoteAdminCheck INTEGER,
         remoteAdminMetadata TEXT,
@@ -2273,6 +2277,8 @@ class DatabaseService {
           positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? existingNode?.positionOverrideIsPrivate,
           // Map visibility (#3549) - preserve existing toggle across packet upserts
           hideFromMap: nodeData.hideFromMap ?? existingNode?.hideFromMap,
+          // Free-text notes (#3921) - preserve user annotation across packet upserts
+          notes: nodeData.notes ?? existingNode?.notes,
           // Remote admin discovery - preserve existing values
           hasRemoteAdmin: existingNode?.hasRemoteAdmin,
           lastRemoteAdminCheck: existingNode?.lastRemoteAdminCheck,
@@ -7594,6 +7600,31 @@ class DatabaseService {
     }
 
     logger.debug(`🗺️ Node ${nodeNum}@${sourceId} hideFromMap ${hidden ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Set the free-text per-node notes field (issue #3921). MeshMonitor-local
+   * annotation — never synced to the mesh. An empty string clears the note.
+   * Uses the Drizzle-based repository setter for every backend (no raw SQL).
+   */
+  async setNodeNotesAsync(nodeNum: number, notes: string, sourceId: string): Promise<void> {
+    const now = Date.now();
+
+    if (!this.nodesRepo) {
+      throw new Error('Nodes repository is not initialized');
+    }
+
+    // Persist via the repository (Drizzle — works for SQLite/PostgreSQL/MySQL).
+    await this.nodesRepo.setNodeNotes(nodeNum, notes, sourceId);
+
+    // Keep the in-memory cache consistent for sync readers.
+    const cached = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+    if (cached) {
+      cached.notes = notes;
+      cached.updatedAt = now;
+    }
+
+    logger.debug(`📝 Node ${nodeNum}@${sourceId} notes updated (${notes.length} chars)`);
   }
 
   // Authentication and Authorization

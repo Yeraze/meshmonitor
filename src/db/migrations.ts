@@ -126,6 +126,7 @@ import { migration as meshcoreSavedRegionsMigration, runMigration108Postgres as 
 import { migration as clampFutureTracerouteMigration, runMigration109Postgres as runClampFutureTraceroutePostgres, runMigration109Mysql as runClampFutureTracerouteMysql } from '../server/migrations/109_clamp_future_traceroute_timestamps.js';
 import { migration as meshcorePositionHistoryMigration, runMigration110Postgres as runMeshcorePositionHistoryPostgres, runMigration110Mysql as runMeshcorePositionHistoryMysql } from '../server/migrations/110_add_meshcore_position_history.js';
 import { migration as meshcoreNodePositionSourceMigration, runMigration111Postgres as runMeshcoreNodePositionSourcePostgres, runMigration111Mysql as runMeshcoreNodePositionSourceMysql } from '../server/migrations/111_meshcore_node_position_source.js';
+import { migration as nodeNotesMigration, runMigration112Postgres as runNodeNotesPostgres, runMigration112Mysql as runNodeNotesMysql } from '../server/migrations/112_add_notes_to_nodes.js';
 
 // ============================================================================
 // Registry
@@ -1764,4 +1765,20 @@ registry.register({
   sqlite: (db) => meshcoreNodePositionSourceMigration.up(db),
   postgres: (client) => runMeshcoreNodePositionSourcePostgres(client),
   mysql: (pool) => runMeshcoreNodePositionSourceMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 112: free-text `notes` on `nodes` (#3921)
+// Per-node MeshMonitor-local annotation editable from the node detail view,
+// mirroring the official mobile clients' local notes field. Never synced to
+// the mesh. Nullable; existing rows keep NULL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 112,
+  name: 'add_notes_to_nodes',
+  settingsKey: 'migration_112_add_notes_to_nodes',
+  sqlite: (db) => nodeNotesMigration.up(db),
+  postgres: (client) => runNodeNotesPostgres(client),
+  mysql: (pool) => runNodeNotesMysql(pool),
 });

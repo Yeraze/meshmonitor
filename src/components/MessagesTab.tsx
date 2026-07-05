@@ -2158,7 +2158,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               )}
             </div>
 
-            {selectedNode && <NodeDetailsBlock node={selectedNode} timeFormat={timeFormat} dateFormat={dateFormat} />}
+            {selectedNode && (
+              <NodeDetailsBlock
+                node={selectedNode}
+                timeFormat={timeFormat}
+                dateFormat={dateFormat}
+                canEditNotes={hasPermission('nodes', 'write')}
+                onSaveNotes={async (notes) => {
+                  if (!selectedNode.user?.id) throw new Error('Node has no ID');
+                  await apiService.setNodeNotes(selectedNode.user.id, notes, sourceId);
+                  showToast(t('node_details.notes_saved', 'Notes saved'), 'success');
+                }}
+              />
+            )}
 
             {/* Security Details Section */}
             {selectedNode &&

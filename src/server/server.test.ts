@@ -107,6 +107,7 @@ const databaseMock = {
   setNodeFavorite: vi.fn((_nodeNum: number, _isFavorite: boolean, _sourceId: string, _favoriteLocked?: boolean) => undefined),
   setNodeFavoriteLocked: vi.fn((_nodeNum: number, _favoriteLocked: boolean, _sourceId: string) => undefined),
   setNodeHideFromMapAsync: vi.fn(async (_nodeNum: number, _hidden: boolean, _sourceId: string) => undefined),
+  setNodeNotesAsync: vi.fn(async (_nodeNum: number, _notes: string, _sourceId: string) => undefined),
   purgeAllNodes: vi.fn(),
   purgeAllTelemetry: vi.fn(),
   purgeAllMessages: vi.fn(),
@@ -262,6 +263,42 @@ describe('Server API Endpoints', () => {
         res.json({ success: true, nodeNum, hideFromMap });
       } catch (error) {
         res.status(500).json({ error: 'Failed to set node hideFromMap' });
+      }
+    });
+
+    // Mirrors apiRouter.post('/nodes/:nodeId/notes') validation contract (#3921)
+    const MAX_NODE_NOTES_LENGTH = 2000;
+    app.post('/api/nodes/:nodeId/notes', async (req, res) => {
+      try {
+        const { nodeId } = req.params;
+        const { notes, sourceId } = req.body;
+
+        if (typeof notes !== 'string') {
+          res.status(400).json({ error: 'notes must be a string' });
+          return;
+        }
+
+        if (notes.length > MAX_NODE_NOTES_LENGTH) {
+          res.status(400).json({ error: 'notes is too long' });
+          return;
+        }
+
+        if (typeof sourceId !== 'string' || sourceId.length === 0) {
+          res.status(400).json({ error: 'sourceId is required' });
+          return;
+        }
+
+        const nodeNumStr = nodeId.replace('!', '');
+        if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
+          res.status(400).json({ error: 'Invalid nodeId format' });
+          return;
+        }
+        const nodeNum = parseInt(nodeNumStr, 16);
+
+        await databaseMock.setNodeNotesAsync(nodeNum, notes, sourceId);
+        res.json({ success: true, nodeNum, notes });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to set node notes' });
       }
     });
 
@@ -658,6 +695,64 @@ describe('Server API Endpoints', () => {
       const response = await request(app)
         .post('/api/nodes/invalid/hide-from-map')
         .send({ hideFromMap: true, sourceId: 'default' })
+        .expect(400);
+
+      expect(response.body.error).toBe('Invalid nodeId format');
+    });
+
+    it('POST /api/nodes/:nodeId/notes should set the note (#3921)', async () => {
+      const response = await request(app)
+        .post('/api/nodes/!00000001/notes')
+        .send({ notes: 'Solar repeater on the hill', sourceId: 'default' })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.nodeNum).toBe(1);
+      expect(response.body.notes).toBe('Solar repeater on the hill');
+      expect(databaseMock.setNodeNotesAsync).toHaveBeenCalledWith(1, 'Solar repeater on the hill', 'default');
+    });
+
+    it('POST /api/nodes/:nodeId/notes should accept an empty string to clear the note (#3921)', async () => {
+      const response = await request(app)
+        .post('/api/nodes/!00000001/notes')
+        .send({ notes: '', sourceId: 'default' })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(databaseMock.setNodeNotesAsync).toHaveBeenCalledWith(1, '', 'default');
+    });
+
+    it('POST /api/nodes/:nodeId/notes should reject non-string notes (#3921)', async () => {
+      const response = await request(app)
+        .post('/api/nodes/!00000001/notes')
+        .send({ notes: 42, sourceId: 'default' })
+        .expect(400);
+
+      expect(response.body.error).toBe('notes must be a string');
+    });
+
+    it('POST /api/nodes/:nodeId/notes should reject notes over the length limit (#3921)', async () => {
+      const response = await request(app)
+        .post('/api/nodes/!00000001/notes')
+        .send({ notes: 'x'.repeat(2001), sourceId: 'default' })
+        .expect(400);
+
+      expect(response.body.error).toBe('notes is too long');
+    });
+
+    it('POST /api/nodes/:nodeId/notes should reject missing sourceId (#3921)', async () => {
+      const response = await request(app)
+        .post('/api/nodes/!00000001/notes')
+        .send({ notes: 'hello' })
+        .expect(400);
+
+      expect(response.body.error).toBe('sourceId is required');
+    });
+
+    it('POST /api/nodes/:nodeId/notes should reject invalid nodeId format (#3921)', async () => {
+      const response = await request(app)
+        .post('/api/nodes/invalid/notes')
+        .send({ notes: 'hello', sourceId: 'default' })
         .expect(400);
 
       expect(response.body.error).toBe('Invalid nodeId format');

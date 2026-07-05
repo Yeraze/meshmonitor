@@ -78,6 +78,7 @@ const POSTGRES_CREATE = `
     "altitudeOverride" REAL,
     "positionOverrideIsPrivate" BOOLEAN DEFAULT FALSE,
     "hideFromMap" BOOLEAN DEFAULT FALSE,
+    "notes" TEXT,
     "isUnmessagable" BOOLEAN DEFAULT FALSE,
     "isLicensed" BOOLEAN DEFAULT FALSE,
     "hasRemoteAdmin" BOOLEAN DEFAULT FALSE,
@@ -149,6 +150,7 @@ const MYSQL_CREATE = `
     altitudeOverride DOUBLE,
     positionOverrideIsPrivate BOOLEAN DEFAULT FALSE,
     hideFromMap BOOLEAN DEFAULT FALSE,
+    notes VARCHAR(2000),
     isUnmessagable BOOLEAN DEFAULT FALSE,
     isLicensed BOOLEAN DEFAULT FALSE,
     hasRemoteAdmin BOOLEAN DEFAULT FALSE,
@@ -744,6 +746,68 @@ function runNodesTests(getBackend: () => TestBackend) {
     const inB = await repo.getNode(809, 'source-b') as any;
     expect(Boolean(inA!.hideFromMap)).toBe(true);
     expect(Boolean(inB!.hideFromMap)).toBe(false);
+  });
+
+  // --- notes (#3921) ---
+
+  it('setNodeNotes - sets and clears the free-text note', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertNode(makeNode(820), 'default');
+
+    await repo.setNodeNotes(820, 'Solar repeater on the hill', 'default');
+    let node = await repo.getNode(820) as any;
+    expect(node!.notes).toBe('Solar repeater on the hill');
+
+    // Empty string clears the note
+    await repo.setNodeNotes(820, '', 'default');
+    node = await repo.getNode(820) as any;
+    expect(node!.notes).toBe('');
+  });
+
+  it('setNodeNotes - is per-source isolated (#3921)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertNode(makeNode(821), 'source-a');
+    await repo.upsertNode(makeNode(821), 'source-b');
+
+    await repo.setNodeNotes(821, 'note for A', 'source-a');
+
+    const inA = await repo.getNode(821, 'source-a') as any;
+    const inB = await repo.getNode(821, 'source-b') as any;
+    expect(inA!.notes).toBe('note for A');
+    // Source B must be untouched (null / no note)
+    expect(inB!.notes ?? null).toBeNull();
+  });
+
+  it('upsertNode - preserves notes across packet-driven updates (#3921)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertNode(makeNode(822), 'default');
+    await repo.setNodeNotes(822, 'keep me', 'default');
+
+    // A later mesh packet updates position but carries no notes field —
+    // the user's note must survive the packet-driven upsert.
+    await repo.upsertNode({
+      ...makeNode(822),
+      latitude: 1.0,
+      longitude: 2.0,
+    }, 'default');
+
+    const node = await repo.getNode(822) as any;
+    expect(node!.notes).toBe('keep me');
   });
 
   // --- setNodeIgnored ---

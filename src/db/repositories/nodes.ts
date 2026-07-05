@@ -412,6 +412,8 @@ export class NodesRepository extends BaseRepository {
           positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? existingNode.positionOverrideIsPrivate,
           // #3549: preserve the user's "Hide from Map" toggle across packet-driven updates
           hideFromMap: nodeData.hideFromMap ?? existingNode.hideFromMap,
+          // #3921: preserve the user's free-text notes across packet-driven updates
+          notes: nodeData.notes ?? existingNode.notes,
           // #3684: User capability flags from NodeInfo (preserve prior value if not present)
           isUnmessagable: nodeData.isUnmessagable ?? existingNode.isUnmessagable,
           isLicensed: nodeData.isLicensed ?? existingNode.isLicensed,
@@ -464,6 +466,7 @@ export class NodesRepository extends BaseRepository {
         altitudeOverride: nodeData.altitudeOverride ?? null,
         positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? false,
         hideFromMap: nodeData.hideFromMap ?? false,
+        notes: nodeData.notes ?? null,
         isUnmessagable: nodeData.isUnmessagable ?? false,
         isLicensed: nodeData.isLicensed ?? false,
         createdAt: now,
@@ -525,6 +528,9 @@ export class NodesRepository extends BaseRepository {
         altitudeOverride: nodeData.altitudeOverride ?? null,
         positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? false,
         hideFromMap: nodeData.hideFromMap ?? false,
+        // Note: notes is intentionally NOT included here (#3921) — like mobile,
+        // it's a user-authored value that must never be clobbered on a
+        // packet-driven upsert conflict. It is only written by setNodeNotes.
         isUnmessagable: nodeData.isUnmessagable ?? false,
         isLicensed: nodeData.isLicensed ?? false,
         updatedAt: now,
@@ -898,6 +904,23 @@ export class NodesRepository extends BaseRepository {
     await this.db
       .update(nodes)
       .set({ isIgnored, updatedAt: now })
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    await this.syncCacheNode(nodeNum, sourceId);
+  }
+
+  /**
+   * Set the free-text per-node notes field (issue #3921), scoped to sourceId.
+   * MeshMonitor-local annotation — never synced to the mesh. An empty string
+   * clears the note.
+   */
+  async setNodeNotes(nodeNum: number, notes: string, sourceId: string): Promise<void> {
+    const now = this.now();
+    const { nodes } = this.tables;
+
+    await this.db
+      .update(nodes)
+      .set({ notes, updatedAt: now })
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
 
     await this.syncCacheNode(nodeNum, sourceId);
