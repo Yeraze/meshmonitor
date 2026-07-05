@@ -129,6 +129,42 @@ export const REGION_OPTIONS: RegionOption[] = [
   { value: 37, label: 'ITU2_125CM - ITU Region 2 Amateur 1.25m (220-225 MHz, check local law)' }
 ];
 
+// Licensed amateur-radio LoRa regions.
+//
+// The ITU amateur-radio RegionCode entries map onto the 2m amateur band
+// (144-148 MHz), which is licensed spectrum in every ITU region. Operating a
+// Meshtastic node on one of these regions legally requires a valid amateur
+// radio license, and the operator is responsible for complying with local
+// band-plan and identification rules. The LoRa config UI surfaces a warning
+// when one of these regions is selected.
+//
+// Values mirror Config.LoRaConfig.RegionCode (meshtastic/protobufs config.proto):
+//   27 = ITU1_2M   (ITU Region 1 amateur 2m, 144-146 MHz)
+//   28 = ITU23_2M  (ITU Region 2/3 amateur 2m, 144-148 MHz)
+//
+// NOTE: Firmware 2.8 introduces a region -> preset legality map (sent once by
+// the device) that the official mobile apps use to filter the preset picker to
+// presets that are legal for the selected region. MeshMonitor cannot consume
+// that map yet because the vendored protobufs (v2.7.26) predate it; when the
+// protobuf submodule is bumped to a 2.8 release this list can be replaced by
+// the device-reported legality data. See issue #3924.
+export const AMATEUR_RADIO_REGIONS: Record<number, string> = {
+  27: 'ITU1_2M',
+  28: 'ITU23_2M'
+};
+
+/**
+ * Returns true when the given RegionCode value corresponds to a licensed
+ * amateur-radio band (an ITU 2m region). Used to surface a compliance warning
+ * in the LoRa configuration UI.
+ */
+export function isAmateurRadioRegion(region: number | null | undefined): boolean {
+  if (region === null || region === undefined) {
+    return false;
+  }
+  return Object.prototype.hasOwnProperty.call(AMATEUR_RADIO_REGIONS, region);
+}
+
 // Config.LoRaConfig.FEM_LNA_Mode (firmware >= v2.7.20, meshtastic/firmware#9809).
 // Value 0 (DISABLED) is the proto3 zero/default and a real selectable mode.
 export const FEM_LNA_MODE_OPTIONS: RegionOption[] = [

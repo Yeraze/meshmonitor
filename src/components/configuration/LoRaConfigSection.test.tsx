@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MODEM_PRESET_OPTIONS, FEM_LNA_MODE_OPTIONS } from './constants';
+import { MODEM_PRESET_OPTIONS, FEM_LNA_MODE_OPTIONS, AMATEUR_RADIO_REGIONS, isAmateurRadioRegion, REGION_MAP } from './constants';
 
 /**
  * LoRaConfigSection Tests
@@ -134,6 +134,40 @@ describe('LoRaConfigSection', () => {
       expect(FEM_LNA_MODE_OPTIONS[1].label).toMatch(/ENABLED/);
       expect(FEM_LNA_MODE_OPTIONS[2].value).toBe(2);
       expect(FEM_LNA_MODE_OPTIONS[2].label).toMatch(/NOT_PRESENT/);
+    });
+  });
+
+  describe('Amateur Radio Region Warning (#3924)', () => {
+    it('flags the ITU 2m amateur regions (27, 28) as amateur bands', () => {
+      expect(isAmateurRadioRegion(27)).toBe(true); // ITU1_2M
+      expect(isAmateurRadioRegion(28)).toBe(true); // ITU23_2M
+    });
+
+    it('keeps the amateur region set in sync with REGION_MAP values', () => {
+      expect(AMATEUR_RADIO_REGIONS[27]).toBe('ITU1_2M');
+      expect(AMATEUR_RADIO_REGIONS[28]).toBe('ITU23_2M');
+      expect(REGION_MAP['ITU1_2M']).toBe(27);
+      expect(REGION_MAP['ITU23_2M']).toBe(28);
+    });
+
+    it('does not flag standard ISM/SRD regions as amateur bands', () => {
+      expect(isAmateurRadioRegion(1)).toBe(false); // US
+      expect(isAmateurRadioRegion(3)).toBe(false); // EU_868
+      expect(isAmateurRadioRegion(6)).toBe(false); // ANZ
+      expect(isAmateurRadioRegion(32)).toBe(false); // EU_N_868
+    });
+
+    it('does not flag UNSET (0) as an amateur band', () => {
+      expect(isAmateurRadioRegion(0)).toBe(false);
+    });
+
+    it('handles null/undefined region without throwing', () => {
+      expect(isAmateurRadioRegion(null)).toBe(false);
+      expect(isAmateurRadioRegion(undefined)).toBe(false);
+    });
+
+    it('does not flag an out-of-range region value', () => {
+      expect(isAmateurRadioRegion(999)).toBe(false);
     });
   });
 

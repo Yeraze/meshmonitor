@@ -3189,6 +3189,7 @@
   "lora_config.override_frequency_description": "HAM/Advanced: Override channel calculation and use this frequency. Frequency offset still applies. Value of 0 = disabled",
   "lora_config.region": "Region Code",
   "lora_config.region_description": "Select your regulatory region for frequency/power limits",
+  "lora_config.amateur_band_warning": "This region operates in a licensed amateur (ham) radio band. A valid amateur radio license is required, and you are responsible for complying with local band-plan, power, and station identification rules.",
   "lora_config.hop_limit": "Hop Limit",
   "lora_config.hop_limit_description": "Maximum number of hops for mesh packets. Range: 1-7 (default: 3)",
   "lora_config.tx_power": "Transmit Power (dBm)",
