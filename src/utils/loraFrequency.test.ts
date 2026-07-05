@@ -138,6 +138,26 @@ describe('calculateLoRaFrequency', () => {
     });
   });
 
+  describe('ITU amateur regions added in RegionCode 33-37 (#3927)', () => {
+    // freqStart from firmware RadioInterface.cpp (develop / firmware#10627).
+    // Slot 0 at 250 kHz = freqStart + 0.125 MHz.
+    it('ITU3_2M (region 33): freqStart 144.0 → slot 0 = 144.125 MHz', () => {
+      expect(calculateLoRaFrequency(33, 1, 0, 0)).toBe('144.125 MHz');
+    });
+    it('ITU1_70CM (region 34): freqStart 430.0 → slot 0 = 430.125 MHz', () => {
+      expect(calculateLoRaFrequency(34, 1, 0, 0)).toBe('430.125 MHz');
+    });
+    it('ITU2_70CM (region 35): freqStart 420.0 → slot 0 = 420.125 MHz', () => {
+      expect(calculateLoRaFrequency(35, 1, 0, 0)).toBe('420.125 MHz');
+    });
+    it('ITU3_70CM (region 36): freqStart 430.0 → slot 0 = 430.125 MHz', () => {
+      expect(calculateLoRaFrequency(36, 1, 0, 0)).toBe('430.125 MHz');
+    });
+    it('ITU2_125CM (region 37): freqStart 220.0 → slot 0 = 220.125 MHz', () => {
+      expect(calculateLoRaFrequency(37, 1, 0, 0)).toBe('220.125 MHz');
+    });
+  });
+
   describe('Override frequency', () => {
     it('should use override frequency when set', () => {
       const result = calculateLoRaFrequency(1, 21, 915.0, 0);

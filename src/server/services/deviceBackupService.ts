@@ -175,7 +175,18 @@ const EnumMappings: Record<string, Record<number, string>> = {
     23: 'KZ_433',
     24: 'KZ_863',
     25: 'NP_865',
-    26: 'BR_902'
+    26: 'BR_902',
+    27: 'ITU1_2M',
+    28: 'ITU2_2M',
+    29: 'EU_866',
+    30: 'EU_874',
+    31: 'EU_917',
+    32: 'EU_N_868',
+    33: 'ITU3_2M',
+    34: 'ITU1_70CM',
+    35: 'ITU2_70CM',
+    36: 'ITU3_70CM',
+    37: 'ITU2_125CM'
   },
   DetectionTriggerType: {
     0: 'NONE',

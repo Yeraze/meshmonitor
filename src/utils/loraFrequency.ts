@@ -73,11 +73,16 @@ export function calculateLoRaFrequency(
     25: [865.0, 868.0],      // NP_865: 865-868 MHz
     26: [902.0, 907.5],      // BR_902: 902-907.5 MHz
     27: [144.0, 146.0],      // ITU1_2M: ITU Region 1 Amateur 2m
-    28: [144.0, 148.0],      // ITU23_2M: ITU Region 2/3 Amateur 2m
+    28: [144.0, 148.0],      // ITU2_2M: ITU Region 2 Amateur 2m
     29: [865.6, 867.6],      // EU_866: EU 866MHz SRD (2.5% duty)
     30: [873.4, 876.0],      // EU_874: EU 874MHz SRD (Decision 2022/172 Band 1, awaiting firmware)
     31: [917.4, 919.4],      // EU_917: EU 917MHz SRD (Decision 2022/172 Band 4, awaiting firmware)
-    32: [869.4, 869.65]      // EU_N_868: EU 868MHz Narrow (mandates LITE/NARROW preset)
+    32: [869.4, 869.65],     // EU_N_868: EU 868MHz Narrow (mandates LITE/NARROW preset)
+    33: [144.0, 148.0],      // ITU3_2M: ITU Region 3 Amateur 2m (firmware#10627, on develop / awaiting release)
+    34: [430.0, 440.0],      // ITU1_70CM: ITU Region 1 Amateur 70cm (firmware#10627, on develop / awaiting release)
+    35: [420.0, 450.0],      // ITU2_70CM: ITU Region 2 Amateur 70cm (firmware#10627, on develop / awaiting release)
+    36: [430.0, 450.0],      // ITU3_70CM: ITU Region 3 Amateur 70cm (firmware#10627, on develop / awaiting release)
+    37: [220.0, 225.0]       // ITU2_125CM: ITU Region 2 Amateur 1.25m (on develop / awaiting release)
   };
 
   if (!region || region === 0) {

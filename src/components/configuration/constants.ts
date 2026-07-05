@@ -117,11 +117,16 @@ export const REGION_OPTIONS: RegionOption[] = [
   { value: 25, label: 'NP_865 - Nepal 865MHz' },
   { value: 26, label: 'BR_902 - Brazil 902MHz' },
   { value: 27, label: 'ITU1_2M - ITU Region 1 Amateur 2m (144-146 MHz)' },
-  { value: 28, label: 'ITU23_2M - ITU Region 2/3 Amateur 2m (144-148 MHz)' },
+  { value: 28, label: 'ITU2_2M - ITU Region 2 Amateur 2m (144-148 MHz)' },
   { value: 29, label: 'EU_866 - European Union 866MHz SRD' },
   { value: 30, label: 'EU_874 - European Union 874MHz SRD' },
   { value: 31, label: 'EU_917 - European Union 917MHz SRD' },
-  { value: 32, label: 'EU_N_868 - European Union 868MHz Narrow' }
+  { value: 32, label: 'EU_N_868 - European Union 868MHz Narrow' },
+  { value: 33, label: 'ITU3_2M - ITU Region 3 Amateur 2m (144-148 MHz)' },
+  { value: 34, label: 'ITU1_70CM - ITU Region 1 Amateur 70cm (430-440 MHz)' },
+  { value: 35, label: 'ITU2_70CM - ITU Region 2 Amateur 70cm (420-450 MHz, check local law)' },
+  { value: 36, label: 'ITU3_70CM - ITU Region 3 Amateur 70cm (430-450 MHz, check local law)' },
+  { value: 37, label: 'ITU2_125CM - ITU Region 2 Amateur 1.25m (220-225 MHz, check local law)' }
 ];
 
 // Config.LoRaConfig.FEM_LNA_Mode (firmware >= v2.7.20, meshtastic/firmware#9809).
