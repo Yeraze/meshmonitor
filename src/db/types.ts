@@ -83,6 +83,8 @@ export interface DbNode {
   positionOverrideIsPrivate?: boolean | null;
   // Map visibility — #3549: suppress this node's marker on maps only
   hideFromMap?: boolean | null;
+  // Free-text per-node notes — #3921: MeshMonitor-local annotation, never synced
+  notes?: string | null;
   // User capability flags from the node's User protobuf — #3684
   isUnmessagable?: boolean | null;
   isLicensed?: boolean | null;

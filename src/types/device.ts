@@ -42,6 +42,7 @@ export interface DeviceInfo {
   favoriteLocked?: boolean;
   isIgnored?: boolean;
   hideFromMap?: boolean; // #3549: suppress this node's marker on maps only
+  notes?: string; // #3921: free-text per-node MeshMonitor-local annotation
   isUnmessagable?: boolean; // #3684: User.is_unmessagable — node won't receive DMs
   isLicensed?: boolean; // #3684: User.is_licensed — amateur-radio licensed operator
   keyIsLowEntropy?: boolean;

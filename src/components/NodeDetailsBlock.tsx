@@ -15,9 +15,19 @@ interface NodeDetailsBlockProps {
   node: DeviceInfo | null;
   timeFormat?: TimeFormat;
   dateFormat?: DateFormat;
+  /**
+   * When true (and `onSaveNotes` is provided), the free-text notes field (#3921)
+   * is rendered as an editable textarea. Otherwise any existing note is shown
+   * read-only.
+   */
+  canEditNotes?: boolean;
+  /** Persist the edited note. Resolves on success, rejects on failure. */
+  onSaveNotes?: (notes: string) => Promise<void>;
 }
 
-const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY' }) => {
+const MAX_NODE_NOTES_LENGTH = 2000;
+
+const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY', canEditNotes = false, onSaveNotes }) => {
   const { t } = useTranslation();
   const { channels } = useChannels();
   const { currentNodeId } = useDeviceConfig();
@@ -29,13 +39,49 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
     return stored === 'true';
   });
 
+  // #3921: editable free-text notes. Draft is kept in local state and only
+  // persisted on Save; it re-syncs whenever the selected node (or its stored
+  // note) changes.
+  const nodeNum = node?.nodeNum;
+  const storedNotes = node?.notes ?? '';
+  const [notesDraft, setNotesDraft] = useState<string>(storedNotes);
+  // Baseline the draft is compared against for the "dirty" check. It tracks the
+  // last-persisted value locally so the Save button settles immediately after a
+  // successful save, even before the polled `nodes` prop catches up.
+  const [notesBaseline, setNotesBaseline] = useState<string>(storedNotes);
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
+
   useEffect(() => {
     localStorage.setItem('nodeDetailsCollapsed', isCollapsed.toString());
   }, [isCollapsed]);
 
+  // Re-sync draft/baseline whenever the selected node or its stored note changes.
+  useEffect(() => {
+    setNotesDraft(storedNotes);
+    setNotesBaseline(storedNotes);
+    setNotesError(null);
+  }, [nodeNum, storedNotes]);
+
   if (!node) {
     return null;
   }
+
+  const notesDirty = notesDraft !== notesBaseline;
+
+  const handleSaveNotes = async () => {
+    if (!onSaveNotes || notesSaving || !notesDirty) return;
+    setNotesSaving(true);
+    setNotesError(null);
+    try {
+      await onSaveNotes(notesDraft);
+      setNotesBaseline(notesDraft);
+    } catch (err) {
+      setNotesError(err instanceof Error ? err.message : t('node_details.notes_error', 'Failed to save notes'));
+    } finally {
+      setNotesSaving(false);
+    }
+  };
 
   /**
    * Get battery level indicator class based on percentage
@@ -439,6 +485,38 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
               </div>
             </div>
           )}
+
+          {/* Notes (#3921) — editable when permitted, otherwise read-only */}
+          {(canEditNotes && onSaveNotes) ? (
+            <div className="node-detail-card node-detail-card-2col node-detail-notes">
+              <div className="node-detail-label">{t('node_details.notes', 'Notes')}</div>
+              <textarea
+                className="node-detail-notes-input"
+                value={notesDraft}
+                maxLength={MAX_NODE_NOTES_LENGTH}
+                rows={3}
+                placeholder={t('node_details.notes_placeholder', 'Add a private note about this node…')}
+                onChange={e => setNotesDraft(e.target.value)}
+                disabled={notesSaving}
+              />
+              {notesError && <span className="node-detail-notes-error">{notesError}</span>}
+              <div className="node-detail-notes-actions">
+                <button
+                  type="button"
+                  className="node-detail-notes-save"
+                  onClick={handleSaveNotes}
+                  disabled={notesSaving || !notesDirty}
+                >
+                  {notesSaving ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
+                </button>
+              </div>
+            </div>
+          ) : storedNotes ? (
+            <div className="node-detail-card node-detail-card-2col node-detail-notes">
+              <div className="node-detail-label">{t('node_details.notes', 'Notes')}</div>
+              <div className="node-detail-value node-detail-notes-readonly">{storedNotes}</div>
+            </div>
+          ) : null}
         </div>
       )}
     </div>

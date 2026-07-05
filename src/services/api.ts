@@ -1131,6 +1131,27 @@ class ApiService {
     return response.json();
   }
 
+  /**
+   * Set the free-text per-node notes annotation (#3921). MeshMonitor-local
+   * only — never synced to the mesh. An empty string clears the note.
+   */
+  async setNodeNotes(nodeId: string, notes: string, sourceId?: string | null) {
+    await this.ensureBaseUrl();
+    const response = await fetch(`${this.baseUrl}/api/nodes/${encodeURIComponent(nodeId)}/notes`, {
+      method: 'POST',
+      headers: this.getHeadersWithCsrf(),
+      credentials: 'include',
+      body: JSON.stringify({ notes, ...(sourceId ? { sourceId } : {}) }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to set node notes');
+    }
+
+    return response.json();
+  }
+
   async requestConfig(configType: number, sourceId?: string | null) {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/config/request`, {

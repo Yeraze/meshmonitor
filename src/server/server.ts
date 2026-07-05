@@ -2110,6 +2110,78 @@ apiRouter.post('/nodes/:nodeId/hide-from-map', requirePermission('nodes', 'write
   }
 });
 
+// Set the free-text per-node notes annotation (issue #3921). MeshMonitor-local
+// only — never synced to the mesh. An empty string clears the note.
+const MAX_NODE_NOTES_LENGTH = 2000;
+apiRouter.post('/nodes/:nodeId/notes', requirePermission('nodes', 'write', { sourceIdFrom: 'body' }), async (req, res) => {
+  try {
+    const { nodeId } = req.params;
+    const { notes, sourceId: notesSourceId } = req.body;
+
+    if (typeof notes !== 'string') {
+      const errorResponse: ApiErrorResponse = {
+        error: 'notes must be a string',
+        code: 'INVALID_PARAMETER_TYPE',
+        details: 'Expected string value for notes parameter',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    if (notes.length > MAX_NODE_NOTES_LENGTH) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'notes is too long',
+        code: 'INVALID_PARAMETER',
+        details: `notes must be at most ${MAX_NODE_NOTES_LENGTH} characters`,
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    if (typeof notesSourceId !== 'string' || notesSourceId.length === 0) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'sourceId is required',
+        code: 'MISSING_SOURCE_ID',
+        details: 'Request body must include a sourceId string',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
+    const nodeNumStr = nodeId.replace('!', '');
+
+    // Validate hex string format (must be exactly 8 hex characters)
+    if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
+      const errorResponse: ApiErrorResponse = {
+        error: 'Invalid nodeId format',
+        code: 'INVALID_NODE_ID',
+        details: 'nodeId must be in format !XXXXXXXX (8 hex characters)',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
+    const nodeNum = parseInt(nodeNumStr, 16);
+
+    await databaseService.setNodeNotesAsync(nodeNum, notes, notesSourceId);
+
+    res.json({
+      success: true,
+      nodeNum,
+      notes,
+    });
+  } catch (error) {
+    logger.error('Error setting node notes:', error);
+    const errorResponse: ApiErrorResponse = {
+      error: 'Failed to set node notes',
+      code: 'INTERNAL_ERROR',
+      details: error instanceof Error ? error.message : 'Unknown error occurred',
+    };
+    res.status(500).json(errorResponse);
+  }
+});
+
 // Delete neighbor info for a node
 apiRouter.delete('/nodes/:nodeId/neighbors', requirePermission('nodes', 'write'), async (req, res) => {
   try {

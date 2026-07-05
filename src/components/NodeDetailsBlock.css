@@ -131,6 +131,68 @@
   grid-column: span 2;
 }
 
+/* Notes (#3921) — editable free-text per-node annotation */
+.node-detail-notes-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  padding: 8px 10px;
+  background-color: var(--ctp-base);
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.node-detail-notes-input:focus {
+  outline: none;
+  border-color: var(--ctp-blue);
+}
+
+.node-detail-notes-input:disabled {
+  opacity: 0.6;
+}
+
+.node-detail-notes-readonly {
+  font-size: 0.95rem;
+  font-weight: 400;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.node-detail-notes-error {
+  display: block;
+  color: var(--ctp-red);
+  font-size: 0.85rem;
+  margin-top: 4px;
+}
+
+.node-detail-notes-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.node-detail-notes-save {
+  background-color: var(--ctp-blue);
+  color: var(--ctp-base);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 6px 14px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.node-detail-notes-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Public key styling */
 .node-detail-public-key {
   font-family: var(--font-mono);
