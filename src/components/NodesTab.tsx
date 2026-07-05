@@ -16,7 +16,7 @@ import MapLegend from './MapLegend';
 import { formatTime, formatDateTime } from '../utils/datetime';
 import { getDistanceToNode, calculateDistance, formatDistance } from '../utils/distance';
 import { getTilesetById } from '../config/tilesets';
-import { getEffectiveHops } from '../utils/nodeHops';
+import { getEffectiveHops, getMapHoverTooltipMeta } from '../utils/nodeHops';
 import { buildNodeExportRows, nodesToCsv, nodesToHtml, downloadTextFile } from '../utils/nodeExport';
 import { useMapContext } from '../contexts/MapContext';
 import { useTelemetryNodes, useDeviceConfig, useNodes } from '../hooks/useServerData';
@@ -2284,11 +2284,20 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       </div>
                       {(() => {
                         const tooltipHops = getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
-                        return tooltipHops < 999 ? (
+                        const { hops, showSnr, snr } = getMapHoverTooltipMeta(tooltipHops, node.snr);
+                        if (hops === null && !showSnr) return null;
+                        return (
                           <div style={{ fontSize: '0.85em', opacity: 0.8 }}>
-                            {tooltipHops} hop{tooltipHops !== 1 ? 's' : ''}
+                            {hops !== null && (
+                              <span>{hops} hop{hops !== 1 ? 's' : ''}</span>
+                            )}
+                            {showSnr && (
+                              <span>
+                                {hops !== null ? ' · ' : ''}📶 {snr!.toFixed(1)}dB
+                              </span>
+                            )}
                           </div>
-                        ) : null;
+                        );
                       })()}
                     </div>
                   </Tooltip>
