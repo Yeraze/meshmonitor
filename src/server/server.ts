@@ -11,7 +11,7 @@ import meshtasticManager from './meshtasticManager.js';
 import { MeshtasticManager } from './meshtasticManager.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { resolveSourceManager } from './utils/resolveSourceManager.js';
-import { compileUserRegex } from '../utils/safeRegex.js';
+import { validateFilterNameRegexOnSave } from './utils/filterNameRegex.js';
 import { canonicalMessageTime, messageReceivedAt } from './utils/messageTime.js';
 import { pivotPositionHistory } from './utils/positionHistoryPivot.js';
 import protobufService from './protobufService.js';
@@ -3554,26 +3554,30 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
       return res.status(400).json({ error: (error as Error).message });
     }
 
-    // Validate regex if provided
+    // Current stored settings — needed to decide whether the regex must be
+    // hard-validated (see validateFilterNameRegexOnSave / #3934).
+    const traceNodesPostSourceId = (req.query.sourceId as string | undefined) || (req.body?.sourceId as string | undefined);
+    const currentTraceSettings = await databaseService.getTracerouteFilterSettingsAsync(traceNodesPostSourceId);
+
+    // Validate regex if provided — only hard-validate (RE2) when it will actually
+    // be applied or the pattern changed, so a stored RE2-incompatible pattern
+    // can't permanently brick the automation (#3934, mirrors #3806).
     let validatedRegex = '.*';
     if (filterNameRegex !== undefined && filterNameRegex !== null) {
       if (typeof filterNameRegex !== 'string') {
         return res.status(400).json({ error: 'Invalid filterNameRegex value. Must be a string.' });
       }
-      // Length cap + catastrophic-backtracking pattern check to prevent ReDoS
-      if (filterNameRegex.length > 200) {
-        return res.status(400).json({ error: 'filterNameRegex too long (max 200 characters).' });
+      const regexWillBeApplied =
+        enabled &&
+        (filterRegexEnabled !== undefined ? filterRegexEnabled === true : currentTraceSettings.filterRegexEnabled);
+      const regexResult = validateFilterNameRegexOnSave(filterNameRegex, {
+        willBeApplied: regexWillBeApplied,
+        storedRegex: currentTraceSettings.filterNameRegex,
+      });
+      if ('error' in regexResult) {
+        return res.status(400).json({ error: regexResult.error });
       }
-      if (/(\.\*){2,}|(\+.*\+)|(\*.*\*)|(\{[0-9]{3,}\})|(\{[0-9]+,\})/.test(filterNameRegex)) {
-        return res.status(400).json({ error: 'filterNameRegex too complex or may cause performance issues.' });
-      }
-      // Test that regex is valid
-      try {
-        compileUserRegex(filterNameRegex);
-        validatedRegex = filterNameRegex;
-      } catch {
-        return res.status(400).json({ error: 'Invalid filterNameRegex value. Must be a valid regular expression.' });
-      }
+      validatedRegex = regexResult.regex;
     }
 
     // Validate individual filter enabled flags (optional booleans, default to true)
@@ -3655,8 +3659,7 @@ apiRouter.post('/settings/traceroute-nodes', requirePermission('settings', 'writ
       return res.status(400).json({ error: 'filterHopsMin cannot be greater than filterHopsMax.' });
     }
 
-    // Update all settings (scoped to source when provided)
-    const traceNodesPostSourceId = (req.query.sourceId as string | undefined) || (req.body?.sourceId as string | undefined);
+    // Update all settings (scoped to source when provided; sourceId resolved above)
     await databaseService.setTracerouteFilterSettingsAsync({
       enabled,
       nodeNums,
@@ -3744,24 +3747,33 @@ apiRouter.post('/settings/remote-localstats-nodes', requirePermission('settings'
       return res.status(400).json({ error: (error as Error).message });
     }
 
-    // Validate regex (ReDoS-guarded, mirrors the traceroute route)
+    // sourceId is required here; resolve it up-front so we can read the current
+    // stored settings for the regex guard below.
+    const sourceId = (req.query.sourceId as string | undefined) || (req.body?.sourceId as string | undefined);
+    if (!sourceId) {
+      return res.status(400).json({ error: 'sourceId is required for remote LocalStats filter settings.' });
+    }
+    const currentRemoteSettings = await databaseService.getRemoteLocalStatsFilterSettingsAsync(sourceId);
+
+    // Validate regex — only hard-validate (RE2) when it will actually be applied
+    // or the pattern changed, so a stored RE2-incompatible pattern can't
+    // permanently brick the automation (#3934, mirrors #3806).
     let validatedRegex = '.*';
     if (filterNameRegex !== undefined && filterNameRegex !== null) {
       if (typeof filterNameRegex !== 'string') {
         return res.status(400).json({ error: 'Invalid filterNameRegex value. Must be a string.' });
       }
-      if (filterNameRegex.length > 200) {
-        return res.status(400).json({ error: 'filterNameRegex too long (max 200 characters).' });
+      const regexWillBeApplied =
+        enabled &&
+        (filterRegexEnabled !== undefined ? filterRegexEnabled === true : currentRemoteSettings.filterRegexEnabled);
+      const regexResult = validateFilterNameRegexOnSave(filterNameRegex, {
+        willBeApplied: regexWillBeApplied,
+        storedRegex: currentRemoteSettings.filterNameRegex,
+      });
+      if ('error' in regexResult) {
+        return res.status(400).json({ error: regexResult.error });
       }
-      if (/(\.\*){2,}|(\+.*\+)|(\*.*\*)|(\{[0-9]{3,}\})|(\{[0-9]+,\})/.test(filterNameRegex)) {
-        return res.status(400).json({ error: 'filterNameRegex too complex or may cause performance issues.' });
-      }
-      try {
-        compileUserRegex(filterNameRegex);
-        validatedRegex = filterNameRegex;
-      } catch {
-        return res.status(400).json({ error: 'Invalid filterNameRegex value. Must be a valid regular expression.' });
-      }
+      validatedRegex = regexResult.regex;
     }
 
     const validateOptionalBoolean = (value: unknown, name: string): boolean | undefined => {
@@ -3793,11 +3805,6 @@ apiRouter.post('/settings/remote-localstats-nodes', requirePermission('settings'
         return res.status(400).json({ error: 'Invalid filterLastHeardHours value. Must be an integer >= 1.' });
       }
       validatedFilterLastHeardHours = filterLastHeardHours;
-    }
-
-    const sourceId = (req.query.sourceId as string | undefined) || (req.body?.sourceId as string | undefined);
-    if (!sourceId) {
-      return res.status(400).json({ error: 'sourceId is required for remote LocalStats filter settings.' });
     }
 
     await databaseService.setRemoteLocalStatsFilterSettingsAsync({
