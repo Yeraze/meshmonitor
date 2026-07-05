@@ -64,7 +64,7 @@ All scripts must:
 - Be located in `/data/scripts/` directory
 - Have a supported extension: `.js`, `.mjs`, `.py`, or `.sh`
 - Output valid JSON to stdout with a `response` field (or `responses` array)
-- Complete within 10 seconds (timeout)
+- Complete within 30 seconds (timeout)
 - Be executable (`chmod +x`)
 
 ### Output Format

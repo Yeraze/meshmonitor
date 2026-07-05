@@ -67,7 +67,7 @@ Scripts must:
 1. Be located in `/data/scripts/` directory
 2. Have a supported extension: `.js`, `.mjs`, `.py`, or `.sh`
 3. Output valid JSON to stdout with a `response` field
-4. Complete within 10 seconds (timeout)
+4. Complete within 30 seconds (timeout)
 
 ## Environment Variables
 

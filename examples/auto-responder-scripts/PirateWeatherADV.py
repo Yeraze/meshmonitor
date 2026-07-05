@@ -123,9 +123,19 @@ from typing import Optional, Tuple, Dict, List, Any
 PIRATE_WEATHER_API_KEY = os.environ.get('PIRATE_WEATHER_API_KEY', '')
 TEST_MODE = os.environ.get('TEST_MODE', 'false').lower() == 'true'
 
-# MeshMonitor enforces a 200-char max per message and a 10-second script timeout.
-# Network timeouts: geocode 3s + API 4s + reverse geocode 3s = 10s worst case.
-MSG_LIMIT = 200
+# MeshMonitor enforces a 200-char max per message.
+# The Auto-Responder hard kills scripts after 30 seconds (execFileAsync timeout).
+# We set individual HTTP timeouts conservatively so the total worst-case network
+# time stays well under 20s, leaving a safe buffer before the 30s kill signal:
+#   Nominatim geocode:         TIMEOUT_GEOCODE seconds
+#   Pirate Weather API:        TIMEOUT_API seconds
+#   Nominatim reverse geocode: TIMEOUT_REVERSE seconds
+#   Worst-case total:          sum of all three
+# Adjust these if you are on a slow or high-latency connection.
+MSG_LIMIT       = 200
+TIMEOUT_GEOCODE = 5   # forward geocode (Nominatim)
+TIMEOUT_API     = 8   # Pirate Weather API fetch
+TIMEOUT_REVERSE = 5   # reverse geocode (Nominatim)
 
 # Day-of-week abbreviations indexed by Python's tm_wday (0=Mon … 6=Sun)
 DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -182,7 +192,7 @@ def geocode_location(location: str) -> Optional[Tuple[float, float]]:
         params = {'q': location, 'format': 'json', 'limit': 1}
         url = 'https://nominatim.openstreetmap.org/search?' + urllib.parse.urlencode(params)
         req = urllib.request.Request(url, headers={'User-Agent': 'PirateWeatherADV/1.0'})
-        with urllib.request.urlopen(req, timeout=3) as resp:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_GEOCODE) as resp:
             data = json.loads(resp.read().decode('utf-8'))
         if data:
             return (float(data[0]['lat']), float(data[0]['lon']))
@@ -200,7 +210,7 @@ def reverse_geocode_city(lat: float, lon: float) -> str:
         params = {'lat': lat, 'lon': lon, 'format': 'json', 'zoom': 10}
         url = 'https://nominatim.openstreetmap.org/reverse?' + urllib.parse.urlencode(params)
         req = urllib.request.Request(url, headers={'User-Agent': 'PirateWeatherADV/1.0'})
-        with urllib.request.urlopen(req, timeout=3) as resp:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_REVERSE) as resp:
             data = json.loads(resp.read().decode('utf-8'))
 
         address = data.get('address') or {}
@@ -392,7 +402,7 @@ def get_weather(lat: float, lon: float) -> Dict[str, Any]:
     try:
         url = f'https://api.pirateweather.net/forecast/{PIRATE_WEATHER_API_KEY}/{lat},{lon}'
         req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=4) as resp:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_API) as resp:
             data = json.loads(resp.read().decode('utf-8'))
 
         current       = data.get('currently') or {}
