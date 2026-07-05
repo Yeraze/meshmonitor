@@ -90,6 +90,29 @@ export async function evaluateCondition(node: AutomationNode, ctx: EngineEvalCon
       return stringCompare(String(p.op ?? 'eq'), left, right);
     }
 
+    case 'condition.meshcoreScope': {
+      // MeshCore region scope (#3914). Reads the inbound message's scope from the
+      // trigger context (populated only by buildMeshCoreMessageContext):
+      //   scopeCode === 0 → sent unscoped; > 0 → scoped; undefined → no scope
+      //   info (a Meshtastic message, a room post, or an unparseable header).
+      // Meshtastic messages carry no scopeCode, so every mode falls through to
+      // a non-match — the condition is inherently MeshCore-only.
+      const f = ctx.trigger.fields;
+      const scopeCode = typeof f.scopeCode === 'number' ? f.scopeCode : undefined;
+      const scopeName = typeof f.scopeName === 'string' ? f.scopeName : undefined;
+      const isUnscoped = scopeCode === 0;
+      const isScoped = typeof scopeCode === 'number' && scopeCode > 0;
+      const mode = String(p.mode ?? 'named');
+      if (mode === 'unscoped') return isUnscoped;
+      if (mode === 'scoped') return isScoped;
+      // 'named': match one of the listed regions, optionally also unscoped.
+      if (p.includeUnscoped === true && isUnscoped) return true;
+      if (scopeName == null) return false; // no resolved region name to match
+      const wanted = String((await resolveOperand(ctx, p.regions)) ?? '')
+        .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+      return wanted.includes(scopeName.toLowerCase());
+    }
+
     case 'condition.variable': {
       const name = String(p.variable ?? '');
       if (!name) return false;

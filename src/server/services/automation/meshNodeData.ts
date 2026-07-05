@@ -6,6 +6,8 @@
 import databaseService from '../../../services/database.js';
 import type { NodeDataProvider, NodeFacts } from './engineContext.js';
 import { sourceProtocol } from './channelUnify.js';
+import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
+import { meshcoreManagerRegistry } from '../../meshcoreRegistry.js';
 
 function nodeIdOf(nodeNum: number): string {
   return `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`;
@@ -54,6 +56,28 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
         if (!sourceId) return null;
         const s = await databaseService.sources.getSource(sourceId);
         return s ? sourceProtocol(s.type) : null;
+      } catch {
+        return null;
+      }
+    },
+
+    // Self-identity accessors (#3914) — read the live manager for the source so
+    // the engine can drop self-originated events. Meshtastic and MeshCore live
+    // in separate registries; a miss (source not connected) returns null → no drop.
+    async getLocalNodeNum(sourceId) {
+      try {
+        if (!sourceId) return null;
+        const nodeNum = sourceManagerRegistry.getManager(sourceId)?.getLocalNodeInfo()?.nodeNum;
+        return nodeNum != null ? Number(nodeNum) : null;
+      } catch {
+        return null;
+      }
+    },
+
+    async getSelfPublicKey(sourceId) {
+      try {
+        if (!sourceId) return null;
+        return meshcoreManagerRegistry.get(sourceId)?.getLocalNode()?.publicKey ?? null;
       } catch {
         return null;
       }

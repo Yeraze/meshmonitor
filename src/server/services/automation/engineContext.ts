@@ -55,6 +55,17 @@ export interface NodeDataProvider {
    * unified channel only sends to sources of its own protocol. Optional.
    */
   getSourceProtocol?(sourceId: string | null): Promise<string | null>;
+  /**
+   * Own/local node number for a Meshtastic source — used to drop self-originated
+   * events (messages/telemetry/node updates our own node produced) so automations
+   * never fire on MeshMonitor's own traffic (#3914). Optional; absent → no drop.
+   */
+  getLocalNodeNum?(sourceId: string | null): Promise<number | null>;
+  /**
+   * Own/local node public key for a MeshCore source — the self signal for MeshCore
+   * received messages (#3914). Optional; absent → no drop.
+   */
+  getSelfPublicKey?(sourceId: string | null): Promise<string | null>;
 }
 
 export interface EngineEvalContext {

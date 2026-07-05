@@ -349,9 +349,34 @@ export class AutomationEngineService {
     }
   }
 
+  // ─── self-origin guard (#3914) ──────────────────────────────────────────
+  //
+  // Drop events that originated from our OWN node so an automation never fires
+  // on MeshMonitor's own traffic — most importantly so an `action.sendMessage`
+  // reply can't re-trigger the very rule that sent it (an infinite mesh loop),
+  // and so our own periodic telemetry / node-info doesn't spuriously fire rules.
+  // Mirrors the legacy MeshCore auto-responder guard. Identity is resolved per
+  // source via optional data-provider accessors; when they're absent (e.g. a
+  // unit test that doesn't wire them) nothing is dropped — existing behavior.
+
+  /** True if `fromNodeNum` is this Meshtastic source's own local node. */
+  private async isSelfMeshtastic(sourceId: string | null, fromNodeNum: number | null | undefined): Promise<boolean> {
+    if (!this.data.getLocalNodeNum || fromNodeNum == null) return false;
+    const local = await this.data.getLocalNodeNum(sourceId);
+    return local != null && Number(local) === Number(fromNodeNum);
+  }
+
+  /** True if `fromPublicKey` is this MeshCore source's own local node key. */
+  private async isSelfMeshCore(sourceId: string | null, fromPublicKey: string | null | undefined): Promise<boolean> {
+    if (!this.data.getSelfPublicKey || !fromPublicKey) return false;
+    const key = await this.data.getSelfPublicKey(sourceId);
+    return key != null && key.toLowerCase() === fromPublicKey.toLowerCase();
+  }
+
   // ─── event entry points ─────────────────────────────────────────────────
 
   async onMessage(msg: DbMessage, sourceId: string | null): Promise<number> {
+    if (await this.isSelfMeshtastic(sourceId, msg.fromNodeNum)) return 0; // #3914: ignore our own sends
     const ctx = buildMessageContext(msg, sourceId, this.now());
     // Resolve the message's channel NAME once (per-source slot→name), but only
     // when a loaded message automation actually filters by channelName — keeps
@@ -378,6 +403,7 @@ export class AutomationEngineService {
    * engine previously ignored entirely).
    */
   async onMeshCoreMessage(msg: MeshCoreMessage, sourceId: string | null): Promise<number> {
+    if (await this.isSelfMeshCore(sourceId, msg.fromPublicKey)) return 0; // #3914: ignore our own sends
     const ctx = buildMeshCoreMessageContext(msg, sourceId, this.now());
     let channelName: string | null | undefined;
     const usesChannelName = (this.index.get('trigger.message') ?? []).some((a) => {
@@ -402,6 +428,7 @@ export class AutomationEngineService {
     changedKeys: string[],
     sourceId: string | null,
   ): Promise<number> {
+    if (await this.isSelfMeshtastic(sourceId, nodeNum)) return 0; // #3914: ignore our own node updates
     return this.runTrigger(buildNodeContext(kind, nodeNum, changedKeys, sourceId, this.now()));
   }
 
@@ -412,6 +439,7 @@ export class AutomationEngineService {
     unit: string | undefined,
     sourceId: string | null,
   ): Promise<number> {
+    if (await this.isSelfMeshtastic(sourceId, nodeNum)) return 0; // #3914: ignore our own telemetry
     const ctx = buildTelemetryContext(nodeNum, telemetryType, value, unit, sourceId, this.now());
     return this.runTrigger(
       ctx,

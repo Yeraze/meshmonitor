@@ -18,6 +18,8 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
     ['wantAck', 'Sender requested an ack'], ['replyId', 'Replied-to packet id'],
     ['emoji', 'Tapback/reaction emoji flag'], ['viaMqtt', 'true if it arrived via MQTT'],
     ['decryptedBy', 'Channel/key that decrypted it'],
+    ['fromName', 'Sender name (MeshCore)'], ['scopeName', 'Region/scope name (MeshCore)'],
+    ['scopeCode', 'Region/scope code — 0 = unscoped (MeshCore)'], ['scoped', 'true if sent with a region (MeshCore)'],
   ],
   'trigger.telemetry': [['nodeNum', 'Node number'], ['telemetryType', 'Metric name'], ['value', 'Reading value'], ['unit', 'Unit']],
   'trigger.nodeUpdated': [['nodeNum', 'Node number'], ['changed', 'Changed field names (list)']],
