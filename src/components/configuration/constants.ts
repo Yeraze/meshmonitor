@@ -142,12 +142,18 @@ export const REGION_OPTIONS: RegionOption[] = [
 //   27 = ITU1_2M   (ITU Region 1 amateur 2m, 144-146 MHz)
 //   28 = ITU23_2M  (ITU Region 2/3 amateur 2m, 144-148 MHz)
 //
-// NOTE: Firmware 2.8 introduces a region -> preset legality map (sent once by
-// the device) that the official mobile apps use to filter the preset picker to
-// presets that are legal for the selected region. MeshMonitor cannot consume
-// that map yet because the vendored protobufs (v2.7.26) predate it; when the
-// protobuf submodule is bumped to a 2.8 release this list can be replaced by
-// the device-reported legality data. See issue #3924.
+// NOTE (issue #3924, Part 1 — preset legality filtering):
+// There is NO protobuf wire field that carries a region -> preset legality map.
+// (Verified against meshtastic/protobufs config.proto: Config.LoRaConfig only
+// exposes `region` (field 7) and `modem_preset` (field 2); no legality map was
+// ever added at any 2.8.x tag.) Instead, the official mobile apps replicate a
+// firmware-side computation locally: a modem preset is legal for a region iff
+// at least one channel of the preset's bandwidth fits inside the region's
+// frequency band, i.e. `(freqEnd - freqStart) >= presetBandwidthKHz / 1000`
+// (spacing is 0 for every current region, so this collapses to a simple
+// span >= bandwidth test). If the check fails, firmware silently rewrites the
+// preset to LONG_FAST. See REGION_FREQ_INFO / isPresetLegalForRegion below,
+// which mirror that table + math WITHOUT requiring a protobuf submodule bump.
 export const AMATEUR_RADIO_REGIONS: Record<number, string> = {
   27: 'ITU1_2M',
   28: 'ITU23_2M'
@@ -163,6 +169,130 @@ export function isAmateurRadioRegion(region: number | null | undefined): boolean
     return false;
   }
   return Object.prototype.hasOwnProperty.call(AMATEUR_RADIO_REGIONS, region);
+}
+
+// --- Region -> modem-preset legality (issue #3924, Part 1) ---
+//
+// Mirrors the Meshtastic firmware region table + preset-bandwidth switch so the
+// modem-preset picker can be filtered to presets that are legal for the
+// selected region, matching the official mobile apps. NO protobuf field carries
+// this — it is a client-side computation (see the note above AMATEUR_RADIO_REGIONS).
+//
+// Firmware sources (github.com/meshtastic/firmware):
+//   - src/mesh/RadioInterface.cpp  regions[] table (RDEF macro): freqStart/freqEnd.
+//   - src/mesh/MeshRadio.h         modemPresetToParams(): preset -> bandwidth (kHz).
+//   - RadioInterface::applyModemConfig / bootstrapLoRaConfigFromPreset: the
+//     `(freqEnd - freqStart) < bwKHz/1000` fit-check that falls back to LONG_FAST.
+//
+// In practice only EU_868 (0.25 MHz span) filters anything: it rejects the two
+// 500 kHz presets (SHORT_TURBO, LONG_TURBO). Regions whose bounds are not listed
+// here (e.g. the ITU amateur bands and the newer EU narrow-band variants, which
+// live on the firmware develop branch) are treated as permissive — all presets
+// legal — since their spans comfortably exceed every preset bandwidth and we
+// prefer not to filter without authoritative bounds.
+
+interface RegionFreqInfo {
+  /** Band start in MHz (RadioInterface.cpp regions[] freqStart). */
+  start: number;
+  /** Band end in MHz (RadioInterface.cpp regions[] freqEnd). */
+  end: number;
+  /** True for the 2.4 GHz wide-LoRa band (LORA_24), which uses wider bandwidths. */
+  wideLora?: boolean;
+}
+
+// RegionCode value -> frequency band. Values transcribed from firmware master.
+const REGION_FREQ_INFO: Record<number, RegionFreqInfo> = {
+  0: { start: 902.0, end: 928.0 },      // UNSET (defaults to US band)
+  1: { start: 902.0, end: 928.0 },      // US
+  2: { start: 433.0, end: 434.0 },      // EU_433
+  3: { start: 869.4, end: 869.65 },     // EU_868  (0.25 MHz — rejects 500 kHz presets)
+  4: { start: 470.0, end: 510.0 },      // CN
+  5: { start: 920.5, end: 923.5 },      // JP
+  6: { start: 915.0, end: 928.0 },      // ANZ
+  7: { start: 920.0, end: 923.0 },      // KR
+  8: { start: 920.0, end: 925.0 },      // TW
+  9: { start: 868.7, end: 869.2 },      // RU  (0.5 MHz — 500 kHz just fits)
+  10: { start: 865.0, end: 867.0 },     // IN
+  11: { start: 864.0, end: 868.0 },     // NZ_865
+  12: { start: 920.0, end: 925.0 },     // TH
+  13: { start: 2400.0, end: 2483.5, wideLora: true }, // LORA_24
+  14: { start: 433.0, end: 434.7 },     // UA_433
+  15: { start: 868.0, end: 868.6 },     // UA_868
+  16: { start: 433.0, end: 435.0 },     // MY_433
+  17: { start: 919.0, end: 924.0 },     // MY_919
+  18: { start: 917.0, end: 925.0 },     // SG_923
+  19: { start: 433.0, end: 434.7 },     // PH_433
+  20: { start: 868.0, end: 869.4 },     // PH_868
+  21: { start: 915.0, end: 918.0 },     // PH_915
+  22: { start: 433.05, end: 434.79 },   // ANZ_433
+  23: { start: 433.075, end: 434.775 }, // KZ_433
+  24: { start: 863.0, end: 868.0 },     // KZ_863
+  25: { start: 865.0, end: 868.0 },     // NP_865
+  26: { start: 902.0, end: 907.5 }      // BR_902
+};
+
+// Modem-preset LoRa bandwidth in kHz, mirroring firmware modemPresetToParams()
+// (MeshRadio.h). `normal` = sub-GHz bands; `wide` = 2.4 GHz wide-LoRa (LORA_24).
+// Presets NOT implemented in firmware's switch (VERY_LONG_SLOW, LITE_*, NARROW_*,
+// TINY_*) fall through to the LONG_FAST default (250 kHz) — see DEFAULT_PRESET_BW.
+const PRESET_BANDWIDTH_KHZ: Record<number, { normal: number; wide: number }> = {
+  0: { normal: 250, wide: 812.5 },   // LONG_FAST (default)
+  1: { normal: 125, wide: 406.25 },  // LONG_SLOW
+  3: { normal: 250, wide: 812.5 },   // MEDIUM_SLOW
+  4: { normal: 250, wide: 812.5 },   // MEDIUM_FAST
+  5: { normal: 250, wide: 812.5 },   // SHORT_SLOW
+  6: { normal: 250, wide: 812.5 },   // SHORT_FAST
+  7: { normal: 125, wide: 406.25 },  // LONG_MODERATE
+  8: { normal: 500, wide: 1625 },    // SHORT_TURBO
+  9: { normal: 500, wide: 1625 }     // LONG_TURBO
+};
+const DEFAULT_PRESET_BW = { normal: 250, wide: 812.5 }; // LONG_FAST fallback
+
+/**
+ * LoRa bandwidth (kHz) firmware would use for the given modem preset, matching
+ * modemPresetToParams(). Unknown/unimplemented presets fall back to LONG_FAST.
+ */
+export function getPresetBandwidthKHz(preset: number, wideLora: boolean): number {
+  const bw = PRESET_BANDWIDTH_KHZ[preset] ?? DEFAULT_PRESET_BW;
+  return wideLora ? bw.wide : bw.normal;
+}
+
+/**
+ * True if `preset` is legal for `region`, mirroring the firmware fit-check
+ * `(freqEnd - freqStart) >= presetBandwidthKHz / 1000`. Regions with unknown
+ * bounds (not in REGION_FREQ_INFO) and null/undefined regions are treated as
+ * permissive (all presets legal).
+ */
+export function isPresetLegalForRegion(
+  region: number | null | undefined,
+  preset: number
+): boolean {
+  if (region === null || region === undefined) {
+    return true;
+  }
+  const info = REGION_FREQ_INFO[region];
+  if (!info) {
+    return true; // no authoritative bounds -> do not filter
+  }
+  const spanMHz = info.end - info.start;
+  const bandwidthMHz = getPresetBandwidthKHz(preset, !!info.wideLora) / 1000;
+  return spanMHz >= bandwidthMHz;
+}
+
+/**
+ * Returns the subset of MODEM_PRESET_OPTIONS that are legal for `region`.
+ * `currentPreset`, when supplied, is always retained even if it is illegal, so
+ * the picker still reflects a device's actual (possibly out-of-band) setting
+ * instead of rendering blank. Preserves MODEM_PRESET_OPTIONS ordering.
+ */
+export function getLegalPresetOptions(
+  region: number | null | undefined,
+  currentPreset?: number
+): ModemPresetOption[] {
+  return MODEM_PRESET_OPTIONS.filter(
+    option =>
+      isPresetLegalForRegion(region, option.value) || option.value === currentPreset
+  );
 }
 
 // Config.LoRaConfig.FEM_LNA_Mode (firmware >= v2.7.20, meshtastic/firmware#9809).
