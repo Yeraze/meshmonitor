@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, FEM_LNA_MODE_OPTIONS } from './constants';
+import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, FEM_LNA_MODE_OPTIONS, isAmateurRadioRegion } from './constants';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface LoRaConfigSectionProps {
@@ -387,6 +387,23 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
             </option>
           ))}
         </select>
+        {isAmateurRadioRegion(region) && (
+          <div
+            role="alert"
+            className="setting-description"
+            style={{
+              marginTop: '0.5rem',
+              padding: '0.6rem 0.75rem',
+              border: '1px solid var(--ctp-yellow, #f9e2af)',
+              borderRadius: '4px',
+              backgroundColor: 'rgba(249, 226, 175, 0.12)',
+              color: 'var(--ctp-yellow, #f9e2af)',
+              lineHeight: '1.4'
+            }}
+          >
+            ⚠️ {t('lora_config.amateur_band_warning')}
+          </div>
+        )}
       </div>
       <div className="setting-item">
         <label htmlFor="hopLimit">
