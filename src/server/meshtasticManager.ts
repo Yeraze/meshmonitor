@@ -373,6 +373,7 @@ type TextMessage = {
   createdAt: number;
   decryptedBy?: 'node' | 'server' | null; // Decryption source - 'server' means read-only
   viaStoreForward?: boolean; // Message received via Store & Forward replay
+  xeddsaSigned?: boolean; // Broadcast had a cryptographically verified XEdDSA signature (firmware 2.8+)
   sourceIp?: string | null; // Per-message ingress attribution (client IP for HTTP injects)
   sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null;
   spoofSuspected?: boolean; // #2584 — claims from == our local node but arrived over RF
@@ -5871,6 +5872,10 @@ class MeshtasticManager implements ISourceManager {
           createdAt: Date.now(),
           decryptedBy: context?.decryptedBy ?? null, // Track decryption source - 'server' means read-only
           viaStoreForward: context?.viaStoreForward === true ? true : undefined, // Message received via Store & Forward replay
+          // XEdDSA signing (firmware 2.8+): the node reports whether it
+          // cryptographically verified this broadcast's signature. Read both
+          // camelCase and snake_case for protobufjs decode-shape safety.
+          xeddsaSigned: ((meshPacket as any).xeddsaSigned === true || (meshPacket as any).xeddsa_signed === true) ? true : undefined,
           // Inbound radio path — message arrived from a meshtastic node over TCP.
           // MQTT-bridged inbound packets are flagged via viaMqtt above; we still
           // attribute the row's ingress to 'tcp_radio' because it arrived via
@@ -14286,6 +14291,7 @@ class MeshtasticManager implements ISourceManager {
       replyId: msg.replyId ?? undefined,
       emoji: msg.emoji ?? undefined,
       viaMqtt: Boolean(msg.viaMqtt),
+      xeddsaSigned: (msg as any).xeddsaSigned ? true : undefined,
       rxSnr: msg.rxSnr ?? undefined,
       rxRssi: msg.rxRssi ?? undefined,
       // Include delivery tracking fields

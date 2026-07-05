@@ -89,4 +89,25 @@ describe('MessagesRepository.insertMessage duplicate detection', () => {
     expect(result1).toBe(true);
     expect(result2).toBe(true);
   });
+
+  it('persists the xeddsaSigned flag (#3923)', async () => {
+    await repo.insertMessage({ ...makeMessage('msg-signed'), xeddsaSigned: true } as any);
+    await repo.insertMessage({ ...makeMessage('msg-unsigned'), xeddsaSigned: undefined } as any);
+
+    const signed = db
+      .prepare('SELECT xeddsaSigned FROM messages WHERE id = ?')
+      .get('msg-signed') as { xeddsaSigned: number | null };
+    const unsigned = db
+      .prepare('SELECT xeddsaSigned FROM messages WHERE id = ?')
+      .get('msg-unsigned') as { xeddsaSigned: number | null };
+
+    // SQLite stores booleans as 1 / NULL for absent.
+    expect(signed.xeddsaSigned).toBe(1);
+    expect(unsigned.xeddsaSigned == null).toBe(true);
+
+    // And it survives the async read path.
+    const rows = await repo.getMessages(50, 0);
+    const readBack = rows.find((r) => r.id === 'msg-signed');
+    expect(readBack?.xeddsaSigned).toBe(true);
+  });
 });

@@ -426,6 +426,8 @@ router.get('/messages', async (req: Request, res: Response) => {
       rxRssi: number | null;
       rxTime: number | null;
       timestamp: number;
+      /** Broadcast carried a verified XEdDSA signature on this reception (firmware 2.8+). */
+      xeddsaSigned: boolean | null;
     };
     type Merged = {
       dedupKey: string;
@@ -539,6 +541,8 @@ router.get('/messages', async (req: Request, res: Response) => {
           rxRssi: m.rssi ?? null,
           rxTime: null,
           timestamp: m.timestamp,
+          // MeshCore has no XEdDSA packet signing concept.
+          xeddsaSigned: null,
         };
         // MeshCore ids are unique within a source; we don't cross-source-dedup
         // MeshCore (each radio is a distinct receiver), so key by source + id.
@@ -763,6 +767,7 @@ router.get('/messages', async (req: Request, res: Response) => {
             rxRssi: m.rxRssi ?? null,
             rxTime,
             timestamp: m.timestamp,
+            xeddsaSigned: (m as any).xeddsaSigned ?? null,
           };
 
           const existing = merged.get(dedupKey);

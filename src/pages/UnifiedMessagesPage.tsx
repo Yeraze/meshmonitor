@@ -47,6 +47,8 @@ interface Reception {
   rxRssi: number | null;
   rxTime: number | null;
   timestamp: number;
+  /** Broadcast carried a verified XEdDSA signature on this reception (firmware 2.8+). */
+  xeddsaSigned?: boolean | null;
 }
 
 interface UnifiedMessage {
@@ -670,6 +672,16 @@ export default function UnifiedMessagesPage() {
                           style={{ background: sourceColor(r.sourceId) }}
                         />
                         {r.sourceName}
+                        {r.xeddsaSigned ? (
+                          <span
+                            style={{ marginLeft: '4px', color: 'var(--success-color, #16a34a)' }}
+                            title={t('messages.xeddsa_signed', 'Cryptographically signed (XEdDSA)')}
+                            aria-label={t('messages.xeddsa_signed', 'Cryptographically signed (XEdDSA)')}
+                            role="img"
+                          >
+                            🛡️
+                          </span>
+                        ) : null}
                       </td>
                       <td>{hopDisplay(r.hopStart, r.hopLimit, t)}</td>
                       <td>{r.rxSnr != null ? `${r.rxSnr.toFixed(1)} dB` : '—'}</td>

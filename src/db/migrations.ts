@@ -127,6 +127,7 @@ import { migration as clampFutureTracerouteMigration, runMigration109Postgres as
 import { migration as meshcorePositionHistoryMigration, runMigration110Postgres as runMeshcorePositionHistoryPostgres, runMigration110Mysql as runMeshcorePositionHistoryMysql } from '../server/migrations/110_add_meshcore_position_history.js';
 import { migration as meshcoreNodePositionSourceMigration, runMigration111Postgres as runMeshcoreNodePositionSourcePostgres, runMigration111Mysql as runMeshcoreNodePositionSourceMysql } from '../server/migrations/111_meshcore_node_position_source.js';
 import { migration as nodeNotesMigration, runMigration112Postgres as runNodeNotesPostgres, runMigration112Mysql as runNodeNotesMysql } from '../server/migrations/112_add_notes_to_nodes.js';
+import { migration as xeddsaSignedMigration, runMigration113Postgres as runXeddsaSignedPostgres, runMigration113Mysql as runXeddsaSignedMysql } from '../server/migrations/113_add_xeddsa_signed.js';
 
 // ============================================================================
 // Registry
@@ -1781,4 +1782,21 @@ registry.register({
   sqlite: (db) => nodeNotesMigration.up(db),
   postgres: (client) => runNodeNotesPostgres(client),
   mysql: (pool) => runNodeNotesMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 113: `xeddsaSigned` flag on `messages` (#3923)
+// Records whether a received broadcast carried a cryptographically verified
+// XEdDSA signature (Meshtastic firmware 2.8+, MeshPacket field 22). Surfaced
+// as a "signed" shield in the message UI, mirroring the official mobile
+// clients. Nullable; existing rows keep NULL.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 113,
+  name: 'add_xeddsa_signed',
+  settingsKey: 'migration_113_add_xeddsa_signed',
+  sqlite: (db) => xeddsaSignedMigration.up(db),
+  postgres: (client) => runXeddsaSignedPostgres(client),
+  mysql: (pool) => runXeddsaSignedMysql(pool),
 });

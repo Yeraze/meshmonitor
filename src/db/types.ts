@@ -127,6 +127,8 @@ export interface DbMessage {
   emoji?: number | null;
   viaMqtt?: boolean | null;
   viaStoreForward?: boolean | null;
+  /** Broadcast carried a verified XEdDSA signature (firmware 2.8+). NULL for pre-migration rows / unsigned traffic. */
+  xeddsaSigned?: boolean | null;
   rxSnr?: number | null;
   rxRssi?: number | null;
   ackFailed?: boolean | null;
