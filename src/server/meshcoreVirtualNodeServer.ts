@@ -20,6 +20,7 @@ import {
   encodeContactMsgRecv,
   encodeChannelMsgRecv,
   encodeMsgWaitingPush,
+  encodeLogRxData,
   encodeSent,
   encodeSendConfirmed,
   encodeLoginSuccessPush,
@@ -113,6 +114,24 @@ export interface MeshCoreVirtualNodeManager {
   /** The manager emits 'send_confirmed' when a sent DM is acked (#3869). */
   on(event: 'send_confirmed', listener: (data: { ackCode: number; roundTripMs: number }) => void): unknown;
   off(event: 'send_confirmed', listener: (data: { ackCode: number; roundTripMs: number }) => void): unknown;
+  /**
+   * The manager emits 'ota_packet' for every raw OTA packet the node receives
+   * (independent of the packet-monitor setting), so the server can bridge it to
+   * apps as a LogRxData(0x88) push for packet-feed / channel-finder tools (#3963).
+   */
+  on(event: 'ota_packet', listener: (data: OtaPacketEvent) => void): unknown;
+  off(event: 'ota_packet', listener: (data: OtaPacketEvent) => void): unknown;
+}
+
+/**
+ * Raw OTA packet the manager surfaces on its 'ota_packet' event. Fields mirror
+ * the native backend's bridge payload (snake_case). `raw_hex` is the ENTIRE OTA
+ * frame (header + path + payload); `snr` is dB, `rssi` is dBm.
+ */
+export interface OtaPacketEvent {
+  snr?: number | null;
+  rssi?: number | null;
+  raw_hex?: string | null;
 }
 
 /** Reverse map of command codes → names, for human-readable command logging. */
@@ -190,6 +209,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
   private readonly onManagerMessage = (msg: MeshCoreMessage) => this.handleIncomingMessage(msg);
   private readonly onManagerSendConfirmed = (data: { ackCode: number; roundTripMs: number }) =>
     this.handleSendConfirmed(data);
+  private readonly onManagerOtaPacket = (data: OtaPacketEvent) => this.handleOtaPacket(data);
   /**
    * Pending DM acks: `expectedAckCrc` → clientId of the companion that sent it.
    * Populated when a client sends a DM, consumed when the matching
@@ -236,6 +256,9 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
         this.options.manager.on('message', this.onManagerMessage);
         // Forward DM delivery acks back to the originating companion (#3869).
         this.options.manager.on('send_confirmed', this.onManagerSendConfirmed);
+        // Bridge the raw OTA packet feed to apps as LogRxData(0x88) pushes so
+        // packet-feed / channel-finder tools work through the virtual node (#3963).
+        this.options.manager.on('ota_packet', this.onManagerOtaPacket);
         this.emit('listening');
         resolve();
       });
@@ -252,6 +275,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
 
     this.options.manager.off('message', this.onManagerMessage);
     this.options.manager.off('send_confirmed', this.onManagerSendConfirmed);
+    this.options.manager.off('ota_packet', this.onManagerOtaPacket);
     this.pendingAcks.clear();
 
     for (const client of this.clients.values()) {
@@ -850,6 +874,25 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     logger.info(
       `[MeshCore VN ${this.sourceId}] ◀ ack confirmed to ${clientId} (crc=${key}, rtt=${data.roundTripMs}ms)`,
     );
+  }
+
+  /**
+   * Bridge a raw OTA packet to every connected app as a LogRxData(0x88) push —
+   * the diagnostic "packet feed" that channel-finder / packet-cracker tools
+   * (e.g. Remote-Terminal-for-MeshCore) consume (#3963). The whole OTA frame is
+   * forwarded verbatim; the SNR/RSSI ride the push header. A client with no
+   * packet-feed UI simply ignores the frame. Unlike text-message delivery this
+   * fans out unconditionally (no self-origin filtering): the feed is meant to
+   * mirror everything the radio heard, exactly as a real companion would.
+   */
+  private handleOtaPacket(data: OtaPacketEvent): void {
+    if (this.clients.size === 0) return;
+    const raw = hexToBytes(data.raw_hex);
+    if (raw.length === 0) return; // nothing to forward (missing/blank raw_hex)
+    const frame = encodeLogRxData({ snr: data.snr, rssi: data.rssi, raw });
+    for (const clientId of this.clients.keys()) {
+      this.send(clientId, frame);
+    }
   }
 
   /** Resolve a (≥6-byte) public-key prefix to a full contact key, or null. */

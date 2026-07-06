@@ -23,7 +23,9 @@ import {
   encodeChannelMsgRecv,
   encodeSent,
   encodeSendConfirmed,
+  encodeLogRxData,
   encodeNoMoreMessages,
+  PushCodes,
   packTelemetryMode,
   pubKeyHexToBytes,
   hexToBytes,
@@ -71,6 +73,10 @@ describe('meshcoreCompanionCodec — constants stay in sync with meshcore.js', (
     expect(ResponseCodes.CurrTime).toBe(Constants.ResponseCodes.CurrTime);
     expect(ResponseCodes.DeviceInfo).toBe(Constants.ResponseCodes.DeviceInfo);
     expect(ResponseCodes.NoMoreMessages).toBe(Constants.ResponseCodes.NoMoreMessages);
+  });
+
+  it('LogRxData push code matches the library (#3963)', () => {
+    expect(PushCodes.LogRxData).toBe(Constants.PushCodes.LogRxData);
   });
 });
 
@@ -219,6 +225,27 @@ describe('meshcoreCompanionCodec — encoders round-trip through meshcore.js dec
     const decoded = await decodeWithMeshcore(0x82, encodeSendConfirmed(0xdeadbeef, 1500));
     expect(decoded.ackCode).toBe(0xdeadbeef);
     expect(decoded.roundTrip).toBe(1500);
+  });
+
+  it('LogRxData(0x88) decodes snr (quarter-dB), rssi and the raw frame (#3963)', async () => {
+    // Round-trips through meshcore.js's own onLogRxDataPush decoder, proving the
+    // raw packet feed a channel-finder consumes reads back byte-for-byte.
+    const raw = hexToBytes('0102030405aabbccddeeff'); // whole OTA frame, forwarded verbatim
+    const decoded = await decodeWithMeshcore(PushCodes.LogRxData, encodeLogRxData({ snr: -7.25, rssi: -95, raw }));
+    // snr is scaled ×4 on the wire (−7.25 → −29) and the app divides back by 4.
+    expect(decoded.lastSnr).toBeCloseTo(-7.25, 5);
+    expect(decoded.lastRssi).toBe(-95);
+    expect(Buffer.from(decoded.raw).toString('hex')).toBe('0102030405aabbccddeeff');
+  });
+
+  it('LogRxData clamps an out-of-range snr to the int8 wire range (#3963)', async () => {
+    // snr×4 for +40 dB = 160, past int8 max (127) → clamps to 127 → 31.75 dB.
+    const decoded = await decodeWithMeshcore(
+      PushCodes.LogRxData,
+      encodeLogRxData({ snr: 40, rssi: 5, raw: hexToBytes('ab') }),
+    );
+    expect(decoded.lastSnr).toBeCloseTo(127 / 4, 5);
+    expect(decoded.lastRssi).toBe(5);
   });
 
   it('ChannelMsgRecv decodes channel index and text', async () => {

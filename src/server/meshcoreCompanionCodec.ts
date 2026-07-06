@@ -92,6 +92,7 @@ export const PushCodes = {
   SendConfirmed: 0x82,
   MsgWaiting: 0x83,
   LoginSuccess: 0x85,
+  LogRxData: 0x88,
   TraceData: 0x89,
   TelemetryResponse: 0x8b,
 } as const;
@@ -678,6 +679,29 @@ export function encodeTelemetryResponsePush(
   b[1] = 0; // reserved
   Buffer.from(pubKeyPrefix).copy(b, 2, 0, 6);
   return Buffer.concat([b, Buffer.from(lppSensorData)]);
+}
+
+/**
+ * Encode a LogRxData(0x88) push — the node forwarding a raw received OTA packet
+ * to the app. This is the diagnostic "packet feed" that tools like
+ * Remote-Terminal-for-MeshCore's channel finder consume (#3963). Real firmware
+ * emits it unsolicited for every packet the radio hears while a companion
+ * client is attached; there is no command to enable it.
+ *
+ * Layout mirrors meshcore.js's `onLogRxDataPush` decoder:
+ * `[0x88][snr:int8 quarter-dB][rssi:int8 dBm][raw...]`.
+ * - `snr` is a dB value; the wire carries `snr×4` (int8) and the app divides by
+ *   4, so we scale here. `rssi` is a plain signed dBm byte.
+ * - `raw` is the ENTIRE OTA frame (header + path + payload), forwarded verbatim
+ *   with no length prefix — the consumer decodes payload type / route / relay
+ *   hashes from it, so nothing may be stripped.
+ */
+export function encodeLogRxData(rx: { snr?: number | null; rssi?: number | null; raw: Uint8Array }): Buffer {
+  const head = Buffer.alloc(1 + 1 + 1);
+  head[0] = PushCodes.LogRxData;
+  head.writeInt8(clampInt8(Math.round((rx.snr ?? 0) * 4)), 1);
+  head.writeInt8(clampInt8(Math.round(rx.rssi ?? 0)), 2);
+  return Buffer.concat([head, Buffer.from(rx.raw)]);
 }
 
 /** Encode a NoMoreMessages(10) response — mailbox drained. */
