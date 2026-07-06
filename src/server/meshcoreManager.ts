@@ -1479,6 +1479,13 @@ class MeshCoreManager extends EventEmitter {
       // raw OTA data FIRST, independent of the opt-in packet monitor, so it
       // works regardless of the monitor setting.
       void this.correlateChannelEcho(data);
+      // Re-emit the raw OTA packet as a plain EventEmitter event so the MeshCore
+      // Virtual Node can bridge it to connected apps as a LogRxData(0x88) push
+      // (#3963). Deliberately NOT gated on the packet-monitor setting: a feed
+      // consumer like Remote-Terminal's channel finder wants every packet even
+      // when MeshMonitor's own packet log is off. Fields used downstream:
+      // `snr` (dB), `rssi` (dBm), `raw_hex` (whole OTA frame).
+      this.emit('ota_packet', data);
       // Full OTA packet metadata for the MeshCore Packet Monitor. Capture is
       // opt-in; gate persistence on the setting so we don't write a row for
       // every received packet unless the user has turned the monitor on.

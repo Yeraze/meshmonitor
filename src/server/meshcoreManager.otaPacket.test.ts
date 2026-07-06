@@ -77,6 +77,20 @@ describe('MeshCoreManager — ota_packet capture gate', () => {
     expect(emitMeshCoreOtaPacket).not.toHaveBeenCalled();
   });
 
+  it('re-emits an ota_packet event for the VN bridge even when capture is disabled (#3963)', async () => {
+    // The virtual node's LogRxData(0x88) feed must work regardless of the
+    // opt-in packet monitor, so the plain EventEmitter event fires unconditionally.
+    isEnabled.mockResolvedValue(false);
+    const m = new MeshCoreManager('src-a');
+    const seen: unknown[] = [];
+    m.on('ota_packet', (d) => seen.push(d));
+    dispatch(m, { event_type: 'ota_packet', data: { ...SAMPLE } });
+    await flush();
+    expect(logPacket).not.toHaveBeenCalled(); // still not persisted
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ snr: 6.25, rssi: -42, raw_hex: 'deadbeef' });
+  });
+
   it('persists and broadcasts a source-stamped packet when enabled', async () => {
     isEnabled.mockResolvedValue(true);
     const m = new MeshCoreManager('src-a');

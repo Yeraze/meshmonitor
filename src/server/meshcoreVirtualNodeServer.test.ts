@@ -111,6 +111,9 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   }
   emitMessage(msg: MeshCoreMessage) { this.emit('message', msg); }
   emitSendConfirmed(data: { ackCode: number; roundTripMs: number }) { this.emit('send_confirmed', data); }
+  emitOtaPacket(data: { snr?: number | null; rssi?: number | null; raw_hex?: string | null }) {
+    this.emit('ota_packet', data);
+  }
 }
 
 const CHANNELS_DB = {
@@ -433,6 +436,26 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
     let pushed = false;
     void client.expectFrames(1).then(() => { pushed = true; });
     manager.emitSendConfirmed({ ackCode: 0x9999, roundTripMs: 10 }); // never sent by this client
+    await new Promise((r) => setTimeout(r, 40));
+    expect(pushed).toBe(false);
+  });
+
+  it('bridges a raw OTA packet to the client as a LogRxData(0x88) push (#3963)', async () => {
+    const pushP = client.expectFrames(1);
+    manager.emitOtaPacket({ snr: -7.25, rssi: -95, raw_hex: '0102030405aabbccddeeff' });
+    const [push] = await pushP;
+    expect(push[0]).toBe(0x88); // PushCodes.LogRxData
+    expect(Buffer.from(push).readInt8(1)).toBe(-29); // snr×4 (−7.25 → −29)
+    expect(Buffer.from(push).readInt8(2)).toBe(-95); // rssi dBm
+    // Bytes 3..end are the whole OTA frame, forwarded verbatim.
+    expect(Buffer.from(push).subarray(3).toString('hex')).toBe('0102030405aabbccddeeff');
+  });
+
+  it('does not push a LogRxData frame for an OTA packet with no raw bytes (#3963)', async () => {
+    let pushed = false;
+    void client.expectFrames(1).then(() => { pushed = true; });
+    manager.emitOtaPacket({ snr: 5, rssi: -80, raw_hex: null });
+    manager.emitOtaPacket({ snr: 5, rssi: -80, raw_hex: '' });
     await new Promise((r) => setTimeout(r, 40));
     expect(pushed).toBe(false);
   });
