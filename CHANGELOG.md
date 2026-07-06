@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **PirateWeatherADV example script: "read operation timed out" under Timed Events** — The bundled community script's per-request Nominatim/Pirate Weather `urlopen` timeouts (3s/4s/3s) were based on a stale "10-second script timeout" assumption; the actual Auto-Responder/Timed Event script kill timeout is 30 seconds. A slow upstream response could exceed the old socket timeouts long before the real kill signal, surfacing as `The read operation timed out`. Timeouts are bumped to 5s/8s/5s (named constants) and the misleading "10-second" comment/docs are corrected to 30 seconds throughout. (#3941)
+
 ## [4.12.4] - 2026-07-03
 
 ### Added

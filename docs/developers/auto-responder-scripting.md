@@ -117,7 +117,7 @@ Hello Alice! You sent: hello Alice
 ✅ **Location:** Scripts must be in `/data/scripts/` directory
 ✅ **Extension:** `.js`, `.mjs`, `.py`, or `.sh`
 ✅ **Output:** Valid JSON to stdout with `response` field
-✅ **Timeout:** Complete within 10 seconds
+✅ **Timeout:** Complete within 30 seconds
 ✅ **Executable:** Have execute permissions (`chmod +x`)
 
 ### Script Metadata (mm_meta)
@@ -1049,7 +1049,7 @@ docker exec meshmonitor sh -c 'export MESSAGE="info" FROM_NODE="123" && /bin/sh 
 ✅ Scripts run as `node` user (not root)
 ✅ Limited to `/data/scripts/` directory
 ✅ Path traversal attempts (`..`) are blocked
-✅ 10-second execution timeout
+✅ 30-second execution timeout
 ✅ Output limited to 1MB
 
 ### Best Practices

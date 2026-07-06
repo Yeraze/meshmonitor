@@ -787,7 +787,7 @@ You can specify custom regex patterns for parameters using `{paramName:regex}` s
 - Supports Node.js (`.js`, `.mjs`), Python (`.py`), and Shell (`.sh`) scripts
 - Scripts receive message data and parameters via environment variables
 - Can output single or multiple responses (see [Script Response Details](#script-response-details) below)
-- 10-second execution timeout
+- 30-second execution timeout
 - **Script Arguments**: Optional command-line arguments with token expansion (see below)
 - Example trigger: `weather {location}`
 - Example response: `/data/scripts/weather.py`
@@ -1060,7 +1060,7 @@ Scripts must:
 - Be located in `/data/scripts/` directory
 - Have a supported extension: `.js`, `.mjs`, `.py`, or `.sh`
 - Output valid JSON to stdout with a `response` or `responses` field (see details in [Multiple Responses Support](#multiple-responses-support) section)
-- Complete execution within 10 seconds (timeout)
+- Complete execution within 30 seconds (timeout)
 - Handle errors gracefully
 
 **Environment Variables**:
@@ -1175,7 +1175,7 @@ echo "Debug: $VARIABLE" >&2  # Shell
 - Scripts are sandboxed to `/data/scripts/` directory
 - Path traversal attempts (`..`) are blocked
 - Scripts run with container user permissions (not root)
-- 10-second execution timeout prevents runaway scripts
+- 30-second execution timeout prevents runaway scripts
 - Output limited to 1MB to prevent memory issues
 
 **Performance Tips**:
@@ -1423,7 +1423,7 @@ Timer trigger scripts follow the same requirements as Auto Responder scripts:
 - Located in `/data/scripts/` directory
 - Supported extensions: `.js`, `.mjs`, `.py`, `.sh`
 - Must output valid JSON to stdout with a `response` or `responses` field
-- 10-second execution timeout
+- 30-second execution timeout
 - Execute with container user permissions
 - **Script Arguments**: Optional command-line arguments with token expansion
 
@@ -1693,7 +1693,7 @@ Alert: {SHORT_NAME} has left the monitored area
 - Scripts must be in `/data/scripts/` directory
 - Supports Node.js, Python, and Shell scripts
 - Receives geofence data via environment variables
-- Same 10-second timeout as Auto Responder scripts
+- Same 30-second timeout as Auto Responder scripts
 - **Script Arguments**: Optional command-line arguments with token expansion
 
 ### Script Arguments (Geofence Triggers)
