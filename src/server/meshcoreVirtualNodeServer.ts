@@ -23,6 +23,8 @@ import {
   encodeSent,
   encodeSendConfirmed,
   encodeLoginSuccessPush,
+  encodeTraceDataPush,
+  encodeTelemetryResponsePush,
   encodeNoMoreMessages,
   encodeOk,
   encodeErr,
@@ -40,6 +42,8 @@ import {
   parseSetChannel,
   parseSetOtherParams,
   parseSendLogin,
+  parseSendTracePath,
+  parseSendTelemetryReq,
   type ParsedCommand,
 } from './meshcoreCompanionCodec.js';
 
@@ -89,6 +93,20 @@ export interface MeshCoreVirtualNodeManager {
    * password is a valid guest login.
    */
   loginToNode(publicKey: string, password: string): Promise<boolean>;
+  /**
+   * Trace an explicit path (raw hop hashes) and return the raw SNR results, or
+   * null on failure. `lastSnr` is in dB (already /4). Used to relay the app's
+   * SendTracePath (issue #3904).
+   */
+  tracePathRaw(
+    path: Uint8Array,
+  ): Promise<{ pathSnrs: number[]; lastSnr: number; pathLen: number; flags: number } | null>;
+  /**
+   * Request LPP telemetry from a remote node and return the RAW Cayenne-LPP
+   * bytes (not decoded), or null on failure. Used to relay the app's
+   * SendTelemetryReq (issue #3904).
+   */
+  requestRemoteTelemetryRaw(publicKey: string): Promise<Buffer | null>;
   /** EventEmitter surface — the manager emits 'message' with a MeshCoreMessage. */
   on(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
   off(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
@@ -405,6 +423,14 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
           // send afterwards are what the flag gates.
           void this.handleSendLogin(clientId, command);
           break;
+        case CommandCodes.SendTracePath:
+          // Path trace (issue #3904). Read-only diagnostic — not gated.
+          void this.handleSendTracePath(clientId, command);
+          break;
+        case CommandCodes.SendTelemetryReq:
+          // Remote telemetry request (issue #3904). Read-only — not gated.
+          void this.handleSendTelemetryReq(clientId, command);
+          break;
         // Config-mutating commands (issue #3904): forwarded to the real node
         // only when `allowAdminCommands` is enabled; otherwise the app gets an
         // explicit Err (UnsupportedCmd) instead of a silent hang.
@@ -531,8 +557,10 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     }
   }
 
-  /** App wait budget for a login round-trip before it gives up (see handler). */
+  /** App wait budgets (ms) for round-trip relays before the app gives up. */
   private readonly LOGIN_EST_TIMEOUT_MS = 12000;
+  private readonly TRACE_EST_TIMEOUT_MS = 30000;
+  private readonly TELEMETRY_EST_TIMEOUT_MS = 30000;
 
   /**
    * SendLogin(26): authenticate the physical node to a remote node with a
@@ -569,6 +597,74 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       logger.info(`[MeshCore VN ${this.sourceId}] SendLogin to ${keyShort}… from ${clientId} succeeded`);
     } catch (err) {
       logger.warn(`[MeshCore VN ${this.sourceId}] SendLogin to ${keyShort}… from ${clientId} failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * SendTracePath(36): trace an explicit path and relay the result (issue
+   * #3904). The app's flow is Sent → TraceData push correlated by the `tag`
+   * the app itself assigned, so we reply Sent, run the trace against the real
+   * node, then echo the app's tag/auth/path back in a TraceData(0x89) push
+   * alongside the measured SNRs. On failure we emit nothing (app times out).
+   */
+  private async handleSendTracePath(clientId: string, command: ParsedCommand): Promise<void> {
+    let parsed;
+    try {
+      parsed = parseSendTracePath(command.payload);
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] SendTracePath bad payload from ${clientId}: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.IllegalArg));
+      return;
+    }
+    this.send(clientId, encodeSent(0, parsed.tag, this.TRACE_EST_TIMEOUT_MS));
+    try {
+      const result = await this.options.manager.tracePathRaw(parsed.path);
+      if (!result) {
+        logger.info(`[MeshCore VN ${this.sourceId}] SendTracePath from ${clientId} got no result`);
+        return;
+      }
+      this.send(clientId, encodeTraceDataPush({
+        tag: parsed.tag,
+        authCode: parsed.auth,
+        flags: parsed.flags,
+        pathHashes: parsed.path,
+        pathSnrs: result.pathSnrs,
+        lastSnr: result.lastSnr,
+      }));
+      logger.info(`[MeshCore VN ${this.sourceId}] SendTracePath from ${clientId} → ${result.pathSnrs.length} hops, lastSnr=${result.lastSnr}`);
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] SendTracePath from ${clientId} failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * SendTelemetryReq(39): request LPP telemetry from a remote node and relay it
+   * (issue #3904). The app's flow is Sent → TelemetryResponse push correlated by
+   * the remote's 6-byte pubkey prefix, so we reply Sent, fetch the RAW LPP bytes
+   * from the real node, then push them verbatim. On failure we emit nothing.
+   */
+  private async handleSendTelemetryReq(clientId: string, command: ParsedCommand): Promise<void> {
+    let parsed;
+    try {
+      parsed = parseSendTelemetryReq(command.payload);
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] SendTelemetryReq bad payload from ${clientId}: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.IllegalArg));
+      return;
+    }
+    const keyShort = parsed.publicKey.substring(0, 12);
+    this.send(clientId, encodeSent(0, 0, this.TELEMETRY_EST_TIMEOUT_MS));
+    try {
+      const lpp = await this.options.manager.requestRemoteTelemetryRaw(parsed.publicKey);
+      if (!lpp) {
+        logger.info(`[MeshCore VN ${this.sourceId}] SendTelemetryReq to ${keyShort}… from ${clientId} got no data`);
+        return;
+      }
+      const prefix = pubKeyHexToBytes(parsed.publicKey).subarray(0, 6);
+      this.send(clientId, encodeTelemetryResponsePush(prefix, lpp));
+      logger.info(`[MeshCore VN ${this.sourceId}] SendTelemetryReq to ${keyShort}… from ${clientId} → ${lpp.length}B LPP`);
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] SendTelemetryReq to ${keyShort}… from ${clientId} failed: ${(err as Error).message}`);
     }
   }
 

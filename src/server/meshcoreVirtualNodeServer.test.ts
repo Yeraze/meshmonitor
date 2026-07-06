@@ -70,6 +70,8 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   setOtherParamsMock = vi.fn().mockResolvedValue(true);
   sendAdvertMock = vi.fn().mockResolvedValue(true);
   loginToNodeMock = vi.fn().mockResolvedValue(true);
+  tracePathRawMock = vi.fn().mockResolvedValue({ pathSnrs: [8, 12], lastSnr: 5.5, pathLen: 2, flags: 0 });
+  requestRemoteTelemetryRawMock = vi.fn().mockResolvedValue(Buffer.from([0x01, 0x67, 0x00, 0xdc]));
   isConnected() { return this.localNode !== null; }
   getLocalNode() { return this.localNode; }
   getContacts() { return this.contacts; }
@@ -100,6 +102,12 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   sendAdvert() { return this.sendAdvertMock() as Promise<boolean>; }
   loginToNode(publicKey: string, password: string) {
     return this.loginToNodeMock(publicKey, password) as Promise<boolean>;
+  }
+  tracePathRaw(path: Uint8Array) {
+    return this.tracePathRawMock(path) as Promise<{ pathSnrs: number[]; lastSnr: number; pathLen: number; flags: number } | null>;
+  }
+  requestRemoteTelemetryRaw(publicKey: string) {
+    return this.requestRemoteTelemetryRawMock(publicKey) as Promise<Buffer | null>;
   }
   emitMessage(msg: MeshCoreMessage) { this.emit('message', msg); }
   emitSendConfirmed(data: { ackCode: number; roundTripMs: number }) { this.emit('send_confirmed', data); }
@@ -734,5 +742,128 @@ describe('MeshCoreVirtualNodeServer — SendLogin relay (#3904)', () => {
     expect(res[0]).toBe(ResponseCodes.Err);
     expect(res[1]).toBe(ErrorCodes.IllegalArg);
     expect(manager.loginToNodeMock).not.toHaveBeenCalled();
+  });
+});
+
+// SendTracePath(36): reply Sent, then push TraceData echoing the app's own tag
+// and path with the measured SNRs (#3904).
+describe('MeshCoreVirtualNodeServer — SendTracePath relay (#3904)', () => {
+  let server: MeshCoreVirtualNodeServer;
+  let client: TestClient;
+  let manager: FakeManager;
+
+  async function start(): Promise<void> {
+    manager = new FakeManager();
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager, allowAdminCommands: false, databaseService: CHANNELS_DB });
+    await server.start();
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+  }
+  afterEach(async () => { client?.close(); await server?.stop(); });
+
+  // [36][tag:u32LE][auth:u32LE][flags:u8][path…]
+  function traceFrame(tag: number, auth: number, path: number[]): number[] {
+    const head = Buffer.alloc(8); // tag:u32 + auth:u32
+    head.writeUInt32LE(tag >>> 0, 0);
+    head.writeUInt32LE(auth >>> 0, 4);
+    return [CommandCodes.SendTracePath, ...head, 0 /* flags */, ...path];
+  }
+
+  it('replies Sent (carrying the tag) then pushes TraceData with the app tag/path + SNRs', async () => {
+    await start();
+    const frames = client.expectFrames(2);
+    client.send(traceFrame(0xdeadbeef, 0, [0xa3, 0x7f]));
+    const [sent, push] = await frames;
+
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    expect(sent.readUInt32LE(2)).toBe(0xdeadbeef); // expectedAckCrc echoes the tag
+
+    // [0x89][reserved][pathLen][flags][tag:u32][auth:u32][hashes:pathLen][snrs:pathLen][lastSnr:i8]
+    expect(push[0]).toBe(PushCodes.TraceData);
+    expect(push[2]).toBe(2); // pathLen
+    expect(push.readUInt32LE(4)).toBe(0xdeadbeef); // tag echoed
+    expect([push[12], push[13]]).toEqual([0xa3, 0x7f]); // pathHashes = app path
+    expect([push[14], push[15]]).toEqual([8, 12]); // pathSnrs from manager
+    expect(push.readInt8(16)).toBe(22); // lastSnr 5.5 dB → 5.5*4
+    expect(manager.tracePathRawMock).toHaveBeenCalledWith(Buffer.from([0xa3, 0x7f]));
+  });
+
+  it('replies Sent but pushes nothing when the trace returns null', async () => {
+    await start();
+    manager.tracePathRawMock.mockResolvedValueOnce(null);
+    const sent = await client.request(traceFrame(1, 0, [0x01]));
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    const second = await Promise.race([
+      client.expectFrames(1).then((f) => f[0]),
+      new Promise<null>((r) => setTimeout(() => r(null), 100)),
+    ]);
+    expect(second).toBeNull();
+  });
+
+  it('replies Err(IllegalArg) on a short SendTracePath payload', async () => {
+    await start();
+    const res = await client.request([CommandCodes.SendTracePath, 1, 2]); // too short
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.IllegalArg);
+    expect(manager.tracePathRawMock).not.toHaveBeenCalled();
+  });
+});
+
+// SendTelemetryReq(39): reply Sent, then push TelemetryResponse with the remote
+// key prefix + raw LPP bytes (#3904).
+describe('MeshCoreVirtualNodeServer — SendTelemetryReq relay (#3904)', () => {
+  let server: MeshCoreVirtualNodeServer;
+  let client: TestClient;
+  let manager: FakeManager;
+
+  const REMOTE_KEY = 'c4'.repeat(32);
+  const REMOTE_KEY_BYTES = Buffer.from(REMOTE_KEY, 'hex');
+
+  async function start(): Promise<void> {
+    manager = new FakeManager();
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager, allowAdminCommands: false, databaseService: CHANNELS_DB });
+    await server.start();
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+  }
+  afterEach(async () => { client?.close(); await server?.stop(); });
+
+  // [39][reserved:3][publicKey:32]
+  function telemetryFrame(publicKeyHex: string): number[] {
+    return [CommandCodes.SendTelemetryReq, 0, 0, 0, ...Buffer.from(publicKeyHex, 'hex')];
+  }
+
+  it('replies Sent then pushes TelemetryResponse with key prefix + raw LPP', async () => {
+    await start();
+    const frames = client.expectFrames(2);
+    client.send(telemetryFrame(REMOTE_KEY));
+    const [sent, push] = await frames;
+
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    // [0x8B][reserved:1][pubKeyPrefix:6][lpp…]
+    expect(push[0]).toBe(PushCodes.TelemetryResponse);
+    expect(push.subarray(2, 8)).toEqual(REMOTE_KEY_BYTES.subarray(0, 6));
+    expect(push.subarray(8)).toEqual(Buffer.from([0x01, 0x67, 0x00, 0xdc])); // raw LPP from manager
+    expect(manager.requestRemoteTelemetryRawMock).toHaveBeenCalledWith(REMOTE_KEY);
+  });
+
+  it('replies Sent but pushes nothing when telemetry returns null', async () => {
+    await start();
+    manager.requestRemoteTelemetryRawMock.mockResolvedValueOnce(null);
+    const sent = await client.request(telemetryFrame(REMOTE_KEY));
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    const second = await Promise.race([
+      client.expectFrames(1).then((f) => f[0]),
+      new Promise<null>((r) => setTimeout(() => r(null), 100)),
+    ]);
+    expect(second).toBeNull();
+  });
+
+  it('replies Err(IllegalArg) on a short SendTelemetryReq payload', async () => {
+    await start();
+    const res = await client.request([CommandCodes.SendTelemetryReq, 0, 0, 0, 1, 2]); // too short
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.IllegalArg);
+    expect(manager.requestRemoteTelemetryRawMock).not.toHaveBeenCalled();
   });
 });
