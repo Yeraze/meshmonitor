@@ -91,6 +91,9 @@ export const PushCodes = {
   Advert: 0x80,
   SendConfirmed: 0x82,
   MsgWaiting: 0x83,
+  LoginSuccess: 0x85,
+  TraceData: 0x89,
+  TelemetryResponse: 0x8b,
 } as const;
 
 /** Error codes carried by an Err(1) response. */
@@ -235,6 +238,7 @@ export function decodeCommand(payload: Buffer): ParsedCommand {
 // node rejects surfaces to the app as Err(BadState), not a crash here.
 
 export interface SetAdvertNameCmd { name: string; }
+export interface SendLoginCmd { publicKey: string; password: string; }
 export interface SetRadioParamsCmd { freq: number; bw: number; sf: number; cr: number; }
 export interface SetTxPowerCmd { power: number; }
 export interface SetAdvertLatLonCmd { lat: number; lon: number; }
@@ -259,6 +263,20 @@ export interface SetOtherParamsCmd {
  */
 export function parseSetAdvertName(payload: Buffer): SetAdvertNameCmd {
   return { name: payload.subarray(1).toString('utf8') };
+}
+
+/**
+ * SendLogin(26): `[code][publicKey:32][password: UTF-8, rest of frame]`.
+ * The password is the remainder of the frame (firmware caps it at 15 chars);
+ * an empty password is a valid "guest" login. Returns the public key as a
+ * lowercase hex string for MeshCoreManager.loginToNode.
+ */
+export function parseSendLogin(payload: Buffer): SendLoginCmd {
+  if (payload.length < 1 + 32) throw new Error('SendLogin: short payload');
+  return {
+    publicKey: payload.subarray(1, 33).toString('hex'),
+    password: payload.subarray(33).toString('utf8'),
+  };
 }
 
 /**
@@ -566,6 +584,21 @@ export function encodeSendConfirmed(ackCode: number, roundTripMs = 0): Buffer {
   b[0] = PushCodes.SendConfirmed;
   b.writeUInt32LE(ackCode >>> 0, 1);
   b.writeUInt32LE(roundTripMs >>> 0, 5);
+  return b;
+}
+
+/**
+ * Encode a LoginSuccess(0x85) push — the node telling the app that a login it
+ * initiated (SendLogin) succeeded. `pubKeyPrefix` is the first 6 bytes of the
+ * remote node's public key, which is how the app correlates the push to its
+ * pending login request. Layout mirrors meshcore.js `onLoginSuccessPush`:
+ * `[0x85][reserved:1][pubKeyPrefix:6]`.
+ */
+export function encodeLoginSuccessPush(pubKeyPrefix: Buffer | Uint8Array): Buffer {
+  const b = Buffer.alloc(1 + 1 + 6);
+  b[0] = PushCodes.LoginSuccess;
+  b[1] = 0; // reserved
+  Buffer.from(pubKeyPrefix).copy(b, 2, 0, 6);
   return b;
 }
 

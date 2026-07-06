@@ -22,6 +22,7 @@ import {
   encodeMsgWaitingPush,
   encodeSent,
   encodeSendConfirmed,
+  encodeLoginSuccessPush,
   encodeNoMoreMessages,
   encodeOk,
   encodeErr,
@@ -38,6 +39,7 @@ import {
   parseSetAdvertLatLon,
   parseSetChannel,
   parseSetOtherParams,
+  parseSendLogin,
   type ParsedCommand,
 } from './meshcoreCompanionCodec.js';
 
@@ -81,6 +83,12 @@ export interface MeshCoreVirtualNodeManager {
   }): Promise<boolean>;
   /** Broadcast a self-advertisement from the physical node (flood). */
   sendAdvert(): Promise<boolean>;
+  /**
+   * Log in to a remote node with a password (issue #3904). Resolves true when
+   * the remote acknowledged the login, false on timeout/failure. An empty
+   * password is a valid guest login.
+   */
+  loginToNode(publicKey: string, password: string): Promise<boolean>;
   /** EventEmitter surface — the manager emits 'message' with a MeshCoreMessage. */
   on(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
   off(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
@@ -390,6 +398,13 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
           // the manager always floods.
           void this.handleSendSelfAdvert(clientId);
           break;
+        case CommandCodes.SendLogin:
+          // Remote-node authentication (issue #3904). Not gated on
+          // allowAdminCommands — logging in is a normal read/unlock step (the
+          // real node always accepts it); the *config* commands the app may
+          // send afterwards are what the flag gates.
+          void this.handleSendLogin(clientId, command);
+          break;
         // Config-mutating commands (issue #3904): forwarded to the real node
         // only when `allowAdminCommands` is enabled; otherwise the app gets an
         // explicit Err (UnsupportedCmd) instead of a silent hang.
@@ -513,6 +528,47 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     } catch (err) {
       logger.warn(`[MeshCore VN ${this.sourceId}] SendSelfAdvert from ${clientId} failed: ${(err as Error).message}`);
       this.send(clientId, encodeErr(ErrorCodes.BadState));
+    }
+  }
+
+  /** App wait budget for a login round-trip before it gives up (see handler). */
+  private readonly LOGIN_EST_TIMEOUT_MS = 12000;
+
+  /**
+   * SendLogin(26): authenticate the physical node to a remote node with a
+   * password, then relay the result to the app (issue #3904). The app's flow is
+   * Sent → LoginSuccess push (correlated by the remote's 6-byte pubkey prefix),
+   * so we:
+   *   1. reply Sent immediately (arms the app's own timeout via estTimeout),
+   *   2. run manager.loginToNode against the real node,
+   *   3. on success push LoginSuccess(0x85); on failure emit nothing and let
+   *      the app fall back to its estTimeout (mirrors real-node behaviour,
+   *      where a failed login simply never produces a success push).
+   * Not gated on allowAdminCommands — logging in is a normal unlock step.
+   */
+  private async handleSendLogin(clientId: string, command: ParsedCommand): Promise<void> {
+    let parsed;
+    try {
+      parsed = parseSendLogin(command.payload);
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] SendLogin bad payload from ${clientId}: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.IllegalArg));
+      return;
+    }
+    const keyShort = parsed.publicKey.substring(0, 12);
+    // Ack first so the app arms its login timeout, then do the round-trip.
+    this.send(clientId, encodeSent(0, 0, this.LOGIN_EST_TIMEOUT_MS));
+    try {
+      const ok = await this.options.manager.loginToNode(parsed.publicKey, parsed.password);
+      if (!ok) {
+        logger.info(`[MeshCore VN ${this.sourceId}] SendLogin to ${keyShort}… from ${clientId} did not succeed`);
+        return;
+      }
+      const prefix = pubKeyHexToBytes(parsed.publicKey).subarray(0, 6);
+      this.send(clientId, encodeLoginSuccessPush(prefix));
+      logger.info(`[MeshCore VN ${this.sourceId}] SendLogin to ${keyShort}… from ${clientId} succeeded`);
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] SendLogin to ${keyShort}… from ${clientId} failed: ${(err as Error).message}`);
     }
   }
 

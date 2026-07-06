@@ -69,6 +69,7 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   setChannelMock = vi.fn().mockResolvedValue(undefined);
   setOtherParamsMock = vi.fn().mockResolvedValue(true);
   sendAdvertMock = vi.fn().mockResolvedValue(true);
+  loginToNodeMock = vi.fn().mockResolvedValue(true);
   isConnected() { return this.localNode !== null; }
   getLocalNode() { return this.localNode; }
   getContacts() { return this.contacts; }
@@ -97,6 +98,9 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
     return this.setOtherParamsMock(params) as Promise<boolean>;
   }
   sendAdvert() { return this.sendAdvertMock() as Promise<boolean>; }
+  loginToNode(publicKey: string, password: string) {
+    return this.loginToNodeMock(publicKey, password) as Promise<boolean>;
+  }
   emitMessage(msg: MeshCoreMessage) { this.emit('message', msg); }
   emitSendConfirmed(data: { ackCode: number; roundTripMs: number }) { this.emit('send_confirmed', data); }
 }
@@ -657,5 +661,78 @@ describe('MeshCoreVirtualNodeServer — SendSelfAdvert forwarding (#3904)', () =
     const res = await client.request(advertFrame);
     expect(res[0]).toBe(ResponseCodes.Err);
     expect(res[1]).toBe(ErrorCodes.BadState);
+  });
+});
+
+// SendLogin(26) relays a remote-node login (issue #3904). The app's contract is
+// Sent → LoginSuccess push correlated by the remote's 6-byte pubkey prefix. Login
+// is a normal unlock step, so it is NOT gated on allowAdminCommands.
+describe('MeshCoreVirtualNodeServer — SendLogin relay (#3904)', () => {
+  let server: MeshCoreVirtualNodeServer;
+  let client: TestClient;
+  let manager: FakeManager;
+
+  const REMOTE_KEY = 'b1'.repeat(32); // 32 bytes → 64 hex chars
+  const REMOTE_KEY_BYTES = Buffer.from(REMOTE_KEY, 'hex');
+
+  function loginFrame(publicKeyHex: string, password: string): number[] {
+    return [CommandCodes.SendLogin, ...Buffer.from(publicKeyHex, 'hex'), ...Buffer.from(password, 'utf8')];
+  }
+
+  async function startWith(allowAdminCommands: boolean): Promise<void> {
+    manager = new FakeManager();
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager, allowAdminCommands, databaseService: CHANNELS_DB });
+    await server.start();
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+  }
+
+  afterEach(async () => {
+    client?.close();
+    await server?.stop();
+  });
+
+  it('replies Sent then pushes LoginSuccess with the remote key prefix on success', async () => {
+    await startWith(false); // ungated
+    const frames = client.expectFrames(2);
+    client.send(loginFrame(REMOTE_KEY, 'hunter2'));
+    const [sent, push] = await frames;
+
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    expect(push[0]).toBe(PushCodes.LoginSuccess);
+    // [0x85][reserved:1][pubKeyPrefix:6]
+    expect(push.subarray(2, 8)).toEqual(REMOTE_KEY_BYTES.subarray(0, 6));
+    expect(manager.loginToNodeMock).toHaveBeenCalledWith(REMOTE_KEY, 'hunter2');
+  });
+
+  it('accepts an empty (guest) password', async () => {
+    await startWith(false);
+    const frames = client.expectFrames(2);
+    client.send(loginFrame(REMOTE_KEY, ''));
+    const [sent, push] = await frames;
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    expect(push[0]).toBe(PushCodes.LoginSuccess);
+    expect(manager.loginToNodeMock).toHaveBeenCalledWith(REMOTE_KEY, '');
+  });
+
+  it('replies Sent but pushes nothing when the login fails (app times out on its own)', async () => {
+    await startWith(true);
+    manager.loginToNodeMock.mockResolvedValueOnce(false);
+    const sent = await client.request(loginFrame(REMOTE_KEY, 'bad'));
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    // Give the (resolved-false) login a tick; assert no second frame arrived.
+    const second = await Promise.race([
+      client.expectFrames(1).then((f) => f[0]),
+      new Promise<null>((r) => setTimeout(() => r(null), 100)),
+    ]);
+    expect(second).toBeNull();
+  });
+
+  it('replies Err(IllegalArg) on a short SendLogin payload, without logging in', async () => {
+    await startWith(true);
+    const res = await client.request([CommandCodes.SendLogin, 1, 2, 3]); // < 33 bytes
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.IllegalArg);
+    expect(manager.loginToNodeMock).not.toHaveBeenCalled();
   });
 });
