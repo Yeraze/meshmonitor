@@ -193,6 +193,36 @@ describe('MeshCoreNativeBackend get_status serialization (#3815)', () => {
     expect(r2.data?.bat_mv).toBe(3700);
   });
 
+  it('scales last_snr by /4 (quarter-dB) while leaving last_rssi raw (#3955)', async () => {
+    const backend = await makeBackend();
+    const conn = ref.current!;
+
+    const p1 = backend.sendCommand('get_status', { public_key: KEY_A });
+    await new Promise((r) => setTimeout(r, 5));
+
+    // Raw register value from the vendored parser: 47 quarter-dB => 11.75 dB.
+    conn.pending[0].resolve({ last_snr: 47, last_rssi: -95 });
+    const r1 = await p1;
+
+    expect(r1.success).toBe(true);
+    expect(r1.data?.last_snr).toBeCloseTo(11.75, 5);
+    // RSSI is not quarter-dB scaled; it passes through unchanged.
+    expect(r1.data?.last_rssi).toBe(-95);
+  });
+
+  it('leaves last_snr undefined when the firmware omits it (#3955)', async () => {
+    const backend = await makeBackend();
+    const conn = ref.current!;
+
+    const p1 = backend.sendCommand('get_status', { public_key: KEY_A });
+    await new Promise((r) => setTimeout(r, 5));
+    conn.pending[0].resolve({ batt_milli_volts: 4100 });
+    const r1 = await p1;
+
+    expect(r1.success).toBe(true);
+    expect(r1.data?.last_snr).toBeUndefined();
+  });
+
   it('clears the in-flight entry after settle so a later request for the same key issues a fresh call', async () => {
     const backend = await makeBackend();
     const conn = ref.current!;

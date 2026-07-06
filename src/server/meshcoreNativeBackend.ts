@@ -1469,7 +1469,12 @@ export class MeshCoreNativeBackend extends EventEmitter {
           queue_len: stats?.curr_tx_queue_len,
           noise_floor: stats?.noise_floor,
           last_rssi: stats?.last_rssi,
-          last_snr: stats?.last_snr,
+          // MeshCore reports SNR in quarter-dB units (raw register / 4 = true dB).
+          // The vendored meshcore.js repeater status parser reads `last_snr` as a
+          // raw int16 WITHOUT the /4 that every other SNR field in that file applies,
+          // so scale it here to match the Companion app. RSSI is not quarter-dB
+          // scaled, which is why `last_rssi` stays raw. (#3955)
+          last_snr: typeof stats?.last_snr === 'number' ? stats.last_snr / 4 : undefined,
           packets_recv: stats?.n_packets_recv,
           packets_sent: stats?.n_packets_sent,
           air_time_secs: stats?.total_air_time_secs,
