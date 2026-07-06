@@ -2,9 +2,10 @@
 
 **Issue:** [#3535](https://github.com/Yeraze/meshmonitor/issues/3535) — expose a real MeshCore node, that MeshMonitor already manages, as a virtual node the MeshCore **mobile app** can connect to over WiFi/TCP.
 
-**Status:** Phases 0–2 implemented and verified against the real MeshCore
-(`meshcore-flutter`) app over WiFi — see "Phasing" below. Phase 3 (config writes +
-DM delivery receipts) pending.
+**Status:** Phases 0–4 implemented and verified against the real MeshCore
+(`meshcore-flutter`) app over WiFi — see "Phasing" below. The app can now mirror
+the node, send messages, apply admin-gated config, and relay adverts / login /
+trace / telemetry / raw-RX through to the physical node.
 
 > **Verified end-to-end:** the app connects over WiFi, shows the node identity,
 > loads contacts + channels, and sends/receives channel messages through the real
@@ -179,10 +180,19 @@ is **always** refused regardless of the gate. All connects/admin-forwards are au
 - **Phase 2 — Send path. ✅ IMPLEMENTED.** `SendChannelTxtMsg`/`SendTxtMsg` forwarded
   through `meshcoreManager.sendMessage`; DM prefixes resolved to full keys via the contact
   list.
-- **Phase 3 — Admin/config + DM receipts. ⏳ PENDING.** Admin-gated config commands
-  (`SetRadioParams`, `SetAdvertName`, …), and DM delivery receipts: relay the node's real
-  `expectedAckCrc` (currently logged-but-discarded by `sendMessage`) so the
-  `SendConfirmed`(0x82) push can be correlated and the app shows the delivered tick.
+- **Phase 3 — Admin/config + DM receipts. ✅ IMPLEMENTED.** Admin-gated config commands
+  (`SetRadioParams`, `SetAdvertName`, `SetTxPower`, `SetAdvertLatLon`, `SetChannel`,
+  `SetOtherParams`) are forwarded to the real node when the source's **Allow admin commands**
+  flag is on (else `Err(UnsupportedCmd)`) — #3904/#3906/#3907. DM delivery receipts relay the
+  node's real `expectedAckCrc` so the `SendConfirmed`(0x82) push is correlated and the app
+  shows the delivered tick — #3869.
+- **Phase 4 — Remote transactions + raw feed. ✅ IMPLEMENTED.** The remaining app-initiated
+  commands are relayed with the `Sent`→async-push handshake: `SendSelfAdvert` (ack `Ok`,
+  #3959); `SendLogin`→`LoginSuccess`(0x85), `SendTracePath`→`TraceData`(0x89),
+  `SendTelemetryReq`→`TelemetryResponse`(0x8B) (#3961, correlated by the remote's 6-byte
+  pubkey prefix or the app's own trace tag); and the node's raw RX feed bridged to apps as a
+  `LogRxData`(0x88) push (#3964). Login/trace/telemetry/advert are **not** gated on
+  `allowAdminCommands` — a real node accepts them unconditionally; only config *writes* are gated.
 
 ### Protocol subtleties found in testing (don't regress these)
 - **Channel send acks `Ok`, DM send acks `Sent`.** meshcore.js's `sendChannelTextMessage`
