@@ -91,6 +91,9 @@ export const PushCodes = {
   Advert: 0x80,
   SendConfirmed: 0x82,
   MsgWaiting: 0x83,
+  LoginSuccess: 0x85,
+  TraceData: 0x89,
+  TelemetryResponse: 0x8b,
 } as const;
 
 /** Error codes carried by an Err(1) response. */
@@ -235,6 +238,9 @@ export function decodeCommand(payload: Buffer): ParsedCommand {
 // node rejects surfaces to the app as Err(BadState), not a crash here.
 
 export interface SetAdvertNameCmd { name: string; }
+export interface SendLoginCmd { publicKey: string; password: string; }
+export interface SendTracePathCmd { tag: number; auth: number; flags: number; path: Buffer; }
+export interface SendTelemetryReqCmd { publicKey: string; }
 export interface SetRadioParamsCmd { freq: number; bw: number; sf: number; cr: number; }
 export interface SetTxPowerCmd { power: number; }
 export interface SetAdvertLatLonCmd { lat: number; lon: number; }
@@ -259,6 +265,44 @@ export interface SetOtherParamsCmd {
  */
 export function parseSetAdvertName(payload: Buffer): SetAdvertNameCmd {
   return { name: payload.subarray(1).toString('utf8') };
+}
+
+/**
+ * SendLogin(26): `[code][publicKey:32][password: UTF-8, rest of frame]`.
+ * The password is the remainder of the frame (firmware caps it at 15 chars);
+ * an empty password is a valid "guest" login. Returns the public key as a
+ * lowercase hex string for MeshCoreManager.loginToNode.
+ */
+export function parseSendLogin(payload: Buffer): SendLoginCmd {
+  if (payload.length < 1 + 32) throw new Error('SendLogin: short payload');
+  return {
+    publicKey: payload.subarray(1, 33).toString('hex'),
+    password: payload.subarray(33).toString('utf8'),
+  };
+}
+
+/**
+ * SendTracePath(36): `[code][tag:u32LE][auth:u32LE][flags:u8][path: bytes]`.
+ * The app assigns the `tag`; the node echoes it back in the TraceData push so
+ * the app can correlate. `path` is the sequence of hop hashes to trace.
+ */
+export function parseSendTracePath(payload: Buffer): SendTracePathCmd {
+  if (payload.length < 1 + 4 + 4 + 1) throw new Error('SendTracePath: short payload');
+  return {
+    tag: payload.readUInt32LE(1),
+    auth: payload.readUInt32LE(5),
+    flags: payload[9],
+    path: Buffer.from(payload.subarray(10)),
+  };
+}
+
+/**
+ * SendTelemetryReq(39): `[code][reserved:3][publicKey:32]`. Returns the target
+ * public key as a lowercase hex string for MeshCoreManager.
+ */
+export function parseSendTelemetryReq(payload: Buffer): SendTelemetryReqCmd {
+  if (payload.length < 1 + 3 + 32) throw new Error('SendTelemetryReq: short payload');
+  return { publicKey: payload.subarray(4, 36).toString('hex') };
 }
 
 /**
@@ -567,6 +611,73 @@ export function encodeSendConfirmed(ackCode: number, roundTripMs = 0): Buffer {
   b.writeUInt32LE(ackCode >>> 0, 1);
   b.writeUInt32LE(roundTripMs >>> 0, 5);
   return b;
+}
+
+/**
+ * Encode a LoginSuccess(0x85) push — the node telling the app that a login it
+ * initiated (SendLogin) succeeded. `pubKeyPrefix` is the first 6 bytes of the
+ * remote node's public key, which is how the app correlates the push to its
+ * pending login request. Layout mirrors meshcore.js `onLoginSuccessPush`:
+ * `[0x85][reserved:1][pubKeyPrefix:6]`.
+ */
+export function encodeLoginSuccessPush(pubKeyPrefix: Buffer | Uint8Array): Buffer {
+  const b = Buffer.alloc(1 + 1 + 6);
+  b[0] = PushCodes.LoginSuccess;
+  b[1] = 0; // reserved
+  Buffer.from(pubKeyPrefix).copy(b, 2, 0, 6);
+  return b;
+}
+
+/**
+ * Encode a TraceData(0x89) push — the result of a SendTracePath the app
+ * initiated. Layout mirrors meshcore.js `onTraceDataPush`:
+ * `[0x89][reserved:1][pathLen:u8][flags:u8][tag:u32LE][authCode:u32LE]`
+ * `[pathHashes:pathLen][pathSnrs:pathLen][lastSnr:i8]`.
+ *
+ * `pathLen` is derived from `pathHashes`. `pathSnrs` is padded/truncated to
+ * match. `lastSnr` is given in dB (already /4, as MeshCoreManager returns it)
+ * and re-encoded to the raw quarter-dB int8 the app divides by 4.
+ */
+export function encodeTraceDataPush(fields: {
+  tag: number;
+  authCode: number;
+  flags?: number;
+  pathHashes: Buffer | Uint8Array;
+  pathSnrs: number[];
+  lastSnr: number;
+}): Buffer {
+  const hashes = Buffer.from(fields.pathHashes);
+  const pathLen = hashes.length;
+  const snrs = Buffer.alloc(pathLen);
+  for (let i = 0; i < pathLen; i++) snrs[i] = (fields.pathSnrs[i] ?? 0) & 0xff;
+  const b = Buffer.alloc(1 + 1 + 1 + 1 + 4 + 4 + pathLen + pathLen + 1);
+  let o = 0;
+  b[o++] = PushCodes.TraceData;
+  b[o++] = 0; // reserved
+  b[o++] = pathLen & 0xff;
+  b[o++] = (fields.flags ?? 0) & 0xff;
+  b.writeUInt32LE(fields.tag >>> 0, o); o += 4;
+  b.writeUInt32LE(fields.authCode >>> 0, o); o += 4;
+  hashes.copy(b, o); o += pathLen;
+  snrs.copy(b, o); o += pathLen;
+  b.writeInt8(clampInt8(Math.round(fields.lastSnr * 4)), o);
+  return b;
+}
+
+/**
+ * Encode a TelemetryResponse(0x8B) push — the LPP telemetry a remote node
+ * returned for a SendTelemetryReq. Layout mirrors meshcore.js
+ * `onTelemetryResponsePush`: `[0x8B][reserved:1][pubKeyPrefix:6][lppSensorData:rest]`.
+ */
+export function encodeTelemetryResponsePush(
+  pubKeyPrefix: Buffer | Uint8Array,
+  lppSensorData: Buffer | Uint8Array,
+): Buffer {
+  const b = Buffer.alloc(1 + 1 + 6);
+  b[0] = PushCodes.TelemetryResponse;
+  b[1] = 0; // reserved
+  Buffer.from(pubKeyPrefix).copy(b, 2, 0, 6);
+  return Buffer.concat([b, Buffer.from(lppSensorData)]);
 }
 
 /** Encode a NoMoreMessages(10) response — mailbox drained. */

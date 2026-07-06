@@ -1642,7 +1642,10 @@ export class MeshCoreNativeBackend extends EventEmitter {
         );
         const mod = await loadMeshCoreJs();
         const records = mod.CayenneLpp.parse(responseData);
-        return { records };
+        // `raw` is the undecoded Cayenne-LPP payload. The Virtual Node relays it
+        // verbatim in a TelemetryResponse(0x8B) push so the connecting app can
+        // decode it itself, without us round-tripping through `records` (#3904).
+        return { records, raw: Array.from(responseData) };
       }
 
       case 'get_channels': {

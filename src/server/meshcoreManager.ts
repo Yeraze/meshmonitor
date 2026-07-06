@@ -3136,6 +3136,44 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
+   * Trace an explicit path (raw hop hashes) and return the raw SNR results
+   * (issue #3904). Unlike {@link traceContactPath}, which looks up a contact's
+   * saved out-path by public key, this takes the path bytes directly — used by
+   * the Virtual Node to forward an app's SendTracePath frame, which carries its
+   * own path (and its own tag, which the caller echoes back in the push).
+   * `lastSnr` is returned already divided by 4 (dB), matching traceContactPath.
+   */
+  async tracePathRaw(
+    path: Uint8Array,
+  ): Promise<{ pathSnrs: number[]; lastSnr: number; pathLen: number; flags: number } | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
+    if (!this.connected) return null;
+    if (!path || path.length === 0) return null;
+    try {
+      // No sendWithDefaultScope wrapper (unlike requestRemoteTelemetryRaw): a
+      // trace follows the explicit path it is given rather than flooding on an
+      // unknown route, so it does not need the default flood scope asserted
+      // first. Mirrors traceContactPath, which also calls the bridge directly.
+      const response = await this.sendBridgeCommand('trace_path', { path }, 60_000);
+      if (!response.success) {
+        logger.warn(`[MeshCore:${this.sourceId}] tracePathRaw failed: ${response.error}`);
+        return null;
+      }
+      this.recordMeshTx();
+      const d = response.data ?? {};
+      return {
+        pathSnrs: Array.isArray(d.pathSnrs) ? (d.pathSnrs as number[]) : [],
+        lastSnr: typeof d.lastSnr === 'number' ? d.lastSnr : 0,
+        pathLen: typeof d.pathLen === 'number' ? d.pathLen : path.length,
+        flags: typeof d.flags === 'number' ? d.flags : 0,
+      };
+    } catch (error) {
+      logger.error('[MeshCore] tracePathRaw threw:', error);
+      return null;
+    }
+  }
+
+  /**
    * Broadcast the device's saved advert for a contact as a zero-hop frame
    * so nearby nodes can add this contact themselves. Wraps the firmware's
    * CMD_SHARE_CONTACT; the device only retransmits — no local state is
@@ -4537,6 +4575,39 @@ class MeshCoreManager extends EventEmitter {
     } catch (error) {
       logger.warn(
         `[MeshCore:${this.sourceId}] requestRemoteTelemetry (LPP) (${publicKey.substring(0, 16)}…) threw:`,
+        error,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Like {@link requestRemoteTelemetry} but returns the RAW Cayenne-LPP bytes
+   * from the remote's response instead of decoded records (issue #3904). The
+   * Virtual Node relays these verbatim in a TelemetryResponse(0x8B) push so the
+   * connecting app decodes them itself. Returns null on failure/timeout.
+   */
+  async requestRemoteTelemetryRaw(publicKey: string): Promise<Buffer | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
+    if (!this.connected) return null;
+    if (!publicKey) return null;
+    try {
+      const response = await this.sendWithDefaultScope(() =>
+        this.sendBridgeCommand('request_telemetry', { public_key: publicKey }, 45_000),
+      );
+      if (!response.success) {
+        logger.warn(
+          `[MeshCore:${this.sourceId}] requestRemoteTelemetryRaw (${publicKey.substring(0, 16)}…) failed: ${response.error}`,
+        );
+        return null;
+      }
+      this.recordMeshTx();
+      const raw = response.data?.raw;
+      if (!Array.isArray(raw)) return null;
+      return Buffer.from(raw as number[]);
+    } catch (error) {
+      logger.warn(
+        `[MeshCore:${this.sourceId}] requestRemoteTelemetryRaw (${publicKey.substring(0, 16)}…) threw:`,
         error,
       );
       return null;
