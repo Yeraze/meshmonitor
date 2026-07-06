@@ -583,6 +583,15 @@ class MeshCoreManager extends EventEmitter {
    *  the window — purely for logging; the refresh fetches everything. */
   private pathRefreshTimer: NodeJS.Timeout | null = null;
   private pathRefreshPendingKeys: Set<string> = new Set();
+  /**
+   * Keeps the local Companion node's RTC honest. MeshCore stamps every
+   * outbound frame (adverts, DMs, and crucially remote-admin `clock sync`
+   * commands) with the local node's own clock; if that clock is never set it
+   * drifts and poisons those timestamps (issue #3954). We push the server's
+   * wall clock on connect and then periodically for the life of the session.
+   */
+  private deviceTimeSyncTimer: NodeJS.Timeout | null = null;
+  private static readonly DEVICE_TIME_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
   private heartbeatLastSuccessAt: number | null = null;
   private heartbeatProbeInFlight: boolean = false;
   private reconnectAttempts: number = 0;
@@ -872,6 +881,10 @@ class MeshCoreManager extends EventEmitter {
         this.startHeartbeat();
       }
 
+      // Keep the local Companion RTC synced to the server clock so outbound
+      // frame timestamps (incl. remote-admin `clock sync`) are accurate (#3954).
+      this.startDeviceTimeSync();
+
       // Start the Virtual Node server (opt-in) now that the local node identity
       // is known — the server synthesizes SelfInfo from it. Non-fatal on error.
       await this.startVirtualNodeServer();
@@ -1001,6 +1014,9 @@ class MeshCoreManager extends EventEmitter {
     // Cancel any pending path-refresh — refreshContacts() against a torn-
     // down connection would just log an error.
     this.clearPathRefreshTimer();
+
+    // Stop the periodic local-node RTC sync (#3954).
+    this.stopDeviceTimeSync();
 
     // Stop auto-pathfinding scheduler.
     this.stopAutoPathfinding();
@@ -3454,6 +3470,36 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
+   * Push the server clock to the local Companion RTC now, then keep it fresh on
+   * a slow interval for the life of the connection (issue #3954). Companion-only
+   * and best-effort: a device that rejects `set_device_time` (or isn't a
+   * Companion) is simply left alone. Safe to call repeatedly — it re-arms the
+   * single timer rather than stacking them.
+   */
+  private startDeviceTimeSync(): void {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return;
+    this.stopDeviceTimeSync();
+
+    const syncOnce = () => {
+      void this.syncDeviceTime().then((result) => {
+        if (!result.ok && result.reason === 'command-failed') {
+          logger.debug(`[MeshCore:${this.sourceId}] Periodic device-time sync failed: ${result.error}`);
+        }
+      });
+    };
+
+    syncOnce();
+    this.deviceTimeSyncTimer = setInterval(syncOnce, MeshCoreManager.DEVICE_TIME_SYNC_INTERVAL_MS);
+  }
+
+  private stopDeviceTimeSync(): void {
+    if (this.deviceTimeSyncTimer !== null) {
+      clearInterval(this.deviceTimeSyncTimer);
+      this.deviceTimeSyncTimer = null;
+    }
+  }
+
+  /**
    * Query the neighbour list from a remote repeater node. Returns an array
    * of neighbour entries with pubkey prefix, last-heard age, and SNR.
    * Requires firmware v1.9.0+ on the target repeater.
@@ -3920,6 +3966,33 @@ class MeshCoreManager extends EventEmitter {
   private cliCommandLocks: Map<string, Promise<unknown>> = new Map();
 
   /**
+   * Rewrite the firmware `clock sync` CLI verb into the absolute
+   * `time <epoch>` verb, stamped with the server's authoritative wall clock
+   * at send time (issue #3954).
+   *
+   * MeshCore's `clock sync` (CommonCLI.cpp) sets the RTC to the
+   * *sender_timestamp* of the incoming command frame — NOT to any live clock:
+   *   - over the local serial CLI the firmware hard-codes sender_timestamp=0
+   *     (the local-access marker), so `clock sync` is ALWAYS rejected with
+   *     "clock cannot go backwards" and the RTC never moves;
+   *   - over remote-admin (CliData DM) it uses the *sending* node's RTC, which
+   *     MeshMonitor's local companion never keeps synced, so the target
+   *     inherits our drift (the reported "~22 minutes behind").
+   *
+   * The `time <epoch>` verb instead sets the RTC directly from the epoch in the
+   * command text (independent of sender_timestamp), so it works over BOTH
+   * transports and reflects real current time. The firmware still enforces its
+   * own "can't go backwards" guard (secs > curr) — identical to `clock sync` —
+   * so this is not a behavioural regression, only a correct time source.
+   */
+  private rewriteClockSync(command: string): string {
+    if (command.trim().toLowerCase() === 'clock sync') {
+      return `time ${Math.floor(Date.now() / 1000)}`;
+    }
+    return command;
+  }
+
+  /**
    * Send a CLI command to a remote MeshCore node and await its reply.
    *
    * The command is sent as an encrypted DM with txtType=CliData; the remote
@@ -3950,7 +4023,7 @@ class MeshCoreManager extends EventEmitter {
     if (!/^[0-9a-f]{64}$/.test(normalizedKey)) {
       throw new Error('publicKey must be a 64-char hex string');
     }
-    const trimmed = command.trim();
+    const trimmed = this.rewriteClockSync(command.trim());
     if (trimmed.length === 0) {
       throw new Error('CLI command must be non-empty');
     }
@@ -4069,7 +4142,10 @@ class MeshCoreManager extends EventEmitter {
     const timeoutMs = opts.timeoutMs ?? 10_000;
 
     if (this.deviceType === MeshCoreDeviceType.REPEATER || this.deviceType === MeshCoreDeviceType.ROOM_SERVER) {
-      const reply = await this.sendRepeaterCommand(trimmed, timeoutMs);
+      // `clock sync` over the direct serial CLI is a firmware no-op
+      // (sender_timestamp=0 → "clock cannot go backwards"); rewrite it to the
+      // absolute `time <epoch>` verb so the RTC actually gets set (#3954).
+      const reply = await this.sendRepeaterCommand(this.rewriteClockSync(trimmed), timeoutMs);
       return { reply, elapsedMs: Date.now() - sentAt };
     }
 
