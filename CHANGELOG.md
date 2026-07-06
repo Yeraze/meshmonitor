@@ -6,8 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.12.5] - 2026-07-06
+
+### Added
+- **MeshCore Virtual Node: send adverts, log in, trace paths, and request telemetry from a companion app** — Completes the app-facing command surface reported in #3904. A companion app connected to a MeshCore Virtual Node can now: broadcast a self-advert (`SendSelfAdvert`), log in to a remote node (`SendLogin` → `LoginSuccess`), trace a path (`SendTracePath` → `TraceData`), and request LPP telemetry (`SendTelemetryReq` → `TelemetryResponse`). These are relayed to the real node with the correct `Sent`→async-push handshake the app expects (correlated by the remote's public-key prefix, or by the app's own trace tag), instead of being rejected with `Err(UnsupportedCmd)`. Login/trace/telemetry/advert are not gated on **Allow admin commands** — a real node accepts them unconditionally. (#3904, #3959, #3961)
+- **MeshCore Virtual Node: bridge the raw RX feed to companion apps** — The node's raw received-packet feed is now forwarded to connected apps as a `LogRxData`(0x88) push, so channel-finder / packet-inspection tools in the app work through the Virtual Node. (#3963, #3964)
+- **LoRa: region-legality awareness for modem presets and amateur-radio regions** — The modem-preset picker now filters out presets that would be illegal for the selected region, and selecting a licensed amateur-radio region surfaces a warning. Adds `RegionCode` values 33–37 and corrects the `ITU2_2M` label. (#3924, #3927, #3928, #3930, #3936)
+- **Nodes: per-node free-text notes** — Each node gains an editable free-text notes field. (#3921, #3932)
+- **Messages: search conversations by content** — Conversations can be searched by message text; the in-tab content filter now also covers MeshCore direct messages. (#3922, #3931, #3935)
+- **MeshCore packet-log export: decode unencrypted packet data** — Packet-log exports now decode the data of unencrypted packets instead of leaving them opaque. (#3937, #3939)
+- **Automation: MeshCore scope condition + source resolution** — Automations gain a MeshCore scope condition (with a self-origin guard so a rule can't act on the node's own emitted events), and correctly resolve MeshCore sources from the manager registry. (#3914, #3915, #3917, #3920)
+
 ### Fixed
-- **PirateWeatherADV example script: "read operation timed out" under Timed Events** — The bundled community script's per-request Nominatim/Pirate Weather `urlopen` timeouts (3s/4s/3s) were based on a stale "10-second script timeout" assumption; the actual Auto-Responder/Timed Event script kill timeout is 30 seconds. A slow upstream response could exceed the old socket timeouts long before the real kill signal, surfacing as `The read operation timed out`. Timeouts are bumped to 5s/8s/5s (named constants) and the misleading "10-second" comment/docs are corrected to 30 seconds throughout. (#3941)
+- **MeshCore: `clock sync` now sets the repeater to the real current time** — The `clock sync` CLI/quick-action set the repeater's RTC from the incoming command frame's timestamp, which is `0` over a direct serial link (always rejected) and the sending node's own drifted clock over remote admin — so the repeater ended up minutes behind or unchanged. MeshMonitor now issues the firmware's absolute `time <epoch>` command with the server's authoritative clock, and keeps the local Companion node's own RTC synced on connect and periodically. (#3954, #3957)
+- **MeshCore: repeater SNR was reported 4× too high** — Repeater `last_snr` values are raw quarter-dB and are now divided by 4 before display, matching the units used everywhere else. (#3955, #3956)
+- **MeshCore: static contact position no longer clobbers live GNSS telemetry fixes** — A saved static position for a contact could overwrite a fresher GPS fix from telemetry; live GNSS fixes now win. (#3909)
+- **MeshCore: initial auto-connect now retries with backoff** — A missed first connection attempt is retried with backoff instead of leaving the source disconnected. (#3919)
+- **Automation: a stored bad `filterNameRegex` can no longer brick automations** — An invalid saved name-filter regex is now handled gracefully instead of throwing and taking the automation engine down with it. (#3934, #3938)
+- **Map: direct-heard SNR shown in the node hover tooltip** — The tooltip now surfaces the direct-heard SNR. (#3925, #3929)
+- **Dashboard map: collapse toggle for the Features panel** — The map Features panel can now be collapsed. (#3912, #3913)
+- **Hardware: rename hwModel 128 to `MESH_TRACKER_X1`** — Corrects the model name for hwModel 128. (#3952, #3958)
+- **PirateWeatherADV example script: "read operation timed out" under Timed Events** — The bundled community script's per-request Nominatim/Pirate Weather `urlopen` timeouts (3s/4s/3s) were based on a stale "10-second script timeout" assumption; the actual Auto-Responder/Timed Event script kill timeout is 30 seconds. A slow upstream response could exceed the old socket timeouts long before the real kill signal, surfacing as `The read operation timed out`. Timeouts are bumped to 5s/8s/5s (named constants) and the misleading "10-second" comment/docs are corrected to 30 seconds throughout. (#3941, #3942)
+
+### Changed
+- **Translations updated from Hosted Weblate.** (#3601)
+- **Dependencies:** bumped the production-dependencies group (8 updates) plus `@types/node`, `globals`, `@typescript-eslint/parser`, `puppeteer`, and `tsx`. (#3945, #3946, #3948, #3949, #3950, #3951)
 
 ## [4.12.4] - 2026-07-03
 
