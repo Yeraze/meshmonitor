@@ -68,6 +68,7 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   setCoordsMock = vi.fn().mockResolvedValue(true);
   setChannelMock = vi.fn().mockResolvedValue(undefined);
   setOtherParamsMock = vi.fn().mockResolvedValue(true);
+  sendAdvertMock = vi.fn().mockResolvedValue(true);
   isConnected() { return this.localNode !== null; }
   getLocalNode() { return this.localNode; }
   getContacts() { return this.contacts; }
@@ -95,6 +96,7 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   }) {
     return this.setOtherParamsMock(params) as Promise<boolean>;
   }
+  sendAdvert() { return this.sendAdvertMock() as Promise<boolean>; }
   emitMessage(msg: MeshCoreMessage) { this.emit('message', msg); }
   emitSendConfirmed(data: { ackCode: number; roundTripMs: number }) { this.emit('send_confirmed', data); }
 }
@@ -599,5 +601,61 @@ describe('MeshCoreVirtualNodeServer — config-command forwarding (#3904)', () =
     expect(res[0]).toBe(ResponseCodes.Err);
     expect(res[1]).toBe(ErrorCodes.IllegalArg);
     expect(manager.setRadioMock).not.toHaveBeenCalled();
+  });
+});
+
+// SendSelfAdvert(7) is a normal broadcast operation (like messaging), NOT an
+// admin/config mutation — a real node accepts it unconditionally, so the VN
+// forwards it regardless of allowAdminCommands (issue #3904 follow-up: the app
+// reported "Adverts to sending" failing with Err(UnsupportedCmd)).
+describe('MeshCoreVirtualNodeServer — SendSelfAdvert forwarding (#3904)', () => {
+  let server: MeshCoreVirtualNodeServer;
+  let client: TestClient;
+  let manager: FakeManager;
+
+  async function startWith(allowAdminCommands: boolean): Promise<void> {
+    manager = new FakeManager();
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager, allowAdminCommands, databaseService: CHANNELS_DB });
+    await server.start();
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+  }
+
+  afterEach(async () => {
+    client?.close();
+    await server?.stop();
+  });
+
+  // [code, type] — type 1 = flood; the manager always floods so the byte is ignored.
+  const advertFrame: number[] = [CommandCodes.SendSelfAdvert, 1];
+
+  it('forwards SendSelfAdvert to manager.sendAdvert and replies Ok', async () => {
+    await startWith(true);
+    const res = await client.request(advertFrame);
+    expect(res[0]).toBe(ResponseCodes.Ok);
+    expect(manager.sendAdvertMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('forwards SendSelfAdvert even when allowAdminCommands is off (not an admin op)', async () => {
+    await startWith(false);
+    const res = await client.request(advertFrame);
+    expect(res[0]).toBe(ResponseCodes.Ok);
+    expect(manager.sendAdvertMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('replies Err(BadState) when the node fails to send the advert', async () => {
+    await startWith(true);
+    manager.sendAdvertMock.mockResolvedValueOnce(false);
+    const res = await client.request(advertFrame);
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.BadState);
+  });
+
+  it('replies Err(BadState) when manager.sendAdvert throws', async () => {
+    await startWith(true);
+    manager.sendAdvertMock.mockRejectedValueOnce(new Error('radio busy'));
+    const res = await client.request(advertFrame);
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.BadState);
   });
 });

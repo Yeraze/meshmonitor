@@ -79,6 +79,8 @@ export interface MeshCoreVirtualNodeManager {
     telemetryModeEnv: number;
     advLocPolicy: number;
   }): Promise<boolean>;
+  /** Broadcast a self-advertisement from the physical node (flood). */
+  sendAdvert(): Promise<boolean>;
   /** EventEmitter surface — the manager emits 'message' with a MeshCoreMessage. */
   on(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
   off(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
@@ -380,6 +382,14 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
           // treating an Err as a fatal handshake failure). Phase 3 forwards it.
           this.send(clientId, encodeOk());
           break;
+        case CommandCodes.SendSelfAdvert:
+          // Broadcasting a self-advert is a normal (non-admin) operation on a
+          // real node — like sending a message — so it is NOT gated on
+          // allowAdminCommands (issue #3904 follow-up). Forward to the physical
+          // node and ack; the flood type byte in the payload is ignored since
+          // the manager always floods.
+          void this.handleSendSelfAdvert(clientId);
+          break;
         // Config-mutating commands (issue #3904): forwarded to the real node
         // only when `allowAdminCommands` is enabled; otherwise the app gets an
         // explicit Err (UnsupportedCmd) instead of a silent hang.
@@ -479,6 +489,29 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       this.send(clientId, encodeOk());
     } catch (err) {
       logger.warn(`[MeshCore VN ${this.sourceId}] ${name} from ${clientId} failed: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.BadState));
+    }
+  }
+
+  /**
+   * SendSelfAdvert(7): broadcast a self-advertisement from the physical node.
+   * Unlike the config setters this is a normal, non-admin operation (a real
+   * node accepts it unconditionally), so it is not gated on
+   * `allowAdminCommands`. Replies Ok when the node accepted the advert,
+   * Err(BadState) if the manager reported failure or threw (issue #3904).
+   */
+  private async handleSendSelfAdvert(clientId: string): Promise<void> {
+    try {
+      const ok = await this.options.manager.sendAdvert();
+      if (!ok) {
+        logger.warn(`[MeshCore VN ${this.sourceId}] SendSelfAdvert from ${clientId} not sent by node`);
+        this.send(clientId, encodeErr(ErrorCodes.BadState));
+        return;
+      }
+      logger.info(`[MeshCore VN ${this.sourceId}] SendSelfAdvert from ${clientId} forwarded to node`);
+      this.send(clientId, encodeOk());
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] SendSelfAdvert from ${clientId} failed: ${(err as Error).message}`);
       this.send(clientId, encodeErr(ErrorCodes.BadState));
     }
   }
