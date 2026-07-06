@@ -16,6 +16,10 @@ import { MeshCoreManager, MeshCoreDeviceType } from './meshcoreManager.js';
 const TIME_CMD = /^time (\d+)$/;
 
 describe('clock sync rewrite (#3954)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   describe('rewriteClockSync helper', () => {
     it('rewrites `clock sync` to `time <server epoch>`', () => {
       const m = new MeshCoreManager('test-source');
@@ -45,9 +49,9 @@ describe('clock sync rewrite (#3954)', () => {
   });
 
   describe('sendLocalCliCommand (Repeater serial path)', () => {
-    function makeRepeaterManager() {
+    function makeRepeaterManager(deviceType: MeshCoreDeviceType = MeshCoreDeviceType.REPEATER) {
       const m = new MeshCoreManager('test-source');
-      (m as any).deviceType = MeshCoreDeviceType.REPEATER;
+      (m as any).deviceType = deviceType;
       (m as any).connected = true;
       const repeaterCalls: string[] = [];
       (m as any).sendRepeaterCommand = async (cmd: string) => {
@@ -75,6 +79,13 @@ describe('clock sync rewrite (#3954)', () => {
       const { manager, repeaterCalls } = makeRepeaterManager();
       await manager.sendLocalCliCommand('stats');
       expect(repeaterCalls).toEqual(['stats']);
+    });
+
+    it('also rewrites for Room Server (same firmware family)', async () => {
+      const { manager, repeaterCalls } = makeRepeaterManager(MeshCoreDeviceType.ROOM_SERVER);
+      await manager.sendLocalCliCommand('clock sync');
+      expect(repeaterCalls).toHaveLength(1);
+      expect(repeaterCalls[0]).toMatch(TIME_CMD);
     });
   });
 
@@ -159,8 +170,4 @@ describe('clock sync rewrite (#3954)', () => {
       (m as any).stopDeviceTimeSync();
     });
   });
-});
-
-beforeEach(() => {
-  vi.clearAllMocks();
 });

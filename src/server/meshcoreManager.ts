@@ -883,6 +883,7 @@ class MeshCoreManager extends EventEmitter {
 
       // Keep the local Companion RTC synced to the server clock so outbound
       // frame timestamps (incl. remote-admin `clock sync`) are accurate (#3954).
+      // Safe to call for any device type — it no-ops for non-Companion.
       this.startDeviceTimeSync();
 
       // Start the Virtual Node server (opt-in) now that the local node identity
