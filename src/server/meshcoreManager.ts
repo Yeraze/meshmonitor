@@ -3150,6 +3150,10 @@ class MeshCoreManager extends EventEmitter {
     if (!this.connected) return null;
     if (!path || path.length === 0) return null;
     try {
+      // No sendWithDefaultScope wrapper (unlike requestRemoteTelemetryRaw): a
+      // trace follows the explicit path it is given rather than flooding on an
+      // unknown route, so it does not need the default flood scope asserted
+      // first. Mirrors traceContactPath, which also calls the bridge directly.
       const response = await this.sendBridgeCommand('trace_path', { path }, 60_000);
       if (!response.success) {
         logger.warn(`[MeshCore:${this.sourceId}] tracePathRaw failed: ${response.error}`);
