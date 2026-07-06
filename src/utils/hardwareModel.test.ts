@@ -14,6 +14,11 @@ describe('getHardwareModelName — protobufs v2.7.26 models', () => {
     expect(getHardwareModelName(140)).toBe('MESHNOLOGY_W10');
   });
 
+  it('maps 128 to MESH_TRACKER_X1 (upstream renamed from TRACKER_T1000_E_PRO, firmware#10854)', () => {
+    // Value 128 was renumbered in place: TRACKER_T1000_E_PRO -> MESH_TRACKER_X1.
+    expect(getHardwareModelName(128)).toBe('MESH_TRACKER_X1');
+  });
+
   it('still falls back for unknown ids and handles undefined', () => {
     expect(getHardwareModelName(200)).toBe('Unknown (200)');
     expect(getHardwareModelName(undefined)).toBe('N/A');
