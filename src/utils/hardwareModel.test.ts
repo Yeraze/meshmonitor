@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getHardwareModelName } from './hardwareModel';
+import { getHardwareModelName, getHardwareModelShortName } from './hardwareModel';
 
 describe('getHardwareModelName — protobufs v2.7.26 models', () => {
   it('resolves the newly-added hardware models (132–140)', () => {
@@ -17,6 +17,8 @@ describe('getHardwareModelName — protobufs v2.7.26 models', () => {
   it('maps 128 to MESH_TRACKER_X1 (upstream renamed from TRACKER_T1000_E_PRO, firmware#10854)', () => {
     // Value 128 was renumbered in place: TRACKER_T1000_E_PRO -> MESH_TRACKER_X1.
     expect(getHardwareModelName(128)).toBe('MESH_TRACKER_X1');
+    // The display short-name (used in popups/map/exports) reflects the rename too.
+    expect(getHardwareModelShortName(128)).toBe('MESH TRACKER X1');
   });
 
   it('still falls back for unknown ids and handles undefined', () => {
