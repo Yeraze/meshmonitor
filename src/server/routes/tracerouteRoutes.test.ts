@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import tracerouteRoutes from './tracerouteRoutes.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 
 vi.mock('../../services/database.js', () => ({
   default: {
@@ -59,7 +60,7 @@ describe('GET /recent', () => {
 
     await request(app).get('/recent?limit=42');
 
-    expect(databaseService.traceroutes.getAllTraceroutes).toHaveBeenCalledWith(42, undefined);
+    expect(databaseService.traceroutes.getAllTraceroutes).toHaveBeenCalledWith(42, ALL_SOURCES);
   });
 
   it('filters traceroutes older than the hours window', async () => {

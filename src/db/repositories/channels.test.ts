@@ -338,7 +338,7 @@ function runChannelsTests(getBackend: () => TestBackend) {
     expect(repo.getChannelCountSync('src-a')).toBe(2);
     expect(repo.getChannelCountSync('src-b')).toBe(1);
     // Unscoped sees everything (legacy behaviour).
-    expect(repo.getChannelCountSync()).toBe(3);
+    expect(repo.getChannelCountSync(ALL_SOURCES)).toBe(3);
   });
 
   it('getChannelCount - returns correct count', async () => {

@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
 import { TraceroutesRepository } from './traceroutes.js';
+import { ALL_SOURCES } from './base.js';
 import {
   TestBackend,
   createPostgresBackend,
@@ -163,7 +164,7 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
       createdAt: now + 1000,
     }));
 
-    const all = await repo.getAllTraceroutes();
+    const all = await repo.getAllTraceroutes(100, ALL_SOURCES);
     expect(all.length).toBe(2);
     // Most recent first
     expect(all[0].fromNodeNum).toBe(3003);
@@ -248,7 +249,7 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
     expect(stillPending).toBeNull();
 
     // Verify the updated data
-    const all = await repo.getAllTraceroutes();
+    const all = await repo.getAllTraceroutes(100, ALL_SOURCES);
     expect(all.length).toBe(1);
     expect(all[0].route).toBe('1001,3003,2002');
     expect(all[0].routeBack).toBe('2002,3003,1001');
@@ -270,7 +271,7 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
     const packetId = 4_000_000_001;
     await repo.insertTraceroute(makeTraceroute({ timestamp: now, createdAt: now, packetId }));
 
-    const all = await repo.getAllTraceroutes();
+    const all = await repo.getAllTraceroutes(100, ALL_SOURCES);
     expect(all.length).toBe(1);
     expect(Number(all[0].packetId)).toBe(packetId);
   });
@@ -299,7 +300,7 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
       packetId,
     );
 
-    const all = await repo.getAllTraceroutes();
+    const all = await repo.getAllTraceroutes(100, ALL_SOURCES);
     expect(all.length).toBe(1);
     expect(Number(all[0].packetId)).toBe(packetId);
   });
@@ -327,11 +328,11 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
     }));
 
     // Should find both directions
-    const results = await repo.getTraceroutesByNodes(1001, 2002);
+    const results = await repo.getTraceroutesByNodes(1001, 2002, 10, ALL_SOURCES);
     expect(results.length).toBe(2);
 
     // Should not include unrelated pair
-    const unrelated = await repo.getTraceroutesByNodes(5005, 6006);
+    const unrelated = await repo.getTraceroutesByNodes(5005, 6006, 10, ALL_SOURCES);
     expect(unrelated.length).toBe(1);
     expect(unrelated[0].fromNodeNum).toBe(5005);
   });
@@ -377,7 +378,7 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
       timestamp: now + 2, createdAt: now + 2,
     }));
 
-    const deleted = await repo.deleteTraceroutesForNode(1001);
+    const deleted = await repo.deleteTraceroutesForNode(1001, ALL_SOURCES);
     expect(deleted).toBe(2);
     expect(await repo.getTracerouteCount()).toBe(1);
   });
@@ -426,7 +427,7 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
       timestamp: now + 1, createdAt: now + 1,
     }));
 
-    const longest = await repo.getLongestActiveRouteSegment();
+    const longest = await repo.getLongestActiveRouteSegment(ALL_SOURCES);
     expect(longest).not.toBeNull();
     expect(longest!.distanceKm).toBeCloseTo(12.3);
     expect(longest!.fromNodeNum).toBe(3003);
@@ -439,7 +440,7 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    const result = await repo.getLongestActiveRouteSegment();
+    const result = await repo.getLongestActiveRouteSegment(ALL_SOURCES);
     expect(result).toBeNull();
   });
 
@@ -462,23 +463,23 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
     }));
 
     // No record holder yet
-    let recordHolder = await repo.getRecordHolderRouteSegment();
+    let recordHolder = await repo.getRecordHolderRouteSegment(ALL_SOURCES);
     expect(recordHolder).toBeNull();
 
     // Find the longest and set it as record holder
-    const longest = await repo.getLongestActiveRouteSegment();
+    const longest = await repo.getLongestActiveRouteSegment(ALL_SOURCES);
     expect(longest).not.toBeNull();
     await repo.setRecordHolder(longest!.id!, true);
 
     // Now should find the record holder
-    recordHolder = await repo.getRecordHolderRouteSegment();
+    recordHolder = await repo.getRecordHolderRouteSegment(ALL_SOURCES);
     expect(recordHolder).not.toBeNull();
     expect(recordHolder!.distanceKm).toBeCloseTo(20.0);
     expect(recordHolder!.fromNodeNum).toBe(3003);
 
     // Unset record holder
     await repo.setRecordHolder(longest!.id!, false);
-    recordHolder = await repo.getRecordHolderRouteSegment();
+    recordHolder = await repo.getRecordHolderRouteSegment(ALL_SOURCES);
     expect(recordHolder).toBeNull();
   });
 
@@ -512,15 +513,15 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
     }));
 
     // Cleanup older than 30 days
-    const deleted = await repo.cleanupOldRouteSegments(30);
+    const deleted = await repo.cleanupOldRouteSegments(30, ALL_SOURCES);
     expect(deleted).toBe(1); // Only the old non-record-holder
 
     // Verify: record holder and recent segment remain
-    const longest = await repo.getLongestActiveRouteSegment();
+    const longest = await repo.getLongestActiveRouteSegment(ALL_SOURCES);
     expect(longest).not.toBeNull();
     expect(longest!.distanceKm).toBeCloseTo(50.0);
 
-    const recordHolder = await repo.getRecordHolderRouteSegment();
+    const recordHolder = await repo.getRecordHolderRouteSegment(ALL_SOURCES);
     expect(recordHolder).not.toBeNull();
     expect(recordHolder!.distanceKm).toBeCloseTo(50.0);
   });

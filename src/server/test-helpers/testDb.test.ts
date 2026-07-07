@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createTestDb, type TestDb } from './testDb.js';
 import { TelemetryRepository } from '../../db/repositories/telemetry.js';
+import { ALL_SOURCES } from '../../db/repositories/base.js';
 
 describe('createTestDb', () => {
   let t: TestDb | null = null;
@@ -36,7 +37,7 @@ describe('createTestDb', () => {
       nodeId: '!aabbccdd', nodeNum: 0xaabbccdd, telemetryType: 'battery',
       timestamp: Date.now(), value: 88, createdAt: Date.now(),
     });
-    const rows = await repo.getTelemetryByNode('!aabbccdd', 10);
+    const rows = await repo.getTelemetryByNode('!aabbccdd', 10, undefined, undefined, 0, undefined, ALL_SOURCES);
     expect(rows).toHaveLength(1);
     expect(rows[0].value).toBe(88);
   });

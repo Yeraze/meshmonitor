@@ -88,7 +88,7 @@ router.get('/', async (req: Request, res: Response) => {
     // fetch-all-then-filter.
     // intentional cross-source: omitting sourceId on this route returns nodes from all sources
     const nodes = active
-      ? (await databaseService.nodes.getActiveNodes(sinceDays, sourceId)) as unknown as DbNode[]
+      ? (await databaseService.nodes.getActiveNodes(sinceDays, sourceId ?? ALL_SOURCES)) as unknown as DbNode[]
       : (await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES)) as unknown as DbNode[];
 
     // Filter nodes based on channel read permissions

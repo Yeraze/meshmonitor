@@ -201,7 +201,7 @@ export class TelemetryRepository extends BaseRepository {
     const { telemetry } = this.tables;
     let conditions = [eq(telemetry.nodeId, nodeId)];
 
-    const sourceScope = this.withSourceScope(telemetry, sourceId ?? ALL_SOURCES);
+    const sourceScope = this.withSourceScope(telemetry, sourceId);
     if (sourceScope) conditions.push(sourceScope);
 
     if (sinceTimestamp !== undefined) {
@@ -237,7 +237,7 @@ export class TelemetryRepository extends BaseRepository {
     const { telemetry } = this.tables;
     let conditions = [eq(telemetry.nodeId, nodeId)];
 
-    const sourceScope = this.withSourceScope(telemetry, sourceId ?? ALL_SOURCES);
+    const sourceScope = this.withSourceScope(telemetry, sourceId);
     if (sourceScope) conditions.push(sourceScope);
 
     if (sinceTimestamp !== undefined) {
@@ -279,7 +279,7 @@ export class TelemetryRepository extends BaseRepository {
       inArray(telemetry.telemetryType, positionTypes),
     ];
 
-    const sourceScope = this.withSourceScope(telemetry, sourceId ?? ALL_SOURCES);
+    const sourceScope = this.withSourceScope(telemetry, sourceId);
     if (sourceScope) conditions.push(sourceScope);
 
     if (sinceTimestamp !== undefined) {
@@ -467,7 +467,9 @@ export class TelemetryRepository extends BaseRepository {
   async getNodeTelemetryTypes(nodeId: string, sourceId?: SourceScope): Promise<string[]> {
     const { telemetry } = this.tables;
     const conditions = [eq(telemetry.nodeId, nodeId)];
-    if (sourceId) conditions.push(eq(telemetry.sourceId, sourceId));
+    // Hand-rolled filter: ALL_SOURCES (a symbol) must mean "no source filter",
+    // and must never be bound into eq() as a value.
+    if (typeof sourceId === 'string' && sourceId !== '') conditions.push(eq(telemetry.sourceId, sourceId));
     const result = await this.db
       .selectDistinct({ type: telemetry.telemetryType })
       .from(telemetry)
@@ -671,7 +673,7 @@ export class TelemetryRepository extends BaseRepository {
    */
   async deleteTelemetryByNode(nodeNum: number, sourceId?: SourceScope): Promise<number> {
     const { telemetry } = this.tables;
-    const condition = and(eq(telemetry.nodeNum, nodeNum), this.withSourceScope(telemetry, sourceId ?? ALL_SOURCES));
+    const condition = and(eq(telemetry.nodeNum, nodeNum), this.withSourceScope(telemetry, sourceId));
 
     if (this.isMySQL()) {
       const countResult = await this.db
@@ -717,28 +719,32 @@ export class TelemetryRepository extends BaseRepository {
     nodeId: string,
     limit: number = 10
   ): Promise<Array<{ latitude: number; longitude: number; timestamp: number }>> {
-    // Get estimated_latitude records
+    // Get estimated_latitude records.
+    // Intentional cross-source: estimated positions are pooled per physical
+    // node across all sources by design (issue #3271).
     const latRecords = await this.getTelemetryByNode(
       nodeId,
       limit * 2, // Get extra to account for potential unmatched records
       undefined,
       undefined,
       0,
-      'estimated_latitude'
+      'estimated_latitude',
+      ALL_SOURCES
     );
 
     if (latRecords.length === 0) {
       return [];
     }
 
-    // Get estimated_longitude records
+    // Get estimated_longitude records (intentional cross-source — see above)
     const lonRecords = await this.getTelemetryByNode(
       nodeId,
       limit * 2,
       undefined,
       undefined,
       0,
-      'estimated_longitude'
+      'estimated_longitude',
+      ALL_SOURCES
     );
 
     if (lonRecords.length === 0) {
@@ -780,7 +786,7 @@ export class TelemetryRepository extends BaseRepository {
     const result = await this.db
       .selectDistinct({ nodeId: telemetry.nodeId, type: telemetry.telemetryType })
       .from(telemetry)
-      .where(this.withSourceScope(telemetry, sourceId ?? ALL_SOURCES));
+      .where(this.withSourceScope(telemetry, sourceId));
 
     for (const r of result) {
       const types = map.get(r.nodeId) || [];
@@ -1060,7 +1066,7 @@ export class TelemetryRepository extends BaseRepository {
     const intervalMs = intervalMinutes * 60 * 1000;
 
     const baseConditions: SQL[] = [eq(telemetry.nodeId, nodeId)];
-    const sourceScope = this.withSourceScope(telemetry, sourceId ?? ALL_SOURCES);
+    const sourceScope = this.withSourceScope(telemetry, sourceId);
     if (sourceScope) baseConditions.push(sourceScope);
     if (sinceTimestamp !== undefined) {
       baseConditions.push(gte(telemetry.timestamp, sinceTimestamp));

@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, and, gt, isNull, or, lt, count, notInArray } from 'drizzle-orm';
-import { ALL_SOURCES, BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
+import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbChannel } from '../types.js';
 import { logger } from '../../utils/logger.js';
 
@@ -345,7 +345,7 @@ export class ChannelsRepository extends BaseRepository {
     const rows = db
       .select()
       .from(channels)
-      .where(this.withSourceScope(channels, sourceId ?? ALL_SOURCES))
+      .where(this.withSourceScope(channels, sourceId))
       .orderBy(channels.id)
       .all();
     return (rows as any[]).map((row) => this.normalizeBigInts(row)) as DbChannel[];
@@ -358,7 +358,7 @@ export class ChannelsRepository extends BaseRepository {
   getChannelCountSync(sourceId?: SourceScope): number {
     const db = this.getSqliteDb();
     const { channels } = this.tables;
-    const whereClause = this.withSourceScope(channels, sourceId ?? ALL_SOURCES);
+    const whereClause = this.withSourceScope(channels, sourceId);
     const rows = db.select({ count: count() }).from(channels).where(whereClause).all();
     return Number((rows[0] as any).count);
   }

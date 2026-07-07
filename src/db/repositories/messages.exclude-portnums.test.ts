@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { MessagesRepository } from './messages.js';
+import { ALL_SOURCES } from './base.js';
 import * as schema from '../schema/index.js';
 import { createTestDb } from '../../server/test-helpers/testDb.js';
 
@@ -59,10 +60,10 @@ describe('MessagesRepository.getMessages excludePortnums', () => {
     insert('trace-1', 70, 2000);
     insert('text-2', 1, 3000);
 
-    const all = await repo.getMessages(100);
+    const all = await repo.getMessages(100, 0, ALL_SOURCES);
     expect(all).toHaveLength(3);
 
-    const filtered = await repo.getMessages(100, 0, undefined, [70]);
+    const filtered = await repo.getMessages(100, 0, ALL_SOURCES, [70]);
     expect(filtered.map(m => m.id).sort()).toEqual(['text-1', 'text-2']);
   });
 
@@ -70,7 +71,7 @@ describe('MessagesRepository.getMessages excludePortnums', () => {
     insert('legacy', null, 1000);
     insert('trace', 70, 2000);
 
-    const filtered = await repo.getMessages(100, 0, undefined, [70]);
+    const filtered = await repo.getMessages(100, 0, ALL_SOURCES, [70]);
     expect(filtered.map(m => m.id)).toEqual(['legacy']);
   });
 
@@ -83,12 +84,12 @@ describe('MessagesRepository.getMessages excludePortnums', () => {
 
     // Without the filter, limit=3 returns the 3 newest — which now includes
     // the traceroute and drops dm-old. This is the bug.
-    const unfiltered = await repo.getMessages(3);
+    const unfiltered = await repo.getMessages(3, 0, ALL_SOURCES);
     expect(unfiltered.map(m => m.id)).toContain('trace');
     expect(unfiltered.map(m => m.id)).not.toContain('dm-old');
 
     // With the filter, all 3 DMs survive the same capped window.
-    const filtered = await repo.getMessages(3, 0, undefined, [70]);
+    const filtered = await repo.getMessages(3, 0, ALL_SOURCES, [70]);
     expect(filtered.map(m => m.id).sort()).toEqual(['dm-mid', 'dm-old', 'dm-recent']);
   });
 
@@ -96,8 +97,8 @@ describe('MessagesRepository.getMessages excludePortnums', () => {
     insert('a', 1, 1000);
     insert('b', 70, 2000);
 
-    const omitted = await repo.getMessages(100);
-    const empty = await repo.getMessages(100, 0, undefined, []);
+    const omitted = await repo.getMessages(100, 0, ALL_SOURCES);
+    const empty = await repo.getMessages(100, 0, ALL_SOURCES, []);
 
     expect(omitted.map(m => m.id).sort()).toEqual(['a', 'b']);
     expect(empty.map(m => m.id).sort()).toEqual(['a', 'b']);

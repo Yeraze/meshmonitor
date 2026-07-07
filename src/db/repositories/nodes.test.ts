@@ -995,7 +995,7 @@ function runNodesTests(getBackend: () => TestBackend) {
     await repo.upsertNode(makeNode(1601, { publicKey: '' }));
     await repo.upsertNode(makeNode(1602)); // null publicKey
 
-    const result = await repo.getNodesWithPublicKeys();
+    const result = await repo.getNodesWithPublicKeys(ALL_SOURCES);
     expect(result.length).toBe(1);
     expect(Number(result[0].nodeNum)).toBe(1600);
     expect(result[0].publicKey).toBe('abc123');

@@ -1264,7 +1264,7 @@ apiRouter.get('/nodes/active', optionalAuth(), async (req, res) => {
     const activeNodesSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
       ? (req.query.sourceId as string)
       : undefined;
-    const allDbNodes = await databaseService.nodes.getActiveNodes(days, activeNodesSourceId);
+    const allDbNodes = await databaseService.nodes.getActiveNodes(days, activeNodesSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
 
     // Filter nodes based on channel read permissions (source-scoped, #3745)
     const dbNodes = await filterNodesByChannelPermission(allDbNodes, (req as any).user, activeNodesSourceId);
@@ -2603,7 +2603,7 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages'
       ? req.query.sourceId
       : undefined;
     // Fetch limit+1 to accurately detect if more messages exist
-    const dbMessages = await databaseService.messages.getDirectMessages(nodeId1, nodeId2, limit + 1, offset, sourceIdParam) as DbMessage[];
+    const dbMessages = await databaseService.messages.getDirectMessages(nodeId1, nodeId2, limit + 1, offset, sourceIdParam ?? ALL_SOURCES) as DbMessage[]; // intentional cross-source when sourceId omitted
     const hasMore = dbMessages.length > limit;
     // Return only the requested limit
     const messages = dbMessages.slice(0, limit).map(transformDbMessageToMeshMessage);
@@ -2735,7 +2735,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
     // Get channel unread counts if user has channels permission
     // Only count incoming messages (exclude messages sent by our node)
     if (hasChannelsRead) {
-      const rawCounts = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId, unreadSourceId, excludeMqtt);
+      const rawCounts = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId, unreadSourceId ?? ALL_SOURCES, excludeMqtt); // intentional cross-source when sourceId omitted
 
       // MM-SEC-3: filter by per-channel read permission as well as mute prefs.
       // The bare `channel_0:read` gate above lets a viewer reach this handler
@@ -2758,7 +2758,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
 
     // Get DM unread counts if user has messages permission (batch query)
     if (hasMessagesRead && localNodeInfo) {
-      const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId, unreadSourceId);
+      const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId, unreadSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
       const allNodes = await unreadManager.getAllNodesAsync(unreadSourceId);
       const visibleNodes = await filterNodesByChannelPermission(allNodes, req.user, unreadSourceId);
       const visibleNodeIds = new Set(visibleNodes.map(n => n.user?.id).filter(Boolean));
@@ -3091,7 +3091,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       // Scope to the requesting source so per-source tabs only count messages
       // their own source ingested (issue: badge stays lit for messages that
       // aren't visible in the current tab).
-      const allUnreadChannels = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId, pollSourceId);
+      const allUnreadChannels = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId, pollSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
 
       // Filter channels based on per-channel read permission
       const filteredUnreadChannels: { [channelId: number]: number } = {};
@@ -3108,7 +3108,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
       // Batch DM unread counts (single query instead of N+1)
       if (hasMessagesRead && localNodeInfo) {
-        const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId, pollSourceId);
+        const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId, pollSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
         const visibleNodeIds = new Set(filteredMemoryNodes.map(n => n.user?.id).filter(Boolean));
         const directMessages: { [nodeId: string]: number } = {};
         for (const [nodeId, count] of Object.entries(allUnreadDMs)) {
@@ -3337,7 +3337,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       let limit = Math.ceil(traceroutesPerHour * maxNodeAgeHours * 1.1);
       limit = Math.max(limit, 100);
 
-      const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, pollSourceId);
+      const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, pollSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
       const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
 
       // Add hopCount for each traceroute

@@ -29,8 +29,8 @@ router.get('/', async (req: Request, res: Response) => {
     const sourceId = getScopedSourceId(req);
     // intentional cross-source: omitting sourceId on this route returns data from all sources
     const allNodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
-    const activeNodes = await databaseService.nodes.getActiveNodes(7, sourceId);
-    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(100, sourceId);
+    const activeNodes = await databaseService.nodes.getActiveNodes(7, sourceId ?? ALL_SOURCES);
+    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(100, sourceId ?? ALL_SOURCES);
 
     const stats = {
       totalNodes: allNodes.length,
@@ -92,7 +92,7 @@ router.get('/topology', async (req: Request, res: Response) => {
     const sourceId = getScopedSourceId(req);
     // intentional cross-source: omitting sourceId on this route returns data from all sources
     const nodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
-    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(500, sourceId);
+    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(500, sourceId ?? ALL_SOURCES);
 
     const topology = {
       nodes: nodes.map(n => {

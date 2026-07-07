@@ -140,7 +140,7 @@ router.get('/telemetry/:nodeId/rates', optionalAuth(), async (req: Request, res:
       // Fetch telemetry for each packet type and calculate rates
       for (const type of packetTypes) {
         const telemetry = await databaseService.telemetry.getTelemetryByNode(
-          nodeId, 5000, cutoffTime, undefined, 0, type, ratesSourceId
+          nodeId, 5000, cutoffTime, undefined, 0, type, ratesSourceId ?? ALL_SOURCES // intentional cross-source when sourceId omitted
         );
 
         // Sort by timestamp ascending for rate calculation

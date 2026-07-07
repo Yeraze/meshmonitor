@@ -14,7 +14,7 @@ import {
 import {
   messagesSqlite,
 } from '../schema/messages.js';
-import { ALL_SOURCES, BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
+import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbPushSubscription } from '../types.js';
 import { logger } from '../../utils/logger.js';
 
@@ -842,7 +842,7 @@ export class NotificationsRepository extends BaseRepository {
       isNull(readMessages.messageId),
       ne(messages.channel, -1),
       eq(messages.portnum, 1),
-      this.withSourceScope(messages, sourceId ?? ALL_SOURCES),
+      this.withSourceScope(messages, sourceId),
     ];
     if (localNodeId) {
       conditions.push(ne(messages.fromNodeId, localNodeId));
@@ -898,7 +898,7 @@ export class NotificationsRepository extends BaseRepository {
             eq(messages.channel, -1),
             eq(messages.fromNodeId, remoteNodeId),
             eq(messages.toNodeId, localNodeId),
-            this.withSourceScope(messages, sourceId ?? ALL_SOURCES)
+            this.withSourceScope(messages, sourceId)
           )
         );
       return Number(rows[0]?.count ?? 0);
@@ -934,7 +934,7 @@ export class NotificationsRepository extends BaseRepository {
             eq(messages.portnum, 1),
             eq(messages.channel, -1),
             eq(messages.toNodeId, localNodeId),
-            this.withSourceScope(messages, sourceId ?? ALL_SOURCES)
+            this.withSourceScope(messages, sourceId)
           )
         )
         .groupBy(messages.fromNodeId);

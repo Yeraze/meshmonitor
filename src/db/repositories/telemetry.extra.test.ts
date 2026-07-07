@@ -14,6 +14,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { TelemetryRepository } from './telemetry.js';
+import { ALL_SOURCES } from './base.js';
 import * as schema from '../schema/index.js';
 import { createTestDb } from '../../server/test-helpers/testDb.js';
 
@@ -73,7 +74,7 @@ describe('TelemetryRepository (expanded)', () => {
     it('inserts a record that can be retrieved afterwards', async () => {
       await insertTelemetry(NODE1, NODE1_NUM, 'battery', NOW - HOUR, 77);
 
-      const results = await repo.getTelemetryByNode(NODE1, 10);
+      const results = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(results).toHaveLength(1);
       expect(results[0].nodeId).toBe(NODE1);
       expect(results[0].nodeNum).toBe(NODE1_NUM);
@@ -97,7 +98,7 @@ describe('TelemetryRepository (expanded)', () => {
         gpsAccuracy: 5,
       });
 
-      const results = await repo.getTelemetryByNode(NODE1, 1);
+      const results = await repo.getTelemetryByNode(NODE1, 1, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(results).toHaveLength(1);
       const r = results[0];
       expect(r.unit).toBe('deg');
@@ -118,7 +119,7 @@ describe('TelemetryRepository (expanded)', () => {
         createdAt: NOW,
       });
 
-      const results = await repo.getTelemetryByNode(NODE1, 1);
+      const results = await repo.getTelemetryByNode(NODE1, 1, undefined, undefined, 0, undefined, ALL_SOURCES);
       const r = results[0];
       expect(r.unit).toBeNull();
       expect(r.packetTimestamp).toBeNull();
@@ -142,7 +143,7 @@ describe('TelemetryRepository (expanded)', () => {
         hopLimit: 3, // hopStart === hopLimit ⇒ heard directly (0 hops)
       });
 
-      const positions = await repo.getPositionTelemetryByNode(NODE1, 10);
+      const positions = await repo.getPositionTelemetryByNode(NODE1, 10, undefined, ALL_SOURCES);
       const lat = positions.find((p) => p.telemetryType === 'latitude');
       expect(lat).toBeDefined();
       expect(lat!.rxSnr).toBe(6.25);
@@ -183,27 +184,27 @@ describe('TelemetryRepository (expanded)', () => {
     });
 
     it('counts all records for a node when no filters are applied', async () => {
-      expect(await repo.getTelemetryCountByNode(NODE1)).toBe(4);
+      expect(await repo.getTelemetryCountByNode(NODE1, undefined, undefined, undefined, ALL_SOURCES)).toBe(4);
     });
 
     it('counts 0 for a node that has no records', async () => {
-      expect(await repo.getTelemetryCountByNode('!ffffffff')).toBe(0);
+      expect(await repo.getTelemetryCountByNode('!ffffffff', undefined, undefined, undefined, ALL_SOURCES)).toBe(0);
     });
 
     it('applies sinceTimestamp filter (inclusive)', async () => {
       // Only records at or after NOW - 2h
-      const count = await repo.getTelemetryCountByNode(NODE1, NOW - 2 * HOUR);
+      const count = await repo.getTelemetryCountByNode(NODE1, NOW - 2 * HOUR, undefined, undefined, ALL_SOURCES);
       expect(count).toBe(2); // battery@1h and voltage@2h
     });
 
     it('applies beforeTimestamp filter (exclusive)', async () => {
       // Records strictly before NOW - 2h
-      const count = await repo.getTelemetryCountByNode(NODE1, undefined, NOW - 2 * HOUR);
+      const count = await repo.getTelemetryCountByNode(NODE1, undefined, NOW - 2 * HOUR, undefined, ALL_SOURCES);
       expect(count).toBe(2); // battery@3h and battery@5h
     });
 
     it('applies telemetryType filter', async () => {
-      const count = await repo.getTelemetryCountByNode(NODE1, undefined, undefined, 'battery');
+      const count = await repo.getTelemetryCountByNode(NODE1, undefined, undefined, 'battery', ALL_SOURCES);
       expect(count).toBe(3);
     });
 
@@ -213,7 +214,8 @@ describe('TelemetryRepository (expanded)', () => {
         NODE1,
         NOW - 4 * HOUR,
         NOW - 1.5 * HOUR,
-        'battery'
+        'battery',
+        ALL_SOURCES
       );
       expect(count).toBe(1);
     });
@@ -235,7 +237,7 @@ describe('TelemetryRepository (expanded)', () => {
     });
 
     it('returns records ordered by timestamp descending', async () => {
-      const results = await repo.getTelemetryByNode(NODE1, 10);
+      const results = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 0, undefined, ALL_SOURCES);
       const timestamps = results.map(r => r.timestamp);
       for (let i = 1; i < timestamps.length; i++) {
         expect(timestamps[i]).toBeLessThanOrEqual(timestamps[i - 1]);
@@ -243,41 +245,41 @@ describe('TelemetryRepository (expanded)', () => {
     });
 
     it('respects the limit parameter', async () => {
-      const results = await repo.getTelemetryByNode(NODE1, 2);
+      const results = await repo.getTelemetryByNode(NODE1, 2, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(results).toHaveLength(2);
     });
 
     it('respects the offset parameter', async () => {
-      const all = await repo.getTelemetryByNode(NODE1, 10);
-      const paged = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 2);
+      const all = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 0, undefined, ALL_SOURCES);
+      const paged = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 2, undefined, ALL_SOURCES);
       expect(paged).toHaveLength(all.length - 2);
       expect(paged[0].timestamp).toBe(all[2].timestamp);
     });
 
     it('filters by sinceTimestamp', async () => {
       // Only the most recent 3 battery records (within last 3.5h)
-      const results = await repo.getTelemetryByNode(NODE1, 100, NOW - 3.5 * HOUR);
+      const results = await repo.getTelemetryByNode(NODE1, 100, NOW - 3.5 * HOUR, undefined, 0, undefined, ALL_SOURCES);
       expect(results.every(r => r.timestamp >= NOW - 3.5 * HOUR)).toBe(true);
     });
 
     it('filters by beforeTimestamp', async () => {
-      const results = await repo.getTelemetryByNode(NODE1, 100, undefined, NOW - 3 * HOUR);
+      const results = await repo.getTelemetryByNode(NODE1, 100, undefined, NOW - 3 * HOUR, 0, undefined, ALL_SOURCES);
       expect(results.every(r => r.timestamp < NOW - 3 * HOUR)).toBe(true);
     });
 
     it('filters by telemetryType', async () => {
-      const results = await repo.getTelemetryByNode(NODE1, 100, undefined, undefined, 0, 'voltage');
+      const results = await repo.getTelemetryByNode(NODE1, 100, undefined, undefined, 0, 'voltage', ALL_SOURCES);
       expect(results).toHaveLength(1);
       expect(results[0].telemetryType).toBe('voltage');
     });
 
     it('only returns records for the requested node', async () => {
-      const results = await repo.getTelemetryByNode(NODE1, 100);
+      const results = await repo.getTelemetryByNode(NODE1, 100, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(results.every(r => r.nodeId === NODE1)).toBe(true);
     });
 
     it('returns empty array for unknown node', async () => {
-      const results = await repo.getTelemetryByNode('!00000000', 10);
+      const results = await repo.getTelemetryByNode('!00000000', 10, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(results).toHaveLength(0);
     });
   });
@@ -299,7 +301,7 @@ describe('TelemetryRepository (expanded)', () => {
     });
 
     it('only returns the 5 position telemetry types', async () => {
-      const results = await repo.getPositionTelemetryByNode(NODE1);
+      const results = await repo.getPositionTelemetryByNode(NODE1, undefined, undefined, ALL_SOURCES);
       const types = new Set(results.map(r => r.telemetryType));
       for (const t of POSITION_TYPES) {
         expect(types.has(t)).toBe(true);
@@ -308,7 +310,7 @@ describe('TelemetryRepository (expanded)', () => {
     });
 
     it('only returns records for the requested node', async () => {
-      const results = await repo.getPositionTelemetryByNode(NODE1);
+      const results = await repo.getPositionTelemetryByNode(NODE1, undefined, undefined, ALL_SOURCES);
       expect(results.every(r => r.nodeId === NODE1)).toBe(true);
     });
 
@@ -317,7 +319,7 @@ describe('TelemetryRepository (expanded)', () => {
       for (let i = 2; i <= 5; i++) {
         await insertTelemetry(NODE1, NODE1_NUM, 'latitude', NOW - i * HOUR);
       }
-      const results = await repo.getPositionTelemetryByNode(NODE1, 3);
+      const results = await repo.getPositionTelemetryByNode(NODE1, 3, undefined, ALL_SOURCES);
       expect(results).toHaveLength(3);
     });
 
@@ -325,12 +327,12 @@ describe('TelemetryRepository (expanded)', () => {
       // Add an old record
       await insertTelemetry(NODE1, NODE1_NUM, 'latitude', NOW - 10 * HOUR);
 
-      const results = await repo.getPositionTelemetryByNode(NODE1, 100, NOW - 2 * HOUR);
+      const results = await repo.getPositionTelemetryByNode(NODE1, 100, NOW - 2 * HOUR, ALL_SOURCES);
       expect(results.every(r => r.timestamp >= NOW - 2 * HOUR)).toBe(true);
     });
 
     it('returns empty array when node has no position telemetry', async () => {
-      const results = await repo.getPositionTelemetryByNode('!00000000');
+      const results = await repo.getPositionTelemetryByNode('!00000000', undefined, undefined, ALL_SOURCES);
       expect(results).toHaveLength(0);
     });
 
@@ -339,7 +341,7 @@ describe('TelemetryRepository (expanded)', () => {
       await insertTelemetry(NODE1, NODE1_NUM, 'latitude', NOW - 10 * HOUR);
 
       // beforeTimestamp is the 5th positional arg (after sourceId).
-      const results = await repo.getPositionTelemetryByNode(NODE1, 100, undefined, undefined, NOW - 2 * HOUR);
+      const results = await repo.getPositionTelemetryByNode(NODE1, 100, undefined, ALL_SOURCES, NOW - 2 * HOUR);
       expect(results.length).toBeGreaterThan(0);
       // Strictly older than the cursor — the NOW - HOUR rows are excluded.
       expect(results.every(r => r.timestamp < NOW - 2 * HOUR)).toBe(true);
@@ -430,7 +432,7 @@ describe('TelemetryRepository (expanded)', () => {
   // -------------------------------------------------------------------------
   describe('getLatestTelemetryByNode', () => {
     it('returns an empty array when node has no telemetry', async () => {
-      const results = await repo.getLatestTelemetryByNode(NODE1);
+      const results = await repo.getLatestTelemetryByNode(NODE1, ALL_SOURCES);
       expect(results).toHaveLength(0);
     });
 
@@ -440,7 +442,7 @@ describe('TelemetryRepository (expanded)', () => {
       await insertTelemetry(NODE1, NODE1_NUM, 'voltage', NOW - 2 * HOUR, 3.6);
       await insertTelemetry(NODE1, NODE1_NUM, 'temperature', NOW - 4 * HOUR, 22);
 
-      const results = await repo.getLatestTelemetryByNode(NODE1);
+      const results = await repo.getLatestTelemetryByNode(NODE1, ALL_SOURCES);
       expect(results).toHaveLength(3);
 
       const types = results.map(r => r.telemetryType).sort();
@@ -451,7 +453,7 @@ describe('TelemetryRepository (expanded)', () => {
       await insertTelemetry(NODE1, NODE1_NUM, 'battery', NOW - 3 * HOUR, 70);
       await insertTelemetry(NODE1, NODE1_NUM, 'battery', NOW - 1 * HOUR, 90);
 
-      const results = await repo.getLatestTelemetryByNode(NODE1);
+      const results = await repo.getLatestTelemetryByNode(NODE1, ALL_SOURCES);
       const battery = results.find(r => r.telemetryType === 'battery');
       expect(battery!.value).toBe(90);
     });
@@ -460,7 +462,7 @@ describe('TelemetryRepository (expanded)', () => {
       await insertTelemetry(NODE1, NODE1_NUM, 'battery', NOW - HOUR, 80);
       await insertTelemetry(NODE2, NODE2_NUM, 'battery', NOW - HOUR, 50);
 
-      const results = await repo.getLatestTelemetryByNode(NODE1);
+      const results = await repo.getLatestTelemetryByNode(NODE1, ALL_SOURCES);
       expect(results.every(r => r.nodeId === NODE1)).toBe(true);
     });
   });
@@ -470,7 +472,7 @@ describe('TelemetryRepository (expanded)', () => {
   // -------------------------------------------------------------------------
   describe('getNodeTelemetryTypes', () => {
     it('returns an empty array when node has no telemetry', async () => {
-      const types = await repo.getNodeTelemetryTypes(NODE1);
+      const types = await repo.getNodeTelemetryTypes(NODE1, ALL_SOURCES);
       expect(types).toHaveLength(0);
     });
 
@@ -480,7 +482,7 @@ describe('TelemetryRepository (expanded)', () => {
       await insertTelemetry(NODE1, NODE1_NUM, 'voltage', NOW - 2 * HOUR);
       await insertTelemetry(NODE1, NODE1_NUM, 'temperature', NOW - 4 * HOUR);
 
-      const types = await repo.getNodeTelemetryTypes(NODE1);
+      const types = await repo.getNodeTelemetryTypes(NODE1, ALL_SOURCES);
       expect(types.sort()).toEqual(['battery', 'temperature', 'voltage']);
     });
 
@@ -488,7 +490,7 @@ describe('TelemetryRepository (expanded)', () => {
       await insertTelemetry(NODE1, NODE1_NUM, 'battery', NOW - HOUR);
       await insertTelemetry(NODE2, NODE2_NUM, 'humidity', NOW - HOUR);
 
-      const types = await repo.getNodeTelemetryTypes(NODE1);
+      const types = await repo.getNodeTelemetryTypes(NODE1, ALL_SOURCES);
       expect(types).not.toContain('humidity');
     });
   });
@@ -590,7 +592,7 @@ describe('TelemetryRepository (expanded)', () => {
       const result = await repo.deleteTelemetryByNodeAndType(NODE1, 'battery');
       expect(result).toBe(true);
 
-      const remaining = await repo.getTelemetryByNode(NODE1, 100);
+      const remaining = await repo.getTelemetryByNode(NODE1, 100, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(remaining).toHaveLength(1);
       expect(remaining[0].telemetryType).toBe('voltage');
     });
@@ -601,7 +603,7 @@ describe('TelemetryRepository (expanded)', () => {
 
       await repo.deleteTelemetryByNodeAndType(NODE1, 'battery');
 
-      const node2Records = await repo.getTelemetryByNode(NODE2, 100);
+      const node2Records = await repo.getTelemetryByNode(NODE2, 100, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(node2Records).toHaveLength(1);
     });
   });
@@ -611,7 +613,7 @@ describe('TelemetryRepository (expanded)', () => {
   // -------------------------------------------------------------------------
   describe('purgeNodeTelemetry', () => {
     it('returns 0 when there is nothing to delete', async () => {
-      const count = await repo.purgeNodeTelemetry(NODE1_NUM);
+      const count = await repo.purgeNodeTelemetry(NODE1_NUM, ALL_SOURCES);
       expect(count).toBe(0);
     });
 
@@ -620,7 +622,7 @@ describe('TelemetryRepository (expanded)', () => {
       await insertTelemetry(NODE1, NODE1_NUM, 'voltage', NOW - 2 * HOUR);
       await insertTelemetry(NODE2, NODE2_NUM, 'battery', NOW - HOUR); // should remain
 
-      const count = await repo.purgeNodeTelemetry(NODE1_NUM);
+      const count = await repo.purgeNodeTelemetry(NODE1_NUM, ALL_SOURCES);
       expect(count).toBe(2);
 
       const total = await repo.getTelemetryCount();
@@ -654,7 +656,7 @@ describe('TelemetryRepository (expanded)', () => {
       const count = await repo.purgePositionHistory(NODE1_NUM);
       expect(count).toBe(POSITION_TYPES.length);
 
-      const remaining = await repo.getTelemetryByNode(NODE1, 100);
+      const remaining = await repo.getTelemetryByNode(NODE1, 100, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(remaining).toHaveLength(2);
       expect(remaining.every(r => !POSITION_TYPES.includes(r.telemetryType))).toBe(true);
     });
@@ -665,7 +667,7 @@ describe('TelemetryRepository (expanded)', () => {
 
       await repo.purgePositionHistory(NODE1_NUM);
 
-      const node2Records = await repo.getTelemetryByNode(NODE2, 100);
+      const node2Records = await repo.getTelemetryByNode(NODE2, 100, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(node2Records).toHaveLength(1);
     });
   });
@@ -736,7 +738,7 @@ describe('TelemetryRepository (expanded)', () => {
   // -------------------------------------------------------------------------
   describe('deleteTelemetryByNode', () => {
     it('returns 0 when there are no records for the node', async () => {
-      const count = await repo.deleteTelemetryByNode(NODE1_NUM);
+      const count = await repo.deleteTelemetryByNode(NODE1_NUM, ALL_SOURCES);
       expect(count).toBe(0);
     });
 
@@ -745,7 +747,7 @@ describe('TelemetryRepository (expanded)', () => {
       await insertTelemetry(NODE1, NODE1_NUM, 'voltage', NOW - 2 * HOUR);
       await insertTelemetry(NODE2, NODE2_NUM, 'battery', NOW - HOUR); // should survive
 
-      const count = await repo.deleteTelemetryByNode(NODE1_NUM);
+      const count = await repo.deleteTelemetryByNode(NODE1_NUM, ALL_SOURCES);
       expect(count).toBe(2);
 
       expect(await repo.getTelemetryCount()).toBe(1);
