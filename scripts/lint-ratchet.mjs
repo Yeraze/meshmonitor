@@ -90,6 +90,15 @@ export function compare(counts, base, lines = {}) {
       }
     }
   }
+  // Detect baseline files/rules that have dropped to zero entirely
+  // (file no longer appears in counts, but baseline had violations).
+  for (const [file, rules] of Object.entries(base)) {
+    for (const [rule, prev] of Object.entries(rules)) {
+      if (prev > 0 && (counts[file]?.[rule] ?? 0) === 0) {
+        advisories.push(`${file}: ${rule} ${prev}→0`);
+      }
+    }
+  }
   return { failures, advisories };
 }
 

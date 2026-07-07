@@ -45,6 +45,15 @@ describe('compare()', () => {
     expect(advisories[0]).toMatch(/3→1/);
   });
 
+  it('generates advisory when a file is entirely absent from current counts (fully fixed)', () => {
+    const counts = {}; // file completely clean now
+    const base = { 'src/clean.ts': { 'no-unused-vars': 2 } };
+    const { failures, advisories } = compare(counts, base, {});
+    expect(failures).toHaveLength(0);
+    expect(advisories).toHaveLength(1);
+    expect(advisories[0]).toMatch(/2→0/);
+  });
+
   it('handles multiple files and rules independently', () => {
     const counts = {
       'a.ts': { 'no-unused-vars': 2, '@typescript-eslint/no-explicit-any': 1 },
