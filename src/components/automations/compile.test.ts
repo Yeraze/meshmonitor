@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { compile, decompile, type WorkflowForm } from './compile.js';
 import { validateAutomationGraph } from '../../types/automation.js';
+import { TRIGGERS } from './catalog.js';
 
 const trig = { type: 'trigger.message', params: { textContains: 'ping' } };
 const cond = (value: number) => ({ type: 'condition.numeric', params: { field: 'hops', op: '==', value } });
@@ -161,5 +162,32 @@ describe('decompile — fall-back to null', () => {
     expect(back!.rules).toHaveLength(1);
     expect(back!.rules[0].conditions).toHaveLength(0);
     expect(back!.rules[0].actions[0].type).toBe('action.tapback');
+  });
+});
+
+describe('trigger.message catalog — multi-channel field (#3974)', () => {
+  const trigMsg = TRIGGERS.find((t) => t.type === 'trigger.message')!;
+
+  it('exposes a channelMulti "channels" field', () => {
+    const f = trigMsg.fields.find((x) => x.name === 'channels');
+    expect(f).toBeDefined();
+    expect(f!.kind).toBe('channelMulti');
+  });
+
+  it('keeps the legacy scalar channelName/channel fields for backward compat', () => {
+    expect(trigMsg.fields.some((x) => x.name === 'channelName' && x.kind === 'text')).toBe(true);
+    expect(trigMsg.fields.some((x) => x.name === 'channel' && x.kind === 'number')).toBe(true);
+  });
+
+  it('round-trips a channels array through compile/decompile', () => {
+    const channels = [{ name: 'gauntlet', protocol: 'meshtastic' }, { name: 'ops', protocol: 'meshtastic' }];
+    const form: WorkflowForm = {
+      trigger: { type: 'trigger.message', params: { channels } },
+      rules: [{ conditions: [], actions: [{ type: 'action.tapback', params: { emoji: '👍' } }] }],
+      combine: null,
+    };
+    const back = decompile(compile(form));
+    expect(back).not.toBeNull();
+    expect(back!.trigger.params).toEqual({ channels });
   });
 });

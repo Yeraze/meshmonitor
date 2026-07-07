@@ -56,7 +56,7 @@ Every automation has exactly one trigger (the **WHEN**). Each trigger exposes a 
 
 | Trigger | Fires when… | Notable options |
 | --- | --- | --- |
-| **A message is received** | A text/packet message arrives | `Text contains` (case-insensitive substring), `Text matches regex`, channel match, `From node #` |
+| **A message is received** | A text/packet message arrives | `Text contains` (case-insensitive substring), `Text matches regex`, multi-channel match (`On channels` OR-list), legacy `On channel (name)`/`On channel #`, `From node #` |
 | **A new node is discovered** | A node is seen for the first time | — |
 | **A node is updated** | A node record changes (name, role, position, …) | — |
 | **Telemetry is received** | A telemetry reading arrives | `Metric` filter (battery, voltage, temperature, channel utilization, air util TX, …) |
@@ -67,9 +67,23 @@ Every automation has exactly one trigger (the **WHEN**). Each trigger exposes a 
 ### Message trigger & channel-name matching
 
 The message trigger can filter on text (substring or regex) and on the **channel**. Prefer matching
-by **channel name** (`On channel (name)`) rather than raw slot index: the same logical channel can
-sit in a different slot on different sources, so a name match is portable across your whole mesh.
-The raw `On channel #` index is still available for single-source cases.
+by **channel name** rather than raw slot index: the same logical channel can sit in a different slot
+on different sources, so a name match is portable across your whole mesh.
+
+- **On channels** *(multi-select)* — pick one or more channels (unified by name across your
+  sources). The trigger fires when a message arrives on **any** of the selected channels — an
+  OR-list — so a single automation can cover "channel A **or** channel C" without a separate copy
+  per channel. Leave none selected to match any channel. When set, this **overrides** the two
+  single-channel fields below. Matching is by channel name and works for both Meshtastic and
+  MeshCore messages.
+- **On channel (name)** — legacy single-channel name match (case-insensitive). Kept for
+  backward compatibility with existing automations; the multi-select `On channels` above is
+  preferred. Ignored when `On channels` is set.
+- **On channel #** — the raw slot index, still available for single-source cases. Ignored when
+  `On channels` is set.
+
+Saved automations that used the old single-channel fields keep working unchanged — no migration
+is needed.
 
 ### Schedule trigger (live cron)
 
