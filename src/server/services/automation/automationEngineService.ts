@@ -33,6 +33,7 @@ import {
   meshCoreMessageMatchesFilter,
   describeMessageFilterMiss,
   describeMeshCoreFilterMiss,
+  messageFilterUsesChannelName,
   type TriggerContext,
   type SystemEvent,
 } from './triggerContext.js';
@@ -384,7 +385,7 @@ export class AutomationEngineService {
     let channelName: string | null | undefined;
     const usesChannelName = (this.index.get('trigger.message') ?? []).some((a) => {
       const p = a.triggerNode.params as Record<string, unknown> | undefined;
-      return typeof p?.channelName === 'string' && p.channelName.length > 0;
+      return messageFilterUsesChannelName(p ?? {});
     });
     if (usesChannelName && this.data.getChannelName) {
       channelName = await this.data.getChannelName(sourceId, Number(msg.channel));
@@ -408,7 +409,7 @@ export class AutomationEngineService {
     let channelName: string | null | undefined;
     const usesChannelName = (this.index.get('trigger.message') ?? []).some((a) => {
       const p = a.triggerNode.params as Record<string, unknown> | undefined;
-      return typeof p?.channelName === 'string' && p.channelName.length > 0;
+      return messageFilterUsesChannelName(p ?? {});
     });
     // A received channel message stores its slot index in `from` as `channel-<idx>`.
     const channelIdx = ctx.fields.channel;
